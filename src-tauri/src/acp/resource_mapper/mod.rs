@@ -9,8 +9,8 @@ use super::{
     bindings::adapter::ResourceMapper,
     contract::SageRootId,
     intent::{SafeResourceRef, UnavailableResourceReason},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 const MAX_PROJECT_ROOTS: usize = MAX_ROOTS_PER_PROJECT as usize;
 const MAX_ROOT_PATH_BYTES_TOTAL: usize =

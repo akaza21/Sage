@@ -130,7 +130,7 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
                 .command(AdapterCommand::Prompt {
                     prompt: Prompt::new("prompt", "Inspect the synthetic example").unwrap(),
                     client_message_id: RequiredText::new("client", "after-discovery").unwrap(),
-                    access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 })
                 .unwrap();
             wire_reply(&mut adapter, &mut wire, prompt, "piPrompt");

@@ -8,7 +8,7 @@ use std::{
 };
 
 use super::{NODE_OUTPUT_BYTES, NODE_TIMEOUT};
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 const SINK_EMITTED: &[u8] = b"sage-redaction:sink-emitted\n";
 

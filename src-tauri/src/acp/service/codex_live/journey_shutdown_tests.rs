@@ -40,8 +40,7 @@ fn shutdown_running_codex_turn_converges_within_close_budget() {
         );
         assert_eq!(host.last_shutdown_phase(), "begin_park_intent");
         assert!(
-            elapsed
-                <= Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close),
+            elapsed <= Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close),
             "shutdown exceeded its close budget: {elapsed:?}"
         );
         assert_job_zero();

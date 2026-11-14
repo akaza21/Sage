@@ -22,7 +22,7 @@ const EXTENSIONS: &[&str] = &["pem", "key", "p12", "pfx", "jks", "keystore", "kd
 
 /// Whether `name`, one path component, is a credential folder or file.
 /// Matching ignores ASCII case, as the file systems that matter here do.
-pub(super) fn is_secret(name: &str, is_dir: bool) -> bool {
+pub(crate) fn is_secret(name: &str, is_dir: bool) -> bool {
     let name = name.to_ascii_lowercase();
     if is_dir {
         return FOLDERS.contains(&name.as_str());

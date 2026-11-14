@@ -1,12 +1,10 @@
 use serde::Serialize;
 
-use crate::acp::{
-    contract::{
-        ContractError, EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId,
-        SageChatId, SageProjectId,
-    },
-    limits::PREVIEW_LIMITS,
+use crate::acp::contract::{
+    ContractError, EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId,
+    SageProjectId,
 };
+use sage_core::limits::PREVIEW_LIMITS;
 
 use super::{
     discovery::{PreviewDiscoveryRequest, PreviewTargetRef},

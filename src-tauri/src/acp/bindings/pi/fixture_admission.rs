@@ -20,7 +20,7 @@ impl PiFixtureBinding {
     pub(crate) fn admit(
         selection: crate::launch_profile::FixtureSelection,
     ) -> Result<Arc<Self>, AdapterRuntimeError> {
-        if !crate::acp::fixture::native_case_matches(&selection.case, "pi") {
+        if !crate::acp_protocol::native_cases::native_case_matches(&selection.case, "pi") {
             return Err(AdapterRuntimeError::LaunchUnavailable);
         }
         selection
@@ -55,7 +55,7 @@ impl PiFixtureBinding {
 
     /// The selected case replays tool calls through the bundled bridge extension.
     pub(crate) fn bridge_installed(&self) -> bool {
-        crate::acp::fixture::native_case_uses_pi_bridge(&self.selection.case)
+        crate::acp_protocol::native_cases::native_case_uses_pi_bridge(&self.selection.case)
     }
 
     pub(crate) fn binding_digest(&self) -> [u8; 32] {

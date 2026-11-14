@@ -21,6 +21,7 @@ use crate::{
 
 #[cfg(test)]
 use crate::acp::bindings::codex::CodexBindingRegistration;
+use crate::acp::{errors::SessionControlError, read_text_file::ReadTextFileService};
 
 #[cfg(all(test, windows))]
 use crate::acp::{
@@ -64,18 +65,12 @@ mod session_close;
 pub(crate) use permission::PermissionDecisionIntent;
 mod file_snapshot;
 pub(crate) use file_snapshot::verify_current_owner;
-mod project_switch;
-mod read_text_file;
-#[cfg(test)]
-pub(crate) use read_text_file::{DiskAllowedState, ReadTextClassification, ReadTextFlushState};
-pub(crate) use read_text_file::{
-    ReadTextBegin, ReadTextFileService, ReadTextFlushAck, ReadTextNextAction, ReadTextOwner,
-};
 mod chat_fork;
 mod child_transcript;
 mod goal;
 mod native_import;
 mod native_read;
+mod project_switch;
 pub(crate) use child_transcript::{ChildTranscriptRead, ChildTranscriptReadError};
 pub(crate) use native_import::{ImportLister, ImportedHistory, ListedSessions};
 mod renderer_recreation;
@@ -90,10 +85,7 @@ mod mcp;
 mod session_control;
 mod session_surface;
 mod turn_undo;
-pub(crate) use session_control::SessionControlError;
 pub(crate) use turn_undo::UndoneRelaunchError;
-#[cfg(test)]
-pub(crate) use turn_undo::stage_turn_undo;
 mod session_error;
 mod slash_commands;
 mod usage;
@@ -134,7 +126,7 @@ pub(crate) struct AcpService {
     publisher: Arc<dyn ProjectionPublisher>,
     notifier: Option<Arc<ProjectionNotifier>>,
     page_reads: PageReadAdmission,
-    read_text_files: ReadTextFileService,
+    pub(super) read_text_files: ReadTextFileService,
     browser_permissions: Mutex<
         std::collections::HashMap<
             crate::acp::contract::SageServerRequestId,

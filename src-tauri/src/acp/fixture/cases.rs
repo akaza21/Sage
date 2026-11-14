@@ -1,9 +1,10 @@
 use std::ffi::OsString;
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::FixtureError;
-use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase, JOURNEY_CASES};
+use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase};
+use crate::acp_protocol::native_cases::JOURNEY_CASES;
 
 const CHARACTERIZATION_CASES: [(&str, &str); 10] = [
     (

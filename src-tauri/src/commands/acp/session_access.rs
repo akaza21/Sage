@@ -17,7 +17,7 @@ use crate::acp::{
     service::AcpService,
     session_config::{ConfigIntent, ModeSelection, SessionConfigOverlay},
 };
-use crate::settings_store::SessionAccessMode;
+use crate::acp_protocol::access_mode::SessionAccessMode;
 use serde::{Deserialize, Serialize};
 
 pub(crate) mod chat;

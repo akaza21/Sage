@@ -15,7 +15,7 @@ use crate::{
 fn forkable() -> String {
     format!(
         r#"{{"schemaVersion":1,"protocolVersion":"{identity}","newSession":true,"resumeSession":true,"loadSession":false,"closeSession":true,"prompt":true,"cancel":true,"nativeSessionFork":true,"activeTurnSteer":true,"childConversationProjection":false,"childTranscriptRead":true,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}}"#,
-        identity = crate::acp::bindings::codex::CODEX_PROTOCOL_IDENTITY
+        identity = crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
     )
 }
 
@@ -57,7 +57,7 @@ impl Fixture {
                  INSERT INTO session_runtime_epochs VALUES('{project}','{parent}','session-parent',1,
                    'running',NULL,1,NULL,NULL);",
                 digest = "a".repeat(64),
-                version = crate::acp::bindings::codex::CODEX_PINNED_VERSION,
+                version = crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
             ))
             .unwrap();
         let fixture = Self {

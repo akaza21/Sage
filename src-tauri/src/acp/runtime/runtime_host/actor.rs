@@ -147,7 +147,7 @@ impl<E: RuntimeEngine> Actor<E> {
         // retains the platform supervisor's bounded emergency teardown path.
         let _ = self.engine.shutdown(
             Instant::now()
-                + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close),
+                + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close),
         );
     }
 
@@ -218,7 +218,7 @@ impl<E: RuntimeEngine> Actor<E> {
         &mut self,
         owner: RuntimeOwner,
         request_id: crate::acp::contract::SageServerRequestId,
-        decision: crate::acp::runtime::permissions::PermissionDecision,
+        decision: crate::acp_protocol::permissions::PermissionDecision,
     ) -> Result<HostReply, HostError> {
         if !matches!(self.state, HostState::Idle | HostState::Running)
             || !self.matches_owner(&owner)

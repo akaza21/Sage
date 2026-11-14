@@ -1,14 +1,15 @@
 use crate::acp::{
-    bindings::adapter::ResourceMapper,
-    bindings::adapter::{AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError},
+    bindings::adapter::{
+        AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError, ResourceMapper,
+    },
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
         COMMAND_RESOURCE_LIMIT, ExternalId, NormalizedPayload, SafeResourceLocation, ToolCategory,
         session_event::SessionScopedEvent,
     },
     lifecycle::{ItemLifecycle, ToolState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::PiRuntime;
 use super::stream::append_snapshot;

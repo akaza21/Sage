@@ -588,7 +588,7 @@ fn install_command_host(
                 prompt: Prompt::new("prompt", "seed turn").unwrap(),
                 now_millis: sage_core::time::now_millis(),
             },
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
         calls.lock().unwrap().clear();
@@ -805,7 +805,7 @@ fn legacy_access_migration_requires_a_restored_session_not_a_catalog_default() {
         assert_eq!(modes.len(), 1);
         assert_eq!(
             modes["codex-app-server"],
-            crate::settings_store::SessionAccessMode::WorkspaceWrite
+            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite
         );
         assert!(!state.settings.pending_access_migration().unwrap());
         drop(state);
@@ -980,7 +980,7 @@ fn codex_discovery_refuses_an_uncached_catalog_only_when_live_sessions_fill_ever
         assert!(is_capacity_refusal(&full), "{full:?}");
         assert!(
             started.elapsed()
-                < std::time::Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.spawn),
+                < std::time::Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.spawn),
             "a cache miss with every lane live must refuse without launching a runtime"
         );
 
@@ -1385,7 +1385,7 @@ fn an_admitted_opencode_session_routes_the_mandatory_core_through_its_own_bindin
                     prompt: Prompt::new("prompt", "must not dispatch").unwrap(),
                     now_millis: sage_core::time::now_millis(),
                 },
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             },
         );
         assert!(matches!(
@@ -1741,7 +1741,7 @@ fn test_binding_activation_uses_the_registry_factory_path() {
                     prompt: Prompt::new("prompt", "test dispatch").unwrap(),
                     now_millis: sage_core::time::now_millis(),
                 },
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             },
         );
         assert!(dispatch.is_err(), "test dispatch must fail closed");
@@ -2053,7 +2053,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
             .settings
             .set_session_access_modes(&std::collections::BTreeMap::from([(
                 "codex-app-server".into(),
-                crate::settings_store::SessionAccessMode::WorkspaceWrite,
+                crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             )]))
             .unwrap();
         let adapter = root.join("adapter.js");
@@ -2180,7 +2180,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
             .settings
             .set_chat_access(
                 session_id.as_str(),
-                crate::settings_store::SessionAccessMode::Plan,
+                crate::acp_protocol::access_mode::SessionAccessMode::Plan,
                 1,
             )
             .unwrap();
@@ -2222,7 +2222,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
             .settings
             .set_chat_access(
                 session_id.as_str(),
-                crate::settings_store::SessionAccessMode::Ask,
+                crate::acp_protocol::access_mode::SessionAccessMode::Ask,
                 2,
             )
             .unwrap();

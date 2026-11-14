@@ -1,5 +1,6 @@
+use crate::acp::bindings::adapter::AdapterRuntimeError;
 use crate::acp::bindings::pi::decode::redact_with_tail;
-use crate::acp::{bindings::adapter::AdapterRuntimeError, limits::LIMITS};
+use sage_core::limits::LIMITS;
 
 pub(super) fn append_snapshot(
     snapshot: &mut Option<String>,

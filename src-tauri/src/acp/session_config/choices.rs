@@ -6,10 +6,8 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{ConfigId, ConfigKind, ConfigMutation, ConfigValue, SessionConfig};
-use crate::acp::{
-    contract::{BoundedVec, SageAgentSessionId},
-    limits::{LIMITS, SESSION_CONFIG_CHOICE_BYTES, SESSION_CONFIG_CHOICES_PER_SESSION},
-};
+use crate::acp::contract::{BoundedVec, SageAgentSessionId};
+use sage_core::limits::{LIMITS, SESSION_CONFIG_CHOICE_BYTES, SESSION_CONFIG_CHOICES_PER_SESSION};
 
 /// A session's config while it has no live runtime: what it last reported,
 /// with its stored choices as the current values.

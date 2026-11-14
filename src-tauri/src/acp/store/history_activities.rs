@@ -5,9 +5,9 @@ use rusqlite::params_from_iter;
 use crate::acp::{
     contract::{EntityRevision, SageActivityId, SageItemId, SageTurnId},
     intent::ActivityProvenanceV1,
-    limits::LIMITS,
     projection::{ActivityProjection, ActivityRole},
 };
+use sage_core::limits::LIMITS;
 
 use super::{StoreError, history::TurnRow};
 

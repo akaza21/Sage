@@ -5,8 +5,8 @@ use crate::acp::{
     contract::{RequiredText, SafeText},
     intent::{NormalizedPayload, ToolCategory},
     lifecycle::{ItemLifecycle, ToolState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::sanitize::normalized_label_text;
 use super::decode::{

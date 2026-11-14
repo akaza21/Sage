@@ -6,13 +6,14 @@ use sha2::{Digest, Sha256};
 use super::{
     installed_role::SignedInstalledRole,
     managed::ManagedStagingPrerequisite,
-    manifest::{MetadataValidatedPacket, PINNED_ARTIFACT_COUNT, Platform, pinned_codex_version},
+    manifest::{MetadataValidatedPacket, PINNED_ARTIFACT_COUNT, Platform},
     physical::{
         ConfiguredCodexSourceRoot, ExpectedPhysicalFile, InspectionClaims,
         PhysicallyInspectedPackage, decode_digest, inspect_claims, inspect_codex_source,
     },
     reproduction::PackageReproductionRequirements,
 };
+use crate::acp_protocol::codex_protocol::pinned_codex_version;
 
 #[cfg(windows)]
 mod windows;

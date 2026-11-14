@@ -1,4 +1,5 @@
-use crate::acp::{contract::RuntimeEpoch, limits::LIMITS};
+use crate::acp::contract::RuntimeEpoch;
+use sage_core::limits::LIMITS;
 
 use super::{ActivationIntent, ActivationMode, ActivationPumpError};
 

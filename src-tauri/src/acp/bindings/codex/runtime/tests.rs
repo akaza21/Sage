@@ -1,30 +1,32 @@
 use sage_core::error::AppError;
 
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent, version_line};
-use crate::acp::bindings::codex::{CODEX_OBSERVED_PROTOCOL_IDENTITY, CODEX_PROTOCOL_IDENTITY};
+use crate::acp_protocol::codex_protocol::{OBSERVED_PROTOCOL_IDENTITY, PINNED_PROTOCOL_IDENTITY};
 use serde_json::{Value, json};
 
 use super::*;
-use crate::acp::{
-    bindings::{
-        adapter::{
-            AdapterCommand, AdapterEvent, AdapterIdentity, AdapterRuntimeError, EgressResolution,
-            HarnessAdapter, ResourceMapper,
-        },
-        codex::{
-            CodexProjectRootAuthority, Platform, parse_packet_metadata, parse_security_policy,
-        },
-    },
-    contract::{
-        ProjectGeneration, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageProjectId,
-        SageRootId,
-    },
-    intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
-    lifecycle::ItemLifecycle,
-    runtime::permissions::PermissionDecision,
-    transport::{Frame, IncrementalFrameDecoder},
-};
 use crate::project_registry::ProjectRootAuthority;
+use crate::{
+    acp::{
+        bindings::{
+            adapter::{
+                AdapterCommand, AdapterEvent, AdapterIdentity, AdapterRuntimeError,
+                EgressResolution, HarnessAdapter, ResourceMapper,
+            },
+            codex::{
+                CodexProjectRootAuthority, Platform, parse_packet_metadata, parse_security_policy,
+            },
+        },
+        contract::{
+            ProjectGeneration, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId,
+            SageProjectId, SageRootId,
+        },
+        intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
+        lifecycle::ItemLifecycle,
+        transport::{Frame, IncrementalFrameDecoder},
+    },
+    acp_protocol::permissions::PermissionDecision,
+};
 use crate::{persistence::Database, state::AppState};
 
 mod background_terminal_tests;
@@ -295,7 +297,7 @@ fn catalog_rpc_failure_is_ignored_and_session_stays_promptable() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "continue").unwrap(),
                 client_message_id: RequiredText::new("client", "catalog-failure").unwrap(),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -788,7 +790,7 @@ fn catalog_effort_byte_bound_survives_configuration_and_turn_start() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "keep full bounded effort").unwrap(),
             client_message_id: RequiredText::new("client", "bounded-effort").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();
@@ -897,7 +899,7 @@ fn codex_thinking_change_is_local_and_reaches_the_next_turn_start() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "use selected effort").unwrap(),
             client_message_id: RequiredText::new("client", "effort-turn").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();
@@ -985,7 +987,7 @@ fn running_turn(runtime: &mut CodexRuntime) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-1").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     let id = request_id(&egress);
@@ -1161,7 +1163,7 @@ fn notification_first_turn_start_ignores_the_late_response_state_regression() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: RequiredText::new("client", "notification-first").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let id = request_id(&egress);
@@ -1198,7 +1200,7 @@ fn completed_notification_first_turn_admits_the_next_turn_started() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Run one bounded command").unwrap(),
             client_message_id: RequiredText::new("client", "first-command").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let first_id = request_id(&first);
@@ -1233,7 +1235,7 @@ fn completed_notification_first_turn_admits_the_next_turn_started() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Follow up without editing").unwrap(),
             client_message_id: RequiredText::new("client", "second-follow-up").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let second_id = request_id(&second);
@@ -1477,7 +1479,7 @@ fn prompt_and_interrupt_rpc_errors_emit_terminal_failure_without_replay() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Never replay").unwrap(),
             client_message_id: RequiredText::new("client", "failed-prompt").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt_id = request_id(&prompt);
@@ -1636,9 +1638,9 @@ fn an_observed_pinned_binding_publishes_its_own_identity_not_the_pinned_package(
     let admitted = binding.capability_ceiling().unwrap();
     assert_eq!(
         admitted.protocol_version.as_str(),
-        CODEX_OBSERVED_PROTOCOL_IDENTITY
+        OBSERVED_PROTOCOL_IDENTITY
     );
-    assert_ne!(admitted.protocol_version.as_str(), CODEX_PROTOCOL_IDENTITY);
+    assert_ne!(admitted.protocol_version.as_str(), PINNED_PROTOCOL_IDENTITY);
 
     let mut runtime = CodexRuntime::from_admitted_binding(
         Arc::new(binding),
@@ -1674,7 +1676,7 @@ fn an_observed_pinned_binding_publishes_its_own_identity_not_the_pinned_package(
     };
     assert_eq!(
         capabilities.protocol_version.as_str(),
-        CODEX_OBSERVED_PROTOCOL_IDENTITY
+        OBSERVED_PROTOCOL_IDENTITY
     );
     assert!(capabilities.new_session && capabilities.prompt && capabilities.cancel);
     assert!(!capabilities.load_session);
@@ -1736,7 +1738,7 @@ fn observed_active_thread_status_notification_is_ignored_before_turn_started() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "active-status").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     let notification = runtime
@@ -1778,7 +1780,7 @@ fn observed_system_error_thread_status_fails_the_pending_turn_without_tearing_do
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Reply with PONG").expect("prompt"),
             client_message_id: RequiredText::new("client", "system-error").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
 
@@ -1812,7 +1814,7 @@ fn observed_system_error_thread_status_fails_the_pending_turn_without_tearing_do
                 prompt: Prompt::new("prompt", "Retry with PONG").expect("prompt"),
                 client_message_id: RequiredText::new("client", "system-error-retry")
                     .expect("client"),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -2793,7 +2795,7 @@ fn command_snapshots_reject_foreign_or_retired_turns_without_borrowing_prior_con
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Start a separate turn").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-2").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("next turn");
     let next_id = request_id(&next);
@@ -3613,7 +3615,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "first").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-first").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("first prompt");
     rollback
@@ -3624,7 +3626,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "second").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-second").expect("client"),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -3635,7 +3637,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "first").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-zero").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("first prompt");
     let token = first.token().clone();
@@ -3650,7 +3652,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "retry").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-retry").expect("client"),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );
@@ -3661,7 +3663,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "possibly written").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-unknown").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("first prompt");
     uncertain
@@ -3671,7 +3673,7 @@ fn malformed_unknown_capacity_plus_one_and_egress_rollback_are_deterministic() {
         uncertain.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "must not replay").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-no-replay").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::Operation)
     ));

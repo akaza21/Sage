@@ -13,12 +13,12 @@ pub(crate) use title_source::{
 };
 
 use crate::{
-    acp::limits::LIMITS,
     domain::{ProjectLayoutRequest, RenameChatRequest},
     persistence::Database,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
     workbench_restore::validate_tab_projection,
 };
+use sage_core::limits::LIMITS;
 
 pub const MAX_CHAT_TITLE_BYTES: usize = 128;
 const MAX_CHAT_ID_BYTES: usize = 512;

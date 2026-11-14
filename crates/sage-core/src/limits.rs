@@ -1,18 +1,21 @@
 use serde::Serialize;
-pub(crate) mod preview;
-pub(crate) use preview::PREVIEW_LIMITS;
+pub mod preview;
+pub use preview::PREVIEW_LIMITS;
 mod browser;
 pub use browser::{BROWSER_LIMITS, BrowserLimits};
 mod fixture;
 mod images;
+pub mod prompt_files;
+#[cfg(test)]
+mod tests;
 pub use fixture::{FIXTURE_LIMITS, FixtureLimits};
 pub use images::*;
 
-pub(crate) const RETAINED_TOOL_OUTPUT_LINES: usize = 200;
+pub const RETAINED_TOOL_OUTPUT_LINES: usize = 200;
 /// Raw UTF-8 bytes admitted per immutable file-diff side, before JSON escaping.
-pub(crate) const DIFF_SIDE_BYTES_MAX: usize = 262_144;
+pub const DIFF_SIDE_BYTES_MAX: usize = 262_144;
 /// Retained immutable versions per Turn, including multiple versions of one item.
-pub(crate) const DIFFS_PER_TURN: i64 = 32;
+pub const DIFFS_PER_TURN: i64 = 32;
 pub const COMMAND_RESOURCE_LIMIT: usize = 64;
 /// A prompt carries only a small review set, not an unbounded annotation log.
 pub const ATTACHED_CONTEXT_LIMIT: usize = 8;
@@ -20,12 +23,12 @@ pub const ATTACHED_CONTEXT_LIMIT: usize = 8;
 pub const ATTACHED_CONTEXT_NOTE_BYTES: usize = 4 * 1024;
 /// Stored session config choices per agent session: one per config option a
 /// session may advertise (`models_or_config_entries`) plus its mode.
-pub(crate) const SESSION_CONFIG_CHOICES_PER_SESSION: usize = 129;
+pub const SESSION_CONFIG_CHOICES_PER_SESSION: usize = 129;
 /// Serialized bytes of one stored session config choice; the schema enforces
 /// the same cap.
-pub(crate) const SESSION_CONFIG_CHOICE_BYTES: usize = 8_192;
+pub const SESSION_CONFIG_CHOICE_BYTES: usize = 8_192;
 /// A one-byte sensitive token may expand to this replacement in command output.
-pub(crate) const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();
+pub const COMMAND_OUTPUT_REDACTION_BYTES: usize = "[redacted]".len();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]

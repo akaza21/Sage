@@ -2,16 +2,19 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
 
-use crate::acp::{
-    fixture::{generated_cases::FrozenCase, wire},
-    process::{LaunchError, TreeExit},
-    runtime::{
-        AdapterPump, DriverError, DriverMailbox, EgressTransport, JournalHandle,
-        ProcessAdapterDriver, ProcessTreeControl, ProjectionMailbox, SqliteAdapterBatchJournal,
-        StdinTransport, TeardownCause, TreeLeaseOwner, permissions::PermissionDecision,
+use crate::{
+    acp::{
+        fixture::{generated_cases::FrozenCase, wire},
+        process::{LaunchError, TreeExit},
+        runtime::{
+            AdapterPump, DriverError, DriverMailbox, EgressTransport, JournalHandle,
+            ProcessAdapterDriver, ProcessTreeControl, ProjectionMailbox, SqliteAdapterBatchJournal,
+            StdinTransport, TeardownCause, TreeLeaseOwner,
+        },
+        scheduler::RuntimeOwner,
+        transport::{FrameWriteOutcome, OutboundFrame},
     },
-    scheduler::RuntimeOwner,
-    transport::{FrameWriteOutcome, OutboundFrame},
+    acp_protocol::permissions::PermissionDecision,
 };
 
 use super::{
@@ -105,7 +108,7 @@ async fn observe(case: &FrozenCase) -> Value {
         .expect("permission fixture process-exit observation timed out")
         .unwrap();
         clock.set(
-            10 + i64::try_from(crate::acp::limits::LIMITS.deadlines_ms.tree_termination).unwrap(),
+            10 + i64::try_from(sage_core::limits::LIMITS.deadlines_ms.tree_termination).unwrap(),
         );
         failure = tokio::time::timeout(
             deadline.operation_before_cleanup(),

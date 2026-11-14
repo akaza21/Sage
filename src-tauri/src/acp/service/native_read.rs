@@ -4,11 +4,13 @@
 
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::codex::{ChildTurn, MAX_ITEMS, MAX_TURNS},
-    goal::{NativeRead, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
-    runtime::{HostError, RuntimeHost},
-    scheduler::RuntimeOwner,
+use crate::{
+    acp::{
+        goal::{NativeRead, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
+        runtime::{HostError, RuntimeHost},
+        scheduler::RuntimeOwner,
+    },
+    acp_protocol::codex_protocol::{ChildTurn, MAX_ITEMS, MAX_TURNS},
 };
 
 use super::AcpService;
@@ -149,9 +151,9 @@ fn page_reply(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{
-        bindings::codex::{ChildItem, NativeTurnsPage},
-        lifecycle::ItemLifecycle,
+    use crate::{
+        acp::{bindings::codex::NativeTurnsPage, lifecycle::ItemLifecycle},
+        acp_protocol::codex_protocol::ChildItem,
     };
 
     fn turn(id: usize, items: usize) -> ChildTurn {

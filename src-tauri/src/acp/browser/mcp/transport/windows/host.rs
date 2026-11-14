@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::browser::mcp::MAX_SESSION_CONNECTIONS;
-use crate::acp::limits::BROWSER_LIMITS;
+use sage_core::limits::BROWSER_LIMITS;
 
 const MAX_AUTH_FAILURES: u8 = 4;
 const HELLO_TIMEOUT: Duration = Duration::from_secs(10);

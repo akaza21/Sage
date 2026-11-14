@@ -48,9 +48,8 @@ pub(crate) use authority::{
     inspect_codex_authority, verify_codex_config,
 };
 pub(crate) use child_transcript::{
-    ChildItem, ChildTextRole, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES,
-    MAX_TURNS, NativeSessionSummary, NativeSessionsPage, NativeTurnsPage,
-    normalize_child_user_message, normalize_sessions_page, normalize_turns_page,
+    NativeSessionSummary, NativeSessionsPage, NativeTurnsPage, normalize_child_user_message,
+    normalize_sessions_page, normalize_turns_page,
 };
 pub(crate) use degrade::is_desktop_fixture_protocol;
 pub(crate) use discovery::{
@@ -67,17 +66,8 @@ pub(crate) use incoming::{IncomingEvent, IngressDisposition, ResourceMapper};
 pub(crate) use managed::{
     ManagedStagingError, ManagedStagingPrerequisite, inspect_managed_staging,
 };
-#[cfg(any(test, feature = "acp-fixture"))]
-pub(crate) use manifest::pinned_codex_version;
-pub(crate) use manifest::{
-    OBSERVED_PROTOCOL_IDENTITY as CODEX_OBSERVED_PROTOCOL_IDENTITY,
-    PINNED_CODEX_VERSION as CODEX_PINNED_VERSION,
-    PINNED_PROTOCOL_IDENTITY as CODEX_PROTOCOL_IDENTITY,
-    PINNED_SCHEMA_SHA256 as CODEX_SCHEMA_SHA256,
-};
-pub(crate) use manifest::{
-    PhysicalAdmissionUnavailable, Platform, parse_packet_metadata, speaks_pinned_protocol,
-};
+pub(crate) use manifest::PINNED_SCHEMA_SHA256 as CODEX_SCHEMA_SHA256;
+pub(crate) use manifest::{PhysicalAdmissionUnavailable, Platform, parse_packet_metadata};
 pub(crate) use physical::{
     ConfiguredManagedPackageRoot, PhysicalInspectionError, PhysicallyInspectedPackage,
     inspect_managed_package,

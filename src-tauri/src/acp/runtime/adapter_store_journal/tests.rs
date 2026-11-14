@@ -20,7 +20,7 @@ use crate::acp::{
 
 use super::*;
 use crate::acp::runtime::adapter_pump::{ActiveTurnIntent, DurableActivityItem, SessionPumpIntent};
-use crate::acp::runtime::permissions::PermissionIntent;
+use crate::acp_protocol::permissions::PermissionIntent;
 
 struct RecordingStore(Arc<Mutex<usize>>);
 struct RequestStateStore(Arc<Mutex<Option<RequestStateCommand>>>);

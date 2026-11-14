@@ -65,7 +65,7 @@ async fn optional_baseline_releases_transition_before_waiting_and_never_blocks_s
         .connection()
         .execute(
             "UPDATE acp_store_usage SET shared_payload_bytes=?1",
-            [crate::acp::limits::LIMITS
+            [sage_core::limits::LIMITS
                 .durable
                 .shared_payload_bytes_global as i64],
         )

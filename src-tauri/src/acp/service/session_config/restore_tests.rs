@@ -723,7 +723,7 @@ fn a_change_that_needs_recovery_is_reported_instead_of_the_prompt_being_sent() {
                 prompt: crate::acp::intent::Prompt::new("prompt", "hello").unwrap(),
                 now_millis: sage_core::time::now_millis(),
             },
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap_err();
     assert!(matches!(

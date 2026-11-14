@@ -75,7 +75,7 @@ pub(crate) fn discover_admitted(
     }
     let mut protocol = CodexDiscoveryProtocol::from_admitted_binding(&binding, runtime_epoch);
     let spawn_timeout = deadline.operation_remaining(Duration::from_millis(
-        crate::acp::limits::LIMITS.deadlines_ms.spawn,
+        sage_core::limits::LIMITS.deadlines_ms.spawn,
     ))?;
     let mut transport = CodexProcessTransport::launch(
         binding,

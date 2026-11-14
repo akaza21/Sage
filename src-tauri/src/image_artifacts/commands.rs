@@ -11,7 +11,7 @@ use crate::{
 use super::store::{ingest_image, normalize_upload, remove_pending_image};
 
 /// Base64 of `IMAGE_UPLOAD_BYTES`; an upload is normalised before it is stored.
-const MAX_IMAGE_BASE64_BYTES: usize = crate::acp::limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4;
+const MAX_IMAGE_BASE64_BYTES: usize = sage_core::limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

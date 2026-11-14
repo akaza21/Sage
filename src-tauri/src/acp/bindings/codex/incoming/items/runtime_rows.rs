@@ -5,8 +5,8 @@ use crate::acp::{
     declared_test::CommandActivity,
     intent::{NormalizedPayload, ToolCategory, ToolExecution},
     lifecycle::ItemLifecycle,
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{IngressError, support::safe_text};
 use super::presentation::{

@@ -42,7 +42,7 @@ fn prompt(owner: &RuntimeOwner) -> HostPromptIntent {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             now_millis: 10,
         },
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 
@@ -256,7 +256,7 @@ fn closing_the_driver_mailbox_rejects_queued_callers_and_wakes_both_wait_modes()
         }
     }
     assert!(queued > 0);
-    assert!(queued <= crate::acp::limits::LIMITS.queues.driver_data_messages);
+    assert!(queued <= sage_core::limits::LIMITS.queues.driver_data_messages);
     let producer_mailbox = std::sync::Arc::clone(&mailbox);
     let (started, waiting) = std::sync::mpsc::sync_channel(1);
     let producer = std::thread::spawn(move || {

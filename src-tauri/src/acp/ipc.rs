@@ -55,7 +55,7 @@ pub struct GetAcpFileSnapshotRequest {
     pub turn_id: SageTurnId,
     pub item_id: SageItemId,
     pub diff_ordinal: u64,
-    #[serde(with = "crate::acp::file_diff::wire_counter")]
+    #[serde(with = "crate::acp_protocol::file_diff::wire_counter")]
     pub snapshot_revision: u64,
     pub root_id: SageRootId,
     pub relative_path: String,
@@ -75,7 +75,7 @@ pub struct AcpFileSnapshotResponse {
     pub diff_ordinal: u64,
     pub root_id: SageRootId,
     pub relative_path: String,
-    #[serde(with = "crate::acp::file_diff::wire_counter")]
+    #[serde(with = "crate::acp_protocol::file_diff::wire_counter")]
     pub snapshot_revision: u64,
     pub old_text: String,
     pub new_text: String,

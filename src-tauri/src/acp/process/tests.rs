@@ -3,11 +3,11 @@ use std::path::PathBuf;
 
 use uuid::Uuid;
 
-use crate::acp::limits::LIMITS;
 use crate::{
     acp::contract::{ProjectGeneration, SageProjectId, SageRootId},
     project_registry::ProjectRootAuthority,
 };
+use sage_core::limits::LIMITS;
 
 use super::supervisor::LaunchFailureTracker;
 use super::*;
@@ -167,7 +167,7 @@ fn capacity_lease_is_mandatory_bounded_and_fail_closed_after_activation() {
         &TreeCapacityPool::global()
     ));
     let pool = TreeCapacityPool::isolated_ade_0006a();
-    let trees = crate::acp::limits::LIMITS.process.operational_live_trees as u32;
+    let trees = sage_core::limits::LIMITS.process.operational_live_trees as u32;
     let leases: Vec<_> = (0..trees).map(|_| pool.try_acquire(32).unwrap()).collect();
     assert_eq!(pool.usage(), (trees, 32 * trees));
     assert_eq!(

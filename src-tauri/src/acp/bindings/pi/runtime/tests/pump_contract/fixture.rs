@@ -339,7 +339,7 @@ pub(super) async fn start_turn<A: HarnessAdapter>(
     pump.queue_command(AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect").unwrap(),
         client_message_id: RequiredText::new("client", format!("turn-pump-{ordinal}")).unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     })
     .unwrap();
     let mut transport = Capture::default();

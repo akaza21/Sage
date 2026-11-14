@@ -3,14 +3,16 @@
 
 use serde_json::{Value, json};
 
-use crate::acp::{
-    intent::{
-        NormalizedPayload,
-        session_event::SessionScopedEvent,
-        user_input::{UserInputAnswers, UserInputKind},
+use crate::{
+    acp::{
+        intent::{
+            NormalizedPayload,
+            session_event::SessionScopedEvent,
+            user_input::{UserInputAnswers, UserInputKind},
+        },
+        lifecycle::ServerRequestState,
     },
-    lifecycle::ServerRequestState,
-    runtime::permissions::PermissionDecision,
+    acp_protocol::permissions::PermissionDecision,
 };
 
 use super::IncomingEvent;

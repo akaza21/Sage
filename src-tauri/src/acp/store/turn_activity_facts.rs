@@ -25,9 +25,9 @@ use crate::acp::{
             SESSION_ACTIVITY_PROGRESS_BYTES, SessionActivity, SessionActivityState,
         },
     },
-    limits::LIMITS,
     projection::TurnSessionActivityProjection,
 };
+use sage_core::limits::LIMITS;
 
 use super::{AdapterStoreOwner, StoreError, facts, history::TurnRow};
 

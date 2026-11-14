@@ -250,12 +250,12 @@ fn undo_interrupted_after_persisting_the_intent_recovers_on_restart() {
             session_id: SageAgentSessionId::parse("session-a").unwrap(),
             runtime_epoch: RuntimeEpoch::new(2).unwrap(),
         };
-        crate::acp::service::stage_turn_undo(
+        crate::acp::turn_undo::stage_turn_undo(
             &fixture.database,
             &owner,
             SageTurnId::parse(FIRST).unwrap(),
             true,
-            || Ok(None),
+            || Ok::<_, crate::acp::bindings::claude::sdk::TranscriptError>(None),
         )
         .unwrap();
         if parked {

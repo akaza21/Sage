@@ -6,10 +6,10 @@ use crate::acp::process::{
     TreeExit,
 };
 use crate::acp::{
-    limits::LIMITS,
     runtime::{BoundedThread, JournalHandle, JournalRunner, ThreadWaitError},
     store::AcpStore,
 };
+use sage_core::limits::LIMITS;
 
 #[derive(Clone, Copy)]
 pub(super) struct FixtureDeadline {

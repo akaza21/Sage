@@ -1,10 +1,10 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::{
-    contract::{ProjectionRevision, RuntimeEpoch},
-    limits::LIMITS,
-    runtime::permissions::PermissionIntent,
+use crate::{
+    acp::contract::{ProjectionRevision, RuntimeEpoch},
+    acp_protocol::permissions::PermissionIntent,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::snapshots::FilePairCommand;
 use super::super::{ItemIngressCommand, RequestStateCommand, StoreError};

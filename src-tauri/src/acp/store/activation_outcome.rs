@@ -9,8 +9,8 @@ use crate::acp::{
     },
     intent::{CapabilitySnapshotV1, ExternalId},
     lifecycle::SessionState,
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     MutationDisposition, StoreError,

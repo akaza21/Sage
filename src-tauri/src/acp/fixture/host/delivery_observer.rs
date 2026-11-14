@@ -198,7 +198,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
                     dispatch.turn_id().as_str().to_owned(),
                 )
                 .unwrap(),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .unwrap();
         adapter

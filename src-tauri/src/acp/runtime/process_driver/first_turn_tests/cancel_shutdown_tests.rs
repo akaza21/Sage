@@ -108,7 +108,7 @@ fn committed_cancellation_is_an_intentional_shutdown_before_terminal_acknowledge
                     prompt: Prompt::new("prompt", "cancel this turn").unwrap(),
                     now_millis: now_millis + 3,
                 },
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             }))
         else {
             panic!("prepared turn")

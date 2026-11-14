@@ -365,7 +365,7 @@ fn full_session_ledger_blocks_new_turn_without_touching_history() {
         .execute(
             "UPDATE acp_session_usage SET turn_count=?1 WHERE session_id=?2",
             rusqlite::params![
-                crate::acp::limits::LIMITS.durable.turns_per_session as i64,
+                sage_core::limits::LIMITS.durable.turns_per_session as i64,
                 &session_id
             ],
         )

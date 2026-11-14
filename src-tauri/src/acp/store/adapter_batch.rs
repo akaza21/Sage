@@ -1,14 +1,16 @@
 use rusqlite::Transaction;
 
-use crate::acp::{
-    contract::{
-        EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId,
-        SageChatId, SageProjectId, SageTurnId,
+use crate::{
+    acp::{
+        contract::{
+            EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId,
+            SageChatId, SageProjectId, SageTurnId,
+        },
+        intent::{ActivityProvenanceV1, ExternalId},
+        lifecycle::{ActivityLifecycle, DeliveryState, TurnState, TurnTerminalReason},
+        projection::ActivityRole,
     },
-    intent::{ActivityProvenanceV1, ExternalId},
-    lifecycle::{ActivityLifecycle, DeliveryState, TurnState, TurnTerminalReason},
-    projection::ActivityRole,
-    runtime::permissions::PermissionIntent,
+    acp_protocol::permissions::PermissionIntent,
 };
 
 use super::snapshots::FilePairCommand;
@@ -63,7 +65,7 @@ pub(crate) struct ChildLiveItemCommand {
     pub child_thread_id: ExternalId,
     pub child_turn_id: ExternalId,
     pub item_id: ExternalId,
-    pub role: Option<crate::acp::bindings::codex::ChildTextRole>,
+    pub role: Option<crate::acp_protocol::codex_protocol::ChildTextRole>,
     pub lifecycle: crate::acp::lifecycle::ItemLifecycle,
     pub tool_state: Option<crate::acp::lifecycle::ToolState>,
     pub payload: crate::acp::intent::NormalizedPayload,
@@ -369,7 +371,7 @@ fn apply_event(
                 super::requests::receive_permission_request_in(transaction, intent, *now_millis)?;
             let declined = super::requests::commit_decline_in(transaction, intent, *now_millis)?;
             Ok(received.disposition == MutationDisposition::Applied
-                || declined == crate::acp::runtime::permissions::DeclineCommit::Applied)
+                || declined == crate::acp_protocol::permissions::DeclineCommit::Applied)
         }
         AdapterInboundEvent::Session(command) => {
             super::session_surface::apply_in(transaction, owner, command)

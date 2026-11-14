@@ -7,9 +7,9 @@ use crate::acp::{
         SageRootId,
     },
     intent::PageCursor,
-    limits::LIMITS,
     projection::AcpChatPage,
 };
+use sage_core::limits::LIMITS;
 
 use super::StoreError;
 

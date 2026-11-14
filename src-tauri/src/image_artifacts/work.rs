@@ -3,7 +3,7 @@
 //! `IMAGE_WORK_MEMORY_BYTES` however many images arrive together.
 use tokio::sync::{Semaphore, SemaphorePermit};
 
-use crate::acp::limits::IMAGE_WORK_PERMITS;
+use sage_core::limits::IMAGE_WORK_PERMITS;
 
 static IMAGE_WORK: Semaphore = Semaphore::const_new(IMAGE_WORK_PERMITS);
 

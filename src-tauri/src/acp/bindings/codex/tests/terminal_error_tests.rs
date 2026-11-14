@@ -37,7 +37,7 @@ fn error_notification(message: &str, will_retry: bool) -> Vec<u8> {
 fn full_unretried_error_ledger_keeps_accepting_errors_and_preserves_completion() {
     for recorded_terminal_error in [true, false] {
         let mut adapter = running_adapter();
-        for index in 0..crate::acp::limits::LIMITS.wire.items_per_turn {
+        for index in 0..sage_core::limits::LIMITS.wire.items_per_turn {
             let message = format!("Fatal cause {index}");
             assert!(matches!(
                 adapter.ingest(&error_notification(&message, false), &Mapper).unwrap(),
@@ -226,7 +226,7 @@ fn malformed_or_oversized_terminal_error_does_not_settle_the_turn() {
         json!(false),
         json!({}),
         json!({"message":false}),
-        json!({"message":"x".repeat(crate::acp::limits::LIMITS.wire.error_bytes as usize + 1)}),
+        json!({"message":"x".repeat(sage_core::limits::LIMITS.wire.error_bytes as usize + 1)}),
     ] {
         let mut adapter = running_adapter();
         assert!(adapter.ingest(&completion(error), &Mapper).is_err());

@@ -7,22 +7,24 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use super::*;
-use crate::acp::{
-    bindings::{
-        adapter::ResourceMapper as NativeMapping,
-        standard_acp::{
-            profile_for,
-            translator::{
-                AdapterEvent as StandardEvent, ResourceMapper as StandardMapper,
-                StandardAcpTranslator,
+use crate::{
+    acp::{
+        bindings::{
+            adapter::ResourceMapper as NativeMapping,
+            standard_acp::{
+                profile_for,
+                translator::{
+                    AdapterEvent as StandardEvent, ResourceMapper as StandardMapper,
+                    StandardAcpTranslator,
+                },
             },
         },
+        contract::SageRootId,
+        intent::{SafeResourceRef, UnavailableResourceReason},
+        projection::{FileChangeProjection, FilePairState},
+        resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
     },
-    contract::SageRootId,
-    file_diff::{DIFF_SIDE_BYTES_MAX, DIFFS_PER_TURN},
-    intent::{SafeResourceRef, UnavailableResourceReason},
-    projection::{FileChangeProjection, FilePairState},
-    resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
+    acp_protocol::file_diff::{DIFF_SIDE_BYTES_MAX, DIFFS_PER_TURN},
 };
 
 struct TempTree(PathBuf);

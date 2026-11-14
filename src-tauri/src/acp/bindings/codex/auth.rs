@@ -8,9 +8,9 @@ use crate::acp::{
         state::CodexAdapter,
     },
     contract::{RuntimeEpoch, SageAgentSessionId},
-    limits::LIMITS,
     transport::{Frame, OutboundFrame},
 };
+use sage_core::limits::LIMITS;
 
 const AUTH_URL_BYTES: usize = 16_384;
 const LOGIN_ID_BYTES: usize = 64;

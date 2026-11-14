@@ -8,10 +8,10 @@ use crate::acp::{
     contract::{
         RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
     },
-    limits::LIMITS,
     scheduler::RuntimeOwner,
     transport::{QueueError, ReservedQueue},
 };
+use sage_core::limits::LIMITS;
 
 use super::{DriverClock, DriverError, DriverProgress};
 
@@ -133,7 +133,7 @@ impl DriverMailbox {
         .map_err(map_queue)?
         // Harness output shares the data lane, so the largest prompt has a
         // reserve beside it, as in the host mailbox and egress.
-        .with_prompt_reserve(crate::acp::limits::PROMPT_INTENT_BYTES);
+        .with_prompt_reserve(sage_core::limits::PROMPT_INTENT_BYTES);
         Ok(Self {
             state: Mutex::new(State {
                 queue,

@@ -4,7 +4,7 @@ use super::*;
 
 #[test]
 fn lost_steer_fixture_answers_goal_hydration_without_ending_the_session() {
-    let case = super::super::super::generated_cases::JOURNEY_CASES
+    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == "codex-steer-lost-result")
         .unwrap();
@@ -33,7 +33,7 @@ fn lost_steer_fixture_answers_goal_hydration_without_ending_the_session() {
 
 #[test]
 fn lost_steer_result_consumes_the_correlated_write_without_emitting_a_reply() {
-    let case = super::super::super::generated_cases::JOURNEY_CASES
+    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == "codex-steer-lost-result")
         .unwrap();

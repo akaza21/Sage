@@ -1,15 +1,17 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    contract::{BoundedVec, SafeText},
-    declared_test::CommandActivity,
-    file_diff::{PairAdmission, admit_pair},
-    intent::{
-        FileChangeFacts, NormalizedPayload, SafeResourceLocation, ToolCategory, ToolExecution,
+use crate::{
+    acp::{
+        contract::{BoundedVec, SafeText},
+        declared_test::CommandActivity,
+        intent::{
+            FileChangeFacts, NormalizedPayload, SafeResourceLocation, ToolCategory, ToolExecution,
+        },
+        lifecycle::{ItemLifecycle, ToolState},
     },
-    lifecycle::{ItemLifecycle, ToolState},
-    limits::LIMITS,
+    acp_protocol::file_diff::{PairAdmission, admit_pair},
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     IngressError, ItemNormalization, ResourceMapper, ToolPresentationInput, content,

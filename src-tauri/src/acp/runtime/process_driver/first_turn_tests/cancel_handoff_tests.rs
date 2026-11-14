@@ -178,7 +178,7 @@ async fn accept_terminal_behind_late_starts(
                     prompt: Prompt::new("prompt", "cancel me").unwrap(),
                     now_millis: fixture.now_millis + 3,
                 },
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             }))
             .unwrap()
         else {

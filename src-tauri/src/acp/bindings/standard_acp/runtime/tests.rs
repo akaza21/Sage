@@ -21,11 +21,11 @@ use crate::{
         },
         intent::{NormalizedPayload, Prompt},
         lifecycle::TurnState,
-        runtime::permissions::PermissionDecision,
         transport::{Frame, IncrementalFrameDecoder},
     },
+    acp_protocol::{access_mode::SessionAccessMode, permissions::PermissionDecision},
     project_registry::ProjectRootAuthority,
-    settings_store::{CustomAcpAgent, SessionAccessMode},
+    settings_store::CustomAcpAgent,
 };
 
 use super::super::{CustomAcpRegistration, StandardAcpBindingSource, StandardAcpRuntimeFactory};

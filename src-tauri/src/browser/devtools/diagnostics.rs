@@ -1,9 +1,7 @@
 use std::collections::VecDeque;
 
-use crate::acp::{
-    browser::{BrowserFailure, ConsoleEntry, NetworkEntry, redact_console, redact_url},
-    limits::BROWSER_LIMITS,
-};
+use crate::acp::browser::{BrowserFailure, ConsoleEntry, NetworkEntry, redact_console, redact_url};
+use sage_core::limits::BROWSER_LIMITS;
 
 #[derive(Debug, Default)]
 pub(super) struct DiagnosticRings {

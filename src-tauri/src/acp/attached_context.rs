@@ -2,10 +2,10 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::{
     contract::{BoundedVec, ContractError, RequiredText},
-    file_diff::{DiffRef, SnapshotReadError, wire_counter},
     intent::Prompt,
-    limits::{ATTACHED_CONTEXT_LIMIT, ATTACHED_CONTEXT_NOTE_BYTES},
 };
+use crate::acp_protocol::file_diff::{DiffRef, SnapshotReadError, wire_counter};
+use sage_core::limits::{ATTACHED_CONTEXT_LIMIT, ATTACHED_CONTEXT_NOTE_BYTES};
 
 use crate::{browser::annotate::element::BrowserElement, image_attachment::ImageAttachedContext};
 

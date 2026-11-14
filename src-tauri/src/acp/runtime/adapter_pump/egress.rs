@@ -7,7 +7,7 @@ pub(super) fn queue() -> Result<ReservedQueue<AdapterEgress>, AdapterPumpError> 
         LIMITS.queues.egress_control_frames_inside_total as usize,
         LIMITS.queues.egress_control_bytes_inside_total as usize,
     )
-    .map(|queue| queue.with_prompt_reserve(crate::acp::limits::PROMPT_EGRESS_RESERVE_BYTES))
+    .map(|queue| queue.with_prompt_reserve(sage_core::limits::PROMPT_EGRESS_RESERVE_BYTES))
     .map_err(|_| AdapterPumpError::Backpressure)
 }
 
@@ -62,7 +62,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     pub(crate) async fn resolve_permission(
         &mut self,
         request_id: &SageServerRequestId,
-        decision: crate::acp::runtime::permissions::PermissionDecision,
+        decision: crate::acp_protocol::permissions::PermissionDecision,
         now_millis: i64,
     ) -> Result<(), AdapterPumpError> {
         self.ensure_live()?;
@@ -87,10 +87,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         if pending.settles_as.is_some() {
             return Err(AdapterPumpError::Intent);
         }
-        if decision == crate::acp::runtime::permissions::PermissionDecision::Ask {
+        if decision == crate::acp_protocol::permissions::PermissionDecision::Ask {
             let None = crate::acp::runtime::later_permission::resolve_later_permission(
                 request_id,
-                &crate::acp::runtime::permissions::PermissionDecision::Ask,
+                &crate::acp_protocol::permissions::PermissionDecision::Ask,
                 None,
             )
             .map_err(|_| AdapterPumpError::Intent)?
@@ -174,7 +174,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         &mut self,
         prompt: crate::acp::intent::Prompt,
         client_message_id: &RequiredText<512>,
-        access_mode: crate::settings_store::SessionAccessMode,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<QueueDisposition, AdapterPumpError> {
         self.ensure_live()?;
         let active = &self.intent.active_turn;

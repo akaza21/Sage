@@ -31,7 +31,7 @@ impl AdmittedClaudeSdkBinding {
     fn admit_fixture(
         selection: crate::launch_profile::FixtureSelection,
     ) -> Result<Self, AdapterRuntimeError> {
-        if !crate::acp::fixture::native_case_matches(&selection.case, "claude-sdk") {
+        if !crate::acp_protocol::native_cases::native_case_matches(&selection.case, "claude-sdk") {
             return Err(AdapterRuntimeError::LaunchUnavailable);
         }
         selection

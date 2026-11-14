@@ -7,7 +7,7 @@ use crate::{
         contract::RequiredText,
         intent::Prompt,
     },
-    settings_store::SessionAccessMode,
+    acp_protocol::access_mode::SessionAccessMode,
 };
 
 use super::{AdapterError, CodexAdapter};

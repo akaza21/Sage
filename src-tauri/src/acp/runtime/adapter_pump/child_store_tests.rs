@@ -112,10 +112,12 @@ fn observed_wire_pump_snapshot_survives_reopen_without_mutating_parent_turn() {
 
 #[test]
 fn synthetic_child_item_flood_marks_retention_limit_without_dropping_admitted_items() {
-    use crate::acp::{
-        bindings::codex::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
-        lifecycle::ItemLifecycle,
-        store::{AdapterStoreOwner, ChildLiveItemCommand},
+    use crate::{
+        acp::{
+            lifecycle::ItemLifecycle,
+            store::{AdapterStoreOwner, ChildLiveItemCommand},
+        },
+        acp_protocol::codex_protocol::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
     };
 
     let directory = std::env::temp_dir().join(format!("sage-cp18e-cap-{}", uuid::Uuid::new_v4()));
@@ -205,11 +207,11 @@ fn synthetic_child_item_flood_marks_retention_limit_without_dropping_admitted_it
 
 #[test]
 fn live_command_before_read_message_keeps_witnessed_order() {
-    use crate::acp::bindings::codex::{ChildItem, ChildTranscriptSnapshot, ChildTurn};
     use crate::acp::{
         intent::{ToolCategory, ToolExecution},
         lifecycle::{ItemLifecycle, ToolState},
     };
+    use crate::acp_protocol::codex_protocol::{ChildItem, ChildTranscriptSnapshot, ChildTurn};
 
     let directory = std::env::temp_dir().join(format!("sage-cp18e-order-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&directory).unwrap();
@@ -351,10 +353,12 @@ fn terminal_parent_turn_does_not_stop_bound_child_retention() {
 
 #[test]
 fn byte_limit_keeps_admitted_prefix_when_later_item_is_small() {
-    use crate::acp::{
-        bindings::codex::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
-        lifecycle::ItemLifecycle,
-        store::{AdapterStoreOwner, ChildLiveItemCommand},
+    use crate::{
+        acp::{
+            lifecycle::ItemLifecycle,
+            store::{AdapterStoreOwner, ChildLiveItemCommand},
+        },
+        acp_protocol::codex_protocol::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
     };
     let directory =
         std::env::temp_dir().join(format!("sage-cp18e-byte-prefix-{}", uuid::Uuid::new_v4()));
@@ -400,7 +404,7 @@ fn byte_limit_keeps_admitted_prefix_when_later_item_is_small() {
             child_thread_id: ExternalId::new("child", "child-one").unwrap(),
             child_turn_id: ExternalId::new("turn", "child-turn-1").unwrap(),
             item_id: ExternalId::new("item", id).unwrap(),
-            role: Some(crate::acp::bindings::codex::ChildTextRole::Assistant),
+            role: Some(crate::acp_protocol::codex_protocol::ChildTextRole::Assistant),
             lifecycle: ItemLifecycle::Completed,
             tool_state: None,
             payload: NormalizedPayload::Text {
@@ -429,10 +433,9 @@ fn byte_limit_keeps_admitted_prefix_when_later_item_is_small() {
 
 #[test]
 fn child_turn_status_beyond_turn_cap_marks_retention_limited() {
-    use crate::acp::{
-        bindings::codex::{ChildTranscriptSnapshot, ChildTurn},
-        lifecycle::TurnState,
-        store::AdapterStoreOwner,
+    use crate::{
+        acp::{lifecycle::TurnState, store::AdapterStoreOwner},
+        acp_protocol::codex_protocol::{ChildTranscriptSnapshot, ChildTurn},
     };
     let directory =
         std::env::temp_dir().join(format!("sage-cp18e-turn-cap-{}", uuid::Uuid::new_v4()));

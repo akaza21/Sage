@@ -19,12 +19,12 @@ mod session_event;
 mod terminal_reason;
 
 #[cfg(test)]
-use crate::acp::limits::LIMITS;
-#[cfg(test)]
 use crate::acp::runtime::adapter_pump::TurnScope;
 use command::build_command;
 #[cfg(test)]
 use command::{digest, scope_heap_bytes};
+#[cfg(test)]
+use sage_core::limits::LIMITS;
 
 pub(crate) struct SqliteAdapterBatchJournal {
     handle: JournalHandle,
@@ -163,7 +163,7 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
 
     fn transition_permission<'a>(
         &'a mut self,
-        intent: &'a crate::acp::runtime::permissions::PermissionIntent,
+        intent: &'a crate::acp_protocol::permissions::PermissionIntent,
         state: ServerRequestState,
         now_millis: i64,
     ) -> Pin<

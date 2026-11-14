@@ -14,10 +14,10 @@ use crate::acp::{
     fixture::generated_cases::FrozenCase,
     intent::{ExternalId, NormalizedPayload},
     lifecycle::ItemLifecycle,
-    limits::LIMITS,
     redaction::{DiagnosticCode, SafeDiagnostic, SensitiveBytes, StderrRing},
     store::{ItemIngressCommand, apply_item_ingress, load_chat_page},
 };
+use sage_core::limits::LIMITS;
 
 use super::store_bounds::{digest, item_fixture};
 

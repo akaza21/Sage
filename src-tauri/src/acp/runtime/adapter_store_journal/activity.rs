@@ -1,8 +1,8 @@
 use crate::acp::{
-    limits::LIMITS,
     runtime::adapter_pump::{DurableActivityItem, PumpIntent, PumpJournalError},
     store::{AdapterActivityItemCommand, AdapterInboundEvent, ItemIngressCommand},
 };
+use sage_core::limits::LIMITS;
 
 pub(super) fn event_bytes(
     intent: &PumpIntent,

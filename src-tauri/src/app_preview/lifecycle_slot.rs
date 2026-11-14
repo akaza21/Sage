@@ -119,7 +119,7 @@ impl CleanupTestStep {
                         drainers,
                         std::time::Instant::now()
                             + std::time::Duration::from_millis(
-                                crate::acp::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
+                                sage_core::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
                             ),
                     )
                     .map_err(|_| {

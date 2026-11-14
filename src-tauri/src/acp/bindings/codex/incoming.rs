@@ -4,8 +4,8 @@ use crate::acp::{
     contract::RequiredText,
     intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     request::RequestKind,
@@ -159,7 +159,7 @@ pub(crate) enum IncomingEvent {
         child_thread_id: crate::acp::intent::ExternalId,
         child_turn_id: crate::acp::intent::ExternalId,
         item_id: crate::acp::intent::ExternalId,
-        role: Option<crate::acp::bindings::codex::ChildTextRole>,
+        role: Option<crate::acp_protocol::codex_protocol::ChildTextRole>,
         lifecycle: ItemLifecycle,
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,

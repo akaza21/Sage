@@ -170,7 +170,10 @@ fn persist_events(fixture: &mut Fixture, events: Vec<IncomingEvent>) {
     )
     .unwrap();
 }
-fn saved_snapshot(fixture: &Fixture, relative_path: &str) -> crate::acp::file_diff::SnapshotData {
+fn saved_snapshot(
+    fixture: &Fixture,
+    relative_path: &str,
+) -> crate::acp_protocol::file_diff::SnapshotData {
     let change = projected_change(&fixture.connection);
     let page = load_chat_page(&fixture.connection, project(), chat(), None).unwrap();
     let item = page.turns.as_slice()[0]
@@ -179,7 +182,7 @@ fn saved_snapshot(fixture: &Fixture, relative_path: &str) -> crate::acp::file_di
         .iter()
         .find(|item| matches!(item.content, ItemContent::FileChangeDiff { .. }))
         .unwrap();
-    let reference = crate::acp::file_diff::DiffRef {
+    let reference = crate::acp_protocol::file_diff::DiffRef {
         project_id: fixture.owner.project_id.as_str().into(),
         chat_id: fixture.owner.chat_id.as_str().into(),
         session_id: fixture.owner.session_id.as_str().into(),

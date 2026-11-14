@@ -8,7 +8,6 @@
 use std::time::{Duration, Instant};
 
 use crate::acp::{
-    limits::LIMITS,
     runtime::HostError,
     scheduler::RuntimeOwner,
     session_config::{
@@ -16,6 +15,7 @@ use crate::acp::{
         notices::NoticeReason, reported::current_value,
     },
 };
+use sage_core::limits::LIMITS;
 
 use super::AcpService;
 use crate::acp::bindings::access_policy::governs_session_modes;

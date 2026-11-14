@@ -12,8 +12,8 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 use crate::acp::{
     attached_context::has_unsafe_display_character,
     browser::{redact_console, redact_url, safe_page_text},
-    limits::{ATTACHED_CONTEXT_LIMIT, ATTACHED_CONTEXT_NOTE_BYTES, BROWSER_LIMITS},
 };
+use sage_core::limits::{ATTACHED_CONTEXT_LIMIT, ATTACHED_CONTEXT_NOTE_BYTES, BROWSER_LIMITS};
 
 use super::super::page_context::valid_page_context_tab_id;
 

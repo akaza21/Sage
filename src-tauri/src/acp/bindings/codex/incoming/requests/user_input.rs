@@ -9,8 +9,8 @@ use crate::acp::{
         NormalizedPayload, PermissionOptionKind, ToolCategory,
         user_input::{UserInputOption, UserInputQuestion, UserInputRequest},
     },
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{
     IncomingEvent, IngressDisposition, IngressError, record_unprojected,

@@ -2,9 +2,9 @@ use serde::Deserialize;
 
 use super::manifest::{
     AUTHENTICODE_SIGNED_FILES, AUTHENTICODE_UNSIGNED_FILES, MetadataValidatedPacket, Platform,
-    pinned_codex_version,
 };
 use super::physical::PhysicallyInspectedPackage;
+use crate::acp_protocol::codex_protocol::pinned_codex_version;
 
 pub(super) const REPRODUCTION_BYTES: usize = 32 * 1024;
 

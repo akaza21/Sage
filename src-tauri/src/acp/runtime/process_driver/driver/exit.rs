@@ -1,9 +1,9 @@
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    limits::LIMITS,
     process::TreeExit,
     runtime::AdapterBatchJournal,
 };
+use sage_core::limits::LIMITS;
 
 use super::ProcessAdapterDriver;
 use crate::acp::runtime::process_driver::{

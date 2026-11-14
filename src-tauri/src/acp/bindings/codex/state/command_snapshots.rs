@@ -13,8 +13,8 @@ use crate::acp::{
     contract::BoundedVec,
     declared_test::{CommandActivity, DeclaredTestCommands},
     intent::{COMMAND_RESOURCE_LIMIT, SafeResourceLocation},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     super::incoming::IngressError,

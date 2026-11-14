@@ -1,9 +1,10 @@
 #[cfg(all(test, feature = "acp-fixture"))]
 use serde_json::{Map, Value};
 
+use crate::acp::bindings::adapter::AdapterModel;
 #[cfg(all(test, feature = "acp-fixture"))]
 use crate::acp::intent::CapabilitySnapshotV1;
-use crate::acp::{bindings::adapter::AdapterModel, limits::LIMITS};
+use sage_core::limits::LIMITS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SemanticIngressError {

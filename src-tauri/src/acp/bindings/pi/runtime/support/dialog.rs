@@ -5,9 +5,9 @@ use crate::acp::{
     contract::SafeText,
     intent::NormalizedPayload,
     lifecycle::{ItemLifecycle, ServerRequestState},
-    limits::LIMITS,
     transport::OutboundFrame,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{DenyStage, PiRuntime};
 use crate::acp::bindings::pi::{AdapterError, AdapterOutput, decode::Record};

@@ -22,7 +22,7 @@ pub(crate) struct CodexDiscoveryDeadline {
 
 impl CodexDiscoveryDeadline {
     pub(crate) fn new() -> Result<Self, CodexDiscoveryRunError> {
-        let limits = crate::acp::limits::LIMITS.deadlines_ms;
+        let limits = sage_core::limits::LIMITS.deadlines_ms;
         let operation_ms = limits
             .spawn
             .saturating_add(limits.initialize)
@@ -228,7 +228,7 @@ fn execute(
     let initialized = protocol.accept_initialize(&read(
         transport,
         deadline,
-        crate::acp::limits::LIMITS.deadlines_ms.initialize,
+        sage_core::limits::LIMITS.deadlines_ms.initialize,
     )?)?;
     write(transport, initialized, deadline)?;
 
@@ -250,7 +250,7 @@ fn execute(
         let frame = read(
             transport,
             deadline,
-            crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
+            sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc,
         )?;
         match response_id(&frame)? {
             id if id == account_id && awaiting_account => {
@@ -288,7 +288,7 @@ fn execute(
         match protocol.accept_model_page(&read(
             transport,
             deadline,
-            crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
+            sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc,
         )?)? {
             ProtocolProgress::More => {}
             ProtocolProgress::AwaitingAccount => return Err(CodexDiscoveryRunError::Protocol),

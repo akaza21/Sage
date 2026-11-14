@@ -207,7 +207,7 @@ impl AcpService {
     ) -> Result<HostOutcome, CodexSessionError> {
         self.send_session_turn(HostPromptIntent {
             command,
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .map_err(|failure| failure.error)
     }

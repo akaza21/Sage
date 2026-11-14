@@ -6,15 +6,12 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    acp::{
-        intent::ImageMediaType,
-        limits::{
-            IMAGE_UPLOAD_BYTES, STORED_IMAGE_BYTES, STORED_IMAGE_EDGE_PX, STORED_IMAGE_PIXELS,
-            STORED_THUMBNAIL_EDGE_PX,
-        },
-        migration,
-    },
+    acp::{intent::ImageMediaType, migration},
     image_attachment::{ImageAttachedContext, ImageAttachmentKind, MAX_OUTGOING_IMAGE_BYTES},
+};
+use sage_core::limits::{
+    IMAGE_UPLOAD_BYTES, STORED_IMAGE_BYTES, STORED_IMAGE_EDGE_PX, STORED_IMAGE_PIXELS,
+    STORED_THUMBNAIL_EDGE_PX,
 };
 /// A stored full image is read back within the store bound.
 const FULL_LIMIT: u64 = STORED_IMAGE_BYTES as u64;

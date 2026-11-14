@@ -4,10 +4,8 @@ use std::{
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
-use crate::acp::{
-    limits::LIMITS,
-    store::{AcpStore, StoreError, StoreMutation},
-};
+use crate::acp::store::{AcpStore, StoreError, StoreMutation};
+use sage_core::limits::LIMITS;
 
 use super::journal_support::{
     control_byte_limit, control_count_limit, data_byte_limit, data_count_limit, lane_name,

@@ -3,17 +3,16 @@
 use tauri::State;
 
 use crate::{
-    acp::browser::permission::BrowserPermissionChoice,
-    acp::runtime::permissions::PermissionDecision,
-    acp::service::PermissionDecisionIntent,
-    acp::service::browser_permission::BrowserPermissionOwner,
     acp::{
+        browser::permission::BrowserPermissionChoice,
         contract::{
             RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
             SageTurnId,
         },
         intent::{AcpIpcError, AcpUnavailableReason},
+        service::{PermissionDecisionIntent, browser_permission::BrowserPermissionOwner},
     },
+    acp_protocol::permissions::PermissionDecision,
     state::AppState,
 };
 

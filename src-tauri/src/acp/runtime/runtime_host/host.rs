@@ -186,7 +186,7 @@ impl RuntimeHost {
         &self,
         owner: RuntimeOwner,
         request_id: crate::acp::contract::SageServerRequestId,
-        decision: crate::acp::runtime::permissions::PermissionDecision,
+        decision: crate::acp_protocol::permissions::PermissionDecision,
     ) -> Result<HostOutcome, HostError> {
         self.outcome(HostCommand::ResolvePermission {
             owner,
@@ -318,7 +318,7 @@ impl RuntimeHost {
 
     pub(crate) fn close(&self, intent: HostCloseIntent) -> Result<HostOutcome, HostError> {
         let started = Instant::now();
-        let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        let budget = Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
         self.outcome_with_timeout(HostCommand::BeginClose(intent.clone()), budget)?;
         self.outcome_with_timeout(
             HostCommand::FinishClose(intent),

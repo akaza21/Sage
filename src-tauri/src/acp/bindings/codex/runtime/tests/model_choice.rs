@@ -83,7 +83,7 @@ fn turn_start(runtime: &mut CodexRuntime, client: &str) -> Value {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "continue").unwrap(),
             client_message_id: RequiredText::new("client", client).unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();

@@ -1,10 +1,8 @@
 //! Child transcript snapshots built from captured wire, for tests.
 
-use super::{
-    ChildTranscriptSnapshot, NativeTurnsPage, child_transcript::ChildTranscriptError,
-    normalize_turns_page,
-};
+use super::{NativeTurnsPage, child_transcript::ChildTranscriptError, normalize_turns_page};
 use crate::acp::bindings::adapter::ResourceMapper;
+use crate::acp_protocol::codex_protocol::ChildTranscriptSnapshot;
 
 /// The snapshot a read of `child` under `parent` keeps for `page`.
 pub(crate) fn child_snapshot(

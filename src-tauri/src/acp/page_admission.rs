@@ -3,10 +3,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use super::{
-    contract::{SageChatId, SageProjectId},
-    limits::LIMITS,
-};
+use super::contract::{SageChatId, SageProjectId};
+use sage_core::limits::LIMITS;
 
 type Owner = (String, String);
 

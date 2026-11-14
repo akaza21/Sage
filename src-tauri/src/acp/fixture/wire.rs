@@ -2,7 +2,7 @@ use std::io::{self, Read, Write};
 
 use serde_json::Value;
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::FixtureError;
 use super::interpreter::{field_str, field_u64};

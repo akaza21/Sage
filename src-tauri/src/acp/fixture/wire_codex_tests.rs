@@ -318,7 +318,7 @@ fn codex_child_read_rejects_foreign_identity_and_bounds_waits() {
 
 #[test]
 fn long_transcript_journey_fills_more_than_a_history_page_and_paces_within_budget() {
-    let case = super::super::generated_cases::JOURNEY_CASES
+    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == "codex-long-transcript-stream")
         .unwrap();

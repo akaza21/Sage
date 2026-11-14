@@ -1,8 +1,8 @@
 use std::{future::Future, pin::Pin};
 
-use crate::acp::{
-    contract::ProjectionRevision, lifecycle::ServerRequestState,
-    runtime::permissions::PermissionIntent, store::AdapterTurnCursor,
+use crate::{
+    acp::{contract::ProjectionRevision, lifecycle::ServerRequestState, store::AdapterTurnCursor},
+    acp_protocol::permissions::PermissionIntent,
 };
 
 use super::{DurableAdapterEvent, PumpIntent};

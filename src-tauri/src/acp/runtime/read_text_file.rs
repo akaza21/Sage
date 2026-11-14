@@ -11,15 +11,15 @@ use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
 use crate::{
-    acp::service::{ReadTextBegin, ReadTextFileService, ReadTextOwner},
     acp::{
-        limits::preview::P02_READ_TEXT_SOURCE_BYTES,
+        read_text_file::{ReadTextBegin, ReadTextFileService, ReadTextOwner},
         resource_mapper::NativeResourceAdmission,
         transport::{FrameWriteError, OutboundFrame},
     },
     domain::ResourceRef,
     workspace::{Workspace, select_text_lines},
 };
+use sage_core::limits::preview::P02_READ_TEXT_SOURCE_BYTES;
 
 #[allow(
     dead_code,

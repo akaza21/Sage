@@ -5,7 +5,8 @@ use std::time::Instant;
 
 use uuid::Uuid;
 
-use crate::{acp::limits::LIMITS, project_registry::ProjectRootAuthority};
+use crate::project_registry::ProjectRootAuthority;
+use sage_core::limits::LIMITS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EntryPointKind {

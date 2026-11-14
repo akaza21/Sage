@@ -8,9 +8,9 @@ use crate::acp::{
         AdapterRuntimeError, EgressToken, ResourceMapper,
     },
     intent::ExternalId,
-    limits::LIMITS,
     transport::OutboundFrame,
 };
+use sage_core::limits::LIMITS;
 
 impl super::CodexRuntime {
     fn next_id(&mut self) -> Result<u64, AdapterRuntimeError> {

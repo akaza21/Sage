@@ -11,7 +11,6 @@ use uuid::Uuid;
 use crate::acp::{
     contract::SageRootId,
     intent::IntentSnapshot,
-    limits::LIMITS,
     process::{
         ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
         RequiredContainment, TreeControl, TreeExit, TreeLimits,
@@ -22,6 +21,7 @@ use crate::acp::{
     store::PrepareTurnCommand,
 };
 use crate::project_registry::ProjectRootAuthority;
+use sage_core::limits::LIMITS;
 
 pub(super) struct DatabaseAuthority(pub(super) crate::persistence::Database);
 

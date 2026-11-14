@@ -5,7 +5,7 @@ fn start_first_turn(runtime: &mut CodexRuntime) -> AdapterBatch {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Continue without browser").unwrap(),
             client_message_id: RequiredText::new("client", "browser-failed-before-turn").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     runtime

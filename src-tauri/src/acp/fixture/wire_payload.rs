@@ -2,7 +2,7 @@ use std::io::Write;
 
 use serde_json::Value;
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::{
     FixtureError,

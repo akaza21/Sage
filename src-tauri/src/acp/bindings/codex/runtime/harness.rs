@@ -1,13 +1,16 @@
 use super::*;
-use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterOptionalEgress, AdapterRuntimeError,
-        EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+use crate::{
+    acp::{
+        bindings::adapter::{
+            AdapterBatch, AdapterCommand, AdapterEgress, AdapterOptionalEgress,
+            AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+        },
+        intent::ExternalId,
+        lifecycle::ServerRequestState,
+        runtime::later_permission::resolve_later_permission,
+        transport::{Frame, OutboundFrame},
     },
-    intent::ExternalId,
-    lifecycle::ServerRequestState,
-    runtime::{later_permission::resolve_later_permission, permissions::PermissionDecision},
-    transport::{Frame, OutboundFrame},
+    acp_protocol::permissions::PermissionDecision,
 };
 
 use super::super::{request::RequestKind, state::CodexAdapter};
@@ -198,7 +201,7 @@ impl HarnessAdapter for CodexRuntime {
             AdapterCommand::Initialize => self.request(CodexAdapter::initialize),
             AdapterCommand::ModelPage { cursor } => {
                 if self.model_catalog_idle_only
-                    || self.model_pages_seen >= crate::acp::limits::LIMITS.codex.model_catalog_pages
+                    || self.model_pages_seen >= sage_core::limits::LIMITS.codex.model_catalog_pages
                 {
                     return Err(AdapterRuntimeError::Operation);
                 }

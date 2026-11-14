@@ -228,7 +228,7 @@ fn https_origin_fails_as_unsupported_before_the_health_deadline() {
         Err(super::error::PreviewError::Unavailable { .. })
     ));
     assert!(
-        elapsed < Duration::from_millis(crate::acp::limits::PREVIEW_LIMITS.health_deadline_ms),
+        elapsed < Duration::from_millis(sage_core::limits::PREVIEW_LIMITS.health_deadline_ms),
         "https origin waited {elapsed:?}, as long as the health deadline"
     );
     assert_eq!(lifecycle::test_owned_child_count(), 0);

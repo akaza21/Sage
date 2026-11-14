@@ -111,7 +111,7 @@ impl Fixture {
                 binding_digest: CURRENT_DIGEST.into(),
                 harness_version: SafeText::new(
                     "harnessVersion",
-                    crate::acp::bindings::codex::CODEX_PINNED_VERSION,
+                    crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
                 )
                 .unwrap(),
                 now_millis: 10,
@@ -149,7 +149,7 @@ impl Fixture {
                 artifact_digest: ARTIFACT_DIGEST.into(),
                 external_session_id: ExternalId::new("externalSessionId", thread).unwrap(),
                 capabilities_json: capabilities(
-                    crate::acp::bindings::codex::CODEX_PROTOCOL_IDENTITY,
+                    crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY,
                 ),
                 now_millis: 30,
             },

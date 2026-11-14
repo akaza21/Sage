@@ -16,7 +16,7 @@ fn slash(runtime: &mut PiRuntime, text: &str, revision: u64) -> Value {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "slash").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     deliver(runtime, send)
@@ -233,7 +233,7 @@ fn the_compact_action_runs_pis_compaction_without_a_listed_command() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "compact-action").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let request = deliver(&mut runtime, send);
@@ -261,7 +261,7 @@ fn a_review_action_is_refused_since_pi_has_no_review() {
         runtime.command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "review-action").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::UnsupportedCommand)
     ));

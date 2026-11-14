@@ -11,7 +11,10 @@ impl CodexAdapter {
     #[cfg(test)]
     pub(crate) fn enable_observed_goal_for_test(&mut self) {
         self.observe_build_for_test(
-            &format!("codex-cli {}", super::super::manifest::PINNED_CODEX_VERSION),
+            &format!(
+                "codex-cli {}",
+                crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION
+            ),
             crate::acp::bindings::characterisation::Characterisation::Characterised,
         );
         if let Some(methods) = self.negotiated.as_mut() {
@@ -123,7 +126,7 @@ impl CodexAdapter {
             adapter.desktop_fixture = binding.is_desktop_fixture();
             adapter.desktop_fixture_lists_models = binding
                 .desktop_fixture_case()
-                .is_some_and(crate::acp::fixture::native_case_lists_models);
+                .is_some_and(crate::acp_protocol::native_cases::native_case_lists_models);
         }
         adapter
     }

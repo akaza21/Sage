@@ -186,7 +186,7 @@ pub(super) fn run(scenario: Scenario) -> Option<Vec<Fact>> {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Render parity").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     answer(&mut runtime, prompt, json!({"turn":{"id":"turn-1"}}));

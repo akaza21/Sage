@@ -1,4 +1,5 @@
 pub mod acp;
+mod acp_protocol;
 pub(crate) mod app_preview_commands;
 mod app_run_events;
 #[cfg_attr(

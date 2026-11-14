@@ -274,7 +274,7 @@ impl PiTranslator {
             .map(|path| {
                 let path = path.as_str().ok_or(AdapterError::Malformed)?;
                 if path.len()
-                    > crate::acp::limits::LIMITS
+                    > sage_core::limits::LIMITS
                         .wire
                         .absolute_path_bytes_native_only as usize
                     || path.contains('\0')

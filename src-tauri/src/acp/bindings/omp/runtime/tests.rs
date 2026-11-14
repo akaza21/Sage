@@ -182,7 +182,7 @@ fn running(runtime: &mut OmpRuntime) -> Value {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect read-only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-omp-1").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     deliver(runtime, command)
@@ -343,7 +343,7 @@ fn unresolved_permission_decision_reports_missing_intent() {
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("request-omp-missing").expect("request"),
-            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
         }),
         Err(AdapterRuntimeError::PermissionIntent)
     ));
