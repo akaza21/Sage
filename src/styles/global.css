@@ -200,8 +200,7 @@
   --browser-annotate-placeholder: #8c8c8c;
 
   /* File/Diff document authority (AV-03). Single source for the shared
-     document palette; consumers alias their generic roles to these tokens.
-     Values preserve the exact previous document visuals. */
+     document palette; consumers alias their generic roles to these tokens. */
   --doc-canvas: #141414;
   --doc-panel: #141414;
   --doc-surface: #232323;

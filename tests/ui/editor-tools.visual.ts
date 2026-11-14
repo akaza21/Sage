@@ -378,7 +378,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
       const style = getComputedStyle(button);
       return { background: style.backgroundColor, shadow: style.boxShadow };
     });
-    expect(pressed.background).not.toBe("rgb(42, 75, 109)");
+    expect(pressed.background).not.toBe("rgb(41, 65, 38)");
     await expect
       .poll(() =>
         matchCase.evaluate((button) => getComputedStyle(button).boxShadow),
