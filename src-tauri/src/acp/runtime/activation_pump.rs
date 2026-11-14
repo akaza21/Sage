@@ -27,9 +27,11 @@ mod ingress;
 mod intent;
 mod mode;
 mod parts;
+mod phase;
 mod startup_step;
 
 use intent::{digest, validate_intent};
+use phase::Phase;
 
 pub(crate) use coordinator_journal::{
     CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
@@ -108,28 +110,6 @@ pub(crate) enum ActivationFlush {
     Written,
     RetriedZeroBytes,
     DeliveryUnknown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Phase {
-    Dormant,
-    InitializeQueued,
-    AwaitingInitialized,
-    Initialized,
-    SessionQueued,
-    AwaitingSession,
-    Ready,
-    RecoveryRequired,
-    Teardown(ActivationStartupStep),
-}
-
-impl Phase {
-    /// Adapter requests that join the bounded initialization budget: the
-    /// handshake itself, and ACP sign-in while the session is not yet ready
-    /// (`authenticate`, then `session/new` again).
-    fn admits_initialization_request(self, session_ready: bool) -> bool {
-        self == Self::AwaitingInitialized || (self == Self::AwaitingSession && !session_ready)
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -285,22 +265,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
     }
 
     pub(crate) fn startup_step(&self) -> ActivationStartupStep {
-        match self.phase {
-            Phase::Dormant | Phase::InitializeQueued | Phase::AwaitingInitialized => {
-                ActivationStartupStep::Initialize
-            }
-            Phase::Initialized | Phase::SessionQueued | Phase::AwaitingSession => {
-                match self.intent.mode {
-                    ActivationMode::New { .. } => ActivationStartupStep::SessionNew,
-                    ActivationMode::Resume { .. } => ActivationStartupStep::SessionResume,
-                    ActivationMode::Load { .. } => ActivationStartupStep::SessionLoad,
-                }
-            }
-            // Only an unresolved activation commit asks for recovery.
-            Phase::RecoveryRequired => ActivationStartupStep::ActivationCommit,
-            Phase::Ready => ActivationStartupStep::ReadyHandoff,
-            Phase::Teardown(step) => step,
-        }
+        self.phase.startup_step(&self.intent.mode)
     }
 
     pub(crate) fn try_into_idle_parts(
