@@ -181,16 +181,17 @@ fn start_next(service: &AcpService, binding: &str, model: Option<&str>) -> Vec<C
         crate::acp::store::StartSessionCommand {
             project_id: owner(1).project_id,
             chat_id: owner(1).chat_id,
-            expected_projection_revision: crate::acp::contract::ProjectionRevision::new(
+            expected_projection_revision: sage_acp_protocol::contract::ProjectionRevision::new(
                 revision as u64,
             )
             .unwrap(),
-            client_intent_id: crate::acp::contract::ClientIntentId::parse("intent-next").unwrap(),
-            binding_id: crate::acp::intent::BindingId::new("bindingId", binding).unwrap(),
+            client_intent_id: sage_acp_protocol::contract::ClientIntentId::parse("intent-next")
+                .unwrap(),
+            binding_id: sage_acp_protocol::intent::BindingId::new("bindingId", binding).unwrap(),
             binding_digest: "a".repeat(64),
             harness_version: None,
             model_id: model
-                .map(|model| crate::acp::intent::ModelId::new("modelId", model).unwrap()),
+                .map(|model| sage_acp_protocol::intent::ModelId::new("modelId", model).unwrap()),
             now_millis: 2,
         },
     )

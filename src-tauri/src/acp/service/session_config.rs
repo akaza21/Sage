@@ -212,7 +212,7 @@ impl AcpService {
 /// starts goes on from.
 fn next_send_target<'a>(
     sessions: &'a [crate::acp::projection::SessionProjection],
-    head: Option<&crate::acp::contract::SageAgentSessionId>,
+    head: Option<&sage_acp_protocol::contract::SageAgentSessionId>,
 ) -> Option<(&'a crate::acp::projection::SessionProjection, Awaiting)> {
     let Some(head) = head else {
         return sessions
@@ -223,7 +223,7 @@ fn next_send_target<'a>(
     };
     let session = sessions.iter().find(|session| &session.id == head)?;
     let live = session.runtime_epoch.is_some()
-        && session.residency == crate::acp::contract::Residency::Hot;
+        && session.residency == sage_acp_protocol::lifecycle::Residency::Hot;
     Some((
         session,
         if live {

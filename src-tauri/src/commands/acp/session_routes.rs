@@ -34,12 +34,19 @@ pub(crate) async fn start_acp_session_inner(
     // A thinking level chosen before the session existed is kept only when
     // this binding lists it for the chosen model; the composer shows any
     // other level as Default, which is what the session then starts with.
-    let effort_choice = request.effort.as_ref().and_then(|effort| {
-        admitted.launch_effort_choice(
-            request.model_id.as_ref().map(|model| model.as_str()),
-            effort.as_str(),
-        )
-    });
+    // Without the binding's listing (such as account discovery for another
+    // root, or one that went stale) nothing starts, rather than the level
+    // being dropped unseen.
+    let effort_choice = match &request.effort {
+        Some(effort) => {
+            let model = state
+                .acp
+                .launch_model(&admitted, &project_root, request.model_id.as_ref())
+                .ok_or_else(effort_unconfirmed)?;
+            admitted.launch_effort_choice(&model, effort.as_str())
+        }
+        None => None,
+    };
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
     let started = state
@@ -128,6 +135,15 @@ pub(crate) async fn activate_acp_session_inner(
         .await
         .map_err(session_error)?;
     mutation_response(state, project_id, chat_id)
+}
+
+fn effort_unconfirmed() -> AcpIpcError {
+    AcpIpcError::Unavailable {
+        reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
+        message: safe_message(
+            "The chosen thinking level could not be confirmed. Select the harness again to refresh its models, then send.",
+        ),
+    }
 }
 
 fn root_unavailable() -> AcpIpcError {

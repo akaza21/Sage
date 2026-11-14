@@ -174,7 +174,7 @@ pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<se
             .any(|effort| effort.id == **default)
     });
     let mut option = serde_json::json!({
-        "id":"effort", "name":"Thinking level", "category":"effort", "type":"select",
+        "id":super::model_config::EFFORT_CONFIG_ID, "name":"Thinking level", "category":"effort", "type":"select",
         "currentValue":current, "options":options
     });
     if let Some(default) = default {

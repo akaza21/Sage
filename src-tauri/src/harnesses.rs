@@ -324,9 +324,9 @@ impl HarnessCatalog {
         definitions
     }
 
-    /// The models a harness offers before a session; for Claude Code this
-    /// may start a bounded probe of the installed CLI, so call it off the
-    /// main thread.
+    /// The models a harness offers before a session, as its binding lists
+    /// them; this may start a bounded probe of the installed build, so call
+    /// it off the main thread.
     pub fn models(&self, harness_id: &str) -> AppResult<Vec<ModelOption>> {
         self.models_for(harness_id, SIMULATOR_IN_CATALOG, true)
     }
@@ -371,19 +371,13 @@ impl HarnessCatalog {
             .find(|definition| definition.id == harness_id)
             .ok_or_else(|| AppError::UnknownHarness(harness_id.into()))?;
 
-        // Claude Code is asked for its models before any session runs, so
-        // the picker offers what the installed build lists.
         if definition.install_state == "available"
-            && definition.binding_id.as_deref()
-                == Some(crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID)
-            && let Some(binding) = self.registry.claude_sdk_admission().admitted()
+            && let Some(models) = self
+                .registry
+                .for_harness(harness_id)
+                .and_then(|record| record.launch_models(probe))
         {
-            let models = if probe {
-                crate::acp::bindings::claude::sdk::probed_models(&binding)
-            } else {
-                crate::acp::bindings::claude::sdk::known_models(&binding)
-            };
-            return Ok(models.unwrap_or_default());
+            return Ok(models);
         }
         if definition.install_state != "available" || definition.transport == HarnessTransport::Acp
         {
