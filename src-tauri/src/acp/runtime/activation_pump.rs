@@ -25,6 +25,7 @@ mod ingress;
 mod intent;
 mod mode;
 mod parts;
+mod startup_step;
 
 use intent::{digest, validate_intent};
 
@@ -34,6 +35,7 @@ pub(crate) use coordinator_journal::{
 pub(crate) use ingress::is_available_commands_update;
 pub(crate) use mode::ActivationMode;
 pub(crate) use parts::{IdleActivationParts, RecoveryActivationParts, TeardownActivationParts};
+pub(crate) use startup_step::ActivationStartupStep;
 
 #[cfg(test)]
 mod tests;
@@ -118,31 +120,6 @@ enum Phase {
     RecoveryRequired,
     /// Failed closed at the given startup step.
     Teardown(ActivationStartupStep),
-}
-
-/// The activation step a startup is at, or failed closed at.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivationStartupStep {
-    Initialize,
-    SessionNew,
-    SessionResume,
-    SessionLoad,
-    /// Recording the ready session in the store.
-    ActivationCommit,
-    ReadyHandoff,
-}
-
-impl ActivationStartupStep {
-    pub(crate) fn as_str(self) -> &'static str {
-        match self {
-            Self::Initialize => "initialize",
-            Self::SessionNew => "session/new",
-            Self::SessionResume => "session/resume",
-            Self::SessionLoad => "session/load",
-            Self::ActivationCommit => "activation-commit",
-            Self::ReadyHandoff => "ready-handoff",
-        }
-    }
 }
 
 impl Phase {
