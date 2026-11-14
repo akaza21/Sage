@@ -27,9 +27,7 @@ export { MAX_OUTLINE_SOURCE_CHARS };
 /** Matches the WebView list caps (Explorer 500, Search 500). */
 export const MAX_OUTLINE_SYMBOLS = 500;
 const MAX_SYMBOL_NAME_CHARS = 160;
-/** Deepest nesting the Outline keeps; members below it are left out. */
 export const MAX_OUTLINE_DEPTH = 8;
-/** Longest uninterrupted parse slice; the main thread yields between slices. */
 export const OUTLINE_PARSE_SLICE_MS = 6;
 
 export type OutlineSymbolKind =
@@ -48,23 +46,15 @@ export interface OutlineSymbol {
   /** 1-based line and UTF-16 column of the declaration name. */
   line: number;
   column: number;
-  /** UTF-16 offset of the declaration name, for caret navigation. */
   offset: number;
-  /**
-   * Nesting below the document's top level, 0 for top-level declarations.
-   * Symbols are in document order, so a symbol's children are the run of
-   * deeper symbols that directly follows it.
-   */
   depth: number;
 }
 
 export interface SyntaxOutline {
   symbols: readonly OutlineSymbol[];
-  /** True when the document declares more than MAX_OUTLINE_SYMBOLS symbols. */
   truncated: boolean;
 }
 
-/** Outline uses the editor's Lezer grammar. Return null for unsupported languages, oversized Files or stale requests. Yield between slices; reuse unchanged trees. */
 export async function syntaxOutline(
   path: string,
   source: string,
@@ -117,7 +107,6 @@ async function slicedParse(
   }
 }
 
-/** The single edited span between two texts, from their common ends. */
 function changedRange(before: string, after: string) {
   const shorter = Math.min(before.length, after.length);
   let start = 0;
@@ -148,7 +137,6 @@ function yieldToMainThread(): Promise<void> {
 }
 
 interface OutlineFrame {
-  /** The next sibling to collect at this level. */
   node: SyntaxNode | null;
   depth: number;
   collect: Collect;

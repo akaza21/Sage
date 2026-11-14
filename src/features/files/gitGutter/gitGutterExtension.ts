@@ -42,7 +42,6 @@ import type {
   GutterWorkerResult,
 } from "./gutterWorkerClient";
 
-/** The diff waits for this long a pause in typing. */
 export const GUTTER_IDLE_MS = 250;
 
 export interface GutterPool {
@@ -104,7 +103,6 @@ function step(view: EditorView, delta: number) {
   openPeek(view, index);
 }
 
-/** Puts the staged lines back in one undo step. */
 export function revertHunk(view: EditorView, index: number): boolean {
   const state = view.state.field(gutterField);
   const hunk = state.hunks[index];
@@ -158,7 +156,6 @@ function peekDecorations(editor: EditorState): DecorationSet {
     const line = Decoration.line({
       class: `git-gutter-peek-line git-gutter-peek-line--${hunk.kind}`,
     });
-    // As many lines as the peek shows; a huge change is not decorated whole.
     let position = hunk.from;
     for (
       let count = 0;
@@ -213,11 +210,7 @@ const changeGutter = gutter({
 
 type ResultSink = { current: (result: GutterWorkerResult) => void };
 
-/**
- * The document as a string the caller already holds (a File's text as
- * loaded), or null. Opening with it skips building a 1 MiB string on the
- * main thread; a wrong length falls back to building it.
- */
+/** Opening with it skips building a 1 MiB string on the main thread. */
 export type KnownText = () => string | null;
 
 function documentText(doc: Text, knownText: KnownText) {
@@ -226,11 +219,8 @@ function documentText(doc: Text, knownText: KnownText) {
 }
 
 /**
- * Sends the worker the document once, then only the edits made since the
- * last message, each a pause after typing stops. A keystroke costs a
- * ChangeSet compose and a timer reset, never the text. One request is in
- * flight at a time; edits made meanwhile go out together when it answers,
- * so a slow diff never queues stale work.
+ * One request is in flight at a time; edits made meanwhile go out together, so
+ * a slow diff never queues stale work.
  */
 function driver(
   connection: GutterConnection,
@@ -295,13 +285,11 @@ function driver(
             setGutterPeek.of(null),
           ],
         });
-        // Retry only on the next edit/base change, with the whole document.
         return;
       }
       if (result.version !== version) return;
       inFlight = false;
       if (result.lost) {
-        // The worker no longer has this File: send it whole again.
         opened = false;
         pending = null;
         schedule();
@@ -309,8 +297,6 @@ function driver(
       }
       if (posted && !baseChanged) {
         let hunks = hunksFromLines(result.hunks, posted);
-        // Edits made while the worker ran: carry the result through them,
-        // dropping hunks an edit reached past until the next diff.
         if (pending) hunks = mapHunks(hunks, pending, posted.length);
         view.dispatch({
           effects: setGutterHunks.of({
@@ -369,7 +355,6 @@ export interface GitGutter {
 
 const attached = new WeakMap<EditorView, GitGutter>();
 
-/** Adds change markers to an editor; `setBase` gives them the staged text. */
 export function attachGitGutter(
   view: EditorView,
   pool: GutterPool,

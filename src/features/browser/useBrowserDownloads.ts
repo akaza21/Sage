@@ -16,7 +16,6 @@ export function isActiveDownload(download: BrowserDownload): boolean {
 
 const NONE: BrowserDownload[] = [];
 
-/** The tab's downloads as Rust reports them, newest last. */
 export function useBrowserDownloads(tabId: string): BrowserDownload[] {
   const [reported, setReported] = useState<{
     tabId: string;
@@ -43,7 +42,6 @@ export function useBrowserDownloads(tabId: string): BrowserDownload[] {
   return reported?.tabId === tabId ? reported.downloads : NONE;
 }
 
-/** Share of the active downloads' known bytes received, or null if none. */
 export function activeDownloadProgress(
   downloads: readonly BrowserDownload[],
 ): number | null {

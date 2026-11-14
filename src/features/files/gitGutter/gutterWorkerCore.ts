@@ -1,9 +1,7 @@
 import { diffLines } from "./lineDiff";
 
 /**
- * The gutter worker's state machine, apart from `self` so tests drive it
- * directly. Each editor sends its document once, then only the edits
- * made since its last message, so the main thread never builds the text again.
+ * Kept apart from `self` so tests drive the worker's state machine directly.
  */
 export type GutterRequest =
   | { type: "open"; id: number; version: number; base: string; doc: string }
@@ -27,9 +25,7 @@ export interface GutterResult {
   id: number;
   version: number;
   hunks: number[];
-  /** More hunks than `MAX_GUTTER_HUNKS`; only the first ones are listed. */
   truncated?: boolean;
-  /** The worker has no document for `id`; the editor must open it again. */
   lost?: boolean;
 }
 
@@ -41,7 +37,6 @@ export const MAX_GUTTER_HUNKS = 2_000;
 
 interface Tracked {
   base: readonly string[];
-  /** Offset of each staged line's start, plus one past the end. */
   baseStarts: Int32Array;
   baseText: string;
   doc: string;
@@ -57,7 +52,6 @@ function lineStarts(text: string, lines: readonly string[]): Int32Array {
   for (let index = 0; index < lines.length; index += 1) {
     starts[index] = offset;
     offset += lines[index]!.length;
-    // The break after this line is one or two characters.
     if (text.charCodeAt(offset) === 13 && text.charCodeAt(offset + 1) === 10)
       offset += 2;
     else offset += 1;
@@ -66,11 +60,7 @@ function lineStarts(text: string, lines: readonly string[]): Int32Array {
   return starts;
 }
 
-/**
- * Applies a CodeMirror `ChangeSet.toJSON()` to the text it was made against:
- * a number keeps that many characters, `[deleted, ...lines]` replaces some.
- * Done by hand so the worker stays free of the CodeMirror runtime.
- */
+/** Done by hand so the worker stays free of the CodeMirror runtime. */
 export function applyChanges(text: string, changes: unknown): string {
   if (!Array.isArray(changes)) throw new Error("malformed changes");
   const parts: string[] = [];
@@ -106,7 +96,6 @@ export function createGutterWorkerCore() {
       const removed = change.baseEnd > change.baseStart;
       const added = change.end > change.start;
       const baseFrom = entry.baseStarts[change.baseStart]!;
-      // Up to the break that ends the last replaced line.
       const baseTo = removed
         ? entry.baseStarts[change.baseEnd - 1]! +
           entry.base[change.baseEnd - 1]!.length
@@ -151,7 +140,6 @@ export function createGutterWorkerCore() {
               ? { ...entry, doc }
               : tracked(request.base, doc);
         } catch {
-          // Out of step with the editor: drop the File so it is sent again.
           documents.delete(request.id);
           return {
             id: request.id,

@@ -18,14 +18,10 @@ import {
 import type { EditorPort } from "../../ports/workbenchPorts";
 import { sameContent } from "./editorContent";
 
-/** The banner's conflict for a File whose disk text moved under the editor. */
 export const EXTERNAL_CHANGE: EditorConflict = {
   kind: "external-change",
   message: "This file changed outside Sage.",
 };
-
-// Loaded with the first external-change notice or failed save, which most
-// sessions never see, so none of this adds to the editor's bundles.
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 
@@ -39,7 +35,6 @@ function currentReady(bridge: EditorStateBridge): ReadyEditorState | null {
   return editor?.phase === "ready" ? editor : null;
 }
 
-/** Shows that the File went away on disk. */
 export function markDeleted(bridge: EditorStateBridge): void {
   const active = currentReady(bridge);
   if (active) {
@@ -55,10 +50,8 @@ export function markDeleted(bridge: EditorStateBridge): void {
 }
 
 /**
- * Keeps a deleted File deleted when a later notice's read finds no File or
- * reports it absent, and says whether it did. Notices do follow a deletion:
- * Windows ends the watch of a deleted folder with one. Absent is never read
- * as an empty File that changed.
+ * Windows ends the watch of a deleted folder with a notice, so absent must
+ * never read as an empty File that changed.
  */
 export function stillDeleted(
   bridge: EditorStateBridge,
@@ -70,14 +63,12 @@ export function stillDeleted(
     (document
       ? document.disk.fingerprint === ABSENT_FINGERPRINT
       : isDeletedOnDisk(active));
-  // A kept buffer of a deleted File is not deleted again.
   if (gone && active.document.base.fingerprint !== ABSENT_FINGERPRINT) {
     markDeleted(bridge);
   }
   return gone;
 }
 
-/** Shows the File as a notice's read found it. */
 export function reread(
   bridge: EditorStateBridge,
   document: EditorDocument,
@@ -87,7 +78,6 @@ export function reread(
     {
       ...(getFileEditorController().ready(document) as ReadyEditorState),
       message: document.conflict?.message ?? null,
-      // A save that failed has still not written these edits.
       unstored: document.dirty ? active?.unstored : undefined,
     },
     {
@@ -97,7 +87,6 @@ export function reread(
   );
 }
 
-/** Shows the external-change banner over the editor's own content. */
 export function setExternalChangeConflict(
   bridge: EditorStateBridge,
   disk: DocumentVersion | undefined,
@@ -107,7 +96,6 @@ export function setExternalChangeConflict(
   bridge.setActiveEditor(
     {
       ...active,
-      // An earlier conflict's text goes; edits not yet stored still say so.
       message: active.unstored ?? null,
       document: {
         ...active.document,
@@ -144,10 +132,6 @@ const REASONS: [RegExp, string][] = [
   ],
 ];
 
-/**
- * Says why saving or keeping the user's version failed, in their terms,
- * without the native error's category prefix or OS error number.
- */
 export function failureMessage(
   error: unknown,
   action: keyof typeof FAILED = "save",
@@ -165,12 +149,6 @@ export function failureMessage(
   return `${FAILED[action]}: ${reason}`;
 }
 
-/**
- * Reports a save, recovery snapshot or Keep mine that failed, and returns
- * the message, which shows over any conflict banner. A failed save or
- * snapshot leaves edits that are not yet stored: they stay dirty, and the
- * banner says so until a save, reload or Keep mine.
- */
 export function actionFailed(
   bridge: EditorStateBridge,
   error: unknown,
@@ -189,10 +167,6 @@ export function actionFailed(
   return message;
 }
 
-/**
- * Applies an external-change notice to the editor, which was `active` when
- * the notice arrived.
- */
 export async function applyWatchNotice(
   notice: EditorExternalWatchNotice,
   bridge: EditorStateBridge,
@@ -215,9 +189,8 @@ export async function applyWatchNotice(
           saving: active.saving,
         }
       : null;
-  // Reading the File drops a durable buffer that matches disk, so unsaved
-  // edits are persisted first; the editor then differs from `snapshot`,
-  // which gives it the banner below; one that fails is reported there.
+  // Reading the File drops a durable buffer that matches disk, so unsaved edits
+  // are persisted first.
   if (
     snapshot &&
     snapshot.revision > snapshot.persistedRevision &&
@@ -226,8 +199,6 @@ export async function applyWatchNotice(
     await getFileEditorController()
       .flush(bridge)
       .catch((error: unknown) => actionFailed(bridge, error));
-  // The banner's "Keep mine" goes on top of the disk version read here. A
-  // File that cannot be read now gets the banner too.
   const document = await editor
     .openEditorDocument(notice.resource)
     .catch(() => null);

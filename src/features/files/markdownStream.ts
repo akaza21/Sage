@@ -11,7 +11,6 @@ export interface MarkdownStream {
   document: MarkdownPreviewDocument;
 }
 
-/** Owned by a mounted answer, never a global message/transcript cache. */
 export function renderMarkdownStream(
   source: string,
   previous?: MarkdownStream,

@@ -18,7 +18,6 @@ const loadQuickOpen = () => import("./QuickOpen");
 const preloadWhenIdle = () =>
   whenIdle(() => void loadQuickOpen().catch(() => undefined));
 
-/** Mounts Quick Open while it is open and keeps its recent Files. */
 export function QuickOpenHost() {
   const open = useQuickOpenStore((state) => state.open);
   const opening = useQuickOpenStore((state) => state.opening);

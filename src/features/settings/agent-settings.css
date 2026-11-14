@@ -105,11 +105,7 @@
 .agent-settings__header button {
   margin-left: auto;
 }
-/*
- * Every page is one column whose blocks are spaced by gaps alone: intro
- * copy, cards, toolbars and titled sections. Margins on the blocks
- * themselves are cleared, so no page can fuse a control to the card below.
- */
+/* Block margins are cleared, so no page can fuse a control to the card below. */
 .agent-settings__page {
   display: flex;
   flex: 1;
@@ -197,8 +193,6 @@
   padding: var(--space-4);
 }
 
-/* A row: title, description and default hint on the left, control on the
-   right. */
 .agent-settings__row {
   display: flex;
   align-items: center;
@@ -211,7 +205,6 @@
   border-top: 1px solid var(--border);
 }
 
-/* The copy gives way; the control keeps its size up to half the row. */
 .agent-settings__copy {
   min-width: 0;
 }

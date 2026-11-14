@@ -5,7 +5,6 @@ import {
 import { AlertTriangle } from "../../ui/leanIcons";
 import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 
-// A File changed or deleted on disk is rare, so its banner loads with it.
 const loadConflictNotice = () => import("./FileConflictNotice");
 
 export function FileEditorNotices({

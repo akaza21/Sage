@@ -20,7 +20,6 @@ describe("gutter worker core", () => {
       base,
       doc: "one\nTWO\nthree\n",
     });
-    // Offsets point into the staged text as stored, CRLF included.
     expect(opened).toEqual({
       id: 1,
       version: 1,
@@ -55,7 +54,6 @@ describe("gutter worker core", () => {
 
     expect(core.handle({ type: "close", id: 1 })).toBeNull();
     expect(core.size()).toBe(0);
-    // A File the worker lost is asked for again.
     expect(
       core.handle({
         type: "update",

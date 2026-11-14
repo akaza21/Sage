@@ -30,10 +30,6 @@ const rowKey = (row: Pick<BrowserSiteSetting, "origin" | "kind">) =>
 
 const DESCRIPTION_ID = "browser-site-permissions-description";
 
-/**
- * Settings > Browser > Site permissions: the one section both Settings
- * surfaces show. A surface adds its own tab-scoped controls as children.
- */
 export function BrowserSitePermissionsGroup({
   children,
 }: {
@@ -57,11 +53,6 @@ export function BrowserSitePermissionsGroup({
   );
 }
 
-/**
- * Settings > Browser > Site permissions: every answer the user saved for a
- * site, with a control to switch it between Allow and Block and a reset that
- * makes the site ask again. Rust owns the list; this view only mirrors it.
- */
 export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
   const [rows, setRows] = useState<BrowserSiteSetting[]>([]);
   const [ready, setReady] = useState(false);

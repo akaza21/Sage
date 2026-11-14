@@ -25,11 +25,6 @@ import {
   type EditorStateBridge,
 } from "./fileEditorController";
 
-/**
- * The File lifecycle/resource model deliberately owns store selection, load
- * ordering and external-watch state.  The surface
- * remains responsible only for mounted-view refs and command presentation.
- */
 export function useFileSurfaceModel(
   tab: WorkbenchTab,
   editorInputRef: RefObject<EditorAdapterHandle | null>,
@@ -98,10 +93,6 @@ export function useFileSurfaceModel(
     watchBridge,
     editorFocusBoundary,
   );
-  // An operation message (a failed save, say) shows first; the not-watched
-  // notice returns once it clears, for as long as the File has no watch.
-  // A missing File's, or one under a conflict banner, shows quietly in the
-  // header instead.
   const shownEditor = useMemo(
     () =>
       editor?.phase !== "ready" || !unwatchedMessage
@@ -157,7 +148,6 @@ export function useFileSurfaceModel(
       ?.contains(document.activeElement);
     const { from, to } = view?.state.selection.main ?? { from: 0, to: 0 };
     const selected = typing ? "" : (view?.state.sliceDoc(from, to) ?? "");
-    // Like VS Code, a one-line selection becomes the search text.
     const oneLine =
       selected.length <= MAX_FIND_QUERY_LENGTH && !selected.includes("\n");
     setFindRequest({ replace, seed: selected && oneLine ? selected : null });

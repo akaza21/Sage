@@ -1,12 +1,5 @@
 import { Square } from "../../ui/leanIcons";
 
-/**
- * Who controls this tab, shown for as long as a chat's Agent is attached to
- * it. Stop ends the chat's browser authority; Take over pauses it until Hand
- * back, and the Agent's next call asks permission again. While the user's
- * developer-mode approval is live, a red tag says so (ADR-0009b); Stop and
- * Take over end it.
- */
 export function BrowserAgentPresence({
   pending,
   userControl,
@@ -45,7 +38,6 @@ export function BrowserAgentPresence({
           Developer mode
         </span>
       ) : null}
-      {/* The label truncates; its title keeps the whole text reachable. */}
       <span
         className="browser-surface__agent-presence-label"
         role="status"

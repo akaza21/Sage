@@ -39,8 +39,7 @@ import { styleNonce } from "../../ports/styleNonce";
 interface RuntimeProps {
   ariaLabel: string;
   /**
-   * Authoritative controlled document identity.  Callers include the resource,
-   * durable revision and content fingerprint so cosmetic updates never need to
+   * Includes the resource, revision and fingerprint, so cosmetic updates never
    * read the CodeMirror document.
    */
   documentIdentity?: string;
@@ -49,12 +48,9 @@ interface RuntimeProps {
   disabled: boolean;
   maxContentLength: number;
   appearance?: EditorAppearance;
-  /** The editing features to load; none for a read-only view. */
   editing?: EditorEditing | null;
-  /** Hands over the editor's immutable document; never a built string. */
   onChange: (content: Text, base: EditorContentBase | null) => void;
   onCaretOffset?: (offset: number, document: Text) => void;
-  /** An edit was refused because the File would pass `maxContentLength`. */
   onLimitExceeded?: () => void;
 }
 
@@ -68,7 +64,6 @@ export interface CodeMirrorEditorRuntime {
   selection: () => { start: number; end: number };
   setSelection: (start: number, end: number) => void;
   update: (props: RuntimeProps) => void;
-  /** For lazy features such as Find that act on the editor directly. */
   view: EditorView;
 }
 
@@ -126,8 +121,7 @@ interface DocumentBase {
 }
 
 /**
- * The base each emitted document descends from, so an editor remounted on a
- * document from the store (preview toggle, read-only change) still answers
+ * Lets an editor remounted on a document from the store still answer
  * "unchanged" from shared structure.
  */
 const basesOfEmitted = new WeakMap<Text, DocumentBase>();
@@ -139,9 +133,7 @@ function baseFor(content: string, document: Text): DocumentBase | null {
 }
 
 /**
- * `sameContent`, restated here: a value import of `editorContent` would pull
- * it into the CodeMirror chunk and make the File surface load CodeMirror
- * eagerly.
+ * A value import of `editorContent` would pull it into the CodeMirror chunk.
  */
 function sameText(left: EditorContent, right: EditorContent) {
   if (left === right) return true;
@@ -166,10 +158,8 @@ function appearanceExtensions(appearance: EditorAppearance): Extension {
 
 function editableExtensions(props: RuntimeProps): Extension {
   return [
-    // Read-only, not uneditable: the content stays focusable so keyboard users
-    // can reach it, move the caret, select and copy, and focus stays put when a
-    // save briefly locks the editor. CodeMirror refuses typing, paste, cut,
-    // drop and history commands in a read-only state.
+    // Read-only, not uneditable: the content stays focusable for keyboard users
+    // and while a save briefly locks the editor.
     EditorState.readOnly.of(props.disabled),
     EditorView.contentAttributes.of({
       "aria-label": props.ariaLabel,
@@ -183,8 +173,6 @@ function editableExtensions(props: RuntimeProps): Extension {
 
 type EditingModule = typeof EditingFeatures;
 
-// Loaded on demand for the first editable File, then reused synchronously so
-// later editors start with every feature in place.
 let editingModule: EditingModule | null = null;
 let editingLoad: Promise<EditingModule> | null = null;
 
@@ -231,8 +219,8 @@ export function createCodeMirrorEditorRuntime(
   // A local transaction already serializes its exact content through onChange.
   // Its store echo must not become a controlled replacement (which clears undo).
   let lastLocalContent: EditorContent = options.content;
-  // The last string the editor was given, and the document built from it.
-  // Edits share its unchanged structure, so `eq` against it costs the edit.
+  // Edits share this document's unchanged structure, so `eq` against it costs
+  // only the edit.
   let base: DocumentBase | null = null;
   let languageGeneration = 0;
   let destroyed = false;
@@ -256,12 +244,10 @@ export function createCodeMirrorEditorRuntime(
           appearanceExtensions(current.appearance ?? DEFAULT_EDITOR_APPEARANCE),
         ),
         utf8LengthField,
-        // Costs the size of the edit, not the document.
         EditorState.transactionFilter.of((transaction) => {
           if (withinUtf8Limit(transaction, current.maxContentLength)) {
             return transaction;
           }
-          // Refused edits are reported rather than dropped silently.
           const report = current.onLimitExceeded;
           if (report) queueMicrotask(report);
           return [];
@@ -311,8 +297,6 @@ export function createCodeMirrorEditorRuntime(
       });
   }
 
-  // Applies the editing features `current` asks for, loading them first when
-  // needed. The editor works without them while they load (or if they fail).
   function applyEditing() {
     if (current.editing && !editingModule) {
       void loadEditing()
@@ -386,10 +370,9 @@ export function createCodeMirrorEditorRuntime(
       if (!sameValues(previous.editing, next.editing)) {
         applyEditing();
       }
-      // Do not stringify the editor document for unrelated prop updates.  A
-      // changed identity is deliberately stronger than a local revision: it
-      // includes the resource and controlled content, so reload/save/undo
-      // reconciliation and same-text resource changes remain authoritative.
+      // A changed identity is deliberately stronger than a local revision, so
+      // reload/save/undo reconciliation and same-text resource changes remain
+      // authoritative.
       const identityChanged =
         next.documentIdentity !== undefined &&
         previous.documentIdentity !== undefined

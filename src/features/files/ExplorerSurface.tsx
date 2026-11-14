@@ -34,10 +34,7 @@ import {
   type FlattenedFileTree,
 } from "./fileTree";
 
-// The `files.exclude` matcher loads beside the startup bundle, starting as
-// this module loads, long before the first listing returns.
 let matcherModule: typeof MatcherModule | undefined;
-// A failed load is reported, and Explorer then shows excluded entries.
 const matcherLoaded = import("../../domain/pathGlobMatcher").then(
   (module) => (matcherModule = module),
   (error: unknown) =>
@@ -64,16 +61,12 @@ const RootTree = memo(function RootTree({
   const selectedRow = useRef<HTMLButtonElement>(null);
   const rootResource = useMemo(() => childResource(root.id), [root.id]);
   const contextMenu = useContext(ExplorerContextMenuContext);
-  // Like VS Code, a right-click selects what it is on (without opening a
-  // File) and opens the actions for it there.
   const openContextMenu = useCallback(
     (resource: ResourceRef, row: HTMLElement, point?: PopoverPoint): void => {
       const state = useWorkbenchStore.getState();
       if (!contextMenu || !state.project || state.projectTransitioning) {
         return;
       }
-      // The root heading selects as its click does (which also retries a
-      // listing that failed); a row without opening its File.
       if (resource.relativePath === "") state.selectRoot(resource.rootId);
       else state.selectDirectory(resource);
       // Selection is refused while a rename or recycle runs: the menu would

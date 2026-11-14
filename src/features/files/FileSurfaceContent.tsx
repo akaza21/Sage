@@ -58,7 +58,6 @@ interface FileSurfaceFindView {
   onClose: () => void;
 }
 
-// The Find bar, its matching and its worker load apart from the editor.
 const loadFindBar = () =>
   import("./FileFindBar").then((module) => ({ default: module.FileFindBar }));
 
@@ -98,7 +97,6 @@ export function FileSurfaceContent({
   previewing: boolean;
   transitioning: boolean;
   readOnly?: boolean;
-  /** The host shows this File for review only, even during a transition. */
   reviewOnly?: boolean;
   agentMarkdown?: boolean;
   onCaretOffset: (offset: number, document: Text) => void;

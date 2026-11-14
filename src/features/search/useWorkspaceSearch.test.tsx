@@ -301,7 +301,6 @@ describe("workspace Search state", () => {
         emit = listener;
         return () => undefined;
       },
-      // A slow Explorer must not hold up delivery to Search.
       invalidate: () => new Promise<void>(() => undefined),
     };
     const { result, unmount } = renderHook(() =>

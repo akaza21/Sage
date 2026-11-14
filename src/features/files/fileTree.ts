@@ -37,7 +37,6 @@ export function flattenFileTree(
     truncated ||= listing.value.truncated;
     for (const entry of listing.value.entries) {
       if (hideIgnored && entry.ignored) continue;
-      // `files.exclude`: an excluded folder hides everything inside it.
       if (excluded?.(entry.resource.relativePath)) continue;
       if (entries.length === limit) {
         truncated = true;

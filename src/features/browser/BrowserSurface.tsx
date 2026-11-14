@@ -226,7 +226,6 @@ function LiveBrowserSurface({ tab }: { tab: WorkbenchTab }) {
     void openBrowser().then((message) => {
       if (message) setError(message);
     });
-  // While History shows, Escape closes it rather than stopping the page.
   const stoppable = Boolean(navigation?.loading) && !historyOpen;
   useBrowserShortcuts(surface, tab.id, stoppable, (action) =>
     performBrowserShortcut(action, {

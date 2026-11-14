@@ -1,8 +1,8 @@
 import { StateField, type Text, type Transaction } from "@codemirror/state";
 
 /**
- * UTF-8 length of a string without allocating, counting exactly as
- * TextEncoder does: a lone surrogate becomes U+FFFD (3 bytes).
+ * Counts exactly as TextEncoder does: a lone surrogate becomes U+FFFD (3
+ * bytes).
  */
 export function utf8Length(value: string): number {
   let bytes = 0;
@@ -21,7 +21,7 @@ export function utf8Length(value: string): number {
   return bytes;
 }
 
-/** Whole-document length, line by line; lines never split a surrogate pair. */
+/** Lines never split a surrogate pair. */
 export function documentUtf8Length(document: Text): number {
   let bytes = 0;
   for (const iterator = document.iter(); !iterator.next().done;) {
@@ -31,11 +31,8 @@ export function documentUtf8Length(document: Text): number {
 }
 
 /**
- * Byte change of one transaction, costing the size of the edit. Each changed
- * range is widened by one code unit on both sides, in the old and the new
- * document alike: an edit that splits or joins a surrogate pair is then
- * counted with its neighbour, and any split the widening itself causes is
- * identical on both sides and cancels.
+ * Each changed range is widened by one code unit on both sides, so an edit that
+ * splits or joins a surrogate pair is counted with its neighbour.
  */
 export function utf8Delta(transaction: Transaction): number {
   const before = transaction.startState.doc;
@@ -58,14 +55,12 @@ export function utf8Delta(transaction: Transaction): number {
   return delta;
 }
 
-/** The document's UTF-8 length, kept up to date from each change. */
 export const utf8LengthField = StateField.define<number>({
   create: (state) => documentUtf8Length(state.doc),
   update: (bytes, transaction) =>
     transaction.docChanged ? bytes + utf8Delta(transaction) : bytes,
 });
 
-/** Whether a transaction keeps the document within `limit` UTF-8 bytes. */
 export function withinUtf8Limit(
   transaction: Transaction,
   limit: number,

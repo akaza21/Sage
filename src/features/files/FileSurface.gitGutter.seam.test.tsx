@@ -11,8 +11,7 @@ import type {
 } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { FileSurface } from "./FileSurface";
-// FileSurface loads the editor, its editing features and its gutter lazily.
-// Load them with the file, so their cold import is not paid inside the first
+// Preload the lazy modules, so their cold import is not paid inside the first
 // test's wait.
 import "./CodeMirrorEditorRuntime";
 import "./editorEditing";
@@ -137,7 +136,6 @@ describe("FileSurface change markers (EP-14)", () => {
       );
       staged = { oid: "oid-2", content: document.buffer.content };
       if (refresh === "status change") {
-        // EP-12 publishes a new root object when Git state changed.
         useWorkbenchStore.setState((state) => ({
           repositories: { ...state.repositories, roots: [root()] },
         }));

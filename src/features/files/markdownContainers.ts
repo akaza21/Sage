@@ -14,8 +14,8 @@ interface Node {
   children: Node[];
 }
 
-// Consume each token once. Container identity comes from matching open/close
-// types, never from an assumed distance between token levels.
+// Container identity comes from matching open/close types, never from an
+// assumed distance between token levels.
 export function* markdownContainers(tokens: Token[], overflow: () => void) {
   let cursor = 0;
   const read = (): Node => {
@@ -35,8 +35,8 @@ export function* markdownContainers(tokens: Token[], overflow: () => void) {
   }
 }
 
-// Headings and table cells admit inline content. Containers always use adapt()
-// so their block identity and code whitespace never pass through text joining.
+// Containers always use adapt() so their block identity and code whitespace
+// never pass through text joining.
 function inlineText(node: Node): string {
   return node.token.type === "inline"
     ? node.token.content
@@ -145,8 +145,6 @@ function adapt(node: Node, overflow: () => void): Block[] {
       return [{ kind: "table", align, rows }];
     }
     default:
-      // Paragraphs, list items, table sections/cells and future containers all
-      // retain their children through the same adaptation path.
       return children.length
         ? descendants()
         : token.content

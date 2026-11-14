@@ -62,7 +62,6 @@ function press(
   );
 }
 
-/** Feeds typed text through the editor's input handlers, as typing does. */
 function type(view: EditorView, text: string) {
   const { from, to } = view.state.selection.main;
   const handled = view.state
@@ -80,7 +79,6 @@ function type(view: EditorView, text: string) {
   }
 }
 
-/** The chord a binding describes, as a key event on one platform. */
 function chordEvent(binding: KeymapBinding, apple: boolean) {
   const { shift, alt } = (apple && binding.apple) || binding;
   const primary = binding.ctrlOrMeta === "required";
@@ -93,7 +91,6 @@ function chordEvent(binding: KeymapBinding, apple: boolean) {
   };
 }
 
-/** The binding as a CodeMirror key name, for comparison with EDITING_KEYS. */
 function codeMirrorName(binding: KeymapBinding, apple: boolean) {
   const { shift, alt } = (apple && binding.apple) || binding;
   const names: Record<string, string> = {
@@ -145,7 +142,6 @@ describe("editing shortcuts", () => {
       }
     }
     expect(clashes).toEqual([]);
-    // Quick Open's chord stays free on the other platform's modifier too.
     for (const editing of EDITOR_EDITING_BINDINGS) {
       expect(
         matchesPlatformChord(
@@ -329,7 +325,6 @@ describe("editing features", () => {
   it("highlights other copies of the word at the cursor only when asked", () => {
     const on = mount("item + item + item");
     on.dispatch({ selection: { anchor: 1 } });
-    // The word at the cursor is marked too, as the main match.
     expect(
       on.dom.querySelectorAll(
         ".cm-selectionMatch:not(.cm-selectionMatch-main)",
@@ -350,7 +345,6 @@ describe("editing features", () => {
     )!;
     arrow.dispatchEvent(new MouseEvent("click", { bubbles: true }));
     expect(foldedRanges(view.state).size).toBe(1);
-    // A folded line shows the closed arrow at once.
     expect(openArrows(view)).toBe(0);
     view.dom
       .querySelector<HTMLElement>(
@@ -365,7 +359,6 @@ describe("editing features", () => {
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     const view = mount("let a = 1;\nfunction f() {\n  return 1;\n}\n");
     expect(openArrows(view)).toBe(1);
-    // Typing a new block does not ask the syntax tree yet.
     view.dispatch({ changes: { from: 0, insert: "if (a) {\n  a();\n}\n" } });
     expect(openArrows(view)).toBe(1);
     vi.advanceTimersByTime(FOLD_ARROW_DELAY_MS - 1);
@@ -405,7 +398,6 @@ describe("editing features", () => {
     expect(others()).toBe(2);
     view.dispatch({ changes: { from: 18, insert: " + item" } });
     expect(others()).toBe(0);
-    // Moving the cursor while the pause runs does not search early.
     view.dispatch({ selection: { anchor: 2 } });
     expect(others()).toBe(0);
     vi.advanceTimersByTime(OCCURRENCE_DELAY_MS);

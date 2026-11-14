@@ -17,10 +17,8 @@ import {
 export type HunkKind = "added" | "modified" | "deleted";
 
 /**
- * One change against the staged text, in document positions so it maps
- * through edits made before the next diff. `from` is the start of the first
- * changed line and `to` the end of the last; a deletion has `from === to`, at
- * the start of the line after it, or at the end of the document (`atEnd`).
+ * A deletion has `from === to`, at the start of the line after it, or at the
+ * end of the document (`atEnd`).
  */
 export interface GutterHunk {
   kind: HunkKind;
@@ -32,12 +30,9 @@ export interface GutterHunk {
 }
 
 export interface GutterState {
-  /** The staged text, or null when the File has no markers. */
   base: string | null;
   hunks: readonly GutterHunk[];
-  /** Past the worker's hunk cap only the first changes are listed. */
   truncated: boolean;
-  /** The hunk whose peek is open. */
   peek: number | null;
 }
 
@@ -62,10 +57,8 @@ const EMPTY: GutterState = {
 };
 
 /**
- * Whether an edit still lets a hunk keep its staged text: typing inside a
- * changed range does, but an edit reaching past it (a reload, a paste over
- * it) does not, and mapping through it would stretch the hunk over text it
- * never covered, so Revert would replace that text.
+ * Mapping through an edit that reaches past a hunk would stretch it over text
+ * it never covered, so Revert would replace that text.
  */
 function survives(hunk: GutterHunk, changes: ChangeDesc, length: number) {
   let keeps = true;
@@ -83,10 +76,6 @@ function survives(hunk: GutterHunk, changes: ChangeDesc, length: number) {
   return keeps;
 }
 
-/**
- * Carries hunks through edits made before the next diff, dropping those an
- * edit invalidated; the next diff brings them back.
- */
 export function mapHunks(
   hunks: readonly GutterHunk[],
   changes: ChangeDesc,
@@ -109,7 +98,6 @@ export const gutterField = StateField.define<GutterState>({
   update(value, transaction) {
     let next = value;
     if (transaction.docChanged && value.hunks.length > 0) {
-      // Any edit closes the peek: its staged text no longer lines up.
       next = {
         ...value,
         hunks: mapHunks(
@@ -126,7 +114,6 @@ export const gutterField = StateField.define<GutterState>({
         next = effect.value === null ? EMPTY : { ...EMPTY, base: effect.value };
       } else if (effect.is(setGutterHunks)) {
         if (next.base === null) continue;
-        // An open peek stays on its change, or closes if that change is gone.
         const open = next.peek === null ? undefined : next.hunks[next.peek];
         const peek = open
           ? effect.value.hunks.findIndex(
@@ -147,7 +134,6 @@ export const gutterField = StateField.define<GutterState>({
   },
 });
 
-/** Turns the worker's flat line hunks into positions in `doc`. */
 export function hunksFromLines(
   flat: readonly number[],
   doc: Text,
@@ -182,7 +168,6 @@ export function hunksFromLines(
   return hunks;
 }
 
-/** The hunk drawn on the line `[lineFrom, lineTo]`, if any. */
 export function hunkAtLine(
   hunks: readonly GutterHunk[],
   lineFrom: number,
@@ -191,7 +176,6 @@ export function hunkAtLine(
 ): number | null {
   let low = 0;
   let high = hunks.length;
-  // The first hunk that ends at or after this line's start.
   while (low < high) {
     const middle = (low + high) >> 1;
     if (hunks[middle]!.to < lineFrom) low = middle + 1;
@@ -207,14 +191,12 @@ export function hunkAtLine(
   return null;
 }
 
-/** The staged text a hunk replaced, with the editor's `\n` breaks. */
 export function stagedText(base: string, hunk: GutterHunk): string | null {
   return hunk.kind === "added"
     ? null
     : base.slice(hunk.baseFrom, hunk.baseTo).replace(/\r\n?/g, "\n");
 }
 
-/** The edit that puts a hunk's staged lines back. */
 export function revertChange(state: EditorState, hunk: GutterHunk): ChangeSpec {
   const doc = state.doc;
   const staged = stagedText(state.field(gutterField).base ?? "", hunk);
@@ -226,7 +208,6 @@ export function revertChange(state: EditorState, hunk: GutterHunk): ChangeSpec {
       ? { from: doc.length, insert: `\n${staged ?? ""}` }
       : { from: hunk.from, insert: `${staged ?? ""}\n` };
   }
-  // Added lines go with one adjoining break.
   if (hunk.to < doc.length) return { from: hunk.from, to: hunk.to + 1 };
   return { from: Math.max(0, hunk.from - 1), to: hunk.to };
 }

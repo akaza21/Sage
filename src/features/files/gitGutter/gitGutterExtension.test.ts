@@ -39,7 +39,6 @@ function fakePool({ manual = false } = {}) {
       };
     },
   };
-  /** Delivers the oldest held result (with `manual`). */
   const answer = () => held.shift()?.();
   return { pool, posts, answer, closed: () => closed, core };
 }
@@ -98,7 +97,6 @@ describe("git gutter", () => {
     view.dispatch({ changes: { from: last.from, to: last.to + 1 } });
     expect(posts).toHaveLength(1);
     await settle();
-    // One message for the three edits, carrying only the changes.
     expect(posts.map((post) => post.type)).toEqual(["open", "update"]);
     expect(kinds(view)).toEqual(["added", "modified", "deleted"]);
     expect(view.dom.querySelector(".git-gutter")).not.toBeNull();
@@ -257,7 +255,6 @@ describe("git gutter consistency", () => {
     gutter.setBase("a\nold\nc\n");
     await settle();
     expect(view.state.field(gutterField).hunks).toEqual([]);
-    // The stage lands before the first diff answers.
     gutter.setBase("a\nnew-long\nc\n");
     expect(revertHunk(view, 0)).toBe(false);
     expect(view.state.doc.toString()).toBe("a\nnew-long\nc\n");
@@ -273,7 +270,6 @@ describe("git gutter consistency", () => {
     expect(kinds(view)).toEqual(["modified"]);
     view.dispatch({ changes: { from: 0, insert: "z" } });
     await settle();
-    // Staged while that diff runs: its answer is for the old index.
     gutter.setBase("za\nnew\nc\n");
     expect(kinds(view)).toEqual([]);
     answer();
@@ -293,7 +289,6 @@ describe("git gutter consistency", () => {
       view.dispatch({ changes: { from: offset, insert: "x" } });
       await settle();
     }
-    // Still waiting on the open: nothing more was posted.
     expect(posts.map((post) => post.type)).toEqual(["open"]);
     answer();
     await settle();
@@ -330,7 +325,6 @@ describe("git gutter peek and reloads", () => {
     await settle();
     view.dispatch({ effects: setGutterPeek.of(0) });
     const staged = view.state.field(gutterField).hunks[0]!;
-    // A result that lists another change first moves the peek with its change.
     view.dispatch({
       effects: setGutterHunks.of({
         hunks: [{ ...staged, from: 0, to: 1, kind: "added" }, staged],
@@ -360,7 +354,6 @@ describe("git gutter peek and reloads", () => {
     attachGitGutter(view, pool).setBase("a\nb\nc\n");
     await settle();
     expect(posts.map((post) => post.type)).toEqual(["open"]);
-    // The reload lands while the worker still holds the diff of "a B c".
     view.dispatch({
       changes: {
         from: 0,

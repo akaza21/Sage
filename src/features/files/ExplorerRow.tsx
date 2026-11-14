@@ -14,14 +14,12 @@ interface ExplorerRowProps {
   entry: VisibleWorkspaceEntry;
   selected: boolean;
   expanded: boolean;
-  /** Git status from the repository store; shared objects keep the memo. */
+  /** Shared objects from the repository store keep the memo. */
   gitDecoration?: GitDecoration;
-  /** The badge from the lazy decoration chunk, present with `gitDecoration`. */
   GitBadge?: typeof GitDecorationBadge;
   onSelectDirectory: (resource: ResourceRef) => void;
   onToggleDirectory: (resource: ResourceRef) => void;
   onOpenFile: (resource: ResourceRef) => Promise<void>;
-  /** A right-click, or the context-menu key, on the row (ED-18). */
   onContextMenu?: (
     resource: ResourceRef,
     row: HTMLButtonElement,
@@ -84,7 +82,6 @@ export const ExplorerRow = memo(
         }}
         onContextMenu={(event) => {
           if (!onContextMenu) return;
-          // Never the webview's own menu (Reload, Inspect) over the tree.
           event.preventDefault();
           onContextMenu(entry.resource, event.currentTarget, {
             x: event.clientX,

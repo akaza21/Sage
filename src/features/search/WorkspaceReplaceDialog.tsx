@@ -8,15 +8,10 @@ function plural(count: number, word: string) {
   return `${count} ${word}${count === 1 ? "" : word.endsWith("h") ? "es" : "s"}`;
 }
 
-/** "Replace 3 matches in 2 files?", as the confirm and its title say it. */
 function replaceSummary(plan: ReplacePlan) {
   return `Replace ${plural(plan.matchCount, "match")} in ${plural(plan.files.length, "file")}?`;
 }
 
-/**
- * Shows each change a Replace would make, File by File, and asks before
- * making them. Files that cannot be replaced are named with the reason.
- */
 export function WorkspaceReplaceDialog({
   plan,
   applying,

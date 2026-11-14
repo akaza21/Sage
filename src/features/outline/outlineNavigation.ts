@@ -5,7 +5,6 @@ export interface OutlineNavigationSelection {
   end: number;
 }
 
-/** Loads syntax support only when same-file navigation is requested. */
 export async function findLocalSymbol(
   path: string,
   content: string,
@@ -19,11 +18,7 @@ export async function findLocalSymbol(
   );
 }
 
-/**
- * Resolves a same-file declaration only from the document's syntax Outline.
- * This is deliberately not a text-search fallback: a name the Outline does not
- * declare yields no navigation rather than a guessed match.
- */
+/** Deliberately no text-search fallback: a name the Outline does not declare yields no navigation. */
 export function localSymbolNavigation(
   content: string,
   selection: OutlineNavigationSelection,
@@ -32,9 +27,6 @@ export function localSymbolNavigation(
   if (!outline) return null;
   const name = identifierAtSelection(content, selection);
   if (!name) return null;
-  // The shallowest declaration wins, then the first in the File: a bare name
-  // resolves to the top-level symbol before any class or module member that
-  // shares it, and to a member only when nothing outside declares it.
   let symbol: OutlineSymbol | undefined;
   for (const candidate of outline.symbols) {
     if (

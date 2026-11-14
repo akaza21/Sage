@@ -18,9 +18,7 @@ export function MarkdownBlocks({
     block: Extract<MarkdownPreviewBlock, { kind: "code" }>,
   ) => ReactNode;
   /**
-   * A streamed answer's still-fading runs: the lengths of a contiguous
-   * suffix of one block, item or cell, oldest first. Each is wrapped, keyed
-   * by where it starts, so it keeps its own fade while newer runs land.
+   * Lengths of a contiguous suffix of one block, item or cell, oldest first.
    */
   streamRuns?: {
     blockIndex: number;
@@ -41,7 +39,6 @@ export function MarkdownBlocks({
       streamRuns.itemIndex !== itemIndex
     )
       return content;
-    // Only a trailing plain-text run is split; formatted ends stay whole.
     const nodes = Array.isArray(content) ? [...content] : [content];
     const last = nodes.at(-1);
     if (typeof last !== "string" || !last) return content;
@@ -174,7 +171,6 @@ export function MarkdownBlocks({
               key: column,
               scope: rowIndex ? undefined : "col",
               style: { textAlign: block.align[column] },
-              // Only a cell holding an unbreakable run may break mid-word.
               className: /\S{25}/.test(cell)
                 ? "markdown-table__unbroken"
                 : undefined,

@@ -43,8 +43,6 @@ import { ChatSearchResults } from "./ChatSearchResults";
 
 type SearchPhase = "idle" | "searching" | "results" | "error";
 
-/** The live status: progress, then how many chats were found, including
-    none, since the empty results list is not announced. */
 function searchStatus(
   phase: SearchPhase,
   response: ChatSearchFanoutView | null,
@@ -282,8 +280,6 @@ export function ChatSearchControl({
     () => shown?.results.map(chatSearchResultKey) ?? [],
     [shown],
   );
-  // Nothing is active until the user moves, so Enter searches until then.
-  // Each new answer (or none) starts again from nothing active.
   const option = useActiveOption(shownKeys, "none");
   const [answered, setAnswered] = useState(shown);
   if (answered !== shown) {
@@ -309,8 +305,6 @@ export function ChatSearchControl({
         >
           <form className="chat-search-dialog__form" onSubmit={submit}>
             <h2 id="chat-search-title">Search chats</h2>
-            {/* Dismiss sits in the header, as in the other dialogs, so it
-                stays put while results and errors come and go. */}
             <button
               className="icon-button chat-search-dialog__close"
               type="button"
@@ -357,7 +351,6 @@ export function ChatSearchControl({
                     event.key === "PageDown" ||
                     event.key === "PageUp"
                   ) {
-                    // Home and End stay with the field's caret.
                     event.preventDefault();
                     option.move(event.key);
                   } else if (event.key === "Enter" && activeResult) {

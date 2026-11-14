@@ -13,7 +13,6 @@ export function admitCaretStatus(
   if (!Number.isSafeInteger(offset) || offset < 0 || offset > document.length) {
     return null;
   }
-  // The editor's document finds the line in its tree, without a scan.
   const line = document.lineAt(offset);
   const column = offset - line.from + 1;
   if (line.number > MAX_GOTO_LINE_POSITION || column > MAX_GOTO_LINE_POSITION) {

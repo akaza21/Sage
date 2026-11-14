@@ -45,7 +45,6 @@ const writes = createSettingWriter<BrowserPreferences>(
   DEFAULT_BROWSER_PREFERENCES,
 );
 let restoring: Promise<void> | null = null;
-/** Automatic loads after a failure stop here; Retry on the page still works. */
 export const MAX_AUTOMATIC_LOADS = 3;
 let failedLoads = 0;
 
@@ -84,11 +83,6 @@ export const useBrowserPreferencesStore = create<BrowserPreferencesStore>(
   }),
 );
 
-/**
- * Load the stored choices for the first reader that needs them. After a failed
- * load the next reader (a browser tab mounting, the Settings page opening)
- * tries again, at most MAX_AUTOMATIC_LOADS times in a row.
- */
 export function ensureBrowserPreferences(): void {
   if (!isTauriRuntime()) return;
   if (useBrowserPreferencesStore.getState().ready) return;
@@ -105,7 +99,6 @@ export function resetBrowserPreferencesForTests(): void {
   });
 }
 
-/** The address bar's Show full URL choice, loaded on first use. */
 export function useShowFullUrl(): boolean {
   useEffect(ensureBrowserPreferences, []);
   return useBrowserPreferencesStore((state) => state.preferences.showFullUrl);

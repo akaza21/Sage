@@ -11,12 +11,6 @@ export interface RootGitDecorationsView {
   ui: GitDecorationsUiModule;
 }
 
-/**
- * One root's Git marks from the repository status. Null while `git.decorations`
- * is off, outside a repository, or until the decoration chunk loads.
- * Refreshes keep an unchanged root's object, so this re-renders only when
- * that root's status changed.
- */
 export function useRootGitDecorations(
   rootId: string,
 ): RootGitDecorationsView | null {

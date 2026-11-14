@@ -9,7 +9,6 @@ import { FileText, FolderOpen, X } from "../../ui/leanIcons";
 import { progressLabel, sourceHost } from "./browserDownloadLabel";
 import { isActiveDownload } from "./useBrowserDownloads";
 
-/** The downloads popover's body, newest first. */
 export default function BrowserDownloadsPanel({
   tabId,
   downloads,

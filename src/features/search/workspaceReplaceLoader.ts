@@ -1,11 +1,7 @@
-// Replace loads when the user opens it, or earlier when they reach for its
-// toggle or the window is idle, so Search alone carries none of it.
-
 import type * as ReplaceParts from "./WorkspaceReplaceParts";
 
 let replaceParts: typeof ReplaceParts | undefined;
 
-/** The Replace parts, if they have loaded. */
 export const loadedReplaceParts = () => replaceParts;
 
 export const loadReplace = () =>

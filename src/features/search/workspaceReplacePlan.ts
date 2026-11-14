@@ -1,9 +1,4 @@
-// Workspace Replace: previews what a Replace changes, then applies it. Files
-// on disk are changed natively, each at once and only if unchanged since the
-// preview; a File with unsaved edits is changed in its editor buffer instead,
-// so the user's edits stay theirs and undo still works.
-// This chunk loads on the first Replace, so the Search panel carries only the
-// Replace field and these Files' shapes.
+// Loads on the first Replace, so the Search panel carries none of it.
 
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";
@@ -20,7 +15,6 @@ import type {
   WorkspaceReplaceGateway,
 } from "./workspaceReplace";
 
-/** Where the File's unsaved edits live, if it has any. */
 export function unsavedEdits(file: ResourceRef): "editor" | "buffer" | null {
   const state = useWorkbenchStore.getState();
   const tab = state.tabs.find(
@@ -57,11 +51,7 @@ const RUST_TRIM = new RegExp(
   "gu",
 );
 
-/**
- * Whether `line` is the line Search previewed as `preview`. Search trims a
- * line's preview and cuts a long one short with an ellipsis, so a long
- * line is compared only as far as its preview goes.
- */
+/** Search trims a line's preview and cuts a long one short with an ellipsis. */
 export function sameLine(line: string, preview: string): boolean {
   const trimmed = line.replace(RUST_TRIM, "");
   return preview.endsWith("\u2026")
@@ -69,11 +59,6 @@ export function sameLine(line: string, preview: string): boolean {
     : trimmed === preview;
 }
 
-/**
- * Works out what a Replace of `resources` would change, without changing
- * anything: from disk for most Files, and from the unsaved text for a File
- * with unsaved edits.
- */
 export async function planReplace({
   gateway,
   projectId,
@@ -89,7 +74,6 @@ export async function planReplace({
   spec: ReplaceSpec;
   resources: ResourceRef[];
   only?: MatchPosition;
-  /** The text Search showed for the line of `only`. */
   onlyLine?: string;
 }): Promise<ReplacePlan> {
   const files: PlannedFile[] = [];
@@ -167,7 +151,6 @@ export async function planReplace({
       });
     }
   }
-  // Results order, whichever way each File was read.
   const order = new Map(
     resources.map((file, index) => [resourceKey(file), index]),
   );

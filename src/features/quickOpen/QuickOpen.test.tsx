@@ -127,7 +127,6 @@ describe("Quick Open", () => {
     expect(last.recent).toEqual([
       { rootId: "root-a", relativePath: "docs/api.md" },
     ]);
-    // One session per opening; every query a newer generation.
     expect(new Set(sent.map((request) => request.session)).size).toBe(1);
     expect(sent.at(-1)!.generation).toBeGreaterThan(sent[0].generation);
     expect(screen.getAllByRole("option")[0]).toHaveAttribute(
@@ -197,7 +196,6 @@ describe("Quick Open", () => {
     await waitFor(() => expect(sent).toHaveLength(1));
     fireEvent.change(input(), { target: { value: ":30" } });
     await screen.findByText("Press Enter to go to line 30 in the active file.");
-    // Nothing is asked for a bare line; the opening query was the only one.
     expect(sent.map((request) => request.query)).toEqual([""]);
     fireEvent.keyDown(input(), { key: "Enter" });
     expect(openFileLocation).toHaveBeenCalledWith(
@@ -241,7 +239,6 @@ describe("Quick Open", () => {
     render(<QuickOpen onClose={vi.fn()} />);
     fireEvent.change(input(), { target: { value: "app" } });
     await waitFor(() => expect(options()).toHaveLength(2), { timeout: 2000 });
-    // Typed and confirmed before "readme"'s answer arrives.
     fireEvent.change(input(), { target: { value: "readme" } });
     fireEvent.keyDown(input(), { key: "Enter" });
     expect(openFile).not.toHaveBeenCalled();
@@ -329,8 +326,6 @@ describe("Quick Open", () => {
         ),
       { timeout: 2000 },
     );
-    // The failure belongs to "api": a new query clears it, and Enter
-    // waits for that query's answer.
     fireEvent.change(input(), { target: { value: "readme" } });
     expect(screen.getByRole("status")).not.toHaveTextContent("interrupted");
     fireEvent.keyDown(input(), { key: "Enter" });
@@ -358,7 +353,6 @@ describe("Quick Open", () => {
       "true",
     );
     expect(screen.getAllByRole("option")[1]).toHaveTextContent("core.ts");
-    // Typing a :line suffix keeps it too.
     fireEvent.change(input(), { target: { value: "app:" } });
     fireEvent.change(input(), { target: { value: "app:9" } });
     expect(screen.getAllByRole("option")[1]).toHaveAttribute(
@@ -443,7 +437,6 @@ describe("Quick Open's commands (ED-2a)", () => {
     fireEvent.keyDown(box, { key: "Enter" });
     expect(setSidebarView).toHaveBeenCalledWith("search");
     expect(onClose).toHaveBeenCalledOnce();
-    // Commands never ask the File index.
     await act(() => new Promise((resolve) => setTimeout(resolve, 50)));
     expect(sent).toEqual([]);
   });
@@ -460,7 +453,6 @@ describe("Quick Open's commands (ED-2a)", () => {
     const box = screen.getByRole("combobox", { name: "Run a command" });
     expect(box).toHaveFocus();
     fireEvent.keyDown(box, { key: "Enter" });
-    // The box would unmount here, leaving the focus nowhere.
     unmount();
     expect(document.activeElement).toBe(document.body);
     await waitFor(() => expect(before).toHaveFocus());

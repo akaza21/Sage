@@ -205,14 +205,12 @@ describe("IDE-2 editor external watch seam", () => {
     render(createElement(FileSurface, { tab: fileTab }));
     await waitFor(() => expect(watch).toHaveBeenCalledTimes(1));
 
-    // The File goes, and its folder's watch with it.
     gone = true;
     act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
     await screen.findByText(/This file was deleted outside Sage/);
     await screen.findByText(/Not watched$/);
     await waitFor(() => expect(cancel).toHaveBeenCalledOnce());
 
-    // It comes back: the next try watches it, and the File is read again.
     gone = false;
     await waitFor(() => expect(watch).toHaveBeenCalledTimes(3), {
       timeout: 5_000,
@@ -273,8 +271,6 @@ describe("IDE-2 editor external watch seam", () => {
     await act(() => vi.advanceTimersByTimeAsync(10_000));
     expect(watch).toHaveBeenCalledTimes(2);
 
-    // Back on disk, with a slot free: the editor taking focus watches it,
-    // and the File is read then, though no notice said it came back.
     const backVersion = { fingerprint: "back", byteLen: 5, modifiedAt: null };
     vi.spyOn(editor, "openEditorDocument").mockResolvedValue({
       ...document,
@@ -321,7 +317,6 @@ describe("IDE-2 editor external watch seam", () => {
       dirty: true,
       resource,
     };
-    // A kept buffer whose File was gone before this editor opened.
     const absent = {
       fingerprint: ABSENT_FINGERPRINT,
       byteLen: 0,
@@ -419,8 +414,6 @@ describe("IDE-2 editor external watch seam", () => {
     });
     expect(fileEditor).not.toHaveAttribute("contenteditable", "false");
 
-    // Still at the cap: focusing the editor retries and fails, and editing
-    // and snapshotting the File do not clear the warning while it is unwatched.
     const snapshot = vi
       .spyOn(editor, "snapshotEditorBuffer")
       .mockImplementation(async (request) => ({
@@ -448,14 +441,12 @@ describe("IDE-2 editor external watch seam", () => {
     expect(snapshot).toHaveBeenCalled();
     expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
 
-    // A slot is free, but focus elsewhere in the app does not ask for it.
     slotFree = true;
     fireEvent.focusIn(screen.getByRole("button", { name: "Elsewhere" }));
     await act(async () => undefined);
     expect(watch).toHaveBeenCalledTimes(2);
     expect(screen.getByText(WATCH_LIMIT_MESSAGE)).toBeInTheDocument();
 
-    // Focus moving within the editor has not entered it, so it does not ask.
     fireEvent.focusIn(fileEditor, { relatedTarget: fileEditor });
     await act(async () => undefined);
     expect(watch).toHaveBeenCalledTimes(2);
@@ -469,7 +460,6 @@ describe("IDE-2 editor external watch seam", () => {
     expect(watch).toHaveBeenCalledTimes(3);
     expect(useWorkbenchStore.getState().tabs[0]?.status).toBeUndefined();
 
-    // Once watched, further focus changes in the editor send no more requests.
     fireEvent.focusIn(fileEditor);
     await act(async () => undefined);
     expect(watch).toHaveBeenCalledTimes(3);
@@ -477,7 +467,6 @@ describe("IDE-2 editor external watch seam", () => {
     gone = true;
     act(() => delivery.emit({ resource, generation: 1, kind: "deleted" }));
     await screen.findByText(/This file was deleted outside Sage/);
-    // The watch went with the File: said quietly, not as an error.
     expect(await screen.findByText(/^· Not watched$/)).toHaveAttribute(
       "title",
       WATCH_MISSING_MESSAGE,
@@ -578,7 +567,6 @@ describe("IDE-2 editor external watch seam", () => {
       expect(editor.watchEditorDocument).toHaveBeenCalledWith(resource);
     });
 
-    // The bytes change outside Sage and the native watch reports it.
     disk = changedOnDisk;
     act(() => {
       injected.emit({ resource, generation: 1, kind: "changed" });

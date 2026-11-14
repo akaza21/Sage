@@ -157,7 +157,6 @@ it.each(["Cancel", "Escape", "Confirm"])(
       );
     }
     await vi.waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
-    // Remount to read the stored data, rather than trusting the current UI.
     cleanup();
     renderSettings();
     if (answer === "Confirm") {

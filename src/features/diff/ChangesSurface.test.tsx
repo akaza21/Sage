@@ -121,7 +121,6 @@ it("shows complete totals and hides them for unknown or partial counts", () => {
     turns: [
       {
         ...page.turns[0],
-        // Retained before/after pairs admit one File per authenticated Item.
         items: changes.map((change, index) => ({
           ...item,
           id: `${item.id}-${index}` as typeof item.id,

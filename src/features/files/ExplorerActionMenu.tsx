@@ -58,13 +58,9 @@ export function ExplorerActionMenu() {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const [openingFocus, setOpeningFocus] = useState<"first" | "last">("first");
-  // The row a right-click opened the menu at, or null for the button.
   const [row, setRow] = useState<HTMLElement | null>(null);
-  // Where the right-click landed; null when the keyboard opened it.
   const [point, setPoint] = useState<PopoverPoint | null>(null);
-  // Focus goes back to that row, or to the button if the row is gone (a
-  // renamed File's row is replaced). A new object per anchor, so the popover
-  // follows the row it now belongs to.
+  // A new object per anchor, so the popover follows the row it now belongs to.
   const anchorRef = useMemo<RefObject<HTMLButtonElement | null>>(
     () => ({
       get current() {
@@ -140,7 +136,6 @@ export function ExplorerActionMenu() {
         type="button"
         aria-label="More Explorer actions"
         aria-controls={menuId}
-        // A menu a row opened belongs to that row.
         aria-expanded={open && row === null}
         aria-haspopup="menu"
         title={project ? "More Explorer actions" : "Open a project first"}

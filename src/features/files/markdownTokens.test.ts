@@ -174,8 +174,6 @@ describe("nested markdown content", () => {
     if (block.kind === "table") return block.rows.flat().join(" ");
     return "text" in block ? block.text : "";
   }
-  // Every container pair, including mixed list kinds, is exercised in both
-  // directions and with a third enclosing container. Code and tables are leaves.
   const chains = wrappers.flatMap((outer) => [
     [outer],
     ...wrappers.flatMap((inner) => [

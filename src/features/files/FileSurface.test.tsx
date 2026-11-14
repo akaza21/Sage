@@ -20,9 +20,8 @@ import { contentText } from "./editorContent";
 import { FileSurface } from "./FileSurface";
 import { findMatches, type FindRequest } from "./inFileFind";
 import { MAX_EDITABLE_CONTENT_BYTES } from "./editorContent";
-// The editor, the find and Go-to Line bars, and F12's symbol navigation with
-// its parser load lazily. Load them with the file, so a first open does not
-// race its cold import against a one-second query.
+// Preload the lazy modules, so a first open does not race its cold import
+// against a one-second query.
 import "./CodeMirrorEditorRuntime";
 import "./FileFindBar";
 import "./FileGoToLineBar";
@@ -68,7 +67,6 @@ function viewForEditor(editor: HTMLElement) {
   return view;
 }
 
-/** The store holds the editor's document after an edit, not a string. */
 function activeEditorText() {
   const editor = useWorkbenchStore.getState().activeEditor;
   return editor?.phase === "ready" ? contentText(editor.content) : null;
@@ -223,8 +221,6 @@ describe("FileSurface durability cadence", () => {
         })),
       );
     setSaving(true);
-    // The save locks the document but leaves the content editable, so the
-    // browser keeps focus on it.
     expect(editor).toHaveAttribute("aria-readonly", "true");
     expect(editor).toHaveAttribute("contenteditable", "true");
     expect(view.hasFocus).toBe(true);
@@ -373,8 +369,6 @@ describe("FileSurface durability cadence", () => {
       content: document.buffer.content,
       revision: 0,
     });
-    // The Agent artifact pane's read-only Files get no editing features
-    // (EP-03): no fold gutter, no multiple cursors.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(
       editor.closest(".cm-editor")?.querySelector(".cm-foldGutter"),
@@ -686,7 +680,6 @@ describe("FileSurface in-file find", () => {
     );
     expect(screen.getByRole("textbox", { name: `Edit ${path}` })).toBe(editor);
     expect(query).toHaveFocus();
-    // The bar remembers its last query for the session, as VS Code does.
     fireEvent.change(query, { target: { value: "" } });
     expect(screen.getByRole("status")).toHaveTextContent("No query");
 
@@ -788,7 +781,6 @@ describe("FileSurface in-file find", () => {
     fireEvent.keyDown(query, { key: "Enter" });
     expect(screen.getByRole("status")).toHaveTextContent("2 of 2 matches");
 
-    // Edits search again after a short pause, so typing never pays for it.
     replaceEditorContent(editor, "alpha");
     expect(screen.getByRole("status")).toHaveTextContent("2 of 2 matches");
     await waitFor(() =>
@@ -856,7 +848,6 @@ describe("FileSurface Find and Replace", () => {
     fireEvent.keyDown(editor, { key: "h", ctrlKey: true });
     await screen.findByRole("textbox", { name: "Replace text" });
     const query = screen.getByRole("textbox", { name: "Find text" });
-    // With no query yet, Replace starts in the find box, as in VS Code.
     expect(query).toHaveFocus();
     expect(
       screen.getByRole("button", { name: "Toggle Replace" }),
@@ -864,7 +855,6 @@ describe("FileSurface Find and Replace", () => {
     fireEvent.change(query, { target: { value: "cat" } });
     fireEvent.keyDown(query, { key: "Escape" });
     fireEvent.keyDown(editor, { key: "h", ctrlKey: true });
-    // With a query, it starts in the replace box.
     await waitFor(() =>
       expect(
         screen.getByRole("textbox", { name: "Replace text" }),
@@ -884,7 +874,6 @@ describe("FileSurface Find and Replace", () => {
     expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
     expect(editorSelection(editor)).toEqual({ start: 4, end: 7 });
 
-    // A typed edit stays its own undo step, apart from Replace all.
     act(() => {
       view.dispatch({
         changes: { from: 11, insert: "!" },
@@ -900,7 +889,6 @@ describe("FileSurface Find and Replace", () => {
     expect(marks()).toBe(0);
     // Undo searches again after the typing pause; step over it.
     vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-    // Typing right after it does not join the Replace all step either.
     act(() => {
       view.dispatch({
         changes: { from: 11, insert: "?" },
@@ -976,7 +964,6 @@ describe("FileSurface Find and Replace", () => {
     const query = await openFindBar(editor);
     fireEvent.change(query, { target: { value: "a" } });
     expect(screen.getByRole("status")).toHaveTextContent("1 of 10000+ matches");
-    // The count is of every match; only the visible ones are drawn.
     const drawn = editor.querySelectorAll(".cm-findMatch").length;
     expect(drawn).toBeGreaterThan(0);
     expect(drawn).toBeLessThan(10_000);
@@ -1072,7 +1059,6 @@ describe("FileSurface Find and Replace", () => {
     expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
     expect(editorSelection(editor)).toEqual({ start: 6, end: 10 });
 
-    // Typing elsewhere while the bar is open never pulls the caret back.
     editor.focus();
     act(() => {
       view.dispatch({ selection: { anchor: 0 } });
@@ -1081,7 +1067,6 @@ describe("FileSurface Find and Replace", () => {
     expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
     expect(editorSelection(editor)).toEqual({ start: 1, end: 1 });
 
-    // F3 and Shift+F3 continue from the caret, as in VS Code.
     fireEvent.keyDown(editor, { key: "F3" });
     expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
     expect(editorSelection(editor)).toEqual({ start: 7, end: 11 });
@@ -1182,7 +1167,6 @@ describe("FileSurface Find and Replace", () => {
     ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Replace all" })).toBeDisabled();
     expect(activeEditorText()).toBe("Cat cat");
-    // Ctrl+H with a remembered query still focuses a field it can type in.
     fireEvent.keyDown(query, { key: "Escape" });
     fireEvent.keyDown(editor, { key: "h", ctrlKey: true });
     await waitFor(() =>
@@ -1203,8 +1187,6 @@ describe("FileSurface caret status", () => {
       view.dispatch({ selection: { anchor: 7 } });
       view.dispatch(view.state.replaceSelection("!"));
     });
-    // The caret now sits past the end of the text the last render saw; the
-    // status must come from the edited document, not that render.
     expect(useEditorCaretStore.getState().caret).toEqual({
       line: 2,
       column: 5,

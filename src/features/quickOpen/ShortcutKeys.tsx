@@ -1,9 +1,6 @@
 import { shortcutKeys } from "./quickOpenDomain";
 
-/**
- * A shortcut drawn as keycaps, as VS Code's palette shows it. The outer
- * <kbd> is the whole combination, so it reads as one "Ctrl+Shift+P".
- */
+/** The outer <kbd> is the whole combination, so it reads as one "Ctrl+Shift+P". */
 export function ShortcutKeys({ label }: { label: string }) {
   const keys = shortcutKeys(label);
   return (

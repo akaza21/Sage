@@ -17,7 +17,6 @@ export interface QuickOpenRequest {
   generation: number;
   session: number;
   recent: readonly ResourceRef[];
-  /** An empty query also lists Files never opened, after the recent ones. */
   browse?: boolean;
 }
 
@@ -31,7 +30,6 @@ export interface QuickOpenResponse {
   results: QuickOpenMatch[];
   indexedFiles: number;
   truncated: boolean;
-  /** A fresher index is being built; asking again shortly sees it. */
   refreshing: boolean;
 }
 
@@ -42,23 +40,17 @@ export type QuickOpenInvoke = (
 
 let lastStamp = 0;
 
-/**
- * Increasing numbers for generations and sessions. Native keeps the highest
- * generation it has seen across webview reloads, so these start from the
- * clock rather than from zero.
- */
+/** Native keeps the highest generation across webview reloads, so these start from the clock, not zero. */
 export function nextQuickOpenStamp(now = Date.now()): number {
   lastStamp = Math.max(now * 1000, lastStamp + 1);
   return lastStamp;
 }
 
-/** Splits a trailing `:line` or `:line:column` from what was typed. */
 export function parseQuickOpenInput(text: string): {
   query: string;
   line: number | null;
   column: number | null;
 } {
-  // A ":" being typed is already a suffix, so `name:` asks for `name`.
   const suffix = /:(\d{0,9})(?::(\d{0,9}))?\s*$/u.exec(text);
   const query = truncateUtf8(
     (suffix ? text.slice(0, suffix.index) : text).trim(),
@@ -121,7 +113,6 @@ export function parseQuickOpenResponse(value: unknown): QuickOpenResponse {
   };
 }
 
-/** `text` cut into runs, each marked whether it holds matched characters. */
 export function highlightRuns(
   text: string,
   offset: number,
@@ -144,10 +135,6 @@ export function highlightRuns(
   return runs;
 }
 
-/**
- * The keys of a shortcut label such as "Ctrl+Shift+P", one per keycap. A
- * literal "+" key ("Ctrl++") stays a key of its own.
- */
 export function shortcutKeys(label: string): string[] {
   return label.split(/\+(?=.)/).filter(Boolean);
 }

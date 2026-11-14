@@ -35,7 +35,6 @@ export function* markdownTextLocations(root: MarkdownPreviewBlock) {
   yield* visit(root, false, false);
 }
 
-/** Streaming keeps only the final location and count, without allocating a leaf array. */
 export function markdownTextTail(block: MarkdownPreviewBlock) {
   let count = 0;
   let tail;
@@ -46,7 +45,6 @@ export function markdownTextTail(block: MarkdownPreviewBlock) {
   return { count, tail };
 }
 
-/** Include ordered lists in quotes and nested items when reserving marker space. */
 export function markdownListMarkerWidth(
   blocks: readonly MarkdownPreviewBlock[],
 ): number {

@@ -7,7 +7,6 @@
   --browser-device-grip: #afafaf;
   --browser-device-input-fill: #242424;
 }
-/* A centred device in a gutter that holds its resize grips. */
 .browser-surface__frame[data-device] {
   background: var(--browser-device-gutter);
 }
@@ -115,8 +114,6 @@
   justify-self: end;
 }
 
-/* Grips in the 18 px gutter beside, below and at the lower corners of a
-   Responsive device: two light strokes each, as in Codex ref 41. */
 .browser-device-handle {
   position: absolute;
   touch-action: none;

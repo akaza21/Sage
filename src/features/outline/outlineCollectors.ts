@@ -1,25 +1,17 @@
-/** Per-language walks from a Lezer syntax tree to Outline symbols. */
 import type { SyntaxNode } from "@lezer/common";
 
 import type { EditorLanguage } from "../files/editorLanguage";
 import type { OutlineSymbolKind } from "./syntaxOutline";
 
 export interface OutlineSink {
-  /** Source text of a range, whitespace-collapsed by the sink. */
   text(from: number, to: number): string;
-  /** Records a symbol at the current depth; false when it was not kept. */
   emit(name: string, kind: OutlineSymbolKind, at: number): boolean;
-  /**
-   * Records a heading, nesting it under the closest preceding heading of a
-   * higher level (a smaller number).
-   */
   emitHeading(name: string, level: number, at: number): void;
   /**
    * Queues each child of `container` to be collected one level below the
    * current depth, right after the current node's own symbols.
    */
   members(container: SyntaxNode | null, collect: Collect): void;
-  /** True once the cap is reached and further symbols only mark truncation. */
   full(): boolean;
 }
 
@@ -98,7 +90,6 @@ const collectJavaScript: Collect = (node, sink) => {
   }
 };
 
-/** Members of a class body or an interface's object type. */
 const collectJavaScriptMember: Collect = (node, sink) => {
   switch (node.name) {
     case "MethodDeclaration":

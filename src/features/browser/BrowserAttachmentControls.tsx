@@ -27,12 +27,8 @@ interface ChatChoice {
 }
 
 /**
- * Who controls the tab, read from Rust whenever anything that can change it
- * happens here: mounting (also after a reload), an Agent operation, a page
- * change, and attaching or detaching. Rust answers Take over and Hand back
- * with the state after them, so nothing here is a mirror that can go stale.
- * Rust also says when something outside the tab changed it, such as the
- * developer-mode switch going off.
+ * Rust answers Take over and Hand back with the state after them, so nothing
+ * here is a mirror that can go stale.
  */
 function useBrowserAgentControl(
   tabId: string,
@@ -195,9 +191,8 @@ function useBrowserAttachmentControls({
   chats: readonly ChatChoice[];
   onChanged?: () => void;
   /**
-   * Reports a failure, or null to clear one. The surface shows it in its
-   * error row, which takes layout space above the page, because the page is
-   * a native window that would cover anything drawn over it.
+   * The page is a native window that would cover anything drawn over it, so the
+   * error row takes layout space above it.
    */
   onError: (message: string | null) => void;
 }) {

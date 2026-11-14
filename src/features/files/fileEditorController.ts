@@ -35,13 +35,7 @@ export type ActiveEditorState =
       persisting: boolean;
       saving: boolean;
       message: string | null;
-      /**
-       * Why the edits could not be written, set by a failed save or a
-       * failed recovery snapshot; kept through further edits until a save,
-       * a reload or Keep mine.
-       */
       unstored?: string;
-      /** Set for display only: why the File is quietly not watched now. */
       unwatched?: string;
     };
 
@@ -94,11 +88,6 @@ export interface FileEditorController {
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,
   ): Promise<EditorSaveResult | null>;
-  /**
-   * Drops the edits for the File on disk; null if nothing was loaded. With
-   * `reload`, a File that is gone keeps its edits, and the document is
-   * returned for the caller to show rather than shown.
-   */
   discard(
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,
@@ -222,8 +211,8 @@ function createFileEditorController(editor: EditorPort): FileEditorController {
         return;
       }
       const bufferContent = active.document.buffer.content;
-      // The editor's own answer costs the edit. Comparing text is the
-      // fallback, and the length check spares the string for most edits.
+      // Comparing text is the fallback; the length check spares the string for
+      // most edits.
       const unchanged =
         base?.content === bufferContent
           ? base.unchanged

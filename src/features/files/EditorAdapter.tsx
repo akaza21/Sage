@@ -35,16 +35,11 @@ interface EditorAdapterProps {
   path: string;
   content: EditorContent;
   disabled: boolean;
-  /** A read-only view (such as the Agent artifact pane) gets no editing features. */
   readOnly?: boolean;
   maxContentLength: number;
   onChange: (content: Text, base: EditorContentBase | null) => void;
   onCaretOffset?: (offset: number, document: Text) => void;
   onLimitExceeded?: () => void;
-  /**
-   * The live view once the editor loads, then null when it goes. `text` is
-   * the string its first document was built from, when it was one.
-   */
   onView?: (view: EditorView | null, text: string | null) => void;
 }
 

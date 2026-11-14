@@ -71,7 +71,6 @@ describe("FileEditorNotices", () => {
       />,
     );
 
-    // The banner loads with the first conflict.
     expect(await screen.findByText(/External change detected/)).toBeVisible();
     expect(screen.getAllByRole("alert")).toHaveLength(1);
     expect(screen.queryByText(/invalid request/)).toBeNull();

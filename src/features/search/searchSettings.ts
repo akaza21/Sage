@@ -4,7 +4,6 @@ import {
   sameEditorSettingValue,
 } from "../../domain/editorSettingsCatalogue";
 
-/** Settings that change what a Search finds; a change retires results. */
 const SEARCH_SETTINGS = ["search.useIgnoreFiles", "files.exclude"] as const;
 
 export function sameSearchSettings(
@@ -16,10 +15,6 @@ export function sameSearchSettings(
   );
 }
 
-/**
- * The request fields for those settings, sent only when they differ from the
- * native defaults so a default search carries no extra fields.
- */
 export function searchSettingFields(
   useIgnoreFiles: boolean,
   filesExclude: EditorSettings["files.exclude"],

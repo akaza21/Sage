@@ -35,7 +35,6 @@ export function TrashResourceControl({
   const clearError = useWorkbenchStore(
     (state) => state.clearResourceTrashError,
   );
-  // In the Editor an open File is closed for the move.
   const releasesOpenFile =
     useContext(ExplorerReleasesOpenFiles) && kind === "file";
   const sourceOpen = useWorkbenchStore((state) =>

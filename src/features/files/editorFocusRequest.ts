@@ -1,11 +1,6 @@
 import { sameResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 
-/**
- * A one-shot request to focus one File's editor, for flows that open a File
- * and expect typing to go there (New File > Create). Only that File's surface
- * takes it, whether it renders before or after the request is made.
- */
 // A request no editor takes soon (the File failed to open) expires, so it
 // cannot steal focus later.
 const REQUEST_LIFETIME_MS = 5_000;

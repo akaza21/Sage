@@ -9,7 +9,6 @@ const doc = Array.from(
   { length: LINES },
   (_, line) => `line ${line} needle`,
 ).join("\n");
-/** The [from, to] offsets of each line's "needle", as a search reports them. */
 const matches = (text: string) =>
   [...text.matchAll(/needle/g)].flatMap((match) => [
     match.index,
@@ -29,7 +28,6 @@ function mount() {
   return view;
 }
 
-/** Where each drawn mark starts, and which one is the current match. */
 function drawn() {
   const marks = [...view.contentDOM.querySelectorAll(".cm-findMatch")];
   return {
@@ -79,7 +77,6 @@ it("marks the newly visible matches as the view scrolls, and the earlier ones ag
   );
   expect(drawn().starts).not.toContain(ranges[0]);
 
-  // The search did not run again: the kept marks are drawn as they show.
   scrollTo(0);
   expect(drawn().starts).toContain(ranges[0]);
   expect(drawn().current).toEqual([ranges[0]]);

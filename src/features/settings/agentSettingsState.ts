@@ -15,11 +15,6 @@ export type AgentSettingsPage =
 // unmounts the composer) is not kept alive by it.
 let opener: WeakRef<Element> | null = null;
 
-/**
- * After Settings closes, returns focus to what opened it, unless focus has
- * already moved on from `surface` (the closed Settings) to something else.
- * An unmount that is not a close (a remount) leaves focus alone.
- */
 export function returnFocusToAgentSettingsOpener(surface: Element | null) {
   if (useAgentSettingsState.getState().page !== null) return;
   const target = opener?.deref();
@@ -43,7 +38,6 @@ export const useAgentSettingsState = create<{
   page: null,
   browserTabId: null,
   showSitePermissions: false,
-  // Without a page, keeps an open Settings where it is.
   open: (page, browserTabId, showSitePermissions = false) => {
     if (useAgentSettingsState.getState().page === null) {
       const active = document.activeElement;

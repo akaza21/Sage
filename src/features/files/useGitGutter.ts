@@ -9,7 +9,6 @@ import type * as GitGutterModule from "./gitGutter";
 
 const loadGitGutter = () => import("./gitGutter");
 
-/** An editor, with the string and document it was first built from. */
 export interface GitGutterEditor {
   view: EditorView;
   text: string | null;
@@ -17,9 +16,8 @@ export interface GitGutterEditor {
 }
 
 /**
- * The editor's text without building it: the string it loaded from, while
- * its document is still the one built from that string. CodeMirror reads a
- * lone "\r" as a break, so such a string never stands for the document.
+ * CodeMirror reads a lone "\r" as a break, so such a string never stands for
+ * the document.
  */
 function knownText({ view, text, doc }: GitGutterEditor) {
   return () =>
@@ -32,11 +30,8 @@ const rootOf = (state: WorkbenchState, rootId: string) =>
   state.repositories.roots.find((root) => root.rootId === rootId);
 
 /**
- * Change markers for an Editor File in a repository. The staged text
- * reloads after every Git refresh, which runs on any outside change to
- * the index, even one that leaves the status unchanged (staging a second hunk
- * of an already staged File). One load runs at a time. Agent panes pass
- * `enabled: false`.
+ * The staged text reloads after every Git refresh, since staging a second hunk
+ * can leave the status unchanged.
  */
 export function useGitGutter(
   editor: GitGutterEditor | null,

@@ -4,15 +4,12 @@ import type {
   WorkspaceNotifyNotice,
 } from "./workspaceNotifyCompose";
 
-/** Folder refreshes waiting for an in-flight slot; past this, the root resyncs. */
 export const MAX_QUEUED_NOTIFY_INVALIDATIONS = 64;
 /**
- * The shortest gap between two invalidations of one ignored folder. A
- * `cargo build` with `target` expanded changes it many times a second; once a
- * second keeps the listing current without reloading it for every write.
+ * A `cargo build` with `target` expanded changes it many times a second; once a
+ * second keeps the listing current.
  */
 export const IGNORED_SUBTREE_REFRESH_MS = 1_000;
-/** Ignored folders throttled at once; past this, the root resyncs. */
 export const MAX_THROTTLED_IGNORED_FOLDERS = 64;
 
 /** The path the native watcher gives a resync notice. */
@@ -35,25 +32,8 @@ function settled(run: () => void | Promise<void>): Promise<void> {
 }
 
 /**
- * Schedules the listing refreshes of one bound session, each bounded.
- *
- * - `folder`: at most `maxInFlight` folders refresh at once, one refresh per
- *   folder. A notice for a folder that is refreshing marks it dirty: when the
- *   refresh ends the folder joins the back of the queue once more, since that
- *   refresh may have listed it before the change, and waits its turn behind
- *   folders already waiting. Other folders wait in a queue of
- *   MAX_QUEUED_NOTIFY_INVALIDATIONS; past that the root resyncs, which
- *   covers that root's waiting folders, so they leave the queue. Every
- *   resync is passed on, even while one runs: the listing side coalesces
- *   them and runs once more after a resync that a change overtook.
- * - `ignoredFolder`: publishes subtree notices at once, then at most every
- *   IGNORED_SUBTREE_REFRESH_MS while they keep coming, with one last notice
- *   after the final change. Listing refreshes use the folder queue, retaining
- *   changes until an in-flight read ends. Publishing does not wait for reads.
- *   Each listing load still takes one of the shared listing slots.
- *
- * Nothing scheduled starts after `live()` turns false, and `dispose` drops
- * the throttle timers when the session ends.
+ * A notice for a folder that is refreshing marks it dirty and requeues it when
+ * the refresh ends, since that refresh may have listed it before the change.
  */
 export function createNotifyRefreshes(
   invalidate: WorkspaceNotifyHooks["invalidate"],
@@ -63,8 +43,6 @@ export function createNotifyRefreshes(
 ) {
   const running = new Map<string, { dirty: ListingRefresh | null }>();
   const queued = new Map<string, ListingRefresh>();
-  // Each throttled ignored folder, with the notice that came in since its
-  // last refresh, if any.
   const throttled = new Map<string, WorkspaceNotifyNotice | null>();
   const timers = new Set<ReturnType<typeof setTimeout>>();
 
@@ -95,7 +73,6 @@ export function createNotifyRefreshes(
         // It held a slot, so it may join a full queue: at most maxInFlight
         // entries above the bound.
         if (entry.dirty) queued.set(key, entry.dirty);
-        // One slot freed: the longest-waiting folder takes it.
         const next = queued.entries().next();
         if (!next.done) {
           queued.delete(next.value[0]);

@@ -1,14 +1,6 @@
 /**
- * Editing features of an editable File, loaded on demand for editable
- * Files only, so read-only views and Agent chat code blocks never load them.
- * Each has its own flag so large mode can turn costly ones off. Esc
- * then Tab still leaves the editor: CodeMirror frees Tab for 2 s after Escape.
- *
- * Like VS Code, typing neither asks the syntax tree nor scans the visible
- * text: fold arrows move with the text and refresh once typing pauses, and
- * occurrence highlights return after a delay. CodeMirror's fold gutter and
- * match highlighter redo both on every change, doubling a keystroke's cost in
- * a large File.
+ * CodeMirror's own fold gutter and match highlighter redo their work on every
+ * change, doubling a keystroke's cost in a large File.
  */
 import { closeBrackets, closeBracketsKeymap } from "@codemirror/autocomplete";
 import {
@@ -59,11 +51,7 @@ import {
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 import type { EditorEditing } from "./editorAppearance";
 
-/**
- * The editor's own shortcuts, by the id the Keyboard settings page lists them
- * under (`EDITOR_EDITING_BINDINGS`); a test keeps the chords equal. `Mod` is
- * Command on macOS, Control elsewhere; `mac` is set where macOS differs.
- */
+/** A test keeps these chords equal to `EDITOR_EDITING_BINDINGS`. */
 export const EDITING_KEYS: readonly (KeyBinding & {
   id: string;
   key: string;
@@ -111,9 +99,8 @@ export const EDITING_KEYS: readonly (KeyBinding & {
     mac: "Mod-Alt-]",
     run: unfoldCode,
   },
-  // The browser's own Ctrl+D and the like stay off even when a command has
-  // nothing to do. Tab too: read-only Files get none of these keys, so the
-  // editor cannot indent only while a save or Project switch briefly locks it.
+  // Tab too: read-only Files get none of these keys, so the editor cannot
+  // indent only while a save briefly locks it.
 ].map((binding) => ({ ...binding, preventDefault: true }));
 
 /**
@@ -148,7 +135,6 @@ function hasEffect(update: ViewUpdate, type: StateEffectType<null>) {
   );
 }
 
-/** Dispatches `effect()` once `delay` ms pass without another `schedule`. */
 function pause(
   view: EditorView,
   delay: number,
@@ -172,7 +158,6 @@ function pause(
   };
 }
 
-/** The fold arrow: a chevron drawn in CSS, pointing down while open. */
 class FoldArrow extends GutterMarker {
   constructor(readonly open: boolean) {
     super();
@@ -248,7 +233,6 @@ const foldArrows = ViewPlugin.fromClass(
   },
 );
 
-/** An edit that also folds, unfolds or deletes a fold redraws at once. */
 function foldsEdited(update: ViewUpdate) {
   return (
     foldedRanges(update.startState).size !== foldedRanges(update.state).size ||
@@ -260,7 +244,6 @@ function foldsEdited(update: ViewUpdate) {
   );
 }
 
-/** A new parse, or a new language, can add or remove fold ranges. */
 function treeMoved(update: ViewUpdate) {
   return (
     syntaxTree(update.startState) !== syntaxTree(update.state) ||
@@ -268,11 +251,9 @@ function treeMoved(update: ViewUpdate) {
   );
 }
 
-/** The fold gutter: arrows from `foldArrows`, a click folds or unfolds. */
 function foldGutter(): Extension {
   return [
     foldArrows,
-    // Low precedence puts the arrows after the line numbers, as in VS Code.
     Prec.low(
       gutter({
         class: "cm-foldGutter",

@@ -1,8 +1,5 @@
-/**
- * The eager half of Chat search: shared limits, scope types and the request
- * bus that the rail and title bar use to open the lazy search dialog
- * (ChatSearchControl.tsx). Everything the dialog needs lives in that chunk.
- */
+// Eager half of Chat search; everything the dialog needs lives in the lazy
+// ChatSearchControl.tsx chunk.
 export const MAX_CHAT_SEARCH_QUERY_BYTES = 256;
 export const CHAT_SEARCH_ALL_FOLDERS_ID = "all-folders";
 
@@ -38,7 +35,6 @@ export function requestChatSearchInFolder(
   folderRequestListeners.forEach((listener) => listener());
 }
 
-/** Whether a folder request is waiting for the dialog to take it. */
 export function hasChatSearchFolderRequest(): boolean {
   return requestedFolderId !== null;
 }

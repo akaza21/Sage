@@ -2,13 +2,8 @@ import { HighlightStyle, defaultHighlightStyle } from "@codemirror/language";
 import { EditorView } from "@codemirror/view";
 
 /*
- * Document syntax palette resolves from --doc-syntax-* tokens (authority in
- * src/styles/global.css). Specs are the public default highlight table with
- * only color sources replaced, so tag order and non-color treatments match
- * the installed runtime exactly and prior pixels are preserved in both modes.
- * Null entries keep specs without color. tests/ui/editor-syntax.visual.ts
- * checks the painted colors and treatments, so dependency drift that
- * mis-maps a token fails there.
+ * Same order as the default highlight table's specs; null keeps a spec without
+ * color. tests/ui/editor-syntax.visual.ts catches dependency drift.
  */
 const DOCUMENT_SYNTAX_TOKENS_BY_SPEC_INDEX: readonly (string | null)[] = [
   "var(--doc-syntax-meta)",
@@ -44,11 +39,7 @@ export const documentSyntaxHighlightStyle = HighlightStyle.define(
   }),
 );
 
-/**
- * Selection colors go through CodeMirror's theme so they outrank its base
- * theme by design, for the browser's selection and for the layer drawn with
- * several cursors. The colors stay the document tokens set in CSS.
- */
+/** Through CodeMirror's theme so the colors outrank its base theme. */
 export const documentSelectionTheme = EditorView.theme({
   "&.cm-focused > .cm-scroller > .cm-selectionLayer .cm-selectionBackground, .cm-selectionBackground, .cm-content ::selection":
     {

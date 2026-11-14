@@ -16,12 +16,6 @@ import {
 
 const pct = (value: number, total: number) => `${(value / total) * 100}%`;
 
-/**
- * The comment box over the frozen page. Rust hid the live page
- * and kept this picture of the whole page area, so the badge and the box sit
- * exactly over the picked element. The stage keeps the picture's proportions
- * while the window resizes, and everything is placed in its shares.
- */
 export function BrowserAnnotatePopover({
   selection,
   frame,
@@ -137,11 +131,6 @@ export function BrowserAnnotatePopover({
 const NO_SINK = "The composer cannot take page elements yet";
 const FULL = "Open an Agent chat whose message has room for this element";
 
-/**
- * Loads the frozen frame and turns the comment into an element item. The
- * element keeps waiting until the composer took the item, so a refused item
- * stays on screen with the reason.
- */
 export default function BrowserAnnotateComment({
   tabId,
   selection,

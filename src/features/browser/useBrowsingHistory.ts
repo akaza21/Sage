@@ -6,22 +6,15 @@ import {
   type BrowserVisit,
 } from "../../ports/nativeBrowserHistoryPort";
 
-/** Visits fetched per page. */
 export const HISTORY_PAGE_SIZE = 50;
-/** The most visits the page holds; older ones need a narrower search. */
 export const HISTORY_MAX_LOADED = 500;
-/** Typing settles this long before a search runs. */
 export const HISTORY_SEARCH_DELAY_MS = 200;
 
 export interface BrowsingHistoryView {
   visits: readonly BrowserVisit[];
-  /** True until the first page of the current search has answered. */
   loading: boolean;
-  /** True while a further page loads. */
   loadingMore: boolean;
-  /** Another page exists and the loaded list is below its bound. */
   canLoadMore: boolean;
-  /** Another page exists but the loaded list reached its bound. */
   truncated: boolean;
   error: string | null;
   removing: ReadonlySet<number>;
@@ -29,7 +22,6 @@ export interface BrowsingHistoryView {
   remove: (visit: BrowserVisit) => void;
 }
 
-/** What Rust answered for one search. */
 interface Listing {
   search: string;
   /** Bumped on every fresh first page, so a page fetched for an earlier
@@ -44,11 +36,6 @@ function message(cause: unknown): string {
   return String(cause).slice(0, 512);
 }
 
-/**
- * The History page's data: newest-first visits matching `search`, paged
- * from Rust and bounded here. Everything shown belongs to the search it
- * was answered for, so an answer for an older search is never shown.
- */
 export function useBrowsingHistory(search: string): BrowsingHistoryView {
   const [listing, setListing] = useState<Listing | null>(null);
   const [loadingMore, setLoadingMore] = useState<number | null>(null);
@@ -77,7 +64,6 @@ export function useBrowsingHistory(search: string): BrowsingHistoryView {
           }
         });
     };
-    // The unfiltered list loads at once; a search waits for typing to settle.
     if (!search) run();
     const timer = search ? setTimeout(run, HISTORY_SEARCH_DELAY_MS) : 0;
     return () => {

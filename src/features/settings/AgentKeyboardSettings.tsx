@@ -21,8 +21,6 @@ const labels: Record<BrowserShortcut, string> = {
   stop: "Stop loading browser page",
 };
 
-// Agent Settings lists the shortcuts the Agent window answers; Editor
-// shortcuts stay in Editor Settings.
 const scopes: readonly KeymapScope[] = ["Global", "Agent", "Agent chat"];
 
 const agentShortcuts = new Set(

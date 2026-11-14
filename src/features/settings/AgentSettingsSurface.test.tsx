@@ -53,7 +53,6 @@ beforeEach(() => {
 it("shows installation and sign-in evidence without treating an installed adapter as signed in", async () => {
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
-  // The Harnesses page loads on demand.
   await screen.findByRole("button", { name: "Refresh discovery" });
   expect(screen.getByText("Test harness")).toBeVisible();
   expect(screen.getByText(/Sign-in status is not exposed/)).toBeVisible();
@@ -353,7 +352,6 @@ it("moves between sections with the arrow keys, wrapping at either end", () => {
     key: "Home",
   });
   expect(appearance).toHaveFocus();
-  // Modified arrows belong to someone else.
   expect(
     fireEvent.keyDown(appearance, { key: "ArrowDown", altKey: true }),
   ).toBe(true);

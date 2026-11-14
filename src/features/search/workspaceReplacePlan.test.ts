@@ -177,8 +177,6 @@ describe("a File with unsaved edits in another tab", () => {
     vi.spyOn(editor, "openEditorDocument").mockResolvedValue(
       document(beta, "old line\n", 3),
     );
-    // The buffer reports the very revision asked for, but says another
-    // text holds it: the revision alone proves nothing.
     vi.spyOn(editor, "snapshotEditorBuffer").mockResolvedValue({
       revision: 4,
       applied: false,
@@ -275,7 +273,6 @@ describe("applying a Replace", () => {
     const replace = gateway();
     const planned = await plan(replace, [alpha]);
     vi.mocked(replace.apply).mockImplementation(async (request) => {
-      // A keystroke lands while the native Replace runs.
       useWorkbenchStore.setState({
         activeEditor: { ...readyEditor(alpha, 3), content: "typed\n" },
       } as unknown as Partial<StoreState>);
@@ -322,7 +319,6 @@ describe("applying a Replace", () => {
     const replace = gateway();
     const planned = await plan(replace, [alpha]);
     const order: string[] = [];
-    // Typing since the preview: the flush stores it and the tab turns dirty.
     useWorkbenchStore.setState({
       flushActiveEditor: vi.fn().mockImplementation(async () => {
         order.push("flush");
