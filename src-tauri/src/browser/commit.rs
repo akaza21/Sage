@@ -83,6 +83,7 @@ impl<T> BrowserTabs<T> {
     }
 }
 
+/// Call before updating `tab.committed_url`, so folding compares against the page being left.
 pub(super) fn record_same_document<T>(
     history: &BrowsingHistory,
     label: &str,

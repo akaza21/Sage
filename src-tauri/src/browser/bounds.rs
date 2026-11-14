@@ -254,7 +254,6 @@ mod tests {
 
     #[test]
     fn fractional_edges_snap_inward_to_device_pixels() {
-        // At 1.25, device pixels are 0.8 logical pixels apart.
         let snapped = snap_inward(
             frame(10.1, 20.3, 100.0, 50.0),
             1.25,
