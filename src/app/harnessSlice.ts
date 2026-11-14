@@ -20,7 +20,6 @@ import {
 import { accountChange, authCurrent, authScope } from "./harnessAuth";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
-import type { NewChatDraft } from "./newChatDraftSlice";
 import { errorMessage } from "../domain/errors";
 
 export type HarnessDiscoveryPhase =
@@ -41,22 +40,6 @@ export function preferredModelId(
     : previousModelId && models.some((model) => model.id === previousModelId)
       ? previousModelId
       : (models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null);
-}
-
-/** The draft with its model and effort reconciled to its harness's catalog. */
-export function reconcileDraftModel(
-  draft: NewChatDraft | null,
-  harnessId: string | null,
-  models: ModelOption[],
-): NewChatDraft | null {
-  if (!draft || draft.harnessId !== harnessId) return draft;
-  const modelId = preferredModelId(models, draft.modelId);
-  const levels = models.find((model) => model.id === modelId)?.effortLevels;
-  const effort =
-    draft.effort && levels?.includes(draft.effort) ? draft.effort : null;
-  return modelId === draft.modelId && effort === draft.effort
-    ? draft
-    : { ...draft, modelId, effort };
 }
 
 export interface HarnessSlice {
@@ -103,9 +86,6 @@ export const createHarnessSlice: StateCreator<
     matchesProjectIntent(get(), generation, projectId) &&
     get().harnessRequestGeneration === requestGeneration &&
     get().selectedHarnessId === harnessId;
-  const draftFor = (harnessId: string, models: ModelOption[]) => ({
-    newChatDraft: reconcileDraftModel(get().newChatDraft, harnessId, models),
-  });
 
   const revalidate = (
     harnessId: string,
@@ -129,7 +109,6 @@ export const createHarnessSlice: StateCreator<
             : null,
           harnessDiscoveryPhase: "ready",
           harnessDiscoveryError: null,
-          ...draftFor(harnessId, models),
         });
       })
       .catch(() => undefined);
@@ -180,7 +159,6 @@ export const createHarnessSlice: StateCreator<
           : "idle",
       harnessDiscoveryError: null,
       harnessAccount: null,
-      ...(cached && draftFor(harnessId, cached)),
     });
     if (detecting) return;
     if (cached) {
@@ -231,7 +209,6 @@ export const createHarnessSlice: StateCreator<
           harnessDiscoveryPhase: "ready",
           harnessDiscoveryError: null,
           error: null,
-          ...draftFor(harnessId, models),
         });
         return;
       }
@@ -245,7 +222,6 @@ export const createHarnessSlice: StateCreator<
           harnessDiscoveryPhase: "ready",
           harnessDiscoveryError: null,
           error: null,
-          ...draftFor(harnessId, models),
         });
       }
     } catch (error) {

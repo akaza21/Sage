@@ -63,11 +63,15 @@ export function ChatAccessDraftSelection({
       (!chatId
         ? undefined
         : (mode: SessionAccessMode) => {
-            useWorkbenchStore.getState().markChatEdited(chatId);
-            draftChatAccess(
-              chatId,
-              mode === effective ? null : { bindingId, mode },
-            );
+            const state = useWorkbenchStore.getState();
+            const intent = state.captureChatOwnership(chatId);
+            if (intent)
+              state.chooseChatDraft(intent, () =>
+                draftChatAccess(
+                  chatId,
+                  mode === effective ? null : { bindingId, mode },
+                ),
+              );
           }),
   });
 }

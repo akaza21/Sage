@@ -1,6 +1,8 @@
 import type { StoreApi } from "zustand";
 import { agentChatFocus } from "./agentChatOwner";
-import { reconcileDraftModel } from "./harnessSlice";
+import { sessionAccessModeCandidates } from "../domain/sessionAccessMode";
+import { preferredModelId } from "./harnessSlice";
+import type { NewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
 type Set = StoreApi<WorkbenchState>["setState"];
 type Get = StoreApi<WorkbenchState>["getState"];
@@ -25,26 +27,61 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
       modelId: state.selectedModelId,
     });
   }
-  const draft = state.newChatDraft ?? {
-    id: {},
-    projectId: state.project.id,
-    text: "",
-    harnessId: state.selectedHarnessId,
-    modelId: state.selectedModelId,
-    access: null,
-    effort: null,
-    submission: { status: "released" as const },
-    error: null,
-  };
   set({
     agentCenter: "draft",
     pendingFirstSend: null,
     draftFocusRequest,
-    newChatDraft:
-      state.harnessDiscoveryPhase === "ready"
-        ? reconcileDraftModel(draft, state.selectedHarnessId, state.models)
-        : draft,
+    newChatDraft: state.newChatDraft ?? {
+      id: {},
+      projectId: state.project.id,
+      text: "",
+      harnessId: state.selectedHarnessId,
+      modelId: state.selectedModelId,
+      access: null,
+      effort: null,
+      submission: { status: "released" },
+      error: null,
+    },
   });
+}
+/**
+ * The choices a draft sends with under the current catalog, or null while
+ * its harness cannot send. The stored choices stay the user's preference, so
+ * a catalog that briefly lacks them does not discard them.
+ */
+export function effectiveDraftChoice(
+  draft: NewChatDraft,
+  state: Pick<
+    WorkbenchState,
+    "harnesses" | "selectedHarnessId" | "harnessDiscoveryPhase" | "models"
+  >,
+) {
+  const harness = state.harnesses.find(
+    (harness) => harness.id === draft.harnessId,
+  );
+  if (
+    !harness?.bindingId ||
+    harness.installState !== "available" ||
+    state.selectedHarnessId !== harness.id ||
+    state.harnessDiscoveryPhase !== "ready"
+  )
+    return null;
+  const modelId = preferredModelId(state.models, draft.modelId);
+  const levels = state.models.find(
+    (model) => model.id === modelId,
+  )?.effortLevels;
+  return {
+    harnessId: harness.id,
+    bindingId: harness.bindingId,
+    modelId,
+    effort:
+      draft.effort && levels?.includes(draft.effort) ? draft.effort : null,
+    access: sessionAccessModeCandidates(harness.accessModes, true).some(
+      (mode) => mode.id === draft.access,
+    )
+      ? draft.access
+      : null,
+  };
 }
 export async function selectDraftHarness(
   set: Set,

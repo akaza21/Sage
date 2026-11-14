@@ -105,7 +105,9 @@ export function useChatHarnessSelection(chatId?: string): {
   const setChatHarnessSelection = useWorkbenchStore(
     (state) => state.setChatHarnessSelection,
   );
-  const markChatEdited = useWorkbenchStore((state) => state.markChatEdited);
+  const chooseChatSelection = useWorkbenchStore(
+    (state) => state.chooseChatSelection,
+  );
   const selectHarness = useWorkbenchStore((state) => state.selectHarness);
   const selectModel = useWorkbenchStore((state) => state.selectModel);
   const selectedHarnessId =
@@ -219,8 +221,7 @@ export function useChatHarnessSelection(chatId?: string): {
         await selectHarness(harnessId);
         return;
       }
-      markChatEdited(ownership.chatId);
-      setChatHarnessSelection(ownership, { harnessId, modelId: null });
+      chooseChatSelection(ownership, { harnessId, modelId: null });
       await selectHarness(harnessId);
       const state = useWorkbenchStore.getState();
       if (
@@ -236,7 +237,7 @@ export function useChatHarnessSelection(chatId?: string): {
     [
       captureChatOwnership,
       chatId,
-      markChatEdited,
+      chooseChatSelection,
       selectHarness,
       setChatHarnessSelection,
     ],
@@ -249,8 +250,7 @@ export function useChatHarnessSelection(chatId?: string): {
         return;
       }
       selectModel(modelId);
-      markChatEdited(ownership.chatId);
-      setChatHarnessSelection(ownership, {
+      chooseChatSelection(ownership, {
         harnessId: selectedHarnessId,
         modelId,
       });
@@ -258,10 +258,9 @@ export function useChatHarnessSelection(chatId?: string): {
     [
       captureChatOwnership,
       chatId,
-      markChatEdited,
+      chooseChatSelection,
       selectModel,
       selectedHarnessId,
-      setChatHarnessSelection,
     ],
   );
   return {

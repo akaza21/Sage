@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { effectiveDraftChoice } from "../../app/newChatDraftNavigation";
 import { useWorkbenchStore } from "../../app/store";
 import { AgentNavigationPart } from "../../workbench/agentNavigationLazy";
 import { ChatHome } from "./ChatHome";
@@ -56,14 +57,12 @@ export function NewChatDraftSurface({
   }, [chooseHarness, draft, selectedHarnessId, transitioning]);
   if (!draft || !project) return null;
   const available = harness?.installState === "available";
-  const canSend =
-    available &&
-    !!harness?.bindingId &&
-    selectedHarnessId === draft.harnessId &&
-    discoveryPhase === "ready" &&
-    (models.length
-      ? models.some((model) => model.id === draft.modelId)
-      : draft.modelId === null);
+  const choice = effectiveDraftChoice(draft, {
+    harnesses,
+    selectedHarnessId,
+    harnessDiscoveryPhase: discoveryPhase,
+    models,
+  });
   return (
     <div
       className="agent-chat-center surface surface--card"
@@ -99,7 +98,7 @@ export function NewChatDraftSurface({
           text={draft.text}
           attachedContext={emptyContext}
           enabled={!submitting}
-          sendBlocked={!canSend || unconfirmed}
+          sendBlocked={!choice || unconfirmed}
           actionBusy={submitting}
           activeTurn={false}
           projectTransitioning={transitioning}
@@ -123,8 +122,8 @@ export function NewChatDraftSurface({
           }
           accessTarget={{ bindingId: harness?.bindingId }}
           draftPickers={{
-            access: draft.access,
-            effort: draft.effort,
+            access: choice ? choice.access : draft.access,
+            effort: choice ? choice.effort : draft.effort,
             onAccessChange: (access) => update({ access }),
             onEffortChange: (effort) =>
               update({ effort: effort === "default" ? null : effort }),
@@ -135,7 +134,7 @@ export function NewChatDraftSurface({
           sessionHarnessId={null}
           sessionModelId={null}
           selectedHarnessId={draft.harnessId}
-          selectedModelId={draft.modelId}
+          selectedModelId={choice ? choice.modelId : draft.modelId}
           sessionPromptUnavailable={false}
           sessionConfig={null}
           modePending={false}

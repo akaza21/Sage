@@ -6,7 +6,7 @@ import type { WorkbenchState } from "./store";
 
 export type DraftCreation =
   | { status: "released" }
-  | { status: "created"; chatId: string }
+  | { status: "created"; chatId: string; editRevision: number }
   | { status: "unconfirmed"; reconcile: () => Promise<CreateChatResult> };
 
 export interface NewChatDraft {
@@ -26,13 +26,17 @@ export interface NewChatDraftSlice {
   agentCenter: "chat" | "draft";
   newChatDraft: NewChatDraft | null;
   draftFocusRequest: number;
-  pendingFirstSend: {
-    projectId: string;
-    chatId: string | null;
-    ownershipEpoch: number;
-    /** The chat's edit revision once handed the prompt; an edit cancels. */
-    editRevision?: number;
-  } | null;
+  /** A first send waiting for its chat, then for that chat's page. */
+  pendingFirstSend:
+    | { projectId: string; chatId: null; ownershipEpoch: number }
+    | {
+        projectId: string;
+        chatId: string;
+        ownershipEpoch: number;
+        /** The chat's revision once handed the prompt; any edit cancels. */
+        editRevision: number;
+      }
+    | null;
   openNewChatDraft: (projectId?: string) => Promise<unknown>;
   updateNewChatDraft: (
     patch: Partial<Pick<NewChatDraft, "text" | "access" | "effort">>,

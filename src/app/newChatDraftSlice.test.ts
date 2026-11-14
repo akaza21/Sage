@@ -5,6 +5,8 @@ import { resetBrowserDesktopForTests } from "../services/browserDesktop";
 import { useWorkbenchStore } from "./store";
 import { desktop } from "../services/desktop";
 import { resetHarnessModelCache } from "./harnessModelCache";
+import { useChatEffortDraft } from "./chatEffortDraft";
+import { effectiveDraftChoice } from "./newChatDraftNavigation";
 import type { HarnessDefinition, ModelOption } from "../domain/workbench";
 
 const initial = useWorkbenchStore.getState();
@@ -39,8 +41,6 @@ it("bounds draft UTF-8 text and keeps the previous chat's text independently", a
 });
 
 it.each([
-  { phase: "ready" as const, modelId: "removed-model", empty: false },
-  { phase: "ready" as const, modelId: null, empty: false },
   { phase: "error" as const, modelId: null, empty: true },
   { phase: "checking" as const, modelId: null, empty: true },
 ])(
@@ -254,7 +254,7 @@ it.each<{
     effort: "high",
   },
 ])(
-  "keeps the draft sendable as model $modelId, effort $effort when its catalog refreshes",
+  "sends with model $modelId, effort $effort after a catalog refresh, keeping the stored choice",
   async ({ catalog, modelId, effort }) => {
     resetHarnessModelCache();
     useWorkbenchStore.setState({
@@ -284,15 +284,22 @@ it.each<{
     await vi.waitFor(() =>
       expect(useWorkbenchStore.getState().models).toEqual(catalog),
     );
-    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
-      text: "Keep through refresh",
-      modelId,
-      effort,
+    const refreshed = useWorkbenchStore.getState();
+    expect(refreshed.newChatDraft).toMatchObject({
+      modelId: "thinking",
+      effort: "high",
     });
+    expect(
+      effectiveDraftChoice(refreshed.newChatDraft!, refreshed),
+    ).toMatchObject({ modelId, effort });
     await state.sendNewChatDraft();
-    expect(useWorkbenchStore.getState().newChatDraft).toBeNull();
-    expect(useWorkbenchStore.getState().composerText).toBe(
-      "Keep through refresh",
-    );
+    const sent = useWorkbenchStore.getState();
+    expect(sent.newChatDraft).toBeNull();
+    expect(sent.composerText).toBe("Keep through refresh");
+    expect(sent.chatUiById[sent.activeTabId!]).toMatchObject({
+      harnessId: "refresh-harness",
+      modelId,
+    });
+    expect(useChatEffortDraft.getState().draft?.effort ?? null).toBe(effort);
   },
 );

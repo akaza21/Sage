@@ -1092,6 +1092,80 @@ it("never overwrites what the user typed into the created chat before its handof
   expect(created.tabs).toHaveLength(before.tabs.length + 1);
 });
 
+it("keeps the model chosen in the created chat through a refused handoff and its retry", async () => {
+  let release!: () => void;
+  vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
+    .mockResolvedValue(undefined)
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+  mount();
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "Draft prompt" } });
+  let sending!: Promise<void>;
+  act(() => {
+    sending = useWorkbenchStore.getState().sendNewChatDraft();
+  });
+  await waitFor(() => expect(release).toBeTypeOf("function"));
+  const chatId = (await ports.project.getBootstrapSnapshot()).activeTabId!;
+  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
+  await settleLazyModules();
+  fireEvent.click(screen.getByRole("button", { name: "Model" }));
+  fireEvent.click(await screen.findByRole("option", { name: /Model B/ }));
+  fireEvent.change(composer(), { target: { value: "Mine" } });
+  await act(async () => {
+    release();
+    await sending;
+  });
+  await settleLazyModules();
+  expect(useWorkbenchStore.getState().newChatDraft?.error).toMatch(
+    /already has a message/,
+  );
+  fireEvent.change(composer(), { target: { value: "" } });
+  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0]).toMatchObject({ chatId, prompt: "Draft prompt" });
+  expect(starts[0]?.modelId).toBe("model-b");
+  expect(useWorkbenchStore.getState().chatUiById[chatId].modelId).toBe(
+    "model-b",
+  );
+});
+
+it("does not auto-send a handed-off prompt the user edits before the chat's page loads", async () => {
+  const before = await ports.project.getBootstrapSnapshot();
+  let releasePage!: () => void;
+  const pageReady = new Promise<void>((resolve) => {
+    releasePage = resolve;
+  });
+  const getPage = vi.mocked(acpDesktop.getChatPage).getMockImplementation()!;
+  vi.mocked(acpDesktop.getChatPage).mockImplementation(async (request) => {
+    if (!before.tabs.some((tab) => tab.id === request.chatId)) await pageReady;
+    return getPage(request);
+  });
+  mount();
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "Draft prompt" } });
+  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+  await settleLazyModules();
+  const chatId = useWorkbenchStore.getState().activeTabId!;
+  expect(useWorkbenchStore.getState().pendingFirstSend).toMatchObject({
+    chatId,
+  });
+  expect(composer()).toHaveValue("Draft prompt");
+  fireEvent.change(composer(), { target: { value: "Draft prompt, reworded" } });
+  await act(async () => {
+    releasePage();
+    await pageReady;
+  });
+  await settleLazyModules();
+  expect(composer()).toHaveValue("Draft prompt, reworded");
+  expect(prompts).toEqual([]);
+  expect(useWorkbenchStore.getState().pendingFirstSend).toBeNull();
+});
+
 it.each([false, true])(
   "retries the same created chat after a refused project switch during watcher binding (reopen refused: %s)",
   async (refuseReopen) => {

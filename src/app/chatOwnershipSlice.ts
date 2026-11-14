@@ -10,6 +10,10 @@ import {
   type ChatOwnershipIntent,
 } from "../domain/chatOwnership";
 import { createAttachedContextActions } from "./chatAttachedContextState";
+import {
+  createChatChoiceActions,
+  type ChatChoiceActions,
+} from "./chatChoiceActions";
 import type { WorkbenchState } from "./store";
 import { nextProjectGeneration } from "./projectIntent";
 import {
@@ -17,17 +21,12 @@ import {
   emptyChatOwnershipEntry as emptyEntry,
 } from "./chatOwnershipProjection";
 
-export interface ChatOwnershipSlice {
+export interface ChatOwnershipSlice extends ChatChoiceActions {
   chatOwnershipEpoch: number;
   chatUiById: Record<string, ChatOwnershipEntry>;
   chatError: string | null;
   captureChatOwnership: (chatId?: string) => ChatOwnershipIntent | null;
-  setChatHarnessSelection: (
-    intent: ChatOwnershipIntent,
-    selection: { harnessId: string | null; modelId: string | null },
-  ) => boolean;
   setChatComposer: (intent: ChatOwnershipIntent, text: string) => boolean;
-  markChatEdited: (chatId: string) => void;
   attachChatContext: (
     intent: ChatOwnershipIntent,
     context: AttachedContext,
@@ -117,18 +116,7 @@ export const createChatOwnershipSlice: StateCreator<
       transitionEpoch: state.nativeTransitionEpoch,
     };
   },
-  setChatHarnessSelection: (intent, selection) => {
-    const state = get();
-    if (!ownsChat(state, intent)) return false;
-    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
-    set({
-      chatUiById: {
-        ...state.chatUiById,
-        [intent.chatId]: { ...entry, ...selection },
-      },
-    });
-    return true;
-  },
+  ...createChatChoiceActions(set, get, ownsChat),
   setChatComposer: (intent, text) => {
     const state = get();
     if (!ownsChat(state, intent)) return false;
@@ -156,11 +144,6 @@ export const createChatOwnershipSlice: StateCreator<
       ...(active ? { composerText } : {}),
     });
     return true;
-  },
-  markChatEdited: (chatId) => {
-    const entry = get().chatUiById[chatId];
-    if (entry)
-      set({ chatUiById: { ...get().chatUiById, [chatId]: edited(entry) } });
   },
   attachChatContext: (intent, context) =>
     createAttachedContextActions({

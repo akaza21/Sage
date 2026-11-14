@@ -57,10 +57,15 @@ export default function DraftEffortControl({
         if ("value" in value && typeof value.value === "string") {
           if (draft.onChange) draft.onChange(value.value);
           else if (chatId) {
-            useWorkbenchStore.getState().markChatEdited(chatId);
-            useChatEffortDraft.setState({
-              draft: { chatId, bindingId, modelId, effort: value.value },
-            });
+            const effort = value.value;
+            const state = useWorkbenchStore.getState();
+            const intent = state.captureChatOwnership(chatId);
+            if (intent)
+              state.chooseChatDraft(intent, () =>
+                useChatEffortDraft.setState({
+                  draft: { chatId, bindingId, modelId, effort },
+                }),
+              );
           }
         }
         return Promise.resolve();

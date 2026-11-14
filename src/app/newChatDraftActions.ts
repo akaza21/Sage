@@ -3,7 +3,6 @@ import {
   boundedChatError,
   validateChatComposerText,
 } from "../domain/chatOwnership";
-import { reconcileDraftModel } from "./harnessSlice";
 import { openNewChatDraft, selectDraftHarness } from "./newChatDraftNavigation";
 import type { NewChatDraft, NewChatDraftSlice } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
@@ -28,12 +27,6 @@ export function createNewChatDraftActions(
       creation: draft.submission,
     };
     const submittingDraft = { ...draft, submission: attempt, error: null };
-    // A chat this draft already created is handed the prompt only if it is
-    // not edited from here on; a chat created by this attempt starts unedited.
-    const editRevision =
-      draft.submission.status === "created"
-        ? (get().chatUiById[draft.submission.chatId]?.editRevision ?? 0)
-        : 0;
     const submission = {
       projectId: draft.projectId,
       chatId: null,
@@ -59,7 +52,6 @@ export function createNewChatDraftActions(
         get,
         submittingDraft,
         submission,
-        editRevision,
       );
     } catch (error) {
       released.error = boundedChatError(String(error));
@@ -105,13 +97,17 @@ export function createNewChatDraftActions(
         state.selectedHarnessId !== draft.harnessId
       )
         return;
-      if (!state.models.some((model) => model.id === modelId)) return;
+      const model = state.models.find((model) => model.id === modelId);
+      if (!model) return;
       set({
-        newChatDraft: reconcileDraftModel(
-          { ...draft, modelId },
-          draft.harnessId,
-          state.models,
-        ),
+        newChatDraft: {
+          ...draft,
+          modelId,
+          effort:
+            draft.effort && model.effortLevels?.includes(draft.effort)
+              ? draft.effort
+              : null,
+        },
       });
     },
     sendNewChatDraft: async () => {

@@ -24,7 +24,8 @@ export function FirstChatSend({
     (state) => state.projectTransitioning,
   );
   useEffect(() => {
-    if (!pending || pending.chatId !== chatId || !page || transitioning) return;
+    if (!pending?.chatId || pending.chatId !== chatId || !page || transitioning)
+      return;
     const state = useWorkbenchStore.getState();
     if (state.pendingFirstSend !== pending) return;
     const context = currentContext(chatId);
