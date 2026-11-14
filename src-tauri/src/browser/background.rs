@@ -8,7 +8,7 @@ enum MemoryState {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum MemoryTarget {
+pub(crate) enum MemoryTarget {
     Low,
     Normal,
 }
@@ -32,11 +32,27 @@ impl MemoryState {
 
 #[cfg(windows)]
 mod native;
-#[cfg(windows)]
-pub(crate) use native::refresh;
+
+/// Supplies fresh placement and window state on the WebView's thread, then
+/// applies the policy's target. Non-browser WebViews have no placement.
+pub(crate) trait MemoryTargetPort {
+    fn update_memory_target(
+        &self,
+        policy: impl FnOnce(Option<bool>, bool) -> MemoryTarget + Send + 'static,
+    );
+}
+
+pub(crate) fn refresh(webview: &impl MemoryTargetPort) {
+    webview.update_memory_target(|placement, minimized| {
+        MemoryState::for_visibility(placement.unwrap_or(true), minimized).target()
+    });
+}
 
 #[cfg(not(windows))]
-pub(crate) fn refresh(_: &tauri::Webview) {}
-
-#[cfg(test)]
-mod tests;
+impl MemoryTargetPort for tauri::Webview {
+    fn update_memory_target(
+        &self,
+        _: impl FnOnce(Option<bool>, bool) -> MemoryTarget + Send + 'static,
+    ) {
+    }
+}
