@@ -11,8 +11,12 @@ use super::limits::WAL_HARD_BYTES;
 use super::*;
 use crate::acp::store::load_chat_page;
 #[cfg(windows)]
-use crate::persistence::Database;
+use crate::session_events::SessionEventStore;
+#[cfg(windows)]
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::contract::{SageChatId, SageProjectId};
+#[cfg(windows)]
+use sage_db::database::Database;
 
 struct TestDir(
     PathBuf,
@@ -1769,7 +1773,7 @@ fn migrated_simulator_chat_lazily_creates_compatible_head_on_first_post_restart_
     let directory = TestDir::new();
     create_v4(&directory.database(), "project-a", true);
 
-    let database = Database::open(&directory.database()).unwrap();
+    let database = crate::database::open_database(&directory.database()).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     assert_eq!(initial.active_tab_id.as_deref(), Some("chat-a"));
     assert_eq!(initial.session_id, None);
@@ -1777,7 +1781,7 @@ fn migrated_simulator_chat_lazily_creates_compatible_head_on_first_post_restart_
     assert_eq!(initial.messages[0].id, "event-1");
     drop(database);
 
-    let reopened = Database::open(&directory.database()).unwrap();
+    let reopened = crate::database::open_database(&directory.database()).unwrap();
     let appended = reopened
         .append_simulator_turn("chat-a", "continue", "ack")
         .unwrap();
@@ -1822,7 +1826,7 @@ fn migrated_simulator_chat_lazily_creates_compatible_head_on_first_post_restart_
     assert_eq!(session_count, 2);
     drop(reopened);
 
-    let restarted = Database::open(&directory.database()).unwrap();
+    let restarted = crate::database::open_database(&directory.database()).unwrap();
     let restored = restarted.bootstrap_snapshot().unwrap();
     assert_eq!(
         restored.session_id.as_deref(),
@@ -1837,7 +1841,7 @@ fn migrated_simulator_chat_lazily_creates_compatible_head_on_first_post_restart_
 fn lazy_simulator_attempt_and_first_turn_roll_back_together() {
     let directory = TestDir::new();
     create_v4(&directory.database(), "project-a", true);
-    let database = Database::open(&directory.database()).unwrap();
+    let database = crate::database::open_database(&directory.database()).unwrap();
     database.bootstrap_snapshot().unwrap();
     let before = simulator_durable_state(&database, "project-a", "chat-a");
 
@@ -1853,7 +1857,7 @@ fn lazy_simulator_attempt_and_first_turn_roll_back_together() {
     );
     drop(database);
 
-    let reopened = Database::open(&directory.database()).unwrap();
+    let reopened = crate::database::open_database(&directory.database()).unwrap();
     assert_eq!(
         simulator_durable_state(&reopened, "project-a", "chat-a"),
         before
@@ -1869,14 +1873,14 @@ fn lazy_simulator_attempt_and_first_turn_roll_back_together() {
 fn migrated_empty_chat_creates_its_first_simulator_attempt_without_a_session_anchor() {
     let directory = TestDir::new();
     create_v4(&directory.database(), "project-a", false);
-    let database = Database::open(&directory.database()).unwrap();
+    let database = crate::database::open_database(&directory.database()).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     assert_eq!(initial.active_tab_id.as_deref(), Some("chat-a"));
     assert_eq!(initial.session_id, None);
     assert!(initial.messages.is_empty());
     drop(database);
 
-    let reopened = Database::open(&directory.database()).unwrap();
+    let reopened = crate::database::open_database(&directory.database()).unwrap();
     let appended = reopened
         .append_simulator_turn("chat-a", "first prompt", "ack")
         .unwrap();
@@ -1898,7 +1902,7 @@ fn migrated_empty_chat_creates_its_first_simulator_attempt_without_a_session_anc
     assert_eq!(session_shape, (0, "ready".into(), "cold".into(), 0));
     drop(reopened);
 
-    let reopened = Database::open(&directory.database()).unwrap();
+    let reopened = crate::database::open_database(&directory.database()).unwrap();
     let restored = reopened.bootstrap_snapshot().unwrap();
     assert_eq!(restored.session_id, Some(appended.session_id));
     assert_eq!(restored.messages.len(), 2);

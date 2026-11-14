@@ -1,4 +1,5 @@
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use tauri::State;
 
 use crate::{
@@ -47,14 +48,17 @@ pub(crate) async fn search_project_chats_inner(
 }
 
 fn require_existing_project(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     project_id: &str,
 ) -> AppResult<()> {
-    let exists: bool = database.connection().query_row(
-        "SELECT EXISTS(SELECT 1 FROM projects WHERE id=?1)",
-        [project_id],
-        |row| row.get(0),
-    )?;
+    let exists: bool = database
+        .connection()
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM projects WHERE id=?1)",
+            [project_id],
+            |row| row.get(0),
+        )
+        .db()?;
     if !exists {
         return Err(AppError::InvalidRequest(
             "Chat search Project does not belong to this workspace".into(),

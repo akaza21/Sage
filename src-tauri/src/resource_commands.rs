@@ -1,5 +1,7 @@
 use tauri::{AppHandle, Manager, State};
 
+use crate::project_registry::ProjectRegistryStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     editor,
     editor_coordination::EditorOperationKind,
@@ -52,7 +54,7 @@ pub(crate) async fn build_bootstrap_snapshot(
 }
 
 fn build_initial_bootstrap_snapshot(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     harnesses: &crate::harnesses::HarnessCatalog,
     startup_recovery_notice: Option<&str>,
     transition_epoch: u64,
@@ -380,7 +382,7 @@ async fn run_editor_operation<T: Send + 'static>(
     resource: ResourceRef,
     kind: EditorOperationKind,
     operation: impl FnOnce(
-        &crate::persistence::Database,
+        &sage_db::database::Database,
         &Workspace,
         &ResourceRef,
     ) -> sage_core::error::AppResult<T>
@@ -402,18 +404,19 @@ async fn run_editor_operation<T: Send + 'static>(
 
 #[cfg(test)]
 mod tests {
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use std::{fs, path::Path};
 
     use uuid::Uuid;
 
     use super::*;
-    use crate::persistence::Database;
     use sage_domain::editor::RecoveredEditorBuffer;
 
     fn snapshot() -> (std::path::PathBuf, BootstrapSnapshot, String) {
         let root = std::env::temp_dir().join(format!("sage-recovery-tabs-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         (root, snapshot, project.roots[0].id.clone())
@@ -433,7 +436,7 @@ mod tests {
     fn initial_bootstrap_defers_repository_status() {
         let root = std::env::temp_dir().join(format!("sage-initial-bootstrap-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         database.create_project_from_root(&root).unwrap();
         let state = AppState::new(database);
 
@@ -547,7 +550,7 @@ mod tests {
             fs::write(root.join(format!("{index}.txt")), "clean\n").unwrap();
         }
         let database_path = base.join("sage.db");
-        let database = Database::open(&database_path).unwrap();
+        let database = crate::database::open_database(&database_path).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let root_id = project.roots[0].id.clone();
         let initial = database.bootstrap_snapshot().unwrap();
@@ -600,7 +603,7 @@ mod tests {
 
         let runtime = tokio::runtime::Runtime::new().unwrap();
         for _ in 0..2 {
-            let state = AppState::new(Database::open(&database_path).unwrap());
+            let state = AppState::new(crate::database::open_database(&database_path).unwrap());
             let restored = runtime
                 .block_on(build_bootstrap_snapshot(&state, 0))
                 .unwrap();

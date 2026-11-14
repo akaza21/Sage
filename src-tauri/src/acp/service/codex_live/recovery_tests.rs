@@ -9,10 +9,18 @@ use std::{
 
 use super::live_recovery::{LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
+use crate::acp::store::commands::PrepareTurnStore;
 use crate::acp::{
     runtime::{DriverMailbox, LiveRunnerHandle},
     store::{ActivateSessionCommand, StartSessionCommand},
 };
+use crate::chat_archive::ChatArchiveStore;
+use crate::chat_archive::delete::ArchivedChatDeleteStore;
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::side_chat_storage::SideChatStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::{
     contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId},
     intent::BindingId,
@@ -106,7 +114,7 @@ async fn activating_session_fixture(
     RuntimeOwner,
     crate::acp::runtime::SessionTreeLease,
 ) {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
@@ -302,7 +310,7 @@ async fn ready_runtime_fixture_with(
     label: &str,
     capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1,
 ) -> (AcpService, RuntimeOwner) {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
@@ -412,7 +420,7 @@ async fn seat_ready_session_with(
 
 #[test]
 fn drop_attempts_persistent_recovery_at_most_twice_before_forced_cleanup() {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let service = AcpService::new(database).unwrap();
     let before = super::super::super::shutdown::DROP_RECOVERY_ATTEMPTS
         .load(std::sync::atomic::Ordering::Acquire);
@@ -1130,7 +1138,7 @@ async fn projection_start_fixture(
     CoordinatorActivationJournal,
     Arc<RuntimeHost>,
 ) {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
@@ -1390,7 +1398,7 @@ fn app_with_engine(
 ) -> (crate::state::AppState, RuntimeOwner, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-archive-runtime-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
-    let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
     let chat = bootstrap.active_tab_id.clone().unwrap();

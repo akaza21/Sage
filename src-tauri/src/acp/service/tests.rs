@@ -4,6 +4,8 @@ use std::{
     time::Duration,
 };
 
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     acp::{
         bindings::{
@@ -27,7 +29,6 @@ use crate::{
         },
         transcript_quote::Prompt,
     },
-    persistence::Database,
     project_registry::ProjectRootAuthority,
 };
 use sage_acp_protocol::{
@@ -39,6 +40,8 @@ use sage_acp_protocol::{
     lifecycle::TurnState,
     scheduler::RuntimeOwner,
 };
+#[cfg(windows)]
+use sage_db::database::Database;
 use sage_domain::{chat::ProjectLayoutRequest, project::ProjectSwitchRequest};
 
 #[cfg(windows)]
@@ -72,7 +75,7 @@ fn admitted_claude_session_starts_and_prepares_activation_without_codex_admissio
                 node_sha256: crate::harness_discovery::sha256_file(&node).unwrap(),
             })),
         );
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project_root = std::env::current_dir().unwrap().canonicalize().unwrap();
         let project = database.create_project_from_root(&project_root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
@@ -174,7 +177,7 @@ fn admitted_claude_session_starts_and_prepares_activation_without_codex_admissio
 #[test]
 fn codex_drift_transition_invalidates_the_shared_service_and_catalog_registration() {
     let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let service = AcpService::new_with_codex_for_test(database, registration.clone()).unwrap();
     let catalog = crate::harnesses::HarnessCatalog::with_codex_registration_and_presence(
         registration.clone(),
@@ -222,7 +225,7 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
     tauri::async_runtime::block_on(async {
         let registration =
             crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
@@ -309,7 +312,7 @@ fn codex_start_rejects_a_model_without_current_scoped_discovery() {
     tauri::async_runtime::block_on(async {
         let registration =
             crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
@@ -378,7 +381,7 @@ fn uncharacterised_observed_codex_starts_without_a_model_catalogue() {
         registration
             .authenticate_observed_for_test(executable, "codex 0.145.0".into())
             .unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
@@ -427,7 +430,7 @@ fn codex_start_rejects_drift_before_any_durable_write() {
     tauri::async_runtime::block_on(async {
         let registration =
             crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
@@ -833,7 +836,7 @@ fn earlier_codex_session_resumes_its_thread_in_a_linked_session() {
 #[test]
 fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
     tauri::async_runtime::block_on(async {
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
@@ -983,7 +986,7 @@ fn activation_abort_category_is_a_closed_non_diagnostic_allowlist() {
 #[test]
 fn abort_resume_restores_ready_cold_and_retains_external_identity() {
     tauri::async_runtime::block_on(async {
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
@@ -1157,7 +1160,7 @@ fn codex_session_setup() -> (
     std::path::PathBuf,
 ) {
     let registration = crate::acp::bindings::codex::CodexBindingRegistration::admitted_for_test();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
@@ -1192,7 +1195,7 @@ fn renderer_recreation_snapshot_covers_the_exact_native_invariance_boundary() {
     #[cfg(windows)]
     let _serial = sage_test_support::test_wait::serial_process_guard();
 
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     database
         .connection()
         .execute_batch(
@@ -1423,7 +1426,8 @@ impl RuntimeEngine for BlockingShutdownEngine {
 #[test]
 fn service_keeps_background_turn_live_and_stops_runtime_before_journal_drop() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     let events = Arc::new(Mutex::new(Vec::new()));
     let runtime = Arc::new(RuntimeHost::start(Engine(Arc::clone(&events))).unwrap());
     let owner = RuntimeOwner {
@@ -1465,7 +1469,8 @@ fn service_keeps_background_turn_live_and_stops_runtime_before_journal_drop() {
 #[test]
 fn final_window_shutdown_returns_at_deadline_and_retries_the_same_actor() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     let gate = Arc::new((Mutex::new(false), Condvar::new()));
     let runtime = Arc::new(
         RuntimeHost::start_with_timeout(
@@ -1499,7 +1504,7 @@ fn final_window_shutdown_returns_at_deadline_and_retries_the_same_actor() {
 #[test]
 fn desktop_notifier_starts_without_an_entered_tokio_runtime() {
     assert!(tokio::runtime::Handle::try_current().is_err());
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let service =
         AcpService::new_with_notification_sink(database, Arc::new(GatedSink::default())).unwrap();
     service.shutdown_blocking().unwrap();
@@ -1513,7 +1518,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
         let root_b = base.join("b");
         fs::create_dir_all(&root_a).unwrap();
         fs::create_dir_all(&root_b).unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project_a = database.create_project_from_root(&root_a).unwrap();
         let project_b = database.create_project_from_root(&root_b).unwrap();
         let snapshot_b = database.bootstrap_snapshot().unwrap();

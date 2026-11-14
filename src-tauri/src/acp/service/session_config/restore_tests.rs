@@ -12,7 +12,6 @@ use crate::acp::{
     session_config::{ConfigChannel, choices},
     store::AdapterTurnCursor,
 };
-use crate::persistence::Database;
 use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     session_config::{
@@ -362,7 +361,7 @@ fn a_restarted_runtime_sends_the_stored_effort_before_the_next_prompt() {
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("sage.db");
     {
-        let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+        let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
         seed(&service);
         let first = owner(1);
         let agent = start(&service, &first, effort("low"));
@@ -371,7 +370,7 @@ fn a_restarted_runtime_sends_the_stored_effort_before_the_next_prompt() {
         assert_eq!(stored(&service), [option("effort", "high")]);
         service.shutdown_blocking().unwrap();
     }
-    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
     let resumed = owner(2);
     let agent = start(&service, &resumed, effort("low"));
     assert_eq!(shown_effort(&service, &resumed), "low");
@@ -394,7 +393,8 @@ fn a_restarted_runtime_sends_the_stored_effort_before_the_next_prompt() {
 #[test]
 fn values_no_longer_offered_or_refused_fall_back_to_the_session_without_retrying() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     {
         let connection = service.database.connection();
@@ -435,8 +435,10 @@ fn values_no_longer_offered_or_refused_fall_back_to_the_session_without_retrying
 #[test]
 fn a_binding_whose_access_owns_its_mode_never_has_a_stored_mode_reapplied() {
     for binding in ["claude-agent-acp", "claude-code-sdk"] {
-        let service =
-            AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        let service = AcpService::new(
+            crate::database::open_database(std::path::Path::new(":memory:")).unwrap(),
+        )
+        .unwrap();
         seed_binding(&service, binding);
         {
             let connection = service.database.connection();
@@ -482,7 +484,7 @@ fn a_new_sessions_first_mode_survives_a_resume_that_starts_elsewhere() {
         std::env::temp_dir().join(format!("sage-config-new-mode-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("sage.db");
-    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
     seed(&service);
     let first = owner(1);
     let agent = open(&service, &first, true, "default", effort("low"));
@@ -492,7 +494,7 @@ fn a_new_sessions_first_mode_survives_a_resume_that_starts_elsewhere() {
     service.shutdown_blocking().unwrap();
     // The harness resumes a transcript with no mode in "auto".
     drop(service);
-    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
     let resumed = owner(2);
     let agent = open(&service, &resumed, false, "auto", effort("low"));
     service.restore_session_config(&resumed).unwrap();
@@ -518,7 +520,8 @@ fn a_new_sessions_first_mode_survives_a_resume_that_starts_elsewhere() {
 #[test]
 fn stored_options_are_kept_while_the_session_has_not_reported_options() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     {
         let connection = service.database.connection();
@@ -575,7 +578,8 @@ fn what_the_harness_reports_itself_is_stored_once_the_runtime_is_restored() {
 #[test]
 fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     {
         let connection = service.database.connection();
@@ -623,7 +627,8 @@ fn an_effort_the_harness_resets_keeps_its_stored_value_until_it_is_restored() {
 #[test]
 fn a_choice_raced_by_another_change_is_retried_once_against_it() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     {
         let connection = service.database.connection();
@@ -665,7 +670,8 @@ fn a_choice_raced_by_another_change_is_retried_once_against_it() {
 #[test]
 fn a_change_that_needs_recovery_is_reported_instead_of_the_prompt_being_sent() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     {
         let connection = service.database.connection();
@@ -710,7 +716,8 @@ fn a_change_that_needs_recovery_is_reported_instead_of_the_prompt_being_sent() {
 #[test]
 fn a_choice_the_user_makes_while_the_restore_is_deferred_is_kept() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     {
         let connection = service.database.connection();
@@ -748,7 +755,8 @@ fn a_choice_the_user_makes_while_the_restore_is_deferred_is_kept() {
 #[test]
 fn a_change_whose_time_ran_out_before_it_was_sent_is_restored_later_on_a_healthy_runtime() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     {
         let connection = service.database.connection();
@@ -805,7 +813,7 @@ fn a_runtime_killed_without_shutdown_leaves_its_session_unresumable_after_restar
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("sage.db");
     {
-        let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+        let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
         seed(&service);
         let connection = service.database.connection();
         connection
@@ -829,7 +837,7 @@ fn a_runtime_killed_without_shutdown_leaves_its_session_unresumable_after_restar
         );
         // No shutdown: the process is killed here.
     }
-    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
     let (state, residency, heads): (String, String, i64) = service
         .database
         .connection()

@@ -1,12 +1,10 @@
 use std::io;
 
-use crate::{
-    acp::{
-        characterization_observation::CharacterizationObservationEvent,
-        process::{SpawnTimingReceipt, monotonic_tick},
-    },
-    persistence::WalConvergenceReceipt,
+use crate::acp::{
+    characterization_observation::CharacterizationObservationEvent,
+    process::{SpawnTimingReceipt, monotonic_tick},
 };
+use sage_db::physical_storage::WalConvergenceReceipt;
 
 use super::super::types::CharacterizationCase;
 use super::schema::{Latency, MAX_SAFE_INTEGER, MonotonicClock, WalConvergence, checked_duration};

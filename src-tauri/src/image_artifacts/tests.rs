@@ -1,6 +1,7 @@
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-use crate::persistence::Database;
 use sage_acp_protocol::intent::ImageMediaType;
 
 use super::{
@@ -18,7 +19,7 @@ fn admitted_png_is_retrievable_only_by_its_chat_owner() {
     let directory =
         std::env::temp_dir().join(format!("sage-image-ingest-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     let connection = database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
@@ -70,7 +71,7 @@ fn admitted_png_is_retrievable_only_by_its_chat_owner() {
 fn png_larger_than_thumbnail_cap_keeps_full_image_and_bounded_preview() {
     let directory = std::env::temp_dir().join(format!("sage-image-large-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     let connection = database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
@@ -123,7 +124,7 @@ fn png_larger_than_thumbnail_cap_keeps_full_image_and_bounded_preview() {
 fn admitted_jpeg_is_retrievable_with_its_declared_dimensions() {
     let directory = std::env::temp_dir().join(format!("sage-image-jpeg-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     let connection = database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
@@ -156,7 +157,7 @@ fn upload_payload_rejects_plus_one_bytes_before_creating_an_artifact() {
     let directory =
         std::env::temp_dir().join(format!("sage-image-upload-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     let request = UploadChatImageRequest {
         project_id: "p".into(),
         project_generation: 1,
@@ -183,7 +184,7 @@ fn pending_image_can_be_removed_only_by_its_chat_owner() {
     let directory =
         std::env::temp_dir().join(format!("sage-image-remove-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     let connection = database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
@@ -218,7 +219,7 @@ fn pending_image_can_be_removed_only_by_its_chat_owner() {
 fn exact_four_mib_png_is_kept_as_uploaded_and_larger_ones_are_normalised() {
     let directory = std::env::temp_dir().join(format!("sage-image-limit-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     let connection = database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
@@ -289,7 +290,7 @@ fn exact_four_mib_png_is_kept_as_uploaded_and_larger_ones_are_normalised() {
 fn a_4k_screenshot_is_normalised_at_upload_and_retired_once_sent() {
     let directory = std::env::temp_dir().join(format!("sage-image-sent-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     let connection = database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
@@ -334,7 +335,7 @@ fn uploads_queue_for_one_image_work_permit_without_holding_the_project_lock() {
             let root =
                 std::env::temp_dir().join(format!("sage-image-work-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();
-            let database = Database::open(&root.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&root.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let chat_id = database
                 .bootstrap_snapshot()

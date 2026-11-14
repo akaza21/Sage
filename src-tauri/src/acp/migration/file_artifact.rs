@@ -6,6 +6,7 @@ use std::{
 
 use rusqlite::{Connection, OpenFlags};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use sha2::{Digest, Sha256};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -113,8 +114,9 @@ pub(super) fn open_read_only(path: &Path) -> AppResult<AnchoredConnection> {
         OpenFlags::SQLITE_OPEN_READ_ONLY
             | OpenFlags::SQLITE_OPEN_NO_MUTEX
             | OpenFlags::SQLITE_OPEN_URI,
-    )?;
-    connection.pragma_update(None, "query_only", true)?;
+    )
+    .db()?;
+    connection.pragma_update(None, "query_only", true).db()?;
     anchor.verify_path(path)?;
     Ok(AnchoredConnection {
         connection: Some(connection),

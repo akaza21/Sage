@@ -222,7 +222,7 @@ fn native_claude_subprocess_binding_pump_sqlite_stream_cancel_and_permissions() 
             assert!(selection.consume_one_shot().is_err());
             let registry = Arc::new(BindingRegistry::desktop_claude_fixture(selection).unwrap());
             let reopened = AcpService::new_with_registry_for_test(
-                crate::persistence::Database::open(&database_path).unwrap(),
+                crate::database::open_database(&database_path).unwrap(),
                 registry,
             )
             .unwrap();

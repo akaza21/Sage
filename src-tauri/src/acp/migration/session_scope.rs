@@ -1,4 +1,5 @@
 use super::*;
+use sage_db::error::SqliteResultExt;
 
 pub(super) const V21: &str = include_str!("../../../migrations/021_acp_session_scope.sql");
 
@@ -18,14 +19,18 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         SchemaClass::CurrentV20 => {}
         _ => return invalid("session surfaces require exact schema v20"),
     }
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V21)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (21,?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 21)?;
-    transaction.commit()?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(V21).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version,applied_at) VALUES (21,?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 21).db()?;
+    transaction.commit().db()?;
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV21 {
         return invalid("database did not reach exact schema v21");
     }

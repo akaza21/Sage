@@ -1,6 +1,7 @@
 use std::fs;
 
 use rusqlite::{Connection, OpenFlags};
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
 use sage_core::error::{AppError, AppResult};
@@ -101,10 +102,11 @@ fn inspect_snapshot<T>(
     let connection = Connection::open_with_flags(
         path,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )?;
-    connection.pragma_update(None, "query_only", true)?;
+    )
+    .db()?;
+    connection.pragma_update(None, "query_only", true).db()?;
     let result = inspect(&connection)?;
-    connection.close().map_err(|(_, error)| error)?;
+    connection.close().map_err(|(_, error)| error).db()?;
     anchor.verify_path(path)?;
     Ok(result)
 }

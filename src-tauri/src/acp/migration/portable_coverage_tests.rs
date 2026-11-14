@@ -3,7 +3,10 @@ use std::{fs, path::PathBuf, time::Duration};
 use rusqlite::{Connection, backup::Backup, params};
 use uuid::Uuid;
 
-use crate::{persistence::Database, project_migration};
+use crate::project_migration;
+use crate::session_events::SessionEventStore;
+use crate::workbench_persistence::store::WorkbenchStore;
+use sage_db::database::Database;
 
 use super::{
     INITIAL, MigrationPaths, V2, V3,
@@ -256,7 +259,7 @@ fn portable_v4_transform_then_database_runtime_preserves_simulator_restart_and_r
     apply_through_v18(&mut upgrade).unwrap();
     upgrade.close().unwrap();
 
-    let database = Database::open(&directory.database()).unwrap();
+    let database = crate::database::open_database(&directory.database()).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     assert_eq!(initial.session_id, None);
     assert_eq!(initial.messages.len(), 1);
@@ -268,7 +271,7 @@ fn portable_v4_transform_then_database_runtime_preserves_simulator_restart_and_r
     assert!(rollback.is_err());
     assert_eq!(simulator_state(&database), before);
     drop(database);
-    let database = Database::open(&directory.database()).unwrap();
+    let database = crate::database::open_database(&directory.database()).unwrap();
     assert_eq!(simulator_state(&database), before);
     let after_rollback = database.bootstrap_snapshot().unwrap();
     assert_eq!(after_rollback.session_id, None);
@@ -317,7 +320,7 @@ fn portable_v4_transform_then_database_runtime_preserves_simulator_restart_and_r
     assert_eq!(second.session_id, session);
     drop(database);
 
-    let restarted = Database::open(&directory.database()).unwrap();
+    let restarted = crate::database::open_database(&directory.database()).unwrap();
     let snapshot = restarted.bootstrap_snapshot().unwrap();
     assert_eq!(snapshot.session_id.as_deref(), Some(session.as_str()));
     assert_eq!(snapshot.messages.len(), 5);
@@ -332,7 +335,7 @@ fn portable_v4_transform_then_database_runtime_creates_first_empty_chat_prompt()
     apply_through_v18(&mut upgrade).unwrap();
     upgrade.close().unwrap();
 
-    let database = Database::open(&directory.database()).unwrap();
+    let database = crate::database::open_database(&directory.database()).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     assert_eq!(initial.session_id, None);
     assert!(initial.messages.is_empty());
@@ -362,7 +365,7 @@ fn portable_v4_transform_then_database_runtime_creates_first_empty_chat_prompt()
         (0, "ready".into(), "cold".into(), 0)
     );
     drop(database);
-    let restarted = Database::open(&directory.database()).unwrap();
+    let restarted = crate::database::open_database(&directory.database()).unwrap();
     let restored = restarted.bootstrap_snapshot().unwrap();
     assert_eq!(restored.session_id, Some(turn.session_id));
     assert_eq!(restored.messages.len(), 2);

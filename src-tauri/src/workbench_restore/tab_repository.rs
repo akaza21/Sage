@@ -1,5 +1,6 @@
 use rusqlite::params;
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use sage_domain::{repository::RepositoryRef, resource::ResourceRef};
 
@@ -61,13 +62,15 @@ pub fn validate_root_membership(
     project_id: &str,
     root_id: &str,
 ) -> AppResult<()> {
-    let matches: bool = connection.query_row(
-        "SELECT EXISTS(
+    let matches: bool = connection
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM project_roots WHERE id = ?1 AND project_id = ?2
          )",
-        params![root_id, project_id],
-        |row| row.get(0),
-    )?;
+            params![root_id, project_id],
+            |row| row.get(0),
+        )
+        .db()?;
     if !matches {
         return Err(AppError::InvalidRequest(
             "layout resource root does not belong to its project".into(),

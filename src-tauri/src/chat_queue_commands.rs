@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use tauri::State;
 
+use crate::chat_queue::ChatQueueStore;
 use crate::{chat_queue::DurableQueuedPrompt, state::AppState};
 
 #[tauri::command]

@@ -12,6 +12,7 @@ use tokio::{
     time::timeout,
 };
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::state::AppState;
 
 use super::{
@@ -225,8 +226,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
+    use crate::project_registry::create::ProjectCreateStore;
     use crate::{
-        persistence::Database,
         state::AppState,
         workspace::search::{helper_protocol, tests::request},
     };
@@ -237,7 +238,8 @@ mod tests {
             let root = std::env::temp_dir().join(format!("sage-search-race-{}", Uuid::new_v4()));
             fs::create_dir_all(&root).unwrap();
             fs::write(root.join("file.txt"), "needle\n").unwrap();
-            let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+            let database =
+                crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let state = Arc::new(AppState::new(database));
             let mut search_request = request("needle");

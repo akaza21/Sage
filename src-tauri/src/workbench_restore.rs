@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet};
 
 use rusqlite::{OptionalExtension, params};
+use sage_db::error::SqliteResultExt;
 
 mod tab_repository;
 use sage_core::error::{AppError, AppResult};
@@ -53,7 +54,8 @@ pub fn restore_layout(
             [project_id],
             |row| row.get(0),
         )
-        .optional()?
+        .optional()
+        .db()?
         .unwrap_or(0);
     if selection_bytes > MAX_LAYOUT_SELECTION_BYTES {
         return Err(AppError::ResourceLimit(
@@ -73,7 +75,8 @@ pub fn restore_layout(
                 ))
             },
         )
-        .optional()?
+        .optional()
+        .db()?
         .unwrap_or((None, None, None));
     let active_tab_id = configured_tab
         .filter(|id| tabs.iter().any(|tab| &tab.id == id))
@@ -127,7 +130,8 @@ pub fn validate_resource_for_project(
                 })
             },
         )
-        .optional()?
+        .optional()
+        .db()?
         .ok_or_else(|| {
             AppError::InvalidRequest("layout resource root does not belong to its project".into())
         })?;
@@ -139,35 +143,40 @@ fn load_tabs(
     project_id: &str,
     roots: &HashMap<&str, &RootRecord>,
 ) -> AppResult<Vec<WorkbenchTab>> {
-    let count: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM (
+    let count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM (
            SELECT 1 FROM workbench_tabs
            WHERE project_id = ?1 LIMIT ?2
          )",
-        params![project_id, MAX_RESTORED_TABS as i64 + 1],
-        |row| row.get(0),
-    )?;
+            params![project_id, MAX_RESTORED_TABS as i64 + 1],
+            |row| row.get(0),
+        )
+        .db()?;
     if count > MAX_RESTORED_TABS as i64 {
         return Err(AppError::ResourceLimit(format!(
             "project exceeds its {MAX_RESTORED_TABS}-tab restore limit"
         )));
     }
-    let bytes: i64 = connection.query_row(
-        "SELECT COALESCE(SUM(
+    let bytes: i64 = connection
+        .query_row(
+            "SELECT COALESCE(SUM(
            length(CAST(id AS BLOB)) + length(CAST(kind AS BLOB))
            + length(CAST(title AS BLOB)) + length(CAST(metadata_json AS BLOB))
            + COALESCE(length(CAST(status AS BLOB)), 0)
          ), 0)
          FROM workbench_tabs WHERE project_id = ?1",
-        [project_id],
-        |row| row.get(0),
-    )?;
+            [project_id],
+            |row| row.get(0),
+        )
+        .db()?;
     if bytes > MAX_RESTORED_TAB_BYTES {
         return Err(AppError::ResourceLimit(
             "persisted tabs exceed restore count or byte limits".into(),
         ));
     }
-    let mut statement = connection.prepare(&format!(
+    let mut statement = connection
+        .prepare(&format!(
         "SELECT w.id, w.kind, w.title, w.position, w.pinned, w.dirty, w.status, w.metadata_json,
                 CASE
                   WHEN w.kind = 'chat' THEN COALESCE(c.updated_at, w.updated_at)
@@ -180,7 +189,8 @@ fn load_tabs(
          WHERE w.project_id = ?1
          ORDER BY w.position LIMIT ?2",
         crate::project_registry::CHAT_FINISHED_AT
-    ))?;
+    ))
+        .db()?;
     let rows = statement
         .query_map(params![project_id, MAX_RESTORED_TABS as i64 + 1], |row| {
             Ok((
@@ -195,8 +205,10 @@ fn load_tabs(
                 row.get::<_, Option<i64>>(8)?,
                 row.get::<_, Option<i64>>(9)?,
             ))
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        })
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     if rows.len() > MAX_RESTORED_TABS {
         return Err(AppError::ResourceLimit(format!(
             "project exceeds its {MAX_RESTORED_TABS}-tab restore limit"
@@ -401,13 +413,15 @@ fn validate_resource_metadata(root: &RootRecord, resource: &ResourceRef) -> AppR
 
 #[cfg(test)]
 mod tests {
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use std::{fs, path::Path};
 
     use rusqlite::params;
     use uuid::Uuid;
 
     use super::*;
-    use crate::persistence::Database;
+    use sage_db::database::Database;
 
     struct Fixture {
         folder: std::path::PathBuf,
@@ -421,7 +435,7 @@ mod tests {
             let folder = std::env::temp_dir().join(format!("sage-restore-{}", Uuid::new_v4()));
             fs::create_dir_all(&folder).unwrap();
             fs::write(folder.join("main.rs"), "fn main() {}\n").unwrap();
-            let database = Database::open(Path::new(":memory:")).unwrap();
+            let database = crate::database::open_database(Path::new(":memory:")).unwrap();
             let project = database.create_project_from_root(&folder).unwrap();
             Self {
                 folder,

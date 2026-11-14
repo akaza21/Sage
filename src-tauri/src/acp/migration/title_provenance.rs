@@ -1,4 +1,5 @@
 use super::*;
+use sage_db::error::SqliteResultExt;
 
 pub(super) const V20: &str = include_str!("../../../migrations/020_chat_title_provenance.sql");
 
@@ -19,14 +20,18 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         SchemaClass::CurrentV19 => {}
         _ => return invalid("Chat title provenance requires exact schema v19"),
     }
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V20)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (20,?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 20)?;
-    transaction.commit()?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(V20).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version,applied_at) VALUES (20,?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 20).db()?;
+    transaction.commit().db()?;
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV20 {
         return invalid("database did not reach exact schema v20");
     }

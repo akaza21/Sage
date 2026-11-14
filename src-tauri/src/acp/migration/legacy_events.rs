@@ -1,4 +1,5 @@
 use rusqlite::{Transaction, params};
+use sage_db::error::SqliteResultExt;
 use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -74,28 +75,32 @@ fn event_page(
     session_id: &str,
     after_sequence: i64,
 ) -> AppResult<Vec<LegacyEvent>> {
-    let mut statement = transaction.prepare(
-        "SELECT id, sequence, payload_json, created_at
+    let mut statement = transaction
+        .prepare(
+            "SELECT id, sequence, payload_json, created_at
          FROM legacy_session_events_v4
          WHERE session_id=?1 AND sequence>?2
          ORDER BY sequence LIMIT ?3",
-    )?;
-    let mut rows = statement.query(params![
-        session_id,
-        after_sequence,
-        ROWS_PER_PAGE as i64 + 1
-    ])?;
+        )
+        .db()?;
+    let mut rows = statement
+        .query(params![
+            session_id,
+            after_sequence,
+            ROWS_PER_PAGE as i64 + 1
+        ])
+        .db()?;
     let mut page = Vec::with_capacity(ROWS_PER_PAGE);
     let mut bytes = 0_usize;
-    while let Some(row) = rows.next()? {
+    while let Some(row) = rows.next().db()? {
         if page.len() == ROWS_PER_PAGE {
             break;
         }
         let event = LegacyEvent {
-            id: row.get(0)?,
-            sequence: row.get(1)?,
-            payload: row.get(2)?,
-            created_at: row.get(3)?,
+            id: row.get(0).db()?,
+            sequence: row.get(1).db()?,
+            payload: row.get(2).db()?,
+            created_at: row.get(3).db()?,
         };
         let row_bytes = event.id.len().saturating_add(event.payload.len());
         if !page.is_empty() && bytes.saturating_add(row_bytes) > BYTES_PER_PAGE {
@@ -135,29 +140,32 @@ fn write_turn(
     let first = events.first().expect("legacy Turn is nonempty");
     let last = events.last().expect("legacy Turn is nonempty");
     let turn_id = legacy_turn_id(&session.id, first.sequence, last.sequence);
-    transaction.execute(
-        "INSERT INTO turns (
+    transaction
+        .execute(
+            "INSERT INTO turns (
            id, project_id, chat_id, session_id, runtime_epoch, ordinal,
            client_intent_id, state, delivery_state, revision,
            created_at, updated_at, terminal_at
          ) VALUES (?1,?2,?3,?4,0,?5,?6,'completed','correlated',0,?7,?8,?8)",
-        params![
-            turn_id,
-            session.project_id,
-            session.chat_tab_id,
-            session.id,
-            ordinal,
-            format!("legacy-{ordinal}"),
-            first.created_at,
-            last.created_at
-        ],
-    )?;
+            params![
+                turn_id,
+                session.project_id,
+                session.chat_tab_id,
+                session.id,
+                ordinal,
+                format!("legacy-{ordinal}"),
+                first.created_at,
+                last.created_at
+            ],
+        )
+        .db()?;
     let mut aggregate = Sha256::new();
     for event in events {
         let digest = hex_digest(event.payload.as_bytes());
         aggregate.update(digest.as_bytes());
-        transaction.execute(
-            "INSERT INTO items (
+        transaction
+            .execute(
+                "INSERT INTO items (
                id, project_id, chat_id, session_id, turn_id, runtime_epoch,
                ordinal, origin, activity_id, kind, lifecycle, tool_state,
                external_item_id, payload_json, payload_bytes, payload_digest,
@@ -166,19 +174,20 @@ fn write_turn(
                ?1,?2,?3,?4,?5,0,?6,'primary',NULL,'text','completed',NULL,
                NULL,?7,?8,?9,0,?10,?10,?10
              )",
-            params![
-                event.id,
-                session.project_id,
-                session.chat_tab_id,
-                session.id,
-                turn_id,
-                event.sequence,
-                event.payload,
-                event.payload.len() as i64,
-                digest,
-                event.created_at
-            ],
-        )?;
+                params![
+                    event.id,
+                    session.project_id,
+                    session.chat_tab_id,
+                    session.id,
+                    turn_id,
+                    event.sequence,
+                    event.payload,
+                    event.payload.len() as i64,
+                    digest,
+                    event.created_at
+                ],
+            )
+            .db()?;
     }
     let fact_payload = json!({
         "firstSequence": first.sequence,
@@ -187,24 +196,26 @@ fn write_turn(
         "aggregateDigest": format!("{:x}", aggregate.finalize())
     })
     .to_string();
-    transaction.execute(
-        "INSERT INTO session_facts (
+    transaction
+        .execute(
+            "INSERT INTO session_facts (
            project_id, chat_id, session_id, sequence, turn_id, kind,
            payload_json, payload_bytes, payload_digest,
            projection_revision, created_at
          ) VALUES (?1,?2,?3,?4,?5,'legacyTurnRange',?6,?7,?8,?4,?9)",
-        params![
-            session.project_id,
-            session.chat_tab_id,
-            session.id,
-            ordinal + 1,
-            turn_id,
-            fact_payload,
-            fact_payload.len() as i64,
-            hex_digest(fact_payload.as_bytes()),
-            last.created_at
-        ],
-    )?;
+            params![
+                session.project_id,
+                session.chat_tab_id,
+                session.id,
+                ordinal + 1,
+                turn_id,
+                fact_payload,
+                fact_payload.len() as i64,
+                hex_digest(fact_payload.as_bytes()),
+                last.created_at
+            ],
+        )
+        .db()?;
     Ok(())
 }
 

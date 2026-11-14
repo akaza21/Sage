@@ -8,8 +8,13 @@ use uuid::Uuid;
 
 use super::create::MAX_PROJECT_NAME_CHARS;
 use super::*;
-use crate::{editor, persistence::Database, state::AppState};
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::editor_persistence::store::EditorBufferStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
+use crate::{editor, state::AppState};
 use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
+use sage_db::database::Database;
 use sage_domain::{chat::ProjectLayoutRequest, project::ProjectSwitchRequest};
 
 fn runtime() -> tokio::runtime::Runtime {
@@ -20,7 +25,7 @@ fn runtime() -> tokio::runtime::Runtime {
 fn process_root_authority_rejects_unknown_and_foreign_roots() {
     runtime().block_on(async {
         let folders = Folders::new();
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let foreign = database
             .create_project_from_root(&folders.root("foreign"))
             .unwrap();
@@ -55,7 +60,7 @@ fn process_root_authority_rejects_noncanonical_alias_and_missing_root() {
     runtime().block_on(async {
         let folders = Folders::new();
         let root = folders.root("root");
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let root_id = SageRootId::parse(project.roots[0].id.clone()).unwrap();
         let state = AppState::new(database.clone());
@@ -92,7 +97,7 @@ fn retained_process_root_detects_or_blocks_directory_substitution() {
         let folders = Folders::new();
         let root = folders.root("root");
         let moved = folders.base.join("moved");
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let state = AppState::new(database.clone());
         let project_id = SageProjectId::parse(project.id).unwrap();
@@ -127,7 +132,7 @@ fn process_root_authority_rejects_registered_symlink_alias() {
         let root = folders.root("root");
         let alias = folders.base.join("alias");
         symlink(&root, &alias).unwrap();
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let root_id = SageRootId::parse(project.roots[0].id.clone()).unwrap();
         database
@@ -158,7 +163,7 @@ fn process_root_authority_rejects_registered_windows_directory_alias() {
         if std::os::windows::fs::symlink_dir(&root, &alias).is_err() {
             return;
         }
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let root_id = SageRootId::parse(project.roots[0].id.clone()).unwrap();
         database
@@ -219,7 +224,7 @@ fn duplicate_canonical_root_is_rejected_and_nested_root_is_allowed() {
     let outer = folders.root("outer");
     let nested = outer.join("nested");
     fs::create_dir_all(&nested).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&outer).unwrap();
 
     assert!(database.add_project_root(&project.id, &outer).is_err());
@@ -231,7 +236,7 @@ fn duplicate_canonical_root_is_rejected_and_nested_root_is_allowed() {
 #[test]
 fn root_limit_is_rejected_without_losing_existing_roots() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database
         .create_project_from_root(&folders.root("root-0"))
         .unwrap();
@@ -254,7 +259,7 @@ fn root_limit_is_rejected_without_losing_existing_roots() {
 #[test]
 fn project_limit_is_rejected_without_losing_the_registry() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     for index in 0..MAX_PROJECTS {
         database
             .create_project_from_root(&folders.root(&format!("project-{index}")))
@@ -294,7 +299,7 @@ fn non_utf8_selected_root_is_rejected_before_sqlite_persistence() {
         }
         Err(error) => panic!("raw invalid-byte root setup failed unexpectedly: {error}"),
     }
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
 
     assert!(matches!(
         database.create_project_from_root(&root),
@@ -322,7 +327,7 @@ fn missing_root_remains_typed_and_does_not_hide_available_roots() {
     let folders = Folders::new();
     let first = folders.root("available");
     let missing = folders.root("missing");
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&first).unwrap();
     database.add_project_root(&project.id, &missing).unwrap();
     fs::remove_dir_all(&missing).unwrap();
@@ -339,7 +344,7 @@ fn same_relative_path_in_two_roots_has_independent_durable_buffers() {
     let right = folders.root("right");
     fs::write(left.join("src.rs"), "left\n").unwrap();
     fs::write(right.join("src.rs"), "right\n").unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&left).unwrap();
     let project = database.add_project_root(&project.id, &right).unwrap();
     let records = database.root_records(&project.id).unwrap();
@@ -378,7 +383,7 @@ fn switching_projects_restores_layout_and_dirty_buffer_metadata() {
     let root_a = folders.root("a");
     let root_b = folders.root("b");
     fs::write(root_a.join("dirty.txt"), "base\n").unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project_a = database.create_project_from_root(&root_a).unwrap();
     let record_a = database
         .root_records(&project_a.id)
@@ -422,7 +427,7 @@ fn switching_projects_restores_layout_and_dirty_buffer_metadata() {
 #[test]
 fn missing_active_project_reference_falls_back_deterministically() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project_a = database
         .create_project_from_root(&folders.root("fallback-a"))
         .unwrap();
@@ -449,7 +454,7 @@ fn missing_active_project_reference_falls_back_deterministically() {
 #[test]
 fn create_add_and_switch_reject_stale_project_intents_without_mutation() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project_a = database
         .create_project_from_root(&folders.root("intent-a"))
         .unwrap();
@@ -496,7 +501,7 @@ fn create_add_and_switch_reject_stale_project_intents_without_mutation() {
 #[ignore = "manual release-mode project-transition performance evidence"]
 fn benchmarks_twenty_project_switches_with_authoritative_projection() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project_a = database
         .create_project_from_root(&folders.root("switch-a"))
         .unwrap();
@@ -533,7 +538,7 @@ fn benchmarks_twenty_project_switches_with_authoritative_projection() {
 
 #[test]
 fn ensure_local_project_creates_a_zero_root_chat_home() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let first = database.ensure_local_project().unwrap();
     assert_eq!(first.name, "Local");
     assert!(first.roots.is_empty());
@@ -561,7 +566,7 @@ fn project_list_includes_bounded_chats_for_every_project() {
     let second_root = base.join("sage");
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let cross = database.create_project_from_root(&first_root).unwrap();
     let cross_chat = database
         .bootstrap_snapshot()
@@ -605,7 +610,7 @@ fn project_list_includes_bounded_chats_for_every_project() {
 #[test]
 fn inactive_project_lists_its_first_chats_by_update_and_by_manual_order() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database
         .create_project_from_root(&folders.root("many"))
         .unwrap();
@@ -652,7 +657,7 @@ fn inactive_project_lists_its_first_chats_by_update_and_by_manual_order() {
 #[test]
 fn inactive_project_keeps_an_older_pin_ahead_of_eight_newer_chats() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database
         .create_project_from_root(&folders.root("pinned"))
         .unwrap();
@@ -688,7 +693,7 @@ fn inactive_project_keeps_an_older_pin_ahead_of_eight_newer_chats() {
 #[test]
 fn named_project_keeps_its_name_and_source_folders_in_order() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let active = database
         .create_project_from_root(&folders.root("active"))
         .unwrap();
@@ -714,7 +719,7 @@ fn named_project_keeps_its_name_and_source_folders_in_order() {
 
 #[test]
 fn named_project_may_start_without_source_folders() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database
         .create_named_project_if_active("Notes", &[], None)
         .unwrap();
@@ -725,7 +730,7 @@ fn named_project_may_start_without_source_folders() {
 #[test]
 fn named_project_rejects_bad_names_and_duplicate_folders_without_mutation() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let web = folders.root("dup-web");
     for (name, roots) in [
         ("   ", vec![]),
@@ -751,7 +756,7 @@ fn named_project_rejects_bad_names_and_duplicate_folders_without_mutation() {
 #[test]
 fn rail_chat_finish_time_ignores_runtime_bookkeeping() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database
         .create_project_from_root(&folders.root("finished"))
         .unwrap();
@@ -815,7 +820,7 @@ fn rail_chat_finish_time_ignores_runtime_bookkeeping() {
 #[test]
 fn project_list_keeps_its_order_when_another_project_opens() {
     let folders = Folders::new();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let names = ["first", "second", "third"];
     for (created_at, name) in (1_i64..).zip(names) {
         let project = database

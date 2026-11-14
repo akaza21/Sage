@@ -234,7 +234,7 @@ impl AcpService {
 }
 
 fn load_durable_session(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     project_id: &sage_acp_protocol::contract::SageProjectId,
     chat_id: &sage_acp_protocol::contract::SageChatId,
     session_id: &sage_acp_protocol::contract::SageAgentSessionId,
@@ -269,7 +269,7 @@ fn load_durable_session(
 /// The undone Turn a resumed native thread is cut before, while one waits.
 /// A pending restart never reaches here: the head is replaced first.
 fn pending_cut(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     owner: &RuntimeOwner,
 ) -> Result<Option<String>, CodexSessionError> {
     let rewind =
@@ -322,7 +322,7 @@ fn activation_mode(
 /// Moves a cold Claude Code SDK session to the admitted CLI after an
 /// update; validation admits no other binding whose digest differs.
 fn rebind_claude_sdk_session(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     owner: &RuntimeOwner,
     binding_digest: &str,
     harness_version: &str,

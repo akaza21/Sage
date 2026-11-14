@@ -1,5 +1,6 @@
 use rusqlite::{Row, Transaction, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
@@ -101,7 +102,7 @@ pub(super) fn apply(transaction: &Transaction<'_>) -> AppResult<()> {
         }
     }
     for statement in restored {
-        transaction.execute_batch(&statement)?;
+        transaction.execute_batch(&statement).db()?;
     }
     Ok(())
 }
@@ -117,7 +118,8 @@ fn suspend_triggers(transaction: &Transaction<'_>) -> AppResult<Vec<String>> {
             )
             .ok();
         if let Some(definition) = definition {
-            transaction.execute_batch(&format!("DROP TRIGGER {name}"))?;
+            let drop = format!("DROP TRIGGER {name}");
+            transaction.execute_batch(&drop).db()?;
             restored.push(definition);
         }
     }
@@ -137,12 +139,12 @@ const PAGE_SQL: &str = "SELECT u.id,u.project_id,u.session_id,
          LIMIT ?2";
 
 fn load_page(transaction: &Transaction<'_>, cursor: &str) -> AppResult<Vec<LegacyUpdate>> {
-    let mut statement = transaction.prepare(PAGE_SQL)?;
-    let mut rows = statement.query(params![cursor, PAGE_ROWS])?;
+    let mut statement = transaction.prepare(PAGE_SQL).db()?;
+    let mut rows = statement.query(params![cursor, PAGE_ROWS]).db()?;
     let mut page = Vec::new();
     let mut bytes = 0_i64;
-    while let Some(row) = rows.next()? {
-        let update = legacy_update(row)?;
+    while let Some(row) = rows.next().db()? {
+        let update = legacy_update(row).db()?;
         let cost = update.payload_json.len() as i64
             + update.call.as_ref().map_or(0, |call| call.payload_bytes);
         if !page.is_empty() && bytes + cost > PAGE_BYTES {
@@ -175,11 +177,14 @@ pub(super) fn page_for_test(
 
 #[cfg(test)]
 pub(super) fn page_plan_for_test(transaction: &Transaction<'_>) -> AppResult<String> {
-    let mut statement = transaction.prepare(&format!("EXPLAIN QUERY PLAN {PAGE_SQL}"))?;
-    let rows = statement.query_map(params!["", PAGE_ROWS], |row| row.get::<_, String>(3))?;
+    let explain = format!("EXPLAIN QUERY PLAN {PAGE_SQL}");
+    let mut statement = transaction.prepare(&explain).db()?;
+    let rows = statement
+        .query_map(params!["", PAGE_ROWS], |row| row.get::<_, String>(3))
+        .db()?;
     let mut plan = String::new();
     for row in rows {
-        plan.push_str(&row?);
+        plan.push_str(&row.db()?);
         plan.push('\n');
     }
     Ok(plan)
@@ -223,47 +228,57 @@ fn fold(transaction: &Transaction<'_>, update: LegacyUpdate) -> AppResult<()> {
                 preserve_call_presentation,
             )?;
             let status = folded_status(&update, call);
-            transaction.execute(
-                "UPDATE items SET payload_json=?1,payload_bytes=?2,payload_digest=?3,
+            transaction
+                .execute(
+                    "UPDATE items SET payload_json=?1,payload_bytes=?2,payload_digest=?3,
                         lifecycle=?4,tool_state=?5,terminal_at=?6,updated_at=?7,revision=revision+1
                  WHERE id=?8",
-                params![
-                    merged,
-                    merged.len() as i64,
-                    digest(&merged),
-                    status.lifecycle,
-                    status.tool_state,
-                    status.terminal_at,
-                    status.updated_at,
-                    call.id,
-                ],
-            )?;
+                    params![
+                        merged,
+                        merged.len() as i64,
+                        digest(&merged),
+                        status.lifecycle,
+                        status.tool_state,
+                        status.terminal_at,
+                        status.updated_at,
+                        call.id,
+                    ],
+                )
+                .db()?;
             release(
                 transaction,
                 &update.project_id,
                 &update.session_id,
                 merged.len() as i64 - call.payload_bytes,
-            )?;
-            transaction.execute(
-                "UPDATE session_activities SET parent_item_id=?1 WHERE parent_item_id=?2",
-                params![call.id, update.id],
-            )?;
-            transaction.execute("DELETE FROM items WHERE id=?1", [&update.id])?;
+            )
+            .db()?;
+            transaction
+                .execute(
+                    "UPDATE session_activities SET parent_item_id=?1 WHERE parent_item_id=?2",
+                    params![call.id, update.id],
+                )
+                .db()?;
+            transaction
+                .execute("DELETE FROM items WHERE id=?1", [&update.id])
+                .db()?;
         }
         None => {
             let merged = merged_payload(&update.payload_json, None, false)?;
-            transaction.execute(
-                "UPDATE items SET kind='toolCall',payload_json=?1,payload_bytes=?2,
+            transaction
+                .execute(
+                    "UPDATE items SET kind='toolCall',payload_json=?1,payload_bytes=?2,
                         payload_digest=?3,revision=revision+1
                  WHERE id=?4",
-                params![merged, merged.len() as i64, digest(&merged), update.id],
-            )?;
+                    params![merged, merged.len() as i64, digest(&merged), update.id],
+                )
+                .db()?;
             release(
                 transaction,
                 &update.project_id,
                 &update.session_id,
                 merged.len() as i64 - update.payload_json.len() as i64,
-            )?;
+            )
+            .db()?;
         }
     }
     Ok(())
@@ -388,7 +403,7 @@ fn release(
     project_id: &str,
     session_id: &str,
     delta: i64,
-) -> AppResult<()> {
+) -> rusqlite::Result<()> {
     if delta == 0 {
         return Ok(());
     }

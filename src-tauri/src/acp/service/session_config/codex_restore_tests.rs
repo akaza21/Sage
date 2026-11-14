@@ -25,7 +25,6 @@ use crate::acp::{
     transcript_quote::Prompt,
     transport::{Frame, IncrementalFrameDecoder},
 };
-use crate::persistence::Database;
 use sage_acp_protocol::{
     contract::{RequiredText, SageTurnId},
     intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
@@ -257,7 +256,8 @@ fn go_live_writing(
 #[test]
 fn the_first_prompt_after_a_restart_carries_the_restored_model_and_effort() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     store(
@@ -303,7 +303,8 @@ fn the_first_prompt_after_a_restart_carries_the_restored_model_and_effort() {
 #[test]
 fn a_stored_effort_waits_for_codex_to_report_the_thread_effort() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     store(&service, &owner, &[option("effort", "high")]);
@@ -352,7 +353,8 @@ fn restore_share(service: &AcpService, owner: &RuntimeOwner) -> f64 {
 #[test]
 fn activation_with_no_stored_choices_does_not_wait_for_the_model_list() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     let slot = &service.lane_at(0).runtime;
@@ -374,7 +376,8 @@ fn activation_with_no_stored_choices_does_not_wait_for_the_model_list() {
 #[test]
 fn a_rejected_model_list_write_ends_hydration() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     store(&service, &owner, &[option("effort", "high")]);

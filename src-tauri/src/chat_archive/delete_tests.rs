@@ -1,4 +1,10 @@
+use crate::chat_archive::ChatArchiveStore;
+use crate::chat_purge::ChatPurgeStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::session_events::SessionEventStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use rusqlite::params;
+use sage_db::error::SqliteResultExt;
 
 use super::*;
 use sage_core::limits::LIMITS;
@@ -23,7 +29,7 @@ impl Fixture {
 fn fixture() -> Fixture {
     let root = std::env::temp_dir().join(format!("sage-chat-delete-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
-    let database = Database::open(&root.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&root).unwrap().id;
     Fixture {
         root,
@@ -44,9 +50,9 @@ fn layout(project: &str, snapshot: &BootstrapSnapshot) -> ProjectLayoutRequest {
 
 fn new_chat(database: &Database, project: &str) -> AppResult<String> {
     let mut connection = database.write_connection()?;
-    let transaction = connection.transaction()?;
+    let transaction = connection.transaction().db()?;
     let chat = crate::chat_lifecycle::insert_new_chat(&transaction, project, true, None)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     Ok(chat)
 }
 
@@ -459,8 +465,12 @@ fn a_delete_refused_at_commit_keeps_the_chat_its_images_and_every_guard() {
     assert!(
         matches!(
             &error,
-            AppError::Database(rusqlite::Error::SqliteFailure(failure, _))
-                if failure.extended_code == 787
+            AppError::Database(sqlite)
+                if matches!(
+                    sqlite.downcast_ref::<rusqlite::Error>(),
+                    Some(rusqlite::Error::SqliteFailure(failure, _))
+                        if failure.extended_code == 787
+                )
         ),
         "refused at COMMIT by the deferred foreign-key check: {error:?}"
     );

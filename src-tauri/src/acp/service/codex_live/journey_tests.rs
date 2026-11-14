@@ -4,6 +4,10 @@ use std::{
 };
 
 use super::*;
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::chat_queue::ChatQueueStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     acp::{
         bindings::codex::{
@@ -141,7 +145,7 @@ fn restart_resume_then_another_turn_reads_sqlite() {
         drop(setup);
         assert_job_zero();
 
-        let database = crate::persistence::Database::open(&database_path).unwrap();
+        let database = crate::database::open_database(&database_path).unwrap();
         let resumed = AcpService::new_with_codex_publisher_for_test(
             database,
             registration,
@@ -599,7 +603,7 @@ async fn assert_lost_steer_result_after_reopen(
     }
     drop(setup);
 
-    let reopened = crate::persistence::Database::open(&database_path).unwrap();
+    let reopened = crate::database::open_database(&database_path).unwrap();
     let restored = reopened.project_chat_queued_prompts(&project_id).unwrap();
     let row = &restored[&chat_id][0];
     assert_eq!(row.id, "same-message-id");
@@ -727,7 +731,7 @@ impl FixtureSetup {
         registry: std::sync::Arc<crate::acp::bindings::registry::BindingRegistry>,
         selected_project_root: &Path,
     ) -> Self {
-        let database = crate::persistence::Database::open(path).unwrap();
+        let database = crate::database::open_database(path).unwrap();
         let root_path = selected_project_root.canonicalize().unwrap();
         let project = database.create_project_from_root(&root_path).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();

@@ -95,7 +95,7 @@ pub(in crate::acp::service) fn store_error(
 }
 
 pub(in crate::acp::service) fn next_runtime_epoch(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     session: &sage_acp_protocol::contract::SageAgentSessionId,
 ) -> Result<sage_acp_protocol::contract::RuntimeEpoch, CodexSessionError> {
     let latest: i64 = database
@@ -144,7 +144,7 @@ pub(super) fn continues_on_later_release(
 }
 
 pub(super) fn restarts_after_undo(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     session: &DurableSession,
     session_id: &sage_acp_protocol::contract::SageAgentSessionId,
 ) -> Result<bool, CodexSessionError> {

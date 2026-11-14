@@ -7,10 +7,14 @@ use std::{
 
 use rusqlite::params;
 use sage_core::time::now_millis;
+use sage_db::error::SqliteResultExt;
 use uuid::Uuid;
 
 use super::*;
-use crate::{editor_coordination::EditorOperationKind, persistence::Database, state::AppState};
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
+use crate::{editor_coordination::EditorOperationKind, state::AppState};
 use sage_domain::{
     chat::{ProjectLayoutRequest, WorkbenchTab},
     file_operations::RenameProjectFileRequest,
@@ -35,7 +39,7 @@ impl Fixture {
         let root = std::env::temp_dir().join(format!("sage-rename-command-{}", Uuid::new_v4()));
         fs::create_dir_all(root.join("src")).unwrap();
         fs::write(root.join("src/old.rs"), "preserve\n").unwrap();
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let layout = ProjectLayoutRequest {
@@ -494,14 +498,17 @@ fn rename_and_editor_snapshot_are_serialized_in_ticket_order() {
         let root_id = fixture.root_id.clone();
         let snapshot = tokio::task::spawn_blocking(move || {
             operations.execute(old_snapshot_ticket, EditorOperationKind::Snapshot, || {
-                database.write_connection()?.execute(
-                    "INSERT INTO editor_buffers(
+                database
+                    .write_connection()?
+                    .execute(
+                        "INSERT INTO editor_buffers(
                        project_id,root_id,relative_path,base_fingerprint,base_byte_len,
                        base_modified_at,line_ending,buffer_content,buffer_byte_len,
                        buffer_fingerprint,revision,pending_temp_path,updated_at
                      ) VALUES(?1,?2,'src/old.rs','base',0,NULL,'none','',0,'buffer',1,NULL,?3)",
-                    params![project_id, root_id, now_millis()],
-                )?;
+                        params![project_id, root_id, now_millis()],
+                    )
+                    .db()?;
                 Ok(())
             })
         });
@@ -535,14 +542,17 @@ fn editor_snapshot_that_wins_admission_blocks_rename_before_mutation() {
         let root_id = fixture.root_id.clone();
         let snapshot = tokio::task::spawn_blocking(move || {
             operations.execute(snapshot_ticket, EditorOperationKind::Snapshot, || {
-                database.write_connection()?.execute(
-                    "INSERT INTO editor_buffers(
+                database
+                    .write_connection()?
+                    .execute(
+                        "INSERT INTO editor_buffers(
                        project_id,root_id,relative_path,base_fingerprint,base_byte_len,
                        base_modified_at,line_ending,buffer_content,buffer_byte_len,
                        buffer_fingerprint,revision,pending_temp_path,updated_at
                      ) VALUES(?1,?2,'src/old.rs','base',0,NULL,'none','',0,'buffer',1,NULL,?3)",
-                    params![project_id, root_id, now_millis()],
-                )?;
+                        params![project_id, root_id, now_millis()],
+                    )
+                    .db()?;
                 started_tx.send(()).unwrap();
                 release_rx.recv_timeout(Duration::from_secs(2)).unwrap();
                 Ok(())

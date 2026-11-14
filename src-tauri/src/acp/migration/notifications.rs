@@ -1,4 +1,5 @@
 use super::*;
+use sage_db::error::SqliteResultExt;
 
 pub(super) const V22: &str = include_str!("../../../migrations/022_turn_notifications.sql");
 
@@ -17,14 +18,18 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         SchemaClass::CurrentV21 => {}
         _ => return invalid("turn notifications require exact schema v22"),
     }
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V22)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (22,?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 22)?;
-    transaction.commit()?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(V22).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version,applied_at) VALUES (22,?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 22).db()?;
+    transaction.commit().db()?;
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV22 {
         return invalid("database did not reach exact schema v22");
     }

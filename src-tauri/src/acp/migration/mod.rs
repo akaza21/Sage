@@ -12,6 +12,7 @@ mod legacy_project;
 mod limits;
 mod manifest;
 mod notifications;
+mod opened;
 mod operation_terminal_index;
 mod paths;
 mod platform;
@@ -41,6 +42,7 @@ pub(crate) use fingerprint::CURRENT_SCHEMA_VERSION;
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use identity::legacy_binding_digest;
 pub(crate) use image_files::{read_image_file, remove_image_file};
+use sage_db::error::SqliteResultExt;
 
 use std::{fs, path::Path, time::Duration};
 
@@ -58,6 +60,7 @@ use self::{
         SchemaClass, classify_path, database_fingerprint, file_fingerprint, open_read_only,
     },
     limits::{LIVE_SQLITE_BYTES, TEMP_SQLITE_BYTES},
+    opened::{LivePathAnchor, OpenedDatabase},
     paths::MigrationPaths,
     platform::{MigrationLock, sync_file, sync_parent},
     publish::recover_or_publish,
@@ -87,47 +90,9 @@ const V14: &str = include_str!("../../../migrations/014_chat_image_artifacts.sql
 const V15: &str = include_str!("../../../migrations/015_acp_child_thread_bindings.sql");
 const V16: &str = include_str!("../../../migrations/016_acp_child_thread_transcripts.sql");
 
-pub(crate) struct OpenedDatabase {
-    connection: Connection,
-    live_path_anchor: LivePathAnchor,
-}
-
 #[cfg(all(test, not(windows)))]
 pub(crate) fn complete_v4_upgrade_for_test(connection: &mut Connection) -> AppResult<()> {
     apply_through_v18(connection)
-}
-
-#[derive(Debug)]
-pub(crate) struct LivePathAnchor {
-    _anchor: Option<platform::SqlitePathAnchor>,
-}
-
-impl LivePathAnchor {
-    pub(crate) fn verify_path(&self, path: &Path) -> AppResult<()> {
-        self._anchor
-            .as_ref()
-            .map_or(Ok(()), |anchor| anchor.verify_path(path))
-    }
-}
-
-impl OpenedDatabase {
-    pub(crate) fn into_parts(self) -> (Connection, LivePathAnchor) {
-        (self.connection, self.live_path_anchor)
-    }
-}
-
-impl std::ops::Deref for OpenedDatabase {
-    type Target = Connection;
-
-    fn deref(&self) -> &Self::Target {
-        &self.connection
-    }
-}
-
-impl std::ops::DerefMut for OpenedDatabase {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.connection
-    }
 }
 
 pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
@@ -155,7 +120,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
 
 fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
     if path == Path::new(":memory:") {
-        let mut connection = Connection::open_in_memory()?;
+        let mut connection = Connection::open_in_memory().db()?;
         build_fresh_v18(&mut connection)?;
         return Ok(OpenedDatabase {
             connection,
@@ -205,7 +170,7 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
             } else {
                 platform::create_sqlite_stage(path)?
             };
-            let mut connection = Connection::open(path)?;
+            let mut connection = Connection::open(path).db()?;
             build_fresh_v18(&mut connection)?;
             verify_current(&connection)?;
             anchor.verify_path(path)?;
@@ -219,7 +184,7 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
             } else if probe::classify_live(&paths)? != source_schema {
                 return invalid("current SQLite path changed before its anchored open");
             }
-            let connection = Connection::open(path)?;
+            let connection = Connection::open(path).db()?;
             verify_current(&connection)?;
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
@@ -259,7 +224,7 @@ fn migrate_replacement(paths: &MigrationPaths) -> AppResult<OpenedDatabase> {
     #[cfg(test)]
     test_failpoint::hit("postcommit-reopen")?;
     let anchor = platform::anchor_existing_sqlite(&paths.live, true)?;
-    let connection = Connection::open(&paths.live)?;
+    let connection = Connection::open(&paths.live).db()?;
     verify_current(&connection)?;
     anchor.verify_path(&paths.live)?;
     Ok(opened_database(connection, anchor))
@@ -296,19 +261,28 @@ fn build_replacement(
         nonce,
     )?;
     fail_replacement_build_if_injected()?;
-    let mut destination = Connection::open(&paths.replacement_stage)?;
-    destination.pragma_update(None, "journal_mode", "TRUNCATE")?;
-    let page_size: i64 = destination.pragma_query_value(None, "page_size", |row| row.get(0))?;
-    destination.pragma_update(
-        None,
-        "max_page_count",
-        (TEMP_SQLITE_BYTES as i64) / page_size.max(1),
-    )?;
-    Backup::new(&source, &mut destination)?.run_to_completion(256, Duration::ZERO, None)?;
+    let mut destination = Connection::open(&paths.replacement_stage).db()?;
+    destination
+        .pragma_update(None, "journal_mode", "TRUNCATE")
+        .db()?;
+    let page_size: i64 = destination
+        .pragma_query_value(None, "page_size", |row| row.get(0))
+        .db()?;
+    destination
+        .pragma_update(
+            None,
+            "max_page_count",
+            (TEMP_SQLITE_BYTES as i64) / page_size.max(1),
+        )
+        .db()?;
+    Backup::new(&source, &mut destination)
+        .db()?
+        .run_to_completion(256, Duration::ZERO, None)
+        .db()?;
     drop(source);
     apply_through_v18(&mut destination)?;
     verify_current(&destination)?;
-    destination.close().map_err(|(_, error)| error)?;
+    destination.close().map_err(|(_, error)| error).db()?;
     anchor.verify_path(&paths.replacement_stage)?;
     anchor.sync()?;
     drop(anchor);
@@ -337,16 +311,19 @@ fn checkpoint_source(
     backup: &VerifiedBackup,
 ) -> AppResult<manifest::SourceSet> {
     let anchor = platform::anchor_existing_sqlite(&paths.live, true)?;
-    let connection = Connection::open(&paths.live)?;
-    connection.execute_batch("PRAGMA busy_timeout=0; BEGIN IMMEDIATE;")?;
+    let connection = Connection::open(&paths.live).db()?;
+    connection
+        .execute_batch("PRAGMA busy_timeout=0; BEGIN IMMEDIATE;")
+        .db()?;
     if database_fingerprint(&connection)? != backup.source.database {
         return invalid("legacy source changed after backup publication");
     }
-    connection.execute_batch("ROLLBACK")?;
-    let (busy, _log, _checkpointed): (i64, i64, i64) =
-        connection.query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
+    connection.execute_batch("ROLLBACK").db()?;
+    let (busy, _log, _checkpointed): (i64, i64, i64) = connection
+        .query_row("PRAGMA wal_checkpoint(TRUNCATE)", [], |row| {
             Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })?;
+        })
+        .db()?;
     if busy != 0 {
         return invalid("legacy WAL did not converge before replacement");
     }
@@ -354,7 +331,7 @@ fn checkpoint_source(
     if database != backup.source.database {
         return invalid("legacy logical fingerprint changed during checkpoint");
     }
-    connection.close().map_err(|(_, error)| error)?;
+    connection.close().map_err(|(_, error)| error).db()?;
     anchor.verify_path(&paths.live)?;
     let after = manifest::SourceSet {
         database,
@@ -373,11 +350,13 @@ fn verify_current(connection: &Connection) -> AppResult<()> {
         return invalid("database did not reach an exact current schema");
     }
     verify_sqlite(connection)?;
-    let store_rows: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM acp_store_usage WHERE singleton=1",
-        [],
-        |row| row.get(0),
-    )?;
+    let store_rows: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM acp_store_usage WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if store_rows != 1 {
         return invalid("ACP global usage ledger is missing or duplicated");
     }

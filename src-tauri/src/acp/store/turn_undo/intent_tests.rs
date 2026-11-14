@@ -91,7 +91,7 @@ fn upgrading_a_populated_ledger_seeks_undo_intents_and_recovers_only_the_unsettl
         )
         .unwrap();
     }
-    let reopened = crate::persistence::Database::open(&fixture.root.join("sage.db")).unwrap();
+    let reopened = crate::database::open_database(&fixture.root.join("sage.db")).unwrap();
     let mut connection = reopened.connection();
     connection.execute_batch("ANALYZE").unwrap();
     assert!(matches!(

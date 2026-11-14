@@ -1,5 +1,6 @@
 use tauri::State;
 
+use crate::acp::bindings::codex::runtime::authority::CodexRootAuthorityStore;
 use crate::{
     acp::{
         bindings::codex::{CodexAuthDeadline, CodexDiscoveryRunError, NativeApiKey},

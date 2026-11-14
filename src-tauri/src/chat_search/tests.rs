@@ -1,16 +1,20 @@
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::session_events::SessionEventStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use std::{fs, path::Path, time::Duration};
 
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{ProjectChatSearchRequest, SearchLimits, search_project_chats};
-use crate::persistence::Database;
+use sage_db::database::Database;
 use sage_domain::chat::ProjectLayoutRequest;
 
 fn database_with_project() -> (Database, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-chat-search-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     (database, project.id, root)
 }
@@ -67,7 +71,7 @@ fn empty_query_browses_bounded_chats_without_scanning_transcripts() {
 fn disk_search_does_not_wait_for_the_acp_writer_mutex() {
     let root = std::env::temp_dir().join(format!("sage-search-lock-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(&root.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let search_database = database.clone();
     let search_request = request(&project.id, "Chat");
@@ -326,7 +330,7 @@ fn archived_primary_text_remains_searchable_after_restart() {
     fs::create_dir_all(&project_root).unwrap();
     let database_path = directory.join("sage.db");
     let (project_id, chat_id) = {
-        let database = Database::open(&database_path).unwrap();
+        let database = crate::database::open_database(&database_path).unwrap();
         let project = database.create_project_from_root(&project_root).unwrap();
         let chat = database
             .bootstrap_snapshot()
@@ -348,7 +352,7 @@ fn archived_primary_text_remains_searchable_after_restart() {
         (project.id, chat)
     };
 
-    let reopened = Database::open(&database_path).unwrap();
+    let reopened = crate::database::open_database(&database_path).unwrap();
     let response =
         search_project_chats(&reopened, &request(&project_id, "restart-durable")).unwrap();
     assert_eq!(response.results.len(), 1);

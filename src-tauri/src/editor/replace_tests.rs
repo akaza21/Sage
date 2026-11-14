@@ -8,6 +8,8 @@ use uuid::Uuid;
 
 use super::*;
 use crate::editor::recover_pending_saves;
+use crate::editor_persistence::store::EditorBufferStore;
+use crate::project_registry::create::ProjectCreateStore;
 
 struct Fixture {
     root: PathBuf,
@@ -20,7 +22,7 @@ impl Fixture {
         let root = std::env::temp_dir().join(format!("sage-disk-replace-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join(path), content).unwrap();
-        let database = Database::open(&root.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
         Self {

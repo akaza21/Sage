@@ -1,11 +1,12 @@
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use crate::{
-    harnesses::HarnessCatalog, persistence::Database, project_registry::MAX_PROJECTS,
-    workbench_restore::MAX_RESTORED_TABS,
+    harnesses::HarnessCatalog, project_registry::MAX_PROJECTS, workbench_restore::MAX_RESTORED_TABS,
 };
 use sage_acp_protocol::intent::CapabilitySnapshotV1;
+use sage_db::database::Database;
 use sage_domain::{
     chat::WorkbenchTab,
     harness::HarnessDefinition,
@@ -22,18 +23,21 @@ pub(super) fn restore_harnesses(
     let mut definitions = catalog.definitions();
     // The restored layout is capped at MAX_RESTORED_TABS. Resolve at most one
     // binding per Chat, preferring its head over its latest historical session.
-    let mut statement = connection.prepare(
-        "SELECT s.binding_id FROM chat_tabs t
+    let mut statement = connection
+        .prepare(
+            "SELECT s.binding_id FROM chat_tabs t
          JOIN agent_sessions s ON s.project_id=t.project_id AND s.chat_id=t.chat_id
          LEFT JOIN chat_session_heads h ON h.project_id=s.project_id AND h.chat_id=s.chat_id
          WHERE t.project_id=?1 AND t.tab_id=?2 AND s.legacy=0
          ORDER BY CASE WHEN s.id=h.session_id THEN 0 ELSE 1 END, s.ordinal DESC
          LIMIT 1",
-    )?;
+        )
+        .db()?;
     for tab in tabs.iter().filter(|tab| tab.kind == "chat") {
         let binding: Option<String> = statement
             .query_row(params![project_id, tab.id], |row| row.get(0))
-            .optional()?;
+            .optional()
+            .db()?;
         if let Some(binding) = binding {
             catalog.restore_binding(&binding, &mut definitions);
         }
@@ -41,25 +45,32 @@ pub(super) fn restore_harnesses(
     Ok(definitions)
 }
 
-impl Database {
-    pub(crate) fn next_browser_tab_number(&self) -> AppResult<u64> {
+/// Numbering new browser tabs, on the shared database.
+pub(crate) trait BrowserTabNumberStore {
+    fn next_browser_tab_number(&self) -> AppResult<u64>;
+}
+
+impl BrowserTabNumberStore for Database {
+    fn next_browser_tab_number(&self) -> AppResult<u64> {
         let limit = MAX_PROJECTS * MAX_RESTORED_TABS as i64;
         let connection = self.connection();
-        let mut statement = connection.prepare(
-            "SELECT CASE WHEN length(CAST(id AS BLOB)) > 28 THEN '' ELSE id END
+        let mut statement = connection
+            .prepare(
+                "SELECT CASE WHEN length(CAST(id AS BLOB)) > 28 THEN '' ELSE id END
              FROM workbench_tabs WHERE kind='browser' LIMIT ?1",
-        )?;
-        let mut rows = statement.query([limit + 1])?;
+            )
+            .db()?;
+        let mut rows = statement.query([limit + 1]).db()?;
         let mut count = 0_i64;
         let mut maximum = 0_u64;
-        while let Some(row) = rows.next()? {
+        while let Some(row) = rows.next().db()? {
             count += 1;
             if count > limit {
                 return Err(AppError::ResourceLimit(
                     "persisted browser tab count exceeds its limit".into(),
                 ));
             }
-            let id: String = row.get(0)?;
+            let id: String = row.get(0).db()?;
             let number = id
                 .strip_prefix("browser-")
                 .and_then(|value| value.parse::<u64>().ok())
@@ -112,7 +123,8 @@ pub(super) fn active_project_in(
             [],
             |row| row.get(0),
         )
-        .optional()?
+        .optional()
+        .db()?
         .flatten())
 }
 
@@ -150,7 +162,8 @@ pub(super) fn load_session(
                 ))
             },
         )
-        .optional()?;
+        .optional()
+        .db()?;
     let Some((
         id,
         binding,
@@ -192,7 +205,7 @@ pub(super) fn load_chat_id(
     project_id: &str,
     active_tab_id: Option<&str>,
 ) -> AppResult<Option<String>> {
-    Ok(connection
+    connection
         .query_row(
             "SELECT c.chat_id
              FROM chat_tabs c
@@ -205,5 +218,6 @@ pub(super) fn load_chat_id(
             params![project_id, active_tab_id],
             |row| row.get(0),
         )
-        .optional()?)
+        .optional()
+        .db()
 }

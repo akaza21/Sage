@@ -99,16 +99,16 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{
-        acp::{
-            store::{
-                ActivateSessionCommand, CompleteActivationCommand, PrepareTurnCommand,
-                StartSessionCommand, activate_session, complete_activation, start_session,
-            },
-            transcript_quote::Prompt,
+    use crate::acp::store::commands::PrepareTurnStore;
+    use crate::acp::{
+        store::{
+            ActivateSessionCommand, CompleteActivationCommand, PrepareTurnCommand,
+            StartSessionCommand, activate_session, complete_activation, start_session,
         },
-        persistence::Database,
+        transcript_quote::Prompt,
     };
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use sage_acp_protocol::{
         contract::{
             ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SchemaVersionV1,
@@ -120,7 +120,7 @@ mod tests {
     fn disposition_refresh_releases_the_database_lock_and_advances_the_projection() {
         let root = std::env::temp_dir().join(format!("sage-edit-disposition-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let chat_id = database
             .bootstrap_snapshot()

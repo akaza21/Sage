@@ -1,16 +1,15 @@
 use std::{sync::Arc, time::Duration};
 
-use crate::{
-    acp::{
-        runtime::{
-            BoundedThread, JournalError, JournalHandle, JournalLane, ProjectionNotifier,
-            ProjectionPublisher, SessionCoordinator,
-        },
-        store::{DatabaseAcpStore, StoreError, StoreMutation, StoreMutationResult},
+use crate::acp::{
+    runtime::{
+        BoundedThread, JournalError, JournalHandle, JournalLane, ProjectionNotifier,
+        ProjectionPublisher, SessionCoordinator,
     },
-    persistence::Database,
+    store::{DatabaseAcpStore, StoreError, StoreMutation, StoreMutationResult},
 };
+use crate::project_registry::ProjectRegistryStore;
 use sage_acp_protocol::{contract::SageProjectId, scheduler::Scheduler};
+use sage_db::database::Database;
 
 use super::{AcpService, CodexAuthManager, CodexDiscoveryManager, ServiceConfiguration};
 

@@ -8,7 +8,7 @@ pub(super) struct InFlight {
     _permit: tokio::sync::SemaphorePermit<'static>,
 }
 
-pub(super) type Prepare = dyn Fn(&crate::persistence::Database, &[StoreMutation], Duration) -> Result<(), StoreError>
+pub(super) type Prepare = dyn Fn(&sage_db::database::Database, &[StoreMutation], Duration) -> Result<(), StoreError>
     + Send
     + Sync;
 

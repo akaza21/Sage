@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, Window};
 use uuid::Uuid;
 
+use crate::project_registry::create::ProjectCreateStore;
 use crate::{
     browser::BrowserState,
     project_commands::{execute_committed_transition_checked, pick_folder},

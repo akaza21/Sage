@@ -22,7 +22,7 @@ use crate::project_registry::ProjectRootAuthority;
 use sage_acp_protocol::{contract::SageRootId, scheduler::RuntimeOwner};
 use sage_core::limits::LIMITS;
 
-pub(super) struct DatabaseAuthority(pub(super) crate::persistence::Database);
+pub(super) struct DatabaseAuthority(pub(super) sage_db::database::Database);
 
 impl ProjectIntentAuthority for DatabaseAuthority {
     fn current_snapshot(&self, command: &PrepareTurnCommand) -> Option<IntentSnapshot> {
@@ -45,7 +45,7 @@ use super::{
 };
 
 pub(super) fn validate_session_binding(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     owner: &RuntimeOwner,
 ) -> Result<(), CharacterizationError> {
     let binding = database
@@ -69,7 +69,7 @@ pub(super) fn validate_session_binding(
 }
 
 pub(super) fn load_roots(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     owner: &RuntimeOwner,
 ) -> Result<Vec<ConfiguredResourceRoot>, CharacterizationError> {
     let connection = database.connection();

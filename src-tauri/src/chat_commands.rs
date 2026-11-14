@@ -1,10 +1,15 @@
 use sage_core::error::{AppError, AppResult};
 use tauri::State;
 
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::chat_move::ChatMoveStore;
+use crate::chat_pin::ChatPinStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
-    persistence::Database, preview_lifecycle::on_committed_project_transition_epoch,
+    preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot, state::AppState,
 };
+use sage_db::database::Database;
 use sage_domain::{
     chat::{MoveChatRequest, PinChatRequest, ProjectLayoutRequest, RenameChatRequest},
     project::ProjectTransitionResult,
@@ -212,7 +217,10 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{persistence::Database, state::AppState};
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::session_events::SessionEventStore;
+    use crate::state::AppState;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use sage_domain::{
         chat::{ProjectLayoutRequest, RenameChatRequest, WorkbenchTab},
         resource::ResourceRef,
@@ -224,7 +232,7 @@ mod tests {
             let root = std::env::temp_dir().join(format!("sage-chat-command-{}", Uuid::new_v4()));
             fs::create_dir_all(&root).unwrap();
             let database_path = root.join("sage.db");
-            let database = Database::open(&database_path).unwrap();
+            let database = crate::database::open_database(&database_path).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let initial = database.bootstrap_snapshot().unwrap();
             let history = database
@@ -388,7 +396,7 @@ mod tests {
             );
             drop(state);
 
-            let reopened = Database::open(&database_path).unwrap();
+            let reopened = crate::database::open_database(&database_path).unwrap();
             let restarted = reopened.bootstrap_snapshot().unwrap();
             assert_eq!(
                 restarted.active_tab_id.as_deref(),
@@ -416,7 +424,8 @@ mod tests {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let root = std::env::temp_dir().join(format!("sage-chat-preview-{}", Uuid::new_v4()));
             fs::create_dir_all(&root).unwrap();
-            let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+            let database =
+                crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let initial = database.bootstrap_snapshot().unwrap();
             let layout = ProjectLayoutRequest {

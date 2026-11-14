@@ -1,4 +1,5 @@
 use super::*;
+use sage_db::error::SqliteResultExt;
 
 /// The schema version that adds the session resume link. The migration's
 /// file name carries the same number; nothing else names it.
@@ -16,14 +17,20 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         SchemaClass::CurrentV23 => {}
         _ => return invalid("session resume links require exact schema v23"),
     }
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(SQL)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (?1,?2)",
-        rusqlite::params![VERSION, now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", VERSION)?;
-    transaction.commit()?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(SQL).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version,applied_at) VALUES (?1,?2)",
+            rusqlite::params![VERSION, now_millis()],
+        )
+        .db()?;
+    transaction
+        .pragma_update(None, "user_version", VERSION)
+        .db()?;
+    transaction.commit().db()?;
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentResumeLink {
         return invalid("database did not reach the exact session resume link schema");
     }

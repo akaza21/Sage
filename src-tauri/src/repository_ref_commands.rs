@@ -2,6 +2,7 @@ use sage_core::error::{AppError, AppResult};
 use serde::Deserialize;
 use tauri::State;
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::{
     repository,
     repository_discovery::{self, MAX_REPOSITORIES_PER_PROJECT},
@@ -348,11 +349,13 @@ fn prefix_relative(repository: &str, inner: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use std::{fs, path::Path};
 
     use uuid::Uuid;
 
-    use crate::{persistence::Database, state::AppState};
+    use crate::state::AppState;
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
@@ -379,7 +382,7 @@ mod tests {
         git(&nested, &["add", "--", "app.ts"]);
         git(&nested, &["commit", "-q", "-m", "fixture"]);
         fs::write(nested.join("app.ts"), "export const n = 2;\n").unwrap();
-        let database = Database::open(&base.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&base.join("sage.db")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let root_id = snapshot.project.unwrap().roots[0].id.clone();

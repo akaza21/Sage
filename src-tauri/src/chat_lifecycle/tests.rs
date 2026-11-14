@@ -1,3 +1,6 @@
+use crate::project_registry::create::ProjectCreateStore;
+use crate::session_events::SessionEventStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use std::fs;
 
 use uuid::Uuid;
@@ -19,7 +22,7 @@ fn layout(snapshot: &sage_domain::project::BootstrapSnapshot) -> ProjectLayoutRe
 fn rename_preserves_chat_activity_in_the_recent_rail() {
     let root = std::env::temp_dir().join(format!("sage-rename-activity-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(&root.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let chat_id = initial.active_tab_id.clone().unwrap();
@@ -138,7 +141,7 @@ fn chat_title_contract_trims_and_bounds_utf8_bytes() {
 fn rename_rejects_an_over_limit_layout_before_searching_for_the_target() {
     let root = std::env::temp_dir().join(format!("sage-chat-rename-bound-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(&root.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let chat_id = snapshot.active_tab_id.unwrap();
@@ -176,7 +179,7 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
     let root = std::env::temp_dir().join(format!("sage-chat-rename-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let database_path = root.join("sage.db");
-    let database = Database::open(&database_path).unwrap();
+    let database = crate::database::open_database(&database_path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
@@ -444,7 +447,7 @@ fn rename_is_atomic_for_active_and_inactive_chats_and_survives_restart() {
     }
     drop(database);
 
-    let reopened = Database::open(&database_path).unwrap();
+    let reopened = crate::database::open_database(&database_path).unwrap();
     let restarted = reopened.bootstrap_snapshot().unwrap();
     assert_eq!(
         restarted.active_tab_id.as_deref(),
@@ -473,7 +476,7 @@ fn renames_a_chat_on_a_non_active_project_without_switching() {
     let second_root = base.join("sage");
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let cross = database.create_project_from_root(&first_root).unwrap();
     let cross_chat = database
         .bootstrap_snapshot()
@@ -533,7 +536,7 @@ fn creates_a_chat_on_a_non_active_project_without_switching() {
     let second_root = base.join("sage");
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let cross = database.create_project_from_root(&first_root).unwrap();
     let seeded = database
         .bootstrap_snapshot()

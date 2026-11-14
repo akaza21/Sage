@@ -1,3 +1,4 @@
+use crate::project_registry::ProjectRegistryStore;
 use rusqlite::OptionalExtension;
 use sage_acp_protocol::contract::{ProjectGeneration, SageChatId, SageProjectId};
 use std::{
@@ -159,7 +160,7 @@ struct Session {
 
 /// Whether `scope` names a chat tab of its project, read off the async runtime.
 async fn chat_tab_exists(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     scope: &TerminalScope,
 ) -> Result<bool, TerminalError> {
     let database = database.clone();

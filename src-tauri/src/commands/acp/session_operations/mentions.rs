@@ -3,6 +3,7 @@
 //! Steer carries no mentions: every binding that accepts it sends its text
 //! alone, so a resolved file would never reach the harness.
 use super::*;
+use crate::project_registry::ProjectRegistryStore;
 use crate::{
     acp::{
         prompt_mentions::{MentionRoot, Mentions, mention_tokens, resolve},

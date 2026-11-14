@@ -2,6 +2,7 @@
 //! schema. The editor catalogue ignores this key and cannot modify it.
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
@@ -26,7 +27,8 @@ impl SettingsStore {
                 [],
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
-            .optional()?;
+            .optional()
+            .db()?;
         match value {
             None => Ok(NotificationPreference::Off),
             Some((value, 1)) => serde_json::from_str(&value)
@@ -49,7 +51,7 @@ impl SettingsStore {
             "INSERT INTO editor_settings(key,value,version) VALUES ('notifications.turnEvents',?1,1)
              ON CONFLICT(key) DO UPDATE SET value=excluded.value,version=excluded.version",
             params![match value { NotificationPreference::Off => "\"off\"", NotificationPreference::BackgroundTurns => "\"backgroundTurns\"" }],
-        )?;
+        ).db()?;
         Ok(value)
     }
 }

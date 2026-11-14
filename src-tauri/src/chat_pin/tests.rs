@@ -1,8 +1,11 @@
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::chat_pin::ChatPinStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use std::fs;
 
 use sage_core::error::AppError;
 
-use crate::persistence::Database;
 use sage_domain::chat::{PinChatRequest, ProjectLayoutRequest};
 
 fn layout(snapshot: &sage_domain::project::BootstrapSnapshot) -> ProjectLayoutRequest {
@@ -22,7 +25,7 @@ fn pins_a_chat_on_a_non_active_project_without_switching() {
     let second_root = base.join("sage");
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let cross = database.create_project_from_root(&first_root).unwrap();
     let cross_chat = database
         .create_chat(&layout(&database.bootstrap_snapshot().unwrap()))
@@ -54,7 +57,7 @@ fn pins_a_chat_on_a_non_active_project_without_switching() {
 fn refuses_an_unknown_chat_pin() {
     let root = std::env::temp_dir().join(format!("sage-chat-pin-deny-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let error = database
         .pin_chat(&PinChatRequest {

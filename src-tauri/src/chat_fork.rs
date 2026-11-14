@@ -8,6 +8,7 @@ use sage_core::{
     error::{AppError, AppResult},
     time::now_millis,
 };
+use sage_db::error::SqliteResultExt;
 use tauri::{Manager, State};
 
 use crate::{
@@ -16,7 +17,6 @@ use crate::{
         CHAT_TITLE_PREFIX, MAX_CHAT_TITLE_BYTES, chat_display_title, insert_new_chat,
         validate_chat_identifier,
     },
-    persistence::Database,
     state::AppState,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
 };
@@ -24,6 +24,7 @@ use sage_acp_protocol::{
     contract::{SageChatId, SageProjectId, SageTurnId},
     intent::ExternalId,
 };
+use sage_db::database::Database;
 use sage_domain::{chat::ProjectLayoutRequest, project::ProjectTransitionResult};
 
 /// Fork numbers are searched in a bounded window; a Project holds far fewer
@@ -75,11 +76,21 @@ impl std::fmt::Display for ForkChatError {
 
 const FORK_UNFINISHED: &str = "The fork did not finish; try again";
 
-impl Database {
+/// Forking a Chat, on the shared database.
+pub(crate) trait ChatForkStore {
     /// Creates the fork Chat for an already-forked native session in one
     /// transaction: Chat row and tab (directly above the parent), title,
     /// resumable head session and lineage. A changed source refuses it.
-    pub(crate) fn create_fork_chat(
+    fn create_fork_chat(
+        &self,
+        current_layout: &ProjectLayoutRequest,
+        source: &ForkSource,
+        external_session_id: &ExternalId,
+    ) -> Result<String, ForkChatError>;
+}
+
+impl ChatForkStore for Database {
+    fn create_fork_chat(
         &self,
         current_layout: &ProjectLayoutRequest,
         source: &ForkSource,
@@ -88,12 +99,12 @@ impl Database {
         let mut connection = self.write_connection().map_err(ForkChatError::Refused)?;
         let transaction = connection
             .transaction()
-            .map_err(|error| ForkChatError::Refused(error.into()))?;
+            .map_err(|error| ForkChatError::Refused(sage_db::error::app_error(error)))?;
         let chat_id = stage_fork_chat(&transaction, current_layout, source, external_session_id)
             .map_err(ForkChatError::Refused)?;
         transaction
             .commit()
-            .map_err(|error| ForkChatError::CommitUnknown(error.into()))?;
+            .map_err(|error| ForkChatError::CommitUnknown(sage_db::error::app_error(error)))?;
         Ok(chat_id)
     }
 }
@@ -125,27 +136,34 @@ fn stage_fork_chat(
     )?;
     let titles = {
         let mut statement = transaction
-            .prepare("SELECT title FROM chats WHERE project_id=?1 ORDER BY ordinal LIMIT 4097")?;
+            .prepare("SELECT title FROM chats WHERE project_id=?1 ORDER BY ordinal LIMIT 4097")
+            .db()?;
         statement
-            .query_map([project], |row| row.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?
+            .query_map([project], |row| row.get::<_, String>(0))
+            .db()?
+            .collect::<Result<Vec<_>, _>>()
+            .db()?
     };
-    let parent_title: String = transaction.query_row(
-        "SELECT title FROM chats WHERE project_id=?1 AND id=?2",
-        params![project, source.chat_id.as_str()],
-        |row| row.get(0),
-    )?;
+    let parent_title: String = transaction
+        .query_row(
+            "SELECT title FROM chats WHERE project_id=?1 AND id=?2",
+            params![project, source.chat_id.as_str()],
+            |row| row.get(0),
+        )
+        .db()?;
     let title = fork_title(&parent_title, titles.iter().map(String::as_str));
     let now = now_millis();
-    transaction.execute(
-        "UPDATE chats SET title=?3,title_source=?4 WHERE project_id=?1 AND id=?2",
-        params![
-            project,
-            chat_id,
-            title,
-            crate::chat_lifecycle::ChatTitleSource::Fork.as_str()
-        ],
-    )?;
+    transaction
+        .execute(
+            "UPDATE chats SET title=?3,title_source=?4 WHERE project_id=?1 AND id=?2",
+            params![
+                project,
+                chat_id,
+                title,
+                crate::chat_lifecycle::ChatTitleSource::Fork.as_str()
+            ],
+        )
+        .db()?;
     place_above_parent(
         transaction,
         project,
@@ -173,11 +191,13 @@ pub(crate) fn insert_layout_chat(
             "project layout has reached its {MAX_RESTORED_TABS}-tab limit"
         )));
     }
-    let active: Option<String> = transaction.query_row(
-        "SELECT active_project_id FROM app_state WHERE singleton=1",
-        [],
-        |row| row.get(0),
-    )?;
+    let active: Option<String> = transaction
+        .query_row(
+            "SELECT active_project_id FROM app_state WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if active.as_deref() != Some(project) {
         return Err(AppError::InvalidRequest(inactive.into()));
     }
@@ -195,24 +215,32 @@ fn place_above_parent(
     parent: &str,
     title: &str,
 ) -> AppResult<()> {
-    let parent_position: i64 = transaction.query_row(
-        "SELECT position FROM workbench_tabs WHERE project_id=?1 AND id=?2",
-        params![project, parent],
-        |row| row.get(0),
-    )?;
-    transaction.execute(
-        "UPDATE workbench_tabs SET position=-position-1
+    let parent_position: i64 = transaction
+        .query_row(
+            "SELECT position FROM workbench_tabs WHERE project_id=?1 AND id=?2",
+            params![project, parent],
+            |row| row.get(0),
+        )
+        .db()?;
+    transaction
+        .execute(
+            "UPDATE workbench_tabs SET position=-position-1
          WHERE project_id=?1 AND position>=?2 AND id<>?3",
-        params![project, parent_position, child],
-    )?;
-    transaction.execute(
-        "UPDATE workbench_tabs SET position=?3,title=?4 WHERE project_id=?1 AND id=?2",
-        params![project, child, parent_position, title],
-    )?;
-    transaction.execute(
-        "UPDATE workbench_tabs SET position=-position WHERE project_id=?1 AND position<0",
-        [project],
-    )?;
+            params![project, parent_position, child],
+        )
+        .db()?;
+    transaction
+        .execute(
+            "UPDATE workbench_tabs SET position=?3,title=?4 WHERE project_id=?1 AND id=?2",
+            params![project, child, parent_position, title],
+        )
+        .db()?;
+    transaction
+        .execute(
+            "UPDATE workbench_tabs SET position=-position WHERE project_id=?1 AND position<0",
+            [project],
+        )
+        .db()?;
     Ok(())
 }
 

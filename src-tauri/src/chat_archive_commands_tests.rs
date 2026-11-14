@@ -1,9 +1,12 @@
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::chat_queue::ChatQueueStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use std::fs;
 
 use uuid::Uuid;
 
 use super::*;
-use crate::persistence::Database;
 use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 use sage_domain::chat::ProjectLayoutRequest;
 
@@ -12,7 +15,7 @@ use sage_domain::chat::ProjectLayoutRequest;
 fn two_chat_state(label: &str) -> (AppState, ChatLifecycleRequest, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-chat-command-{label}-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(&root.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();

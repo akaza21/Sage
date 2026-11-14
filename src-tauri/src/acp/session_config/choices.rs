@@ -367,8 +367,7 @@ mod tests {
 
     #[test]
     fn a_session_keeps_one_row_per_option_up_to_the_cap() {
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let mut connection = database.connection();
         connection.execute_batch("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
             INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('chat','project',0,'Chat',1,1);").unwrap();
@@ -401,8 +400,7 @@ mod tests {
 
     #[test]
     fn a_fork_starts_with_its_parents_choices() {
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let mut connection = database.connection();
         connection.execute_batch("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
             INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('parent','project',0,'Parent',1,1),('child','project',1,'Child',1,1);").unwrap();
@@ -426,8 +424,7 @@ mod tests {
 
     #[test]
     fn a_compare_and_set_leaves_a_newer_value_and_its_notice_alone() {
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let mut connection = database.connection();
         connection.execute_batch("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
             INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('chat','project',0,'Chat',1,1);").unwrap();

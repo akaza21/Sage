@@ -1,11 +1,11 @@
 use rusqlite::params;
 
 use super::*;
-use crate::{
-    acp::store::{load_chat_page, session_surface::is_undoable_turn},
-    persistence::Database,
-};
+use crate::acp::store::{load_chat_page, session_surface::is_undoable_turn};
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::contract::ProjectionRevision;
+use sage_db::database::Database;
 
 pub(crate) const CAPABILITIES: &str = super::super::sessions::PENDING_CAPABILITIES_JSON;
 
@@ -36,7 +36,7 @@ impl Fixture {
     pub(crate) fn with_thread(binding: &str, external: &str, capabilities: &str) -> Self {
         let root = std::env::temp_dir().join(format!("sage-undo-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database = Database::open(&root.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project = snapshot.project.as_ref().unwrap().id.clone();

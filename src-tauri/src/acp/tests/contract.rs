@@ -240,7 +240,7 @@ fn protocol_contract_item_kinds_match_the_rust_wire_set() {
 
 #[test]
 fn sqlite_rejects_every_cross_wait_turn_transition() {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let connection = database.connection();
     connection
         .execute_batch(

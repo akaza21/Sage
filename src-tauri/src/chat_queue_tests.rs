@@ -8,7 +8,7 @@ fn reopen_discards_pending_image_but_preserves_queued_image() {
     let path = directory.join("sage.db");
     let (pending, queued);
     {
-        let database = Database::open(&path).unwrap();
+        let database = crate::database::open_database(&path).unwrap();
         database.connection().execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
         database.connection().execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
         pending = crate::image_artifacts::insert_test_image(
@@ -45,7 +45,7 @@ fn reopen_discards_pending_image_but_preserves_queued_image() {
             .unwrap();
     }
     {
-        let database = Database::open(&path).unwrap();
+        let database = crate::database::open_database(&path).unwrap();
         let root = database.image_artifact_root().unwrap();
         let pending_rows: i64 = database
             .connection()
@@ -81,7 +81,7 @@ fn reopen_discards_pending_image_but_preserves_queued_image() {
 fn queued_image_identity_is_committed_with_the_prompt_and_retired_on_removal() {
     let directory = std::env::temp_dir().join(format!("sage-image-queue-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     database.connection().execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     database.connection().execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
     let image = crate::image_artifacts::insert_test_image(
@@ -169,7 +169,7 @@ fn queue_survives_database_reopen_but_requires_explicit_retry() {
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("sage.db");
     {
-        let database = Database::open(&path).unwrap();
+        let database = crate::database::open_database(&path).unwrap();
         let connection = database.connection();
         connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES ('p','P',1,1,1)", []).unwrap();
         connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES ('c','p',0,'C',1,1)", []).unwrap();
@@ -190,7 +190,7 @@ fn queue_survives_database_reopen_but_requires_explicit_retry() {
             .unwrap();
     }
     {
-        let database = Database::open(&path).unwrap();
+        let database = crate::database::open_database(&path).unwrap();
         let restored = database.project_chat_queued_prompts("p").unwrap();
         let queue = &restored["c"];
         assert_eq!(queue.len(), 1);
@@ -213,7 +213,7 @@ fn outcome_unknown_queue_status_survives_database_reopen() {
     std::fs::create_dir(&directory).unwrap();
     let path = directory.join("sage.db");
     {
-        let database = Database::open(&path).unwrap();
+        let database = crate::database::open_database(&path).unwrap();
         let connection = database.connection();
         connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES ('p','P',1,1,1)", []).unwrap();
         connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES ('c','p',0,'C',1,1)", []).unwrap();
@@ -234,7 +234,7 @@ fn outcome_unknown_queue_status_survives_database_reopen() {
             .unwrap();
         database.connection().execute("UPDATE chat_queued_prompts SET prompts_json=json_set(prompts_json,'$[0].status','outcomeUnknown') WHERE chat_id='c'", []).unwrap();
     }
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let restored = database.project_chat_queued_prompts("p");
     assert!(restored.is_ok());
     let queue = &restored.unwrap()["c"];
@@ -296,7 +296,7 @@ fn a_stored_element_that_fails_a_stricter_rule_still_loads_and_only_new_writes_a
     let directory =
         std::env::temp_dir().join(format!("sage-queue-element-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
-    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     let connection = database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();

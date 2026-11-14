@@ -12,6 +12,7 @@ use crate::acp::service::{
     },
 };
 use crate::state::AppState;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 /// How long a finished load waits for its start snapshot. The snapshot reads
@@ -234,11 +235,12 @@ fn admitted_codex_page(state: &AppState) -> Option<(SageProjectId, SageChatId)> 
 #[cfg(test)]
 mod tests {
     use super::RendererRecreationReloadLifecycle;
-    use crate::{acp::service::AcpService, persistence::Database};
+    use crate::acp::service::AcpService;
     use sage_acp_protocol::contract::{SageChatId, SageProjectId};
+    use sage_db::database::Database;
 
     fn fixture_database() -> Database {
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         database
             .connection()
             .execute_batch(

@@ -1,5 +1,6 @@
 use rusqlite::{Connection, params};
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 
 use sage_domain::project::{AgentRailChat, ProjectListItem};
 
@@ -50,24 +51,30 @@ pub(crate) fn rail_chat_set() -> String {
 
 /// The tab ids of every chat the rail can show; see `rail_chat_set`.
 pub(crate) fn rail_chat_ids(connection: &Connection) -> AppResult<Vec<String>> {
-    let mut statement = connection.prepare(&format!("SELECT tab_id FROM {}", rail_chat_set()))?;
+    let mut statement = connection
+        .prepare(&format!("SELECT tab_id FROM {}", rail_chat_set()))
+        .db()?;
     let ids = statement
-        .query_map([], |row| row.get(0))?
-        .collect::<Result<Vec<String>, _>>()?;
+        .query_map([], |row| row.get(0))
+        .db()?
+        .collect::<Result<Vec<String>, _>>()
+        .db()?;
     Ok(ids)
 }
 
 /// Projects newest first by when they were added. Opening a project or one of
 /// its chats never reorders the list, so rows stay put under the pointer.
 pub(super) fn load_project_list(connection: &Connection) -> AppResult<Vec<ProjectListItem>> {
-    let mut statement = connection.prepare(
-        "SELECT p.id, p.name, COUNT(r.id), p.last_opened_at
+    let mut statement = connection
+        .prepare(
+            "SELECT p.id, p.name, COUNT(r.id), p.last_opened_at
          FROM projects p
          LEFT JOIN project_roots r ON r.project_id = p.id
          GROUP BY p.id
          ORDER BY p.created_at DESC, p.id
          LIMIT ?1",
-    )?;
+        )
+        .db()?;
     let mut projects = statement
         .query_map([MAX_PROJECTS + 1], |row| {
             Ok(ProjectListItem {
@@ -79,8 +86,10 @@ pub(super) fn load_project_list(connection: &Connection) -> AppResult<Vec<Projec
                 rail_chats_truncated: false,
                 rail_archived: Vec::new(),
             })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        })
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     attach_rail_chats(connection, &mut projects)?;
     attach_rail_archived(connection, &mut projects)?;
     Ok(projects)
@@ -140,22 +149,26 @@ pub(super) fn attach_rail_chats(
     connection: &Connection,
     projects: &mut [ProjectListItem],
 ) -> AppResult<()> {
-    let mut by_recency = connection.prepare(&format!(
-        "{}
+    let mut by_recency = connection
+        .prepare(&format!(
+            "{}
          ORDER BY {RAIL_RECENCY_ORDER}
          LIMIT ?2",
-        rail_chat_columns()
-    ))?;
-    let mut by_position = connection.prepare(&format!(
-        "{}
+            rail_chat_columns()
+        ))
+        .db()?;
+    let mut by_position = connection
+        .prepare(&format!(
+            "{}
          ORDER BY {RAIL_POSITION_ORDER}
          LIMIT ?2",
-        rail_chat_columns()
-    ))?;
+            rail_chat_columns()
+        ))
+        .db()?;
     let mut total = connection.prepare(
         "SELECT COUNT(*) FROM workbench_tabs w
          WHERE w.project_id = ?1 AND w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0",
-    )?;
+    ).db()?;
     let read = |row: &rusqlite::Row<'_>| -> rusqlite::Result<RailChatRow> {
         Ok((
             row.get(0)?,
@@ -172,17 +185,22 @@ pub(super) fn attach_rail_chats(
             continue;
         }
         let mut rows = by_recency
-            .query_map(params![project.id, MAX_AGENT_RAIL_CHATS_PER_PROJECT], read)?
-            .collect::<Result<Vec<_>, _>>()?;
-        for row in
-            by_position.query_map(params![project.id, MAX_AGENT_RAIL_CHATS_PER_PROJECT], read)?
+            .query_map(params![project.id, MAX_AGENT_RAIL_CHATS_PER_PROJECT], read)
+            .db()?
+            .collect::<Result<Vec<_>, _>>()
+            .db()?;
+        for row in by_position
+            .query_map(params![project.id, MAX_AGENT_RAIL_CHATS_PER_PROJECT], read)
+            .db()?
         {
-            let row = row?;
+            let row = row.db()?;
             if !rows.iter().any(|held| held.0 == row.0) {
                 rows.push(row);
             }
         }
-        let count: i64 = total.query_row(params![project.id], |row| row.get(0))?;
+        let count: i64 = total
+            .query_row(params![project.id], |row| row.get(0))
+            .db()?;
         project.rail_chats_truncated = count > rows.len() as i64;
         project.rail_chats = rows
             .into_iter()

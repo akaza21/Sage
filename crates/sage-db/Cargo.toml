@@ -1,0 +1,24 @@
+[package]
+name = "sage-db"
+description = "Sage's SQLite database: the shared connections and physical storage limits."
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+rusqlite.workspace = true
+sage-core.workspace = true
+
+[features]
+default = []
+# The WAL observation the adversarial ACP fixture records on Windows.
+fixture = []
+# Test-only hooks the app's tests use. Enabled only from
+# `[dev-dependencies]`, never from `[dependencies]`.
+test-support = []

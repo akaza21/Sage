@@ -2,6 +2,7 @@
 
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use sage_domain::editor::{BufferSnapshotAck, BufferSnapshotRequest};
 
@@ -37,7 +38,8 @@ pub(super) fn settled_by_stored(
                 ))
             },
         )
-        .optional()?;
+        .optional()
+        .db()?;
     let Some((base_fingerprint, revision, updated_at, stored_fingerprint)) = stored else {
         return Ok((false, None));
     };

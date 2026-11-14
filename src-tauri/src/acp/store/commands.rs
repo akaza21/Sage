@@ -1,8 +1,9 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::persistence::Database;
 use sage_acp_protocol::contract::{EntityRevision, SageItemId, SageTurnId};
 use sage_core::limits::LIMITS;
+#[cfg(test)]
+use sage_db::database::Database;
 
 use super::{
     MutationDisposition, PrepareTurnCommand, PreparedTurn, StoreError, TurnMutation,
@@ -13,12 +14,15 @@ use super::{
     },
 };
 
-impl Database {
-    #[cfg(test)]
-    pub(crate) fn acp_prepare_turn(
-        &self,
-        command: PrepareTurnCommand,
-    ) -> Result<PreparedTurn, StoreError> {
+/// Preparing an ACP turn, on the shared database.
+#[cfg(test)]
+pub(crate) trait PrepareTurnStore {
+    fn acp_prepare_turn(&self, command: PrepareTurnCommand) -> Result<PreparedTurn, StoreError>;
+}
+
+#[cfg(test)]
+impl PrepareTurnStore for Database {
+    fn acp_prepare_turn(&self, command: PrepareTurnCommand) -> Result<PreparedTurn, StoreError> {
         let mut connection = self
             .write_connection()
             .map_err(|_| StoreError::Corrupt("storage recovery required"))?;

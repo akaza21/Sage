@@ -4,6 +4,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 
 use super::SettingsStore;
 use crate::acp::browser::developer::{CdpAuditEntry, CdpAuditOutcome};
@@ -31,46 +32,53 @@ const AUDIT_TABLE: &str = "CREATE TABLE IF NOT EXISTS browser_cdp_audit (
 const AUDIT_SCHEMA_VERSION: i64 = 3;
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS browser_developer_mode (
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS browser_developer_mode (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
            enabled INTEGER NOT NULL CHECK (enabled IN (0, 1))
          ) STRICT;",
-    )?;
+        )
+        .db()?;
     // The audit table's schema version, kept in its own row: the settings
     // database has no shared `user_version` scheme, and claiming the whole
     // file's pragma for one table would collide with other settings
     // migrations. Version 1 (dev builds only) lacked the `sent` outcome;
     // version 2 added sent; version 3 adds grant events and omits untrusted text.
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS browser_cdp_audit_schema (
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS browser_cdp_audit_schema (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
            version INTEGER NOT NULL CHECK (version >= 1)
          ) STRICT;",
-    )?;
+        )
+        .db()?;
     let recorded: Option<i64> = connection
         .query_row(
             "SELECT version FROM browser_cdp_audit_schema WHERE singleton = 1",
             [],
             |row| row.get(0),
         )
-        .optional()?;
+        .optional()
+        .db()?;
     let table_exists: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'browser_cdp_audit')",
         [],
         |row| row.get(0),
-    )?;
+    ).db()?;
     // A table with no recorded version predates versioning: version 1.
     let version = recorded.unwrap_or(if table_exists { 1 } else { 0 });
     if version == 1 || version == 2 {
         rebuild_audit(connection)?;
     }
-    connection.execute_batch(AUDIT_TABLE)?;
-    connection.execute(
-        "INSERT INTO browser_cdp_audit_schema(singleton, version) VALUES (1, ?1)
+    connection.execute_batch(AUDIT_TABLE).db()?;
+    connection
+        .execute(
+            "INSERT INTO browser_cdp_audit_schema(singleton, version) VALUES (1, ?1)
          ON CONFLICT(singleton) DO UPDATE SET version = excluded.version",
-        params![AUDIT_SCHEMA_VERSION],
-    )?;
+            params![AUDIT_SCHEMA_VERSION],
+        )
+        .db()?;
     Ok(())
 }
 
@@ -104,29 +112,33 @@ fn safe_method(method: &str, grant_event: bool) -> &str {
 /// Stream at most the newest 5,000 legacy rows through the same privacy
 /// boundary as new writes, inside the caller's migration transaction.
 fn rebuild_audit(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(&format!(
-        "ALTER TABLE browser_cdp_audit RENAME TO browser_cdp_audit_old; {AUDIT_TABLE}"
-    ))?;
+    connection
+        .execute_batch(&format!(
+            "ALTER TABLE browser_cdp_audit RENAME TO browser_cdp_audit_old; {AUDIT_TABLE}"
+        ))
+        .db()?;
     let mut statement = connection.prepare(
         "SELECT id, at_ms, session_id, tab_id, origin, method, params_bytes, result_bytes, outcome
          FROM browser_cdp_audit_old ORDER BY id DESC LIMIT ?1",
-    )?;
-    let mut rows = statement.query(params![CDP_AUDIT_ROWS])?;
-    while let Some(row) = rows.next()? {
-        let session: String = row.get(2)?;
-        let origin: String = row.get(4)?;
-        let method: String = row.get(5)?;
+    ).db()?;
+    let mut rows = statement.query(params![CDP_AUDIT_ROWS]).db()?;
+    while let Some(row) = rows.next().db()? {
+        let session: String = row.get(2).db()?;
+        let origin: String = row.get(4).db()?;
+        let method: String = row.get(5).db()?;
         connection.execute(
             "INSERT INTO browser_cdp_audit(id, at_ms, session_id, tab_id, origin, method,
               params_preview, params_bytes, result_bytes, outcome) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)",
-            params![row.get::<_, i64>(0)?, row.get::<_, i64>(1)?, session_fingerprint(&session),
-                row.get::<_, i64>(3)?, safe_origin(&origin), safe_method(&method, false), OMITTED,
-                row.get::<_, i64>(6)?, row.get::<_, Option<i64>>(7)?, row.get::<_, String>(8)?],
-        )?;
+            params![row.get::<_, i64>(0).db()?, row.get::<_, i64>(1).db()?, session_fingerprint(&session),
+                row.get::<_, i64>(3).db()?, safe_origin(&origin), safe_method(&method, false), OMITTED,
+                row.get::<_, i64>(6).db()?, row.get::<_, Option<i64>>(7).db()?, row.get::<_, String>(8).db()?],
+        ).db()?;
     }
     drop(rows);
     drop(statement);
-    connection.execute_batch("DROP TABLE browser_cdp_audit_old;")?;
+    connection
+        .execute_batch("DROP TABLE browser_cdp_audit_old;")
+        .db()?;
     Ok(())
 }
 
@@ -142,7 +154,8 @@ impl SettingsStore {
                 [],
                 |row| row.get::<_, bool>(0),
             )
-            .optional()?
+            .optional()
+            .db()?
             .unwrap_or(false))
     }
 
@@ -151,11 +164,13 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection.execute(
-            "INSERT INTO browser_developer_mode(singleton, enabled) VALUES (1, ?1)
+        connection
+            .execute(
+                "INSERT INTO browser_developer_mode(singleton, enabled) VALUES (1, ?1)
              ON CONFLICT(singleton) DO UPDATE SET enabled = excluded.enabled",
-            params![enabled],
-        )?;
+                params![enabled],
+            )
+            .db()?;
         Ok(enabled)
     }
 
@@ -167,36 +182,38 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let transaction = connection.transaction()?;
-        transaction.execute(
-            "INSERT INTO browser_cdp_audit(at_ms, session_id, tab_id, origin, method,
+        let transaction = connection.transaction().db()?;
+        transaction
+            .execute(
+                "INSERT INTO browser_cdp_audit(at_ms, session_id, tab_id, origin, method,
                params_preview, params_bytes, result_bytes, outcome)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
-            params![
-                at_ms,
-                session_fingerprint(&entry.session_id),
-                i64::try_from(entry.tab_id).unwrap_or(i64::MAX),
-                safe_origin(&entry.origin),
-                safe_method(
-                    &entry.method,
-                    matches!(
-                        entry.outcome,
-                        CdpAuditOutcome::Granted | CdpAuditOutcome::Revoked
-                    )
-                ),
-                OMITTED,
-                i64::try_from(entry.params.len()).unwrap_or(i64::MAX),
-                entry
-                    .result_bytes
-                    .map(|bytes| i64::try_from(bytes).unwrap_or(i64::MAX)),
-                entry.outcome.as_str(),
-            ],
-        )?;
+                params![
+                    at_ms,
+                    session_fingerprint(&entry.session_id),
+                    i64::try_from(entry.tab_id).unwrap_or(i64::MAX),
+                    safe_origin(&entry.origin),
+                    safe_method(
+                        &entry.method,
+                        matches!(
+                            entry.outcome,
+                            CdpAuditOutcome::Granted | CdpAuditOutcome::Revoked
+                        )
+                    ),
+                    OMITTED,
+                    i64::try_from(entry.params.len()).unwrap_or(i64::MAX),
+                    entry
+                        .result_bytes
+                        .map(|bytes| i64::try_from(bytes).unwrap_or(i64::MAX)),
+                    entry.outcome.as_str(),
+                ],
+            )
+            .db()?;
         transaction.execute(
             "DELETE FROM browser_cdp_audit WHERE id <= (SELECT max(id) FROM browser_cdp_audit) - ?1",
             params![CDP_AUDIT_ROWS],
-        )?;
-        transaction.commit()?;
+        ).db()?;
+        transaction.commit().db()?;
         Ok(())
     }
 }

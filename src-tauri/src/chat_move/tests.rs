@@ -1,8 +1,12 @@
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::chat_move::ChatMoveStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::session_events::SessionEventStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use std::fs;
 
 use sage_core::error::AppError;
 
-use crate::persistence::Database;
 use sage_domain::{
     chat::{MoveChatRequest, ProjectLayoutRequest},
     project::ProjectSwitchRequest,
@@ -25,7 +29,7 @@ fn moves_an_attached_chat_to_another_project() {
     let second_root = base.join("second");
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let first = database.create_project_from_root(&first_root).unwrap();
     let first_chat = database
         .bootstrap_snapshot()
@@ -71,7 +75,7 @@ fn moves_only_a_proven_legacy_welcome_and_preserves_rows_accounting_and_guards()
         let second_root = base.join("second");
         fs::create_dir_all(&first_root).unwrap();
         fs::create_dir_all(&second_root).unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let first = database.create_project_from_root(&first_root).unwrap();
         let chat_id = database
             .bootstrap_snapshot()
@@ -242,7 +246,7 @@ fn moves_only_a_proven_legacy_welcome_and_preserves_rows_accounting_and_guards()
 fn refuses_same_project_and_unknown_target() {
     let root = std::env::temp_dir().join(format!("sage-chat-move-deny-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let chat_id = snapshot.active_tab_id.clone().unwrap();
@@ -277,7 +281,7 @@ fn moves_a_sessionless_chat_from_a_non_active_project_without_switching() {
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
     fs::create_dir_all(&third_root).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let cross = database.create_project_from_root(&first_root).unwrap();
     let cross_chat = database
         .create_chat(&layout(&database.bootstrap_snapshot().unwrap()))
@@ -328,7 +332,7 @@ fn refuses_to_move_a_chat_that_has_an_agent_session() {
     let second_root = base.join("second");
     fs::create_dir_all(&first_root).unwrap();
     fs::create_dir_all(&second_root).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let first = database.create_project_from_root(&first_root).unwrap();
     let chat_id = database
         .bootstrap_snapshot()

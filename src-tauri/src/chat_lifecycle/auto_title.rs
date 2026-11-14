@@ -98,6 +98,9 @@ pub(crate) fn auto_title_first_prompt_in(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_lifecycle::store::ChatLifecycleStore;
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
 
     #[test]
     fn first_line_is_utf8_bounded_and_does_not_use_later_lines() {
@@ -185,8 +188,7 @@ mod tests {
     fn manually_named_default_text_is_not_guessed_to_be_untitled() {
         let root = std::env::temp_dir().join(format!("sage-manual-title-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let chat = snapshot.active_tab_id.clone().unwrap();

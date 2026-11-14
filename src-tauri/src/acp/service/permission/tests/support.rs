@@ -11,6 +11,8 @@ use crate::acp::{
     },
     store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
 };
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
     permissions::PermissionDecision,
@@ -21,7 +23,7 @@ use super::super::AcpService;
 
 struct Port {
     owner: RuntimeOwner,
-    database: crate::persistence::Database,
+    database: sage_db::database::Database,
     commands: Arc<Mutex<Vec<AdapterCommand>>>,
 }
 
@@ -133,7 +135,7 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
     commands: Arc<Mutex<Vec<AdapterCommand>>>,
     deny_id: &str,
 ) -> (AcpService, RuntimeOwner) {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let project = database
         .create_project_from_root(&std::env::current_dir().unwrap())
         .unwrap();
@@ -275,7 +277,7 @@ pub(crate) fn admit_permission_request(
 }
 
 fn insert_permission_request(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     owner: &RuntimeOwner,
     request_id: &str,
     external_request_id: &str,

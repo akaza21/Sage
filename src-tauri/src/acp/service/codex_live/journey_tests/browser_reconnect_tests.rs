@@ -75,7 +75,7 @@ fn snapshot(authority: BrowserAuthority, scope: &BrowserScope, approvals: Arc<At
     .unwrap();
 }
 
-fn connects(database: crate::persistence::Database, owner: RuntimeOwner) -> bool {
+fn connects(database: sage_db::database::Database, owner: RuntimeOwner) -> bool {
     let host = transport::BrowserMcpPipeHost::bind().unwrap();
     let (mut server, token) = BrowserMcpServer::issue_for_session(
         FakeBrowserCapability::default(),
@@ -121,7 +121,7 @@ fn connects(database: crate::persistence::Database, owner: RuntimeOwner) -> bool
 /// Checking only after Ready misses the Recovering interval of a resumed chat.
 struct ActivationStore {
     inner: DatabaseAcpStore,
-    database: crate::persistence::Database,
+    database: sage_db::database::Database,
     states: mpsc::SyncSender<(BrowserMcpSessionState, bool)>,
 }
 

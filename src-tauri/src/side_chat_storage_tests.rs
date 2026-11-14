@@ -1,5 +1,8 @@
 use super::*;
+use crate::chat_lifecycle::store::ChatLifecycleStore;
 use crate::chat_purge::HISTORY_GUARDS;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 
 struct Fixture {
     root: std::path::PathBuf,
@@ -11,7 +14,7 @@ struct Fixture {
 fn fixture() -> Fixture {
     let root = std::env::temp_dir().join(format!("sage-side-purge-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
-    let database = Database::open(&root.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     database.create_project_from_root(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let project = snapshot.project.as_ref().unwrap().id.clone();
@@ -115,7 +118,8 @@ fn a_failed_purge_warns_and_never_blocks_startup_or_the_other_purges() {
     assert!(!is_temporary(&database.connection(), &other_side).unwrap());
     assert_eq!(side_chats(&database), 1);
     drop(database);
-    let reopened = Database::open(&root.join("sage.db")).expect("startup must not block");
+    let reopened =
+        crate::database::open_database(&root.join("sage.db")).expect("startup must not block");
     assert_eq!(side_chats(&reopened), 1);
     drop(reopened);
     std::fs::remove_dir_all(root).unwrap();
@@ -201,8 +205,12 @@ fn a_purge_leaving_a_dangling_reference_is_refused_at_commit_and_guards_survive(
     assert!(
         matches!(
             &error,
-            AppError::Database(rusqlite::Error::SqliteFailure(failure, _))
-                if failure.extended_code == 787
+            AppError::Database(sqlite)
+                if matches!(
+                    sqlite.downcast_ref::<rusqlite::Error>(),
+                    Some(rusqlite::Error::SqliteFailure(failure, _))
+                        if failure.extended_code == 787
+                )
         ),
         "refused at COMMIT by the deferred foreign-key check: {error:?}"
     );

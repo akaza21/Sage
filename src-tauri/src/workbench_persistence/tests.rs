@@ -1,3 +1,6 @@
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::session_events::SessionEventStore;
 use std::{fs, path::Path};
 
 use rusqlite::params;
@@ -11,7 +14,7 @@ mod rollback;
 mod unavailable_binding;
 
 fn database_with_project() -> (Database, String, String) {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let root = std::env::temp_dir().join(format!("sage-bootstrap-chat-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
@@ -31,7 +34,7 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
     let root = base.join("root");
     fs::create_dir_all(&root).unwrap();
     let path = base.join("sage.db");
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let history = seed_closed_simulator_history(
@@ -66,7 +69,7 @@ fn browser_layout_persists_and_restores_without_poisoning_chat_projection() {
         .unwrap();
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     let snapshot = reopened.bootstrap_snapshot().unwrap();
     assert_eq!(snapshot.active_tab_id.as_deref(), Some("browser-1"));
     assert!(snapshot.tabs.iter().any(|tab| {
@@ -297,7 +300,7 @@ fn restored_binding_identity_maps_through_curated_harness_metadata() {
     let path = base.join("sage.db");
     let root = base.join("root");
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let project_id = database.create_project_from_root(&root).unwrap().id;
     let chat_id = database
         .bootstrap_snapshot()
@@ -409,7 +412,7 @@ fn restored_binding_identity_maps_through_curated_harness_metadata() {
     drop(connection);
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     let snapshot = reopened.bootstrap_snapshot().unwrap();
     assert_eq!(snapshot.session_id.as_deref(), Some("codex-session"));
     assert_eq!(snapshot.selected_harness_id.as_deref(), Some("codex"));
@@ -429,7 +432,7 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
     let root = base.join("root");
     fs::create_dir_all(&root).unwrap();
     let path = base.join("sage.db");
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let chat_id = initial.active_tab_id.unwrap();
@@ -473,7 +476,7 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
     );
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     let restored = reopened.bootstrap_snapshot().unwrap();
     assert!(restored.tabs.is_empty());
     assert_eq!(restored.active_tab_id, None);
@@ -501,7 +504,7 @@ fn closing_chat_tab_detaches_only_projection_and_restart_preserves_history() {
         .unwrap();
     drop(reopened);
 
-    let reattached = Database::open(&path).unwrap();
+    let reattached = crate::database::open_database(&path).unwrap();
     let restored = reattached.bootstrap_snapshot().unwrap();
     assert_eq!(restored.active_tab_id.as_deref(), Some(chat_id.as_str()));
     assert_eq!(restored.session_id, None);
@@ -530,7 +533,7 @@ fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
     let root = base.join("root");
     fs::create_dir_all(&root).unwrap();
     let path = base.join("sage.db");
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let first_chat_id = initial.active_tab_id.clone().unwrap();
@@ -577,7 +580,7 @@ fn creating_a_chat_is_atomic_isolated_and_survives_restart() {
     );
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     let restored = reopened.bootstrap_snapshot().unwrap();
     assert_eq!(
         restored.active_tab_id.as_deref(),

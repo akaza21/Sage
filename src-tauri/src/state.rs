@@ -1,5 +1,6 @@
 use sage_core::error::AppResult;
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::{
     acp::{
         bindings::registry::BindingRegistry,
@@ -9,10 +10,10 @@ use crate::{
     },
     editor_coordination::EditorOperationCoordinator,
     harnesses::HarnessCatalog,
-    persistence::Database,
     settings_store::SettingsStore,
 };
 use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId};
+use sage_db::database::Database;
 use tauri::Manager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -383,11 +384,14 @@ impl NotificationSink for DesktopProjectionSink {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project_registry::create::ProjectCreateStore;
     use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId};
 
     #[test]
     fn app_state_shares_one_codex_registration_with_service_and_catalog() {
-        let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
+        let state = AppState::new(
+            crate::database::open_database(std::path::Path::new(":memory:")).unwrap(),
+        );
         assert!(std::sync::Arc::ptr_eq(
             state.acp.binding_registry(),
             state.harnesses.binding_registry(),
@@ -407,7 +411,9 @@ mod tests {
         };
         use sage_acp_protocol::intent::BindingId;
 
-        let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
+        let state = AppState::new(
+            crate::database::open_database(std::path::Path::new(":memory:")).unwrap(),
+        );
         let registry = state.acp.binding_registry();
         for id in ["unknown", "oh-my-pi"] {
             assert!(registry.for_harness(id).is_none());
@@ -474,7 +480,8 @@ mod tests {
     #[test]
     fn active_project_context_rejects_stale_generation_and_foreign_project() {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
-            let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+            let database =
+                crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
             let root =
                 std::env::temp_dir().join(format!("sage-active-context-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();

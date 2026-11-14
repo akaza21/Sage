@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use rusqlite::{Transaction, params};
+use sage_db::error::SqliteResultExt;
 
 use sage_core::error::{AppError, AppResult};
 
@@ -38,23 +39,29 @@ pub(super) struct LegacySession {
 }
 
 pub(super) fn convert(transaction: &Transaction<'_>, applied_at: i64) -> AppResult<()> {
-    transaction.execute_batch(
-        "ALTER TABLE session_events RENAME TO legacy_session_events_v4;
+    transaction
+        .execute_batch(
+            "ALTER TABLE session_events RENAME TO legacy_session_events_v4;
          ALTER TABLE agent_sessions RENAME TO legacy_agent_sessions_v4;",
-    )?;
-    transaction.execute_batch(FINAL_SCHEMA)?;
+        )
+        .db()?;
+    transaction.execute_batch(FINAL_SCHEMA).db()?;
     let tab_projects = convert_tabs(transaction)?;
     convert_sessions(transaction, &tab_projects)?;
     rebuild_and_verify_ledgers(transaction)?;
-    transaction.execute_batch(
-        "DROP TABLE legacy_session_events_v4;
+    transaction
+        .execute_batch(
+            "DROP TABLE legacy_session_events_v4;
          DROP TABLE legacy_agent_sessions_v4;",
-    )?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (5, ?1)",
-        [applied_at],
-    )?;
-    transaction.pragma_update(None, "user_version", 5)?;
+        )
+        .db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (5, ?1)",
+            [applied_at],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 5).db()?;
     Ok(())
 }
 
@@ -71,24 +78,28 @@ fn convert_tabs(transaction: &Transaction<'_>) -> AppResult<HashMap<String, Stri
             validate_text("legacy Chat id", &tab.id, 1, 512)?;
             validate_text("legacy Chat title", &tab.title, 1, 1_024)?;
             let ordinal = ordinals.entry(tab.project_id.clone()).or_default();
-            transaction.execute(
-                "INSERT INTO chats
+            transaction
+                .execute(
+                    "INSERT INTO chats
                  (id, project_id, ordinal, title, projection_revision, created_at, updated_at)
                  VALUES (?1, ?2, ?3, ?4, 0, ?5, ?6)",
-                params![
-                    tab.id,
-                    tab.project_id,
-                    *ordinal,
-                    tab.title,
-                    tab.created_at,
-                    tab.updated_at
-                ],
-            )?;
-            transaction.execute(
-                "INSERT INTO chat_tabs(project_id, chat_id, tab_id, attached_at)
+                    params![
+                        tab.id,
+                        tab.project_id,
+                        *ordinal,
+                        tab.title,
+                        tab.created_at,
+                        tab.updated_at
+                    ],
+                )
+                .db()?;
+            transaction
+                .execute(
+                    "INSERT INTO chat_tabs(project_id, chat_id, tab_id, attached_at)
                  VALUES (?1, ?2, ?2, ?3)",
-                params![tab.project_id, tab.id, tab.updated_at],
-            )?;
+                    params![tab.project_id, tab.id, tab.updated_at],
+                )
+                .db()?;
             *ordinal += 1;
             cursor = Some((
                 tab.project_id.clone(),
@@ -109,33 +120,37 @@ fn tab_page(
     let (project, position, created, id) = cursor
         .cloned()
         .unwrap_or_else(|| (String::new(), i64::MIN, i64::MIN, String::new()));
-    let mut statement = transaction.prepare(
-        "SELECT id, project_id, title, position, created_at, updated_at
+    let mut statement = transaction
+        .prepare(
+            "SELECT id, project_id, title, position, created_at, updated_at
          FROM workbench_tabs
          WHERE kind='chat'
            AND (project_id, position, created_at, id) > (?1, ?2, ?3, ?4)
          ORDER BY project_id, position, created_at, id LIMIT ?5",
-    )?;
-    let mut rows = statement.query(params![
-        project,
-        position,
-        created,
-        id,
-        ROWS_PER_PAGE as i64 + 1
-    ])?;
+        )
+        .db()?;
+    let mut rows = statement
+        .query(params![
+            project,
+            position,
+            created,
+            id,
+            ROWS_PER_PAGE as i64 + 1
+        ])
+        .db()?;
     let mut page = Vec::with_capacity(ROWS_PER_PAGE);
     let mut bytes = 0_usize;
-    while let Some(row) = rows.next()? {
+    while let Some(row) = rows.next().db()? {
         if page.len() == ROWS_PER_PAGE {
             break;
         }
         let tab = LegacyTab {
-            id: row.get(0)?,
-            project_id: row.get(1)?,
-            title: row.get(2)?,
-            position: row.get(3)?,
-            created_at: row.get(4)?,
-            updated_at: row.get(5)?,
+            id: row.get(0).db()?,
+            project_id: row.get(1).db()?,
+            title: row.get(2).db()?,
+            position: row.get(3).db()?,
+            created_at: row.get(4).db()?,
+            updated_at: row.get(5).db()?,
         };
         let row_bytes = tab.id.len() + tab.project_id.len() + tab.title.len();
         if !page.is_empty() && bytes.saturating_add(row_bytes) > BYTES_PER_PAGE {
@@ -184,32 +199,36 @@ fn session_page(
     let (chat, created, id) = cursor
         .cloned()
         .unwrap_or_else(|| (String::new(), i64::MIN, String::new()));
-    let mut statement = transaction.prepare(
-        "SELECT id, project_id, chat_tab_id, harness_id, harness_version,
+    let mut statement = transaction
+        .prepare(
+            "SELECT id, project_id, chat_tab_id, harness_id, harness_version,
                 model_id, external_session_id, last_committed_sequence,
                 created_at, updated_at
          FROM legacy_agent_sessions_v4
          WHERE (chat_tab_id, created_at, id) > (?1, ?2, ?3)
          ORDER BY chat_tab_id, created_at, id LIMIT ?4",
-    )?;
-    let mut rows = statement.query(params![chat, created, id, ROWS_PER_PAGE as i64 + 1])?;
+        )
+        .db()?;
+    let mut rows = statement
+        .query(params![chat, created, id, ROWS_PER_PAGE as i64 + 1])
+        .db()?;
     let mut page = Vec::with_capacity(ROWS_PER_PAGE);
     let mut bytes = 0_usize;
-    while let Some(row) = rows.next()? {
+    while let Some(row) = rows.next().db()? {
         if page.len() == ROWS_PER_PAGE {
             break;
         }
         let session = LegacySession {
-            id: row.get(0)?,
-            project_id: row.get(1)?,
-            chat_tab_id: row.get(2)?,
-            binding_id: row.get(3)?,
-            harness_version: row.get(4)?,
-            model_id: row.get(5)?,
-            external_session_id: row.get(6)?,
-            last_sequence: row.get(7)?,
-            created_at: row.get(8)?,
-            updated_at: row.get(9)?,
+            id: row.get(0).db()?,
+            project_id: row.get(1).db()?,
+            chat_tab_id: row.get(2).db()?,
+            binding_id: row.get(3).db()?,
+            harness_version: row.get(4).db()?,
+            model_id: row.get(5).db()?,
+            external_session_id: row.get(6).db()?,
+            last_sequence: row.get(7).db()?,
+            created_at: row.get(8).db()?,
+            updated_at: row.get(9).db()?,
         };
         let row_bytes = session_metadata_bytes(&session);
         if !page.is_empty() && bytes.saturating_add(row_bytes) > BYTES_PER_PAGE {
@@ -227,8 +246,9 @@ fn insert_session(
     ordinal: i64,
 ) -> AppResult<()> {
     let binding_digest = legacy_binding_digest(&session.binding_id, &session.harness_version);
-    transaction.execute(
-        "INSERT INTO agent_sessions (
+    transaction
+        .execute(
+            "INSERT INTO agent_sessions (
            id, project_id, chat_id, ordinal, binding_id, binding_digest,
            harness_version, model_id, external_session_id, capabilities_json,
            state, residency, legacy, revision, projection_revision,
@@ -237,39 +257,42 @@ fn insert_session(
            ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10,
            'closed', 'cold', 1, 0, 0, ?11, ?12, ?12
          )",
-        params![
-            session.id,
-            session.project_id,
-            session.chat_tab_id,
-            ordinal,
-            session.binding_id,
-            binding_digest,
-            session.harness_version,
-            session.model_id,
-            session.external_session_id,
-            LEGACY_CAPABILITIES,
-            session.created_at,
-            session.updated_at
-        ],
-    )?;
-    transaction.execute(
-        "INSERT INTO session_runtime_epochs (
+            params![
+                session.id,
+                session.project_id,
+                session.chat_tab_id,
+                ordinal,
+                session.binding_id,
+                binding_digest,
+                session.harness_version,
+                session.model_id,
+                session.external_session_id,
+                LEGACY_CAPABILITIES,
+                session.created_at,
+                session.updated_at
+            ],
+        )
+        .db()?;
+    transaction
+        .execute(
+            "INSERT INTO session_runtime_epochs (
            project_id, chat_id, session_id, runtime_epoch, state,
            artifact_digest, started_at, terminal_at, exit_kind
          ) VALUES (?1, ?2, ?3, 0, 'legacy', NULL, ?4, ?5, 'legacyMigration')",
-        params![
-            session.project_id,
-            session.chat_tab_id,
-            session.id,
-            session.created_at,
-            session.updated_at
-        ],
-    )?;
+            params![
+                session.project_id,
+                session.chat_tab_id,
+                session.id,
+                session.created_at,
+                session.updated_at
+            ],
+        )
+        .db()?;
     Ok(())
 }
 
 fn rebuild_and_verify_ledgers(transaction: &Transaction<'_>) -> AppResult<()> {
-    transaction.execute_batch(include_str!("ledger.sql"))?;
+    transaction.execute_batch(include_str!("ledger.sql")).db()?;
     let mismatch: bool = transaction.query_row(
         "SELECT EXISTS(
            SELECT 1 FROM acp_session_usage u
@@ -282,7 +305,7 @@ fn rebuild_and_verify_ledgers(transaction: &Transaction<'_>) -> AppResult<()> {
          )",
         [],
         |row| row.get(0),
-    )?;
+    ).db()?;
     if mismatch {
         return invalid("ACP migration ledger verification failed");
     }

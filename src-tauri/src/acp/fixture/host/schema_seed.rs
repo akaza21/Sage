@@ -1,6 +1,6 @@
 use rusqlite::{Connection, params};
 
-use crate::persistence::Database;
+use sage_db::database::Database;
 
 pub(super) const DIGEST_A: &str =
     "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -17,7 +17,7 @@ pub(super) struct SchemaFixture {
 
 impl SchemaFixture {
     pub(super) fn project_chat() -> Self {
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         {
             let connection = database.connection();
             insert_project(&connection, "project-a");

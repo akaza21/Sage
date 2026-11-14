@@ -2,6 +2,7 @@ pub(crate) mod acp;
 
 use tauri::State;
 
+use crate::session_events::SessionEventStore;
 use crate::{
     harnesses::{HarnessCatalog, SIMULATOR_DEFAULT_MODEL_ID, SIMULATOR_ID},
     state::AppState,

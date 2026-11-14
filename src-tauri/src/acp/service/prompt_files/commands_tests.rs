@@ -1,5 +1,7 @@
 use super::super::Resource;
 use super::*;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 
 struct Fixture {
     state: AppState,
@@ -11,8 +13,7 @@ impl Fixture {
     fn new() -> Self {
         let root = std::env::temp_dir().join(format!("sage-stage-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap().id;
         let chat = database
             .bootstrap_snapshot()

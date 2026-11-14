@@ -132,11 +132,9 @@ fn parse_role(value: &str) -> Result<ActivityRole, StoreError> {
 mod tests {
     use rusqlite::params;
 
-    use crate::{
-        acp::store::{facts::hex_digest, load_chat_page},
-        persistence::Database,
-    };
+    use crate::acp::store::{facts::hex_digest, load_chat_page};
     use sage_acp_protocol::contract::{SageChatId, SageProjectId};
+    use sage_db::database::Database;
 
     const CAPABILITIES: &str = "{\"schemaVersion\":1,\"protocolVersion\":\"pending\",\"newSession\":false,\"resumeSession\":false,\"loadSession\":false,\"closeSession\":false,\"prompt\":false,\"cancel\":false,\"nativeSessionFork\":false,\"activeTurnSteer\":false,\"childConversationProjection\":false,\"childTranscriptRead\":false,\"collaborationEventProjection\":false,\"multiRootExtensionSchemaId\":null,\"modelCount\":0,\"configCount\":0}";
     const PROVENANCE: &str = "{\"schemaVersion\":1,\"sourceKind\":\"collaboration\",\"externalKind\":\"subagent\",\"extensionSchemaId\":null,\"safeLabel\":\"Worker\"}";
@@ -207,7 +205,7 @@ mod tests {
     }
 
     fn seeded_page(activity_counts: &[usize]) -> Database {
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let connection = database.connection();
         connection
             .execute_batch(

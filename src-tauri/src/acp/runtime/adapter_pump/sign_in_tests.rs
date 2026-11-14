@@ -1,13 +1,11 @@
 use super::*;
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 
-use crate::{
-    acp::{
-        runtime::{JournalHandle, ProjectionMailbox, SqliteAdapterBatchJournal},
-        store::{DatabaseAcpStore, load_chat_page},
-    },
-    persistence::Database,
+use crate::acp::{
+    runtime::{JournalHandle, ProjectionMailbox, SqliteAdapterBatchJournal},
+    store::{DatabaseAcpStore, load_chat_page},
 };
+use sage_db::database::Database;
 
 #[test]
 fn goal_active_response_mismatch_reaches_sqlite_only_after_client_verification() {
@@ -161,7 +159,7 @@ pub(super) fn migrated_database_with_session(
     turn_state: &str,
     external_session_id: &str,
 ) -> Database {
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let connection = database.connection();
     connection.execute_batch(&format!(
         "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-one','Sign in',1,1,1);

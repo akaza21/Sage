@@ -1,6 +1,6 @@
 use super::bootstrap_support::WAIT;
-use crate::persistence::Database;
 use rusqlite::hooks::{AuthAction, AuthContext, Authorization};
+use sage_db::database::Database;
 use std::sync::mpsc;
 
 /// Observe real owner reads without replacing their result or blocking SQLite.

@@ -7,6 +7,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
@@ -29,8 +30,9 @@ pub struct NewChatDefaults {
 }
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS new_chat_defaults (
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS new_chat_defaults (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
            harness_id TEXT NOT NULL
              CHECK (length(CAST(harness_id AS BLOB)) BETWEEN 1 AND 256),
@@ -39,7 +41,8 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
            effort TEXT
              CHECK (effort IS NULL OR length(CAST(effort AS BLOB)) BETWEEN 1 AND 256)
          ) STRICT;",
-    )?;
+        )
+        .db()?;
     Ok(())
 }
 
@@ -89,7 +92,8 @@ impl SettingsStore {
                     })
                 },
             )
-            .optional()?;
+            .optional()
+            .db()?;
         Ok(stored.unwrap_or_default())
     }
 
@@ -102,18 +106,22 @@ impl SettingsStore {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         match value.harness_id.as_deref() {
             None => {
-                connection.execute("DELETE FROM new_chat_defaults WHERE singleton = 1", [])?;
+                connection
+                    .execute("DELETE FROM new_chat_defaults WHERE singleton = 1", [])
+                    .db()?;
             }
             Some(harness_id) => {
-                connection.execute(
-                    "INSERT INTO new_chat_defaults(singleton, harness_id, model_id, effort)
+                connection
+                    .execute(
+                        "INSERT INTO new_chat_defaults(singleton, harness_id, model_id, effort)
                      VALUES (1, ?1, ?2, ?3)
                      ON CONFLICT(singleton) DO UPDATE SET
                        harness_id = excluded.harness_id,
                        model_id = excluded.model_id,
                        effort = excluded.effort",
-                    params![harness_id, value.model_id, value.effort],
-                )?;
+                        params![harness_id, value.model_id, value.effort],
+                    )
+                    .db()?;
             }
         }
         Ok(value)

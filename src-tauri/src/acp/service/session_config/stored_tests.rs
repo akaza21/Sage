@@ -14,7 +14,6 @@ pub(super) fn seed_chat(service: &AcpService) {
         .unwrap();
 }
 use super::*;
-use crate::persistence::Database;
 use sage_acp_protocol::session_config::{ConfigId, ConfigMutation, ConfigValue};
 
 fn restored_page(service: &AcpService) -> Value {
@@ -29,7 +28,7 @@ fn restored_page(service: &AcpService) -> Value {
 fn reopen(path: &std::path::Path, service: AcpService) -> AcpService {
     service.shutdown_blocking().unwrap();
     drop(service);
-    AcpService::new(Database::open(path).unwrap()).unwrap()
+    AcpService::new(crate::database::open_database(path).unwrap()).unwrap()
 }
 
 #[test]
@@ -38,7 +37,7 @@ fn a_parked_chat_shows_the_stored_choice_with_its_labels_before_resuming() {
         std::env::temp_dir().join(format!("sage-config-stored-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("sage.db");
-    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
     seed_chat(&service);
     assert_eq!(restored_page(&service), Value::Null);
     let first = owner(1);
@@ -68,7 +67,7 @@ fn a_choice_made_while_parked_shows_at_once_and_is_restored_on_resume() {
         std::env::temp_dir().join(format!("sage-config-queued-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("sage.db");
-    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
     seed_chat(&service);
     start(&service, &owner(1), effort("low"));
     let service = reopen(&path, service);
@@ -114,7 +113,8 @@ fn a_choice_made_while_parked_shows_at_once_and_is_restored_on_resume() {
 #[test]
 fn a_stored_choice_without_a_snapshot_still_shows_its_value() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed_chat(&service);
     let choice = ConfigMutation::Option {
         config_id: ConfigId::new("configId", "model").unwrap(),

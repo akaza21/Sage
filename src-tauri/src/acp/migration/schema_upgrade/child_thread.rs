@@ -1,4 +1,5 @@
 use super::*;
+use sage_db::error::SqliteResultExt;
 
 pub(in crate::acp::migration) fn apply_through_v14(connection: &mut Connection) -> AppResult<()> {
     apply_through_v13(connection)?;
@@ -11,17 +12,21 @@ pub(in crate::acp::migration) fn apply_through_v15(connection: &mut Connection) 
 }
 
 pub(in crate::acp::migration) fn apply_v15(connection: &mut Connection) -> AppResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V15)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(V15).db()?;
     #[cfg(test)]
     super::super::test_failpoint::hit("v14-to-v15-after-schema")?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (15, ?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 15)?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (15, ?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 15).db()?;
     verify_v8_foreign_keys(&transaction)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     verify_reached(connection, SchemaClass::CurrentV15)
 }
 
@@ -36,15 +41,19 @@ pub(in crate::acp::migration) fn apply_through_v16(connection: &mut Connection) 
 }
 
 pub(in crate::acp::migration) fn apply_v16(connection: &mut Connection) -> AppResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V16)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (16, ?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 16)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(V16).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (16, ?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 16).db()?;
     verify_v8_foreign_keys(&transaction)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     verify_reached(connection, SchemaClass::CurrentV16)
 }
 
@@ -79,7 +88,7 @@ pub(in crate::acp::migration) fn upgrade_current_through_v9(
     if probe::classify_live(paths)? != source_schema {
         return invalid("current SQLite path changed before its anchored upgrade");
     }
-    let mut connection = Connection::open(&paths.live)?;
+    let mut connection = Connection::open(&paths.live).db()?;
     if database_fingerprint(&connection)? != verified_backup.source.database {
         return invalid("current source changed after original-schema backup publication");
     }

@@ -8,11 +8,13 @@ use std::{
 
 use rusqlite::params;
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{acp::store::decode_payload, persistence::Database};
+use crate::acp::store::decode_payload;
 use sage_acp_protocol::intent::NormalizedPayload;
+use sage_db::database::Database;
 
 pub const MAX_CHAT_SEARCH_QUERY_BYTES: usize = 256;
 pub const MAX_CHAT_SEARCH_RESULTS: usize = 64;
@@ -214,18 +216,20 @@ fn load_chats(
          )
          FROM chats c WHERE c.project_id=?1 AND c.id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)
          ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC LIMIT ?2",
-    )?;
-    let rows = statement.query_map(params![project_id, limit], |row| {
-        let title: String = row.get(1)?;
-        Ok(ChatRow {
-            id: row.get(0)?,
-            matched_title: title.contains(query),
-            title,
-            attached: row.get(2)?,
-            snippet: None,
+    ).db()?;
+    let rows = statement
+        .query_map(params![project_id, limit], |row| {
+            let title: String = row.get(1)?;
+            Ok(ChatRow {
+                id: row.get(0)?,
+                matched_title: title.contains(query),
+                title,
+                attached: row.get(2)?,
+                snippet: None,
+            })
         })
-    })?;
-    let chats = rows.collect::<Result<Vec<_>, _>>()?;
+        .db()?;
+    let chats = rows.collect::<Result<Vec<_>, _>>().db()?;
     if !query.is_empty() && chats.len() > limits.max_chat_rows {
         return Err(AppError::ResourceLimit(
             "Chat search Chat-row ceiling was exceeded".into(),
@@ -240,14 +244,16 @@ fn preflight_items(
     limits: SearchLimits,
 ) -> AppResult<()> {
     let limit = i64::try_from(limits.max_item_rows.saturating_add(1)).unwrap_or(i64::MAX);
-    let (rows, bytes): (i64, i64) = connection.query_row(
-        "SELECT COUNT(*),COALESCE(SUM(payload_bytes),0) FROM (
+    let (rows, bytes): (i64, i64) = connection
+        .query_row(
+            "SELECT COUNT(*),COALESCE(SUM(payload_bytes),0) FROM (
            SELECT payload_bytes FROM items INDEXED BY idx_items_owner
            WHERE project_id=?1 LIMIT ?2
          )",
-        params![project_id, limit],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?;
+            params![project_id, limit],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .db()?;
     if rows < 0 || rows as usize > limits.max_item_rows {
         return Err(AppError::ResourceLimit(
             "Chat search item-row ceiling was exceeded".into(),
@@ -275,21 +281,23 @@ fn load_primary_text_matches(
         .enumerate()
         .map(|(index, chat)| (chat.id.clone(), index))
         .collect::<HashMap<_, _>>();
-    let mut statement = connection.prepare(concat!(
-        "SELECT i.chat_id,i.payload_json,i.payload_bytes,i.payload_digest
+    let mut statement = connection
+        .prepare(concat!(
+            "SELECT i.chat_id,i.payload_json,i.payload_bytes,i.payload_digest
          FROM items i JOIN chats c ON c.project_id=i.project_id AND c.id=i.chat_id
          WHERE i.project_id=?1 AND i.origin='primary' AND i.kind='text'
            AND i.turn_id NOT IN (SELECT value FROM json_each(?2)) AND ",
-        crate::acp::store::turn_undo::visible_turn!("i.session_id", "i.turn_id"),
-        " ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC,
+            crate::acp::store::turn_undo::visible_turn!("i.session_id", "i.turn_id"),
+            " ORDER BY c.updated_at DESC,c.ordinal DESC,c.id ASC,
                   i.created_at DESC,i.ordinal DESC,i.id ASC"
-    ))?;
-    let mut rows = statement.query(params![project_id, excluded_turns])?;
+        ))
+        .db()?;
+    let mut rows = statement.query(params![project_id, excluded_turns]).db()?;
     while let Some(row) = map_deadline(rows.next(), started, deadline)? {
-        let chat_id: String = row.get(0)?;
-        let payload: String = row.get(1)?;
-        let payload_bytes: i64 = row.get(2)?;
-        let payload_digest: String = row.get(3)?;
+        let chat_id: String = row.get(0).db()?;
+        let payload: String = row.get(1).db()?;
+        let payload_bytes: i64 = row.get(2).db()?;
+        let payload_digest: String = row.get(3).db()?;
         if payload_bytes < 0
             || payload_bytes as usize != payload.len()
             || format!("{:x}", Sha256::digest(payload.as_bytes())) != payload_digest
@@ -389,7 +397,7 @@ fn map_deadline<T>(
         }
         other => {
             ensure_deadline(started, deadline)?;
-            Ok(other?)
+            Ok(other.db()?)
         }
     }
 }

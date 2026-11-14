@@ -436,6 +436,7 @@ impl HarnessCatalog {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project_registry::create::ProjectCreateStore;
     #[cfg(windows)]
     use std::fs;
 
@@ -792,8 +793,7 @@ mod tests {
             })
             .collect(),
         );
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root =
             std::env::temp_dir().join(format!("sage-harness-projection-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();

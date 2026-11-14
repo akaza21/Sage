@@ -3,19 +3,23 @@ use sage_core::{
     error::{AppError, AppResult},
     time::now_millis,
 };
+use sage_db::error::SqliteResultExt;
 
-use crate::{
-    chat_lifecycle::validate_chat_identifier, persistence::Database,
-    workbench_persistence::persist_layout_in,
-};
+use crate::{chat_lifecycle::validate_chat_identifier, workbench_persistence::persist_layout_in};
+use sage_db::database::Database;
 use sage_domain::chat::MoveChatRequest;
 
 const MAX_CHATS_PER_PROJECT: i64 = 64;
 
 mod legacy_welcome;
 
-impl Database {
-    pub(crate) fn move_chat(&self, request: &MoveChatRequest) -> AppResult<()> {
+/// Moving Chats between Projects, on the shared database.
+pub(crate) trait ChatMoveStore {
+    fn move_chat(&self, request: &MoveChatRequest) -> AppResult<()>;
+}
+
+impl ChatMoveStore for Database {
+    fn move_chat(&self, request: &MoveChatRequest) -> AppResult<()> {
         crate::side_chat_storage::refuse_persistence(&self.connection(), &request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
@@ -26,17 +30,19 @@ impl Database {
             ));
         }
         let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         crate::side_chat_storage::refuse_parent_removal(
             &transaction,
             &request.project_id,
             &request.chat_id,
         )?;
-        let active: Option<String> = transaction.query_row(
-            "SELECT active_project_id FROM app_state WHERE singleton=1",
-            [],
-            |row| row.get(0),
-        )?;
+        let active: Option<String> = transaction
+            .query_row(
+                "SELECT active_project_id FROM app_state WHERE singleton=1",
+                [],
+                |row| row.get(0),
+            )
+            .db()?;
         let source_is_active = active.as_deref() == Some(request.project_id.as_str());
         if source_is_active {
             if request.current_layout.project_id != request.project_id {
@@ -46,31 +52,37 @@ impl Database {
             }
             persist_layout_in(&transaction, &request.current_layout)?;
         }
-        let attached: i64 = transaction.query_row(
-            "SELECT COUNT(*) FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
-            params![request.project_id, request.chat_id],
-            |row| row.get(0),
-        )?;
+        let attached: i64 = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
+                params![request.project_id, request.chat_id],
+                |row| row.get(0),
+            )
+            .db()?;
         if attached != 1 {
             return Err(AppError::InvalidRequest(
                 "Chat is not attached to the active Project".into(),
             ));
         }
-        let target_exists: bool = transaction.query_row(
-            "SELECT EXISTS(SELECT 1 FROM projects WHERE id=?1)",
-            [&request.target_project_id],
-            |row| row.get(0),
-        )?;
+        let target_exists: bool = transaction
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM projects WHERE id=?1)",
+                [&request.target_project_id],
+                |row| row.get(0),
+            )
+            .db()?;
         if !target_exists {
             return Err(AppError::InvalidRequest("unknown target Project".into()));
         }
-        let sessions: i64 = transaction.query_row(
-            "SELECT COUNT(*) FROM agent_sessions WHERE project_id=?1 AND chat_id=?2",
-            params![request.project_id, request.chat_id],
-            |row| row.get(0),
-        )?;
+        let sessions: i64 = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM agent_sessions WHERE project_id=?1 AND chat_id=?2",
+                params![request.project_id, request.chat_id],
+                |row| row.get(0),
+            )
+            .db()?;
         let welcome =
-            crate::session_events::legacy_welcome::turn_id(&transaction, &request.chat_id)?;
+            crate::session_events::legacy_welcome::turn_id(&transaction, &request.chat_id).db()?;
         if sessions > 0 && (sessions != 1 || welcome.is_none()) {
             return Err(AppError::InvalidRequest(
                 "Chat with an agent session cannot move yet".into(),
@@ -82,7 +94,8 @@ impl Database {
                 [&request.target_project_id],
                 |row| row.get(0),
             )
-            .optional()?
+            .optional()
+            .db()?
             .unwrap_or(0);
         if target_chats >= MAX_CHATS_PER_PROJECT {
             return Err(AppError::ResourceLimit(format!(
@@ -90,17 +103,23 @@ impl Database {
             )));
         }
         let now = now_millis();
-        let ordinal: i64 = transaction.query_row(
-            "SELECT COALESCE(MAX(ordinal),-1)+1 FROM chats WHERE project_id=?1",
-            [&request.target_project_id],
-            |row| row.get(0),
-        )?;
-        let position: i64 = transaction.query_row(
-            "SELECT COALESCE(MAX(position),-1)+1 FROM workbench_tabs WHERE project_id=?1",
-            [&request.target_project_id],
-            |row| row.get(0),
-        )?;
-        transaction.execute_batch("PRAGMA defer_foreign_keys = ON")?;
+        let ordinal: i64 = transaction
+            .query_row(
+                "SELECT COALESCE(MAX(ordinal),-1)+1 FROM chats WHERE project_id=?1",
+                [&request.target_project_id],
+                |row| row.get(0),
+            )
+            .db()?;
+        let position: i64 = transaction
+            .query_row(
+                "SELECT COALESCE(MAX(position),-1)+1 FROM workbench_tabs WHERE project_id=?1",
+                [&request.target_project_id],
+                |row| row.get(0),
+            )
+            .db()?;
+        transaction
+            .execute_batch("PRAGMA defer_foreign_keys = ON")
+            .db()?;
         if let Some(turn) = welcome {
             legacy_welcome::move_in(&transaction, request, &turn)?;
         }
@@ -113,44 +132,51 @@ impl Database {
                 now,
                 request.chat_id
             ],
-        )?;
-        transaction.execute(
-            "UPDATE workbench_tabs SET project_id=?2, position=?3, updated_at=?4
+        ).db()?;
+        transaction
+            .execute(
+                "UPDATE workbench_tabs SET project_id=?2, position=?3, updated_at=?4
              WHERE project_id=?1 AND id=?5",
-            params![
-                request.project_id,
-                request.target_project_id,
-                position,
-                now,
-                request.chat_id
-            ],
-        )?;
-        transaction.execute(
-            "UPDATE chat_tabs SET project_id=?2 WHERE project_id=?1 AND chat_id=?3",
-            params![
-                request.project_id,
-                request.target_project_id,
-                request.chat_id
-            ],
-        )?;
-        transaction.execute(
-            "UPDATE acp_project_usage SET chat_count = chat_count - 1, revision = revision + 1
+                params![
+                    request.project_id,
+                    request.target_project_id,
+                    position,
+                    now,
+                    request.chat_id
+                ],
+            )
+            .db()?;
+        transaction
+            .execute(
+                "UPDATE chat_tabs SET project_id=?2 WHERE project_id=?1 AND chat_id=?3",
+                params![
+                    request.project_id,
+                    request.target_project_id,
+                    request.chat_id
+                ],
+            )
+            .db()?;
+        transaction
+            .execute(
+                "UPDATE acp_project_usage SET chat_count = chat_count - 1, revision = revision + 1
              WHERE project_id=?1 AND chat_count > 0",
-            [&request.project_id],
-        )?;
+                [&request.project_id],
+            )
+            .db()?;
         let target_usage: Option<i64> = transaction
             .query_row(
                 "SELECT chat_count FROM acp_project_usage WHERE project_id=?1",
                 [&request.target_project_id],
                 |row| row.get(0),
             )
-            .optional()?;
+            .optional()
+            .db()?;
         if target_usage.is_some() {
             transaction.execute(
                 "UPDATE acp_project_usage SET chat_count = chat_count + 1, revision = revision + 1
                  WHERE project_id=?1",
                 [&request.target_project_id],
-            )?;
+            ).db()?;
         }
         let source_next: Option<String> = transaction
             .query_row(
@@ -160,22 +186,29 @@ impl Database {
                 [&request.project_id],
                 |row| row.get(0),
             )
-            .optional()?;
-        transaction.execute(
-            "UPDATE project_layouts SET active_tab_id=?2, updated_at=?3 WHERE project_id=?1",
-            params![request.project_id, source_next, now],
-        )?;
-        transaction.execute(
-            "UPDATE project_layouts SET active_tab_id=?2, updated_at=?3 WHERE project_id=?1",
-            params![request.target_project_id, request.chat_id, now],
-        )?;
+            .optional()
+            .db()?;
+        transaction
+            .execute(
+                "UPDATE project_layouts SET active_tab_id=?2, updated_at=?3 WHERE project_id=?1",
+                params![request.project_id, source_next, now],
+            )
+            .db()?;
+        transaction
+            .execute(
+                "UPDATE project_layouts SET active_tab_id=?2, updated_at=?3 WHERE project_id=?1",
+                params![request.target_project_id, request.chat_id, now],
+            )
+            .db()?;
         if source_is_active {
-            transaction.execute(
-                "UPDATE app_state SET active_project_id=?1, updated_at=?2 WHERE singleton=1",
-                params![request.target_project_id, now],
-            )?;
+            transaction
+                .execute(
+                    "UPDATE app_state SET active_project_id=?1, updated_at=?2 WHERE singleton=1",
+                    params![request.target_project_id, now],
+                )
+                .db()?;
         }
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     }
 }

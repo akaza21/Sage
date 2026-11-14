@@ -2,6 +2,7 @@ use std::{fs, path::Path};
 
 use rusqlite::{Connection, OptionalExtension};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -49,22 +50,26 @@ fn owned_stage(file_name: &str) -> bool {
 
 pub(crate) fn reconcile_image_artifacts(connection: &Connection, root: &Path) -> AppResult<()> {
     validate_root(root)?;
-    connection.execute(
-        "DELETE FROM chat_image_artifacts WHERE lifecycle='pending'",
-        [],
-    )?;
-    let mut statement = connection.prepare(
-        "SELECT id,lifecycle,full_bytes,full_sha256,thumbnail_bytes,thumbnail_sha256
+    connection
+        .execute(
+            "DELETE FROM chat_image_artifacts WHERE lifecycle='pending'",
+            [],
+        )
+        .db()?;
+    let mut statement = connection
+        .prepare(
+            "SELECT id,lifecycle,full_bytes,full_sha256,thumbnail_bytes,thumbnail_sha256
          FROM chat_image_artifacts ORDER BY id",
-    )?;
-    let mut rows = statement.query([])?;
-    while let Some(row) = rows.next()? {
-        let id: String = row.get(0)?;
-        let lifecycle: String = row.get(1)?;
-        let full_bytes: i64 = row.get(2)?;
-        let full_sha256: String = row.get(3)?;
-        let thumbnail_bytes: i64 = row.get(4)?;
-        let thumbnail_sha256: String = row.get(5)?;
+        )
+        .db()?;
+    let mut rows = statement.query([]).db()?;
+    while let Some(row) = rows.next().db()? {
+        let id: String = row.get(0).db()?;
+        let lifecycle: String = row.get(1).db()?;
+        let full_bytes: i64 = row.get(2).db()?;
+        let full_sha256: String = row.get(3).db()?;
+        let thumbnail_bytes: i64 = row.get(4).db()?;
+        let thumbnail_sha256: String = row.get(5).db()?;
         if lifecycle != "retired" {
             verify_file(
                 &full_path(root, &id),
@@ -99,7 +104,8 @@ pub(crate) fn reconcile_image_artifacts(connection: &Connection, root: &Path) ->
                 [id],
                 |row| row.get(0),
             )
-            .optional()?;
+            .optional()
+            .db()?;
         if lifecycle.is_none() || (full && lifecycle.as_deref() == Some("retired")) {
             migration::remove_image_file(&entry.path())?;
         }

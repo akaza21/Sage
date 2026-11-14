@@ -8,6 +8,7 @@ pub(crate) mod chat_read_marks;
 pub(crate) mod custom_acp_agents;
 pub(crate) mod new_chat_defaults;
 
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     settings_store::{EditorSettings, SessionAccessModes, UiAppearance},
     state::AppState,

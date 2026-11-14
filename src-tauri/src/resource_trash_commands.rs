@@ -2,10 +2,10 @@ use std::sync::Arc;
 
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use tauri::State;
 
 use crate::{
-    persistence::Database,
     preview_lifecycle::on_committed_project_transition_epoch,
     project_registry::RootRecord,
     resource_commands::build_bootstrap_snapshot,
@@ -19,6 +19,7 @@ use crate::{
         },
     },
 };
+use sage_db::database::Database;
 use sage_domain::{
     file_operations::{
         ResourceTrashOutcome, TrashProjectResourceRequest, TrashProjectResourceResult,
@@ -215,12 +216,12 @@ fn admit_request(
     request: &TrashProjectResourceRequest,
 ) -> AppResult<Workspace> {
     let mut connection = database.write_connection()?;
-    let transaction = connection.transaction()?;
+    let transaction = connection.transaction().db()?;
     let workspace = resolve_workspace(&transaction, request)?;
     layout::ensure_resource_closed(&transaction, &request.project_id, &request.source)?;
     validate_layout(&transaction, &request.current_layout)?;
     layout::ensure_request_resource_closed(request)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     Ok(workspace)
 }
 
@@ -235,7 +236,7 @@ where
     A: FnOnce(&rusqlite::Transaction<'_>) -> AppResult<()>,
 {
     let mut connection = database.write_connection()?;
-    let transaction = connection.transaction()?;
+    let transaction = connection.transaction().db()?;
     let _workspace = resolve_workspace(&transaction, request)?;
     layout::ensure_resource_closed(&transaction, &request.project_id, &request.source)?;
     validate_layout(&transaction, &request.current_layout)?;
@@ -250,7 +251,7 @@ where
     }
     after_trash(&transaction)?;
     intent::delete_exact(&transaction, pending)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     Ok(())
 }
 
@@ -280,7 +281,8 @@ fn resolve_workspace(
             [],
             |row| row.get::<_, Option<String>>(0),
         )
-        .optional()?
+        .optional()
+        .db()?
         .flatten();
     if active.as_deref() != Some(request.project_id.as_str()) {
         return Err(AppError::InvalidRequest(format!(
@@ -301,7 +303,8 @@ fn resolve_workspace(
                 })
             },
         )
-        .optional()?
+        .optional()
+        .db()?
         .ok_or_else(|| {
             AppError::InvalidRequest(format!(
                 "{TRASH_NAME} root does not belong to the active Project"

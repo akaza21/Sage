@@ -161,7 +161,10 @@ pub(super) fn retitle_attached_tab_in(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::Database;
+    use crate::chat_lifecycle::store::ChatLifecycleStore;
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
+    use sage_db::database::Database;
 
     struct Fixture {
         root: std::path::PathBuf,
@@ -175,7 +178,8 @@ mod tests {
             let root =
                 std::env::temp_dir().join(format!("sage-harness-title-{}", uuid::Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();
-            let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+            let database =
+                crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
             let project = database.create_project_from_root(&root).unwrap().id;
             let chat = database
                 .bootstrap_snapshot()
