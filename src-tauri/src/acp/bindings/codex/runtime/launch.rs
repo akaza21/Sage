@@ -68,6 +68,8 @@ impl CodexRuntime {
             entrypoint.byte_len,
         );
         let artifact = artifact.map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        #[cfg(windows)]
+        let artifact = artifact.with_manifest(binding.package_manifest().cloned());
         #[cfg(all(test, windows))]
         let fixed_args = if binding.journey_test_entrypoint().is_some() {
             let case_id = binding

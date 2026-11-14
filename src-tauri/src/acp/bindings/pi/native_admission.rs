@@ -31,8 +31,6 @@ use crate::{
     harness_discovery::{DiscoveredPiLaunch, PiLaunchDiscovery},
 };
 
-use super::manifest::parse_version;
-
 pub(crate) const PI_BINDING_ID: &str = "pi-rpc";
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:pi-rpc:native:v1:";
 /// Read-only launch arguments after the entrypoint. Prompt templates, skills
@@ -103,8 +101,8 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn engine_satisfied(engine: &str, node_version: &str) -> Option<bool> {
-    let minimum = parse_version(engine.trim().strip_prefix(">=")?.trim())?;
-    Some(parse_version(node_version)? >= minimum)
+    let node = crate::acp::bindings::node_engine::parse_node_version(node_version)?;
+    crate::acp::bindings::node_engine::satisfies(engine, node)
 }
 
 /// The first release of the Pi package Sage launches. It already honours

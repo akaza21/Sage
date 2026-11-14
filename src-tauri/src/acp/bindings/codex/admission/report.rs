@@ -89,6 +89,25 @@ impl AdmittedCodexBinding {
         &self.entrypoint
     }
 
+    #[cfg(windows)]
+    pub(crate) fn package_manifest(&self) -> Option<&crate::acp::process::ManifestExpectation> {
+        self.observed.as_ref()?.manifest.as_ref()
+    }
+
+    /// Whether `other` admitted the same installed build: the same launcher,
+    /// reported version and, where launch reads it, package manifest. The
+    /// manifest is compared here rather than folded into the binding digest,
+    /// so chats persisted against an unchanged installation keep resuming.
+    pub(crate) fn is_same_installation(&self, other: &Self) -> bool {
+        #[cfg(windows)]
+        let same_manifest = self.package_manifest() == other.package_manifest();
+        #[cfg(not(windows))]
+        let same_manifest = true;
+        same_manifest
+            && self.artifact_digest() == other.artifact_digest()
+            && self.harness_version() == other.harness_version()
+    }
+
     #[cfg(all(test, windows))]
     pub(crate) fn journey_test_entrypoint(&self) -> Option<&EntrypointIdentity> {
         self.journey_test_entrypoint.as_ref()

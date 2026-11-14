@@ -76,7 +76,7 @@ pub(crate) fn launch(
             }
         };
     }
-    let (artifact, _manifest_guard) = pre_spawn!(VerifiedArtifact::open_with_manifest(spec));
+    let (artifact, manifest_guard) = pre_spawn!(VerifiedArtifact::open_with_manifest(spec));
     #[cfg(test)]
     if let Some(hook) = &spec.test_after_artifact_verified {
         hook();
@@ -87,26 +87,27 @@ pub(crate) fn launch(
             .map_err(|_| LaunchError::IdentityMismatch)
     );
     let job = pre_spawn!(JobBoundary::create(spec.limits.active_processes));
-    let (application_path, mut command_line) = match spec.artifact.entrypoint_kind {
+    let (program, args) = match spec.artifact.entrypoint_kind {
         EntryPointKind::NativeExecutable => (
             artifact.canonical_path.clone(),
-            pre_spawn!(command_line(
-                &artifact.canonical_path,
-                spec.fixed_args.as_slice()
-            )),
+            spec.fixed_args.as_slice().to_vec(),
         ),
         EntryPointKind::WindowsBatchLauncher => {
             let plan = pre_spawn!(parse_npm_codex_launcher(
                 &artifact,
+                manifest_guard.as_ref(),
                 &spec.environment,
                 &spec.fixed_args
             ));
-            (
-                plan.node.clone(),
-                pre_spawn!(command_line(&plan.node, &plan.args)),
-            )
+            (plan.node, plan.args)
         }
     };
+    // The child sees ordinary paths: Node reports its own executable path
+    // from what it was started with, and runtimes and harnesses resolve,
+    // fork or name folders after these paths. Sage keeps the verbatim
+    // canonical paths only for its own identity checks.
+    let (application_path, args) = crate::win32_path::ordinary_invocation(&program, &args);
+    let mut command_line = pre_spawn!(command_line(&application_path, &args));
     let environment = pre_spawn!(environment_block(spec.environment.as_slice()));
     let application = pre_spawn!(wide_z(application_path.as_os_str()));
     // Harnesses derive state from their working directory (Pi names its
