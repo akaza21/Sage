@@ -111,7 +111,7 @@ fn parked_chat(last_len: usize) -> AcpService {
 
 #[test]
 fn a_full_history_keeps_room_for_the_usage_flag() {
-    let limit = crate::acp::limits::LIMITS.durable.history_page_bytes as usize;
+    let limit = sage_core::limits::LIMITS.durable.history_page_bytes as usize;
     let flag = r#","usage":true"#.len();
     let slack = limit - CURSOR_RESERVE - bytes(&bare_page(&parked_chat(1)));
     // Fits the page only if nothing is kept for the flag.
@@ -124,7 +124,7 @@ fn a_full_history_keeps_room_for_the_usage_flag() {
 #[test]
 fn a_nearly_full_history_yields_room_for_the_restored_config_and_its_notice() {
     let first = owner(1);
-    let limit = crate::acp::limits::LIMITS.durable.history_page_bytes as usize;
+    let limit = sage_core::limits::LIMITS.durable.history_page_bytes as usize;
     // Size the last item so the history alone leaves less room than the
     // cursor reserve plus a few bytes.
     let slack = limit - CURSOR_RESERVE - bytes(&bare_page(&parked_chat(1)));

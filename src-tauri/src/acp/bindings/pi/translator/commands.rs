@@ -204,7 +204,7 @@ impl PiTranslator {
         fields.insert("id".into(), Value::String(id.clone()));
         // A prompt with images is sent as a prompt frame.
         let frame_bytes = if fields.contains_key("images") {
-            crate::acp::limits::PROMPT_FRAME_BYTES
+            sage_core::limits::PROMPT_FRAME_BYTES
         } else {
             super::super::decode::FRAME_BYTES
         };

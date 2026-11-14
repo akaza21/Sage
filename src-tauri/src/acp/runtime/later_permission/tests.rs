@@ -1,10 +1,10 @@
-use crate::acp::{
-    bindings::adapter::{AdapterEgress, EgressToken},
-    runtime::{
-        later_permission::{LaterPermissionError, resolve_later_permission},
-        permissions::PermissionDecision,
+use crate::{
+    acp::{
+        bindings::adapter::{AdapterEgress, EgressToken},
+        runtime::later_permission::{LaterPermissionError, resolve_later_permission},
+        transport::OutboundFrame,
     },
-    transport::OutboundFrame,
+    acp_protocol::permissions::PermissionDecision,
 };
 
 fn request() -> crate::acp::contract::SageServerRequestId {

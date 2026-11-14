@@ -1,13 +1,16 @@
-use crate::acp::{
-    contract::{
-        RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
-        SageTurnId,
+use crate::{
+    acp::{
+        contract::{
+            RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
+            SageTurnId,
+        },
+        intent::{NormalizedPayload, PermissionOptionKind},
+        lifecycle::ServerRequestState,
+        runtime::{HostError, JournalLane},
+        scheduler::RuntimeOwner,
+        store::{RequestStateCommand, StoreMutation},
     },
-    intent::{NormalizedPayload, PermissionOptionKind},
-    lifecycle::ServerRequestState,
-    runtime::{HostError, JournalLane, permissions::PermissionDecision},
-    scheduler::RuntimeOwner,
-    store::{RequestStateCommand, StoreMutation},
+    acp_protocol::permissions::PermissionDecision,
 };
 
 use super::AcpService;
@@ -136,7 +139,7 @@ impl AcpService {
                 }),
                 u64::try_from(sage_core::time::now_millis())
                     .unwrap_or_default()
-                    .saturating_add(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc),
+                    .saturating_add(sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc),
             )
             .and_then(|ticket| ticket.blocking_committed())
             .map_err(|_| HostError::RecoveryRequired)?;

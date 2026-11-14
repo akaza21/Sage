@@ -186,7 +186,7 @@ pub struct FileChangeProjection {
     pub deletions: Option<u32>,
     pub pair_state: FilePairState,
     /// Immutable snapshot revision; zero unless `pair_state == Available`.
-    #[serde(with = "crate::acp::file_diff::wire_counter")]
+    #[serde(with = "crate::acp_protocol::file_diff::wire_counter")]
     pub snapshot_revision: u64,
     /// Raw UTF-8 byte lengths of the retained pair, when available.
     pub old_bytes: Option<u64>,

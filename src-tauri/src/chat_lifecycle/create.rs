@@ -6,13 +6,13 @@ use super::{
     validate_chat_identifier,
 };
 use crate::{
-    acp::limits::LIMITS,
     domain::ProjectLayoutRequest,
     persistence::Database,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
 };
 use sage_core::{
     error::{AppError, AppResult},
+    limits::LIMITS,
     time::now_millis,
 };
 

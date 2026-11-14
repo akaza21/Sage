@@ -1,14 +1,16 @@
 use super::*;
-use crate::acp::{
-    attached_context::{AttachedContexts, DiffLineCommentContext},
-    contract::{ItemLifecycle, SafeText, SageRootId, SessionState},
-    file_diff::pair_digest,
-    intent::{ExternalId, NormalizedPayload, SafeResourceLocation, SafeResourceRef},
-    store::{
-        AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, FilePairCommand,
-        ItemIngressCommand, SessionTerminalCommand, apply_adapter_inbound_batch,
-        apply_session_terminal,
+use crate::{
+    acp::{
+        attached_context::{AttachedContexts, DiffLineCommentContext},
+        contract::{ItemLifecycle, SafeText, SageRootId, SessionState},
+        intent::{ExternalId, NormalizedPayload, SafeResourceLocation, SafeResourceRef},
+        store::{
+            AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, FilePairCommand,
+            ItemIngressCommand, SessionTerminalCommand, apply_adapter_inbound_batch,
+            apply_session_terminal,
+        },
     },
+    acp_protocol::file_diff::pair_digest,
 };
 use sha2::{Digest, Sha256};
 

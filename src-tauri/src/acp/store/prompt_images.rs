@@ -8,8 +8,8 @@ use crate::acp::{
     contract::{SafeText, SageItemId, SageTurnId},
     intent::{ExternalId, ImageSource, NormalizedPayload},
     lifecycle::ItemLifecycle,
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::{ItemIngressCommand, PrepareTurnCommand, StoreError, facts::hex_digest};
 

@@ -1,4 +1,4 @@
-use crate::acp::limits::BROWSER_LIMITS;
+use sage_core::limits::BROWSER_LIMITS;
 use serde_json::{Value, json};
 
 const TOOLS: [&str; 8] = [

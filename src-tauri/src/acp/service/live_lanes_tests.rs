@@ -78,7 +78,7 @@ fn the_lane_count_is_the_frozen_live_tree_limit_and_above_one() {
     assert_eq!(service.lanes.len(), LIVE_RUNTIME_LANES);
     assert_eq!(
         LIVE_RUNTIME_LANES as u64,
-        crate::acp::limits::LIMITS.process.operational_live_trees
+        sage_core::limits::LIMITS.process.operational_live_trees
     );
     const { assert!(LIVE_RUNTIME_LANES > 1, "B2 requires concurrent live chats") };
 }

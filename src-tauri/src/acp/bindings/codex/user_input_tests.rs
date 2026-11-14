@@ -4,10 +4,12 @@
 
 use serde_json::{Value, json};
 
-use crate::acp::{
-    intent::{NormalizedPayload, user_input::UserInputAnswers},
-    lifecycle::ServerRequestState,
-    runtime::permissions::PermissionDecision,
+use crate::{
+    acp::{
+        intent::{NormalizedPayload, user_input::UserInputAnswers},
+        lifecycle::ServerRequestState,
+    },
+    acp_protocol::permissions::PermissionDecision,
 };
 
 use super::IncomingEvent;

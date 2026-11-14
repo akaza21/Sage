@@ -1,7 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
 use super::contract::{BoundedVec, ContractError, ItemKind, RequiredText, SafeText, SageRootId};
-pub use super::{ipc::*, limits::COMMAND_RESOURCE_LIMIT};
+pub use super::ipc::*;
+pub use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 
 mod activity_provenance;
 mod capability;

@@ -175,7 +175,7 @@ fn each_restore_change_gets_its_own_deadline_and_a_slow_answer_is_not_fatal() {
     let sent = seam::take_sent();
     assert_eq!(sent.len(), 2);
     let timeout =
-        std::time::Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc);
+        std::time::Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc);
     for (set_at, deadline) in &sent {
         // The whole per-request timeout from when the change is sent, not
         // what an earlier change left of a shared one.

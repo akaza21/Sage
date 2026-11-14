@@ -1,4 +1,5 @@
-use crate::acp::{contract::RequiredText, intent::ExternalId, limits::LIMITS};
+use crate::acp::{contract::RequiredText, intent::ExternalId};
+use sage_core::limits::LIMITS;
 
 use super::{AdapterError, CodexAdapter};
 use crate::acp::intent::{NormalizedPayload, session_event::SessionScopedEvent};

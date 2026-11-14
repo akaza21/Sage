@@ -2,7 +2,7 @@
 //!
 //! Native owns raw UTF-8 byte admission for `oldText`/`newText`. An admitted
 //! pair is stored as two SQLite BLOBs keyed by [`DiffRef`]; only bounded
-//! metadata stays in the encoded [`NormalizedPayload`](super::intent::NormalizedPayload).
+//! metadata stays in the encoded [`NormalizedPayload`](crate::acp::intent::NormalizedPayload).
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -12,9 +12,9 @@ pub(crate) use line_counts::line_change_counts;
 
 /// Maximum raw UTF-8 bytes per diff side. Checked before serialization so
 /// JSON escaping can never turn an admitted pair into an oversized payload.
-pub(crate) use super::limits::DIFF_SIDE_BYTES_MAX;
+pub(crate) use sage_core::limits::DIFF_SIDE_BYTES_MAX;
 /// Maximum retained diffs per Turn. Over-cap admits summary-only metadata.
-pub(crate) use super::limits::DIFFS_PER_TURN;
+pub(crate) use sage_core::limits::DIFFS_PER_TURN;
 /// Single diff ordinal per persisted item (one resource per item).
 pub(crate) const DIFF_ORDINAL: u64 = 0;
 
@@ -114,9 +114,9 @@ impl DiffRef {
         if self.relative_path.len() > MAX_PATH_BYTES {
             return Err(SnapshotReadError::Forbidden);
         }
-        let root = super::contract::SageRootId::parse(self.root_id.clone())
+        let root = crate::acp::contract::SageRootId::parse(self.root_id.clone())
             .map_err(|_| SnapshotReadError::Forbidden)?;
-        super::intent::SafeResourceRef::new(root, self.relative_path.clone())
+        crate::acp::intent::SafeResourceRef::new(root, self.relative_path.clone())
             .map_err(|_| SnapshotReadError::Forbidden)?;
         if self.diff_ordinal != DIFF_ORDINAL
             || self.runtime_epoch == 0

@@ -1,14 +1,16 @@
 use rusqlite::{Connection, params};
 
 use super::*;
-use crate::acp::{
-    contract::{ClientIntentId, RequiredText, SchemaVersionV1},
-    intent::{
-        BindingId, CapabilitySnapshotV1, ExternalId, ModelId, NormalizedPayload, PageCursor,
-        ToolCategory,
+use crate::{
+    acp::{
+        contract::{ClientIntentId, RequiredText, SchemaVersionV1},
+        intent::{
+            BindingId, CapabilitySnapshotV1, ExternalId, ModelId, NormalizedPayload, PageCursor,
+            ToolCategory,
+        },
+        lifecycle::SessionState,
     },
-    lifecycle::SessionState,
-    runtime::permissions::{
+    acp_protocol::permissions::{
         DeclineTransport, PermissionDisposition, PermissionError, PermissionIntent,
         decline_permission, decline_written,
     },
@@ -349,7 +351,7 @@ fn stale_start_and_capacity_plus_one_preserve_existing_history() {
     connection
         .execute(
             "UPDATE acp_project_usage SET session_count=?1",
-            [crate::acp::limits::LIMITS.durable.sessions_per_project as i64],
+            [sage_core::limits::LIMITS.durable.sessions_per_project as i64],
         )
         .unwrap();
     assert!(matches!(

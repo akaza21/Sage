@@ -7,8 +7,8 @@ use crate::acp::{
     },
     intent::{BindingId, ModelId},
     lifecycle::SessionState,
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 pub(super) const PENDING_CAPABILITIES_JSON: &str = r#"{"schemaVersion":1,"protocolVersion":"pending","newSession":false,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":false,"cancel":false,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
 
@@ -178,7 +178,7 @@ pub(crate) fn activate_session(
         |row| Ok((row.get(0)?, row.get(1)?)),
     )?;
     let capacity_available = open_for_session == 0
-        && open < crate::acp::limits::LIMITS.process.operational_live_trees as i64;
+        && open < sage_core::limits::LIMITS.process.operational_live_trees as i64;
     let maximum: i64 = transaction.query_row(
         "SELECT COALESCE(MAX(runtime_epoch),0) FROM session_runtime_epochs WHERE session_id=?1",
         [command.session_id.as_str()],

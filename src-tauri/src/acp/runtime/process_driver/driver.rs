@@ -188,7 +188,7 @@ where
         self.dispatch_prompt_with_access_mode(
             prompt,
             client_message_id,
-            crate::settings_store::SessionAccessMode::ReadOnly,
+            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         )
     }
 
@@ -196,7 +196,7 @@ where
         &mut self,
         prompt: crate::acp::intent::Prompt,
         client_message_id: crate::acp::contract::RequiredText<512>,
-        access_mode: crate::settings_store::SessionAccessMode,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<DriverProgress, DriverError> {
         self.ensure_running()?;
         if let Some(error) = self.latch_pending_exit() {
@@ -280,7 +280,7 @@ where
     pub(crate) async fn resolve_permission(
         &mut self,
         request_id: &crate::acp::contract::SageServerRequestId,
-        decision: crate::acp::runtime::permissions::PermissionDecision,
+        decision: crate::acp_protocol::permissions::PermissionDecision,
     ) -> Result<(), DriverError> {
         self.ensure_running()?;
         if self.pending_exit.is_some() {

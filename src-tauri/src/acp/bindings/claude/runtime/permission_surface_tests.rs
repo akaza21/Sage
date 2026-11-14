@@ -99,7 +99,7 @@ fn live_reject_only_permission_is_published_without_approval() {
         .command(
             crate::acp::bindings::adapter::AdapterCommand::ResolvePermission {
                 request_id: crate::acp::contract::SageServerRequestId::parse(request_id).unwrap(),
-                decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+                decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
             },
         )
         .expect("reject-only request can be denied");
@@ -113,7 +113,7 @@ fn advertised_claude_ask_emits_prompt_then_requires_permission() {
     // A new Claude chat starts in Ask each time; other modes are opt-in.
     assert_eq!(
         capabilities[0].id,
-        crate::settings_store::SessionAccessMode::Ask
+        crate::acp_protocol::access_mode::SessionAccessMode::Ask
     );
     assert!(capabilities[0].fallback);
     let mut runtime = ClaudeRuntime::fixture();
@@ -274,7 +274,7 @@ fn the_largest_displayable_command_still_serializes_inside_the_permission_payloa
         .expect("a permission request is published");
     let serialized = serde_json::to_vec(payload).expect("serialized");
     assert!(
-        serialized.len() <= crate::acp::limits::LIMITS.wire.permission_payload_bytes as usize,
+        serialized.len() <= sage_core::limits::LIMITS.wire.permission_payload_bytes as usize,
         "serialized permission payload stays inside the cap"
     );
 }

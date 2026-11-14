@@ -1,7 +1,7 @@
 use super::{
     BrowserCapability, BrowserFailure, BrowserRequest, BrowserResponse, BrowserScope, dispatch,
 };
-use crate::acp::limits::BROWSER_LIMITS;
+use sage_core::limits::BROWSER_LIMITS;
 use serde::Deserialize;
 use serde_json::{Value, json};
 use sha2::{Digest, Sha256};

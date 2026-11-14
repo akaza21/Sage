@@ -1,9 +1,9 @@
 use serde_json::{Value, json};
 
-use crate::acp::{
-    limits::LIMITS,
-    runtime::{CancelDispatchObservation, observe_process_live_port_cancel_at_capacity},
+use crate::acp::runtime::{
+    CancelDispatchObservation, observe_process_live_port_cancel_at_capacity,
 };
+use sage_core::limits::LIMITS;
 
 pub(super) fn execute(steps: &[Value]) -> Value {
     let [fill, dispatch] = steps else {

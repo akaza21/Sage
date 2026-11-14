@@ -1,6 +1,6 @@
 use rusqlite::{Transaction, params};
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use crate::acp::contract::{ProjectionRevision, SageItemId};
 

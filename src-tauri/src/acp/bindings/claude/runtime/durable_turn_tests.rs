@@ -169,7 +169,7 @@ async fn drive_turn<J: crate::acp::runtime::AdapterBatchJournal>(
     pump.queue_prompt(
         Prompt::new("prompt", "Reply with the single word ok.").expect("prompt"),
         &RequiredText::new("clientMessageId", turn_id.to_owned()).expect("client message id"),
-        crate::settings_store::SessionAccessMode::Ask,
+        crate::acp_protocol::access_mode::SessionAccessMode::Ask,
     )
     .expect("prompt queued");
     let mut sink = Sink::default();

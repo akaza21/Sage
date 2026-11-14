@@ -96,7 +96,7 @@ async fn completed_pi(files: &Sessions) -> CompletedPumpParts<NativeRuntime, Fak
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt = written(&mut adapter, prompt);

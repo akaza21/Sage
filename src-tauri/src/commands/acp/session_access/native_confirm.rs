@@ -7,7 +7,8 @@
 //! person reads is refused, and only one such dialog is open at a time.
 
 use crate::{
-    acp::contract::SageAgentSessionId, settings_store::SessionAccessMode, state::AppState,
+    acp::contract::SageAgentSessionId, acp_protocol::access_mode::SessionAccessMode,
+    state::AppState,
 };
 use std::sync::{
     Arc, LazyLock,

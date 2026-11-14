@@ -6,7 +6,8 @@ use crate::acp::{
 
 #[test]
 fn snapshot_read_failures_preserve_the_frontend_ipc_contract() {
-    let unavailable = snapshot_error(crate::acp::file_diff::SnapshotReadError::Unavailable);
+    let unavailable =
+        snapshot_error(crate::acp_protocol::file_diff::SnapshotReadError::Unavailable);
     assert!(matches!(
         unavailable,
         AcpIpcError::Unavailable {
@@ -23,18 +24,18 @@ fn snapshot_read_failures_preserve_the_frontend_ipc_contract() {
         })
     );
     assert!(matches!(
-        snapshot_error(crate::acp::file_diff::SnapshotReadError::Stale),
+        snapshot_error(crate::acp_protocol::file_diff::SnapshotReadError::Stale),
         AcpIpcError::Conflict {
             resource: AcpConflictResource::Session,
             ..
         }
     ));
     assert!(matches!(
-        snapshot_error(crate::acp::file_diff::SnapshotReadError::Corrupt),
+        snapshot_error(crate::acp_protocol::file_diff::SnapshotReadError::Corrupt),
         AcpIpcError::RecoveryRequired { .. }
     ));
     assert!(matches!(
-        snapshot_error(crate::acp::file_diff::SnapshotReadError::Forbidden),
+        snapshot_error(crate::acp_protocol::file_diff::SnapshotReadError::Forbidden),
         AcpIpcError::InvalidRequest { .. }
     ));
 }

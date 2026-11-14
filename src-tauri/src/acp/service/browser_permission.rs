@@ -267,7 +267,7 @@ impl super::AcpService {
                 },
                 u64::try_from(now)
                     .unwrap_or_default()
-                    .saturating_add(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc),
+                    .saturating_add(sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc),
             )
             .and_then(|ticket| ticket.blocking_committed());
         let Ok(commit) = committed else {
@@ -375,7 +375,7 @@ impl super::AcpService {
                     }),
                     u64::try_from(now)
                         .unwrap_or_default()
-                        .saturating_add(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc),
+                        .saturating_add(sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc),
                 )
                 .and_then(|ticket| ticket.blocking_committed())
                 .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;

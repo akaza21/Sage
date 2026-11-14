@@ -3,7 +3,7 @@ use std::{fmt, marker::PhantomData};
 use serde::{Deserialize, Deserializer, Serialize, Serializer, de};
 use uuid::Uuid;
 
-use super::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
 pub enum ContractError {

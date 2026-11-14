@@ -584,7 +584,7 @@ fn unknown_tool_oversized_args_and_raw_cdp_are_rejected() {
         serde_json::from_slice::<Value>(&raw_cdp).unwrap()["error"]["code"],
         -32602
     );
-    let oversized = vec![b'x'; crate::acp::limits::BROWSER_LIMITS.request_bytes + 1];
+    let oversized = vec![b'x'; sage_core::limits::BROWSER_LIMITS.request_bytes + 1];
     assert_eq!(server.handle(&oversized), Err(BrowserMcpError::Capacity));
 }
 

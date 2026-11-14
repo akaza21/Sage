@@ -167,7 +167,7 @@ pub(super) fn notification<M: ResourceMapper>(
                     text(
                         params,
                         "error",
-                        crate::acp::limits::LIMITS.wire.error_bytes as usize,
+                        sage_core::limits::LIMITS.wire.error_bytes as usize,
                     )?;
                     if !params.get("failureReason").is_some_and(Value::is_null) {
                         return Err(IngressError::Malformed);
@@ -295,7 +295,7 @@ pub(super) fn notification<M: ResourceMapper>(
             let message = text(
                 error,
                 "message",
-                crate::acp::limits::LIMITS.wire.error_bytes as usize,
+                sage_core::limits::LIMITS.wire.error_bytes as usize,
             )?;
             let payload = error_payload("codex", message, will_retry)?;
             if !will_retry {

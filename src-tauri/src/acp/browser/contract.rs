@@ -1,6 +1,6 @@
 use super::bounds::{admit_count, admit_screenshot, admit_text};
 use super::redact::redact_result;
-use crate::acp::limits::BROWSER_LIMITS;
+use sage_core::limits::BROWSER_LIMITS;
 use serde::{Deserialize, Serialize, Serializer};
 use std::fmt;
 

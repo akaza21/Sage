@@ -1,7 +1,7 @@
 use super::*;
-use crate::acp::bindings::codex::CODEX_OBSERVED_PROTOCOL_IDENTITY;
+use crate::acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
+use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 use sha2::Digest;
 use std::{
     collections::VecDeque,
@@ -125,7 +125,7 @@ async fn native_child_ipc_validates_binding_and_returns_persisted_typed_reply() 
         ProjectGeneration::ZERO,
         ProjectGeneration::ZERO,
         true,
-        CODEX_OBSERVED_PROTOCOL_IDENTITY,
+        OBSERVED_PROTOCOL_IDENTITY,
     )
     .await;
 }
@@ -139,7 +139,7 @@ async fn native_child_ipc_reads_the_desktop_fixture_replay() {
         ProjectGeneration::ZERO,
         ProjectGeneration::ZERO,
         false,
-        &format!("codex-app-server-desktop-fixture-{CODEX_PINNED_VERSION}"),
+        &format!("codex-app-server-desktop-fixture-{PINNED_CODEX_VERSION}"),
     )
     .await;
 }
@@ -163,7 +163,7 @@ async fn native_child_ipc_rejects_drifted_projection_generation_but_accepts_live
         ProjectGeneration::new(3).unwrap(),
         ProjectGeneration::new(2).unwrap(),
         false,
-        CODEX_OBSERVED_PROTOCOL_IDENTITY,
+        OBSERVED_PROTOCOL_IDENTITY,
     )
     .await;
 }

@@ -1,5 +1,5 @@
 use super::pi::bridge::install::Unavailable;
-use crate::settings_store::SessionAccessMode;
+use crate::acp_protocol::access_mode::{AccessModeCapability, SessionAccessMode};
 
 pub(crate) const CODEX_ASK_NATIVE_APPROVAL_PROVEN: bool = false;
 
@@ -8,19 +8,6 @@ const PI_READ_ONLY: &[(SessionAccessMode, &str, &str)] = &[(
     "Read-only",
     "Read-only tools only; workspace editing is not admitted.",
 )];
-
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct AccessModeCapability {
-    pub(crate) id: SessionAccessMode,
-    pub(crate) label: String,
-    pub(crate) description: String,
-    pub(crate) fallback: bool,
-    /// The harness session mode this access mode selects. The composer offers
-    /// the mode only while the live session advertises this id.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) session_mode_id: Option<String>,
-}
 
 /// An access mode a harness enforces itself, through one of its own session
 /// (permission) modes. A binding whose access works this way lists its rows
@@ -300,12 +287,12 @@ pub(crate) fn session_mode_for_binding(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
+    use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
     use serde_json::json;
 
     #[test]
     fn a_later_codex_release_keeps_workspace_edits_and_an_earlier_one_is_read_only() {
-        let [major, minor, patch] = CODEX_PINNED_VERSION
+        let [major, minor, patch] = PINNED_CODEX_VERSION
             .split('.')
             .map(|part| part.parse::<u32>().unwrap())
             .collect::<Vec<_>>()[..]
@@ -323,7 +310,7 @@ mod tests {
                 .collect::<Vec<_>>()
         };
         use SessionAccessMode::{ReadOnly, WorkspaceWrite};
-        assert_eq!(ids(CODEX_PINNED_VERSION), [ReadOnly, WorkspaceWrite]);
+        assert_eq!(ids(PINNED_CODEX_VERSION), [ReadOnly, WorkspaceWrite]);
         assert_eq!(
             ids(&format!("{major}.{minor}.{}", patch + 1)),
             [ReadOnly, WorkspaceWrite]
@@ -333,7 +320,7 @@ mod tests {
 
     #[test]
     fn uncharacterised_codex_cannot_offer_workspace_write() {
-        let modes = access_modes("codex-app-server", CODEX_PINNED_VERSION, false);
+        let modes = access_modes("codex-app-server", PINNED_CODEX_VERSION, false);
         assert_eq!(modes.len(), 1);
         assert_eq!(modes[0].id, SessionAccessMode::ReadOnly);
     }
@@ -349,7 +336,7 @@ mod tests {
             ("omp-native-acp", None),
         ] {
             assert_eq!(
-                effective_mode(binding, CODEX_PINNED_VERSION, None, true),
+                effective_mode(binding, PINNED_CODEX_VERSION, None, true),
                 expected,
                 "{binding}"
             );
@@ -360,7 +347,7 @@ mod tests {
     fn unsupported_saved_access_never_escalates() {
         use SessionAccessMode::{Ask, ReadOnly, WorkspaceWrite};
         assert_eq!(
-            effective_mode("codex-app-server", CODEX_PINNED_VERSION, Some(Ask), true),
+            effective_mode("codex-app-server", PINNED_CODEX_VERSION, Some(Ask), true),
             Some(ReadOnly)
         );
         assert_eq!(
@@ -386,7 +373,7 @@ mod tests {
         for (binding, version, modes) in [
             (
                 "codex-app-server",
-                CODEX_PINNED_VERSION,
+                PINNED_CODEX_VERSION,
                 vec!["readOnly", "workspaceWrite"],
             ),
             (
@@ -426,7 +413,7 @@ mod tests {
             }
         }
         let codex =
-            serde_json::to_value(access_modes("codex-app-server", CODEX_PINNED_VERSION, true))
+            serde_json::to_value(access_modes("codex-app-server", PINNED_CODEX_VERSION, true))
                 .unwrap();
         assert_eq!(
             codex[1]["description"],
@@ -470,7 +457,7 @@ mod tests {
         for binding in ["codex-app-server", "opencode-acp", "pi-rpc"] {
             assert_eq!(session_mode(binding, FullAccess), None);
             assert!(
-                access_modes(binding, CODEX_PINNED_VERSION, true)
+                access_modes(binding, PINNED_CODEX_VERSION, true)
                     .iter()
                     .all(
                         |mode| !matches!(mode.id, AcceptEdits | Plan | Auto | FullAccess)
@@ -479,7 +466,7 @@ mod tests {
             );
             // A grant those harnesses cannot carry falls back to read-only.
             assert_eq!(
-                effective_mode(binding, CODEX_PINNED_VERSION, Some(FullAccess), true),
+                effective_mode(binding, PINNED_CODEX_VERSION, Some(FullAccess), true),
                 Some(ReadOnly)
             );
         }
@@ -553,7 +540,7 @@ mod tests {
         assert_eq!(
             turn_mode(
                 "codex-app-server",
-                CODEX_PINNED_VERSION,
+                PINNED_CODEX_VERSION,
                 true,
                 Some(FullAccess),
                 Some(WorkspaceWrite)

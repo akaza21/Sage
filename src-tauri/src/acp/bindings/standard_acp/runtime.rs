@@ -73,7 +73,7 @@ struct TurnIntent {
     external_id: ExternalId,
     client_message_id: RequiredText<512>,
     request_id: u64,
-    access_mode: crate::settings_store::SessionAccessMode,
+    access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
 }
 
 struct DeferredPrompt {
@@ -82,7 +82,7 @@ struct DeferredPrompt {
     mode_id: String,
     request_id: u64,
     cancelled: bool,
-    access_mode: crate::settings_store::SessionAccessMode,
+    access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
 }
 
 struct PermissionIntent {

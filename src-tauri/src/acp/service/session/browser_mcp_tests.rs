@@ -207,7 +207,7 @@ fn assert_runtime_browser_contract(
             prompt: crate::acp::intent::Prompt::new("prompt", "Say hello").unwrap(),
             client_message_id: crate::acp::contract::RequiredText::new("client", "browser-degrade")
                 .unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let running = runtime

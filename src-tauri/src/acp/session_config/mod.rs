@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 use super::contract::{BoundedVec, RequiredText, SafeText};
-use super::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 pub(crate) mod choices;
 mod kind;

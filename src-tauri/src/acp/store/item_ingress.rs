@@ -7,8 +7,8 @@ use crate::acp::{
     },
     intent::{ExternalId, NormalizedPayload},
     lifecycle::{ItemLifecycle, ToolState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     EntityMutation, MutationDisposition, StoreError,

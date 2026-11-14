@@ -1,12 +1,14 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::{
-    bindings::codex::{
+use crate::{
+    acp::{
+        intent::ExternalId,
+        lifecycle::TurnState,
+        store::{AdapterStoreOwner, ChildLiveItemCommand, StoreError},
+    },
+    acp_protocol::codex_protocol::{
         ChildItem, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES, MAX_TURNS,
     },
-    intent::ExternalId,
-    lifecycle::TurnState,
-    store::{AdapterStoreOwner, ChildLiveItemCommand, StoreError},
 };
 
 use super::{

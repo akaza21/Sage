@@ -3,7 +3,7 @@ use std::fmt;
 
 use serde::de::{self, DeserializeSeed, MapAccess, SeqAccess, Visitor};
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::Frame;
 

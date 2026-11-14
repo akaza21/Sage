@@ -260,7 +260,7 @@ fn a_failed_archived_lookup_refuses_delete_with_a_retry_message() {
 
 #[test]
 fn deleting_an_archived_chat_forgets_its_sessions_access_choices() {
-    use crate::settings_store::SessionAccessMode::{AcceptEdits, FullAccess};
+    use crate::acp_protocol::access_mode::SessionAccessMode::{AcceptEdits, FullAccess};
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, request, root) = two_chat_state("delete-access");
         let kept_chat = request

@@ -168,7 +168,7 @@ impl AdmittedCodexBinding {
         if self.is_desktop_fixture() {
             return Ok(self
                 .desktop_fixture_case()
-                .is_some_and(crate::acp::fixture::native_case_offers_models));
+                .is_some_and(crate::acp_protocol::native_cases::native_case_offers_models));
         }
         if self.is_desktop_fixture() {
             return Ok(false);

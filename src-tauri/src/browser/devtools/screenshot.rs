@@ -28,7 +28,7 @@ pub(super) fn png_size(png_base64: &str) -> Option<(u32, u32)> {
 /// The factor that brings a picture over the size limits inside them, or
 /// `None` when it already fits. Rounded down so rounding cannot overshoot.
 pub(super) fn fit_factor(width: u32, height: u32) -> Option<f64> {
-    let limits = crate::acp::limits::BROWSER_LIMITS;
+    let limits = sage_core::limits::BROWSER_LIMITS;
     let (width, height) = (f64::from(width.max(1)), f64::from(height.max(1)));
     let fit = (f64::from(limits.screenshot_width) / width)
         .min(f64::from(limits.screenshot_height) / height)
@@ -37,7 +37,7 @@ pub(super) fn fit_factor(width: u32, height: u32) -> Option<f64> {
 }
 
 pub(super) fn admit_png(png_base64: &str) -> Result<(u32, u32), BrowserFailure> {
-    if png_base64.len() > crate::acp::limits::BROWSER_LIMITS.screenshot_bytes {
+    if png_base64.len() > sage_core::limits::BROWSER_LIMITS.screenshot_bytes {
         return Err(BrowserFailure::Capacity);
     }
     let bytes = STANDARD

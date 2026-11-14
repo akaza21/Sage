@@ -4,8 +4,8 @@ use super::*;
 use crate::acp::{
     attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
     intent::ImageMediaType,
-    limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES,
 };
+use sage_core::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES;
 
 fn prompt(sizes: &[usize]) -> AdapterCommand {
     let mut prompt = Prompt::new("prompt", "What is in this screenshot?").unwrap();
@@ -22,7 +22,7 @@ fn prompt(sizes: &[usize]) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt,
         client_message_id: RequiredText::new("client", "image-prompt").unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 

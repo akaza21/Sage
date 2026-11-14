@@ -14,10 +14,10 @@ use crate::acp::{
         CapabilitySnapshotV1, ExternalId, PageCursor,
         session_event::{PendingSessionEvents, SessionScopedEvent},
     },
-    limits::LIMITS,
     store::CompleteActivationCommand,
     transport::{FrameWriteOutcome, IncrementalFrameDecoder, ReservedQueue, validate_structure},
 };
+use sage_core::limits::LIMITS;
 
 mod capabilities;
 mod coordinator_journal;

@@ -22,7 +22,7 @@ fn extension_delivery_failure_allows_retry(resolution: EgressResolution) {
         AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "retry-review").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }
     };
     let send = runtime.command(command()).unwrap();
@@ -136,7 +136,7 @@ fn idless_command_discovery_replies_require_one_pending_request_and_a_rejection(
 
 #[test]
 fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
-    use crate::acp::limits::LIMITS;
+    use sage_core::limits::LIMITS;
 
     let mut runtime = fixture_runtime(1);
     ready(&mut runtime);
@@ -168,7 +168,7 @@ fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
             .command(AdapterCommand::Prompt {
                 prompt,
                 client_message_id: RequiredText::new("client", format!("review-{turn}")).unwrap(),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("discovery must not exhaust prompt capacity");
         let send = deliver(&mut runtime, send);
@@ -215,7 +215,7 @@ fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "command-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let send = deliver(&mut runtime, send);
@@ -275,7 +275,7 @@ fn extension_model_events_before_ack_are_owned_and_late_ack_does_not_complete_tw
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "ext").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let send = deliver(&mut runtime, send);
@@ -362,7 +362,7 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "template").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let send = deliver(&mut runtime, send);

@@ -2,7 +2,7 @@ use std::ffi::{OsStr, OsString};
 use std::os::windows::ffi::OsStrExt;
 use std::path::Path;
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::super::supervisor::LaunchError;
 use super::MAX_WINDOWS_WIDE;

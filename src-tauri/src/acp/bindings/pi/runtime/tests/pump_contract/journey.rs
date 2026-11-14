@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 async fn answer(pump: &mut Pump, text: &str) {
     for value in [
@@ -234,7 +234,7 @@ async fn pi_pump_unknown_and_lifecycle_frames_before_prompt_reply_are_nonfatal()
     pump.queue_command(AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect").unwrap(),
         client_message_id: RequiredText::new("client", "turn-pump-0").unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     })
     .unwrap();
     let mut transport = Capture::default();

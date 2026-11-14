@@ -213,7 +213,7 @@ const betaAcceptanceSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaAcceptanceSha256 !==
-    "9c04318159a01606821611b25b5a768e8d65665a61591a2ea15d2e7aafc8646b" ||
+    "0cdc977c8b0bba907508a63ccf76ad44b68058f5eb28ecb6e6e2216a3baafc3a" ||
   betaAcceptance.schemaVersion !== 1 ||
   betaAcceptance.status !== "frozen-thresholds-verifier-local-green" ||
   betaAcceptance.workItem !== "BETA-0001"
@@ -231,7 +231,7 @@ const betaCandidateSha256 = createHash("sha256")
   .digest("hex");
 if (
   betaCandidateSha256 !==
-    "8267376521550caaf0bbd62b875cc4ec4c151e785a506967d7c3b5dbb472407e" ||
+    "a8c2606707852c333394af5e9cb9ca3b8d504c1ecdfb2a0e964b8721b762660f" ||
   betaCandidate.schemaVersion !== 1 ||
   betaCandidate.status !== "frozen-verdict-matrix" ||
   betaCandidate.workItem !== "BETA-0001" ||
@@ -1038,7 +1038,7 @@ for (const file of productionFiles) {
     fail(`${file} retains a forbidden legacy P-02 blocking delivery symbol.`);
   }
   if (
-    file === "src-tauri/src/acp/service/read_text_file/terminal/delivery.rs" &&
+    file === "src-tauri/src/acp/read_text_file/terminal/delivery.rs" &&
     source.includes("std::io::Write")
   ) {
     fail(
@@ -1046,7 +1046,7 @@ for (const file of productionFiles) {
     );
   }
   if (
-    (file.startsWith("src-tauri/src/acp/service/read_text_file/") ||
+    (file.startsWith("src-tauri/src/acp/read_text_file/") ||
       file.startsWith("src-tauri/src/acp/transport/")) &&
     source.includes("#![allow(dead_code")
   ) {

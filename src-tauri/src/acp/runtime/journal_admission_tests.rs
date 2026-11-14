@@ -1,26 +1,29 @@
 use std::sync::{Arc, Mutex};
 
-use crate::acp::{
-    contract::{
-        ClientIntentId, EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch, SafeText,
-        SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageServerRequestId, SageTurnId,
-        SchemaVersionV1,
+use crate::{
+    acp::{
+        contract::{
+            ClientIntentId, EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch,
+            SafeText, SageAgentSessionId, SageChatId, SageItemId, SageProjectId,
+            SageServerRequestId, SageTurnId, SchemaVersionV1,
+        },
+        intent::{
+            ActivityProvenanceV1, ActivitySourceKind, BindingId, ExternalId, ModelId,
+            NormalizedPayload,
+        },
+        lifecycle::{
+            ActivityLifecycle, DeliveryState, ItemLifecycle, ServerRequestState, SessionState,
+            TurnState,
+        },
+        projection::ActivityRole,
+        store::{
+            AcpStore, ActivateSessionCommand, ActivityIngressCommand, CloseSessionCommand,
+            CompleteActivationCommand, FailActivationCommand, FinalizeCloseCommand,
+            ItemIngressCommand, RequestStateCommand, StartSessionCommand, StoreCommit, StoreError,
+            StoreMutation, TurnMutationCommand,
+        },
     },
-    intent::{
-        ActivityProvenanceV1, ActivitySourceKind, BindingId, ExternalId, ModelId, NormalizedPayload,
-    },
-    lifecycle::{
-        ActivityLifecycle, DeliveryState, ItemLifecycle, ServerRequestState, SessionState,
-        TurnState,
-    },
-    projection::ActivityRole,
-    runtime::permissions::PermissionIntent,
-    store::{
-        AcpStore, ActivateSessionCommand, ActivityIngressCommand, CloseSessionCommand,
-        CompleteActivationCommand, FailActivationCommand, FinalizeCloseCommand, ItemIngressCommand,
-        RequestStateCommand, StartSessionCommand, StoreCommit, StoreError, StoreMutation,
-        TurnMutationCommand,
-    },
+    acp_protocol::permissions::PermissionIntent,
 };
 
 use super::{JournalHandle, JournalLane};

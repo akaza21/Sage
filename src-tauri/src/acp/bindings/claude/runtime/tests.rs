@@ -121,7 +121,7 @@ fn prompt(runtime: &mut ClaudeRuntime) -> (u64, EgressToken) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-1").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         })
         .expect("prompt command");
     let id = request_id(&egress);
@@ -402,7 +402,7 @@ fn prompt_zero_byte_rejection_rolls_back_and_delivery_unknown_is_not_replayed() 
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "must not replay").expect("prompt"),
                 client_message_id: RequiredText::new("client", "client-message-2").expect("client"),
-                access_mode: crate::settings_store::SessionAccessMode::Ask,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
             })
             .is_err()
     );
@@ -560,7 +560,7 @@ fn allow_once_on_claude_does_not_emit_denial_and_records_resolved_allowed() {
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(external_request_id.as_str()).expect("request"),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .expect("allow once");
     assert!(!allow.token().is_mandatory());
@@ -633,7 +633,7 @@ fn claude_always_allow_selects_the_native_option_id() {
     let reply = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(external_request_id.as_str()).unwrap(),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowAlways,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowAlways,
         })
         .unwrap();
     let response: Value = serde_json::from_slice(reply.frame().payload()).unwrap();
@@ -646,7 +646,7 @@ fn later_decision_uses_the_shared_helper_not_permission_intent_reject() {
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("request-claude-missing").expect("request"),
-            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
         }),
         Err(AdapterRuntimeError::LaterPermissionMiss)
     ));
@@ -751,7 +751,7 @@ fn the_captured_claude_write_approval_survives_runtime_ingest_end_to_end() {
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(external_request_id.as_str()).expect("request"),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .expect("allow once");
     runtime
@@ -1042,7 +1042,7 @@ fn a_signed_out_harness_refuses_the_prompt_instead_of_sending_it() {
         runtime.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-1").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         }),
         Err(AdapterRuntimeError::SignInRequired)
     ));
@@ -1093,7 +1093,7 @@ fn an_authentication_refusal_costs_one_turn_and_never_a_second() {
         runtime.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-message-2").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         }),
         Err(AdapterRuntimeError::SignInRequired)
     ));
@@ -1136,7 +1136,7 @@ fn prompt_files_are_refused_without_capability_and_encoded_when_advertised() {
     let command = || AdapterCommand::Prompt {
         prompt: prompt.clone(),
         client_message_id: RequiredText::new("client", "file-prompt").unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::Ask,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
     };
     assert!(matches!(
         runtime.command(command()),

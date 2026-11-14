@@ -9,14 +9,14 @@ use crate::{
         intent::ExternalId,
         lifecycle::ServerRequestState,
         recovery::{RecoveryReport, recover_after_restart},
-        runtime::permissions::{
-            DeclineTransport, PermissionDisposition, PermissionError, PermissionIntent,
-            decline_permission,
-        },
         store::{
             AcpStore, DatabaseAcpStore, DenyOnlyPermissionJournal, RequestStateCommand,
             StoreMutation,
         },
+    },
+    acp_protocol::permissions::{
+        DeclineTransport, PermissionDisposition, PermissionError, PermissionIntent,
+        decline_permission,
     },
     persistence::Database,
 };

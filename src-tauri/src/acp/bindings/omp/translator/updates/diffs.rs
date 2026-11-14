@@ -72,8 +72,8 @@ pub(super) fn push_diff_events(
             });
             continue;
         }
-        match crate::acp::file_diff::admit_pair(old_text, new_text) {
-            crate::acp::file_diff::PairAdmission::Admitted {
+        match crate::acp_protocol::file_diff::admit_pair(old_text, new_text) {
+            crate::acp_protocol::file_diff::PairAdmission::Admitted {
                 old_bytes,
                 new_bytes,
                 digest,
@@ -103,7 +103,7 @@ pub(super) fn push_diff_events(
                     update_mode: ItemUpdateMode::Replace,
                 });
             }
-            crate::acp::file_diff::PairAdmission::SummaryOnly => {
+            crate::acp_protocol::file_diff::PairAdmission::SummaryOnly => {
                 events.push(AdapterEvent::Item {
                     external_key,
                     lifecycle: ItemLifecycle::Completed,

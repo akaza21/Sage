@@ -1,9 +1,11 @@
-use crate::acp::{
-    contract::{ClientIntentId, RequiredText, SageProjectId, SageServerRequestId, SageTurnId},
-    intent::Prompt,
-    runtime::permissions::PermissionDecision,
-    scheduler::RuntimeOwner,
-    store::{AdapterTurnCursor, CloseSessionCommand, PrepareTurnCommand},
+use crate::{
+    acp::{
+        contract::{ClientIntentId, RequiredText, SageProjectId, SageServerRequestId, SageTurnId},
+        intent::Prompt,
+        scheduler::RuntimeOwner,
+        store::{AdapterTurnCursor, CloseSessionCommand, PrepareTurnCommand},
+    },
+    acp_protocol::permissions::PermissionDecision,
 };
 use std::{sync::mpsc, time::Instant};
 
@@ -90,7 +92,7 @@ pub(crate) enum HostError {
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct HostPromptIntent {
     pub(crate) command: PrepareTurnCommand,
-    pub(crate) access_mode: crate::settings_store::SessionAccessMode,
+    pub(crate) access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
 }
 
 impl HostPromptIntent {

@@ -1,9 +1,9 @@
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterRuntimeError, HarnessAdapter, ResourceMapper},
     intent::session_event::PendingSessionEvents,
-    limits::LIMITS,
     transport::Frame,
 };
+use sage_core::limits::LIMITS;
 
 use super::ActivatedSession;
 

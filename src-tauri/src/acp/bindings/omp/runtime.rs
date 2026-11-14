@@ -7,9 +7,9 @@ use crate::acp::{
     },
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId},
-    limits::LIMITS,
     transport::{Frame, request_payload_digest},
 };
+use sage_core::limits::LIMITS;
 
 use super::{OmpBindingCapabilities, OmpTranslator, Operation, Outbound, ResearchBinding};
 

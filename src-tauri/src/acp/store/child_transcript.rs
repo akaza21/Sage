@@ -2,7 +2,7 @@ use rusqlite::{Connection, TransactionBehavior, params};
 
 use crate::acp::scheduler::RuntimeOwner;
 
-use crate::acp::bindings::codex::{ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES};
+use crate::acp_protocol::codex_protocol::{ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES};
 
 mod live;
 pub(crate) use live::persist_live_item_in;

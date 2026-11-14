@@ -1,8 +1,8 @@
 //! `thread/fork` replay against the pinned Codex generated schema.
 
 use super::*;
-use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
 use crate::acp::goal::NativeRpcReply;
+use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 fn pinned_fork_schema() -> Value {
     serde_json::from_slice(include_bytes!(
@@ -33,7 +33,7 @@ fn forked_thread(id: u64, thread: Value) -> Frame {
 #[test]
 fn the_fork_request_is_the_pinned_thread_fork_shape() {
     let schema = pinned_fork_schema();
-    assert_eq!(schema["codexRuntimeVersion"], CODEX_PINNED_VERSION);
+    assert_eq!(schema["codexRuntimeVersion"], PINNED_CODEX_VERSION);
     assert_eq!(schema["clientRequestDeclaresMethod"], true);
     let effort: Value = serde_json::from_slice(include_bytes!(
         "../../../../../../testdata/acp/codex/observed-effort-schema.json"

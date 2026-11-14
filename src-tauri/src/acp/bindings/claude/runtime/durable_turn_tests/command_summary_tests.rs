@@ -108,7 +108,7 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
                 Mapper, Arc::new(ProjectionMailbox::default()), intent).unwrap();
             pump.queue_prompt(Prompt::new("prompt", "Inspect the build command.").unwrap(),
                 &RequiredText::new("clientMessageId", "turn-one").unwrap(),
-                crate::settings_store::SessionAccessMode::Ask).unwrap();
+                crate::acp_protocol::access_mode::SessionAccessMode::Ask).unwrap();
             let mut sink = Sink::default();
             pump.flush_one(&mut sink).unwrap();
             let request = sink.last_request_id.unwrap();

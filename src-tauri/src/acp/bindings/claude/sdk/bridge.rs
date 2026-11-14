@@ -34,9 +34,7 @@ pub(super) use usage::UsageReply;
 const MAX_PENDING: usize = 32;
 /// Approval cards the session holds until the user's answer is written:
 /// open, or answered but not yet delivered.
-const OPEN_APPROVALS: usize = crate::acp::limits::LIMITS
-    .queues
-    .server_requests_per_session as usize;
+const OPEN_APPROVALS: usize = sage_core::limits::LIMITS.queues.server_requests_per_session as usize;
 const MAX_TRACKED_TOOLS: usize = 1_024;
 /// A message's final frames follow its stream directly, so only the most
 /// recent streamed ids are ever looked up.

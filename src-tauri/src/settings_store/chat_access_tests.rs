@@ -1,5 +1,7 @@
 use super::*;
-use crate::settings_store::SessionAccessMode::{AcceptEdits, Ask, Auto, FullAccess, Plan};
+use crate::acp_protocol::access_mode::SessionAccessMode::{
+    AcceptEdits, Ask, Auto, FullAccess, Plan,
+};
 
 fn store() -> SettingsStore {
     SettingsStore::in_memory().unwrap()

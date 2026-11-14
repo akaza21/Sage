@@ -3,11 +3,11 @@
 //! was not given cancels it with a notice.
 
 use super::*;
-use crate::acp::{
-    intent::session_event::{SessionNoticeLevel, SessionScopedEvent},
-    runtime::permissions::PermissionDecision,
+use crate::acp_protocol::access_mode::SessionAccessMode;
+use crate::{
+    acp::intent::session_event::{SessionNoticeLevel, SessionScopedEvent},
+    acp_protocol::permissions::PermissionDecision,
 };
-use crate::settings_store::SessionAccessMode;
 
 const MODES: &str = r#"{"currentModeId":"plan","availableModes":[
     {"id":"default","name":"Manual"},{"id":"acceptEdits","name":"Accept edits"},

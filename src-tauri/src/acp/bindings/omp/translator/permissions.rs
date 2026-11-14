@@ -4,8 +4,8 @@ use crate::acp::{
     bindings::command_summary::{CommandSummaryError, sanitize_command_summary},
     contract::{ItemLifecycle, RequiredText, SafeText, ToolState},
     intent::{ExternalId, NormalizedPayload, ToolCategory},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::{OmpTranslator, TranslationError, requests::encode_line};
 use crate::acp::bindings::omp::{

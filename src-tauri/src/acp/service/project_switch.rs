@@ -64,7 +64,7 @@ impl AcpService {
         // The coordinator keeps settlement, discovery, and RuntimeHost under
         // this one absolute monotonic deadline.
         let deadline = Instant::now()
-            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+            + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
         coordinate_project_switch(
             deadline,
             Instant::now,

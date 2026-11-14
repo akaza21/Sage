@@ -53,7 +53,7 @@ pub(crate) struct StdoutEndpoint {
 
 impl StdoutEndpoint {
     pub(crate) fn read(&mut self, target: &mut [u8]) -> Result<usize, super::LaunchError> {
-        if target.len() as u64 > crate::acp::limits::LIMITS.wire.frame_bytes {
+        if target.len() as u64 > sage_core::limits::LIMITS.wire.frame_bytes {
             return Err(super::LaunchError::StdioLimit);
         }
         self.stdout.read(target).map_err(|_| super::LaunchError::Io)

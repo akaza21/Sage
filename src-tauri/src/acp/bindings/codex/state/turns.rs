@@ -2,8 +2,8 @@ use crate::acp::{
     contract::{BoundedVec, SafeText},
     intent::{ExternalId, NormalizedPayload},
     lifecycle::{ItemLifecycle, TerminalUpdate, TurnState, classify_terminal},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 #[derive(Clone, Default, PartialEq)]
 pub(in crate::acp::bindings::codex) struct SubagentLabels {

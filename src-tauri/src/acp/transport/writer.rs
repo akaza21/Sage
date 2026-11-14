@@ -1,6 +1,6 @@
 use tokio::io::{AsyncWrite, AsyncWriteExt};
 
-use crate::acp::limits::{LIMITS, preview::P02_READ_TEXT_RESPONSE_BYTES};
+use sage_core::limits::{LIMITS, preview::P02_READ_TEXT_RESPONSE_BYTES};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum FrameWriteError {
@@ -130,7 +130,7 @@ fn validate_payload(payload: &[u8], class: OutboundFrameClass) -> Result<(), Fra
     let limit = match class {
         OutboundFrameClass::Ordinary => LIMITS.wire.frame_bytes as usize,
         OutboundFrameClass::P02ReadTextFileResponse => P02_READ_TEXT_RESPONSE_BYTES,
-        OutboundFrameClass::Prompt => crate::acp::limits::PROMPT_FRAME_BYTES,
+        OutboundFrameClass::Prompt => sage_core::limits::PROMPT_FRAME_BYTES,
     };
     if payload.len() > limit {
         return Err(FrameWriteError::Oversize);

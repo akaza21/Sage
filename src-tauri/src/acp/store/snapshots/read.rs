@@ -1,6 +1,8 @@
-use crate::acp::{
-    contract::SageRootId,
-    file_diff::{DIFF_SIDE_BYTES_MAX, DiffRef, SnapshotData, SnapshotReadError, pair_digest},
+use crate::{
+    acp::contract::SageRootId,
+    acp_protocol::file_diff::{
+        DIFF_SIDE_BYTES_MAX, DiffRef, SnapshotData, SnapshotReadError, pair_digest,
+    },
 };
 use rusqlite::{Connection, OptionalExtension, Row, params};
 

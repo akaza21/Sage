@@ -209,10 +209,10 @@ test("native file witnesses resolve to the existing file provisioned for Preview
   }
 });
 test("every native generated wire sequence equals its source catalogue", () => {
-  // Journey cases are generated into their own module beside the frozen table.
+  // Journey cases are generated into the native-case catalogue module.
   const source = readFileSync(
     new URL(
-      "../src-tauri/src/acp/fixture/generated_journey_cases.rs",
+      "../src-tauri/src/acp_protocol/native_cases/generated_journey_cases.rs",
       import.meta.url,
     ),
     "utf8",

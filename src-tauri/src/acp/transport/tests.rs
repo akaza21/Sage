@@ -1,7 +1,7 @@
 use std::{cell::Cell, collections::BTreeSet};
 use tokio::io::AsyncWriteExt;
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::{
     BoundedQueue, FrameError, FrameReader, QueueError, ReservedQueue, StructuralError,
@@ -355,7 +355,7 @@ fn control_only_pop_preserves_data_and_updates_control_accounting() {
 
 #[test]
 fn a_full_budget_prompt_queues_beside_a_full_data_lane() {
-    use crate::acp::limits::{PROMPT_EGRESS_RESERVE_BYTES, PROMPT_FRAME_BYTES};
+    use sage_core::limits::{PROMPT_EGRESS_RESERVE_BYTES, PROMPT_FRAME_BYTES};
     let mut queue = ReservedQueue::new(
         LIMITS.queues.egress_frames as usize,
         LIMITS.queues.egress_bytes as usize,

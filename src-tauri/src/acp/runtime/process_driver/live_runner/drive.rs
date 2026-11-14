@@ -369,7 +369,7 @@ where
 }
 
 fn reader_eof_deadline(clock: &dyn crate::acp::runtime::DriverClock) -> i64 {
-    i64::try_from(crate::acp::limits::LIMITS.deadlines_ms.tree_termination)
+    i64::try_from(sage_core::limits::LIMITS.deadlines_ms.tree_termination)
         .map_or(i64::MAX, |budget| clock.now_millis().saturating_add(budget))
 }
 

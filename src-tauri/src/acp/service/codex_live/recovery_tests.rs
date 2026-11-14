@@ -910,7 +910,7 @@ fn replacement_park_after_host_timeout_uses_zero_token_recovery() {
         let host = Arc::clone(&host);
         let intent = crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         };
         std::thread::spawn(move || host.prepare_prompt(intent))
     };
@@ -1013,7 +1013,7 @@ fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
         host.activate(owner.clone())?;
         host.send(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .map_err(|failure| failure.error)?;
         Ok::<(), crate::acp::runtime::HostError>(())
@@ -2234,7 +2234,7 @@ fn a_refused_sign_in_prompt_settles_its_turn_and_frees_the_lane() {
     let failure = service
         .send_session_turn(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap_err();
     assert!(matches!(failure.error, CodexSessionError::SignInRequired));
@@ -2260,7 +2260,7 @@ fn cancel_settles_a_turn_whose_host_failed_closed() {
     assert_eq!(
         host.send(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
         Err(crate::acp::intent::PromptSendError::unknown(
             crate::acp::runtime::HostError::SignInRequired
@@ -2320,7 +2320,7 @@ async fn refused_prompt_recovery_allows_other_async_work_to_progress() {
     let failure = service
         .send_session_turn(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap_err();
     progress.await.unwrap();

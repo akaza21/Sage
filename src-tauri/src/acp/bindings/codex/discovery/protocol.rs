@@ -225,7 +225,7 @@ impl CodexDiscoveryProtocol {
     }
 
     pub(crate) fn model_request(&mut self) -> Result<DiscoveryRequest, CodexDiscoveryError> {
-        if self.pages >= crate::acp::limits::LIMITS.codex.model_catalog_pages as usize {
+        if self.pages >= sage_core::limits::LIMITS.codex.model_catalog_pages as usize {
             return Err(CodexDiscoveryError::PageLimit);
         }
         let account_pending = match self.phase {
@@ -328,7 +328,7 @@ impl CodexDiscoveryProtocol {
             {
                 return Err(CodexDiscoveryError::CursorLoop);
             }
-            if self.pages + 1 == crate::acp::limits::LIMITS.codex.model_catalog_pages as usize {
+            if self.pages + 1 == sage_core::limits::LIMITS.codex.model_catalog_pages as usize {
                 return Err(CodexDiscoveryError::PageLimit);
             }
         }

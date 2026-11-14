@@ -50,8 +50,8 @@ use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId, session_event::SessionScopedEvent},
     lifecycle::{ItemLifecycle, ServerRequestState, TurnState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     incoming::{IngressDisposition, ResourceMapper, ingest},

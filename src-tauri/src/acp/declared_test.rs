@@ -2,7 +2,8 @@ use std::{collections::BTreeSet, path::Path};
 
 use serde::{Deserialize, Serialize};
 
-use crate::acp::{limits::PREVIEW_LIMITS, package_manifest::read_bounded_package_manifest};
+use crate::acp::package_manifest::read_bounded_package_manifest;
+use sage_core::limits::PREVIEW_LIMITS;
 
 /// The only retained command classification. It deliberately says nothing
 /// about a process exit code or test reporter output.
@@ -95,7 +96,7 @@ mod tests {
     };
 
     use super::{CommandActivity, declared_test_commands_for_project};
-    use crate::acp::limits::PREVIEW_LIMITS;
+    use sage_core::limits::PREVIEW_LIMITS;
 
     struct TestDirectory(PathBuf);
 

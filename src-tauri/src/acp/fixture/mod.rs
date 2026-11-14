@@ -47,8 +47,6 @@ use self::cases::FixtureInvocation;
 pub(crate) use adapter::FixtureAdapter;
 #[cfg(any(test, all(windows, debug_assertions)))]
 pub(crate) use discovery::native_case_discovery_reply;
-#[cfg(all(windows, debug_assertions))]
-pub(crate) use discovery::native_case_offers_models;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum FixtureError {
@@ -62,7 +60,7 @@ pub enum FixtureError {
 }
 
 pub fn is_native_replay_case(case: &str) -> bool {
-    generated_cases::JOURNEY_CASES
+    crate::acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .any(|entry| entry.id == case)
 }
@@ -72,61 +70,6 @@ pub(crate) use wire::{
     child_opened_wire_for_test, claude_sdk_wire_for_test, codex_user_input_wire_for_test,
     pi_journey_steps_for_test, replay_native, run_pi_step_for_test,
 };
-
-/// A Codex replay case that answers `model/list`, so Sage reads the model
-/// catalogue after the thread opens. Taken from the case's own steps: a case
-/// that waits for the request must get it, and one that does not would read
-/// it as out of order.
-#[cfg(any(test, all(windows, debug_assertions)))]
-pub(crate) fn native_case_lists_models(case: &str) -> bool {
-    case.starts_with("codex-") && native_case_awaits(case, &["codexModelList"])
-}
-
-/// A replay case that runs twice on its profile, so it needs a second launch:
-/// one that opens a new session on its first launch and resumes the same one
-/// after an app restart, or a Claude Code case that names its relaunch (the
-/// fork chat a fork opens, say).
-#[cfg(any(test, all(windows, debug_assertions)))]
-pub(crate) fn native_case_spans_restart(case: &str) -> bool {
-    native_case_awaits(case, &["acpOpen", "codexStartOrResume"])
-        || native_case_any_await(case, |step| step["relaunch"] == true)
-}
-
-#[cfg(any(test, all(windows, debug_assertions)))]
-fn native_case_awaits(case: &str, kinds: &[&str]) -> bool {
-    native_case_any_await(case, |step| {
-        step["kind"]
-            .as_str()
-            .is_some_and(|kind| kinds.contains(&kind))
-    })
-}
-
-#[cfg(any(test, all(windows, debug_assertions)))]
-fn native_case_any_await(case: &str, matches: impl Fn(&serde_json::Value) -> bool) -> bool {
-    generated_cases::JOURNEY_CASES
-        .iter()
-        .filter(|entry| entry.id == case)
-        .filter_map(|entry| serde_json::from_str::<Vec<serde_json::Value>>(entry.steps_json).ok())
-        .any(|steps| {
-            steps
-                .iter()
-                .any(|step| step["op"] == "awaitClient" && matches(step))
-        })
-}
-
-#[cfg(all(windows, debug_assertions))]
-pub(crate) fn native_case_matches(case: &str, protocol: &str) -> bool {
-    generated_cases::JOURNEY_CASES
-        .iter()
-        .any(|entry| entry.id == case && entry.id.starts_with(&format!("{protocol}-")))
-}
-
-/// A Pi replay case that drives tool calls through the bundled Sage bridge
-/// extension, so its child stands in for a Pi with that extension installed.
-#[cfg(all(windows, debug_assertions))]
-pub(crate) fn native_case_uses_pi_bridge(case: &str) -> bool {
-    case.starts_with("pi-") && native_case_awaits(case, &["piBridgeTool"])
-}
 
 pub fn run(arguments: impl IntoIterator<Item = OsString>) -> Result<i32, FixtureError> {
     interpreter::execute(FixtureInvocation::parse(arguments)?)

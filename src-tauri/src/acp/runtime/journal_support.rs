@@ -1,6 +1,7 @@
 use std::mem::size_of;
 
-use crate::acp::{limits::LIMITS, store::StoreMutation};
+use crate::acp::store::StoreMutation;
+use sage_core::limits::LIMITS;
 
 use super::journal::JournalLane;
 

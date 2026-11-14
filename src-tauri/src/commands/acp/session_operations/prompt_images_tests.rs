@@ -149,7 +149,7 @@ fn an_image_still_too_large_after_resizing_is_refused_with_the_prompt_bounds() {
 
 #[test]
 fn codex_and_pi_take_the_echoed_image_bound_and_others_the_full_one() {
-    use crate::acp::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES;
+    use sage_core::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES;
     for binding in ["codex-app-server", "pi-rpc"] {
         let (bounds, total) = super::prompt_bounds(binding);
         assert_eq!(

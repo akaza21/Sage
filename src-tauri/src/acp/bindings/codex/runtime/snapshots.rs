@@ -2,8 +2,9 @@ use std::collections::BTreeMap;
 
 use crate::acp::{
     bindings::adapter::AdapterRuntimeError, contract::SafeText, intent::NormalizedPayload,
-    lifecycle::ItemLifecycle, limits::LIMITS,
+    lifecycle::ItemLifecycle,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{
     incoming::{ItemUpdateMode, sanitize},

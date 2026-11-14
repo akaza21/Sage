@@ -204,7 +204,7 @@ fn approve_permission(setup: &FixtureSetup, owner: &RuntimeOwner) {
             runtime_epoch: owner.runtime_epoch,
             turn_id: SageTurnId::parse(turn).unwrap(),
             request_id: crate::acp::contract::SageServerRequestId::parse(request).unwrap(),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .unwrap();
 }
@@ -244,7 +244,7 @@ fn claude_turn_with_approval(setup: &FixtureSetup, owner: &RuntimeOwner) {
         .service
         .send_session_turn(HostPromptIntent {
             command: setup.turn_command(owner),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         })
         .unwrap();
     approve_permission(setup, owner);

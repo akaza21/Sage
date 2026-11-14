@@ -226,7 +226,7 @@ impl AcpService {
         fit_config_to_page_budget(
             page,
             size,
-            crate::acp::limits::LIMITS.durable.history_page_bytes as usize,
+            sage_core::limits::LIMITS.durable.history_page_bytes as usize,
             |session| self.stored_choices_view(session),
         )
     }
@@ -240,7 +240,7 @@ pub(super) fn config_reserve(
     size: &PageBytes,
 ) -> Result<Option<usize>, StoreError> {
     let full = size.of(page)?;
-    if full <= crate::acp::limits::LIMITS.durable.history_page_bytes as usize {
+    if full <= sage_core::limits::LIMITS.durable.history_page_bytes as usize {
         return Ok(None);
     }
     let fields = (
@@ -282,6 +282,6 @@ fn fit_config_to_page_budget(
     }
     Err(StoreError::Capacity {
         resource: "historyPage",
-        limit: crate::acp::limits::LIMITS.durable.history_page_bytes,
+        limit: sage_core::limits::LIMITS.durable.history_page_bytes,
     })
 }

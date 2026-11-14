@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use super::*;
-use crate::acp::bindings::codex::manifest::PINNED_CODEX_VERSION;
+use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 const NAMED_FILES: [&str; 8] = [
     r"vendor\target\bin\codex.exe",

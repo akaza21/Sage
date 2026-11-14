@@ -1,7 +1,7 @@
 use super::*;
-use crate::acp::{
-    file_diff::{DiffRef, SnapshotData, SnapshotReadError},
-    page_admission::PageReadLease,
+use crate::{
+    acp::page_admission::PageReadLease,
+    acp_protocol::file_diff::{DiffRef, SnapshotData, SnapshotReadError},
 };
 
 impl AcpService {

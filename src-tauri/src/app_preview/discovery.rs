@@ -7,15 +7,12 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    acp::{
-        contract::{
-            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
-            SageRootId,
-        },
-        limits::PREVIEW_LIMITS,
+    acp::contract::{
+        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
     },
     project_registry::RootRecord,
 };
+use sage_core::limits::PREVIEW_LIMITS;
 
 use super::error::PreviewError;
 #[cfg(test)]

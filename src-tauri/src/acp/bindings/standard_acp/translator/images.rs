@@ -4,8 +4,8 @@ use crate::acp::{
     image_admit::{ImageAdmitError, admit_image_parts},
     intent::ImageMediaType,
     lifecycle::ItemLifecycle,
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::{AdapterEvent, StandardAcpTranslator, TranslationError};
 

@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::intent::PermissionOptionKind;
-use crate::acp::runtime::permissions::PermissionDecision;
+use crate::acp_protocol::permissions::PermissionDecision;
 
 fn approval_dialog(id: &str, method: &str) -> Value {
     json!({"type":"extension_ui_request","id":id,"method":method,
@@ -56,7 +56,7 @@ async fn approval_dialog_cancel_pending_before_agent_start_stays_deduplicated() 
         pump.queue_command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect").unwrap(),
             client_message_id: RequiredText::new("client", "turn-pump-0").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
         let mut transport = Capture::default();

@@ -1,10 +1,8 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 use sha2::{Digest, Sha256};
 
-use crate::acp::{
-    contract::{EntityRevision, ProjectionRevision},
-    limits::LIMITS,
-};
+use crate::acp::contract::{EntityRevision, ProjectionRevision};
+use sage_core::limits::LIMITS;
 
 use super::{FactPayload, StoreError, TurnMutationCommand};
 

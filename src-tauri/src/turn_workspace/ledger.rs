@@ -3,7 +3,8 @@ use std::path::Path;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use super::{TurnWorkspaceChanges, WorkspaceMark};
-use crate::acp::{limits::LIMITS, store::StoreError};
+use crate::acp::store::StoreError;
+use sage_core::limits::LIMITS;
 
 const MAX_ACTIVE_BASELINES: i64 = 64;
 const MAX_PAYLOAD_BYTES: usize = 128 * 1024;

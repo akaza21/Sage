@@ -118,7 +118,7 @@ impl PreviewProcess {
             .terminate_and_wait_zero(
                 Instant::now()
                     + Duration::from_millis(
-                        crate::acp::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
+                        sage_core::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
                     ),
             )
             .is_ok()

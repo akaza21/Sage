@@ -105,25 +105,25 @@ impl HarnessAdapter for StandardAcpRuntime {
                     })
                     .ok_or(AdapterRuntimeError::LaterPermissionMiss)?;
                 let reply = match decision {
-                    crate::acp::runtime::permissions::PermissionDecision::AllowOnce => {
+                    crate::acp_protocol::permissions::PermissionDecision::AllowOnce => {
                         if record.allow_once_option_id.is_none() {
                             return Err(AdapterRuntimeError::UnsupportedCommand);
                         }
                         PermissionReply::AllowOnce
                     }
-                    crate::acp::runtime::permissions::PermissionDecision::AllowAlways => {
+                    crate::acp_protocol::permissions::PermissionDecision::AllowAlways => {
                         if record.allow_always_option_id.is_none() {
                             return Err(AdapterRuntimeError::UnsupportedCommand);
                         }
                         PermissionReply::AllowAlways
                     }
-                    crate::acp::runtime::permissions::PermissionDecision::Deny => {
+                    crate::acp_protocol::permissions::PermissionDecision::Deny => {
                         PermissionReply::Deny
                     }
-                    crate::acp::runtime::permissions::PermissionDecision::Ask => {
+                    crate::acp_protocol::permissions::PermissionDecision::Ask => {
                         return Err(AdapterRuntimeError::Operation);
                     }
-                    crate::acp::runtime::permissions::PermissionDecision::Answer(_) => {
+                    crate::acp_protocol::permissions::PermissionDecision::Answer(_) => {
                         return Err(AdapterRuntimeError::UnsupportedCommand);
                     }
                 };

@@ -14,7 +14,7 @@ impl StandardAcpRuntime {
         &mut self,
         prompt: crate::acp::intent::Prompt,
         client_message_id: RequiredText<512>,
-        access_mode: crate::settings_store::SessionAccessMode,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         if let Some(revision) = prompt.command_revision {
             self.active
@@ -88,15 +88,15 @@ impl StandardAcpRuntime {
         &mut self,
         prompt: crate::acp::intent::Prompt,
         client_message_id: RequiredText<512>,
-        access_mode: crate::settings_store::SessionAccessMode,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         // The standard ACP access policy never admits these.
         if matches!(
             access_mode,
-            crate::settings_store::SessionAccessMode::AcceptEdits
-                | crate::settings_store::SessionAccessMode::Plan
-                | crate::settings_store::SessionAccessMode::Auto
-                | crate::settings_store::SessionAccessMode::FullAccess
+            crate::acp_protocol::access_mode::SessionAccessMode::AcceptEdits
+                | crate::acp_protocol::access_mode::SessionAccessMode::Plan
+                | crate::acp_protocol::access_mode::SessionAccessMode::Auto
+                | crate::acp_protocol::access_mode::SessionAccessMode::FullAccess
         ) {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }

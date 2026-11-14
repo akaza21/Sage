@@ -15,10 +15,10 @@ use std::{
 };
 
 use crate::acp::{
-    limits::LIMITS,
     runtime::{JournalHandle, ProjectionPublisher, RuntimeHost, SessionCoordinator},
     scheduler::{RuntimeOwner, Scheduler},
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     AcpService, CodexSessionError, RuntimeSlot, codex_live::PendingCodexRecovery,

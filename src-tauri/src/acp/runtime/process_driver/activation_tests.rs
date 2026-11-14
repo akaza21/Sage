@@ -18,7 +18,6 @@ use crate::acp::{
         SageProjectId, SchemaVersionV1,
     },
     intent::{CapabilitySnapshotV1, ExternalId, SafeResourceRef},
-    limits::LIMITS,
     process::{LaunchError, TreeExit},
     runtime::{
         ActivationIntent, ActivationJournal, ActivationJournalError, ActivationMode,
@@ -28,6 +27,7 @@ use crate::acp::{
     store::CompleteActivationCommand,
     transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
+use sage_core::limits::LIMITS;
 
 use super::*;
 

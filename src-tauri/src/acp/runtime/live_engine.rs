@@ -1,8 +1,10 @@
-use crate::acp::{
-    contract::{SageServerRequestId, SageTurnId},
-    runtime::permissions::PermissionDecision,
-    scheduler::RuntimeOwner,
-    store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+use crate::{
+    acp::{
+        contract::{SageServerRequestId, SageTurnId},
+        scheduler::RuntimeOwner,
+        store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+    },
+    acp_protocol::permissions::PermissionDecision,
 };
 use std::time::Instant;
 

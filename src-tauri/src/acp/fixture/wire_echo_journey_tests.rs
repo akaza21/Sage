@@ -4,7 +4,7 @@
 use serde_json::{Value, json};
 
 use super::capture::replay_native;
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 fn lines(requests: &[Value]) -> String {
     requests

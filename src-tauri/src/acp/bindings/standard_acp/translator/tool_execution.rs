@@ -5,8 +5,8 @@ use super::{StandardAcpTranslator, TranslationError};
 use crate::acp::{
     contract::SafeText,
     intent::{ToolCategory, ToolExecution},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 const OUTPUT_TAIL_BYTES: usize = 16_384;
 

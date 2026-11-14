@@ -6,10 +6,10 @@ use crate::acp::{
         session_event::SessionScopedEvent,
     },
     lifecycle::{ActivityLifecycle, ItemLifecycle, ToolState, TurnState, TurnTerminalReason},
-    limits::LIMITS,
     projection::ActivityRole,
     transport::{Frame, OutboundFrame},
 };
+use sage_core::limits::LIMITS;
 
 mod egress_resolution;
 mod invalid_response;
@@ -45,7 +45,7 @@ pub(crate) enum AdapterCommand {
     Prompt {
         prompt: Prompt,
         client_message_id: RequiredText<512>,
-        access_mode: crate::settings_store::SessionAccessMode,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     },
     Steer {
         prompt: Prompt,
@@ -54,7 +54,7 @@ pub(crate) enum AdapterCommand {
     Cancel,
     ResolvePermission {
         request_id: SageServerRequestId,
-        decision: crate::acp::runtime::permissions::PermissionDecision,
+        decision: crate::acp_protocol::permissions::PermissionDecision,
     },
 }
 
@@ -136,7 +136,7 @@ pub(crate) enum AdapterEvent {
         child_thread_id: ExternalId,
         child_turn_id: ExternalId,
         item_id: ExternalId,
-        role: Option<crate::acp::bindings::codex::ChildTextRole>,
+        role: Option<crate::acp_protocol::codex_protocol::ChildTextRole>,
         lifecycle: ItemLifecycle,
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,

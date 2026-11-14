@@ -1,6 +1,6 @@
 use super::bounds::*;
 use super::*;
-use crate::acp::limits::BROWSER_LIMITS;
+use sage_core::limits::BROWSER_LIMITS;
 
 fn scope(tab_id: u64) -> BrowserScope {
     BrowserScope {

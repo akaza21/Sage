@@ -5,8 +5,8 @@ use crate::acp::{
     contract::SafeText,
     intent::{ExternalId, NormalizedPayload},
     lifecycle::ItemLifecycle,
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{ItemUpdateMode, wire::normalized_text};
 

@@ -18,8 +18,8 @@ use crate::acp::{
     bindings::standard_acp::sanitize::normalized_label_text,
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{NormalizedPayload, PermissionOptionKind, ToolCategory},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 /// `_meta` marker the Claude adapter puts on the free-text companion of an
 /// AskUserQuestion choice; it names the choice field it belongs to.

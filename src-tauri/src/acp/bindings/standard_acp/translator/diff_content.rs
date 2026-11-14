@@ -1,13 +1,15 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    contract::{RequiredText, SafeText},
-    file_diff::line_change_counts,
-    intent::{
-        ExternalId, FileChangeFacts, FileChangeOperation, NormalizedPayload, SafeResourceLocation,
-        UnavailableResourceReason,
+use crate::{
+    acp::{
+        contract::{RequiredText, SafeText},
+        intent::{
+            ExternalId, FileChangeFacts, FileChangeOperation, NormalizedPayload,
+            SafeResourceLocation, UnavailableResourceReason,
+        },
+        lifecycle::ItemLifecycle,
     },
-    lifecycle::ItemLifecycle,
+    acp_protocol::file_diff::line_change_counts,
 };
 
 use super::super::sanitize::sanitized_command_output;

@@ -62,7 +62,7 @@ impl Chat {
             session_id: SageAgentSessionId::parse("session-a").unwrap(),
             runtime_epoch: RuntimeEpoch::new(self.fixture.epoch() as u64).unwrap(),
         };
-        crate::acp::service::stage_turn_undo(
+        crate::acp::turn_undo::stage_turn_undo(
             &self.fixture.database,
             &owner,
             SageTurnId::parse(turn).unwrap(),
@@ -70,7 +70,7 @@ impl Chat {
             || transcript::resolve_undo(&self.config, SESSION, turn),
         )
         .map_err(|error| match error {
-            crate::acp::service::SessionControlError::Refused(Some(reason)) => {
+            crate::acp::errors::SessionControlError::Refused(Some(reason)) => {
                 reason.as_str().to_owned()
             }
             error => error.to_string(),
