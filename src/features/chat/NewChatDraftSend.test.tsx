@@ -41,11 +41,16 @@ import { LeftSidebar } from "../../workbench/LeftSidebar";
 import { openSideChat } from "../../workbench/sideChatActions";
 import { useSideChatState } from "../../workbench/sideChatState";
 
+const nativeAccess = vi.hoisted(() => ({ refuse: false }));
+
 // The browser runtime has no native chat access; this stands in for it.
 vi.mock("../../ports/chatAccessChanges", () => ({
   chatAccessChanges: () => ({
     get: async () => null,
-    set: async () => null,
+    set: async () => {
+      if (nativeAccess.refuse) throw new Error("Chat access refused.");
+      return null;
+    },
     prepare: () => Promise.reject(new Error("Not confirmed in tests.")),
     grant: () => Promise.reject(new Error("Not confirmed in tests.")),
   }),
@@ -133,6 +138,7 @@ function mount(strict = false, compact = false) {
 const composer = () => screen.getByRole("combobox", { name: "Message agent" });
 
 beforeEach(async () => {
+  nativeAccess.refuse = false;
   useSideChatState.setState({ sides: [], pairedId: null, pendingClose: null });
   resetBrowserDesktopForTests();
   useWorkbenchStore.setState(initialState, true);
@@ -348,6 +354,7 @@ it.each([
 ])(
   "Reload chats reconciles without losing text or creating twice ($layout layout, access refused: $accessRefused, inactive target: $inactiveTarget)",
   async ({ layout, accessRefused, inactiveTarget }) => {
+    nativeAccess.refuse = accessRefused;
     const before = await ports.project.getBootstrapSnapshot();
     const state = useWorkbenchStore.getState();
     const priorId = state.activeTabId!;
