@@ -34,7 +34,9 @@ struct OptionalCapabilities {
     collaboration_event_projection: bool,
     native_session_fork: bool,
     native_session_compact: bool,
+    native_session_import: bool,
     native_review: bool,
+    native_background_terminals: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -62,7 +64,12 @@ const OBSERVED_CAPABILITY_EVIDENCE: [ObservedCapabilityEvidence; 1] =
             // `thread/compact/start` and `review/start` are pinned from the
             // same generated schema.
             native_session_compact: true,
+            // `thread/list` and paged `thread/turns/list` are pinned from the
+            // same generated schema.
+            native_session_import: true,
             native_review: true,
+            // `thread/backgroundTerminals/*` are pinned from the same schema.
+            native_background_terminals: true,
         },
     }];
 
@@ -121,7 +128,10 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         collaboration_event_projection: ceiling.collaboration_event_projection,
         native_session_fork: pinned,
         native_session_compact: pinned,
+        // The managed home is Sage's own, so it holds no CLI sessions.
+        native_session_import: false,
         native_review: pinned,
+        native_background_terminals: pinned,
     }
 }
 
@@ -156,7 +166,9 @@ pub(crate) fn projected_capabilities(
         collaboration_event_projection: optional.collaboration_event_projection,
         native_session_fork: optional.native_session_fork,
         native_session_compact: optional.native_session_compact,
+        native_session_import: optional.native_session_import,
         native_review: optional.native_review,
+        native_background_terminals: optional.native_background_terminals,
         active_turn_steer: optional.active_turn_steer,
         child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,
@@ -304,18 +316,18 @@ mod tests {
         assert!(!snapshot.child_conversation_projection);
         assert!(!snapshot.collaboration_event_projection);
         assert!(snapshot.child_transcript_read);
-        assert!(snapshot.native_session_fork);
+        assert!(snapshot.native_session_fork && snapshot.native_session_import);
         assert!(models);
     }
 
     #[test]
     fn native_fork_is_admitted_only_for_the_pinned_or_characterised_pinned_build() {
         let (managed, _) = projected_capabilities(&pinned(), None).unwrap();
-        assert!(managed.native_session_fork);
+        assert!(managed.native_session_fork && !managed.native_session_import);
         let mut other = pinned();
         other.protocol_identity = "codex-app-server-0.147.0-00000000".into();
         let (unpinned, _) = projected_capabilities(&other, None).unwrap();
-        assert!(!unpinned.native_session_fork);
+        assert!(!unpinned.native_session_fork && !unpinned.native_session_import);
         for (reported, characterisation) in [
             (observed_pinned_version(), Characterisation::Uncharacterised),
             (
@@ -331,7 +343,10 @@ mod tests {
                 }),
             )
             .unwrap();
-            assert!(!observed.native_session_fork, "{reported}");
+            assert!(
+                !observed.native_session_fork && !observed.native_session_import,
+                "{reported}"
+            );
         }
     }
 

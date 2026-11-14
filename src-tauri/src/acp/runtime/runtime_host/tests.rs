@@ -804,6 +804,32 @@ fn a_native_rpc_that_cannot_begin_in_time_recovers_only_when_not_passive() {
             ),
             HostState::Recovery,
         ),
+        // An import read only borrows the lister's runtime and changes
+        // nothing it holds; a child read stays bound to its own chat.
+        (
+            crate::acp::goal::NativeRpcRequest::Read(
+                crate::acp::goal::NativeRead::ImportableSessions {
+                    cursor: None,
+                    excluded: Vec::new(),
+                },
+            ),
+            HostState::Idle,
+        ),
+        (
+            crate::acp::goal::NativeRpcRequest::Read(crate::acp::goal::NativeRead::ImportTurns {
+                thread_id: "thread-cli".into(),
+                cursor: None,
+            }),
+            HostState::Idle,
+        ),
+        (
+            crate::acp::goal::NativeRpcRequest::Read(crate::acp::goal::NativeRead::ChildTurns {
+                child_thread_id: "child-1".into(),
+                parent_thread_id: "parent-1".into(),
+                cursor: None,
+            }),
+            HostState::Recovery,
+        ),
         (
             crate::acp::goal::NativeRpcRequest::Goal(crate::acp::goal::GoalAction::PauseExisting),
             HostState::Recovery,

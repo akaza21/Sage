@@ -42,6 +42,7 @@ mod image_artifacts;
 mod image_attachment;
 mod ipc_commands;
 mod launch_profile;
+mod native_session_import;
 mod notifications;
 mod persistence;
 mod preview_lifecycle;

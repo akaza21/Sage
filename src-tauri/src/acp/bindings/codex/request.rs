@@ -12,8 +12,10 @@ use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
 use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_turn_policy};
 
+mod background_terminals;
 mod goal;
 mod mcp;
+mod native_read;
 mod prompt_input;
 mod session_action;
 mod skills;
@@ -69,7 +71,10 @@ pub(crate) enum RequestKind {
     Start,
     Resume,
     Read,
-    ChildRead,
+    /// `thread/turns/list`: one page of a child's or an importable session's Turns.
+    TurnsList,
+    /// `thread/list`: one page of the project's importable sessions.
+    SessionList,
     Fork,
     /// `thread/unsubscribe` of a thread this runtime forked, never its own.
     ForkRelease,
@@ -88,6 +93,9 @@ pub(crate) enum RequestKind {
     GoalPause,
     GoalClear,
     RateLimitsRead,
+    TerminalsList,
+    TerminalsStop,
+    TerminalsStopAll,
     /// `skills/list` for the `/` menu.
     SkillsList,
     /// `thread/revert`: drops the latest Turn from the thread's history.
@@ -103,6 +111,17 @@ pub(crate) enum RequestKind {
 impl RequestKind {
     pub(crate) fn starts_turn(self) -> bool {
         matches!(self, Self::TurnStart | Self::Review | Self::Compact)
+    }
+
+    pub(crate) fn is_native_read(self) -> bool {
+        matches!(self, Self::TurnsList | Self::SessionList)
+    }
+
+    pub(crate) fn is_terminals(self) -> bool {
+        matches!(
+            self,
+            Self::TerminalsList | Self::TerminalsStop | Self::TerminalsStopAll
+        )
     }
 }
 
@@ -130,7 +149,8 @@ impl OutgoingRequest {
             RequestKind::Start => "thread/start",
             RequestKind::Resume => "thread/resume",
             RequestKind::Read => "thread/read",
-            RequestKind::ChildRead => "thread/read",
+            RequestKind::TurnsList => "thread/turns/list",
+            RequestKind::SessionList => "thread/list",
             RequestKind::Fork => "thread/fork",
             RequestKind::Models => "model/list",
             RequestKind::TurnStart => "turn/start",
@@ -144,6 +164,9 @@ impl OutgoingRequest {
             RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
             RequestKind::RateLimitsRead => "account/rateLimits/read",
+            RequestKind::TerminalsList => "thread/backgroundTerminals/list",
+            RequestKind::TerminalsStop => "thread/backgroundTerminals/terminate",
+            RequestKind::TerminalsStopAll => "thread/backgroundTerminals/clean",
             RequestKind::SkillsList => "skills/list",
             RequestKind::ThreadRevert => "thread/revert",
             RequestKind::McpList => "mcpServerStatus/list",
@@ -231,14 +254,6 @@ impl OutgoingRequest {
             id,
             RequestKind::Read,
             json!({"threadId": thread_id.as_str(), "includeTurns": false}),
-        )
-    }
-
-    pub(crate) fn child_read(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
-        Self::build(
-            id,
-            RequestKind::ChildRead,
-            json!({"threadId": thread_id.as_str(), "includeTurns": true}),
         )
     }
 

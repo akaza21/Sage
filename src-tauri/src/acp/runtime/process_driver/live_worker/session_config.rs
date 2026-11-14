@@ -66,11 +66,11 @@ where
         }
     }
 
-    pub(crate) fn abandon_usage_read(&mut self) {
+    pub(crate) fn abandon_passive_read(&mut self) {
         match self {
-            Self::Idle(idle) => idle.parts.abandon_usage_read(),
-            Self::Reusable(parts) => parts.completed.abandon_usage_read(),
-            Self::Active(active) => active.turn.driver.abandon_usage_read(),
+            Self::Idle(idle) => idle.parts.abandon_passive_read(),
+            Self::Reusable(parts) => parts.completed.abandon_passive_read(),
+            Self::Active(active) => active.turn.driver.abandon_passive_read(),
             _ => {}
         }
     }
@@ -92,18 +92,11 @@ where
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
                     idle.parts.write_goal(&mut idle.transport, *action)
                 }
-                crate::acp::goal::NativeRpcRequest::ChildThreadRead {
-                    child_thread_id,
-                    parent_thread_id,
-                } => {
+                crate::acp::goal::NativeRpcRequest::Read(read) => {
                     if !idle.idle_decoder.is_frame_aligned() {
                         return Err(HostError::State);
                     }
-                    idle.parts.write_child(
-                        &mut idle.transport,
-                        child_thread_id,
-                        parent_thread_id,
-                    )?;
+                    idle.parts.write_child(&mut idle.transport, read)?;
                     idle.idle_decoder.enable_recoverable_oversize();
                     Ok(())
                 }
@@ -121,6 +114,9 @@ where
                 crate::acp::goal::NativeRpcRequest::UsageRead => {
                     idle.parts.write_usage_read(&mut idle.transport)
                 }
+                crate::acp::goal::NativeRpcRequest::BackgroundTerminals(action) => {
+                    idle.parts.write_terminals(&mut idle.transport, action)
+                }
                 crate::acp::goal::NativeRpcRequest::Control(control) => {
                     idle.parts.write_control(&mut idle.transport, control)
                 }
@@ -129,14 +125,9 @@ where
                 crate::acp::goal::NativeRpcRequest::Goal(action) => {
                     parts.completed.write_goal(&mut parts.transport, *action)
                 }
-                crate::acp::goal::NativeRpcRequest::ChildThreadRead {
-                    child_thread_id,
-                    parent_thread_id,
-                } => parts.completed.write_child(
-                    &mut parts.transport,
-                    child_thread_id,
-                    parent_thread_id,
-                ),
+                crate::acp::goal::NativeRpcRequest::Read(read) => {
+                    parts.completed.write_child(&mut parts.transport, read)
+                }
                 crate::acp::goal::NativeRpcRequest::ForkSession => {
                     parts.completed.write_fork(&mut parts.transport)
                 }
@@ -146,6 +137,9 @@ where
                 crate::acp::goal::NativeRpcRequest::UsageRead => {
                     parts.completed.write_usage_read(&mut parts.transport)
                 }
+                crate::acp::goal::NativeRpcRequest::BackgroundTerminals(action) => parts
+                    .completed
+                    .write_terminals(&mut parts.transport, action),
                 crate::acp::goal::NativeRpcRequest::Control(control) => {
                     parts.completed.write_control(&mut parts.transport, control)
                 }

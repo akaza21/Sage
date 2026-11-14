@@ -184,6 +184,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // composer or over-cap input; only the size check stays eager.
   "src/features/chat/ComposerPaste.tsx",
   "src/features/chat/ForkChat.tsx",
+  // An imported session's history and the session picker load on first use.
+  "src/features/chat/ImportedHistory.tsx",
   "src/features/chat/TranscriptInteractions.tsx",
   "src/features/chat/acp/MermaidFigure.tsx",
   // The pending-approval card loads only when a request awaits a decision.
@@ -198,6 +200,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // A terminal turn's Git workspace changes load after the turn settles.
   "src/features/chat/acp/turnWorkspaceChanges.ts",
   "src/features/chat/acp/TurnEditSummary.tsx",
+  // The background terminal strip loads only while one runs.
+  "src/features/chat/acp/BackgroundTerminals.tsx",
   "src/features/harness/HarnessSignInStatus.tsx",
   // The Chat search dialog loads on the first Search chats request.
   "src/features/chatSearch/ChatSearchControl.tsx",

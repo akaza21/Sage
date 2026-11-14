@@ -21,6 +21,7 @@ import { rootDisplayName } from "./rootDisplayName";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { editDiffAction } from "./chatEditSummary";
+import { BackgroundTerminalSlot } from "./BackgroundTerminalSlot";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
@@ -36,7 +37,20 @@ interface TurnEditSummaryProps {
   onReview?: () => void;
 }
 
-export const TurnEditSummary = memo(function TurnEditSummary({
+/** The dock above the composer: the commands the session left running,
+ * then the chat's edited files. */
+export const TurnEditSummary = memo(function TurnEditSummary(
+  props: TurnEditSummaryProps,
+) {
+  return (
+    <>
+      <BackgroundTerminalSlot page={props.page} rootLabels={props.rootLabels} />
+      <EditSummary {...props} />
+    </>
+  );
+});
+
+function EditSummary({
   page,
   rootLabels,
   countIncomplete,
@@ -326,4 +340,4 @@ export const TurnEditSummary = memo(function TurnEditSummary({
       ) : null}
     </section>
   );
-});
+}

@@ -2,14 +2,14 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
     bindings::codex::ChildTranscriptSnapshot,
-    goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
+    goal::NativeRead,
     store::child_transcript::{
         ChildTranscriptScope, ChildTranscriptStoreError, load_earlier_snapshot, load_snapshot,
         persist_snapshot, verify_current_binding,
     },
 };
 
-use super::AcpService;
+use super::{AcpService, native_read::NativeReadError};
 
 pub(crate) enum ChildTranscriptRead {
     Current(ChildTranscriptSnapshot),
@@ -62,25 +62,25 @@ impl AcpService {
         let host = self
             .host_for(&scope.owner)
             .map_err(|_| ChildTranscriptReadError::RecoveryRequired)?;
-        let result = host.native_rpc(NativeRpcIntent {
-            owner: scope.owner.clone(),
-            request: NativeRpcRequest::ChildThreadRead {
+        let result = self.read_turn_pages(
+            &scope.owner,
+            &host,
+            |cursor| NativeRead::ChildTurns {
                 child_thread_id: scope.child_thread_id.clone(),
                 parent_thread_id: scope.parent_thread_id.clone(),
+                cursor,
             },
+            false,
+        );
+        let snapshot = result.map(|paged| ChildTranscriptSnapshot {
+            child_thread_id: scope.child_thread_id.clone(),
+            parent_thread_id: scope.parent_thread_id.clone(),
+            turns: paged.turns,
+            retention_limited: false,
         });
-        if matches!(
-            result,
-            Err(crate::acp::runtime::HostError::Unavailable
-                | crate::acp::runtime::HostError::Closed
-                | crate::acp::runtime::HostError::Deadline
-                | crate::acp::runtime::HostError::DeliveryUnknown
-                | crate::acp::runtime::HostError::RecoveryRequired)
-        ) {
-            self.retain_config_effect_recovery(scope.owner.clone(), host);
-        }
-        match result {
-            Ok(NativeRpcReply::ChildTranscript(snapshot)) => {
+        match snapshot {
+            Ok(snapshot) if !snapshot.within_bounds() => Ok(ChildTranscriptRead::TooLarge),
+            Ok(snapshot) => {
                 match persist_snapshot(
                     &mut self.database.connection(),
                     &scope,
@@ -100,22 +100,12 @@ impl AcpService {
                     .ok_or(ChildTranscriptReadError::RecoveryRequired)?;
                 Ok(ChildTranscriptRead::Current(merged))
             }
-            Ok(NativeRpcReply::TooLarge) => Ok(ChildTranscriptRead::TooLarge),
-            Ok(NativeRpcReply::Rejected) => Err(ChildTranscriptReadError::Rejected),
-            Ok(
-                NativeRpcReply::GoalApplied
-                | NativeRpcReply::Forked(_)
-                | NativeRpcReply::Released
-                | NativeRpcReply::UsageRead
-                | NativeRpcReply::Controlled(_)
-                | NativeRpcReply::ControlRefused(_)
-                | NativeRpcReply::McpServers(_)
-                | NativeRpcReply::McpSignIn(_),
-            ) => Err(ChildTranscriptReadError::RecoveryRequired),
-            Err(crate::acp::runtime::HostError::Intent | crate::acp::runtime::HostError::State) => {
-                Err(ChildTranscriptReadError::Unavailable)
+            Err(NativeReadError::TooLarge) => Ok(ChildTranscriptRead::TooLarge),
+            Err(NativeReadError::Rejected) => Err(ChildTranscriptReadError::Rejected),
+            Err(NativeReadError::Unavailable) => Err(ChildTranscriptReadError::Unavailable),
+            Err(NativeReadError::RecoveryRequired) => {
+                Err(ChildTranscriptReadError::RecoveryRequired)
             }
-            Err(_) => Err(ChildTranscriptReadError::RecoveryRequired),
         }
     }
 }

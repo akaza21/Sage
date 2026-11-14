@@ -69,6 +69,17 @@ pub(crate) fn write_usage_read<A: HarnessAdapter>(
     write_egress(adapter, transport, egress)
 }
 
+pub(crate) fn write_terminals<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+    action: &crate::acp::background_terminals::TerminalAction,
+) -> Result<(), crate::acp::runtime::HostError> {
+    let egress = adapter
+        .background_terminals(action)
+        .map_err(|_| crate::acp::runtime::HostError::Intent)?;
+    write_egress(adapter, transport, egress)
+}
+
 pub(crate) fn write_goal<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
@@ -140,13 +151,10 @@ pub(crate) fn write_control<A: HarnessAdapter>(
 pub(crate) fn write_child<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
-    child_thread_id: &str,
-    parent_thread_id: &str,
+    read: &crate::acp::goal::NativeRead,
 ) -> Result<(), crate::acp::runtime::HostError> {
     use crate::acp::runtime::HostError;
-    let egress = adapter
-        .read_child(child_thread_id, parent_thread_id)
-        .map_err(|_| HostError::Intent)?;
+    let egress = adapter.native_read(read).map_err(|_| HostError::Intent)?;
     write_egress(adapter, transport, egress)
 }
 
@@ -189,8 +197,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.adapter.take_native_rpc_reply()
     }
-    pub(crate) fn abandon_usage_read(&mut self) {
-        self.adapter.abandon_usage_read();
+    pub(crate) fn abandon_passive_read(&mut self) {
+        self.adapter.abandon_passive_read();
     }
     pub(crate) fn write_goal(
         &mut self,
@@ -209,6 +217,15 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
         write_usage_read(&mut self.adapter, transport)
     }
+    pub(crate) fn write_terminals(
+        &mut self,
+        transport: &mut impl EgressTransport,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        self.ensure_live()
+            .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+        write_terminals(&mut self.adapter, transport, action)
+    }
     pub(crate) fn write_control(
         &mut self,
         transport: &mut impl EgressTransport,
@@ -221,20 +238,14 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     pub(crate) fn write_child(
         &mut self,
         transport: &mut impl EgressTransport,
-        child_thread_id: &str,
-        parent_thread_id: &str,
+        read: &crate::acp::goal::NativeRead,
     ) -> Result<(), crate::acp::runtime::HostError> {
         self.ensure_live()
             .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
         if !self.decoder.is_frame_aligned() {
             return Err(crate::acp::runtime::HostError::State);
         }
-        write_child(
-            &mut self.adapter,
-            transport,
-            child_thread_id,
-            parent_thread_id,
-        )?;
+        write_child(&mut self.adapter, transport, read)?;
         self.decoder.enable_recoverable_oversize();
         Ok(())
     }
@@ -263,8 +274,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.adapter.take_native_rpc_reply()
     }
-    pub(crate) fn abandon_usage_read(&mut self) {
-        self.adapter.abandon_usage_read();
+    pub(crate) fn abandon_passive_read(&mut self) {
+        self.adapter.abandon_passive_read();
     }
     pub(crate) fn write_goal(
         &mut self,
@@ -279,21 +290,22 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
     ) -> Result<(), crate::acp::runtime::HostError> {
         write_usage_read(&mut self.adapter, transport)
     }
+    pub(crate) fn write_terminals(
+        &mut self,
+        transport: &mut impl EgressTransport,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        write_terminals(&mut self.adapter, transport, action)
+    }
     pub(crate) fn write_child(
         &mut self,
         transport: &mut impl EgressTransport,
-        child_thread_id: &str,
-        parent_thread_id: &str,
+        read: &crate::acp::goal::NativeRead,
     ) -> Result<(), crate::acp::runtime::HostError> {
         if !self.idle_decoder.is_frame_aligned() {
             return Err(crate::acp::runtime::HostError::State);
         }
-        write_child(
-            &mut self.adapter,
-            transport,
-            child_thread_id,
-            parent_thread_id,
-        )?;
+        write_child(&mut self.adapter, transport, read)?;
         self.idle_decoder.enable_recoverable_oversize();
         Ok(())
     }

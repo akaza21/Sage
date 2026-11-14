@@ -18,13 +18,15 @@ use super::{
 };
 
 const FORK_CAPABILITY: &str = "nativeSessionFork";
+pub(crate) const IMPORT_CAPABILITY: &str = "nativeSessionImport";
 
 /// Capabilities a harness may gain once Sage learns to drive them, with
 /// whether a snapshot records them when false.
-const UPGRADES: [(&str, bool); 4] = [
+const UPGRADES: [(&str, bool); 5] = [
     (FORK_CAPABILITY, true),
     ("activeTurnSteer", true),
     ("nativeSessionCompact", false),
+    (IMPORT_CAPABILITY, false),
     ("promptImages", false),
 ];
 
@@ -320,6 +322,20 @@ mod tests {
             r#"{"schemaVersion":1,"protocolVersion":"p","prompt":false,"nativeSessionFork":true}"#
         ));
         assert!(!resumable_capabilities(STORED, "not json"));
+    }
+
+    #[test]
+    fn the_import_upgrade_also_resumes_but_never_a_downgrade() {
+        let imported = STORED.replace('}', r#","nativeSessionImport":true}"#);
+        assert!(resumable_capabilities(STORED, &imported));
+        let both = imported.replace(
+            r#""nativeSessionFork":false"#,
+            r#""nativeSessionFork":true"#,
+        );
+        assert!(resumable_capabilities(STORED, &both));
+        assert!(!resumable_capabilities(&imported, STORED));
+        let other = imported.replace(r#""prompt":true"#, r#""prompt":false"#);
+        assert!(!resumable_capabilities(STORED, &other));
     }
 
     #[test]

@@ -122,10 +122,10 @@ pub(crate) trait HarnessAdapter {
     fn child_read_pending(&self) -> bool {
         false
     }
-    fn read_child(
+    /// Writes one page of a paged native read.
+    fn native_read(
         &mut self,
-        _child_thread_id: &str,
-        _parent_thread_id: &str,
+        _read: &crate::acp::goal::NativeRead,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
@@ -198,8 +198,16 @@ pub(crate) trait HarnessAdapter {
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    /// Stops waiting for a usage read whose caller gave up.
-    fn abandon_usage_read(&mut self) {}
+    /// Stops waiting for a passive read (usage, a terminal listing, or any
+    /// other read that abandons at its deadline) whose caller gave up.
+    fn abandon_passive_read(&mut self) {}
+    /// Lists or stops the commands the harness left running.
+    fn background_terminals(
+        &mut self,
+        _action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn mutate_goal(
         &mut self,
         _action: crate::acp::goal::GoalAction,

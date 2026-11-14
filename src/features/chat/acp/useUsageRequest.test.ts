@@ -44,4 +44,10 @@ it("names the live runtime only when it reports usage limits", () => {
     sessionId: "session-a",
     runtimeEpoch: "2",
   });
+  expect(
+    renderHook(() => useUsageRequest(page(true), 3, false)).result.current,
+  ).toBe(null);
+  expect(
+    renderHook(() => useUsageRequest(page(false), 3, true)).result.current,
+  ).not.toBe(null);
 });

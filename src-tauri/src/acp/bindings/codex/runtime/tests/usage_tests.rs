@@ -110,7 +110,7 @@ fn no_read_is_sent_until_an_abandoned_one_answers() {
     initialize(&mut runtime);
     runtime.ingest(&update("codex", 30), &Mapper).unwrap();
     let a = request_id(&runtime.read_usage().unwrap());
-    runtime.abandon_usage_read();
+    runtime.abandon_passive_read();
     assert!(!runtime.native_rpc_pending());
 
     assert!(runtime.read_usage().is_err());
@@ -141,7 +141,7 @@ fn a_pushed_snapshot_lets_a_new_read_past_an_unanswered_one() {
     let mut runtime = fixture_runtime();
     initialize(&mut runtime);
     let abandoned = request_id(&runtime.read_usage().unwrap());
-    runtime.abandon_usage_read();
+    runtime.abandon_passive_read();
     assert!(runtime.read_usage().is_err());
 
     runtime.ingest(&update("codex", 30), &Mapper).unwrap();

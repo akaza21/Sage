@@ -11,8 +11,9 @@ fn observed_child_wire(request_id: u64) -> Vec<u8> {
     let mut value: serde_json::Value =
         serde_json::from_str(include_str!("fixtures/cp18d_child_read.json")).unwrap();
     value["id"] = request_id.into();
-    value["result"]["thread"]["parentThreadId"] = "thread-1".into();
-    codex_line(value)
+    codex_line(serde_json::json!({"id": request_id, "result": {
+        "data": value["result"]["thread"]["turns"], "nextCursor": null
+    }}))
 }
 
 fn sqlite_child_owner(path: &std::path::Path) -> rusqlite::Connection {
@@ -54,14 +55,15 @@ fn observed_wire_pump_snapshot_survives_reopen_without_mutating_parent_turn() {
         let (mut pump, _, _) = goal_active_codex_pump();
         pump.adapter.learn_child_for_test("child-one");
         let mut output = CaptureTransport(Vec::new());
-        pump.write_child(&mut output, "child-one", "thread-1").unwrap();
+        pump.write_child(&mut output, &child_turns_read("child-one", "thread-1")).unwrap();
         let request_id = serde_json::from_slice::<serde_json::Value>(&output.0).unwrap()["id"]
             .as_u64()
             .unwrap();
         assert!(pump.push_stdout_chunk(&observed_child_wire(request_id), 10).await.unwrap());
-        let Some(NativeRpcReply::ChildTranscript(snapshot)) = pump.take_native_rpc_reply() else {
+        let Some(NativeRpcReply::TurnsPage(page)) = pump.take_native_rpc_reply() else {
             panic!("the observed wire did not yield a typed child transcript");
         };
+        let snapshot = crate::acp::bindings::codex::test_transcript::child_snapshot(page, "child-one", "thread-1");
         assert_eq!(snapshot.turns.len(), 1);
         assert_eq!(snapshot.turns[0].items.len(), 1);
         assert!(matches!(snapshot.turns[0].items[0].payload, NormalizedPayload::Text { .. }));

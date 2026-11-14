@@ -1,5 +1,6 @@
 import { Check, Sparkles, Target } from "../../ui/leanIcons";
 import {
+  useContext,
   useLayoutEffect,
   useRef,
   type ComponentProps,
@@ -19,6 +20,10 @@ import {
 } from "../../domain/acpSessionConfigControls";
 import { withoutGovernedModes } from "../../domain/governedSessionModes";
 import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode";
+import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
+import { useStore } from "zustand";
+import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
+import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 
 /** The "+" menu's own actions; each is offered only while present. */
 export type ComposerMenuActions = Pick<
@@ -124,6 +129,17 @@ export function ComposerAddActions({
   ) => Promise<unknown>;
 }) {
   const modes = sessionModeActions(sessionConfig);
+  const { launch, chatAvailable } = useContext(AgentToolsContext);
+  // The picker lists through the launching Chat's own session.
+  const importable = useStore(
+    acpProjectionStoreFor(usePinnedAgentChatOwner()),
+    ({ page }) =>
+      page?.sessions.some(
+        (session) =>
+          session.id === page.currentSessionId &&
+          session.capabilities.nativeSessionImport,
+      ),
+  );
   return (
     <>
       <p className="menu-group-label composer__add-heading" aria-hidden="true">
@@ -182,6 +198,20 @@ export function ComposerAddActions({
           <span className="composer__action-description">
             Summarize earlier turns to free context
           </span>
+        </button>
+      ) : null}
+      {chatAvailable && importable ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-item"
+          tabIndex={-1}
+          onClick={() => {
+            onClose();
+            launch("sessionImport");
+          }}
+        >
+          Open a Codex CLI session
         </button>
       ) : null}
       {onOpenEffort ? (

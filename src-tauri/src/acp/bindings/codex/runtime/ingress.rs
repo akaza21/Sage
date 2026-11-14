@@ -53,34 +53,44 @@ impl CodexRuntime {
             let value: serde_json::Value =
                 serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
             if let Some(id) = value.get("id").and_then(serde_json::Value::as_u64) {
-                if self.inner.is_child_read_tombstone(id)
-                    && value.get("method").is_none()
-                    && (value.get("result").is_some() || value.get("error").is_some())
+                let response = value.get("method").is_none()
+                    && (value.get("result").is_some() || value.get("error").is_some());
+                if response
+                    && (self.inner.is_child_read_tombstone(id)
+                        || self.inner.take_abandoned_read(id))
                 {
                     return one(AdapterEvent::IgnoredLate);
                 }
-                if let Some((pending, child, parent)) = self.inner.child_read_scope()
+                if let Some((pending, read)) = self.inner.read_scope()
                     && id == pending
                 {
                     use super::super::child_transcript::{
-                        ChildTranscriptError, normalize_read_response,
+                        ChildTranscriptError, normalize_sessions_page, normalize_turns_page,
                     };
-                    use crate::acp::goal::NativeRpcReply;
-                    let reply = match normalize_read_response(
-                        frame.as_bytes(),
-                        id,
-                        child,
-                        parent,
-                        resources,
-                    ) {
-                        Ok(snapshot) => NativeRpcReply::ChildTranscript(snapshot),
+                    use crate::acp::goal::{NativeRead, NativeRpcReply};
+                    let wire = frame.as_bytes();
+                    let reply = if matches!(read, NativeRead::ImportableSessions { .. }) {
+                        normalize_sessions_page(wire, id).map(|page| {
+                            self.inner.remember_listed(
+                                page.sessions
+                                    .iter()
+                                    .map(|session| session.thread_id.clone()),
+                            );
+                            NativeRpcReply::SessionsPage(page)
+                        })
+                    } else {
+                        normalize_turns_page(wire, id, resources).map(NativeRpcReply::TurnsPage)
+                    };
+                    let reply = match reply {
+                        Ok(reply) => reply,
                         Err(ChildTranscriptError::Capacity) => NativeRpcReply::TooLarge,
-                        Err(ChildTranscriptError::Rejected) => NativeRpcReply::Rejected,
-                        Err(ChildTranscriptError::Malformed) => {
-                            return Err(AdapterRuntimeError::Frame);
+                        // The reply answered the read: a bad history ends
+                        // only the read, never this runtime's chat.
+                        Err(ChildTranscriptError::Rejected | ChildTranscriptError::Malformed) => {
+                            NativeRpcReply::Rejected
                         }
                     };
-                    self.inner.complete_child_read(id).map_err(map_adapter)?;
+                    self.inner.complete_native_read(id).map_err(map_adapter)?;
                     self.native_rpc_reply = Some(reply);
                     return one(AdapterEvent::IgnoredLate);
                 }

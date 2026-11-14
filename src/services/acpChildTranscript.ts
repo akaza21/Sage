@@ -37,11 +37,17 @@ export interface ChildTranscriptRequest {
   agentKey: string;
 }
 
+/** The identity native transcript items are shown under. */
+export type TranscriptOwner = Pick<
+  ChildTranscriptRequest,
+  "projectId" | "chatId" | "sessionId" | "runtimeEpoch"
+>;
+
 export type ChildTranscript =
   | {
       kind: "current" | "fromEarlierSession";
       retentionLimited: boolean;
-      turns: { id: string; status: string; items: AcpItem[] }[];
+      turns: TranscriptTurn[];
       /** The spawn's requested model, only when the harness wire named it. */
       spawnModel?: { model: string; reasoningEffort?: string };
     }
@@ -54,7 +60,7 @@ function itemForView(
   value: unknown,
   turnId: string,
   index: number,
-  request: ChildTranscriptRequest,
+  request: TranscriptOwner,
 ): AcpItem | null {
   if (!isRecord(value) || !isRecord(value.payload)) return null;
   const source = value.payload;
@@ -236,6 +242,46 @@ function childToolPresentation(payload: Record<string, unknown>): unknown {
   }
 }
 
+export type TranscriptTurn = { id: string; status: string; items: AcpItem[] };
+
+/**
+ * Native Turns (a child transcript or an imported session's history) in
+ * the shared item shapes, or null when any Turn or item is malformed or the
+ * bounds (128 Turns, 1024 items) are exceeded.
+ */
+export function turnsForView(
+  value: unknown,
+  owner: TranscriptOwner,
+): TranscriptTurn[] | null {
+  if (!Array.isArray(value) || value.length > 128) return null;
+  const turns: TranscriptTurn[] = [];
+  let total = 0;
+  for (const turn of value) {
+    const turnId = isRecord(turn) ? safeIdentifier(turn.id) : null;
+    if (
+      !isRecord(turn) ||
+      !turnId ||
+      !Array.isArray(turn.items) ||
+      !["inProgress", "completed", "interrupted", "failed"].includes(
+        String(turn.status),
+      )
+    )
+      return null;
+    total += turn.items.length;
+    if (total > 1024) return null;
+    const items = turn.items.map((item, index) =>
+      itemForView(item, turnId, index, owner),
+    );
+    if (items.some((item) => item === null)) return null;
+    turns.push({
+      id: turnId,
+      status: String(turn.status),
+      items: items.filter((item): item is AcpItem => item !== null),
+    });
+  }
+  return turns;
+}
+
 export async function getAcpChildTranscript(
   request: ChildTranscriptRequest,
 ): Promise<ChildTranscript> {
@@ -264,41 +310,11 @@ export async function getAcpChildTranscript(
     !isRecord(snapshot) ||
     snapshot.childThreadId !== request.agentKey ||
     !safeIdentifier(snapshot.parentThreadId) ||
-    !Array.isArray(snapshot.turns) ||
-    snapshot.turns.length > 128 ||
     typeof snapshot.retentionLimited !== "boolean"
   )
     throw new Error("Invalid child transcript response");
-  const turns: { id: string; status: string; items: AcpItem[] }[] = [];
-  let total = 0;
-  for (const turn of snapshot.turns) {
-    if (
-      !isRecord(turn) ||
-      !Array.isArray(turn.items) ||
-      !safeIdentifier(turn.id) ||
-      !["inProgress", "completed", "interrupted", "failed"].includes(
-        String(turn.status),
-      )
-    )
-      throw new Error("Invalid child transcript response");
-    total += turn.items.length;
-    if (total > 1024) throw new Error("Invalid child transcript response");
-    const turnId = safeIdentifier(turn.id);
-    if (!turnId) throw new Error("Invalid child transcript response");
-    const items = turn.items.map((item, index) =>
-      itemForView(item, turnId, index, request),
-    );
-    if (items.some((item) => item === null))
-      throw new Error("Invalid child transcript response");
-    const admittedItems = items.filter(
-      (item): item is AcpItem => item !== null,
-    );
-    turns.push({
-      id: turnId,
-      status: String(turn.status),
-      items: admittedItems,
-    });
-  }
+  const turns = turnsForView(snapshot.turns, request);
+  if (!turns) throw new Error("Invalid child transcript response");
   const spawn = isRecord(value.spawnModel) ? value.spawnModel : {};
   const model = printable(spawn.model, 256);
   const reasoningEffort = printable(spawn.reasoningEffort, 32);

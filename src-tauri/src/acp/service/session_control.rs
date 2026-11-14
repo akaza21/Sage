@@ -70,9 +70,10 @@ impl AcpService {
     }
 }
 
-/// Whether a failed control leaves the runtime's state unknown. A control
-/// its binding abandons at the deadline changed nothing Sage holds.
-fn needs_recovery(error: &HostError, abandons: bool) -> bool {
+/// Whether a failed control or native read leaves the runtime's state
+/// unknown. One its binding abandons at the deadline changed nothing Sage
+/// holds.
+pub(super) fn needs_recovery(error: &HostError, abandons: bool) -> bool {
     match error {
         HostError::Unavailable
         | HostError::Closed

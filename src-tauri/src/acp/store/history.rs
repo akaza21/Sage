@@ -78,6 +78,8 @@ pub(crate) fn load_chat_page_reserving(
         .map_err(|_| StoreError::Corrupt("session page bound"))?;
     let (forked_from, forked_from_turn_id) =
         super::chat_fork::forked_from(connection, &project_id, &chat_id)?.unzip();
+    let imported_history =
+        super::native_import::imported_session(connection, &project_id, &chat_id, false)?.is_some();
     let child_projection_epoch = super::child_transcript::child_projection_epoch(
         connection,
         project_id.as_str(),
@@ -108,6 +110,7 @@ pub(crate) fn load_chat_page_reserving(
         next_cursor: None,
         forked_from: forked_from.clone(),
         forked_from_turn_id: forked_from_turn_id.clone(),
+        imported_history,
         child_projection_epoch,
         session_notices: session_notices.clone(),
     };
@@ -142,6 +145,7 @@ pub(crate) fn load_chat_page_reserving(
         next_cursor: slice.next_cursor,
         forked_from,
         forked_from_turn_id,
+        imported_history,
         child_projection_epoch,
         session_notices,
     };

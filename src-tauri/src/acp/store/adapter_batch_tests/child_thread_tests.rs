@@ -299,7 +299,7 @@ fn native_child_identity_reopens_without_enabling_transcript_capability() {
 #[test]
 fn child_transcript_write_rechecks_binding_and_current_epoch() {
     use crate::acp::{
-        bindings::codex::normalize_read_response,
+        bindings::codex::test_transcript::child_read as child_read_for_test,
         scheduler::RuntimeOwner,
         store::child_transcript::{
             ChildTranscriptScope, load_earlier_snapshot, load_snapshot, persist_snapshot,
@@ -329,8 +329,7 @@ fn child_transcript_write_rechecks_binding_and_current_epoch() {
     };
     let wire = br#"{"id":17,"result":{"thread":{"id":"child-one","parentThreadId":"adapter-session","turns":[{"id":"native-turn","status":"completed","itemsView":"full","items":[{"id":"answer","type":"agentMessage","text":"Result","phase":null,"memoryCitation":null}]}]}}}"#;
     let mapper = crate::acp::resource_mapper::NativeResourceMapper::new([]).unwrap();
-    let snapshot =
-        normalize_read_response(wire, 17, "child-one", "adapter-session", &mapper).unwrap();
+    let snapshot = child_read_for_test(wire, 17, "child-one", "adapter-session", &mapper).unwrap();
     assert!(persist_snapshot(&mut fixture.connection, &scope, &snapshot, 10).is_ok());
     assert_eq!(
         load_snapshot(&fixture.connection, &scope).unwrap(),

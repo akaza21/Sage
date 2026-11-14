@@ -15,6 +15,7 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
             | SchemaClass::CurrentSessionFactsTurnIndex
             | SchemaClass::CurrentOperationTerminalIndex
             | SchemaClass::CurrentTurnUndoIntentIndexes
+            | SchemaClass::CurrentImportedHistory
     ) {
         return Ok(());
     }

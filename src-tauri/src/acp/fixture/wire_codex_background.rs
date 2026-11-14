@@ -7,7 +7,7 @@ use std::io::Write;
 use serde_json::{Value, json};
 
 use super::super::FixtureError;
-use super::codex::{THREAD_ID, emit_json};
+use super::codex::emit_json;
 use super::{WireState, acp};
 
 /// Skills an install may hold, and cwds one read may name.
@@ -32,7 +32,7 @@ pub(super) fn answer(
     state: &mut WireState,
 ) -> Result<bool, FixtureError> {
     match method {
-        "thread/read" => child_read(request, output, state)?,
+        "thread/turns/list" => child_read(request, output, state)?,
         "skills/list" => {
             let id = request_id(request)?;
             let data = listed(request, &mut state.codex_skills)?;
@@ -63,23 +63,21 @@ fn child_read(
     let params = request
         .get("params")
         .ok_or(FixtureError::InvalidArguments)?;
-    let child = params
+    params
         .get("threadId")
         .and_then(Value::as_str)
         .filter(|child| matches!(*child, "fixture-child-1" | "fixture-child-2"))
         .ok_or(FixtureError::InvalidArguments)?;
-    if params.get("includeTurns").and_then(Value::as_bool) != Some(true) {
+    if params.get("itemsView").and_then(Value::as_str) != Some("full") {
         return Err(FixtureError::InvalidArguments);
     }
     emit_json(
         output,
         state,
-        &json!({"jsonrpc":"2.0","id":id,"result":{"thread":{
-            "id":child,"parentThreadId":THREAD_ID,"turns":[{
-                "id":"fixture-child-turn","itemsView":"full","status":"completed",
-                "items":[{"id":"fixture-child-answer","type":"agentMessage","text":"Synthetic child summary"}]
-            }]
-        }}}),
+        &json!({"jsonrpc":"2.0","id":id,"result":{"nextCursor":null,"data":[{
+            "id":"fixture-child-turn","itemsView":"full","status":"completed",
+            "items":[{"id":"fixture-child-answer","type":"agentMessage","text":"Synthetic child summary"}]
+        }]}}),
     )
 }
 

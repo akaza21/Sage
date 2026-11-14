@@ -21,6 +21,7 @@ pub(super) fn setup() -> Connection {
          CREATE TABLE chats(id TEXT PRIMARY KEY,project_id TEXT,ordinal INTEGER,title TEXT,projection_revision INTEGER,created_at INTEGER,updated_at INTEGER);
          CREATE TABLE chat_lineage(child_project_id TEXT,child_chat_id TEXT PRIMARY KEY,parent_project_id TEXT,parent_chat_id TEXT,source_turn_id TEXT,relation TEXT);
          CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY,project_id TEXT,chat_id TEXT,updated_at INTEGER);
+         CREATE TABLE acp_imported_histories(session_id TEXT PRIMARY KEY,history_json TEXT,created_at INTEGER);
          CREATE TABLE agent_sessions(id TEXT PRIMARY KEY,project_id TEXT,chat_id TEXT,ordinal INTEGER,binding_id TEXT,binding_digest TEXT,harness_version TEXT,model_id TEXT,external_session_id TEXT,capabilities_json TEXT,state TEXT,residency TEXT,legacy INTEGER,revision INTEGER,projection_revision INTEGER,created_at INTEGER,updated_at INTEGER,terminal_at INTEGER);
          CREATE TABLE chat_session_heads(project_id TEXT,chat_id TEXT PRIMARY KEY,session_id TEXT UNIQUE,installed_revision INTEGER,installed_at INTEGER);
          CREATE TABLE session_runtime_epochs(project_id TEXT,chat_id TEXT,session_id TEXT,runtime_epoch INTEGER,state TEXT,artifact_digest TEXT,started_at INTEGER,terminal_at INTEGER,exit_kind TEXT,PRIMARY KEY(session_id,runtime_epoch));
@@ -109,7 +110,9 @@ pub(super) fn capabilities() -> String {
         cancel: true,
         native_session_fork: false,
         native_session_compact: false,
+        native_session_import: false,
         native_review: false,
+        native_background_terminals: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,

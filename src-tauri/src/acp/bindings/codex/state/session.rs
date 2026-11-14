@@ -46,6 +46,7 @@ impl CodexAdapter {
     ) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.new_session)?;
         let request = self.reserve(OutgoingRequest::start(id, root, model)?)?;
+        self.native_root = Some(root.clone());
         self.skills_root(root.as_str());
         Ok(request)
     }
@@ -64,6 +65,7 @@ impl CodexAdapter {
             root,
             model,
         )?)?;
+        self.native_root = Some(root.clone());
         self.skills_root(root.as_str());
         Ok(request)
     }

@@ -158,12 +158,11 @@ impl HarnessAdapter for NativeRuntime {
     fn child_read_pending(&self) -> bool {
         self.0.child_read_pending()
     }
-    fn read_child(
+    fn native_read(
         &mut self,
-        child_thread_id: &str,
-        parent_thread_id: &str,
+        read: &crate::acp::goal::NativeRead,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        self.0.read_child(child_thread_id, parent_thread_id)
+        self.0.native_read(read)
     }
     fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.0.fork_session()
@@ -204,8 +203,14 @@ impl HarnessAdapter for NativeRuntime {
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.0.read_usage()
     }
-    fn abandon_usage_read(&mut self) {
-        self.0.abandon_usage_read()
+    fn abandon_passive_read(&mut self) {
+        self.0.abandon_passive_read()
+    }
+    fn background_terminals(
+        &mut self,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.background_terminals(action)
     }
     fn answered_control(&mut self, control: &crate::acp::session_control::SessionControl) -> bool {
         self.0.answered_control(control)

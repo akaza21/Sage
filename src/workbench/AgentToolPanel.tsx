@@ -22,7 +22,13 @@ import {
   usePinnedAgentChatOwner,
 } from "../app/agentChatOwner";
 import { useSideChatState } from "./sideChatState";
-import type { AgentToolLaunch, AgentToolRequest } from "./AgentToolsProvider";
+import type {
+  AgentLaunch,
+  AgentToolLaunch,
+  AgentToolRequest,
+} from "./AgentToolsProvider";
+import { lazyParts } from "../features/chat/lazyParts";
+import type * as ImportChunk from "../features/chat/ImportedHistory";
 import "./agent-tool-panel.css";
 import { useAgentChangesState } from "./agentChangesState";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
@@ -91,8 +97,21 @@ function launchRequest(launch: AgentToolLaunch): AgentToolRequest | null {
       };
 }
 
+const ImportPart = lazyParts<typeof ImportChunk>(
+  () => import("../features/chat/ImportedHistory"),
+);
+
+/** A tool launch's host, or the Codex CLI session picker. */
+export function AgentToolHost({ launch }: { launch: AgentLaunch }) {
+  return launch.tool === "sessionImport" ? (
+    <ImportPart part="ImportSessionDialog" />
+  ) : (
+    <ToolHost launch={launch} />
+  );
+}
+
 /** Activate the launch's Chat before its picker; retain side-chat start errors until dismissed. */
-export function AgentToolHost({ launch }: { launch: AgentToolLaunch }) {
+function ToolHost({ launch }: { launch: AgentToolLaunch }) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const generation = useWorkbenchStore((state) => state.projectGeneration);
   const transitioning = useWorkbenchStore(

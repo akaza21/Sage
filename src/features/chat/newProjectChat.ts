@@ -24,6 +24,7 @@ export function isNewProjectChat({
     project &&
     page?.projectId === project.id &&
     page.turns.length === 0 &&
+    !page.importedHistory &&
     !projectTransitioning &&
     !loadingEarlier &&
     !historyError &&

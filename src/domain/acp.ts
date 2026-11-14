@@ -166,10 +166,14 @@ export interface AcpCapabilitySet {
   promptImages?: boolean;
   cancel: boolean;
   nativeSessionFork: boolean;
+  /** Absent unless the harness can open sessions started outside Sage. */
+  nativeSessionImport?: boolean;
   /** Absent unless the harness negotiated it. */
   nativeSessionCompact?: boolean;
   /** Absent unless the harness negotiated it. */
   nativeReview?: boolean;
+  /** Absent unless the harness lists and stops the commands it left running. */
+  nativeBackgroundTerminals?: boolean;
   activeTurnSteer: boolean;
   childConversationProjection: boolean;
   childTranscriptRead: boolean;

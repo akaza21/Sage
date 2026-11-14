@@ -173,6 +173,11 @@ impl CodexRuntime {
                 self.apply_usage(usage);
                 one(AdapterEvent::IgnoredLate)
             }
+            IngressDisposition::Terminals(reply) => {
+                self.native_rpc_reply =
+                    Some(reply.unwrap_or(crate::acp::goal::NativeRpcReply::Rejected));
+                one(AdapterEvent::IgnoredLate)
+            }
             IngressDisposition::SettingsUpdated { model, effort } => {
                 self.adopt_reported_settings(Some(model), effort);
                 // Hydration belongs to the idle owner after handoff. Activation

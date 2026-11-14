@@ -240,7 +240,7 @@ fn the_chat_cannot_prompt_or_change_settings_until_pi_is_back() {
 fn a_fork_its_caller_gave_up_on_still_moves_pi_back_and_removes_the_copy() {
     let mut chat = saved_chat();
     let state = cloned(&mut chat);
-    chat.runtime.abandon_usage_read();
+    chat.runtime.abandon_passive_read();
     assert!(!chat.runtime.native_rpc_pending());
     let back = read_copy(&mut chat, &state);
     assert!(answer(&mut chat, &back, json!({"cancelled":false})).is_none());
@@ -296,7 +296,7 @@ fn a_late_answer_to_an_abandoned_read_does_not_disturb_a_fork() {
     let mut chat = saved_chat();
     let read = chat.runtime.read_usage().unwrap();
     let stats = deliver(&mut chat.runtime, read);
-    chat.runtime.abandon_usage_read();
+    chat.runtime.abandon_passive_read();
     let state = cloned(&mut chat);
     // The stats Pi answers late belong to no one; the fork carries on.
     let late = chat
@@ -472,7 +472,7 @@ fn abandoned_forks_also_keep_failed_cleanup_bounded() {
     let mut copies = Vec::new();
     for index in 0..8 {
         let state = cloned(&mut chat);
-        chat.runtime.abandon_usage_read();
+        chat.runtime.abandon_passive_read();
         let key = format!("2026-11-11T12-00-0{index}-000Z_copy-{index}");
         let back = read_copy_named(&mut chat, &state, &key);
         answer(&mut chat, &back, json!({"cancelled":false}));

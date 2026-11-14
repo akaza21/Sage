@@ -19,6 +19,7 @@ mod history_sessions;
 mod item_ingress;
 mod item_usage;
 mod mutations;
+pub(crate) mod native_import;
 mod paging;
 mod permission_item;
 mod projection_decode;

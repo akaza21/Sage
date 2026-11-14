@@ -129,7 +129,7 @@ fn abandoned_lists_drop_their_late_answers_and_hold_only_further_lists() {
     let mut abandoned = Vec::new();
     for _ in 0..4 {
         abandoned.push(sent(&mut runtime, &SessionControl::ReadMcpServers).0);
-        runtime.abandon_usage_read();
+        runtime.abandon_passive_read();
         assert!(!runtime.native_rpc_pending());
     }
     // Four lists Codex never answered hold back a fifth, but not the rest.
@@ -182,7 +182,7 @@ fn a_list_past_the_frame_bound_is_too_large_and_keeps_the_session() {
 
     // An abandoned list's oversized answer is dropped, then lists resume.
     let (abandoned, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
-    runtime.abandon_usage_read();
+    runtime.abandon_passive_read();
     assert!(runtime.child_read_pending());
     runtime.accept_oversized_response(abandoned).unwrap();
     assert_eq!(runtime.take_native_rpc_reply(), None);

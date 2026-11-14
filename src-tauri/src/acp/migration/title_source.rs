@@ -10,7 +10,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         SchemaClass::CurrentTitleSource
         | SchemaClass::CurrentSessionFactsTurnIndex
         | SchemaClass::CurrentOperationTerminalIndex
-        | SchemaClass::CurrentTurnUndoIntentIndexes => {
+        | SchemaClass::CurrentTurnUndoIntentIndexes
+        | SchemaClass::CurrentImportedHistory => {
             return Ok(());
         }
         SchemaClass::CurrentResumeLink => {}
