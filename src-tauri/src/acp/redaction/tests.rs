@@ -72,6 +72,21 @@ fn stderr_diagnostic_redacts_unstructured_secret_text() {
 }
 
 #[test]
+fn only_a_json_rpc_error_message_is_offered_for_storage() {
+    let mut structured = StderrRing::new(512, 512);
+    structured.ingest(br#"{"error":{"code":-32000,"message":"usage limit reached"}}"#);
+    assert_eq!(
+        structured.safe_diagnostic().json_rpc_error_message(),
+        Some("usage limit reached")
+    );
+
+    let mut unstructured = StderrRing::new(512, 512);
+    unstructured.ingest(b"panic: worker crashed at main.rs:12");
+    let diagnostic = unstructured.safe_diagnostic();
+    assert_eq!(diagnostic.json_rpc_error_message(), None);
+}
+
+#[test]
 fn diagnostic_credentials_survive_whitespace_and_quoted_value_boundaries() {
     for (input, expected) in [
         ("Bearer  private-token", "Bearer  [redacted]"),

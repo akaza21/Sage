@@ -1,14 +1,20 @@
+use std::borrow::Cow;
+
 use rusqlite::{Transaction, params, params_from_iter, types::Value};
 
 use sage_acp_protocol::{
     contract::{
         ProjectionRevision, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
     },
-    lifecycle::{DeliveryState, TurnState},
+    lifecycle::{DeliveryState, TurnState, TurnTerminalOutcome},
 };
 use sage_core::limits::LIMITS;
 
-use super::{StoreError, facts::append_fact_payload};
+use super::{
+    StoreError,
+    facts::append_fact_payload,
+    terminal_reason::{self, TerminalReasonOwner},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TerminalizedCounts {
@@ -100,6 +106,7 @@ pub(crate) fn terminalize_recovery_epoch(
     chat: &SageChatId,
     session: &SageAgentSessionId,
     epoch: RuntimeEpoch,
+    reason: &TurnTerminalOutcome,
     projection: ProjectionRevision,
     now: i64,
 ) -> Result<RecoveryTerminalization, StoreError> {
@@ -126,15 +133,16 @@ pub(crate) fn terminalize_recovery_epoch(
         .first()
         .map(|row| {
             let terminal = recovery_turn_state(&row.1, &row.2)?;
-            Ok::<(SageTurnId, TurnState, DeliveryState), StoreError>((
+            Ok::<(SageTurnId, TurnState, DeliveryState, bool), StoreError>((
                 SageTurnId::parse(row.0.clone()).map_err(|_| StoreError::Corrupt("turn id"))?,
                 terminal.0,
                 terminal.1,
+                row.1 == "queued",
             ))
         })
         .transpose()?;
     let counts = precheck_descendants(transaction, session, epoch, turns.len() as u64)?;
-    if let Some((turn_id, state, delivery)) = &turn {
+    if let Some((turn_id, state, delivery, queued)) = &turn {
         transaction.execute(
             "UPDATE turns SET state=?2,delivery_state=?3,revision=revision+1,
              updated_at=?4,terminal_at=?4 WHERE id=?1",
@@ -144,6 +152,17 @@ pub(crate) fn terminalize_recovery_epoch(
                 delivery_state(*delivery),
                 now
             ],
+        )?;
+        let reason = if *queued {
+            Cow::Owned(terminal_reason::unsent())
+        } else {
+            Cow::Borrowed(reason)
+        };
+        terminal_reason::record_recovered_in(
+            transaction,
+            TerminalReasonOwner::new(project, chat, session, turn_id, epoch),
+            &reason,
+            now,
         )?;
     }
     terminalize_descendants(transaction, session, epoch, now)?;
@@ -161,7 +180,7 @@ pub(crate) fn terminalize_recovery_epoch(
         now,
     )?;
     Ok(RecoveryTerminalization {
-        turn: turn.map(|(id, state, _)| (id, state)),
+        turn: turn.map(|(id, state, ..)| (id, state)),
         counts,
     })
 }
