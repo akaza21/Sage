@@ -35,6 +35,49 @@ it("bounds draft UTF-8 text and keeps the previous chat's text independently", a
   expect(useWorkbenchStore.getState().agentCenter).toBe("chat");
 });
 
+it("updates draft choices synchronously and freezes edits as soon as sending starts", async () => {
+  const state = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    harnesses: [],
+    models: [
+      {
+        id: "thinking",
+        name: "Thinking",
+        isDefault: true,
+        effortLevels: ["high"],
+      },
+      { id: "plain", name: "Plain", isDefault: false },
+    ],
+  });
+  state.updateNewChatDraft({ text: "First prompt", effort: "high" });
+  state.selectDraftModel("thinking");
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    text: "First prompt",
+    modelId: "thinking",
+    effort: "high",
+  });
+  state.selectDraftModel("plain");
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    modelId: "plain",
+    effort: null,
+  });
+
+  const sending = state.sendNewChatDraft();
+  state.updateNewChatDraft({ text: "Too late" });
+  state.selectDraftModel("thinking");
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    text: "First prompt",
+    modelId: "plain",
+    creating: true,
+  });
+  await sending;
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    text: "First prompt",
+    creating: false,
+    error: "Choose an available harness and model before sending.",
+  });
+});
+
 it("keeps the draft through same-project refresh and failed switching, then discards it on successful switching", async () => {
   const state = useWorkbenchStore.getState();
   state.updateNewChatDraft({ text: "Project draft" });

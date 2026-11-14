@@ -1,9 +1,6 @@
 import type { StateCreator } from "zustand";
-import {
-  boundedChatError,
-  validateChatComposerText,
-} from "../domain/chatOwnership";
 import type { SessionAccessMode } from "../domain/sessionAccessMode";
+import type { createNewChatDraftActions } from "./newChatDraftActions";
 import type { WorkbenchState } from "./store";
 
 export interface NewChatDraft {
@@ -41,71 +38,30 @@ export const createNewChatDraftSlice: StateCreator<
   [],
   [],
   NewChatDraftSlice
-> = (set, get) => ({
-  agentCenter: "chat",
-  newChatDraft: null,
-  draftFocusRequest: 0,
-  pendingFirstSend: null,
-  openNewChatDraft: async (projectId) => {
-    const { openNewChatDraft } = await import("./newChatDraftNavigation");
-    return openNewChatDraft(set, get, projectId);
-  },
-  updateNewChatDraft: (patch) => {
-    const draft = get().newChatDraft;
-    if (!draft || draft.creating) return;
-    try {
-      if (patch.text !== undefined) validateChatComposerText(patch.text);
-      set({ newChatDraft: { ...draft, ...patch, error: null } });
-    } catch (error) {
-      set({
-        newChatDraft: { ...draft, error: boundedChatError(String(error)) },
-      });
-    }
-  },
-  selectDraftHarness: async (harnessId) => {
-    const { selectDraftHarness } = await import("./newChatDraftNavigation");
-    await selectDraftHarness(set, get, harnessId);
-  },
-  selectDraftModel: (modelId) => {
-    const state = get();
-    const draft = state.newChatDraft;
-    if (!draft || draft.creating || state.selectedHarnessId !== draft.harnessId)
-      return;
-    const model = state.models.find((model) => model.id === modelId);
-    if (!model) return;
-    set({
-      newChatDraft: {
-        ...draft,
-        modelId,
-        effort:
-          draft.effort && model.effortLevels?.includes(draft.effort)
-            ? draft.effort
-            : null,
-      },
-    });
-  },
-  sendNewChatDraft: async () => {
-    const draft = get().newChatDraft;
-    if (
-      !draft ||
-      draft.creating ||
-      !draft.text.trim() ||
-      get().projectTransitioning
-    )
-      return;
-    const submission = {
-      projectId: draft.projectId,
-      chatId: null,
-      ownershipEpoch: get().chatOwnershipEpoch,
-    };
-    set({
-      newChatDraft: { ...draft, creating: true, error: null },
-      pendingFirstSend: submission,
-    });
-    const { runNewChatDraftSend } = await import("./runNewChatDraftSend");
-    await runNewChatDraftSend(set, get, draft, submission);
-  },
-});
+> = (set, get) => {
+  // Opening the draft loads its actions first. Once visible, edits and the
+  // first-send guard stay synchronous, without carrying them on startup.
+  let actions: ReturnType<typeof createNewChatDraftActions> | undefined;
+  const load = async () =>
+    (actions ??= (
+      await import("./newChatDraftActions")
+    ).createNewChatDraftActions(set, get));
+  return {
+    agentCenter: "chat",
+    newChatDraft: null,
+    draftFocusRequest: 0,
+    pendingFirstSend: null,
+    openNewChatDraft: async (projectId) => {
+      return (await load()).openNewChatDraft(projectId);
+    },
+    updateNewChatDraft: (patch) => actions?.updateNewChatDraft(patch),
+    selectDraftHarness: async (harnessId) => {
+      await (await load()).selectDraftHarness(harnessId);
+    },
+    selectDraftModel: (modelId) => actions?.selectDraftModel(modelId),
+    sendNewChatDraft: () => actions?.sendNewChatDraft() ?? Promise.resolve(),
+  };
+};
 
 export function projectNewChatDraft(
   state: Pick<WorkbenchState, "project">,

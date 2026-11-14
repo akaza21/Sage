@@ -4,6 +4,7 @@ import {
   Fragment,
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -22,6 +23,7 @@ import {
   usePinnedAgentChatOwner,
 } from "../app/agentChatOwner";
 import { useWorkbenchStore } from "../app/store";
+import { whenIdle } from "../ui/whenIdle";
 import { ChatSurface } from "../features/chat/ChatSurface";
 import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
 import { AcpProjectionOwnerContext } from "../features/chat/acp/AcpProjectionOwnerContext";
@@ -64,6 +66,13 @@ export function AgentChatPanes({
 }) {
   const draftShown = useWorkbenchStore(
     (state) => state.agentCenter === "draft",
+  );
+  useEffect(
+    () =>
+      visible
+        ? whenIdle(() => void DraftPart.preload().catch(() => undefined))
+        : undefined,
+    [visible],
   );
   const runtime = useContext(AgentChatRuntimeContext);
   const tabs = useWorkbenchStore((state) => state.tabs);
