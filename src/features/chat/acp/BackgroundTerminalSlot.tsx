@@ -44,14 +44,17 @@ export function BackgroundTerminalSlot({
   const [listed, setListed] = useState<Listed | null>(null);
   const [stops, setStops] = useState(0);
   // Only the newest listing lands; a stop makes any listing before it stale.
+  // A listing that fails keeps the last one for this runtime, so its
+  // terminals stay stoppable until a later listing says otherwise.
   const sequence = useRef(0);
   useEffect(() => {
     if (!request) return;
     const started = ++sequence.current;
-    const land = (terminals: readonly BackgroundTerminal[] | null) =>
-      started === sequence.current &&
-      setListed(terminals && { request, terminals });
-    acpBackgroundTerminals.list(request).then(land, () => land(null));
+    acpBackgroundTerminals.list(request).then(
+      (terminals) =>
+        started === sequence.current && setListed({ request, terminals }),
+      () => undefined,
+    );
   }, [request, settled, stops]);
   if (!request || listed?.request !== request || !listed.terminals.length)
     return null;

@@ -18,9 +18,10 @@ pub(crate) enum TerminalsError {
 
 impl AcpService {
     /// Runs `action` against the runtime's harness. A listing answers with
-    /// the terminals it still runs: none when the runtime is gone or never
-    /// negotiated them. A stop answers with none, and the caller lists again;
-    /// a stop for a runtime that is gone is `Stale`, since nothing stopped.
+    /// the terminals it still runs, or none when the runtime is gone. A stop
+    /// answers with none, and the caller lists again; a stop for a runtime
+    /// that is gone is `Stale`, since nothing stopped. A harness that is busy,
+    /// holds back a listing or never negotiated terminals refuses either.
     pub(crate) fn background_terminals(
         &self,
         owner: RuntimeOwner,
@@ -70,7 +71,6 @@ fn terminals_reply(
     match result {
         Ok(NativeRpcReply::BackgroundTerminals(terminals)) => Ok(terminals),
         Ok(NativeRpcReply::TerminalsStopped) => Ok(Vec::new()),
-        Err(HostError::Intent) if list => Ok(Vec::new()),
         Ok(NativeRpcReply::Rejected) | Err(HostError::State | HostError::Intent) => {
             Err(TerminalsError::Rejected)
         }
@@ -84,8 +84,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn only_terminal_replies_answer_and_only_a_listing_finds_no_terminals_on_an_unsupported_runtime()
-     {
+    fn only_terminal_replies_answer_and_a_refused_request_never_reads_as_done() {
         let terminal = BackgroundTerminal {
             handle: "7".into(),
             command: "npm run dev".into(),
@@ -102,12 +101,10 @@ mod tests {
             terminals_reply(false, Ok(NativeRpcReply::TerminalsStopped)),
             Ok(Vec::new())
         );
-        assert_eq!(
-            terminals_reply(true, Err(HostError::Intent)),
-            Ok(Vec::new())
-        );
-        // A refused stop must not look like one that worked.
+        // A refused request must not look like one that worked: a busy or
+        // held-back listing is not an empty one.
         for (list, refused) in [
+            (true, Err(HostError::Intent)),
             (true, Ok(NativeRpcReply::Rejected)),
             (false, Err(HostError::State)),
             (false, Err(HostError::Intent)),

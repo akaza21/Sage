@@ -127,7 +127,8 @@ it("lists on mount, when the latest turn ends and after each stop", async () => 
 
 it("reports a refused stop but not a failed relisting after one", async () => {
   let late: (terminals: BackgroundTerminal[]) => void = () => {};
-  vi.spyOn(acpBackgroundTerminals, "list")
+  const list = vi
+    .spyOn(acpBackgroundTerminals, "list")
     .mockResolvedValueOnce([server])
     .mockReturnValueOnce(new Promise((resolve) => (late = resolve)))
     .mockResolvedValueOnce([server])
@@ -136,7 +137,7 @@ it("reports a refused stop but not a failed relisting after one", async () => {
     .spyOn(acpBackgroundTerminals, "stop")
     .mockRejectedValueOnce(new Error("The harness did not take it."))
     .mockResolvedValueOnce();
-  const { container, rerender } = render(<Dock page={page(true)} />);
+  const { rerender } = render(<Dock page={page(true)} />);
   await screen.findByText("Background terminals (1)");
 
   // A listing that started before the stop never lands.
@@ -148,9 +149,14 @@ it("reports a refused stop but not a failed relisting after one", async () => {
   ).toBeInTheDocument();
   expect(screen.getByText("Background terminals (1)")).toBeInTheDocument();
 
+  // A failed relisting keeps the last listing and its Stop controls.
   fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
   await waitFor(() => expect(stop).toHaveBeenCalledTimes(2));
-  await waitFor(() => expect(container).toBeEmptyDOMElement());
+  await waitFor(() => expect(list).toHaveBeenCalledTimes(4));
+  expect(screen.getByText("Background terminals (1)")).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: "Stop npm run dev" }),
+  ).toBeEnabled();
   expect(screen.queryByRole("alert")).toBeNull();
 });
 
