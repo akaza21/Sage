@@ -32,7 +32,6 @@ pub(crate) struct ResumeEarlierSessionCommand {
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub expected_projection_revision: ProjectionRevision,
-    /// The Chat's current head, bound by an earlier harness release.
     pub earlier_session_id: SageAgentSessionId,
     pub binding_digest: String,
     pub harness_version: SafeText<128>,
@@ -161,7 +160,6 @@ pub(crate) fn link_resumed_session(
     })
 }
 
-/// A parked head session a new head replaces, at its current revision.
 pub(super) struct ParkedSession<'a> {
     pub(super) project_id: &'a SageProjectId,
     pub(super) chat_id: &'a SageChatId,

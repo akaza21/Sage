@@ -75,7 +75,6 @@ fn stream_fade_replays_pace_word_level_chunks_within_the_case_bounds() {
                 .all(|ms| (1..=PAUSE_STEP_MAXIMUM_MS).contains(ms))
         );
         assert!(pauses.iter().sum::<u64>() <= LIMITS.deadlines_ms.fixture_delay_maximum);
-        // Every pause follows a streamed chunk, so it paces the trail.
         for (index, step) in steps.iter().enumerate() {
             if step["op"] == "pauseMs" {
                 assert_eq!(steps[index - 1]["op"], "emitKnownFrame", "{id}");
@@ -102,8 +101,6 @@ fn mcp_progress_replay_holds_each_status_line_long_enough_to_read() {
             since_visible = Some(0);
         }
     }
-    // Started, two reports, completed: each of the first three is shown
-    // for at least two seconds before the next replaces it.
     assert_eq!(held.len(), 3);
     assert!(held.iter().all(|ms| *ms >= 2_000), "{held:?}");
     assert!(held.iter().sum::<u64>() <= LIMITS.deadlines_ms.fixture_delay_maximum);

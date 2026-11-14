@@ -58,7 +58,6 @@ pub(super) struct FixtureInvocation {
     pub(super) harness_args: Vec<String>,
 }
 
-/// Harness arguments one launch may carry, and the bytes of each.
 const MAX_HARNESS_ARGS: usize = 16;
 const MAX_HARNESS_ARG_BYTES: usize = 256;
 

@@ -73,7 +73,6 @@ fn row(label: &str, state: &str, progress: &str) -> (String, String, Option<Stri
     (label.into(), state.into(), Some(progress.into()))
 }
 
-/// Ends the fixture's Turn and starts the next one in the same epoch.
 fn next_turn(fixture: &mut Fixture, owner: &AdapterStoreOwner, intent: &str) -> AdapterStoreOwner {
     apply(fixture, owner, vec![turn(TurnState::Completed)]);
     let expected_projection_revision = projection(&fixture.connection);
@@ -151,7 +150,6 @@ fn an_earlier_turns_rows_survive_newer_rows_and_a_new_epoch_reset() {
             .all(|row| row.label.as_str() != "lint"),
         "newer rows evicted the earlier Turn's row from the live surface"
     );
-    // A new runtime epoch's first event clears the live surface's rows.
     let mut reset = live;
     reset.apply(2, &notice(SessionNoticeLevel::Info, "restarted"));
     assert!(reset.activities.is_empty());
@@ -188,7 +186,6 @@ fn a_hook_that_settles_after_its_turn_ended_updates_that_turns_row() {
             hook("format", Running, "formatting"),
         ],
     );
-    // The adapter settles the running hook as its Turn ends.
     apply(&mut fixture, &first, vec![hook("format", Cancelled, "-")]);
     let second = next_turn(&mut fixture, &first, "second-turn");
     apply(
@@ -319,7 +316,6 @@ fn past_the_turn_cap_a_cancelled_hook_still_settles_to_its_late_outcome() {
         rows(&fixture)[0][0],
         row("guard", "failed", "Guard exited with status 2")
     );
-    // Past the cap a row settles at most twice; it cannot cycle.
     for index in 0..16 {
         apply(
             &mut fixture,

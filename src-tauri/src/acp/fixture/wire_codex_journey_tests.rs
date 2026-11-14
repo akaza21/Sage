@@ -1,5 +1,3 @@
-//! The Codex journeys that end mid-turn, replayed step by step.
-
 use super::*;
 
 #[test]

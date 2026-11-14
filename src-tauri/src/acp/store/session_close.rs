@@ -20,7 +20,6 @@ pub(crate) struct FinalizeCloseCommand {
     pub request: CloseSessionCommand,
 }
 
-/// Commits close/cancel intent and moves the durable owner to terminating.
 /// It deliberately does not claim that the process or session is closed.
 pub(crate) fn close_session(
     connection: &mut rusqlite::Connection,
