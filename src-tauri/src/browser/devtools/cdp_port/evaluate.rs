@@ -13,7 +13,8 @@ use std::{
 };
 
 use super::{CdpPort, CdpTransport, world::left};
-use crate::acp::{browser::BrowserFailure, limits::BROWSER_LIMITS};
+use crate::acp::browser::BrowserFailure;
+use sage_core::limits::BROWSER_LIMITS;
 
 const SCRIPT: &str = include_str!("evaluate.js");
 const ENTRY_LIMIT: usize = 4096;

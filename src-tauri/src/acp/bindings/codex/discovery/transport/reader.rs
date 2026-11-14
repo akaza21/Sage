@@ -9,10 +9,10 @@ use std::{
 };
 
 use crate::acp::{
-    limits::LIMITS,
     process::StdoutEndpoint,
     transport::{Frame, FrameError},
 };
+use sage_core::limits::LIMITS;
 
 use super::super::runner::CodexDiscoveryRunError;
 

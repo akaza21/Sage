@@ -3,8 +3,8 @@ use serde_json::{Map, Value};
 use crate::acp::{
     contract::SafeText,
     intent::{NormalizedPayload, SafeResourceLocation},
-    limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
 };
+use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
 use super::{IngressError, ResourceMapper};
 use crate::acp::bindings::codex::state::{AdapterError, CodexAdapter};

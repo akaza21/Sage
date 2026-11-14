@@ -2,8 +2,9 @@ use serde_json::{Map, Value};
 
 use crate::acp::{
     bindings::codex::state::ExternalKind, contract::SafeText, intent::NormalizedPayload,
-    lifecycle::ItemLifecycle, limits::LIMITS,
+    lifecycle::ItemLifecycle,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ItemUpdateMode,

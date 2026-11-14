@@ -315,7 +315,7 @@ impl AcpService {
             .map_err(super::PromptSendError::not_started)?
             .send(HostPromptIntent {
                 command,
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .map_err(|failure| {
                 failure.map(|error| map_host_error(&self.lane_at(0).runtime, &owner, error))

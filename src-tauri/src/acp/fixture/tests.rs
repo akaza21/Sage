@@ -3,7 +3,7 @@ use std::ffi::OsString;
 
 use serde_json::Value;
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::cases::FixtureInvocation;
 use super::generated_cases::FROZEN_CASES;
@@ -470,7 +470,7 @@ fn fixture_adapter_requires_written_prompt_and_emits_one_bounded_text_lifecycle(
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "read only").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     assert!(matches!(

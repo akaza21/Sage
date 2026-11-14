@@ -9,13 +9,13 @@ use crate::acp::{
     intent::{
         CapabilitySnapshotV1, ExternalId, ModelId, SafeResourceRef, UnavailableResourceReason,
     },
-    limits::LIMITS,
     semantic_ingress::{
         SemanticIngressError, decode_capability_token, validate_metadata, validate_models,
     },
     store::{CompleteActivationCommand, complete_activation},
     transport::{Frame, IncrementalFrameDecoder, validate_structure},
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{generated_cases::FrozenCase, wire};
 

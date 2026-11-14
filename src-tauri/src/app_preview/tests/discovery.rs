@@ -8,7 +8,8 @@ use super::super::{
     origin::loopback_origin,
 };
 use super::discovery_request;
-use crate::{acp::limits::PREVIEW_LIMITS, project_registry::RootRecord};
+use crate::project_registry::RootRecord;
+use sage_core::limits::PREVIEW_LIMITS;
 
 #[test]
 fn loopback_origins_allow_http_and_https_literals_only() {

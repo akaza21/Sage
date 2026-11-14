@@ -11,9 +11,9 @@ use crate::{
             SageTurnId,
         },
         intent::{AcpIpcError, AcpUnavailableReason, user_input::UserInputAnswers},
-        runtime::permissions::PermissionDecision,
         service::PermissionDecisionIntent,
     },
+    acp_protocol::permissions::PermissionDecision,
     state::AppState,
 };
 

@@ -1,10 +1,8 @@
 use rusqlite::params;
 
 use super::*;
-use crate::{
-    acp::limits::LIMITS,
-    domain::{BootstrapSnapshot, ChatLifecycleRequest, ProjectLayoutRequest},
-};
+use crate::domain::{BootstrapSnapshot, ChatLifecycleRequest, ProjectLayoutRequest};
+use sage_core::limits::LIMITS;
 
 struct Fixture {
     root: std::path::PathBuf,

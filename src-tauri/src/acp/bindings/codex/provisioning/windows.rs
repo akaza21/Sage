@@ -11,12 +11,14 @@ use super::{
     AclPlan, HandoffFile, HandoffPayload, ProvisioningError, RECEIPT_BYTES_MAX, STAGE_NAME,
     SealedHandoff, SourceFile, StagingOperation, VerifiedCodexSource, hex,
 };
-use crate::acp::bindings::codex::{
-    managed::current_process_user_sid,
-    manifest::PINNED_CODEX_VERSION,
-    physical::{
-        InspectionClaims, PhysicallyInspectedPackage, inspect_claims, open_exact_state_root,
+use crate::{
+    acp::bindings::codex::{
+        managed::current_process_user_sid,
+        physical::{
+            InspectionClaims, PhysicallyInspectedPackage, inspect_claims, open_exact_state_root,
+        },
     },
+    acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
 };
 
 mod targets;

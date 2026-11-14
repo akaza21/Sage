@@ -12,7 +12,7 @@ impl Lane<'_> {
             Ok(host) => host,
             Err(super::super::runtime_slot::RuntimeSlotError::Recovery) => {
                 let deadline = Instant::now()
-                    + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+                    + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
                 let _ = self.shutdown_codex_recovery(deadline);
                 return self.settled_cancel_outcome(&owner, &turn_id);
             }
@@ -46,7 +46,7 @@ impl Lane<'_> {
         outcome: crate::acp::runtime::HostOutcome,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         let deadline = Instant::now()
-            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+            + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
         #[cfg(all(test, windows))]
         self.record_cancel_stage("durable-wait");
         while !self.cancel_is_durable(&owner, &turn_id) {
@@ -124,7 +124,7 @@ impl Lane<'_> {
         let Some(recovery) = self.take_live_host_recovery(&owner) else {
             if self.has_runtime_recovery_for(&owner) {
                 let deadline = Instant::now()
-                    + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+                    + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
                 let _ = self.shutdown_codex_recovery(deadline);
             }
             return Err(CodexSessionError::Recovery);
@@ -147,7 +147,7 @@ impl Lane<'_> {
             | LiveHostRecoveryPhase::CancelEffect
             | LiveHostRecoveryPhase::ConfigEffect) => {
                 let deadline = Instant::now()
-                    + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+                    + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
                 if let Some(recovery) = self.shutdown_live_host_recovery(
                     LiveHostRecovery {
                         owner: owner.clone(),
@@ -242,7 +242,7 @@ impl Lane<'_> {
         authority: ClosedShutdownAuthority,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         let deadline = Instant::now()
-            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+            + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
         match self.converge_closed_shutdown(&owner, &host, authority, true, deadline) {
             Ok(()) => {
                 let result = crate::app_preview_commands::retire_preview_runtime_owner(&owner)
@@ -298,7 +298,7 @@ impl Lane<'_> {
         recovering: bool,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         let deadline = Instant::now()
-            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+            + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
         match self.converge_closed_shutdown(&owner, &host, authority, recovering, deadline) {
             Ok(()) => {
                 crate::app_preview_commands::retire_preview_runtime_owner(&owner)

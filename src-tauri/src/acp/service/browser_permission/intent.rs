@@ -1,11 +1,13 @@
 //! The card's journal intent and request kind (ADR-0009, ADR-0009b).
 
 use super::BrowserPermissionOwner;
-use crate::acp::{
-    browser::permission::{BrowserPermissionChoice, BrowserPermissionPrompt},
-    contract::{RequiredText, SafeText, SageServerRequestId},
-    intent::{ExternalId, NormalizedPayload, ToolCategory},
-    runtime::permissions::PermissionIntent,
+use crate::{
+    acp::{
+        browser::permission::{BrowserPermissionChoice, BrowserPermissionPrompt},
+        contract::{RequiredText, SafeText, SageServerRequestId},
+        intent::{ExternalId, NormalizedPayload, ToolCategory},
+    },
+    acp_protocol::permissions::PermissionIntent,
 };
 use sha2::{Digest, Sha256};
 

@@ -5,7 +5,7 @@
   "thresholdAuthority": {
     "relativePath": "beta-acceptance-v1.json",
     "bytes": 3017,
-    "sha256": "9c04318159a01606821611b25b5a768e8d65665a61591a2ea15d2e7aafc8646b"
+    "sha256": "0cdc977c8b0bba907508a63ccf76ad44b68058f5eb28ecb6e6e2216a3baafc3a"
   },
   "limits": {
     "resultBytesMaximum": 262144,

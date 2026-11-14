@@ -6,9 +6,9 @@ use crate::acp::{
         COMMAND_RESOURCE_LIMIT, ExternalId, FileChangeOperation, NormalizedPayload,
         SafeResourceLocation, ToolCategory,
     },
-    limits::LIMITS,
     runtime::host_browse::browse_tool_summary,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::sanitize::normalized_label_text;
 use super::decode::{

@@ -76,8 +76,10 @@ pub(in crate::acp::bindings::codex::incoming) fn item_event<M: ResourceMapper>(
         item_id: ExternalId::new("childItemId", item_id.to_owned())
             .map_err(|_| IngressError::Identity)?,
         role: match kind {
-            Some("userMessage") => Some(super::super::super::ChildTextRole::User),
-            Some("agentMessage") => Some(super::super::super::ChildTextRole::Assistant),
+            Some("userMessage") => Some(crate::acp_protocol::codex_protocol::ChildTextRole::User),
+            Some("agentMessage") => {
+                Some(crate::acp_protocol::codex_protocol::ChildTextRole::Assistant)
+            }
             _ => None,
         },
         lifecycle: terminal.unwrap_or(requested),

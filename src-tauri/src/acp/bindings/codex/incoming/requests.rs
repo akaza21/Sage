@@ -5,9 +5,9 @@ use serde_json::{Map, Value, json};
 use crate::acp::{
     contract::SafeText,
     intent::{NormalizedPayload, ToolCategory, user_input::UserInputRequest},
-    limits::LIMITS,
     runtime::host_browse::admit_browse_url,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::CODEX_BROWSE_TOOL_NAME;
 use super::super::state::{

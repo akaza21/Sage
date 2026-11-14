@@ -37,7 +37,7 @@ pub(super) fn turn_completed(
                 let message = text(
                     error,
                     "message",
-                    crate::acp::limits::LIMITS.wire.error_bytes as usize,
+                    sage_core::limits::LIMITS.wire.error_bytes as usize,
                 )?;
                 let payload = error_payload("codex", message, false)?;
                 Ok::<_, IngressError>(

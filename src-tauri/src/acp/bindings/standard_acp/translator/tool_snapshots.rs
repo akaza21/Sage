@@ -4,8 +4,8 @@ use crate::acp::{
     command_output::{join_command_output_blocks, retain_command_output},
     contract::{BoundedVec, SafeText},
     intent::{COMMAND_RESOURCE_LIMIT, SafeResourceLocation, ToolCategory},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::sanitize::{sanitized_command_output, sanitized_content_output};
 use super::super::surface::ToolCallContentKind;

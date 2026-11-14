@@ -228,7 +228,7 @@ fn the_chat_cannot_prompt_or_change_settings_until_pi_is_back() {
         chat.runtime.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             client_message_id: RequiredText::new("client", "client-pi-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::Operation)
     ));

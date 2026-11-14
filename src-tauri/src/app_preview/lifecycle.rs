@@ -367,7 +367,7 @@ fn settle_unsettled_drainers_locked(registry: &mut Registry) -> bool {
         drainers,
         std::time::Instant::now()
             + std::time::Duration::from_millis(
-                crate::acp::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
+                sage_core::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
             ),
     ) {
         Ok(()) => true,

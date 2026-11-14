@@ -6,24 +6,9 @@
 //! `initialize` and `model/list` frames its session steps send, and an
 //! account that needs no sign-in. Sage reads them with its real discovery
 //! protocol, so the composer's model menu is the catalogue the session sees.
-use std::{collections::HashMap, sync::OnceLock};
-
 use serde_json::{Value, json};
 
-use super::generated_cases::JOURNEY_CASES;
-
-/// A Codex case whose thread runs the model it is opened or resumed with, so
-/// a model picked in the composer is one the session really uses. Only such a
-/// case offers a model choice.
-pub(crate) fn native_case_offers_models(case: &str) -> bool {
-    case.starts_with("codex-")
-        && steps(case).is_some_and(|steps| {
-            steps.iter().any(|step| {
-                step["op"] == "emitKnownFrame" && step["shape"] == "codexThreadConfigResult"
-            })
-        })
-        && reply_shape(case, "codexModelList").is_some()
-}
+use crate::acp_protocol::native_cases::reply_shape;
 
 /// The reply to one discovery request, or `None` for a request discovery
 /// does not make. Like the Codex app server, a reply carries only its `id`
@@ -45,35 +30,10 @@ pub(crate) fn native_case_discovery_reply(case: &str, request: &Value) -> Option
         .then(|| json!({"id": id, "result": result}))
 }
 
-/// Each journey case's steps, parsed once.
-fn steps(case: &str) -> Option<&'static [Value]> {
-    static STEPS: OnceLock<HashMap<&'static str, Vec<Value>>> = OnceLock::new();
-    STEPS
-        .get_or_init(|| {
-            JOURNEY_CASES
-                .iter()
-                .filter_map(|entry| Some((entry.id, serde_json::from_str(entry.steps_json).ok()?)))
-                .collect()
-        })
-        .get(case)
-        .map(Vec::as_slice)
-}
-
-/// The frame the case emits right after it waits for `kind`.
-fn reply_shape(case: &str, kind: &str) -> Option<String> {
-    let steps = steps(case)?;
-    let wait = steps
-        .iter()
-        .position(|step| step["op"] == "awaitClient" && step["kind"] == kind)?;
-    let reply = steps.get(wait + 1)?;
-    (reply["op"] == "emitKnownFrame")
-        .then(|| reply["shape"].as_str().map(str::to_owned))
-        .flatten()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::acp_protocol::native_cases::native_case_offers_models;
 
     #[test]
     fn the_restart_case_offers_both_models_its_session_lists() {

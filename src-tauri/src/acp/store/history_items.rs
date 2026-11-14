@@ -48,7 +48,7 @@ pub(super) fn load(input: HistoryLoad<'_>) -> Result<HistorySlice, StoreError> {
         mut activities,
         base_page_bytes,
     } = input;
-    let limit = crate::acp::limits::LIMITS.durable.history_page_bytes as usize;
+    let limit = sage_core::limits::LIMITS.durable.history_page_bytes as usize;
     let mut used = base_page_bytes
         .checked_add(CURSOR_JSON_RESERVE)
         .ok_or(StoreError::Corrupt("history page bytes"))?;
@@ -57,7 +57,7 @@ pub(super) fn load(input: HistoryLoad<'_>) -> Result<HistorySlice, StoreError> {
     let mut next_cursor = None;
 
     for row in rows {
-        if item_count == crate::acp::limits::LIMITS.durable.history_page_items as usize {
+        if item_count == sage_core::limits::LIMITS.durable.history_page_items as usize {
             let previous = turns.last().ok_or(StoreError::Capacity {
                 resource: "historyPage",
                 limit: limit as u64,
@@ -138,8 +138,8 @@ fn load_turn_items(
     used: &mut usize,
     page_item_count: &mut usize,
 ) -> Result<LoadedItems, StoreError> {
-    let remaining = crate::acp::limits::LIMITS.durable.history_page_items as usize
-        - (*page_item_count).min(crate::acp::limits::LIMITS.durable.history_page_items as usize);
+    let remaining = sage_core::limits::LIMITS.durable.history_page_items as usize
+        - (*page_item_count).min(sage_core::limits::LIMITS.durable.history_page_items as usize);
     let query_limit = i64::try_from(remaining.saturating_add(1).max(1))
         .map_err(|_| StoreError::Corrupt("history page limit"))?;
     let mut statement = connection.prepare(

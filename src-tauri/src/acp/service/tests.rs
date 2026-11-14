@@ -283,7 +283,7 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
         );
         assert_eq!(
             identity.2.as_deref(),
-            Some(crate::acp::bindings::codex::CODEX_PINNED_VERSION)
+            Some(crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION)
         );
         service.shutdown_blocking().unwrap();
     });
@@ -1416,7 +1416,7 @@ fn service_keeps_background_turn_live_and_stops_runtime_before_journal_drop() {
                 prompt: Prompt::new("prompt", "hello").unwrap(),
                 now_millis: sage_core::time::now_millis(),
             },
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     service.install_runtime_for_test(owner, Arc::clone(&runtime));

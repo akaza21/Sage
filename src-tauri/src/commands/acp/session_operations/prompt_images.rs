@@ -13,12 +13,12 @@ use crate::{
         },
         contract::SageAgentSessionId,
         intent::{AcpUnavailableReason, ImageMediaType, Prompt},
-        limits::{
-            ECHOED_PROMPT_IMAGE_TOTAL_BYTES, IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_COUNT,
-            PROMPT_IMAGE_TOTAL_BYTES,
-        },
     },
     image_attachment::ImageAttachedContext,
+};
+use sage_core::limits::{
+    ECHOED_PROMPT_IMAGE_TOTAL_BYTES, IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_COUNT,
+    PROMPT_IMAGE_TOTAL_BYTES,
 };
 
 fn requested(contexts: &AttachedContexts) -> Vec<&ImageAttachedContext> {

@@ -2,13 +2,15 @@ pub(crate) mod support;
 
 use std::sync::{Arc, Mutex};
 
-use crate::acp::{
-    bindings::adapter::AdapterCommand,
-    contract::{
-        RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
-        SageTurnId,
+use crate::{
+    acp::{
+        bindings::adapter::AdapterCommand,
+        contract::{
+            RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
+            SageTurnId,
+        },
     },
-    runtime::permissions::PermissionDecision,
+    acp_protocol::permissions::PermissionDecision,
 };
 
 use super::PermissionDecisionIntent;

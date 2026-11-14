@@ -1,6 +1,9 @@
-use crate::{acp::bindings::characterisation::Characterisation, settings_store::SessionAccessMode};
+use crate::{
+    acp::bindings::characterisation::Characterisation, acp_protocol::access_mode::SessionAccessMode,
+};
 
-use super::{manifest::PINNED_CODEX_VERSION, request::RequestError};
+use super::request::RequestError;
+use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 /// The thread settings a `turn/start` changes. Codex applies each one given to
 /// that Turn and the Turns after it; one left out keeps the thread's own.

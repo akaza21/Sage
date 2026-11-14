@@ -2,7 +2,7 @@ use std::{collections::BTreeMap, io::ErrorKind, path::Path};
 
 use serde_json::{Value, json};
 
-use crate::acp::file_diff::DIFF_SIDE_BYTES_MAX;
+use crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX;
 
 use super::super::{PermissionIntent, PermissionReply, PermissionState};
 

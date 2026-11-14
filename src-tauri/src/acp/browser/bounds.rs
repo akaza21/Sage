@@ -1,5 +1,5 @@
 use super::BrowserFailure;
-use crate::acp::limits::BROWSER_LIMITS;
+use sage_core::limits::BROWSER_LIMITS;
 
 pub(crate) fn admit_text(field: &str, value: &str) -> Result<(), BrowserFailure> {
     let cap = match field {

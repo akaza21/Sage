@@ -46,7 +46,7 @@ impl AcpService {
         ) {
             journal.shutdown();
             let _ = journal_thread.wait(Duration::from_millis(
-                crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
+                sage_core::limits::LIMITS.deadlines_ms.explicit_close,
             ));
             return Err(recovery
                 .err()
@@ -84,7 +84,7 @@ impl AcpService {
         let service = Self {
             file_stages: Arc::new(std::sync::Mutex::new(Default::default())),
             file_stage_reader: Arc::new(tokio::sync::Mutex::new(())),
-            read_text_files: super::ReadTextFileService::new(database.clone()),
+            read_text_files: crate::acp::read_text_file::ReadTextFileService::new(database.clone()),
             browser_permissions: std::sync::Mutex::new(std::collections::HashMap::new()),
             browser_attachments: crate::acp::browser::attachment::BrowserAttachments::default(),
             #[cfg(windows)]
@@ -138,7 +138,7 @@ fn journal_store_error(error: JournalError) -> StoreError {
         JournalError::Store(error) => error,
         JournalError::Capacity { .. } => StoreError::Capacity {
             resource: "recovery queue",
-            limit: crate::acp::limits::LIMITS
+            limit: sage_core::limits::LIMITS
                 .queues
                 .journal_control_batches_inside_total,
         },

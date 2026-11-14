@@ -4,7 +4,8 @@
 //! output. A cancelled or errored prompt leaves them open for the store's turn
 //! sweep, which marks unfinished output as cancelled.
 
-use crate::acp::{intent::NormalizedPayload, lifecycle::ItemLifecycle, limits::LIMITS};
+use crate::acp::{intent::NormalizedPayload, lifecycle::ItemLifecycle};
+use sage_core::limits::LIMITS;
 
 use super::decode::turn_scoped_key;
 use super::{AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TranslationError};

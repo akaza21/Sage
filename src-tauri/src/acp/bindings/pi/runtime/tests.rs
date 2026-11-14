@@ -207,7 +207,7 @@ fn running(runtime: &mut PiRuntime) {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect read-only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-pi-1").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     let value = deliver(runtime, prompt);
@@ -231,7 +231,7 @@ fn advertised_pi_read_only_policy_emits_only_admitted_prompt() {
     assert_eq!(capabilities.len(), 1);
     assert_eq!(
         capabilities[0].id,
-        crate::settings_store::SessionAccessMode::ReadOnly
+        crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly
     );
     let mut runtime = fixture_runtime(31);
     ready(&mut runtime);
@@ -729,7 +729,7 @@ fn pi_model_selection_uses_set_model_and_updates_config_after_reply() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect").unwrap(),
             client_message_id: RequiredText::new("client", "model-refresh").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt = deliver(&mut runtime, prompt);
@@ -1251,7 +1251,7 @@ fn allow_once_on_pi_does_not_emit_denial_and_records_resolved_allowed() {
     let allow = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("write-1").expect("request"),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .expect("allow once");
     assert!(!allow.token().is_mandatory());
@@ -1285,7 +1285,7 @@ fn allow_once_on_pi_rejects_an_ambiguous_select_option() {
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("disallow-1").expect("request"),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         }),
         // Without an allow option the select is a question: only an answer resolves it.
         Err(AdapterRuntimeError::UnsupportedCommand)
@@ -1322,7 +1322,7 @@ fn later_decision_uses_the_shared_helper_not_permission_intent_reject() {
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("request-pi-missing").expect("request"),
-            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
         }),
         Err(AdapterRuntimeError::LaterPermissionMiss)
     ));
@@ -1365,7 +1365,7 @@ fn text_snapshot_plus_one_poison_and_prompt_rollback_clear_state() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "rollback").expect("prompt"),
             client_message_id: RequiredText::new("client", "rollback-client").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     rollback

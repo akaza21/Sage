@@ -50,7 +50,7 @@ impl AcpService {
         let bytes = serde_json::to_vec(page)
             .map_err(|_| StoreError::Corrupt("chat page serialization"))?
             .len();
-        if bytes > crate::acp::limits::LIMITS.durable.history_page_bytes as usize {
+        if bytes > sage_core::limits::LIMITS.durable.history_page_bytes as usize {
             page.session_surface = None;
         }
         Ok(())

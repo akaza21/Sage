@@ -26,9 +26,7 @@ impl Drop for ReadTextFileService {
         // the Arc-held writer state remains live and no completed teardown is
         // claimed while it could still emit a frame.
         let deadline = std::time::Instant::now()
-            + std::time::Duration::from_millis(
-                crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
-            );
+            + std::time::Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc);
         let settlement = self.terminalize_all();
         let _ = settlement.wait_until(deadline);
     }

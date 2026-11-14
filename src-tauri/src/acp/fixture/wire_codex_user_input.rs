@@ -131,7 +131,7 @@ fn echo(answers: &serde_json::Map<String, Value>) -> Result<String, FixtureError
 /// client answers each question with `answer`.
 #[cfg(test)]
 pub(crate) fn codex_user_input_wire_for_test(answer: &Value) -> Vec<Value> {
-    let case = super::super::generated_cases::JOURNEY_CASES
+    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == "codex-user-input")
         .expect("the codex-user-input journey exists");

@@ -1,7 +1,7 @@
 use super::*;
-use crate::acp::{
-    lifecycle::{ItemLifecycle, ServerRequestState, ToolState},
-    runtime::permissions::PermissionDecision,
+use crate::{
+    acp::lifecycle::{ItemLifecycle, ServerRequestState, ToolState},
+    acp_protocol::permissions::PermissionDecision,
 };
 
 #[test]
@@ -175,7 +175,7 @@ fn pi_read_only_fixture_preserves_agent_loop_messages_and_followup() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect read-only").unwrap(),
             client_message_id: RequiredText::new("client", "fixture-followup").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt = deliver(&mut runtime, prompt);

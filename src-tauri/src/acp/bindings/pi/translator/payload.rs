@@ -79,7 +79,7 @@ pub(super) fn parse_state(value: &Value) -> Result<StateSnapshot, AdapterError> 
             .and_then(Value::as_str)
             .filter(|file| {
                 file.len()
-                    <= crate::acp::limits::LIMITS
+                    <= sage_core::limits::LIMITS
                         .wire
                         .absolute_path_bytes_native_only as usize
                     && !file.contains('\0')

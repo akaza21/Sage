@@ -87,8 +87,7 @@ describe("permission decision seam", () => {
           "..",
           "src-tauri",
           "src",
-          "acp",
-          "runtime",
+          "acp_protocol",
           "permissions.rs",
         ),
         path.join(

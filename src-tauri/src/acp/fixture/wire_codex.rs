@@ -2,7 +2,7 @@ use std::io::{Read, Write};
 
 use serde_json::{Value, json};
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::super::FixtureError;
 use super::super::interpreter::{field_str, field_u64};
@@ -14,7 +14,7 @@ pub(super) const THREAD_ID: &str = "fixture-persisted-session-1";
 pub(super) const FORK_THREAD_ID: &str = "fixture-fork-session-1";
 const USER_AGENT: &str = concat!(
     "sage/",
-    crate::acp::bindings::codex::pinned_codex_version!(),
+    crate::acp_protocol::codex_protocol::pinned_codex_version!(),
     " (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"
 );
 

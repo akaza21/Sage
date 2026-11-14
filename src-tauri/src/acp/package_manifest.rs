@@ -2,7 +2,7 @@ use std::{fs::File, io::Read, path::Path};
 
 use serde_json::Value;
 
-use crate::acp::limits::PREVIEW_LIMITS;
+use sage_core::limits::PREVIEW_LIMITS;
 
 const MAX_MANIFEST_BYTES: u64 = PREVIEW_LIMITS.manifest_bytes;
 

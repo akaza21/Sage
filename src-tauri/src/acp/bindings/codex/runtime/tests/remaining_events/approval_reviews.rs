@@ -52,7 +52,7 @@ fn interleaved_review_replays_stay_suppressed_after_notice_eviction() {
 #[test]
 fn review_capacity_suppresses_new_notices_without_evicting_completed_ids() {
     let mut runtime = running();
-    for index in 0..crate::acp::limits::LIMITS.wire.items_per_turn {
+    for index in 0..sage_core::limits::LIMITS.wire.items_per_turn {
         one_notice(&complete_review(
             &mut runtime,
             "turn-1",
@@ -79,7 +79,7 @@ fn review_capacity_suppresses_new_notices_without_evicting_completed_ids() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Continue").unwrap(),
             client_message_id: RequiredText::new("client", "client-2").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     runtime

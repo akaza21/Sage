@@ -15,7 +15,7 @@ fn prompt_command(turn: &str) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
         client_message_id: RequiredText::new("client", turn).expect("client"),
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 

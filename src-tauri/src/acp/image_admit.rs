@@ -3,8 +3,8 @@ use crate::acp::{
     intent::{
         IMAGE_BASE64_MAX, IMAGE_DECODED_BYTES_MAX, ImageMediaType, ImageSource, NormalizedPayload,
     },
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 

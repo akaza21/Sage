@@ -16,13 +16,13 @@ use crate::{
             mcp::{BrowserMcpError, BrowserOperationObserver},
             redact_console,
         },
-        limits::BROWSER_LIMITS,
         projection::BrowserOperationProjection,
         scheduler::RuntimeOwner,
         store::browser_operations,
     },
     state::AppState,
 };
+use sage_core::limits::BROWSER_LIMITS;
 
 mod open_tab;
 

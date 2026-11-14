@@ -291,7 +291,7 @@ fn completion_of_an_already_collapsed_operation_does_not_change_its_real_outcome
 
 #[test]
 fn terminal_record_fits_at_session_and_global_fact_byte_ceiling() {
-    let limit = crate::acp::limits::LIMITS.durable.fact_bytes_global as i64;
+    let limit = sage_core::limits::LIMITS.durable.fact_bytes_global as i64;
     for table in ["acp_session_usage", "acp_store_usage"] {
         for recovery in [false, true] {
             let mut connection = setup();

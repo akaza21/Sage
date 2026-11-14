@@ -69,18 +69,18 @@ impl StandardAcpRuntime {
         let created_file_content = created_file_content(&value, approved_path.as_deref());
         let reply = match access_mode {
             // Modes OpenCode's access policy never admits are denied too.
-            crate::settings_store::SessionAccessMode::ReadOnly
-            | crate::settings_store::SessionAccessMode::AcceptEdits
-            | crate::settings_store::SessionAccessMode::Plan
-            | crate::settings_store::SessionAccessMode::Auto
-            | crate::settings_store::SessionAccessMode::FullAccess => {
+            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly
+            | crate::acp_protocol::access_mode::SessionAccessMode::AcceptEdits
+            | crate::acp_protocol::access_mode::SessionAccessMode::Plan
+            | crate::acp_protocol::access_mode::SessionAccessMode::Auto
+            | crate::acp_protocol::access_mode::SessionAccessMode::FullAccess => {
                 active
                     .translator
                     .translate_permission_request_value(value.clone())
                     .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
                 PermissionReply::Deny
             }
-            crate::settings_store::SessionAccessMode::WorkspaceWrite => {
+            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite => {
                 if allow_once_option_id.is_some()
                     && workspace_edit_target(&value, &self.workspace_root)
                 {
@@ -89,7 +89,7 @@ impl StandardAcpRuntime {
                     PermissionReply::AwaitUser
                 }
             }
-            crate::settings_store::SessionAccessMode::Ask => PermissionReply::AwaitUser,
+            crate::acp_protocol::access_mode::SessionAccessMode::Ask => PermissionReply::AwaitUser,
         };
         if self.permissions.len() >= 8 {
             let retired = self

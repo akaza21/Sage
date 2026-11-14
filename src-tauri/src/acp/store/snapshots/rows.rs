@@ -2,9 +2,9 @@ use super::{FilePairCommand, ItemIngressCommand, StoreError};
 use crate::acp::{
     contract::SageItemId,
     intent::{NormalizedPayload, SafeResourceLocation},
-    limits::LIMITS,
 };
 use rusqlite::{OptionalExtension, Transaction, params};
+use sage_core::limits::LIMITS;
 
 pub(super) struct Existing {
     pub id: String,

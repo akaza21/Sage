@@ -5,10 +5,10 @@ use std::{
 
 use crate::acp::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
-    limits::LIMITS,
     runtime::{ConfigCompletionSink, LiveRuntimePort},
     session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision},
 };
+use sage_core::limits::LIMITS;
 
 use super::*;
 
@@ -106,8 +106,8 @@ fn a_prompt_with_the_largest_admitted_images_queues_while_harness_output_fills_t
         attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
         contract::{ClientIntentId, ProjectGeneration, ProjectionRevision},
         intent::{ImageMediaType, Prompt},
-        limits::{IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_TOTAL_BYTES},
     };
+    use sage_core::limits::{IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_TOTAL_BYTES};
     let mailbox = DriverMailbox::new().unwrap();
     // Harness output, in the reader's largest chunks, takes the data lane.
     let mut chunks = 0;
@@ -138,7 +138,7 @@ fn a_prompt_with_the_largest_admitted_images_queues_while_harness_output_fills_t
             prompt,
             now_millis: sage_core::time::now_millis(),
         },
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     };
     assert!(
         mailbox

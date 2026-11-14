@@ -1,7 +1,7 @@
 use sage_core::error::{AppError, AppResult};
 
 use crate::{
-    acp::file_diff::DiffRef,
+    acp_protocol::file_diff::DiffRef,
     domain::{ResourceRef, WorkbenchTab},
 };
 
@@ -49,10 +49,10 @@ fn validate_owned_ref(project_id: &str, reference: &DiffRef) -> AppResult<()> {
         invalid(format!(
             "persisted snapshot reference is {}: {}",
             match error {
-                crate::acp::file_diff::SnapshotReadError::Unavailable => "unavailable",
-                crate::acp::file_diff::SnapshotReadError::Stale => "stale",
-                crate::acp::file_diff::SnapshotReadError::Corrupt => "corrupt",
-                crate::acp::file_diff::SnapshotReadError::Forbidden => "forbidden",
+                crate::acp_protocol::file_diff::SnapshotReadError::Unavailable => "unavailable",
+                crate::acp_protocol::file_diff::SnapshotReadError::Stale => "stale",
+                crate::acp_protocol::file_diff::SnapshotReadError::Corrupt => "corrupt",
+                crate::acp_protocol::file_diff::SnapshotReadError::Forbidden => "forbidden",
             },
             error.message()
         ))

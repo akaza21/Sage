@@ -29,7 +29,7 @@ pub(super) async fn early_stdout_before_observation(
     let mailbox = Arc::clone(&context.mailbox);
     let owner = context.owner.clone();
     let observed_turn = turn_id.clone();
-    let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc);
+    let budget = Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc);
     let (waiting, wait) = mpsc::sync_channel(1);
     context.clock = Arc::new(WaitingClock(Mutex::new(Some(waiting))));
     // Hold the observation until the real runner has entered its fenced wait.

@@ -1,7 +1,5 @@
-use crate::acp::{
-    browser::{BrowserFailure, redact_console},
-    limits::BROWSER_LIMITS,
-};
+use crate::acp::browser::{BrowserFailure, redact_console};
+use sage_core::limits::BROWSER_LIMITS;
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

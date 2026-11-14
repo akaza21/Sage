@@ -12,10 +12,10 @@ use sage_core::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    acp::limits::LIMITS,
     domain::{ChatMessage, SimulatorTurnResult},
     persistence::Database,
 };
+use sage_core::limits::LIMITS;
 
 #[cfg(test)]
 use crate::harnesses::SIMULATOR_DEFAULT_MODEL_ID;

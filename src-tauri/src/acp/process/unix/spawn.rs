@@ -68,8 +68,8 @@ pub(crate) fn launch(
     lease.activate();
     let (done, completion) = mpsc::sync_channel(1);
     let ring = Arc::new(Mutex::new(StderrRing::new(
-        usize::try_from(crate::acp::limits::LIMITS.process.stderr_ring_bytes).unwrap_or(usize::MAX),
-        usize::try_from(crate::acp::limits::LIMITS.process.stderr_line_bytes).unwrap_or(usize::MAX),
+        usize::try_from(sage_core::limits::LIMITS.process.stderr_ring_bytes).unwrap_or(usize::MAX),
+        usize::try_from(sage_core::limits::LIMITS.process.stderr_line_bytes).unwrap_or(usize::MAX),
     )));
     drain_stderr(stderr, Arc::clone(&ring), done);
     let spawned_millis = SystemTime::now()

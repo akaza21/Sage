@@ -5,14 +5,16 @@ use super::{
     OMP_BUN_MINIMUM, OMP_LICENSE, OMP_PACKAGE, OMP_SOURCE_COMMIT, OMP_VERSION, OmpPlatform,
     OmpTranslator, Operation, ResourceMapper,
 };
-use crate::acp::{
-    contract::SageRootId,
-    file_diff::{DIFF_SIDE_BYTES_MAX, admit_pair, pair_digest},
-    intent::{
-        FileChangeOperation, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
-        UnavailableResourceReason,
+use crate::{
+    acp::{
+        contract::SageRootId,
+        intent::{
+            FileChangeOperation, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
+            UnavailableResourceReason,
+        },
+        lifecycle::ItemLifecycle,
     },
-    lifecycle::ItemLifecycle,
+    acp_protocol::file_diff::{DIFF_SIDE_BYTES_MAX, admit_pair, pair_digest},
 };
 
 struct FixtureResources;
@@ -169,7 +171,7 @@ fn omp_multi_entry_pair_maps_to_shared_typed_shape() {
     let (old, new) = pair.expect("OMP admitted pair");
     assert!(matches!(
         admit_pair(&old, &new),
-        crate::acp::file_diff::PairAdmission::Admitted { .. }
+        crate::acp_protocol::file_diff::PairAdmission::Admitted { .. }
     ));
     let digest = events.iter().find_map(|event| match event {
         AdapterEvent::Item {

@@ -1,12 +1,10 @@
 use std::path::{Path, PathBuf};
 
-use crate::acp::{
-    bindings::codex::{
-        manifest::{MetadataValidatedPacket, Platform},
-        policy::SecurityPolicyPrerequisite,
-    },
-    limits::LIMITS,
+use crate::acp::bindings::codex::{
+    manifest::{MetadataValidatedPacket, Platform},
+    policy::SecurityPolicyPrerequisite,
 };
+use sage_core::limits::LIMITS;
 
 use super::VerifiedCodexConfig;
 

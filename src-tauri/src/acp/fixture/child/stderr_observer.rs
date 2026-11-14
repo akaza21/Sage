@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
-use crate::acp::{limits::LIMITS, redaction::StderrRing};
+use crate::acp::redaction::StderrRing;
+use sage_core::limits::LIMITS;
 
 use super::super::{generated_cases::FrozenCase, wire};
 

@@ -8,7 +8,7 @@
 //! through the same path, without the one it cannot select.
 
 use crate::acp::bindings::access_policy::NativeAccessMode;
-use crate::settings_store::SessionAccessMode;
+use crate::acp_protocol::access_mode::SessionAccessMode;
 
 const ASK: NativeAccessMode = NativeAccessMode {
     id: SessionAccessMode::Ask,

@@ -1,7 +1,8 @@
 use super::*;
 use crate::acp::{
     contract::{ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
-    service::{AcpService, ReadTextFileService, ReadTextFlushAck},
+    read_text_file::{ReadTextFileService, ReadTextFlushAck},
+    service::AcpService,
     transport::DeadlineAsyncWriter,
 };
 use crate::persistence::Database;
@@ -143,7 +144,7 @@ async fn encode_failure_emits_one_zero_receipt_and_frees_slot() {
     let f = Fixture::new();
     let mut lease = f.lease();
     lease.completion.as_mut().unwrap().content =
-        "x".repeat(crate::acp::limits::preview::P02_READ_TEXT_SOURCE_BYTES + 1);
+        "x".repeat(sage_core::limits::preview::P02_READ_TEXT_SOURCE_BYTES + 1);
     let mut writer = DeadlineAsyncWriter::new(Vec::<u8>::new());
     let delivery = lease
         .deliver_response(&ReadTextRequestId::Number(1), &mut writer)

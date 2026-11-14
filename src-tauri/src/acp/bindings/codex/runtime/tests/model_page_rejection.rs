@@ -17,7 +17,7 @@ fn invalid_catalog_discard_requires_exact_pending_read_only_response() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "continue").unwrap(),
             client_message_id: RequiredText::new("client", "catalog-discard").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt_id = request_id(&prompt);
@@ -118,7 +118,7 @@ pub(super) fn assert_invalid_model_page_is_ignored(
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "continue after invalid catalog page").unwrap(),
                 client_message_id: RequiredText::new("client", "invalid-catalog-page").unwrap(),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .is_ok()
     );

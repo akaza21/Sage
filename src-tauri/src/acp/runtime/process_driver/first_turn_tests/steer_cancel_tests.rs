@@ -92,7 +92,7 @@ fn queued_steer_overtaken_by_cancel_never_writes() {
                     prompt: Prompt::new("prompt", "start").unwrap(),
                     now_millis: now_millis + 3,
                 },
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             }))
             .unwrap();
         state = handle_next(state, &context).await;

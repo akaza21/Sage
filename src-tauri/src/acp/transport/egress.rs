@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::OutboundFrame;
 

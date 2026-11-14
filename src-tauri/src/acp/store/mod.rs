@@ -298,7 +298,7 @@ fn commit_batch(
 ) -> Result<StoreCommit, StoreError> {
     if batch.is_empty()
         || batch.len()
-            > crate::acp::limits::LIMITS
+            > sage_core::limits::LIMITS
                 .queues
                 .journal_facts_per_transaction as usize
     {

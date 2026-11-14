@@ -152,7 +152,7 @@ impl FixtureSelection {
         self.revalidate()?;
         claim_launch(
             &self.durable_dir,
-            crate::acp::fixture::native_case_spans_restart(&self.case),
+            crate::acp_protocol::native_cases::native_case_spans_restart(&self.case),
         )
     }
 }
@@ -212,9 +212,9 @@ pub(crate) fn resolve_selection(
     if !inputs.iter().all(|present| *present)
         || !profile.is_disposable()
         || profile.project_root().is_none()
-        || !case
-            .and_then(OsStr::to_str)
-            .is_some_and(|case| crate::acp::fixture::native_case_matches(case, protocol))
+        || !case.and_then(OsStr::to_str).is_some_and(|case| {
+            crate::acp_protocol::native_cases::native_case_matches(case, protocol)
+        })
     {
         return Err(invalid_profile());
     }

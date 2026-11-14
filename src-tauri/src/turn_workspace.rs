@@ -28,7 +28,7 @@ const fn capture_budget_millis() -> u64 {
 }
 // One capture per admitted live runtime, with no waiting queue.
 pub(crate) const MAX_CONCURRENT_CAPTURES: usize =
-    crate::acp::limits::LIMITS.process.operational_live_trees as usize;
+    sage_core::limits::LIMITS.process.operational_live_trees as usize;
 mod capture;
 mod directory;
 mod history;

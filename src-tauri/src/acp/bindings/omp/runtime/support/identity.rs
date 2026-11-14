@@ -2,8 +2,8 @@ use crate::acp::{
     bindings::adapter::{AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError},
     contract::RequiredText,
     intent::{ExternalId, ModelId},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::OmpRuntime;
 use crate::acp::bindings::omp::ModelSummary;

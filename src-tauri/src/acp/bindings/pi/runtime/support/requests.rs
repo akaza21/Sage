@@ -3,9 +3,9 @@ use crate::acp::{
         adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
         pi::{Operation, Outbound},
     },
-    limits::LIMITS,
     transport::OutboundFrame,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{DeliveryPhase, PiRuntime, RequestKind, RequestReservation};
 

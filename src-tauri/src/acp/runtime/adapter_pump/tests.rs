@@ -109,7 +109,7 @@ fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, 
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt_id = codex_request_id(&prompt);
@@ -583,15 +583,15 @@ impl HarnessAdapter for FakeAdapter {
             let request_id = ExternalId::new("request", "external-request")
                 .map_err(|_| AdapterRuntimeError::Frame)?;
             let token = match decision {
-                crate::acp::runtime::permissions::PermissionDecision::Ask => {
+                crate::acp_protocol::permissions::PermissionDecision::Ask => {
                     EgressToken::protocol_notification()
                 }
-                crate::acp::runtime::permissions::PermissionDecision::AllowOnce
-                | crate::acp::runtime::permissions::PermissionDecision::AllowAlways
-                | crate::acp::runtime::permissions::PermissionDecision::Answer(_) => {
+                crate::acp_protocol::permissions::PermissionDecision::AllowOnce
+                | crate::acp_protocol::permissions::PermissionDecision::AllowAlways
+                | crate::acp_protocol::permissions::PermissionDecision::Answer(_) => {
                     EgressToken::permission_allow(request_id)
                 }
-                crate::acp::runtime::permissions::PermissionDecision::Deny => {
+                crate::acp_protocol::permissions::PermissionDecision::Deny => {
                     EgressToken::mandatory_deny(request_id, false)
                 }
             };
@@ -1255,7 +1255,7 @@ fn ask_does_not_invoke_the_adapter_or_write_a_harness_byte() {
 
         pump.resolve_permission(
             &request_id,
-            crate::acp::runtime::permissions::PermissionDecision::Ask,
+            crate::acp_protocol::permissions::PermissionDecision::Ask,
             21,
         )
         .await
@@ -1282,7 +1282,7 @@ fn later_deny_resolves_only_after_complete_write() {
         };
         pump.resolve_permission(
             &request_id,
-            crate::acp::runtime::permissions::PermissionDecision::Deny,
+            crate::acp_protocol::permissions::PermissionDecision::Deny,
             21,
         )
         .await
@@ -1321,7 +1321,7 @@ fn mandatory_deny_state_failures_block_or_tear_down_at_the_exact_boundary() {
             queue_failure
                 .resolve_permission(
                     &request_id,
-                    crate::acp::runtime::permissions::PermissionDecision::Deny,
+                    crate::acp_protocol::permissions::PermissionDecision::Deny,
                     21,
                 )
                 .await,
@@ -1347,7 +1347,7 @@ fn mandatory_deny_state_failures_block_or_tear_down_at_the_exact_boundary() {
         resolution_failure
             .resolve_permission(
                 &request_id,
-                crate::acp::runtime::permissions::PermissionDecision::Deny,
+                crate::acp_protocol::permissions::PermissionDecision::Deny,
                 21,
             )
             .await
@@ -2552,7 +2552,7 @@ fn a_question_the_user_answered_first_keeps_the_answer_when_its_window_passes() 
         .unwrap();
         pump.resolve_permission(
             &request_id,
-            crate::acp::runtime::permissions::PermissionDecision::Answer(answers),
+            crate::acp_protocol::permissions::PermissionDecision::Answer(answers),
             1_021,
         )
         .await
@@ -2617,7 +2617,7 @@ fn a_prompt_frame_takes_its_reserve_while_the_data_lane_is_full() {
         Err(AdapterPumpError::Backpressure)
     ));
 
-    let prompt = crate::acp::limits::PROMPT_FRAME_BYTES;
+    let prompt = sage_core::limits::PROMPT_FRAME_BYTES;
     assert_eq!(
         pump.enqueue(frame(prompt, true)).unwrap(),
         QueueDisposition::Queued

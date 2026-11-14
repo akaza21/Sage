@@ -5,8 +5,8 @@ use crate::acp::{
         ProjectionRevision, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
     },
     lifecycle::{DeliveryState, TurnState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::{StoreError, facts::append_fact_payload};
 

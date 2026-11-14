@@ -24,6 +24,6 @@ pub(crate) use work::image_work_permit;
 
 /// What an image prompt to a harness that echoes its images sends.
 pub(crate) const ECHOED_PROMPT_IMAGE_BOUNDS: Bounds = Bounds {
-    bytes: crate::acp::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES,
+    bytes: sage_core::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES,
     ..PROMPT_IMAGE_BOUNDS
 };

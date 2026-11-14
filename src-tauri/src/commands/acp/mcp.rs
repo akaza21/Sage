@@ -9,9 +9,9 @@ use super::{
 };
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+    errors::SessionControlError,
     intent::AcpUnavailableReason,
     mcp::inventory::McpInventory,
-    service::SessionControlError,
 };
 use serde::Deserialize;
 

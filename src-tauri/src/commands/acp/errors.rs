@@ -41,12 +41,12 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
         },
         crate::acp::service::CodexSessionError::Capacity => AcpIpcError::Capacity {
             resource: AcpCapacityResource::LiveTree,
-            limit: crate::acp::limits::LIMITS.process.operational_live_trees,
+            limit: sage_core::limits::LIMITS.process.operational_live_trees,
             message: safe_message("The native live runtime capacity is occupied."),
         },
         crate::acp::service::CodexSessionError::CapacityAnswering => AcpIpcError::Capacity {
             resource: AcpCapacityResource::LiveTree,
-            limit: crate::acp::limits::LIMITS.process.operational_live_trees,
+            limit: sage_core::limits::LIMITS.process.operational_live_trees,
             message: safe_message(
                 "Every live agent is busy, and an idle one is still answering a request; try again in a moment.",
             ),
@@ -165,12 +165,12 @@ pub(super) fn binding_unavailable() -> AcpIpcError {
 pub(super) fn page_admission_error(error: PageAdmissionError) -> AcpIpcError {
     let limit = match error {
         PageAdmissionError::Owner => {
-            crate::acp::limits::LIMITS
+            sage_core::limits::LIMITS
                 .durable
                 .outstanding_page_reads_per_session
         }
         PageAdmissionError::Global => {
-            crate::acp::limits::LIMITS
+            sage_core::limits::LIMITS
                 .durable
                 .outstanding_page_reads_global
         }

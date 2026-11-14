@@ -5,9 +5,9 @@ use super::{
 use crate::acp::{
     bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
     intent::{ModelId, PageCursor},
-    limits::LIMITS,
     session_config::{ConfigIntent, ConfigMutation, ConfigValue},
 };
+use sage_core::limits::LIMITS;
 
 use super::super::incoming::ModelDescriptor;
 
@@ -267,7 +267,7 @@ impl CodexRuntime {
         &mut self,
         prompt: &crate::acp::intent::Prompt,
         client_message_id: &crate::acp::contract::RequiredText<512>,
-        access_mode: crate::settings_store::SessionAccessMode,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let model = self.model_catalog.choice.clone();
         let effort = self.selected_effort.clone();

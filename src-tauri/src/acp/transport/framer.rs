@@ -1,7 +1,7 @@
 use tokio::io::{AsyncRead, AsyncReadExt};
 
 use super::oversize_id::{OversizeIdScanner, Scanned};
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 const READ_CHUNK_BYTES: usize = 8 * 1024;
 const DISCARD_BYTES_MAX: usize = 8 * 1024 * 1024;

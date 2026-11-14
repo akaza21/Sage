@@ -26,7 +26,7 @@ export const MAX_ATTACHED_CONTEXTS_PER_TURN = 8;
 /** Matches a quarter of the composer budget and keeps eight notes within 32 KiB. */
 export const MAX_ATTACHED_CONTEXT_NOTE_BYTES = 4 * 1024;
 /*
- * Image mirrors of `src-tauri/src/acp/limits/images.rs`, checked there by a
+ * Image mirrors of `crates/sage-core/src/limits/images.rs`, checked there by a
  * parity test that reads this file.
  */
 /** Mirrors `STORED_IMAGE_BYTES`: a stored image, for any harness. */

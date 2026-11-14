@@ -6,7 +6,7 @@ use std::{
 
 use serde::Serialize;
 
-use crate::acp::limits::PREVIEW_LIMITS;
+use sage_core::limits::PREVIEW_LIMITS;
 
 use super::{discovery::PreviewTargetRef, url::parse_allowed_preview_url};
 

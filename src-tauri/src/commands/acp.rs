@@ -312,8 +312,8 @@ fn validate_attached_context(
             crate::acp::service::verify_current_owner(&connection, expected_revision, reference)
                 .and_then(|()| read_snapshot(&connection, reference, &roots))
                 .map_err(|error| match error {
-                    crate::acp::file_diff::SnapshotReadError::Stale
-                    | crate::acp::file_diff::SnapshotReadError::Unavailable => {
+                    crate::acp_protocol::file_diff::SnapshotReadError::Stale
+                    | crate::acp_protocol::file_diff::SnapshotReadError::Unavailable => {
                         AcpIpcError::Conflict {
                             resource: crate::acp::intent::AcpConflictResource::Session,
                             message: safe_message(
@@ -321,14 +321,14 @@ fn validate_attached_context(
                             ),
                         }
                     }
-                    crate::acp::file_diff::SnapshotReadError::Forbidden => {
+                    crate::acp_protocol::file_diff::SnapshotReadError::Forbidden => {
                         AcpIpcError::InvalidRequest {
                             message: safe_message(
                                 "Attached context is not available to the current owner.",
                             ),
                         }
                     }
-                    crate::acp::file_diff::SnapshotReadError::Corrupt => {
+                    crate::acp_protocol::file_diff::SnapshotReadError::Corrupt => {
                         AcpIpcError::RecoveryRequired {
                             message: safe_message("Attached context failed its integrity check."),
                         }

@@ -1,7 +1,7 @@
 use url::Url;
 
 use super::error::PreviewError;
-use crate::acp::limits::PREVIEW_LIMITS;
+use sage_core::limits::PREVIEW_LIMITS;
 
 pub(crate) const MAX_PREVIEW_URL_BYTES: usize = PREVIEW_LIMITS.url_bytes as usize;
 

@@ -36,7 +36,7 @@ fn goal_active_response_mismatch_reaches_sqlite_only_after_client_verification()
         let prompt = codex.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         let intent = session_intent().bind_turn(ActiveTurnIntent {
             turn_id: turn("one"), external_turn_id: None, client_message_id: message(),

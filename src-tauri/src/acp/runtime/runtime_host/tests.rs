@@ -208,7 +208,7 @@ impl RuntimeEngine for FakeEngine {
         &mut self,
         _owner: &RuntimeOwner,
         _request_id: &crate::acp::contract::SageServerRequestId,
-        _decision: crate::acp::runtime::permissions::PermissionDecision,
+        _decision: crate::acp_protocol::permissions::PermissionDecision,
     ) -> Result<(), HostError> {
         self.push("resolvePermission");
         Ok(())
@@ -400,7 +400,7 @@ fn prompt(owner: &RuntimeOwner) -> HostPromptIntent {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             now_millis: sage_core::time::now_millis(),
         },
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 
@@ -523,7 +523,7 @@ fn pending_steer_does_not_block_controls_or_admit_a_second_steer() {
         host.resolve_permission(
             runtime.clone(),
             crate::acp::contract::SageServerRequestId::parse("request-host").unwrap(),
-            crate::acp::runtime::permissions::PermissionDecision::Deny,
+            crate::acp_protocol::permissions::PermissionDecision::Deny,
         ),
         Ok(HostOutcome::PermissionResolved)
     );
@@ -565,7 +565,7 @@ fn pending_configuration_does_not_block_permission_resolution() {
         host.resolve_permission(
             runtime,
             crate::acp::contract::SageServerRequestId::parse("request-host").unwrap(),
-            crate::acp::runtime::permissions::PermissionDecision::Deny,
+            crate::acp_protocol::permissions::PermissionDecision::Deny,
         )
         .unwrap(),
         HostOutcome::PermissionResolved
@@ -1711,7 +1711,7 @@ fn nonresponding_actor_returns_at_deadline_and_closes_queued_work() {
 
 #[test]
 fn command_deadlines_use_the_frozen_operation_classes() {
-    use crate::acp::limits::LIMITS;
+    use sage_core::limits::LIMITS;
 
     let runtime = owner("project-a");
     assert_eq!(
@@ -1763,10 +1763,10 @@ fn a_prompt_carrying_the_largest_admitted_images_is_prepared() {
         bytes: vec![0; bytes],
         preview: ImagePreview::Thumbnail(
             crate::acp::intent::ImageMediaType::Png,
-            vec![0; crate::acp::limits::IMAGE_PREVIEW_BYTES],
+            vec![0; sage_core::limits::IMAGE_PREVIEW_BYTES],
         ),
     };
-    let half = crate::acp::limits::PROMPT_IMAGE_TOTAL_BYTES / 2;
+    let half = sage_core::limits::PROMPT_IMAGE_TOTAL_BYTES / 2;
     intent.command.prompt.images = PromptImages(Arc::new(vec![image(half), image(half)]));
     assert!(
         host.prepare_prompt(intent).is_ok(),

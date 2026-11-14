@@ -3,9 +3,9 @@ use serde_json::{Value, json};
 use crate::acp::{
     contract::RequiredText,
     intent::{ModelId, Prompt},
-    limits::LIMITS,
     runtime::host_browse::MAX_HARNESS_BROWSE_URL_BYTES,
 };
+use sage_core::limits::LIMITS;
 
 use super::CODEX_BROWSE_TOOL_NAME;
 use super::manifest::Platform;
@@ -177,7 +177,7 @@ impl OutgoingRequest {
             .map_err(|_| RequestError::Encoding)?;
         // A turn may carry images, so it is sent as a prompt frame.
         let limit = if kind == RequestKind::TurnStart {
-            crate::acp::limits::PROMPT_FRAME_BYTES - 1
+            sage_core::limits::PROMPT_FRAME_BYTES - 1
         } else {
             JSON_PAYLOAD_BYTES
         };
@@ -300,7 +300,7 @@ impl OutgoingRequest {
             thread_id,
             prompt,
             client_message_id,
-            crate::settings_store::SessionAccessMode::ReadOnly,
+            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             TurnPolicySurface::Unsupported,
             TurnSettings::default(),
         )
@@ -311,7 +311,7 @@ impl OutgoingRequest {
         thread_id: &RequiredText<512>,
         prompt: &Prompt,
         client_message_id: &RequiredText<512>,
-        access_mode: crate::settings_store::SessionAccessMode,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
         surface: TurnPolicySurface,
         settings: TurnSettings<'_>,
     ) -> Result<Self, RequestError> {

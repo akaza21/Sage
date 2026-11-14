@@ -7,9 +7,9 @@ use crate::acp::{
     image_admit::{ImageAdmitError, admit_image_data_url},
     intent::{NormalizedPayload, ToolCategory, ToolExecution},
     lifecycle::{ItemLifecycle, ToolState},
-    limits::LIMITS,
     runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url},
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{CODEX_BROWSE_TOOL_NAME, state::MaterializedCommandItem};
 use super::{

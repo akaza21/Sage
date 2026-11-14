@@ -2,18 +2,21 @@
 
 use std::sync::Arc;
 
-use crate::acp::bindings::{
-    claude::{CLAUDE_BINDING_ID, ClaudeAdmissionUnavailable, ClaudeBindingRegistration},
-    codex::{
-        CODEX_BINDING_ID, CODEX_PROTOCOL_IDENTITY, CODEX_SCHEMA_SHA256, CodexAdmissionUnavailable,
-        CodexBindingRegistration, startup_codex_binding_registration,
-    },
-    standard_acp::{
-        CustomAcpRegistration, CustomAcpUnavailable, OPENCODE_BINDING_ID,
-        OpenCodeAdmissionUnavailable, OpenCodeBindingRegistration,
-    },
-};
 use crate::settings_store::MAX_CUSTOM_ACP_AGENTS;
+use crate::{
+    acp::bindings::{
+        claude::{CLAUDE_BINDING_ID, ClaudeAdmissionUnavailable, ClaudeBindingRegistration},
+        codex::{
+            CODEX_BINDING_ID, CODEX_SCHEMA_SHA256, CodexAdmissionUnavailable,
+            CodexBindingRegistration, startup_codex_binding_registration,
+        },
+        standard_acp::{
+            CustomAcpRegistration, CustomAcpUnavailable, OPENCODE_BINDING_ID,
+            OpenCodeAdmissionUnavailable, OpenCodeBindingRegistration,
+        },
+    },
+    acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY,
+};
 
 mod claude;
 mod claude_sdk;
@@ -127,7 +130,7 @@ impl BindingRegistry {
                 harness_id: "codex",
                 binding_id: CODEX_BINDING_ID,
                 wire: Some(WireIdentity {
-                    protocol: CODEX_PROTOCOL_IDENTITY,
+                    protocol: PINNED_PROTOCOL_IDENTITY,
                     schema_sha256: CODEX_SCHEMA_SHA256,
                 }),
                 root_policy: RootPolicy::Codex,
@@ -364,7 +367,7 @@ impl BindingRegistry {
             harness_id: "registry-test",
             binding_id: test_support::TEST_BINDING_ID,
             wire: Some(WireIdentity {
-                protocol: CODEX_PROTOCOL_IDENTITY,
+                protocol: PINNED_PROTOCOL_IDENTITY,
                 schema_sha256: CODEX_SCHEMA_SHA256,
             }),
             root_policy: RootPolicy::Codex,

@@ -10,7 +10,7 @@ impl ClaudeRuntime {
         frame: &Frame,
         expected: &crate::acp::runtime::read_text_file::ExpectedOwnerScope,
         owners: &impl crate::acp::runtime::read_text_file::DeferredReadTextOwnerResolver,
-        service: &crate::acp::service::ReadTextFileService,
+        service: &crate::acp::read_text_file::ReadTextFileService,
     ) -> Result<crate::acp::runtime::read_text_file::DeferredReadTextFile, AdapterRuntimeError>
     {
         let value = decode_frame(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;

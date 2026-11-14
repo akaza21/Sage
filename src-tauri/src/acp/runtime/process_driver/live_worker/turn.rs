@@ -173,7 +173,7 @@ where
 pub(super) async fn handle_prepared<A, R, T, C, Auth>(
     turn: Box<PreparedActivationTurn<A, R, T, C>>,
     prompt: crate::acp::intent::Prompt,
-    access_mode: crate::settings_store::SessionAccessMode,
+    access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>

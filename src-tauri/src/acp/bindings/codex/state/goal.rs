@@ -19,9 +19,9 @@ impl CodexAdapter {
                 Some(characterisation) => characterisation.runs_tested_features(),
                 None => {
                     self.capability_ceiling.protocol_identity
-                        == super::super::manifest::PINNED_PROTOCOL_IDENTITY
+                        == crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
                         && self.runtime_version.split_ascii_whitespace().next_back()
-                            == Some(super::super::manifest::PINNED_CODEX_VERSION)
+                            == Some(crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION)
                 }
             }
     }

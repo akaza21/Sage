@@ -3,16 +3,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{
-    contract::{SageServerRequestId, SageTurnId},
-    process::TreeExit,
-    runtime::permissions::PermissionDecision,
-    runtime::{
-        ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
-        LiveWrite, NativeRpcCompletionSink, SteerCompletionSink,
+use crate::{
+    acp::{
+        contract::{SageServerRequestId, SageTurnId},
+        process::TreeExit,
+        runtime::{
+            ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
+            LiveWrite, NativeRpcCompletionSink, SteerCompletionSink,
+        },
+        scheduler::RuntimeOwner,
+        store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
     },
-    scheduler::RuntimeOwner,
-    store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+    acp_protocol::permissions::PermissionDecision,
 };
 
 use super::{ControlMessage, DriverMailbox, MailboxError, WorkerZeroProof};
@@ -91,7 +93,7 @@ pub(crate) struct WorkerResponder(pub(super) mpsc::SyncSender<Result<WorkerReply
 
 impl WorkerCommand {
     fn deadline_millis(&self) -> u64 {
-        use crate::acp::limits::LIMITS;
+        use sage_core::limits::LIMITS;
         match self {
             Self::ConfigureSession { .. }
             | Self::NativeRpc { .. }

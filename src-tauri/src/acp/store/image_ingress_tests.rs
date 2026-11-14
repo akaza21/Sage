@@ -142,7 +142,7 @@ fn bounded_large_image_survives_sqlite_chat_reload() {
         crate::acp::image_admit::admit_image_parts(ImageMediaType::Png, &encoded).unwrap();
     let bytes = serde_json::to_vec(&payload).unwrap().len();
     assert!(bytes > 260_000);
-    assert!(bytes <= crate::acp::limits::LIMITS.wire.normalized_item_bytes as usize);
+    assert!(bytes <= sage_core::limits::LIMITS.wire.normalized_item_bytes as usize);
     assert_reloaded_image(payload);
 }
 

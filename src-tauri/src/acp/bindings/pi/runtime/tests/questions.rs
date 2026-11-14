@@ -1,11 +1,13 @@
 use super::*;
-use crate::acp::{
-    intent::{
-        PermissionOptionKind,
-        user_input::{UserInputAnswers, UserInputKind, UserInputRequest},
+use crate::{
+    acp::{
+        intent::{
+            PermissionOptionKind,
+            user_input::{UserInputAnswers, UserInputKind, UserInputRequest},
+        },
+        lifecycle::ServerRequestState,
     },
-    lifecycle::ServerRequestState,
-    runtime::permissions::PermissionDecision,
+    acp_protocol::permissions::PermissionDecision,
 };
 
 fn ask(runtime: &mut PiRuntime, dialog: Value) -> UserInputRequest {

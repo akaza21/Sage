@@ -1,4 +1,5 @@
 use super::*;
+use sage_core::limits::prompt_files::{DISPATCH_BYTES, FILE_BYTES};
 use std::{fs, path::PathBuf};
 struct Fixture(PathBuf);
 impl Fixture {

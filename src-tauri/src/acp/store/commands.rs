@@ -1,12 +1,10 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::{
-    acp::{
-        contract::{EntityRevision, SageItemId, SageTurnId},
-        limits::LIMITS,
-    },
+    acp::contract::{EntityRevision, SageItemId, SageTurnId},
     persistence::Database,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     MutationDisposition, PrepareTurnCommand, PreparedTurn, StoreError, TurnMutation,

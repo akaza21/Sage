@@ -191,9 +191,9 @@ fn joined_browser_permissions_reuse_capacity_after_allowed_replies() {
             .command(AdapterCommand::ResolvePermission {
                 request_id: request,
                 decision: if index % 2 == 0 {
-                    crate::acp::runtime::permissions::PermissionDecision::AllowOnce
+                    crate::acp_protocol::permissions::PermissionDecision::AllowOnce
                 } else {
-                    crate::acp::runtime::permissions::PermissionDecision::AllowAlways
+                    crate::acp_protocol::permissions::PermissionDecision::AllowAlways
                 },
             })
             .unwrap();

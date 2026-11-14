@@ -90,7 +90,7 @@ fn a_cancel_held_for_an_unnamed_turn_goes_out_with_the_frame_that_names_it() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "client-compact").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("compaction request");
     let id = request_id(&compact);

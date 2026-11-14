@@ -114,7 +114,7 @@ fn permission_requests_supported(
 ) -> bool {
     match binding_id.as_str() {
         "codex-app-server" => {
-            crate::acp::bindings::codex::speaks_pinned_protocol(
+            crate::acp_protocol::codex_protocol::speaks_pinned_protocol(
                 capabilities.protocol_version.as_str(),
             ) && capabilities.active_turn_steer
                 && crate::acp::bindings::access_policy::CODEX_ASK_NATIVE_APPROVAL_PROVEN
@@ -158,20 +158,21 @@ mod permission_request_tests {
             &codex,
             &capabilities("codex-app-server-0.145.0-7b0ab167")
         ));
-        let mut managed = capabilities(crate::acp::bindings::codex::CODEX_PROTOCOL_IDENTITY);
+        let mut managed =
+            capabilities(crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY);
         managed.active_turn_steer = true;
         assert!(!permission_requests_supported(&codex, &managed));
         let mut observed =
-            capabilities(crate::acp::bindings::codex::CODEX_OBSERVED_PROTOCOL_IDENTITY);
+            capabilities(crate::acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY);
         assert!(!permission_requests_supported(&codex, &observed));
         observed.active_turn_steer = true;
         let advertised = crate::acp::bindings::access_policy::access_modes(
             "codex-app-server",
-            crate::acp::bindings::codex::CODEX_PINNED_VERSION,
+            crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
             true,
         )
         .iter()
-        .any(|mode| mode.id == crate::settings_store::SessionAccessMode::Ask);
+        .any(|mode| mode.id == crate::acp_protocol::access_mode::SessionAccessMode::Ask);
         assert_eq!(permission_requests_supported(&codex, &observed), advertised);
 
         let claude = BindingId::new("bindingId", "claude-agent-acp").expect("Claude binding");

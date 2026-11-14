@@ -304,7 +304,7 @@ impl ProjectionNotifier {
     #[cfg(test)]
     pub(crate) async fn shutdown(&self) -> bool {
         self.shutdown_with_timeout(Duration::from_millis(
-            crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
+            sage_core::limits::LIMITS.deadlines_ms.explicit_close,
         ))
         .await
     }

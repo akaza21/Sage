@@ -2,7 +2,7 @@ use std::io::Write;
 
 use sha2::{Digest, Sha256};
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 #[derive(Default)]
 pub(super) struct CountingDigest {

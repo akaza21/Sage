@@ -1,10 +1,10 @@
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
-use crate::acp::{
-    browser::{BrowserAction, BrowserFailure, BrowserResult, ViewportRegion, WaitCondition},
-    limits::BROWSER_LIMITS,
+use crate::acp::browser::{
+    BrowserAction, BrowserFailure, BrowserResult, ViewportRegion, WaitCondition,
 };
+use sage_core::limits::BROWSER_LIMITS;
 
 use super::{
     capability::DevtoolsPort,

@@ -213,7 +213,7 @@ pub(in crate::commands::acp) fn fixture(
                     schema_version: SchemaVersionV1,
                     protocol_version: RequiredText::new(
                         "protocol",
-                        crate::acp::bindings::codex::CODEX_OBSERVED_PROTOCOL_IDENTITY,
+                        crate::acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY,
                     )
                     .unwrap(),
                     new_session: true,

@@ -1,26 +1,27 @@
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
-        EgressResolution, HarnessAdapter, ResourceMapper,
+use crate::{
+    acp::{
+        bindings::adapter::{
+            AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
+            EgressResolution, HarnessAdapter, ResourceMapper,
+        },
+        contract::{
+            ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
+            SageProjectId, SageServerRequestId, SageTurnId,
+        },
+        intent::{ExternalId, NormalizedPayload},
+        lifecycle::{ItemLifecycle, ServerRequestState, ToolState, TurnState, TurnTerminalReason},
+        runtime::{ProjectionPublishStatus, ProjectionPublisher, TurnNotice},
+        store::AdapterTurnCursor,
+        transport::{
+            Frame, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame, ReservedQueue,
+            validate_structure,
+        },
     },
-    contract::{
-        ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
-        SageProjectId, SageServerRequestId, SageTurnId,
-    },
-    intent::{ExternalId, NormalizedPayload},
-    lifecycle::{ItemLifecycle, ServerRequestState, ToolState, TurnState, TurnTerminalReason},
-    limits::LIMITS,
-    runtime::{
-        ProjectionPublishStatus, ProjectionPublisher, TurnNotice, permissions::PermissionIntent,
-    },
-    store::AdapterTurnCursor,
-    transport::{
-        Frame, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame, ReservedQueue,
-        validate_structure,
-    },
+    acp_protocol::permissions::PermissionIntent,
 };
+use sage_core::limits::LIMITS;
 
 mod activity;
 mod auto_resolution;

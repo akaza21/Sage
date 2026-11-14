@@ -1,8 +1,10 @@
-use crate::acp::{
-    contract::ProjectionRevision,
-    lifecycle::{DeliveryState, TurnState, TurnTerminalOutcome},
-    recovery::RecoveryReport,
-    runtime::permissions::PermissionIntent,
+use crate::{
+    acp::{
+        contract::ProjectionRevision,
+        lifecycle::{DeliveryState, TurnState, TurnTerminalOutcome},
+        recovery::RecoveryReport,
+    },
+    acp_protocol::permissions::PermissionIntent,
 };
 
 use super::{

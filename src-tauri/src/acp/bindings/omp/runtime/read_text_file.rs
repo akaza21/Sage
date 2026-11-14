@@ -9,7 +9,7 @@ impl OmpRuntime {
         raw: &[u8],
         expected: &crate::acp::runtime::read_text_file::ExpectedOwnerScope,
         owners: &impl crate::acp::runtime::read_text_file::DeferredReadTextOwnerResolver,
-        service: &crate::acp::service::ReadTextFileService,
+        service: &crate::acp::read_text_file::ReadTextFileService,
     ) -> Result<crate::acp::runtime::read_text_file::DeferredReadTextFile, AdapterRuntimeError>
     {
         let value = crate::acp::bindings::omp::wire::decode_frame(raw)

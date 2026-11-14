@@ -121,7 +121,7 @@ fn a_declined_card_keeps_the_label_and_kind_the_tool_already_carried() {
     let deny = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: request,
-            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
         })
         .expect("deny");
     let token = deny.into_token();
@@ -196,7 +196,7 @@ fn a_declined_card_keeps_the_kind_the_permission_surface_showed() {
     let deny = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: request,
-            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
         })
         .expect("deny");
     let token = deny.into_token();

@@ -23,8 +23,8 @@ use crate::acp::{
             SessionScopedEvent,
         },
     },
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError,

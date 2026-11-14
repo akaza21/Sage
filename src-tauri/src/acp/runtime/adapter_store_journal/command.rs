@@ -1,11 +1,11 @@
 use crate::acp::{
     intent::NormalizedPayload,
-    limits::LIMITS,
     runtime::adapter_pump::{DurableAdapterEvent, PumpIntent, PumpJournalError, TurnScope},
     store::{
         AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, ItemIngressCommand,
     },
 };
+use sage_core::limits::LIMITS;
 
 mod bytes;
 mod child_threads;
@@ -184,8 +184,8 @@ fn event_bytes(
             ..
         } => {
             verify_scope(intent, scope)?;
-            if old_text.len() > crate::acp::file_diff::DIFF_SIDE_BYTES_MAX
-                || new_text.len() > crate::acp::file_diff::DIFF_SIDE_BYTES_MAX
+            if old_text.len() > crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX
+                || new_text.len() > crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX
             {
                 return Err(PumpJournalError::Rejected);
             }
