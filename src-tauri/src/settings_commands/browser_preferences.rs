@@ -1,6 +1,7 @@
 //! The record is closed (`deny_unknown_fields`), so a renderer can store
 //! nothing but the listed choices, and no reply carries a URL, cookie or
 //! password.
+//! Main webview only: the guard in `ipc_commands.rs` rejects browser WebViews.
 
 use tauri::State;
 

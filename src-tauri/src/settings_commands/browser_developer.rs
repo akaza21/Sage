@@ -1,5 +1,6 @@
 //! Browser developer mode (ADR-0009b). Only WebView2 has CDP, so elsewhere the
 //! switch is unavailable.
+//! Main webview only: the guard in `ipc_commands.rs` rejects browser WebViews.
 
 use tauri::State;
 

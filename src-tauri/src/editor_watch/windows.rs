@@ -52,6 +52,7 @@ pub(super) fn spawn_editor_watch(
         .map_err(AppError::Io)
 }
 
+/// A non-cancel failure delivers one `Changed`, forcing the Editor to re-read.
 fn run_editor_watch(
     cancelled: &AtomicBool,
     directory: &Path,

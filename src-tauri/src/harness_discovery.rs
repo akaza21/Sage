@@ -238,6 +238,7 @@ pub(crate) fn authentic_npm_global_descendant(root: &Path, relative: impl AsRef<
     validation::authentic_descendant_file(root, relative)
 }
 
+/// PATH-only, so legacy Codex presence keeps its exact historical candidate set.
 pub(crate) fn path_candidates_for_basename(expected_basename: &str) -> Vec<PathBuf> {
     candidates::path_candidates_for_basename(expected_basename)
 }

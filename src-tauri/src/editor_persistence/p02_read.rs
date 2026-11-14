@@ -41,6 +41,7 @@ impl Database {
         }
     }
 
+    /// One read transaction checks the bounds before any content is allocated.
     pub(crate) fn read_editor_buffer_bounded(
         &self,
         project_id: &str,

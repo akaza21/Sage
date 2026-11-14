@@ -1,6 +1,7 @@
 //! None of these commands takes a path: Change opens a native folder picker in
 //! Rust, so neither the renderer, a page nor the Agent can point downloads
 //! somewhere else.
+//! Main webview only: the guard in `ipc_commands.rs` rejects browser WebViews.
 
 use std::path::{Path, PathBuf};
 

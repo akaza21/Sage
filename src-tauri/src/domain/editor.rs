@@ -62,6 +62,7 @@ pub struct BufferSnapshotRequest {
 #[serde(rename_all = "camelCase")]
 pub struct BufferRebaseRequest {
     pub resource: ResourceRef,
+    /// The disk version the user last saw; the absent version for a deleted File.
     pub expected_disk: DocumentVersion,
     pub line_ending: String,
     pub content: String,
@@ -74,6 +75,7 @@ pub struct BufferSnapshotAck {
     pub revision: u64,
     pub persisted_at: u64,
     pub dirty: bool,
+    /// False when a newer revision was already stored.
     pub applied: bool,
 }
 

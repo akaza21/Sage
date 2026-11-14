@@ -107,8 +107,6 @@ mod tests {
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("settings.db");
         {
-            // The ui_appearance record as an earlier Sage wrote it, with no
-            // browser_preferences table.
             let connection = Connection::open(&path).unwrap();
             connection
                 .execute_batch(

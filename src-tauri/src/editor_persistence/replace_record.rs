@@ -21,6 +21,7 @@ const MATCHES_RECORD: &str = "project_id = ?1 AND root_id = ?2 AND relative_path
      AND pending_temp_path = ?4 AND buffer_fingerprint = ?5";
 
 impl Database {
+    /// Interrupted swap: recovery keeps the replaced text as unsaved edits.
     pub fn record_replace_in_progress(
         &self,
         project_id: &str,
@@ -82,6 +83,7 @@ impl Database {
         Ok(())
     }
 
+    /// Neutralized: holds the File's own text, leaving recovery only the temp file.
     pub fn neutralize_replace_record(
         &self,
         project_id: &str,
@@ -111,6 +113,7 @@ impl Database {
         Ok(())
     }
 
+    /// Uncertain: the swap can't be proven durable, so keep the text as dirty edits.
     pub fn keep_replace_as_unsaved(
         &self,
         project_id: &str,

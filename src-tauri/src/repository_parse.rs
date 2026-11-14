@@ -10,7 +10,9 @@ pub const MAX_DIFF_LINES: usize = 1_200;
 pub struct ParsedStatus {
     pub branch: Option<String>,
     pub changes: Vec<FileChange>,
+    /// The change cap was hit or Git output was cut short.
     pub truncated: bool,
+    /// Proven: another change followed the full list.
     pub overflowed: bool,
 }
 

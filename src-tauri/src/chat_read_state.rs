@@ -10,6 +10,7 @@ use crate::{
     settings_store::{ChatReadMark, ChatReadMarkWrite, SettingsStore},
 };
 
+/// Approvals sort first, so truncation never hides one behind an unread chat.
 pub const MAX_CHAT_ATTENTION: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -40,6 +41,7 @@ pub struct ChatAttentionList {
 
 /// The read marks retain exactly these chats (see `mark_read`), so a
 /// chat the user has read keeps its mark while it is listed here.
+/// Only rail chats are looked up, so at most `MAX_RAIL_CHATS` rows reach the sort.
 fn attention_candidates() -> String {
     format!(
         "SELECT c.project_id, c.tab_id, t.state = 'waitingApproval', t.terminal_at

@@ -242,6 +242,7 @@ pub(crate) fn forget_read_marks_of_deleted_chats(
     }
 }
 
+/// The caller releases the runtime after the answer (`release_archived_runtime`).
 pub(crate) async fn archive_chat_inner(
     state: &AppState,
     request: ChatLifecycleRequest,
@@ -256,6 +257,7 @@ pub(crate) async fn archive_chat_inner(
         move |database| database.archive_chat(&request),
     )
     .await;
+    // Archiving drops the read mark, so a restored chat starts with none.
     if result.committed
         && let Err(error) = state.settings.mark_chat_unread(&chat_id)
     {

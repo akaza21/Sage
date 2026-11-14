@@ -1,5 +1,6 @@
 //! The record is closed, so the renderer can store nothing but the two listed
 //! choices.
+//! Main webview only: the guard in `ipc_commands.rs` rejects browser WebViews.
 
 use tauri::State;
 

@@ -196,6 +196,7 @@ fn defaults() -> EditorSettings {
         .collect()
 }
 
+/// Clamps, then snaps to the nearest choice (ties go low); `None` means wrong type.
 fn admit(spec: &SettingSpec, value: &Value) -> Option<EditorValue> {
     match spec.kind {
         SettingKind::Bool => value.as_bool().map(EditorValue::Bool),
@@ -361,6 +362,7 @@ impl SettingsStore {
         )
     }
 
+    /// Ignores unknown keys, clamps numbers; one wrong type rejects the whole change.
     pub fn set_editor_settings(
         &self,
         changes: &BTreeMap<String, Value>,

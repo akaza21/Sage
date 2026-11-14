@@ -14,6 +14,7 @@ pub const MAX_CHAT_READ_MARKS: usize = crate::project_registry::MAX_RAIL_CHATS;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChatReadMark {
     pub chat_id: String,
+    /// The seen chat update time, in Unix milliseconds.
     pub read_through: i64,
 }
 

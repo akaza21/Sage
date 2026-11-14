@@ -119,6 +119,7 @@ impl Database {
         self.write_editor_buffer(project_id, request, content, buffer_fingerprint, false)
     }
 
+    /// Replaces the durable base with `request.base`; the caller must verify it on disk.
     pub fn rebase_editor_buffer(
         &self,
         project_id: &str,

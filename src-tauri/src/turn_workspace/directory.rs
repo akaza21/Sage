@@ -70,6 +70,7 @@ impl Directory {
             .map(|identity| identity.stable_bytes())
     }
 
+    /// `Some(None)`: confirmed absent. `None`: the status couldn't be read safely.
     pub(super) fn entry_status(&self, relative: &Path) -> Option<Option<EntryStatus>> {
         let parent_path = relative.parent()?;
         let parent = match self.child_result(parent_path) {

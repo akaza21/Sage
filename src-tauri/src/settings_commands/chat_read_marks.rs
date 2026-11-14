@@ -1,3 +1,5 @@
+//! Main webview only: the guard in `ipc_commands.rs` rejects browser WebViews.
+
 use tauri::State;
 
 use crate::{

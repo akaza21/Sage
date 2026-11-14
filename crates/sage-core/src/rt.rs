@@ -36,6 +36,7 @@ where
     runtime().spawn_blocking(func)
 }
 
+/// Panics when called inside a runtime context, like any Tokio `block_on`.
 #[track_caller]
 pub fn block_on<F: Future>(task: F) -> F::Output {
     runtime().block_on(task)

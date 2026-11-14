@@ -77,6 +77,7 @@ pub enum AppError {
         supported_version: u32,
     },
 
+    /// The detail is for logs only; `public_message` redacts it.
     #[error("background task ended before finishing: {0}")]
     TaskInterrupted(String),
 }

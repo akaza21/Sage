@@ -9,6 +9,7 @@
 
 use std::path::{Path, PathBuf};
 
+/// Win32's path limit in UTF-16 code units, including the terminating NUL.
 const MAX_PATH: usize = 260;
 
 pub fn simplified(path: &Path) -> PathBuf {
