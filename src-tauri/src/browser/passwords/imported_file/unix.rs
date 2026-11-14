@@ -63,7 +63,6 @@ fn c_name(name: impl Into<Vec<u8>>) -> io::Result<CString> {
     CString::new(name).map_err(|_| io::ErrorKind::InvalidInput.into())
 }
 
-/// Renames `from` to `to` in `folder`, failing if `to` exists.
 fn rename_exclusive(folder: &File, from: &CStr, to: &CStr) -> io::Result<()> {
     let folder = folder.as_raw_fd();
     // SAFETY: both names are NUL-terminated and relative to a live folder.

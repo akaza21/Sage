@@ -1,15 +1,6 @@
-//! Annotate mode: the user's hover highlight over one browser tab (M1a) and
-//! picking an element to comment on (M1b). Rust owns which tab annotates and
-//! which element waits for a comment, and tells the chrome over
-//! `browser:annotate`; the highlight is Chromium's own inspect overlay and the
-//! element is read in the isolated Agent world, so nothing enters the page's
-//! main world. These are user chrome commands from the main webview, not
-//! Agent tools.
-//!
-//! Every native step runs off the main thread, under the mode lock, so a
-//! start, a pick, a comment and the exits on navigation, hide, close and
-//! Escape never interleave. Each change is announced under that lock too, so
-//! the chrome receives the changes in the order they happened.
+//! Every native step runs off the main thread under the mode lock, and each
+//! change is announced under that lock, so steps never interleave and the
+//! chrome receives the changes in the order they happened.
 
 use std::sync::{
     Mutex,
@@ -30,14 +21,12 @@ pub(crate) mod zoom;
 
 use selection::{Selection, SelectionView};
 
-/// Why the chrome shows Annotate disabled on this platform, if it does.
 pub(crate) const UNAVAILABLE_REASON: Option<&str> = if cfg!(windows) {
     None
 } else {
     Some("Annotate needs the WebView2 inspect overlay and is not available on this platform yet")
 };
 
-/// Why the chrome shows Annotate disabled for a tab in this state, if it does.
 pub(super) fn unavailable_reason(snapshot: &BrowserSnapshot) -> Option<&'static str> {
     UNAVAILABLE_REASON.or((snapshot.loading
         || snapshot.error.is_some()
@@ -45,16 +34,12 @@ pub(super) fn unavailable_reason(snapshot: &BrowserSnapshot) -> Option<&'static 
     .then_some("Open a page to annotate"))
 }
 
-/// The `browser_control` actions Annotate answers.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Action {
     On,
     Off,
-    /// Drops the element waiting for a comment.
     Cancel,
-    /// Numbers and comments the waiting element and hands the item out.
     Confirm,
-    /// The frozen page the user comments on.
     Frame,
 }
 
@@ -69,40 +54,26 @@ pub(crate) fn action(name: &str) -> Option<Action> {
     }
 }
 
-/// How a tab leaves Annotate, which decides whether a page frozen for a
-/// comment is shown again.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Exit {
-    /// The button, Escape or a navigation: stop and show the page.
     Reveal,
-    /// The tab was hidden: stop and leave the page hidden.
     Hidden,
-    /// The tab is closing: its overlay goes with its webview.
     Closed,
 }
 
-/// Drives the native inspect overlay of one tab.
 pub(crate) trait InspectOverlay {
     fn start(&self, label: &str) -> Result<(), String>;
-    /// Stops listening for clicks, and turns the overlay off unless the tab
-    /// is `closing`, when its webview may already be gone.
+    /// Skips the overlay when `closing`: its webview may already be gone.
     fn stop(&self, label: &str, closing: bool) -> Result<(), String>;
-    /// Reads the clicked element, pauses hover highlighting, captures the
-    /// page and hides it so the chrome can draw over the frozen frame. It
-    /// calls `freeze` before the hide, so a resize never shows the page.
+    /// Calls `freeze` before the hide, so a resize never shows the page.
     fn pick(
         &self,
         label: &str,
         backend_node_id: u64,
         freeze: &dyn Fn(),
     ) -> Result<Selection, String>;
-    /// Shows the frozen page again when `reveal`, and resumes hover
-    /// highlighting when `resume`.
     fn release(&self, label: &str, reveal: bool, resume: bool) -> Result<(), String>;
-    /// Moves native keyboard focus to `label`'s page when `page`, else to
-    /// Sage's own webview, whose comment box takes the typing.
     fn focus(&self, label: &str, page: bool) -> Result<(), String>;
-    /// Removes the hover outline, which a page zoom left on the wrong spot.
     fn clear_outline(&self, label: &str) -> Result<(), String>;
 }
 
@@ -117,12 +88,8 @@ pub(crate) struct AnnotateChange {
     error: Option<String>,
 }
 
-/// Annotate's place in `BrowserState`: the mode, and lock-free copies of its
-/// tab number and of the tab whose page is frozen (0 for none) for the main
-/// thread, which must never wait on the mode lock while a native step needs
-/// that thread. `zoom.rs` keeps the rest: `covered` is the tab a toolbar
-/// popover hides, `deferred` the tab whose show a frozen page put off, and
-/// `zoom_queued` whether a zoom step waits for the lock.
+/// The atomics are lock-free copies for the main thread, which must never
+/// wait on the mode lock while a native step needs that thread.
 #[derive(Default)]
 pub(crate) struct Annotate {
     mode: Mutex<AnnotateMode>,
@@ -134,22 +101,17 @@ pub(crate) struct Annotate {
 }
 
 impl Annotate {
-    /// Whether `label` is annotating, without taking the mode lock.
     pub(crate) fn is_annotating(&self, label: &str) -> bool {
         tab_number(label).is_some_and(|number| self.tab.load(Ordering::Acquire) == number)
     }
 
-    /// Whether `label`'s page is hidden behind a frozen frame, without taking
-    /// the mode lock; placing the tab must not show it.
     pub(crate) fn is_frozen(&self, label: &str) -> bool {
         tab_number(label).is_some_and(|number| self.frozen.load(Ordering::Acquire) == number)
     }
 
-    /// Runs `disable` only while `label` does not annotate and no Annotate
-    /// change is under way, holding the mode lock so a start cannot run its
-    /// enables between the check and `disable`. It never waits: a busy lock
-    /// means Annotate is changing, and then `disable` is skipped. Returns
-    /// whether `disable` ran. Never call it on the main thread.
+    /// Holds the mode lock so a start cannot run its enables between the check
+    /// and `disable`; a busy lock skips `disable`. Never call it on the main
+    /// thread.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) fn disable_unless_annotating(&self, label: &str, disable: impl FnOnce()) -> bool {
         let Ok(mode) = self.mode.try_lock() else {
@@ -162,14 +124,11 @@ impl Annotate {
         true
     }
 
-    /// Marks `label`'s page frozen ahead of the hide that freezes it; the
-    /// next change settles the copy again.
     fn freeze(&self, label: &str) {
         self.frozen
             .store(tab_number(label).unwrap_or(0), Ordering::Release);
     }
 
-    /// Picks the element Chromium reported for a click on `label`.
     fn pick(
         &self,
         overlay: &impl InspectOverlay,
@@ -182,8 +141,6 @@ impl Annotate {
         })
     }
 
-    /// Applies one change to the mode and announces what it changed before
-    /// the lock is released.
     fn run<R>(
         &self,
         announce: impl Fn(AnnotateChange),
@@ -213,8 +170,6 @@ fn tab_number(label: &str) -> Option<u64> {
         .filter(|number| *number > 0)
 }
 
-/// Which tab, if any, is in Annotate mode, and the element it picked, if it
-/// waits for a comment. At most one tab annotates.
 #[derive(Default)]
 struct AnnotateMode {
     tab: Option<String>,
@@ -222,11 +177,8 @@ struct AnnotateMode {
 }
 
 impl AnnotateMode {
-    /// Turns Annotate on for `label`, first leaving it on any other tab. The
-    /// changes to announce come back even when the start fails. Starting the
-    /// tab that is already on starts its overlay again and announces it again,
-    /// so a remounted chrome or a page whose overlay an Agent highlight took
-    /// over recovers with one click; a waiting element is dropped.
+    /// Starting the tab that is already on restarts its overlay, so a remounted
+    /// chrome or a page whose overlay an Agent highlight took over recovers.
     fn start(
         &mut self,
         overlay: &impl InspectOverlay,
@@ -250,9 +202,8 @@ impl AnnotateMode {
         (changes, started)
     }
 
-    /// Turns Annotate off for `label` if it is on; nothing changes when it
-    /// was off. The mode ends even if the overlay fails to stop, so the chrome
-    /// never shows Annotate on for a page that may have lost it.
+    /// The mode ends even if the overlay fails to stop, so the chrome never shows
+    /// Annotate on for a page that may have lost it.
     fn leave(
         &mut self,
         overlay: &impl InspectOverlay,
@@ -281,7 +232,6 @@ fn change(tab_id: String, active: bool) -> AnnotateChange {
     }
 }
 
-/// The tab Annotate may start on: a known tab showing a committed page.
 pub(super) fn target<T: Clone>(tabs: &BrowserTabs<T>, tab_id: &str) -> Result<T, String> {
     if !valid_page_context_tab_id(tab_id) {
         return Err("invalid browser tab id".into());
@@ -292,8 +242,6 @@ pub(super) fn target<T: Clone>(tabs: &BrowserTabs<T>, tab_id: &str) -> Result<T,
         .ok_or("browser tab unavailable".into())
 }
 
-/// `browser_control`'s Annotate actions. Confirm answers with the item and
-/// Frame with the frozen page; the others answer nothing.
 pub(crate) async fn set(
     app: AppHandle,
     tab_id: String,
@@ -355,9 +303,8 @@ pub(crate) async fn set(
     .map_err(|_| "browser annotate unavailable".to_owned())?
 }
 
-/// Picks the element Chromium reported for a click in inspect mode. Runs on
-/// its own thread: the report arrives on the main thread, which the pick's
-/// CDP calls need free.
+/// Runs on its own thread: the report arrives on the main thread, which the
+/// pick's CDP calls need free.
 pub(crate) fn pick(app: &AppHandle, label: &str, backend_node_id: u64) {
     let app = app.clone();
     let label = label.to_owned();
@@ -372,11 +319,8 @@ pub(crate) fn pick(app: &AppHandle, label: &str, backend_node_id: u64) {
     });
 }
 
-/// Leaves Annotate on `label` after a navigation starts, the tab is hidden
-/// (not merely covered by a toolbar popover) or closes, or Escape reaches the
-/// page. Runs on its own thread: callers
-/// include WebView2 event handlers on the main thread, which the overlay's
-/// CDP calls need free.
+/// Runs on its own thread: callers include WebView2 event handlers on the
+/// main thread, which the overlay's CDP calls need free.
 pub(crate) fn leave(app: &AppHandle, label: &str, exit: Exit) {
     let app = app.clone();
     let label = label.to_owned();

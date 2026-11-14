@@ -1,5 +1,3 @@
-//! Planning, publication and disposal share the same destination executor.
-
 use super::super::io;
 use super::choice::{Planned, Request};
 

@@ -1,8 +1,6 @@
 use super::BrowserTabs;
 
 impl<T> BrowserTabs<T> {
-    /// Records the committed document's title, stripped of bidi controls and
-    /// bounded to 80 characters. Returns whether the visible title changed.
     pub(super) fn set_document_title(&mut self, label: &str, url: &str, raw: &str) -> bool {
         let Some(tab) = self.entries.get_mut(label) else {
             return false;
@@ -28,7 +26,6 @@ impl<T> BrowserTabs<T> {
         if tab.title == title {
             return false;
         }
-        // Only the visit to this page takes its title, never an earlier one.
         if let Some(title) = &title
             && tab.visited_url.as_deref() == Some(url)
         {

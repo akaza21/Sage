@@ -1,9 +1,3 @@
-//! What a tab commits: the URL a navigation or same-document change lands
-//! on, and the title its page reports. Each page a tab newly shows is also
-//! a visit in the global browsing history, and a title names the tab's
-//! latest visit when that visit is the page on screen; both are queued
-//! without blocking the UI thread (see `browsing_history`).
-
 use super::{BrowserTab, BrowserTabs, admit_url, browsing_history::BrowsingHistory};
 
 impl<T> BrowserTabs<T> {
@@ -16,9 +10,8 @@ impl<T> BrowserTabs<T> {
         self.commit_navigation(label, navigation_id, url, true)
     }
 
-    /// `finish_navigation`, recording a visit only when `visit` is set: a
-    /// load that failed yet moved the screen commits its URL for the tab
-    /// but is not a page the user visited.
+    /// `visit` is unset for a load that failed yet moved the screen: it commits
+    /// its URL for the tab but is not a page the user visited.
     pub(super) fn commit_navigation(
         &mut self,
         label: &str,
@@ -90,10 +83,6 @@ impl<T> BrowserTabs<T> {
     }
 }
 
-/// Records tab `label` moving within its document to `url`, before its
-/// committed URL changes. The change folds into the tab's latest visit
-/// only when that visit is the page it moves from; otherwise it is a
-/// visit of its own.
 pub(super) fn record_same_document<T>(
     history: &BrowsingHistory,
     label: &str,

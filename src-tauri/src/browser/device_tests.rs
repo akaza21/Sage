@@ -228,7 +228,6 @@ fn a_failed_step_resets_the_tab_and_confirms_it() {
 
 #[test]
 fn an_android_switch_without_an_engine_version_resets_the_emulated_tab() {
-    // The tab is already an iPhone; Pixel needs the engine version first.
     for version in [Err("gone".to_owned()), Ok("{}".to_owned())] {
         let mut sent = Vec::new();
         let result = apply_with(Some(&admitted("pixel-7", 412, 915, 100)), |method, _| {
@@ -289,8 +288,6 @@ fn the_toolbar_is_told_what_the_tab_holds_after_an_update() {
         held_after(Some(pixel), failed(Left::Reset)),
         Err(DeviceFailure::new("refused", DeviceHeld::Known(None)))
     );
-    // iPhone was on and the switch to Pixel failed with an unconfirmed
-    // reset: neither device is reported, only that the state is unknown.
     for requested in [Some(pixel), None] {
         assert_eq!(
             held_after(requested, failed(Left::Unknown)),
@@ -330,8 +327,6 @@ fn the_tab_holds_its_emulation_without_changing_the_page_revision() {
     );
     let request = tabs.request_device("browser-1").unwrap();
     assert!(tabs.settle_device("browser-1", request, DeviceHeld::Unconfirmed));
-    // The status keeps the unknown state: no device to restore, but a
-    // remounted toolbar still shows that some override may be on.
     let held = tabs.snapshot("browser-1").unwrap().device;
     assert_eq!(held, DeviceHeld::Unconfirmed);
     assert_eq!((held.confirmed(), held.is_unconfirmed()), (None, true));

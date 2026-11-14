@@ -1,5 +1,3 @@
-//! Developer-mode evaluations never leave results pinned in the page
-//! (ADR-0009b): in Sage's group, released after every call.
 use super::*;
 use crate::acp::browser::developer::{DEVELOPER_OBJECT_GROUP, EVALUATE_TIMEOUT_MS};
 use std::time::Duration;
@@ -68,7 +66,6 @@ fn an_evaluation_runs_by_reference_in_sages_group_and_is_released_whatever_happe
         session_id: "session-1".into(),
         tab_id: 1,
     };
-    // Revoked mid-call (Stop, Take over, switch off) or failed: still released.
     for fail in [
         None,
         Some(BrowserFailure::Denied),

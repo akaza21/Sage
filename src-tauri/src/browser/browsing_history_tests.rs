@@ -92,14 +92,11 @@ fn recording_never_waits_for_the_disk() {
     for index in 0..(QUEUE * 4) {
         history.record_visit("browser-1", &format!("https://{index}.example/"), None);
     }
-    // Far more visits than the queue holds return at once: excess visits
-    // are dropped, never waited on.
     assert!(started.elapsed() < Duration::from_secs(2));
     let kept = history.page(String::new(), None, MAX_PAGE).unwrap();
     assert!(!kept.visits.is_empty());
 }
 
-/// A handle whose queue holds one message and is drained by the test.
 fn stalled() -> (BrowsingHistory, Receiver<Request>) {
     let history = BrowsingHistory::in_memory();
     let (sender, receiver) = sync_channel(1);

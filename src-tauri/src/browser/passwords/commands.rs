@@ -1,7 +1,6 @@
-//! Passwords page commands (BF-7b-1). They run only for the main webview:
-//! the invoke guard in `ipc_commands.rs` rejects every browser tab first.
-//! Replies carry ids, sites, usernames and counts. Only Reveal returns a
-//! password, and Reveal and Copy first ask the OS to confirm the user.
+//! The invoke guard in `ipc_commands.rs` rejects every browser tab first.
+//! Only Reveal returns a password, and Reveal and Copy first ask the OS to
+//! confirm the user.
 
 use serde::Serialize;
 use tauri::{AppHandle, State, Window};
@@ -31,7 +30,6 @@ async fn blocking<T: Send + 'static>(
         .map_err(|error| error.to_string())
 }
 
-/// Ids are the vault's UUIDs; anything else names no saved password.
 fn credential_id(id: &str) -> Result<String, String> {
     Uuid::parse_str(id)
         .map(|id| id.to_string())
@@ -47,8 +45,8 @@ pub(crate) async fn browser_passwords(
     blocking(move || passwords.overview(&query)).await
 }
 
-/// Picks a CSV in the native file dialog and imports it. The path never
-/// crosses IPC; `None` means the dialog or the import was cancelled.
+/// The path never crosses IPC; `None` means the dialog or the import was
+/// cancelled.
 #[tauri::command]
 pub(crate) async fn browser_passwords_import_csv(
     app: AppHandle,

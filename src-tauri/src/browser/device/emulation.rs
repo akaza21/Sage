@@ -1,6 +1,3 @@
-//! The CDP calls behind a device emulation, shared by the WebView2 path and
-//! the headless Chromium lane.
-
 use serde_json::{Value, json};
 
 use super::{Agent, DeviceEmulation};
@@ -10,13 +7,10 @@ const IOS_VERSION: &str = "18_5";
 const IOS_SAFARI: &str = "18.5";
 
 impl DeviceEmulation {
-    /// Whether applying it needs the engine's Chrome major version.
     pub(super) fn needs_engine_version(&self) -> bool {
         matches!(self.preset.agent, Agent::Android { .. })
     }
 
-    /// The CDP calls that apply it, in order. `chrome_major` is required
-    /// only when [`Self::needs_engine_version`] says so.
     pub(super) fn commands(&self, chrome_major: Option<u32>) -> Vec<(&'static str, Value)> {
         let preset = self.preset;
         let mut metrics = json!({
@@ -92,7 +86,6 @@ fn user_agent(agent: Agent, chrome_major: Option<u32>) -> Value {
     }
 }
 
-/// The CDP calls that return the tab to its own viewport and user agent.
 pub(super) fn reset_commands() -> Vec<(&'static str, Value)> {
     vec![
         ("Emulation.clearDeviceMetricsOverride", json!({})),
@@ -113,18 +106,14 @@ pub(super) fn chrome_major(version: &str) -> Option<u32> {
     (1..10_000).contains(&major).then_some(major)
 }
 
-/// What a failed update left on the page.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Left {
-    /// Every reset step was confirmed: the page holds no emulation.
     Reset,
-    /// A reset step failed, so some override may still be on.
     Unknown,
 }
 
-/// Applies `emulation`, or resets the tab when it is `None`, through `call`.
-/// Any failure resets the tab, trying every step, and says whether that
-/// reset was confirmed, so the toolbar never shows a state the page lacks.
+/// Any failure resets the tab, trying every step, so the toolbar never shows
+/// a state the page lacks.
 pub(crate) fn apply_with(
     emulation: Option<&DeviceEmulation>,
     mut call: impl FnMut(&'static str, &str) -> Result<String, String>,

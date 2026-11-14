@@ -1,6 +1,3 @@
-//! Where a browsing-data clear may begin. A platform without WebView2
-//! refuses here, before any tab closes or any Agent access is revoked.
-
 use std::sync::atomic::AtomicBool;
 
 use super::ClearBrowsingDataResult;
@@ -16,8 +13,6 @@ pub(super) enum ClearStart {
     Begun(Vec<String>),
 }
 
-/// Refuses on a platform that cannot clear the profile before any tab closes,
-/// any Agent access is revoked or the clear gate is claimed.
 pub(super) fn start_clear<T>(
     tabs: &std::sync::Mutex<super::super::BrowserTabs<T>>,
     clearing_data: &AtomicBool,
@@ -63,7 +58,6 @@ mod platform_tests {
         assert!(!result.cleared);
         assert!(!result.pending);
         assert_eq!(result.error.as_deref(), Some(UNSUPPORTED_PLATFORM));
-        // Nothing was claimed: the gate is free and the tab is still listed.
         assert!(!clearing_data.load(Ordering::Acquire));
         assert_eq!(
             begin_clear(&tabs, &clearing_data).unwrap(),

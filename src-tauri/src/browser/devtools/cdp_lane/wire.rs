@@ -21,7 +21,6 @@ use crate::acp::browser::BrowserFailure;
 pub(super) struct Wire {
     pub(super) commands: Mutex<Option<ChildStdin>>,
     next_id: AtomicU64,
-    /// Developer evaluations in flight, by command id, with their session.
     release_on_answer: Mutex<HashMap<u64, Release>>,
     pub(super) late_releases: AtomicUsize,
 }
@@ -32,8 +31,8 @@ struct Release {
 }
 
 impl Wire {
-    /// Writes one command. With `release_on_answer`, the id is registered
-    /// before the bytes leave, so the reader cannot see the answer first.
+    /// With `release_on_answer`, the id is registered before the bytes leave, so
+    /// the reader cannot see the answer first.
     pub(super) fn write(
         &self,
         session: Option<&str>,
@@ -78,7 +77,6 @@ impl Wire {
         Ok(id)
     }
 
-    /// Called by the reader for every command answer.
     pub(super) fn answered(&self, id: u64) {
         let session = self
             .release_on_answer

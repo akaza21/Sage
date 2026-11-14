@@ -1,5 +1,3 @@
-//! How a completed native navigation settles a tab.
-//!
 //! WebView2 reports `IsSuccess = FALSE` for real load failures (DNS, refused
 //! connection, certificate errors), for documents that did commit (a 4xx/5xx
 //! page, an authentication page, `window.stop()` after commit, a stopped
@@ -33,7 +31,6 @@ pub(crate) const WEB_ERROR_UNKNOWN: i32 = 0;
 /// `COREWEBVIEW2_WEB_ERROR_STATUS_OPERATION_CANCELED`.
 pub(crate) const WEB_ERROR_OPERATION_CANCELED: i32 = 14;
 
-/// What `NavigationCompleted` reported, platform-neutral.
 #[derive(Clone, Copy, Debug)]
 pub(crate) struct Completion<'a> {
     pub(crate) success: bool,
@@ -41,7 +38,6 @@ pub(crate) struct Completion<'a> {
     pub(crate) source: Option<&'a str>,
 }
 
-/// What `ContentLoading` said committed for the navigation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Commit {
     Document,
@@ -50,37 +46,25 @@ pub(crate) enum Commit {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Outcome<'a> {
-    /// A new document committed at this URL.
     Committed(&'a str),
-    /// Nothing committed; the previous page is still shown.
     Abandoned,
-    /// The load failed; the reason is shown to the user.
     Failed(&'static str),
 }
 
-/// How a tab settled, for the native handler's follow-up work.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Settled {
-    /// This navigation id committed (`IsSuccess`, or its own
-    /// `ContentLoading`).
     Committed,
-    /// The tab now reports `Source()` as committed, but the commit was not
-    /// this navigation's: a superseded navigation's (`page_changed`) or the
-    /// abandon invariant's. Never evidence that a user navigation landed.
+    /// Never evidence that a user navigation landed.
     Adopted,
     Abandoned,
     Failed,
 }
 
 impl Settled {
-    /// Whether this navigation id itself committed a document; the only
-    /// outcome that may count as a completed user navigation.
     pub(crate) fn own_commit(settled: Option<Self>) -> bool {
         settled == Some(Self::Committed)
     }
 
-    /// Whether a new document is on screen at the reported URL, so its
-    /// title and favicon should be captured.
     pub(crate) fn shows_new_document(settled: Option<Self>) -> bool {
         matches!(settled, Some(Self::Committed | Self::Adopted))
     }
@@ -142,7 +126,6 @@ mod tests {
                 "status {web_error}"
             );
         }
-        // A changed Source() alone is not a commit.
         let drifted = failed(WEB_ERROR_OPERATION_CANCELED, "https://example.com/page#x");
         assert_eq!(classify(drifted, None), Outcome::Abandoned);
     }
@@ -160,7 +143,6 @@ mod tests {
             classify(failed(12, PAGE), Some(Commit::ErrorPage)),
             Outcome::Failed("The site could not be reached")
         );
-        // A cancel after an error page committed is still that failure.
         assert_eq!(
             classify(
                 failed(WEB_ERROR_OPERATION_CANCELED, PAGE),

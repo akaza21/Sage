@@ -28,7 +28,6 @@ pub(crate) struct PopupIntent {
     pub(super) id: u64,
     pub(super) opener_tab_id: String,
     pub(super) url: String,
-    /// Set only for a native (opener-linked) child, so the chrome can abandon it.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(super) native_tab_id: Option<String>,
 }

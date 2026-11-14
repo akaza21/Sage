@@ -1,6 +1,3 @@
-//! The second half of a download start: plan on an isolated probe, then
-//! save silently or show the Save dialog back on the WebView2 UI thread.
-
 use std::path::PathBuf;
 
 use tauri::{AppHandle, Manager, Webview};
@@ -44,7 +41,6 @@ pub(super) fn plan_off_thread(
         }
     });
     if !queued {
-        // The worker is busy with as many downloads as it queues: cancel.
         complete_choice(app, tab_id, id, None);
     }
 }
@@ -58,8 +54,6 @@ fn deliver(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
     });
 }
 
-/// Runs `work` on the WebView2 UI thread, where `PENDING` lives. If the
-/// webview is gone, the download is canceled from the main thread instead.
 fn on_ui(
     app: &AppHandle,
     webview: &Webview,
@@ -95,7 +89,6 @@ fn proceed(app: &AppHandle, webview: &Webview, tab_id: &str, id: u64, planned: c
         })
     });
     if !still_pending {
-        // Canceled while planning (Cancel, tab close, watchdog).
         complete_choice(app, tab_id, id, None);
         return;
     }

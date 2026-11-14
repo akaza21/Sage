@@ -1,11 +1,9 @@
 use url::Url;
 
-/// The longest site address Sage accepts for a saved password, in bytes.
 pub(super) const MAX_ORIGIN_BYTES: usize = 4 * 1024;
 
-/// The origin a saved password belongs to, as `scheme://host[:port]` with the
-/// default port left out. Only `http` and `https` sites qualify: imported
-/// `android://` and similar entries have nowhere to fill in Sage's browser.
+/// Only `http` and `https` sites qualify: imported `android://` and similar
+/// entries have nowhere to fill in Sage's browser.
 pub(super) fn credential_origin(raw: &str) -> Option<String> {
     let raw = raw.trim();
     if raw.is_empty() || raw.len() > MAX_ORIGIN_BYTES {

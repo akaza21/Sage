@@ -4,7 +4,6 @@ use tauri::{LogicalPosition, LogicalSize, Manager, State, Webview};
 
 use super::{BrowserState, BrowserTabs, page_controls::browser_hide, visibility::PageVisibility};
 
-/// The smallest step the platform can place a child webview by.
 #[derive(Clone, Copy, Debug, PartialEq)]
 enum PlacementGrid {
     /// One device pixel: WebView2 places in physical pixels, and AppKit
@@ -31,10 +30,8 @@ struct Frame {
     height: f64,
 }
 
-/// Snaps a CSS-pixel frame inward to `grid` at `scale`: left and top round up,
-/// right and bottom round down. The page then never covers the chrome around
-/// it, and leaves less than one grid unit of the frame uncovered per edge.
-/// `None` when nothing of the frame is left to show.
+/// Rounds inward so the page never covers the chrome around it. `None` when
+/// nothing of the frame is left to show.
 fn snap_inward(frame: Frame, scale: f64, grid: PlacementGrid) -> Option<Frame> {
     let units_per_logical = match grid {
         PlacementGrid::DevicePixel => scale,
@@ -91,15 +88,14 @@ pub(crate) async fn browser_set_bounds(
     .await
 }
 
-/// The native effects of placing one tab's page.
 trait BoundsTarget {
     fn scale(&self) -> Result<f64, String>;
     fn place(&self, frame: Frame) -> Result<(), String>;
     async fn hide(&self) -> Result<(), String>;
 }
 
-/// Places the page on the snapped frame, or hides it when nothing of the
-/// frame is left to show, so it never stays visible at its previous bounds.
+/// Hides the page when nothing of the frame is left to show, so it never
+/// stays visible at its previous bounds.
 async fn place_or_hide(
     target: &impl BoundsTarget,
     css: Frame,
@@ -145,7 +141,6 @@ impl BoundsTarget for NativeTarget<'_> {
         app.clone()
             .run_on_main_thread(move || {
                 visibility.place();
-                // Placed again, the page is no longer covered by a popover.
                 if app.state::<BrowserState>().annotate.placed(&tab_id)
                     && let Err(error) = shown.show()
                 {
@@ -181,7 +176,6 @@ mod tests {
     use super::{BoundsTarget, Frame, PlacementGrid, place_or_hide, snap_inward, unlocked_tab};
     use crate::browser::BrowserTabs;
 
-    /// A page that records where it is and whether it can be seen.
     struct FakePage {
         scale: f64,
         shown: RefCell<Option<Frame>>,
@@ -228,7 +222,6 @@ mod tests {
         tabs.lock().unwrap().insert("browser-1".into(), 7, false);
         let (handle, _visibility) = unlocked_tab(&tabs, "browser-1").unwrap();
         assert_eq!(handle, 7);
-        // A WebView2 callback taking the lock now must not wait on placement.
         assert!(tabs.try_lock().is_ok());
         assert!(unlocked_tab(&tabs, "browser-2").is_err());
     }

@@ -5,9 +5,7 @@ use super::*;
 #[derive(Default)]
 pub(super) struct Overlay {
     calls: RefCell<Vec<String>>,
-    /// Tabs with a click listener: start adds one and every stop removes it.
     pub(super) watching: RefCell<BTreeSet<String>>,
-    /// Asked when the page hides: whether it was already marked frozen.
     pub(super) probe: Option<Box<dyn Fn() -> bool>>,
     pub(super) before_release: Option<Box<dyn Fn()>>,
     pub(super) after_release: Option<Box<dyn Fn()>>,
@@ -187,7 +185,6 @@ fn start_turns_the_overlay_on_and_starting_again_restarts_and_reannounces_it() {
         mode.start(&overlay, "browser-1"),
         (vec![on("browser-1")], Ok(()))
     );
-    // A remounted chrome that shows Annotate off asks again and learns it is on.
     assert_eq!(
         mode.start(&overlay, "browser-1"),
         (vec![on("browser-1")], Ok(()))
@@ -404,7 +401,6 @@ fn racing_starts_and_leaves_announce_the_final_state_last() {
         announced.last().copied(),
         Some(annotate.is_annotating("browser-1"))
     );
-    // Every "off" follows an "on": no stale "off" overtakes a newer "on".
     let mut on = false;
     for active in announced {
         assert!(active || on, "off announced while already off");
@@ -454,11 +450,9 @@ fn a_popover_covering_the_page_keeps_annotate_on_but_a_real_hide_leaves() {
     annotate
         .run(|_| (), |mode| mode.start(&overlay, "browser-3"))
         .unwrap();
-    // The "…" menu or the downloads popover covers the page.
     assert_eq!(annotate.hiding("browser-3", true), None);
     assert!(annotate.is_annotating("browser-3"));
     assert!(annotate.is_covered("browser-3"));
-    // Placing another tab does not uncover this one; placing it does.
     assert!(annotate.placed("browser-2"));
     assert!(annotate.is_covered("browser-3"));
     assert!(annotate.placed("browser-3"));
@@ -466,7 +460,6 @@ fn a_popover_covering_the_page_keeps_annotate_on_but_a_real_hide_leaves() {
     assert!(annotate.is_annotating("browser-3"));
     assert_eq!(overlay.calls(), ["start browser-3"]);
 
-    // A tab switch, a hidden centre pane or an unmount still leaves.
     let exit = annotate.hiding("browser-3", false);
     assert_eq!(exit, Some(Exit::Hidden));
     annotate
@@ -482,10 +475,8 @@ fn a_popover_covering_the_page_keeps_annotate_on_but_a_real_hide_leaves() {
 fn a_real_hide_forgets_a_cover_it_ends() {
     let annotate = Annotate::default();
     assert_eq!(annotate.hiding("browser-3", true), None);
-    // Hiding another tab leaves this tab's cover alone.
     assert_eq!(annotate.hiding("browser-2", false), Some(Exit::Hidden));
     assert!(annotate.is_covered("browser-3"));
-    // The popover was open when the tab switched away.
     assert_eq!(annotate.hiding("browser-3", false), Some(Exit::Hidden));
     assert!(!annotate.is_covered("browser-3"));
 }
@@ -500,7 +491,6 @@ fn ctrl_wheel_zooms_coalesce_into_one_running_and_one_waiting_step() {
     assert!(annotate.queue_zoom());
     assert!(!annotate.queue_zoom(), "a step already waits");
     assert!(!annotate.queue_zoom());
-    // The waiting step takes the lock and runs, so the next tick queues one.
     annotate.zoomed(&overlay, "browser-1", |_| ()).unwrap();
     assert!(annotate.queue_zoom());
     assert_eq!(overlay.calls()[1..], ["clear outline browser-1"]);

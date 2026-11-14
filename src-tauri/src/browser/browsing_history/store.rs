@@ -1,32 +1,16 @@
-//! The browsing-history SQLite file (BF-7c). One row per visit: the page a
-//! browser tab committed, when, and the title the page later reported.
-//!
-//! Every read and delete is keyed by `visited_at`, so clearing a time range
-//! is one indexed `DELETE`; clearing everything is the widest range. The
-//! table is bounded by count and age, and every value is checked by the
-//! schema as well as by the writer.
-
 use rusqlite::{Connection, OptionalExtension, Transaction, params, params_from_iter};
 use serde::{Deserialize, Serialize};
 
-/// The most visits kept. The oldest go first once a write passes it.
 pub(super) const MAX_VISITS: i64 = 10_000;
 /// Visits older than this are pruned on write, as Chrome keeps 90 days.
 pub(super) const RETENTION_MS: i64 = 90 * 24 * 60 * 60 * 1000;
-/// The longest stored URL; it matches browser admission.
 pub(super) const MAX_URL_BYTES: usize = super::super::admission::MAX_BROWSER_URL_BYTES;
-/// The longest stored title, in characters.
 pub(super) const MAX_TITLE_CHARS: usize = 256;
-/// The most rows one page read returns.
 pub(crate) const MAX_PAGE: u32 = 100;
-/// The longest search text, in characters.
 pub(crate) const MAX_SEARCH_CHARS: usize = 256;
-/// The most visits one remove names.
 pub(crate) const MAX_REMOVE: usize = 100;
-/// The `user_version` this code writes; `migrate` upgrades older files.
 const SCHEMA_VERSION: i64 = 1;
 
-/// One visit as the History page shows it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Visit {
@@ -37,7 +21,6 @@ pub(crate) struct Visit {
     pub visited_at: i64,
 }
 
-/// Where the next page of an ordered read starts: strictly older than this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct Cursor {
@@ -45,7 +28,6 @@ pub(crate) struct Cursor {
     pub id: i64,
 }
 
-/// A page of visits, newest first, and where the next one starts.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct VisitPage {
@@ -64,7 +46,6 @@ pub(super) fn open(path: &str) -> rusqlite::Result<Connection> {
     Ok(connection)
 }
 
-/// Brings the file to `SCHEMA_VERSION` in one transaction.
 fn migrate(connection: &mut Connection) -> rusqlite::Result<()> {
     let transaction = connection.transaction()?;
     let version: i64 = transaction.pragma_query_value(None, "user_version", |row| row.get(0))?;
@@ -105,7 +86,6 @@ fn migrate(connection: &mut Connection) -> rusqlite::Result<()> {
     transaction.commit()
 }
 
-/// Whether a visit may be stored; the schema refuses the rest anyway.
 pub(super) fn admissible(url: &str, visited_at: i64) -> bool {
     !url.is_empty() && url.len() <= MAX_URL_BYTES && visited_at >= 0
 }
@@ -127,8 +107,6 @@ pub(super) fn insert(
     Ok(transaction.last_insert_rowid())
 }
 
-/// Moves visit `id` to `url` (and `title`, when known), keeping its time.
-/// False when the visit no longer exists.
 pub(super) fn replace_url(
     transaction: &Transaction<'_>,
     id: i64,
@@ -154,7 +132,6 @@ pub(super) fn set_title(
     Ok(())
 }
 
-/// Removes visits past the age bound, then the oldest past the count bound.
 pub(super) fn prune(transaction: &Transaction<'_>, now: i64) -> rusqlite::Result<()> {
     transaction
         .prepare_cached("DELETE FROM browser_visits WHERE visited_at < ?1")?
@@ -179,8 +156,6 @@ pub(super) fn prune(transaction: &Transaction<'_>, now: i64) -> rusqlite::Result
     Ok(())
 }
 
-/// Visits newest first, optionally only those whose URL or title contains
-/// `search` (ASCII case-insensitive), starting strictly after `before`.
 pub(super) fn page(
     connection: &Connection,
     search: &str,
@@ -222,7 +197,6 @@ pub(super) fn page(
     Ok(VisitPage { visits, next })
 }
 
-/// Removes the named visits; ids that no longer exist are ignored.
 pub(super) fn remove(connection: &Connection, ids: &[i64]) -> rusqlite::Result<usize> {
     if ids.is_empty() {
         return Ok(0);
@@ -234,7 +208,6 @@ pub(super) fn remove(connection: &Connection, ids: &[i64]) -> rusqlite::Result<u
     )
 }
 
-/// Removes every visit with `from <= visited_at < to`.
 pub(super) fn remove_range(connection: &Connection, from: i64, to: i64) -> rusqlite::Result<usize> {
     connection.execute(
         "DELETE FROM browser_visits WHERE visited_at >= ?1 AND visited_at < ?2",

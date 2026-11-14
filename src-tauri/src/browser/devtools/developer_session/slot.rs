@@ -1,4 +1,3 @@
-//! Grant admission, single-session reuse and binding share this native-free seam.
 use super::*;
 
 pub(in crate::browser) trait TabSession: Send + Sync + 'static {

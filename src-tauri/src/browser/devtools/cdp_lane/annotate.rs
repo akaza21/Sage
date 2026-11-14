@@ -1,8 +1,3 @@
-//! Annotate mode (M1a, BP-H2): Chromium's own inspect overlay names the
-//! element under the pointer, Sage outlines it in thin blue in the overlay
-//! without tinting it, leaving inspect mode clears both, and the page's main
-//! world sees none of it.
-
 use std::time::{Duration, Instant};
 
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -11,10 +6,8 @@ use serde_json::{Value, json};
 use super::{CdpTransport, Lane};
 
 const TIMEOUT: Duration = Duration::from_secs(5);
-/// The outline's blue, #3a83f7.
 const BLUE: [u8; 3] = [58, 131, 247];
 
-/// A test-side CDP call outside the Agent transcript.
 pub(super) fn cdp(lane: &mut Lane, method: &str, params: Value) -> Value {
     let result = lane
         .capability
@@ -25,7 +18,6 @@ pub(super) fn cdp(lane: &mut Lane, method: &str, params: Value) -> Value {
     serde_json::from_str(&result).expect("CDP result")
 }
 
-/// Counts every DOM mutation and fixes the global count from here on.
 pub(super) fn watch_main_world(lane: &mut Lane) {
     lane.evaluate(
         "window.__mutations = 0; new MutationObserver((records) => { window.__mutations += records.length; }).observe(document, { subtree: true, childList: true, attributes: true, characterData: true }); window.__globalsAtLoad = Object.getOwnPropertyNames(window).length; true",
@@ -41,7 +33,6 @@ pub(super) fn assert_main_world_untouched(lane: &mut Lane) {
     assert_eq!(lane.evaluate("window.__agentSeen"), json!([]));
 }
 
-/// The button's node ids and centre, read natively with DOM enabled.
 pub(super) fn press_button(lane: &mut Lane) -> (u64, u64, f64, f64) {
     let root = cdp(lane, "DOM.getDocument", json!({"depth": 0}));
     let node = cdp(
@@ -72,8 +63,8 @@ pub(super) fn mouse(lane: &mut Lane, kind: &str, x: f64, y: f64) {
     cdp(lane, "Input.dispatchMouseEvent", params);
 }
 
-/// The viewport as PNG. A clipped capture renders a fresh frame without the
-/// inspect overlay, so the whole viewport is compared.
+/// A clipped capture renders a fresh frame without the inspect overlay, so
+/// the whole viewport is compared.
 fn capture(lane: &mut Lane) -> String {
     cdp(lane, "Page.captureScreenshot", json!({"format": "png"}))["data"]
         .as_str()
@@ -81,7 +72,6 @@ fn capture(lane: &mut Lane) -> String {
         .to_owned()
 }
 
-/// A capture's RGB pixels, `width` wide.
 struct Pixels {
     width: usize,
     rgb: Vec<[u8; 3]>,
@@ -123,7 +113,6 @@ impl Pixels {
     }
 }
 
-/// The capture's pixels per CSS px.
 fn capture_scale(lane: &mut Lane, pixels: &Pixels) -> f64 {
     let metrics = cdp(lane, "Page.getLayoutMetrics", json!({}));
     let width = metrics["cssVisualViewport"]["clientWidth"]
@@ -132,12 +121,10 @@ fn capture_scale(lane: &mut Lane, pixels: &Pixels) -> f64 {
     pixels.width as f64 / width
 }
 
-/// Asserts a thin blue outline on the edges of `border` (CSS px: left, top,
-/// right, bottom) and no tint inside it or just outside it, against `plain`.
+/// `border` is in CSS px: left, top, right, bottom.
 fn assert_outlined(hovered: &Pixels, plain: &Pixels, scale: f64, border: [f64; 4]) {
     let [left, top, right, bottom] = border.map(|edge| edge * scale);
     let (middle_x, middle_y) = ((left + right) / 2.0, (top + bottom) / 2.0);
-    // Each edge has blue within a device px of it, and the line is thin.
     let edges = [
         ("left", (left, middle_y), (1.0, 0.0)),
         ("right", (right, middle_y), (1.0, 0.0)),
@@ -159,7 +146,6 @@ fn assert_outlined(hovered: &Pixels, plain: &Pixels, scale: f64, border: [f64; 4
             "{name} edge is a 1-3 px line, got {thickness} px"
         );
     }
-    // Inside the border and a few px outside it, the page shows untinted.
     let inset = 4.0 * scale;
     for (x, y) in [
         (left + inset, middle_y),
@@ -173,7 +159,6 @@ fn assert_outlined(hovered: &Pixels, plain: &Pixels, scale: f64, border: [f64; 4
     }
 }
 
-/// Waits for an `Overlay.*` event named `method`; other events are dropped.
 pub(super) fn overlay_event(lane: &mut Lane, method: &str) -> Option<Value> {
     let deadline = Instant::now() + Duration::from_secs(2);
     while Instant::now() < deadline {
@@ -204,10 +189,7 @@ fn annotate_highlights_the_hovered_element_natively_and_leaving_clears_it() {
     let hovered = overlay_event(&mut lane, "Overlay.nodeHighlightRequested")
         .expect("hover asks for a highlight");
     assert_eq!(hovered["nodeId"].as_u64(), Some(node));
-    // The inspect highlight itself draws nothing.
     assert_eq!(capture(&mut lane), plain, "the inspect highlight is clear");
-    // Moving within the button raises no second event: one outline per
-    // element, not per mouse move.
     mouse(&mut lane, "mouseMoved", x + 3.0, y);
     assert!(overlay_event(&mut lane, "Overlay.nodeHighlightRequested").is_none());
 
@@ -231,8 +213,6 @@ fn annotate_highlights_the_hovered_element_natively_and_leaving_clears_it() {
         [corner(0), corner(1), corner(4), corner(5)],
     );
 
-    // Inspect mode takes the click: Chromium reports the node and the page
-    // never sees it.
     mouse(&mut lane, "mousePressed", x + 1.0, y);
     mouse(&mut lane, "mouseReleased", x + 1.0, y);
     let clicked = overlay_event(&mut lane, "Overlay.inspectNodeRequested")
@@ -258,7 +238,6 @@ fn annotate_highlights_the_hovered_element_natively_and_leaving_clears_it() {
     );
     assert_main_world_untouched(&mut lane);
 
-    // The page takes clicks again.
     mouse(&mut lane, "mousePressed", x, y);
     mouse(&mut lane, "mouseReleased", x, y);
     assert!(lane.wait_text("Pressed for real", 2_000));
@@ -271,9 +250,8 @@ fn annotate_highlights_the_hovered_element_natively_and_leaving_clears_it() {
     );
 }
 
-/// An inline element, such as a link in running text, gets the same outline:
-/// the case where the inspect highlight's own container outline takes the
-/// renderer down.
+/// The inspect highlight's own container outline takes the renderer down on
+/// an inline element, such as a link in running text.
 #[test]
 fn an_inline_element_gets_the_outline_too() {
     let mut lane = Lane::open("/hostile.html");
@@ -316,10 +294,6 @@ fn an_inline_element_gets_the_outline_too() {
     assert_main_world_untouched(&mut lane);
 }
 
-/// Annotate and the Agent's act highlight share Chromium's one overlay. An
-/// Agent highlight pauses hover highlighting until Sage clears it (a navigation
-/// starts or the Agent detaches), and leaving Annotate clears an Agent
-/// highlight too.
 #[test]
 fn annotate_and_the_agent_highlight_share_one_overlay() {
     let mut lane = Lane::open("/hostile.html");

@@ -1,5 +1,3 @@
-//! Production chrome paths and native visibility observations for BP-H2b.
-
 use std::{
     sync::mpsc,
     thread,
@@ -23,8 +21,6 @@ impl Lane {
         ))
     }
 
-    /// The same pick handler as Chromium's inspectNodeRequested event, followed
-    /// by a bounded wait for the completed selection rather than its freeze mark.
     pub fn pick_annotation(&self, tab: &str, backend_node_id: u64) -> Result<(), String> {
         annotate::pick(&self.app, tab, backend_node_id);
         let deadline = Instant::now() + Duration::from_secs(10);
@@ -57,7 +53,6 @@ impl Lane {
         ))
     }
 
-    /// Reads WebView2's actual controller visibility on its owning thread.
     pub fn browser_visible(&self, tab: &str) -> Result<bool, String> {
         let webview = self
             .state()

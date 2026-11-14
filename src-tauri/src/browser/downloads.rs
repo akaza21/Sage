@@ -205,8 +205,8 @@ impl DownloadRegistry {
         true
     }
 
-    /// Shows the name the file is (or was) actually saved under, which can
-    /// differ from the server's suggestion (user rename, ` (1)` suffix).
+    /// The saved name can differ from the server's suggestion (user rename,
+    /// ` (1)` suffix).
     pub(super) fn saved_as(&mut self, id: u64, path: &std::path::Path) -> bool {
         let Some(name) = path
             .file_name()
@@ -356,8 +356,6 @@ impl BrowserState {
         }
     }
 
-    /// The user took over the tab: what it opens next is the user's, so a
-    /// popup from it no longer joins the Agent's attachment.
     pub(super) fn user_took_over(&self, tab_id: &str) {
         if let Ok(mut downloads) = self.downloads.lock() {
             downloads.set_provenance(tab_id, NavigationProvenance::User);

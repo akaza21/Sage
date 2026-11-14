@@ -1,10 +1,3 @@
-//! Where a user download is saved. The first download asks through the native
-//! Save dialog and its folder becomes the saved download folder; later
-//! downloads save there without asking. The saved folder is re-admitted on
-//! every download (canonical, an existing directory, writable), so a folder
-//! that was moved, deleted or made read-only asks again. Programs, scripts and
-//! shortcuts always ask, even with a saved folder.
-//!
 //! Only Rust picks the folder: Settings opens a native folder picker through a
 //! main-webview command, and no command takes a path from the renderer, a
 //! page or the Agent.
@@ -28,13 +21,9 @@ const MAX_EXTENSION_BYTES: usize = 24;
 const MAX_SUFFIX: u32 = 99;
 const FALLBACK_NAME: &str = "download";
 
-/// What to do with a download that is about to start.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Plan {
-    /// Save here without asking; the placeholder is already reserved.
     Silent(Placeholder),
-    /// Show the Save dialog. `remember` saves the chosen folder as the
-    /// download folder; `directory` opens the dialog there.
     Ask {
         file_name: String,
         remember: bool,
@@ -52,12 +41,8 @@ pub(crate) fn plan(
     plan_before(stored, suggested, mime, taken, super::io::test_deadline())
 }
 
-/// Decides between saving silently and asking. `stored` is the saved
-/// download folder as Settings recorded it; `mime` is the server's content
-/// type; `taken` reports destinations already claimed by downloads still in
-/// flight. A `Silent` path has been reserved on disk (see
-/// [`unique_destination_before`]). This does file-system work, so it runs off the
-/// WebView2 UI thread.
+/// A `Silent` path has been reserved on disk. This does file-system work, so
+/// it runs off the WebView2 UI thread.
 pub(crate) fn plan_before(
     stored: Option<&Path>,
     suggested: &str,
@@ -91,21 +76,16 @@ pub(crate) fn plan_before(
     }
 }
 
-/// The folder of a path the user picked in the Save dialog, admitted for
-/// storage, or `None` when it cannot be a download folder.
 #[cfg(test)]
 pub(crate) fn folder_of_choice(chosen: &Path) -> Option<PathBuf> {
     admit_folder(chosen.parent()?)
 }
 
-/// Canonical form of an existing, writable directory, or `None`.
 #[cfg(test)]
 pub(crate) fn admit_folder(path: &Path) -> Option<PathBuf> {
     admit_folder_before(path, super::io::test_deadline())
 }
 
-/// Canonical form of an existing, writable directory with the caller's
-/// original deadline, including queue time. Stop between filesystem calls.
 pub(crate) fn admit_folder_before(path: &Path, deadline: Deadline) -> Option<PathBuf> {
     deadline.check().ok()?;
     if !path.is_absolute() {
@@ -165,10 +145,6 @@ fn is_writable(folder: &Path) -> bool {
     std::fs::metadata(folder).is_ok_and(|metadata| !metadata.permissions().readonly())
 }
 
-/// A single path component that is safe to create in the download folder:
-/// no separators, drive or stream colons, control, bidi or format
-/// characters, Windows device names, or trailing dots and spaces; bounded,
-/// keeping its extension.
 pub(crate) fn sanitize_file_name(suggested: &str) -> String {
     let base = suggested.rsplit(['/', '\\']).next().unwrap_or_default();
     let mut name: String = base
@@ -240,8 +216,7 @@ fn split_extension(name: &str) -> (&str, &str) {
     }
 }
 
-/// Candidate names shared by planning and atomic publication. Never leave
-/// the admitted folder, and keep each search bounded.
+/// Never leave the admitted folder, and keep each search bounded.
 pub(super) fn destination_candidates<'a>(
     folder: &'a Path,
     file_name: &'a str,
@@ -269,9 +244,8 @@ pub(crate) fn unique_destination(
     unique_destination_before(folder, file_name, taken, super::io::test_deadline())
 }
 
-/// Reserves the first available candidate with create_new, using the original
-/// planning deadline across all attempts. This is only a planning claim:
-/// publication claims the final name again atomically without replacement.
+/// This is only a planning claim: publication claims the final name again
+/// atomically without replacement.
 fn unique_destination_before(
     folder: &Path,
     file_name: &str,
@@ -302,8 +276,8 @@ fn unique_destination_with(
     None
 }
 
-/// Destinations of downloads still in flight, compared without case as on
-/// Windows and macOS file systems (a false match only costs a ` (n)`).
+/// Compared without case as on Windows and macOS file systems (a false match
+/// only costs a ` (n)`).
 #[derive(Debug, Default)]
 pub(crate) struct Claimed(Vec<String>);
 

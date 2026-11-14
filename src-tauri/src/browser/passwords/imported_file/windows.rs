@@ -57,7 +57,6 @@ fn mark_for_deletion(file: &File) -> io::Result<()> {
     }
 }
 
-/// The errors a volume or Windows version without POSIX deletion reports.
 fn posix_deletion_unsupported(error: &io::Error) -> bool {
     matches!(
         error.raw_os_error().map(|code| code as u32),

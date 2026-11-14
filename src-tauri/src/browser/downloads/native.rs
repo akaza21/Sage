@@ -34,8 +34,6 @@ struct PendingDownload {
     armed_at: Instant,
     app: AppHandle,
     tab_id: String,
-    /// Save the chosen file's folder as the download folder once it starts,
-    /// if the stored folder is still at this revision.
     remember: Option<i64>,
 }
 
@@ -43,7 +41,6 @@ thread_local! {
     // WebView2 interfaces are apartment-bound and must never enter BrowserState.
     static PENDING: RefCell<BTreeMap<u64, PendingDownload>> = const { RefCell::new(BTreeMap::new()) };
     static ACTIVE: RefCell<BTreeMap<u64, ICoreWebView2DownloadOperation>> = const { RefCell::new(BTreeMap::new()) };
-    // Public name claims and private destinations for silent saves.
     static RESERVED: RefCell<BTreeMap<u64, Reservation>> = const { RefCell::new(BTreeMap::new()) };
 }
 
@@ -279,8 +276,6 @@ fn complete_choice(app: &AppHandle, tab_id: &str, id: u64, path: Option<std::pat
     emit_views(app, tab_id);
 }
 
-/// Unstarted/canceled silent saves release their claim and private staging
-/// destination on its isolated destination lane.
 fn release_reserved(id: u64) {
     RESERVED.with_borrow_mut(|reserved| reserved.remove(&id));
 }

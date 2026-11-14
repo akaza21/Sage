@@ -49,10 +49,7 @@ fn a_navigation_started_after_a_revocation_is_the_one_whose_commit_clears_it() {
         "https://a.example/",
     );
     permissions.mark_stale(["browser-1"]);
-    // Navigation 3 was already loading when the Allow ended.
     assert!(!permissions.document_committed("browser-1", 3));
-    // The queued reload commits an error page (say a DNS failure): the old
-    // document is gone all the same.
     begin(
         &mut tabs,
         &mut permissions,
@@ -88,8 +85,6 @@ fn a_redirect_of_a_navigation_started_before_a_revocation_does_not_clear_it() {
     assert!(!started);
     assert!(!permissions.document_committed("browser-1", 3));
     assert!(permissions.is_stale("browser-1"));
-    // A navigation that really starts after the mark still clears it, and so
-    // does its own redirect's commit.
     begin(
         &mut tabs,
         &mut permissions,

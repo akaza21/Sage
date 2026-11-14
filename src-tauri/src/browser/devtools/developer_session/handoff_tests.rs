@@ -1,4 +1,3 @@
-//! Production slot admission and permission gates with a native session-ID fixture.
 use super::*;
 use crate::{
     acp::{
@@ -200,7 +199,6 @@ fn agent_evaluate_then_user_approval_and_reattach_reuse_the_same_tab_session() {
         user.developer_scope().with_live(TAB, || Ok(())),
         Err(BrowserFailure::Denied)
     );
-    // Re-approval cannot acquire a native session whose detach is outstanding.
     assert_eq!(
         evaluate(&user, &f.backend, true, None),
         Err(BrowserFailure::Unavailable)
@@ -225,7 +223,6 @@ fn outstanding_evaluation_finishes_on_its_original_grant_during_detach_handoff()
                 true,
                 Some(Box::new(move || {
                     let user = attach_user(&handoff);
-                    // Approval succeeds but the original command still owns the slot.
                     assert_eq!(
                         evaluate(&user, &in_flight, true, None),
                         Err(BrowserFailure::Unavailable)
@@ -309,7 +306,6 @@ fn original_command_cannot_consume_a_reapproved_grant_on_the_same_attachment() {
         Err(BrowserFailure::OutcomeUnknown)
     );
     assert!(f.agent.developer_granted("session-1", ORIGIN));
-    // The original guard must leave the replacement grant's command count alone.
     let command = f.agent.developer_command("session-1", ORIGIN).unwrap();
     assert!(command.is_live("session-1", ORIGIN));
     drop(command);

@@ -1,6 +1,3 @@
-//! Saved site answers: the settings store is written before memory changes,
-//! so a restart sees exactly what the user last chose.
-
 use super::*;
 
 fn attached(store: &SettingsStore) -> SitePermissions {
@@ -293,11 +290,9 @@ fn rows_that_no_longer_admit_are_deleted_on_load() {
 #[test]
 fn a_stale_tab_clears_only_when_a_navigation_started_after_the_mark_commits() {
     let mut permissions = SitePermissions::default();
-    // A navigation already under way when the Allow ends.
     permissions.mark_stale(["browser-1", "browser-2"]);
     assert!(permissions.is_stale("browser-1"));
     assert!(!permissions.document_committed("browser-3", 1));
-    // Its late commit proves nothing about the page that held the access.
     assert!(!permissions.document_committed("browser-1", 4));
     assert!(permissions.is_stale("browser-1"));
     permissions.navigation_started("browser-1", 5);
@@ -344,7 +339,6 @@ fn a_closing_tab_stays_stale_until_its_native_close_succeeds() {
     let mut permissions = SitePermissions::default();
     permissions.mark_stale(["browser-1"]);
     permissions.cancel_tab("browser-1");
-    // Cancel or DevTools detach can still fail and leave the page alive.
     assert!(permissions.is_stale("browser-1"));
     permissions.finish_close("browser-1");
     assert!(permissions.stale_tabs().is_empty());

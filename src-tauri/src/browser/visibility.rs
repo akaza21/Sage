@@ -1,6 +1,5 @@
-//! Per-webview placement intent, separate from Annotate's temporary freeze.
 //! Updated and checked on the main thread so a queued release cannot undo a
-//! tab switch or cover. Each tab owns one flag; no paths or history accumulate.
+//! tab switch or cover.
 
 use std::sync::{
     Arc,

@@ -31,7 +31,6 @@ const MAX_QUERY_BYTES: usize = 256;
 /// database connection and wipes the unwrapped key; the next use reopens it.
 pub(super) const IDLE_AFTER: Duration = Duration::from_secs(5 * 60);
 
-/// The Passwords page's view of the vault.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase", tag = "status")]
 pub(crate) enum PasswordsOverview {
@@ -39,8 +38,8 @@ pub(crate) enum PasswordsOverview {
     Unsupported,
 }
 
-/// Saved passwords for the whole app, opened on first use so startup never
-/// touches the vault or the OS key store.
+/// Opened on first use so startup never touches the vault or the OS key
+/// store.
 #[derive(Clone)]
 pub(crate) struct PasswordsState(Arc<Shared>);
 
@@ -48,17 +47,12 @@ struct Shared {
     directory: PathBuf,
     protector: Option<Arc<dyn KeyProtector>>,
     vault: Mutex<Option<OpenVault>>,
-    /// Whether a thread is waiting to close the vault once it goes idle.
     /// Changed only while `vault` is locked.
     idle_watch: AtomicBool,
-    /// The copied password whose clipboard clear is still due.
     clipboard: Arc<PendingClear>,
-    /// The timer that clears the latest copy.
     copy_expiry: Mutex<Option<(u64, JoinHandle<()>)>>,
-    /// The CSV the last import read, kept so the page can offer to delete it.
     imported_file: Mutex<Option<ImportedFile>>,
-    /// The running import's own cancel flag, if one is running. Only one
-    /// import runs at a time, so Cancel can never reach a later import.
+    /// Only one import runs at a time, so Cancel can never reach a later import.
     running_import: Mutex<Option<Arc<ImportStatus>>>,
 }
 
@@ -67,9 +61,8 @@ struct ImportStatus {
     committed: Mutex<bool>,
 }
 
-/// One admitted import, reserved before its file is chosen so a Cancel sent
-/// while the file dialog is open still reaches it. Dropping it, however the
-/// import ends, lets the next one in.
+/// Reserved before its file is chosen so a Cancel sent while the file dialog
+/// is open still reaches it.
 pub(super) struct ImportRun {
     state: PasswordsState,
     status: Arc<ImportStatus>,
@@ -80,8 +73,6 @@ impl ImportRun {
         self.status.cancelled.load(Ordering::Relaxed)
     }
 
-    /// Reads `file` and merges it into the vault in one transaction. Returns
-    /// the merge counts and how many rows could not be used.
     pub(super) fn import(&self, file: PathBuf) -> VaultResult<(MergeCounts, u32)> {
         let (opened, imported) = ImportedFile::open(file)?;
         let parsed = csv_import::read_file(opened, self)?;
@@ -122,7 +113,6 @@ impl Drop for ImportRun {
     }
 }
 
-/// The open vault and the lock that serializes its use across processes.
 struct OpenVault {
     lock: VaultLock,
     vault: Vault,
@@ -136,7 +126,6 @@ struct Vault {
 }
 
 impl Vault {
-    /// Forgets the cached key if the key file no longer holds it.
     fn drop_stale_key(&mut self) -> VaultResult<()> {
         if let Some(loaded) = &self.key
             && !self.key_file.still_holds(loaded)?
@@ -178,11 +167,9 @@ impl PasswordsState {
         self.0.protector.is_some()
     }
 
-    /// Runs `action` on the vault, opening it if it is closed, and keeps it
-    /// open until it has gone `IDLE_AFTER` without use. The action holds the
-    /// cross-process vault lock, and a cached key another Sage process has
-    /// since replaced or removed is dropped first, so the action never seals
-    /// or opens a password with a key the vault no longer uses.
+    /// The action holds the cross-process vault lock, and a cached key another
+    /// Sage process has since replaced or removed is dropped first, so the action
+    /// never seals or opens a password with a key the vault no longer uses.
     fn with_vault<T>(&self, action: impl FnOnce(&mut Vault) -> VaultResult<T>) -> VaultResult<T> {
         let mut guard = lock(&self.0.vault);
         let OpenVault {
@@ -214,8 +201,6 @@ impl PasswordsState {
         result
     }
 
-    /// Starts the thread that closes the vault once it goes idle. The thread
-    /// ends when it closes the vault, or when the app drops this state.
     fn watch_idle(&self) {
         let shared = Arc::downgrade(&self.0);
         let spawned = std::thread::Builder::new()
@@ -228,15 +213,11 @@ impl PasswordsState {
                 }
             });
         if let Err(error) = spawned {
-            // The vault then stays open until a later use starts the watch.
             self.0.idle_watch.store(false, Ordering::Relaxed);
             tracing::warn!(%error, "Saved passwords idle watch could not start");
         }
     }
 
-    /// Closes the vault if it has not been used for `IDLE_AFTER` at `now`.
-    /// Returns how long to wait before checking again, or `None` once the
-    /// vault is closed and nothing is left to watch.
     fn close_if_idle(&self, now: Instant) -> Option<Duration> {
         let mut vault = lock(&self.0.vault);
         let idle_for = vault
@@ -262,15 +243,12 @@ impl PasswordsState {
         lock(&self.0.vault).is_some()
     }
 
-    /// Where Copy registers the clear its clipboard write leaves due.
     pub(super) fn pending_clear(&self) -> Arc<PendingClear> {
         Arc::clone(&self.0.clipboard)
     }
 
-    /// Keeps one timer, for the latest copy: `task` clears copy `generation`
-    /// and replaces the timer of an earlier copy. Copies can finish out of
-    /// order, so a timer for a copy older than the current one is stopped
-    /// instead.
+    /// Copies can finish out of order, so a timer for a copy older than the
+    /// current one is stopped instead.
     pub(super) fn replace_copy_expiry(&self, generation: u64, task: JoinHandle<()>) {
         let mut expiry = lock(&self.0.copy_expiry);
         match expiry.as_ref() {
@@ -283,9 +261,8 @@ impl PasswordsState {
         }
     }
 
-    /// Clears a copied password whose 30 s clear has not run yet, if the
-    /// clipboard still holds it. Called as Sage quits; failures are logged
-    /// because no window is left to warn in.
+    /// Called as Sage quits; failures are logged because no window is left to
+    /// warn in.
     pub(crate) fn clear_clipboard_on_exit(&self) {
         if let Some((_, timer)) = lock(&self.0.copy_expiry).take() {
             timer.abort();
@@ -307,7 +284,6 @@ impl PasswordsState {
         self.with_vault(|vault| vault.store.page(query).map(PasswordsOverview::Ready))
     }
 
-    /// Admits one import; refuses while another is running.
     pub(super) fn begin_import(&self) -> VaultResult<ImportRun> {
         if !self.supported() {
             return Err(VaultError::Unsupported);
@@ -327,10 +303,9 @@ impl PasswordsState {
         })
     }
 
-    /// Captures this import before the cancellation worker is queued. Its
-    /// request can never reach a later import. True acknowledges rollback;
-    /// false means commit already won. A commit in progress is too late to
-    /// cancel, so this request never waits for a durable write.
+    /// True acknowledges rollback; false means commit already won. A commit in
+    /// progress is too late to cancel, so this request never waits for a durable
+    /// write.
     pub(super) fn cancel_import_request(&self) -> impl FnOnce() -> bool + Send + 'static + use<> {
         let status = lock(&self.0.running_import).clone();
         move || {
@@ -358,9 +333,6 @@ impl PasswordsState {
         self.cancel_import_request()()
     }
 
-    /// Deletes the CSV the last import read: it holds every password in
-    /// plain text. Only that one file can be deleted this way, and only while
-    /// it is still the file that import read.
     pub(crate) fn delete_imported_file(&self) -> VaultResult<()> {
         let mut imported = lock(&self.0.imported_file);
         imported
@@ -371,8 +343,8 @@ impl PasswordsState {
         Ok(())
     }
 
-    /// Checks that `id` exists and its key unwraps, so Reveal and Copy do not
-    /// ask the user to confirm for a password that cannot be read anyway.
+    /// Checked first so Reveal and Copy do not ask the user to confirm for a
+    /// password that cannot be read anyway.
     pub(crate) fn check_readable(&self, id: &str) -> VaultResult<()> {
         self.with_vault(|vault| {
             if !vault.store.contains(id)? {
@@ -417,8 +389,6 @@ impl PasswordsState {
         self.with_vault(|vault| vault.store.delete(id))
     }
 
-    /// Removes every saved password and the key that sealed them, so a vault
-    /// whose key was lost can start again.
     pub(crate) fn delete_all(&self) -> VaultResult<()> {
         self.with_vault(|vault| {
             vault.store.delete_all()?;
@@ -428,8 +398,8 @@ impl PasswordsState {
     }
 }
 
-/// The vault key, loaded once per run. A missing key is created only when
-/// `create` is set and no sealed row could depend on an older one.
+/// A missing key is created only when `create` is set and no sealed row could
+/// depend on an older one.
 fn unlocked<'a>(
     key: &'a mut Option<LoadedKey>,
     key_file: &KeyFile,

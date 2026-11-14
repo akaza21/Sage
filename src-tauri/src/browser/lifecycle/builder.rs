@@ -1,19 +1,14 @@
 use super::*;
 
-/// The WebView2 environment a popup tab must share with its opener. Other
-/// platforms never pass one.
 #[cfg(windows)]
 pub(in crate::browser) type TabEnvironment =
     webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Environment;
 #[cfg(not(windows))]
 pub(in crate::browser) type TabEnvironment = std::convert::Infallible;
 
-/// Creates one policed browser child of `main`: the inert `about:blank`, the
-/// browser profile and navigation admission. On Windows popups are decided
-/// by Sage's own `NewWindowRequested` handler (`popups::native`), so no
-/// `on_new_window` is set and wry only marks each request handled
-/// (wry-0.55.1/src/webview2/mod.rs:781-783). Elsewhere the deny-and-enqueue
-/// intent path stays as before.
+/// On Windows popups are decided by Sage's own `NewWindowRequested` handler
+/// (`popups::native`), so no `on_new_window` is set and wry only marks each
+/// request handled (wry-0.55.1/src/webview2/mod.rs:781-783).
 pub(super) fn create_tab_webview(
     app: &AppHandle,
     window: &tauri::Window,
@@ -57,8 +52,7 @@ pub(super) fn create_tab_webview(
         .map_err(|error| format!("browser child creation failed: {error}"))
 }
 
-/// Windows, main thread only: reserves a cap slot and creates the popup's
-/// tab in the opener's WebView2 environment through the shared `open_with`.
+/// Main thread only.
 #[cfg(windows)]
 pub(in crate::browser) fn open_popup_tab(
     app: &AppHandle,
@@ -73,7 +67,6 @@ pub(in crate::browser) fn open_popup_tab(
     Ok(label)
 }
 
-/// Native event hooks every browser tab gets, in a fixed order.
 pub(in crate::browser) async fn register_tab_hooks(
     app: &AppHandle,
     webview: &Webview,

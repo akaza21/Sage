@@ -1,8 +1,3 @@
-//! The user's Annotate mode: Chromium's own inspect overlay tracks the
-//! element under the pointer and Sage outlines it in that overlay. Nothing
-//! runs in the page; every step is a permitless read outside any Agent
-//! dispatch.
-//!
 //! The inspect highlight cannot draw a thin outline. `HighlightConfig` only
 //! fills the content, padding, border and margin boxes, and its one line
 //! (`containerQueryContainerHighlightConfig.containerBorder`) traces the
@@ -30,13 +25,11 @@ const BOX_MODEL_BYTES: usize = 16_384;
 /// The Annotate blue (`--chat-annotation-accent`, #3a83f7).
 const BLUE: (u8, u8, u8) = (58, 131, 247);
 
-/// Removes the hover outline.
 pub(crate) const HIDE_OUTLINE: (&str, &str) = ("Overlay.setShowHinge", "{}");
 
-/// Steps that leave inspect mode, in order. Each runs even if one before it
-/// failed, so the page never keeps a half-enabled overlay. The outline goes
-/// one round trip after hovering ends, so an outline still on its way from
-/// the last hover lands before it.
+/// Each step runs even if one before it failed, so the page never keeps a
+/// half-enabled overlay. The outline goes one round trip after hovering ends,
+/// so an outline still on its way from the last hover lands before it.
 const STOP: [(&str, &str); 5] = [
     (
         "Overlay.setInspectMode",
@@ -49,9 +42,8 @@ const STOP: [(&str, &str); 5] = [
 ];
 
 impl<T: CdpTransport> CdpPort<T> {
-    /// Turns on hover highlighting. The DOM agent gets the document node
-    /// first, without which Chromium cannot name the hovered element. A
-    /// failed step leaves inspect mode again.
+    /// The DOM agent gets the document node first, without which Chromium cannot
+    /// name the hovered element.
     pub(crate) fn start_inspect(&self) -> Result<(), BrowserFailure> {
         let started = [
             ("DOM.enable", "{}"),
@@ -67,18 +59,15 @@ impl<T: CdpTransport> CdpPort<T> {
         started
     }
 
-    /// Leaves inspect mode and clears any highlight; reports the first
-    /// failure after trying every step.
     pub(crate) fn stop_inspect(&self) -> Result<(), BrowserFailure> {
         STOP.into_iter()
             .map(|(method, params)| self.inspect_step(method, params))
             .fold(Ok(()), Result::and)
     }
 
-    /// Outlines the element an `Overlay.nodeHighlightRequested` event named,
-    /// or removes the outline when that element has no box. WebView2 runs
-    /// the same two steps from completion handlers in `devtools/picks.rs`,
-    /// so as not to block its main thread; this blocking form drives tests.
+    /// WebView2 runs the same two steps from completion handlers in
+    /// `devtools/picks.rs`, so as not to block its main thread; this blocking
+    /// form drives tests.
     #[cfg(test)]
     pub(crate) fn outline_hovered(&self, node_id: u64) -> Result<(), BrowserFailure> {
         let outline = self
@@ -105,8 +94,6 @@ fn rgba((r, g, b): (u8, u8, u8), a: f64) -> Value {
     json!({"r": r, "g": g, "b": b, "a": a})
 }
 
-/// `searchForNode` drawing nothing itself: no box fills, info tooltip,
-/// rulers or styles. It still takes the click and names the hovered element.
 pub(super) fn inspect_params() -> String {
     let clear = rgba((0, 0, 0), 0.0);
     json!({
@@ -126,7 +113,6 @@ pub(super) fn inspect_params() -> String {
     .to_string()
 }
 
-/// The element an `Overlay.nodeHighlightRequested` event names.
 pub(crate) fn hovered_node(payload: &str) -> Option<u64> {
     if payload.len() > RESULT_BYTES {
         return None;
@@ -140,11 +126,8 @@ pub(crate) fn box_model_params(node_id: u64) -> String {
     json!({"nodeId": node_id}).to_string()
 }
 
-/// The hinge outlining a `DOM.getBoxModel` result's border box; `None` for
-/// a missing, empty or malformed box. The box is in CSS px, while the hinge
-/// is drawn in unzoomed px, so the rectangle is scaled by the page `zoom`
-/// (1.0 at 100%). An inline element over several lines gets its bounding
-/// rectangle.
+/// The box is in CSS px, while the hinge is drawn in unzoomed px, so the
+/// rectangle is scaled by the page `zoom` (1.0 at 100%).
 pub(crate) fn outline_params(box_model: &str, zoom: f64) -> Option<String> {
     if box_model.len() > BOX_MODEL_BYTES || !zoom.is_finite() || !(0.25..=5.0).contains(&zoom) {
         return None;
@@ -290,7 +273,6 @@ mod tests {
         ] {
             assert_eq!(config[flag], false, "{flag}");
         }
-        // The inspect highlight tints nothing; the outline is Sage's.
         for fill in ["contentColor", "paddingColor", "borderColor", "marginColor"] {
             assert_eq!(config[fill]["a"], 0.0, "{fill}");
         }
@@ -356,7 +338,6 @@ mod tests {
 
     #[test]
     fn outline_params_bound_the_border_quad_and_refuse_bad_boxes() {
-        // A transformed box gets the rectangle around its quad.
         let skewed = r#"{"model":{"border":[10,20,110,25,105,60,5,55]}}"#;
         let hinge: Value = serde_json::from_str(&outline_params(skewed, 1.0).unwrap()).unwrap();
         assert_eq!(
@@ -381,7 +362,6 @@ mod tests {
 
     #[test]
     fn outline_params_scale_the_css_box_by_the_page_zoom() {
-        // At 150% page zoom a CSS-px box is drawn half again as far and as large.
         let hinge: Value = serde_json::from_str(&outline_params(BOX_MODEL, 1.5).unwrap()).unwrap();
         assert_eq!(
             hinge["hingeConfig"]["rect"],

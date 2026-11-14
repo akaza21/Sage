@@ -1,16 +1,6 @@
-//! The Agent's act marker, drawn by Chromium's overlay above the page: the
-//! target element is outlined and a small cursor dot sits at its centre. The
-//! page's main world runs nothing. The overlay keeps one highlight tool, so
-//! the dot is the overlay's separate hinge rectangle, which Chromium draws
-//! alongside a node highlight and which does not change the page's viewport
-//! segments. Annotate shares the same overlay (BP-M1a-b) and draws its hover
-//! outline with that one hinge (BP-H2, `inspect::HIDE_OUTLINE`). So while the
-//! tab annotates the marker is the outline alone: it neither draws nor
-//! clears the hinge, and its clear leaves the overlay and DOM domains on.
-//!
-//! The marker shows for `LEAD` before the act and is cleared once the act
-//! returns, so it is never left on the page, never scrolls out of place and
-//! never reaches a capture; captures clear it first as well.
+//! The overlay keeps one highlight tool, so the cursor dot is the overlay's
+//! separate hinge rectangle. Annotate draws its hover outline with that same
+//! hinge, so while the tab annotates the marker neither draws nor clears it.
 
 use serde_json::{Value, json};
 use std::time::Duration;
@@ -27,8 +17,6 @@ const STEP_TIMEOUT: Duration = Duration::from_secs(1);
 /// target first and can still take over.
 pub(super) const LEAD: Duration = Duration::from_millis(300);
 
-/// What removes the marker: after each act and before each capture, and on
-/// Stop, Take over, detach and navigation start.
 pub(in crate::browser::devtools) const CLEAR: [(&str, &str); 2] = [
     ("Overlay.hideHighlight", "{}"),
     ("Overlay.setShowHinge", "{}"),
@@ -39,9 +27,8 @@ pub(in crate::browser::devtools) const CLEAR: [(&str, &str); 2] = [
 pub(in crate::browser::devtools) const DISABLE: [(&str, &str); 2] =
     [("Overlay.disable", "{}"), ("DOM.disable", "{}")];
 
-/// Draws the marker; true when the outline is on the page. Best effort: it
-/// sends nothing once the permit is stopped, and every step is permitless,
-/// so it can neither revoke the permit nor fail the act.
+/// Best effort: every step is permitless, so it can neither revoke the permit
+/// nor fail the act.
 pub(in crate::browser::devtools) fn mark<T: CdpTransport>(
     port: &CdpPort<T>,
     stamp: DocumentStamp,
@@ -75,12 +62,9 @@ pub(in crate::browser::devtools) fn mark<T: CdpTransport>(
     true
 }
 
-/// Removes the marker and turns the overlay and DOM domains off again.
 /// While this tab annotates the hinge is Annotate's hover outline, so only
-/// the outline goes. The domains are turned off only when no Annotate
-/// change is under way on any tab, since a start enables them; Annotate
-/// busy elsewhere never leaves the cursor dot on this page. Every step runs
-/// even if one before it failed.
+/// the outline goes. The domains are turned off only when no Annotate change
+/// is under way on any tab, since a start enables them.
 pub(in crate::browser::devtools) fn clear<T: CdpTransport>(transport: &T) {
     let send = |(method, params): (&str, &str)| {
         let _ = transport.observe(method, params, 4096, STEP_TIMEOUT);
@@ -126,8 +110,6 @@ fn cursor_params(x: f64, y: f64) -> String {
     .to_string()
 }
 
-/// The centre of the border quad of a `DOM.getBoxModel` answer, in viewport
-/// CSS pixels.
 fn border_centre(model: &str) -> Option<(f64, f64)> {
     let model: Value = serde_json::from_str(model).ok()?;
     let quad = model["model"]["border"].as_array()?;

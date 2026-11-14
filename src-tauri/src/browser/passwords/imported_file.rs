@@ -18,7 +18,6 @@ mod windows;
 #[cfg(windows)]
 use windows::delete_if_same;
 
-/// The file the last import read, as it was when the import read it.
 pub(super) struct ImportedFile {
     path: PathBuf,
     identity: FileIdentity,
@@ -34,13 +33,10 @@ impl ImportedFile {
         Ok((file, Self { path, identity }))
     }
 
-    /// Deletes the file if its name still leads to the file the import read,
-    /// unchanged. Otherwise refuses and leaves whatever is there in place.
     pub(super) fn delete(&self) -> VaultResult<()> {
         delete_if_same(&self.path, |file| self.check(file))
     }
 
-    /// Whether the open `file` is the file the import read, unchanged.
     fn check(&self, file: &File) -> VaultResult<()> {
         if FileIdentity::of(file)? == self.identity {
             Ok(())

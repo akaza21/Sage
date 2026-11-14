@@ -1,8 +1,3 @@
-//! Developer mode (ADR-0009b) through the real dispatcher: a raw CDP command
-//! reaches the page and its result reaches the Agent redacted and capped.
-//! The gate's grant and deny list are covered by the permission tests; here
-//! the command is already admitted.
-
 use std::time::{Duration, Instant};
 
 use serde_json::{Map, Value, json};
@@ -231,8 +226,6 @@ fn wait_for_releases(lane: &mut Lane, count: usize) {
 #[test]
 fn a_late_evaluation_answer_still_releases_its_objects() {
     let mut lane = Lane::open("/form.html");
-    // A late result, then a late exception, each in developer mode's group;
-    // the control's object, in another group, stays pinned.
     evaluate_past_its_timeout(&mut lane, "kept-by-test", "__kept");
     evaluate_past_its_timeout(&mut lane, DEVELOPER_OBJECT_GROUP, "__result");
     evaluate_past_its_timeout(&mut lane, DEVELOPER_OBJECT_GROUP, "__thrown");

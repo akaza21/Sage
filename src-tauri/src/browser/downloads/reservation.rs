@@ -162,7 +162,6 @@ impl Reservation {
         )
     }
 
-    /// The download finished writing here: close the handle, keep the file.
     #[cfg(test)]
     pub(crate) fn keep(mut self) {
         if let Some(placeholder) = self.placeholder.take() {
@@ -369,7 +368,6 @@ mod tests {
                 "report.txt",
             );
             assert!(reservation.handoff());
-            // Preserve a collision introduced after planning as well.
             std::fs::write(reservation.path(), b"another application's data").unwrap();
             std::fs::write(reservation.writer_path(), b"downloaded bytes").unwrap();
             let published = reservation.publish().unwrap();
@@ -441,7 +439,6 @@ mod tests {
             "report.txt",
         );
         assert!(reservation.handoff());
-        // Another process takes the public name while the UI resume is queued.
         std::fs::write(&final_path, b"another application's data").unwrap();
         // Model WebView2: CREATE_ALWAYS/truncate, not create_new. It may also
         // keep exclusive write/delete sharing until completion.

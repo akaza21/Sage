@@ -29,7 +29,6 @@ fn each_newly_committed_page_is_one_visit_named_by_its_title() {
     assert!(tabs.start_navigation("browser-1", 1, "https://a.example/"));
     assert!(tabs.finish_navigation("browser-1", 1, Some("https://a.example/")));
     assert!(tabs.set_document_title("browser-1", "https://a.example/", "Alpha"));
-    // A reload commits the same URL again: not a new visit.
     assert!(tabs.start_navigation("browser-1", 2, "https://a.example/"));
     assert!(tabs.finish_navigation("browser-1", 2, Some("https://a.example/")));
     assert!(tabs.set_document_title("browser-1", "https://a.example/", "Alpha"));
@@ -56,8 +55,6 @@ fn a_same_document_change_keeps_the_page_title_and_folds_into_a_fresh_visit() {
         "https://a.example/"
     );
     assert!(tabs.source_changed("browser-1", "https://a.example/"));
-    // Both changes land seconds after the visit, so they move it rather
-    // than add rows; the title stays with it.
     assert_eq!(
         visits(&history),
         [visit("https://a.example/", Some("Alpha"))]
@@ -109,7 +106,6 @@ fn a_same_document_change_adopted_when_a_navigation_is_abandoned_moves_the_visit
 
 #[test]
 fn a_failed_load_that_moved_the_screen_is_not_a_visit() {
-    // A certificate interstitial, say: no commit evidence, Source() moved.
     let (mut tabs, history) = recorded_tab();
     assert!(tabs.start_navigation("browser-1", 1, "https://bank.example/"));
     assert!(tabs.finish_navigation("browser-1", 1, Some("https://bank.example/")));
@@ -173,7 +169,6 @@ fn a_page_whose_visit_was_dropped_never_renames_or_moves_the_previous_one() {
     tabs.entries.get_mut("browser-1").unwrap().visited_url = None;
     assert!(tabs.set_document_title("browser-1", "https://b.example/", "Bravo"));
     assert!(tabs.source_changed("browser-1", "https://b.example/#more"));
-    // A reload of the moved page is not a visit again.
     assert!(tabs.start_navigation("browser-1", 3, "https://b.example/#more"));
     assert!(tabs.finish_navigation("browser-1", 3, Some("https://b.example/#more")));
     assert_eq!(

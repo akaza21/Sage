@@ -1,7 +1,6 @@
 //! Security item S8: every Agent script runs in an isolated world, never the
-//! page's main world, so page code cannot replace the globals or prototypes the
-//! script uses or read the values it handles. The page still sees the DOM
-//! effects and events of an Agent action, so it can tell that something acted.
+//! page's main world, so page code cannot replace the globals or prototypes
+//! the script uses or read the values it handles.
 
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -18,11 +17,8 @@ const WORLD_NAME: &str = "sage-agent";
 /// One target's info: a URL of at most 2 MiB and a title of at most 4,096
 /// characters, as Chromium caps them, with room for JSON escapes.
 const TARGET_INFO_BYTES: usize = 3 * 1_048_576;
-/// The whole frame tree, read only where target info is refused.
 const FRAME_TREE_BYTES: usize = 16 * 1_048_576;
 
-/// The main frame's id and the isolated world's execution context for the
-/// last navigation it was made in, shared by every clone of a port.
 #[derive(Clone, Default)]
 pub(crate) struct AgentWorld(Arc<Mutex<WorldCache>>);
 
@@ -30,12 +26,10 @@ pub(crate) struct AgentWorld(Arc<Mutex<WorldCache>>);
 struct WorldCache {
     frame_id: Option<String>,
     target_info_refused: bool,
-    /// The navigation whose refused world last cleared the frame id.
     reread_navigation: Option<u64>,
     context: Option<(u64, u64)>,
 }
 
-/// The time left before `deadline`; a spent budget issues nothing more.
 pub(super) fn left(deadline: Instant) -> Result<Duration, BrowserFailure> {
     let left = deadline.saturating_duration_since(Instant::now());
     if left.is_zero() {
@@ -45,16 +39,9 @@ pub(super) fn left(deadline: Instant) -> Result<Duration, BrowserFailure> {
 }
 
 impl<T: CdpTransport> CdpPort<T> {
-    /// Runs `script` with the isolated world's context id and the time left.
     /// `navigation` names the document by navigation id, so title or favicon
-    /// changes keep the world; the world is made once per navigation and again
-    /// when its cached context is gone. A `read_only` caller (a wait probe or
-    /// a page-context read) makes and checks the world without the dispatch
-    /// permit. `None` means the page is loading and has no stamp: every step
-    /// is a permitless read, the cached world is left as it is, and while
-    /// that world of the outgoing document still answers this fails with
-    /// `StaleHandle`; otherwise a world is made for the incoming document and
-    /// not kept.
+    /// changes keep the world. `None` means the page is loading and has no stamp:
+    /// every step is a permitless read and the cached world is left as it is.
     pub(super) fn in_agent_world<R>(
         &self,
         navigation: Option<u64>,
@@ -86,8 +73,6 @@ impl<T: CdpTransport> CdpPort<T> {
         script(context, left(deadline)?)
     }
 
-    /// Evaluates `expression` in the isolated world and returns its value.
-    /// Every step is a permitless read.
     pub(super) fn evaluate_in_agent_world(
         &self,
         navigation: Option<u64>,
@@ -159,9 +144,8 @@ impl<T: CdpTransport> CdpPort<T> {
         }
     }
 
-    /// The main frame's id and whether it came from the cache. It equals the
-    /// page target's id and outlives navigations, so it is read once per port,
-    /// from the bounded target info where the transport allows it.
+    /// The main frame's id equals the page target's id and outlives navigations,
+    /// so it is read once per port.
     fn main_frame_id(
         &self,
         read_only: bool,
@@ -248,8 +232,6 @@ impl<T: CdpTransport> CdpPort<T> {
         Ok(context)
     }
 
-    /// Clears the cached frame id for a re-read, unless `navigation` already
-    /// had one.
     fn claim_reread(&self, navigation: Option<u64>) -> Result<bool, BrowserFailure> {
         let mut cache = self.cache()?;
         if cache.reread_navigation == navigation {
@@ -309,13 +291,11 @@ mod tests {
         capability::DevtoolsPort, snapshot::DocumentStamp, transport::Settled,
     };
 
-    /// A page whose isolated world answers only while its context is live.
     #[derive(Default)]
     struct Page {
         stamp: Mutex<DocumentStamp>,
         frame_id: Mutex<&'static str>,
         live_context: Mutex<u64>,
-        /// Every command, and whether it went with the dispatch permit.
         log: Mutex<Vec<(bool, String)>>,
         navigate_while_making_world: bool,
         refuse_target_info: bool,
@@ -432,11 +412,9 @@ mod tests {
     fn world_is_made_once_per_navigation_and_again_when_its_context_dies() {
         let port = CdpPort::new(Page::new());
         assert_eq!(probe(&port), Ok(json!(true)));
-        // A title or favicon change moves only the generation.
         port.transport.stamp.lock().unwrap().generation += 1;
         assert_eq!(probe(&port), Ok(json!(true)));
         assert_eq!(worlds(&port), 1);
-        // The document went away before its stamp moved.
         *port.transport.live_context.lock().unwrap() = 0;
         assert_eq!(probe(&port), Ok(json!(true)));
         assert_eq!(worlds(&port), 2);
@@ -470,19 +448,16 @@ mod tests {
         assert_eq!(probe(&port), Ok(json!(true)));
         assert_eq!(worlds(&port), 3);
         assert_eq!(port.transport.calls("Target.getTargetInfo"), 2);
-        // A world the fresh id cannot make either is tried only once more.
         port.transport.refuse_worlds.store(true, Ordering::SeqCst);
         port.transport.stamp.lock().unwrap().navigation_id += 1;
         assert_eq!(probe(&port), Err(BrowserFailure::Unavailable));
         assert_eq!(worlds(&port), 5);
         assert_eq!(port.transport.calls("Target.getTargetInfo"), 3);
-        // Not again for the same navigation, nor while the page loads.
         assert_eq!(probe(&port), Err(BrowserFailure::Unavailable));
         *port.transport.live_context.lock().unwrap() = 0;
         port.transport.loading.store(true, Ordering::SeqCst);
         let condition = WaitCondition::Text { text: "x".into() };
         let mut port = port;
-        // A refusal while loading is retried by the next probe.
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(false));
         assert_eq!(worlds(&port), 7);
         assert_eq!(port.transport.calls("Target.getTargetInfo"), 3);
@@ -537,10 +512,8 @@ mod tests {
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(true));
         let cached = port.world.0.lock().unwrap().context;
         port.transport.loading.store(true, Ordering::SeqCst);
-        // The frame still shows the outgoing document the Agent scripted.
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(false));
         assert_eq!(worlds(&port), 1);
-        // The incoming document committed while the stamp is still missing.
         *port.transport.live_context.lock().unwrap() = 0;
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(true));
         assert_eq!(port.matches(&condition, Duration::from_secs(1)), Ok(true));
@@ -556,18 +529,14 @@ mod tests {
         });
         let condition = WaitCondition::Text { text: "x".into() };
         let wait = |port: &mut CdpPort<Page>| port.matches(&condition, Duration::from_secs(1));
-        // A fresh world, then the cached one, and the page-context read.
         assert_eq!(wait(&mut port), Ok(true));
         assert_eq!(wait(&mut port), Ok(true));
         assert_eq!(probe(&port), Ok(json!(true)));
-        // The cached world's document went away before the stamp moved.
         *port.transport.live_context.lock().unwrap() = 0;
         assert_eq!(wait(&mut port), Ok(true));
-        // A swapped page target needs its frame id read again.
         *port.transport.frame_id.lock().unwrap() = "swapped";
         port.transport.stamp.lock().unwrap().navigation_id += 1;
         assert_eq!(wait(&mut port), Ok(true));
-        // The page is loading, on the outgoing and then the incoming document.
         port.transport.loading.store(true, Ordering::SeqCst);
         assert_eq!(wait(&mut port), Ok(false));
         *port.transport.live_context.lock().unwrap() = 0;
@@ -575,7 +544,6 @@ mod tests {
         assert_eq!(worlds(&port), 5);
         assert_eq!(port.transport.calls("Page.getFrameTree"), 2);
         assert_eq!(port.transport.permitted(), 0);
-        // An action on a new document still makes its world with the permit.
         port.transport.loading.store(false, Ordering::SeqCst);
         port.transport.stamp.lock().unwrap().navigation_id += 1;
         let navigation = port.stamp().unwrap().navigation_id;

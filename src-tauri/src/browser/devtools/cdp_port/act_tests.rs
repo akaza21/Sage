@@ -1,8 +1,3 @@
-//! The act marker is best effort: it rides the permitless path, so a marker
-//! step that times out after it was issued can never revoke the Agent's
-//! permit (`cdp.rs` revokes only on the permitted path), and it never blocks
-//! or fails the act it marks.
-
 use serde_json::json;
 use std::{
     sync::{
@@ -25,13 +20,10 @@ const STAMP: DocumentStamp = DocumentStamp {
 
 #[derive(Default)]
 struct Page {
-    /// Every command, with whether it rode the dispatch permit.
     log: Mutex<Vec<(bool, String)>>,
-    /// Every marker step times out after it was issued.
     marker_times_out: bool,
     stopped: AtomicBool,
     annotating: bool,
-    /// Annotate is changing on some tab: the mode lock is busy.
     annotate_busy: bool,
 }
 
@@ -128,8 +120,6 @@ fn a_marker_that_times_out_never_rides_the_permit_and_the_act_still_runs() {
             "Input.dispatchKeyEvent"
         ]
     );
-    // The first marker step failed, so the marker was cleared at once and
-    // the act ran without waiting for it.
     assert_eq!(
         port.transport.sent(false),
         [
@@ -175,8 +165,6 @@ fn while_the_tab_annotates_the_marker_leaves_annotates_outline_and_overlay_alone
         annotating: true,
         ..Page::default()
     });
-    // The hinge is Annotate's hover outline (BP-H2): the marker neither
-    // draws nor clears it, and the inspect overlay keeps both domains on.
     assert_eq!(
         port.transport.sent(false),
         [MARK[0], MARK[1], MARK[2], "Overlay.hideHighlight"]

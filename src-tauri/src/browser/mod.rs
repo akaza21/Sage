@@ -78,7 +78,6 @@ pub(crate) struct BrowserState {
     annotate: annotate::Annotate,
     clearing_data: AtomicBool,
     browsing_history: browsing_history::BrowsingHistory,
-    /// Device toolbar updates apply one at a time across tabs.
     #[cfg_attr(not(windows), allow(dead_code))]
     device_updates: Mutex<()>,
 }
@@ -131,9 +130,6 @@ struct BrowserTab<T> {
     revision: u64,
     document_revision: u64,
     committed_url: Option<String>,
-    /// The URL of this tab's latest visit queued to the browsing history,
-    /// which its later titles and same-document changes name; `None` when
-    /// none was queued, as when a full queue dropped it.
     visited_url: Option<String>,
     history: BrowserHistory,
     fallback_url: Option<String>,

@@ -269,8 +269,6 @@ pub(crate) async fn browser_clear_data(
     Ok(result)
 }
 
-/// A pending clear's final outcome: the profile cleared but history did
-/// not is not a success.
 #[cfg(windows)]
 fn pending_outcome(
     profile: Result<(), String>,
@@ -279,8 +277,6 @@ fn pending_outcome(
     profile.and(history_error.map_or(Ok(()), Err))
 }
 
-/// Adds a history failure to the result. Browsing data is not cleared
-/// while its history remains, so the clear no longer reports success.
 fn append_error(result: &mut ClearBrowsingDataResult, error: Option<String>) {
     if let Some(error) = error {
         result.cleared = false;

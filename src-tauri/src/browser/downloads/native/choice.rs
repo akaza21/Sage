@@ -17,8 +17,8 @@ use crate::{
     state::AppState,
 };
 
-/// What to do with a download, decided on an isolated probe. A silent save's
-/// placeholder is owned by its [`Reservation`] from the moment it exists.
+/// A silent save's placeholder is owned by its [`Reservation`] from the moment
+/// it exists.
 pub(super) enum Step {
     Silent(Reservation),
     Ask {
@@ -28,14 +28,12 @@ pub(super) enum Step {
     },
 }
 
-/// A step and the folder revision it was decided against.
 pub(super) struct Planned {
     pub(super) step: Step,
     pub(super) revision: i64,
 }
 
-/// A snapshot for isolated filesystem planning. The registry lock is held
-/// only while copying claimed paths.
+/// The registry lock is held only while copying claimed paths.
 pub(super) struct Request {
     record: Option<DownloadFolderRecord>,
     claimed: folder::Claimed,
@@ -140,7 +138,6 @@ impl Planned {
     }
 }
 
-/// Snapshot durable settings and claimed paths without any folder I/O.
 pub(super) fn prepare_download(
     app: &AppHandle,
     suggested: String,
@@ -160,9 +157,8 @@ pub(super) fn prepare_download(
     Request::new(record, claimed, suggested, mime)
 }
 
-/// The first download's folder becomes the saved download folder, unless
-/// the folder changed (Settings) since the download read it. The folder
-/// admission uses the bounded settings probe, away from publication.
+/// The folder admission uses the bounded settings probe, away from
+/// publication.
 pub(super) fn remember_choice(app: &AppHandle, revision: i64, chosen: &Path) {
     let app = app.clone();
     let chosen = chosen.to_owned();

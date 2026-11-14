@@ -1,7 +1,3 @@
-//! Platform-neutral rules for popups that keep `window.opener` (S1, Option C).
-//!
-//! The Windows `NewWindowRequested` glue in `native.rs` only asks these
-//! questions; every policy decision lives here so it is unit-tested on Linux.
 // Only the Windows glue calls the native-popup path; tests cover it everywhere.
 #![cfg_attr(not(windows), allow(dead_code))]
 
@@ -34,8 +30,7 @@ pub(super) fn native_popup_target<T>(
 }
 
 impl PopupRequests {
-    /// Reserves a bounded, opener-linked entry for a native popup. The entry
-    /// is hidden from replay until the child tab exists.
+    /// The entry is hidden from replay until the child tab exists.
     pub(crate) fn reserve_native<T>(
         &mut self,
         tabs: &BrowserTabs<T>,
@@ -46,10 +41,6 @@ impl PopupRequests {
         self.insert(opener, url, PopupState::NativeOpening)
     }
 
-    /// Records the created child as an `Opened` popup, so the tab cap,
-    /// `take_for_opener` teardown and the chrome's replay/ack all cover it.
-    /// Returns false when the opener closed (or the entry was dropped) first.
-    /// `now` starts the acknowledgement deadline.
     pub(crate) fn native_opened(&mut self, id: u64, tab_id: &str, now: Instant) -> bool {
         let Some((intent, state)) = self.entries.get_mut(&id) else {
             return false;
@@ -69,9 +60,8 @@ impl PopupRequests {
         true
     }
 
-    /// Native children still `Opened` (never acknowledged or abandoned) at
-    /// their deadline. Each is quarantined like `take_for_opener`; the caller
-    /// closes the tab and then calls `finish_cleanup`.
+    /// Each is quarantined like `take_for_opener`; the caller closes the tab and
+    /// then calls `finish_cleanup`.
     pub(crate) fn take_expired_native(&mut self, now: Instant) -> Vec<(u64, String)> {
         let mut expired = Vec::new();
         let deadlines = std::mem::take(&mut self.native_deadlines);
@@ -93,7 +83,6 @@ impl PopupRequests {
         expired
     }
 
-    /// Drops a native popup whose creation failed before a child existed.
     pub(crate) fn native_failed(&mut self, id: u64) {
         if self
             .entries
@@ -104,16 +93,12 @@ impl PopupRequests {
         }
     }
 
-    /// Navigation admission for a browser tab. HTTP(S) per `admit_url`; the
-    /// exact `about:blank` only for a native opener-linked child that has not
-    /// yet started any other navigation. Any other attempt spends the grant,
-    /// and a denied one abandons the child, which never had a page to show:
-    /// a `blob:`, `file:` or custom-scheme first navigation. On WebView2 a
-    /// `javascript:` popup is not abandoned: it arrives as an `about:blank`
-    /// request and no navigation fires for its `javascript:` URL, so its
-    /// script runs in the blank child with the opener's origin, as in Chrome.
-    /// That gains nothing the opener lacks (it could `window.open('')` and
-    /// script the child itself), and the child stays a policed Sage tab.
+    /// Any attempt other than HTTP(S) or the exact initial `about:blank` spends
+    /// the grant. On WebView2 a `javascript:` popup is not abandoned: it arrives
+    /// as an `about:blank` request and no navigation fires for its `javascript:`
+    /// URL, so its script runs in the blank child with the opener's origin, as in
+    /// Chrome. That gains nothing the opener lacks (it could `window.open('')`
+    /// and script the child itself), and the child stays a policed Sage tab.
     pub(crate) fn admit_navigation(&mut self, tab_id: &str, uri: &str) -> NavigationVerdict {
         if uri == INITIAL_BLANK && self.initial_blank.contains(tab_id) {
             return NavigationVerdict::Admit;
@@ -127,24 +112,18 @@ impl PopupRequests {
     }
 }
 
-/// What `admit_navigation` decided for one navigation.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum NavigationVerdict {
     Admit,
     Deny,
-    /// Deny, and close the blank popup child that asked: its one-shot blank
-    /// grant was spent on a refused URL.
     Abandon,
 }
 
-/// Native lane only: how many navigations `navigation_admitted` abandoned.
 #[cfg(feature = "native-lane")]
 pub(crate) static ABANDONED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 
-/// `admit_navigation` against the live browser state; fails closed to plain
-/// `admit_url` if the popup registry is unavailable. An abandoned child is
-/// closed off the WebView2 callback, which frees its tab-cap slot and drops
-/// its popup entry (`close_browser_tab` forgets the child).
+/// Fails closed to plain `admit_url` if the popup registry is unavailable. An
+/// abandoned child is closed off the WebView2 callback.
 pub(crate) fn navigation_admitted(app: &AppHandle, tab_id: &str, uri: &str) -> bool {
     let verdict = match app.state::<BrowserState>().popups.lock() {
         Ok(mut popups) => popups.admit_navigation(tab_id, uri),
@@ -182,8 +161,6 @@ pub(crate) fn emit_popup_intent(app: &AppHandle, id: u64) {
     }
 }
 
-/// The deny-and-enqueue intent path: the chrome opens an admitted target as
-/// a fresh tab without `window.opener`. Returns false when nothing was queued.
 pub(crate) fn enqueue_intent(app: &AppHandle, opener: &str, requested: &Url) -> bool {
     let browser = app.state::<BrowserState>();
     let intent = browser.tabs.lock().ok().and_then(|tabs| {

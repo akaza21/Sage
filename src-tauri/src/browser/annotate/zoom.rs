@@ -1,10 +1,5 @@
-//! Annotate across a page zoom and a toolbar popover (BP-H2b). As in Codex,
-//! neither ends the mode. A popover such as the "…" menu or the downloads
-//! list covers the page, which is a native window above Sage's DOM, so the
-//! page hides while it is open; nothing can be picked meanwhile, and hovering
-//! resumes once the page is placed again. A zoom moves every element, so the
-//! outline drawn before it goes, and an element waiting for a comment is
-//! dropped, as its frozen frame and outline no longer match the page.
+//! A popover covers the page, which is a native window above Sage's DOM, so
+//! the page hides while it is open.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -15,7 +10,6 @@ use super::{
     emit, tab_number,
 };
 
-/// Clears `copy` if it names `label`'s tab.
 fn clear(copy: &AtomicU64, label: &str) {
     if let Some(number) = tab_number(label) {
         let _ = copy.compare_exchange(number, 0, Ordering::AcqRel, Ordering::Acquire);
@@ -23,10 +17,6 @@ fn clear(copy: &AtomicU64, label: &str) {
 }
 
 impl Annotate {
-    /// Hides `label`'s page: a covering popover keeps Annotate on and is
-    /// remembered until the page is placed again; any other hide forgets the
-    /// cover and answers how Annotate leaves. Either way a show that a frozen
-    /// page put off no longer applies.
     pub(crate) fn hiding(&self, label: &str, cover: bool) -> Option<Exit> {
         clear(&self.deferred, label);
         if cover {
@@ -39,10 +29,7 @@ impl Annotate {
         }
     }
 
-    /// `label`'s page was placed again, so no popover covers it. Answers
-    /// whether to show it: a frozen page stays hidden, and the show is put
-    /// off until a zoom unfreezes it. Lock-free, as placing runs on the main
-    /// thread.
+    /// Lock-free, as placing runs on the main thread.
     pub(crate) fn placed(&self, label: &str) -> bool {
         clear(&self.covered, label);
         if self.is_frozen(label) {
@@ -55,7 +42,6 @@ impl Annotate {
         }
     }
 
-    /// Whether a popover covers `label`'s page.
     pub(crate) fn is_covered(&self, label: &str) -> bool {
         tab_number(label).is_some_and(|number| self.covered.load(Ordering::Acquire) == number)
     }
@@ -73,13 +59,11 @@ impl Annotate {
                 .is_ok()
     }
 
-    /// Queues a zoom step; false when one already waits, which will see this
-    /// zoom too. Ctrl+wheel raises a zoom per tick.
+    /// False when a zoom step already waits; it will see this zoom too.
     pub(super) fn queue_zoom(&self) -> bool {
         !self.zoom_queued.swap(true, Ordering::AcqRel)
     }
 
-    /// `label`'s page zoom changed; release any waiting selection.
     pub(super) fn zoomed(
         &self,
         overlay: &impl InspectOverlay,
@@ -96,10 +80,6 @@ impl Annotate {
 }
 
 impl AnnotateMode {
-    /// Keeps Annotate on through a zoom. A waiting element is dropped and
-    /// hovering resumes; the page shows again unless a popover covers it, in
-    /// which case placing it shows it. Otherwise the last outline goes, and
-    /// the next hover draws one at the new zoom.
     pub(super) fn zoomed(
         &mut self,
         overlay: &impl InspectOverlay,
@@ -120,10 +100,8 @@ impl AnnotateMode {
     }
 }
 
-/// Keeps Annotate on `label` through a page zoom from any source: the "…"
-/// menu, a shortcut, Ctrl+wheel or a reset. Runs on its own thread, as the
-/// zoom event arrives on the main thread that the overlay needs; at most one
-/// such thread runs and one waits.
+/// Runs on its own thread, as the zoom event arrives on the main thread that
+/// the overlay needs; at most one such thread runs and one waits.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn zoomed(app: &AppHandle, label: &str) {
     if !app.state::<BrowserState>().annotate.queue_zoom() {

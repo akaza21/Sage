@@ -91,8 +91,6 @@ fn slow_reservation_conflicts_stop_at_the_deadline_and_release_admission() {
         io::ErrorKind::TimedOut,
     );
     let selected = work_done.recv_timeout(Duration::from_secs(5)).unwrap();
-    // Download admission must become reusable when the expired OS call
-    // returns, without starting another reservation or retaining the lease.
     let limit = Instant::now() + Duration::from_secs(2);
     let next = loop {
         if let Some(next) = executor.acquire(&folder.0) {
@@ -109,9 +107,6 @@ fn slow_reservation_conflicts_stop_at_the_deadline_and_release_admission() {
     assert!(!folder.0.join("report (1).txt").exists());
 }
 
-/// One download through the same steps the WebView2 handler takes: plan
-/// against the stored folder, record the destination in the registry, and
-/// remember the folder when the plan asked to.
 async fn download(
     store: &SettingsStore,
     registry: &mut DownloadRegistry,
@@ -207,7 +202,6 @@ async fn a_silent_save_never_overwrites_an_existing_file_or_an_in_flight_downloa
 
     let (first, _) = download(&store, &mut registry, "data.csv", None).await;
     assert_eq!(silent_path(&first), Some(folder.0.join("data (1).csv")));
-    // The first is still downloading; the next one takes the next number.
     let (second, _) = download(&store, &mut registry, "data.csv", None).await;
     assert_eq!(silent_path(&second), Some(folder.0.join("data (2).csv")));
     assert_eq!(
@@ -284,8 +278,6 @@ async fn dangerous_types_always_ask_and_keep_the_saved_folder() {
         store.browser_download_folder_record().unwrap().path,
         Some(saved.0.clone())
     );
-    // A stream colon cannot reach the file system, so the name is no
-    // longer an executable.
     assert_eq!(
         silent_path(&plan(Some(&saved.0), "stream.exe:zone", None, free)),
         Some(saved.0.join("stream.exe_zone"))
@@ -435,7 +427,6 @@ fn a_silent_save_reserves_its_name_on_disk() {
         panic!("asked");
     };
     assert_eq!(std::fs::metadata(&first.path).unwrap().len(), 0);
-    // Without any registry claim, the reservation alone moves the next one on.
     let Plan::Silent(second) = plan(Some(&folder.0), "a.txt", None, free) else {
         panic!("asked");
     };

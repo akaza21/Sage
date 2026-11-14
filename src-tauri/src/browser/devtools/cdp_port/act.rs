@@ -1,7 +1,3 @@
-//! Agent acts. The target is marked before the action runs, so the user sees
-//! what the Agent is about to click, type into or scroll, and the marker is
-//! cleared once the action returns.
-
 use serde_json::{Value, json};
 use std::time::{Duration, Instant};
 
@@ -115,9 +111,8 @@ pub(super) fn perform<T: CdpTransport>(
     }
 }
 
-/// Runs `action` with its target marked: the marker shows for
-/// `highlight::LEAD` first and is cleared however the action ends. Marking
-/// is best effort and never fails or delays the action past that lead.
+/// Marking is best effort and never fails or delays the action past
+/// `highlight::LEAD`.
 fn marked<T: CdpTransport, R>(
     port: &mut CdpPort<T>,
     stamp: DocumentStamp,
