@@ -80,17 +80,7 @@ impl TreeControl {
         if *converged {
             return Ok(());
         }
-        let receiver = self
-            .0
-            .stderr_done
-            .lock()
-            .map_err(|_| LaunchError::ContainmentFailure)?;
-        receiver
-            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-            .map_err(|error| match error {
-                mpsc::RecvTimeoutError::Timeout => LaunchError::Deadline,
-                mpsc::RecvTimeoutError::Disconnected => LaunchError::ContainmentFailure,
-            })?;
+        self.wait_stderr_drained(deadline)?;
         self.0
             .lease
             .lock()
@@ -99,6 +89,52 @@ impl TreeControl {
             .ok_or(LaunchError::ContainmentFailure)?
             .release_after_zero()?;
         *converged = true;
+        Ok(())
+    }
+
+    /// The harness's JSON-RPC stderr error once the drain settles or
+    /// `deadline` passes.
+    pub(crate) fn harness_error(&self, deadline: Instant) -> Option<String> {
+        let _ = self.wait_stderr_drained(deadline);
+        let diagnostic = self.stderr_diagnostic().ok()?;
+        diagnostic.json_rpc_error_message().map(str::to_owned)
+    }
+
+    fn wait_stderr_drained(&self, deadline: Instant) -> Result<(), LaunchError> {
+        self.0
+            .stderr_done
+            .lock()
+            .map_err(|_| LaunchError::ContainmentFailure)?
+            .wait_until(deadline)
+    }
+}
+
+/// The stderr drain's completion, remembered once seen so both an early
+/// read of the harness's error and tree convergence can wait for it.
+pub(super) struct StderrDone {
+    receiver: mpsc::Receiver<()>,
+    drained: bool,
+}
+
+impl StderrDone {
+    pub(super) fn new(receiver: mpsc::Receiver<()>) -> Self {
+        Self {
+            receiver,
+            drained: false,
+        }
+    }
+
+    fn wait_until(&mut self, deadline: Instant) -> Result<(), LaunchError> {
+        if self.drained {
+            return Ok(());
+        }
+        self.receiver
+            .recv_timeout(deadline.saturating_duration_since(Instant::now()))
+            .map_err(|error| match error {
+                mpsc::RecvTimeoutError::Timeout => LaunchError::Deadline,
+                mpsc::RecvTimeoutError::Disconnected => LaunchError::ContainmentFailure,
+            })?;
+        self.drained = true;
         Ok(())
     }
 }

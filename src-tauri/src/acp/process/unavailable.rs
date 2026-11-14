@@ -144,6 +144,10 @@ impl TreeControl {
     pub(crate) fn exit_before_termination(&self) -> Result<Option<TreeExit>, LaunchError> {
         Err(LaunchError::PlatformUnavailable)
     }
+
+    pub(crate) fn harness_error(&self, _deadline: std::time::Instant) -> Option<String> {
+        None
+    }
 }
 
 pub(crate) fn launch(

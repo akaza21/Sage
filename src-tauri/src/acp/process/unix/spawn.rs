@@ -84,7 +84,7 @@ pub(crate) fn launch(
         termination: Mutex::default(),
         lease: Mutex::new(Some(lease)),
         stderr: ring,
-        stderr_done: Mutex::new(completion),
+        stderr_done: Mutex::new(super::reap::StderrDone::new(completion)),
         converged: Mutex::new(false),
         runtime_epoch: spec.runtime_epoch,
         terminate_deadline: Duration::from_millis(spec.deadlines.terminate_ms),

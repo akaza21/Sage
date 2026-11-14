@@ -546,9 +546,11 @@ fn a_harness_error_after_its_startup_log_reaches_the_failed_turn() {
 
     let mut stderr = StderrRing::new(4096, 1024);
     stderr.ingest(b"INFO codex app-server listening\n");
-    stderr.ingest(br#"{"id":3,"error":{"code":-32603,"message":"model refused the request"}}"#);
+    stderr.ingest(br#"{"jsonrpc":"2.0","id":3,"error":{"code":-32603,"message":"model refused the request"}}"#);
     stderr.ingest(b"\n");
-    stderr.ingest(br#"{"id":4,"error":{"code":-32000,"message":"usage limit reached"}}"#);
+    stderr.ingest(
+        br#"{"jsonrpc":"2.0","id":4,"error":{"code":-32000,"message":"usage limit reached"}}"#,
+    );
     stderr.ingest(b"\nINFO exiting\n");
     let diagnostic = stderr.safe_diagnostic();
 

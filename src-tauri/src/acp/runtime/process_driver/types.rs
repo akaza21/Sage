@@ -1,4 +1,4 @@
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 use crate::acp::{
     process::{StdinEndpoint, TreeControl, TreeExit, ZeroProcessToken},
@@ -132,6 +132,12 @@ pub(crate) trait ProcessTreeControl {
         self.wait_root_exit()
     }
     fn wait_zero(&self) -> Result<(TreeExit, Self::ZeroProof), LaunchError>;
+    /// The harness's own JSON-RPC error from its stderr, read once Sage has
+    /// asked the exited tree to terminate: the drain settles as the tree
+    /// dies, or `deadline` passes and the error read so far is used.
+    fn harness_error(&self, _deadline: Instant) -> Option<String> {
+        None
+    }
 }
 
 pub(crate) trait CoordinatorZeroToken {
@@ -186,6 +192,10 @@ impl ProcessTreeControl for TreeControl {
 
     fn wait_zero(&self) -> Result<(TreeExit, Self::ZeroProof), LaunchError> {
         TreeControl::wait_zero(self)
+    }
+
+    fn harness_error(&self, deadline: Instant) -> Option<String> {
+        TreeControl::harness_error(self, deadline)
     }
 }
 

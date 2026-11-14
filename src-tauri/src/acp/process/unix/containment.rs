@@ -1,6 +1,6 @@
 use std::{
     process::Child,
-    sync::{Arc, Mutex, mpsc},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -23,7 +23,7 @@ pub(super) struct TreeAuthority {
     pub(super) termination: Mutex<TerminationRecord>,
     pub(super) lease: Mutex<Option<TreeCapacityLease>>,
     pub(super) stderr: Arc<Mutex<StderrRing>>,
-    pub(super) stderr_done: Mutex<mpsc::Receiver<()>>,
+    pub(super) stderr_done: Mutex<super::reap::StderrDone>,
     pub(super) converged: Mutex<bool>,
     pub(super) runtime_epoch: u64,
     pub(super) terminate_deadline: Duration,

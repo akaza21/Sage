@@ -48,6 +48,8 @@ where
     pub(super) first_delivery_unknown: Option<FirstDeliveryUnknown>,
     pub(super) durable_mutation_unknown: bool,
     pub(super) teardown_detail: Option<TeardownDetail>,
+    /// The harness's own stderr error, captured when its exit is latched.
+    pub(super) harness_error: Option<String>,
     pub(super) pending_exit: Option<PendingExit>,
 }
 
@@ -153,6 +155,7 @@ where
             first_delivery_unknown: None,
             durable_mutation_unknown: false,
             teardown_detail: None,
+            harness_error: None,
             pending_exit: None,
         }
     }

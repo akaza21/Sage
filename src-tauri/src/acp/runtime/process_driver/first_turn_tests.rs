@@ -371,6 +371,8 @@ impl StdinTransport for Transport {
 /// only that the driver crossed the required no-child-process boundary.
 struct NoChildProcessControl {
     zero_checks: Arc<AtomicUsize>,
+    /// The JSON-RPC error the harness left on stderr before it exited.
+    harness_error: Option<&'static str>,
 }
 
 struct CommitUnknownOnceStore {
@@ -494,6 +496,11 @@ impl CloseBeforeWriteCase {
             || self == Self::PreparedReaderEofDispatch
             || self.begin_send_injection().is_some()
             || self.final_stdout_injection().is_some()
+    }
+
+    /// A harness that exits mid-turn after writing its JSON-RPC error to stderr.
+    fn harness_error(self) -> Option<&'static str> {
+        (self == Self::ActiveReaderEofThenProcessExitDeadline).then_some("usage limit reached")
     }
 }
 
@@ -647,6 +654,10 @@ impl ProcessTreeControl for NoChildProcessControl {
     fn wait_zero(&self) -> Result<(TreeExit, Self::ZeroProof), LaunchError> {
         self.zero_checks.fetch_add(1, Ordering::SeqCst);
         Ok((TreeExit::Cancelled, ()))
+    }
+
+    fn harness_error(&self, _: std::time::Instant) -> Option<String> {
+        self.harness_error.map(str::to_owned)
     }
 }
 
@@ -1035,6 +1046,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                 },
                 control: NoChildProcessControl {
                     zero_checks: Arc::clone(&zero_checks),
+                    harness_error: None,
                 },
                 owner: owner.clone(),
                 clock: Arc::new(SystemDriverClock) as Arc<dyn DriverClock>,
@@ -1345,6 +1357,7 @@ async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline
         ]))),
         control: NoChildProcessControl {
             zero_checks: Arc::clone(&zero_checks),
+            harness_error: None,
         },
         owner: owner.clone(),
         clock: Arc::clone(&clock),
@@ -1732,6 +1745,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
             ]))),
             control: NoChildProcessControl {
                 zero_checks: Arc::clone(&zero_checks),
+                harness_error: None,
             },
             owner: owner.clone(),
             clock: Arc::new(SystemDriverClock),
@@ -2305,6 +2319,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
             transport: Transport(Mutex::new(VecDeque::new())),
             control: NoChildProcessControl {
                 zero_checks: Arc::clone(&zero_checks),
+                harness_error: case.harness_error(),
             },
             owner: owner.clone(),
             clock: Arc::clone(&clock),
@@ -3041,7 +3056,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                 persisted,
                 (
                     "harnessExited".to_owned(),
-                    Some("harness process exited with code 17".to_owned()),
+                    Some("harness process exited with code 17: usage limit reached".to_owned()),
                 )
             );
             drop(active);
@@ -3412,6 +3427,7 @@ fn activation_idle_config_rejection_drains_following_frame_and_stays_promptable(
             transport: Transport(Mutex::new(VecDeque::new())),
             control: NoChildProcessControl {
                 zero_checks: Arc::new(AtomicUsize::new(0)),
+                harness_error: None,
             },
             owner,
             clock: Arc::new(SystemDriverClock),
@@ -3469,6 +3485,7 @@ fn activation_idle_available_commands_update_does_not_reject_the_session() {
             transport: Transport(Mutex::new(VecDeque::new())),
             control: NoChildProcessControl {
                 zero_checks: Arc::new(AtomicUsize::new(0)),
+                harness_error: None,
             },
             owner,
             clock: Arc::new(SystemDriverClock),
@@ -3521,6 +3538,7 @@ fn idle_handoff_consumes_validated_late_stdout_before_the_first_turn() {
         transport: Transport(Mutex::new(VecDeque::new())),
         control: NoChildProcessControl {
             zero_checks: Arc::new(AtomicUsize::new(0)),
+            harness_error: None,
         },
         owner,
         clock: Arc::new(SystemDriverClock),

@@ -205,29 +205,40 @@ impl StderrRing {
     }
 }
 
+/// Admits only a JSON-RPC 2.0 error envelope: `"jsonrpc":"2.0"`, a response
+/// `id` (number, string or null) or a `method` name, and an error with an
+/// integer code and a string message. Any other structured log, however it
+/// names its fields, stays an unstructured native diagnostic.
 fn json_rpc_diagnostic(record: &[u8]) -> Option<SafeStderrDiagnostic> {
     let value = serde_json::from_slice::<Value>(record).ok()?;
     let object = value.as_object()?;
+    if object.get("jsonrpc").and_then(Value::as_str) != Some("2.0") {
+        return None;
+    }
+    let method = match object.get("method") {
+        None => None,
+        Some(Value::String(method)) => Some(method),
+        Some(_) => return None,
+    };
+    let id_shaped = match object.get("id") {
+        None => false,
+        Some(Value::Number(_) | Value::String(_) | Value::Null) => true,
+        Some(_) => return None,
+    };
+    if !id_shaped && method.is_none() {
+        return None;
+    }
     let error = object.get("error").and_then(Value::as_object)?;
-    let method = object
-        .get("method")
-        .and_then(Value::as_str)
-        .filter(|method| method.len() <= 128)
-        .map(str::to_owned);
-    let error_code = error.get("code").and_then(|code| match code {
-        Value::Number(code) => Some(code.to_string()),
-        Value::String(code) => Some(sanitize_diagnostic_text(code)),
-        _ => None,
-    });
-    let error_message = error
-        .get("message")
-        .and_then(Value::as_str)
-        .filter(|message| message.len() <= 1024)
-        .map(sanitize_diagnostic_text);
+    let code = error.get("code").and_then(Value::as_i64)?;
+    let message = error.get("message").and_then(Value::as_str)?;
     Some(SafeStderrDiagnostic {
-        method,
-        error_code,
-        error_message,
+        method: method
+            .filter(|method| method.len() <= 128)
+            .map(String::to_owned),
+        error_code: Some(code.to_string()),
+        error_message: Some(message)
+            .filter(|message| message.len() <= 1024)
+            .map(sanitize_diagnostic_text),
         json_rpc: true,
     })
 }

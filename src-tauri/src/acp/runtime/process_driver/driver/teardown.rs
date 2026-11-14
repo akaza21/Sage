@@ -51,7 +51,10 @@ where
                 crate::acp::runtime::terminal_detail::refused_version(observed.as_str(), &[])
             }
             (_, Some(TeardownDetail::Exit(exit))) => {
-                crate::acp::runtime::terminal_detail::harness_exited(Some(exit))
+                crate::acp::runtime::terminal_detail::harness_exited_with_error(
+                    exit,
+                    self.harness_error.as_deref(),
+                )
             }
             (_, Some(TeardownDetail::Summary(summary))) => {
                 crate::acp::runtime::terminal_detail::protocol_error(summary)

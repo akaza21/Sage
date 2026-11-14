@@ -59,6 +59,7 @@ where
             first_delivery_unknown,
             durable_mutation_unknown,
             teardown_detail,
+            harness_error,
             pending_exit,
         } = self;
         let completed = match pump.try_into_completed_parts() {
@@ -77,6 +78,7 @@ where
                         first_delivery_unknown,
                         durable_mutation_unknown,
                         teardown_detail,
+                        harness_error,
                         pending_exit,
                     },
                     error: DriverError::NotReusable,
@@ -246,6 +248,7 @@ where
                 first_delivery_unknown: None,
                 durable_mutation_unknown: false,
                 teardown_detail: None,
+                harness_error: None,
                 pending_exit: None,
             }),
             Err(error) => {

@@ -63,18 +63,36 @@ pub(crate) fn runtime_lost(
         Some((reason, message)) => (reason, message.or_else(|| harness_exited(Some(exit)))),
         None => (exit_reason(exit), harness_exited(Some(exit))),
     };
+    TurnTerminalOutcome {
+        reason,
+        message: with_harness_error(described, exit, harness_error),
+        remediation: None,
+    }
+}
+
+/// Sage's description of a harness exit, followed by the harness's own
+/// error when it reported one.
+pub(crate) fn harness_exited_with_error(
+    exit: TreeExit,
+    harness_error: Option<&str>,
+) -> Option<String> {
+    with_harness_error(harness_exited(Some(exit)), exit, harness_error)
+}
+
+/// A tree Sage cancelled or shut down did not fail on its own, so its last
+/// stderr error is not the cause.
+fn with_harness_error(
+    described: Option<String>,
+    exit: TreeExit,
+    harness_error: Option<&str>,
+) -> Option<String> {
     let harness_error = match exit {
         TreeExit::Cancelled | TreeExit::ParentShutdown => None,
         _ => sanitized(harness_error),
     };
-    let message = match (described, harness_error) {
+    match (described, harness_error) {
         (Some(described), Some(error)) => bound(format!("{described}: {error}")),
         (described, error) => described.or(error).and_then(bound),
-    };
-    TurnTerminalOutcome {
-        reason,
-        message,
-        remediation: None,
     }
 }
 

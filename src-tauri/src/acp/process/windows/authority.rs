@@ -158,6 +158,14 @@ impl TreeControl {
         Ok(locked(&self.0.termination)?.exit_before_request(|| self.native_exit_if_exited()))
     }
 
+    /// The harness's JSON-RPC stderr error once the drain settles or
+    /// `deadline` passes.
+    pub(crate) fn harness_error(&self, deadline: Instant) -> Option<String> {
+        let _ = self.0.stderr.wait_until(deadline);
+        let diagnostic = self.stderr_diagnostic().ok()?;
+        diagnostic.json_rpc_error_message().map(str::to_owned)
+    }
+
     fn native_exit_if_exited(&self) -> Option<TreeExit> {
         let code = self.native_exit_code_if_exited().ok().flatten()?;
         Some(TreeExit::Exited { code: Some(code) })

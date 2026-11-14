@@ -46,7 +46,7 @@ fn stderr_ring_allocates_lazily_and_never_retains_over_its_limit() {
 fn stderr_diagnostic_extracts_a_redacted_json_rpc_error() {
     let mut ring = StderrRing::new(512, 512);
     ring.ingest(
-        br#"{"method":"thread/start","error":{"code":-32601,"message":"Bearer secret-token at C:\\private\\file"}}"#,
+        br#"{"jsonrpc":"2.0","method":"thread/start","error":{"code":-32601,"message":"Bearer secret-token at C:\\private\\file"}}"#,
     );
 
     let diagnostic = ring.safe_diagnostic();
@@ -74,7 +74,9 @@ fn stderr_diagnostic_redacts_unstructured_secret_text() {
 #[test]
 fn only_a_json_rpc_error_message_is_offered_for_storage() {
     let mut structured = StderrRing::new(512, 512);
-    structured.ingest(br#"{"error":{"code":-32000,"message":"usage limit reached"}}"#);
+    structured.ingest(
+        br#"{"jsonrpc":"2.0","id":7,"error":{"code":-32000,"message":"usage limit reached"}}"#,
+    );
     assert_eq!(
         structured.safe_diagnostic().json_rpc_error_message(),
         Some("usage limit reached")
@@ -320,10 +322,10 @@ fn diagnostic_prose_requires_real_credential_syntax() {
 fn stderr_diagnostic_reads_the_latest_json_rpc_error_after_log_lines() {
     let mut ring = StderrRing::new(4096, 1024);
     ring.ingest(b"2026-11-15T10:00:00Z INFO starting app-server\r\n");
-    ring.ingest(br#"{"id":1,"error":{"code":-32001,"message":"first failure"}}"#);
+    ring.ingest(br#"{"jsonrpc":"2.0","id":1,"error":{"code":-32001,"message":"first failure"}}"#);
     ring.ingest(b"\nWARN retrying\n");
     ring.ingest(
-        br#"{"method":"turn/start","error":{"code":-32000,"message":"usage limit reached"}}"#,
+        br#"{"jsonrpc":"2.0","method":"turn/start","error":{"code":-32000,"message":"usage limit reached"}}"#,
     );
     ring.ingest(b"\r\nINFO shutting down\n");
 
@@ -339,7 +341,7 @@ fn stderr_diagnostic_reads_the_latest_json_rpc_error_after_log_lines() {
 
 #[test]
 fn stderr_diagnostic_never_reads_a_record_cut_by_ring_eviction() {
-    let record = br#"{"error":{"code":1,"message":"quoted"}}"#;
+    let record = br#"{"jsonrpc":"2.0","id":null,"error":{"code":1,"message":"quoted"}}"#;
     let retained = |prefix: &[u8]| {
         let mut ring = StderrRing::new(record.len() + 1, 1024);
         ring.ingest(prefix);
@@ -357,4 +359,27 @@ fn stderr_diagnostic_never_reads_a_record_cut_by_ring_eviction() {
         retained(b"WARN upstream replied ").json_rpc_error_message(),
         None
     );
+}
+
+#[test]
+fn a_structured_log_that_is_not_a_json_rpc_error_is_never_offered_for_storage() {
+    for record in [
+        r#"{"level":"error","error":{"message":"confidential customer prose"}}"#,
+        r#"{"level":"error","error":{"code":-32000,"message":"confidential customer prose"}}"#,
+        r#"{"jsonrpc":"2.0","error":{"code":-32000,"message":"confidential customer prose"}}"#,
+        r#"{"jsonrpc":"1.0","id":1,"error":{"code":-32000,"message":"confidential customer prose"}}"#,
+        r#"{"jsonrpc":"2.0","id":1,"error":{"code":"E1","message":"confidential customer prose"}}"#,
+        r#"{"jsonrpc":"2.0","id":1,"error":{"code":1.5,"message":"confidential customer prose"}}"#,
+        r#"{"jsonrpc":"2.0","id":{"x":1},"error":{"code":1,"message":"confidential customer prose"}}"#,
+        r#"{"jsonrpc":"2.0","id":1,"error":{"code":1,"message":["confidential customer prose"]}}"#,
+    ] {
+        let mut ring = StderrRing::new(512, 512);
+        ring.ingest(record.as_bytes());
+        ring.ingest(b"\n");
+        assert_eq!(
+            ring.safe_diagnostic().json_rpc_error_message(),
+            None,
+            "{record}"
+        );
+    }
 }
