@@ -3,6 +3,10 @@ use uuid::Uuid;
 mod auto_title;
 mod title_source;
 pub(crate) use auto_title::{auto_title_first_prompt_in, title_line};
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 pub(crate) use title_source::{
     ChatTitleSource, SIDE_CHAT_ID_PREFIX, apply_harness_title_in, clear_harness_title_in,
     placeholder_chat_title,
@@ -11,8 +15,7 @@ pub(crate) use title_source::{
 use crate::{
     acp::limits::LIMITS,
     domain::{ProjectLayoutRequest, RenameChatRequest},
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
+    persistence::Database,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
     workbench_restore::validate_tab_projection,
 };

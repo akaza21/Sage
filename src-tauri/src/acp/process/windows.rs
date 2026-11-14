@@ -106,14 +106,14 @@ pub(crate) fn launch(
     // from what it was started with, and runtimes and harnesses resolve,
     // fork or name folders after these paths. Sage keeps the verbatim
     // canonical paths only for its own identity checks.
-    let (application_path, args) = crate::win32_path::ordinary_invocation(&program, &args);
+    let (application_path, args) = sage_core::win32_path::ordinary_invocation(&program, &args);
     let mut command_line = pre_spawn!(command_line(&application_path, &args));
     let environment = pre_spawn!(environment_block(spec.environment.as_slice()));
     let application = pre_spawn!(wide_z(application_path.as_os_str()));
     // Harnesses derive state from their working directory (Pi names its
     // session folder after it), so they must see the root's ordinary spelling
     // rather than the verbatim canonical one.
-    let cwd_path = crate::win32_path::simplified(spec.project_root.as_path());
+    let cwd_path = sage_core::win32_path::simplified(spec.project_root.as_path());
     let cwd = pre_spawn!(wide_z(cwd_path.as_os_str()));
     // Batch launchers remain writable because npm may update them concurrently.
     // Ensure the exact discovered launcher has not drifted after parsing it and

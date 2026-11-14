@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::{
     manifest::{StageOwner, read, write_stage},

@@ -7,7 +7,7 @@ use std::time::Duration;
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
 fn shutdown_running_codex_turn_converges_within_close_budget() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup = FixtureSetup::in_memory(
             CodexBindingRegistration::admitted_for_observed_steer_journey_test(&[
@@ -55,7 +55,7 @@ fn shutdown_running_codex_turn_converges_within_close_budget() {
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
 fn shutdown_running_codex_turn_preserves_partial_chat_after_reopen() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup =
             FixtureSetup::file_backed(CodexBindingRegistration::admitted_for_journey_test(&[

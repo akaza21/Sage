@@ -3,12 +3,10 @@
 //! Grants are never stored here; they live in memory on the attachment.
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::AppResult;
 
 use super::SettingsStore;
-use crate::{
-    acp::browser::developer::{CdpAuditEntry, CdpAuditOutcome},
-    error::AppResult,
-};
+use crate::acp::browser::developer::{CdpAuditEntry, CdpAuditOutcome};
 
 /// The newest rows the audit log keeps.
 #[cfg_attr(not(windows), allow(dead_code))]

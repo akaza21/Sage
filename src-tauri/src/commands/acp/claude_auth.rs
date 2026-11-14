@@ -236,7 +236,7 @@ mod tests {
     fn unix_fixture(directory: &Path, name: &str, body: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let path = directory.join(name);
-        crate::test_executable::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
+        sage_test_support::test_executable::write(&path, format!("#!/bin/sh\n{body}\n")).unwrap();
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
         path
     }

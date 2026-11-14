@@ -7,13 +7,10 @@ use std::{
     },
 };
 
+use sage_core::error::{AppError, AppResult};
 use tauri::{Emitter, State};
 
-use crate::{
-    domain::ResourceRef,
-    error::{AppError, AppResult},
-    state::AppState,
-};
+use crate::{domain::ResourceRef, state::AppState};
 
 pub const EDITOR_EXTERNAL_WATCH_EVENT: &str = "editor-external-watch-v1";
 

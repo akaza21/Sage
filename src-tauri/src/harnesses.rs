@@ -10,6 +10,7 @@ mod published_releases;
 use catalog_definition::{CuratedProtocol, definition, safe_display_version};
 use discovery_state::DiscoveryState;
 use published_releases::PublishedReleases;
+use sage_core::error::{AppError, AppResult};
 
 use crate::{
     acp::bindings::{
@@ -17,7 +18,6 @@ use crate::{
         registry::{BindingRegistry, ModelProvider},
     },
     domain::{HarnessDefinition, HarnessInstallState, HarnessTransport, ModelOption},
-    error::{AppError, AppResult},
     harness_discovery::{InstalledHarness, known_harness_spec},
 };
 

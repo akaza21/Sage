@@ -148,7 +148,7 @@ where
         }
     };
     let mut initial =
-        match tauri::async_runtime::block_on(activation::complete(activation, mailbox.as_ref())) {
+        match sage_core::rt::block_on(activation::complete(activation, mailbox.as_ref())) {
             Ok(initial) => initial,
             Err(failure) => {
                 let failure = recover_activation_startup(
@@ -188,7 +188,7 @@ where
             recovery,
         };
     }
-    let exit = tauri::async_runtime::block_on(drive(initial, &context, host));
+    let exit = sage_core::rt::block_on(drive(initial, &context, host));
     let (recovery, recovered_after_exit) = finish(
         exit,
         mailbox.as_ref(),

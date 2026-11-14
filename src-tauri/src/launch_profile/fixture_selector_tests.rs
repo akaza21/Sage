@@ -27,7 +27,8 @@ fn selectors_reject_partial_mixed_and_unavailable_builds() {
 #[test]
 fn claude_selector_rejects_wrong_protocol_hash_drift_and_reuse() {
     use sha2::{Digest, Sha256};
-    let proof = crate::test_paths::temp_dir().join(format!("sage-nc1-{}", uuid::Uuid::new_v4()));
+    let proof = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-nc1-{}", uuid::Uuid::new_v4()));
     let profile_root = proof.join("profile");
     let project = proof.join("project");
     fs::create_dir_all(&profile_root).unwrap();
@@ -96,8 +97,8 @@ fn desktop_codex_model_listing_is_enabled_only_for_model_and_effort_cases() {
     use crate::acp::bindings::codex::{AdmittedCodexBinding, CodexAdapter};
     use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId};
     use sha2::{Digest, Sha256};
-    let proof =
-        crate::test_paths::temp_dir().join(format!("sage-nc1-models-{}", uuid::Uuid::new_v4()));
+    let proof = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-nc1-models-{}", uuid::Uuid::new_v4()));
     let profile_root = proof.join("profile");
     let project = proof.join("project");
     fs::create_dir_all(&profile_root).unwrap();
@@ -154,7 +155,7 @@ fn desktop_codex_model_listing_is_enabled_only_for_model_and_effort_cases() {
 
 #[test]
 fn a_restart_journey_may_launch_once_more_after_the_app_restarts() {
-    let durable = crate::test_paths::temp_dir().join(format!(
+    let durable = sage_test_support::test_paths::temp_dir().join(format!(
         "sage-fixture-launch-receipts-{}",
         uuid::Uuid::new_v4()
     ));

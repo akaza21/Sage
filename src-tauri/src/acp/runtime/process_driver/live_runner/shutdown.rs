@@ -108,7 +108,7 @@ where
             }
             match disposition {
                 ZeroProcessDisposition::Park => {
-                    tauri::async_runtime::block_on(exit.state.park_after_zero(token));
+                    sage_core::rt::block_on(exit.state.park_after_zero(token));
                 }
                 ZeroProcessDisposition::Recover => {
                     if let Some(sessions) = context.session_recovery.as_ref()

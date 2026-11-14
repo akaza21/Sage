@@ -1,6 +1,7 @@
+use sage_test_support::test_diagnostics::capture_diagnostics;
+
 use super::*;
 use crate::acp::bindings::codex::incoming::{reports_diagnostics, trial_read};
-use crate::test_diagnostics::capture_diagnostics;
 
 fn finished_turn() -> CodexRuntime {
     let mut runtime = fixture_runtime();

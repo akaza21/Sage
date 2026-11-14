@@ -201,7 +201,7 @@ async fn seed_internal_opencode_session(
                 binding_digest: String::new(),
                 harness_version: None,
                 model_id: None,
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
         )
         .await
@@ -356,7 +356,7 @@ impl RuntimeEngine for CommandHostEngine {
                     runtime_epoch: owner.runtime_epoch,
                     turn_id: turn_id.clone(),
                     expected_revision: EntityRevision::ZERO,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             )
             .map_err(|_| HostError::Intent)?
@@ -372,7 +372,7 @@ impl RuntimeEngine for CommandHostEngine {
                     runtime_epoch: owner.runtime_epoch,
                     turn_id: turn_id.clone(),
                     expected_revision: sending.revision,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 SendObservation::CompleteBytes,
             )
@@ -523,7 +523,7 @@ fn install_command_host(
                 session_id: session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
                 artifact_digest: binding.artifact_digest.to_owned(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
         )
         .unwrap()
@@ -549,7 +549,7 @@ fn install_command_host(
                 )
                 .unwrap(),
                 capabilities_json: serde_json::to_string(&capabilities).unwrap(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
         )
         .unwrap();
@@ -586,7 +586,7 @@ fn install_command_host(
                 expected_projection_revision: revision,
                 client_intent_id: ClientIntentId::parse("intent-command-seed").unwrap(),
                 prompt: Prompt::new("prompt", "seed turn").unwrap(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
             access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
@@ -1007,7 +1007,7 @@ fn codex_discovery_cleanup_deadline_requests_teardown_without_waiting_for_worker
             let mut released = released.lock().unwrap();
             while !*released {
                 let (next, timed) = ready
-                    .wait_timeout(released, crate::test_wait::HANG_GUARD)
+                    .wait_timeout(released, sage_test_support::test_wait::HANG_GUARD)
                     .unwrap();
                 released = next;
                 assert!(
@@ -1383,7 +1383,7 @@ fn an_admitted_opencode_session_routes_the_mandatory_core_through_its_own_bindin
                     expected_projection_revision: page.projection_revision,
                     client_intent_id: ClientIntentId::new(),
                     prompt: Prompt::new("prompt", "must not dispatch").unwrap(),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
             },
@@ -1407,7 +1407,7 @@ fn an_admitted_opencode_session_routes_the_mandatory_core_through_its_own_bindin
                     owner,
                 turn_id: SageTurnId::parse("turn-opencode-dormant").unwrap(),
                 client_intent_id: ClientIntentId::new(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
                 },
             ),
             Err(reason) if !matches!(reason, crate::acp::service::SessionDispatchError::Binding)
@@ -1422,7 +1422,7 @@ fn an_admitted_opencode_session_routes_the_mandatory_core_through_its_own_bindin
                     client_intent_id: ClientIntentId::new(),
                     session_id,
                     runtime_epoch,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             ),
             Err(reason) if !matches!(reason, crate::acp::service::SessionDispatchError::Binding)
@@ -1739,7 +1739,7 @@ fn test_binding_activation_uses_the_registry_factory_path() {
                     expected_projection_revision: started.projection.projection_revision,
                     client_intent_id: ClientIntentId::new(),
                     prompt: Prompt::new("prompt", "test dispatch").unwrap(),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
             },
@@ -1760,7 +1760,7 @@ fn test_binding_activation_uses_the_registry_factory_path() {
                 },
                 turn_id: SageTurnId::parse("turn-dispatch").unwrap(),
                 client_intent_id: ClientIntentId::new(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
         );
         assert!(cancel.is_err(), "test cancel dispatch must fail closed");
@@ -1803,7 +1803,7 @@ fn test_binding_session_operations_dispatch_by_durable_binding_id() {
                     session_id: session_id.clone(),
                     runtime_epoch: owner.runtime_epoch,
                     artifact_digest: "11".repeat(32),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             )
             .unwrap()
@@ -2114,7 +2114,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
                     binding_digest: String::new(),
                     harness_version: None,
                     model_id: None,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             )
             .await
@@ -2402,7 +2402,7 @@ fn admitted_codex_cancel_command_accepts_a_turn_advanced_by_ingress() {
                     runtime_epoch: owner.runtime_epoch,
                     turn_id: turn.id.clone(),
                     expected_revision: turn.revision,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 SendObservation::Correlated,
             )

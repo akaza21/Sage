@@ -1,8 +1,9 @@
 use std::time::Instant;
 
 use rusqlite::Connection;
+use sage_core::error::AppResult;
 
-use crate::{error::AppResult, persistence::Database};
+use crate::persistence::Database;
 
 pub(super) fn with_snapshot<ResultValue>(
     database: &Database,

@@ -1,6 +1,7 @@
 #[cfg(test)]
 use std::time::Duration;
 
+use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::{
@@ -8,7 +9,6 @@ use crate::{
         GitFileMutationCommandError, GitFileMutationError, GitFileMutationErrorKind,
         GitFileMutationRequest, GitFileMutationResult, GitProcessState,
     },
-    error::{AppError, AppResult, GitContainmentState},
     repository,
     repository_mutation::{mutate_file, mutate_file_with_process_policy},
     state::AppState,
@@ -502,7 +502,7 @@ mod tests {
     /// confirms the exit, the stage never lands, and nothing still holds the
     /// repository open, so it can be deleted.
     fn killed_stage_never_lands(command_timeout: Duration) {
-        let _serial = crate::test_wait::serial_process_guard();
+        let _serial = sage_test_support::test_wait::serial_process_guard();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");
@@ -538,7 +538,7 @@ mod tests {
                 matches!(
                     error,
                     AppError::GitContainment {
-                        state: crate::error::GitContainmentState::TerminatedUnreaped,
+                        state: sage_core::error::GitContainmentState::TerminatedUnreaped,
                         ..
                     }
                 ),
@@ -546,9 +546,10 @@ mod tests {
             );
             // The reaper holds the root until every process the add started
             // has exited and closed Git's pipes; wait for that, not a delay.
-            crate::test_wait::until("the reaper to confirm the killed add's exit", || {
-                harness.observation().unconfirmed_exits == 0
-            });
+            sage_test_support::test_wait::until(
+                "the reaper to confirm the killed add's exit",
+                || harness.observation().unconfirmed_exits == 0,
+            );
             let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
             let later = repository::status(&workspace).await.unwrap();
             assert_eq!(later.changes[0].index_status, "unchanged");
@@ -598,7 +599,9 @@ mod tests {
                     discard_confirmed: false,
                 },
                 0,
-                repository::GitProcessPolicy::post_reap_failure(crate::test_wait::BUDGET),
+                repository::GitProcessPolicy::post_reap_failure(
+                    sage_test_support::test_wait::BUDGET,
+                ),
             )
             .await
             .unwrap();
@@ -651,7 +654,9 @@ mod tests {
                     discard_confirmed: false,
                 },
                 0,
-                repository::GitProcessPolicy::stdout_reader_failure(crate::test_wait::BUDGET),
+                repository::GitProcessPolicy::stdout_reader_failure(
+                    sage_test_support::test_wait::BUDGET,
+                ),
             )
             .await
             .unwrap();
@@ -675,7 +680,7 @@ mod tests {
 
     #[test]
     fn potentially_running_cleanup_blocks_mutations_until_bounded_reaper_proves_exit() {
-        let _serial = crate::test_wait::serial_process_guard();
+        let _serial = sage_test_support::test_wait::serial_process_guard();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");
@@ -716,21 +721,24 @@ mod tests {
                 &state,
                 request.clone(),
                 0,
-                reaper.mutation_policy(crate::test_wait::BUDGET, Duration::from_millis(10)),
+                reaper.mutation_policy(
+                    sage_test_support::test_wait::BUDGET,
+                    Duration::from_millis(10),
+                ),
             )
             .await
             .unwrap_err();
             assert!(matches!(
                 blocked,
                 AppError::GitContainment {
-                    state: crate::error::GitContainmentState::PotentiallyRunning,
+                    state: sage_core::error::GitContainmentState::PotentiallyRunning,
                     ..
                 }
             ));
 
             reaper.release();
             reaper
-                .wait_for_exit(crate::test_wait::BUDGET)
+                .wait_for_exit(sage_test_support::test_wait::BUDGET)
                 .await
                 .unwrap();
             // A killed add can leave its lock behind, as a real one would.
@@ -745,7 +753,10 @@ mod tests {
                 &state,
                 request,
                 0,
-                reaper.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET),
+                reaper.mutation_policy(
+                    sage_test_support::test_wait::BUDGET,
+                    sage_test_support::test_wait::BUDGET,
+                ),
             )
             .await
             .unwrap();
@@ -801,7 +812,7 @@ mod tests {
                 matches!(
                     first,
                     AppError::GitContainment {
-                        state: crate::error::GitContainmentState::TerminatedUnreaped,
+                        state: sage_core::error::GitContainmentState::TerminatedUnreaped,
                         ..
                     }
                 ),
@@ -812,7 +823,10 @@ mod tests {
                 &state,
                 request.clone(),
                 0,
-                reaper.mutation_policy(crate::test_wait::BUDGET, Duration::from_millis(10)),
+                reaper.mutation_policy(
+                    sage_test_support::test_wait::BUDGET,
+                    Duration::from_millis(10),
+                ),
             )
             .await
             .unwrap_err();
@@ -820,7 +834,7 @@ mod tests {
                 matches!(
                     blocked,
                     AppError::GitContainment {
-                        state: crate::error::GitContainmentState::TerminatedUnreaped,
+                        state: sage_core::error::GitContainmentState::TerminatedUnreaped,
                         ..
                     }
                 ),
@@ -829,14 +843,17 @@ mod tests {
 
             reaper.release_wait();
             reaper
-                .wait_for_exit(crate::test_wait::BUDGET)
+                .wait_for_exit(sage_test_support::test_wait::BUDGET)
                 .await
                 .unwrap();
             let recovered = mutate_git_file_inner_with_process_policy(
                 &state,
                 request,
                 0,
-                reaper.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET),
+                reaper.mutation_policy(
+                    sage_test_support::test_wait::BUDGET,
+                    sage_test_support::test_wait::BUDGET,
+                ),
             )
             .await
             .unwrap();
@@ -853,7 +870,7 @@ mod tests {
 
     #[test]
     fn exhausted_real_reapers_quarantine_exact_eight_and_keep_admission_charged() {
-        let _serial = crate::test_wait::serial_process_guard();
+        let _serial = sage_test_support::test_wait::serial_process_guard();
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let base = std::env::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
             let root = base.join("repo");
@@ -892,12 +909,12 @@ mod tests {
                 assert!(matches!(
                     error,
                     AppError::GitContainment {
-                        state: crate::error::GitContainmentState::TerminatedUnreaped,
+                        state: sage_core::error::GitContainmentState::TerminatedUnreaped,
                         ..
                     }
                 ));
                 reaper
-                    .wait_for_quarantine(crate::test_wait::BUDGET)
+                    .wait_for_quarantine(sage_test_support::test_wait::BUDGET)
                     .await
                     .unwrap();
                 assert_eq!(reaper.wait_attempts(), 40);
@@ -917,20 +934,23 @@ mod tests {
                 &state,
                 request.clone(),
                 0,
-                harness.mutation_policy(crate::test_wait::BUDGET, Duration::from_millis(10)),
+                harness.mutation_policy(
+                    sage_test_support::test_wait::BUDGET,
+                    Duration::from_millis(10),
+                ),
             )
             .await
             .unwrap_err();
             assert!(matches!(
                 blocked,
                 AppError::GitContainment {
-                    state: crate::error::GitContainmentState::TerminatedUnreaped,
+                    state: sage_core::error::GitContainmentState::TerminatedUnreaped,
                     ..
                 }
             ));
 
             harness
-                .reap_quarantine(crate::test_wait::BUDGET)
+                .reap_quarantine(sage_test_support::test_wait::BUDGET)
                 .await
                 .unwrap();
             let reset = harness.observation();
@@ -939,7 +959,7 @@ mod tests {
             assert_eq!(reset.active_reapers, 0);
             assert_eq!(reset.available_reaper_permits, 8);
             harness
-                .reap_quarantine(crate::test_wait::BUDGET)
+                .reap_quarantine(sage_test_support::test_wait::BUDGET)
                 .await
                 .unwrap();
             assert_eq!(harness.observation().unconfirmed_exits, 0);
@@ -948,7 +968,10 @@ mod tests {
                 &state,
                 request,
                 0,
-                harness.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET),
+                harness.mutation_policy(
+                    sage_test_support::test_wait::BUDGET,
+                    sage_test_support::test_wait::BUDGET,
+                ),
             )
             .await
             .unwrap();
@@ -962,7 +985,7 @@ mod tests {
     #[test]
     fn containment_command_rejection_is_typed_and_carries_no_projection() {
         let encoded = serde_json::to_value(git_mutation_command_error(AppError::GitContainment {
-            state: crate::error::GitContainmentState::TerminatedUnreaped,
+            state: sage_core::error::GitContainmentState::TerminatedUnreaped,
             message: "Git termination is proven, but reap did not converge".into(),
         }))
         .unwrap();

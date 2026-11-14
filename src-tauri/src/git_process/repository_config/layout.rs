@@ -18,13 +18,12 @@
 
 use std::path::{Component, Path, PathBuf};
 
+use sage_core::error::{AppResult, RepositoryLayout};
+
 use super::{
     Fingerprint, GIT_DIR_NAME, Location, POINTER_FILES, fingerprint::watch_reading, paths, watch,
 };
-use crate::{
-    error::{AppResult, RepositoryLayout},
-    git_process::parallel_limits::ParallelLimits,
-};
+use crate::git_process::parallel_limits::ParallelLimits;
 
 /// The repository admission inspected. Admitted Git calls run with these
 /// explicit locations, so they open exactly this repository.

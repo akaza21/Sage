@@ -1,6 +1,6 @@
 use rusqlite::{OptionalExtension, params};
+use sage_core::encoded_len::encoded_len;
 
-use crate::acp::encoded_len::encoded_len;
 use crate::acp::{
     contract::{
         BoundedVec, ProjectionRevision, SafeText, SageAgentSessionId, SageChatId, SageProjectId,

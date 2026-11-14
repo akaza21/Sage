@@ -109,7 +109,7 @@ fn admitted_claude_session_starts_and_prepares_activation_without_codex_admissio
                     binding_digest: "forged".into(),
                     harness_version: None,
                     model_id: None,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             )
             .await
@@ -135,7 +135,7 @@ fn admitted_claude_session_starts_and_prepares_activation_without_codex_admissio
                     session_id: started.session_id,
                     runtime_epoch: RuntimeEpoch::new(1).unwrap(),
                     artifact_digest: "forged".into(),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 BindingProjectRoot::Claude(root_authority),
             )
@@ -242,7 +242,7 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
                     binding_digest: "forged-digest".into(),
                     harness_version: Some(SafeText::new("version", "forged-version").unwrap()),
                     model_id: None,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             )
             .await
@@ -260,7 +260,7 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
                     binding_digest: "different-forged-digest".into(),
                     harness_version: None,
                     model_id: None,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             )
             .await
@@ -324,7 +324,7 @@ fn codex_start_rejects_a_model_without_current_scoped_discovery() {
                     model_id: Some(
                         crate::acp::intent::ModelId::new("modelId", "forged-model").unwrap(),
                     ),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             )
             .await;
@@ -439,7 +439,7 @@ fn codex_start_rejects_drift_before_any_durable_write() {
                     binding_digest: "forged".into(),
                     harness_version: Some(SafeText::new("version", "forged").unwrap()),
                     model_id: None,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             )
             .await;
@@ -497,7 +497,7 @@ fn codex_activation_intent_uses_new_only_for_an_exact_created_cold_session() {
                     session_id: started.session_id,
                     runtime_epoch: RuntimeEpoch::new(1).unwrap(),
                     artifact_digest: "forged".into(),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 crate::acp::bindings::registry::BindingProjectRoot::Codex(authority),
             )
@@ -551,7 +551,7 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
                 session_id: started.session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
                 artifact_digest: binding.artifact_digest().to_owned(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -567,7 +567,7 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
                     .unwrap(),
                 capabilities_json: serde_json::to_string(&binding.capability_ceiling().unwrap())
                     .unwrap(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -579,7 +579,7 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
                     session_id: started.session_id.clone(),
                     runtime_epoch: owner.runtime_epoch,
                     exit_kind: RequiredText::new("exitKind", "testIdle").unwrap(),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 ZeroProcessProof::confirmed(owner),
             )
@@ -601,7 +601,7 @@ fn codex_activation_intent_resumes_only_the_exact_durable_external_session() {
                     session_id: started.session_id,
                     runtime_epoch: RuntimeEpoch::new(1).unwrap(),
                     artifact_digest: "forged".into(),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 crate::acp::bindings::registry::BindingProjectRoot::Codex(authority),
             )
@@ -660,7 +660,7 @@ fn earlier_codex_session_resumes_its_thread_in_a_linked_session() {
                 session_id: started.session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
                 artifact_digest: "44".repeat(32),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -681,7 +681,7 @@ fn earlier_codex_session_resumes_its_thread_in_a_linked_session() {
                 artifact_digest: "44".repeat(32),
                 external_session_id: ExternalId::new("externalSessionId", "old-thread").unwrap(),
                 capabilities_json: serde_json::to_string(&old_capabilities).unwrap(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -693,7 +693,7 @@ fn earlier_codex_session_resumes_its_thread_in_a_linked_session() {
                     session_id: started.session_id.clone(),
                     runtime_epoch: owner.runtime_epoch,
                     exit_kind: RequiredText::new("exitKind", "testIdle").unwrap(),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 ZeroProcessProof::confirmed(owner),
             )
@@ -755,7 +755,7 @@ fn earlier_codex_session_resumes_its_thread_in_a_linked_session() {
             session_id: started.session_id.clone(),
             runtime_epoch: RuntimeEpoch::new(2).unwrap(),
             artifact_digest: "55".repeat(32),
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         };
         let command = service
             .continue_head_session(&resolve(), request.clone())
@@ -837,7 +837,7 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
                 binding_digest: "11".repeat(32),
                 harness_version: None,
                 model_id: None,
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -858,7 +858,7 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
                 session_id: started.session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
                 artifact_digest: "22".repeat(32),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -870,7 +870,7 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
             binding_digest: "11".repeat(32),
             artifact_digest: "22".repeat(32),
             category: ActivationAbortCategory::AssemblyFailure,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         };
         assert!(
             database
@@ -917,7 +917,7 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
                 session_id: started.session_id.clone(),
                 runtime_epoch: RuntimeEpoch::new(2).unwrap(),
                 artifact_digest: "22".repeat(32),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
         )
         .unwrap();
@@ -980,7 +980,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
                 binding_digest: "33".repeat(32),
                 harness_version: None,
                 model_id: None,
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -1001,7 +1001,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
                 session_id: started.session_id.clone(),
                 runtime_epoch: owner_one.runtime_epoch,
                 artifact_digest: "44".repeat(32),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -1016,7 +1016,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
                 artifact_digest: "44".repeat(32),
                 external_session_id: ExternalId::new("external", "durable-external").unwrap(),
                 capabilities_json: capabilities.clone(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -1028,7 +1028,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
                     session_id: started.session_id.clone(),
                     runtime_epoch: owner_one.runtime_epoch,
                     exit_kind: RequiredText::new("exitKind", "testIdle").unwrap(),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 ZeroProcessProof::confirmed(owner_one),
             )
@@ -1051,7 +1051,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
                 session_id: started.session_id.clone(),
                 runtime_epoch: owner_two.runtime_epoch,
                 artifact_digest: "44".repeat(32),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .await
             .unwrap();
@@ -1065,7 +1065,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
                     binding_digest: "33".repeat(32),
                     artifact_digest: "44".repeat(32),
                     category: ActivationAbortCategory::RuntimeHandoffFailure,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 ZeroProcessProof::confirmed(owner_two),
             )
@@ -1153,14 +1153,14 @@ pub(super) fn codex_start_command(
         binding_digest: "forged".into(),
         harness_version: None,
         model_id: None,
-        now_millis: crate::persistence::now_millis(),
+        now_millis: sage_core::time::now_millis(),
     }
 }
 
 #[test]
 fn renderer_recreation_snapshot_covers_the_exact_native_invariance_boundary() {
     #[cfg(windows)]
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
 
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();
     database
@@ -1414,7 +1414,7 @@ fn service_keeps_background_turn_live_and_stops_runtime_before_journal_drop() {
                 expected_projection_revision: ProjectionRevision::ZERO,
                 client_intent_id: ClientIntentId::parse("intent-service").unwrap(),
                 prompt: Prompt::new("prompt", "hello").unwrap(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
             access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })
@@ -1497,7 +1497,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
         let project_b_id = SageProjectId::parse(project_b.id).unwrap();
         let chat_a = SageChatId::parse("chat-switch-a").unwrap();
         let chat_b = SageChatId::parse("chat-switch-b").unwrap();
-        let now = crate::persistence::now_millis();
+        let now = sage_core::time::now_millis();
         database
             .connection()
             .execute_batch(&format!(

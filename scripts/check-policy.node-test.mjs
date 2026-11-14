@@ -204,7 +204,7 @@ test("nested block comments do not hide later production process creation", () =
 
 test("source security accepts the current source tree", () => {
   const errors = [];
-  for (const directory of ["src", "src-tauri/src"]) {
+  for (const directory of ["src", "src-tauri/src", "crates"]) {
     for (const file of readdirSync(directory, { recursive: true })) {
       if (!/\.(?:[cm]?[jt]sx?|rs)$/.test(file)) continue;
       const relative = path.join(directory, file);

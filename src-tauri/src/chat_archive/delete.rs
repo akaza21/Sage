@@ -2,13 +2,11 @@
 //! removes temporary side chats.
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 
 use crate::{
-    acp::service::ChatRuntimeRelease,
-    chat_lifecycle::validate_chat_identifier,
-    domain::ChatDeleteRequest,
-    error::{AppError, AppResult},
-    persistence::Database,
+    acp::service::ChatRuntimeRelease, chat_lifecycle::validate_chat_identifier,
+    domain::ChatDeleteRequest, persistence::Database,
 };
 
 impl Database {

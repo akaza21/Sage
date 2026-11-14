@@ -30,7 +30,13 @@ export const defaultPolicy = {
     "tsconfig.json",
     "vite.config.ts",
   ],
-  directories: ["scripts", "src", "src-tauri", "tools/footprint-control"],
+  directories: [
+    "crates",
+    "scripts",
+    "src",
+    "src-tauri",
+    "tools/footprint-control",
+  ],
   excludedSegments: [
     ".git",
     "dist",

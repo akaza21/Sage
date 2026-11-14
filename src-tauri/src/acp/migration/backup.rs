@@ -2,9 +2,9 @@ use std::{fs, path::Path, time::Duration};
 
 use rusqlite::{Connection, OpenFlags, backup::Backup};
 
-use crate::{
+use sage_core::{
     error::{AppError, AppResult},
-    persistence::now_millis,
+    time::now_millis,
 };
 
 use super::{

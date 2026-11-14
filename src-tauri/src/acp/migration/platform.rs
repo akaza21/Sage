@@ -4,7 +4,7 @@ use std::{
     path::Path,
 };
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 pub(super) use super::platform_anchor::{
     NativeFileIdentity, SqlitePathAnchor, anchor_existing_sqlite, create_sqlite_stage,

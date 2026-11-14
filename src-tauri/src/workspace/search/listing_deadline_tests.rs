@@ -4,6 +4,8 @@ use std::{
     time::Duration,
 };
 
+use sage_core::error::AppResult;
+
 use super::{
     engine::{SearchEngine, TestClock},
     tests::request,
@@ -12,7 +14,7 @@ use super::{
         WorkspaceSearchRequest, WorkspaceSearchResponse,
     },
 };
-use crate::{error::AppResult, workspace::Workspace};
+use crate::workspace::Workspace;
 
 fn tree() -> PathBuf {
     let path = std::env::temp_dir().join(format!("sage-search-listing-{}", uuid::Uuid::new_v4()));
@@ -84,7 +86,7 @@ fn listing_deadline_keeps_matches_and_a_usable_continuation() {
             .expect("partial matches can continue");
 
         let mut fast = SearchEngine::new(SearchLimits {
-            max_duration: crate::test_wait::BUDGET,
+            max_duration: sage_test_support::test_wait::BUDGET,
             ..SearchLimits::default()
         });
         fast.threads = threads;
@@ -109,7 +111,7 @@ fn listing_deadline_bounds_continuation_replay() {
     let path = tree();
     let mut fast = SearchEngine::new(SearchLimits {
         max_results: 2,
-        max_duration: crate::test_wait::BUDGET,
+        max_duration: sage_test_support::test_wait::BUDGET,
         ..SearchLimits::default()
     });
     fast.threads = 2;

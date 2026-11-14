@@ -34,6 +34,7 @@ memchr.workspace = true
 png.workspace = true
 regex.workspace = true
 rusqlite.workspace = true
+sage-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -48,6 +49,9 @@ tracing-subscriber.workspace = true
 url.workspace = true
 uuid.workspace = true
 zeroize.workspace = true
+
+[dev-dependencies]
+sage-test-support.workspace = true
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 libc.workspace = true

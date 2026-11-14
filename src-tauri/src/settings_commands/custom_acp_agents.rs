@@ -118,7 +118,7 @@ mod tests {
 
     #[test]
     fn saving_admits_the_agent_and_removing_clears_its_harness() {
-        let root = crate::test_paths::temp_dir()
+        let root = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-custom-command-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let executable = root.join("agent.exe");
@@ -155,7 +155,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_link_is_refused_at_save_with_its_target_before_anything_is_written() {
-        let root = crate::test_paths::temp_dir()
+        let root = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-custom-link-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let root = root.canonicalize().unwrap();

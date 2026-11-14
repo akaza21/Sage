@@ -5,10 +5,9 @@ use std::{
     time::Instant,
 };
 
-use crate::{
-    error::{AppError, AppResult},
-    workspace::{file_walk::walk_over_cap, path_glob::PathGlobs},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::workspace::{file_walk::walk_over_cap, path_glob::PathGlobs};
 
 use super::{
     engine_continue::ContinuationSeek,

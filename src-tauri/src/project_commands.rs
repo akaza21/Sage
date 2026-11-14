@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 
+use sage_core::error::{AppError, AppResult};
+
 #[cfg(test)]
 use crate::persistence::Database;
 use crate::{
     acp::contract::SageProjectId,
     browser::BrowserState,
     domain::{ProjectLayoutRequest, ProjectSwitchRequest, ProjectTransitionResult},
-    error::{AppError, AppResult},
     preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
@@ -136,7 +137,7 @@ pub(crate) async fn persist_project_layout_inner(
 ) -> AppResult<()> {
     let transition_epoch = state.project_transitions.lock().await;
     if *transition_epoch != expected_transition_epoch {
-        return Err(crate::error::AppError::InvalidRequest(
+        return Err(sage_core::error::AppError::InvalidRequest(
             "project changed before layout persistence could run".into(),
         ));
     }
@@ -146,7 +147,7 @@ pub(crate) async fn persist_project_layout_inner(
     let database = state.database.clone();
     tauri::async_runtime::spawn_blocking(move || database.persist_project_layout(&request))
         .await
-        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))??;
+        .map_err(|error| sage_core::error::AppError::InvalidRequest(error.to_string()))??;
     // A layout without a chat tab ends that tab's staged attachments now,
     // rather than at the next attachment command.
     crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
@@ -216,7 +217,7 @@ pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
     let committed_epoch = *transition_epoch + 1;
     let mutation = tauri::async_runtime::spawn_blocking(operation)
         .await
-        .map_err(|error| crate::error::AppError::TaskInterrupted(error.to_string()))
+        .map_err(|error| sage_core::error::AppError::TaskInterrupted(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
         return failed_transition(*transition_epoch, logged_public_message(&error));
@@ -278,7 +279,7 @@ pub(crate) async fn cancelled_transition(state: &AppState) -> ProjectTransitionR
 }
 
 /// The failure's public text; detail it leaves out goes to the log.
-fn logged_public_message(error: &crate::error::AppError) -> String {
+fn logged_public_message(error: &sage_core::error::AppError) -> String {
     if error.hides_detail() {
         tracing::warn!(%error, "project transition failed");
     }
@@ -568,7 +569,7 @@ mod tests {
                 || {
                     browser
                         .validate_project_roots(&[selected])
-                        .map_err(crate::error::AppError::InvalidRequest)
+                        .map_err(sage_core::error::AppError::InvalidRequest)
                 },
                 || -> AppResult<()> { panic!("overlapping project was committed") },
             )

@@ -13,8 +13,8 @@ struct TwoRootProject {
 
 impl TwoRootProject {
     fn new() -> Self {
-        let base =
-            crate::test_paths::temp_dir().join(format!("sage-git-command-{}", Uuid::new_v4()));
+        let base = sage_test_support::test_paths::temp_dir()
+            .join(format!("sage-git-command-{}", Uuid::new_v4()));
         let root_a = base.join("repo-a");
         let root_b = base.join("repo-b");
         for root in [&root_a, &root_b] {
@@ -67,7 +67,7 @@ fn subject(root: &Path) -> String {
 }
 
 fn write_executable(path: &Path, body: &str) {
-    crate::test_executable::write(path, body).unwrap();
+    sage_test_support::test_executable::write(path, body).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;

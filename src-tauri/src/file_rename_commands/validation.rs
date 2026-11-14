@@ -1,9 +1,11 @@
 use rusqlite::{OptionalExtension, params};
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 
 use crate::{
     domain::{RenameProjectFileRequest, ResourceRef},
-    error::{AppError, AppResult},
-    persistence::now_millis,
     project_registry::RootRecord,
     workspace::Workspace,
 };

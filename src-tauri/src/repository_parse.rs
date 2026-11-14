@@ -1,9 +1,8 @@
 use std::collections::HashMap;
 
-use crate::{
-    domain::{DiffHunk, DiffLine, FileChange, FileDiff, ResourceRef},
-    error::{AppError, AppResult},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::domain::{DiffHunk, DiffLine, FileChange, FileDiff, ResourceRef};
 
 const MAX_CHANGES: usize = 300;
 pub const MAX_DIFF_LINES: usize = 1_200;

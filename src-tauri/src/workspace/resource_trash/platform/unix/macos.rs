@@ -14,11 +14,9 @@ use std::{
 
 use objc2::rc::{Retained, autoreleasepool};
 use objc2_foundation::{NSFileManager, NSString, NSURL};
+use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    error::{AppError, AppResult},
-    workspace::root_identity_metadata,
-};
+use crate::workspace::root_identity_metadata;
 
 use super::{ResourceTrashAuthority, verify_visible_source};
 

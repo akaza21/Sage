@@ -6,7 +6,7 @@ use std::fs;
 
 #[test]
 fn native_claude_subprocess_binding_pump_sqlite_stream_cancel_and_permissions() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         for case in [
             "claude-turn-completed",
@@ -149,7 +149,7 @@ fn native_claude_subprocess_binding_pump_sqlite_stream_cancel_and_permissions() 
                         owner: owner.clone(),
                         turn_id: turn,
                         client_intent_id: ClientIntentId::new(),
-                        now_millis: crate::persistence::now_millis(),
+                        now_millis: sage_core::time::now_millis(),
                     })
                     .unwrap();
                 setup.wait_for_cancelled(&owner);

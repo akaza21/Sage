@@ -370,7 +370,7 @@ impl AcpService {
         chat_id: SageChatId,
         cursor: Option<PageCursor>,
     ) -> Result<AcpChatPage, StoreError> {
-        crate::blocking::in_place(|| {
+        sage_core::blocking::in_place(|| {
             let mut page = load_chat_page(
                 &self.database.connection(),
                 project_id.clone(),

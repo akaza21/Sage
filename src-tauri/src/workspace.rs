@@ -4,10 +4,9 @@ use std::{
     time::UNIX_EPOCH,
 };
 
-use crate::{
-    domain::{DirectoryListing, ResourceRef, TextFile, WorkspaceEntry},
-    error::{AppError, AppResult},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::domain::{DirectoryListing, ResourceRef, TextFile, WorkspaceEntry};
 
 #[cfg(windows)]
 pub(crate) mod atomic_write_windows;

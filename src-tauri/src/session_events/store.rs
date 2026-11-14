@@ -11,7 +11,7 @@ use serde_json::json;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use self::{
     capacity::Usage,

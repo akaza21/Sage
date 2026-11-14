@@ -3,10 +3,10 @@
 //! keeps only the rendered projection.
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::AppResult;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
-use crate::error::AppResult;
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

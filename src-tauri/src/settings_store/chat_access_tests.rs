@@ -172,7 +172,7 @@ fn an_unknown_stored_mode_reads_as_the_default() {
         )
         .unwrap();
     let (mode, captured) =
-        crate::test_diagnostics::capture_diagnostics(|| store.chat_access("session-a"));
+        sage_test_support::test_diagnostics::capture_diagnostics(|| store.chat_access("session-a"));
     assert_eq!(mode.unwrap(), None);
     assert!(captured.contains("Unknown stored chat access mode"));
 }

@@ -353,7 +353,7 @@ mod tests {
     static NEXT_ROOT: AtomicUsize = AtomicUsize::new(1);
 
     fn root(label: &str) -> PathBuf {
-        crate::test_paths::temp_dir().join(format!(
+        sage_test_support::test_paths::temp_dir().join(format!(
             "sage-launch-profile-{label}-{}-{}",
             std::process::id(),
             NEXT_ROOT.fetch_add(1, Ordering::Relaxed)

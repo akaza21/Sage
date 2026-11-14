@@ -9,7 +9,7 @@ use std::fs;
 
 #[test]
 fn native_pi_subprocess_real_binding_pump_sqlite_settlement_and_idle_configuration() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         for case in [
             "pi-idle-config-journey",
@@ -137,7 +137,7 @@ fn native_pi_subprocess_real_binding_pump_sqlite_settlement_and_idle_configurati
                         owner: owner.clone(),
                         turn_id,
                         client_intent_id: ClientIntentId::new(),
-                        now_millis: crate::persistence::now_millis(),
+                        now_millis: sage_core::time::now_millis(),
                     })
                     .unwrap();
                 setup.wait_for_cancelled(&owner);

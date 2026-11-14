@@ -175,7 +175,7 @@ mod tests {
 
     #[test]
     fn each_profile_folder_has_one_session_scoped_doorbell() {
-        let root = crate::test_paths::temp_dir()
+        let root = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-profile-handoff-{}", uuid::Uuid::new_v4()));
         let first = root.join("first");
         let second = root.join("second");

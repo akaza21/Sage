@@ -1,7 +1,8 @@
 use super::*;
 
 fn temp_root() -> PathBuf {
-    let root = crate::test_paths::temp_dir().join(format!("sage-updates-{}", uuid::Uuid::new_v4()));
+    let root = sage_test_support::test_paths::temp_dir()
+        .join(format!("sage-updates-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     root
 }

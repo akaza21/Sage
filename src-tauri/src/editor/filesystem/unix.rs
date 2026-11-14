@@ -9,10 +9,9 @@ use std::{
     os::fd::{AsRawFd, FromRawFd},
 };
 
-use crate::{
-    error::{AppError, AppResult},
-    workspace::{RootIdentity, Workspace, open_held_parent, root_identity_metadata},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::workspace::{RootIdentity, Workspace, open_held_parent, root_identity_metadata};
 
 /// Owner read and write only until the target's permissions are copied.
 const TEMP_FILE_MODE: libc::c_uint = 0o600;

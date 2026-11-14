@@ -1,7 +1,6 @@
-use crate::{
-    error::{AppError, AppResult},
-    workspace::path_glob::{path_glob_matches, valid_path_glob},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::workspace::path_glob::{path_glob_matches, valid_path_glob};
 
 use super::types::{MAX_SEARCH_FILTER_BYTES, MAX_SEARCH_FILTER_PATTERNS};
 

@@ -3,10 +3,9 @@ use std::{fs::File, io::Read, path::Path};
 #[cfg(test)]
 pub(crate) mod test_hook;
 
-use crate::{
-    error::{AppError, AppResult},
-    workspace::{RootIdentity, leaf_identity},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::workspace::{RootIdentity, leaf_identity};
 
 /// P-02's complete-source ceiling. Line selection happens only after admission.
 pub(crate) const MAX_TEXT_FILE_BYTES: u64 =

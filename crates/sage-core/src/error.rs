@@ -46,7 +46,6 @@ pub enum AppError {
     #[error("invalid request: {0}")]
     InvalidRequest(String),
 
-    #[cfg_attr(windows, allow(dead_code))]
     #[error("unsupported operation: {0}")]
     Unsupported(String),
 

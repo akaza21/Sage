@@ -3,6 +3,7 @@ use std::{
     time::Instant,
 };
 
+use sage_core::error::AppResult;
 use tauri::{Manager, State};
 
 use crate::{
@@ -12,7 +13,6 @@ use crate::{
     },
     chat_commands::{execute_chat_transition, failed_transition},
     domain::{ChatDeleteRequest, ChatLifecycleRequest, ProjectTransitionResult},
-    error::AppResult,
     state::AppState,
 };
 

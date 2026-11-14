@@ -3,7 +3,7 @@ use std::fs;
 use rusqlite::{Connection, OpenFlags};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::{
     backup::verify_sqlite,

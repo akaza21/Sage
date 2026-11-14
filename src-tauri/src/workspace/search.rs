@@ -40,7 +40,7 @@ mod tests {
 
     fn test_limits() -> SearchLimits {
         SearchLimits {
-            max_duration: crate::test_wait::BUDGET,
+            max_duration: sage_test_support::test_wait::BUDGET,
             ..SearchLimits::default()
         }
     }

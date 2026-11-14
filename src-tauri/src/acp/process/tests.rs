@@ -470,7 +470,7 @@ fn windows_npm_codex_launcher_hands_node_ordinary_script_and_working_directory_p
         control.wait(),
         Ok(TreeExit::Exited { code: Some(0) })
     ));
-    let script = crate::win32_path::simplified(
+    let script = sage_core::win32_path::simplified(
         &canonical
             .parent()
             .unwrap()
@@ -478,7 +478,7 @@ fn windows_npm_codex_launcher_hands_node_ordinary_script_and_working_directory_p
     );
     // Pi names its session folder after the working directory, and a
     // verbatim prefix there produced an illegal file name.
-    let cwd = crate::win32_path::simplified(spec.project_root.as_path());
+    let cwd = sage_core::win32_path::simplified(spec.project_root.as_path());
     assert!(!cwd.to_string_lossy().starts_with(r"\\?\"));
     assert_eq!(
         String::from_utf8(output).unwrap(),

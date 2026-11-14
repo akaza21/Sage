@@ -3,7 +3,7 @@ use serde::Deserialize;
 use serde_json::json;
 use sha2::{Digest, Sha256};
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::{
     identity::{hex_digest, legacy_turn_id},

@@ -10,16 +10,14 @@ use std::{
     sync::Arc,
 };
 
+use sage_core::error::{AppError, AppResult};
 use windows_sys::Win32::Storage::FileSystem::{
     DELETE, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
     FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_RENAME_INFO, FILE_SHARE_DELETE,
     FILE_SHARE_READ, FILE_SHARE_WRITE, FileRenameInfo, SetFileInformationByHandle,
 };
 
-use crate::{
-    error::{AppError, AppResult},
-    workspace::root_identity_file,
-};
+use crate::workspace::root_identity_file;
 
 use super::{
     FileRenameAuthority, ParentAuthority, RenameIdentityProof, RenameObservation, observe_listing,

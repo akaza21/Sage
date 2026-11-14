@@ -1,17 +1,15 @@
 use rusqlite::{Row, Transaction, params};
+use sage_core::error::{AppError, AppResult};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::{
-    acp::{
-        contract::{BoundedVec, SafeText},
-        declared_test::CommandActivity,
-        intent::{
-            COMMAND_RESOURCE_LIMIT, NormalizedPayload, SafeResourceLocation, ToolCategory,
-            ToolExecution,
-        },
+use crate::acp::{
+    contract::{BoundedVec, SafeText},
+    declared_test::CommandActivity,
+    intent::{
+        COMMAND_RESOURCE_LIMIT, NormalizedPayload, SafeResourceLocation, ToolCategory,
+        ToolExecution,
     },
-    error::{AppError, AppResult},
 };
 
 const SUSPENDED_TRIGGERS: [&str; 6] = [

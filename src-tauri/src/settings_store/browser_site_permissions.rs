@@ -5,12 +5,10 @@
 //! every origin before it reaches this store.
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 
 use super::SettingsStore;
-use crate::{
-    browser::site_permissions::{Decision, PermissionKind},
-    error::{AppError, AppResult},
-};
+use crate::browser::site_permissions::{Decision, PermissionKind};
 
 /// At most this many saved answers across every site.
 pub const MAX_SITE_PERMISSIONS: usize = 256;

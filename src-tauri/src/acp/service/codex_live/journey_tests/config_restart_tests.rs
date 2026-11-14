@@ -253,7 +253,7 @@ fn claude_turn_with_approval(setup: &FixtureSetup, owner: &RuntimeOwner) {
 
 #[test]
 fn claude_config_choices_survive_a_graceful_restart() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let profile = profile("claude-config-resume");
         let registry = || {
@@ -331,7 +331,7 @@ fn claude_config_choices_survive_a_graceful_restart() {
 
 #[test]
 fn codex_model_and_effort_survive_a_graceful_restart() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let profile = profile("codex-config-resume");
         let registry =

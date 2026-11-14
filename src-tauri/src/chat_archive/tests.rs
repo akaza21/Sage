@@ -1,12 +1,10 @@
 use std::fs;
 
+use sage_core::error::AppError;
 use uuid::Uuid;
 
 use super::*;
-use crate::{
-    domain::{ProjectLayoutRequest, ProjectSwitchRequest, WorkbenchTab},
-    error::AppError,
-};
+use crate::domain::{ProjectLayoutRequest, ProjectSwitchRequest, WorkbenchTab};
 
 fn request(
     project_id: &str,

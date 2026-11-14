@@ -37,7 +37,7 @@ impl AcpService {
                     &connection,
                     &owner.session_id,
                     config,
-                    crate::persistence::now_millis(),
+                    sage_core::time::now_millis(),
                 )
                 .map_err(Into::into)
             });
@@ -121,12 +121,8 @@ impl AcpService {
         let stored = self.database.write_connection().and_then(|mut connection| {
             let transaction = connection.transaction()?;
             notices::clear(&transaction, session, choice)?;
-            let written = choices::record(
-                &transaction,
-                session,
-                choice,
-                crate::persistence::now_millis(),
-            )?;
+            let written =
+                choices::record(&transaction, session, choice, sage_core::time::now_millis())?;
             transaction.commit()?;
             Ok(written)
         });

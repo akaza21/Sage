@@ -12,7 +12,7 @@ use tokio::{
     time::{Instant, sleep, timeout},
 };
 
-use crate::error::{AppError, AppResult, GitContainmentState};
+use sage_core::error::{AppError, AppResult, GitContainmentState};
 
 #[cfg(test)]
 use super::test_support::{ForegroundObservation, ReaperTestControl, ReaperWaitMode};
@@ -32,7 +32,7 @@ const GIT_REAPER_ATTEMPTS: usize = 40;
 const REAPER_WAIT_TIMEOUT: Duration = Duration::from_millis(100);
 const REAPER_RETRY_DELAY: Duration = Duration::from_millis(25);
 #[cfg(test)]
-const TEST_RELEASE_GATE_TIMEOUT: Duration = crate::test_wait::HANG_GUARD;
+const TEST_RELEASE_GATE_TIMEOUT: Duration = sage_test_support::test_wait::HANG_GUARD;
 
 pub(super) struct ContainmentRegistry {
     abandoning: AtomicBool,
@@ -339,15 +339,15 @@ mod tests {
 
     #[test]
     fn final_teardown_releases_owned_quarantine_and_refuses_further_git() {
-        crate::test_wait::guarded("final Git teardown", async {
+        sage_test_support::test_wait::guarded("final Git teardown", async {
             let harness = crate::git_process::GitProcessTestHarness::new();
             let (policy, reaper) = harness.exhausting_reaper_policy(crate::git_budget::READ);
             let registry = policy.containment_registry.clone().unwrap();
-            let root = crate::test_paths::temp_dir();
+            let root = sage_test_support::test_paths::temp_dir();
             let result = crate::git_process::run(&root, &["--version"], 1024, policy).await;
             assert!(matches!(result, Err(AppError::GitContainment { .. })));
             reaper
-                .wait_for_quarantine(crate::test_wait::HANG_GUARD)
+                .wait_for_quarantine(sage_test_support::test_wait::HANG_GUARD)
                 .await
                 .unwrap();
             assert_eq!(harness.observation().quarantined_owners, 1);

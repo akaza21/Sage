@@ -64,7 +64,7 @@ pub(super) fn remember(
             &transaction,
             &owner.session_id,
             choice,
-            crate::persistence::now_millis(),
+            sage_core::time::now_millis(),
         )?;
         transaction.commit().map_err(Into::into)
     });
@@ -85,13 +85,8 @@ impl AcpService {
         self.database
             .write_connection()
             .and_then(|connection| {
-                choices::record(
-                    &connection,
-                    session,
-                    choice,
-                    crate::persistence::now_millis(),
-                )
-                .map_err(Into::into)
+                choices::record(&connection, session, choice, sage_core::time::now_millis())
+                    .map_err(Into::into)
             })
             .inspect_err(|error| tracing::warn!(?error, "starting config choice was not stored"))
             .unwrap_or(false)
@@ -127,7 +122,7 @@ impl AcpService {
                 expected,
                 new,
                 notice,
-                crate::persistence::now_millis(),
+                sage_core::time::now_millis(),
             )
             .map_err(Into::into)
         });

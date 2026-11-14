@@ -1,7 +1,6 @@
-use crate::{
-    error::{AppError, AppResult},
-    persistence::Database,
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::persistence::Database;
 use rusqlite::params;
 
 pub(crate) fn validate_parent(

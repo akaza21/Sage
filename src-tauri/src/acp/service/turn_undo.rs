@@ -247,7 +247,7 @@ impl AcpService {
             runtime_epoch: session::next_runtime_epoch(&self.database, &owner.session_id)
                 .map_err(UndoneRelaunchError::Activation)?,
             artifact_digest: String::new(),
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         };
         self.activate_head_session(admitted, command, project_root)
             .await
@@ -284,7 +284,7 @@ pub(crate) fn stage_turn_undo(
         turn_id,
         harness_reverted,
         cut_at,
-        now_millis: crate::persistence::now_millis(),
+        now_millis: sage_core::time::now_millis(),
     };
     let mut connection = database
         .write_connection()

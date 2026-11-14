@@ -92,7 +92,7 @@ mod tests {
     use super::*;
 
     fn npm_tree() -> PathBuf {
-        let root = crate::test_paths::temp_dir()
+        let root = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-npm-manifest-{}", uuid::Uuid::new_v4()));
         let package = root.join("node_modules/@openai/codex");
         std::fs::create_dir_all(package.join("bin")).unwrap();
@@ -193,8 +193,8 @@ mod tests {
 
     #[test]
     fn the_bin_is_the_module_the_named_package_declares() {
-        let root =
-            crate::test_paths::temp_dir().join(format!("sage-npm-bin-{}", uuid::Uuid::new_v4()));
+        let root = sage_test_support::test_paths::temp_dir()
+            .join(format!("sage-npm-bin-{}", uuid::Uuid::new_v4()));
         let package = root.join("node_modules/@openai/codex");
         std::fs::create_dir_all(package.join("bin")).unwrap();
         std::fs::write(package.join("bin/codex.js"), "").unwrap();

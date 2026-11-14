@@ -10,9 +10,9 @@
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 
 use super::SettingsStore;
-use crate::error::{AppError, AppResult};
 
 const MAX_PATH_BYTES: usize = 4096;
 

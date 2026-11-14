@@ -1,12 +1,12 @@
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex},
-    time::{SystemTime, UNIX_EPOCH},
 };
 
 use rusqlite::Connection;
+use sage_core::error::AppResult;
 
-use crate::{acp::migration, error::AppResult};
+use crate::acp::migration;
 
 mod physical_storage;
 
@@ -65,7 +65,7 @@ impl Database {
     fn open_with_limits(path: &Path, limits: StorageLimits) -> AppResult<Self> {
         let (connection, live_path_anchor) = migration::open_or_migrate(path)?.into_parts();
         crate::turn_workspace::invalidate_active(&connection).map_err(|_| {
-            crate::error::AppError::InvalidRequest("workspace summary recovery failed".into())
+            sage_core::error::AppError::InvalidRequest("workspace summary recovery failed".into())
         })?;
         connection.pragma_update(None, "journal_mode", "WAL")?;
         connection.pragma_update(None, "foreign_keys", "ON")?;
@@ -116,7 +116,9 @@ impl Database {
             .as_deref()
             .map(|path| path.as_path())
             .ok_or_else(|| {
-                crate::error::AppError::Unsupported("image artifacts need a disk database".into())
+                sage_core::error::AppError::Unsupported(
+                    "image artifacts need a disk database".into(),
+                )
             })
     }
 
@@ -151,7 +153,7 @@ impl Database {
             .as_ref()
             .map(|reader| {
                 reader.try_lock().map_err(|_| {
-                    crate::error::AppError::ResourceLimit(
+                    sage_core::error::AppError::ResourceLimit(
                         "Chat search is already reading a snapshot".into(),
                     )
                 })
@@ -203,13 +205,6 @@ impl Drop for WriteConnection<'_> {
     fn drop(&mut self) {
         self.physical_storage.observe_after_write(&self.connection);
     }
-}
-
-pub(crate) fn now_millis() -> i64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_millis() as i64
 }
 
 #[cfg(test)]
@@ -371,7 +366,7 @@ mod tests {
 
         assert!(matches!(
             database.converge_wal_for_observation(),
-            Err(crate::error::AppError::ResourceLimit(_))
+            Err(sage_core::error::AppError::ResourceLimit(_))
         ));
         drop(reader);
         let receipt = database.converge_wal_for_observation().unwrap();
@@ -426,7 +421,7 @@ mod tests {
         assert!(database.physical_storage.recovery_required());
         assert!(matches!(
             database.write_connection(),
-            Err(crate::error::AppError::ResourceLimit(_))
+            Err(sage_core::error::AppError::ResourceLimit(_))
         ));
         drop(reader);
         {

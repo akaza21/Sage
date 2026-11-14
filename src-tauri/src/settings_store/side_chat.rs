@@ -1,5 +1,6 @@
+use sage_core::error::AppResult;
+
 use super::SettingsStore;
-use crate::error::AppResult;
 use rusqlite::OptionalExtension;
 
 impl SettingsStore {

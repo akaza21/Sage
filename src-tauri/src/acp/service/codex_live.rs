@@ -80,7 +80,7 @@ impl ActivationAbortIntent {
             binding_digest: self.binding_digest.clone(),
             artifact_digest: self.artifact_digest.clone(),
             category,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         }
     }
 }

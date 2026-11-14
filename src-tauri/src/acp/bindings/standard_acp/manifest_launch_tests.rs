@@ -24,7 +24,7 @@ fn manifest_bytes(version: &str) -> String {
 }
 
 fn npm_tree(label: &str) -> (TempTree, PathBuf, PathBuf) {
-    let root = TempTree(crate::test_paths::temp_dir().join(format!(
+    let root = TempTree(sage_test_support::test_paths::temp_dir().join(format!(
         "sage-acp-manifest-{label}-{}",
         uuid::Uuid::new_v4()
     )));
@@ -115,7 +115,7 @@ fn manifest_guard_refuses_a_byte_identical_reparse_point_substituted_after_admis
     const FILE_SUPPORTS_REPARSE_POINTS: u32 = 0x0000_0080;
     let (root, shim, manifest) = npm_tree("reparse");
     let supports_junctions =
-        crate::test_paths::volume_flags(&root.0) & FILE_SUPPORTS_REPARSE_POINTS != 0;
+        sage_test_support::test_paths::volume_flags(&root.0) & FILE_SUPPORTS_REPARSE_POINTS != 0;
     let spec = launch_spec("acp-manifest-reparse", &shim, &root.0);
     let expectation = spec
         .artifact

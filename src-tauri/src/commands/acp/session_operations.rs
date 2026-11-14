@@ -272,7 +272,7 @@ pub(crate) async fn send_acp_turn_inner(
                     expected_projection_revision,
                     client_intent_id,
                     prompt,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 access_mode,
             },
@@ -342,7 +342,7 @@ pub(crate) async fn cancel_acp_turn_inner(
                 },
                 turn_id: request.turn_id,
                 client_intent_id: request.client_intent_id,
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
         )
         .map_err(dispatch_error)?;

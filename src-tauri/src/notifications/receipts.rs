@@ -1,7 +1,8 @@
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::AppResult;
 use serde::Serialize;
 
-use crate::{acp::intent::ProjectionChangedV1, error::AppResult};
+use crate::acp::intent::ProjectionChangedV1;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Event {

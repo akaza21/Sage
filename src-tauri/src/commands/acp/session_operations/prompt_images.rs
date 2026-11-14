@@ -185,10 +185,10 @@ fn normalize(
         .map(|(media_type, bytes)| {
             let normalized = crate::image_artifacts::normalize_image(media_type, &bytes, bounds)
                 .map_err(|error| match error {
-                    crate::error::AppError::ResourceLimit(_) => {
+                    sage_core::error::AppError::ResourceLimit(_) => {
                         refused(ImageRefusal::TooLarge(bounds.bytes))
                     }
-                    crate::error::AppError::InvalidRequest(message) => {
+                    sage_core::error::AppError::InvalidRequest(message) => {
                         AcpIpcError::InvalidRequest {
                             message: text(format!("An attached image cannot be sent: {message}.")),
                         }

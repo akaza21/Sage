@@ -2,6 +2,7 @@
 //! query's own matcher finds the matches, so Replace changes exactly what
 //! Search showed.
 
+use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 
 use super::{
@@ -9,7 +10,6 @@ use super::{
     literal_match::{LiteralQuery, search_query},
     types::{MAX_QUERY_BYTES, MAX_SEARCH_PREVIEW_CHARS},
 };
-use crate::error::{AppError, AppResult};
 
 pub const MAX_REPLACEMENT_BYTES: usize = 2 * 1024;
 /// Changed lines shown for one File, and for one whole Replace.

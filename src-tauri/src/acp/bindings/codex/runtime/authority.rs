@@ -1,11 +1,12 @@
 use std::sync::Arc;
 
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     acp::{
         bindings::{adapter::AdapterRuntimeError, codex::admission::AdmittedCodexBinding},
         contract::{SageProjectId, SageRootId},
     },
-    error::{AppError, AppResult},
     persistence::Database,
     project_registry::ProjectRootAuthority,
     state::ActiveProjectContext,

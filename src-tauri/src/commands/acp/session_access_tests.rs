@@ -134,7 +134,7 @@ fn a_mode_the_session_does_not_offer_is_refused() {
 #[test]
 fn every_full_access_turn_is_logged() {
     let session = Session::reporting("default", CLAUDE);
-    let (results, captured) = crate::test_diagnostics::capture_diagnostics(|| {
+    let (results, captured) = sage_test_support::test_diagnostics::capture_diagnostics(|| {
         // The first turn switches the session; the next ones find it there.
         let first = select(&session, SessionAccessMode::FullAccess);
         let session = Session::reporting("bypassPermissions", CLAUDE);
@@ -151,7 +151,7 @@ fn every_full_access_turn_is_logged() {
     );
     // A turn that never reached the session is not recorded as run.
     let session = Session::reporting("default", &["default"]);
-    let (result, captured) = crate::test_diagnostics::capture_diagnostics(|| {
+    let (result, captured) = sage_test_support::test_diagnostics::capture_diagnostics(|| {
         select(&session, SessionAccessMode::FullAccess)
     });
     assert!(result.is_err());
@@ -335,7 +335,7 @@ async fn a_grant_needs_a_pending_token_and_a_deliberate_allow() {
         .prepare_chat_access(
             "session-access",
             SessionAccessMode::FullAccess,
-            crate::persistence::now_millis(),
+            sage_core::time::now_millis(),
         )
         .unwrap();
     // Cancel, and an Allow quicker than a person reads, grant nothing.
