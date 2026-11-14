@@ -135,11 +135,7 @@ pub(crate) fn question_payload(
 }
 
 pub(crate) fn display<const MAX: usize>(field: &'static str, text: &str) -> Option<SafeText<MAX>> {
-    let mut end = text.len().min(MAX);
-    while !text.is_char_boundary(end) {
-        end -= 1;
-    }
-    normalized_label_text(field, &text[..end]).ok()
+    normalized_label_text(field, text).ok()
 }
 
 /// Unicode format characters (general category Cf): bidi controls,
