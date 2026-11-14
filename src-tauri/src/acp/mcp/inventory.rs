@@ -5,7 +5,7 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-/// The most servers one read lists; more are counted, not listed.
+/// Additional servers set the truncated flag instead of being listed.
 pub(crate) const MAX_LISTED_SERVERS: usize = 64;
 const MAX_NAME_BYTES: usize = 128;
 const MAX_TITLE_BYTES: usize = 256;
@@ -30,9 +30,13 @@ pub(crate) enum McpConnection {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum McpAuth {
+    /// Signed in through OAuth.
     OAuth,
+    /// A configured bearer token.
     Token,
+    /// Supports OAuth and is not signed in.
     SignedOut,
+    /// Needs no sign-in.
     None,
     Unknown,
 }

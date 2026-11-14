@@ -23,9 +23,12 @@ pub(crate) struct NativeRpcIntent {
 pub(crate) enum NativeRpcRequest {
     Goal(GoalAction),
     Read(NativeRead),
-    /// Only an idle runtime whose negotiated capabilities admit `nativeSessionFork` accepts it.
+    /// Forks the runtime's own native session through its latest turn. Only
+    /// an idle runtime whose negotiated capabilities admit
+    /// `nativeSessionFork` accepts it.
     ForkSession,
-    /// Best effort: the fork Chat never depends on it.
+    /// Releases a fork this runtime created once its fork Chat was committed
+    /// or refused. Best effort: the fork Chat never depends on it.
     ReleaseFork {
         fork: crate::acp::intent::ExternalId,
         committed: bool,
@@ -36,6 +39,8 @@ pub(crate) enum NativeRpcRequest {
     Control(crate::acp::session_control::SessionControl),
 }
 
+/// A paged native read. Each RPC reads one page; the caller follows the
+/// cursor and bounds how many pages it reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRead {
     /// Turns of a child thread this runtime spawned, oldest first.
@@ -106,8 +111,11 @@ pub(crate) enum NativeRpcReply {
     /// The terminals the harness still runs, at most
     /// `MAX_BACKGROUND_TERMINALS` of them.
     BackgroundTerminals(Vec<crate::acp::background_terminals::BackgroundTerminal>),
+    /// The harness took a stop request.
     TerminalsStopped,
+    /// The harness carried out a session control; the text says what it did.
     Controlled(Option<crate::acp::contract::SafeText<512>>),
+    /// The harness declined a session control, with its reason if it gave one.
     ControlRefused(Option<crate::acp::contract::SafeText<512>>),
     McpServers(crate::acp::mcp::inventory::McpInventory),
     McpSignIn(crate::acp::mcp::inventory::McpAuthUrl),

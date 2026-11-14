@@ -4,12 +4,14 @@ use super::intent::SafeResourceLocation;
 
 /// Most terminals one listing carries; the harness is asked for no more.
 pub(crate) const MAX_BACKGROUND_TERMINALS: usize = 32;
+/// Byte cap of the opaque handle the WebView sends back to stop one.
 pub(crate) const TERMINAL_HANDLE_BYTES: usize = 128;
 pub(crate) const TERMINAL_COMMAND_BYTES: usize = 4_096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum TerminalAction {
     List,
+    /// Stops the terminal with this handle from the latest listing.
     Stop(String),
     StopAll,
 }

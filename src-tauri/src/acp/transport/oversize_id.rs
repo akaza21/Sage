@@ -58,6 +58,7 @@ enum Token {
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Scanned {
     Reply(u64),
+    /// One complete value with no top-level id; nothing waits on it.
     Idless,
     /// Malformed, or a request that a peer waits on.
     Invalid,

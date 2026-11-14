@@ -249,6 +249,7 @@ pub(crate) struct PromptMetadata {
     pub(crate) attached_context: Vec<super::attached_context::AttachedContext>,
     /// As stored, so an action this build does not run still marks its Turn.
     pub(crate) session_action: Option<serde_json::Value>,
+    /// The listed command the Turn ran, as stored.
     pub(crate) command: Option<serde_json::Value>,
 }
 

@@ -148,6 +148,8 @@ pub(crate) enum SurfaceChange {
     SendRelevant,
 }
 
+/// The title and notices are durable history. The model and activities describe
+/// one live runtime epoch and reset when a new epoch reports.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionSurface {
@@ -269,6 +271,8 @@ pub struct SessionSurfaceView {
     /// The latest turn, when the running session can undo its file changes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub undo_turn: Option<crate::acp::contract::SageTurnId>,
+    /// Undo removes the turn from the conversation only; its file changes
+    /// stay.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub undo_keeps_files: bool,
 }

@@ -64,6 +64,8 @@ pub(crate) fn redact(
     }
 }
 
+/// Clips display text to `max` bytes at a character boundary, ending a clipped
+/// value with an ellipsis.
 pub(crate) fn clip_display(value: &str, max: usize) -> String {
     const CLIPPED: &str = "\u{2026}";
     if value.len() <= max {

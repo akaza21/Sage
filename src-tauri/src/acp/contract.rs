@@ -281,7 +281,6 @@ impl<T, const MAX: usize> BoundedVec<T, MAX> {
         &self.0
     }
 
-    /// The bound holds since none can be added.
     pub fn as_mut_slice(&mut self) -> &mut [T] {
         &mut self.0
     }

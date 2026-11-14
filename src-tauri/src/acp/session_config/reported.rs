@@ -1,5 +1,6 @@
 use super::{ConfigKind, ConfigMutation, ConfigValue, SessionConfig};
 
+/// Returns `None` when the session does not report the mode or option, or the option has an unsupported kind.
 pub(crate) fn current_value(
     config: &SessionConfig,
     choice: &ConfigMutation,

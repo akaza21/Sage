@@ -5,7 +5,8 @@ use super::prompt_files::{DISPATCH_BYTES, TOTAL_BYTES as PROMPT_FILE_BYTES};
 pub const PROMPT_IMAGE_COUNT: usize = 4;
 
 /// An attached file as the user supplies it, before normalisation: a 4K or 5K
-/// screenshot or a phone photo fits.
+/// screenshot or a phone photo fits. Its header is checked against the pixel
+/// bounds before any pixel is decoded.
 pub const IMAGE_UPLOAD_BYTES: usize = 10 * 1024 * 1024;
 pub const IMAGE_UPLOAD_EDGE_PX: u32 = 8192;
 pub const IMAGE_UPLOAD_PIXELS: u64 = 16_777_216;
@@ -14,6 +15,7 @@ pub const IMAGE_UPLOAD_PIXELS: u64 = 16_777_216;
 /// (3) and the RGB output (3), all live at once. This is the worst decode;
 /// a PNG decodes straight into its 4-byte RGBA raster.
 pub const IMAGE_DECODE_BYTES_PER_PIXEL: u64 = 6 + 3 + 3;
+/// Headroom the PNG decoder may take beside its raster for row buffers.
 pub const PNG_DECODER_ROW_BYTES: usize = 1024 * 1024;
 /// An upper bound on native memory while normalising one image (about 202
 /// MiB at the pixel bound). The encoded file stays alive throughout (its
@@ -37,6 +39,8 @@ const fn max(left: u64, right: u64) -> u64 {
     if left > right { left } else { right }
 }
 
+/// What the image store keeps for any harness. An upload past these bounds
+/// is normalised down to them; one within them is kept byte for byte.
 pub const STORED_IMAGE_BYTES: usize = 4 * 1024 * 1024;
 pub const STORED_IMAGE_EDGE_PX: u32 = 2048;
 pub const STORED_IMAGE_PIXELS: u64 = STORED_IMAGE_EDGE_PX as u64 * STORED_IMAGE_EDGE_PX as u64;
@@ -60,6 +64,7 @@ pub const ECHOED_PROMPT_IMAGE_TOTAL_BYTES: usize = 600 * 1024;
 /// The long edge of the transcript copy of a sent image too large to keep
 /// whole: legible in the transcript, a quarter of the prompt's pixels.
 pub const IMAGE_PREVIEW_EDGE_PX: u32 = 768;
+/// The long edge of the store's own thumbnail of a large image.
 pub const STORED_THUMBNAIL_EDGE_PX: u32 = 128;
 /// JSON escapes a byte to at most six (a control character as `\u001b`).
 pub const JSON_ESCAPE_MAX_BYTES: usize = 6;
@@ -83,6 +88,8 @@ pub const PROMPT_FRAME_BYTES: usize = base64_len(PROMPT_IMAGE_TOTAL_BYTES)
 pub const PROMPT_EGRESS_RESERVE_BYTES: usize = PROMPT_FRAME_BYTES + 1;
 
 pub const NORMALIZED_IMAGE_ENVELOPE_BYTES: usize = 256;
+/// Decoded bytes of the transcript copy of one sent image: the most whose
+/// base64 still fits one normalized item with its envelope.
 pub const IMAGE_PREVIEW_BYTES: usize =
     (LIMITS.wire.normalized_item_bytes as usize - NORMALIZED_IMAGE_ENVELOPE_BYTES) / 4 * 3;
 pub const PROMPT_INTENT_OVERHEAD_BYTES: usize = 8192;
@@ -118,7 +125,6 @@ const _: () = assert!(
 mod tests {
     use super::*;
 
-    /// The value of `export const NAME = a * b * c;` in the frontend mirror.
     fn mirrored(name: &str) -> usize {
         let source = include_str!("../../../../src/domain/attachedContext.ts");
         let prefix = format!("export const {name} = ");

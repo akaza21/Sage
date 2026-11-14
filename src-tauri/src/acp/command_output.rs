@@ -28,7 +28,9 @@ pub(crate) fn join_command_output_blocks<'a>(
     Some(joined)
 }
 
-/// Retains a UTF-8-safe suffix of already-sanitized command output.
+/// Retains a UTF-8-safe suffix of already-sanitized command output. The
+/// marker-free representation lets future streaming append source text without
+/// treating a display marker as source output.
 pub(crate) fn retain_command_output(input: &str) -> Option<RetainedCommandOutput> {
     let maximum = LIMITS.wire.retained_tool_output_bytes as usize;
     let mut lines = VecDeque::new();

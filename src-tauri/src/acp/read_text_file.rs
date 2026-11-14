@@ -291,6 +291,8 @@ impl ReadTextFileService {
     pub(crate) fn receipt_sink(&self) -> ReadTextReceiptSink {
         self.receipt_sink.clone()
     }
+    /// Fallback obligations are drained only by the exact owner; there is no
+    /// global unattributed receipt consumer.
     #[allow(
         dead_code,
         reason = "P-02 Decision B deferred adapter seam; exercised by conformance tests and not production-admitted"

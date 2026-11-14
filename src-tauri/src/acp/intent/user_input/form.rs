@@ -1,7 +1,12 @@
 //! Elicitation forms and links, shared by every harness that speaks them:
 //! ACP `elicitation/create` (Claude Code) and MCP elicitation relayed by
 //! Codex (`mcpServer/elicitation/request`). Both carry the MCP
-//! `requestedSchema` subset.
+//! `requestedSchema` subset: a flat object of string, enum, multi-select,
+//! boolean, number and integer properties, with their length, range and
+//! item-count limits. A form Sage cannot show and check exactly (an unknown
+//! property type, a `pattern` or `format` rule, too many fields or options,
+//! repeated labels, limits no answer can meet) is refused here, so the
+//! caller declines it instead of guessing.
 
 use serde_json::{Map, Number, Value};
 
@@ -98,6 +103,9 @@ pub(crate) fn url_request(url: &str) -> Option<UserInputRequest> {
     })
 }
 
+/// The pending-request payload for harness questions: a fixed `summary`, the
+/// harness's own `message` (clipped) as the reason, and only a decline as
+/// the approval choice. `None` when it would not fit the journal's cap.
 pub(crate) fn question_payload(
     summary: &str,
     message: Option<&str>,

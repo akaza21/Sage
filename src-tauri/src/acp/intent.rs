@@ -26,6 +26,7 @@ pub use tool_execution::{TOOL_PROGRESS_BYTES, ToolExecution};
 
 pub type BindingId = RequiredText<512>;
 pub type ModelId = RequiredText<512>;
+/// A thinking level chosen before a session exists.
 pub type EffortId = RequiredText<64>;
 pub type ExternalId = RequiredText<512>;
 pub type PageCursor = RequiredText<512>;

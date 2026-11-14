@@ -1,5 +1,3 @@
-//! Cross-harness render parity (docs/harness-render-contract.md).
-
 use serde_json::Value;
 
 use crate::acp::{
@@ -308,8 +306,6 @@ fn parity_fixture_lists_only_known_scenarios_harnesses_and_owners() {
     }
 }
 
-/// The store, not this suite, decides which sequences commit: a binding that
-/// emits any of these fails the parity suite.
 #[test]
 fn the_store_refuses_sequences_no_binding_may_emit() {
     use crate::acp::{contract::SafeText, store::StoreError};

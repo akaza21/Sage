@@ -9,7 +9,8 @@ use serde_json::Number;
 
 use super::{UserInputError, UserInputKind};
 
-/// Lengths count characters (Unicode scalar values), not bytes.
+/// Limits a form schema puts on a question's answer; an absent one does not
+/// apply. Lengths count characters (Unicode scalar values), not bytes.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UserInputLimits {

@@ -8,20 +8,22 @@ pub enum SessionAccessMode {
     WorkspaceWrite,
     /// File edits are approved without asking; other tools still ask.
     AcceptEdits,
+    /// The harness plans and does not change files.
     Plan,
+    /// The harness approves actions it judges safe and asks about the rest.
     Auto,
-    /// Granted per chat session after an
+    /// Every action runs without asking. Granted per chat session after an
     /// explicit confirmation; never a stored default.
     FullAccess,
 }
 
 impl SessionAccessMode {
-    /// A mode that needs a confirmation never can: it would reach every
-    /// chat without one.
+    /// A mode requiring confirmation cannot be a stored default: it would reach every new chat without that confirmation.
     pub(crate) fn is_default_eligible(self) -> bool {
         !self.needs_confirmation()
     }
 
+    /// Modes that run actions without asking beyond file edits require a confirmed token.
     pub(crate) fn needs_confirmation(self) -> bool {
         matches!(self, Self::FullAccess | Self::Auto)
     }

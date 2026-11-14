@@ -5,6 +5,8 @@ use serde::{Deserialize, Serialize};
 use crate::acp::package_manifest::read_bounded_package_manifest;
 use sage_core::limits::PREVIEW_LIMITS;
 
+/// The only retained command classification. It deliberately says nothing
+/// about a process exit code or test reporter output.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CommandActivity {

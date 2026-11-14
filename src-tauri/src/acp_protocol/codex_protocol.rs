@@ -32,6 +32,7 @@ macro_rules! pinned_schema_sha256 {
 }
 pub(crate) use pinned_schema_sha256;
 
+/// The first eight hex digits of `pinned_schema_sha256!`.
 macro_rules! pinned_schema_prefix {
     () => {
         "486c7c8d"

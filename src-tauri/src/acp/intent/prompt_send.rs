@@ -1,3 +1,4 @@
+/// Carries positive pre-invocation proof without inferring it from an error kind.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct PromptSendError<E> {
     pub error: E,

@@ -1,8 +1,13 @@
+//! Workspace files a prompt names with `@path` (or `@"path with spaces"`),
+//! as the composer's `@` picker writes them and as Claude Code users type
+//! them. A file in a root other than the first is written `@root:path`,
+//! where `root` is that root's id or, when no other root shares it, its
+//! display name; a bare `@path` takes the first root that holds the file.
 //! The token stays in the prompt text; each one that names a file also goes
 //! to the harness as a content block: an embedded `resource` with the file's
 //! text when the session advertises embedded context and the file fits the
 //! dispatch budget, otherwise a `resource_link` (the ACP baseline every agent
-//! accepts).
+//! accepts). Nothing is persisted: the durable prompt keeps only its text.
 use super::attached_context::files::{Resources, file_is_excluded};
 use crate::acp::prompt_files::secrets::path_is_secret;
 use crate::workspace::{
@@ -82,6 +87,10 @@ impl super::intent::Prompt {
     }
 }
 
+/// The `@` tokens of `text` that could name a file, in order and without
+/// repeats: each starts the text or follows whitespace or an opening
+/// parenthesis that does, and is either quoted (`@"a b.txt"`) or runs to the
+/// next whitespace.
 pub(crate) fn mention_tokens(text: &str) -> Vec<&str> {
     let mut tokens: Vec<&str> = Vec::new();
     let (mut previous, mut before) = (None, None);
@@ -156,7 +165,7 @@ pub(crate) fn resolve(
     Mentions((!found.is_empty()).then(|| found.into()))
 }
 
-/// Any other `:` (a Windows stream or drive) names nothing.
+/// `root:path` names a root by its id or unique display name; any other `:` (a Windows stream or drive) names nothing.
 fn target<'a>(spelling: &'a str, roots: &'a [MentionRoot]) -> Option<(&'a [MentionRoot], &'a str)> {
     let Some((qualifier, relative)) = spelling.split_once(':') else {
         return Some((roots, spelling));

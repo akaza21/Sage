@@ -407,6 +407,7 @@ pub struct AcpChatPage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) session_config_notice: Option<super::session_config::notices::SessionConfigNotice>,
     pub(crate) goal: super::goal::GoalState,
+    /// The current session's live runtime reports usage limits.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) usage: bool,
     #[serde(skip_serializing_if = "Option::is_none")]

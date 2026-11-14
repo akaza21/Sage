@@ -101,10 +101,12 @@ impl UsageCell {
         *self.lock() = UsageState::Usage { snapshot };
     }
 
+    /// The harness refused to report usage for this account.
     pub(crate) fn mark_unsupported(&self) {
         *self.lock() = UsageState::Unsupported;
     }
 
+    /// Forgets a refusal or snapshot that an account change made stale.
     pub(crate) fn reset(&self) {
         *self.lock() = UsageState::Unavailable;
     }

@@ -226,6 +226,7 @@ pub(crate) fn contains_token(value: &str) -> bool {
 pub(crate) mod work {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub(crate) struct ContainsTokenWork {
+        /// Outer-loop byte positions visited.
         pub(crate) positions: usize,
         pub(crate) aws_prefixes: usize,
         pub(crate) aws_tail_bytes: usize,

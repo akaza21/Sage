@@ -1,5 +1,9 @@
-//! Answers never enter the journal, transcript or diagnostics; they exist
-//! only in the in-memory decision and the reply frame.
+//! A harness question rides the server-request pipeline beside approvals: it
+//! is journaled as a `PermissionRequest` whose payload carries
+//! `user_input`, so cancellation, turn interrupt and harness withdrawal reuse
+//! the approval lifecycle. Answers never enter the journal, transcript or
+//! diagnostics; they exist only in the in-memory decision and the reply
+//! frame.
 
 use std::fmt;
 

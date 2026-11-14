@@ -410,6 +410,9 @@ pub(crate) fn effective_prompt(
         }
     }
     let effective = Prompt::new("promptWithAttachedContext", rendered)?;
+    // Annotation and browser-element turns keep the user's own text durable
+    // and project the contexts as chips; other context keeps the durable text
+    // equal to the dispatched one.
     Ok(if annotation > 0 || rendered_elements {
         let chips = contexts
             .as_slice()

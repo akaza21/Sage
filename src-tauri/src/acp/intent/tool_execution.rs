@@ -11,7 +11,8 @@ pub struct ToolExecution {
     pub output_truncated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_lifecycle: Option<bool>,
-    /// Boxed so tool payloads stay compact in adapter events.
+    /// MCP server identity as the harness names it; never a display name
+    /// Sage invents. Boxed so tool payloads stay compact in adapter events.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mcp_server: Option<Box<SafeText<128>>>,
     /// Latest status line a running tool reported, replaced on each report

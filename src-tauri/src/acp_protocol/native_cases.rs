@@ -16,6 +16,10 @@ pub(crate) fn native_case_lists_models(case: &str) -> bool {
     case.starts_with("codex-") && native_case_awaits(case, &["codexModelList"])
 }
 
+/// A replay case that runs twice on its profile, so it needs a second launch:
+/// one that opens a new session on its first launch and resumes the same one
+/// after an app restart, or a Claude Code case that names its relaunch (the
+/// fork chat a fork opens, say).
 #[cfg(any(test, all(windows, debug_assertions)))]
 pub(crate) fn native_case_spans_restart(case: &str) -> bool {
     native_case_awaits(case, &["acpOpen", "codexStartOrResume"])
@@ -51,11 +55,16 @@ pub(crate) fn native_case_matches(case: &str, protocol: &str) -> bool {
         .any(|entry| entry.id == case && entry.id.starts_with(&format!("{protocol}-")))
 }
 
+/// A Pi replay case that drives tool calls through the bundled Sage bridge
+/// extension, so its child stands in for a Pi with that extension installed.
 #[cfg(all(windows, debug_assertions))]
 pub(crate) fn native_case_uses_pi_bridge(case: &str) -> bool {
     case.starts_with("pi-") && native_case_awaits(case, &["piBridgeTool"])
 }
 
+/// A Codex case whose thread runs the model it is opened or resumed with, so
+/// a model picked in the composer is one the session really uses. Only such a
+/// case offers a model choice.
 #[cfg(any(test, all(windows, debug_assertions)))]
 pub(crate) fn native_case_offers_models(case: &str) -> bool {
     case.starts_with("codex-")

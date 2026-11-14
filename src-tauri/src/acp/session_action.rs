@@ -1,3 +1,4 @@
+//! Each action runs as an ordinary Turn on an idle session whose negotiated capabilities admit it.
 use serde::{Deserialize, Serialize};
 
 use super::{contract::RequiredText, intent::CapabilitySnapshotV1};
