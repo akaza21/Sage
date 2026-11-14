@@ -229,6 +229,43 @@ impl SettingsStore {
         Ok(cleared)
     }
 
+    /// Gives `session` the mode `earlier` holds, when `session` holds none of
+    /// its own. A permissive mode was confirmed for `earlier` alone and is
+    /// never carried: `session` then runs under its binding's default until
+    /// the person confirms it again. Returns the mode carried.
+    pub fn carry_chat_access(
+        &self,
+        earlier: &str,
+        session: &str,
+        now: i64,
+    ) -> AppResult<Option<SessionAccessMode>> {
+        validate_session(earlier)?;
+        validate_session(session)?;
+        let mut connection = self.lock();
+        let transaction = connection.transaction()?;
+        let chosen = |id: &str| {
+            transaction
+                .query_row(
+                    "SELECT mode FROM chat_access_choices WHERE session_id=?1",
+                    [id],
+                    |row| row.get::<_, String>(0),
+                )
+                .optional()
+        };
+        if chosen(session)?.is_some() {
+            return Ok(None);
+        }
+        let Some(mode) = chosen(earlier)?
+            .and_then(|text| read_mode(earlier, &text))
+            .filter(|mode| !mode.needs_confirmation())
+        else {
+            return Ok(None);
+        };
+        record(&transaction, session, mode, now)?;
+        transaction.commit()?;
+        Ok(Some(mode))
+    }
+
     /// The chat's own mode, if it has one.
     pub fn chat_access(&self, session_id: &str) -> AppResult<Option<SessionAccessMode>> {
         validate_session(session_id)?;

@@ -60,6 +60,7 @@ pub(super) async fn relaunch_undone(
             }
             UndoneRelaunchError::Activation(error) => session_error(error),
         })?;
+    super::super::session_access::carry_chat_access(state, &relaunched.session_id)?;
     // The park and the activation moved the page on; the prompt was
     // validated against the page the user saw just before them.
     let snapshot = state

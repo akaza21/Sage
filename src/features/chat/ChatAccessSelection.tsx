@@ -74,6 +74,7 @@ export default function ChatAccessSelection({
   capabilities,
   sessionConfig: session,
   chatId,
+  endedSession,
   id,
   triggerRef,
   open,
@@ -120,13 +121,20 @@ export default function ChatAccessSelection({
       ) : null}
     </>
   );
-  // A removed session is past; its chat drafts like one not yet started.
-  return session && !session.removed ? (
+  // A chat with no head drafts the access of the session its next send
+  // starts, even while it shows its last session's config; a removed session
+  // is past, and its chat drafts too.
+  return session && !session.removed && !chatId ? (
     <LiveChatAccess session={session} error={error} {...props}>
       {withMenu}
     </LiveChatAccess>
   ) : (
-    <ChatAccessDraftSelection chatId={chatId} error={error} {...props}>
+    <ChatAccessDraftSelection
+      chatId={chatId}
+      endedSession={endedSession}
+      error={error}
+      {...props}
+    >
       {withMenu}
     </ChatAccessDraftSelection>
   );
