@@ -87,7 +87,6 @@ export function VirtualTurnList({
 }: {
   turns: readonly TurnProjection[];
   renderTurn: (turn: TurnProjection, index: number) => ReactNode;
-  /** Host for the lazy turn navigator, which owns jump and find anchoring. */
   navigationRef?: RefObject<TurnListHost | null>;
 }) {
   const listRef = useRef<HTMLDivElement>(null);
@@ -236,7 +235,6 @@ export function VirtualTurnList({
       readViewport();
       return;
     }
-    // A jump or find target is aligned by the lazy navigator that set it.
     const navigation = navigationAnchor.current;
     if (navigation)
       return navigation.align(list, scrollport, turns, offsets, readViewport);

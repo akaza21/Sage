@@ -70,8 +70,6 @@ describe("empty turn activity", () => {
       expect(row).toBeVisible();
       expect(row).toHaveAttribute("data-acp-item-id", "permission-row");
       expect(within(row).getByText("Read project files")).toBeVisible();
-      // A terminal Turn offers no decision, even for a request whose own
-      // state never settled; it says so instead of asking.
       expect(within(row).queryByRole("button")).toBeNull();
       if (pending)
         expect(within(row).getByRole("status")).toHaveAccessibleName(
@@ -176,8 +174,6 @@ describe("empty turn activity", () => {
         fireEvent(work, new Event("toggle"));
       }
       if (state === "completed") {
-        // The runtime never commits a terminal Turn with a pending request,
-        // so a terminal Turn shows the request as unanswered, not actionable.
         const row = screen.getByRole("group", { name: "Permission request" });
         expect(row).toBeVisible();
         expect(within(row).queryByRole("button")).toBeNull();
@@ -185,8 +181,6 @@ describe("empty turn activity", () => {
           "Permission not answered",
         );
       } else {
-        // A live Turn answers the request in the composer slot, so the
-        // transcript keeps no card.
         expect(
           screen.queryByRole("group", { name: "Permission request" }),
         ).toBeNull();

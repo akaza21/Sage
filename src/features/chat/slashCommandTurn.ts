@@ -12,7 +12,6 @@ export type SlashCommandPort = Pick<
   "listCommands" | "runCommand"
 >;
 
-/** `/name rest`: the harness reads the first token as a command. */
 export function parseSlashCommand(
   prompt: string,
 ): { name: string; input: string } | null {
@@ -20,14 +19,8 @@ export function parseSlashCommand(
   return match ? { name: match[1]!, input: match[2] ?? "" } : null;
 }
 
-/**
- * Sends a prompt naming a command the live session advertises through the
- * typed command route, which checks the list revision natively and marks
- * the turn as a command (Pi's extension commands depend on that). Returns
- * null for anything else, which goes out as plain prompt text. A command
- * the user picked from the menu that the session no longer offers is
- * refused instead of being sent as text.
- */
+// The typed command route marks the turn as a command; Pi's extension commands
+// depend on that.
 export async function slashCommandTurn(
   request: SendAcpTurnRequest,
   nextIntentId: () => AcpSessionMutationIntent["clientIntentId"],

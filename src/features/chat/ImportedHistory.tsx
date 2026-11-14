@@ -8,10 +8,8 @@ import {
 } from "../../services/nativeSessionImport";
 import { ForkPart } from "./lazyParts";
 
-// The session picker shares this chunk: both load only for an import.
 export { ImportSessionDialog } from "../../workbench/ImportSessionDialog";
 
-/** The imported session's Turns, shown as a fork's inherited ones, above where Sage continues it. */
 export function ImportedHistory({ chatId }: { chatId: string }) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const page = useStore(acpProjectionStoreFor(chatId), (state) => state.page);

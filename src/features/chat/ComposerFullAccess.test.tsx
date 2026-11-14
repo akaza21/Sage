@@ -140,7 +140,6 @@ it("confirms Full access with the token issued for this chat and mode", async ()
   );
   await waitFor(() => expect(chip()).toHaveTextContent("Full access"));
   expect(chip()).toHaveClass("composer__access-label--full");
-  // Never stored as the harness default for other or new chats.
   expect(useSessionAccessModeStore.getState().modes).toEqual({});
 });
 
@@ -183,8 +182,6 @@ it("shows what the chat really holds after a refused grant", async () => {
 });
 
 it("applies a pick to this chat only, and steps down natively", async () => {
-  // The window has not seen this chat's Full access yet: stepping down
-  // must not depend on it.
   port.get.mockReturnValue(new Promise(() => {}));
   renderControl();
   fireEvent.click(
@@ -194,7 +191,6 @@ it("applies a pick to this chat only, and steps down natively", async () => {
     expect(port.set).toHaveBeenCalledWith("session-1", "acceptEdits"),
   );
   await waitFor(() => expect(chip()).toHaveTextContent("Accept edits"));
-  // The harness default for other and new chats is untouched.
   expect(useSessionAccessModeStore.getState().modes).toEqual({});
 });
 
@@ -237,7 +233,6 @@ it("offers only advertised modes, and Full access only to a live session", async
   expect(
     screen.queryByRole("menuitemradio", { name: "Full access" }),
   ).toBeNull();
-  // Without a live session nothing here changes the chat.
   expect(plan).toHaveAttribute("aria-disabled", "true");
   fireEvent.click(plan);
   expect(port.set).not.toHaveBeenCalled();

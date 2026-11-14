@@ -6,7 +6,6 @@ const css = (path: string) =>
     text.replace(/\/\*[\s\S]*?\*\//g, ""),
   );
 
-/** The declarations of the first rule whose selector list is exactly `selector`. */
 function rule(text: string, selector: string) {
   const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = new RegExp(`(?:^|})\\s*${escaped}\\s*{([^}]*)}`).exec(text);
@@ -18,7 +17,6 @@ describe("Codex chrome parity (w9 group B)", () => {
     const text = await css("../../styles/composer-surface.css");
     const [ordinary, forced] = text.split("@media (forced-colors: active)");
     expect(ordinary).not.toMatch(/\.composer:focus-within\s*{/);
-    // Forced colors keep a system focus outline.
     expect(forced).toMatch(/\.chat-dock:focus-within\s*{/);
   });
 

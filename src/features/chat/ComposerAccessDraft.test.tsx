@@ -65,7 +65,6 @@ const codex: SessionAccessModeCapability[] = [
   },
 ];
 
-/** A brand-new chat: its session does not exist yet. */
 function renderNewChat(chatId?: string) {
   return render(
     <ComposerAccessControl
@@ -100,9 +99,7 @@ it("lets a new chat choose its access before the first message", async () => {
   expect(useChatAccessDrafts.getState().drafts).toEqual({
     "chat-1": { bindingId: "codex-acp", mode: "ask" },
   });
-  // Nothing reaches the native side until the session exists.
   expect(port.set).not.toHaveBeenCalled();
-  // The harness default for other and new chats is untouched.
   expect(useSessionAccessModeStore.getState().modes).toEqual({});
 });
 
@@ -124,7 +121,6 @@ it("confirms an elevated draft the way a live chat's menu does", async () => {
   expect(port.set).not.toHaveBeenCalled();
 });
 
-/** The chat's first send: its session starts, then the prompt is sent. */
 function firstSend(chatId: string, order: string[]) {
   const session = agentSessionFixture({
     id: "session-new" as SageAgentSessionId,
@@ -195,7 +191,6 @@ it("drafts Full access behind the same warning, and grants it natively before th
   expect(
     screen.getByText(/run commands without asking, with no filesystem sandbox/),
   ).toBeVisible();
-  // Nothing is asked of the native side until the session exists.
   expect(port.prepare).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Allow full access" }));
   await waitFor(() => expect(chip()).toHaveTextContent("Full access"));

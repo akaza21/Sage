@@ -1,17 +1,13 @@
 import type { TurnProjection } from "../../domain/acp";
 import { chatTurnText } from "./chatTurnText";
 
-/** WebView list cap: find never holds more than this many matches. */
 export const MAX_CHAT_FIND_MATCHES = 500;
-/** Total characters one search may scan before it stops and says so. */
 export const MAX_CHAT_FIND_SCAN_CHARS = 4_000_000;
 
 export interface ChatMatch {
-  /** Stable identity: unique per match, even for identical text. */
   key: string;
   turnId: string;
   itemId: string;
-  /** Index of the rendered segment within its message. */
   segment: number;
   /** UTF-16 offsets into the rendered segment text. */
   start: number;
@@ -20,11 +16,8 @@ export interface ChatMatch {
 
 export interface ChatFindResult {
   matches: ChatMatch[];
-  /** More matches exist than MAX_CHAT_FIND_MATCHES. */
   capped: boolean;
-  /** The scan budget ran out before every retained Turn was searched. */
   scanLimited: boolean;
-  /** Some message is only partly rendered, so its tail is not searched. */
   previewLimited: boolean;
 }
 
@@ -44,10 +37,6 @@ function foldedOffsets(text: string): number[] {
   return offsets;
 }
 
-/**
- * Literal, case-insensitive search over the retained Turns' prompts and
- * presented final answers. Tool rows, thinking and activity are excluded.
- */
 export function findChatMatches(
   turns: readonly TurnProjection[],
   query: string,

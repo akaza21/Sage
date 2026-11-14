@@ -6,7 +6,6 @@ import { SessionNoticeStrip } from "./SessionNoticeStrip";
 
 afterEach(cleanup);
 
-// The notices Codex startup produces (#238): a config problem and a reroute.
 const notices = safeSessionNotices([
   {
     level: "warning",
@@ -56,12 +55,9 @@ describe("SessionNoticeStrip", () => {
     dismissReroute();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
 
-    // Another session (or chat) starts with nothing dismissed.
     rerender(<SessionNoticeStrip session="s2" notices={notices} />);
     expect(screen.getAllByRole("listitem")).toHaveLength(3);
 
-    // A dismissed notice that leaves the list is forgotten, so it shows
-    // again if the harness raises it again.
     dismissReroute();
     rerender(
       <SessionNoticeStrip

@@ -41,11 +41,6 @@ function segmentRange(segment: Element, start: number, end: number) {
   return null;
 }
 
-/**
- * Ranges for the matches whose messages are mounted in this scrollport.
- * Each message and its segment list is looked up once, not once per match,
- * and matches in unmounted (virtualised) Turns cost one map miss.
- */
 export function chatMatchRanges(
   scrollport: HTMLElement,
   matches: readonly ChatMatch[],
@@ -71,7 +66,6 @@ export function chatMatchRanges(
   return ranges;
 }
 
-/** Publishes one pane's ranges; null releases that pane's ranges only. */
 export function publishChatHighlights(owner: symbol, ranges: Ranges | null) {
   if (ranges && !owners.has(owner) && owners.size >= MAX_HIGHLIGHT_OWNERS)
     return;

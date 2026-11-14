@@ -9,7 +9,6 @@ import {
 import "./chat-find.css";
 import { chatFindStatus, MAX_CHAT_FIND_QUERY } from "./chatFindModel";
 
-/** One row when empty, with a result row once a query is entered. */
 export function ChatFindBar({
   query,
   onQuery,

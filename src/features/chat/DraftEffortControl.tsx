@@ -3,7 +3,6 @@ import { useChatEffortDraft } from "../../app/chatEffortDraft";
 import { capitalizeLabel } from "../../domain/text";
 import { ComposerEffortControl } from "./ComposerEffortControl";
 
-/** The thinking levels a chat may start its first session with. */
 export interface DraftEffort {
   chatId: string;
   bindingId: string;
@@ -11,12 +10,6 @@ export interface DraftEffort {
   levels: readonly string[];
 }
 
-/**
- * The Thinking level control before a chat's first session: the levels the
- * harness lists for the selected model, held as a draft that goes with the
- * session start. A held level the model no longer lists shows, and is
- * started, as Default.
- */
 export default function DraftEffortControl({
   draft,
   ...props

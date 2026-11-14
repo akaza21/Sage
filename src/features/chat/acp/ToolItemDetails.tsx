@@ -8,10 +8,6 @@ import { CURATED_BROWSE_TOOL_NAME, invokeBrowseTool } from "./toolHost";
 import type { ToolItemProps, OpenResourceTarget } from "./ToolItem";
 import { ChatCodeBlock } from "./ChatCodeBlock";
 
-/**
- * An integration result: a failure shows only the harness's message; a
- * result shows as a bounded code block, `json` when it parses as JSON.
- */
 function ToolResult({
   item,
   output = item.payload.outputSummary,

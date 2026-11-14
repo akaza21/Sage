@@ -3,7 +3,6 @@ import { useRef, useState } from "react";
 import { expect, it, vi } from "vitest";
 import { ComposerSlashController } from "./ComposerSlashController";
 
-// The menu chunk loads only when the test lets it fail.
 const chunk = vi.hoisted(() => {
   let fail: (error: Error) => void = () => {};
   const gate = new Promise<never>((_, reject) => {
@@ -47,10 +46,8 @@ it("names no listbox before the menu mounts and gives way when its chunk fails",
   act(() => field.focus());
   fireEvent.change(field, { target: { value: "/comp" } });
   fireEvent.input(field);
-  // Loading: the menu is open but nothing it controls exists yet.
   expect(field.getAttribute("aria-expanded")).toBe("false");
   expect(field.hasAttribute("aria-controls")).toBe(false);
-  // Enter does not send a half-typed name while the menu loads.
   fireEvent.keyDown(field, { key: "Enter" });
   expect(composerKeys).not.toHaveBeenCalled();
 
@@ -59,8 +56,6 @@ it("names no listbox before the menu mounts and gives way when its chunk fails",
     await Promise.resolve();
   });
   await act(async () => {});
-  // Failed: the field is an ordinary field again and Enter reaches the
-  // composer, which sends the text as typed.
   expect(field.getAttribute("aria-expanded")).toBe("false");
   expect(field.hasAttribute("aria-controls")).toBe(false);
   fireEvent.keyDown(field, { key: "Enter" });

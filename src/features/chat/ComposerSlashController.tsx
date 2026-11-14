@@ -24,25 +24,18 @@ import {
 } from "./composerSlashCommand";
 import { setPickedCommand } from "./slashCommandPicks";
 
-// The menu, its list and the command port load with the first `/`, so a
-// focus that never types one carries only the key guard and the hint.
 const MenuPart = lazyParts<typeof MenuChunk>(
   () => import("./ComposerSlashMenu"),
 );
-// `/status` and `/mcp` load their panel when first opened.
 const PanelPart = lazyParts<typeof PanelChunk>(
   () => import("./ComposerCommandPanel"),
 );
 
-/**
- * Replaces the leading `/token` with `/name ` through the editing commands,
- * so Undo restores what was typed, and leaves the caret after the space.
- */
+// Goes through the editing commands so Undo restores what was typed.
 function insertCommand(field: HTMLTextAreaElement, name: string | null) {
   const token = slashTokenEnd(field.value);
-  // Keep the whitespace that already follows the name, or add a space.
   const end = token < field.value.length ? token + 1 : token;
-  // A panel command leaves nothing behind.
+  // A null name (a panel command) leaves nothing behind.
   const replacement =
     name === null ? "" : `/${name}${field.value.charAt(token) || " "}`;
   field.focus();
@@ -70,19 +63,11 @@ const plainEnter = (event: SuggestionKeyEvent) =>
 
 const CARET_EVENTS = ["input", "change", "select", "keyup", "mouseup"] as const;
 
-/** Sets or clears one attribute the composer leaves to this controller. */
 function setAttribute(field: HTMLElement, name: string, value: string | null) {
   if (value === null) field.removeAttribute(name);
   else field.setAttribute(name, value);
 }
 
-/**
- * The composer's `/` command menu. The list loads with the first `/` typed,
- * so the first-Chat path carries only the mount and an Enter guard. It
- * listens on the textarea itself (which keeps the focus throughout), takes
- * the keys the open menu uses before the composer's own handler sees them,
- * and holds the field's combobox attributes while its command name is edited.
- */
 export function ComposerSlashController({
   fieldRef,
   boundChatId,
@@ -97,7 +82,6 @@ export function ComposerSlashController({
   disabled: boolean;
   fieldId: string;
   onTextChange: (text: string) => void;
-  /** Set while this controller handles the field's keys. */
   readyRef: RefObject<boolean>;
   text: string;
 }) {
@@ -107,19 +91,14 @@ export function ComposerSlashController({
   const anchorRef = useRef<HTMLElement | null>(null);
   const [scope, setScope] = useState(boundChatId);
   const [dismissed, setDismissed] = useState(false);
-  // The menu belongs to the field: it hides while the focus is elsewhere.
   const [focused, setFocused] = useState(false);
   const [caret, setCaret] = useState<number | null>(null);
   const [activeOptionId, setActiveOptionId] = useState<string | null>(null);
   const [picked, setPicked] = useState<PickedSlashCommand | null>(null);
   const [panel, setPanel] = useState<AcpCommandPanel | null>(null);
   const [status, setStatus] = useState("");
-  // The field names the listbox only once the menu's chunk has mounted it.
   const [mounted, setMounted] = useState(false);
-  // A menu chunk that failed to load gives way until the field is left or
-  // the `/` is gone, so Enter sends and the next menu loads again.
   const [failed, setFailed] = useState(false);
-  // Another Chat starts with no pick and no dismissal.
   if (scope !== boundChatId) {
     setScope(boundChatId);
     setDismissed(false);
@@ -127,7 +106,6 @@ export function ComposerSlashController({
     setPanel(null);
   }
   const query = slashCommandQuery(text, caret);
-  // Escape closes the menu until the caret leaves the command name.
   if (query === null && dismissed) setDismissed(false);
   if (query === null && failed) setFailed(false);
   if (!text && picked) setPicked(null);
@@ -170,7 +148,6 @@ export function ComposerSlashController({
     anchorRef.current = field.parentElement;
     const track = () => setCaret(field.selectionStart);
     const focus = () => setFocused(true);
-    // Leaving the field ends an Escape: the menu opens again on return.
     const blur = () => {
       setFocused(false);
       setDismissed(false);
@@ -187,7 +164,6 @@ export function ComposerSlashController({
           plainEnter(event) && (event.preventDefault(), true);
       if (taken) event.stopPropagation();
     };
-    // The field may already hold the focus and a caret when this loads.
     if (document.activeElement === field) {
       focus();
       track();

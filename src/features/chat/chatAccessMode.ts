@@ -5,11 +5,7 @@ import {
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
 
-/**
- * The modes a live chat can take. A mode carried by a harness session mode
- * is offered only while the session advertises it (`advertised`, null until
- * reported), and Full access only once the session reports its modes.
- */
+// `advertised` is null until the session reports its modes.
 export function chatAccessCandidates(
   capabilities: readonly SessionAccessModeCapability[] | undefined,
   advertised: readonly string[] | null,
@@ -22,7 +18,6 @@ export function chatAccessCandidates(
   );
 }
 
-/** The mode the chat's next prompt runs under: its own, else the default. */
 export function chatAccessEffective(
   stored: SessionAccessMode | undefined,
   candidates: readonly SessionAccessModeCapability[],

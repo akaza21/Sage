@@ -33,12 +33,9 @@ interface TurnEditSummaryProps {
   onRecordDisposition?: (
     disposition: AgentEditDisposition,
   ) => Promise<AcpMutationResult>;
-  /** Present only while the session can review its uncommitted changes. */
   onReview?: () => void;
 }
 
-/** The dock above the composer: the commands the session left running,
- * then the chat's edited files. */
 export const TurnEditSummary = memo(function TurnEditSummary(
   props: TurnEditSummaryProps,
 ) {
@@ -78,8 +75,6 @@ function EditSummary({
   const [dispositionError, setDispositionError] = useState(false);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   if (summary.changes.length === 0) return null;
-  // A single-root project names its root nowhere else in the row, so only
-  // a multi-root project repeats it on each changed file.
   const multiRoot = Object.keys(rootLabels).length > 1;
   const summaryIncomplete =
     countIncomplete ||

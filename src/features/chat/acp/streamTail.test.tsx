@@ -136,14 +136,12 @@ describe("nextStreamRuns target", () => {
   });
 
   it("measures the run in rendered text, not raw markdown", () => {
-    // Collapsed whitespace and stripped markers are not rendered characters.
     expect(
       newestRuns(doc("Top hit:"), doc("Top hit:   lots\n  more")),
     ).toMatchObject({ runs: [10] });
     expect(
       newestRuns(doc("Say **hi**"), doc("Say **hi** there **you**")),
     ).toMatchObject({ runs: [10] });
-    // A chunk that re-renders earlier text (a marker closing) has no run.
     expect(newestRuns(doc("Say **hi"), doc("Say **hi** there"))).toBeNull();
   });
 
@@ -174,8 +172,6 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
         streaming
       />,
     );
-    // The next chunk does not cut the earlier run's fade short: the same
-    // node keeps its class, so its animation runs its full 300 ms.
     expect(tails(container)).toEqual([" Streaming API", " responses explain"]);
     expect(container.querySelector(".acp-stream-new")).toBe(first);
     expect(container.querySelector("p")?.firstChild?.textContent).toBe(
@@ -203,7 +199,6 @@ describe("ChatMarkdown appended-text fade (Codex s5/f0309)", () => {
     );
     rerender(<ChatMarkdown text="Say **hi there" streaming />);
     expect(tails(container)).toEqual([" there"]);
-    // Closing the marker re-renders the earlier text: the run goes.
     rerender(<ChatMarkdown text="Say **hi there**" streaming />);
     expect(tails(container)).toEqual([]);
     let text = "Go";

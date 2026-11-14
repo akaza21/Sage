@@ -51,7 +51,6 @@ it("keeps execute members of mixed Worked activity behind individual Ran rows", 
     />,
   );
   const rollup = container.querySelector("details")!;
-  // A Worked rollup opens only when the user opens it.
   expect(rollup).not.toHaveAttribute("open");
   rollup.open = true;
   fireEvent(rollup, new Event("toggle"));
@@ -304,7 +303,6 @@ it("expanding Worked shows the read group closed; opening it lists one row per f
   work.open = false;
   fireEvent(work, new Event("toggle"));
   expect(rowLabels()).toEqual([]);
-  // Reopening Worked shows the group closed again (Codex s2/f0012-f0015).
   work.open = true;
   fireEvent(work, new Event("toggle"));
   expect(rowLabels()).toEqual([]);
@@ -378,7 +376,6 @@ it("keeps a steered message visible once the turn's work is folded away", async 
   expect(screen.getByText("Also update the README")).toBeInTheDocument();
   expect(screen.queryByText("Checking the notes")).toBeNull();
   expect(screen.getByText("Both are done")).toBeInTheDocument();
-  // Expanded, the steer sits once at its place among the activities.
   fireEvent.click(screen.getByText(/^Worked/u));
   expect(screen.getByText("Checking the notes")).toBeInTheDocument();
   expect(screen.getAllByText("Also update the README")).toHaveLength(1);

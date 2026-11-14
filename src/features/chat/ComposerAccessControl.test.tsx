@@ -26,7 +26,6 @@ vi.mock("../../ports/chatAccessChanges", () => ({
   chatAccessChanges: () => port,
 }));
 
-/** A live chat whose harness reports no session modes. */
 const liveChat: AcpSessionConfig = {
   sageAgentSessionId: "session-1",
   runtimeEpoch: "1",
@@ -35,7 +34,6 @@ const liveChat: AcpSessionConfig = {
   configOptions: [],
 };
 
-// A pick applies to the live chat it is made in.
 function ComposerAccessControl(
   props: Omit<Parameters<typeof Control>[0], "sessionConfig">,
 ) {
@@ -241,7 +239,6 @@ it("applies the confirmed policy to this chat only and returns focus to access",
   await waitFor(() =>
     expect(port.set).toHaveBeenCalledWith("session-1", "workspaceWrite"),
   );
-  // Defaults for other and new chats are chosen in Settings.
   expect(save).not.toHaveBeenCalled();
   expect(dismiss).toHaveBeenCalled();
   expect(focus).toHaveBeenCalled();

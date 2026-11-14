@@ -65,7 +65,6 @@ export interface AcpActionCommands {
 
 interface AcpActionDependencies {
   commands?: AcpActionCommands;
-  /** The typed slash-command route; loaded on demand when omitted. */
   slashCommands?: SlashCommandPort;
   getContext: () => AcpActionContext | null;
   onUnscopedRefusal?: (message: string) => void;
@@ -224,7 +223,6 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
-    /** Staged prompt files that go with this send; none unless named. */
     staged?: StagedSelection,
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
@@ -357,7 +355,6 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             : {}),
           ...(staged ? { staged } : {}),
         };
-        // `/name …` may be an advertised command; its route loads on demand.
         const runCommand = normalizedPrompt.startsWith("/")
           ? await (
               await import("../slashCommandTurn")

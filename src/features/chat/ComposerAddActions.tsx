@@ -25,7 +25,6 @@ import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 
-/** The "+" menu's own actions; each is offered only while present. */
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,
   "imageAction" | "onOpenGoal" | "onCompact"
@@ -42,7 +41,6 @@ export function ComposerOptionsMenu({
   accessModes,
   ...given
 }: ComponentProps<typeof ComposerAddActions> & {
-  /** The harness's access modes; those carrying session modes own them. */
   accessModes?: readonly SessionAccessModeCapability[];
   id: string;
   selectionKey: string;
@@ -118,7 +116,6 @@ export function ComposerAddActions({
   disabled: boolean;
   imageAction?: { disabled: boolean; onChoose: () => void };
   onOpenGoal?: () => void;
-  /** Present only while the session can compact its context. */
   onCompact?: () => void;
   onOpenEffort?: () => void;
   onClose: () => void;
@@ -130,7 +127,6 @@ export function ComposerAddActions({
 }) {
   const modes = sessionModeActions(sessionConfig);
   const { launch, chatAvailable } = useContext(AgentToolsContext);
-  // The picker lists through the launching Chat's own session.
   const importable = useStore(
     acpProjectionStoreFor(usePinnedAgentChatOwner()),
     ({ page }) =>
@@ -266,7 +262,6 @@ export function ComposerAddActions({
                 tabIndex={-1}
                 onClick={() => {
                   onClose();
-                  // Modes are exclusive; choosing the current one sends nothing.
                   if (!selected) void onSetSessionMode(mode.id);
                 }}
               >

@@ -84,8 +84,6 @@ it("shows no rows under a collapsed Worked and reveals its groups collapsed", as
   expect(read).not.toHaveAttribute("open");
   expect(screen.queryByText("fixture output")).toBeNull();
   expect(await screen.findByText("Intro prose")).toBeVisible();
-  // Prose streamed before the tool sits above its row (s2/f0015), and the
-  // final answer stays after Worked.
   expect(
     screen.getByText("Intro prose").compareDocumentPosition(read) &
       Node.DOCUMENT_POSITION_FOLLOWING,
@@ -157,7 +155,6 @@ it.each<ToolPresentation>([
       latest.open = true;
       fireEvent(latest, new Event("toggle"));
       if (withRead) {
-        // Adjacent tools share one row; its members are nested, closed rows.
         expect(rows).toHaveLength(1);
         expect(
           latest.querySelectorAll(".acp-tool-rollup__items > .acp-tool-rollup"),
@@ -484,7 +481,6 @@ it("lists individually collapsed Ran command rows inside expanded Worked", () =>
   )!;
   worked.open = true;
   fireEvent(worked, new Event("toggle"));
-  // The group itself opens only on its own click (Codex s2/f0016-f0018).
   const group =
     container.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
   expect(group.open).toBe(false);

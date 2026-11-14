@@ -4,11 +4,8 @@ import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { MenuPopover } from "../../ui/MenuPopover";
 
-/**
- * Why files cannot be staged for this chat's next message, or null. Native
- * admission treats an absent capability as unsupported; a chat without a
- * session yet is checked again when its first message starts one.
- */
+// Native admission treats an absent capability as unsupported. A sessionless
+// chat may stage files: native checks the capability on the first send.
 function refusal(chatId: string): string | null {
   if (!isTauriRuntime())
     return "Attaching files needs the Sage desktop app with an ACP harness.";
@@ -21,13 +18,6 @@ function refusal(chatId: string): string | null {
     : null;
 }
 
-/**
- * Lazy: loads with the first press of the attach button. Says why files
- * cannot be attached here, offers images beside files when the harness
- * takes images, and asks for native's file dialog. The picked files join
- * the chat's one staged batch, which the paste part stages, shows and
- * sends, so pasted text and picked files go with the same message.
- */
 export function ComposerAttach({
   chatId,
   presses,
@@ -36,26 +26,20 @@ export function ComposerAttach({
   onPick,
 }: {
   chatId: string;
-  /** Presses of the attach button so far; each is taken once. */
   presses: number;
-  /** The attach button, which anchors the menu. */
   triggerId: string;
   imageAction?: { disabled: boolean; onChoose: () => void };
-  /** Asks the batch's owner for native's file dialog. */
   onPick: () => void;
 }) {
   const [notice, setNotice] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
   const menuId = useId();
-  // The composer keeps this part across chats: another chat starts quiet.
   const [scope, setScope] = useState(chatId);
   if (scope !== chatId) {
     setScope(chatId);
     setNotice("");
     setMenuOpen(false);
   }
-  // Each press is taken once: it opens the menu, says why files cannot be
-  // attached, or asks for the native picker, which opens once per ask.
   const [taken, setTaken] = useState(0);
   const [picks, setPicks] = useState(0);
   if (presses !== taken) {
@@ -71,7 +55,6 @@ export function ComposerAttach({
     picked.current = picks;
     onPick();
   }, [onPick, picks]);
-  // The menu anchors on the attach button.
   const triggerRef = useRef<HTMLButtonElement | null>(null);
   useLayoutEffect(() => {
     triggerRef.current = document.getElementById(

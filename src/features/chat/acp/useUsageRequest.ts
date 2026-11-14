@@ -3,8 +3,6 @@ import type { ProjectGeneration } from "../../../domain/acp";
 import type { AcpChatPage } from "../../../domain/acpProjection";
 import type { AcpUsageRequest } from "../../../domain/acpUsage";
 
-/** The live runtime whose usage limits the context meter can show, or that
- * serves another native read when `served` says so. */
 export function useUsageRequest(
   page: AcpChatPage | null | undefined,
   projectGeneration: number,

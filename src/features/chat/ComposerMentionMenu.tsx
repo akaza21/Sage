@@ -28,11 +28,9 @@ import {
   type MentionRoot,
 } from "./composerMention";
 
-/** Files asked of the path index per query; a short list to pick from. */
 export const MENTION_RESULT_LIMIT = 20;
 /** The path index takes at most this many query bytes. */
 const MENTION_QUERY_BYTES = 1024;
-/** While the index refreshes, the same query is asked again, boundedly. */
 const REFRESH_RETRY_MS = 150;
 const MAX_REFRESH_RETRIES = 40;
 
@@ -46,11 +44,6 @@ type Load =
     }
   | { kind: "error"; key: string; message: string };
 
-/**
- * The project's files matching `query`, from the workspace path index that
- * Quick Open uses; no second walk. One menu opening is one index session,
- * so its first query refreshes the index in the background.
- */
 function useMentionMatches(query: string): Load | null {
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
@@ -71,7 +64,6 @@ function useMentionMatches(query: string): Load | null {
         generation: nextQuickOpenStamp(),
         session,
         recent: recentFiles(projectId),
-        // A bare "@" lists files to pick from, not only recent ones.
         browse: true,
       }).then(
         (response) => {
@@ -114,13 +106,11 @@ function useMentionMatches(query: string): Load | null {
     };
   }, [asked, epoch, key, projectId, session]);
   if (!projectId) return null;
-  // A newer query keeps the last list on screen until its answer lands.
   return load ?? { kind: "loading", key };
 }
 
 const NO_ROOTS: readonly MentionRoot[] = [];
 
-/** The file as a pick, keyed by the token it writes; null when none can name it. */
 function suggestion(
   match: QuickOpenMatch,
   roots: readonly MentionRoot[],
@@ -128,7 +118,6 @@ function suggestion(
   const qualifier = mentionRootQualifier(roots, match.rootId);
   const token = mentionToken(match.relativePath, qualifier);
   if (!token) return null;
-  // A file outside the first root shows under that root's name.
   const root = qualifier && roots.find((r) => r.id === match.rootId)?.name;
   const shown = root ? `${root}/${match.relativePath}` : match.relativePath;
   const slash = shown.lastIndexOf("/");
@@ -168,9 +157,7 @@ export function ComposerMentionMenu({
   listboxId: string;
   onActiveOptionChange: (optionId: string | null) => void;
   onDismiss: () => void;
-  /** The token that names the picked file. */
   onPick: (token: string) => void;
-  /** What the list holds, for the field's polite status region. */
   onStatusChange: (status: string) => void;
   query: string;
 }) {
@@ -194,7 +181,7 @@ export function ComposerMentionMenu({
   const loading = load?.kind === "loading";
   useLayoutEffect(() => {
     keyHandlerRef.current = (event) => {
-      // While the first list loads, Enter must not send a half-typed path.
+      // While suggestions load, Enter must not send a half-typed path.
       if (
         loading &&
         event.key === "Enter" &&

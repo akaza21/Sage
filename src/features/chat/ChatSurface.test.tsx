@@ -46,7 +46,6 @@ import { AgentChatPanes } from "../../workbench/AgentChatPanes";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import type * as AcpModule from "./acp";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 
 const hooks = vi.hoisted(() => ({
@@ -99,7 +98,6 @@ import "../settings/AgentArchivedSettings";
 import "../settings/AgentChatSettings";
 import "../settings/AgentHarnessSettings";
 
-// Exercise the same runtime/presentation boundary as the Agent host.
 function ChatSurface(props: { chatId?: string }) {
   const pending = useWorkbenchStore((state) => {
     const chat = state.chatUiById[props.chatId ?? state.activeTabId ?? ""];
@@ -404,8 +402,6 @@ describe("ChatSurface approval slot", () => {
       name: "Permission request",
     });
     expect(within(prompt).getByRole("button", { name: /Deny/ })).toBeVisible();
-    // The composer held focus, so the card announces itself instead of
-    // taking focus (an Enter meant for the draft must never approve).
     expect(
       within(prompt).getByRole("button", { name: /Allow once/ }),
     ).not.toHaveFocus();
@@ -911,8 +907,6 @@ describe("ChatSurface ACP resource integration", () => {
         null,
       ),
     );
-    // A queued message names no staged files, so a paste staged for the
-    // message being written stays staged for it.
     expect(hooks.actions.submit.mock.calls[0]).toHaveLength(4);
     await waitFor(() => expect(screen.queryByText("Follow up")).toBeNull());
   });
@@ -1946,7 +1940,6 @@ describe("ChatSurface ACP resource integration", () => {
       view.unmount();
       expect(publish).toHaveBeenLastCalledWith("chat-a", null);
       publish.mockClear();
-      // A Chat that is neither focused nor the side chat's parent is silent.
       render(
         <AgentSessionChromeContext.Provider value={publish}>
           <ChatSurface chatId="chat-b" />
@@ -1959,8 +1952,6 @@ describe("ChatSurface ACP resource integration", () => {
   });
 
   it("renders no header of its own under Agent chrome, side chats included", () => {
-    // The task header names the Chat; a side chat's tab lives in the Agent
-    // center header row (Codex s2/f0244).
     const publish = vi.fn();
     for (const chatId of ["side-chat-a", "chat-a"]) {
       const view = render(
@@ -2473,7 +2464,6 @@ describe("ChatSurface ACP resource integration", () => {
 
     render(<ChatSurface />);
 
-    // The generic refusal shows until the lazy sign-in sentence arrives.
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The harness requires sign-in before it can continue.",
     );
@@ -2884,7 +2874,6 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(screen.getByText("Test simulator")).toBeInTheDocument();
-    // A chat without a native session loads its transcript on demand.
     expect(
       await screen.findByText("Development simulator"),
     ).toBeInTheDocument();
@@ -3207,8 +3196,6 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(screen.getByRole("alert")).toHaveTextContent("Only Chat A failed");
-    // The byte cap is enforced with an announced notice, never a silent
-    // UTF-16 maxlength truncation.
     const field = screen.getByRole("combobox", { name: "Message agent" });
     expect(field).not.toHaveAttribute("maxlength");
     fireEvent.change(field, { target: { value: "\u00e9".repeat(8193) } });
@@ -3723,7 +3710,6 @@ describe("ChatSurface ACP resource integration", () => {
         </section>
       );
       const { rerender } = render(renderPane());
-      // Focusable transcript content (a scrollable diagram and its action).
       const figure = document.createElement("figure");
       figure.setAttribute("aria-label", "Overflowing diagram");
       figure.tabIndex = 0;
@@ -3900,8 +3886,6 @@ describe("ChatSurface ACP resource integration", () => {
         selectedModelId: null,
       }),
     );
-    // The notice is a lazy chunk: wait for it rather than rely on an earlier
-    // test in the file having loaded it.
     await settleLazyModules();
     expect(
       screen.getByText(/Checking the Codex account and available models/),

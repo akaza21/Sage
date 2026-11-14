@@ -75,7 +75,6 @@ describe("useAcpChatProjection", () => {
       runtimeEpoch: "2",
       configRevision: "1",
     };
-    // This bootstrap has no live session; foreign notices cannot reload it.
     act(() => onConfig?.(event));
     await new Promise((resolve) => setTimeout(resolve, 70));
     expect(load).toHaveBeenCalledTimes(1);

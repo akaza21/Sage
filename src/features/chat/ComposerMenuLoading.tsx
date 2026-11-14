@@ -2,11 +2,8 @@ import { useEffect, type RefObject } from "react";
 
 import { useDismissLayer } from "../../ui/dismissLayer";
 
-/**
- * Stands in for a composer menu while its body loads. The trigger gave up
- * focus on press, so Escape is taken from the whole document, before the
- * panes around the composer can act on it.
- */
+// The trigger gave up focus on press, so Escape is taken from the whole
+// document, before the panes around the composer can act on it.
 export function ComposerMenuLoading({
   triggerRef,
   onDismiss,

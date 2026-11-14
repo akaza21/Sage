@@ -8,7 +8,6 @@ import {
   type TurnListNavigation,
 } from "./chatScroll";
 
-/** Scrolls so the range's centre sits at the scrollport's centre. */
 function centreRange(
   scrollport: HTMLElement,
   navigation: TurnListNavigation | null,
@@ -35,11 +34,6 @@ function centreRange(
   else scrollport.scrollTop += delta;
 }
 
-/**
- * Paints find matches with the CSS Custom Highlight API. Nothing in the
- * transcript re-renders: ranges are rebuilt at most once per frame, only
- * when rows mount or unmount, and only for mounted messages.
- */
 export function useChatFindHighlights({
   scrollport,
   navigationRef,
@@ -51,7 +45,7 @@ export function useChatFindHighlights({
   navigationRef: RefObject<TurnListNavigation | null>;
   matches: readonly ChatMatch[];
   current: number;
-  /** Bumped by each step, so stepping onto the same match re-centres it. */
+  /** Bump for every navigation step so the same match can be recentered. */
   revision: number;
 }) {
   const owner = useRef(Symbol("chat-find"));
@@ -65,7 +59,6 @@ export function useChatFindHighlights({
       revealed.current !== selection &&
       !turnElement(scrollport, match.turnId)
     ) {
-      // Unmounted virtual row: jump by index first; paint after it mounts.
       pauseChatFollow(scrollport);
       navigationRef.current?.scrollToTurn(match.turnId, "auto");
     }

@@ -17,7 +17,6 @@ export type SubagentActivityRow = {
   entries: SubagentEntry[];
 };
 
-/** A child's stable glyph colour, shared by the row, list and child header. */
 export function avatarColor(key: string): number {
   let hash = 0;
   for (let index = 0; index < key.length; index += 1)
@@ -25,10 +24,9 @@ export function avatarColor(key: string): number {
   return Math.abs(hash % 3);
 }
 
-/** One run of row text; `index` names a label's own target, `more` the rest. */
+// `index` names a label's own target, `more` the rest.
 export type SubagentSegment = { text: string; index?: number; more?: true };
 
-/** `A`, `A and B`, `A, B and C`, `A, B and N more`, then the verb. */
 export function subagentSegments(
   labels: readonly string[],
   state: string,
@@ -126,7 +124,6 @@ function entryCount(item: CollaborationProjectionItem): number {
   return collaborationRows(item).flatMap((row) => row.entries).length;
 }
 
-/** The Chat, Session, Turn, epoch, origin and activity an item belongs to. */
 const runOwner = (item: AcpItem) =>
   [
     item.projectId,

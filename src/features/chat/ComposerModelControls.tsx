@@ -71,12 +71,8 @@ export function ComposerModelControls({
   effortLabel: string | null;
   contextWindow: string | null;
   effortOption: AcpConfigOption | undefined;
-  /** Levels to choose before the chat's first session, when listed. */
   draftEffort?: DraftEffort;
-  /** The note on values that are the chat's stored choices, not yet
-   * reapplied to the session. */
   restored?: string;
-  /** What the session could not take back of the stored choices. */
   notice?: string;
   awaitingSession?: boolean;
   disabled: boolean;
@@ -88,8 +84,6 @@ export function ComposerModelControls({
 }) {
   const count =
     "type" in choices ? flattenChoices(choices).length : choices.length;
-  // The model is always a picker, so it reads as one control in every chat;
-  // with a single advertised model its menu shows that model as selected.
   const available = !disabled && !pending && count > 0;
   // Callers pass a fresh handler on every render; a stable one lets the menu's
   // memoised options skip re-rendering on each focus or selection change.

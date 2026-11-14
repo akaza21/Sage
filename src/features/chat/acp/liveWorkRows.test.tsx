@@ -126,7 +126,6 @@ it("lists the Turn's hook runs in the live work list with their failure line", (
     "failed",
     "running",
   ]);
-  // The state is part of each row's text for assistive technology.
   expect(rows[0]).toHaveTextContent(
     /^PreToolUse hook #1 \(project\), Completed$/,
   );
@@ -135,7 +134,6 @@ it("lists the Turn's hook runs in the live work list with their failure line", (
   );
   expect(within(rows[1]).getByText(", Failed:")).toHaveClass("sr-only");
   expect(rows[2]).toHaveTextContent(/^Stop hook #2 \(user\), Running$/);
-  // A running row is not a live region of its own.
   expect(within(list).queryAllByRole("status")).toHaveLength(0);
 });
 

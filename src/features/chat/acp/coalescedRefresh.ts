@@ -1,37 +1,22 @@
-/** Pause after a change event before a page is read again, so a burst of
- * events during a streamed turn costs one read. */
 export const REFRESH_DEBOUNCE_MS = 50;
 
 export interface CoalescedRefresh {
-  /** Loads now, or once the newest load settles if too many are in flight. */
   now(): void;
-  /** Loads after the debounce; `beforeLoad` runs when the pause ends. */
   schedule(beforeLoad?: () => void): void;
   dispose(): void;
 }
 
-/**
- * Keeps at most `maxInFlight` loads of one page running. A request beyond
- * that becomes a single rerun, started when the newest load settles, so a
- * burst of change events never stacks page reads (each Chat allows only a
- * few at once) and every rerun follows a load that completed. With one load
- * in flight, responses also land in request order. With two, a request can
- * still overtake a load that hangs (the caller discards the older answer),
- * and the newest load is superseded at most once before it lands.
- * A failed load frees its slot like a successful one, and a rerun it owed
- * still runs. `load` reports its own failures. There is no client-side
- * timeout: a hung read keeps holding its native page-read lease, so freeing
- * the slot here would only turn the stall into capacity errors.
- */
+// No client-side timeout: a hung read keeps holding its native page-read lease,
+// so freeing the slot here would only turn the stall into capacity errors.
 export interface CoalescedRefreshOptions {
-  /** Receives an error `load` throws before it returns a promise. Such a
-   * throw can start from the debounce timer or a rerun, where no caller
-   * would see it, so it is always reported here instead of rethrown. */
+  // A throw can start from the debounce timer or a rerun, where no caller would
+  // see it.
   onThrow: (error: unknown) => void;
-  /** Loads allowed in flight at once. */
   maxInFlight?: number;
 }
 
+// A request may overtake a hung load (the caller discards the older answer);
+// a rerun always follows the newest load.
 export function coalescedRefresh(
   load: () => Promise<unknown>,
   { onThrow, maxInFlight = 1 }: CoalescedRefreshOptions,
@@ -61,8 +46,6 @@ export function coalescedRefresh(
     try {
       pending = load();
     } catch (error) {
-      // A load that throws before it returns still frees its slot, so later
-      // refreshes are not locked out.
       settle();
       onThrow(error);
       return;

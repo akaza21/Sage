@@ -101,7 +101,6 @@ describe("Subagent activity rows", () => {
         }
       />,
     );
-    // Codex s4/f0485: once every child settled the same row reads finished.
     expect(row("Reviewer and Builder finished")).toBeVisible();
     expect(screen.getAllByRole("status")).toHaveLength(1);
   });
@@ -494,7 +493,6 @@ describe("Subagent activity rows", () => {
       "A and B started working",
     );
     expect(screen.getAllByRole("status")).toHaveLength(1);
-    // One grouped event: each declared key routes to its own spawn.
     expect(
       screen
         .getAllByRole("button")

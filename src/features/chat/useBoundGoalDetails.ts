@@ -11,8 +11,6 @@ export function useBoundGoalDetails(
   enabled: boolean,
 ) {
   const detailsRef = useRef<HTMLDetailsElement>(null);
-  // The Goal control loads on demand; the + menu offers Goal only once its
-  // details are there to open.
   const [ready, setReady] = useState(false);
   const onReady = useCallback(() => setReady(true), []);
   const canMutate =

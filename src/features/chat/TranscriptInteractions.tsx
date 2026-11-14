@@ -32,7 +32,6 @@ import {
 } from "./transcriptSelection";
 import "./transcript-interactions.css";
 
-// This module is the one lazy chunk; core reaches it through transcriptLazy.tsx.
 export { ComposerAnnotations, SentAnnotations } from "./AnnotationChip";
 export { openSideChat };
 export { readTranscriptQuote } from "./transcriptSelection";
@@ -45,7 +44,6 @@ export {
 const EMPTY: readonly AttachedContext[] = [];
 const STATUS_MS = 4000;
 
-/** Mounted lazily per Chat pane once a selection or a pending annotation exists. */
 export function TranscriptInteractions({
   contentRef,
   ...props
@@ -102,9 +100,9 @@ function Interactions({
     return () => clearTimeout(timer);
   }, [status]);
   const quotes = useMemo(() => contexts.filter(isTranscriptQuote), [contexts]);
-  // A fully loaded Chat that has no such Turn quotes another Chat (a side
-  // chat seeded from its parent): that answer never mounts in this pane.
   const page = useStore(acpProjectionStoreFor(chatId), (state) => state.page);
+  // A missing turn is foreign only once history is fully loaded (a side
+  // chat's parent answer never mounts here).
   const isForeign = useCallback(
     (quote: TranscriptQuoteContext) =>
       page?.nextCursor === null &&

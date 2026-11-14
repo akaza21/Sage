@@ -108,7 +108,6 @@ it("lists on mount, when the latest turn ends and after each stop", async () => 
   expect(screen.getByText("Sage / web")).toBeInTheDocument();
   expect(screen.getByText("outside · unavailable")).toBeInTheDocument();
 
-  // A running turn does not list again; its end does.
   rerender(<Dock page={page(true, "running")} />);
   expect(list).toHaveBeenCalledTimes(1);
   rerender(<Dock page={page(true, "completed")} />);
@@ -140,7 +139,6 @@ it("reports a refused stop but not a failed relisting after one", async () => {
   const { rerender } = render(<Dock page={page(true)} />);
   await screen.findByText("Background terminals (1)");
 
-  // A listing that started before the stop never lands.
   rerender(<Dock page={page(true, "completed")} />);
   fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
   late([server, watcher]);
@@ -149,7 +147,6 @@ it("reports a refused stop but not a failed relisting after one", async () => {
   ).toBeInTheDocument();
   expect(screen.getByText("Background terminals (1)")).toBeInTheDocument();
 
-  // A failed relisting keeps the last listing and its Stop controls.
   fireEvent.click(screen.getByRole("button", { name: "Stop all" }));
   await waitFor(() => expect(stop).toHaveBeenCalledTimes(2));
   await waitFor(() => expect(list).toHaveBeenCalledTimes(4));

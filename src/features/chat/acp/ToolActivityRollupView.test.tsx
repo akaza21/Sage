@@ -259,7 +259,6 @@ describe("ToolActivityRollup", () => {
     expect(screen.getByLabelText("Command line").textContent).toBe(
       "$ npm run check",
     );
-    // Collapse removes the rows (Codex s2/f0040); reopening shows them closed.
     fireEvent.click(worked.querySelector("summary")!);
     expect(screen.queryByText("Shell")).toBeNull();
     fireEvent.click(worked.querySelector("summary")!);
@@ -561,7 +560,6 @@ describe("ToolActivityRollup", () => {
         { ...tool("command-1", "execute"), toolState },
         { ...tool("command-2", "execute"), toolState },
       ];
-      // Waiting on approval or not yet started is still live (s6/f0526).
       const live = ordinary.startsWith("Running");
       expect(toolRollupLabel("execute", items)).toBe(ordinary);
       expect(toolRollupLabel("execute", items, "declaredTest")).toBe(

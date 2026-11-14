@@ -54,7 +54,6 @@ export function currentSession(
 export function latestRetryPrompt(page: AcpChatPage): {
   turnId: SageTurnId;
   prompt: string;
-  /** Present when the Turn ran a session action: Retry runs it again. */
   action?: AcpSessionAction;
   bindingId: AgentSessionProjection["bindingId"];
   modelId: AgentSessionProjection["modelId"];
@@ -95,7 +94,6 @@ export function cancellableTurnId(page: AcpChatPage): SageTurnId | null {
   return active.length === 1 ? active[0].id : null;
 }
 
-/** A Turn's top-level harness activities: no admitted parent in this Turn. */
 export function rootActivities(turn: TurnProjection) {
   const activityIds = new Set(turn.activities.map((activity) => activity.id));
   const itemActivities = new Map(
@@ -109,10 +107,6 @@ export function rootActivities(turn: TurnProjection) {
   );
 }
 
-/**
- * A Turn's working and answer items in wire order: prompts, attachments,
- * settled thoughts and (once terminal) empty text are left out.
- */
 export function chronologicalTurnItems(
   primary: readonly AcpItem[],
   attachmentIds: ReadonlySet<string>,

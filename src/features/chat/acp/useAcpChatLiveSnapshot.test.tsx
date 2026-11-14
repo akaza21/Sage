@@ -77,8 +77,6 @@ function pageWithText(page: AcpChatPage, text: string): AcpChatPage {
   } as unknown as AcpChatPage;
 }
 
-// The desktop's projection-change channel: a listener stays registered until
-// the hook disposes it, and `granted` lets a test hold the subscription back.
 function projectionBus(granted: Promise<void> = Promise.resolve()) {
   const listeners = new Set<(event: AcpProjectionChangedEvent) => void>();
   vi.spyOn(acpDesktop, "subscribeProjectionChanges").mockImplementation(
@@ -154,7 +152,6 @@ describe("useAcpChatLiveSnapshot", () => {
 
   it("ignores other-chat notices and coalesces matching ones into the latest page", async () => {
     vi.useFakeTimers();
-    // The desktop projection as it stands now; every load reads it afresh.
     let current = pageWithText(pageB, "Waiting in B");
     const load = vi
       .spyOn(acpDesktop, "getChatPage")
@@ -178,7 +175,6 @@ describe("useAcpChatLiveSnapshot", () => {
     await vi.waitFor(() =>
       expect(result.current.latestText).toBe("Second reply in B"),
     );
-    // The initial load plus one refresh that served both notices.
     expect(load).toHaveBeenCalledTimes(2);
   });
 

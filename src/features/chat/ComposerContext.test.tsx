@@ -97,7 +97,6 @@ describe("ComposerContext", () => {
   });
 
   it("reads usage limits only when opened and drops them when closed", async () => {
-    // A reset on another day names its weekday.
     vi.useFakeTimers({ toFake: ["Date"] });
     vi.setSystemTime(Date.UTC(2026, 10, 12, 9));
     const read = vi.spyOn(acpUsageDesktop, "read").mockResolvedValue({
