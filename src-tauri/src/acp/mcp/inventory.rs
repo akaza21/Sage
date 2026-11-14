@@ -85,18 +85,12 @@ impl McpInventory {
     /// name is left out.
     pub(crate) fn from_codex(page: CodexMcpPage) -> Self {
         let more = page.has_more();
-        let servers: Vec<McpServer> = page
-            .data
-            .into_iter()
-            .filter_map(|server| server.0)
-            .filter_map(codex_server)
-            .collect();
         let actions = McpActions {
             reload: true,
             sign_in: crate::system_browser::available(),
             reconnect: false,
         };
-        Self::listed(servers, more, actions)
+        Self::listed(page.servers, more, actions)
     }
 
     /// A Claude Code `mcp_status` reply. Its server configuration (URLs,
@@ -117,15 +111,48 @@ impl McpInventory {
         Some(Self::listed(servers, false, actions))
     }
 
-    fn listed(mut servers: Vec<McpServer>, more: bool, actions: McpActions) -> Self {
-        let truncated = more || servers.len() > MAX_LISTED_SERVERS;
-        servers.sort_by(|left, right| left.name.cmp(&right.name));
-        servers.truncate(MAX_LISTED_SERVERS);
+    fn listed(selection: ServerSelection, more: bool, actions: McpActions) -> Self {
         Self {
-            servers,
-            truncated,
+            servers: selection.servers,
+            truncated: more || selection.truncated,
             actions,
         }
+    }
+}
+
+/// The first [`MAX_LISTED_SERVERS`] servers by name, chosen as they are
+/// read, so a list of any length never holds more. Servers with the same
+/// name keep the order they arrived in.
+#[derive(Debug, Default)]
+pub(crate) struct ServerSelection {
+    servers: Vec<McpServer>,
+    truncated: bool,
+}
+
+impl ServerSelection {
+    fn offer(&mut self, server: McpServer) {
+        let at = self
+            .servers
+            .partition_point(|kept| kept.name <= server.name);
+        if at >= MAX_LISTED_SERVERS {
+            self.truncated = true;
+            return;
+        }
+        if self.servers.len() == MAX_LISTED_SERVERS {
+            self.servers.pop();
+            self.truncated = true;
+        }
+        self.servers.insert(at, server);
+    }
+}
+
+impl FromIterator<McpServer> for ServerSelection {
+    fn from_iter<I: IntoIterator<Item = McpServer>>(servers: I) -> Self {
+        let mut selection = Self::default();
+        for server in servers {
+            selection.offer(server);
+        }
+        selection
     }
 }
 

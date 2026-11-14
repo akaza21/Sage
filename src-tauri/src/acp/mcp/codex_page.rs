@@ -3,6 +3,8 @@
 //! structural bounds the rest of the wire keeps; this reads the page in one
 //! pass that counts tools and resources without keeping them, and treats a
 //! field of an unexpected type as absent rather than failing the page.
+//! Each server is cleaned as it is read and only the shown ones are kept,
+//! so a long list holds no more memory than a short one.
 
 use std::{fmt, marker::PhantomData};
 
@@ -11,10 +13,13 @@ use serde::{
     de::{Error, IgnoredAny, MapAccess, SeqAccess, Visitor, value::MapAccessDeserializer},
 };
 
+use super::{ServerSelection, codex_server};
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CodexMcpPage {
-    pub(super) data: Vec<Object<CodexServerStatus>>,
+    #[serde(rename = "data", deserialize_with = "select_servers")]
+    pub(super) servers: ServerSelection,
     #[serde(default)]
     next_cursor: Option<IgnoredAny>,
 }
@@ -97,6 +102,28 @@ fn drain_seq<'de, A: SeqAccess<'de>>(mut seq: A) -> Result<usize, A::Error> {
         count += 1;
     }
     Ok(count)
+}
+
+fn select_servers<'de, D: Deserializer<'de>>(deserializer: D) -> Result<ServerSelection, D::Error> {
+    struct ServersVisitor;
+    impl<'de> Visitor<'de> for ServersVisitor {
+        type Value = ServerSelection;
+
+        fn expecting(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+            formatter.write_str("a list of servers")
+        }
+
+        fn visit_seq<A: SeqAccess<'de>>(self, mut seq: A) -> Result<ServerSelection, A::Error> {
+            let mut selection = ServerSelection::default();
+            while let Some(entry) = seq.next_element::<Object<CodexServerStatus>>()? {
+                if let Some(server) = entry.0.and_then(codex_server) {
+                    selection.offer(server);
+                }
+            }
+            Ok(selection)
+        }
+    }
+    deserializer.deserialize_seq(ServersVisitor)
 }
 
 impl<'de> Deserialize<'de> for Text {

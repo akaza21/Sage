@@ -1,7 +1,7 @@
 use super::*;
 use crate::acp::{
     goal::NativeRpcReply,
-    mcp::inventory::{McpAuth, McpConnection},
+    mcp::inventory::{MAX_LISTED_SERVERS, McpAuth, McpConnection},
 };
 use sage_acp_protocol::session_control::SessionControl;
 
@@ -225,6 +225,38 @@ fn a_list_past_the_structural_bounds_still_lists_its_servers() {
     assert_eq!(listed.servers[0].tools, 300);
     assert!(!runtime.native_rpc_pending());
     assert!(!runtime.child_read_pending());
+}
+
+#[test]
+fn a_long_compact_list_past_the_structural_bounds_lists_the_first_servers_by_name() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let (id, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
+    let named = MAX_LISTED_SERVERS + 36;
+    let entries: Vec<Value> = (0..300_000)
+        .map(|index| match index % 3_000 {
+            0 => json!({"name": format!("s{:03}", named - 1 - index / 3_000),
+                        "runtimeStatus": "connected"}),
+            _ => json!({}),
+        })
+        .collect();
+    let compact = frame(json!({"id": id, "result": {"data": entries, "nextCursor": null}}));
+    assert!(crate::acp::transport::validate_structure(&compact).is_err());
+    runtime.discard_invalid_response(&compact).unwrap();
+    let Some(NativeRpcReply::McpServers(listed)) = runtime.take_native_rpc_reply() else {
+        panic!("the inventory");
+    };
+    assert!(listed.truncated);
+    let names: Vec<_> = listed
+        .servers
+        .iter()
+        .map(|server| server.name.clone())
+        .collect();
+    let first: Vec<_> = (0..MAX_LISTED_SERVERS)
+        .map(|index| format!("s{index:03}"))
+        .collect();
+    assert_eq!(names, first);
+    assert!(!runtime.native_rpc_pending());
 }
 
 #[test]
