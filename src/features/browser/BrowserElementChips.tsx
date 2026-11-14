@@ -22,7 +22,6 @@ const HIDE_MS = 150;
 const CARD_WIDTH = 347;
 const LABEL_CHARS = 48;
 
-/** Contract §4: `Element N · <role> "<name>"`, cut to 48 characters. */
 export function browserElementLabel({
   ordinal,
   role,
@@ -34,17 +33,9 @@ export function browserElementLabel({
     : label.join("");
 }
 
-/** Contract §4: the tooltip names the page and the selector. */
 const elementTip = ({ url, selector }: BrowserElementContext) =>
   `${url}\n${selector}`;
 
-/**
- * Annotate's elements: one chip per element until there are
- * several, then one "N annotations" chip whose hover or focus opens a card
- * of each element's role, name, comment and page. With `onRemove` it is the
- * composer's draft row; without, the read-only row above a sent turn, which
- * also shows the turn's attached pages.
- */
 export default function BrowserElementChips({
   contexts,
   disabled = false,
@@ -158,8 +149,6 @@ function ElementChip({
   useEffect(() => () => clearTimeout(timer.current), []);
   useEffect(() => {
     if (!open) return;
-    // The card hangs 5 px above the chip in the viewport (the composer body
-    // scrolls): from its left edge in the draft, its right edge when sent.
     const placeCard = () => {
       const anchor = chip.current?.getBoundingClientRect();
       if (!anchor) return;

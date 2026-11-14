@@ -291,7 +291,6 @@ describe("CodeMirrorEditorRuntime editing features", () => {
   it("loads them on demand for an editable File", async () => {
     const { runtime, view } = mountEditing(editing);
     await vi.waitFor(() => expect(allowsMultipleSelections(view)).toBe(true));
-    // Fold arrows sit between the line numbers and the text, as in VS Code.
     expect(
       [...view.dom.querySelectorAll(".cm-gutter")].map((gutter) =>
         gutter.classList.contains("cm-foldGutter") ? "fold" : "lineNumbers",
@@ -307,7 +306,6 @@ describe("CodeMirrorEditorRuntime editing features", () => {
       changes: { from: 0, to: view.state.doc.length, insert: '""' },
       selection: { anchor: 1 },
     });
-    // The base keymap would delete one quote; auto-close deletes the pair.
     expect(
       runScopeHandlers(
         view,
@@ -574,8 +572,6 @@ describe("documentSyntaxHighlightStyle after a dependency drift", () => {
       )!.tag;
       return {
         ...actual,
-        // A new release that reorders and shrinks the default table, with
-        // its own raw palette colour.
         defaultHighlightStyle: {
           specs: [{ tag: keyword, color: "#123456" }],
         },
@@ -742,7 +738,6 @@ describe("CodeMirrorEditorRuntime read-only editor", () => {
     const { runtime, view } = runtimeForPath("notes.md", undefined, "hello");
     view.focus();
     runtime.update(props(true));
-    // Content that stayed editable does not lose the browser's focus.
     expect(view.contentDOM).toHaveAttribute("contenteditable", "true");
     expect(view.hasFocus).toBe(true);
     runtime.update(props(false));

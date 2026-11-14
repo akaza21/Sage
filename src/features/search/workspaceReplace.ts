@@ -1,6 +1,3 @@
-// Workspace Replace's shapes. What previews and applies a Replace lives in
-// `workspaceReplacePlan`, which loads on the first Replace.
-
 import type { EditorDocument, ResourceRef } from "../../domain/workbench";
 
 export interface ReplaceSpec {
@@ -82,13 +79,11 @@ export interface WorkspaceReplaceGateway {
   }): Promise<TextReplaceResult>;
 }
 
-/** Where a planned File's change goes. */
 export type ReplaceTarget =
-  /** On disk, natively. */
   | { kind: "disk"; fingerprint: string }
-  /** In the editor showing the File, as one undoable edit. */
+  /** The editor showing the File, as one undoable edit. */
   | { kind: "editor"; text: string; content: string }
-  /** In the unsaved buffer of a File open in another tab. */
+  /** The unsaved buffer of a File open in another tab. */
   | { kind: "buffer"; document: EditorDocument; content: string };
 
 export interface PlannedFile {
@@ -103,7 +98,6 @@ export interface ReplacePlan {
   projectId: string;
   transitionEpoch: number;
   spec: ReplaceSpec;
-  /** Set when the Replace is of one match. */
   only?: MatchPosition;
   files: PlannedFile[];
   problems: ReplaceFileProblem[];

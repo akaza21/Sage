@@ -53,21 +53,13 @@ const initialState = (): WorkspaceSearchState => ({
   error: null,
 });
 
-/**
- * Splits a field on the commas outside `{…}` groups. A brace that opens no
- * whole group is an ordinary character, so the field still splits after it.
- */
+/** A brace that opens no whole `{…}` group is an ordinary character. */
 function splitFilterField(value: string): string[] {
   const pieces = value.match(/(?:[^,{]|\{[^{}]*\}|\{)+/g) ?? [];
   return pieces.map((piece) => piece.trim()).filter(Boolean);
 }
 
-/**
- * Expands each `{a,b}` group that holds no other brace, left to right, in one
- * bounded pass; other braces stay literal. Returns `null` (overflow) once the
- * distinct alternatives pass `limit` or one grows past `maxBytes`, so the
- * caller refuses the whole field instead of sending part of it.
- */
+/** Returns `null` on overflow so the caller refuses the whole field instead of sending part of it. */
 function expandBraces(
   piece: string,
   limit: number,
@@ -109,7 +101,7 @@ function expandFilterPiece(piece: string): string[] {
   return /[*?]/.test(pattern) ? [prefixed] : [prefixed, `${prefixed}/**`];
 }
 
-/** The expanded, deduplicated patterns, or `null` when they pass the limits. */
+/** Null when the patterns exceed the limits. */
 function filterPatterns(value: string): string[] | null {
   const { filterPatterns: limit, filterBytes } = WORKSPACE_SEARCH_LIMITS;
   const patterns = new Set<string>();
@@ -125,10 +117,6 @@ function filterPatterns(value: string): string[] | null {
   return [...patterns];
 }
 
-/**
- * Both expanded lists. Throws the request validator's invalid-filter message
- * when they exceed the native limits, so a partial set is never sent.
- */
 function searchFilters(includeText: string, excludeText: string) {
   const includePatterns = filterPatterns(includeText);
   const excludePatterns = filterPatterns(excludeText);
@@ -187,8 +175,6 @@ export function useWorkspaceSearch({
     active.current = null;
   }, []);
 
-  // Changing `search.useIgnoreFiles` or `files.exclude` retires results like
-  // any other criterion, so a page never continues under other settings.
   useEffect(
     () =>
       useEditorSettingsStore.subscribe((store, previous) => {
@@ -199,7 +185,6 @@ export function useWorkspaceSearch({
     [retireCriteria],
   );
 
-  /** Each criterion change retires the shown results and any pending scan. */
   const setCriterion = useCallback(
     <K extends CriterionKey>(key: K, value: WorkspaceSearchState[K]) => {
       retireCriteria();
@@ -228,7 +213,6 @@ export function useWorkspaceSearch({
     setState((current) => ({ ...current, ...clearedResults }));
   }, []);
 
-  /** Runs Search afresh, or for its next page when `more`. */
   const runSearch = useCallback(
     async (more: boolean) => {
       const query = state.query.trim();
@@ -259,7 +243,6 @@ export function useWorkspaceSearch({
       active.current = controller;
       const requestGeneration = generation.current + 1;
       generation.current = requestGeneration;
-      // A fresh Search drops the shown results; a next page keeps them.
       const fresh = more ? {} : { query, response: null };
       setState((current) => ({
         ...current,
@@ -268,7 +251,6 @@ export function useWorkspaceSearch({
         error: null,
       }));
 
-      // Usually loaded already: the panel preloads the checks on mount.
       const checksLoad = loadWorkspaceSearchChecks();
       // A failed load surfaces where it is awaited, not as an unhandled one.
       void checksLoad.catch(() => undefined);
@@ -355,8 +337,6 @@ export function useWorkspaceSearch({
   const submit = useCallback(() => runSearch(false), [runSearch]);
   const continueSearch = useCallback(() => runSearch(true), [runSearch]);
 
-  // The checks load with the panel, in their own chunk, so the first Search
-  // never waits on them.
   useEffect(() => {
     loadWorkspaceSearchChecks().catch(() => undefined);
   }, []);

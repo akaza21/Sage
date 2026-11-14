@@ -28,7 +28,6 @@ import {
   requestChatSearchInFolder,
 } from "./chatSearchScope";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 
 function deferred<T>() {
@@ -149,8 +148,6 @@ describe("ChatSearchControl", () => {
       await act(() => vi.advanceTimersByTimeAsync(200));
       expect(search).toHaveBeenCalledTimes(2);
       expect(search.mock.calls[1][0].query).toBe("latest");
-      // The field keeps the focus and names the active result; the arrows
-      // wrap, and Home and End stay with the caret.
       const results = screen.getAllByRole("option");
       const listbox = screen.getByRole("listbox", {
         name: "Chat search results",
@@ -306,13 +303,10 @@ describe("ChatSearchControl", () => {
     await screen.findByRole("listbox", { name: "Chat search results" });
     expect(search).toHaveBeenCalledTimes(1);
 
-    // Enter with no active result is the form's own Enter: search again.
     expect(fireEvent.keyDown(input, { key: "Enter" })).toBe(true);
-    // A pointer press on a row leaves the focus in the field.
     expect(fireEvent.mouseDown(screen.getByRole("option", { name: "B" }))).toBe(
       false,
     );
-    // Keys that end an input method composition belong to the field.
     fireEvent.keyDown(input, { key: "ArrowDown", isComposing: true });
     expect(input).not.toHaveAttribute("aria-activedescendant");
 
@@ -321,15 +315,12 @@ describe("ChatSearchControl", () => {
       "aria-activedescendant",
       screen.getByRole("option", { name: "Old — Archived" }).id,
     );
-    // Shift and Alt arrows stay with the field.
     expect(fireEvent.keyDown(input, { key: "ArrowDown", shiftKey: true })).toBe(
       true,
     );
     expect(fireEvent.keyDown(input, { key: "ArrowDown", altKey: true })).toBe(
       true,
     );
-    // A new answer starts again from nothing active, even when the row
-    // that was active is in it.
     fireEvent.change(input, { target: { value: "needles" } });
     fireEvent.submit(input.closest("form")!);
     await screen.findByRole("listbox", { name: "Chat search results" });
@@ -666,7 +657,6 @@ describe("ChatSearchControl", () => {
     fireEvent.change(input, { target: { value: "needle" } });
     fireEvent.submit(input.closest("form")!);
     expect(await screen.findByText(/No chats matched/)).toBeVisible();
-    // The empty list is not a live region, so the status announces it.
     expect(screen.getByRole("status")).toHaveTextContent("0 chats");
 
     fireEvent.submit(input.closest("form")!);
@@ -730,7 +720,6 @@ describe("ChatSearchControl", () => {
     expect(dialog.contains(pickerInput)).toBe(true);
     await waitFor(() => expect(pickerInput).toHaveFocus());
     expect(screen.getAllByRole("option")).toHaveLength(65);
-    // Search in ends the dialog, so Tab from its list wraps to Close.
     const forwardTab = createEvent.keyDown(pickerInput, { key: "Tab" });
     fireEvent(pickerInput, forwardTab);
     expect(forwardTab.defaultPrevented).toBe(true);
@@ -754,7 +743,6 @@ describe("ChatSearchControl", () => {
     expect(dialog).toBeVisible();
     expect(select).toHaveFocus();
 
-    // Close leads the dialog and Search in ends it.
     select.focus();
     fireEvent.keyDown(dialog, { key: "Tab" });
     expect(close).toHaveFocus();

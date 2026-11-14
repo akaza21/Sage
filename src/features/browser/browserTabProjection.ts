@@ -1,7 +1,6 @@
 import { useWorkbenchStore } from "../../app/store";
 import type { BrowserNavigation } from "../../ports/nativeBrowserPort";
 
-/** Projects native navigation into the shared workbench tab metadata. */
 export function projectBrowserTabStatus(
   tabId: string,
   status: BrowserNavigation,

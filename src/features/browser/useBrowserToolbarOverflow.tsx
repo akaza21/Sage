@@ -2,10 +2,6 @@ import { useCallback, useRef, type ReactNode } from "react";
 import { useToolbarOverflow } from "../../ui/useToolbarOverflow";
 import { usePortalHost } from "../../ui/usePortalHost";
 
-/**
- * The toolbar's compaction steps, in order; each is an attribute on the
- * toolbar that browser.css keys on. A tier is how many have been taken.
- */
 const STEPS = [
   "data-compact-annotate",
   "data-compact-chat",
@@ -14,22 +10,16 @@ const STEPS = [
   "data-overflow-actions",
 ] as const;
 const LAST = STEPS.length;
-/** Layers that hang from the toolbar row without taking part in its width. */
+// Hang from the toolbar row without taking part in its width.
 const POPOVERS = ".browser-downloads__popover";
 // Sub-pixel layout may overshoot an edge by under one device pixel.
 const SUBPIXEL = 0.5;
 
 /**
- * Compacts secondary toolbar actions, and moves them into the More menu,
- * only as far as the toolbar row needs, as in Chrome and Edge. The address
- * keeps its token minimum, so each fit lays the row out in full and takes
- * the next step until it fits; every step is written to the toolbar and
- * measured before paint, and a fit always starts again from the full row,
- * so actions that appear later (an Agent attaching) never count twice.
- *
- * The page-action state owner stays in one portal host. Its presentation
- * and reads sleep at the final tier until More opens; moving the host
- * preserves the chosen chat and pending operations.
+ * Each step is written to the toolbar and measured before paint, and a fit
+ * always starts again from the full row, so actions that appear later never
+ * count twice. The page actions stay in one portal host, so moving it keeps
+ * the chosen chat and pending operations.
  */
 export function useBrowserToolbarOverflow(
   menuOpen: boolean,
@@ -123,7 +113,6 @@ export function useBrowserToolbarOverflow(
         {pageControls && portal(pageControls(visible))}
       </>
     ),
-    // The live controls move as one host; sleeping controls use cached widths.
     menuActions: menuOpen && pageControls && tier >= LAST && (
       <div
         ref={menuSlot}

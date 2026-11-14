@@ -156,7 +156,6 @@ it("subscribes before reading, and a late snapshot never overwrites a newer even
   );
   render(<BrowserDownloadFolder />);
   await waitFor(() => expect(port.get).toHaveBeenCalledTimes(1));
-  // The listener was registered before the read started.
   expect(port.emit).not.toBeNull();
   act(() => port.emit?.({ path: FOLDER, available: true, revision: 1 }));
   expect(await screen.findByText(FOLDER)).toBeVisible();

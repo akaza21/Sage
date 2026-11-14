@@ -13,8 +13,6 @@ import { useAgentSettingsState } from "./agentSettingsState";
 import { SettingsRow } from "./SettingsRow";
 import { loadSettingsBrowserPage } from "../../workbench/settings/settingsPageLoaders";
 
-// Site permissions follow the live-tab controls, as one section with this
-// page's tab-scoped review.
 const generalPreferences = new Set(["browser.showFullUrl"]);
 
 const loadDownloadsPanel = () => import("../browser/BrowserDownloadsPanel");
@@ -68,7 +66,6 @@ function BrowsingHistory({ tabId }: { tabId: string }) {
   );
 }
 
-/** The selected live tab's history and downloads, as rows of its card. */
 function LiveTabRows({ tabId }: { tabId: string }) {
   const [history, setHistory] = useState(false);
   const [downloads, setDownloads] = useState(false);
@@ -106,7 +103,6 @@ function LiveTabRows({ tabId }: { tabId: string }) {
   );
 }
 
-/** The selected live tab's permission status, inside Site permissions. */
 function LiveTabSitePermissions({
   tabId,
   title,
@@ -206,7 +202,6 @@ export function AgentBrowserSettings() {
         downloads and permission status are scoped to a live tab. Closed-tab
         history and download management are not available yet.
       </p>
-      {/* As on Harnesses, the refresh sits above the card it reloads. */}
       <div>
         <button
           type="button"

@@ -52,7 +52,6 @@ it("keeps the current page on screen until the Harnesses page is ready, then foc
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
-  // Still Chats: the heading and its page stay while the module loads.
   expect(
     screen.getByRole("heading", { level: 2, name: "Chats" }),
   ).toBeVisible();
@@ -67,6 +66,5 @@ it("keeps the current page on screen until the Harnesses page is ready, then foc
     screen.getByRole("heading", { level: 2, name: "Harnesses" }),
   ).toBeVisible();
   expect(screen.queryByText(/Loading/)).toBeNull();
-  // Focus moves from the section button into the page that just arrived.
   expect(refresh).toHaveFocus();
 });

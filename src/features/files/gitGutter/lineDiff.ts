@@ -1,9 +1,6 @@
 /**
- * Line-level Myers diff for the gutter. It runs in the gutter
- * worker, never on the main thread. The linear-space middle-snake search is
- * GNU diff's, without its heuristics except a cost cap: past the cap a split
- * is taken at the middle of both ranges, which keeps the result a valid
- * (if longer) edit script and the work bounded on unrelated texts.
+ * GNU diff's linear-space middle snake; past a cost cap a split is taken at the
+ * middle of both ranges, which keeps the script valid and the work bounded.
  */
 
 /** Half-open, 0-based line ranges: `[start, end)` now, `[baseStart, baseEnd)` staged. */
@@ -14,7 +11,6 @@ export interface LineChange {
   baseEnd: number;
 }
 
-/** Diagonals searched per split before the cap gives up on a shortest script. */
 const MAX_SNAKE_COST = 256;
 
 export function diffLines(
@@ -34,7 +30,6 @@ export function diffLines(
   const m = current.length - prefix - suffix;
   if (n === 0 && m === 0) return [];
 
-  // Equal lines get equal numbers, so the search compares integers.
   const ids = new Map<string, number>();
   const number = (line: string) => {
     let id = ids.get(line);
@@ -98,7 +93,6 @@ function compare(
   }
 }
 
-/** A point on a shortest edit path through the box, splitting it in two. */
 function middleSnake(
   a: Int32Array,
   b: Int32Array,

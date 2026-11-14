@@ -1,7 +1,3 @@
-/* Replace in the Search panel. Loaded with the Replace chunk when the user
-   opens Replace; the results list carries .workspace-replace while it is
-   open. */
-
 .workspace-replace section {
   position: relative;
 }
@@ -30,8 +26,6 @@
   opacity: 0.5;
 }
 
-/* The file-level action sits at the right end of the file heading, which
-   leaves it room so the path and count stay clear of it. */
 .workspace-replace .workspace-search__file-heading {
   padding-right: var(--editor-list-row-height);
 }

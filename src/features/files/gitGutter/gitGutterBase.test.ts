@@ -53,7 +53,6 @@ describe("gutter base cache", () => {
     expect(cache.bytes()).toBe(40);
     read.mockClear();
     await cache.load(file("b"));
-    // b was evicted, so its text is fetched again.
     expect(read.mock.calls[0]![1]).toBeNull();
   });
 

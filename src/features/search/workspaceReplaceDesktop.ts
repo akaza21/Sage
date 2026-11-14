@@ -1,6 +1,3 @@
-// The native side of Workspace Replace: previews, applies and replaces in
-// text, each response checked before it is used.
-
 import { isRecord } from "../../domain/guards";
 import type { ResourceRef } from "../../domain/workbench";
 import { invokeNative } from "../../ports/nativeInvoke";

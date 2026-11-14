@@ -14,10 +14,7 @@ export function HarnessSignInStatus({
   return null;
 }
 
-/**
- * Keeps the harness sign-in module out of the initial Agent bundle: it loads
- * only in the desktop runtime, when the picker has harnesses to decorate.
- */
+/** Keeps the harness sign-in module out of the initial Agent bundle. */
 function useHarnessSignInDecorations(
   harnessDefinitions: readonly {
     id: string;

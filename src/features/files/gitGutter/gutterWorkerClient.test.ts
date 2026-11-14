@@ -48,7 +48,6 @@ describe("gutter worker pool", () => {
     });
     two.close();
     expect(workers[0]!.terminate).not.toHaveBeenCalled();
-    // A File opened meanwhile keeps the same worker.
     const three = pool.connect(vi.fn());
     vi.advanceTimersByTime(GUTTER_WORKER_LINGER_MS);
     three.post({ type: "close", id: three.id });
@@ -89,7 +88,6 @@ describe("gutter worker pool", () => {
         expect(view.state.field(gutterField).hunks).toHaveLength(1);
         expect(view.dom.querySelector(".git-gutter-marker")).not.toBeNull();
       }
-      // Both editors now have an unanswered diff, plus a visible peek.
       hold = true;
       for (const view of views)
         view.dispatch({ changes: { from: 1, insert: "x" } });
@@ -111,7 +109,6 @@ describe("gutter worker pool", () => {
       for (const view of views)
         view.dispatch({ changes: { from: 1, insert: "y" } });
       await vi.advanceTimersByTimeAsync(GUTTER_IDLE_MS);
-      // A stuck in-flight request would prevent these fresh diffs from landing.
       for (const view of views)
         expect(view.state.field(gutterField).hunks).toHaveLength(1);
     } finally {

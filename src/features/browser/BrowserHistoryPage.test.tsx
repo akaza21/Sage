@@ -59,7 +59,6 @@ beforeEach(() => {
   browserHistoryRemove.mockResolvedValue(1);
 });
 
-/** A visit's own button, not its Remove button. */
 const opens = (text: string) => new RegExp(`^(?!Remove ).*${text}`);
 
 afterEach(() => {
@@ -84,7 +83,6 @@ it("lists visits newest first under day headings and opens one", async () => {
     .getAllByRole("heading", { level: 2 })
     .map((heading) => heading.textContent);
   expect(headings).toHaveLength(3);
-  // A visit with no title shows its URL; its host is shown beside it.
   const untitled = within(page).getByRole("button", {
     name: opens("site2\\.example/path"),
   });
@@ -219,7 +217,6 @@ it("loads an older page from the cursor when asked", async () => {
   expect(screen.getAllByLabelText(/^Remove .* from history$/)).toHaveLength(
     2 * HISTORY_PAGE_SIZE,
   );
-  // One row still checks the accessible role and name, within that row.
   const remove = screen.getByLabelText(lastOfPage(2));
   expect(
     within(remove.parentElement!).getByRole("button", { name: lastOfPage(2) }),
@@ -287,7 +284,6 @@ it("never appends an older page to a list fetched again since", async () => {
   );
   await waitFor(() => expect(result.current.loading).toBe(false));
   act(() => result.current.loadMore());
-  // The search changes and clears before it runs: the list is fetched anew.
   rerender({ search: "x" });
   rerender({ search: "" });
   await waitFor(() =>

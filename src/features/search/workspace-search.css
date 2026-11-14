@@ -236,7 +236,6 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Messages wrap, so they sit outside the fixed-height row treatment. */
 .workspace-search__empty,
 .workspace-search__error,
 .workspace-search__notice {
@@ -278,7 +277,6 @@
   padding: 0 var(--space-1) var(--space-2);
 }
 
-/* Matches sit one tree level under their file, aligned with its icon. */
 .workspace-search__result {
   display: grid;
   width: 100%;

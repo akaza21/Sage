@@ -67,7 +67,6 @@ const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
 
 export default AgentSettingsSurface;
 
-// Settings order and grouping, limited to the sections Sage has.
 const groups: readonly {
   heading: string | null;
   pages: readonly AgentSettingsPage[];
@@ -80,10 +79,6 @@ const groups: readonly {
   { heading: null, pages: ["Archived chats"] },
 ];
 
-/**
- * ArrowUp and ArrowDown move between the section buttons, wrapping; Home and
- * End go to the first and last. The search field keeps its own keys.
- */
 function moveSectionFocus(event: KeyboardEvent<HTMLElement>) {
   if (hasNavigationModifier(event)) return;
   const sections = [
@@ -126,11 +121,9 @@ export function AgentSettingsSurface({
   const [query, setQuery] = useState("");
   const surfaceRef = useRef<HTMLElement | null>(null);
   const pageRef = useRef<HTMLDivElement | null>(null);
-  // The page on screen: a requested Harnesses page waits for its module.
   const [, setHarnessReady] = useState(Boolean(HarnessSettings));
   const [harnessFailed, setHarnessFailed] = useState(false);
   const [shownPage, setShownPage] = useState(page);
-  // The element that had focus when a deferred Harnesses page was asked for.
   const deferredFrom = useRef<Element | null>(null);
   if (
     page !== shownPage &&
@@ -184,8 +177,6 @@ export function AgentSettingsSurface({
     }))
     .filter((group) => group.pages.length > 0);
   return (
-    // Takes the Agent workspace's place below the title bar, which stays
-    // usable, with the settings dialog centred in it.
     <div className="agent-settings-layer">
       <section
         ref={surfaceRef}
@@ -290,7 +281,6 @@ export function AgentSettingsSurface({
                 HarnessSettings ? (
                   <HarnessSettings />
                 ) : (
-                  // The load failed: this boundary shows the retry.
                   <LazyModuleBoundary
                     label="Harness settings"
                     load={loadHarnessModule}

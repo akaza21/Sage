@@ -22,7 +22,6 @@ interface WorkspaceSearchCommandBarProps {
   onCaseSensitiveChange: (value: boolean) => void;
   onWholeWordChange: (value: boolean) => void;
   onUseRegexChange: (value: boolean) => void;
-  /** The Replace row, shown once the user opens Replace. */
   replaceRow?: ReactNode;
   onIncludePatternTextChange: (value: string) => void;
   onExcludePatternTextChange: (value: string) => void;

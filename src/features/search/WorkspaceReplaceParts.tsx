@@ -1,8 +1,5 @@
-// Workspace Replace in the Search panel: the Replace row, the per-File and
-// per-match Replace buttons, the preview awaiting a confirm and what the last
-// Replace did. The panel loads this chunk only when the user opens Replace
-// (or preloads it when they reach for the toggle), so Search alone carries
-// none of it. The panel keeps the Replace state, so it outlives a close.
+// Loaded when Replace opens, or preloaded on idle and from the toggle, so
+// Search alone carries none of it.
 
 import type { Dispatch, SetStateAction } from "react";
 
@@ -47,7 +44,6 @@ const initialReplaceState: ReplaceState = {
   report: null,
 };
 
-/** What every part needs: the panel's Replace state and its Search. */
 export interface ReplaceContext {
   state: ReplaceState | undefined;
   setState: Dispatch<SetStateAction<ReplaceState | undefined>>;
@@ -55,7 +51,6 @@ export interface ReplaceContext {
   /** The native gateway when left out. */
   gateway?: WorkspaceReplaceGateway;
   onReplaced: () => void;
-  /** The first match of each File Search shows, in order. */
   files: ResourceRef[];
   projectId: string | null;
 }
@@ -76,7 +71,6 @@ function errorText(error: unknown) {
   return message.replace(/^invalid request: /, "");
 }
 
-/** Why the replacement can't be used, if it can't. */
 function replacementProblem(replacement: string): string | null {
   return utf8ByteLength(replacement) > WORKSPACE_SEARCH_LIMITS.replacementBytes
     ? `The replacement is longer than ${WORKSPACE_SEARCH_LIMITS.replacementBytes} bytes.`
@@ -96,7 +90,6 @@ let applyParts: typeof ApplyParts | undefined;
 const loadApply = () =>
   import("./workspaceReplaceApply").then((parts) => (applyParts = parts));
 
-/** Previews a Replace of `resources`, or of the one match at `only`. */
 async function start(
   context: ReplaceContext,
   resources: ResourceRef[],
@@ -175,7 +168,6 @@ async function confirm(context: ReplaceContext, plan: ReplacePlan) {
   context.onReplaced();
 }
 
-/** The Replace row under the Search query. */
 export function ReplaceRow({ context }: { context: ReplaceContext }) {
   const { replacement, preserveCase, step } = current(context);
   const { search, projectId, files } = context;
@@ -236,7 +228,6 @@ export function ReplaceRow({ context }: { context: ReplaceContext }) {
   );
 }
 
-/** Replaces every match in one File. */
 export function ReplaceFileAction({
   context,
   resource,
@@ -258,7 +249,6 @@ export function ReplaceFileAction({
   );
 }
 
-/** Replaces the one match Search reported. */
 export function ReplaceMatchAction({
   context,
   match,
@@ -287,8 +277,6 @@ export function ReplaceMatchAction({
   );
 }
 
-/** A preview being prepared, what the last Replace did, and the preview
- * awaiting a confirm. */
 export function ReplaceStatus({
   context,
   rootName,

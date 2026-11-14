@@ -23,9 +23,8 @@ type NewTabProps = {
   onNavigate: (url: string) => void;
   onNewTab: () => void;
   onTool: (tool: AgentTool) => void;
-  /** False outside the Agent body, where no Chat owns the launchers. */
   chatAvailable: boolean;
-  /** Defaults to a selected answer or an open side chat of this Chat. */
+  /** Defaults to whether this Chat has a selected answer or a side chat. */
   sideChatAvailable?: boolean;
   terminalAvailable: boolean;
 };
@@ -177,10 +176,6 @@ export function BrowserNewTab({
   );
 }
 
-/**
- * Whether Side chat can start for the pinned Chat: one of its answers holds
- * a selection, or it already has a side chat (or is one) in this project.
- */
 export function useSideChatAvailable(chatAvailable: boolean) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const chatId = usePinnedAgentChatOwner();

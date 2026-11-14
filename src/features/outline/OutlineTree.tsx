@@ -31,16 +31,10 @@ const KIND_ICONS: Readonly<Record<OutlineSymbolKind, typeof Box>> = {
 
 interface OutlineTreeProps {
   symbols: readonly OutlineSymbol[];
-  /** The File's workspace path, named in each row's tooltip and label. */
   location: string;
   onOpen: (symbol: OutlineSymbol) => void;
 }
 
-/**
- * The active File's symbols as a collapsible tree. Rows stay buttons that
- * open the declaration; ArrowLeft and ArrowRight collapse and expand a parent
- * row the way a tree does, and its chevron does the same for the pointer.
- */
 export function OutlineTree({ symbols, location, onOpen }: OutlineTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(new Set());
   const keys = useMemo(() => outlineRowKeys(symbols), [symbols]);

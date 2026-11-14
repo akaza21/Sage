@@ -29,7 +29,6 @@ function upstreamRemote(upstream: string, remotes: readonly string[]) {
   return match;
 }
 
-/** Chooses only an operation the current native Git projection can justify. */
 export function repositoryPrimaryAction(
   repository: RootRepositoryStatus,
 ): RepositoryPrimaryAction {

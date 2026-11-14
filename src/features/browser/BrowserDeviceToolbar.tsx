@@ -14,14 +14,12 @@ import "./browser-device.css";
 interface ToolbarProps {
   size: BrowserDeviceSize;
   scalePercent: number | null;
-  /** The page may not match this size: a reset step failed. */
+  /** A reset step failed: the page may not match this size. */
   unconfirmed: boolean;
   onChange: (size: BrowserDeviceSize) => void;
   onClose: () => void;
 }
 
-/** The bar under the address bar while the device toolbar is shown (Codex
- * ref 41): Dimensions, width × height, rotate, the fitted scale and close. */
 export function BrowserDeviceToolbar({
   size,
   scalePercent,
@@ -153,8 +151,10 @@ const EDGES: readonly Edge[] = [
   "bottom-right",
 ];
 
-/** Drag handles in the gutter around a Responsive device. The device stays
- * centred, so a side handle changes the width by twice its travel. */
+/**
+ * The device stays centred, so a side handle changes the width by twice its
+ * travel.
+ */
 export function BrowserDeviceHandles({
   size,
   scalePercent,

@@ -1,9 +1,7 @@
 import { resourceKey } from "../../../domain/resourceIdentity";
 import type { FileGitBase, ResourceRef } from "../../../domain/workbench";
 
-/** Budget: staged texts kept for the gutter, across Files. */
 export const MAX_GUTTER_BASE_BYTES = 16 * 1024 * 1024;
-/** Files whose last blob id is remembered. */
 const MAX_REMEMBERED_FILES = 512;
 
 type ReadBase = (
@@ -12,10 +10,8 @@ type ReadBase = (
 ) => Promise<FileGitBase>;
 
 /**
- * Staged texts by blob id, least recently used first, within
- * `MAX_GUTTER_BASE_BYTES` (UTF-16 code units × 2). A File asks with the blob
- * it last saw, so an unchanged index costs Git one `ls-files` and no text
- * crosses IPC.
+ * Sizes count UTF-16 code units × 2. A File asks with the blob id it last saw,
+ * so an unchanged index sends no text over IPC.
  */
 export function createGutterBaseCache(
   read: ReadBase,
@@ -50,7 +46,7 @@ export function createGutterBaseCache(
   };
 
   return {
-    /** The staged text, or null when the File gets no markers. */
+    /** Null when the File gets no markers. */
     async load(resource: ResourceRef): Promise<string | null> {
       const key = resourceKey(resource);
       const known = lastOid.get(key) ?? null;

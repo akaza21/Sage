@@ -11,11 +11,6 @@ import type {
 import { AlertTriangle } from "../../ui/leanIcons";
 import "./editor-conflict-notice.css";
 
-/**
- * The path as the user can tell it apart: in a project with several roots it
- * starts with its root's name, and with the root's position when two roots
- * share a name.
- */
 function saveAllPath(
   resource: ResourceRef,
   roots: readonly ProjectRootSummary[],
@@ -28,7 +23,6 @@ function saveAllPath(
   return `${label}/${resource.relativePath}`;
 }
 
-/** The failures whose File still has a tab with unsaved changes. */
 function unsaved(
   failures: readonly SaveAllFailure[],
   tabs: readonly WorkbenchTab[],
@@ -44,11 +38,6 @@ function unsaved(
   );
 }
 
-/**
- * Names each File the last Save All could not save, and why. A File saved,
- * reverted or closed since leaves the report for good, so editing it again
- * does not bring its old failure back.
- */
 export function SaveAllNotice() {
   const report = useWorkbenchStore((state) =>
     state.saveAllReport?.projectId === state.project?.id
@@ -59,6 +48,8 @@ export function SaveAllNotice() {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const failures = report ? unsaved(report.failures, tabs) : [];
   const stale = !!report && failures.length < report.failures.length;
+  // Prune resolved failures from the report so later edits cannot
+  // resurrect them.
   useEffect(() => {
     if (!stale) return;
     useWorkbenchStore.setState(({ saveAllReport, tabs }) => {

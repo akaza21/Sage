@@ -85,13 +85,8 @@
     var(--browser-address-preferred-width)
   );
 }
-/* Annotate's label yields first to the address's preferred reading width.
-   The address is the primary control. When it would fall below its minimum,
-   the toolbar compacts one step at a time, each step only as needed
-   (useToolbarOverflow): the Annotate pill drops its label, the chat picker
-   drops its title, the Agent's presence drops its label, then Downloads and
-   last the page actions move into the More menu. Only with nothing left to
-   move does the address shrink further. */
+/* When the address would fall below its minimum, the toolbar compacts one step
+   at a time (useToolbarOverflow). */
 [data-compact-annotate] .browser-surface__annotate {
   width: var(--control-height-compact);
   padding: 0;
@@ -193,9 +188,6 @@
   cursor: pointer;
 }
 
-/* The chat picker shows the chat's title, ellipsised only past its cap. In a
-   narrow toolbar it becomes a chat icon over the same native select, so it
-   stays reachable without a clipped title. */
 .browser-surface__chat-picker {
   position: relative;
   display: flex;
@@ -248,8 +240,6 @@
   .browser-surface__chat-icon {
   display: block;
 }
-/* In the More menu the page actions stack: the attachment row, which has
-   room for the chat's title, above the Agent's presence row. */
 .browser-surface__menu-page-actions {
   min-width: 0;
 }
@@ -450,7 +440,6 @@
   position: absolute;
   inset: 0;
 }
-/* Annotate's comment box over the frozen page (Codex ref 60). */
 .browser-annotate {
   position: absolute;
   inset: 0;
@@ -459,7 +448,6 @@
   container-type: size;
   outline: none;
 }
-/* The picture's proportions, anchored top left, while the window resizes. */
 .browser-annotate__stage {
   position: absolute;
   top: 0;

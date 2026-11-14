@@ -136,7 +136,6 @@ describe("file editor controller seam", () => {
         if (update?.dirty !== undefined) dirtyUpdates.push(update.dirty);
       },
     };
-    // Same length as the buffer: only the editor's answer avoids a string.
     const sameLength = Text.of(["bass", ""]);
     const toString = vi.spyOn(Text.prototype, "toString");
     controller.updateContent(editorState, sameLength, {
@@ -151,14 +150,12 @@ describe("file editor controller seam", () => {
     expect(dirtyUpdates).toEqual([true, false]);
     expect(toString).not.toHaveBeenCalled();
 
-    // An answer about some other text is ignored; the text is compared.
     controller.updateContent(editorState, sameLength, {
       content: "other",
       unchanged: true,
     });
     expect(dirtyUpdates.at(-1)).toBe(true);
 
-    // Without an answer, a length change is enough to call the File dirty.
     toString.mockClear();
     controller.updateContent(editorState, Text.of(["base", "x"]));
     expect(dirtyUpdates.at(-1)).toBe(true);
@@ -196,7 +193,6 @@ describe("file editor controller seam", () => {
       const opened = await controller.load(resource, bridge);
       const original = opened.buffer.content;
 
-      // Two edits, one flush: only the latest text is persisted.
       controller.updateContent(bridge, "first draft\n");
       controller.updateContent(bridge, "second draft\n");
       await controller.flush(bridge);
@@ -214,9 +210,6 @@ describe("file editor controller seam", () => {
       expect(reopened.dirty).toBe(true);
       expect((await editor.readTextFile(resource)).content).toBe(original);
 
-      // A writer that edits again whenever a snapshot lands never lets the
-      // flush catch up: it stops with an error after a bounded number of
-      // snapshots instead of looping, and keeps the newest acknowledged text.
       const persist = editor.snapshotEditorBuffer.bind(editor);
       const typing = vi
         .spyOn(editor, "snapshotEditorBuffer")
@@ -236,7 +229,6 @@ describe("file editor controller seam", () => {
         revision: afterBound.persistedRevision,
       });
 
-      // Save flushes what is still pending, then writes exactly those bytes.
       controller.updateContent(bridge, "saved bytes\n");
       const result = await controller.save(bridge, () => true);
       expect(result?.outcome).toBe("saved");

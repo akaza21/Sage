@@ -47,17 +47,13 @@ function icon(paths: readonly string[]) {
   return svg;
 }
 
-/**
- * VS Code's dirty-diff peek: the staged lines a change replaced, under the
- * change, with Previous, Next, Revert and Close.
- */
 export class GitGutterPeek extends WidgetType {
   constructor(
     private readonly index: number,
     private readonly total: number,
     /** The worker listed only the first `total` changes. */
     private readonly more: boolean,
-    /** Staged text the change replaced; null for added lines. */
+    /** Null for added lines. */
     private readonly staged: string | null,
     private readonly canRevert: boolean,
     private readonly actions: PeekActions,

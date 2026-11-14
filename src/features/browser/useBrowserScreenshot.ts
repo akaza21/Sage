@@ -2,8 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 const COPIED = "Screenshot copied to clipboard";
 
-/** Take a screenshot: copies the page to the clipboard and reports it.
- * Bumping `epoch` (a navigation) drops a capture still in flight. */
+/** Callers bump `epoch` on navigation, dropping a capture still in flight. */
 export function useBrowserScreenshot(
   tabId: string,
   onError: (message: string | null) => void,

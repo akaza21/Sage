@@ -7,8 +7,6 @@ import {
 } from "./BrowserDeviceToolbar";
 import { drawnDevice, useBrowserDevice } from "./useBrowserDevice";
 
-/** Draws the page as a centred device of this size in the frame's gutter
- * (browser-device.css); the returned cleanup gives the frame back. */
 function markDeviceFrame(frame: HTMLElement, width: number, height: number) {
   const sizes = Object.entries({
     "--browser-device-width": `${width}px`,
@@ -22,11 +20,6 @@ function markDeviceFrame(frame: HTMLElement, width: number, height: number) {
   };
 }
 
-/**
- * The device toolbar (BF-7a), loaded the first time the surface shows it or
- * restores a tab's emulation. It owns the toolbar row, the grips in the
- * page gutter and the frame's device size; the surface keeps only `open`.
- */
 export function BrowserDeviceController({
   tabId,
   open,
@@ -53,7 +46,6 @@ export function BrowserDeviceController({
   const drawn = drawnDevice(device);
   const drawnWidth = drawn?.width;
   const drawnHeight = drawn?.height;
-  // The surface owns the frame; the device only marks it and sizes the page.
   useLayoutEffect(() => {
     const element = frame.current;
     if (!element || drawnWidth === undefined || drawnHeight === undefined)
@@ -72,7 +64,6 @@ export function BrowserDeviceController({
   );
   if (!device.shown) return null;
   const { size, scalePercent, unconfirmed, change } = device;
-  // The row holds its height while Responsive measures the room it has.
   return (
     <div ref={findViewport} className="browser-surface__device-slot">
       {size ? (

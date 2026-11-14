@@ -6,7 +6,6 @@
   color: var(--color-status-foreground);
 }
 
-/* Ref 63: 28 px tall, 8 px corners, a 1 px ring a step above the composer. */
 .browser-element-chip__trigger {
   display: inline-flex;
   min-width: 0;
@@ -35,7 +34,6 @@
   text-overflow: ellipsis;
 }
 
-/* Hover or focus reveals the trailing ✕ over a fade of the label. */
 .browser-element-chip__remove {
   position: absolute;
   top: 50%;
@@ -148,8 +146,6 @@
   white-space: nowrap;
 }
 
-/* Above a sent turn: read-only, at the bubble's right edge like the sent
-   annotation chip. */
 .browser-sent-context {
   display: flex;
   flex-wrap: wrap;

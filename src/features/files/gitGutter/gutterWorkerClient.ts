@@ -3,7 +3,6 @@ import type { GutterRequest, GutterResult } from "./gutterWorkerCore";
 export interface GutterConnection {
   readonly id: number;
   post: (request: GutterRequest) => void;
-  /** Closes this editor's document; the last close stops the worker. */
   close: () => void;
 }
 
@@ -11,15 +10,9 @@ export type GutterWorkerResult = GutterResult | { id: number; failed: true };
 
 type Listener = (result: GutterWorkerResult) => void;
 
-/** Moving between Files keeps the worker; a File left closed stops it. */
+/** Lingering reuses the worker across File switches; it ends after the last connection closes. */
 export const GUTTER_WORKER_LINGER_MS = 5_000;
 
-/**
- * One worker shared by every editor with a gutter. It starts
- * with the first connection and is terminated a few seconds after the last
- * closes, so switching Files does not reload it and no worker stays while no
- * File is open.
- */
 export function createGutterWorkerPool(
   spawn: () => Worker,
   lingerMs = GUTTER_WORKER_LINGER_MS,
@@ -61,7 +54,6 @@ export function createGutterWorkerPool(
     }
     worker.onmessage = (event: MessageEvent<GutterResult>) =>
       listeners.get(event.data.id)?.(event.data);
-    // A worker that fails leaves the editors without markers, never broken.
     worker.onerror = fail;
     worker.onmessageerror = fail;
     return worker;

@@ -29,7 +29,6 @@ const folder = (relativePath: string, rootId = "root-a") => ({
   listing: childResource(rootId, relativePath),
 });
 
-/** Refreshes that end only when the test says so, in the order started. */
 function heldRefreshes() {
   const started: Array<{
     notice: WorkspaceNotifyNotice;

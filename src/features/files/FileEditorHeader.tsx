@@ -9,7 +9,6 @@ interface FileEditorHeaderProps {
   projectName?: string;
   lineEnding: string;
   diskByteLen: number;
-  /** Why the File is not watched for changes on disk, said quietly. */
   unwatched?: string;
   persisting: boolean;
   dirty: boolean;

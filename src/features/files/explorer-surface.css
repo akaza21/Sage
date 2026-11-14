@@ -124,8 +124,6 @@
   height: var(--editor-list-icon-size);
 }
 
-/* One guide per ancestor, centred under that ancestor's chevron. They show
-   while the pointer or focus is in the tree, as VS Code's do. */
 .tree__row::before {
   position: absolute;
   inset-block: 0;
@@ -148,7 +146,6 @@
   opacity: 1;
 }
 
-/* Entries an ignore file ignores: VS Code greys the name of Git-ignored ones. */
 .tree__row--ignored > .tree__name {
   color: var(--color-text-muted);
 }

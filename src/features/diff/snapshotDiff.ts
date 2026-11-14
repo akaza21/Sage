@@ -11,7 +11,6 @@ export const MAX_SNAPSHOT_DISPLAY_LINES = 1200;
 const MAX_ALIGNMENT_CELLS = 250_000;
 const CONTEXT = 3;
 
-/** Offsets are bounded by the already admitted raw side, not an unbounded split. */
 function indexedLines(text: string) {
   const starts = new Uint32Array(text.length + 1);
   let count = 0;
@@ -25,7 +24,6 @@ function indexedLines(text: string) {
   };
 }
 
-/** Exact line alignment for small windows; bounded replacement for large ones. */
 function align(
   oldLines: string[],
   newLines: string[],
@@ -102,7 +100,6 @@ function hunksFor(lines: DiffLine[]): DiffHunk[] {
   return ranges.map(({ start, end }) => hunkOf(lines.slice(start, end)));
 }
 
-/** The header always describes exactly the lines it carries. */
 function hunkOf(selected: DiffLine[]): DiffHunk {
   const old = selected.filter((line) => line.oldLine !== null);
   const next = selected.filter((line) => line.newLine !== null);
@@ -115,7 +112,6 @@ function hunkOf(selected: DiffLine[]): DiffHunk {
   };
 }
 
-/** Never reads Git/disk. Full admitted bytes become only a bounded disposable view. */
 export function snapshotFileDiff(
   resource: ResourceRef,
   oldText: string,
@@ -201,7 +197,6 @@ export function snapshotFileDiff(
   for (const hunk of hunksFor(lines)) {
     if (hunk.lines.length > remaining) result.truncated = true;
     const selected = hunk.lines.slice(0, remaining);
-    // A clipped hunk is re-headed so its counts match what is shown.
     if (selected.length)
       result.hunks.push(
         selected.length === hunk.lines.length ? hunk : hunkOf(selected),

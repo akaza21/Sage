@@ -281,7 +281,6 @@ it("hides what files.exclude names, .DS_Store by default", async () => {
       .getAllByRole("treeitem")
       .map((row) => row.getAttribute("aria-label"))
       .filter((label) => label?.startsWith("Open file"));
-  // The matcher loads on its own; the default list then hides .DS_Store.
   await waitFor(() =>
     expect(shown()).toEqual(["Open file main.ts", "Open file notes.tmp"]),
   );
@@ -379,7 +378,6 @@ it("marks changed Files and the folders holding them from the Git status (EP-13)
 
   render(<ExplorerSurface />);
 
-  // The marks arrive with their lazy chunk.
   const folder = await screen.findByRole("treeitem", {
     name: "Toggle folder src, Contains changes",
   });
@@ -393,7 +391,6 @@ it("marks changed Files and the folders holding them from the Git status (EP-13)
   expect(
     screen.getByRole("treeitem", { name: "Open file notes.md, Untracked" }),
   ).toHaveClass("git-tone--untracked");
-  // Ignored and changed: both states show.
   expect(
     screen.getByRole("treeitem", { name: "Open file build.log, Modified" }),
   ).toHaveClass("tree__row--ignored", "tree__row--git");
@@ -404,7 +401,6 @@ it("marks changed Files and the folders holding them from the Git status (EP-13)
     screen.getByRole("button", { name: "A, Contains changes" }),
   ).toHaveClass("root-tree__heading--git");
 
-  // An EP-12 refresh that changes the status updates the marks.
   act(() => {
     useWorkbenchStore.setState({
       repositories: {
@@ -421,7 +417,6 @@ it("marks changed Files and the folders holding them from the Git status (EP-13)
     screen.getByRole("treeitem", { name: "Open file clean.ts, Modified" }),
   ).toBeInTheDocument();
 
-  // `git.decorations` off: no marks.
   act(() => {
     useEditorSettingsStore.setState({
       settings: {
@@ -497,7 +492,6 @@ it("keeps unchanged Explorer rows from re-rendering when a refresh changes anoth
   act(() => {
     useWorkbenchStore.setState({ repositories: repo(["a.ts", "b.ts"]) });
   });
-  // The heading re-renders; the a.ts row (memoized) does not.
   expect(fileKindIcon.mock.calls.length - iconRenders).toBe(1);
 });
 

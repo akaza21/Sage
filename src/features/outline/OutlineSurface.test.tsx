@@ -85,7 +85,6 @@ function activateResource() {
 }
 
 afterEach(() => {
-  // Restores real timers even when a fake-timer test fails mid-way.
   vi.useRealTimers();
   cleanup();
   useWorkbenchStore.setState(initialState, true);
@@ -125,7 +124,6 @@ describe("OutlineSurface", () => {
     const row = await screen.findByRole("treeitem", {
       name: "Function: example. src/example.ts, line 2, column 17",
     });
-    // The location is in the tooltip, not repeated on every row.
     expect(row).toHaveAttribute("title", "example — src/example.ts:2:17");
     expect(row).not.toHaveTextContent(":2:17");
     fireEvent.click(row);
@@ -204,14 +202,11 @@ describe("OutlineSurface", () => {
     fireEvent.keyDown(await row("Shape"), { key: "ArrowLeft" });
     expect(await row("Shape")).toHaveAttribute("aria-expanded", "false");
 
-    // Lines typed above move every offset; the row is still the same row.
     await edit(`// one\n// two\nclass Shape${body}`);
     await waitFor(async () =>
       expect(await row("Shape")).toHaveAttribute("aria-expanded", "false"),
     );
 
-    // Renamed away, the collapsed entry is stale; the next toggle drops it,
-    // so the old name comes back expanded.
     await edit(`// one\n// two\nclass Renamed${body}`);
     await row("Renamed");
     fireEvent.keyDown(await row("Box"), { key: "ArrowLeft" });

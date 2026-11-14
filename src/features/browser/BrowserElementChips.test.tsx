@@ -177,8 +177,6 @@ it("puts a confirmed element in the pinned Agent Chat's draft, numbered from the
   const draft =
     useWorkbenchStore.getState().chatUiById[chat.id]!.attachedContext!;
   expect(draft).toEqual([element(1), element(3)]);
-  // The draft is what the send path validates and passes on as
-  // `attachedContext` (acpActionController.test.ts covers the request).
   expect(validateAttachedContexts(draft)).toEqual(draft);
 });
 
@@ -192,7 +190,6 @@ it("refuses a ninth context in the draft", () => {
 it("refuses an element whose number the draft already holds, keeping both comments", () => {
   pinAgentChatOwner(chat.id);
   expect(browserElementChatSink.attach(element(1))).toBe(true);
-  // The same number from the same tab (a stale comment box) or another tab.
   expect(
     browserElementChatSink.attach(element(1, { comment: "Second thought" })),
   ).toBe(false);

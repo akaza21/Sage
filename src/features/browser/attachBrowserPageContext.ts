@@ -7,7 +7,6 @@ import {
   browserPageContext,
 } from "../../ports/nativeBrowserPort";
 
-/** Capture and attach only while the originating Chat and page still match. */
 export async function attachBrowserPageContext(
   tabId: string,
   focusedChatId: string | null,

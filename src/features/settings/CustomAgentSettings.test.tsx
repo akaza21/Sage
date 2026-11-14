@@ -64,7 +64,6 @@ it("adds an agent with its arguments and passed-through names", async () => {
     target: { value: saved.executable },
   });
   const argumentsField = screen.getByLabelText("Arguments (one per line)");
-  // The field says its text is stored as typed and where secrets belong.
   expect(screen.getByText(/saved and shown in plain text/u).id).toBe(
     argumentsField.getAttribute("aria-describedby"),
   );

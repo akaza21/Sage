@@ -14,17 +14,12 @@ import { contentText } from "./editorContent";
 import { requestEditorFocus } from "./editorFocusRequest";
 import "./editor-conflict-notice.css";
 
-// Fetched once the banner is up, so the banner itself shows as soon as it
-// can and a press rarely waits for it.
+// Prefetched once the banner is up, so a press rarely waits for it.
 const loadActions = () => import("../../app/editorConflictActions");
 type ConflictAction = (
   actions: Awaited<ReturnType<typeof loadActions>>,
 ) => Promise<unknown>;
 
-/**
- * Runs `action` once the actions load, with the banner's buttons off until
- * it ends; true from the action means it resolved the conflict.
- */
 function useConflictAction() {
   const [pending, setPending] = useState(false);
   useEffect(() => {
@@ -53,7 +48,7 @@ const KEPT_DELETED_FILE =
   "This file was deleted outside Sage. Save to create it again, or close it.";
 
 /**
- * Names one File as it is on disk, so Compare ends by itself once disk
+ * Keyed by the File as it is on disk, so Compare ends by itself once disk
  * changes again or the File is resolved.
  */
 function conflictCompareKey(editor: {
@@ -68,18 +63,12 @@ const loadConflictCompare = () =>
     default: FileConflictCompare,
   }));
 
-/**
- * The banner for a File that changed or went away on disk, with what the
- * user can do about it, and Compare in place of the editor while it is on.
- * Loaded with the first conflict, which most sessions never see, so it reads
- * the store itself rather than add to the File surface's bundle.
- */
+/** Reads the store itself rather than add to the File surface's bundle. */
 export default function FileConflictNotice({
   document,
   editable,
 }: {
   document: EditorDocument;
-  /** False where the File is read-only, as in an Agent review. */
   editable: boolean;
 }) {
   const editor = useWorkbenchStore((state) => state.activeEditor);
@@ -92,7 +81,6 @@ export default function FileConflictNotice({
   const { pending, run } = useConflictAction();
   const off = busy || pending;
   const { conflict } = document;
-  // Explorer and Source Control learn that the File went away.
   const deletedKey =
     conflict?.kind === "deleted" ? resourceKey(document.resource) : null;
   useEffect(() => {
@@ -105,7 +93,6 @@ export default function FileConflictNotice({
   }, [deletedKey]);
   if (!conflict) {
     if (document.base.fingerprint !== ABSENT_FINGERPRINT) return null;
-    // The user kept the buffer of a deleted File: saving creates it again.
     return (
       <div
         className="editor-notice editor-notice--conflict editor-notice--deleted"
@@ -160,7 +147,6 @@ export default function FileConflictNotice({
                 title="Revert file: drop your changes and load the file from disk"
                 onClick={() => {
                   useWorkbenchStore.setState({ editorCompareKey: null });
-                  // Back to typing once the conflict is resolved.
                   run(
                     (a) => a.reloadActiveEditor(ready.resource),
                     ready.resource,
@@ -212,7 +198,6 @@ export default function FileConflictNotice({
       {ready?.message &&
       ready.message !== conflict.message &&
       ready.message !== ready.unstored ? (
-        // Keep mine or Reload failed: said over the banner, and announced.
         <div className="editor-notice editor-notice--error" role="alert">
           <AlertTriangle size={16} aria-hidden="true" />
           <span>{ready.message}</span>
@@ -235,7 +220,6 @@ export default function FileConflictNotice({
   );
 }
 
-/** Closes the active File without saving, dropping its recovery buffer. */
 function CloseButton({
   busy,
   run,

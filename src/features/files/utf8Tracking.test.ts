@@ -11,7 +11,6 @@ import {
 const encoder = new TextEncoder();
 const bytesOf = (value: string) => encoder.encode(value).byteLength;
 
-// ASCII, 2-byte, 3-byte, a surrogate pair and both lone halves.
 const PIECES = ["a", "\n", "é", "€", "😀", "\ud83d", "\ude00", "中", " "];
 
 function random(seed: number) {
@@ -46,7 +45,6 @@ describe("UTF-8 tracking", () => {
     });
     for (let step = 0; step < 2_000; step += 1) {
       const length = state.doc.length;
-      // Positions are UTF-16 code units, so edits land inside pairs too.
       const from = Math.floor(next() * (length + 1));
       const to = Math.min(length, from + Math.floor(next() * 4));
       let insert = "";

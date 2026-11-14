@@ -221,10 +221,7 @@ describe("syntaxOutline", () => {
       const outline = await syntaxOutline("large.ts", edited);
       const incremental = yields();
 
-      // A cold parse of this size cannot finish inside one slice, so the main
-      // thread must have been released between slices.
       expect(cold).toBeGreaterThan(4);
-      // Reusing the unchanged tree makes the edit at least 4x cheaper.
       expect(incremental * 4).toBeLessThan(cold);
       expect(outline?.symbols).toHaveLength(MAX_OUTLINE_SYMBOLS);
     } finally {
@@ -255,7 +252,6 @@ describe("syntaxOutline", () => {
 
       timeout.mockClear();
       let checks = 0;
-      // Current through the language load, stale at the walk's first yield.
       const stopping = syntaxOutline(
         "namespace.ts",
         source,
