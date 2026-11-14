@@ -12,11 +12,13 @@ import type { ChatUsage } from "./acp/chatUsage";
 import type { PasteAttachability } from "./composerPasteText";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
 
-/** Whose access the composer offers: the session's binding, and the chat
- * while it has no session at all, whose access is then drafted. */
+/** Whose access the composer offers: the session's binding, the chat while
+ * it has no session at all, whose access is then drafted, and the session
+ * holding the chat's access while none is live. */
 export interface ComposerAccessTarget {
   bindingId?: string | null;
   draftChatId?: string;
+  heldSessionId?: string;
 }
 
 export interface ChatComposerRegionProps {

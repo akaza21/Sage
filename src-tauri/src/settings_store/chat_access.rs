@@ -1,5 +1,7 @@
-//! Per-chat access choices. A mode picked in a chat's composer applies to
-//! that chat's session only; a binding's default (Settings) covers every
+//! Per-chat access choices, recorded on the session they were made in; a
+//! session that replaces it in the same chat on the same harness takes the
+//! choice on (`commands/acp/session_access/lineage.rs`). A binding's default
+//! (Settings) covers every
 //! chat without a choice, and can never be Full access, so a new chat or a
 //! fork always starts at the default.
 //!

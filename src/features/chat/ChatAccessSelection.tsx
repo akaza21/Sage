@@ -12,9 +12,14 @@ import {
   useChatAccessStore,
 } from "../../app/sessionAccessActions";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
-import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
 import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode";
-import { chatAccessCandidates, chatAccessEffective } from "./chatAccessMode";
+import {
+  CHAT_ACCESS_UNAVAILABLE,
+  chatAccessCandidates,
+  chatAccessEffective,
+  chatAccessUnavailable,
+  heldChatAccessCandidates,
+} from "./chatAccessMode";
 import { CHAT_ACCESS_ICONS } from "./chatAccessIcons";
 import type {
   AccessView,
@@ -65,15 +70,17 @@ function ReportView({
 }
 
 /**
- * A chat's own access, and its menu: its live session's, or before the
- * session exists the access drafted for it. Loaded on demand, so the chat
- * path carries none of it.
+ * A chat's own access, and its menu: its live session's, the one its next
+ * session runs under while none is live, or before its first session the
+ * access drafted for it. Loaded on demand, so the chat path carries none of
+ * it.
  */
 export default function ChatAccessSelection({
   bindingId,
   capabilities,
   sessionConfig: session,
   chatId,
+  heldSessionId,
   id,
   triggerRef,
   open,
@@ -120,11 +127,33 @@ export default function ChatAccessSelection({
       ) : null}
     </>
   );
-  // A removed session is past; its chat drafts like one not yet started.
-  return session && !session.removed ? (
-    <LiveChatAccess session={session} error={error} {...props}>
+  if (session && !session.removed) {
+    const advertised =
+      session.modes?.availableModes.map((mode) => mode.id) ?? null;
+    return (
+      <OwnChatAccess
+        sessionId={session.sageAgentSessionId}
+        candidates={chatAccessCandidates(capabilities, advertised)}
+        advertised={advertised}
+        error={error}
+        {...props}
+      >
+        {withMenu}
+      </OwnChatAccess>
+    );
+  }
+  // Without a live session, a chat that has had one shows and changes the
+  // access its next session runs under; one that never has drafts it.
+  return !chatId && heldSessionId ? (
+    <OwnChatAccess
+      sessionId={heldSessionId}
+      candidates={heldChatAccessCandidates(capabilities)}
+      advertised={null}
+      error={error}
+      {...props}
+    >
       {withMenu}
-    </LiveChatAccess>
+    </OwnChatAccess>
   ) : (
     <ChatAccessDraftSelection chatId={chatId} error={error} {...props}>
       {withMenu}
@@ -133,17 +162,23 @@ export default function ChatAccessSelection({
 }
 
 /**
- * A live chat's access: its own mode when it has one the session offers,
- * else its harness default.
+ * A chat's own access as `sessionId` holds it: its own mode when it has one
+ * among `candidates`, else its harness default. A mode of its own the
+ * harness cannot carry now is reported, never replaced quietly.
  */
-function LiveChatAccess({
+function OwnChatAccess({
   bindingId,
   capabilities,
-  session,
+  sessionId,
+  candidates,
+  advertised,
   error,
   children,
-}: AccessSelectionProps & { session: AcpSessionConfig }) {
-  const sessionId = session.sageAgentSessionId;
+}: AccessSelectionProps & {
+  sessionId: string;
+  candidates: readonly SessionAccessModeCapability[];
+  advertised: readonly string[] | null;
+}) {
   const stored = useSessionAccessModeStore((state) => state.modes[bindingId]);
   const chat = useChatAccessStore((state) => state.modes[sessionId]);
   const chatError = useChatAccessStore((state) => state.error);
@@ -151,15 +186,12 @@ function LiveChatAccess({
   useEffect(() => {
     if (unread) void loadChatAccess(sessionId);
   }, [sessionId, unread]);
-  const candidates = chatAccessCandidates(
-    capabilities,
-    session.modes?.availableModes.map((mode) => mode.id) ?? null,
-  );
   const effective = chatAccessEffective(stored, candidates, chat);
+  const unavailable = chatAccessUnavailable(capabilities, advertised, chat);
   return children({
     candidates,
     effective,
-    error: error ?? chatError,
+    error: error ?? (unavailable ? CHAT_ACCESS_UNAVAILABLE : chatError),
     sessionId,
     icon: effective ? CHAT_ACCESS_ICONS[effective] : undefined,
     tone:

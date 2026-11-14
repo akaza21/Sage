@@ -59,10 +59,7 @@ pub(crate) fn get_chat_access(
     state: State<'_, AppState>,
     request: ChatAccessRequest,
 ) -> Result<Option<SessionAccessMode>, AcpIpcError> {
-    state
-        .settings
-        .chat_access(request.session_id.as_str())
-        .map_err(|_| access_unreadable())
+    super::chat_access(&state, &request.session_id)
 }
 
 /// Sets a chat's mode when it needs no confirmation. It replaces any
@@ -81,10 +78,7 @@ pub(crate) async fn set_chat_access(
         });
     }
     let session = request.session_id.as_str();
-    let previous = state
-        .settings
-        .chat_access(session)
-        .map_err(|_| access_unreadable())?;
+    let previous = super::chat_access(&state, &request.session_id)?;
     state
         .settings
         .set_chat_access(session, request.mode, sage_core::time::now_millis())

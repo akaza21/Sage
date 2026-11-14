@@ -28,6 +28,8 @@ export interface ComposerAccessControlProps {
   bindingId: string;
   /** The chat whose access is drafted; given only while it has no session. */
   chatId?: string;
+  /** The session holding the chat's access while none is live. */
+  heldSessionId?: string;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
   /** The live chat a choice applies to; without one nothing can change. */
   sessionConfig?: AcpSessionConfig | null;

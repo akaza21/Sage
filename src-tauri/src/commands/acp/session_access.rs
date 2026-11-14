@@ -1,6 +1,6 @@
 //! The access mode a prompt runs under, and each chat's own choice of it.
 //! A binding's stored default (Settings) covers every chat; a chat's choice
-//! applies to its session only. The permissive modes (Full access, Auto)
+//! applies to that chat only, and outlives a session the chat replaces. The permissive modes (Full access, Auto)
 //! take a confirmed two-step command and are never a default. A binding
 //! that enforces access through harness session modes (Claude Code's
 //! permission modes) gets the matching mode selected before each prompt, so
@@ -21,6 +21,7 @@ use crate::acp_protocol::access_mode::SessionAccessMode;
 use serde::{Deserialize, Serialize};
 
 pub(crate) mod chat;
+mod lineage;
 mod native_confirm;
 
 #[derive(Deserialize)]
@@ -57,30 +58,41 @@ fn access_unreadable() -> AcpIpcError {
     }
 }
 
-/// The access a prompt in `session_id` runs under: the chat's own choice
-/// while its binding still offers it, else the binding's stored default.
+/// The chat's own access choice as `session_id` holds it, including one made
+/// in an earlier session the chat replaced (`lineage`).
+pub(super) fn chat_access(
+    state: &AppState,
+    session_id: &SageAgentSessionId,
+) -> Result<Option<SessionAccessMode>, AcpIpcError> {
+    lineage::chat_choice(&state.database, &state.settings, session_id.as_str())
+        .map_err(|_| access_unreadable())
+}
+
+/// The access a prompt in `session_id` runs under: the chat's own choice,
+/// else the binding's stored default. A choice the binding cannot carry now
+/// is refused, never quietly replaced by a different mode.
 pub(super) fn turn_access_mode(
     state: &AppState,
     binding_id: &str,
     session_id: &SageAgentSessionId,
 ) -> Result<SessionAccessMode, AcpIpcError> {
-    let chat = state
-        .settings
-        .chat_access(session_id.as_str())
-        .map_err(|_| access_unreadable())?;
+    let chat = chat_access(state, session_id)?;
+    let registry = state.acp.binding_registry();
+    if chat.is_some_and(|chosen| !offers_mode(registry, binding_id, chosen)) {
+        return Err(AcpIpcError::InvalidRequest {
+            message: safe_message(
+                "This chat's access mode is not available from this harness now. Choose another one before sending.",
+            ),
+        });
+    }
     let defaults = state
         .settings
         .session_access_modes()
         .map_err(|_| access_unreadable())?;
-    turn_mode_for_binding(
-        state.acp.binding_registry(),
-        binding_id,
-        chat,
-        defaults.get(binding_id).copied(),
-    )
-    .ok_or_else(|| AcpIpcError::InvalidRequest {
-        message: safe_message("Choose a supported access mode before sending."),
-    })
+    turn_mode_for_binding(registry, binding_id, chat, defaults.get(binding_id).copied())
+        .ok_or_else(|| AcpIpcError::InvalidRequest {
+            message: safe_message("Choose a supported access mode before sending."),
+        })
 }
 
 /// The access a prompt runs under, selected in its live session first.
