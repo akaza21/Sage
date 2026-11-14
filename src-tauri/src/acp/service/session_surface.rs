@@ -2,8 +2,8 @@ use super::*;
 use crate::acp::scheduler::RuntimeOwner;
 
 impl AcpService {
-    /// They are display decoration: a page they would push over its byte
-    /// budget goes without them.
+    /// Live activities and Undo are display decoration: a page they would push
+    /// over its byte budget goes without them.
     pub(super) fn compose_session_surface(&self, page: &mut AcpChatPage) -> Result<(), StoreError> {
         let Some(session) = page
             .sessions

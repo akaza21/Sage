@@ -68,6 +68,9 @@ pub(super) fn remember(
 }
 
 impl AcpService {
+    /// Stores a choice made before `session` existed, so the restore gives it
+    /// to the session's first runtime once that runtime reports its config,
+    /// before the first prompt. Returns whether it was stored.
     pub(crate) fn remember_start_choice(
         &self,
         session: &crate::acp::contract::SageAgentSessionId,

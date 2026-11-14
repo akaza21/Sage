@@ -2540,6 +2540,7 @@ fn a_session_that_cannot_resume_or_never_completed_a_turn_is_kept() {
         let start = std::time::Instant::now();
         service.set_shown_chats([]);
         assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
+        // Parking would lose the conversation, or nothing proves it resumes.
         assert_eq!(
             service.release_idle_runtimes(start + 30 * MINUTE),
             Some(0),

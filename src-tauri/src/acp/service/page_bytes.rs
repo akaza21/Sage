@@ -14,7 +14,7 @@ impl PageBytes {
         Ok(Self { turns })
     }
 
-    /// Its turns must be the ones measured.
+    /// The page's turns must be the ones measured.
     pub(super) fn of(&self, page: &mut AcpChatPage) -> Result<usize, StoreError> {
         let turns = std::mem::take(&mut page.turns);
         let shell = encoded_len(page);

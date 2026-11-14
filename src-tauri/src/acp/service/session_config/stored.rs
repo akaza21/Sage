@@ -12,6 +12,7 @@ use super::AcpService;
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum QueueError {
     NotOffered,
+    /// The session's runtime reports its config: change it there.
     Live,
     Store,
 }
@@ -65,6 +66,10 @@ impl AcpService {
             .flatten()
     }
 
+    /// Stores `choice` for a session that has no live config, when what it
+    /// shows offers it: a parked session's next runtime reapplies it before
+    /// the next prompt, and a live runtime that has not reported its config
+    /// yet reapplies it once it has, before the next prompt too.
     pub(crate) fn queue_session_config_choice(
         &self,
         session: &SageAgentSessionId,

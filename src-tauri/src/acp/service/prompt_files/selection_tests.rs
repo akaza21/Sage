@@ -88,7 +88,6 @@ fn retry_without_a_record_is_refused_when_the_turn_carried_files() {
 fn kept_sent_files_are_bounded_by_recency_and_a_released_retry_is_refused() {
     let mut stages = FileStages::default();
     let chats: Vec<String> = (0..=OWNER_COUNT).map(|i| format!("c{i}")).collect();
-    // The first chat sends last-but-one, so it is not the oldest.
     let order: Vec<&String> = chats[1..].iter().chain([&chats[0]]).collect();
     for chat in &order {
         let revision = paste(&mut stages, chat, "kept");

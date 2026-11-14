@@ -167,6 +167,8 @@ impl Drop for ActivationClaim<'_> {
 }
 
 impl Lane<'_> {
+    /// Parks this lane's idle runtime. A park that did not converge retains
+    /// its zero-process recovery, driven now as an activation's reclaim would.
     fn park_or_reclaim(&self, deadline: Instant) {
         if !matches!(self.park_idle_runtime(deadline), Ok(true))
             && self.has_replacement_park_recovery()

@@ -5,6 +5,8 @@ use crate::acp::{
 };
 
 impl AcpService {
+    /// How the running session `owner` would undo `turn`, its chat's latest
+    /// visible finished turn, or `None` when it cannot.
     pub(super) fn turn_undo(
         &self,
         owner: &RuntimeOwner,

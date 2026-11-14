@@ -107,6 +107,7 @@ pub(crate) fn prompt_blocks(
 pub(crate) struct StagedFiles {
     pub revision: String,
     pub files: Vec<FileSummary>,
+    /// The resource a paste just added, so its preview attaches by id.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub added: Option<String>,
 }

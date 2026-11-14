@@ -72,7 +72,7 @@ fn full_lanes_park_the_least_recent_idle_runtime_and_a_failed_park_retains_recov
             CodexBindingRegistration::admitted_for_journey_test(&CASES),
         )
         .await;
-        // The first runtime's port fails its park, so it is the LRU victim.
+        // Starting the failure-injected runtime first makes it the LRU victim.
         let first = setup
             .start_and_activate(RuntimeEpoch::new(1).unwrap())
             .await;

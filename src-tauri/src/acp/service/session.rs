@@ -27,6 +27,7 @@ struct DurableSession {
     harness_version: Option<String>,
     model_id: Option<String>,
     external_session_id: Option<String>,
+    /// The native thread of the earlier session this one resumes, if any.
     resumed_thread: Option<String>,
     state: String,
     residency: String,
@@ -263,6 +264,7 @@ fn load_durable_session(
         .ok_or(CodexSessionError::Intent)
 }
 
+/// The undone Turn a resumed native thread is cut before, while one waits.
 /// A pending restart never reaches here: the head is replaced first.
 fn pending_cut(
     database: &crate::persistence::Database,

@@ -220,6 +220,9 @@ impl AcpService {
     }
 }
 
+/// The bytes the page's session config fields (live config, restored config
+/// and notice) take beyond the page without them, when the page is over
+/// budget with them: history is loaded again leaving that much room.
 pub(super) fn config_reserve(
     page: &mut AcpChatPage,
     size: &PageBytes,

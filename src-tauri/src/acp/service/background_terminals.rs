@@ -17,6 +17,11 @@ pub(crate) enum TerminalsError {
 }
 
 impl AcpService {
+    /// Runs `action` against the runtime's harness. A listing answers with
+    /// the terminals it still runs, or none when the runtime is gone. A stop
+    /// answers with none, and the caller lists again; a stop for a runtime
+    /// that is gone is `Stale`, since nothing stopped. A harness that is busy,
+    /// holds back a listing or never negotiated terminals refuses either.
     pub(crate) fn background_terminals(
         &self,
         owner: RuntimeOwner,

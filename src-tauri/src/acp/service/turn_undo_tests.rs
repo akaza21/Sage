@@ -29,6 +29,8 @@ fn running(binding: &str) -> (Fixture, AcpService) {
     (fixture, service)
 }
 
+/// The turn the page offers to undo, and whether the control would be let
+/// through for `turn`.
 fn offer((fixture, service): &(Fixture, AcpService), turn: &str) -> (Option<String>, bool) {
     let mut page = crate::acp::store::load_chat_page(
         &fixture.database.connection(),

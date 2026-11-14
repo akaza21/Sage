@@ -305,7 +305,6 @@ fn a_stored_effort_waits_for_codex_to_report_the_thread_effort() {
     store(&service, &owner, &[option("effort", "high")]);
     let slot = &service.lane_at(0).runtime;
     slot.reserve_start(owner.clone()).unwrap();
-    // Codex resumes the thread without saying its effort.
     let runtime = Arc::new(Mutex::new(resumed(&owner, Arc::clone(&slot.config), None)));
     let list = go_live(&service, &owner, &runtime);
     runtime

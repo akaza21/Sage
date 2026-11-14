@@ -380,6 +380,8 @@ impl super::AcpService {
         self.browser_attachments.agent_control(label)
     }
 
+    /// Whether the user took over any tab this chat's Agent may drive; the
+    /// Agent then opens no other tab either.
     pub(crate) fn browser_chat_under_user_control(
         &self,
         project: &SageProjectId,

@@ -1,5 +1,6 @@
 //! This deliberately records no argv, environment, profile, prompt, protocol
-//! payload, or stderr.
+//! payload, or stderr. The entry is published only after the existing runtime
+//! slot has accepted the exact owner, and is cleared by that owner's runner.
 
 use std::sync::Mutex;
 

@@ -83,6 +83,7 @@ fn attachment_count(payload: &str) -> Option<usize> {
     usize::try_from(count.as_u64()?).ok()
 }
 
+/// The `attached_at` of the chat's current tab, or `None` when it has none.
 pub(crate) fn attachment(
     database: &crate::persistence::Database,
     project: &str,

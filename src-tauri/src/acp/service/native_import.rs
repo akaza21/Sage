@@ -22,6 +22,7 @@ use super::{AcpService, native_read::NativeReadError};
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportedHistory {
     pub(crate) turns: Vec<ChildTurn>,
+    /// Older Turns were left out.
     pub(crate) retention_limited: bool,
 }
 
