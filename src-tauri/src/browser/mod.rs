@@ -22,6 +22,8 @@ use crate::launch_profile::LaunchProfile;
 
 mod admission;
 pub(crate) mod annotate;
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) mod background;
 pub(crate) mod bounds;
 pub(crate) mod browsing_history;
 pub(crate) mod clear_data;

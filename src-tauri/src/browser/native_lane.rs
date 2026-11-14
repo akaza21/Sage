@@ -7,6 +7,7 @@
 //! the Agent reaches.
 
 mod annotate;
+mod background;
 mod device;
 mod diagnostics;
 

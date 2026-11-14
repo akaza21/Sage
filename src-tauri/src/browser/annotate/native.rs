@@ -30,7 +30,8 @@ impl NativeOverlay<'_> {
         let (sender, receiver) = mpsc::sync_channel(1);
         self.1
             .run_on_main_thread(move || {
-                let result = visibility.reveal(|| step(webview).map_err(unavailable));
+                let result =
+                    visibility.reveal_page(&webview, || step(webview.clone()).map_err(unavailable));
                 let _ = sender.send(result);
             })
             .map_err(unavailable)?;

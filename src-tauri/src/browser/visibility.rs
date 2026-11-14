@@ -36,6 +36,10 @@ impl Default for PageVisibility {
 }
 
 impl PageVisibility {
+    pub(super) fn is_placed(&self) -> bool {
+        self.0.load(Ordering::Acquire)
+    }
+
     pub(super) fn place(&self) {
         self.1.store(false, Ordering::Release);
         self.0.store(true, Ordering::Release);
@@ -51,11 +55,19 @@ impl PageVisibility {
 
     /// The caller runs this check and the native show/focus on the main thread.
     pub(super) fn reveal(&self, show: impl FnOnce() -> Result<(), String>) -> Result<(), String> {
-        if self.0.load(Ordering::Acquire) {
+        if self.is_placed() { show() } else { Ok(()) }
+    }
+
+    /// Called on the main thread; requests the NORMAL memory target with the show.
+    pub(super) fn reveal_page(
+        &self,
+        webview: &tauri::Webview,
+        show: impl FnOnce() -> Result<(), String>,
+    ) -> Result<(), String> {
+        self.reveal(|| {
+            super::background::refresh(webview);
             show()
-        } else {
-            Ok(())
-        }
+        })
     }
 }
 
