@@ -26,7 +26,6 @@ pub(in crate::acp::bindings::codex::incoming) struct FilePair {
 }
 
 type FileChangeNormalization = (ItemNormalization, Option<FilePair>);
-/// The one change object and its facts before any line counts.
 type DescribedChange<'a> = (&'a Map<String, Value>, FileChangeFacts);
 
 /// The Edit tool row for an applied change, as every harness shows a file
@@ -120,8 +119,6 @@ pub(in crate::acp::bindings::codex::incoming) fn normalize<M: ResourceMapper>(
     Ok(((payload, None, refused_lifecycle(item)), pair))
 }
 
-/// A declined or failed change settles its diff in that state; any other
-/// status leaves the notification's own lifecycle.
 fn refused_lifecycle(item: &Map<String, Value>) -> Option<ItemLifecycle> {
     match lenient_tool_state(item, ItemLifecycle::Started) {
         state @ (ToolState::Declined | ToolState::Failed) => terminal_lifecycle(state),
@@ -129,8 +126,7 @@ fn refused_lifecycle(item: &Map<String, Value>) -> Option<ItemLifecycle> {
     }
 }
 
-/// The single change's resource and `Edited <path>` summary, before any line
-/// counts; `None` when the item spans several resources.
+/// `None` when the item spans several resources.
 fn describe<'a, M: ResourceMapper>(
     item: &'a Map<String, Value>,
     mapper: &M,

@@ -242,9 +242,9 @@ fn sanitize_with_limit(value: &str, maximum: usize, command_output: bool) -> Opt
     Some(output)
 }
 
-/// Classifies one completed command-output token. Callers that receive output
-/// in frames must keep incomplete tokens private until a whitespace boundary,
-/// then pass the complete token and the carried Bearer state here.
+/// Callers that receive output in frames must keep incomplete tokens private
+/// until a whitespace boundary, then pass the complete token and the carried
+/// Bearer state here.
 pub(in crate::acp::bindings::codex) fn command_output_token(
     token: &str,
     redact_next: bool,

@@ -1,5 +1,3 @@
-//! The terminal frame of the bound thread's Turn.
-
 use serde_json::{Map, Value};
 
 use crate::acp::lifecycle::{ItemLifecycle, TerminalUpdate, TurnState};

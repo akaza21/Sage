@@ -198,10 +198,9 @@ pub(crate) enum ReproductionError {
     PhysicalBinding,
 }
 
-/// A retained physical package observation bound to the exact reproduction
-/// requirements and metadata packet. This remains a non-authoritative
-/// prerequisite: it neither upgrades workstation signature observations nor
-/// grants artifact admission or launch authority.
+/// This remains a non-authoritative prerequisite: it neither upgrades
+/// workstation signature observations nor grants artifact admission or launch
+/// authority.
 #[derive(Debug)]
 pub(crate) struct ReproducedPackagePrerequisite {
     requirements: PackageReproductionRequirements,

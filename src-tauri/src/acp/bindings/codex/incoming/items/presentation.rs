@@ -280,7 +280,6 @@ pub(super) fn collaboration(item: &Map<String, Value>) -> Result<ItemNormalizati
     ))
 }
 
-/// A spawn's requested model or effort, kept only when bounded and printable.
 fn spawn_text<const N: usize>(
     item: &Map<String, Value>,
     is_call: bool,

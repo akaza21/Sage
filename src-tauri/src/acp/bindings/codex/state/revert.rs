@@ -40,8 +40,6 @@ impl CodexAdapter {
         Ok(request)
     }
 
-    /// Whether the Turn Sage sent as `client_message_id` is the one this
-    /// runtime last reverted.
     pub(crate) fn reverted(&self, client_message_id: &str) -> bool {
         self.previous_turn.as_ref().is_some_and(|turn| {
             turn.client_message_id.as_str() == client_message_id
@@ -55,8 +53,6 @@ impl CodexAdapter {
             .any(|(_, kind)| *kind == RequestKind::ThreadRevert)
     }
 
-    /// Codex answered the revert: once it succeeded the Turn is gone, and
-    /// undoing it again is refused. A refusal carries Codex's reason.
     pub(crate) fn complete_revert(&mut self, id: u64, error: Option<&Value>) -> NativeRpcReply {
         let removed = self.take_pending(id);
         debug_assert_eq!(removed, Some(RequestKind::ThreadRevert));

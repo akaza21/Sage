@@ -85,8 +85,6 @@ fn forged_bytes_of_the_pinned_length_cannot_obtain_a_verified_signature() {
     let length = usize::try_from(binding.artifact_byte_len).unwrap();
     let forged = ScratchArtifact::with_bytes(&vec![0x5a; length]);
 
-    // Even a catalog that would accept any signer (self-signed or a foreign
-    // publisher) cannot turn bytes outside the packet claim into a signature.
     assert_eq!(
         verify_installed_authenticode(&AcceptingCatalog, &packet(), entry, &forged.0),
         Err(VerifyError::Artifact)

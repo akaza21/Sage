@@ -24,7 +24,6 @@ use super::{
 
 type CommandLocations = BoundedVec<SafeResourceLocation, COMMAND_RESOURCE_LIMIT>;
 
-/// The status is a parsed enum rather than retained wire JSON.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CommandStatus {
     InProgress,

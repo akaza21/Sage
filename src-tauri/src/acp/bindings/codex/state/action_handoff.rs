@@ -35,7 +35,6 @@ impl CodexAdapter {
         Ok(())
     }
 
-    /// `turn/started` named the held action's Turn.
     pub(super) fn retire_action_handoff(&mut self) -> Result<(), AdapterError> {
         match self.action_handoff.take() {
             Some(handoff) => self.turn_start_correlations.consume(handoff.request_id),
@@ -43,7 +42,6 @@ impl CodexAdapter {
         }
     }
 
-    /// Codex failed the thread before it named the held action's Turn.
     pub(super) fn fail_action_handoff(&mut self) -> Result<TurnStartFailure, AdapterError> {
         let handoff = self
             .action_handoff

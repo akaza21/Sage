@@ -114,16 +114,12 @@ impl CodexRuntime {
         AdapterBatch::new(events, egress)
     }
 
-    /// Runs `frames`, in order, through the protocol ingestion `ingest_frame`
-    /// applies, against one copy of the adapter state, and reports whether
-    /// each would be read as a duplicate terminal that leaves the state as it
-    /// was. Only a repeated `turn/completed` counts: a repeated item terminal
+    /// Only a repeated `turn/completed` counts: a repeated item terminal
     /// also reads as DuplicateTerminal, but it is not a Turn boundary. A
     /// DuplicateTerminal outcome alone is not enough: a late reply can read
     /// as one while it settles a pending RPC. While a native RPC reply
     /// is pending, `ingest_frame` may consume a frame before that ingestion,
-    /// so the probe answers false. Diagnostics stay silent: the trial is not
-    /// the read, and the real read reports them.
+    /// so the probe answers false.
     pub(super) fn ingests_as_duplicate_terminals(
         &self,
         frames: &[Frame],
@@ -157,8 +153,8 @@ impl CodexRuntime {
     }
 }
 
-/// Whether `frame` is a Turn terminal notification. Checked before the trial
-/// read, so no other frame is mapped or diffed by the probe.
+/// Checked before the trial read, so no other frame is mapped or diffed by the
+/// probe.
 fn is_turn_terminal(frame: &Frame) -> bool {
     serde_json::from_slice::<serde_json::Value>(frame.as_bytes())
         .ok()
@@ -228,9 +224,6 @@ impl CodexRuntime {
         self.request(CodexAdapter::fork)
     }
 
-    /// Unloads a fork thread from this app-server: `thread/unsubscribe` once
-    /// its fork Chat is committed (it resumes in its own runtime), and
-    /// `thread/delete` once refused, which also removes the orphan rollout.
     pub(super) fn release_fork_request(
         &mut self,
         fork: &ExternalId,
@@ -247,8 +240,6 @@ impl CodexRuntime {
             .map(Some)
     }
 
-    /// A Turn is running: the release waits for the next idle moment, and
-    /// the caller's RPC is answered now.
     pub(super) fn defer_fork_release_request(
         &mut self,
         fork: &ExternalId,

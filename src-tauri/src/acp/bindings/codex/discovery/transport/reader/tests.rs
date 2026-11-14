@@ -11,7 +11,6 @@ fn discovery_reader_delivers_a_notification_burst_then_the_response_in_order() {
         .collect();
     let mut reader = reader_with_full_queue(pending, deadline);
 
-    // The producer must wait for space rather than fail before discovery reads.
     assert_eq!(
         reader.completion.recv_timeout(Duration::from_millis(20)),
         Err(mpsc::RecvTimeoutError::Timeout)

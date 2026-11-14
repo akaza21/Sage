@@ -1,8 +1,7 @@
-//! Compactions shown in the latest Turn, by source. Codex reports a
-//! compaction as a `contextCompaction` item and, in older releases or
-//! alongside it, as the legacy `thread/compacted`. The nth report from one
-//! source pairs with the nth from the other, so each compaction shows once
-//! whichever arrives first. Two counters and one Turn id, so it never grows.
+//! Codex reports a compaction as a `contextCompaction` item and, in older
+//! releases or alongside it, as the legacy `thread/compacted`. The nth report
+//! from one source pairs with the nth from the other, so each compaction shows
+//! once whichever arrives first.
 
 use super::CodexAdapter;
 

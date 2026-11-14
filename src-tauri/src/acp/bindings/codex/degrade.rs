@@ -8,15 +8,11 @@ use super::manifest::CuratedCapabilityCeiling;
 use crate::acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, pinned_codex_version};
 
 const VERSION_TOKEN_BYTES_MAX: usize = 32;
-/// The debug desktop fixture's identity. It replays the observed pinned
 /// wire, so its sessions carry the pinned capability evidence under their
 /// own name.
 const DESKTOP_FIXTURE_PROTOCOL_IDENTITY: &str =
     concat!("codex-app-server-desktop-fixture-", pinned_codex_version!());
 
-/// Whether a stored session identity is the debug desktop fixture's. Always
-/// false outside a Windows debug `acp-fixture` build, where no such session
-/// can be activated.
 pub(crate) fn is_desktop_fixture_protocol(identity: &str) -> bool {
     cfg!(all(windows, feature = "acp-fixture", debug_assertions))
         && identity == DESKTOP_FIXTURE_PROTOCOL_IDENTITY
@@ -94,7 +90,6 @@ fn observed_version(reported_version: &str) -> Option<&str> {
         })
 }
 
-/// The evidence of the newest tested release at or before the observed one.
 /// A later release keeps what the release before it was tested to support.
 fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilities {
     if !build.characterisation.runs_tested_features() {

@@ -1,12 +1,5 @@
-//! Running MCP tool calls of the active Turn, kept so a progress report can
-//! restate the call with its latest status line. Codex progress carries only
-//! the message, so the call's normalized payload is remembered from its
-//! `item/started` until its terminal item.
-//!
-//! Cap: [`RUNNING_MCP_TOOLS_MAX`] calls. Each holds one running payload,
-//! whose label, server and status line are byte-capped by their types and
-//! whose result is absent while the call runs. The set is cleared when the
-//! Turn ends or the session closes.
+//! Codex progress carries only the message, so the call's normalized payload
+//! is remembered from its `item/started` until its terminal item.
 
 use crate::acp::{
     contract::SafeText,
@@ -32,7 +25,6 @@ pub(super) struct RunningMcpTools {
 }
 
 impl CodexAdapter {
-    /// Remembers a running MCP call, replacing an earlier state of it.
     pub(in crate::acp::bindings::codex) fn track_running_mcp_tool(
         &mut self,
         turn: &str,

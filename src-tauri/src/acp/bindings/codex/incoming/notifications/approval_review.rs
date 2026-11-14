@@ -1,9 +1,5 @@
-//! `item/autoApprovalReview/completed`: Codex's automatic approval reviewer
-//! deciding a request in place of the user. Such a request never reaches
-//! Sage as an approval, so a denial or timeout becomes one session notice;
-//! an approved or aborted request shows nothing, as an auto-allowed one does
-//! elsewhere. The start and a repeated completion are ignored. The payload
-//! is marked unstable upstream, so a payload Sage cannot read is ignored.
+//! The payload is marked unstable upstream, so a payload Sage cannot read is
+//! ignored.
 
 use std::fmt::Write as _;
 
@@ -49,7 +45,6 @@ pub(super) fn approval_review(
         let _ = write!(message, " (risk: {risk})");
     }
     message.push('.');
-    // The rationale is optional; one that is absent, null or blank is left out.
     if let Some(rationale) = review.and_then(|review| human(review, "rationale").ok()) {
         let _ = write!(message, " {rationale}");
     }

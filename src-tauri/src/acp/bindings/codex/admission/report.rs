@@ -94,9 +94,7 @@ impl AdmittedCodexBinding {
         self.observed.as_ref()?.manifest.as_ref()
     }
 
-    /// Whether `other` admitted the same installed build: the same launcher,
-    /// reported version and, where launch reads it, package manifest. The
-    /// manifest is compared here rather than folded into the binding digest,
+    /// The manifest is compared here rather than folded into the binding digest,
     /// so chats persisted against an unchanged installation keep resuming.
     pub(crate) fn is_same_installation(&self, other: &Self) -> bool {
         #[cfg(windows)]
@@ -162,8 +160,6 @@ impl AdmittedCodexBinding {
     }
 
     pub(crate) fn model_discovery_available(&self) -> Result<bool, CodexAdmissionUnavailable> {
-        // A desktop replay offers a model choice only when its session runs
-        // the model it is opened with; its catalogue is the case's own.
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if self.is_desktop_fixture() {
             return Ok(self

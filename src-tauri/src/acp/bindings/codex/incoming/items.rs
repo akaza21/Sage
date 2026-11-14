@@ -78,9 +78,7 @@ pub(super) fn normalize_item<M: ResourceMapper>(
     match kind {
         // Sage persists the client prompt before dispatching `turn/start`.
         // Codex subsequently echoes that same user-facing item, so retaining
-        // it again would duplicate the user bubble. Keep the echo out of the
-        // durable projection without treating a known protocol item as an
-        // unsupported activity.
+        // it again would duplicate the user bubble.
         "userMessage" => Ok(None),
         "agentMessage" => Ok(Some((
             NormalizedPayload::Text {

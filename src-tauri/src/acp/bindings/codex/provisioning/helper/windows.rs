@@ -45,8 +45,7 @@ const HELD_PACKAGE_NAME: &str =
     concat!(".sage-codex-", pinned_codex_version!(), "-previous-package");
 const HELD_STATE_NAME: &str = concat!(".sage-codex-", pinned_codex_version!(), "-previous-state");
 
-/// Capability reserved for the separately built and verified elevated helper
-/// process. Production construction requires the boundary's unforgeable
+/// Production construction requires the boundary's unforgeable
 /// elevated-authority token.
 pub(crate) struct ElevatedHelperProcess(());
 

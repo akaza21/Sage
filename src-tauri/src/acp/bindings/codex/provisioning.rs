@@ -36,7 +36,6 @@ const SOURCE_PATH_BYTES_MAX: usize = 32 * 1024;
 const RECEIPT_BYTES_MAX: usize = 64 * 1024;
 const STAGING_AUTH_ENV: &str = "SAGE_CODEX_STAGE_ONLY";
 const STAGING_AUTH_VALUE: &str = "prepare-sealed-offline-stage-no-publish";
-/// The sealed stage beside the managed package, scoped to the pinned release.
 const STAGE_NAME: &str = concat!(".sage-codex-", pinned_codex_version!(), "-stage");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -94,9 +93,7 @@ enum SourceIdentity {
     Fixture,
 }
 
-/// A retained, non-forgeable proof that an offline source tree contains only
-/// the exact pinned Codex closure. It grants no staging, ACL, publish,
-/// catalog, admission, or launch authority.
+/// It grants no staging, ACL, publish, catalog, admission, or launch authority.
 #[derive(Debug)]
 pub(crate) struct VerifiedCodexSource {
     identity: SourceIdentity,

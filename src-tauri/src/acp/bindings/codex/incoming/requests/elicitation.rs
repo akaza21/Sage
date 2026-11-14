@@ -1,7 +1,5 @@
-//! `mcpServer/elicitation/request`: an MCP server, relayed by Codex, asks
-//! the user to fill a form or open a link. It is shown on the shared
-//! question card and answered `accept` (with typed content for a form),
-//! `decline` or `cancel`, exactly as ACP `elicitation/create` is.
+//! Answered `accept` (with typed content for a form), `decline` or `cancel`,
+//! exactly as ACP `elicitation/create` is.
 
 use serde_json::{Map, Value};
 
@@ -22,7 +20,6 @@ pub(super) fn request(
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
     let id = object.get("id").ok_or(IngressError::Malformed)?;
-    // Before a thread is bound there is no Turn to hold the card either.
     if adapter.bound_thread_id().is_none() {
         return answer_now(id, refused(false));
     }

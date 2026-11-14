@@ -46,9 +46,6 @@ fn admission_requires_a_packet_bound_verified_signature() {
     assert_eq!(admitted.artifact_relative_path, SIGNED_ENTRY);
 }
 
-/// Runs the production admission chain for one installed executable: the
-/// role is reachable only through a `VerifiedSignature` minted by
-/// `verify_installed_authenticode` with the WinVerifyTrust catalog.
 fn admit_executable(
     packet: &MetadataValidatedPacket,
     artifact_relative_path: &str,

@@ -63,7 +63,6 @@ mod tests {
                 {"type": "text", "text": "summarise report.pdf"}
             ])
         );
-        // A skill picked with nothing typed after it is the whole input.
         let bare = Prompt::new("prompt", "/pdf").unwrap();
         let request = OutgoingRequest::turn_start(6, &thread, &bare, &message)
             .unwrap()
@@ -74,7 +73,6 @@ mod tests {
             value["params"]["input"],
             json!([{"type": "skill", "name": "pdf", "path": "/skills/pdf/SKILL.md"}])
         );
-        // Text that does not start with the skill's name is not rewritten.
         let other = Prompt::new("prompt", "/pdfx summarise").unwrap();
         assert!(
             OutgoingRequest::turn_start(7, &thread, &other, &message)

@@ -11,11 +11,8 @@ use sage_core::limits::LIMITS;
 
 use super::super::incoming::ModelDescriptor;
 
-/// The models the thread's `model/list` pages named, which its model can be
-/// changed to, and the one Sage set for the next `turn/start`. Codex applies
-/// a `turn/start` model to that Turn and the ones after it, so the thread's
-/// model is a session choice like its effort. Holds at most one listing's
-/// bounded entries.
+/// Codex applies a `turn/start` model to that Turn and the ones after it, so
+/// the thread's model is a session choice like its effort.
 #[derive(Debug, Default)]
 pub(super) struct ModelCatalog {
     models: Vec<ModelDescriptor>,
@@ -77,19 +74,15 @@ impl CodexRuntime {
         self.model_pages_seen = 0;
     }
 
-    /// Whether a `model/list` page the thread's options come from is still
-    /// unanswered.
     pub(super) fn catalogue_pending(&self) -> bool {
         self.inner
             .awaits(super::super::request::RequestKind::Models)
     }
 
-    /// Adopts the model and effort Codex reports for the thread, on start or
-    /// resume and whenever its settings change. The reported model is the
-    /// thread's from now on, so a pick not yet sent is not sent over it, and
-    /// its listed descriptor offers its efforts at once. A different model
-    /// keeps only an effort reported with it; an absent effort keeps the
-    /// selected one only for the same model while the model runs it.
+    /// The reported model is the thread's from now on, so a pick not yet sent
+    /// is not sent over it. A different model keeps only an effort reported
+    /// with it; an absent effort keeps the selected one only for the same
+    /// model while the model runs it.
     pub(super) fn adopt_reported_settings(
         &mut self,
         model: Option<ModelId>,
@@ -181,8 +174,6 @@ impl CodexRuntime {
         self.refresh_model_config();
     }
 
-    /// Changes the thread's model or effort for the next `turn/start`, between
-    /// Turns, to a value the session's config offers.
     pub(super) fn configure_thread(
         &mut self,
         intent: &ConfigIntent,
@@ -227,11 +218,8 @@ impl CodexRuntime {
         Ok(())
     }
 
-    /// Runs the thread on the listed model `id` from the next `turn/start`,
-    /// at an effort that model runs: the thread's own when the model offers
-    /// it, else the model's default, else its first. Codex keeps a thread's
-    /// effort until a `turn/start` names another, so one is always named.
-    /// Picking the thread's own unlisted model changes nothing.
+    /// Codex keeps a thread's effort until a `turn/start` names another, so
+    /// one is always named.
     fn apply_model(&mut self, id: &str) -> Result<(), AdapterRuntimeError> {
         let Some(model) = self.model_catalog.find(id).cloned() else {
             return if self.reported_model_id.as_ref().map(|model| model.as_str()) == Some(id) {
@@ -261,8 +249,6 @@ impl CodexRuntime {
         Ok(())
     }
 
-    /// The `turn/start` for `prompt`, carrying the model and effort chosen
-    /// for the thread.
     pub(super) fn prompt_request(
         &mut self,
         prompt: &crate::acp::intent::Prompt,

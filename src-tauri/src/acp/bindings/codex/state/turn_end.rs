@@ -1,6 +1,3 @@
-//! What the active Turn's end needs: whether Sage asked Codex to stop it, and
-//! the latest plan, so the plan item closes with the Turn.
-
 use crate::acp::{contract::BoundedVec, intent::NormalizedPlanEntry, lifecycle::TurnState};
 
 use super::CodexAdapter;

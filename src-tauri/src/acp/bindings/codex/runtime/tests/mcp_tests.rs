@@ -1,5 +1,3 @@
-//! `/mcp` through Codex's app server: the list, a reload and a sign-in.
-
 use super::*;
 use crate::acp::{
     goal::NativeRpcReply,
@@ -84,7 +82,6 @@ fn a_sign_in_answers_with_a_native_url_and_a_refusal_with_codexs_reason() {
     };
     assert_eq!(url.as_str(), "https://auth.example.com/authorize?state=x");
 
-    // A URL Sage would not open is no sign-in.
     let (id, _) = sent(&mut runtime, &sign_in("notion"));
     answer(
         &mut runtime,
@@ -132,7 +129,6 @@ fn abandoned_lists_drop_their_late_answers_and_hold_only_further_lists() {
         runtime.abandon_passive_read();
         assert!(!runtime.native_rpc_pending());
     }
-    // Four lists Codex never answered hold back a fifth, but not the rest.
     assert!(
         runtime
             .session_control(&SessionControl::ReadMcpServers)
@@ -144,7 +140,6 @@ fn abandoned_lists_drop_their_late_answers_and_hold_only_further_lists() {
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Controlled(None))
     );
-    // A late answer is dropped, and frees room for a new list.
     answer(
         &mut runtime,
         abandoned[0],
@@ -180,7 +175,6 @@ fn a_list_past_the_frame_bound_is_too_large_and_keeps_the_session() {
     );
     assert!(!runtime.native_rpc_pending());
 
-    // An abandoned list's oversized answer is dropped, then lists resume.
     let (abandoned, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
     runtime.abandon_passive_read();
     assert!(runtime.child_read_pending());

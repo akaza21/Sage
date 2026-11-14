@@ -5,17 +5,12 @@ use crate::acp::{
     bindings::codex::request::OutgoingRequest, goal::NativeRpcReply, intent::ExternalId,
 };
 
-/// Forks this runtime created and has not yet released. Codex loads a fork
-/// into the app-server that served `thread/fork` and announces it there
-/// (`thread/started`, MCP startup status), so the parent runtime must absorb
-/// that thread's notifications without binding it, then release it once the
-/// fork Chat is committed (`thread/unsubscribe`) or refused (`thread/delete`,
-/// which also removes the orphan rollout; captured live, local evidence
-/// `raw-codex-delete.jsonl`). A release asked for during a Turn, or while a
-/// deferred release holds the release slot, is deferred and written when the
-/// runtime is next idle. The ledger is bounded: with every slot unreleased, a
-/// further fork is refused, which caps how many fork threads one parent
-/// runtime can keep loaded.
+/// Codex loads a fork into the app-server that served `thread/fork` and
+/// announces it there (`thread/started`, MCP startup status), so the parent
+/// runtime must absorb that thread's notifications without binding it, then
+/// release it once the fork Chat is committed (`thread/unsubscribe`) or refused
+/// (`thread/delete`, which also removes the orphan rollout). The cap bounds how
+/// many fork threads one parent runtime can keep loaded.
 pub(crate) const MAX_UNRELEASED_FORKS: usize = 8;
 
 /// Codex refusals (or unwritten frames) a fork release survives before the
@@ -39,7 +34,6 @@ enum ForkState {
 struct ForkEntry {
     thread: ExternalId,
     state: ForkState,
-    /// Release attempts that did not land (refused or never written).
     failures: u8,
 }
 
@@ -56,7 +50,6 @@ struct PendingRelease {
 pub(crate) struct ForkLedger {
     /// Recent fork threads, oldest first, each with its release state.
     threads: Vec<ForkEntry>,
-    /// The release in flight.
     pending_release: Option<PendingRelease>,
 }
 
@@ -80,7 +73,6 @@ impl ForkLedger {
             .position(|entry| entry.thread.as_str() == thread && entry.state != ForkState::Released)
     }
 
-    /// The oldest wanted release of a thread other than `bound`.
     fn next_wanted(&self, bound: Option<&str>) -> Option<(usize, bool)> {
         self.threads
             .iter()
@@ -119,9 +111,6 @@ impl ForkLedger {
         }
     }
 
-    /// A release that did not land stays wanted for the next idle moment
-    /// until it has failed `MAX_FORK_RELEASE_ATTEMPTS` times; then the thread
-    /// is given up and no longer holds a slot.
     fn release_failed(&mut self, index: usize, delete: bool) {
         let Some(entry) = self.threads.get_mut(index) else {
             return;
@@ -163,8 +152,7 @@ impl CodexAdapter {
         self.forks.remember(thread);
     }
 
-    /// A fork or a foreground fork release is awaiting its native reply. A
-    /// deferred release is background work and never holds the RPC slot.
+    /// A deferred release is background work and never holds the RPC slot.
     pub(crate) fn fork_rpc_pending(&self) -> bool {
         self.pending_fork.is_some()
             || self
@@ -179,7 +167,6 @@ impl CodexAdapter {
             .map(|pending| (pending.id, pending.background))
     }
 
-    /// The bounded ledger has no slot for another fork.
     pub(crate) fn fork_ledger_full(&self) -> bool {
         self.forks.unreleased() >= MAX_UNRELEASED_FORKS
     }
@@ -228,7 +215,6 @@ impl CodexAdapter {
         Ok(request)
     }
 
-    /// Marks a fork's release for the next idle moment (a Turn is running).
     pub(crate) fn defer_fork_release(&mut self, thread: &str, delete: bool) -> bool {
         if self.bound_thread_id() == Some(thread) {
             return false;
@@ -251,8 +237,7 @@ impl CodexAdapter {
             && self.forks.next_wanted(self.bound_thread_id()).is_some()
     }
 
-    /// Reserves the oldest deferred release as background work. The bound
-    /// thread is never released this way.
+    /// The bound thread is never released this way.
     pub(crate) fn next_deferred_fork_release(
         &mut self,
         id: u64,
@@ -315,9 +300,7 @@ impl CodexAdapter {
         Ok(background)
     }
 
-    /// Reserves `thread/fork` for the bound thread. Only a characterised
-    /// negotiation admits it, and only between Turns: the fork carries the
-    /// thread through its latest completed Turn.
+    /// Only a characterised negotiation admits it, and only between Turns.
     pub(crate) fn fork(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.native_session_fork)?;
         if self.pending_fork.is_some()
@@ -340,7 +323,6 @@ impl CodexAdapter {
         Ok(request)
     }
 
-    /// Settles the pending fork exactly once, whatever its outcome.
     pub(crate) fn complete_fork(&mut self, id: u64) -> Result<(), AdapterError> {
         if self.pending_fork != Some(id) || self.pending_kind(id) != Some(RequestKind::Fork) {
             return Err(AdapterError::ForeignRequest);

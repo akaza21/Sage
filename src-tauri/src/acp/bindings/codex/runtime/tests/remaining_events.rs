@@ -206,7 +206,6 @@ fn an_auto_approval_review_leaves_one_notice_with_its_verdict() {
             [AdapterEvent::IgnoredLate]
         ));
     }
-    // An unknown action still names its verdict.
     let mut timed_out = review("review-timed-out", "timedOut");
     timed_out["action"] = json!({"type":"someFutureAction"});
     timed_out["review"]["rationale"] = Value::Null;
@@ -227,7 +226,6 @@ fn legacy_compaction_alone_shows_the_compaction_row() {
     let mut runtime = running();
     let events = legacy_compaction(&mut runtime);
     assert_eq!(compaction_items(&events), 1, "{events:?}");
-    // A second compaction in the same Turn is a row of its own.
     assert_eq!(compaction_items(&legacy_compaction(&mut runtime)), 1);
 }
 
@@ -258,8 +256,6 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
             "collaborationMode":{"mode":"default","settings":{}}
         }})
     };
-    // Settings during activation do not request the catalog; the idle owner
-    // starts hydration after handoff.
     let update =
         json!({"method":"thread/settings/updated","params":settings("gpt-6-astra",json!("high"))});
     let batch = runtime.ingest(&frame(update), &Mapper).unwrap();
@@ -295,7 +291,6 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
         serde_json::to_value(&config).unwrap()["configOptions"][0]["currentValue"],
         "medium"
     );
-    // A null effort keeps the selected one for the same model.
     notify(
         &mut runtime,
         "thread/settings/updated",
@@ -303,7 +298,6 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
     );
     let config = runtime.session_config().unwrap();
     assert_eq!(config.confirmed_effort.unwrap().as_str(), "medium");
-    // A new model takes its efforts from the catalog.
     notify(
         &mut runtime,
         "thread/settings/updated",
@@ -314,8 +308,6 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
     assert_eq!(config["configOptions"][0]["currentValue"], "low");
     assert_eq!(config["configOptions"][0]["options"][0]["value"], "low");
     assert_eq!(config["configOptions"][0]["options"][1], Value::Null);
-    // A new model without an effort drops the old model's effort, even if
-    // both offer it, so the next turn/start sends none.
     notify(
         &mut runtime,
         "thread/settings/updated",

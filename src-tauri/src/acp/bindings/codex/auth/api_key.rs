@@ -5,7 +5,6 @@ use crate::acp::transport::Frame;
 
 const API_KEY_BYTES: usize = 4_096;
 
-/// An OpenAI API key on its way to Codex, which stores it in its own home.
 /// Sage never logs, serializes or retains it.
 #[derive(serde::Deserialize)]
 #[serde(try_from = "String")]

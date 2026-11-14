@@ -71,8 +71,6 @@ impl CodexBindingRegistration {
         )?);
         let mut state = self.lock_state();
         match &*state {
-            // An updated CLI replaces the drifted or earlier observed build;
-            // a live session keeps the binding it started with.
             CodexRegistrationState::Unavailable(
                 CodexAdmissionUnavailable::IndependentAdmission
                 | CodexAdmissionUnavailable::Platform
@@ -187,9 +185,6 @@ impl CodexBindingRegistration {
         }
     }
 
-    /// Authenticode can identify the installed role, but this workstation's
-    /// curated evidence records it as observation-only. If independent launch
-    /// admission cannot proceed, retain that more precise fail-closed state.
     pub(super) fn refuse_independent_launch_after_workstation_authenticode_observation(
         &self,
     ) -> CodexAdmissionUnavailable {
