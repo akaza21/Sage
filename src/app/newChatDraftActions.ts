@@ -23,13 +23,14 @@ export function createNewChatDraftActions(
 > {
   let selectionRequest: object | undefined;
   const submit = async (draft: NewChatDraft) => {
+    const submittingDraft = { ...draft, creating: true, error: null };
     const submission = {
       projectId: draft.projectId,
       chatId: null,
       ownershipEpoch: get().chatOwnershipEpoch,
     };
     set({
-      newChatDraft: { ...draft, creating: true, error: null },
+      newChatDraft: submittingDraft,
       pendingFirstSend: submission,
     });
     let send: typeof SendModule;
@@ -41,14 +42,16 @@ export function createNewChatDraftActions(
         import("./runCreateChat"),
       ]);
     } catch (error) {
-      if (get().pendingFirstSend !== submission) return;
+      const state = get();
+      if (state.newChatDraft !== submittingDraft) return;
       set({
         newChatDraft: { ...draft, error: boundedChatError(String(error)) },
-        pendingFirstSend: null,
+        pendingFirstSend:
+          state.pendingFirstSend === submission ? null : state.pendingFirstSend,
       });
       return;
     }
-    await send.runNewChatDraftSend(set, get, draft, submission);
+    await send.runNewChatDraftSend(set, get, submittingDraft, submission);
   };
   return {
     openNewChatDraft: async (projectId) => {

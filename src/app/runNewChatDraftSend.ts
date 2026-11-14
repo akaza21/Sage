@@ -24,11 +24,17 @@ export async function runNewChatDraftSend(
   const owns = () =>
     get().project?.id === draft.projectId &&
     get().chatOwnershipEpoch === epoch &&
-    get().newChatDraft?.creating;
-  if (initial.pendingFirstSend !== submission) {
-    if (owns())
+    get().newChatDraft === draft;
+  // Dispatch can be cancelled, or recovery can advance ownership while
+  // retaining the draft. Neither submission may create a durable Chat.
+  if (initial.pendingFirstSend !== submission || !owns()) {
+    if (initial.newChatDraft === draft)
       set({
         newChatDraft: { ...draft, creating: !!draft.reconcileCreation },
+        pendingFirstSend:
+          initial.pendingFirstSend === submission
+            ? null
+            : initial.pendingFirstSend,
       });
     return;
   }
