@@ -7,7 +7,7 @@ use crate::acp::contract::{ProjectionRevision, SageAgentSessionId};
 
 use super::{StoreError, sessions::increment_session_usage};
 
-/// The durable identity of a session installed as a Chat head.
+/// The identity and initial negotiation of a session installed as a Chat head.
 pub(super) struct HeadSession<'a> {
     pub(super) project: &'a str,
     pub(super) chat: &'a str,

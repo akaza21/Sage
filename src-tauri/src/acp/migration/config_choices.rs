@@ -10,7 +10,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentSessionFactsTurnIndex
         | SchemaClass::CurrentOperationTerminalIndex
         | SchemaClass::CurrentTurnUndoIntentIndexes
-        | SchemaClass::CurrentImportedHistory => return Ok(()),
+        | SchemaClass::CurrentImportedHistory
+        | SchemaClass::CurrentSessionCapabilities => return Ok(()),
         SchemaClass::CurrentV22 => {}
         _ => return invalid("session config choices require exact schema v22"),
     }

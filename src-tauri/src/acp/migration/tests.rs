@@ -408,6 +408,115 @@ fn recovering_to_ready_cannot_change_activation_identity() {
 }
 
 #[test]
+fn schema_029_recovering_session_resumes_after_forward_upgrade() {
+    use crate::acp::{
+        contract::{RuntimeEpoch, SageAgentSessionId},
+        intent::ExternalId,
+        lifecycle::SessionState,
+        store::{CompleteActivationCommand, complete_activation},
+    };
+
+    let directory = TestDir::new();
+    let mut source = Connection::open(directory.database()).unwrap();
+    schema_upgrade::build_fresh_v18(&mut source).unwrap();
+    workspace_changes::apply(&mut source).unwrap();
+    title_provenance::apply(&mut source).unwrap();
+    session_scope::apply(&mut source).unwrap();
+    notifications::apply(&mut source).unwrap();
+    config_choices::apply(&mut source).unwrap();
+    session_resume_link::apply(&mut source).unwrap();
+    title_source::apply(&mut source).unwrap();
+    session_facts_turn_index::apply(&mut source).unwrap();
+    operation_terminal_index::apply(&mut source).unwrap();
+    turn_undo_intent_indexes::apply(&mut source).unwrap();
+    imported_history::apply(&mut source).unwrap();
+    assert_eq!(
+        fingerprint::classify_connection(&source).unwrap(),
+        SchemaClass::CurrentImportedHistory
+    );
+    source.execute_batch(
+        "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
+         INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('chat','project',0,'Chat',1,1);",
+    ).unwrap();
+    source.execute(
+        "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,
+           harness_version,external_session_id,capabilities_json,state,residency,created_at,updated_at)
+         VALUES('session','project','chat',0,'binding',?1,'1.0.0','external','{}','recovering','hot',1,1)",
+        ["a".repeat(64)],
+    ).unwrap();
+    source.execute_batch(
+        "INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at)
+         VALUES('project','chat','session',0,1);
+         INSERT INTO acp_project_usage(project_id,chat_count,session_count,turn_count,item_count,fact_count,payload_bytes,revision)
+         VALUES('project',1,1,0,0,0,0,0);
+         INSERT INTO acp_session_usage(project_id,chat_id,session_id,turn_count,item_count,item_bytes,fact_count,fact_bytes,payload_bytes,revision)
+         VALUES('project','chat','session',0,0,0,0,0,0,0);
+         UPDATE acp_store_usage SET chat_count=1,session_count=1 WHERE singleton=1;",
+    ).unwrap();
+    source.execute(
+        "INSERT INTO session_runtime_epochs(project_id,chat_id,session_id,runtime_epoch,state,artifact_digest,started_at)
+         VALUES('project','chat','session',2,'starting',?1,2)",
+        ["d".repeat(64)],
+    ).unwrap();
+    let error = source
+        .execute(
+            "UPDATE agent_sessions SET state='ready',capabilities_json=?1 WHERE id='session'",
+            [READY_CAPABILITIES],
+        )
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("agent session identity is immutable")
+    );
+    source.close().unwrap();
+
+    let mut upgraded = open_or_migrate(&directory.database()).unwrap();
+    let resumed = complete_activation(
+        &mut upgraded,
+        CompleteActivationCommand {
+            project_id: SageProjectId::parse("project").unwrap(),
+            chat_id: SageChatId::parse("chat").unwrap(),
+            session_id: SageAgentSessionId::parse("session").unwrap(),
+            runtime_epoch: RuntimeEpoch::new(2).unwrap(),
+            binding_digest: "a".repeat(64),
+            artifact_digest: "d".repeat(64),
+            external_session_id: ExternalId::new("external", "external").unwrap(),
+            capabilities_json: READY_CAPABILITIES.into(),
+            now_millis: 3,
+        },
+    )
+    .unwrap();
+    assert_eq!(resumed.state, SessionState::Ready);
+    assert_eq!(upgraded.query_row(
+        "SELECT capabilities_json,harness_version,binding_digest FROM agent_sessions WHERE id='session'",
+        [],
+        |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?, row.get::<_, String>(2)?)),
+    ).unwrap(), (READY_CAPABILITIES.into(), "1.0.0".into(), "a".repeat(64)));
+    drop(upgraded);
+    let reopened = open_or_migrate(&directory.database()).unwrap();
+    assert_eq!(
+        fingerprint::classify_connection(&reopened).unwrap(),
+        fingerprint::CURRENT_SCHEMA
+    );
+    assert_eq!(
+        reopened
+            .query_row("PRAGMA user_version", [], |row| row.get::<_, u32>(0))
+            .unwrap(),
+        CURRENT_SCHEMA_VERSION
+    );
+    assert_eq!(
+        reopened
+            .query_row("SELECT MAX(version) FROM schema_migrations", [], |row| row
+                .get::<_, u32>(
+                0
+            ))
+            .unwrap(),
+        CURRENT_SCHEMA_VERSION
+    );
+}
+
+#[test]
 fn in_memory_creation_reaches_exact_v19() {
     let connection = open_or_migrate(Path::new(":memory:")).unwrap();
     assert_eq!(
@@ -1227,6 +1336,7 @@ fn fresh_schema_equals_a_v6_schema_upgraded_in_place() {
     operation_terminal_index::apply(&mut upgraded).unwrap();
     turn_undo_intent_indexes::apply(&mut upgraded).unwrap();
     imported_history::apply(&mut upgraded).unwrap();
+    session_capabilities::apply(&mut upgraded).unwrap();
     let upgraded_fingerprint = database_fingerprint(&upgraded).unwrap();
 
     assert_eq!(

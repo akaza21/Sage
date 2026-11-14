@@ -3,7 +3,7 @@
 
 use rusqlite::Connection;
 
-use super::extended_tests::{setup, start};
+use super::extended_tests::start;
 use super::*;
 use crate::acp::{
     contract::{ClientIntentId, RequiredText},
@@ -17,6 +17,21 @@ fn project() -> SageProjectId {
 
 fn chat() -> SageChatId {
     SageChatId::parse("chat-one").unwrap()
+}
+
+fn setup() -> Connection {
+    let (connection, _) = crate::acp::migration::open_or_migrate(std::path::Path::new(":memory:"))
+        .unwrap()
+        .into_parts();
+    connection.execute_batch(
+        "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-one','Project',1,1,1);
+         INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-one','project-one','/project','/project',0);
+         INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-one','project-one',0,'Chat',0,1,1);
+         INSERT INTO acp_project_usage(project_id,chat_count,session_count,turn_count,item_count,fact_count,payload_bytes,revision)
+         VALUES('project-one',1,0,0,0,0,0,0);
+         UPDATE acp_store_usage SET chat_count=1 WHERE singleton=1;",
+    ).unwrap();
+    connection
 }
 
 const OLD_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":false,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
@@ -217,12 +232,6 @@ fn fork_admission_follows_the_latest_negotiation_in_both_directions() {
     use crate::acp::contract::SageTurnId;
 
     let (mut connection, session) = parked_and_reactivated(OLD_CODEX.into());
-    connection
-        .execute_batch(
-            "CREATE TABLE workbench_tabs(id TEXT PRIMARY KEY,kind TEXT,metadata_json TEXT);
-             INSERT INTO workbench_tabs VALUES('chat-one','chat','{}');",
-        )
-        .unwrap();
     complete(&mut connection, &session, 2, NEW_CODEX.into()).unwrap();
     connection
         .execute(
@@ -277,4 +286,83 @@ fn an_invalid_negotiation_cannot_replace_the_stored_snapshot() {
             .state,
         SessionState::Ready
     );
+}
+
+#[test]
+fn resume_cannot_mutate_native_identity_or_accept_invalid_json() {
+    let (mut connection, session) = parked_and_reactivated(OLD_CODEX.into());
+    for assignment in [
+        "external_session_id='other-thread'",
+        "harness_version='2.0.0'",
+        "binding_digest=printf('%064d', 0)",
+        "binding_id='other-binding'",
+        "model_id='other-model'",
+        "created_at=0",
+        "legacy=1",
+        "ordinal=1",
+    ] {
+        let error = connection
+            .execute(
+                &format!(
+                    "UPDATE agent_sessions SET state='ready',capabilities_json=?1,{assignment}
+                     WHERE id=?2"
+                ),
+                [NEW_CODEX, session.as_str()],
+            )
+            .unwrap_err();
+        assert!(
+            error
+                .to_string()
+                .contains("agent session identity is immutable"),
+            "{assignment}: {error}"
+        );
+        assert_eq!(stored_capabilities(&connection, &session), OLD_CODEX);
+    }
+    let error = connection
+        .execute(
+            "UPDATE agent_sessions SET state='ready',capabilities_json='not json' WHERE id=?1",
+            [session.as_str()],
+        )
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("agent session identity is immutable")
+    );
+    assert_eq!(stored_capabilities(&connection, &session), OLD_CODEX);
+    assert_eq!(
+        complete(&mut connection, &session, 2, NEW_CODEX.into())
+            .unwrap()
+            .state,
+        SessionState::Ready
+    );
+}
+
+#[test]
+fn capabilities_cannot_change_without_a_resume_commit() {
+    let (mut connection, session) = parked_and_reactivated(OLD_CODEX.into());
+    let error = connection
+        .execute(
+            "UPDATE agent_sessions SET capabilities_json=?1 WHERE id=?2",
+            [NEW_CODEX, session.as_str()],
+        )
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("agent session identity is immutable")
+    );
+    complete(&mut connection, &session, 2, NEW_CODEX.into()).unwrap();
+    let error = connection
+        .execute(
+            "UPDATE agent_sessions SET capabilities_json=?1 WHERE id=?2",
+            [OLD_CODEX, session.as_str()],
+        )
+        .unwrap_err();
+    assert!(
+        error
+            .to_string()
+            .contains("agent session identity is immutable")
+    );
+    assert_eq!(stored_capabilities(&connection, &session), NEW_CODEX);
 }

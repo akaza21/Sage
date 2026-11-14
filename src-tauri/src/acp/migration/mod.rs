@@ -21,6 +21,7 @@ mod portable_coverage_tests;
 mod probe;
 mod publish;
 mod schema_upgrade;
+mod session_capabilities;
 mod session_facts_turn_index;
 mod session_resume_link;
 mod session_scope;
@@ -38,6 +39,8 @@ mod workspace_changes;
 
 #[cfg(test)]
 pub(crate) use fingerprint::CURRENT_SCHEMA_VERSION;
+#[cfg(test)]
+pub(crate) use fingerprint::historical_trigger_sql;
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use identity::legacy_binding_digest;
 pub(crate) use image_files::{read_image_file, remove_image_file};
@@ -150,6 +153,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
     operation_terminal_index::apply(&mut opened.connection)?;
     turn_undo_intent_indexes::apply(&mut opened.connection)?;
     imported_history::apply(&mut opened.connection)?;
+    session_capabilities::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
