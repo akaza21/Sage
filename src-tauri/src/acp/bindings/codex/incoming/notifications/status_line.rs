@@ -1,15 +1,11 @@
-//! One bounded display line from a harness status message.
-
 use super::super::support::sanitize;
 use crate::acp::redaction::text::{Mode, redact};
 
 const ELLIPSIS: char = '\u{2026}';
 
-/// Collapses whitespace to single spaces, redacts secrets and paths with the
-/// Codex sanitizer and then the shared prose redactor (as the other harness
-/// bindings do), and clips the result to `max` bytes with an ellipsis. Only a
-/// bounded prefix of `raw` is read, so an oversized message costs no more
-/// than a short one. Blank text, or text the redactor refuses, yields `None`.
+/// Only a bounded prefix of `raw` is read, so an oversized message costs no
+/// more than a short one. `max` is a byte limit. Blank text, or text the
+/// redactor refuses, yields `None`.
 pub(super) fn status_line(raw: &str, max: usize) -> Option<String> {
     let prefix = clip(raw, max.saturating_mul(4));
     let collapsed = prefix.split_whitespace().collect::<Vec<_>>().join(" ");

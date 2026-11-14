@@ -24,9 +24,6 @@ fn captured(trace: &str, thread: &str) -> Vec<(String, Value)> {
         .collect()
 }
 
-/// Replays every frame after the captured `thread/start` answer until
-/// `thread/unsubscribe`, issuing the same requests through the adapter under
-/// its own request ids.
 fn replay(adapter: &mut CodexAdapter, frames: &[(String, Value)]) -> Vec<IncomingEvent> {
     let start = frames
         .iter()
@@ -69,8 +66,6 @@ fn replay(adapter: &mut CodexAdapter, frames: &[(String, Value)]) -> Vec<Incomin
     events
 }
 
-/// Each Turn event and item update as Sage projects it, prefixed by the
-/// client message its Turn is scoped to.
 fn projected(events: &[IncomingEvent]) -> Vec<String> {
     events
         .iter()

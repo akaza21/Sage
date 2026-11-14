@@ -88,8 +88,6 @@ fn review_capacity_suppresses_new_notices_without_evicting_completed_ids() {
             &Mapper,
         )
         .unwrap();
-    // A new Turn has its own capacity and identity scope. Late replays of
-    // the previous Turn do not replace the active Turn's completed IDs.
     one_notice(&complete_review(&mut runtime, "turn-2", "review-0"));
     assert!(matches!(
         complete_review(&mut runtime, "turn-1", "review-0").as_slice(),

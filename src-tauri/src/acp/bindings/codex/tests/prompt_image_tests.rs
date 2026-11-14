@@ -69,6 +69,5 @@ fn text_whose_escaped_echo_would_overflow_the_frame_is_refused_with_images() {
         turn_start(&with(&dense, &images)),
         Err(RequestError::FrameBytes)
     ));
-    // Without images the echo leaves the text room enough.
     assert!(turn_start(&with(&dense, &[])).is_ok());
 }

@@ -1,7 +1,3 @@
-//! The `codex-skills` native replay journey, driven by this runtime's own
-//! requests: the skills it lists, the cache-skipping read after Codex says
-//! they changed, and the skill input a picked skill puts on the turn.
-
 use super::*;
 use crate::acp::slash_commands::CommandSource;
 
@@ -11,9 +7,6 @@ fn wire(egress: &AdapterEgress) -> Value {
     serde_json::from_slice(egress.frame().payload()).unwrap()
 }
 
-/// Replays the journey: `opened` and `changed` are the skills reads Sage
-/// sent once the thread opened and once the skills changed, after the first
-/// turn, and `first_turn` is that turn's request.
 fn journey(opened: &[Value], first_turn: Value, changed: &[Value]) -> Vec<Value> {
     let mut requests = vec![
         json!({"id":101,"method":"initialize"}),
@@ -37,8 +30,6 @@ fn plain_turn() -> Value {
     json!({"id":104,"method":"turn/start","params":{"input":[]}})
 }
 
-/// Sends a skills read, then ingests the journey's answer to it: the first
-/// read once the thread opened, or the read after the skills changed.
 fn read(runtime: &mut CodexRuntime, opened: Option<&Value>) -> Value {
     let egress = runtime.discover_commands().unwrap().expect("skills/list");
     let request = wire(&egress);
@@ -115,7 +106,6 @@ fn a_picked_skill_reaches_the_journeys_turn_as_its_skill_input() {
         .find(|frame| frame["method"] == "item/completed")
         .expect("the turn answers");
     let echo = answer["params"]["item"]["text"].as_str().unwrap();
-    // The skill comes first, then the text typed after its name.
     let blocks: Vec<&str> = echo.split("\n\n").collect();
     assert_eq!(blocks.len(), 3, "{echo}");
     assert_eq!(blocks[0], "Synthetic replay received 2 prompt blocks:");

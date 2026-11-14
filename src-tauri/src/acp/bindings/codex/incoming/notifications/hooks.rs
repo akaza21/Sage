@@ -1,6 +1,4 @@
-//! `hook/started` and `hook/completed`: each configured Codex hook handler is
-//! one session activity row (kind `hook`) that runs and then completes or
-//! fails. A hook may run outside any Turn (`turnId` is null), so the event is
+//! A hook may run outside any Turn (`turnId` is null), so the event is
 //! session-scoped; the store records the row in the Turn whose batch carries
 //! it, or in the previous Turn when Codex names that one.
 //!
@@ -8,7 +6,7 @@
 //! its invocation, so a handler that runs again updates its own row and
 //! concurrent runs of one handler share it. That name carries a local path,
 //! so the row's identity is a digest of it and the path never leaves this
-//! module; the label tells handlers apart by position and source instead.
+//! module.
 
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
@@ -84,7 +82,6 @@ pub(super) fn hook_run(
 ) -> Result<IngressDisposition, IngressError> {
     let thread = text(params, "threadId", 512)?;
     adapter.expect_thread(thread).map_err(identity)?;
-    // The row is session-scoped, so a turn is validated but never required.
     let turn = match params.get("turnId") {
         None | Some(Value::Null) => None,
         Some(_) => Some(text(params, "turnId", 512)?),
@@ -115,8 +112,6 @@ pub(super) fn hook_run(
         label: RequiredText::new("hookLabel", label).map_err(content)?,
         state,
         progress,
-        // A run of the Turn that already ended belongs to that Turn's row,
-        // not to the Turn now running.
         in_previous_turn: turn.is_some_and(|turn| adapter.turn_is_terminal(turn)),
         stoppable: false,
     };
@@ -154,8 +149,7 @@ fn session_event(
     })
 }
 
-/// Checks the run fields the row is built from and returns its label. The
-/// row is display-only, so fields it never shows (handler type, execution
+/// The row is display-only, so fields it never shows (handler type, execution
 /// mode, scope, source path, command) are not required, and an event or
 /// source a newer Codex adds is labelled generically instead of refused.
 fn validate_run(run: &Map<String, Value>) -> Result<String, IngressError> {
@@ -203,9 +197,7 @@ fn run_status(value: &str) -> Result<RunStatus, IngressError> {
     })
 }
 
-/// The configured status line while a hook runs; afterwards its first
-/// user-facing output (context entries are for the model), naming a block
-/// or stop so the row says why.
+/// Context entries are for the model, not the user-facing status line.
 fn progress(run: &Map<String, Value>, status: RunStatus) -> Result<Option<String>, IngressError> {
     if status == RunStatus::Running {
         return Ok(run

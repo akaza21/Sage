@@ -1,8 +1,4 @@
-//! Codex MCP, web search and explore-command presentation.
-//!
-//! Every field shown is taken from the typed wire item. Server and tool
-//! names are the harness's own identifiers; Sage never invents display names,
-//! titles, or results the item did not carry.
+//! Sage never invents display names, titles, or results the item did not carry.
 
 use serde_json::{Map, Value};
 
@@ -101,9 +97,6 @@ pub(super) fn web_search(
     })
 }
 
-/// A Codex command made only of typed reads is a read, labelled by the
-/// workspace path it read; one made only of reads, searches and listings is a
-/// search. Declared tests stay commands.
 pub(in crate::acp::bindings::codex::incoming) fn explore_presentation(
     explore: Option<&CommandExplore>,
     activity: CommandActivity,
@@ -130,8 +123,6 @@ pub(in crate::acp::bindings::codex::incoming) fn explore_presentation(
     }
 }
 
-/// The workspace path a single-location Read resolved to; without one the
-/// command line stays as the row's input.
 pub(in crate::acp::bindings::codex::incoming) fn read_path(
     locations: &ToolLocations,
 ) -> Option<&str> {
@@ -152,8 +143,6 @@ fn safe_name(value: Option<&Value>) -> Option<&str> {
     .then_some(name)
 }
 
-/// Structured content wins; otherwise text blocks in order, with any other
-/// block named by its type rather than inlined (images stay out of text).
 fn mcp_result_text(result: &Value) -> Option<String> {
     let result = result.as_object()?;
     if let Some(structured) = result

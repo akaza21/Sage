@@ -4,20 +4,15 @@ use sage_core::limits::LIMITS;
 use super::{AdapterError, CodexAdapter};
 use crate::acp::intent::{NormalizedPayload, session_event::SessionScopedEvent};
 
-/// Thread-less notices held before a thread is bound.
 pub(crate) const PENDING_NOTICES_MAX: usize = 4;
-/// Warning texts remembered to recognise one problem reported twice.
 const REPEATED_WARNINGS_MAX: usize = 4;
 
-/// How Codex reported a warning: a `configWarning` (summary plus separate
-/// details) or a generic `warning` (one message).
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum WarningKind {
     Config,
     Generic,
 }
 
-/// `text` with each line trimmed and blank lines dropped.
 fn warning_lines(text: &str) -> String {
     text.lines()
         .map(str::trim)
@@ -129,8 +124,7 @@ impl CodexAdapter {
             .push(thread.to_owned());
     }
 
-    /// Remembers a warning's harness text and says whether it is new. Codex
-    /// reports an unreadable configuration both as a `configWarning` (its
+    /// Codex reports an unreadable configuration both as a `configWarning` (its
     /// summary and details) and as a generic `warning` whose message is that
     /// summary followed by the details, in either order. The second of the
     /// pair is not new. Texts are compared line by line with each line
@@ -152,8 +146,6 @@ impl CodexAdapter {
         true
     }
 
-    /// Holds a thread-less notice until a thread is bound; the oldest is
-    /// dropped at the cap.
     pub(crate) fn buffer_session_notice(&mut self, notice: SessionScopedEvent) {
         if self.pending_session_notices.len() == PENDING_NOTICES_MAX {
             self.pending_session_notices.remove(0);

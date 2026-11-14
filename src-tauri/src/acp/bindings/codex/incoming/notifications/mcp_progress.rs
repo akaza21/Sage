@@ -1,7 +1,3 @@
-//! `item/mcpToolCall/progress`: the latest status line of a running MCP
-//! call. It restates the existing item rather than adding one, so a long
-//! call keeps one transcript row however often it reports.
-
 use serde_json::{Map, Value};
 
 use crate::acp::{
@@ -36,8 +32,6 @@ pub(super) fn mcp_tool_progress(
         .map(|line| SafeText::new("mcpProgress", line))
         .transpose()
         .map_err(content)?;
-    // Progress for a call Sage never saw start, or whose line is unchanged,
-    // has nothing to restate.
     let Some(payload) = adapter.report_mcp_tool_progress(turn, external, progress) else {
         return Ok(IngressDisposition::IgnoredLate);
     };

@@ -198,8 +198,6 @@ fn offered_approval_kinds(
     vec![AllowOnce, RejectOnce]
 }
 
-/// Codex's own `reason` for the approval, sanitized and clipped to the
-/// projection bound. Absent or blank reasons project nothing.
 fn approval_reason(params: &Map<String, Value>) -> Option<SafeText<2048>> {
     let reason = sanitize(params.get("reason")?.as_str()?.trim());
     let mut end = reason.len().min(2048);

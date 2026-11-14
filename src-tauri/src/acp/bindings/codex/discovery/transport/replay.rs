@@ -1,10 +1,6 @@
-//! Discovery for the debug desktop Codex replay.
-//!
 //! A replay case is one scripted session, so it cannot also serve a separate
 //! discovery run. Its discovery answers come from the case itself (see
-//! `fixture::native_case_discovery_reply`) and are read by the same
-//! discovery protocol a real Codex run goes through, so the catalogue the
-//! composer offers is exactly the one the case's session lists.
+//! `fixture::native_case_discovery_reply`).
 use std::{collections::VecDeque, sync::Arc, time::Duration};
 
 use serde_json::Value;
@@ -38,7 +34,6 @@ impl DiscoveryTransport for ReplayTransport<'_> {
         let Ok(request) = serde_json::from_slice::<Value>(frame.payload()) else {
             return FrameWriteOutcome::ZeroByteFailure;
         };
-        // Notifications (`initialized`) have no answer.
         if request.get("id").is_none() {
             return FrameWriteOutcome::Complete;
         }
@@ -70,7 +65,6 @@ impl DiscoveryTransport for ReplayTransport<'_> {
         _: bool,
         _: CodexDiscoveryDeadline,
     ) -> Result<DiscoveryZeroProcess, CodexDiscoveryRunError> {
-        // Nothing was launched, so nothing is left running.
         Ok(DiscoveryZeroProcess::fixture(self.runtime_epoch))
     }
 }

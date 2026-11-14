@@ -5,8 +5,6 @@ use crate::acp::contract::RequiredText;
 use super::{NativeProjectRoot, OutgoingRequest, RequestError, RequestKind};
 
 impl OutgoingRequest {
-    /// One page of a thread's Turns with every item, oldest first or newest
-    /// first.
     pub(crate) fn turns_list(
         id: u64,
         thread_id: &RequiredText<512>,

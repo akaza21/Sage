@@ -61,8 +61,6 @@ pub(super) fn notification<M: ResourceMapper>(
                 _ => Err(IngressError::Malformed),
             }
         }
-        // Skills changed on disk: the `/` menu reads them again while idle.
-        // The payload is discarded and touches no Turn or session state.
         "skills/changed" => {
             adapter.skills_changed();
             Ok(IngressDisposition::IgnoredLate)

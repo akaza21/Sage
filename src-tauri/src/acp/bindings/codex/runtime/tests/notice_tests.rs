@@ -25,8 +25,6 @@ fn one_notice(events: &[AdapterEvent]) -> SessionNotice {
     }
 }
 
-/// The session events of a batch, each checked to carry the bound thread's
-/// session identity with no Turn scope.
 fn session_events(events: &[AdapterEvent]) -> Vec<SessionScopedEvent> {
     events
         .iter()
@@ -106,7 +104,6 @@ fn thread_less_notices_before_binding_are_buffered_then_delivered_on_bind() {
     let [AdapterEvent::SessionReady { .. }, notices @ ..] = batch.events() else {
         panic!("expected the session to bind first: {:?}", batch.events());
     };
-    // At most four are held; the oldest is dropped.
     let expected: Vec<_> = (2..=5)
         .map(|index| {
             notice(
@@ -117,7 +114,6 @@ fn thread_less_notices_before_binding_are_buffered_then_delivered_on_bind() {
         })
         .collect();
     assert_eq!(session_events(notices), expected);
-    // Once bound, a thread-less warning goes straight to the session.
     assert_eq!(
         session_events(&notify(
             &mut runtime,
@@ -264,7 +260,6 @@ fn reroute_updates_the_effective_model_and_names_both_models() {
         session_events(&notify(&mut runtime, "model/rerouted", params.clone())),
         expected
     );
-    // A reroute that lands just after its Turn finished is still truthful.
     complete_turn(&mut runtime);
     assert_eq!(
         session_events(&notify(&mut runtime, "model/rerouted", params)),

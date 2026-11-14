@@ -1,5 +1,3 @@
-//! `thread/fork` replay against the pinned Codex generated schema.
-
 use super::*;
 use crate::acp::goal::NativeRpcReply;
 use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
@@ -39,7 +37,6 @@ fn the_fork_request_is_the_pinned_thread_fork_shape() {
         "../../../../../../testdata/acp/codex/observed-effort-schema.json"
     ))
     .unwrap();
-    // Both pins come from the same generated schema of the same entrypoint.
     assert_eq!(schema["entrypointSha256"], effort["entrypointSha256"]);
     assert_eq!(
         schema["schemaFiles"]["ClientRequest.json"],
@@ -69,10 +66,7 @@ fn the_fork_request_is_the_pinned_thread_fork_shape() {
         assert!(params.contains_key(required.as_str().unwrap()));
     }
     assert_eq!(params["threadId"], "thread-1");
-    // Sage forks only between Turns, so it never names an inclusive anchor.
     assert!(!params.contains_key("lastTurnId"));
-    // Sage imports no native history, and asking for it draws a
-    // `deprecationNotice` from the pinned server.
     assert_eq!(params["excludeTurns"], true);
 }
 
@@ -106,7 +100,6 @@ fn a_fork_response_replays_into_a_typed_native_session() {
         ))
     );
     assert!(!runtime.native_rpc_pending());
-    // The parent stays bound to its own thread and can prompt again.
     running_turn(&mut runtime);
 }
 
@@ -200,8 +193,6 @@ fn captured_fork_frames() -> Vec<(String, Value)> {
     .collect()
 }
 
-/// Replays every frame Codex sent after `thread/fork` and before the first
-/// `thread/unsubscribe`, answering the runtime's own fork request id.
 fn replay_captured_fork(runtime: &mut CodexRuntime) -> Vec<AdapterEvent> {
     let frames = captured_fork_frames();
     let fork_at = frames
@@ -252,8 +243,6 @@ fn the_captured_post_fork_frames_leave_the_parent_runtime_bound_and_idle() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     let events = replay_captured_fork(&mut runtime);
-    // Every event is one the idle pump admits (`completion.rs`), so the
-    // parent runtime survives a fork taken between Turns.
     assert!(events.iter().all(|event| matches!(
         event,
         AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate | AdapterEvent::Absorbed
@@ -264,7 +253,6 @@ fn the_captured_post_fork_frames_leave_the_parent_runtime_bound_and_idle() {
             ExternalId::new("externalSessionId", CAPTURED_FORK.to_owned()).unwrap()
         ))
     );
-    // Late fork-thread frames stay absorbed and the parent can prompt again.
     let late = runtime
         .ingest(
             &frame(json!({"method":"thread/status/changed","params":{
@@ -312,7 +300,6 @@ fn a_fork_thread_is_released_with_the_captured_unsubscribe_and_never_the_parent(
         Some(NativeRpcReply::Released)
     );
     assert!(!runtime.native_rpc_pending());
-    // Released once; a second release has nothing to let go of.
     assert!(runtime.release_fork(&fork, true).is_err());
     running_turn(&mut runtime);
 }
@@ -362,8 +349,6 @@ fn a_release_refused_during_a_turn_is_written_once_the_runtime_is_idle() {
     let fork = ExternalId::new("externalSessionId", CAPTURED_FORK.to_owned()).unwrap();
     assert!(runtime.deferred_fork_release().unwrap().is_none());
     running_turn(&mut runtime);
-    // The refused fork's release meets a running Turn: it is deferred and
-    // the caller is answered at once.
     assert!(runtime.defer_fork_release(&fork, false));
     assert_eq!(
         runtime.take_native_rpc_reply(),
@@ -378,7 +363,6 @@ fn a_release_refused_during_a_turn_is_written_once_the_runtime_is_idle() {
             &Mapper,
         )
         .expect("turn completes");
-    // Idle again: the deferred release is written as background work.
     let egress = runtime.deferred_fork_release().unwrap().expect("deferred");
     let id = request_id(&egress);
     let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -398,7 +382,6 @@ fn a_release_refused_during_a_turn_is_written_once_the_runtime_is_idle() {
     assert_eq!(runtime.take_native_rpc_reply(), None);
     assert!(runtime.deferred_fork_release().unwrap().is_none());
     assert!(runtime.release_fork(&fork, true).is_err(), "released once");
-    // Codex then announces the deleted thread; it stays absorbed.
     for late in [
         json!({"method":"thread/status/changed","params":{"threadId":CAPTURED_FORK,"status":{"type":"notLoaded"}}}),
         json!({"method":"thread/deleted","params":{"threadId":CAPTURED_FORK}}),
@@ -497,7 +480,6 @@ fn a_foreground_release_that_meets_a_background_release_is_wanted_and_answered()
     runtime.take_native_rpc_reply();
     complete_turn(&mut runtime);
     let (background, _) = written_background(&mut runtime);
-    // The second fork's commit lands while the first release is in flight.
     assert!(
         runtime
             .release_fork(&forks[1], true)
@@ -534,8 +516,6 @@ fn a_refused_background_release_is_retried_a_bounded_number_of_times() {
         refuse(&mut runtime, id);
         assert_eq!(runtime.take_native_rpc_reply(), None);
     }
-    // Bounded: the thread is given up and no longer holds a ledger slot, so
-    // the full-ledger refusal (let its current turn finish) stays true.
     assert!(runtime.deferred_fork_release().unwrap().is_none());
     assert!(runtime.release_fork(&forks[0], false).is_err());
     assert!(

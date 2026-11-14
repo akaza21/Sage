@@ -8,7 +8,6 @@ use crate::acp::{
 use super::{OutgoingRequest, RequestError, RequestKind};
 
 impl OutgoingRequest {
-    /// `thread/compact/start` or an inline `review/start` on the bound thread.
     pub(crate) fn session_action(
         id: u64,
         thread_id: &RequiredText<512>,

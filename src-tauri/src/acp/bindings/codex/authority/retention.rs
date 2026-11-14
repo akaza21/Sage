@@ -31,7 +31,6 @@ pub(crate) enum RetentionError {
     Marker,
 }
 
-/// Classifies state without deleting it. Unknown and fresh paths are preserved.
 pub(crate) fn classify_codex_state_path(
     relative_path: &Path,
     marker: &ResidueMarker,

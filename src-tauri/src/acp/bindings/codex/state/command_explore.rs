@@ -1,10 +1,5 @@
-//! Codex `commandActions` explore classification.
-//!
-//! Codex parses each shell command into best-effort typed actions. A command
-//! made only of typed reads is a read; one made only of reads, searches and
-//! listings is exploration. Anything else (including `unknown`) stays an
-//! ordinary command. Labels are built from the typed fields alone, sanitized,
-//! and never from the raw command line.
+//! Labels are built from the typed fields alone, sanitized, and never from the
+//! raw command line.
 
 use serde_json::{Map, Value};
 

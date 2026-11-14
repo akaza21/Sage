@@ -1,5 +1,3 @@
-//! Source-owned Codex App Server adapter packet.
-//!
 //! This module deliberately has no launcher. A validated candidate remains
 //! unavailable until a separately admitted native artifact is supplied.
 

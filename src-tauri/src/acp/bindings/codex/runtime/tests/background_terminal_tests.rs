@@ -1,5 +1,3 @@
-//! `thread/backgroundTerminals/*` requests and their replies.
-
 use super::*;
 use crate::acp::{
     background_terminals::{BackgroundTerminal, TerminalAction},
@@ -125,7 +123,6 @@ fn stop_and_stop_all_use_the_pinned_methods() {
         wire["params"],
         json!({"threadId": "thread-1", "processId": "7"})
     );
-    // A terminal that already exited is not an error.
     assert_eq!(
         answer(&mut runtime, id, json!({"result": {"terminated": false}})),
         Some(NativeRpcReply::TerminalsStopped)

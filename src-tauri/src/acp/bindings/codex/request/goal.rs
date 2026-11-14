@@ -1,5 +1,3 @@
-//! The thread's native Goal: read, pause and clear.
-
 use serde_json::json;
 
 use crate::acp::contract::RequiredText;
