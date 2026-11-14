@@ -18,6 +18,10 @@ function sameIds(left: readonly string[], right: readonly string[]) {
   );
 }
 
+/**
+ * Use virtual offsets or IntersectionObserver for visibility; avoid per-turn
+ * layout reads on scroll. Measure scrollport geometry on mount and resize.
+ */
 export function useChatViewport(
   scrollport: HTMLElement | null,
   turns: readonly TurnProjection[],

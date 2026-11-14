@@ -59,8 +59,6 @@ function Pane({ items }: { items: AcpItem[] }) {
   );
 }
 
-// This file loads the approval chunk for the first time, so the card goes
-// through its real lazy load here.
 it("shows one request as exactly one card, with one item id, from first load to Allow", async () => {
   const info = vi.spyOn(console, "info").mockImplementation(() => undefined);
   const warn = vi.spyOn(console, "warn").mockImplementation(() => undefined);

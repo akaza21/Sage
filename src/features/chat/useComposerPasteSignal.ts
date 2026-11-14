@@ -23,7 +23,6 @@ function isNotice(input: HeldInput | undefined): boolean {
 }
 
 export function useComposerPasteSignal() {
-  // Bumped for each input held back; 0 while there has been none.
   const [seq, setSeq] = useState(0);
   const queue = useRef<HeldInput[]>([]);
   const hold = useCallback((input: HeldInput) => {
