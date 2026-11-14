@@ -56,8 +56,8 @@ impl KeyFile {
         Self { path, protector }
     }
 
-    /// `None` when there is no key file yet; a file the protector cannot
-    /// unwrap is `KeyLost`.
+    /// `None` when absent; damaged/wrong-account keys yield `KeyLost`; other OS failures remain
+    /// `Io`.
     pub(super) fn load(&self) -> VaultResult<Option<LoadedKey>> {
         let Some(file) = self.open()? else {
             return Ok(None);

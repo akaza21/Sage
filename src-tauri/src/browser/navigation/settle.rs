@@ -36,7 +36,8 @@ impl NavigationEvidence {
 }
 
 impl<T> BrowserTabs<T> {
-    /// A navigation that supersedes one still loading keeps the first restore
+    /// Call before changing `loading` or clearing page chrome, so an abandoned navigation can
+    /// restore it. A navigation that supersedes one still loading keeps the first restore
     /// record, unless the superseded one already committed: then none is kept.
     pub(in crate::browser) fn begin_evidence(&mut self, label: &str, id: u64) {
         if let Some(tab) = self.entries.get_mut(label) {

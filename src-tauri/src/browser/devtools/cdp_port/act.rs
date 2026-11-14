@@ -111,8 +111,8 @@ pub(super) fn perform<T: CdpTransport>(
     }
 }
 
-/// Marking is best effort and never fails or delays the action past
-/// `highlight::LEAD`.
+/// Marking is best effort: failure still runs the action; a successful mark adds `LEAD` for
+/// visibility.
 fn marked<T: CdpTransport, R>(
     port: &mut CdpPort<T>,
     stamp: DocumentStamp,
