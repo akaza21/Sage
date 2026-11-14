@@ -65,6 +65,8 @@ impl ServingPreview {
         Self { root, target, port }
     }
 
+    /// Cleanup joins the output drainers before it returns, so a stopped child
+    /// has already closed its listener.
     pub(crate) fn is_serving(&self) -> bool {
         let owned = lifecycle::test_owned_child_count() == 1;
         let listening = TcpStream::connect(("127.0.0.1", self.port)).is_ok();

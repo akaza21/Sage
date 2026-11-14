@@ -165,6 +165,8 @@ struct WatchCompletion {
     cancelled: bool,
 }
 
+/// `Ok(true)` keeps watching, `Ok(false)` means the watch was cancelled.
+///
 /// When more changes arrive than the buffer holds, Windows drops them and
 /// completes the read with 0 bytes, or fails it with `ERROR_NOTIFY_ENUM_DIR`.
 /// Either way the watched file may have changed, so this delivers `Changed`

@@ -18,6 +18,7 @@ use crate::state::AppState;
 
 const MAX_POINTER_BYTES: u64 = 1024;
 const MAX_REMOTES: usize = 8;
+/// A linked worktree has its own.
 const CHECKOUT_FILES: &[&str] = &[
     "HEAD",
     "index",

@@ -24,6 +24,7 @@ use std::{
 
 const IDENTIFIER_PREFIX: &str = "sage-turn-";
 
+/// `None` when the process cannot post notices, as outside the app bundle.
 static CENTER: OnceLock<Option<Center>> = OnceLock::new();
 
 /// Asks for alert permission up front so the first notice is not lost to the

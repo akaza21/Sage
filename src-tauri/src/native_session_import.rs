@@ -177,6 +177,7 @@ pub async fn import_native_session(
     Ok(committed_transition(&state, &mut epoch).await)
 }
 
+/// Oldest Turn first.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportedHistoryView {

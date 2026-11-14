@@ -85,6 +85,8 @@ impl SettingsStore {
         write(&self.download_lock(), Some(text))
     }
 
+    /// Saves only while the record is still at `revision`, read and written under
+    /// one lock.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub fn set_browser_download_folder_if(&self, revision: i64, folder: &Path) -> AppResult<bool> {
         let text = admitted_text(folder)?;

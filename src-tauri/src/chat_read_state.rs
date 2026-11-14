@@ -26,6 +26,8 @@ pub struct ChatAttention {
 #[serde(tag = "reason", rename_all = "camelCase")]
 pub enum AttentionReason {
     AwaitingApproval,
+    /// Finished after the read mark, or with none; reading marks through
+    /// `finished_at`.
     #[serde(rename_all = "camelCase")]
     Unread {
         finished_at: i64,
@@ -39,7 +41,9 @@ pub struct ChatAttentionList {
     pub truncated: bool,
 }
 
-/// The read marks retain exactly these chats (see `mark_read`), so a
+/// Rail chats whose latest Turn waits on an approval or has finished,
+/// approvals first, then newest finish first. The read marks retain exactly
+/// these chats (see `mark_read`), so a
 /// chat the user has read keeps its mark while it is listed here.
 /// Only rail chats are looked up, so at most `MAX_RAIL_CHATS` rows reach the sort.
 fn attention_candidates() -> String {

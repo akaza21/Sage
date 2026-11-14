@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::SettingsStore;
 use crate::chat_lifecycle::validate_chat_identifier;
 
-/// The rail's chats are also the chats the cross-project attention query
+/// One mark per chat the rail can show; these are also the chats the cross-project attention query
 /// considers (chat_read_state.rs). Eviction drops marks of chats the rail no
 /// longer shows first, so a chat it shows keeps its mark.
 pub const MAX_CHAT_READ_MARKS: usize = crate::project_registry::MAX_RAIL_CHATS;
@@ -14,7 +14,7 @@ pub const MAX_CHAT_READ_MARKS: usize = crate::project_registry::MAX_RAIL_CHATS;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChatReadMark {
     pub chat_id: String,
-    /// The seen chat update time, in Unix milliseconds.
+    /// Seen turn-completion watermark (Unix ms); a later finish is Unread again.
     pub read_through: i64,
 }
 
@@ -76,8 +76,10 @@ impl SettingsStore {
     }
 
     /// A mark never moves back, so a stale write cannot make a seen update Unread
-    /// again. Since `retained` never exceeds the bound, a retained mark is only
-    /// evicted when every other mark is retained too.
+    /// again. Past the bound, the least recently read marks outside `retained`
+    /// go first and the mark just written is kept; since `retained` never
+    /// exceeds the bound, a retained mark is only evicted when every other mark
+    /// is retained too.
     pub fn mark_chat_read(
         &self,
         mark: &ChatReadMark,

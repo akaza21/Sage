@@ -266,7 +266,8 @@ mod tests {
         console.parse().unwrap()
     }
 
-    /// Not stdout, which a console-less process may not have wired up.
+    /// The detached re-run reports here rather than to stdout, which a
+    /// console-less process may not have wired up.
     fn report_path(fixture: &Path) -> PathBuf {
         fixture.with_file_name("report.txt")
     }

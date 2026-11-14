@@ -1,5 +1,6 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
+/// Stored in `chats.title_source`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChatTitleSource {
     Default,
@@ -21,6 +22,8 @@ impl ChatTitleSource {
     }
 }
 
+/// Leaves user and fork titles alone; a title empty once sanitized is ignored,
+/// so a harness can never blank a chat.
 pub(crate) fn apply_harness_title_in(
     transaction: &Transaction<'_>,
     project_id: &str,
@@ -61,6 +64,8 @@ pub(crate) fn placeholder_chat_title(chat_id: &str) -> &'static str {
     }
 }
 
+/// Only a harness-titled chat changes, back to its first-prompt title or the
+/// placeholder.
 pub(crate) fn clear_harness_title_in(
     transaction: &Transaction<'_>,
     project_id: &str,

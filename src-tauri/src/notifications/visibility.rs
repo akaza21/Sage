@@ -19,6 +19,7 @@ pub struct VisibilityUpdate {
 }
 
 impl VisibilityUpdate {
+    /// None while the document is hidden.
     pub(super) fn shown_chats(&self) -> Vec<crate::acp::contract::SageChatId> {
         self.chat_ids
             .iter()

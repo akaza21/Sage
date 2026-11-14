@@ -32,6 +32,7 @@ pub struct CustomAcpAgent {
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CustomAcpAgentDraft {
+    /// Absent for a new agent.
     pub id: Option<String>,
     pub name: String,
     pub executable: String,
@@ -39,6 +40,7 @@ pub struct CustomAcpAgentDraft {
     pub env: Vec<String>,
 }
 
+/// `custom-acp-<n>`, `n` in `1..=u32::MAX` without sign or leading zeros.
 pub fn custom_acp_number(id: &str) -> Option<u32> {
     let digits = id.strip_prefix(ID_PREFIX)?;
     if digits.is_empty() || digits.starts_with('0') || !digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -251,6 +253,7 @@ impl SettingsStore {
     }
 }
 
+/// Refuses past `MAX_CUSTOM_ACP_AGENTS` live agents.
 fn next_number(connection: &Connection) -> AppResult<u32> {
     let live: i64 =
         connection.query_row("SELECT count(*) FROM custom_acp_agent_entries", [], |row| {

@@ -16,6 +16,7 @@ impl Database {
     }
 }
 
+/// Archived means attached to no tab of any Project.
 pub(crate) fn is_archived_chat(
     connection: &Connection,
     project: &str,
@@ -54,6 +55,7 @@ pub(super) fn has_queued_prompts(
     )?)
 }
 
+/// The delete command releases an idle runtime before this runs.
 fn admit_archived(connection: &Connection, project: &str, chat: &str) -> AppResult<()> {
     let state = connection
         .query_row(

@@ -24,7 +24,8 @@ impl Event {
 /// The journal creates receipts atomically with the exact event, so delayed
 /// projection publication cannot miss a completion followed by another Turn or
 /// an approval resolution. Claims precede dispatch even while the chat is
-/// visible, so refreshes never replay them.
+/// visible, so refreshes never replay them. An approval is announced only
+/// while its request is pending.
 pub(super) fn claim(
     connection: &Connection,
     notice: &ProjectionChangedV1,

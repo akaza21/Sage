@@ -25,6 +25,8 @@ use crate::{
 /// Chats than this, so a free number always exists.
 const MAX_FORK_NUMBER: u32 = 10_000;
 
+/// `<parent> (n)` with the smallest free `n >= 2`, the parent shortened to fit
+/// the title byte limit.
 pub(crate) fn fork_title<'a>(
     parent_title: &str,
     taken: impl Iterator<Item = &'a str> + Clone,
@@ -46,6 +48,8 @@ pub(crate) fn fork_title<'a>(
 
 #[derive(Debug)]
 pub(crate) enum ForkChatError {
+    /// Rolled back before the commit: nothing durable names the native fork, so
+    /// the caller deletes it.
     Refused(AppError),
     /// `COMMIT` itself failed. SQLite may still have made the Chat durable
     /// (the store treats this as CommitUnknown), so the fork is kept.
@@ -301,6 +305,7 @@ pub async fn fork_chat(
 enum ForkCommit {
     Committed,
     Refused(String),
+    /// A failed `COMMIT` or a lost join: the Chat may be durable.
     Unknown,
 }
 

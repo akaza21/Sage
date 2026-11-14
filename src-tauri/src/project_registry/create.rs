@@ -15,6 +15,7 @@ use super::{
 };
 use crate::{domain::ProjectSummary, persistence::Database};
 
+/// In characters.
 pub const MAX_PROJECT_NAME_CHARS: usize = 64;
 
 pub fn project_name(name: &str) -> AppResult<&str> {

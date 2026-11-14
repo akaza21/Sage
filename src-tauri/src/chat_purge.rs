@@ -14,6 +14,8 @@ pub(crate) const HISTORY_GUARDS: [&str; 9] = [
     "deny_server_request_delete",
     "deny_turn_delete",
 ];
+/// Each selector leads with an indexed column: (project_id, chat_id) or
+/// session_id.
 const BY_OWNER: &str = "project_id=?1 AND chat_id=?2";
 const BY_SESSION: &str = "session_id IN (SELECT id FROM agent_sessions WHERE project_id=?1 AND chat_id=?2) AND project_id=?1 AND chat_id=?2";
 const BY_CHAT_SESSION: &str =
@@ -53,6 +55,8 @@ struct SessionCharge {
 }
 
 impl Database {
+    /// `admit` runs before anything changes and again inside the transaction, so
+    /// a Chat that stopped qualifying is never removed.
     pub(crate) fn purge_chat(
         &self,
         project: &str,

@@ -19,6 +19,7 @@ const MAX_TARGETS: usize = 256;
 const MAX_REPORTS: usize = 64;
 pub const DOWNLOAD: &str = "/download.bin";
 const DOWNLOAD_BODY: &[u8] = b"sage native lane download\n";
+/// Held back long enough to press Stop.
 pub const SLOW: &str = "/slow.html";
 const SLOW_DELAY: Duration = Duration::from_secs(8);
 

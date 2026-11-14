@@ -22,6 +22,7 @@ impl Default for DiscoveryState {
 }
 
 impl DiscoveryState {
+    /// A rediscovery keeps the last full result until it finishes.
     pub(super) fn apply_presence(&self, discovered: Vec<InstalledHarness>) {
         let mut snapshot = self.0.write().expect("harness discovery lock poisoned");
         if !matches!(*snapshot, DiscoverySnapshot::Discovered(_)) {

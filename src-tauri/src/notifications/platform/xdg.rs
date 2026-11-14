@@ -1,5 +1,6 @@
 //! Each notice is sent from its own private connection, which then listens for
-//! that notice's click or close. At most `MAX_IN_FLIGHT` notices keep a click
+//! that notice's click or close; the dispatch slot is released once it is
+//! shown. At most `MAX_IN_FLIGHT` notices keep a click
 //! route, each for `CLICK_WINDOW`: the expiry sent to the server is only a
 //! hint, and servers such as GNOME Shell may never report a close, so no route
 //! can hold a thread forever. A notice whose route ends is withdrawn, so no
@@ -66,6 +67,7 @@ pub(in crate::notifications) fn dispatch(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Response {
+    /// With the activation token the server sent for the click.
     Clicked(Option<String>),
     Closed,
 }

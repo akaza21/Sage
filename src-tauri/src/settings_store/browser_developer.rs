@@ -7,6 +7,7 @@ use sage_core::error::AppResult;
 use super::SettingsStore;
 use crate::acp::browser::developer::{CdpAuditEntry, CdpAuditOutcome};
 
+/// The newest rows the audit log keeps.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub const CDP_AUDIT_ROWS: i64 = 5_000;
 #[cfg_attr(not(windows), allow(dead_code))]
@@ -38,6 +39,8 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     // The audit table's schema version, kept in its own row: the settings
     // database has no shared `user_version` scheme, and claiming the whole
     // file's pragma for one table would collide with other settings migrations.
+    // Version 2 added the `sent` outcome; version 3 adds grant events and omits
+    // untrusted text.
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS browser_cdp_audit_schema (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -56,6 +59,7 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
         [],
         |row| row.get(0),
     )?;
+    // A table with no recorded version predates versioning: version 1.
     let version = recorded.unwrap_or(if table_exists { 1 } else { 0 });
     if version == 1 || version == 2 {
         rebuild_audit(connection)?;

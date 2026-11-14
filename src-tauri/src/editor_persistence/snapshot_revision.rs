@@ -3,6 +3,9 @@ use sage_core::error::{AppError, AppResult};
 
 use crate::domain::{BufferSnapshotAck, BufferSnapshotRequest};
 
+/// An older revision is not applied, the same revision with the same text
+/// already is, and the same revision with other text is an error. A `rebase`
+/// replaces base and revision, so neither guard applies to it.
 pub(super) fn settled_by_stored(
     transaction: &rusqlite::Transaction<'_>,
     project_id: &str,

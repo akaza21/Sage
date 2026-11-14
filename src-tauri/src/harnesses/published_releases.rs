@@ -21,6 +21,7 @@ struct Checked {
 pub(super) struct PublishedReleases(Arc<RwLock<Checked>>);
 
 impl PublishedReleases {
+    /// False while a check started within the interval already covers them.
     pub(super) fn begin_check(&self, harness_ids: &[&'static str]) -> bool {
         let mut checked = self.0.write().unwrap_or_else(|error| error.into_inner());
         let recent = checked
@@ -36,6 +37,8 @@ impl PublishedReleases {
         true
     }
 
+    /// `None` (failed) keeps earlier results and lets the next refresh retry; a
+    /// harness missing from `found` keeps its earlier result and is retried too.
     pub(super) fn finish_check(&self, found: Option<Vec<PublishedRelease>>) {
         let mut checked = self.0.write().unwrap_or_else(|error| error.into_inner());
         let Some(found) = found else {

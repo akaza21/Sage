@@ -17,6 +17,7 @@ use crate::{
     state::AppState,
 };
 
+/// The oldest pick is dropped first.
 pub const MAX_PENDING_SOURCE_PICKS: usize = 32;
 
 #[derive(Default)]
@@ -38,6 +39,7 @@ impl ProjectSourcePicks {
         token
     }
 
+    /// Any unknown token fails the lot.
     pub fn resolve(&self, tokens: &[String]) -> AppResult<Vec<PathBuf>> {
         let picks = self
             .picks

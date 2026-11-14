@@ -1,3 +1,6 @@
+//! A validated executable whose version cannot be read stays
+//! present-but-unreadable rather than becoming absent or acquiring a guess.
+
 use std::{
     borrow::Cow,
     collections::{HashMap, HashSet},
@@ -42,12 +45,12 @@ pub(crate) use updates::{PublishedRelease, published_releases, update_sources};
 use validation::authentic_harness_file as validate_harness_file;
 use version_probe::run_version_command;
 
+/// In the path's platform-native bytes.
 pub(crate) const PATH_BYTES_MAX: usize = 32 * 1024;
 pub(super) const KNOWN_INSTALL_ROOT_CAP: usize = 4;
 pub(super) const VERSION_OUTPUT_BYTES_MAX: usize = 16 * 1024;
 /// Long enough for a first run after an update, when the OS scans the new
-/// binary or Node compiles its cache; a probe that answers sooner returns
-/// sooner.
+/// binary or Node compiles its cache.
 pub(super) const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const VERSION_REAP_TIMEOUT: Duration = Duration::from_millis(250);
 pub(super) const VERSION_POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -292,6 +295,8 @@ fn present_candidate(
     })
 }
 
+/// The legacy installed-harness shape, kept here so it shares candidate
+/// validation and the bounded version process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InstalledHarness {
     pub(crate) id: &'static str,

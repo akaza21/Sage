@@ -100,7 +100,8 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
     );
 }
 
-/// In debug builds Tauri's devtools hotkey init script runs `JSON.parse` at
+/// Page hook hits after each step; every step after load must add none. In
+/// debug builds Tauri's devtools hotkey init script runs `JSON.parse` at
 /// `DOMContentLoaded`, so hits before the first mark (load) may come from it.
 #[derive(Default)]
 struct Timeline(Vec<(String, Result<Value, String>)>);
@@ -120,9 +121,10 @@ impl Timeline {
             .all(|(_, count)| count.as_ref() == Ok(baseline))
     }
 
-    /// Tauri's devtools hotkey init script runs once per document and exists only
-    /// under `debug_assertions` or tauri's `devtools` feature (`tauri`
-    /// `webview/plugin.rs`), which Sage's release builds do not enable.
+    /// The load baseline is zero, or in a debug build exactly that one hit; any
+    /// other load-time hit fails. The init script runs once per document and
+    /// exists only under `debug_assertions` or tauri's `devtools` feature
+    /// (`tauri` `webview/plugin.rs`), which Sage's release builds do not enable.
     fn load_hits_are_tauri_devtools_only(&self, stacks: &Result<Value, String>) -> bool {
         let Some((_, Ok(baseline))) = self.0.first() else {
             return false;

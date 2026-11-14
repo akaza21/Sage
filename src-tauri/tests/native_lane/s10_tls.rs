@@ -125,7 +125,7 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
     );
 }
 
-/// On the first attempt WebView2 must also have connected, so the refusal was
+/// On the first attempt WebView2 must have connected, so the refusal was
 /// observed rather than assumed; later attempts may reuse Chromium's verdict.
 fn refused(
     lane: &Lane,

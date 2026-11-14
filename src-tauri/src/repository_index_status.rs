@@ -113,6 +113,7 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
 
 struct StagedChanges {
     changes: Vec<FileChange>,
+    /// More than `MAX_CHANGES` exist.
     overflowed: bool,
 }
 

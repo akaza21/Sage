@@ -23,6 +23,8 @@ fn is_line_break(value: char) -> bool {
     )
 }
 
+/// Whitespace controls become one space and other controls and hidden format
+/// characters are dropped; `None` when nothing printable is left.
 pub(crate) fn title_line(text: &str, max_bytes: usize) -> Option<String> {
     let mut visible = String::new();
     for value in text.split(is_line_break).next()?.chars() {

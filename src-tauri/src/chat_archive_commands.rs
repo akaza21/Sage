@@ -16,6 +16,8 @@ use crate::{
     state::AppState,
 };
 
+/// Exit waits for these, within its shutdown budget, before shutting the lanes
+/// down.
 #[derive(Debug, Default)]
 pub struct ArchiveReleases {
     running: Mutex<usize>,
@@ -33,6 +35,7 @@ impl ArchiveReleases {
         self.settled.notify_all();
     }
 
+    /// Whether all settled before `deadline`.
     pub(crate) fn wait_settled(&self, deadline: Instant) -> bool {
         let mut running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
         while *running > 0 {
@@ -125,6 +128,7 @@ async fn release_until(
         .await
 }
 
+/// Delete releases the runtime again before it deletes the Chat.
 pub(crate) async fn release_archived_runtime(state: &AppState, project: &str, chat: &str) {
     let (Ok(project), Ok(chat)) = (
         SageProjectId::parse(project.to_owned()),
@@ -242,7 +246,8 @@ pub(crate) fn forget_read_marks_of_deleted_chats(
     }
 }
 
-/// The caller releases the runtime after the answer (`release_archived_runtime`).
+/// The caller releases the runtime after the answer (`release_archived_runtime`),
+/// so archive never waits on a harness exiting.
 pub(crate) async fn archive_chat_inner(
     state: &AppState,
     request: ChatLifecycleRequest,

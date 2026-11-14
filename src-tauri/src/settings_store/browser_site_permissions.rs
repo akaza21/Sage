@@ -7,6 +7,7 @@ use sage_core::error::{AppError, AppResult};
 use super::SettingsStore;
 use crate::browser::site_permissions::{Decision, PermissionKind};
 
+/// Saved answers across every site.
 pub const MAX_SITE_PERMISSIONS: usize = 256;
 pub const MAX_SITE_ORIGIN_BYTES: usize = 512;
 
@@ -90,6 +91,8 @@ impl SettingsStore {
         Ok(saved)
     }
 
+    /// A new row past [`MAX_SITE_PERMISSIONS`] is refused; replacing a row always
+    /// works.
     pub fn put_browser_site_permission(
         &self,
         origin: &str,
@@ -133,6 +136,7 @@ impl SettingsStore {
         Ok(())
     }
 
+    /// Reports whether a row was deleted.
     pub fn delete_browser_site_permission(
         &self,
         origin: &str,

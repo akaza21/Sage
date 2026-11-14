@@ -12,6 +12,7 @@ use crate::launch_profile::{LaunchProfile, PROFILE_MARKER_BYTES, PROFILE_MARKER_
 #[derive(Debug)]
 pub(crate) enum Refusal {
     ProfileInUse,
+    /// The text is the error's detail.
     NewerProfile(String),
 }
 
@@ -26,6 +27,8 @@ const ALREADY_OPEN: &str = "Sage is already open.";
 const NEWER_PROFILE: &str = "This Sage data was saved by a newer version of Sage. Install the \
      latest Sage to open it. Your data has not been changed.";
 
+/// `hand_off` is tried only for the everyday profile, where a second launch
+/// means "show me Sage".
 pub(crate) fn ending(
     refusal: &Refusal,
     profile: &LaunchProfile,

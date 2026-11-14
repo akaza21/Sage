@@ -32,6 +32,7 @@ impl HarnessCatalog {
         }
     }
 
+    /// `None` when the catalog does not list the harness.
     pub(crate) fn install_state_of(&self, harness_id: &str) -> Option<HarnessInstallState> {
         self.install_state_for(harness_id, SIMULATOR_IN_CATALOG)
     }

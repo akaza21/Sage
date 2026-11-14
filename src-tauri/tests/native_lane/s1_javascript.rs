@@ -51,6 +51,8 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
         )
         .and_then(|text| serde_json::from_str::<Value>(text.as_str().unwrap_or("null")).map_err(|error| error.to_string()))
     };
+    // Exactly one child, a Sage tab; anything else fails every check below
+    // rather than skipping it.
     let [child] = children.as_slice() else {
         let why = format!(
             "one window.open made {} children {children:?} (want exactly 1); window.open -> {opened:?}; opener __jsRan {in_opener:?}; new linked popups {linked:?}",
@@ -96,6 +98,8 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
     let probes = ipc(lane, site, child);
     navigations(lane, site, report, child);
     cap(lane, report, child);
+    // Backstop for unanswered paths: long after the probes, the command still
+    // has not run and the tab list is unchanged.
     let after = lane.tabs();
     report.check(
         CHECKS[1],

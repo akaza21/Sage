@@ -272,6 +272,8 @@ pub fn discard_document(
     )
 }
 
+/// A File that is gone is not reloaded as empty: the buffer stays and the
+/// document comes back deleted.
 pub fn revert_document(
     database: &Database,
     workspace: &Workspace,

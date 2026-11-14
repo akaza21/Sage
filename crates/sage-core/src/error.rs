@@ -4,9 +4,12 @@ pub enum GitContainmentState {
     PotentiallyRunning,
 }
 
+/// Refused because Git would reach repository data other than the opened
+/// folder's own `.git` directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepositoryLayout {
     NestedRoot,
+    /// A linked worktree, a `gitdir:` file or a `commondir` pointer.
     ExternalGitDir,
 }
 
@@ -52,7 +55,8 @@ pub enum AppError {
     #[error("Git operation failed: {0}")]
     Git(String),
 
-    /// The message is safe to show to the user.
+    /// Refused because the repository's own config names a program Git would
+    /// run. The message is safe to show to the user.
     #[error("{0}")]
     UnsafeRepositoryConfig(String),
 

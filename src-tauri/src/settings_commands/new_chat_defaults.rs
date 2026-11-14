@@ -1,7 +1,7 @@
 //! A stored value that stops working later is reported and kept rather than
-//! rewritten. Real harnesses offer models, and every harness offers efforts,
-//! only through a live session's configuration, so those values report
-//! `unknown` here and a new chat checks them against its session.
+//! rewritten. Models are checked against the catalog's known models; efforts
+//! exist only in a live session, so they report `unknown` and a new chat
+//! checks them against its session.
 
 use sage_core::error::{AppError, AppResult};
 use serde::Serialize;
@@ -21,6 +21,7 @@ pub enum DefaultHarnessStatus {
     Detecting,
     Unavailable,
     NotInstalled,
+    /// No longer in Sage's catalog.
     Unknown,
 }
 
@@ -40,6 +41,8 @@ impl From<HarnessInstallState> for DefaultHarnessStatus {
 pub enum DefaultOptionStatus {
     Available,
     Unavailable,
+    /// Cannot be judged: the harness is unavailable or lists no models, or the
+    /// value is an effort.
     Unknown,
 }
 
@@ -47,6 +50,7 @@ pub enum DefaultOptionStatus {
 #[serde(rename_all = "camelCase")]
 pub struct NewChatDefaultsState {
     pub defaults: NewChatDefaults,
+    /// Each status is `None` when that value is not stored.
     pub harness_status: Option<DefaultHarnessStatus>,
     pub model_status: Option<DefaultOptionStatus>,
     pub effort_status: Option<DefaultOptionStatus>,
@@ -102,6 +106,7 @@ pub(crate) fn read_new_chat_defaults(
     Ok(state_of(catalog, settings.new_chat_defaults()?))
 }
 
+/// A harness still being detected is kept and reported as detecting.
 pub(crate) fn save_new_chat_defaults(
     settings: &SettingsStore,
     catalog: &HarnessCatalog,

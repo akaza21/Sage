@@ -19,8 +19,9 @@ use crate::{
     state::AppState,
 };
 
-/// `revision` orders this snapshot against replies and events even when the
-/// availability probe is slow.
+/// `available` is false when the folder is gone or not writable, so the next
+/// download asks again. `revision` orders this snapshot against replies and
+/// events even when the availability probe is slow.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DownloadFolderView {
@@ -81,7 +82,8 @@ async fn remember_with_probe(
 }
 
 /// Skipped when the stored folder changed since the download read it at
-/// `revision` (Settings chose or reset one while the dialog was open).
+/// `revision` (Settings chose or reset one while the dialog was open). Returns
+/// whether it saved.
 // Called by the WebView2 download handler, which only Windows builds.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) async fn remember_first_choice(

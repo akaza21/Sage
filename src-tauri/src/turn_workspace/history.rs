@@ -36,6 +36,8 @@ pub(super) async fn read_head(root: &Path) -> Option<HeadMark> {
     }
 }
 
+/// `None` when history cannot be read; the bool is true when the bounded set
+/// was truncated.
 pub(super) async fn committed_between(
     root: &Path,
     before: &HeadMark,

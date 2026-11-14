@@ -7,7 +7,8 @@ use crate::acp::migration;
 
 use super::store::{full_path, validate_root};
 
-/// Safe once sent: the transcript keeps its own copy. Queued images are the queue's job.
+/// The transcript keeps its own copy, and a later send can no longer reuse the
+/// artifact. Queued images stay with the queue, which retires them itself.
 pub(crate) fn retire_sent_images(
     connection: &Connection,
     root: &Path,

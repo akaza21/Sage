@@ -88,6 +88,7 @@ impl SettingsStore {
         Ok(stored.unwrap_or_default())
     }
 
+    /// A record without a harness clears it.
     pub fn set_new_chat_defaults(&self, value: NewChatDefaults) -> AppResult<NewChatDefaults> {
         admitted_new_chat_defaults(&value)?;
         let connection = self

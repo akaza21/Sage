@@ -21,7 +21,8 @@ const MATCHES_RECORD: &str = "project_id = ?1 AND root_id = ?2 AND relative_path
      AND pending_temp_path = ?4 AND buffer_fingerprint = ?5";
 
 impl Database {
-    /// Interrupted swap: recovery keeps the replaced text as unsaved edits.
+    /// Recovery deletes the temp file, then the record if the File on disk
+    /// matches its fingerprint; otherwise the replaced text stays unsaved.
     pub fn record_replace_in_progress(
         &self,
         project_id: &str,

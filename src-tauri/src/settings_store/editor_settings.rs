@@ -63,6 +63,7 @@ pub const MAX_GLOBS: usize = 50;
 #[derive(Debug, Clone, Copy)]
 pub enum SettingKind {
     Bool,
+    /// An empty `choices` allows any value in `min..=max`.
     Int {
         min: i64,
         max: i64,
@@ -71,6 +72,7 @@ pub enum SettingKind {
     Choice {
         choices: &'static [&'static str],
     },
+    /// Patterns in Sage's path glob dialect (`workspace::path_glob`).
     Globs,
 }
 
@@ -183,6 +185,7 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
     },
 ];
 
+/// Every registry key is present.
 pub type EditorSettings = BTreeMap<&'static str, EditorValue>;
 
 fn spec(key: &str) -> Option<&'static SettingSpec> {
@@ -196,7 +199,8 @@ fn defaults() -> EditorSettings {
         .collect()
 }
 
-/// Clamps, then snaps to the nearest choice (ties go low); `None` means wrong type.
+/// Integers are clamped, then snapped to the nearest choice (ties go low);
+/// `None` means an inadmissible value.
 fn admit(spec: &SettingSpec, value: &Value) -> Option<EditorValue> {
     match spec.kind {
         SettingKind::Bool => value.as_bool().map(EditorValue::Bool),
@@ -362,7 +366,8 @@ impl SettingsStore {
         )
     }
 
-    /// Ignores unknown keys, clamps numbers; one wrong type rejects the whole change.
+    /// Ignores unknown keys and clamps integers; one inadmissible value rejects
+    /// the whole change.
     pub fn set_editor_settings(
         &self,
         changes: &BTreeMap<String, Value>,

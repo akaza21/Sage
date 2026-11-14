@@ -15,10 +15,12 @@ pub(super) struct Directory {
     path: std::path::PathBuf,
 }
 
+/// Read without following a final link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct EntryStatus {
     pub(super) regular_file: bool,
     pub(super) len: u64,
+    /// Since the Unix epoch.
     pub(super) modified_nanos: Option<u64>,
 }
 
@@ -70,7 +72,8 @@ impl Directory {
             .map(|identity| identity.stable_bytes())
     }
 
-    /// `Some(None)`: confirmed absent. `None`: the status couldn't be read safely.
+    /// `Some(None)` when it does not exist; `None` when it cannot be read from
+    /// the directory that was opened.
     pub(super) fn entry_status(&self, relative: &Path) -> Option<Option<EntryStatus>> {
         let parent_path = relative.parent()?;
         let parent = match self.child_result(parent_path) {
@@ -122,6 +125,7 @@ mod platform {
         open_directory(parent.as_raw_fd(), name)
     }
 
+    /// Refuses a final symbolic link.
     fn open_directory(base: libc::c_int, name: &OsStr) -> std::io::Result<File> {
         let name = CString::new(name.as_bytes())?;
         // SAFETY: openat reads a NUL-terminated name and returns a new descriptor.

@@ -9,6 +9,7 @@ use super::SettingsStore;
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserPreferences {
+    /// Path, query and fragment in the address bar, not only the host.
     pub show_full_url: bool,
 }
 

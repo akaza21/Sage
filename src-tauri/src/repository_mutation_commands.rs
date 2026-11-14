@@ -169,13 +169,13 @@ mod tests {
         );
     }
 
-    /// The clean filter pauses `git add` after `index.lock`, before it writes the index.
-    /// The filter is required, so a missing shell fails the test instead of
-    /// quietly skipping the wait. It leaves the repository folder, so a
-    /// leftover filter outliving a killed add doesn't hold it as its working
-    /// folder.
-    /// A slow clean filter keeps `git add` running past the deadline. Sage
-    /// refuses repository filters, so the fixture root is trusted explicitly.
+    /// A slow clean filter holds `git add new.txt` after it takes `index.lock`
+    /// and before it writes the index, so a zero-timeout kill never stages the
+    /// File, however fast the machine. Sage refuses repository filters, so the
+    /// fixture root is trusted explicitly. The filter is required, so a missing
+    /// shell fails the test instead of quietly skipping the wait. It leaves the
+    /// repository folder, so a leftover filter outliving a killed add doesn't
+    /// hold it as its working folder.
     fn hold_staging_of_new_file(root: &Path) {
         crate::git_process::trust_repository_config_for_test(root);
         git(

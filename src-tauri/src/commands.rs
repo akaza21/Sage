@@ -180,7 +180,6 @@ mod model_lookup_tests {
                 .unwrap()
                 .recv_timeout(Duration::from_secs(15))
                 .unwrap();
-            // Delay the real lookup, without substituting its output.
             list_harness_models_inner(&self.harnesses, harness_id)
         }
     }

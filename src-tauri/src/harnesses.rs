@@ -123,6 +123,7 @@ impl HarnessCatalog {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
+    /// False while a recent check covers them.
     pub(crate) fn begin_update_check(&self, harness_ids: &[&'static str]) -> bool {
         self.published.begin_check(harness_ids)
     }

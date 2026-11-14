@@ -65,6 +65,7 @@ pub(crate) fn listen(_app: &tauri::AppHandle, _durable_dir: &Path) -> io::Result
     Ok(())
 }
 
+/// Fails when no owner is listening.
 #[cfg(windows)]
 pub(crate) fn ring(durable_dir: &Path) -> io::Result<()> {
     named_event::ring(&doorbell_name(durable_dir)?)

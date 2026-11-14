@@ -15,14 +15,23 @@ use crate::{
     workspace::Workspace,
 };
 
+/// One `ls-files --stage` record: mode, id, stage and a capped path.
 const MAX_INDEX_RECORD_BYTES: usize = 8 * 1024;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum FileGitBase {
+    /// Untracked, ignored, conflicted, not a text blob, over the editable cap, or
+    /// the root is not a repository top level.
     Unavailable,
-    Unchanged { oid: String },
-    Ready { oid: String, content: String },
+    /// The staged blob is still `oid`, which the caller already holds.
+    Unchanged {
+        oid: String,
+    },
+    Ready {
+        oid: String,
+        content: String,
+    },
 }
 
 #[tauri::command]
@@ -88,6 +97,7 @@ pub(crate) async fn file_git_base(
     )
 }
 
+/// The one stage-0 regular-file entry; a conflicted path has stages 1-3.
 fn staged_text_blob(output: &[u8], path: &str) -> Option<String> {
     let mut records = output.split(|byte| *byte == 0).filter(|r| !r.is_empty());
     let record = std::str::from_utf8(records.next()?).ok()?;

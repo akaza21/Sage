@@ -60,7 +60,7 @@ pub(crate) fn update_sources(installed: &[InstalledHarness]) -> Vec<UpdateSource
         .collect()
 }
 
-/// `None` when every lookup failed (offline, no npm), so the caller can try
+/// `None` when no lookup could run or every lookup failed (offline, no npm), so the caller can try
 /// again rather than wait out the check interval.
 pub(crate) fn published_releases(sources: &[UpdateSource]) -> Option<Vec<PublishedRelease>> {
     let (node, npm_cli) = npm_cli()?;
@@ -83,6 +83,7 @@ fn npm_package(harness_id: &str) -> Option<&'static str> {
         .find_map(|(id, package)| (*id == harness_id).then_some(*package))
 }
 
+/// `None` when Sage cannot attribute the install (Homebrew, a manual copy).
 fn update_command(harness_id: &str, package: &str, executable: &Path) -> Option<String> {
     if npm_owned(executable, package) {
         Some(format!("npm install -g {package}@latest"))
@@ -136,6 +137,7 @@ fn npm_cli() -> Option<(PathBuf, PathBuf)> {
         })
 }
 
+/// npm's `latest` tag, only if it is a final release.
 fn latest_version(node: &Path, npm_cli: &Path, package: &str) -> Option<String> {
     let args = [
         npm_cli.as_os_str(),
@@ -144,6 +146,7 @@ fn latest_version(node: &Path, npm_cli: &Path, package: &str) -> Option<String> 
         OsStr::new("version"),
         OsStr::new("--fetch-retries=0"),
         OsStr::new("--fetch-timeout=15000"),
+        // One registry request, and no log file per lookup.
         OsStr::new("--no-update-notifier"),
         OsStr::new("--logs-max=0"),
     ];
