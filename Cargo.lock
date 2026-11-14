@@ -2943,6 +2943,7 @@ dependencies = [
  "sage-core",
  "sage-db",
  "sage-domain",
+ "sage-git",
  "sage-process",
  "sage-test-support",
  "sage-workspace",
@@ -3006,6 +3007,24 @@ version = "0.0.0"
 dependencies = [
  "sage-acp-protocol",
  "serde",
+]
+
+[[package]]
+name = "sage-git"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "sage-core",
+ "sage-domain",
+ "sage-process",
+ "sage-test-support",
+ "sage-workspace",
+ "serde",
+ "sha2",
+ "tokio",
+ "url",
+ "uuid",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

@@ -1,0 +1,292 @@
+use std::time::Instant;
+
+use sage_core::error::{AppError, AppResult};
+
+use crate::RepositoryBoundary;
+use sage_domain::{
+    repository::{FileChange, ProjectRepositoryStatus, RootRepositoryStatus},
+    resource::ResourceRef,
+};
+use sage_workspace::Workspace;
+
+const MAX_INDEX_STATUS_BYTES: usize = 4 * 1024 * 1024;
+const MAX_CHANGES: usize = 300;
+const INDEX_ONLY_MESSAGE: &str = "Post-commit index-only projection. Refresh Source Control to inspect worktree changes and confirm repository state.";
+
+pub async fn index_project_status(
+    roots: Vec<(String, AppResult<Workspace>)>,
+) -> ProjectRepositoryStatus {
+    let started = Instant::now();
+    let mut results = vec![None; roots.len()];
+    let mut tasks = Vec::with_capacity(roots.len());
+    for (index, (root_id, workspace)) in roots.into_iter().enumerate() {
+        match workspace {
+            Ok(workspace) => {
+                tasks.push((
+                    index,
+                    root_id,
+                    tokio::spawn(async move { status(&workspace).await }),
+                ));
+            }
+            Err(message) => {
+                results[index] = Some(RootRepositoryStatus::unavailable(
+                    root_id,
+                    crate::public_error::projection(&message),
+                ));
+            }
+        }
+    }
+    for (index, root_id, task) in tasks {
+        results[index] = Some(match task.await {
+            Ok(Ok(status)) => status,
+            Ok(Err(error)) => {
+                RootRepositoryStatus::unavailable(root_id, crate::public_error::projection(&error))
+            }
+            Err(_error) => {
+                RootRepositoryStatus::unavailable(root_id, crate::public_error::projection_task())
+            }
+        });
+    }
+    let roots = results.into_iter().flatten().collect::<Vec<_>>();
+    ProjectRepositoryStatus {
+        truncated: roots.iter().any(|root| root.truncated),
+        roots,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+    }
+}
+
+async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
+    let started = Instant::now();
+    let boundary = crate::workspace::repository_boundary(workspace).await?;
+    match boundary {
+        RepositoryBoundary::Exact => {}
+        RepositoryBoundary::Nested => {
+            return Ok(RootRepositoryStatus::repository_subdirectory(
+                workspace.root_id(),
+                started.elapsed().as_millis() as u64,
+            ));
+        }
+        RepositoryBoundary::NotRepository => {
+            return Ok(RootRepositoryStatus::not_repository(
+                workspace.root_id(),
+                started.elapsed().as_millis() as u64,
+            ));
+        }
+    }
+    let branch = symbolic_branch(workspace).await?;
+    // Each read needs only the branch, so they run side by side.
+    let (tracking, listed, history, remotes, in_progress, staged) = tokio::try_join!(
+        crate::tracking_status(workspace, branch.as_deref()),
+        crate::branches::list_local_branches(workspace),
+        crate::history::list_recent_commits(workspace),
+        crate::remotes::list_remotes(workspace),
+        crate::in_progress::in_progress(workspace),
+        staged_changes(workspace),
+    )?;
+    let listed = crate::branches::compose_current_named_branch(listed, branch.as_deref());
+
+    Ok(RootRepositoryStatus {
+        root_id: workspace.root_id().into(),
+        state: "repository".into(),
+        branch,
+        upstream: tracking.upstream,
+        ahead: tracking.ahead,
+        behind: tracking.behind,
+        branches: listed.names,
+        branches_truncated: listed.truncated,
+        recent_commits: history.commits,
+        recent_commits_truncated: history.truncated,
+        remotes: remotes.names,
+        remotes_truncated: remotes.truncated,
+        merge_in_progress: in_progress.merge,
+        rebase_in_progress: in_progress.rebase,
+        cherry_pick_in_progress: in_progress.cherry_pick,
+        revert_in_progress: in_progress.revert,
+        changes: staged.changes,
+        truncated: true,
+        changes_overflowed: staged.overflowed,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        message: Some(INDEX_ONLY_MESSAGE.into()),
+    })
+}
+
+/// Staged changes, capped at `MAX_CHANGES`.
+struct StagedChanges {
+    changes: Vec<FileChange>,
+    /// Another change followed the full list, so more than `MAX_CHANGES` exist.
+    overflowed: bool,
+}
+
+/// What the index holds against `HEAD` (or the empty tree before the first
+/// commit).
+async fn staged_changes(workspace: &Workspace) -> AppResult<StagedChanges> {
+    let base = diff_base(workspace).await?;
+    let output = crate::workspace::run_git(
+        workspace,
+        &[
+            "diff",
+            "--cached",
+            "--name-status",
+            "-z",
+            "--no-renames",
+            "--no-ext-diff",
+            "--no-textconv",
+            &base,
+            "--",
+        ],
+        MAX_INDEX_STATUS_BYTES,
+    )
+    .await?;
+    crate::ensure_success(&output)?;
+    parse_changes(workspace, &output.stdout, output.stdout_truncated)
+}
+
+async fn diff_base(workspace: &Workspace) -> AppResult<String> {
+    let head = crate::workspace::run_git(
+        workspace,
+        &["rev-parse", "--verify", "--quiet", "HEAD"],
+        256,
+    )
+    .await?;
+    if head.succeeded() {
+        return Ok("HEAD".into());
+    }
+    let empty_tree =
+        crate::workspace::run_git(workspace, &["hash-object", "-t", "tree", "--stdin"], 256)
+            .await?;
+    crate::ensure_success(&empty_tree)?;
+    let oid = std::str::from_utf8(&empty_tree.stdout)
+        .map_err(|_| AppError::Git("Git returned a non-UTF-8 object id".into()))?
+        .trim();
+    if oid.is_empty() {
+        return Err(AppError::Git("Git returned an empty tree object id".into()));
+    }
+    Ok(oid.into())
+}
+
+async fn symbolic_branch(workspace: &Workspace) -> AppResult<Option<String>> {
+    let output = crate::workspace::run_git(
+        workspace,
+        &["symbolic-ref", "--quiet", "--short", "HEAD"],
+        1024,
+    )
+    .await?;
+    if output.exit_code() == Some(1) {
+        return Ok(Some("HEAD (detached)".into()));
+    }
+    crate::ensure_success(&output)?;
+    if output.stdout_truncated {
+        return Err(AppError::ResourceLimit(
+            "Git branch name exceeds its bounded contract".into(),
+        ));
+    }
+    let branch = std::str::from_utf8(&output.stdout)
+        .map_err(|_| AppError::Git("Git returned a non-UTF-8 branch name".into()))?
+        .trim_end_matches(['\r', '\n']);
+    if branch.is_empty() || branch.chars().any(char::is_control) {
+        return Err(AppError::Git("Git returned an invalid branch name".into()));
+    }
+    Ok(Some(branch.into()))
+}
+
+fn parse_changes(
+    workspace: &Workspace,
+    bytes: &[u8],
+    output_truncated: bool,
+) -> AppResult<StagedChanges> {
+    let complete = if output_truncated {
+        bytes
+            .iter()
+            .rposition(|byte| *byte == 0)
+            .map_or(&[][..], |last| &bytes[..=last])
+    } else {
+        if !bytes.is_empty() && !bytes.ends_with(&[0]) {
+            return Err(AppError::Git(
+                "Git index status record is incomplete".into(),
+            ));
+        }
+        bytes
+    };
+    let mut fields = complete.split(|byte| *byte == 0);
+    let mut changes = Vec::new();
+    let mut overflowed = false;
+    while let Some(status) = fields.next() {
+        if status.is_empty() {
+            break;
+        }
+        let Some(path) = fields.next() else {
+            if output_truncated {
+                break;
+            }
+            return Err(AppError::Git(
+                "Git index status record is incomplete".into(),
+            ));
+        };
+        if path.is_empty() {
+            return Err(AppError::Git("Git returned an empty index path".into()));
+        }
+        if changes.len() == MAX_CHANGES {
+            overflowed = true;
+            break;
+        }
+        let status = std::str::from_utf8(status)
+            .map_err(|_| AppError::Git("Git returned a non-UTF-8 index status".into()))?;
+        let relative_path = std::str::from_utf8(path)
+            .map_err(|_| AppError::Git("Git returned a non-UTF-8 index path".into()))?;
+        let resource = workspace.git_resource_identity(&ResourceRef {
+            root_id: workspace.root_id().into(),
+            relative_path: relative_path.into(),
+        })?;
+        changes.push(FileChange {
+            resource,
+            original_resource: None,
+            index_status: index_status(status).into(),
+            worktree_status: "unknown".into(),
+            additions: None,
+            deletions: None,
+        });
+    }
+    Ok(StagedChanges {
+        changes,
+        overflowed,
+    })
+}
+
+fn index_status(status: &str) -> &'static str {
+    match status.as_bytes().first() {
+        Some(b'A') => "added",
+        Some(b'D') => "deleted",
+        Some(b'M') => "modified",
+        Some(b'T') => "typeChanged",
+        Some(b'U') => "conflicted",
+        _ => "unknown",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn staged(count: usize) -> Vec<u8> {
+        (0..count)
+            .flat_map(|index| format!("A\0staged-{index}.txt\0").into_bytes())
+            .collect()
+    }
+
+    #[test]
+    fn index_changes_report_overflow_only_past_the_full_list() {
+        let root = std::env::temp_dir().join(format!("sage-index-overflow-{}", std::process::id()));
+        std::fs::create_dir_all(&root).unwrap();
+        let workspace = Workspace::open("project-test", "root-test", &root).unwrap();
+
+        let exact = parse_changes(&workspace, &staged(MAX_CHANGES), false).unwrap();
+        let over = parse_changes(&workspace, &staged(MAX_CHANGES + 1), false).unwrap();
+        std::fs::remove_dir_all(root).unwrap();
+
+        assert_eq!(exact.changes.len(), MAX_CHANGES);
+        assert!(!exact.overflowed);
+        assert_eq!(exact.changes[0].index_status, "added");
+        assert_eq!(over.changes.len(), MAX_CHANGES);
+        assert!(over.overflowed);
+    }
+}

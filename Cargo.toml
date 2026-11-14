@@ -18,6 +18,7 @@ sage-acp-protocol = { path = "crates/sage-acp-protocol" }
 sage-core = { path = "crates/sage-core" }
 sage-db = { path = "crates/sage-db" }
 sage-domain = { path = "crates/sage-domain" }
+sage-git = { path = "crates/sage-git" }
 sage-process = { path = "crates/sage-process" }
 sage-test-support = { path = "crates/sage-test-support" }
 sage-workspace = { path = "crates/sage-workspace" }

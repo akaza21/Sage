@@ -70,6 +70,8 @@ pub fn open_held_parent(
 }
 
 pub const MAX_DIRECTORY_ENTRIES: usize = 500;
+/// The largest File the editor opens, saves or compares with its Git base.
+pub const MAX_EDITABLE_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone)]
 pub struct Workspace {

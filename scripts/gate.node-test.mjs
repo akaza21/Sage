@@ -83,7 +83,7 @@ test("changed gate traces Vitest from Playwright fixtures", () => {
 });
 
 test("changed gate runs the Rust lane exactly when CI would", () => {
-  const rustLane = ["rustfmt", "clippy", ...plans.rust];
+  const rustLane = ["rustfmt", "clippy", "clippy-lib", ...plans.rust];
   for (const files of [
     ["src-tauri/src/lib.rs"],
     ["src/features/chat/acp/rendererRecreationPacket.ts"],

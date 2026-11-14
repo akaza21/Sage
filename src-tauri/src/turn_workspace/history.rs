@@ -6,7 +6,7 @@
 use std::{collections::BTreeMap, path::Path};
 
 use super::{MAX_TURN_WORKSPACE_CHANGES, TurnWorkspaceOperation};
-use crate::repository_git::run_git;
+use sage_git::run_git;
 
 const MAX_HISTORY_BYTES: usize = 1024 * 1024;
 

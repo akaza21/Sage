@@ -20,7 +20,7 @@ impl Repository {
     }
 
     fn git(&self, args: &[&str]) {
-        let output = crate::git_process::fixture_git()
+        let output = sage_git::process::fixture_git()
             .arg("-C")
             .arg(&self.0)
             .args(args)
@@ -494,7 +494,7 @@ fn user_global_excludes_do_not_hide_paths_reported_by_sages_git() {
         &mut relevance,
         &[("scratch/new.txt", 1)]
     )));
-    let status = sage_core::rt::block_on(crate::repository_git::run_git(
+    let status = sage_core::rt::block_on(sage_git::run_git(
         &repo.0.canonicalize().unwrap(),
         &["status", "--porcelain=v2", "-z", "--untracked-files=all"],
         64 * 1024,

@@ -28,6 +28,8 @@ function jobBlock(workflow, jobId) {
 const formatCommand = "cargo fmt --all -- --check";
 const clippyCommand =
   'cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings';
+const clippyLibCommand =
+  'cargo clippy --workspace --lib --features "${{ matrix.lint-features }}" -- -D warnings';
 const rustTestPhases = [
   'cargo test --workspace --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview',
   'cargo test --workspace --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1',
@@ -52,6 +54,7 @@ test("Rust CI runs the supported feature phases in strict job order", async () =
   assert.deepEqual(cargoCommands, [
     formatCommand,
     clippyCommand,
+    clippyLibCommand,
     ...rustTestPhases,
     releaseCheckCommand,
   ]);

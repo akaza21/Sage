@@ -1,7 +1,6 @@
 use sage_core::error::{AppError, AppResult};
+use sage_workspace::MAX_EDITABLE_BYTES;
 use sha2::{Digest, Sha256};
-
-pub const MAX_EDITABLE_BYTES: u64 = 1024 * 1024;
 
 pub(crate) fn fingerprint(bytes: &[u8]) -> String {
     let digest = Sha256::digest(bytes);

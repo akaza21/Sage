@@ -5,7 +5,7 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{repository, repository_commit, state::AppState};
+use crate::state::AppState;
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryCommitRequest, GitRepositoryCommitResult,
 };
@@ -36,10 +36,10 @@ fn commit_command_error(error: AppError) -> GitFileMutationCommandError {
                     sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
-            message: crate::repository_public_error::containment().into(),
+            message: sage_git::public_error::containment().into(),
         },
         error => GitFileMutationCommandError::Failed {
-            message: crate::repository_public_error::commit(&error),
+            message: sage_git::public_error::commit(&error),
         },
     }
 }
@@ -69,7 +69,7 @@ async fn commit_git_repository_inner_with_timeout(
         state,
         request,
         expected_transition_epoch,
-        Some(repository::GitProcessPolicy::post_spawn_failure(
+        Some(sage_git::process::GitProcessPolicy::post_spawn_failure(
             mutation_timeout,
         )),
     )
@@ -80,7 +80,7 @@ async fn commit_git_repository_inner_with_policy_override(
     state: &AppState,
     request: GitRepositoryCommitRequest,
     expected_transition_epoch: u64,
-    process_policy: Option<repository::GitProcessPolicy>,
+    process_policy: Option<sage_git::process::GitProcessPolicy>,
 ) -> AppResult<GitRepositoryCommitResult> {
     if request.project_id.is_empty() || request.project_id.len() > MAX_GIT_PROJECT_ID_BYTES {
         return Err(AppError::InvalidRequest(
@@ -92,7 +92,7 @@ async fn commit_git_repository_inner_with_policy_override(
             "Git commit root identity exceeds its bounded contract".into(),
         ));
     }
-    let message = repository_commit::normalize_message(&request.message)?;
+    let message = sage_git::commit::normalize_message(&request.message)?;
     let transition_epoch = state.project_transitions.lock().await;
     if *transition_epoch != expected_transition_epoch {
         return Err(AppError::InvalidRequest(
@@ -129,9 +129,9 @@ async fn commit_git_repository_inner_with_policy_override(
         .collect();
     let commit_result = match process_policy {
         Some(policy) => {
-            repository_commit::commit_staged_with_policy(&workspace, &message, policy).await
+            sage_git::commit::commit_staged_with_policy(&workspace, &message, policy).await
         }
-        None => repository_commit::commit_staged(&workspace, &message).await,
+        None => sage_git::commit::commit_staged(&workspace, &message).await,
     };
     let error = match commit_result {
         Ok(()) => None,
@@ -146,7 +146,7 @@ async fn commit_git_repository_inner_with_policy_override(
         project_id: request.project_id,
         root_id: request.root_id,
         transition_epoch: *transition_epoch,
-        repositories: crate::repository_index_status::project_status(repository_roots).await,
+        repositories: sage_git::index_status::index_project_status(repository_roots).await,
         error,
     })
 }
