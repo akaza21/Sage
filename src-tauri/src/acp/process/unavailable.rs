@@ -140,6 +140,10 @@ impl TreeControl {
     pub(crate) fn native_exit_code_if_exited(&self) -> Result<Option<i32>, LaunchError> {
         Err(LaunchError::PlatformUnavailable)
     }
+
+    pub(crate) fn exit_before_termination(&self) -> Result<Option<TreeExit>, LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
 }
 
 pub(crate) fn launch(

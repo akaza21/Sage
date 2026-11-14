@@ -167,10 +167,31 @@ where
     R: ResourceMapper,
     T: StdinTransport,
 {
+    lost_runtime_outcome(
+        exit.reason,
+        exit.state.teardown_outcome(),
+        root_exit,
+        control,
+    )
+}
+
+/// The wait reports Sage's termination request, so a root that had already
+/// exited on its own is read back from the supervisor to keep its exit code.
+fn lost_runtime_outcome(
+    runner_exit: TreeExit,
+    teardown: Option<TurnTerminalOutcome>,
+    root_exit: TreeExit,
+    control: &TreeControl,
+) -> TurnTerminalOutcome {
+    let root_exit = control
+        .exit_before_termination()
+        .ok()
+        .flatten()
+        .unwrap_or(root_exit);
     let stderr = control.stderr_diagnostic().ok();
     terminal_detail::runtime_lost(
-        terminal_detail::observed_exit(exit.reason, root_exit),
-        exit.state.teardown_outcome(),
+        terminal_detail::observed_exit(runner_exit, root_exit),
+        teardown,
         stderr
             .as_ref()
             .and_then(SafeStderrDiagnostic::json_rpc_error_message),
@@ -180,3 +201,7 @@ where
 pub(super) fn cleanup_budget() -> Duration {
     Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close)
 }
+
+#[cfg(test)]
+#[path = "shutdown_tests.rs"]
+mod tests;

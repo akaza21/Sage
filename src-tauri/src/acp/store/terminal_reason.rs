@@ -147,33 +147,34 @@ pub(super) fn unsent() -> TurnTerminalOutcome {
 }
 
 /// Records why recovery ended a turn whose runtime was lost. An error the
-/// harness already reported on the turn stays its message; only the cause is
-/// added.
+/// harness already reported on the turn stays its message. The reason keeps
+/// a bounded copy of it, because the error item can fall outside the newest
+/// page of history that a reopened chat loads.
 pub(super) fn record_recovered_in(
     transaction: &Transaction<'_>,
     owner: TerminalReasonOwner<'_>,
     outcome: &TurnTerminalOutcome,
     now_millis: i64,
 ) -> Result<bool, StoreError> {
-    let harness_reported: bool = transaction
+    let harness_error: Option<String> = transaction
         .query_row(
-            "SELECT trim(COALESCE(json_extract(payload_json,'$.payload.message'),''),
-                         char(32,9,10,13))<>''
+            "SELECT CASE WHEN json_type(payload_json,'$.payload.message')='text'
+                         THEN json_extract(payload_json,'$.payload.message') END
              FROM items WHERE session_id=?1 AND runtime_epoch=?2 AND turn_id=?3
                AND kind='error'
                AND COALESCE(json_extract(payload_json,'$.payload.kind'),'')<>'attempt'
              ORDER BY ordinal DESC LIMIT 1",
             params![owner.session_id, owner.runtime_epoch, owner.turn_id],
-            |row| row.get(0),
+            |row| row.get::<_, Option<String>>(0),
         )
         .optional()?
-        .unwrap_or(false);
-    let message = outcome.message.as_deref().filter(|_| !harness_reported);
+        .flatten();
+    let message = recordable_text(harness_error).or_else(|| outcome.message.clone());
     record_in(
         transaction,
         owner,
         outcome.reason,
-        message,
+        message.as_deref(),
         outcome.remediation.as_deref(),
         now_millis,
     )

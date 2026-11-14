@@ -237,7 +237,7 @@ impl LaunchRecovery {
             active_process_limit,
             terminate_deadline: deadline,
             absolute_cleanup_deadline,
-            requested_exit: Mutex::new(None),
+            termination: Mutex::default(),
             convergence: Mutex::new(false),
             #[cfg(feature = "acp-fixture")]
             characterization_observation: Mutex::new(CharacterizationObservationState::default()),

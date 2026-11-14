@@ -487,7 +487,11 @@ fn a_runtime_loss_after_a_harness_error_keeps_that_error_as_the_message() {
     recover_runtime_after_zero_process(&mut connection, zero_process_command(lost)).unwrap();
     assert_eq!(
         turn_outcome(&connection),
-        ("failed".to_owned(), "harnessExited".to_owned(), None)
+        (
+            "failed".to_owned(),
+            "harnessExited".to_owned(),
+            Some("stream disconnected before completion".to_owned())
+        )
     );
 }
 
@@ -532,4 +536,35 @@ fn an_unrecordable_reason_text_never_aborts_recovery() {
         .unwrap();
     assert_eq!(message, "é".repeat(4096));
     assert_eq!(remediation, None);
+}
+
+#[test]
+fn a_harness_error_after_its_startup_log_reaches_the_failed_turn() {
+    use crate::acp::{
+        process::TreeExit, redaction::StderrRing, runtime::terminal_detail::runtime_lost,
+    };
+
+    let mut stderr = StderrRing::new(4096, 1024);
+    stderr.ingest(b"INFO codex app-server listening\n");
+    stderr.ingest(br#"{"id":3,"error":{"code":-32603,"message":"model refused the request"}}"#);
+    stderr.ingest(b"\n");
+    stderr.ingest(br#"{"id":4,"error":{"code":-32000,"message":"usage limit reached"}}"#);
+    stderr.ingest(b"\nINFO exiting\n");
+    let diagnostic = stderr.safe_diagnostic();
+
+    let mut connection = recovery_connection();
+    let command = zero_process_command(runtime_lost(
+        TreeExit::Exited { code: Some(1) },
+        None,
+        diagnostic.json_rpc_error_message(),
+    ));
+    recover_runtime_after_zero_process(&mut connection, command).unwrap();
+    assert_eq!(
+        turn_outcome(&connection),
+        (
+            "failed".to_owned(),
+            "harnessExited".to_owned(),
+            Some("harness process exited with code 1: usage limit reached".to_owned()),
+        )
+    );
 }

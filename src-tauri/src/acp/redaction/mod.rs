@@ -104,6 +104,8 @@ pub(crate) struct StderrRing {
     current_line_bytes: usize,
     observed_bytes: u64,
     truncated: bool,
+    /// The oldest retained bytes continue a line whose start was evicted.
+    partial_front: bool,
 }
 
 impl StderrRing {
@@ -115,6 +117,7 @@ impl StderrRing {
             current_line_bytes: 0,
             observed_bytes: 0,
             truncated: false,
+            partial_front: false,
         }
     }
 
@@ -137,7 +140,7 @@ impl StderrRing {
                 continue;
             }
             if self.bytes.len() == self.byte_limit {
-                self.bytes.pop_front();
+                self.partial_front = self.bytes.pop_front() != Some(b'\n');
                 self.truncated = true;
             }
             if self.bytes.len() == self.bytes.capacity() {
@@ -147,6 +150,7 @@ impl StderrRing {
                 {
                     self.bytes = VecDeque::new();
                     self.truncated = true;
+                    self.partial_front = byte != b'\n';
                     continue;
                 }
             }
@@ -162,33 +166,26 @@ impl StderrRing {
         }
     }
 
+    /// The latest complete JSON-RPC error record wins: a harness writes its
+    /// error after any startup log and may report more than one. A line cut
+    /// by ring eviction is never read as a record.
     pub(crate) fn safe_diagnostic(&self) -> SafeStderrDiagnostic {
         let bytes = self.bytes.iter().copied().collect::<Vec<_>>();
-        if let Ok(value) = serde_json::from_slice::<Value>(&bytes)
-            && let Some(object) = value.as_object()
-            && let Some(error) = object.get("error").and_then(Value::as_object)
+        let complete = if self.partial_front {
+            bytes
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .map_or(&[][..], |end| &bytes[end + 1..])
+        } else {
+            &bytes[..]
+        };
+        if let Some(diagnostic) = complete
+            .split(|byte| *byte == b'\n')
+            .rev()
+            .find_map(json_rpc_diagnostic)
+            .or_else(|| json_rpc_diagnostic(complete))
         {
-            let method = object
-                .get("method")
-                .and_then(Value::as_str)
-                .filter(|method| method.len() <= 128)
-                .map(str::to_owned);
-            let error_code = error.get("code").and_then(|code| match code {
-                Value::Number(code) => Some(code.to_string()),
-                Value::String(code) => Some(sanitize_diagnostic_text(code)),
-                _ => None,
-            });
-            let error_message = error
-                .get("message")
-                .and_then(Value::as_str)
-                .filter(|message| message.len() <= 1024)
-                .map(sanitize_diagnostic_text);
-            return SafeStderrDiagnostic {
-                method,
-                error_code,
-                error_message,
-                json_rpc: true,
-            };
+            return diagnostic;
         }
         std::str::from_utf8(&bytes)
             .ok()
@@ -206,6 +203,33 @@ impl StderrRing {
     pub(crate) fn retained_bytes(&self) -> usize {
         self.bytes.len()
     }
+}
+
+fn json_rpc_diagnostic(record: &[u8]) -> Option<SafeStderrDiagnostic> {
+    let value = serde_json::from_slice::<Value>(record).ok()?;
+    let object = value.as_object()?;
+    let error = object.get("error").and_then(Value::as_object)?;
+    let method = object
+        .get("method")
+        .and_then(Value::as_str)
+        .filter(|method| method.len() <= 128)
+        .map(str::to_owned);
+    let error_code = error.get("code").and_then(|code| match code {
+        Value::Number(code) => Some(code.to_string()),
+        Value::String(code) => Some(sanitize_diagnostic_text(code)),
+        _ => None,
+    });
+    let error_message = error
+        .get("message")
+        .and_then(Value::as_str)
+        .filter(|message| message.len() <= 1024)
+        .map(sanitize_diagnostic_text);
+    Some(SafeStderrDiagnostic {
+        method,
+        error_code,
+        error_message,
+        json_rpc: true,
+    })
 }
 
 fn empty_stderr_diagnostic() -> SafeStderrDiagnostic {

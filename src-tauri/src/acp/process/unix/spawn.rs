@@ -81,7 +81,7 @@ pub(crate) fn launch(
         .unwrap_or(u64::MAX);
     let control = TreeControl::new(TreeAuthority {
         child: Mutex::new(child),
-        requested_exit: Mutex::new(None),
+        termination: Mutex::default(),
         lease: Mutex::new(Some(lease)),
         stderr: ring,
         stderr_done: Mutex::new(completion),

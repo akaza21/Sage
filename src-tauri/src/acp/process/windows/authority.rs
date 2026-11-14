@@ -15,7 +15,7 @@ use super::artifact::process_image_path;
 use super::io::StderrDrain;
 use super::{observe_exit, try_observe_exit, wait_until};
 use crate::acp::process::capacity::TreeCapacityLease;
-use crate::acp::process::supervisor::{TreeExit, ZeroProcessToken};
+use crate::acp::process::supervisor::{TerminationRecord, TreeExit, ZeroProcessToken};
 use crate::acp::process::{ProcessIdentityReceipt, SpawnTimingReceipt};
 use sage_process::{error::LaunchError, handle::NativeHandle, job::JobBoundary};
 
@@ -147,9 +147,20 @@ impl TreeControl {
     /// blocked reader. Completion is observed separately through `wait`.
     pub(crate) fn request_termination(&self, reason: TreeExit) -> Result<(), LaunchError> {
         {
-            locked(&self.0.requested_exit)?.get_or_insert(reason);
+            locked(&self.0.termination)?.request(reason, || self.native_exit_if_exited());
         }
         self.0.job.terminate()
+    }
+
+    /// The root's own exit status when it ended before Sage first requested
+    /// termination; `None` while it runs or once Sage ended it.
+    pub(crate) fn exit_before_termination(&self) -> Result<Option<TreeExit>, LaunchError> {
+        Ok(locked(&self.0.termination)?.exit_before_request(|| self.native_exit_if_exited()))
+    }
+
+    fn native_exit_if_exited(&self) -> Option<TreeExit> {
+        let code = self.native_exit_code_if_exited().ok().flatten()?;
+        Some(TreeExit::Exited { code: Some(code) })
     }
 
     pub(crate) fn wait_root_exit(&self) -> Result<TreeExit, LaunchError> {
@@ -168,7 +179,7 @@ impl TreeControl {
 
     fn observed_exit(&self) -> Result<TreeExit, LaunchError> {
         let code = self.native_exit_code()?;
-        let requested = *locked(&self.0.requested_exit)?;
+        let requested = locked(&self.0.termination)?.requested();
         Ok(requested.unwrap_or(TreeExit::Exited { code: Some(code) }))
     }
 
@@ -357,7 +368,7 @@ pub(super) struct TreeAuthority {
     pub(super) active_process_limit: u32,
     pub(super) terminate_deadline: Duration,
     pub(super) absolute_cleanup_deadline: Option<Instant>,
-    pub(super) requested_exit: Mutex<Option<TreeExit>>,
+    pub(super) termination: Mutex<TerminationRecord>,
     pub(super) convergence: Mutex<bool>,
     #[cfg(feature = "acp-fixture")]
     pub(super) characterization_observation: Mutex<CharacterizationObservationState>,
@@ -423,7 +434,7 @@ impl TreeAuthority {
             return Ok(());
         }
         {
-            locked(&self.requested_exit)?.get_or_insert(TreeExit::ParentShutdown);
+            locked(&self.termination)?.request(TreeExit::ParentShutdown, || None);
         }
         self.job.terminate()?;
         self.converge_until(deadline)

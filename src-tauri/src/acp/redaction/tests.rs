@@ -315,3 +315,46 @@ fn diagnostic_prose_requires_real_credential_syntax() {
         "[redacted] [redacted] remains prose"
     );
 }
+
+#[test]
+fn stderr_diagnostic_reads_the_latest_json_rpc_error_after_log_lines() {
+    let mut ring = StderrRing::new(4096, 1024);
+    ring.ingest(b"2026-11-15T10:00:00Z INFO starting app-server\r\n");
+    ring.ingest(br#"{"id":1,"error":{"code":-32001,"message":"first failure"}}"#);
+    ring.ingest(b"\nWARN retrying\n");
+    ring.ingest(
+        br#"{"method":"turn/start","error":{"code":-32000,"message":"usage limit reached"}}"#,
+    );
+    ring.ingest(b"\r\nINFO shutting down\n");
+
+    let diagnostic = ring.safe_diagnostic();
+
+    assert_eq!(diagnostic.method.as_deref(), Some("turn/start"));
+    assert_eq!(diagnostic.error_code.as_deref(), Some("-32000"));
+    assert_eq!(
+        diagnostic.json_rpc_error_message(),
+        Some("usage limit reached")
+    );
+}
+
+#[test]
+fn stderr_diagnostic_never_reads_a_record_cut_by_ring_eviction() {
+    let record = br#"{"error":{"code":1,"message":"quoted"}}"#;
+    let retained = |prefix: &[u8]| {
+        let mut ring = StderrRing::new(record.len() + 1, 1024);
+        ring.ingest(prefix);
+        ring.ingest(record);
+        ring.ingest(b"\n");
+        ring.safe_diagnostic()
+    };
+
+    // Both rings retain the same bytes; only the first kept a whole line.
+    assert_eq!(
+        retained(b"INFO ready\n").json_rpc_error_message(),
+        Some("quoted")
+    );
+    assert_eq!(
+        retained(b"WARN upstream replied ").json_rpc_error_message(),
+        None
+    );
+}
