@@ -25,22 +25,20 @@ function jobBlock(workflow, jobId) {
   return workflow.slice(start, end);
 }
 
-const formatCommand =
-  "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check";
+const formatCommand = "cargo fmt --all -- --check";
 const clippyCommand =
-  'cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features "${{ matrix.lint-features }}" -- -D warnings';
+  'cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings';
 const rustTestPhases = [
-  'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview',
-  'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1',
-  'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" app_preview -- --test-threads=1',
+  'cargo test --workspace --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview',
+  'cargo test --workspace --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1',
+  'cargo test --workspace --features "${{ matrix.test-features }}" app_preview -- --test-threads=1',
 ];
 const runnerPlatforms = {
   "windows-latest": "win32",
   "ubuntu-latest": "linux",
   "macos-latest": "darwin",
 };
-const releaseCheckCommand =
-  "cargo check --manifest-path src-tauri/Cargo.toml --release --lib";
+const releaseCheckCommand = "cargo check -p sage --release --lib";
 
 test("Rust CI runs the supported feature phases in strict job order", async () => {
   const workflow = await readFile(workflowPath, "utf8");

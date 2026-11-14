@@ -12,15 +12,7 @@ if (process.platform !== "win32") {
 
 const result = spawnSync(
   "cargo",
-  [
-    "test",
-    "--manifest-path",
-    "src-tauri/Cargo.toml",
-    "--features",
-    "native-lane",
-    "--test",
-    "native_lane",
-  ],
+  ["test", "-p", "sage", "--features", "native-lane", "--test", "native_lane"],
   { stdio: "inherit", shell: false },
 );
 if (result.error) {

@@ -98,13 +98,7 @@ export function createRustValidationCommands({
       {
         label: `${labelPrefix}:rust-format`,
         command: cargo,
-        args: [
-          "fmt",
-          "--manifest-path",
-          "src-tauri/Cargo.toml",
-          "--",
-          "--check",
-        ],
+        args: ["fmt", "--all", "--", "--check"],
         cwd: repositoryRoot,
         env: rustEnvironment,
       },
@@ -116,8 +110,7 @@ export function createRustValidationCommands({
         command: cargo,
         args: [
           "clippy",
-          "--manifest-path",
-          "src-tauri/Cargo.toml",
+          "--workspace",
           "--all-targets",
           "--features",
           lintFeatures(platform).join(","),
@@ -136,8 +129,7 @@ export function createRustValidationCommands({
         command: cargo,
         args: [
           "test",
-          "--manifest-path",
-          "src-tauri/Cargo.toml",
+          "--workspace",
           "--features",
           testFeatures(platform).join(","),
           "--",

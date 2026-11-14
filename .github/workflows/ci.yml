@@ -60,7 +60,6 @@ jobs:
         with:
           tool: cargo-deny@0.20.2
       - name: Audit Rust dependencies
-        working-directory: src-tauri
         run: cargo deny check advisories bans sources
       - run: npm audit --omit=dev --audit-level=moderate
       - run: npm audit --audit-level=critical
@@ -285,7 +284,7 @@ jobs:
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: . -> target
           # Branches restore main's cache instead of each writing their own,
           # which would evict it under the repository's cache quota.
           save-if: ${{ github.ref == 'refs/heads/main' }}
@@ -297,20 +296,20 @@ jobs:
           # test phase creates that file and the next phase recompiles the
           # whole crate (about two and a half minutes on ubuntu-latest).
           cache-workspace-crates: true
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+      - run: cargo fmt --all -- --check
       - name: Create Tauri frontend placeholder
         run: >-
           node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features "${{ matrix.lint-features }}" -- -D warnings
+      - run: cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings
       # The parallel phase includes the shared-contract suites
       # (workspace::notify, editor_watch) on every platform it runs on.
       - name: Test Rust parallel phase
-        run: 'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview'
+        run: 'cargo test --workspace --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview'
       - name: Test repository mutation commands serially
-        run: 'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1'
+        run: 'cargo test --workspace --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1'
       - name: Test app preview serially
-        run: 'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" app_preview -- --test-threads=1'
-      - run: cargo check --manifest-path src-tauri/Cargo.toml --release --lib
+        run: 'cargo test --workspace --features "${{ matrix.test-features }}" app_preview -- --test-threads=1'
+      - run: cargo check -p sage --release --lib
 
   merge-gate:
     name: Merge gate
