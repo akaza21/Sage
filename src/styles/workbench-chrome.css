@@ -150,12 +150,12 @@
   background: var(--tab-strip-fill, transparent);
 }
 
-/* No empty strip above the Editor welcome; retain the canvas's grid row. */
-.center-region:has(.tab-strip__scroll:empty) {
+/* The shell knows tab presence before the lazy tab strip loads. */
+.center-region--empty-tabs {
   grid-template-rows: 0 minmax(0, 1fr);
 }
 
-.workbench__tabs:has(.tab-strip__scroll:empty) {
+.center-region--empty-tabs .workbench__tabs {
   visibility: hidden;
   border: 0;
 }

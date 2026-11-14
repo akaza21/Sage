@@ -15,9 +15,6 @@ use super::{
     validation::authentic_descendant_file,
 };
 
-/// Longest `bin.pi` entry read from the package manifest.
-const PI_ENTRY_BYTES_MAX: usize = 256;
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DiscoveredPiLaunch {
     pub(crate) entrypoint_path: PathBuf,
@@ -111,11 +108,7 @@ fn read_package(npm_root: &Path) -> Option<PiPackage> {
     if name != crate::acp::bindings::pi::PI_PACKAGE {
         return None;
     }
-    let entry = manifest
-        .get("bin")
-        .and_then(|bin| bin.get("pi"))
-        .and_then(Value::as_str)
-        .and_then(package_entry)?;
+    let entry = super::npm_package::bin_entry(&manifest, "pi")?;
     if !authentic_descendant_file(npm_root, package_relative(&entry)) {
         return None;
     }
@@ -123,35 +116,14 @@ fn read_package(npm_root: &Path) -> Option<PiPackage> {
         .get("engines")
         .and_then(|engines| engines.get("node"))
         .and_then(Value::as_str)
-        .filter(|engine| !engine.is_empty() && engine.len() <= 64)?;
+        .filter(|engine| {
+            !engine.is_empty() && engine.len() <= crate::acp::bindings::node_engine::RANGE_BYTES_MAX
+        })?;
     Some(PiPackage {
         version: required_package_text(&manifest, "version")?,
         node_engine: engine.to_owned(),
         entry,
     })
-}
-
-/// A bin target as a relative `/`-separated path naming a JavaScript module
-/// inside the package. Each component is a portable npm file name: ASCII
-/// letters, digits, `.`, `_` and `-`, never `.` or `..` alone, so no drive,
-/// stream, separator or parent can reach the path on any host.
-fn package_entry(bin: &str) -> Option<PathBuf> {
-    let relative = bin.strip_prefix("./").unwrap_or(bin);
-    if relative.is_empty() || relative.len() > PI_ENTRY_BYTES_MAX {
-        return None;
-    }
-    let plain = relative.split('/').all(|component| {
-        !matches!(component, "" | "." | "..")
-            && component
-                .bytes()
-                .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'))
-    });
-    let path = Path::new(relative);
-    let module = matches!(
-        path.extension().and_then(std::ffi::OsStr::to_str),
-        Some("js" | "mjs" | "cjs")
-    );
-    (plain && module).then(|| path.to_path_buf())
 }
 
 #[cfg(test)]

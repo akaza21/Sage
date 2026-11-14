@@ -84,6 +84,11 @@ export function Workbench() {
   );
   const sidebarOpen = useWorkbenchStore((state) => state.sidebarOpen);
   const pendingClose = useWorkbenchStore((state) => state.pendingCloseTabId);
+  const hasEditorTabs = useWorkbenchStore((state) =>
+    state.tabs.some((tab) =>
+      EDITOR_CANVAS_KINDS.some((kind) => kind === tab.kind),
+    ),
+  );
   const compact = useCompactWorkbenchLayout();
   const narrowAgent = useCompactWorkbenchLayout("(max-width: 600px)");
   const [initialLayout] = useState(readWorkbenchLayout);
@@ -292,7 +297,7 @@ export function Workbench() {
               />
             ) : null}
             <div
-              className="center-region surface surface--card"
+              className={`center-region surface surface--card${hasEditorTabs ? "" : " center-region--empty-tabs"}`}
               inert={drawerOpen}
               aria-hidden={drawerOpen || undefined}
             >
