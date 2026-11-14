@@ -66,6 +66,17 @@ pub(crate) enum NativeRead {
 }
 
 impl NativeRead {
+    /// Whether a read missing its deadline leaves Sage's state as it was:
+    /// the binding stops waiting and drops the late reply. An import read
+    /// only borrows the lister's runtime, and listing or reading a session
+    /// changes nothing it holds.
+    pub(crate) fn abandons_at_deadline(&self) -> bool {
+        matches!(
+            self,
+            Self::ImportableSessions { .. } | Self::ImportTurns { .. }
+        )
+    }
+
     pub(crate) fn cursor(&self) -> Option<&str> {
         match self {
             Self::ChildTurns { cursor, .. }
@@ -118,6 +129,7 @@ impl NativeRpcIntent {
         match &self.request {
             NativeRpcRequest::UsageRead => true,
             NativeRpcRequest::Control(control) => control.abandons_at_deadline(),
+            NativeRpcRequest::Read(read) => read.abandons_at_deadline(),
             _ => false,
         }
     }

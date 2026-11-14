@@ -214,6 +214,8 @@ pub(crate) struct CodexAdapter {
     goal_mutation_fence: Option<(u64, u64)>,
     pending_read: Option<(u64, crate::acp::goal::NativeRead)>,
     child_read_tombstone: Option<u64>,
+    /// Import reads whose caller gave up; their late answers are dropped.
+    abandoned_reads: Vec<u64>,
     /// The project root the bound thread was started or resumed in.
     native_root: Option<super::request::NativeProjectRoot>,
     listed_sessions: Vec<String>,

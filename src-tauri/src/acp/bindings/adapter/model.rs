@@ -198,7 +198,8 @@ pub(crate) trait HarnessAdapter {
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    /// Stops waiting for a usage read whose caller gave up.
+    /// Stops waiting for a passive read (usage, or any other read that
+    /// abandons at its deadline) whose caller gave up.
     fn abandon_usage_read(&mut self) {}
     fn mutate_goal(
         &mut self,

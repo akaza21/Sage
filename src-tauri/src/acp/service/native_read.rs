@@ -43,22 +43,16 @@ impl AcpService {
         host: &Arc<RuntimeHost>,
         read: NativeRead,
     ) -> Result<NativeRpcReply, NativeReadError> {
-        // An import read only borrows the lister: its failure never puts the
-        // lister's own chat into config recovery.
-        let child = matches!(read, NativeRead::ChildTurns { .. });
+        // An import read only borrows the lister: missing its deadline
+        // abandons it and leaves the lister's chat serving. A runtime that
+        // failed under any read still needs its recovery.
+        let abandons = read.abandons_at_deadline();
         let result = host.native_rpc(NativeRpcIntent {
             owner: owner.clone(),
             request: NativeRpcRequest::Read(read),
         });
-        if child
-            && matches!(
-                result,
-                Err(HostError::Unavailable
-                    | HostError::Closed
-                    | HostError::Deadline
-                    | HostError::DeliveryUnknown
-                    | HostError::RecoveryRequired)
-            )
+        if let Err(error) = &result
+            && super::session_control::needs_recovery(error, abandons)
         {
             self.retain_config_effect_recovery(owner.clone(), Arc::clone(host));
         }

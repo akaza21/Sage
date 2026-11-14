@@ -2700,3 +2700,71 @@ fn import_lists_the_project_cli_sessions_and_reads_only_listed_ones() {
         assert!(shared.0.lock().unwrap().durable_batches.is_empty());
     });
 }
+
+#[test]
+fn an_abandoned_import_read_drops_its_late_answer_and_the_chat_keeps_serving() {
+    use crate::acp::goal::{NativeRead, NativeRpcReply};
+    runtime().block_on(async {
+        let (mut pump, shared, _) = goal_active_codex_pump();
+        let listing = NativeRead::ImportableSessions {
+            cursor: None,
+            excluded: Vec::new(),
+        };
+        let import = NativeRead::ImportTurns {
+            thread_id: "thread-cli".into(),
+            cursor: None,
+        };
+        let sessions = |id: &serde_json::Value| {
+            codex_line(
+                serde_json::json!({"id":id,"result":{"nextCursor":null,"data":[
+                    {"id":"thread-cli","preview":"Fix the build","updatedAt":1700,"ephemeral":false}
+                ]}}),
+            )
+        };
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, &listing).unwrap();
+        let abandoned: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        // The caller gave up at its deadline: nothing is awaited any more,
+        // yet the decoder still accepts the read's oversized answer.
+        pump.abandon_usage_read();
+        assert!(!pump.native_rpc_pending());
+        assert!(pump.adapter.child_read_pending());
+        assert!(
+            pump.push_stdout_chunk(&sessions(&abandoned["id"]), 11)
+                .await
+                .unwrap()
+        );
+        assert_eq!(pump.take_native_rpc_reply(), None);
+        assert!(!pump.adapter.child_read_pending());
+        // The late listing authorized nothing.
+        let mut output = CaptureTransport(Vec::new());
+        assert!(pump.write_child(&mut output, &import).is_err());
+
+        // An abandoned read answered past the frame bound is dropped too.
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, &listing).unwrap();
+        let oversized: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        pump.abandon_usage_read();
+        pump.adapter
+            .accept_oversized_response(oversized["id"].as_u64().unwrap())
+            .unwrap();
+        assert_eq!(pump.take_native_rpc_reply(), None);
+
+        // The lister's chat keeps serving reads.
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, &listing).unwrap();
+        let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        assert!(
+            pump.push_stdout_chunk(&sessions(&request["id"]), 12)
+                .await
+                .unwrap()
+        );
+        assert!(matches!(
+            pump.take_native_rpc_reply(),
+            Some(NativeRpcReply::SessionsPage(_))
+        ));
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, &import).unwrap();
+        assert!(shared.0.lock().unwrap().durable_batches.is_empty());
+    });
+}

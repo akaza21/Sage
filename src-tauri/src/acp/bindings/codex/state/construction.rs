@@ -87,6 +87,7 @@ impl CodexAdapter {
             goal_mutation_fence: None,
             pending_read: None,
             child_read_tombstone: None,
+            abandoned_reads: Vec::new(),
             native_root: None,
             listed_sessions: Vec::new(),
             rate_limits_abandoned: super::rate_limits::AbandonedReads::default(),

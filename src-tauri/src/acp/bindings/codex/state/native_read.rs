@@ -7,6 +7,10 @@ use crate::acp::bindings::codex::request::OutgoingRequest;
 /// a session of its own project that it listed.
 const LISTED_SESSIONS_MAX: usize = 256;
 
+/// Abandoned import reads whose late answers are still dropped; past these,
+/// a new read waits for Codex to answer one of them.
+const MAX_ABANDONED_READS: usize = 4;
+
 impl CodexAdapter {
     #[cfg(test)]
     pub(crate) fn learn_child_for_test(&mut self, child: &str) {
@@ -17,10 +21,12 @@ impl CodexAdapter {
         self.pending_read.is_some()
     }
 
-    /// A native read or a fork carries native Turns, and a skills read a
-    /// whole catalogue; each may be answered past the frame bound.
+    /// A native read (awaited or abandoned) or a fork carries native Turns,
+    /// and a skills read a whole catalogue; each may be answered past the
+    /// frame bound.
     pub(crate) fn oversize_recoverable(&self) -> bool {
         self.child_read_pending()
+            || !self.abandoned_reads.is_empty()
             || self.fork_pending().is_some()
             || self.skills_read_pending()
             || self.mcp_list_awaited()
@@ -38,7 +44,10 @@ impl CodexAdapter {
         id: u64,
         read: &NativeRead,
     ) -> Result<OutgoingRequest, AdapterError> {
-        if !self.goal_supported() || self.pending_read.is_some() {
+        if !self.goal_supported()
+            || self.pending_read.is_some()
+            || self.abandoned_reads.len() >= MAX_ABANDONED_READS
+        {
             return Err(AdapterError::CapabilityUnavailable);
         }
         let cursor = read.cursor();
@@ -121,6 +130,9 @@ impl CodexAdapter {
         if self.mcp_list_oversized(id) {
             return Ok(true);
         }
+        if self.take_abandoned_read(id) {
+            return Ok(false);
+        }
         if self.read_scope().map(|(pending, _)| pending) == Some(id) {
             self.complete_native_read(id)?;
             return Ok(true);
@@ -136,6 +148,29 @@ impl CodexAdapter {
     }
 
     pub(crate) fn is_child_read_tombstone_id_active(&self) -> bool {
-        self.child_read_tombstone.is_some()
+        self.child_read_tombstone.is_some() || !self.abandoned_reads.is_empty()
+    }
+
+    /// Stops waiting for a read whose caller gave up, when the read abandons
+    /// at its deadline; its late answer is dropped by `take_abandoned_read`.
+    pub(crate) fn abandon_native_read(&mut self) {
+        let Some(id) = self
+            .read_scope()
+            .filter(|(_, read)| read.abandons_at_deadline())
+            .map(|(id, _)| id)
+        else {
+            return;
+        };
+        self.pending_read = None;
+        let removed = self.take_pending(id);
+        debug_assert!(removed.is_some_and(|kind| kind.is_native_read()));
+        self.abandoned_reads.push(id);
+    }
+
+    /// Whether `id` answers an abandoned read, which is then over.
+    pub(crate) fn take_abandoned_read(&mut self, id: u64) -> bool {
+        let before = self.abandoned_reads.len();
+        self.abandoned_reads.retain(|dead| *dead != id);
+        self.abandoned_reads.len() != before
     }
 }

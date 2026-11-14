@@ -53,9 +53,11 @@ impl CodexRuntime {
             let value: serde_json::Value =
                 serde_json::from_slice(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
             if let Some(id) = value.get("id").and_then(serde_json::Value::as_u64) {
-                if self.inner.is_child_read_tombstone(id)
-                    && value.get("method").is_none()
-                    && (value.get("result").is_some() || value.get("error").is_some())
+                let response = value.get("method").is_none()
+                    && (value.get("result").is_some() || value.get("error").is_some());
+                if response
+                    && (self.inner.is_child_read_tombstone(id)
+                        || self.inner.take_abandoned_read(id))
                 {
                     return one(AdapterEvent::IgnoredLate);
                 }

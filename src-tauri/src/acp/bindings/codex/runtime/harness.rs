@@ -97,10 +97,12 @@ impl HarnessAdapter for CodexRuntime {
         self.request(CodexAdapter::rate_limits_read)
     }
 
-    /// A passive read whose caller gave up: a usage or MCP list read.
+    /// A passive read whose caller gave up: a usage, MCP list or import
+    /// read.
     fn abandon_usage_read(&mut self) {
         self.inner.abandon_rate_limits_read();
         self.inner.abandon_mcp_read();
+        self.inner.abandon_native_read();
     }
 
     /// Each read whose reply may be past the frame bound keeps the decoder
