@@ -8,8 +8,7 @@ use crate::acp::{
 
 use super::AcpService;
 
-/// Why a native fork produced no new session. Every variant leaves the
-/// parent Chat untouched and creates no Sage Chat.
+/// Every variant leaves the parent Chat untouched and creates no Sage Chat.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ChatForkError {
     #[error("This chat can't be forked until its harness is running and idle.")]
@@ -27,9 +26,6 @@ pub(crate) enum ChatForkError {
 }
 
 impl AcpService {
-    /// Asks the source session's own live runtime for a native fork through
-    /// its latest Turn and returns the new native session id. Nothing durable
-    /// changes here; the caller installs the fork Chat and its lineage.
     pub(crate) fn fork_native_session(
         &self,
         source: &ForkSource,
@@ -60,17 +56,10 @@ impl AcpService {
         fork_reply(result)
     }
 
-    /// Best-effort release of a native fork from the source runtime once its
-    /// fork Chat is committed or refused. Nothing durable depends on it: a
-    /// release that cannot run leaves the fork loaded in the source runtime,
-    /// bounded per runtime by the binding, until that runtime exits.
-    ///
-    /// The fork's answer and this release are two session controls with the
-    /// fork Chat's commit between them, and no control is in flight in that
-    /// window, so an idle park may end the source runtime there. That costs
-    /// only the release: a harness that keeps forks in memory drops them as
-    /// it exits, and a refused Pi fork's copy stays in Pi's own session
-    /// list, as it does whenever its removal fails.
+    /// Best-effort: a release that cannot run leaves the fork loaded in the
+    /// source runtime until that runtime exits. An idle park may end the source
+    /// runtime between the fork's answer and this release; that costs only the
+    /// release.
     pub(crate) fn release_native_fork(
         &self,
         source: &ForkSource,
@@ -150,8 +139,6 @@ mod tests {
             fork_reply(Ok(NativeRpcReply::GoalApplied)),
             Err(ChatForkError::RecoveryRequired)
         );
-        // A runtime that refuses the RPC outright (busy, unsupported harness)
-        // is unavailable, not a recovery case.
         assert_eq!(
             fork_reply(Err(HostError::State)),
             Err(ChatForkError::Unavailable)
@@ -160,7 +147,6 @@ mod tests {
             fork_reply(Err(HostError::Deadline)),
             Err(ChatForkError::RecoveryRequired)
         );
-        // A full per-runtime fork ledger says what the user can do about it.
         assert_eq!(
             fork_reply(Err(HostError::Capacity)),
             Err(ChatForkError::TooManyForks)

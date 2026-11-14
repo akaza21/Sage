@@ -101,7 +101,6 @@ pub(in crate::acp::service) enum PendingCodexRecovery {
 }
 
 impl PendingCodexRecovery {
-    /// The exact runtime owner whose authority this recovery retains.
     pub(in crate::acp::service) fn owner(&self) -> Option<RuntimeOwner> {
         match self {
             Self::Activation { recovery } => Some(recovery.owner().clone()),

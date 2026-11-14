@@ -10,7 +10,6 @@ use crate::acp::{
     process::{TreeControl, TreeExit},
 };
 
-/// Live harness operations admitted at once: one per live runtime lane.
 const LIVE_OPERATIONS: usize = super::LIVE_RUNTIME_LANES;
 
 mod admission;

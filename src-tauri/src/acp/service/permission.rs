@@ -68,7 +68,6 @@ fn admits(decision: &PermissionDecision, payload: &NormalizedPayload) -> bool {
     }
 }
 
-/// The link an admitted answer agrees to open, for a link request.
 fn link_to_open(payload: &NormalizedPayload) -> Option<String> {
     let NormalizedPayload::PermissionRequest {
         user_input: Some(request),

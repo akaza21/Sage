@@ -92,8 +92,6 @@ fn worktree_exclude_rules_resolved_through_commondir_fail_closed() {
     f.file("wt/keep.txt", b"keep");
     let secret = f.0.join("wt/secret.txt").to_str().unwrap().to_owned();
     let folder = f.0.join("wt").to_str().unwrap().to_owned();
-    // The matcher cannot apply the oversized shared exclude file, so neither
-    // a direct pick nor a folder pick may admit what it could exclude.
     let refused = "Attachment ignore rules could not be applied in full.";
     assert_eq!(
         read::read_paths(std::slice::from_ref(&secret)),
@@ -171,8 +169,6 @@ fn staging_conflicts_owner_isolation_and_lifecycle_release() {
     let next = stages
         .stage("p", "c", 0, Some(&old.revision), f.read("two"))
         .unwrap();
-    // A late acknowledgement cannot consume a newer selection; it records
-    // only what was sent, which a later send replaces.
     stages.consume("p", "c", 0, "late", &snapshot);
     assert_eq!(stages.list("p", "c").unwrap().revision, next.revision);
     stages.consume("p", "c", 0, "later", &Resources::default());

@@ -1,5 +1,3 @@
-//! Bounded concurrent live chats, each on its own runtime.
-
 use super::*;
 use crate::acp::service::LIVE_RUNTIME_LANES;
 
@@ -33,7 +31,6 @@ fn two_chats_run_concurrently_each_on_its_own_runtime() {
         setup.wait_for_ready(&owner_b);
         assert_eq!(live_trees(), 2, "each live chat owns one runtime tree");
 
-        // Both prompts are dispatched before either turn is awaited.
         let before_a = setup.completed_turns(&owner_a);
         let before_b = setup.completed_turns(&owner_b);
         setup

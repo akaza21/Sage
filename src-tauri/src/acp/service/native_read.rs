@@ -1,7 +1,3 @@
-//! Paged native reads: a child's transcript, the history of a session to
-//! import and the list of importable sessions. Each page is one native RPC
-//! on the owner's live runtime, and a read follows at most `MAX_PAGES`.
-
 use std::sync::Arc;
 
 use crate::{
@@ -17,7 +13,6 @@ use super::AcpService;
 
 const MAX_PAGES: usize = 32;
 
-/// Why a paged native read returned nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum NativeReadError {
     #[error("The harness declined to read this session.")]

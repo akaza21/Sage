@@ -762,7 +762,6 @@ fn earlier_codex_session_resumes_its_thread_in_a_linked_session() {
             .unwrap();
         assert_ne!(command.session_id, started.session_id);
         assert_eq!(command.runtime_epoch, RuntimeEpoch::new(1).unwrap());
-        // A retry after a refused activation still names the earlier session.
         let retried = service.continue_head_session(&resolve(), request).unwrap();
         assert_eq!(retried.session_id, command.session_id);
         let (prepared_command, prepared) = service

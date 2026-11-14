@@ -326,13 +326,10 @@ impl super::AcpService {
         self.browser_attachments.hand_back_generation(project, chat)
     }
 
-    /// The popups that joined `opener`, which follow it on Take over.
     pub(crate) fn browser_joined_popups(&self, opener: &str) -> Vec<String> {
         self.browser_attachments.joined_popups(opener)
     }
 
-    /// Marks an Agent click, key or navigation running on `label`; a popup
-    /// joins only around one.
     pub(crate) fn begin_browser_agent_action(
         &self,
         label: &str,
@@ -340,8 +337,6 @@ impl super::AcpService {
         self.browser_attachments.begin_agent_action(label)
     }
 
-    /// Joins a tab that the Agent-driven `opener` opened to the opener's
-    /// Agent attachment, now or at its first settled page.
     pub(crate) fn adopt_browser_popup(
         &self,
         opener: &str,
@@ -354,9 +349,6 @@ impl super::AcpService {
             });
     }
 
-    /// Whether the chat is live and `session` has a current owner whose
-    /// turn runs: the same checks `attach_agent_browser_tab` makes, for a
-    /// popup that joins without an owner of its own.
     fn browser_turn_running(
         &self,
         project: &SageProjectId,
@@ -373,9 +365,6 @@ impl super::AcpService {
             })
     }
 
-    /// Ends every developer-mode grant, as the Settings switch going off
-    /// does, and returns the tabs that held one.
-    /// Ends every grant and releases each tab's developer-mode objects.
     pub(crate) fn end_browser_developer_mode(&self) -> Vec<String> {
         let labels = self.browser_attachments.end_developer_mode();
         for label in &labels {
@@ -391,8 +380,6 @@ impl super::AcpService {
         self.browser_attachments.agent_control(label)
     }
 
-    /// Whether the user took over any tab this chat's Agent may drive; the
-    /// Agent then opens no other tab either.
     pub(crate) fn browser_chat_under_user_control(
         &self,
         project: &SageProjectId,

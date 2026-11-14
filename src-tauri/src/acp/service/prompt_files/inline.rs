@@ -1,10 +1,8 @@
-//! Attached files for a harness whose prompt is text only.
 use super::Resources;
 
 impl Resources {
-    /// The prompt text followed by each attached file, for a harness whose
-    /// prompt is text only. A text file is quoted whole inside a `<context>`
-    /// block that names it; any other file is named but not sent.
+    /// A text file is quoted whole inside a `<context>` block that names it; any
+    /// other file is named but not sent.
     pub(crate) fn inline(&self, text: &str) -> String {
         let mut inline = text.to_owned();
         for r in self.0.iter() {

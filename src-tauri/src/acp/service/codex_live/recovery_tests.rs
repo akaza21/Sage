@@ -322,8 +322,6 @@ async fn ready_runtime_fixture_with(
     (service, owner)
 }
 
-/// Starts, activates and completes activation of a session for the Chat on
-/// lane 0, so its runtime epoch is running and resumable.
 async fn seat_ready_session(
     service: &AcpService,
     project_id: SageProjectId,
@@ -1356,16 +1354,14 @@ fn close_session(owner: &RuntimeOwner) -> crate::acp::store::CloseSessionCommand
     }
 }
 
-/// An app whose first Chat holds an idle, resumable runtime on lane 0 and
-/// whose second Chat stays attached, so the first can be archived.
 fn app_with_idle_runtime(
     label: &str,
 ) -> (crate::state::AppState, RuntimeOwner, std::path::PathBuf) {
     app_with_runtime(label, true)
 }
 
-/// An app whose Chat holds an idle runtime; without `parkable` the runtime
-/// has no shutdown recovery, so a park of it never settles.
+/// Without `parkable` the runtime has no shutdown recovery, so a park of it
+/// never settles.
 fn app_with_runtime(
     label: &str,
     parkable: bool,
@@ -1532,7 +1528,6 @@ fn archiving_a_chat_after_its_turn_parks_its_runtime_and_it_then_deletes() {
     );
     assert!(state.acp.lane_for(&owner).is_none());
 
-    // Neither a new session nor the parked one starts for an archived Chat.
     let revision = state
         .acp
         .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
@@ -1588,8 +1583,6 @@ fn delete_waits_for_a_background_release_still_parking_the_runtime() {
         0,
     ));
     assert!(archived.committed, "{:?}", archived.recovery_error);
-    // A background release holds the lane: delete is refused for it at least
-    // once, then the holder lets go and delete releases the runtime itself.
     state.acp.hold_lane_until_busy_for_test(&owner);
     let deleted = runtime.block_on(crate::chat_archive_commands::delete_chat_inner(
         &state,
@@ -1644,7 +1637,6 @@ fn delete_waits_for_the_harness_to_answer_a_control_then_releases_the_runtime() 
             )
         })
     };
-    // Delete is refused while the harness answers, and keeps asking.
     while state.acp.control_running_refusals_for_test() == 0 {
         assert!(started.elapsed() < Duration::from_secs(2));
         std::thread::yield_now();
@@ -1662,7 +1654,6 @@ fn delete_waits_for_the_harness_to_answer_a_control_then_releases_the_runtime() 
 #[test]
 fn deleting_an_archived_chat_releases_a_runtime_it_still_holds() {
     let (state, owner, root) = app_with_idle_runtime("delete-command");
-    // Archived before archive released runtimes: the epoch is still live.
     state
         .database
         .archive_chat(&archive_request(&state, &owner))
@@ -1710,7 +1701,6 @@ fn archive_refuses_a_running_turn_and_an_archived_chat_takes_no_prompt() {
 
     finish_app(state, root);
 
-    // An archived Chat takes no prompt: the send refuses it before any Turn.
     let (state, owner, root) = app_with_idle_runtime("archived-prompt");
     state
         .database
@@ -1787,8 +1777,6 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
     );
     assert!(service.lane_at(0).scheduler.active().is_some());
 
-    // Archive the Chat in the store alone: its idle runtime epoch is still
-    // live, which is what refused a delete before archive released it.
     let layout = |snapshot: crate::domain::BootstrapSnapshot| crate::domain::ProjectLayoutRequest {
         project_id: owner.project_id.as_str().to_owned(),
         tabs: snapshot.tabs,
@@ -1818,7 +1806,6 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
         "{refused}"
     );
 
-    // A Chat restored before its release claims the lane keeps its runtime.
     assert_eq!(
         service.release_chat_runtime(
             &owner.project_id,
@@ -1829,7 +1816,6 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
         Ok(())
     );
     assert!(service.lane_at(0).scheduler.active().is_some());
-    // The release let go of the lane: it can be claimed again.
     drop(service.claim_lane_activation_for_test(&owner));
 
     assert_eq!(
@@ -1855,7 +1841,6 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
         )
         .unwrap();
     assert!(!live, "the parked runtime epoch is no longer live");
-    // Nothing is left to release, and the archived Chat now deletes cleanly.
     assert_eq!(
         service.release_chat_runtime(
             &owner.project_id,
@@ -2196,7 +2181,6 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     }
 }
 
-/// Inserts the durable turn a real prepare would have committed.
 fn insert_sending_turn(service: &AcpService, owner: &RuntimeOwner) {
     service
         .database
@@ -2242,8 +2226,6 @@ fn a_refused_sign_in_prompt_settles_its_turn_and_frees_the_lane() {
     assert!(turn_state(&service, &owner).is_terminal());
     assert!(service.lane_for(&owner).is_none(), "the lane is free again");
     assert_recovered_runtime_is_cold(&service, &owner);
-    // A late Cancel for the settled turn succeeds instead of reporting a
-    // stale identity.
     assert!(matches!(
         service.cancel_codex_turn(cancel_intent(&owner)),
         Ok(crate::acp::runtime::HostOutcome::CancelQueued)
@@ -2330,8 +2312,6 @@ async fn refused_prompt_recovery_allows_other_async_work_to_progress() {
     service.shutdown_blocking().unwrap();
 }
 
-/// Records the completed Turn that makes an idle runtime one eviction could
-/// park.
 fn complete_a_turn(service: &AcpService, owner: &RuntimeOwner) {
     service
         .database
@@ -2409,12 +2389,10 @@ fn an_idle_chat_out_of_view_releases_its_runtime_after_two_minutes() {
     let (service, owner) = idle_release_fixture("idle-hidden");
     let start = std::time::Instant::now();
 
-    // Shown, it is kept well past the out-of-view wait.
     service.set_shown_chats([owner.chat_id.clone()]);
     assert_eq!(service.release_idle_runtimes(start + 3 * MINUTE), Some(0));
     assert!(service.lane_for(&owner).is_some());
 
-    // Out of view from now: not yet two minutes, then two minutes.
     service.set_shown_chats([]);
     assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
     assert!(service.lane_for(&owner).is_some());
@@ -2470,9 +2448,7 @@ fn a_lane_held_by_an_activation_keeps_an_idle_chat_runtime() {
         assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(0));
         assert!(service.lane_for(&owner).is_some());
     }
-    // The refused sweep let go of nothing it did not hold.
     drop(service.claim_lane_activation_for_test(&owner));
-    // Once let go, the next sweep releases it.
     assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(1));
     assert!(service.lane_for(&owner).is_none());
     service.shutdown_blocking().unwrap();
@@ -2488,7 +2464,6 @@ fn an_idle_chat_whose_harness_is_answering_a_control_keeps_its_runtime() {
     let (service, owner) = idle_runtime_fixture_with("idle-control", true, true, runtime);
     let start = std::time::Instant::now();
     service.set_shown_chats([]);
-    // A fork is a session control, not a Turn: the scheduler sees no Turn.
     let host = service.host_for(&owner).unwrap();
     let fork = {
         let owner = owner.clone();
@@ -2513,7 +2488,6 @@ fn an_idle_chat_whose_harness_is_answering_a_control_keeps_its_runtime() {
         Ok(crate::acp::goal::NativeRpcReply::Rejected),
         "the control was answered, not cut off"
     );
-    // Once answered, the next sweep releases it.
     assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(1));
     assert!(service.lane_for(&owner).is_none());
     service.shutdown_blocking().unwrap();
@@ -2525,11 +2499,7 @@ fn an_eviction_park_takes_the_claim_made_when_its_lane_was_chosen() {
     let lane = service.lane_for(&owner).unwrap();
     let host = lane.runtime.for_owner(&owner).unwrap();
     *lane.eviction.lock().unwrap() = Some(host.claim_idle_park().unwrap());
-    // Claimed for the eviction, the runtime takes no new control...
     assert!(host.claim_idle_park().is_none());
-    // ...and its park goes ahead under that claim rather than refusing: the
-    // host shuts down and the park's zero-process recovery releases the lane,
-    // as an activation's reclaim drives it.
     let deadline = crate::acp::service::explicit_close_deadline();
     let parked = lane.park_idle_runtime_for_replacement(deadline);
     assert!(
@@ -2552,7 +2522,6 @@ fn a_chat_shown_again_is_kept_and_sweeping_ends_at_shutdown() {
     let start = std::time::Instant::now();
     service.set_shown_chats([]);
     assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
-    // Coming back before two minutes clears the out-of-view mark.
     service.set_shown_chats([owner.chat_id.clone()]);
     assert_eq!(service.release_idle_runtimes(start + 5 * MINUTE), Some(0));
     assert!(service.lane_for(&owner).is_some());
@@ -2571,7 +2540,6 @@ fn a_session_that_cannot_resume_or_never_completed_a_turn_is_kept() {
         let start = std::time::Instant::now();
         service.set_shown_chats([]);
         assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
-        // Parking would lose the conversation, or nothing proves it resumes.
         assert_eq!(
             service.release_idle_runtimes(start + 30 * MINUTE),
             Some(0),
@@ -2592,7 +2560,6 @@ fn a_chat_shown_again_while_a_sweep_runs_is_kept() {
     let now = start + 3 * MINUTE;
     let due = service.idle_runtimes_due(now);
     assert_eq!(due.len(), 1);
-    // The user opens the Chat while earlier lanes of the sweep are parking.
     service.set_shown_chats([owner.chat_id.clone()]);
     let (index, due_owner, idle_since) = due.into_iter().next().unwrap();
     let deadline = crate::acp::service::explicit_close_deadline();

@@ -8,8 +8,6 @@ use crate::acp::{
 };
 
 impl AcpService {
-    /// Carries out a session control on the owner's running session; the
-    /// text says what the harness did, when it says.
     pub(crate) fn control_session(
         &self,
         owner: RuntimeOwner,
@@ -21,10 +19,9 @@ impl AcpService {
         }
     }
 
-    /// Sends a session control and answers with the harness's reply; a
-    /// refusal is an error. A control that abandons at its deadline (see
-    /// `SessionControl::abandons_at_deadline`) is late, not a reason to
-    /// recover the runtime.
+    /// A control that abandons at its deadline (see
+    /// `SessionControl::abandons_at_deadline`) is late, not a reason to recover the
+    /// runtime.
     pub(in crate::acp::service) fn session_control_reply(
         &self,
         owner: RuntimeOwner,
@@ -86,13 +83,8 @@ fn only_an_abandoned_read_misses_its_deadline_without_recovery() {
 const RETITLE_PASSES: usize = 3;
 
 impl AcpService {
-    /// Names the chat's running harness session after the chat's title as
-    /// Sage now keeps it, so the harness lists it by that name too. Reading
-    /// the kept title rather than carrying one makes overlapping renames
-    /// settle on the latest. Best effort: a chat with no running session, or
-    /// a harness that names no sessions, keeps its title in Sage alone, and
-    /// a name the harness did not confirm in time leaves the session as is.
-    /// Recovery follows the same rules as any other session control.
+    /// Reading the kept title rather than carrying one makes overlapping renames
+    /// settle on the latest.
     pub(crate) fn retitle_live_session(&self, project_id: &str, chat_id: &str) {
         let Some(owner) = self.lanes().find_map(|lane| {
             lane.runtime.owner().filter(|owner| {

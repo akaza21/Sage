@@ -2,7 +2,6 @@ use super::*;
 use crate::acp::scheduler::RuntimeOwner;
 
 impl AcpService {
-    /// Adds the current session's live activities and Undo to the page.
     /// They are display decoration: a page they would push over its byte
     /// budget goes without them.
     pub(super) fn compose_session_surface(&self, page: &mut AcpChatPage) -> Result<(), StoreError> {

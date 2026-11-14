@@ -1,7 +1,3 @@
-//! Lists a Project's native sessions started outside Sage and reads the
-//! history of one to import, on the Project's lister runtime (see
-//! `store::native_import::import_lister`). Nothing durable changes here.
-
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -26,12 +22,10 @@ use super::{AcpService, native_read::NativeReadError};
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportedHistory {
     pub(crate) turns: Vec<ChildTurn>,
-    /// Older Turns were left out.
     pub(crate) retention_limited: bool,
 }
 
 impl ImportedHistory {
-    /// Drops the oldest Turns until the encoded history fits the bound.
     fn encode_within_bounds(mut self) -> Option<String> {
         let sizes: Vec<usize> = self
             .turns
@@ -67,7 +61,6 @@ pub(crate) struct ImportLister {
     pub(crate) runtime_epoch: RuntimeEpoch,
 }
 
-/// One page of importable sessions and the runtime that listed it.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ListedSessions {
@@ -92,8 +85,6 @@ impl AcpService {
         Ok((owner, host))
     }
 
-    /// One page of the Project's importable sessions not yet imported, on
-    /// the runtime that listed the earlier pages, if any.
     pub(crate) fn list_importable_sessions(
         &self,
         project: &SageProjectId,
@@ -129,8 +120,6 @@ impl AcpService {
         }
     }
 
-    /// Reads a session `lister` listed for import, and returns its history
-    /// encoded with the lister whose binding will resume the session.
     pub(crate) fn read_import_history(
         &self,
         project: &SageProjectId,

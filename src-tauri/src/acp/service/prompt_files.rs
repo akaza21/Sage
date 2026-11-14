@@ -1,4 +1,4 @@
-//! Ephemeral native prompt resources. No bytes or paths are persisted.
+//! No bytes or paths are persisted.
 use sage_core::limits::prompt_files::{FILE_COUNT, TOTAL_BYTES};
 use serde::Serialize;
 use std::{collections::BTreeMap, sync::Arc};
@@ -15,7 +15,6 @@ mod selection_tests;
 #[cfg(test)]
 mod tests;
 
-/// The name a pasted-text resource carries; its URI still holds its own id.
 pub(crate) const PASTED_TEXT_NAME: &str = "pasted-text.txt";
 const OWNER_COUNT: usize = 16;
 const STORE_BYTES: usize = 1024 * 1024;
@@ -108,7 +107,6 @@ pub(crate) fn prompt_blocks(
 pub(crate) struct StagedFiles {
     pub revision: String,
     pub files: Vec<FileSummary>,
-    /// The resource a paste just added, so its preview attaches by id.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub added: Option<String>,
 }
@@ -137,7 +135,6 @@ struct Sent {
     /// Recency: the least recent record is released first.
     sequence: u64,
 }
-/// The turn a Retry repeats, as its durable record describes it.
 pub(crate) struct RetryOrigin {
     pub client_intent_id: String,
     /// How many resources its prompt carried; persisted as a count only.
@@ -145,7 +142,6 @@ pub(crate) struct RetryOrigin {
     /// may have carried files, so Retry without a kept record is refused.
     pub attachments: Option<usize>,
 }
-/// Which staged files a send carries, resolved against durable state.
 pub(crate) enum Selection {
     /// None: a queued message or slash command never takes a batch.
     None,
@@ -199,7 +195,6 @@ impl FileStages {
         self.batches.insert(key, batch);
         Ok(summary)
     }
-    /// Bytes held by staged batches (other than `except`'s) and kept sends.
     fn retained(&self, except: Option<&(String, String)>) -> usize {
         let staged = self.batches.iter().filter(|(k, _)| Some(*k) != except);
         let sent = self.sent.values().filter_map(|s| s.resources.as_ref());
@@ -208,8 +203,6 @@ impl FileStages {
             .sum::<usize>()
             + sent.map(Resources::retained_bytes).sum::<usize>()
     }
-    /// Releases the least recently sent files held for Retry, other than
-    /// `keep`'s. False when none are left to release.
     fn release_oldest_sent(&mut self, keep: Option<&(String, String)>) -> bool {
         let oldest = self
             .sent
@@ -220,9 +213,6 @@ impl FileStages {
             .min_by_key(|(_, s)| s.sequence);
         oldest.map(|(_, s)| s.resources = None).is_some()
     }
-    /// Adds pasted composer text to the chat's batch as one more text
-    /// resource. The batch caps (count and total bytes) apply to the whole
-    /// batch, so a paste is admitted only while the batch still fits.
     pub(crate) fn append_text(
         &mut self,
         project: &str,
@@ -267,9 +257,6 @@ impl FileStages {
         staged.added = Some(id);
         Ok(staged)
     }
-    /// The files a send carries. Naming no selection carries none, so a
-    /// queued message or a slash command never takes a batch staged for the
-    /// message the person is writing.
     pub(crate) fn selected(
         &self,
         project: &str,
@@ -355,10 +342,6 @@ impl FileStages {
             self.batches.remove(&key);
         }
     }
-    /// Records a dispatched prompt as the chat's latest send, under its
-    /// client intent, so Retry of that turn resends exactly what it carried:
-    /// a sent batch leaves the stage, and a send without files is recorded
-    /// as carrying none. Only the latest send per chat is kept.
     pub(crate) fn consume(
         &mut self,
         project: &str,
@@ -381,8 +364,6 @@ impl FileStages {
         );
         self.bound_sent(&key);
     }
-    /// Files kept for Retry share the owner and memory caps with staged
-    /// batches; the least recently sent other entries are released first.
     fn bound_sent(&mut self, keep: &(String, String)) {
         loop {
             let held = self

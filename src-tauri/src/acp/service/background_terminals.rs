@@ -17,11 +17,6 @@ pub(crate) enum TerminalsError {
 }
 
 impl AcpService {
-    /// Runs `action` against the runtime's harness. A listing answers with
-    /// the terminals it still runs, or none when the runtime is gone. A stop
-    /// answers with none, and the caller lists again; a stop for a runtime
-    /// that is gone is `Stale`, since nothing stopped. A harness that is busy,
-    /// holds back a listing or never negotiated terminals refuses either.
     pub(crate) fn background_terminals(
         &self,
         owner: RuntimeOwner,
@@ -101,8 +96,6 @@ mod tests {
             terminals_reply(false, Ok(NativeRpcReply::TerminalsStopped)),
             Ok(Vec::new())
         );
-        // A refused request must not look like one that worked: a busy or
-        // held-back listing is not an empty one.
         for (list, refused) in [
             (true, Err(HostError::Intent)),
             (true, Ok(NativeRpcReply::Rejected)),
