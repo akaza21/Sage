@@ -25,14 +25,24 @@ interface AccessSelectionProps {
 export function ChatAccessView({
   sessionConfig: session,
   chatId,
+  endedSession,
   ...props
 }: AccessSelectionProps &
-  Pick<ComposerAccessControlProps, "sessionConfig" | "chatId">) {
-  // A removed session is past; its chat drafts like one not yet started.
-  return session && !session.removed ? (
+  Pick<
+    ComposerAccessControlProps,
+    "sessionConfig" | "chatId" | "endedSession"
+  >) {
+  // A chat with no head drafts the access of the session its next send
+  // starts, even while it shows its last session's config; a removed session
+  // is past, and its chat drafts too.
+  return session && !session.removed && !chatId ? (
     <LiveChatAccess session={session} {...props} />
   ) : (
-    <ChatAccessDraftSelection chatId={chatId} {...props} />
+    <ChatAccessDraftSelection
+      chatId={chatId}
+      endedSession={endedSession}
+      {...props}
+    />
   );
 }
 

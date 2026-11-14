@@ -70,7 +70,9 @@ pub(super) fn remember(
 impl AcpService {
     /// Stores a choice made before `session` existed, so the restore gives it
     /// to the session's first runtime once that runtime reports its config,
-    /// before the first prompt. Returns whether it was stored.
+    /// before the first prompt. A value the session carried over from the
+    /// chat's ended session for the same option was picked after any draft
+    /// still held, so it stays. Returns whether the session keeps a value.
     pub(crate) fn remember_start_choice(
         &self,
         session: &sage_acp_protocol::contract::SageAgentSessionId,
@@ -79,6 +81,9 @@ impl AcpService {
         self.database
             .write_connection()
             .and_then(|connection| {
+                if choices::get(&connection, session, choice)?.is_some() {
+                    return Ok(true);
+                }
                 choices::record(&connection, session, choice, sage_core::time::now_millis())
                     .map_err(Into::into)
             })

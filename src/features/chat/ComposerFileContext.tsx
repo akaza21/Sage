@@ -1,10 +1,10 @@
 import type { RefObject } from "react";
 import type { PromptPick } from "../../ports/promptAttachments";
 import type * as AttachChunk from "./ComposerAttach";
-import type { ComposerImageAction } from "./ComposerAttach";
 import type * as MentionChunk from "./ComposerMentionController";
 import { lazyParts } from "./lazyParts";
 import type { useComposerFileContext } from "./useComposerFiles";
+import type { ImageAction } from "./useComposerImageInput";
 
 type FileContext = ReturnType<typeof useComposerFileContext>;
 
@@ -34,7 +34,7 @@ export function ComposerFileParts({
   fieldId: string;
   attachAnchorId: string;
   text: string;
-  imageAction?: ComposerImageAction;
+  imageAction?: ImageAction;
   /** Hands a pick to the chat's staged batch, which the paste part owns. */
   onPickFiles: (pick: PromptPick) => void;
   hidden: boolean;

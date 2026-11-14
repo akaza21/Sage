@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
@@ -162,7 +163,9 @@ describe("composer image input", () => {
         await screen.findByRole("menu", { name: "Composer options menu" });
       }
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
-      expect(screen.queryByRole("menuitem", { name: "Add images" })).toBeNull();
+      expect(
+        screen.getByRole("menuitem", { name: "Files and folders" }),
+      ).toHaveAttribute("aria-disabled", "true");
     },
   );
 
@@ -307,18 +310,41 @@ describe("composer image input", () => {
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
   });
 
-  it("omits unavailable image actions and refuses a dropped image", async () => {
-    const { onAddImages } = renderComposer();
+  it("keeps + open with nothing to attach refused in place, and refuses a dropped image", async () => {
+    const { onAddImages } = renderComposer({
+      imageInputDisabledReason: "This harness does not advertise image input.",
+    });
     await openAttachMenu();
-    expect(screen.queryByRole("menuitem", { name: "Images…" })).toBeNull();
+    expect(
+      screen.getByRole("menuitem", { name: "Files and folders" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("menu", { name: "Attach" })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByLabelText("Choose images")).toBeNull();
     fireEvent.drop(screen.getByRole("form"), {
       dataTransfer: { files: [png()], types: ["Files"] },
     });
     expect(onAddImages).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Image input is unavailable",
+      "This harness does not advertise image input.",
     );
+  });
+
+  it("opens the attach menu for images where files are refused", async () => {
+    renderComposer({ imageInputAvailable: true });
+    await openAttachMenu();
+    const attach = screen.getByRole("menu", { name: "Attach" });
+    for (const pick of ["Files…", "Folder…"]) {
+      const item = within(attach).getByRole("menuitem", { name: pick });
+      expect(item).toBeDisabled();
+      expect(item).toHaveAttribute(
+        "title",
+        "Attaching files needs the Sage desktop app with an ACP harness.",
+      );
+    }
+    expect(
+      within(attach).getByRole("menuitem", { name: "Images…" }),
+    ).toBeEnabled();
   });
 
   it("accepts image paste and chooser only with capability", () => {

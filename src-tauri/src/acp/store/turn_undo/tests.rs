@@ -182,6 +182,13 @@ fn a_restart_replaces_the_parked_head_with_a_fresh_one_on_the_same_binding() {
         )
     );
     assert_eq!(row("session-a").0, "closed");
+    assert_eq!(
+        crate::acp::store::preceding_session(&fixture.database.connection(), &restarted.session_id)
+            .unwrap()
+            .as_ref()
+            .map(SageAgentSessionId::as_str),
+        Some("session-a")
+    );
     let page = load_chat_page(
         &fixture.database.connection(),
         fixture.project.clone(),

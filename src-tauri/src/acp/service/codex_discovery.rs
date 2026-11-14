@@ -283,6 +283,18 @@ impl CodexDiscoveryManager {
         self.cache.clear();
     }
 
+    pub(super) fn launch_model(
+        &self,
+        project_root: &CodexProjectRootAuthority,
+        binding_id: &sage_acp_protocol::intent::BindingId,
+        binding_digest: [u8; 32],
+        model_id: Option<&sage_acp_protocol::intent::ModelId>,
+    ) -> Option<sage_domain::harness::ModelOption> {
+        project_root.revalidate().ok()?;
+        self.cache
+            .launch_model(project_root, binding_id, binding_digest, model_id)
+    }
+
     pub(super) fn validate_session_model(
         &self,
         project_root: &CodexProjectRootAuthority,
@@ -501,6 +513,7 @@ mod tests {
                 id: model_id.clone(),
                 name: RequiredText::new("modelName", "GPT Cache").unwrap(),
                 is_default: true,
+                effort_levels: Vec::new(),
             }],
             default_model_id: Some(model_id),
         }

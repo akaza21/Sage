@@ -263,6 +263,23 @@ describe("composer attach from the + menu", () => {
     );
   });
 
+  it("keeps unavailable images in the attach menu, disabled with their reason", async () => {
+    withSession(true);
+    native.mockResolvedValue(null);
+    renderComposer({
+      imageInputDisabledReason: "This harness does not advertise image input.",
+      onAddImages: vi.fn(),
+    });
+    await openAttach();
+    expect(screen.getByRole("menuitem", { name: "Files…" })).toBeEnabled();
+    const images = screen.getByRole("menuitem", { name: "Images…" });
+    expect(images).toBeDisabled();
+    expect(images).toHaveAttribute(
+      "title",
+      "This harness does not advertise image input.",
+    );
+  });
+
   it("offers the image path beside files when the harness takes images", async () => {
     withSession(true);
     native.mockResolvedValue(null);

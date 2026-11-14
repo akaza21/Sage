@@ -9,7 +9,7 @@ import type { ComposerAccessControlProps } from "./ComposerAccessControl";
 
 export type PlanAccessTarget = Pick<
   ComposerAccessControlProps,
-  "bindingId" | "chatId" | "sessionConfig" | "capabilities"
+  "bindingId" | "chatId" | "endedSession" | "sessionConfig" | "capabilities"
 > & {
   onOpenAccess: () => void;
 };

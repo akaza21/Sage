@@ -78,7 +78,7 @@ interface Props {
 export function ChatHarnessControls({
   contextUsage,
   usageRequest,
-  accessTarget,
+  accessTarget: { bindingId: accessBindingId, draftChatId, endedSession } = {},
   addActions = {},
   optionsTriggerId,
   availableBinding,
@@ -125,7 +125,6 @@ export function ChatHarnessControls({
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
-  const accessBindingId = accessTarget?.bindingId;
   const accessHarness = accessBindingId
     ? harnesses.find((harness) => harness.bindingId === accessBindingId)
     : selectedHarness;
@@ -193,10 +192,10 @@ export function ChatHarnessControls({
     confirmedModelLabel,
     selectedModelId,
   );
-  // Before the chat's first session (`draftChatId` is set only then), the
-  // levels the harness lists for the selected model can be chosen.
+  // While the next send starts a session (`draftChatId` is set only then),
+  // the levels the harness lists for the selected model can be chosen.
   const draft = {
-    chatId: accessTarget?.draftChatId,
+    chatId: draftChatId,
     bindingId: selectedHarness?.bindingId,
     modelId: currentModelId,
     levels: effortOption
@@ -237,10 +236,11 @@ export function ChatHarnessControls({
     availableBinding &&
     accessHarness?.bindingId &&
     governedPlanMode(accessHarness.accessModes) &&
-    (accessTarget?.draftChatId || (sessionConfig && !sessionConfig.removed))
+    (draftChatId || (sessionConfig && !sessionConfig.removed))
       ? {
           bindingId: accessHarness.bindingId,
-          chatId: accessTarget?.draftChatId,
+          chatId: draftChatId,
+          endedSession,
           sessionConfig,
           capabilities: accessHarness.accessModes,
           onOpenAccess: () => toggle("access"),
@@ -298,7 +298,8 @@ export function ChatHarnessControls({
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
             harnessName={accessHarness.name}
-            chatId={accessTarget?.draftChatId}
+            chatId={draftChatId}
+            endedSession={endedSession}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}

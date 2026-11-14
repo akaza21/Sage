@@ -442,6 +442,7 @@ describe("ChatSurface ACP resource integration", () => {
         bindingId: "absent-binding" as never,
         runtimeEpoch: null,
         state: "created" as const,
+        capabilities: { protocolVersion: "pending", prompt: false } as never,
       })),
     };
     useWorkbenchStore.setState({
@@ -538,16 +539,14 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     await openComposerOptions();
     const menu = screen.getByRole("menu", { name: "Composer options menu" });
-    const files = within(menu).getByRole("menuitem", {
-      name: "Files and folders",
-    });
-    expect(files).toHaveAttribute("aria-disabled", "true");
-    expect(files).toHaveAccessibleDescription(
-      "Attaching files needs the Sage desktop app with an ACP harness.",
-    );
     expect(
       within(menu).getByRole("menuitem", { name: "Work in a project" }),
     ).toHaveAccessibleDescription("Sage");
+    // Images can be chosen before the first session, so the attach menu
+    // stays reachable and refuses only its file picks.
+    expect(
+      within(menu).getByRole("menuitem", { name: "Files and folders" }),
+    ).toHaveAttribute("aria-disabled", "false");
   });
 
   it("gives a side chat no project chip before or after its first turn (Codex s2/f0244)", () => {
@@ -2155,6 +2154,10 @@ describe("ChatSurface ACP resource integration", () => {
         .getAllByRole("menuitem")
         .map((item) => item.getAttribute("aria-label") ?? item.textContent),
     ).toEqual(["Files and folders"]);
+    // Neither files nor images can be attached here, so Add says why in place.
+    expect(
+      screen.getByRole("menuitem", { name: "Files and folders" }),
+    ).toHaveAttribute("aria-disabled", "true");
     expect(
       screen.queryByRole("button", { name: "Session thinking budget" }),
     ).toBeNull();
@@ -4507,6 +4510,7 @@ describe("ChatSurface per-chat composer", () => {
           residency: "cold",
           legacy: false,
           runtimeEpoch: null,
+          capabilities: { protocolVersion: "pending", prompt: false },
         },
       ] as never,
       turns: [

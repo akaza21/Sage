@@ -189,6 +189,13 @@ fn an_earlier_session_continues_in_a_linked_head_that_fills_the_same_thread() {
     let fixture = Fixture::new();
     let linked = fixture.link().unwrap();
     assert_eq!(linked.disposition, MutationDisposition::Applied);
+    assert_eq!(
+        crate::acp::store::preceding_session(&fixture.database.connection(), &linked.session_id)
+            .unwrap()
+            .as_ref()
+            .map(SageAgentSessionId::as_str),
+        Some("session-earlier")
+    );
     let id = linked.session_id.as_str();
     assert_eq!(
         fixture.session_row(id),

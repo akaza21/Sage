@@ -151,7 +151,7 @@ impl CodexRuntime {
         let unreported = [
             ("model", self.reported_model_id.is_some() && !catalogue_read),
             (
-                "effort",
+                EFFORT_CONFIG_ID,
                 unlisted
                     || effort.is_none()
                         && model.is_some_and(|model| !model.supported_efforts.is_empty()),
@@ -190,7 +190,7 @@ impl CodexRuntime {
         else {
             return Err(AdapterRuntimeError::Operation);
         };
-        if !matches!(config_id.as_str(), "effort" | "model") {
+        if config_id.as_str() != EFFORT_CONFIG_ID && config_id.as_str() != "model" {
             return Err(AdapterRuntimeError::Operation);
         }
         self.session_config
@@ -341,4 +341,14 @@ impl CodexRuntime {
             )
         }
     }
+}
+
+pub(super) const EFFORT_CONFIG_ID: &str = "effort";
+
+/// Only a level discovery listed for the thread's starting `model`.
+pub(crate) fn launch_effort_option(
+    model: &sage_domain::harness::ModelOption,
+    effort: &str,
+) -> Option<&'static str> {
+    model.lists_effort(effort).then_some(EFFORT_CONFIG_ID)
 }

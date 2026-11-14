@@ -234,3 +234,36 @@ fn a_pending_token_is_checked_without_being_spent() {
         .unwrap();
     assert!(!pending("session-a", FullAccess, &token, 2_000));
 }
+
+#[test]
+fn a_session_carries_its_predecessors_narrower_mode_only() {
+    use sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite;
+    let store = store();
+    store.set_chat_access("failed", WorkspaceWrite, 1).unwrap();
+    assert_eq!(
+        store.carry_chat_access("failed", "next", 2).unwrap(),
+        Some(WorkspaceWrite)
+    );
+    assert_eq!(store.chat_access("next").unwrap(), Some(WorkspaceWrite));
+    // A session that already holds its own mode keeps it.
+    store.set_chat_access("drafted", Ask, 3).unwrap();
+    assert_eq!(
+        store.carry_chat_access("failed", "drafted", 4).unwrap(),
+        None
+    );
+    assert_eq!(store.chat_access("drafted").unwrap(), Some(Ask));
+    // A permissive mode is confirmed again, never carried.
+    let token = store.prepare_chat_access("full", FullAccess, 5).unwrap();
+    store
+        .grant_chat_access("full", FullAccess, &token, 6)
+        .unwrap();
+    assert_eq!(
+        store.carry_chat_access("full", "after-full", 7).unwrap(),
+        None
+    );
+    assert_eq!(store.chat_access("after-full").unwrap(), None);
+    assert_eq!(
+        store.carry_chat_access("none", "after-none", 8).unwrap(),
+        None
+    );
+}

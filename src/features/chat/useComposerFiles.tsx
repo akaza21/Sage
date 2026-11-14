@@ -1,5 +1,6 @@
 import { useState, type ComponentProps } from "react";
 import { ComposerFileParts } from "./ComposerFileContext";
+import { imagesOffered } from "./useComposerImageInput";
 
 /**
  * The composer's file context: the `@` picker arms with the draft's first
@@ -35,6 +36,7 @@ export function useComposerFiles({
     parts: <ComposerFileParts files={files} {...parts} />,
     attach,
     /** Images keep the attach menu open where files are refused. */
-    refusalChatId: attach && !parts.imageAction ? parts.chatId : undefined,
+    refusalChatId:
+      attach && !imagesOffered(parts.imageAction) ? parts.chatId : undefined,
   };
 }

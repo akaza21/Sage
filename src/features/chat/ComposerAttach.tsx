@@ -3,11 +3,7 @@ import { useId, useMemo, useState } from "react";
 import type { PromptPick } from "../../ports/promptAttachments";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { attachRefusal as refusal } from "./composerAttachRefusal";
-import type { useComposerImageInput } from "./useComposerImageInput";
-
-export type ComposerImageAction = NonNullable<
-  ReturnType<typeof useComposerImageInput>["action"]
->;
+import { imagesOffered, type ImageAction } from "./useComposerImageInput";
 
 const PICKS = [
   ["files", "Files…"],
@@ -30,7 +26,7 @@ export function ComposerAttach({
   /** Presses of Files and folders so far; each is taken once. */
   presses: number;
   triggerId: string;
-  imageAction?: ComposerImageAction;
+  imageAction?: ImageAction;
   onPick: (pick: PromptPick) => void;
 }) {
   const [notice, setNotice] = useState("");
@@ -47,7 +43,7 @@ export function ComposerAttach({
   if (presses !== taken) {
     setTaken(presses);
     const refused = refusal(chatId);
-    if (refused && !imageAction) setNotice(refused);
+    if (refused && !imagesOffered(imageAction)) setNotice(refused);
     else setMenuOpen(true);
   }
   // The anchor belongs to the toolbar, so it is looked up when the menu
@@ -104,6 +100,7 @@ export function ComposerAttach({
               className="menu-item"
               tabIndex={-1}
               disabled={imageAction.disabled}
+              title={imageAction.reason ?? undefined}
               onClick={() => {
                 close();
                 imageAction.onChoose();
