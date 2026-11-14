@@ -5,7 +5,8 @@ use sage_core::{
 };
 use uuid::Uuid;
 
-use crate::{domain::ProjectSummary, persistence::Database};
+use crate::persistence::Database;
+use sage_domain::project::ProjectSummary;
 
 use super::seed::seed_project;
 use super::{MAX_PROJECTS, project_summary_in};

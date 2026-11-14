@@ -27,7 +27,6 @@ use crate::{
         },
         transcript_quote::Prompt,
     },
-    domain::{ProjectLayoutRequest, ProjectSwitchRequest},
     persistence::Database,
     project_registry::ProjectRootAuthority,
 };
@@ -40,6 +39,7 @@ use sage_acp_protocol::{
     lifecycle::TurnState,
     scheduler::RuntimeOwner,
 };
+use sage_domain::{chat::ProjectLayoutRequest, project::ProjectSwitchRequest};
 
 #[cfg(windows)]
 use crate::acp::bindings::codex::CodexProjectRootAuthority;
@@ -1151,7 +1151,7 @@ pub(super) fn codex_root(
 fn codex_session_setup() -> (
     Database,
     AcpService,
-    crate::domain::ProjectSummary,
+    sage_domain::project::ProjectSummary,
     SageProjectId,
     SageChatId,
     std::path::PathBuf,
@@ -1729,7 +1729,7 @@ fn running_turn_terminal_after_project_switch_is_durable_but_cannot_touch_active
     });
 }
 
-fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
+fn layout(snapshot: &sage_domain::project::BootstrapSnapshot) -> ProjectLayoutRequest {
     ProjectLayoutRequest {
         project_id: snapshot.project.as_ref().unwrap().id.clone(),
         tabs: snapshot.tabs.clone(),

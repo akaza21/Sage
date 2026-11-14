@@ -9,10 +9,10 @@ use sage_core::{
     time::now_millis,
 };
 
-use crate::{
-    domain::{BufferSnapshotAck, BufferSnapshotRequest, ResourceRef},
-    persistence::Database,
-    workbench_restore::validate_resource_for_project,
+use crate::{persistence::Database, workbench_restore::validate_resource_for_project};
+use sage_domain::{
+    editor::{BufferSnapshotAck, BufferSnapshotRequest},
+    resource::ResourceRef,
 };
 
 pub use self::limits::{MAX_DIRTY_BUFFERS, MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES};

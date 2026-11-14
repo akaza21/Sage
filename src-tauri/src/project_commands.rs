@@ -5,13 +5,14 @@ use sage_core::error::{AppError, AppResult};
 #[cfg(test)]
 use crate::persistence::Database;
 use crate::{
-    browser::BrowserState,
-    domain::{ProjectLayoutRequest, ProjectSwitchRequest, ProjectTransitionResult},
-    preview_lifecycle::on_committed_project_transition_epoch,
-    resource_commands::build_bootstrap_snapshot,
-    state::AppState,
+    browser::BrowserState, preview_lifecycle::on_committed_project_transition_epoch,
+    resource_commands::build_bootstrap_snapshot, state::AppState,
 };
 use sage_acp_protocol::contract::SageProjectId;
+use sage_domain::{
+    chat::ProjectLayoutRequest,
+    project::{ProjectSwitchRequest, ProjectTransitionResult},
+};
 use tauri::{AppHandle, State, Window};
 use tauri_plugin_dialog::DialogExt;
 use tracing::info;
@@ -373,7 +374,7 @@ mod tests {
             let database = Database::open(Path::new(":memory:")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
-            let selected = crate::domain::ResourceRef {
+            let selected = sage_domain::resource::ResourceRef {
                 root_id: project.roots[0].id.clone(),
                 relative_path: "selected.txt".into(),
             };

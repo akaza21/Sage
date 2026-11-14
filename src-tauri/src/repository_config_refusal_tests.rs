@@ -9,10 +9,8 @@ use std::{
 use sage_core::error::{AppError, AppResult};
 use uuid::Uuid;
 
-use crate::{
-    domain::{GitFileMutationAction, ResourceRef},
-    workspace::Workspace,
-};
+use crate::workspace::Workspace;
+use sage_domain::{file_operations::GitFileMutationAction, resource::ResourceRef};
 
 const ROOT_ID: &str = "root-a";
 

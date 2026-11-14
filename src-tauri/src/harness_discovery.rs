@@ -31,7 +31,6 @@ mod hash_tests;
 #[cfg(test)]
 mod tests;
 
-use crate::domain::HarnessBrand;
 pub(crate) use claude::cached_sha256_file;
 pub(crate) use claude::{
     ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, discover_claude_launch, sha256_file,
@@ -44,6 +43,7 @@ use parsing::parse_harness_display_version;
 #[cfg(test)]
 use parsing::parse_harness_version;
 pub(crate) use pi::{DiscoveredPiLaunch, PiLaunchDiscovery, discover_pi_launch};
+use sage_domain::harness::HarnessBrand;
 pub(crate) use updates::{PublishedRelease, published_releases, update_sources};
 use validation::authentic_harness_file as validate_harness_file;
 use version_probe::run_version_command;

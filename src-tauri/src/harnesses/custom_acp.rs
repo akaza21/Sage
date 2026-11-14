@@ -3,7 +3,7 @@
 //! unavailable (with a reason) when it was not. A removed agent's id is
 //! never listed again, so its chats show the harness as unavailable.
 
-use crate::domain::{HarnessDefinition, HarnessInstallState, HarnessSignIn};
+use sage_domain::harness::{HarnessDefinition, HarnessInstallState, HarnessSignIn};
 
 use super::{
     HarnessCatalog,
@@ -70,10 +70,10 @@ mod tests {
 
     use crate::{
         acp::bindings::{registry::BindingRegistry, standard_acp::StandardAcpBindingSource},
-        domain::HarnessTransport,
         harnesses::HarnessCatalog,
         settings_store::CustomAcpAgent,
     };
+    use sage_domain::harness::HarnessTransport;
 
     fn agent(id: &str, executable: &std::path::Path) -> CustomAcpAgent {
         CustomAcpAgent {
@@ -189,7 +189,7 @@ mod tests {
         assert_eq!(fresh.binding_id(), "custom-acp-5");
         assert_eq!(
             catalog.install_state_of("custom-acp-5"),
-            Some(crate::domain::HarnessInstallState::Available)
+            Some(sage_domain::harness::HarnessInstallState::Available)
         );
         std::fs::remove_dir_all(root).unwrap();
     }

@@ -15,7 +15,8 @@ use super::{
     MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_comparison_key, canonical_folder, folder_name,
     project_summary_in,
 };
-use crate::{domain::ProjectSummary, persistence::Database};
+use crate::persistence::Database;
+use sage_domain::project::ProjectSummary;
 
 /// The longest project name, in characters.
 pub const MAX_PROJECT_NAME_CHARS: usize = 64;

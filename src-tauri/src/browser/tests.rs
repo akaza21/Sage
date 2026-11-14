@@ -1,6 +1,7 @@
 use super::*;
 
-use crate::{domain::ProjectLayoutRequest, persistence::Database};
+use crate::persistence::Database;
+use sage_domain::chat::ProjectLayoutRequest;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 static NEXT_TEST_ROOT: AtomicUsize = AtomicUsize::new(1);
@@ -77,7 +78,7 @@ fn startup_label_skips_a_browser_owned_by_another_project() {
     let database = Database::open(std::path::Path::new(":memory:")).unwrap();
     let first = database.create_project_from_root(&first_root).unwrap();
     let mut tabs = database.bootstrap_snapshot().unwrap().tabs;
-    tabs.push(crate::domain::WorkbenchTab {
+    tabs.push(sage_domain::chat::WorkbenchTab {
         id: "browser-1".into(),
         kind: "browser".into(),
         title: "Browser".into(),
@@ -111,7 +112,7 @@ fn startup_label_skips_a_browser_owned_by_another_project() {
     let next_id = native.reserve_label().unwrap();
     assert_eq!(next_id, "browser-2");
     let mut second_tabs = database.bootstrap_snapshot().unwrap().tabs;
-    second_tabs.push(crate::domain::WorkbenchTab {
+    second_tabs.push(sage_domain::chat::WorkbenchTab {
         id: next_id.clone(),
         kind: "browser".into(),
         title: "Browser".into(),

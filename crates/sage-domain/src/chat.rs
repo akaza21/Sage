@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::{RepositoryRef, ResourceRef};
+use crate::{repository::RepositoryRef, resource::ResourceRef};
 use sage_acp_protocol::file_diff::DiffRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

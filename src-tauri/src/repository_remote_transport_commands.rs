@@ -1,14 +1,10 @@
 use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
-use crate::{
-    domain::{
-        GitFileMutationCommandError, GitRepositoryRemoteTransportRequest,
-        GitRepositoryRemoteTransportResult,
-    },
-    repository_remote_transport,
-    state::AppState,
-    workspace::Workspace,
+use crate::{repository_remote_transport, state::AppState, workspace::Workspace};
+use sage_domain::file_operations::{
+    GitFileMutationCommandError, GitRepositoryRemoteTransportRequest,
+    GitRepositoryRemoteTransportResult,
 };
 
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
@@ -66,10 +62,10 @@ fn remote_transport_command_error(error: AppError) -> GitFileMutationCommandErro
         AppError::GitContainment { state, .. } => GitFileMutationCommandError::Containment {
             process_state: match state {
                 GitContainmentState::TerminatedUnreaped => {
-                    crate::domain::GitProcessState::TerminatedUnreaped
+                    sage_domain::file_operations::GitProcessState::TerminatedUnreaped
                 }
                 GitContainmentState::PotentiallyRunning => {
-                    crate::domain::GitProcessState::PotentiallyRunning
+                    sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
             message: crate::repository_public_error::containment().into(),
@@ -148,8 +144,8 @@ async fn transport_git_remote_inner(
     };
     let error = match transport_result {
         Ok(()) => None,
-        Err(AppError::GitEffectUnknown(_)) => Some(crate::domain::GitFileMutationError {
-            kind: crate::domain::GitFileMutationErrorKind::EffectUnknown,
+        Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
+            kind: sage_domain::file_operations::GitFileMutationErrorKind::EffectUnknown,
             message: "The Git fetch or push outcome is uncertain. Source Control recovery is incomplete; refresh to reconcile authoritative Git state."
                 .into(),
         }),

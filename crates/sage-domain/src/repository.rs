@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use super::ResourceRef;
+use crate::resource::ResourceRef;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]

@@ -11,11 +11,9 @@ use sage_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    domain::{ChatMessage, SimulatorTurnResult},
-    persistence::Database,
-};
+use crate::persistence::Database;
 use sage_core::limits::LIMITS;
+use sage_domain::chat::{ChatMessage, SimulatorTurnResult};
 
 #[cfg(test)]
 use crate::harnesses::SIMULATOR_DEFAULT_MODEL_ID;

@@ -3,9 +3,9 @@ use std::fs;
 use uuid::Uuid;
 
 use super::*;
-use crate::domain::{RenameChatRequest, WorkbenchTab};
+use sage_domain::chat::{RenameChatRequest, WorkbenchTab};
 
-fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
+fn layout(snapshot: &sage_domain::project::BootstrapSnapshot) -> ProjectLayoutRequest {
     ProjectLayoutRequest {
         project_id: snapshot.project.as_ref().unwrap().id.clone(),
         tabs: snapshot.tabs.clone(),

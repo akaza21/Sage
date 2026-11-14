@@ -79,10 +79,7 @@ export async function acpTransportParityErrors(root) {
       path.join(root, "src-tauri/src/acp/projection.rs"),
       "utf8",
     ).catch(() => ""),
-    await readFile(path.join(root, "src-tauri/src/domain.rs"), "utf8").catch(
-      () => "",
-    ),
-    await readSources(root, "src-tauri/src/domain", [".rs"]),
+    await readSources(root, "crates/sage-domain/src", [".rs"]),
   ].join("\n");
   const tsSource = [
     await readFile(path.join(root, "src/domain/acp.ts"), "utf8").catch(

@@ -1,13 +1,9 @@
 use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
-use crate::{
-    domain::{
-        GitFileMutationCommandError, GitRepositoryCheckoutRequest, GitRepositoryCheckoutResult,
-    },
-    repository_branch_create,
-    state::AppState,
-    workspace::Workspace,
+use crate::{repository_branch_create, state::AppState, workspace::Workspace};
+use sage_domain::file_operations::{
+    GitFileMutationCommandError, GitRepositoryCheckoutRequest, GitRepositoryCheckoutResult,
 };
 
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
@@ -29,10 +25,10 @@ fn create_branch_command_error(error: AppError) -> GitFileMutationCommandError {
         AppError::GitContainment { state, .. } => GitFileMutationCommandError::Containment {
             process_state: match state {
                 GitContainmentState::TerminatedUnreaped => {
-                    crate::domain::GitProcessState::TerminatedUnreaped
+                    sage_domain::file_operations::GitProcessState::TerminatedUnreaped
                 }
                 GitContainmentState::PotentiallyRunning => {
-                    crate::domain::GitProcessState::PotentiallyRunning
+                    sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
             message: crate::repository_public_error::containment().into(),
@@ -98,8 +94,8 @@ async fn create_git_local_branch_inner(
         repository_branch_create::create_unlisted_local_branch(&workspace, &request.branch).await;
     let error = match create_result {
         Ok(()) => None,
-        Err(AppError::GitEffectUnknown(_)) => Some(crate::domain::GitFileMutationError {
-            kind: crate::domain::GitFileMutationErrorKind::EffectUnknown,
+        Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
+            kind: sage_domain::file_operations::GitFileMutationErrorKind::EffectUnknown,
             message: "The Git create branch outcome is uncertain. Source Control recovery is incomplete; refresh to reconcile authoritative Git state."
                 .into(),
         }),

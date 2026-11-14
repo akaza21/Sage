@@ -3,15 +3,13 @@ use std::{fs, path::Path, sync::Arc};
 use uuid::Uuid;
 
 use super::*;
-use crate::{
-    domain::{FileCreationOutcome, ResourceRef},
-    persistence::Database,
-};
+use crate::persistence::Database;
+use sage_domain::{file_operations::FileCreationOutcome, resource::ResourceRef};
 
 fn fixture() -> (
     std::path::PathBuf,
     Arc<AppState>,
-    crate::domain::ProjectSummary,
+    sage_domain::project::ProjectSummary,
 ) {
     let root = std::env::temp_dir().join(format!("sage-create-command-{}", Uuid::new_v4()));
     fs::create_dir_all(root.join("src")).unwrap();

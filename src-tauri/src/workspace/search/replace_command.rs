@@ -14,13 +14,13 @@ use super::{
     types::{MAX_PROJECT_ID_BYTES, MAX_SEARCH_PAGES, MAX_SEARCH_RESULTS, MAX_SEARCH_TOTAL_BYTES},
 };
 use crate::{
-    domain::ResourceRef,
     editor::{DiskReplace, read_for_replace, replace_on_disk, replaced_file_text},
     editor_content::MAX_EDITABLE_BYTES,
     editor_coordination::EditorOperationKind,
     persistence::Database,
     state::AppState,
 };
+use sage_domain::resource::ResourceRef;
 
 /// The Files one Replace may name: every File a Search's pages can show.
 pub const MAX_REPLACE_FILES: usize = MAX_SEARCH_RESULTS * MAX_SEARCH_PAGES;

@@ -9,10 +9,13 @@ use tauri::{Manager, State};
 use crate::{
     acp::service::{ChatRuntimeRelease, explicit_close_deadline},
     chat_commands::{execute_chat_transition, failed_transition},
-    domain::{ChatDeleteRequest, ChatLifecycleRequest, ProjectTransitionResult},
     state::AppState,
 };
 use sage_acp_protocol::contract::{SageChatId, SageProjectId};
+use sage_domain::{
+    chat::{ChatDeleteRequest, ChatLifecycleRequest},
+    project::ProjectTransitionResult,
+};
 
 /// Archive releases still running after their archive answered. Exit waits
 /// for them, within its shutdown budget, before shutting the lanes down.

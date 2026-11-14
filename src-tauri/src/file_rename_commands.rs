@@ -4,13 +4,16 @@ use sage_core::error::{AppError, AppResult};
 use tauri::State;
 
 use crate::{
-    domain::{FileRenameOutcome, RenameProjectFileRequest, RenameProjectFileResult, ResourceRef},
     persistence::Database,
     preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
     workbench_persistence::validate_layout,
     workspace::file_rename::{FileRenameCommit, FileRenameMarker},
+};
+use sage_domain::{
+    file_operations::{FileRenameOutcome, RenameProjectFileRequest, RenameProjectFileResult},
+    resource::ResourceRef,
 };
 
 use validation::{
@@ -335,7 +338,7 @@ fn result_from_commit(
     transition_epoch: u64,
     outcome: FileRenameOutcome,
     commit: FileRenameCommit,
-    snapshot: Option<crate::domain::BootstrapSnapshot>,
+    snapshot: Option<sage_domain::project::BootstrapSnapshot>,
 ) -> RenameProjectFileResult {
     RenameProjectFileResult {
         outcome,

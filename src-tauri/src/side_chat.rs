@@ -1,9 +1,6 @@
-use crate::{
-    domain::{ProjectLayoutRequest, ProjectTransitionResult},
-    persistence::Database,
-    state::AppState,
-};
+use crate::{persistence::Database, state::AppState};
 use sage_acp_protocol::contract::{SageChatId, SageProjectId};
+use sage_domain::{chat::ProjectLayoutRequest, project::ProjectTransitionResult};
 use tauri::{Manager, State};
 
 #[tauri::command]

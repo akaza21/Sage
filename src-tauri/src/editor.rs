@@ -14,10 +14,6 @@ use self::filesystem::{
     temporary_contract_path,
 };
 use crate::{
-    domain::{
-        BufferSnapshotAck, BufferSnapshotRequest, DocumentVersion, EditorBufferVersion,
-        EditorConflict, EditorDocument, EditorSaveResult, RecoveredEditorBuffer, ResourceRef,
-    },
     editor_content::{
         canonicalize_editor_content, fingerprint, materialize_content,
         reject_oversized_materialized, reject_unsupported_content, validate_line_ending,
@@ -25,6 +21,13 @@ use crate::{
     editor_persistence::PersistedEditorBuffer,
     persistence::Database,
     workspace::Workspace,
+};
+use sage_domain::{
+    editor::{
+        BufferSnapshotAck, BufferSnapshotRequest, DocumentVersion, EditorBufferVersion,
+        EditorConflict, EditorDocument, EditorSaveResult, RecoveredEditorBuffer,
+    },
+    resource::ResourceRef,
 };
 
 pub fn open_document(
