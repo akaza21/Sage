@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { draftShownFor } from "../../app/newChatDraftSlice";
 import { useWorkbenchStore } from "../../app/store";
 import type {
   AcpChatPage,
@@ -32,7 +33,7 @@ export function FirstChatSend({
     if (!context || context.page !== page) return;
     useWorkbenchStore.setState({ pendingFirstSend: null });
     if (
-      state.agentCenter !== "chat" ||
+      draftShownFor(state, chatId) ||
       state.activeTabId !== chatId ||
       state.project?.id !== pending.projectId ||
       state.chatOwnershipEpoch !== pending.ownershipEpoch

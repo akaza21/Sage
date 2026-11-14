@@ -39,7 +39,7 @@ export interface NewChatDraftSlice {
         projectId: string;
         chatId: string;
         ownershipEpoch: number;
-        /** The text handed to the chat; an edit to it cancels the send. */
+        /** The text handed to the chat; a different composer text cancels. */
         text: string;
       }
     | null;
@@ -51,6 +51,7 @@ export interface NewChatDraftSlice {
   selectDraftModel: (modelId: string) => void;
   sendNewChatDraft: () => Promise<void>;
   reloadNewChatDraft: () => Promise<void>;
+  discardNewChatDraft: () => void;
 }
 
 export const createNewChatDraftSlice: StateCreator<
@@ -82,22 +83,35 @@ export const createNewChatDraftSlice: StateCreator<
     sendNewChatDraft: () => actions?.sendNewChatDraft() ?? Promise.resolve(),
     reloadNewChatDraft: () =>
       actions?.reloadNewChatDraft() ?? Promise.resolve(),
+    discardNewChatDraft: () => actions?.discardNewChatDraft(),
   };
 };
 
 /**
- * The chat a draft is creating or has created. Until the draft hands off its
- * prompt, opening that chat shows the draft, so the draft stays its only
- * editing surface.
+ * The chat a draft is creating or has created, until the draft hands off its
+ * prompt or is emptied. Wherever that chat would be shown, the draft is.
  */
 export function draftOwnedChatId(
   state: Pick<WorkbenchState, "newChatDraft" | "project">,
 ) {
   const draft = state.newChatDraft;
-  return draft?.projectId === state.project?.id &&
-    draft?.submission.status !== "released"
-    ? (draft?.submission.chatId ?? null)
+  return draft &&
+    draft.projectId === state.project?.id &&
+    draft.submission.status !== "released" &&
+    (draft.submission.status === "submitting" || draft.text.trim())
+    ? draft.submission.chatId
     : null;
+}
+
+/** Whether Agent's center shows the draft in place of `shownChatId`. */
+export function draftShownFor(
+  state: Pick<WorkbenchState, "agentCenter" | "newChatDraft" | "project">,
+  shownChatId: string | null,
+) {
+  return (
+    state.agentCenter === "draft" ||
+    (shownChatId !== null && shownChatId === draftOwnedChatId(state))
+  );
 }
 
 export function projectNewChatDraft(

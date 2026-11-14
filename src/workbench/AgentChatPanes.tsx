@@ -22,6 +22,7 @@ import {
   releaseAgentChatOwner,
   usePinnedAgentChatOwner,
 } from "../app/agentChatOwner";
+import { draftShownFor } from "../app/newChatDraftSlice";
 import { useWorkbenchStore } from "../app/store";
 import { whenIdle } from "../ui/whenIdle";
 import { ChatSurface } from "../features/chat/ChatSurface";
@@ -64,7 +65,7 @@ export function AgentChatPanes({
   navigationCollapsed?: boolean;
   onArtifactHeaderMount?: (node: HTMLDivElement | null) => void;
 }) {
-  const draftShown = useWorkbenchStore(
+  const draftOpened = useWorkbenchStore(
     (state) => state.agentCenter === "draft",
   );
   useEffect(
@@ -118,7 +119,7 @@ export function AgentChatPanes({
     ),
   );
   const splitRequested =
-    !draftShown &&
+    !draftOpened &&
     Boolean(
       side &&
       pairedId === side.id &&
@@ -129,13 +130,17 @@ export function AgentChatPanes({
     );
   const focusCandidates =
     splitRequested && side ? [side.parentChatId, side.id] : chatIds;
-  const focusedId = draftShown
+  const focusedChatId = draftOpened
     ? null
     : focusedAgentChatId(
         focusCandidates,
         activeTabId,
         previousFocusedId ?? lastFocusedId,
       );
+  const draftShown = useWorkbenchStore((state) =>
+    draftShownFor(state, focusedChatId),
+  );
+  const focusedId = draftShown ? null : focusedChatId;
   if (lastFocusedId !== focusedId) setLastFocusedId(focusedId);
   const displayedIds = useMemo(
     () =>

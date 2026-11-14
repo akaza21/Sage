@@ -1037,7 +1037,12 @@ it("cancels a retained draft's retry when the user leaves and returns during its
   });
 });
 
-it("shows the draft, not its chat, when the chat it is creating is opened", async () => {
+async function createdDraft(
+  patch: Parameters<
+    ReturnType<typeof useWorkbenchStore.getState>["updateNewChatDraft"]
+  >[0],
+) {
+  const previousId = (await ports.project.getBootstrapSnapshot()).activeTabId!;
   let release!: () => void;
   vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
     .mockResolvedValue(undefined)
@@ -1049,48 +1054,7 @@ it("shows the draft, not its chat, when the chat it is creating is opened", asyn
     );
   mount();
   await settleLazyModules();
-  fireEvent.change(composer(), { target: { value: "Draft prompt" } });
-  let sending!: Promise<void>;
-  act(() => {
-    sending = useWorkbenchStore.getState().sendNewChatDraft();
-  });
-  await waitFor(() => expect(release).toBeTypeOf("function"));
-  const chatId = (await ports.project.getBootstrapSnapshot()).activeTabId!;
-  await act(async () => useWorkbenchStore.getState().activateChat(chatId));
-  await settleLazyModules();
-  expect(useWorkbenchStore.getState().agentCenter).toBe("draft");
-  expect(screen.getByRole("region", { name: "New chat draft" })).toBeVisible();
-  expect(composer()).toHaveValue("Draft prompt");
-  expect(
-    useWorkbenchStore.getState().chatUiById[chatId]?.composerText ?? "",
-  ).toBe("");
-  await act(async () => {
-    release();
-    await sending;
-  });
-  await waitFor(() => expect(prompts).toHaveLength(1));
-  expect(prompts[0]).toMatchObject({ chatId, prompt: "Draft prompt" });
-});
-
-it("hands a retried draft's model, access and effort to the chat it created", async () => {
-  let release!: () => void;
-  vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
-    .mockResolvedValue(undefined)
-    .mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-    );
-  mount();
-  await settleLazyModules();
-  act(() =>
-    useWorkbenchStore.getState().updateNewChatDraft({
-      text: "Draft prompt",
-      access: "ask",
-      effort: "high",
-    }),
-  );
+  act(() => useWorkbenchStore.getState().updateNewChatDraft(patch));
   let sending!: Promise<void>;
   act(() => {
     sending = useWorkbenchStore.getState().sendNewChatDraft();
@@ -1111,36 +1075,149 @@ it("hands a retried draft's model, access and effort to the chat it created", as
     release();
     await sending;
   });
-  expect(useWorkbenchStore.getState().newChatDraft?.submission).toMatchObject({
+  await settleLazyModules();
+  expect(useWorkbenchStore.getState().newChatDraft?.submission).toEqual({
     status: "created",
     chatId,
   });
-  let handed: unknown;
-  const unsubscribe = useWorkbenchStore.subscribe((state, previous) => {
-    if (previous.newChatDraft && !state.newChatDraft)
-      handed = {
-        selection: state.chatUiById[chatId],
-        access: useChatAccessDrafts.getState().drafts[chatId],
-        effort: useChatEffortDraft.getState().draft,
-      };
+  return { chatId, previousId };
+}
+
+const draftRegion = () =>
+  screen.queryByRole("region", { name: "New chat draft" });
+
+it("shows the draft, not its chat, while the chat it is creating is opened", async () => {
+  let release!: () => void;
+  vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
+    .mockResolvedValue(undefined)
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+  mount();
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "Draft prompt" } });
+  let sending!: Promise<void>;
+  act(() => {
+    sending = useWorkbenchStore.getState().sendNewChatDraft();
+  });
+  await waitFor(() => expect(release).toBeTypeOf("function"));
+  const chatId = (await ports.project.getBootstrapSnapshot()).activeTabId!;
+  expect(useWorkbenchStore.getState().activeTabId).toBe(chatId);
+  await settleLazyModules();
+  expect(draftRegion()).toBeVisible();
+  expect(composer()).toHaveValue("Draft prompt");
+  expect(composer()).toBeDisabled();
+  expect(
+    useWorkbenchStore.getState().chatUiById[chatId]?.composerText ?? "",
+  ).toBe("");
+  await act(async () => {
+    release();
+    await sending;
+  });
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0]).toMatchObject({ chatId, prompt: "Draft prompt" });
+});
+
+it.each(["tab strip", "archived neighbour", "closed neighbour"] as const)(
+  "shows the draft when its created chat is reached through the %s",
+  async (path) => {
+    const { chatId, previousId } = await createdDraft({
+      text: "Owned prompt",
+    });
+    await act(async () => useWorkbenchStore.getState().activateTab(previousId));
+    await settleLazyModules();
+    expect(draftRegion()).toBeNull();
+    await act(async () => {
+      const state = useWorkbenchStore.getState();
+      if (path === "tab strip") await state.activateTab(chatId);
+      else if (path === "archived neighbour")
+        await state.archiveChat(previousId);
+      else state.closeTab(previousId);
+    });
+    await settleLazyModules();
+    await waitFor(() =>
+      expect(useWorkbenchStore.getState().activeTabId).toBe(chatId),
+    );
+    expect(draftRegion()).toBeVisible();
+    expect(composer()).toHaveValue("Owned prompt");
+    expect(screen.getByRole("alert")).toHaveTextContent(/retry/i);
+    expect(
+      useWorkbenchStore.getState().chatUiById[chatId]?.composerText ?? "",
+    ).toBe("");
+    expect(prompts).toEqual([]);
+  },
+);
+
+it("shows the draft and its error when the handoff fails after opening its chat", async () => {
+  const { chatId, previousId } = await createdDraft({ text: "Owned prompt" });
+  await act(async () => useWorkbenchStore.getState().activateTab(previousId));
+  const created = await ports.project.getBootstrapSnapshot();
+  vi.mocked(ports.chat.activateChat).mockResolvedValueOnce({
+    committed: false,
+    snapshot: null,
+    transitionEpoch: created.transitionEpoch,
+    recoveryError: "Activation refused",
   });
   await act(async () => useWorkbenchStore.getState().openNewChatDraft());
   await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
-  unsubscribe();
-  expect(handed).toMatchObject({
-    selection: {
-      harnessId: harness.id,
-      modelId: "model-a",
-      composerText: "Draft prompt",
-    },
-    access: { bindingId: harness.bindingId, mode: "ask" },
-    effort: {
+  await settleLazyModules();
+  expect(draftRegion()).toBeVisible();
+  expect(composer()).toHaveValue("Owned prompt");
+  expect(screen.getByRole("alert")).toHaveTextContent(/retry/i);
+  expect(useWorkbenchStore.getState().newChatDraft?.submission).toEqual({
+    status: "created",
+    chatId,
+  });
+  expect(prompts).toEqual([]);
+});
+
+it.each(["discarded", "emptied"] as const)(
+  "opens the created chat normally once its draft is %s",
+  async (release) => {
+    const { chatId, previousId } = await createdDraft({ text: "Owned prompt" });
+    if (release === "discarded")
+      fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
+    else fireEvent.change(composer(), { target: { value: "" } });
+    await act(async () => useWorkbenchStore.getState().activateTab(previousId));
+    await act(async () => useWorkbenchStore.getState().activateTab(chatId));
+    await settleLazyModules();
+    expect(draftRegion()).toBeNull();
+    expect(screen.getByRole("region", { name: /^Chat pane/ })).toBeVisible();
+    fireEvent.change(composer(), { target: { value: "Typed in the chat" } });
+    expect(useWorkbenchStore.getState().chatUiById[chatId].composerText).toBe(
+      "Typed in the chat",
+    );
+  },
+);
+
+it("hands a retried draft's model, access and effort to the chat it created", async () => {
+  const { chatId } = await createdDraft({
+    text: "Draft prompt",
+    access: "ask",
+    effort: "high",
+  });
+  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0]).toMatchObject({ chatId, prompt: "Draft prompt" });
+  expect(starts).toMatchObject([
+    {
       chatId,
       bindingId: harness.bindingId,
       modelId: "model-a",
       effort: "high",
     },
+  ]);
+  expect(useWorkbenchStore.getState().chatUiById[chatId]).toMatchObject({
+    harnessId: harness.id,
+    modelId: "model-a",
   });
+  expect(Object.values(useSessionAccessModeStore.getState().modes)).toContain(
+    "ask",
+  );
 });
 
 it("does not auto-send a handed-off prompt the user edits before the chat's page loads", async () => {
@@ -1406,7 +1483,7 @@ it("starts the first session with the effort chosen in the unsaved draft", async
   expect(composer()).toHaveValue("");
 });
 
-it("keeps the confirmed chat and its text after an Editor round trip during creation, without sending", async () => {
+it("keeps the confirmed chat owned by the draft after an Editor round trip during creation, without sending", async () => {
   const before = await ports.project.getBootstrapSnapshot();
   const create = vi.mocked(ports.chat.createChat).getMockImplementation()!;
   let release!: () => void;
@@ -1446,12 +1523,13 @@ it("keeps the confirmed chat and its text after an Editor round trip during crea
   );
   fireEvent.click(screen.getByRole("button", { name: "Agent" }));
   await settleLazyModules();
-  expect(screen.queryByRole("region", { name: "New chat draft" })).toBeNull();
-  expect(screen.getByRole("region", { name: /^Chat pane/ })).toBeVisible();
+  const created = await ports.project.getBootstrapSnapshot();
+  expect(created.tabs.length).toBe(before.tabs.length + 1);
+  expect(useWorkbenchStore.getState().newChatDraft?.submission).toMatchObject({
+    status: "created",
+  });
+  expect(screen.getByRole("region", { name: "New chat draft" })).toBeVisible();
   expect(composer()).toHaveValue("Keep this confirmed request");
-  expect((await ports.project.getBootstrapSnapshot()).tabs.length).toBe(
-    before.tabs.length + 1,
-  );
   expect(prompts).toEqual([]);
   expect(starts).toEqual([]);
 });

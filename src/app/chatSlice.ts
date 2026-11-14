@@ -10,7 +10,6 @@ import {
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
 import type { CreateChatResult } from "./runCreateChat";
-import { draftOwnedChatId } from "./newChatDraftSlice";
 import {
   commitIdentityChatResult,
   createChatTransitionContext,
@@ -56,10 +55,6 @@ export const createChatSlice: StateCreator<
 
   return {
     activateChat: async (chatId, requestedTabs, submission) => {
-      if (!submission && chatId === draftOwnedChatId(get())) {
-        set({ agentCenter: "draft" });
-        return;
-      }
       const current = currentProjectLayout(get());
       const tabs = requestedTabs ?? current?.tabs;
       if (

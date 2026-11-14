@@ -19,6 +19,7 @@ export function createNewChatDraftActions(
   | "selectDraftModel"
   | "sendNewChatDraft"
   | "reloadNewChatDraft"
+  | "discardNewChatDraft"
 > {
   const submit = async (draft: NewChatDraft) => {
     if (draft.submission.status === "submitting") return;
@@ -125,6 +126,10 @@ export function createNewChatDraftActions(
       )
         return;
       await submit(draft);
+    },
+    discardNewChatDraft: () => {
+      if (get().newChatDraft?.submission.status !== "submitting")
+        set({ newChatDraft: null, agentCenter: "chat" });
     },
     reloadNewChatDraft: async () => {
       const state = get();

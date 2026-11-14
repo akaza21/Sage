@@ -4,6 +4,7 @@
 // chat history both read it through here, so they never disagree.
 
 import { agentChatFocus, useAgentChatFocus } from "../app/agentChatOwner";
+import { draftShownFor } from "../app/newChatDraftSlice";
 import { useWorkbenchStore } from "../app/store";
 import {
   railChatIdIn,
@@ -16,14 +17,12 @@ import {
   type AgentCenterScanTab,
 } from "./workbenchWindowMode";
 
-export function shownAgentChatId(input: {
-  agentCenter?: "chat" | "draft";
+function focusedRailChatId(input: {
   tabs: ReadonlyArray<AgentCenterScanTab>;
   activeTabId: string | null;
   agentFocusId: string | null;
   sides: readonly SideChatEntry[];
 }): string | null {
-  if (input.agentCenter === "draft") return null;
   return railChatIdIn(
     input.sides,
     focusedAgentChatId(
@@ -36,28 +35,33 @@ export function shownAgentChatId(input: {
 
 /** The shown chat now, read outside React. */
 export function currentShownAgentChatId(): string | null {
-  const { tabs, activeTabId, agentCenter } = useWorkbenchStore.getState();
-  return shownAgentChatId({
-    tabs,
-    agentCenter,
-    activeTabId,
+  const state = useWorkbenchStore.getState();
+  const id = focusedRailChatId({
+    tabs: state.tabs,
+    activeTabId: state.activeTabId,
     agentFocusId: agentChatFocus(),
     sides: useSideChatState.getState().sides,
   });
+  return draftShownFor(state, id) ? null : id;
 }
 
-/** The shown chat, kept current for a component. */
-export function useShownAgentChatId(): string | null {
-  const agentCenter = useWorkbenchStore((state) => state.agentCenter);
+function useFocusedRailChatId(): string | null {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const agentFocusId = useAgentChatFocus();
   const sides = useSideChatState((state) => state.sides);
-  return shownAgentChatId({
-    tabs,
-    activeTabId,
-    agentFocusId,
-    sides,
-    agentCenter,
-  });
+  return focusedRailChatId({ tabs, activeTabId, agentFocusId, sides });
+}
+
+/** Whether the Agent center shows the new-chat draft in place of a chat. */
+export function useDraftShown(): boolean {
+  const id = useFocusedRailChatId();
+  return useWorkbenchStore((state) => draftShownFor(state, id));
+}
+
+/** The shown chat, kept current for a component. */
+export function useShownAgentChatId(): string | null {
+  const id = useFocusedRailChatId();
+  const draftShown = useWorkbenchStore((state) => draftShownFor(state, id));
+  return draftShown ? null : id;
 }

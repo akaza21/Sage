@@ -31,6 +31,7 @@ export function NewChatDraftSurface({
   );
   const pendingFirstSend = useWorkbenchStore((state) => state.pendingFirstSend);
   const reload = useWorkbenchStore((state) => state.reloadNewChatDraft);
+  const discard = useWorkbenchStore((state) => state.discardNewChatDraft);
   const update = useWorkbenchStore((state) => state.updateNewChatDraft);
   const chooseHarness = useWorkbenchStore((state) => state.selectDraftHarness);
   const chooseModel = useWorkbenchStore((state) => state.selectDraftModel);
@@ -115,6 +116,15 @@ export function NewChatDraftSurface({
                     onClick={() => void reload()}
                   >
                     Reload chats
+                  </button>
+                ) : null}
+                {draft.submission.status === "created" ? (
+                  <button
+                    type="button"
+                    className="button button--compact"
+                    onClick={discard}
+                  >
+                    Discard draft
                   </button>
                 ) : null}
               </>

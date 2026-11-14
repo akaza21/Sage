@@ -20,6 +20,7 @@ export async function runNewChatDraftSend(
   submission: NonNullable<WorkbenchState["pendingFirstSend"]>,
 ) {
   let creation = attempt.submission.creation;
+  let opening = false;
   // Each step reads the stored draft afresh; only this attempt may use it.
   const current = () => {
     const state = get();
@@ -72,6 +73,9 @@ export async function runNewChatDraftSend(
     }
     current();
     const { chatId } = creation;
+    if (get().pendingFirstSend !== submission)
+      throw new Error("Chat submission cancelled. Retry to continue.");
+    opening = true;
     if (get().archivedChats.some((chat) => chat.id === chatId)) {
       if (!(await get().restoreChat(chatId)))
         throw new Error(
@@ -115,6 +119,14 @@ export async function runNewChatDraftSend(
     });
     return { submission: creation, error: "" };
   } catch (error) {
+    // Opening the chat moved the center to it; unless the user navigated
+    // since, a failed handoff returns to the draft that still holds the prompt.
+    if (
+      opening &&
+      get().pendingFirstSend === submission &&
+      get().newChatDraft?.submission === attempt.submission
+    )
+      set({ agentCenter: "draft" });
     return {
       submission: creation,
       error: boundedChatError(errorMessage(error)),

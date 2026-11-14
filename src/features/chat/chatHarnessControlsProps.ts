@@ -20,7 +20,6 @@ export interface ChatHarnessControlsProps {
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
   accessTarget?: ComposerAccessTarget;
   addActions?: ComposerMenuActions;
-  /** The attach button, beside the options button. */
   attachSlot?: ReactNode;
   availableBinding: boolean;
   canPrompt: boolean;

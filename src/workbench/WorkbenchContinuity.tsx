@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { useWorkbenchStore } from "../app/store";
+import { useDraftShown } from "./shownAgentChat";
 import { admitsFocusedCodexRendererRecreation } from "../features/chat/acp/rendererRecreationCollectorAdmission";
 import { mountRendererRecreationPacketCollector } from "../features/chat/acp/rendererRecreationPacket";
 import "./harness-browser-mode.css";
@@ -73,9 +74,7 @@ export function AgentCenterKeeper({
   const projectGeneration = useWorkbenchStore(
     (state) => state.projectGeneration,
   );
-  const draftShown = useWorkbenchStore(
-    (state) => state.agentCenter === "draft",
-  );
+  const draftShown = useDraftShown();
   const attemptedRef = useRef<string | null>(null);
 
   useEffect(() => {
