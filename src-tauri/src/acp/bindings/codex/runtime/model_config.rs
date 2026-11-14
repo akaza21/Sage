@@ -39,10 +39,8 @@ impl ModelCatalog {
 impl CodexRuntime {
     pub(super) fn discard_invalid_model_page(
         &mut self,
-        frame: &crate::acp::transport::Frame,
+        id: u64,
     ) -> Result<crate::acp::bindings::adapter::AdapterBatch, AdapterRuntimeError> {
-        let id = crate::acp::bindings::adapter::response_id_for_discard(frame)
-            .ok_or(AdapterRuntimeError::Frame)?;
         if self.inner.fork_pending() == Some(id) {
             // A fork answer beyond the structural bound is also beyond what
             // `thread/resume` could later load, so no Chat is made for it.

@@ -21,7 +21,7 @@ impl HarnessAdapter for CodexRuntime {
         &mut self,
         frame: &Frame,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        self.discard_invalid_model_page(frame)
+        self.discard_invalid_answer(frame)
     }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         self.inner.skills()

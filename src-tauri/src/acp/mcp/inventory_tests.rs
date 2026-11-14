@@ -1,8 +1,11 @@
 use super::*;
+use serde::Deserialize;
 use serde_json::json;
 
 fn inventory(result: Value) -> Option<McpInventory> {
-    McpInventory::from_codex(result.as_object().unwrap())
+    CodexMcpPage::deserialize(&result)
+        .ok()
+        .map(McpInventory::from_codex)
 }
 
 #[test]
@@ -85,6 +88,39 @@ fn unknown_states_unnamed_servers_and_a_missing_list_are_handled() {
     assert_eq!(listed.servers.len(), 1);
     assert_eq!(listed.servers[0].connection, McpConnection::Unknown);
     assert_eq!(listed.servers[0].auth, McpAuth::Unknown);
+}
+
+#[test]
+fn a_malformed_entry_or_field_leaves_the_rest_of_the_page_listed() {
+    let listed = inventory(json!({"data": [
+        "not a server",
+        7,
+        ["nested", {"name": "inside"}],
+        {"name": {"deep": [1, 2]}, "authStatus": "oAuth"},
+        {"name": "odd", "serverInfo": "Odd", "runtimeStatus": 3, "authStatus": ["oAuth"],
+         "tools": "many", "resources": 4, "toolsError": {"message": "x"}, "httpOrigin": false},
+        {"name": "good", "authStatus": "oAuth", "runtimeStatus": "connected",
+         "serverInfo": {"title": 5, "version": "2.0"},
+         "tools": [{"name": "a"}, {"name": "b"}], "resources": null}
+    ], "nextCursor": null}))
+    .unwrap();
+    let [good, odd] = listed.servers.as_slice() else {
+        panic!("two servers")
+    };
+    assert_eq!(good.name, "good");
+    assert_eq!(good.connection, McpConnection::Connected);
+    assert_eq!(good.auth, McpAuth::OAuth);
+    assert_eq!(
+        (good.title.as_deref(), good.version.as_deref()),
+        (None, Some("2.0"))
+    );
+    assert_eq!((good.tools, good.resources), (2, 0));
+    assert_eq!(odd.name, "odd");
+    assert_eq!(odd.connection, McpConnection::Unknown);
+    assert_eq!(odd.auth, McpAuth::Unknown);
+    assert_eq!((odd.tools, odd.resources), (0, 0));
+    assert_eq!((odd.error.as_deref(), odd.origin.as_deref()), (None, None));
+    assert!(!listed.truncated);
 }
 
 #[test]
