@@ -232,4 +232,3 @@ fn insert_chat_with_identity(
     }
     Ok(chat_id)
 }
-

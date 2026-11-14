@@ -31,7 +31,22 @@ export function createNewChatDraftActions(
       newChatDraft: { ...draft, creating: true, error: null },
       pendingFirstSend: submission,
     });
-    const { runNewChatDraftSend } = await import("./runNewChatDraftSend");
+    let runNewChatDraftSend: typeof import("./runNewChatDraftSend").runNewChatDraftSend;
+    try {
+      // Every module the send needs loads before anything is created, so a
+      // failed chunk load cannot strand the draft mid-creation.
+      [{ runNewChatDraftSend }] = await Promise.all([
+        import("./runNewChatDraftSend"),
+        import("./runCreateChat"),
+      ]);
+    } catch (error) {
+      if (get().pendingFirstSend !== submission) return;
+      set({
+        newChatDraft: { ...draft, error: boundedChatError(String(error)) },
+        pendingFirstSend: null,
+      });
+      return;
+    }
     await runNewChatDraftSend(set, get, draft, submission);
   };
   return {
