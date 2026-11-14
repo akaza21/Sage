@@ -1,8 +1,5 @@
-//! Native-only runtime construction and ownership boundary.
-//!
-//! The service retains one runtime through activation, live execution, and
-//! failed-start recovery. Factories provide adapter/launch authority only;
-//! they do not own a scheduler, operation gate, process lease, or supervisor.
+//! Factories provide adapter/launch authority only; they do not own a scheduler, operation
+//! gate, process lease, or supervisor.
 
 use crate::acp::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
@@ -32,9 +29,7 @@ pub(crate) trait LaunchableRuntime: HarnessAdapter + Send {
     fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError>;
 }
 
-/// Owns the exact adapter and its native launch authority, including while a
-/// failed activation driver is retained for recovery. No serialization or
-/// Debug implementation: the enclosed authority can contain native paths.
+/// No serialization or Debug implementation: the enclosed authority can contain native paths.
 pub(crate) struct NativeRuntime(
     Box<dyn LaunchableRuntime>,
     Option<(
@@ -181,7 +176,6 @@ impl HarnessAdapter for NativeRuntime {
         self.0.deferred_fork_release()
     }
     fn accept_oversized_response(&mut self, id: u64) -> Result<(), AdapterRuntimeError> {
-        // An oversized command-list reply empties the list without ingest.
         let result = self.0.accept_oversized_response(id);
         if let Some((owner, channel)) = &self.3 {
             channel.update(owner, self.0.available_commands());

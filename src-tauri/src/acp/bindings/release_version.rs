@@ -1,9 +1,5 @@
-//! Release versions a harness reports, and where a release sits relative to
-//! the release Sage was tested with.
-//!
-//! Harnesses update on their own schedule. A release newer than the tested
-//! one keeps every feature whose wire shape it still speaks; only a release
-//! older than the tested one, or one whose version cannot be read, loses the
+//! A release newer than the tested one keeps every feature whose wire shape it still speaks;
+//! only a release older than the tested one, or one whose version cannot be read, loses the
 //! tested features.
 
 use std::cmp::Ordering;
@@ -13,9 +9,7 @@ use crate::domain::HarnessCharacterisation;
 const COMPONENT_DIGITS_MAX: usize = 10;
 const PRERELEASE_BYTES_MAX: usize = 64;
 
-/// A `major.minor.patch` release with an optional `-prerelease` tag. Build
-/// metadata after `+` is accepted and ignored, as semantic versioning
-/// specifies.
+/// Build metadata after `+` is accepted and ignored, as semantic versioning specifies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReleaseVersion {
     core: (u64, u64, u64),
@@ -57,14 +51,11 @@ impl ReleaseVersion {
         self.prerelease.is_some()
     }
 
-    /// Whether both releases share a `major.minor` line.
     pub(crate) fn same_minor_line(&self, other: &Self) -> bool {
         (self.core.0, self.core.1) == (other.core.0, other.core.1)
     }
 }
 
-/// A numeric version component without leading zeros, as semantic versioning
-/// requires.
 fn component(value: &str) -> Option<u64> {
     (!value.is_empty()
         && value.len() <= COMPONENT_DIGITS_MAX
@@ -74,8 +65,6 @@ fn component(value: &str) -> Option<u64> {
     .flatten()
 }
 
-/// A non-empty prerelease identifier of ASCII alphanumerics and hyphens; a
-/// numeric one has no leading zeros, as semantic versioning requires.
 fn prerelease_identifier(identifier: &str) -> bool {
     !identifier.is_empty()
         && identifier
@@ -100,8 +89,6 @@ fn prerelease_order(left: &str, right: &str) -> Ordering {
 }
 
 impl Ord for ReleaseVersion {
-    /// A prerelease sorts before its release; two prereleases of the same
-    /// release compare by semantic-versioning tag precedence.
     fn cmp(&self, other: &Self) -> Ordering {
         self.core
             .cmp(&other.core)
@@ -120,8 +107,6 @@ impl PartialOrd for ReleaseVersion {
     }
 }
 
-/// Places a reported release against the release Sage was tested with: the
-/// tested release itself, a later one, or an earlier or unreadable one.
 pub(crate) fn characterise_against(reported: &str, tested: &str) -> HarnessCharacterisation {
     let (Some(reported), Some(tested)) = (
         ReleaseVersion::parse(reported),

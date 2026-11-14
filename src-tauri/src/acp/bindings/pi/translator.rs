@@ -54,7 +54,6 @@ enum PendingKind {
 }
 
 impl PendingKind {
-    /// Requests that open a Turn the user sees.
     const fn starts_turn(self) -> bool {
         matches!(self, Self::Prompt | Self::Compact)
     }
@@ -103,7 +102,6 @@ struct ActiveTurn {
     authority_denied: bool,
     tools: BTreeMap<String, Option<ToolOutcome>>,
     compaction_active: bool,
-    /// Pi's reason for a failed compaction has reached the user.
     compaction_failure_shown: bool,
     thought_active: bool,
     settlement_outcome: TerminalOutcome,
@@ -112,16 +110,13 @@ struct ActiveTurn {
     retry_notices: u8,
     retry_failed: bool,
     retry_final_error: Option<String>,
-    /// Pi is waiting to retry, as the chat's retry activity shows.
     retry_waiting: Option<u64>,
     unknown_kinds: BTreeSet<String>,
     unknown_suppression_emitted: bool,
     /// The last assistant reply's stop reason, error and usage, kept from
     /// its `message_end` in case the run's `agent_end` is too large to read.
     last_reply: Option<Box<Value>>,
-    /// An oversized event of this run was dropped unread.
     dropped_frame: bool,
-    /// An assistant reply has started and not yet ended.
     reply_open: bool,
 }
 
@@ -164,16 +159,13 @@ pub(crate) struct PendingUiRequest {
     pub id: String,
     pub method: String,
     pub options: Vec<String>,
-    /// An extension question shown on the shared question card.
     pub form: Option<Box<UserInputRequest>>,
     /// Pi drops a dialog with a timeout on its own, without telling Sage.
     pub expires: bool,
 }
 
 impl PendingUiRequest {
-    /// The answers Sage can deliver for this dialog: a single approval where
-    /// the dialog has an allow answer, and always a denial. Pi has no standing
-    /// approval, so "always allow" is never offered.
+    /// Pi has no standing approval, so "always allow" is never offered.
     pub(crate) fn offered_option_kinds(&self) -> Vec<PermissionOptionKind> {
         use PermissionOptionKind::{AllowOnce, RejectOnce};
         let allows = match self.method.as_str() {
@@ -189,15 +181,12 @@ impl PendingUiRequest {
     }
 }
 
-/// The field an extension question's answer is read from.
 pub(crate) const ANSWER_ID: &str = "answer";
 
 /// The pending dialog of a bridged workspace edit awaiting the user's decision.
 pub(crate) const BRIDGE_WRITE_METHOD: &str = "sage-write";
 
 impl PiTranslator {
-    /// Whether an answer may still arrive that could outgrow a frame: any
-    /// read, as opposed to the turn commands Pi answers in a few bytes.
     pub(crate) fn awaits_large_response(&self) -> bool {
         self.pending.values().any(|request| {
             !matches!(
@@ -215,7 +204,6 @@ impl PiTranslator {
         })
     }
 
-    /// Pi is waiting before it retries the running Turn's failed reply.
     pub(crate) fn waiting_to_retry(&self) -> bool {
         self.active
             .as_ref()

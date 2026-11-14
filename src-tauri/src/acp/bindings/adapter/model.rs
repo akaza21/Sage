@@ -76,7 +76,6 @@ pub(crate) enum AdapterRuntimeError {
     EgressIntent,
 }
 
-/// An optional frame a command may need to write.
 pub(crate) type AdapterOptionalEgress = Result<Option<AdapterEgress>, AdapterRuntimeError>;
 
 pub(crate) trait HarnessAdapter {
@@ -122,21 +121,17 @@ pub(crate) trait HarnessAdapter {
     fn child_read_pending(&self) -> bool {
         false
     }
-    /// Writes one page of a paged native read.
     fn native_read(
         &mut self,
         _read: &crate::acp::goal::NativeRead,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    /// Requests a native fork of the bound session through its latest turn.
     /// Harnesses without a characterised fork method fail closed.
     fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    /// Lets go of a native fork this runtime created once its fork Chat is
-    /// committed (`committed`) or refused. `Ok(None)` means the harness holds
-    /// nothing to release, and the reply is already available.
+    /// `Ok(None)` means the harness holds nothing to release, and the reply is already available.
     fn release_fork(
         &mut self,
         _fork: &crate::acp::intent::ExternalId,
@@ -153,7 +148,6 @@ pub(crate) trait HarnessAdapter {
     ) -> bool {
         false
     }
-    /// The next deferred fork release, written while the runtime is idle.
     fn deferred_fork_release(&mut self) -> AdapterOptionalEgress {
         Ok(None)
     }
@@ -167,12 +161,9 @@ pub(crate) trait HarnessAdapter {
     fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
         Err(AdapterRuntimeError::Frame)
     }
-    /// Whether an oversized frame without a request id (such as a large
-    /// tool result) is skipped rather than failing the session.
     fn skips_oversize_frames(&self) -> bool {
         false
     }
-    /// An oversized frame without a request id was read past and dropped.
     fn oversize_frame_skipped(&mut self) {}
     /// Answers a session control the harness has already carried out
     /// without writing a frame: the answer waits in the native RPC reply.
@@ -181,7 +172,6 @@ pub(crate) trait HarnessAdapter {
     fn answered_control(&mut self, _control: &crate::acp::session_control::SessionControl) -> bool {
         false
     }
-    /// The frame for a session control; harnesses without one refuse it.
     fn session_control(
         &mut self,
         _control: &crate::acp::session_control::SessionControl,
@@ -191,17 +181,13 @@ pub(crate) trait HarnessAdapter {
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None
     }
-    /// The usage-limit snapshot this binding keeps; `None` when it reports none.
     fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
         None
     }
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    /// Stops waiting for a passive read (usage, a terminal listing, or any
-    /// other read that abandons at its deadline) whose caller gave up.
     fn abandon_passive_read(&mut self) {}
-    /// Lists or stops the commands the harness left running.
     fn background_terminals(
         &mut self,
         _action: &crate::acp::background_terminals::TerminalAction,

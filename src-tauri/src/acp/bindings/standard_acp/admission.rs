@@ -116,9 +116,7 @@ pub(crate) fn admit(
     )
 }
 
-/// Admits `candidate` under `binding_id` with launch inputs beyond its
-/// profile. The profile's own id and an empty extension yield exactly the
-/// digest [`admit`] gives.
+/// The profile's own id and an empty extension yield exactly the digest [`admit`] gives.
 pub(crate) fn admit_extended(
     profile: &'static StandardAcpProfile,
     binding_id: &str,
@@ -193,11 +191,9 @@ fn validate_candidate(
     validate_package_runtime_link(profile, candidate)
 }
 
-/// A file the user named and Sage launches directly (a user-defined
-/// agent) must be one the platform runs without a shell: on Windows a
-/// `.cmd` or `.bat` would run through `cmd.exe`, which interprets the
-/// arguments. Node runtimes, their script entrypoints and curated
-/// executables found under their package are outside this rule.
+/// On Windows a `.cmd` or `.bat` would run through `cmd.exe`, which interprets the arguments.
+/// Node runtimes, their script entrypoints and curated executables found under their package
+/// are outside this rule.
 fn validate_direct_launch(
     profile: &StandardAcpProfile,
     runtime: &StandardAcpArtifact,

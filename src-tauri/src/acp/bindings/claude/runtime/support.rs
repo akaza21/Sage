@@ -213,7 +213,6 @@ pub(super) fn map_capability(_error: CapabilityError) -> AdapterRuntimeError {
     AdapterRuntimeError::Frame
 }
 
-/// Where a permission reply stands, from card to written reply.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(super) enum DenialState {
     Pending,

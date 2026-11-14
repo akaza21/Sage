@@ -1,6 +1,3 @@
-//! Native RPCs on Pi's session: requests outside any Turn whose answers go
-//! back to the caller that asked, such as the usage popover's session stats.
-
 use serde_json::Value;
 
 use crate::acp::{
@@ -16,8 +13,6 @@ use crate::acp::{
 use super::super::{PiRuntime, RequestKind};
 
 impl PiRuntime {
-    /// Sends one native request; Pi's session must be open and no other
-    /// native request may be waiting on its answer.
     pub(in crate::acp::bindings::pi::runtime) fn begin_native(
         &mut self,
         request: NativeRequest,
@@ -36,7 +31,6 @@ impl PiRuntime {
         Ok(egress)
     }
 
-    /// The Pi command id a written request is answered under.
     pub(super) fn command_id(&self, egress: &AdapterEgress) -> Result<String, AdapterRuntimeError> {
         egress
             .token()
@@ -46,7 +40,6 @@ impl PiRuntime {
             .ok_or(AdapterRuntimeError::Operation)
     }
 
-    /// The request for a session control Pi can carry out.
     pub(in crate::acp::bindings::pi::runtime) fn begin_control(
         &mut self,
         control: &SessionControl,
@@ -69,9 +62,7 @@ impl PiRuntime {
         }
     }
 
-    /// Pi's answer to a native request. A refusal or an answer Sage cannot
-    /// read is `Rejected`. Stats no caller waits for any more still refresh
-    /// the usage snapshot, but answer no one.
+    /// Stats no caller waits for any more still refresh the usage snapshot, but answer no one.
     pub(super) fn native_reply(
         &mut self,
         command_id: &str,
@@ -114,15 +105,12 @@ impl PiRuntime {
         Ok((Some(AdapterEvent::Absorbed), None))
     }
 
-    /// The caller gave up waiting for the native answer; Pi's late reply
-    /// then answers no one.
     pub(in crate::acp::bindings::pi::runtime) fn abandon_native(&mut self) {
         self.native_pending = None;
     }
 }
 
-/// The session totals of Pi's `get_session_stats`. `tokens` and `cost`
-/// cover every assistant reply, tool and summary of the whole session.
+/// `tokens` and `cost` cover every assistant reply, tool and summary of the whole session.
 fn session_spend(data: &Value) -> Option<SessionSpend> {
     let tokens = data.get("tokens")?;
     let count = |field: &str| tokens.get(field).and_then(Value::as_u64);

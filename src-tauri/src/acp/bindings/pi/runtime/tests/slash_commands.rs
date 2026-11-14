@@ -87,7 +87,6 @@ fn idle_idless_command_discovery_rejection_keeps_the_next_prompt_usable() {
     assert!(batch.egress().is_empty());
     let catalog = runtime.available_commands().snapshot();
     assert_eq!(catalog.revision, 1);
-    // Only Pi's built-in commands remain.
     assert_eq!(names(&catalog.commands), ["session", "compact"]);
     assert!(runtime.discover_commands().unwrap().is_none());
 
@@ -355,7 +354,6 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
             ("compact", CommandSource::Builtin),
         ]
     );
-    // A prompt template is model work: Pi's acknowledgment does not end it.
     let mut prompt = Prompt::new("prompt", "/fix the parser").unwrap();
     prompt.command_revision = Some(listed.revision);
     let send = runtime

@@ -1,5 +1,3 @@
-//! Standard ACP web search classification from protocol fields only.
-
 use serde_json::{Value, json};
 
 use super::{

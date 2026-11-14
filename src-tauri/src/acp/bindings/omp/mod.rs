@@ -1,10 +1,5 @@
-//! Oh My Pi v17.2.3 native ACP research binding.
-//!
-//! The pinned source exposes an out-of-process `omp acp` NDJSON surface. This
-//! packet translates that surface without importing OMP's in-process SDK,
-//! extensions, MCP providers, tools, or assets. It remains launch-ineligible
-//! until the complete Bun/native-addon artifact graph and authority are
-//! independently admitted.
+//! It remains launch-ineligible until the complete Bun/native-addon artifact graph and
+//! authority are independently admitted.
 
 mod manifest;
 mod protocol;

@@ -81,9 +81,6 @@ impl StandardAcpRuntime {
         }
     }
 
-    /// Prompts in the profile's pinned session mode, switching to it first
-    /// when the session is in another one. A profile with no pinned mode
-    /// prompts in whatever mode the agent chose.
     pub(super) fn prompt_with_mode(
         &mut self,
         prompt: crate::acp::intent::Prompt,

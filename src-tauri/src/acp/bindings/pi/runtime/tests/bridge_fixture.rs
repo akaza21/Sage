@@ -1,7 +1,3 @@
-//! The generated `pi-bridge-*` fixture cases replayed against the real bridge
-//! runtime: the child's dialogs reach Sage's permission request and write path,
-//! each decision passes the host permission service exactly as the approval
-//! card's does, and the child observes Sage's answers as the extension would.
 use super::*;
 use crate::acp::service::{
     AcpService, PermissionDecisionIntent, admit_permission_request, service_with_pending_requests,
@@ -16,11 +12,8 @@ use std::{
 
 type Replies = Rc<RefCell<VecDeque<u8>>>;
 
-/// What the user types into an extension question's card.
 const ANSWER: &str = "A note written on the question card.";
 
-/// The host side of the approval card: the permission service admits the
-/// card's decision against the request Sage recorded, then forwards it.
 struct Card {
     service: AcpService,
     owner: crate::acp::scheduler::RuntimeOwner,
@@ -38,8 +31,6 @@ impl Card {
         }
     }
 
-    /// Records the request as the store would and answers it through the
-    /// service; returns the command the service forwards to the runtime.
     fn decide(
         &self,
         request_id: &str,
@@ -72,8 +63,6 @@ impl Drop for Card {
     }
 }
 
-/// Sage's side of the child's stdio: ingests each frame, answers the approval
-/// card with a fixed decision and queues every reply for the child to read.
 struct Sage<'a> {
     journey: &'a mut Journey,
     card: Card,
@@ -117,7 +106,6 @@ impl Sage<'_> {
         });
         if let Some(payload) = requested {
             self.cards += 1;
-            // An extension question is answered; an approval gets the fixed decision.
             let asks = matches!(
                 payload,
                 NormalizedPayload::PermissionRequest {
@@ -179,7 +167,6 @@ struct Outcome {
     journey: Journey,
     cards: usize,
     events: Vec<AdapterEvent>,
-    /// Each finished tool call's error flag and result text, as Pi reports it.
     tool_errors: Vec<(bool, String)>,
 }
 
@@ -276,7 +263,6 @@ fn pi_bridge_fixture_cases_drive_the_real_approval_and_write_path() {
         Some("export const example = 1;\n")
     );
 
-    // Refused before any card, with Sage's reason as the tool's error.
     for case in [
         "pi-bridge-git-config-refused",
         "pi-bridge-device-name-refused",
@@ -291,8 +277,7 @@ fn pi_bridge_fixture_cases_drive_the_real_approval_and_write_path() {
         assert_eq!(refused.journey.runtime.bridge.as_ref().unwrap().writes, 0);
     }
 
-    // The replayed prepare gets no second card whatever the first decision was;
-    // the fixture itself fails unless Sage refuses the replay.
+    // The fixture itself fails unless Sage refuses the replay.
     let replayed = replay("pi-bridge-replay-refused", AllowOnce);
     assert_eq!((replayed.cards, ended(&replayed)), (1, vec![WRITTEN]));
     assert_eq!(
@@ -320,7 +305,6 @@ fn pi_fixture_admits_the_bridge_only_for_cases_that_replay_it() {
             "{case}"
         );
     }
-    // Without the extension, Pi's write and shell tools stay authority-blocked.
     for case in [
         "pi-non-read-denial",
         "pi-turn-completed",
@@ -333,8 +317,6 @@ fn pi_fixture_admits_the_bridge_only_for_cases_that_replay_it() {
     }
 }
 
-/// The real-app Pi 1.5 journey: every surface one Turn can show, with the
-/// steer answered mid-turn and Pi's queue cleared once the Turn ends.
 #[test]
 fn pi_full_turn_fixture_projects_every_surface_and_clears_the_steer_queue() {
     use crate::acp::{intent::session_event::SessionScopedEvent, lifecycle::TurnState};

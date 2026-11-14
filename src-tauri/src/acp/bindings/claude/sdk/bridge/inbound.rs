@@ -1,5 +1,3 @@
-//! SDK frames from Claude Code, read as ACP session traffic.
-
 use serde_json::{Value, json};
 
 use super::{
@@ -154,9 +152,8 @@ impl SdkBridge {
         Ok(())
     }
 
-    /// `can_use_tool` becomes an ACP permission request; Sage answers every
-    /// other control request it does not serve with an error, so Claude Code
-    /// never waits on it.
+    /// Sage answers every control request it does not serve with an error, so Claude Code never
+    /// waits on it.
     fn control_request(&mut self, sdk: &Value, inbound: &mut Inbound) -> Result<(), BridgeError> {
         let request_id = sdk
             .get("request_id")
@@ -208,9 +205,8 @@ impl SdkBridge {
         }
     }
 
-    /// A finished assistant message. Its text already streamed unless Claude
-    /// Code produced it itself (errors such as a sign-in failure); its tool
-    /// uses start tool rows, and `TodoWrite` replaces the plan.
+    /// Its text already streamed unless Claude Code produced it itself (errors such as a sign-in
+    /// failure).
     fn assistant(&mut self, sdk: &Value, inbound: &mut Inbound) {
         if sdk.get("error").and_then(Value::as_str) == Some("authentication_failed") {
             self.auth_failed = true;
@@ -277,8 +273,6 @@ impl SdkBridge {
         inbound.acp.push(self.update(update.into()));
     }
 
-    /// `tool_result` blocks finish their tool rows. Edits keep the diff they
-    /// started with; other tools show their output text.
     fn tool_results(&mut self, message: &Value, inbound: &mut Inbound) {
         for block in message
             .get("content")
@@ -322,9 +316,6 @@ impl SdkBridge {
         }
     }
 
-    /// `result` completes the running prompt, with the context meter first.
-    /// Open approvals are cancelled, and tool rows Claude Code never
-    /// reported on end as failed.
     pub(super) fn result(&mut self, sdk: &Value, inbound: &mut Inbound) {
         if self.prompt.is_none() || self.holds_result(sdk) {
             return;

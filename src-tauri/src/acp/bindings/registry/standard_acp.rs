@@ -1,7 +1,4 @@
-//! Records for agents driven by the standard ACP runtime: OpenCode and the
-//! user-defined agents in Settings. Both launch through one factory; only
-//! the ceiling differs, since a user-defined agent's close support is read
-//! from its own `initialize` advertisement.
+//! A user-defined agent's close support is read from its own `initialize` advertisement.
 
 use std::sync::Arc;
 
@@ -71,7 +68,6 @@ pub(super) fn capabilities(
     })
 }
 
-/// The record for one user-defined agent registration.
 pub(super) fn custom_record(registration: Arc<CustomAcpRegistration>) -> BindingRecord {
     let profile = registration.profile();
     BindingRecord {
@@ -103,16 +99,11 @@ impl BindingRegistry {
             })
     }
 
-    /// The registration holding the user-defined agent `id`.
     pub(crate) fn custom_acp(&self, id: &str) -> Option<&Arc<CustomAcpRegistration>> {
         self.custom_acp_registrations()
             .find(|registration| registration.serves(id))
     }
 
-    /// Makes the registrations hold exactly `agents` (the saved list, at
-    /// most one per registration). An agent already held stays in its
-    /// registration; a removed agent's registration is cleared; a new agent
-    /// takes a vacant one.
     pub(crate) fn apply_custom_acp_agents(&self, agents: &[CustomAcpAgent]) {
         let mut placed = vec![false; agents.len()];
         for registration in self.custom_acp_registrations() {

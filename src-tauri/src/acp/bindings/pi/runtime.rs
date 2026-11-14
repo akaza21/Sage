@@ -89,7 +89,6 @@ pub(crate) struct PiRuntime {
     pub(super) runtime_epoch: RuntimeEpoch,
     pub(super) session_id: SageAgentSessionId,
     pub(super) external_session: Option<ExternalId>,
-    /// Where Pi keeps this working directory's sessions, from `get_state`.
     session_dir: Option<std::path::PathBuf>,
     pub(super) active_turn: Option<TurnIntent>,
     steering: support::Steering,
@@ -105,7 +104,6 @@ pub(crate) struct PiRuntime {
     pub(super) available_models: Vec<ModelSummary>,
     pub(super) current_thinking: Option<String>,
     pub(super) available_thinking: Vec<String>,
-    /// Pi's auto-compaction setting, once `get_state` has reported it.
     pub(super) auto_compaction: Option<bool>,
     commands: std::sync::Arc<crate::acp::slash_commands::CommandState>,
     commands_pending: bool,
@@ -116,19 +114,13 @@ pub(crate) struct PiRuntime {
     pub(super) refresh_thinking_after_model: bool,
     pub(super) initialized: bool,
     poisoned: bool,
-    /// The command id of the native request whose caller waits on its answer.
     pub(super) native_pending: Option<String>,
     pub(super) native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
-    /// The session's spend as Pi last reported it; read on demand only.
     pub(super) usage: std::sync::Arc<crate::acp::usage::UsageCell>,
     /// A fork under way, while Pi is away from the chat's session.
     fork: Option<support::Fork>,
-    /// Unsettled forks and refused copies whose cleanup has not succeeded.
     forks: Vec<support::ForkCopy>,
-    /// The authority to start this runtime's Pi process, until it is used.
     launch: Option<Box<dyn PiLaunch>>,
-    /// Removes a refused fork's saved copy in place of the file system, so a
-    /// test can make the removal fail.
     #[cfg(test)]
     pub(super) remove_file_for_test: fn(&std::path::Path) -> std::io::Result<()>,
 }
@@ -223,11 +215,8 @@ impl PiRuntime {
 }
 
 impl HarnessAdapter for PiRuntime {
-    /// Pi ends each run with `agent_end`, which repeats the whole run and
-    /// can outgrow a frame. Everything Sage needs from it already arrived
-    /// in the streamed events, so an oversized event is read past without
-    /// buffering it rather than ending the session. The translator allows
-    /// this only where such a frame cannot carry anything Sage still needs.
+    /// Pi ends each run with `agent_end`, which repeats the whole run and can outgrow a frame.
+    /// Everything Sage needs from it already arrived in the streamed events.
     fn skips_oversize_frames(&self) -> bool {
         self.translator.skips_oversize_frames()
     }

@@ -1,14 +1,9 @@
-//! One rule for turning a harness-reported session title into a session
-//! event, shared by every binding that receives one.
-
 use crate::acp::{
     contract::RequiredText,
     intent::session_event::{SESSION_TITLE_BYTES, SessionScopedEvent},
 };
 
-/// The harness title as a session event, sanitized by the same rule as every
-/// chat title and capped at [`SESSION_TITLE_BYTES`]. `None` when nothing
-/// printable is left: unreadable input is ignored, never taken as a clear.
+/// `None` when nothing printable is left: unreadable input is ignored, never taken as a clear.
 pub(crate) fn harness_title_event(raw: &str) -> Option<SessionScopedEvent> {
     let title = crate::chat_lifecycle::title_line(raw, SESSION_TITLE_BYTES)?;
     RequiredText::new("sessionTitle", title)
@@ -16,9 +11,8 @@ pub(crate) fn harness_title_event(raw: &str) -> Option<SessionScopedEvent> {
         .map(|title| SessionScopedEvent::Title { title: Some(title) })
 }
 
-/// The event for a harness that explicitly removed its session title. The
-/// chat falls back to the title Sage would have given it, unless the user
-/// named it or it is a fork.
+/// The chat falls back to the title Sage would have given it, unless the user named it or it is
+/// a fork.
 #[cfg_attr(not(test), allow(dead_code))]
 pub(crate) fn harness_title_cleared() -> SessionScopedEvent {
     SessionScopedEvent::Title { title: None }

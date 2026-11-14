@@ -10,8 +10,7 @@ use sage_core::limits::LIMITS;
 
 const OUTPUT_TAIL_BYTES: usize = 16_384;
 
-/// What a tool has reported about its run so far. ACP updates are partial:
-/// a later frame that omits the exit code or terminal output keeps the
+/// ACP updates are partial: a later frame that omits the exit code or terminal output keeps the
 /// earlier report instead of erasing it.
 #[derive(Debug, Clone, Default)]
 pub(super) struct CommandOutcome {
@@ -21,7 +20,6 @@ pub(super) struct CommandOutcome {
 }
 
 impl StandardAcpTranslator {
-    /// Whether this frame reports an exit code the tool has not reported yet.
     pub(super) fn reports_new_exit_code(
         &self,
         id: &str,
@@ -37,10 +35,9 @@ impl StandardAcpTranslator {
             })
     }
 
-    /// Keeps this frame's exit code and terminal-block output. Terminal
-    /// output is the only carrier of that text; text content is already the
-    /// item's output summary and is never repeated in the tail. Retained
-    /// tails share one per-turn byte budget; past it the earlier tail stays.
+    /// Terminal output is the only carrier of that text; text content is already the item's output
+    /// summary and is never repeated in the tail. Retained tails share one per-turn byte budget;
+    /// past it the earlier tail stays.
     pub(super) fn record_command_outcome(
         &mut self,
         id: &str,

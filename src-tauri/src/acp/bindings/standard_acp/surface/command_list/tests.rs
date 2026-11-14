@@ -158,14 +158,12 @@ fn channel_announces_each_new_revision_once_for_the_exact_owner() {
     let live = owner(1);
     channel.reserve(live.clone());
     let state = Arc::new(CommandState::default());
-    // Adopting the empty list at revision 0 is not a change.
     channel.update(&live, Arc::clone(&state));
     assert!(seen.lock().unwrap().is_empty());
     state
         .replace(parse_acp(&json!([{"name":"plan","description":"d"}])))
         .unwrap();
     channel.update(&live, Arc::clone(&state));
-    // Every ingested frame calls update; one revision is announced once.
     channel.update(&live, Arc::clone(&state));
     channel.update(&owner(2), Arc::clone(&state));
     state.replace(parse_acp(&json!([]))).unwrap();
@@ -198,10 +196,8 @@ fn channel_announces_a_swapped_list_from_its_own_revisions() {
         .replace(parse_acp(&json!([{"name":"plan","description":"d"}])))
         .unwrap();
     channel.update(&live, Arc::clone(&first));
-    // A fresh empty state at revision 0 replaces it: nothing to announce.
     let second = Arc::new(CommandState::default());
     channel.update(&live, Arc::clone(&second));
-    // Its first list is revision 1 again and must still be announced.
     second
         .replace(parse_acp(&json!([{"name":"init","description":"d"}])))
         .unwrap();
@@ -244,7 +240,6 @@ fn acp_commands_carry_the_source_an_adapter_names_and_list_as_prompts() {
         wire,
         json!({"name":"review","description":"Review","inputHint":null,"source":"skill"})
     );
-    // A run names the source of the command it ran, at that revision only.
     let state = CommandState::default();
     state.replace(Ok(list.commands)).unwrap();
     assert_eq!(

@@ -1,7 +1,3 @@
-//! Messages sent while Claude is working, on the runtime side: each is a
-//! request Sage waits on until Claude Code reports it queued (see
-//! `bridge::steer`).
-
 use super::{SdkBridge, Sent, sdk_frame};
 use crate::acp::bindings::adapter::{
     AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution, EgressToken,
@@ -10,8 +6,6 @@ use crate::acp::bindings::adapter::{
 /// Request ids for mid-turn messages, apart from the session's own.
 const STEER_REQUESTS: u64 = 1 << 62;
 
-/// Mid-turn messages awaiting Claude Code's word, by id, with the request
-/// id Sage waits on.
 pub(super) struct Steering {
     open: Vec<(String, u64)>,
     /// Messages never written, whose refusal the next batch carries.
@@ -54,7 +48,6 @@ impl Steering {
         Ok(AdapterEgress::new(frame, EgressToken::request(request_id)))
     }
 
-    /// Each message's answer, once; a message never written is refused.
     pub(super) fn answers(&mut self, steers: Vec<(String, bool)>) -> Vec<AdapterEvent> {
         let unsent = std::mem::take(&mut self.unsent)
             .into_iter()
@@ -74,7 +67,6 @@ impl Steering {
             .collect()
     }
 
-    /// Settles a message's delivery; false when the token is not one.
     pub(super) fn resolve(
         &mut self,
         token: &EgressToken,

@@ -1,7 +1,3 @@
-//! The Claude session a launch opens, and the CLI arguments that open it:
-//! a new session under Sage's id, a resume of the stored one, cut before a
-//! Turn the user undid, or a fork's first launch, which makes its copy.
-
 use std::{ffi::OsString, path::Path};
 
 use super::{
@@ -16,13 +12,11 @@ pub(crate) struct SessionLaunch {
     pub(crate) session_id: String,
     pub(crate) resume: bool,
     pub(crate) model: Option<String>,
-    /// The validated assistant reply UUID resolved and persisted by Undo.
     pub(crate) rewind_at: Option<String>,
 }
 
 impl SessionLaunch {
-    /// The launch an activation asks for; a `Load` has none, since Claude
-    /// Code has no session load.
+    /// A `Load` has none, since Claude Code has no session load.
     pub(super) fn from_mode(mode: &ActivationMode) -> Option<Self> {
         let (session_id, resume, model, rewind_at) = match mode {
             ActivationMode::New { model, .. } => {
@@ -55,9 +49,6 @@ impl SessionLaunch {
         Ok(args)
     }
 
-    /// The arguments that pick the session and model. `config` is Claude
-    /// Code's profile, where a fork's copy and a session's transcript are
-    /// looked up, once per launch.
     pub(super) fn session_args(
         &self,
         config: Option<&Path>,
@@ -75,8 +66,6 @@ impl SessionLaunch {
 
     fn resume_args(&self, config: Option<&Path>) -> Result<Vec<OsString>, AdapterRuntimeError> {
         let fork = Fork::parse(&self.session_id);
-        // A fork's copy is looked up to know how to open it; a session's
-        // own transcript only when there is a cut to find in it.
         let (session, written) = match (&fork, config) {
             (Some(fork), Some(config)) => match fork.copy(config) {
                 ForkCopy::Pending if self.rewind_at.is_none() => return Ok(fork.copy_args()),
@@ -158,7 +147,6 @@ mod tests {
             .map(OsString::from)
         );
         let _ = std::fs::remove_dir_all(&empty);
-        // A profile Sage cannot read, or none, resumes the copy.
         for config in [Some(empty.as_path()), None] {
             assert_eq!(
                 launch.args(config).unwrap()[SDK_ARGS.len()..],

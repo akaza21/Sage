@@ -1,5 +1,3 @@
-//! Bounded permission-option parsing for Claude ingress.
-
 use super::super::*;
 
 impl ClaudeRuntime {
@@ -105,8 +103,6 @@ impl ClaudeRuntime {
         AdapterBatch::new(published, Vec::new())
     }
 
-    /// The harness withdrew a request the user has not answered: its card
-    /// is cancelled, so a turn may end without it.
     /// The next permission request asks these questions instead of an
     /// approval; it must offer `answer` as its allow-once option, which the
     /// answers are sent back on.
@@ -217,9 +213,7 @@ impl ClaudeRuntime {
     }
 }
 
-/// The option kinds the user is offered: only those Sage can answer with an
-/// admitted option. An allow that would also widen the permission mode
-/// (Claude's plan exit) is never offered.
+/// An allow that would also widen the permission mode (Claude's plan exit) is never offered.
 fn offered_kinds(
     reported: Option<crate::acp::contract::BoundedVec<crate::acp::intent::PermissionOptionKind, 8>>,
     allow_once: bool,

@@ -29,8 +29,7 @@ const MAX_FIXED_ARGUMENTS: usize = 16;
 const MAX_ARGUMENT_BYTES: usize = 4_096;
 const MAX_ENVIRONMENT_KEYS: usize = 32;
 
-/// Candidate metadata comes only from bounded local discovery. It describes the
-/// exact local files Sage will revalidate before every launch; it is not
+/// It describes the exact local files Sage will revalidate before every launch; it is not
 /// renderer-facing metadata.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CandidateManifest {

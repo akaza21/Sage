@@ -53,7 +53,6 @@ impl PiFixtureBinding {
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)
     }
 
-    /// The selected case replays tool calls through the bundled bridge extension.
     pub(crate) fn bridge_installed(&self) -> bool {
         crate::acp_protocol::native_cases::native_case_uses_pi_bridge(&self.selection.case)
     }

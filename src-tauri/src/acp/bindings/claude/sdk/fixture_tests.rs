@@ -1,6 +1,3 @@
-//! The SDK replay journeys, driven through the bridge as a live session
-//! would drive them: each journey must complete and render its turn.
-
 use std::path::Path;
 
 use serde_json::{Value, json};
@@ -10,8 +7,6 @@ use crate::acp::{goal::NativeRpcReply, intent::session_event::SessionScopedEvent
 
 const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
 
-/// What a replay produced: every ACP frame, each mid-turn message's
-/// answer, the text of each session notice, and the session a fork opened.
 struct Replay {
     acp: Vec<Value>,
     steers: Vec<(String, bool)>,
@@ -19,16 +14,13 @@ struct Replay {
     forked: Option<String>,
 }
 
-/// A launch with Claude Code's session flags, in a profile and project.
 struct Launched<'a> {
     launch: &'a SessionLaunch,
     config: &'a Path,
     cwd: &'a Path,
-    /// Whether the client forks the chat once its turns are done.
     fork: bool,
 }
 
-/// A profile and project under a fresh directory, removed on drop.
 struct Profile(std::path::PathBuf);
 
 impl Profile {
@@ -53,8 +45,6 @@ impl Drop for Profile {
     }
 }
 
-/// Replays `case` in a new chat, launched as the real app launches it:
-/// with Claude Code's session flags, in a profile of its own.
 fn replay_with(case: &str, prompts: &[Value]) -> Replay {
     let profile = Profile::new();
     let launch = SessionLaunch {
@@ -73,10 +63,8 @@ fn replay_with(case: &str, prompts: &[Value]) -> Replay {
     replay_in(case, prompts, &launched)
 }
 
-/// Replays `case` and returns what the bridge produced. Prompts are sent
-/// in order with ids from 3; a message sent while Claude works says "Only
-/// the first page". The client approves the first permission option it is
-/// asked about.
+/// Prompts are sent in order with ids from 3; a message sent while Claude works says "Only
+/// the first page". The client approves the first permission option it is asked about.
 fn replay_in(case: &str, prompts: &[Value], launched: &Launched) -> Replay {
     let session = launched.launch.session_id.as_str();
     let mut bridge = SdkBridge::new(session.into(), None);
@@ -89,8 +77,6 @@ fn replay_in(case: &str, prompts: &[Value], launched: &Launched) -> Replay {
         let mut sent = Vec::new();
         for frame in frames {
             let inbound = bridge.inbound(frame).expect("SDK frame maps");
-            // Requests the bridge makes on its own, such as the interrupt
-            // that follows a withdrawn message.
             sent.extend(inbound.replies);
             steers.extend(inbound.steers);
             notices.extend(inbound.session.into_iter().filter_map(|event| match event {
@@ -161,7 +147,6 @@ fn text(text: &str) -> Value {
     json!([{"type": "text", "text": text}])
 }
 
-/// The text Claude streamed, in order.
 fn said(acp: &[Value]) -> String {
     updates(acp, "agent_message_chunk")
         .iter()
@@ -366,7 +351,6 @@ fn a_fork_chat_carries_the_first_chats_turn_from_its_saved_transcript() {
         forked.contains("User: Remember the synthetic example"),
         "{forked}"
     );
-    // Its first message saved the copy, so the fork chat now resumes it.
     let copy = super::fork::claude_session(&fork.session_id).to_owned();
     assert_eq!(
         fork.session_args(Some(&config)).unwrap(),

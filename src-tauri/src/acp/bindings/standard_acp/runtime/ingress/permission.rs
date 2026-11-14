@@ -68,7 +68,6 @@ impl StandardAcpRuntime {
         let approved_path = workspace_edit_path(&value, &self.workspace_root);
         let created_file_content = created_file_content(&value, approved_path.as_deref());
         let reply = match access_mode {
-            // Modes OpenCode's access policy never admits are denied too.
             crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly
             | crate::acp_protocol::access_mode::SessionAccessMode::AcceptEdits
             | crate::acp_protocol::access_mode::SessionAccessMode::Plan

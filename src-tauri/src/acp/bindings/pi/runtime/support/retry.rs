@@ -1,6 +1,3 @@
-//! Pi's wait before retrying a failed reply, shown as a session activity the
-//! user can stop: stopping it is Pi's own `abort_retry`.
-
 use crate::acp::{
     bindings::adapter::{AdapterEvent, AdapterRuntimeError},
     contract::RequiredText,
@@ -12,7 +9,6 @@ use crate::acp::{
 
 use super::super::PiRuntime;
 
-/// Retry activities are named after the Turn whose reply is retried.
 const RETRY_PREFIX: &str = "retry:";
 
 impl PiRuntime {
@@ -55,8 +51,6 @@ impl PiRuntime {
         )
     }
 
-    /// Whether `activity` names the running Turn's wait to retry, while Pi
-    /// still waits.
     pub(super) fn is_current_retry(&self, activity: &ExternalId) -> bool {
         self.translator.waiting_to_retry()
             && activity

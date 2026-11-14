@@ -66,10 +66,8 @@ impl PiRuntime {
         }
     }
 
-    /// Ends the Turn's steering. Pi keeps an undelivered steer across an
-    /// abort or failure and would run it ahead of the next prompt, so a Turn
-    /// that steered clears Pi's queue. Without capacity for that command the
-    /// queue is left as is; the next steer or prompt still works.
+    /// Pi keeps an undelivered steer across an abort or failure and would run it ahead of the next
+    /// prompt, so a Turn that steered clears Pi's queue.
     pub(super) fn finish_steering(&mut self) -> Option<AdapterEgress> {
         std::mem::take(&mut self.steering)
             .sent

@@ -374,7 +374,6 @@ fn pi_bridge_journey_shell_command_asks_and_its_approval_frees_the_slot() {
         summary.as_str()
     );
     j.allow();
-    // Pi runs the approved command itself; nothing is left to commit.
     assert!(j.runtime.bridge.as_ref().unwrap().pending.is_none());
     let commit = j.dialog("commit-1", "sage.pi.commit.v1", "tool-1");
     assert_eq!(

@@ -1,5 +1,3 @@
-//! Pi's tool calls as Sage items: started, streaming, then a final state.
-
 use crate::acp::{
     bindings::adapter::{AdapterEvent, AdapterRuntimeError, ResourceMapper},
     lifecycle::{ItemLifecycle, ToolState},

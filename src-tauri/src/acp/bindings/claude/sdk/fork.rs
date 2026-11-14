@@ -1,13 +1,7 @@
-//! Forking a Claude Code conversation.
-//!
 //! Claude Code has no control request that forks a running session. It
 //! forks when launched to resume one with `--fork-session`, copying the
 //! transcript under a new id, and `--resume-session-at` cuts the copy at an
-//! assistant message. Sage forks lazily that way: the fork's session id
-//! names the new Claude session, the source session and the source's last
-//! assistant message at the time of the fork. The fork chat's first launch
-//! makes the copy; once Claude Code has written it, later launches resume
-//! it like any session. Claude Code writes the copy only with the first
+//! assistant message. Claude Code writes the copy only with the first
 //! message, so a launch that ends sooner forks again next time.
 
 use std::{
@@ -19,8 +13,6 @@ use super::transcript::{is_uuid, last_reply, transcript};
 
 const SEPARATOR: char = '~';
 
-/// A fork of `source` cut after its assistant message `at`, to become the
-/// Claude session `session`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Fork {
     pub(super) session: String,
@@ -29,7 +21,6 @@ pub(super) struct Fork {
 }
 
 impl Fork {
-    /// The fork's session id as Sage stores it.
     pub(super) fn id(&self) -> String {
         format!(
             "{}{SEPARATOR}{}{SEPARATOR}{}",
@@ -37,7 +28,6 @@ impl Fork {
         )
     }
 
-    /// A stored session id that names a fork.
     pub(super) fn parse(id: &str) -> Option<Self> {
         let mut parts = id.split(SEPARATOR);
         let (session, source, at) = (parts.next()?, parts.next()?, parts.next()?);
@@ -51,8 +41,6 @@ impl Fork {
         })
     }
 
-    /// A fork through the latest assistant message of `source` (a stored
-    /// session id, itself perhaps a fork), when its transcript has one.
     pub(super) fn of(source: &str, config: &Path) -> Option<Self> {
         let source = claude_session(source).to_owned();
         let at = last_reply(&transcript(config, &source)?)?;
@@ -63,7 +51,6 @@ impl Fork {
         })
     }
 
-    /// Whether Claude Code already wrote the fork's copy.
     pub(super) fn copy(&self, config: &Path) -> ForkCopy {
         if std::fs::read_dir(config.join("projects")).is_err() {
             return ForkCopy::Unknown;
@@ -71,8 +58,6 @@ impl Fork {
         transcript(config, &self.session).map_or(ForkCopy::Pending, ForkCopy::Written)
     }
 
-    /// The launch arguments that make the copy: Claude Code resumes the
-    /// source cut at the fork's reply, under the fork's own id.
     pub(super) fn copy_args(&self) -> Vec<OsString> {
         [
             "--resume",
@@ -87,7 +72,6 @@ impl Fork {
         .into()
     }
 
-    /// The launch arguments that open this fork.
     #[cfg(test)]
     fn launch_args(&self, config: &Path) -> Vec<OsString> {
         match self.copy(config) {
@@ -97,12 +81,10 @@ impl Fork {
     }
 }
 
-/// The state of a fork's copy in Claude Code's profile.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum ForkCopy {
     /// Not written yet: the next launch makes it.
     Pending,
-    /// Written, at this transcript.
     Written(PathBuf),
     /// The profile cannot be read. It counts as holding the copy: resuming
     /// a missing session fails as plainly, and a repeated fork would be
@@ -110,12 +92,10 @@ pub(super) enum ForkCopy {
     Unknown,
 }
 
-/// The Claude session a stored session id names.
 pub(super) fn claude_session(id: &str) -> &str {
     id.split(SEPARATOR).next().unwrap_or(id)
 }
 
-/// Claude Code's profile directory, as its launch environment names it.
 pub(super) fn config_directory(environment: &[(OsString, OsString)]) -> Option<PathBuf> {
     let value = |key: &str| {
         environment
@@ -187,11 +167,9 @@ mod tests {
                 &fork.session
             ]
         );
-        // Once Claude Code wrote the copy, the fork resumes as itself.
         let project = config.path().join("projects").join("-w");
         std::fs::write(project.join(format!("{}.jsonl", fork.session)), "{}").unwrap();
         assert_eq!(fork.launch_args(config.path()), ["--resume", &fork.session]);
-        // A fork of the fork starts from the copy's own transcript.
         assert_eq!(
             Fork::of(&id, config.path()).map(|again| again.source),
             None,

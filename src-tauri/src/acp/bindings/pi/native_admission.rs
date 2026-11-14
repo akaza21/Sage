@@ -1,13 +1,3 @@
-//! Production Pi admission.
-//!
-//! Curated installation metadata admits the npm-global
-//! `@earendil-works/pi-coding-agent` package through Node over its JSONL RPC
-//! mode, within a bounded version range whose wire behaviour the pinned
-//! translator covers. Launch is read-only by construction: Pi is started with
-//! only its `read` tool, no extensions, skills, prompt templates, themes or
-//! session files. An exact Sage-bundled bridge may explicitly register managed
-//! tools on the pinned release; missing or stale resources leave only read.
-
 use std::{
     ffi::OsString,
     path::PathBuf,
@@ -111,9 +101,6 @@ fn engine_satisfied(engine: &str, node_version: &str) -> Option<bool> {
 /// RPC command Sage sends, so nothing older can exist under this package.
 const PI_READ_ONLY_MINIMUM: &str = "0.74.0";
 
-/// Pi releases from [`PI_READ_ONLY_MINIMUM`] on are admitted. The tested
-/// release and later ones keep the tested features; an earlier one runs
-/// read-only (see [`AdmittedPiBinding::characterisation`]).
 pub(crate) fn version_admitted(version: &str) -> bool {
     characterise_against(version, PI_READ_ONLY_MINIMUM).runs_tested_features()
 }
@@ -166,7 +153,6 @@ impl AdmittedPiBinding {
         characterise_against(&self.launch.package_version, super::PI_VERSION)
     }
 
-    /// Revalidates both launch fingerprints through the shared metadata-keyed hash cache.
     pub(crate) fn revalidate(&self) -> Result<(), PiAdmissionUnavailable> {
         let same = |path: &PathBuf, expected: &str| {
             crate::harness_discovery::cached_sha256_file(path).as_deref() == Some(expected)
