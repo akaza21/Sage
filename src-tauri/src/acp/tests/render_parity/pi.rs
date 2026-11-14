@@ -27,9 +27,8 @@ impl Turn {
             SageAgentSessionId::parse("session-pi-parity").unwrap(),
         );
         if let Some(root) = workspace {
-            runtime.enable_bridge(
-                crate::workspace::Workspace::open("project", "root-1", root).unwrap(),
-            );
+            runtime
+                .enable_bridge(sage_workspace::Workspace::open("project", "root-1", root).unwrap());
         }
         let mut turn = Self {
             runtime,

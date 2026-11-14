@@ -3,13 +3,13 @@ use serde_json::json;
 use std::path::PathBuf;
 struct Fixture {
     path: PathBuf,
-    workspace: crate::workspace::Workspace,
+    workspace: sage_workspace::Workspace,
 }
 impl Fixture {
     fn new() -> Self {
         let path = std::env::temp_dir().join(format!("sage-pi-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&path).unwrap();
-        let workspace = crate::workspace::Workspace::open("project", "root", &path).unwrap();
+        let workspace = sage_workspace::Workspace::open("project", "root", &path).unwrap();
         Self { path, workspace }
     }
     fn edit(&self, tool: &str, args: serde_json::Value) -> Result<files::Edit, Refusal> {

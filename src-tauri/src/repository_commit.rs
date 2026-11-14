@@ -3,8 +3,8 @@ use sage_core::error::{AppError, AppResult};
 use crate::{
     git_budget,
     repository::{self, RepositoryBoundary},
-    workspace::Workspace,
 };
+use sage_workspace::Workspace;
 
 pub(crate) const MAX_GIT_COMMIT_MESSAGE_BYTES: usize = 8 * 1024;
 const MAX_GIT_IDENTITY_BYTES: usize = 512;

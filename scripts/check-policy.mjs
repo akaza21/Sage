@@ -31,7 +31,7 @@ const reviewedSpawnModules = new Map([
     "Bounded harness version discovery",
   ],
   [
-    "src-tauri/src/workspace/search/helper_process.rs",
+    "crates/sage-workspace/src/search/helper_process.rs",
     "Bounded workspace search helper",
   ],
   [

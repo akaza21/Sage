@@ -1,7 +1,7 @@
 use std::path::Path;
 
 #[cfg(windows)]
-use crate::workspace::atomic_write_windows::atomic_write;
+use sage_workspace::atomic_write_windows::atomic_write;
 
 use serde_json::{Value, json};
 

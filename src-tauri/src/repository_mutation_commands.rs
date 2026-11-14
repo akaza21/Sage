@@ -9,12 +9,12 @@ use crate::{
     repository,
     repository_mutation::{mutate_file, mutate_file_with_process_policy},
     state::AppState,
-    workspace::Workspace,
 };
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitFileMutationError, GitFileMutationErrorKind,
     GitFileMutationRequest, GitFileMutationResult, GitProcessState,
 };
+use sage_workspace::Workspace;
 
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
 

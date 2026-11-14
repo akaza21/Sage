@@ -10,16 +10,14 @@ use sage_core::error::AppResult;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
-use crate::{
-    acp::{
-        read_text_file::{ReadTextBegin, ReadTextFileService, ReadTextOwner},
-        resource_mapper::NativeResourceAdmission,
-        transport::{FrameWriteError, OutboundFrame},
-    },
-    workspace::{Workspace, select_text_lines},
+use crate::acp::{
+    read_text_file::{ReadTextBegin, ReadTextFileService, ReadTextOwner},
+    resource_mapper::NativeResourceAdmission,
+    transport::{FrameWriteError, OutboundFrame},
 };
 use sage_core::limits::preview::P02_READ_TEXT_SOURCE_BYTES;
 use sage_domain::resource::ResourceRef;
+use sage_workspace::{Workspace, select_text_lines};
 
 #[allow(
     dead_code,

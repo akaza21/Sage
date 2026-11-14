@@ -5,8 +5,8 @@ use crate::{
     repository_branches::{
         LocalBranchList, MAX_BRANCH_NAME_BYTES, list_local_branches, named_branch,
     },
-    workspace::Workspace,
 };
+use sage_workspace::Workspace;
 
 const MAX_GIT_CHECKOUT_OUTPUT_BYTES: usize = 64 * 1024;
 

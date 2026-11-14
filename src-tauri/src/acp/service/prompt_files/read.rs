@@ -1,7 +1,7 @@
 use super::{Resource, Resources};
 use crate::acp::prompt_files::secrets;
-use crate::workspace::ignore_rules::{FolderChain, IgnoreRules, RuleFiles, global_excludes_path};
 use sage_core::limits::prompt_files::{FILE_BYTES, FILE_COUNT, TOTAL_BYTES};
+use sage_workspace::ignore_rules::{FolderChain, IgnoreRules, RuleFiles, global_excludes_path};
 use std::{
     collections::BTreeSet,
     io::Read,
@@ -161,9 +161,9 @@ impl Reader {
         ) {
             return Err("Selections contain the same file more than once.");
         }
-        let identity = crate::workspace::root_identity_path(root)
+        let identity = sage_workspace::root_identity_path(root)
             .map_err(|_| "Attachment root is unavailable.")?;
-        let file = crate::workspace::open_workspace_text_file(root, identity, &rel, None)
+        let file = sage_workspace::open_workspace_text_file(root, identity, &rel, None)
             .map_err(|_| "Attachment file is unreadable or changed during selection.")?;
         let meta = file.metadata().map_err(|_| "Cannot inspect attachment.")?;
         if !meta.is_file() {

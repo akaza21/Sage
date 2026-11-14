@@ -16,7 +16,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::SettingsStore;
-use crate::workspace::path_glob::valid_path_glob;
+use sage_workspace::path_glob::{DEFAULT_FILES_EXCLUDE, MAX_GLOBS, valid_path_glob};
 
 /// The row format version. A later format bumps it and converts older rows.
 const ROW_VERSION: i64 = 1;
@@ -67,9 +67,6 @@ impl PartialEq<SettingValue> for EditorValue {
     }
 }
 
-/// The most patterns a `Globs` setting holds.
-pub const MAX_GLOBS: usize = 50;
-
 #[derive(Debug, Clone, Copy)]
 pub enum SettingKind {
     Bool,
@@ -85,7 +82,7 @@ pub enum SettingKind {
         choices: &'static [&'static str],
     },
     /// Up to `MAX_GLOBS` patterns in Sage's path glob dialect
-    /// (`workspace::path_glob`), each valid on its own.
+    /// (`sage_workspace::path_glob`), each valid on its own.
     Globs,
 }
 
@@ -172,14 +169,7 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
     SettingSpec {
         key: "files.exclude",
         kind: SettingKind::Globs,
-        default: SettingValue::Globs(&[
-            "**/.git",
-            "**/.svn",
-            "**/.hg",
-            "**/CVS",
-            "**/.DS_Store",
-            "**/Thumbs.db",
-        ]),
+        default: SettingValue::Globs(DEFAULT_FILES_EXCLUDE),
     },
     SettingSpec {
         key: "git.autoRefresh",
@@ -248,16 +238,6 @@ fn admit_globs(value: &Value) -> Option<Vec<String>> {
         }
     }
     Some(patterns)
-}
-
-/// The `files.exclude` patterns a Search uses when its request names none.
-pub fn default_files_exclude() -> Vec<String> {
-    match spec("files.exclude").map(|spec| spec.default) {
-        Some(SettingValue::Globs(patterns)) => {
-            patterns.iter().map(|pattern| (*pattern).into()).collect()
-        }
-        _ => Vec::new(),
-    }
 }
 
 /// A JSON number that is a whole number within JavaScript's safe-integer
@@ -429,7 +409,7 @@ impl SettingsStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::path_glob::MAX_PATH_GLOB_BYTES;
+    use sage_workspace::path_glob::MAX_PATH_GLOB_BYTES;
     use serde_json::json;
 
     fn temp_store_path(label: &str) -> std::path::PathBuf {

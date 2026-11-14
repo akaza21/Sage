@@ -230,7 +230,7 @@ fn unavailable_root_and_native_collision_preserve_existing_content() {
 fn full_explorer_directory_is_rejected_before_creation() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (root, state, project) = fixture();
-        for index in 0..crate::workspace::MAX_DIRECTORY_ENTRIES {
+        for index in 0..sage_workspace::MAX_DIRECTORY_ENTRIES {
             fs::write(root.join("src").join(format!("{index:03}.txt")), "").unwrap();
         }
         let error = execute(

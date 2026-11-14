@@ -1,8 +1,7 @@
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    git_budget, repository, repository_branches, repository_conflict, workspace::Workspace,
-};
+use crate::{git_budget, repository, repository_branches, repository_conflict};
+use sage_workspace::Workspace;
 
 const MAX_GIT_PULL_OUTPUT_BYTES: usize = 64 * 1024;
 

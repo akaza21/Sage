@@ -12,12 +12,12 @@ interface Cases {
   matches: { pattern: string; path: string; expected: boolean }[];
 }
 
-// The same table drives src-tauri/src/workspace/path_glob/tests.rs.
+// The same table drives crates/sage-workspace/src/path_glob/tests.rs.
 const cases = JSON.parse(
   readFileSync(
     path.resolve(
       __dirname,
-      "../../src-tauri/src/workspace/path_glob/cases.json",
+      "../../crates/sage-workspace/src/path_glob/cases.json",
     ),
     "utf8",
   ),

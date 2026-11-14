@@ -2,7 +2,7 @@ use super::{
     Refusal,
     files::{Edit, read},
 };
-use crate::workspace::Workspace;
+use sage_workspace::Workspace;
 
 pub(crate) fn commit(workspace: &Workspace, edit: &Edit) -> Result<(), Refusal> {
     super::path::admit_resolved(workspace, &edit.relative)?;
@@ -33,7 +33,7 @@ fn unchanged(workspace: &Workspace, edit: &Edit) -> bool {
 
 #[cfg(windows)]
 fn platform_write(workspace: &Workspace, edit: &Edit) -> std::io::Result<()> {
-    use crate::workspace::atomic_write_windows::{Existing, atomic_write_checked};
+    use sage_workspace::atomic_write_windows::{Existing, atomic_write_checked};
     atomic_write_checked(
         workspace.root(),
         workspace.root_identity().stable_bytes(),
@@ -65,7 +65,7 @@ fn platform_write(workspace: &Workspace, edit: &Edit) -> std::io::Result<()> {
     let path = Path::new(&edit.relative);
     let parent = path.parent().and_then(Path::to_str).ok_or_else(refused)?;
     let held =
-        crate::workspace::open_held_parent(workspace.root(), workspace.root_identity(), parent)
+        sage_workspace::open_held_parent(workspace.root(), workspace.root_identity(), parent)
             .map_err(|_| refused())?;
     let target = CString::new(path.file_name().ok_or_else(refused)?.as_encoded_bytes())
         .map_err(|_| refused())?;
@@ -91,7 +91,7 @@ fn platform_write(workspace: &Workspace, edit: &Edit) -> std::io::Result<()> {
     let mut file = unsafe { File::from_raw_fd(descriptor) };
     let result = (|| {
         if !edit.created {
-            let original = crate::workspace::open_workspace_text_file(
+            let original = sage_workspace::open_workspace_text_file(
                 workspace.root(),
                 workspace.root_identity(),
                 &edit.relative,
@@ -106,10 +106,10 @@ fn platform_write(workspace: &Workspace, edit: &Edit) -> std::io::Result<()> {
             return Err(refused());
         }
         let named =
-            crate::workspace::open_held_parent(workspace.root(), workspace.root_identity(), parent)
+            sage_workspace::open_held_parent(workspace.root(), workspace.root_identity(), parent)
                 .map_err(|_| refused())?;
-        if crate::workspace::root_identity_metadata(&named.metadata()?).map_err(|_| refused())?
-            != crate::workspace::root_identity_metadata(&held.metadata()?).map_err(|_| refused())?
+        if sage_workspace::root_identity_metadata(&named.metadata()?).map_err(|_| refused())?
+            != sage_workspace::root_identity_metadata(&held.metadata()?).map_err(|_| refused())?
         {
             return Err(refused());
         }

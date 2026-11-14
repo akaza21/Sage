@@ -2,10 +2,11 @@ use std::path::PathBuf;
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{repository, workspace::Workspace};
+use crate::repository;
 use sage_domain::{
     file_operations::GitFileMutationAction, repository::FileChange, resource::ResourceRef,
 };
+use sage_workspace::Workspace;
 
 const MAX_GIT_ADMIN_PATH_BYTES: usize = 32 * 1024;
 const MAX_GIT_MUTATION_OUTPUT_BYTES: usize = 64 * 1024;
@@ -328,7 +329,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::workspace::Workspace;
+    use sage_workspace::Workspace;
 
     fn git(root: &Path, args: &[&str]) {
         assert!(

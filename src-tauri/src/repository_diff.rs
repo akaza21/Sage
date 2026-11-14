@@ -5,9 +5,9 @@ use sage_core::error::{AppError, AppResult};
 use crate::{
     repository::{RepositoryBoundary, ensure_success, repository_boundary, run_git},
     repository_parse::{MAX_DIFF_LINES, added_file_diff, parse_unified_diff},
-    workspace::Workspace,
 };
 use sage_domain::{editor::FileDiff, resource::ResourceRef};
+use sage_workspace::Workspace;
 
 const MAX_DIFF_BYTES: usize = 1024 * 1024;
 

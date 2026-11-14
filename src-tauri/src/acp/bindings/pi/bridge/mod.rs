@@ -5,11 +5,11 @@ pub(crate) mod install;
 pub(crate) mod path;
 mod refusal;
 pub(crate) mod write;
-use crate::workspace::Workspace;
 #[cfg(any(test, feature = "acp-fixture"))]
 pub(crate) use refusal::MAX_REPLY_BYTES;
 pub(crate) use refusal::Refusal;
 use sage_acp_protocol::access_mode::SessionAccessMode;
+use sage_workspace::Workspace;
 
 pub(crate) struct Bridge {
     pub workspace: Workspace,

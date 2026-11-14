@@ -5,7 +5,7 @@ import { utf8ByteLength } from "./text";
  * by `files.exclude`. A pattern matches a whole Project-relative path with `/`
  * separators: a `**` segment matches any number of segments, `*` any run of
  * characters within a segment and `?` one character. Matching is
- * case-sensitive. Mirrors src-tauri/src/workspace/path_glob.rs; both test
+ * case-sensitive. Mirrors crates/sage-workspace/src/path_glob.rs; both test
  * against path_glob/cases.json. The matcher lives in `pathGlobMatcher.ts`,
  * which Explorer loads on its own so it stays out of the startup bundle.
  */

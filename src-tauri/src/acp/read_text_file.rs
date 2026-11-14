@@ -6,19 +6,17 @@ use std::{
     time::{Duration, Instant},
 };
 
+use crate::acp::{
+    resource_mapper::{ConfiguredResourceRoot, NativeResourceAdmission, NativeResourceMapper},
+    runtime::read_text_file::ReadTextRange,
+};
 use crate::editor_persistence::p02_read::EditorBufferReadStore;
 use crate::project_registry::ProjectRegistryStore;
-use crate::{
-    acp::{
-        resource_mapper::{ConfiguredResourceRoot, NativeResourceAdmission, NativeResourceMapper},
-        runtime::read_text_file::ReadTextRange,
-    },
-    workspace::{Workspace, select_text_lines},
-};
 use sage_acp_protocol::contract::SageRootId;
 use sage_core::limits::LIMITS;
 use sage_db::database::Database;
 use sage_domain::resource::ResourceRef;
+use sage_workspace::{Workspace, select_text_lines};
 
 const MAX_EDITABLE_BUFFER_BYTES: usize = 1024 * 1024;
 mod lifecycle;

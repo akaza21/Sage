@@ -15,12 +15,10 @@ use sage_db::error::SqliteResultExt;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::{
-    project_registry::{
-        MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_comparison_key, persisted_path_text,
-    },
-    workspace::validate_contract_path,
+use crate::project_registry::{
+    MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_comparison_key, persisted_path_text,
 };
+use sage_workspace::validate_contract_path;
 
 use self::limits::{
     MAX_TOTAL_LEGACY_BUFFERS, MAX_TOTAL_LEGACY_ROOTS, MAX_TOTAL_LEGACY_TABS,

@@ -5,8 +5,8 @@ use sage_core::{
 };
 use sage_db::error::SqliteResultExt;
 
-use crate::workspace::resource_trash::TRASH_NAME;
 use sage_domain::{file_operations::TrashProjectResourceRequest, resource::ResourceRef};
+use sage_workspace::resource_trash::TRASH_NAME;
 
 pub(super) fn same_or_descendant(candidate: &ResourceRef, source: &ResourceRef) -> bool {
     candidate.root_id == source.root_id

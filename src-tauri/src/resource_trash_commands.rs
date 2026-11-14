@@ -6,18 +6,9 @@ use sage_db::error::SqliteResultExt;
 use tauri::State;
 
 use crate::{
-    preview_lifecycle::on_committed_project_transition_epoch,
-    project_registry::RootRecord,
-    resource_commands::build_bootstrap_snapshot,
-    state::AppState,
+    preview_lifecycle::on_committed_project_transition_epoch, project_registry::RootRecord,
+    resource_commands::build_bootstrap_snapshot, state::AppState,
     workbench_persistence::validate_layout,
-    workspace::{
-        Workspace,
-        resource_trash::{
-            ResourceTrashCommit, ResourceTrashIdentity, ResourceTrashMarker, TRASH_NAME,
-            supported as resource_trash_supported,
-        },
-    },
 };
 use sage_db::database::Database;
 use sage_domain::{
@@ -25,6 +16,13 @@ use sage_domain::{
         ResourceTrashOutcome, TrashProjectResourceRequest, TrashProjectResourceResult,
     },
     resource::ResourceRef,
+};
+use sage_workspace::{
+    Workspace,
+    resource_trash::{
+        ResourceTrashCommit, ResourceTrashIdentity, ResourceTrashMarker, TRASH_NAME,
+        supported as resource_trash_supported,
+    },
 };
 
 const MAX_JAVASCRIPT_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -316,7 +314,7 @@ fn resolve_workspace(
 fn validate_request(request: &TrashProjectResourceRequest) -> AppResult<()> {
     validate_request_id("Project ID", &request.project_id)?;
     validate_request_id("root ID", &request.source.root_id)?;
-    crate::workspace::validate_contract_path(&request.source.relative_path, false)?;
+    sage_workspace::validate_contract_path(&request.source.relative_path, false)?;
     if request.current_layout.project_id != request.project_id {
         return Err(AppError::InvalidRequest(format!(
             "{TRASH_NAME} layout does not belong to the requested Project"

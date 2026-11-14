@@ -7,12 +7,12 @@ use crate::{
         RepositoryBoundary, ensure_success, repository_boundary, repository_diff_base, run_git,
     },
     repository_parse::{ParsedStatus, merge_numstat, parse_status},
-    workspace::Workspace,
 };
 use sage_domain::{
     repository::{ProjectRepositoryStatus, RootRepositoryStatus},
     resource::ResourceRef,
 };
+use sage_workspace::Workspace;
 
 const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;
 pub(crate) type NumstatCounts = (Option<u64>, Option<u64>);

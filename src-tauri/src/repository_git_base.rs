@@ -12,9 +12,9 @@ use crate::{
     repository::{RepositoryBoundary, ensure_success, repository_boundary},
     repository_workspace::run_git,
     state::AppState,
-    workspace::Workspace,
 };
 use sage_domain::resource::ResourceRef;
+use sage_workspace::Workspace;
 
 /// One `ls-files --stage` record: mode, id, stage and a capped path.
 const MAX_INDEX_RECORD_BYTES: usize = 8 * 1024;
