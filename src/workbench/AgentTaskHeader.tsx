@@ -161,6 +161,8 @@ export function AgentTaskHeader({
             onOpenChange={setMenuOpen}
             onRename={() => {
               setRenaming(true);
+              // Keep Escape/Tab dismissal reachable while the rename
+              // form loads.
               resourcesTriggerRef.current?.focus();
             }}
             sessionChrome={sessionChrome}

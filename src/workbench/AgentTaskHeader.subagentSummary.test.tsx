@@ -10,7 +10,6 @@ import {
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
 
-// The header menu body loads when the window first idles.
 beforeAll(() => preloadAgentHeaderMenu());
 
 import {

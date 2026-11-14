@@ -518,7 +518,6 @@ it("keeps xterm's overlay scrollbar clear of the last columns", async () => {
 it.each([1, 80])(
   "fits fractional cells from %i columns without clipping",
   async (columns) => {
-    // A 7.2 px cell: 80 columns render 576 px wide, 97 columns 698.4 px.
     xterm.cell = [7.2, 15.5];
     xterm.initial = [columns, 24];
     const { container } = render(
