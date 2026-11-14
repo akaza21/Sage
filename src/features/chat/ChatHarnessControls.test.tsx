@@ -79,7 +79,6 @@ function renderControls(overrides: Record<string, unknown> = {}) {
     <ChatHarnessControls
       availableBinding
       canPrompt
-      discoveryPhase="ready"
       modelLabelScope="project/chat/session-1"
       sessionHarnessId="access-test"
       sessionModelId={null}
@@ -615,7 +614,6 @@ describe("last confirmed model label", () => {
       <ChatHarnessControls
         availableBinding
         canPrompt
-        discoveryPhase="ready"
         modelLabelScope="chat"
         sessionHarnessId="access-test"
         sessionModelId={null}

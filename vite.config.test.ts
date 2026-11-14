@@ -88,7 +88,6 @@ const COMPOSER_MENU_DYNAMIC_FACADES = [
   "src/features/chat/ComposerSlashMenu.tsx",
   // `/status` and `/mcp` load their panel when first opened.
   "src/features/chat/ComposerCommandPanel.tsx",
-  "src/features/chat/ComposerMcpServers.tsx",
   // The suggestion listbox both menus share loads with either controller.
   "src/ui/TextFieldSuggestions.tsx",
 ];
@@ -309,6 +308,28 @@ const ORDINARY_DYNAMIC_FACADES = [
   "src/workbench/AgentWorkbenchBody.tsx",
   "src/workbench/Workbench.tsx",
 ].sort();
+
+const DEFERRED_CHAT_GROUPS: Record<string, readonly string[]> = {
+  "chat-setup": [
+    "src/app/sessionAccessActions.ts",
+    "src/app/chatAccessDrafts.ts",
+    "src/features/chat/chatAccessMode.ts",
+    "src/features/chat/chatAccessIcons.ts",
+    "src/features/chat/ChatAccessSelection.tsx",
+    "src/features/chat/ChatAccessDraftSelection.tsx",
+    "src/app/chatEffortDraft.ts",
+    "src/features/chat/DraftEffortControl.tsx",
+    "src/app/runCreateChat.ts",
+    "src/app/runNewChatDraftSend.ts",
+    "src/features/chat/FirstChatSend.tsx",
+    "src/app/newChatDraftActions.ts",
+    "src/app/newChatDraftNavigation.ts",
+    "src/features/chat/NewChatDraftSurface.tsx",
+  ],
+};
+const GROUPED_DYNAMIC_FACADES = REQUIRED_DYNAMIC_FACADES.filter(
+  (entry) => !Object.values(DEFERRED_CHAT_GROUPS).flat().includes(entry),
+);
 
 const CONSOLIDATED_AGENT_MODULES = [
   "src/app/subagentPaneStore.ts",
@@ -733,7 +754,12 @@ describe("desktop-native chunk topology", () => {
     }
     const chat = closureForModule(graph, "src/features/chat/ChatSurface.tsx");
     for (const module of COMPOSER_MENU_DYNAMIC_FACADES) {
-      expect(graph.dynamicFacades).toContain(module);
+      expect(
+        graph.dynamicStaticClosures.some((closure) =>
+          closure.modules.some((id) => id.endsWith(module)),
+        ),
+        module,
+      ).toBe(true);
       expect(
         chat.some((id) => id.endsWith(module)),
         module,
@@ -950,7 +976,39 @@ describe("desktop-native chunk topology", () => {
         facade,
       ).toEqual([]);
     }
-    expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
+    expect(groupedGraph.dynamicFacades).toEqual(GROUPED_DYNAMIC_FACADES);
+    for (const [name, modules] of Object.entries(DEFERRED_CHAT_GROUPS)) {
+      const file = groupedGraph.moduleFiles.get(modules[0]!);
+      expect(groupedGraph.chunkNames.get(file!)).toBe(name);
+      expect(
+        groupedGraph.dynamicStaticClosures.some((closure) =>
+          closure.modules.some((id) => id.endsWith(modules[0]!)),
+        ),
+        name,
+      ).toBe(true);
+      for (const module of modules) {
+        expect(groupedGraph.moduleFiles.get(module), module).toBe(file);
+        for (const root of [workbench, agent]) {
+          expect(
+            closureForModule(groupedGraph, root).some((id) =>
+              id.endsWith(module),
+            ),
+            `${root}: ${module}`,
+          ).toBe(false);
+        }
+      }
+    }
+    const panel = "src/features/chat/ComposerCommandPanel.tsx";
+    const mcp = "src/features/chat/ComposerMcpServers.tsx";
+    expect(groupedGraph.moduleFiles.get(mcp)).toBe(
+      groupedGraph.moduleFiles.get(panel),
+    );
+    for (const root of [workbench, agent]) {
+      expect(
+        closureForModule(groupedGraph, root).some((id) => id.endsWith(mcp)),
+        root,
+      ).toBe(false);
+    }
     for (const facade of [
       workbench,
       agent,
@@ -1179,7 +1237,7 @@ describe("desktop-native chunk topology", () => {
         id.endsWith("node_modules/@tauri-apps/api/window.js"),
       ),
     ).toBe(false);
-    expect(groupedGraph.dynamicFacades).toEqual(REQUIRED_DYNAMIC_FACADES);
+    expect(groupedGraph.dynamicFacades).toEqual(GROUPED_DYNAMIC_FACADES);
     expect(ordinaryGraph.dynamicFacades).toEqual(ORDINARY_DYNAMIC_FACADES);
 
     const fileClosure = closureForModule(

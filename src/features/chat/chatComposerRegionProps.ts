@@ -21,7 +21,6 @@ export interface ComposerAccessTarget {
 }
 
 export interface ChatComposerRegionProps {
-  sessionFeatures?: boolean;
   draftPickers?: ControlledDraftPickers;
   /** Kept mounted while an approval holds the slot, so the draft survives. */
   hidden?: boolean;

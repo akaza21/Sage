@@ -1,6 +1,5 @@
 import { useEffect, useRef } from "react";
 import { useWorkbenchStore } from "../../app/store";
-import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import { AgentNavigationPart } from "../../workbench/agentNavigationLazy";
 import { ChatHome } from "./ChatHome";
 import { useComposerFocusHotkey } from "./composerChrome";
@@ -37,10 +36,6 @@ export function NewChatDraftSurface({
   const composerRef = useRef<HTMLTextAreaElement>(null);
   useComposerFocusHotkey(composerRef, !draft?.creating && !transitioning);
   const harness = harnesses.find((harness) => harness.id === draft?.harnessId);
-  const access = useSessionAccessSelection(
-    harness?.bindingId,
-    harness?.accessModes,
-  );
   useEffect(() => {
     composerRef.current?.focus();
   }, [focusRequest]);
@@ -109,7 +104,6 @@ export function NewChatDraftSurface({
           </div>
         </div>
         <ChatComposerRegion
-          sessionFeatures={false}
           composerRef={composerRef}
           fieldId="new-chat-prompt"
           dictationScope=""
@@ -142,7 +136,7 @@ export function NewChatDraftSurface({
           }
           accessTarget={{ bindingId: harness?.bindingId }}
           draftPickers={{
-            access: draft.access ?? access.effective,
+            access: draft.access,
             effort: draft.effort,
             onAccessChange: (access) => update({ access }),
             onEffortChange: (effort) =>

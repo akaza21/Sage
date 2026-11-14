@@ -4,10 +4,11 @@ import { isImeComposing } from "../../ui/imeComposition";
 import { keymapBinding, matchesKeymapChord } from "../../domain/keymapRegistry";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import "../../styles/queued-messages.css";
-import { ComposerHarnessToolbar } from "./ComposerHarnessToolbar";
+import { ChatHarnessControls } from "./ChatHarnessControls";
 import {
   composerPromptPlaceholder,
   composerShortcutLabel,
+  composerWorkspaceName,
   useComposerDictation,
 } from "./composerChrome";
 import { ComposerImageInput } from "./ComposerImageInput";
@@ -29,7 +30,6 @@ const SlashPart = lazyParts<typeof SlashChunk>(
 
 export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const {
-    sessionFeatures = true,
     hidden = false,
     approvalSlot,
     onEditSummaryMount,
@@ -37,6 +37,10 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     fieldId,
     dictationScope,
     commandChatId,
+    sessionId = null,
+    project,
+    usage,
+    onCompact,
     descriptionId,
     disabledReasonId,
     text,
@@ -77,7 +81,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     onDeleteQueuedPrompt,
     onRetryQueuedPrompt,
     onSteerQueuedPrompt,
+    ...harnessControls
   } = props;
+  const sessionFeatures = !harnessControls.draftPickers;
   const shortcutLabel = composerShortcutLabel(/mac/i.test(navigator.platform));
   const composerDisabled = !enabled || projectTransitioning;
   const goalDetails = useBoundGoalDetails(
@@ -327,11 +333,24 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             />
           ) : null}
           {!hidden ? (
-            <ComposerHarnessToolbar
-              props={props}
+            <ChatHarnessControls
+              {...harnessControls}
+              availableBinding={availableBinding}
+              canPrompt={canPrompt}
+              sessionHarnessId={sessionHarnessId}
+              selectedHarnessId={selectedHarnessId}
+              modelLabelScope={JSON.stringify([dictationScope, sessionId])}
+              inheritScope={dictationScope}
+              projectName={composerWorkspaceName(project)}
+              turnBusy={actionBusy || activeTurn}
+              contextUsage={usage}
+              onModeRemoved={() => composerRef.current?.focus()}
               attachSlot={sessionFeatures ? files.attachButton : null}
-              imageAction={imageInput.action}
-              onOpenGoal={goalDetails.onOpen}
+              addActions={{
+                imageAction: imageInput.action,
+                onOpenGoal: goalDetails.onOpen,
+                onCompact,
+              }}
             />
           ) : null}
           {!composerDisabled ? (

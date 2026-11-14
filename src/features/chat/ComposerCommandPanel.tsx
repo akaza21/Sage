@@ -14,11 +14,10 @@ import { currentChatUsage } from "./acp/chatUsage";
 import { currentContext } from "./acp/useAcpChatActions";
 import { chatAccessCandidates, chatAccessEffective } from "./chatAccessMode";
 import { confirmedComposerModel } from "./inheritedComposerModel";
-import type * as McpChunk from "./ComposerMcpServers";
+import { ComposerMcpServers } from "./ComposerMcpServers";
 import type * as LimitsChunk from "./ComposerUsageLimits";
 import { lazyParts } from "./lazyParts";
 
-const Mcp = lazyParts<typeof McpChunk>(() => import("./ComposerMcpServers"));
 const Usage = lazyParts<typeof LimitsChunk>(
   () => import("./ComposerUsageLimits"),
 );
@@ -72,7 +71,7 @@ export function ComposerCommandPanel({
       onDismiss={onClose}
     >
       {kind === "mcp" ? (
-        <Mcp part="ComposerMcpServers" request={request} />
+        <ComposerMcpServers request={request} />
       ) : (
         <SessionStatus page={page} request={request} />
       )}

@@ -79,7 +79,6 @@ function ChatPane({ confirmed }: { confirmed: boolean }) {
         <ChatHarnessControls
           availableBinding
           canPrompt
-          discoveryPhase="ready"
           modelLabelScope="project-1/chat-1"
           sessionHarnessId={confirmed ? "codex" : null}
           sessionModelId={confirmed ? MODEL_ID : null}

@@ -2,7 +2,6 @@ import type { ComponentProps, ReactNode } from "react";
 import type { ChatUsage } from "./acp/chatUsage";
 import type { ComposerContext } from "./ComposerContext";
 import type { ComposerAccessTarget } from "./chatComposerRegionProps";
-import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type {
   AcpConfigValue,
   AcpSessionConfig,
@@ -25,7 +24,6 @@ export interface ChatHarnessControlsProps {
   attachSlot?: ReactNode;
   availableBinding: boolean;
   canPrompt: boolean;
-  discoveryPhase: HarnessDiscoveryPhase;
   modelLabelScope: string;
   /** The Chat whose parent-inherited model and effort may label the composer. */
   inheritScope?: string;
