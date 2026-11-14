@@ -36,7 +36,6 @@ fn interleave_hide(cover: bool) {
     assert!(!shown.get(), "a stale zoom sample must not reveal the page");
     assert!(!focused.get(), "a hidden page must not take focus");
 
-    // Only the next placement makes this webview eligible again.
     visibility.place();
     visibility
         .reveal(|| {

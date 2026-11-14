@@ -1,8 +1,5 @@
-//! History page commands (BF-7c). Like every browser command they run only
-//! for the main webview: the invoke guard in `ipc_commands.rs` rejects
-//! browser tabs, so no page can read or change its own history. Inputs are
-//! bounded here; the worker does the I/O, so each command waits for it on
-//! a blocking thread.
+//! The invoke guard in `ipc_commands.rs` rejects browser tabs, so no page can
+//! read or change its own history.
 
 use serde::Deserialize;
 use tauri::State;
@@ -48,7 +45,6 @@ async fn off_ui<T: Send + 'static>(
         .map_err(|error| error.to_string())?
 }
 
-/// One page of visits, newest first, optionally filtered by `search`.
 #[tauri::command]
 pub(crate) async fn browser_history_page(
     state: State<'_, BrowserState>,
@@ -61,7 +57,6 @@ pub(crate) async fn browser_history_page(
     .await
 }
 
-/// Removes the named visits and returns how many existed.
 #[tauri::command]
 pub(crate) async fn browser_history_remove(
     state: State<'_, BrowserState>,

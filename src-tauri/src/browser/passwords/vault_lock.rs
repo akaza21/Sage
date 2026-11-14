@@ -9,10 +9,8 @@ use std::{
     path::Path,
 };
 
-/// The open lock file. Opening it takes no lock; `acquire` does.
 pub(super) struct VaultLock(File);
 
-/// Holds the lock until dropped.
 pub(super) struct VaultLockGuard<'a>(&'a File);
 
 impl VaultLock {
@@ -26,7 +24,6 @@ impl VaultLock {
             .map(Self)
     }
 
-    /// Waits until no other process holds the lock, then takes it.
     pub(super) fn acquire(&self) -> io::Result<VaultLockGuard<'_>> {
         self.0.lock()?;
         Ok(VaultLockGuard(&self.0))

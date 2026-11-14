@@ -153,11 +153,10 @@ unsafe fn still_holds(copied: &CopiedText) -> VaultResult<bool> {
     }
 }
 
-/// Empties the clipboard if it still holds copy `generation`, or whichever
-/// copy is due when `generation` is `None`. The clipboard stays open from
-/// the check to the clear, so no Copy can write in between. Emptying needs
-/// no owner window, so this runs on the calling thread and still works while
-/// Sage quits, after its window is gone.
+/// `generation` `None` (quitting) clears whichever copy is due. The
+/// clipboard stays open from the check to the clear, so no Copy can write
+/// in between. Emptying needs no owner window, so this runs on the calling
+/// thread and still works while Sage quits, after its window is gone.
 pub(in crate::browser::passwords) fn clear_due(
     pending: &PendingClear,
     generation: Option<u64>,

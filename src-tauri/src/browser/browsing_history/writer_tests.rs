@@ -175,7 +175,6 @@ fn same_document_changes_soon_after_a_visit_fold_into_it_and_later_ones_add_rows
                     Some("Place"),
                     NOW + SAME_DOCUMENT_FOLD_MS,
                 ),
-                // A new document is always its own visit.
                 visit(
                     "browser-1",
                     "https://other.example/",
@@ -304,8 +303,6 @@ fn a_removed_visits_id_is_never_reused_for_a_later_visit() {
         .unwrap();
     let newest = store::page(&connection, "", None, 1).unwrap().visits[0].id;
     assert_eq!(store::remove(&connection, &[newest]).unwrap(), 1);
-    // Tab one's new visit must not take tab two's freed id, or tab two's
-    // next title would rename it.
     writer
         .apply(
             &mut connection,

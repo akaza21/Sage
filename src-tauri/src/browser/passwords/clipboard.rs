@@ -47,8 +47,7 @@ struct Slot {
 }
 
 impl PendingClear {
-    /// Records `copied` as the latest write and returns its generation. The
-    /// port calls this with the clipboard still open after the write, so the
+    /// The port calls this with the clipboard still open after the write, so the
     /// generation moves in step with Sage's clipboard writes.
     fn track(&self, copied: CopiedText) -> u64 {
         let mut slot = self.slot();
@@ -57,11 +56,10 @@ impl PendingClear {
         slot.generation
     }
 
-    /// Runs `clear` on the copy that is due, if it is the write `generation`
-    /// names, or whichever is due when `generation` is `None` (quitting). The
-    /// port calls this with the clipboard open, so no Copy can write between
-    /// this check and the clear. A clear that succeeds settles the copy; one
-    /// that fails leaves it due for a retry or for quitting.
+    /// `generation` `None` (quitting) clears whichever copy is due. The port
+    /// calls this with the clipboard open, so no Copy can write between
+    /// this check and the clear. A clear that fails leaves the copy due for a
+    /// retry or for quitting.
     pub(super) fn clear_due(
         &self,
         generation: Option<u64>,
@@ -88,7 +86,6 @@ impl PendingClear {
 /// one step, so a retry never clears a newer copy using an earlier check.
 pub(super) fn clear_with_retries(mut attempt: impl FnMut() -> VaultResult<()>) -> VaultResult<()> {
     let mut result = attempt();
-    // Four attempts with 700 ms of total backoff.
     for backoff_ms in [100, 200, 400] {
         if result.is_ok() {
             break;
@@ -99,9 +96,8 @@ pub(super) fn clear_with_retries(mut attempt: impl FnMut() -> VaultResult<()>) -
     result
 }
 
-/// Clears copy `generation` if it is still the one due, retrying a busy
-/// clipboard. The warning port is native, so it still reaches the user after
-/// Settings closes. Never log clipboard text or a fingerprint.
+/// The warning port is native, so it still reaches the user after Settings
+/// closes. Never log clipboard text or a fingerprint.
 pub(super) fn expire(attempt: impl FnMut() -> VaultResult<()>, warn: impl FnOnce(&str)) {
     if let Err(error) = clear_with_retries(attempt) {
         report_failure(&error.to_string(), warn);
@@ -160,15 +156,13 @@ fn random_salt(salt: &mut [u8; SALT_LEN]) -> VaultResult<()> {
 }
 
 impl CopiedText {
-    /// How many bytes of the clipboard the comparison needs.
     #[cfg_attr(not(any(windows, test)), allow(dead_code))]
     fn len(&self) -> usize {
         self.len
     }
 
-    /// Whether `held`, at most `len()` bytes from the start of the
-    /// clipboard's text, is the copied text. The copy ends in a NUL unit, so
-    /// a longer text sharing its prefix cannot match.
+    /// The copy ends in a NUL unit, so a longer text sharing its prefix cannot
+    /// match.
     #[cfg_attr(not(any(windows, test)), allow(dead_code))]
     fn matches(&self, held: &[u8]) -> bool {
         held.len() == self.len && fingerprint(&self.salt, held) == self.digest
@@ -198,8 +192,6 @@ mod tests {
         fingerprint_then_write, random_salt, write_and_track,
     };
 
-    /// The OS clipboard as the port sees it: a busy clipboard refuses to
-    /// open, and another program may write to it while Sage waits.
     struct Clipboard {
         text: Vec<u8>,
         busy: usize,
@@ -215,7 +207,6 @@ mod tests {
             }
         }
 
-        /// What Copy does with the clipboard open.
         fn copy(&mut self, pending: &PendingClear, text: &[u8]) -> u64 {
             write_and_track(pending, text, random_salt, |text| {
                 self.text = text.to_vec();
@@ -224,7 +215,6 @@ mod tests {
             .unwrap()
         }
 
-        /// What the clear does with the clipboard open, as `clear_due` does.
         fn clear_due(
             &mut self,
             pending: &PendingClear,
@@ -277,7 +267,6 @@ mod tests {
         assert!(log.contains("Password clipboard expiry failed"));
         assert!(log.contains("The clipboard is busy."));
         assert!(!log.contains("secret"));
-        // Still due, so quitting Sage tries again.
         clipboard.busy = 0;
         clipboard.clear_due(&pending, None).unwrap();
         assert!(clipboard.text.is_empty());
@@ -294,9 +283,6 @@ mod tests {
         assert_eq!(clipboard.text, b"new copy");
     }
 
-    /// Copy at 0 s and again at 20 s: the first copy's timer, firing at
-    /// 30 s, must leave the second copy for its own timer at 50 s, even when
-    /// both copies hold the same password.
     #[test]
     fn an_earlier_copys_timer_never_clears_a_later_copy() {
         let pending = PendingClear::default();
@@ -309,8 +295,6 @@ mod tests {
         assert!(clipboard.text.is_empty());
     }
 
-    /// Shutdown runs on the clipboard's thread as soon as the copy's step
-    /// ends, before the copy command hears back: the clear is already due.
     #[test]
     fn quitting_right_after_the_write_clears_the_copied_password() {
         let pending = PendingClear::default();
@@ -356,8 +340,6 @@ mod tests {
         assert_eq!(copied.len(), 6);
         assert!(copied.matches(b"p\0w\0\0\0"));
         assert!(!copied.matches(b"p\0x\0\0\0"));
-        // A shorter clipboard is never read past its end, and the clear
-        // reads only `len()` bytes of a longer one, which then ends early.
         assert!(!copied.matches(b"p\0w\0"));
         assert!(!copied.matches(b"p\0w\0x\0"));
         assert!(!copied.matches(b"p\0w\0\0\0\0\0"));

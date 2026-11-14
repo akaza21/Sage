@@ -1,9 +1,6 @@
-//! Windows only (S1 Option C): Sage's own WebView2 `NewWindowRequested`
-//! handler, so an admitted popup becomes a normal policed Sage tab that keeps
-//! `window.opener`. All policy lives in `opener.rs`; this file only moves
-//! WebView2 objects and checks every HRESULT; the deferral ordering is the
-//! Linux-tested `settle.rs`. A popup falls back to the deny-and-enqueue intent
-//! path only while WebView2 never received a child.
+//! All policy lives in `opener.rs`; this file only moves WebView2 objects and
+//! checks every HRESULT, and the deferral ordering is the Linux-tested
+//! `settle.rs`.
 use std::{
     cell::RefCell,
     collections::BTreeMap,
@@ -72,8 +69,8 @@ pub(crate) async fn register_native(app: AppHandle, webview: Webview) -> Result<
         .map_err(|error| error.to_string())?
 }
 
-/// Runs inside the WebView2 callback: admit, take a deferral, and post the
-/// tab creation to the event loop (creating a WebView2 here would re-enter).
+/// Runs inside the WebView2 callback; creating a WebView2 here would re-enter,
+/// so the tab creation is posted to the event loop.
 fn request(
     app: &AppHandle,
     opener: &str,
@@ -140,8 +137,8 @@ fn request(
     });
 }
 
-/// Main thread: create, hide, link and hook the child, then let `settle`
-/// call SetNewWindow/SetHandled and Complete the deferral exactly once.
+/// Main thread only. `settle` calls SetNewWindow/SetHandled and completes the
+/// deferral exactly once.
 fn attach(app: &AppHandle, id: u64) {
     let Some((opener, requested, loading, environment)) = PENDING.with_borrow(|pending| {
         pending.get(&id).map(|popup| {

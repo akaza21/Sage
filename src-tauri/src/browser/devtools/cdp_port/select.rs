@@ -1,8 +1,3 @@
-//! Annotate's pick (M1b): the element the user clicked in inspect mode is read
-//! in the isolated Agent world and the accessibility tree, never the page's
-//! main world, and the viewport is captured for the chrome to draw over.
-//! Every step is a permitless read outside any Agent dispatch.
-
 use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
@@ -16,19 +11,14 @@ use super::{CdpPort, CdpTransport, inspect::HIDE_OUTLINE, world::left};
 
 const READ_TIMEOUT: Duration = Duration::from_secs(5);
 const ELEMENT_BYTES: usize = 65_536;
-/// The frozen frame's largest size.
 const FRAME_BYTES: usize = 8_000_000;
 
-/// Runs on the clicked element in the isolated world. A step is a tag, or
-/// `:nth-child(k of tag)` among siblings of that tag: `tag:pseudo` would read
-/// as a URL scheme to `redact_console` and fail the send-time check. It never
-/// reads a form control's value: text inside inputs, text areas, selects and
-/// editable regions is skipped, and `controls` says when the accessible name
-/// may embed such a value (a control inside the element or its labels). Text
-/// the user cannot see is skipped too: aria-hidden, invisible, transparent,
-/// under 2px, or outside both the visible viewport and the element's box.
-/// Password, hidden, card and one-time-code fields are `sensitive`. The
-/// viewport is the visual one, so a pinch-zoomed page frames what it shows.
+/// Steps use `:nth-child(k of tag)` because `tag:pseudo` would read as a URL
+/// scheme to `redact_console` and fail the send-time check. It never reads a
+/// form control's value, and `controls` says when the accessible name may
+/// embed one. Text the user cannot see is skipped, and password, hidden, card
+/// and one-time-code fields are `sensitive`. The viewport is the visual one,
+/// so a pinch-zoomed page frames what it shows.
 const READ_ELEMENT: &str = r#"function () {
   const root = this;
   if (!(root instanceof Element)) return null;
@@ -90,8 +80,6 @@ const READ_ELEMENT: &str = r#"function () {
   };
 }"#;
 
-/// The element the user picked, its accessible role and name, and the
-/// frozen frame.
 pub(crate) struct PickedNode {
     pub page: PageElement,
     pub role: String,
@@ -100,9 +88,6 @@ pub(crate) struct PickedNode {
 }
 
 impl<T: CdpTransport> CdpPort<T> {
-    /// Reads the element behind `backend_node_id`, pauses hover highlighting
-    /// and captures the viewport, only while the page keeps one document.
-    /// Hover highlighting resumes if any step fails.
     pub(crate) fn pick_element(&self, backend_node_id: u64) -> Result<PickedNode, BrowserFailure> {
         let before = self.stamp()?;
         let picked = self.read_element(backend_node_id, before.navigation_id);
@@ -170,10 +155,9 @@ impl<T: CdpTransport> CdpPort<T> {
         Ok((page, text("role"), text("name")))
     }
 
-    /// Leaves hover highlighting off while the user comments; DOM and the
-    /// overlay stay enabled so `start_inspect` resumes it. The outline goes
-    /// one round trip after hovering ends, as in `stop_inspect`, so the
-    /// frozen frame never shows it.
+    /// DOM and the overlay stay enabled so `start_inspect` resumes hovering. The
+    /// outline goes one round trip after hovering ends, as in `stop_inspect`, so
+    /// the frozen frame never shows it.
     fn pause_inspect(&self) -> Result<(), BrowserFailure> {
         let deadline = Instant::now() + READ_TIMEOUT;
         self.read(
@@ -185,10 +169,8 @@ impl<T: CdpTransport> CdpPort<T> {
         self.read(HIDE_OUTLINE.0, json!({}), deadline).map(drop)
     }
 
-    /// What the webview shows, as a JPEG at device resolution: no clip, so
-    /// no CSS px to device px conversion can apply page zoom, display
-    /// scaling or pinch zoom twice. A larger image is retried at lower
-    /// quality.
+    /// No clip, so no CSS px to device px conversion can apply page zoom,
+    /// display scaling or pinch zoom twice.
     fn capture_frame(&self) -> Result<Frame, BrowserFailure> {
         let deadline = Instant::now() + READ_TIMEOUT;
         for quality in [85, 60, 40] {
@@ -236,7 +218,6 @@ impl<T: CdpTransport> CdpPort<T> {
     }
 }
 
-/// The node an `Overlay.inspectNodeRequested` event names.
 pub(crate) fn inspected_node(payload: &str) -> Option<u64> {
     if payload.len() > 4096 {
         return None;
@@ -246,7 +227,6 @@ pub(crate) fn inspected_node(payload: &str) -> Option<u64> {
         .filter(|id| *id > 0)
 }
 
-/// The width and height in a base64 JPEG's frame header, if it is one.
 fn jpeg_size(data: &str) -> Option<(u32, u32)> {
     use base64::{Engine, engine::general_purpose::STANDARD};
     let bytes = STANDARD.decode(data).ok()?;

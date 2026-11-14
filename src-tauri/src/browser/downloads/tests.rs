@@ -259,7 +259,6 @@ fn download_row_shows_the_name_the_file_was_saved_under() {
     assert!(downloads.record_destination(id, folder.join("report (1).pdf")));
     assert_eq!(downloads.views("browser-1")[0].file_name, "report (1).pdf");
     assert!(downloads.destination_chosen(id));
-    // WebView2's final ResultFilePath wins when it differs again.
     assert!(downloads.saved_as(id, &folder.join("report (2).pdf")));
     assert!(!downloads.saved_as(id, &folder.join("bad\u{7}name.pdf")));
     assert!(downloads.settle(id, "completed"));

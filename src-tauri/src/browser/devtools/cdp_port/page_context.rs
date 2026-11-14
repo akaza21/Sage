@@ -17,9 +17,7 @@ pub(crate) struct CapturedPageContext {
     text: String,
 }
 
-/// Reads the page the user is looking at as bounded, redacted context, only
-/// while it still shows `expected_revision`. `url` reads the tab's openable
-/// URL once that revision is confirmed.
+/// Reads only while the page still shows `expected_revision`.
 pub(crate) fn capture_page_context<T: CdpTransport>(
     port: &mut CdpPort<T>,
     tab_id: &str,

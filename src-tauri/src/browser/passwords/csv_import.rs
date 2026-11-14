@@ -1,8 +1,6 @@
-//! Bounded reading of password-manager CSV exports (Chrome, Edge, Brave,
-//! Firefox, Safari, Bitwarden, 1Password, KeePassXC and LastPass headers).
-//! `csv-core` parses into fixed buffers (and drops a leading UTF-8 BOM), so no record grows past
-//! `MAX_RECORD_BYTES` however the file is shaped, and every plaintext buffer
-//! is wiped when it drops.
+//! `csv-core` parses into fixed buffers (and drops a leading UTF-8 BOM), so
+//! no record grows past `MAX_RECORD_BYTES` however the file is shaped, and
+//! every plaintext buffer is wiped when it drops.
 
 use std::{
     fs::File,
@@ -30,13 +28,11 @@ const PASSWORD_HEADERS: &[&str] = &["password", "login_password"];
 /// browser's auth prompt, not to a page form, so they are skipped.
 const HTTP_REALM_HEADER: &str = "httprealm";
 
-/// The credentials a CSV holds, and how many of its rows could not be used.
 pub(super) struct ParsedCsv {
     pub(super) credentials: Vec<NewCredential>,
     pub(super) skipped: u32,
 }
 
-/// Reads the opened CSV `file`, refusing it before reading if it is too large.
 pub(super) fn read_file(file: File, cancel: &dyn Cancellation) -> VaultResult<ParsedCsv> {
     if file.metadata()?.len() > MAX_FILE_BYTES {
         return Err(too_large());
@@ -44,8 +40,6 @@ pub(super) fn read_file(file: File, cancel: &dyn Cancellation) -> VaultResult<Pa
     read(file, cancel)
 }
 
-/// Reads `source`, checking `cancel` before every read of at most
-/// `READ_BYTES`.
 pub(super) fn read(source: impl Read, cancel: &dyn Cancellation) -> VaultResult<ParsedCsv> {
     let mut records = Records::new(source, cancel);
     let columns = match records.next()? {
@@ -133,7 +127,6 @@ impl Columns {
     }
 }
 
-/// One parsed record: its bytes and where each field ends.
 struct Fields<'a> {
     bytes: &'a [u8],
     ends: &'a [usize],
@@ -155,7 +148,6 @@ impl<'a> Fields<'a> {
 
 enum Row<'a> {
     Fields(Fields<'a>),
-    /// A record past `MAX_RECORD_BYTES` or `MAX_FIELDS`, consumed but not kept.
     Oversized,
 }
 
@@ -186,7 +178,7 @@ impl<'c, R: Read> Records<'c, R> {
         }
     }
 
-    /// Reads the next chunk; an empty chunk tells the parser the file ended.
+    /// An empty chunk tells the parser the file ended.
     fn refill(&mut self) -> VaultResult<()> {
         if self.cancel.cancelled() {
             return Err(VaultError::Cancelled);
@@ -228,7 +220,6 @@ impl<'c, R: Read> Records<'c, R> {
             match result {
                 ReadRecordResult::InputEmpty => {}
                 ReadRecordResult::OutputFull | ReadRecordResult::OutputEndsFull => {
-                    // Keep consuming the record without keeping any of it.
                     oversized = true;
                     (written, fields) = (0, 0);
                 }

@@ -15,7 +15,6 @@ mod dpapi;
 /// A wrapped key file larger than this is not one Sage wrote.
 const MAX_WRAPPED_KEY_BYTES: u64 = 4 * 1024;
 
-/// Wraps the vault key with an OS secret that belongs to the signed-in user.
 pub(super) trait KeyProtector: Send + Sync {
     fn protect(&self, key: &[u8]) -> io::Result<Vec<u8>>;
     /// `KeyLost` when the blob is damaged or belongs to another account;
@@ -24,7 +23,7 @@ pub(super) trait KeyProtector: Send + Sync {
     fn unprotect(&self, wrapped: &[u8]) -> VaultResult<Zeroizing<Vec<u8>>>;
 }
 
-/// The platform's key protector, or `None` where Sage has not proven one yet.
+/// `None` where Sage has not proven a key store yet.
 pub(super) fn platform_protector() -> Option<Arc<dyn KeyProtector>> {
     #[cfg(windows)]
     {
@@ -36,7 +35,6 @@ pub(super) fn platform_protector() -> Option<Arc<dyn KeyProtector>> {
     }
 }
 
-/// The unwrapped key and the version of the key file it was read from.
 pub(super) struct LoadedKey {
     key: VaultKey,
     file: FileIdentity,
@@ -48,8 +46,6 @@ impl LoadedKey {
     }
 }
 
-/// The vault key's file in Sage's data folder. It only ever holds the key as
-/// the protector wrapped it.
 pub(super) struct KeyFile {
     path: PathBuf,
     protector: Arc<dyn KeyProtector>,
@@ -60,8 +56,8 @@ impl KeyFile {
         Self { path, protector }
     }
 
-    /// The stored key, `None` when there is no key file yet. A file the
-    /// protector cannot unwrap (another account, or damage) is `KeyLost`.
+    /// `None` when absent; damaged/wrong-account keys yield `KeyLost`; other OS failures remain
+    /// `Io`.
     pub(super) fn load(&self) -> VaultResult<Option<LoadedKey>> {
         let Some(file) = self.open()? else {
             return Ok(None);
@@ -81,7 +77,6 @@ impl KeyFile {
         }))
     }
 
-    /// Whether the key file is still the one `loaded` was read from.
     pub(super) fn still_holds(&self, loaded: &LoadedKey) -> VaultResult<bool> {
         Ok(match self.open()? {
             Some(file) => FileIdentity::of(&file)? == loaded.file,
@@ -97,8 +92,8 @@ impl KeyFile {
         }
     }
 
-    /// Generates a key and writes it wrapped, through a temporary file so a
-    /// crash never leaves a half-written key behind.
+    /// Writes through a temporary file so a crash never leaves a half-written
+    /// key behind.
     pub(super) fn create(&self) -> VaultResult<LoadedKey> {
         let key = VaultKey::generate()?;
         let wrapped = self.protector.protect(key.as_bytes())?;

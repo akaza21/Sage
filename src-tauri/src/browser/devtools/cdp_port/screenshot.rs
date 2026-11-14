@@ -1,5 +1,5 @@
-//! Resolve screenshot geometry before dispatch. Explicit clips pin the
-//! admitted size even if page content grows after the metrics read.
+//! Explicit clips pin the admitted size even if page content grows after the
+//! metrics read.
 use serde_json::{Map, Value, json};
 use std::time::{Duration, Instant};
 

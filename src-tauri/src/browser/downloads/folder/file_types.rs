@@ -1,8 +1,5 @@
-//! File types a saved download folder never takes silently, and names
-//! Windows reserves.
-
-/// Extensions that run code, install software or point at something that
-/// does when opened from Explorer. Such a download always asks where to save.
+/// Runs code, installs software or, like a shortcut, points at something that
+/// does when opened from Explorer, so such a download always asks where to save.
 const DANGEROUS_EXTENSIONS: &[&str] = &[
     "ade",
     "adp",
@@ -189,7 +186,6 @@ const DANGEROUS_EXTENSIONS: &[&str] = &[
     "xrm-ms",
 ];
 
-/// Content types that are programs or scripts whatever the name says.
 const DANGEROUS_MIME_TYPES: &[&str] = &[
     "application/hta",
     "application/java-archive",
@@ -212,7 +208,6 @@ const DANGEROUS_MIME_TYPES: &[&str] = &[
     "text/vbscript",
 ];
 
-/// Windows device names that cannot be a file's stem.
 pub(super) const RESERVED_STEMS: &[&str] = &[
     "con",
     "conin$",
@@ -246,7 +241,6 @@ pub(super) const RESERVED_STEMS: &[&str] = &[
     "lpt9",
 ];
 
-/// Whether a file name runs code or installs software when opened.
 pub(crate) fn is_dangerous(file_name: &str) -> bool {
     let name = file_name.trim_end_matches(['.', ' ']);
     name.rsplit_once('.').is_some_and(|(_, extension)| {
@@ -255,7 +249,6 @@ pub(crate) fn is_dangerous(file_name: &str) -> bool {
     })
 }
 
-/// Whether a content type (parameters ignored) is a program or script.
 pub(crate) fn is_dangerous_mime(mime: &str) -> bool {
     let essence = mime
         .split(';')

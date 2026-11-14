@@ -154,7 +154,6 @@ fn long_text_is_cut_between_words_and_settles_under_redaction() {
     assert!(picked.text.len() <= TEXT_BYTES);
     assert!(!picked.text.contains("abcdefghij"));
     assert_eq!(redact_console(&picked.text), picked.text);
-    // A cut that would leave a partial assignment drops that word.
     page.text = format!("{}token=abcdefghijklmnopqrstuvwxyz", "w ".repeat(505));
     let picked = pick(&page, "button", "", "browser-1", "https://e.com/").unwrap();
     assert!(picked.text.len() <= TEXT_BYTES);

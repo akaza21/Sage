@@ -51,8 +51,7 @@ impl BrowserState {
         })
     }
 
-    /// Loads the saved site permissions and saves every later answer to
-    /// `settings`. Called once at startup, before any browser tab opens.
+    /// Called once at startup, before any browser tab opens.
     pub(crate) fn attach_site_settings(
         &self,
         settings: crate::settings_store::SettingsStore,

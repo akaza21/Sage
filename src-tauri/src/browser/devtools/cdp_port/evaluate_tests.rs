@@ -1,4 +1,3 @@
-//! Real V8 results through the app's command layer and native request cap.
 use std::{
     io::{BufRead, BufReader, Read, Write},
     process::{Child, ChildStdin, ChildStdout, Command, Stdio},
@@ -192,7 +191,6 @@ fn a_stale_serializer_is_replaced_without_repeating_the_expression() {
         json!([42])
     );
     assert_eq!(evaluate(&mut port, "evaluations").unwrap(), json!(1));
-    // Reuse across a successful per-evaluation group release as well.
     assert_eq!(evaluate(&mut port, "[43]").unwrap(), json!([43]));
 }
 

@@ -45,8 +45,6 @@ mod snapshot;
 mod transport;
 mod wait;
 
-/// One fixed CDP step built by the user's device toolbar, including layout
-/// reads that settle the viewport, outside any Agent permit.
 #[cfg(windows)]
 pub(crate) fn device_call(
     webview: &tauri::Webview,
@@ -66,7 +64,6 @@ pub(crate) fn device_call(
     )
 }
 
-/// The native lane's own CDP observation of a tab, outside any Agent permit.
 #[cfg(all(windows, feature = "native-lane"))]
 pub(crate) fn lane_call(
     webview: &tauri::Webview,

@@ -7,7 +7,6 @@ use super::super::{
 };
 use super::*;
 
-/// A selection as the native pick would make it.
 pub(crate) fn selection(label: &str) -> Selection {
     selection_of(
         label,
@@ -85,7 +84,6 @@ fn a_click_while_annotating_picks_the_element_and_announces_where_it_is() {
         }])
     );
     assert_eq!(mode.pending, Some(selection("browser-1")));
-    // Typing goes to the comment box, not the hidden page.
     assert_eq!(
         overlay.calls(),
         ["start browser-1", "pick browser-1 7", "focus main"]
@@ -145,7 +143,6 @@ fn cancelling_shows_the_page_resumes_hovering_and_gives_it_focus_back() {
         (vec![on("browser-1")], Ok(()))
     );
     assert_eq!(mode.pending, None);
-    // The page holds focus again, so the next Escape reaches it.
     assert_eq!(
         overlay.calls()[3..],
         [
@@ -168,7 +165,6 @@ fn confirming_hands_out_the_item_and_keeps_the_element_waiting_until_cancelled()
     );
     assert_eq!(item.selector, "#press");
     assert_eq!(changes, []);
-    // The composer may refuse the item: the element waits to be sent again.
     assert!(mode.pending.is_some());
     assert!(mode.confirm("browser-1", 2, "Again").1.is_ok());
     assert!(
@@ -323,7 +319,6 @@ fn the_page_is_marked_frozen_before_it_hides() {
     );
     assert!(annotate.is_frozen("browser-4"));
 
-    // A pick that fails after the mark settles the copy back.
     annotate
         .run(|_| (), |mode| mode.cancel(&overlay, "browser-4", false))
         .unwrap();
@@ -346,7 +341,6 @@ fn the_outline_keeps_an_element_that_starts_off_the_document() {
         view["box"],
         json!({"x": -40, "y": 110, "width": 100, "height": 20})
     );
-    // The item keeps the part inside the document, as the contract asks.
     let bounds = selection.picked.bounds;
     assert_eq!((bounds.x, bounds.width), (0, 60));
 }
@@ -399,7 +393,6 @@ fn the_comment_box_names_the_element_never_by_an_internal_role() {
 fn a_zoom_keeps_annotate_on_and_clears_the_outline_drawn_before_it() {
     let overlay = Overlay::default();
     let mut mode = annotating(&overlay, "browser-1");
-    // Nothing to announce: the chrome still shows Annotate on.
     assert_eq!(mode.zoomed(&overlay, "browser-1", false), (vec![], Ok(())));
     assert_eq!(mode.tab.as_deref(), Some("browser-1"));
     assert_eq!(overlay.calls()[1..], ["clear outline browser-1"]);
@@ -415,8 +408,6 @@ fn a_zoom_drops_a_waiting_element_and_resumes_hovering() {
                 "focus browser-1",
             ],
         ),
-        // A popover covers the page: it stays hidden and takes no focus
-        // until the popover closes and the page is placed again.
         (true, vec!["release browser-1 reveal=false resume=true"]),
     ] {
         let overlay = Overlay::default();
@@ -480,7 +471,6 @@ fn hide_during_zoom_release(cover: bool) {
     );
     assert!(!annotate.take_deferred_show("browser-1"));
     if !cover {
-        // Even though zoom took pending, the queued Hidden exit still ends mode.
         annotate
             .run(
                 |_| (),
@@ -532,8 +522,6 @@ fn a_cover_opening_and_closing_after_the_zoom_sample_defers_the_skipped_show() {
     }));
     annotate.zoomed(&overlay, "browser-1", |_| ()).unwrap();
     assert!(!overlay.calls().iter().any(|call| call == "show browser-1"));
-    // The sample was uncovered, but release still skipped its show: the
-    // completion must finish the placement that happened during release.
     assert!(annotate.take_deferred_show("browser-1"));
     assert!(!annotate.take_deferred_show("browser-1"));
 }
@@ -601,7 +589,6 @@ fn a_zoom_unfreezes_a_covered_page_so_placing_it_shows_it_again() {
         overlay.calls().last().map(String::as_str),
         Some("release browser-4 reveal=false resume=true")
     );
-    // The popover closes: placing the page shows it.
     assert!(annotate.placed("browser-4"));
     assert!(!annotate.take_deferred_show("browser-4"));
 }
@@ -623,7 +610,6 @@ fn a_popover_closing_while_a_zoom_waits_still_shows_the_page() {
     annotate
         .run(|_| (), |mode| mode.zoomed(&overlay, "browser-4", covered))
         .unwrap();
-    // The step it then posts to the main thread shows the page, once.
     assert!(annotate.take_deferred_show("browser-4"));
     assert!(!annotate.take_deferred_show("browser-4"));
 }
@@ -637,7 +623,6 @@ fn a_put_off_show_is_dropped_when_the_page_hides_again() {
         .unwrap();
     annotate.pick(&overlay, "browser-4", 1, |_| ()).unwrap();
     assert!(!annotate.placed("browser-4"));
-    // A tab switch hides the page before the zoom step's show runs.
     assert_eq!(annotate.hiding("browser-4", false), Some(Exit::Hidden));
     annotate
         .run(|_| (), |mode| mode.zoomed(&overlay, "browser-4", true))

@@ -1,9 +1,3 @@
-//! Annotate's two CDP events, registered only while a tab annotates.
-//! `Overlay.inspectNodeRequested`: the user clicked an element in inspect
-//! mode, and the click never reached the page. `Overlay.nodeHighlightRequested`:
-//! the pointer reached another element, which Sage outlines in the overlay
-//! (`cdp_port/inspect.rs`) without blocking the main thread.
-
 use std::{cell::RefCell, collections::HashMap, sync::mpsc, time::Duration};
 
 use tauri::{AppHandle, Webview};
@@ -33,9 +27,6 @@ thread_local! {
     static PICKS: RefCell<HashMap<String, [Registration; 2]>> = RefCell::new(HashMap::new());
 }
 
-/// Calls `on_pick` on the main thread with the backend node id of each
-/// clicked element and outlines each hovered one, replacing any earlier
-/// listeners of this tab.
 pub(crate) fn watch_picks(
     webview: &Webview,
     on_pick: impl Fn(u64) + Send + 'static,
@@ -58,8 +49,8 @@ pub(crate) fn watch_picks(
     })
 }
 
-/// Stops listening for this tab's clicks and hovers. It needs only the app,
-/// so a tab whose webview is already gone still lets go of its listeners.
+/// Needs only the app, so a tab whose webview is already gone still lets go
+/// of its listeners.
 pub(crate) fn unwatch_picks(app: &AppHandle, label: &str) -> Result<(), BrowserFailure> {
     let label = label.to_owned();
     let (sender, receiver) = mpsc::sync_channel(1);
@@ -74,7 +65,6 @@ pub(crate) fn unwatch_picks(app: &AppHandle, label: &str) -> Result<(), BrowserF
         .map_err(|_| BrowserFailure::Unavailable)
 }
 
-/// Hands each `event` payload to `on_event` with the webview that raised it.
 fn listen(
     core: &ICoreWebView2,
     event: &str,
@@ -97,10 +87,8 @@ fn listen(
     Ok((source, token))
 }
 
-/// Reads the hovered element's box, then draws its outline from the
-/// completion; an element without a box removes the outline. Leaving or
-/// pausing inspect mode removes it one round trip after hovering ends, so
-/// this outline always lands first.
+/// Leaving or pausing inspect mode removes the outline one round trip after
+/// hovering ends, so this outline always lands first.
 fn outline(core: Option<&ICoreWebView2>, payload: &str, zoom: f64) {
     let (Some(core), Some(node)) = (core, hovered_node(payload)) else {
         return;
@@ -131,7 +119,6 @@ fn page_zoom(controller: &ICoreWebView2Controller) -> f64 {
     }
 }
 
-/// Issues one CDP call; `done` hears how it went.
 fn call(
     core: &ICoreWebView2,
     method: &str,
@@ -152,7 +139,6 @@ fn unregister((source, token): Registration) {
     let _ = unsafe { source.remove_DevToolsProtocolEventReceived(token) };
 }
 
-/// Runs `step` on the webview's thread and waits for it.
 fn on_main(
     webview: &Webview,
     step: impl FnOnce(&ICoreWebView2, &ICoreWebView2Controller) -> Result<(), BrowserFailure>

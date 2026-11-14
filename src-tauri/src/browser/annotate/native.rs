@@ -1,6 +1,3 @@
-//! Annotate's WebView2 side: the inspect overlay, the click report it raises
-//! while on, and hiding the page behind its frozen frame.
-
 use std::{sync::mpsc, time::Duration};
 
 use tauri::{Manager, Webview};
@@ -15,8 +12,8 @@ impl NativeOverlay<'_> {
             .ok_or("browser tab unavailable".into())
     }
 
-    /// Placement and cover changes run on this same thread. Never take the
-    /// Annotate mode lock here: its caller holds it while waiting for us.
+    /// Never take the Annotate mode lock here: its caller holds it while waiting
+    /// for us.
     fn with_visible_page(
         &self,
         label: &str,

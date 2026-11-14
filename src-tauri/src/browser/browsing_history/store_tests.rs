@@ -3,7 +3,6 @@ use super::*;
 const DAY: i64 = 24 * 60 * 60 * 1000;
 const NOW: i64 = 1_800_000_000_000;
 
-/// Inserts `(url, title, visited_at)` rows in one transaction.
 fn seed(connection: &mut Connection, rows: &[(&str, Option<&str>, i64)]) {
     let transaction = connection.transaction().unwrap();
     for (url, title, visited_at) in rows {
@@ -287,7 +286,6 @@ fn a_file_from_before_autoincrement_keeps_its_visits_and_never_reuses_an_id() {
     );
     transaction.commit().unwrap();
     drop(connection);
-    // Opening again is a no-op on an upgraded file.
     let reopened = open(path).unwrap();
     assert_eq!(count(&reopened), 2);
     drop(reopened);

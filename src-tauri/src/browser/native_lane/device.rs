@@ -1,5 +1,3 @@
-//! The production device toolbar commands for native regression tests.
-
 use serde_json::Value;
 use tauri::{LogicalSize, Manager};
 
@@ -18,8 +16,6 @@ impl Lane {
         window.show().map_err(|error| error.to_string())
     }
 
-    /// The same bounds and device commands the toolbar sends, with no emulation
-    /// added by the test driver.
     pub fn set_device(&self, tab: &str, request: Option<Value>) -> Result<(), String> {
         let request = request
             .map(serde_json::from_value::<device::DeviceRequest>)

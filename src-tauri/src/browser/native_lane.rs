@@ -1,11 +1,3 @@
-//! Test-only seam for the WebView2 native lane (`--features native-lane`,
-//! Windows debug builds only; see `tests/native_lane`). It boots Sage's real
-//! browser state, invoke guard and capabilities behind a hidden `main` window
-//! in a disposable profile, and hands the lane a blocking driver that runs on
-//! its own thread while Tauri owns the main thread. The driver adds no
-//! behaviour: each call is the production function a command, the chrome or
-//! the Agent reaches.
-
 mod annotate;
 mod device;
 mod diagnostics;
@@ -34,12 +26,11 @@ use crate::{
     state::AppState,
 };
 
-/// The lane's blocking driver. Never call it from Tauri's main thread.
+/// Never call it from Tauri's main thread.
 pub struct Lane {
     app: AppHandle,
 }
 
-/// What Sage's own tab state says about one browser tab.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TabStatus {
     pub loading: bool,
@@ -47,7 +38,6 @@ pub struct TabStatus {
     pub error: Option<String>,
 }
 
-/// A popup that Sage hosted natively (S1), linked to its opener.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct NativePopup {
     pub id: u64,
@@ -56,8 +46,6 @@ pub struct NativePopup {
     pub url: String,
 }
 
-/// The production Agent command layer, `DevtoolsCapability<NativePort>`, for
-/// one tab, driven through `acp::browser::dispatch`.
 pub struct AgentTab {
     capability: devtools::NativeDevtools,
     scope: BrowserScope,
@@ -73,13 +61,11 @@ impl AgentTab {
     }
 }
 
-/// The hidden main window's WebView2 user data folder.
 struct MainWebviewDir(PathBuf);
 
-/// Boots Sage on `root`, an empty directory the caller owns and removes, runs
-/// the preflight and then `lane` on a worker thread once the event loop is
-/// ready, closes every browser tab and the window, and exits. Returns the
-/// lane's exit code, or 2 when the preflight fails and no case runs.
+/// `root` is an empty, disposable directory the caller owns and removes.
+/// Returns the lane's exit code, or 2 when the preflight fails and no case
+/// runs.
 pub fn run(root: &Path, lane: impl FnOnce(&Lane) -> i32 + Send + 'static) -> Result<i32, String> {
     std::fs::write(root.join(PROFILE_MARKER_NAME), PROFILE_MARKER_BYTES)
         .map_err(|error| format!("profile marker: {error}"))?;
@@ -139,10 +125,8 @@ pub fn run(root: &Path, lane: impl FnOnce(&Lane) -> i32 + Send + 'static) -> Res
     Ok(code.load(Ordering::SeqCst))
 }
 
-/// The production setup, minus harness discovery and the workbench UI: a
-/// disposable profile, the real Browser/App state and a hidden `main`. The
-/// stores stay in memory, because Tauri keeps managed state alive until the
-/// process exits and Windows cannot delete an open database.
+/// The stores stay in memory, because Tauri keeps managed state alive until
+/// the process exits and Windows cannot delete an open database.
 fn boot(app: &mut tauri::App, root: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let profile = resolve_launch_profile(
         Some(root.as_os_str()),
@@ -181,8 +165,6 @@ impl Lane {
         self.app.state::<BrowserState>()
     }
 
-    /// Runtime, session, desktop and main-webview evidence; `Err` when no
-    /// case could run (locked workstation, no WebView2).
     fn preflight(&self) -> Result<(), String> {
         let main = self.app.state::<MainWebviewDir>();
         let state = self.state();
@@ -195,10 +177,6 @@ impl Lane {
         )
     }
 
-    /// `browser_open` as the chrome reaches it, or (`agent`) as the Agent's
-    /// OpenTab does. A failure also says which webviews Tauri still holds
-    /// and whether the runtime still runs closures on each, so a dropped
-    /// child is attributable.
     pub fn open_tab(&self, url: Option<&str>, agent: bool) -> Result<String, String> {
         tauri::async_runtime::block_on(lifecycle::open_browser_tab(
             self.app.clone(),
@@ -215,7 +193,6 @@ impl Lane {
         })
     }
 
-    /// The chrome's `browser_navigate`.
     pub fn navigate(&self, tab: &str, url: &str) -> Result<(), String> {
         tauri::async_runtime::block_on(page_controls::browser_navigate(
             self.state(),
@@ -224,7 +201,6 @@ impl Lane {
         ))
     }
 
-    /// The chrome's `browser_close`.
     pub fn close_tab(&self, tab: &str) -> Result<(), String> {
         tauri::async_runtime::block_on(lifecycle::close_browser_tab(
             &self.app,
@@ -233,7 +209,7 @@ impl Lane {
         ))
     }
 
-    /// Closes every live tab, openers first so their popups go with them.
+    /// Openers first, so their popups go with them.
     pub fn close_all(&self) -> Result<(), String> {
         for _ in 0..2 * super::MAX_BROWSER_TABS {
             let Some(tab) = self.tabs().into_iter().next() else {
@@ -245,7 +221,6 @@ impl Lane {
         Err(format!("still open: {:?}", self.tabs()))
     }
 
-    /// Live tab labels, as `browser_live_tabs` reports them.
     pub fn tabs(&self) -> Vec<String> {
         self.state()
             .tabs
@@ -263,8 +238,6 @@ impl Lane {
         })
     }
 
-    /// The tab's bounded native navigation trace (ids, flags, WebView2
-    /// statuses; no URLs), for the lane's evidence.
     pub fn navigation_trace(&self, tab: &str) -> Vec<String> {
         self.state()
             .tabs
@@ -273,7 +246,6 @@ impl Lane {
             .unwrap_or_default()
     }
 
-    /// The chrome's Stop (`CoreWebView2::Stop`).
     pub fn stop(&self, tab: &str) -> Result<(), String> {
         let webview = self
             .state()
@@ -282,13 +254,10 @@ impl Lane {
         tauri::async_runtime::block_on(super::navigation::control::native_stop(webview))
     }
 
-    /// The URL the tab has settled on, as the Agent's attachment reads it.
     pub fn settled_url(&self, tab: &str) -> Option<String> {
         self.state().settled_tab(tab).ok().map(|(url, _)| url)
     }
 
-    /// A raw CDP call on the tab: the lane's own observation, outside any
-    /// Agent permit.
     pub fn cdp(&self, tab: &str, method: &str, params: &Value) -> Result<Value, String> {
         let webview = self
             .state()
@@ -304,8 +273,6 @@ impl Lane {
         serde_json::from_str(&raw).map_err(|error| format!("{method}: {error}"))
     }
 
-    /// Evaluates `expression` in the page's main world, as the page itself
-    /// would; `user_gesture` gives it the activation a click would.
     pub fn evaluate(
         &self,
         tab: &str,
@@ -324,7 +291,6 @@ impl Lane {
         Ok(response["result"]["value"].clone())
     }
 
-    /// The Agent's capability for `tab`, attached as the Agent path attaches it.
     pub fn agent(&self, tab: &str) -> Result<AgentTab, String> {
         let tab_id = tab
             .strip_prefix("browser-")
@@ -339,7 +305,6 @@ impl Lane {
         Ok(AgentTab { capability, scope })
     }
 
-    /// The user's "add page to chat" context read, at the tab's current revision.
     pub fn page_context(&self, tab: &str) -> Result<Value, String> {
         let revision = self
             .state()
@@ -353,7 +318,6 @@ impl Lane {
         serde_json::to_value(&context).map_err(|error| error.to_string())
     }
 
-    /// Popups Sage hosts natively and the chrome has not yet acknowledged.
     pub fn native_popups(&self) -> Vec<NativePopup> {
         popups::browser_popup_pending(self.state())
             .unwrap_or_default()
@@ -369,14 +333,10 @@ impl Lane {
             .collect()
     }
 
-    /// How many navigations Sage has answered with
-    /// `NavigationVerdict::Abandon` (a blank popup child closed because its
-    /// first real navigation was refused).
     pub fn abandoned_popups(&self) -> u64 {
         popups::ABANDONED.load(Ordering::SeqCst)
     }
 
-    /// Adopts a native popup as the chrome does (`browser_popup_ack`).
     pub fn acknowledge_popup(&self, popup: &NativePopup) -> Result<(), String> {
         popups::browser_popup_ack(
             self.app.clone(),
