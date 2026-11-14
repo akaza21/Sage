@@ -25,7 +25,7 @@ use super::{
 const DATABASE_FILE: &str = "passwords.db";
 const KEY_FILE: &str = "passwords.key";
 const LOCK_FILE: &str = "passwords.lock";
-/// A search longer than this cannot match a stored site or username.
+/// The longest search accepted.
 const MAX_QUERY_BYTES: usize = 256;
 /// How long the vault stays open after its last use. Closing it drops the
 /// database connection and wipes the unwrapped key; the next use reopens it.
@@ -303,7 +303,9 @@ impl PasswordsState {
         })
     }
 
-    /// True acknowledges rollback; false means commit already won. A commit in
+    /// Captures this import before the cancel worker is queued, so a late cancel
+    /// never reaches the next import. True acknowledges rollback; false means
+    /// commit already won. A commit in
     /// progress is too late to cancel, so this request never waits for a durable
     /// write.
     pub(super) fn cancel_import_request(&self) -> impl FnOnce() -> bool + Send + 'static + use<> {
@@ -389,6 +391,7 @@ impl PasswordsState {
         self.with_vault(|vault| vault.store.delete(id))
     }
 
+    /// Also deletes the key file, so a vault whose key was lost can start again.
     pub(crate) fn delete_all(&self) -> VaultResult<()> {
         self.with_vault(|vault| {
             vault.store.delete_all()?;

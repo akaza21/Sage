@@ -1,5 +1,6 @@
 //! A popover covers the page, which is a native window above Sage's DOM, so
-//! the page hides while it is open.
+//! the page hides while it is open. A zoom drops an element waiting for a
+//! comment, as its frozen frame no longer matches the page.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 

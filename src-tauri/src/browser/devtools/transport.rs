@@ -28,6 +28,7 @@ pub(crate) trait CdpTransport {
         Err(BrowserFailure::Unavailable)
     }
 
+    /// Returns the CDP `result` object as JSON, at most `max_result_bytes` long.
     fn call(
         &self,
         method: &str,
@@ -70,6 +71,8 @@ pub(crate) trait CdpTransport {
 
     fn issued(&self) -> bool;
 
+    /// Stopped (Stop, Take over, detach), not spent on a navigation; a wait's
+    /// probes hold no permit, so this is how they learn to stop.
     fn stopped(&self) -> bool {
         false
     }

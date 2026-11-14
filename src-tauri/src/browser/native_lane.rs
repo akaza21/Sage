@@ -63,6 +63,7 @@ impl AgentTab {
 
 struct MainWebviewDir(PathBuf);
 
+/// `root` is an empty, disposable directory the caller owns and removes.
 /// Returns the lane's exit code, or 2 when the preflight fails and no case
 /// runs.
 pub fn run(root: &Path, lane: impl FnOnce(&Lane) -> i32 + Send + 'static) -> Result<i32, String> {

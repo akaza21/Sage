@@ -7,6 +7,7 @@ use super::store;
 /// Browser tabs are capped at eight; the rest covers tabs that closed
 /// recently.
 const MAX_TABS_TRACKED: usize = 32;
+/// Folding keeps a page calling `replaceState` as it scrolls from flooding history.
 pub(super) const SAME_DOCUMENT_FOLD_MS: i64 = 5_000;
 /// The count prune walks the time index, so it runs on the first write of a
 /// session and then periodically.

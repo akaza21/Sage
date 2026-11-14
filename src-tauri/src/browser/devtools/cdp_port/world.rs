@@ -1,6 +1,7 @@
 //! Security item S8: every Agent script runs in an isolated world, never the
 //! page's main world, so page code cannot replace the globals or prototypes
-//! the script uses or read the values it handles.
+//! the script uses or read the values it handles. The page still sees an
+//! Agent action's DOM effects and events, so it can tell something acted.
 
 use serde::Deserialize;
 use serde_json::{Value, json};

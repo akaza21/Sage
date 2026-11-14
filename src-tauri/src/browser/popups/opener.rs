@@ -93,12 +93,13 @@ impl PopupRequests {
         }
     }
 
-    /// Any attempt other than HTTP(S) or the exact initial `about:blank` spends
-    /// the grant. On WebView2 a `javascript:` popup is not abandoned: it arrives
-    /// as an `about:blank` request and no navigation fires for its `javascript:`
-    /// URL, so its script runs in the blank child with the opener's origin, as in
-    /// Chrome. That gains nothing the opener lacks (it could `window.open('')`
-    /// and script the child itself), and the child stays a policed Sage tab.
+    /// Every navigation except the granted initial `about:blank` spends the
+    /// blank grant, HTTP(S) included. On WebView2 a `javascript:` popup is not
+    /// abandoned: it arrives as an `about:blank` request and no navigation fires
+    /// for its `javascript:` URL, so its script runs in the blank child with the
+    /// opener's origin, as in Chrome. That gains nothing the opener lacks (it
+    /// could `window.open('')` and script the child itself), and the child stays
+    /// a policed Sage tab.
     pub(crate) fn admit_navigation(&mut self, tab_id: &str, uri: &str) -> NavigationVerdict {
         if uri == INITIAL_BLANK && self.initial_blank.contains(tab_id) {
             return NavigationVerdict::Admit;

@@ -1,5 +1,6 @@
 use super::*;
 
+/// The WebView2 environment a popup tab must share with its opener.
 #[cfg(windows)]
 pub(in crate::browser) type TabEnvironment =
     webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Environment;

@@ -1,3 +1,5 @@
+/// Runs code, installs software or, like a shortcut, points at something that
+/// does when opened from Explorer, so such a download always asks where to save.
 const DANGEROUS_EXTENSIONS: &[&str] = &[
     "ade",
     "adp",

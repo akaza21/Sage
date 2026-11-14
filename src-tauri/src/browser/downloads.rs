@@ -356,6 +356,8 @@ impl BrowserState {
         }
     }
 
+    /// What the tab opens next is the user's, so its popups stop joining the
+    /// Agent's attachment.
     pub(super) fn user_took_over(&self, tab_id: &str) {
         if let Ok(mut downloads) = self.downloads.lock() {
             downloads.set_provenance(tab_id, NavigationProvenance::User);

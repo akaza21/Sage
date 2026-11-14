@@ -324,7 +324,6 @@ mod tests {
 
     #[test]
     fn neighbouring_frames_never_overlap() {
-        // The toolbar ends at 41.3 and the page frame starts there.
         for scale in [1.0, 1.25, 1.5, 2.0] {
             for grid in [PlacementGrid::DevicePixel, PlacementGrid::LogicalPixel] {
                 let page = snap_inward(frame(0.0, 41.3, 500.0, 300.0), scale, grid).unwrap();

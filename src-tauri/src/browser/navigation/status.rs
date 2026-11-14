@@ -16,6 +16,7 @@ pub(crate) struct BrowserNavigation {
     pub(crate) can_go_forward: bool,
     pub(crate) zoom_percent: u16,
     pub(crate) device: Option<crate::browser::device::DeviceEmulation>,
+    /// A reset failed and overrides may still be on; the toolbar shows a warning.
     pub(crate) device_unconfirmed: bool,
     pub(crate) error: Option<String>,
     pub(crate) print_unavailable_reason: Option<&'static str>,
