@@ -26,7 +26,6 @@ const TABLES: [&str; 14] = [
     "acp_store_usage",
 ];
 
-/// The native counters a renderer recreation snapshot records.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RendererRecreationUsage {
     runtime_slot_active: u8,
@@ -49,7 +48,6 @@ impl AcpService {
         )
     }
 
-    /// Live runtimes and process-tree reservations, read without the store.
     pub(crate) fn renderer_recreation_usage(&self) -> RendererRecreationUsage {
         let (live_trees, live_descendants) =
             crate::acp::process::TreeCapacityPool::global().observation_usage();

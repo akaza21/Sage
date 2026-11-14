@@ -32,8 +32,7 @@ impl Lane<'_> {
         match host.send(intent) {
             Ok(outcome) => Ok(outcome),
             Err(failure) if failure.error == crate::acp::runtime::HostError::SignInRequired => {
-                // Refusal happened before the prompt was written. Settle the
-                // turn and release its lane instead of retaining a stuck turn.
+                // Refusal happened before the prompt was written.
                 self.settle_refused_prompt(owner, host);
                 Err(crate::acp::service::PromptSendError::unknown(
                     CodexSessionError::SignInRequired,

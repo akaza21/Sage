@@ -20,8 +20,8 @@ fn claude_restores_files_and_codex_rewinds_only_its_own_runtimes_turn() {
     assert_eq!(offered("pi-rpc", 1, 1), None);
 }
 
-/// A running `session-a` on `binding`. The service starts first: its
-/// startup recovery would park a runtime it does not run.
+/// The service starts first: its startup recovery would park a runtime it does
+/// not run.
 fn running(binding: &str) -> (Fixture, AcpService) {
     let fixture = Fixture::on(binding);
     let service = AcpService::new(fixture.database.clone()).unwrap();
@@ -32,8 +32,6 @@ fn running(binding: &str) -> (Fixture, AcpService) {
 /// The turn the page offers to undo, and whether the control would be let
 /// through for `turn`.
 fn offer((fixture, service): &(Fixture, AcpService), turn: &str) -> (Option<String>, bool) {
-    // The surface is composed on the stored page as the service's own load
-    // composes it.
     let mut page = crate::acp::store::load_chat_page(
         &fixture.database.connection(),
         fixture.project.clone(),

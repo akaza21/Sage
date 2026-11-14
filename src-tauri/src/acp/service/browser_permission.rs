@@ -52,8 +52,8 @@ pub(crate) struct BrowserPermissionDecisionResponse {
     state: &'static str,
 }
 
-/// One admitted tab/turn's local decision source. The browser gate still
-/// performs the final authority recheck before invoking a capability.
+/// The browser gate still performs the final authority recheck before
+/// invoking a capability.
 pub(crate) struct ServiceBrowserPermissionDecider<'a> {
     pub(crate) service: &'a super::AcpService,
     pub(crate) owner: BrowserPermissionOwner,

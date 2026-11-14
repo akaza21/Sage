@@ -1,10 +1,7 @@
-//! A chat whose session has no live runtime shows the config it last reported
-//! with its stored choices, and a choice made then is applied on resume.
 use serde_json::{Value, json};
 
 use super::restore_tests::{choose, effort, option, owner, seed, start, stored};
 
-/// The restore fixture with the session installed as the chat's current one.
 pub(super) fn seed_chat(service: &AcpService) {
     seed(service);
     service
@@ -45,14 +42,11 @@ fn a_parked_chat_shows_the_stored_choice_with_its_labels_before_resuming() {
     let path = directory.join("sage.db");
     let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
     seed_chat(&service);
-    // Nothing reported yet: nothing to show.
     assert_eq!(restored_page(&service), Value::Null);
     let first = owner(1);
     start(&service, &first, effort("low"));
     choose(&service, &first, option("effort", "high")).unwrap();
     let service = reopen(&path, service);
-    // After the restart the chat is cold, and shows the high effort with the
-    // labels the harness gave it, before any runtime starts.
     let restored = restored_page(&service);
     assert_eq!(restored["sageAgentSessionId"], "session-restore");
     assert_eq!(restored["awaiting"], "resume");
@@ -85,7 +79,6 @@ fn a_choice_made_while_parked_shows_at_once_and_is_restored_on_resume() {
         restored_page(&service)["configOptions"][0]["currentValue"],
         "low"
     );
-    // A value the stored config does not offer is refused, not stored.
     assert_eq!(
         service.queue_session_config_choice(&session, None, &option("effort", "max")),
         Err(QueueError::NotOffered)
@@ -106,7 +99,6 @@ fn a_choice_made_while_parked_shows_at_once_and_is_restored_on_resume() {
         restored_page(&service)["configOptions"][0]["currentValue"],
         "high"
     );
-    // The resumed runtime reports its default; the restore sends the choice.
     let resumed = owner(2);
     let agent = start(&service, &resumed, effort("low"));
     service.restore_session_config(&resumed).unwrap();

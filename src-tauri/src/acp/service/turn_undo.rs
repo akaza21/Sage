@@ -1,7 +1,3 @@
-//! Undo of a session's latest turn: which turn a running session offers,
-//! recording an undo the harness carried out, and keeping a runtime that
-//! still holds an undone turn from taking another prompt.
-
 use super::*;
 use crate::acp::{
     contract::SageTurnId, intent::ProjectionChangedV1, scheduler::RuntimeOwner,
@@ -189,7 +185,6 @@ impl AcpService {
         Ok(rewind.is_some_and(|rewind| rewind.held_by(owner.runtime_epoch)))
     }
 
-    /// Whether background tasks of the runtime `owner` are still running.
     fn runs_background_tasks(&self, owner: &RuntimeOwner) -> bool {
         crate::acp::store::session_surface::view(
             &self.database.connection(),
@@ -209,8 +204,6 @@ impl AcpService {
         })
     }
 
-    /// Parks the runtime `owner` while it holds an undone turn, waiting out
-    /// another holder of its lane, such as an undo's own park.
     async fn park_undone_runtime(&self, owner: &RuntimeOwner) -> Result<(), ChatRuntimeRelease> {
         self.release_chat_runtime_until(
             &owner.project_id,
@@ -221,11 +214,6 @@ impl AcpService {
         .await
     }
 
-    /// Moves a prompt bound for the runtime `owner`, which still holds an
-    /// undone turn, onto a relaunch without it: the runtime is parked and
-    /// the session activated again, which resumes its thread cut before the
-    /// turn or restarts it in a fresh head session. Returns the runtime the
-    /// prompt goes to.
     pub(crate) async fn relaunch_without_undone_turn(
         &self,
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
@@ -256,20 +244,16 @@ impl AcpService {
     }
 }
 
-/// Why a prompt could not be moved off a runtime that holds an undone turn.
 #[derive(Debug)]
 pub(crate) enum UndoneRelaunchError {
-    /// The runtime was not parked: a turn runs, or the park did not settle.
     Parking(ChatRuntimeRelease),
-    /// The session could not be activated again.
     Activation(CodexSessionError),
 }
 
-/// How a binding undoes a session's latest finished turn. Curated binding
-/// knowledge: Claude Code checkpoints each turn's files and restores them,
-/// and has no control that drops a turn from its thread, so Sage cuts the
-/// thread on its next launch; Codex drops the turn from its thread itself
-/// and leaves files as they are.
+/// Claude Code checkpoints each turn's files and restores them, and has no
+/// control that drops a turn from its thread, so Sage cuts the thread on its
+/// next launch; Codex drops the turn from its thread itself and leaves files
+/// as they are.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct TurnUndo {
     pub(super) keeps_files: bool,
@@ -295,8 +279,6 @@ impl TurnUndo {
         }
     }
 
-    /// Whether a session running `session_epoch` can undo a turn that ran
-    /// in `turn_epoch`.
     fn offers(self, session_epoch: u64, turn_epoch: u64) -> bool {
         !self.reverts_thread || session_epoch == turn_epoch
     }

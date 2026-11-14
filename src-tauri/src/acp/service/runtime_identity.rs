@@ -1,5 +1,3 @@
-//! Debug-only, read-only identity observation for the one live Codex runtime.
-//!
 //! This deliberately records no argv, environment, profile, prompt, protocol
 //! payload, or stderr. The entry is published only after the existing runtime
 //! slot has accepted the exact owner, and is cleared by that owner's runner.
@@ -307,21 +305,16 @@ mod tests {
         let exited = owner(7);
         let next = owner(8);
 
-        // Deterministically model a runner exit while process identity capture
-        // is in progress but before it can commit to the ledger.
         ledger.clear_exact(&exited);
         assert!(ledger.commit_observation(observation(&exited)).is_err());
         assert_eq!(ledger.observation(), None);
 
-        // A different runtime epoch is allowed to replace only the tombstone.
         assert!(ledger.commit_observation(observation(&next)).is_ok());
         assert_eq!(ledger.observation(), Some(observation(&next)));
 
-        // A late callback from the old runner cannot clear the new owner.
         ledger.clear_exact(&exited);
         assert_eq!(ledger.observation(), Some(observation(&next)));
 
-        // The exact live runner still clears its own identity on exit.
         ledger.clear_exact(&next);
         assert_eq!(ledger.observation(), None);
     }

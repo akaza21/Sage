@@ -262,8 +262,6 @@ pub(crate) fn service_with_pending_requests_and_deny_id(
     (service, owner)
 }
 
-/// Records a permission request exactly as the store admits a runtime's
-/// `PermissionRequest` event, in the seeded `turn-permission` Turn.
 #[cfg(feature = "acp-fixture")]
 pub(crate) fn admit_permission_request(
     service: &AcpService,
