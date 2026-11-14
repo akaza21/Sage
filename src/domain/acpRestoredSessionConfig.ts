@@ -21,7 +21,9 @@ export function decodeRestoredSessionConfig(
     !record(v) ||
     "runtimeEpoch" in v ||
     "configRevision" in v ||
-    (v.awaiting !== "resume" && v.awaiting !== "report")
+    (v.awaiting !== "resume" &&
+      v.awaiting !== "report" &&
+      v.awaiting !== "start")
   )
     return null;
   const awaiting = v.awaiting;

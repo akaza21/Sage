@@ -100,6 +100,11 @@ pub(crate) fn start_session(
     if ordinal < 0 {
         return Err(StoreError::CounterExhausted);
     }
+    let ended = super::session_head::ended_head(
+        &transaction,
+        command.project_id.as_str(),
+        command.chat_id.as_str(),
+    )?;
     let session_id = SageAgentSessionId::new();
     let projection = next_projection_revision(
         &transaction,
@@ -110,6 +115,14 @@ pub(crate) fn start_session(
     transaction.execute("INSERT INTO acp_session_usage(project_id,chat_id,session_id,turn_count,item_count,item_bytes,fact_count,fact_bytes,payload_bytes,revision) VALUES(?1,?2,?3,0,0,0,0,0,0,0)",params![command.project_id.as_str(),command.chat_id.as_str(),session_id.as_str()])?;
     increment_session_usage(&transaction, command.project_id.as_str())?;
     transaction.execute("INSERT INTO chat_session_heads(project_id,chat_id,session_id,installed_revision,installed_at) VALUES(?1,?2,?3,?4,?5)",params![command.project_id.as_str(),command.chat_id.as_str(),session_id.as_str(),projection.get() as i64,command.now_millis])?;
+    // The Chat goes on from the session it ran last, so on the same binding
+    // and model the new session takes over its confirmed config choices.
+    if let Some(ended) = ended.filter(|ended| {
+        ended.binding_id == command.binding_id.as_str()
+            && ended.model_id.as_deref() == command.model_id.as_ref().map(|model| model.as_str())
+    }) {
+        crate::acp::session_config::choices::copy(&transaction, &ended.session_id, &session_id)?;
+    }
     append_intent_fact(
         &transaction,
         &command.project_id,

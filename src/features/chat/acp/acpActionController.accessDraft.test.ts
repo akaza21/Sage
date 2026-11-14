@@ -206,8 +206,7 @@ describe("a thinking level drafted before a chat's session starts", () => {
     expect(test.commands.startSession).toHaveBeenCalledWith(
       expect.objectContaining({ bindingId, modelId, effort: "high" }),
     );
-    // Held until the session exists, so a failed start sends it again.
-    expect(useChatEffortDraft.getState().draft?.effort).toBe("high");
+    expect(useChatEffortDraft.getState().draft).toBeNull();
   });
 
   it("is not sent for another model", async () => {
