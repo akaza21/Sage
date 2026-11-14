@@ -30,6 +30,8 @@ export interface NewChatDraftSlice {
     projectId: string;
     chatId: string | null;
     ownershipEpoch: number;
+    /** The chat's edit revision once handed the prompt; an edit cancels. */
+    editRevision?: number;
   } | null;
   openNewChatDraft: (projectId?: string) => Promise<unknown>;
   updateNewChatDraft: (

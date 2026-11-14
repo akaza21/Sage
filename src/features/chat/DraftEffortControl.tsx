@@ -1,5 +1,6 @@
 import type { ComponentProps } from "react";
 import { useChatEffortDraft } from "../../app/chatEffortDraft";
+import { useWorkbenchStore } from "../../app/store";
 import { capitalizeLabel } from "../../domain/text";
 import { ComposerEffortControl } from "./ComposerEffortControl";
 
@@ -55,10 +56,12 @@ export default function DraftEffortControl({
       onSetOption={(_, value) => {
         if ("value" in value && typeof value.value === "string") {
           if (draft.onChange) draft.onChange(value.value);
-          else if (chatId)
+          else if (chatId) {
+            useWorkbenchStore.getState().markChatEdited(chatId);
             useChatEffortDraft.setState({
               draft: { chatId, bindingId, modelId, effort: value.value },
             });
+          }
         }
         return Promise.resolve();
       }}

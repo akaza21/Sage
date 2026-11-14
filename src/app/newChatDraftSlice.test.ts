@@ -5,7 +5,7 @@ import { resetBrowserDesktopForTests } from "../services/browserDesktop";
 import { useWorkbenchStore } from "./store";
 import { desktop } from "../services/desktop";
 import { resetHarnessModelCache } from "./harnessModelCache";
-import type { HarnessDefinition } from "../domain/workbench";
+import type { HarnessDefinition, ModelOption } from "../domain/workbench";
 
 const initial = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
@@ -225,3 +225,74 @@ it("keeps the latest draft model when A, B, A discovery completes out of order",
     modelId: "chosen",
   });
 });
+
+it.each<{
+  catalog: ModelOption[];
+  modelId: string | null;
+  effort: string | null;
+}>([
+  { catalog: [], modelId: null, effort: null },
+  {
+    catalog: [{ id: "thinking", name: "Thinking" }],
+    modelId: "thinking",
+    effort: null,
+  },
+  {
+    catalog: [
+      { id: "plain", name: "Plain" },
+      { id: "new-default", name: "New default", isDefault: true },
+    ],
+    modelId: "new-default",
+    effort: null,
+  },
+  {
+    catalog: [
+      { id: "new-default", name: "New default", isDefault: true },
+      { id: "thinking", name: "Thinking", effortLevels: ["high", "low"] },
+    ],
+    modelId: "thinking",
+    effort: "high",
+  },
+])(
+  "keeps the draft sendable as model $modelId, effort $effort when its catalog refreshes",
+  async ({ catalog, modelId, effort }) => {
+    resetHarnessModelCache();
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "refresh-harness",
+          name: "Refresh harness",
+          description: "Fixture ACP harness",
+          source: "builtIn",
+          transport: "acp",
+          installState: "available",
+          bindingId: "refresh-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+    });
+    vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([
+      { id: "old-default", name: "Old default", isDefault: true },
+      { id: "thinking", name: "Thinking", effortLevels: ["high"] },
+    ]);
+    const state = useWorkbenchStore.getState();
+    await state.selectDraftHarness("refresh-harness");
+    state.selectDraftModel("thinking");
+    state.updateNewChatDraft({ text: "Keep through refresh", effort: "high" });
+    vi.mocked(desktop.listHarnessModels).mockResolvedValue(catalog);
+    await state.retryHarnessDiscovery();
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState().models).toEqual(catalog),
+    );
+    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+      text: "Keep through refresh",
+      modelId,
+      effort,
+    });
+    await state.sendNewChatDraft();
+    expect(useWorkbenchStore.getState().newChatDraft).toBeNull();
+    expect(useWorkbenchStore.getState().composerText).toBe(
+      "Keep through refresh",
+    );
+  },
+);

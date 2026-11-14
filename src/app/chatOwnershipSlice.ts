@@ -12,7 +12,10 @@ import {
 import { createAttachedContextActions } from "./chatAttachedContextState";
 import type { WorkbenchState } from "./store";
 import { nextProjectGeneration } from "./projectIntent";
-import { emptyChatOwnershipEntry as emptyEntry } from "./chatOwnershipProjection";
+import {
+  editedChatEntry as edited,
+  emptyChatOwnershipEntry as emptyEntry,
+} from "./chatOwnershipProjection";
 
 export interface ChatOwnershipSlice {
   chatOwnershipEpoch: number;
@@ -24,6 +27,7 @@ export interface ChatOwnershipSlice {
     selection: { harnessId: string | null; modelId: string | null },
   ) => boolean;
   setChatComposer: (intent: ChatOwnershipIntent, text: string) => boolean;
+  markChatEdited: (chatId: string) => void;
   attachChatContext: (
     intent: ChatOwnershipIntent,
     context: AttachedContext,
@@ -145,13 +149,18 @@ export const createChatOwnershipSlice: StateCreator<
       return false;
     }
     const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
-    const updated = { ...entry, composerText };
+    const updated = { ...edited(entry), composerText };
     const active = activeChatId(state) === intent.chatId;
     set({
       chatUiById: { ...state.chatUiById, [intent.chatId]: updated },
       ...(active ? { composerText } : {}),
     });
     return true;
+  },
+  markChatEdited: (chatId) => {
+    const entry = get().chatUiById[chatId];
+    if (entry)
+      set({ chatUiById: { ...get().chatUiById, [chatId]: edited(entry) } });
   },
   attachChatContext: (intent, context) =>
     createAttachedContextActions({
@@ -248,7 +257,7 @@ export const createChatOwnershipSlice: StateCreator<
         chatUiById: {
           ...state.chatUiById,
           [active.id]: {
-            ...(state.chatUiById[active.id] ?? emptyEntry()),
+            ...edited(state.chatUiById[active.id] ?? emptyEntry()),
             composerText,
           },
         },

@@ -14,6 +14,7 @@ export async function runNewChatDraftSend(
     submission: { status: "submitting"; creation: DraftCreation };
   },
   submission: NonNullable<WorkbenchState["pendingFirstSend"]>,
+  editRevision: number,
 ) {
   let creation = draft.submission.creation;
   const initial = get();
@@ -93,11 +94,22 @@ export async function runNewChatDraftSend(
     const owner = state.captureChatOwnership(chatId);
     if (!owner || state.activeTabId !== chatId)
       throw new Error("Could not open the created chat. Retry to continue.");
+    const entry = state.chatUiById[chatId];
+    if (
+      (entry?.editRevision ?? 0) !== editRevision ||
+      entry?.composerText ||
+      entry?.attachedContext.length
+    )
+      throw new Error(
+        "The new chat was changed before this prompt reached it, so the prompt stays here. Retry once that chat's message is empty.",
+      );
+    // Catalog refreshes during creation reconcile the stored draft's choices.
+    const { modelId, effort } = state.newChatDraft ?? draft;
     // From here through clearing the draft, handoff is synchronous. No project
     // transition can erase the composer between its assignment and release.
     state.setChatHarnessSelection(owner, {
       harnessId: draft.harnessId,
-      modelId: draft.modelId,
+      modelId,
     });
     state.setChatComposer(owner, draft.text);
     if (draft.access)
@@ -105,13 +117,13 @@ export async function runNewChatDraftSend(
         bindingId: harness.bindingId,
         mode: draft.access,
       });
-    if (draft.modelId && draft.effort)
+    if (modelId && effort)
       useChatEffortDraft.setState({
         draft: {
           chatId,
           bindingId: harness.bindingId,
-          modelId: draft.modelId,
-          effort: draft.effort,
+          modelId,
+          effort,
         },
       });
     set({
@@ -119,7 +131,11 @@ export async function runNewChatDraftSend(
       agentCenter: "chat",
       pendingFirstSend:
         state.pendingFirstSend === submission
-          ? { ...submission, chatId }
+          ? {
+              ...submission,
+              chatId,
+              editRevision: get().chatUiById[chatId]?.editRevision ?? 0,
+            }
           : null,
     });
     return { submission: creation, error: "" };

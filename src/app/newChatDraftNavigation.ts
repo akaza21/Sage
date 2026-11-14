@@ -1,5 +1,6 @@
 import type { StoreApi } from "zustand";
 import { agentChatFocus } from "./agentChatOwner";
+import { reconcileDraftModel } from "./harnessSlice";
 import type { WorkbenchState } from "./store";
 type Set = StoreApi<WorkbenchState>["setState"];
 type Get = StoreApi<WorkbenchState>["getState"];
@@ -24,28 +25,31 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
       modelId: state.selectedModelId,
     });
   }
+  const draft = state.newChatDraft ?? {
+    id: {},
+    projectId: state.project.id,
+    text: "",
+    harnessId: state.selectedHarnessId,
+    modelId: state.selectedModelId,
+    access: null,
+    effort: null,
+    submission: { status: "released" as const },
+    error: null,
+  };
   set({
     agentCenter: "draft",
     pendingFirstSend: null,
     draftFocusRequest,
-    newChatDraft: state.newChatDraft ?? {
-      id: {},
-      projectId: state.project.id,
-      text: "",
-      harnessId: state.selectedHarnessId,
-      modelId: state.selectedModelId,
-      access: null,
-      effort: null,
-      submission: { status: "released" },
-      error: null,
-    },
+    newChatDraft:
+      state.harnessDiscoveryPhase === "ready"
+        ? reconcileDraftModel(draft, state.selectedHarnessId, state.models)
+        : draft,
   });
 }
 export async function selectDraftHarness(
   set: Set,
   get: Get,
   harnessId: string,
-  isCurrent: () => boolean,
 ) {
   const state = get();
   const draft = state.newChatDraft;
@@ -73,14 +77,4 @@ export async function selectDraftHarness(
     state.projectGeneration,
     draft.projectId,
   );
-  const current = get();
-  if (
-    isCurrent() &&
-    current.chatOwnershipEpoch === state.chatOwnershipEpoch &&
-    current.newChatDraft?.harnessId === harnessId &&
-    current.newChatDraft.projectId === draft.projectId
-  ) {
-    if (current.selectedModelId)
-      current.selectDraftModel(current.selectedModelId);
-  }
 }

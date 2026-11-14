@@ -23,6 +23,13 @@ export function emptyChatOwnershipEntry(): ChatOwnershipEntry {
   };
 }
 
+export function editedChatEntry(entry: ChatOwnershipEntry): ChatOwnershipEntry {
+  return {
+    ...entry,
+    editRevision: nextProjectGeneration(entry.editRevision ?? 0),
+  };
+}
+
 function knownChatIds(snapshot: BootstrapSnapshot) {
   const attached = snapshot.tabs
     .filter((tab) => tab.kind === "chat")

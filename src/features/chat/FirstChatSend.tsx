@@ -41,7 +41,11 @@ export function FirstChatSend({
     const harness = state.harnesses.find(
       (harness) => harness.id === entry?.harnessId,
     );
-    if (entry?.composerText && harness?.bindingId)
+    if (
+      entry?.composerText &&
+      (entry.editRevision ?? 0) === pending.editRevision &&
+      harness?.bindingId
+    )
       void actions.submit(
         entry.composerText.trim(),
         [],

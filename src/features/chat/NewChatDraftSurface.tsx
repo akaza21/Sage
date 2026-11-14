@@ -54,27 +54,6 @@ export function NewChatDraftSurface({
       void chooseHarness(draft.harnessId);
     }
   }, [chooseHarness, draft, selectedHarnessId, transitioning]);
-  useEffect(() => {
-    if (
-      !draft ||
-      submitting ||
-      transitioning ||
-      draft.harnessId !== selectedHarnessId ||
-      discoveryPhase !== "ready" ||
-      models.some((model) => model.id === draft.modelId)
-    )
-      return;
-    const model = models.find((model) => model.isDefault) ?? models[0];
-    if (model) chooseModel(model.id);
-  }, [
-    chooseModel,
-    discoveryPhase,
-    draft,
-    models,
-    selectedHarnessId,
-    submitting,
-    transitioning,
-  ]);
   if (!draft || !project) return null;
   const available = harness?.installState === "available";
   const canSend =

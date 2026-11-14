@@ -17,7 +17,10 @@ import {
 import { errorMessage } from "../domain/errors";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import type { WorkbenchState } from "./store";
-import { emptyChatOwnershipEntry as emptyEntry } from "./chatOwnershipProjection";
+import {
+  editedChatEntry,
+  emptyChatOwnershipEntry as emptyEntry,
+} from "./chatOwnershipProjection";
 
 function normalizeEntry(
   entry: WorkbenchState["chatUiById"][string] | undefined,
@@ -55,7 +58,7 @@ export function createAttachedContextActions({
         set({
           chatUiById: {
             ...state.chatUiById,
-            [intent.chatId]: { ...entry, attachedContext },
+            [intent.chatId]: { ...editedChatEntry(entry), attachedContext },
           },
         });
         return true;
@@ -85,7 +88,7 @@ export function createAttachedContextActions({
       set({
         chatUiById: {
           ...state.chatUiById,
-          [intent.chatId]: { ...entry, attachedContext },
+          [intent.chatId]: { ...editedChatEntry(entry), attachedContext },
         },
       });
       return true;

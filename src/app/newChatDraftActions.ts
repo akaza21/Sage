@@ -3,6 +3,7 @@ import {
   boundedChatError,
   validateChatComposerText,
 } from "../domain/chatOwnership";
+import { reconcileDraftModel } from "./harnessSlice";
 import { openNewChatDraft, selectDraftHarness } from "./newChatDraftNavigation";
 import type { NewChatDraft, NewChatDraftSlice } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
@@ -20,7 +21,6 @@ export function createNewChatDraftActions(
   | "sendNewChatDraft"
   | "reloadNewChatDraft"
 > {
-  let selectionRequest: object | undefined;
   const submit = async (draft: NewChatDraft) => {
     if (draft.submission.status === "submitting") return;
     const attempt = {
@@ -28,6 +28,12 @@ export function createNewChatDraftActions(
       creation: draft.submission,
     };
     const submittingDraft = { ...draft, submission: attempt, error: null };
+    // A chat this draft already created is handed the prompt only if it is
+    // not edited from here on; a chat created by this attempt starts unedited.
+    const editRevision =
+      draft.submission.status === "created"
+        ? (get().chatUiById[draft.submission.chatId]?.editRevision ?? 0)
+        : 0;
     const submission = {
       projectId: draft.projectId,
       chatId: null,
@@ -53,6 +59,7 @@ export function createNewChatDraftActions(
         get,
         submittingDraft,
         submission,
+        editRevision,
       );
     } catch (error) {
       released.error = boundedChatError(String(error));
@@ -74,20 +81,9 @@ export function createNewChatDraftActions(
     }
   };
   return {
-    openNewChatDraft: async (projectId) => {
-      if (!get().newChatDraft) selectionRequest = undefined;
-      return openNewChatDraft(set, get, projectId);
-    },
-    selectDraftHarness: (harnessId) => {
-      const request = {};
-      selectionRequest = request;
-      return selectDraftHarness(
-        set,
-        get,
-        harnessId,
-        () => selectionRequest === request,
-      );
-    },
+    openNewChatDraft: async (projectId) =>
+      openNewChatDraft(set, get, projectId),
+    selectDraftHarness: (harnessId) => selectDraftHarness(set, get, harnessId),
     updateNewChatDraft: (patch) => {
       const draft = get().newChatDraft;
       if (!draft || draft.submission.status === "submitting") return;
@@ -109,18 +105,13 @@ export function createNewChatDraftActions(
         state.selectedHarnessId !== draft.harnessId
       )
         return;
-      const model = state.models.find((model) => model.id === modelId);
-      if (!model) return;
-      selectionRequest = undefined;
+      if (!state.models.some((model) => model.id === modelId)) return;
       set({
-        newChatDraft: {
-          ...draft,
-          modelId,
-          effort:
-            draft.effort && model.effortLevels?.includes(draft.effort)
-              ? draft.effort
-              : null,
-        },
+        newChatDraft: reconcileDraftModel(
+          { ...draft, modelId },
+          draft.harnessId,
+          state.models,
+        ),
       });
     },
     sendNewChatDraft: async () => {

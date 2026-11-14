@@ -1037,6 +1037,61 @@ it("cancels a retained draft's retry when the user leaves and returns during its
   });
 });
 
+it("never overwrites what the user typed into the created chat before its handoff", async () => {
+  const before = await ports.project.getBootstrapSnapshot();
+  let release!: () => void;
+  vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
+    .mockResolvedValue(undefined)
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+  mount();
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "Draft prompt" } });
+  let sending!: Promise<void>;
+  act(() => {
+    sending = useWorkbenchStore.getState().sendNewChatDraft();
+  });
+  await waitFor(() => expect(release).toBeTypeOf("function"));
+  const created = await ports.project.getBootstrapSnapshot();
+  const chatId = created.activeTabId!;
+  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "My own words" } });
+  await act(async () => {
+    release();
+    await sending;
+  });
+  await settleLazyModules();
+  expect(composer()).toHaveValue("My own words");
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    text: "Draft prompt",
+    submission: { status: "created", chatId },
+  });
+
+  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+  await settleLazyModules();
+  expect(useWorkbenchStore.getState().chatUiById[chatId].composerText).toBe(
+    "My own words",
+  );
+  expect(useWorkbenchStore.getState().newChatDraft?.text).toBe("Draft prompt");
+  expect(prompts).toEqual([]);
+
+  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "" } });
+  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0]).toMatchObject({ chatId, prompt: "Draft prompt" });
+  expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(
+    created.tabs,
+  );
+  expect(created.tabs).toHaveLength(before.tabs.length + 1);
+});
+
 it.each([false, true])(
   "retries the same created chat after a refused project switch during watcher binding (reopen refused: %s)",
   async (refuseReopen) => {
