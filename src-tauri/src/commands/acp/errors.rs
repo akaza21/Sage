@@ -7,11 +7,32 @@ use crate::acp::{
     page_admission::PageAdmissionError,
     store::StoreError,
 };
+use sage_process::error::LaunchError;
 
 pub(super) fn dispatch_error(error: crate::acp::service::SessionDispatchError) -> AcpIpcError {
     match error {
         crate::acp::service::SessionDispatchError::Binding => binding_unavailable(),
         crate::acp::service::SessionDispatchError::Operation(error) => session_error(error),
+    }
+}
+
+/// The launch step that failed, as the chat names it.
+fn launch_step(error: LaunchError) -> &'static str {
+    match error {
+        LaunchError::ArgumentLimit | LaunchError::InvalidArgument => {
+            "preparing the harness arguments"
+        }
+        LaunchError::CapacityUnavailable => "claiming a process slot",
+        LaunchError::ContainmentFailure => "containing the harness process",
+        LaunchError::Deadline => "waiting for the harness process",
+        LaunchError::EnvironmentLimit | LaunchError::InvalidEnvironment => {
+            "preparing the harness environment"
+        }
+        LaunchError::IdentityMismatch => "checking the harness identity",
+        LaunchError::InvalidAbsolutePath => "resolving the harness path",
+        LaunchError::Io => "setting up the harness transport",
+        LaunchError::PlatformUnavailable => "using this platform's process support",
+        LaunchError::StdioLimit => "opening the harness pipes",
     }
 }
 
@@ -57,7 +78,9 @@ pub(super) fn session_error(error: crate::acp::service::CodexSessionError) -> Ac
         crate::acp::service::CodexSessionError::Recovery => AcpIpcError::RecoveryRequired {
             message: safe_message("The native runtime requires authoritative recovery."),
         },
-        crate::acp::service::CodexSessionError::LaunchFailure(error) => launch_failed(error.step()),
+        crate::acp::service::CodexSessionError::LaunchFailure(error) => {
+            launch_failed(launch_step(error))
+        }
         crate::acp::service::CodexSessionError::LaunchSetup(error) => launch_failed(error.step()),
         crate::acp::service::CodexSessionError::Session(
             crate::acp::runtime::SessionCoordinatorError::BootstrapRequired,
@@ -337,7 +360,7 @@ mod tests {
     #[test]
     fn launch_identity_mismatch_is_a_safe_launch_subtype() {
         let error = session_error(crate::acp::service::CodexSessionError::LaunchFailure(
-            crate::acp::process::LaunchError::IdentityMismatch,
+            sage_process::error::LaunchError::IdentityMismatch,
         ));
 
         assert!(matches!(
@@ -359,7 +382,7 @@ mod tests {
             ),
             (
                 crate::acp::service::CodexSessionError::LaunchFailure(
-                    crate::acp::process::LaunchError::ContainmentFailure,
+                    sage_process::error::LaunchError::ContainmentFailure,
                 ),
                 "Native launch failed safely while containing the harness process; retry the session.",
             ),

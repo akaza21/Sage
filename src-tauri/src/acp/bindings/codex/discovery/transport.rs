@@ -10,11 +10,11 @@ use crate::acp::{
     },
     contract::{RuntimeEpoch, SageAgentSessionId},
     process::{
-        LaunchError, LaunchFailure, PlatformSupervisor, StdinEndpoint, TreeCapacityPool,
-        TreeControl, TreeExit,
+        LaunchFailure, PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit,
     },
     transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
+use sage_process::error::LaunchError;
 
 use super::{
     CodexDiscoveryContent, CodexDiscoveryProtocol,

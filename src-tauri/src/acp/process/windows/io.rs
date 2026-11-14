@@ -11,7 +11,7 @@ use crate::acp::transport::{
 };
 use sage_core::limits::LIMITS;
 
-use super::super::supervisor::LaunchError;
+use sage_process::error::LaunchError;
 
 /// Independently owned stdin authority. Blocking writes never hold the tree
 /// control lock, so cancellation can always dispatch concurrently.

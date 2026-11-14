@@ -32,6 +32,9 @@
     "crates/sage-core/src/limits/preview.rs",
     "crates/sage-core/src/limits/prompt_files.rs",
     "crates/sage-core/src/limits/tests.rs",
+    "crates/sage-process/src/error.rs",
+    "crates/sage-process/src/handle.rs",
+    "crates/sage-process/src/job.rs",
     "eslint.config.js",
     "scripts/ade0006a-admission.mjs",
     "scripts/ade0006a-c0b-campaign-launch.mjs",
@@ -279,6 +282,9 @@
         "src-tauri/src/acp/transport/"
       ],
       "files": [
+        "crates/sage-process/src/error.rs",
+        "crates/sage-process/src/handle.rs",
+        "crates/sage-process/src/job.rs",
         "src-tauri/src/acp/fixture/pause_tests.rs",
         "src-tauri/src/acp/fixture/wire_child_opened_tests.rs",
         "src-tauri/src/acp/fixture/wire_parity_tests.rs",

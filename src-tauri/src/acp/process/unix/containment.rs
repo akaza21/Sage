@@ -8,11 +8,9 @@ use crate::acp::{
     process::{ProcessIdentityReceipt, TreeCapacityLease},
     redaction::{SafeDiagnostic, SafeStderrDiagnostic, StderrRing},
 };
+use sage_process::error::LaunchError;
 
-use super::{
-    super::supervisor::{LaunchError, TreeExit},
-    spawn::ArtifactIdentity,
-};
+use super::{super::supervisor::TreeExit, spawn::ArtifactIdentity};
 
 #[derive(Clone)]
 pub(crate) struct TreeControl(pub(super) Arc<TreeAuthority>);

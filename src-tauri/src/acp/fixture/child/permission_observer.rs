@@ -5,7 +5,7 @@ use serde_json::{Value, json};
 use crate::{
     acp::{
         fixture::{generated_cases::FrozenCase, wire},
-        process::{LaunchError, TreeExit},
+        process::TreeExit,
         runtime::{
             AdapterPump, DriverError, DriverMailbox, EgressTransport, JournalHandle,
             ProcessAdapterDriver, ProcessTreeControl, ProjectionMailbox, SqliteAdapterBatchJournal,
@@ -16,6 +16,7 @@ use crate::{
     },
     acp_protocol::permissions::PermissionDecision,
 };
+use sage_process::error::LaunchError;
 
 use super::{
     permission_fixture_adapter::PermissionFixtureAdapter,

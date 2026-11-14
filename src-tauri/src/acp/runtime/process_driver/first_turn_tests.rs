@@ -25,7 +25,7 @@ use crate::{
         },
         intent::{CapabilitySnapshotV1, ExternalId, IntentSnapshot, Prompt, SafeResourceRef},
         lifecycle::{DeliveryState, TurnState},
-        process::{LaunchError, TreeExit},
+        process::TreeExit,
         runtime::{
             ActivatedSession, ActivationJournal, BoundedThread, CoordinatorActivationJournal,
             HostCancelIntent, HostError, HostPromptIntent, IdleActivationParts, JournalHandle,
@@ -42,6 +42,7 @@ use crate::{
     },
     persistence::Database,
 };
+use sage_process::error::LaunchError;
 
 #[cfg(feature = "acp-fixture")]
 use super::worker_command::WorkerDeadlineAbort;

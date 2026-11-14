@@ -2,8 +2,9 @@ use std::ffi::OsString;
 use std::path::PathBuf;
 
 use super::super::manifest::ManifestGuard;
-use super::super::supervisor::{BoundedEnvironment, BoundedOsArgs, LaunchError};
+use super::super::supervisor::{BoundedEnvironment, BoundedOsArgs};
 use super::artifact::VerifiedArtifact;
+use sage_process::error::LaunchError;
 
 /// Every npm shim for the package names its folder; the rest of the shim
 /// is npm's template, which changes between npm releases.

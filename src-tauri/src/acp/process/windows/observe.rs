@@ -3,7 +3,7 @@ use std::time::{Duration, Instant};
 use windows_sys::Win32::Foundation::{HANDLE, WAIT_OBJECT_0, WAIT_TIMEOUT};
 use windows_sys::Win32::System::Threading::{INFINITE, WaitForSingleObject};
 
-use super::super::supervisor::LaunchError;
+use sage_process::error::LaunchError;
 
 pub(super) fn observe_exit(handle: HANDLE) -> Result<(), LaunchError> {
     match unsafe { WaitForSingleObject(handle, INFINITE) } {

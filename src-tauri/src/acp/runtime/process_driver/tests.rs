@@ -22,7 +22,7 @@ use crate::{
         },
         intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, SafeResourceRef},
         lifecycle::{DeliveryState, ItemLifecycle, ServerRequestState, TurnState},
-        process::{LaunchError, TreeExit},
+        process::TreeExit,
         runtime::{
             ActiveTurnIntent, AdapterBatchJournal, AdapterPump, DurableAdapterEvent,
             EgressTransport, JournalReceipt, NonfatalRefusal, ProjectionPublishError,
@@ -36,6 +36,7 @@ use crate::{
     acp_protocol::permissions::PermissionDecision,
 };
 use sage_core::limits::LIMITS;
+use sage_process::error::LaunchError;
 
 use super::driver::DriverState;
 use super::*;
