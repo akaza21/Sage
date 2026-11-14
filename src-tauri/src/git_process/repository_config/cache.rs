@@ -31,8 +31,8 @@ fn admissions() -> std::sync::MutexGuard<'static, HashMap<PathBuf, AdmissionSlot
     ADMISSIONS.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// When every slot is in use, `root` gets a private slot, so its admission is
-/// not cached.
+/// A new `root` that still hits the root limit after idle slots are dropped
+/// gets a private slot, so its admission is not cached.
 pub(super) fn slot_in(
     admissions: &mut HashMap<PathBuf, AdmissionSlot>,
     root: &Path,

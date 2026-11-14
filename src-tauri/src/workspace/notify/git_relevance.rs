@@ -49,6 +49,7 @@ impl GitWindow {
         {
             return;
         }
+        // The trailing `/` keeps directory-only ignore rules working.
         let operand = if directory {
             format!("{path}/")
         } else {

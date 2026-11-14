@@ -4,6 +4,7 @@ use ignore::gitignore::Gitignore;
 
 use super::{IgnoreRules, Skipped, matcher, present, read_rules, unresolved};
 
+/// A worktree's `commondir` leads to the shared Git directory holding `info/exclude`.
 /// Only the root's own `.git` file (a worktree opened as the Project) may lead
 /// outside the root.
 pub(super) fn repository_exclude(

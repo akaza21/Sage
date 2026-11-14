@@ -1,3 +1,5 @@
+//! The walk is breadth first, so a truncated walk keeps the shallower Files.
+//!
 //! The walk runs on one thread. Four threads walked 200k Files in 0.08 s
 //! instead of 0.2 s, but glibc gives each thread its own memory pool and
 //! keeps what a walk freed there, so the process stayed 50 to 150 MiB larger

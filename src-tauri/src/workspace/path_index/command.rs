@@ -32,9 +32,12 @@ pub struct QuickOpenRequest {
     /// Increases with each query; a newer one stops older ones. It must keep
     /// increasing across webview reloads, so the UI derives it from a clock.
     pub generation: u64,
+    /// One opening of Quick Open; its first query refreshes the index in the background.
     pub session: u64,
+    /// Recently opened Files, most recent first, ranked higher.
     #[serde(default)]
     pub recent: Vec<ResourceRef>,
+    /// An empty query lists other Files after the recent ones, shortest paths first.
     #[serde(default)]
     pub browse: bool,
 }

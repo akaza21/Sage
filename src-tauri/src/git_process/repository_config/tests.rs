@@ -561,6 +561,7 @@ fn a_commondir_pointer_is_refused_even_when_it_points_inside_the_root() {
     ));
 }
 
+/// An alias of the own `.git` passes a canonical-path check, yet can later be repointed.
 #[cfg(unix)]
 #[test]
 fn a_commondir_alias_of_the_own_git_dir_is_refused() {

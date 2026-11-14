@@ -112,6 +112,7 @@ pub(crate) struct IgnoreRules {
 struct Skipped;
 
 impl IgnoreRules {
+    /// `global_excludes` patterns match paths relative to the root.
     pub(crate) fn load(root: &Path, enabled: bool, global_excludes: Option<&Path>) -> Self {
         let mut rules = Self {
             root: root.to_path_buf(),

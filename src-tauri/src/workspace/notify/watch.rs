@@ -89,6 +89,7 @@ pub(super) fn root_delivery(
         if let Ok(excludes) = excludes.try_recv() {
             relevance = NoticeRelevance::new(&root_path).with_excludes(excludes);
         }
+        // Git judges the original path, captured before Explorer folds it.
         let original = relative.clone();
         let directory = root_path.join(&relative).is_dir();
         let moved = matches!(super::kind_for_action(action), Some("created" | "deleted"));

@@ -57,7 +57,8 @@ impl ParallelLimits {
             .map(|((_, name), value)| format!("{name}={value}"))
     }
 
-    /// The last value of a key wins, as in Git.
+    /// NUL-separated `key\nvalue` records, split at the first newline; the last
+    /// value of a key wins, as in Git.
     fn from_listing(listing: &[u8], cpus: u32) -> Self {
         let mut values = HashMap::new();
         for record in listing

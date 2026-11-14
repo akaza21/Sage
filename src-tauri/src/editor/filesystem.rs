@@ -201,9 +201,9 @@ impl HeldParent {
 }
 
 impl HeldParent {
-    /// The content is renamed in from `temp_name` without replacing anything, so
-    /// no reader sees a partial File and a File that appears meanwhile is never
-    /// touched.
+    /// The content goes in from `temp_name` without replacing anything, so a File
+    /// that appears meanwhile is never touched. The Unix copy fallback is not
+    /// atomic: a reader may see the File partly written.
     pub(super) fn create_document(
         &self,
         name: &str,

@@ -242,7 +242,8 @@ fn rename_once(parent: &File, from: &CString, to: &CString, mode: RenameMode) ->
 
 /// The rename is by name, so a file swapped in at the source name in the
 /// instant after the last check would have moved instead. It is moved back
-/// the same way, which replaces nothing.
+/// the same way, which replaces nothing. Disk changed meanwhile, so that is an
+/// unconfirmed rename with a warning, not an error.
 fn rename_bound(
     parent: &File,
     names: (&CString, &CString),

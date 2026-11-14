@@ -100,7 +100,7 @@ impl HeldParent {
         Ok(())
     }
 
-    /// `temp` stays for the caller to remove.
+    /// After the link or copy fallback, `temp` stays for the caller to remove.
     pub(in crate::editor) fn rename_new(&self, temp: &str, target: &str) -> AppResult<bool> {
         let (temp_c, target_c) = (entry_name(temp)?, entry_name(target)?);
         let directory = self.directory.as_raw_fd();

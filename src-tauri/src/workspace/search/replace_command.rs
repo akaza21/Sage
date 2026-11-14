@@ -74,6 +74,7 @@ pub enum ReplaceProblemKind {
     Stale,
     Refused,
     NoMatches,
+    /// Replaced, but not proven durable or in place, so also kept as unsaved edits.
     KeptUnsaved,
 }
 

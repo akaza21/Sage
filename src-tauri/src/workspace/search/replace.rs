@@ -23,8 +23,10 @@ pub struct ReplaceSpec {
     pub case_sensitive: bool,
     #[serde(default)]
     pub whole_word: bool,
+    /// `$1`, `${name}` and `$$` in the replacement refer to the match.
     #[serde(default)]
     pub use_regex: bool,
+    /// The replacement takes the match's case: all upper, all lower or capitalized.
     #[serde(default)]
     pub preserve_case: bool,
 }
@@ -41,6 +43,7 @@ pub struct MatchPosition {
 #[serde(rename_all = "camelCase")]
 pub struct ReplaceLinePreview {
     pub line_number: u32,
+    /// The first replaced match on the line.
     pub column_number: u32,
     pub before: String,
     pub after: String,

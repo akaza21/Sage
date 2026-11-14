@@ -18,6 +18,7 @@ use crate::{
     workspace::{Workspace, directory_skip::protected_workspace_name},
 };
 
+/// `content` has `\n` line ends; `line_ending` is the File's own, restored on write.
 pub struct ReplaceSource {
     pub resource: ResourceRef,
     pub fingerprint: String,
@@ -27,12 +28,19 @@ pub struct ReplaceSource {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum DiskReplace {
-    Written { fingerprint: String, count: u64 },
+    Written {
+        fingerprint: String,
+        count: u64,
+    },
     Stale,
     NoMatches,
-    KeptUnsaved { count: u64 },
+    /// Replaced, but not proven durable or in place, so also kept as unsaved edits.
+    KeptUnsaved {
+        count: u64,
+    },
 }
 
+/// `\n`-ended `replaced` in the File's `line_ending`; refused if line ends would change.
 pub fn replaced_file_text(original: &str, replaced: &str, line_ending: &str) -> AppResult<String> {
     reject_unsupported_content(replaced)?;
     let materialized = materialize_content(replaced, line_ending);
@@ -61,6 +69,7 @@ pub fn read_for_replace(
     })
 }
 
+/// `edit` maps `\n`-ended text; the write restores the File's line endings.
 pub fn replace_on_disk(
     database: &Database,
     workspace: &Workspace,

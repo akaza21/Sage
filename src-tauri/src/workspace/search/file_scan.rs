@@ -192,6 +192,8 @@ impl SearchEngine {
     }
 }
 
+/// Columns count on from the last match and the preview is built once, so a long
+/// line costs one pass, not one per match.
 pub(super) struct LineMatches<'a> {
     line: &'a str,
     max_preview_chars: usize,

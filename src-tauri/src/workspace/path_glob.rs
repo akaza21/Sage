@@ -1,3 +1,4 @@
+//! Whole-path, case-sensitive globs: `**` spans segments, `*` and `?` stay in one.
 //! Mirrored in src/domain/pathGlob.ts.
 
 pub(crate) const MAX_PATH_GLOB_BYTES: usize = 256;
