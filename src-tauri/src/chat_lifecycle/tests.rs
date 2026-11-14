@@ -36,9 +36,11 @@ fn requested_creation_identity_survives_reopen_and_cannot_replace_another_chat()
     let created = database.bootstrap_snapshot().unwrap();
     let existing_id = initial.active_tab_id.as_deref().unwrap();
     for invalid in [existing_id, chat_id.as_str(), "side-invalid", ""] {
-        assert!(database
-            .create_chat_with_identity(&project.id, &layout(&initial), None, Some(invalid))
-            .is_err());
+        assert!(
+            database
+                .create_chat_with_identity(&project.id, &layout(&initial), None, Some(invalid))
+                .is_err()
+        );
     }
     drop(database);
     let reopened = Database::open(&path).unwrap();

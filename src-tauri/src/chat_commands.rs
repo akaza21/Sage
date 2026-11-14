@@ -251,14 +251,9 @@ mod tests {
             let state = AppState::new(database);
 
             let requested_id = Uuid::new_v4().to_string();
-            let created = create_chat_inner(
-                &state,
-                layout.clone(),
-                0,
-                None,
-                Some(requested_id.clone()),
-            )
-            .await;
+            let created =
+                create_chat_inner(&state, layout.clone(), 0, None, Some(requested_id.clone()))
+                    .await;
             assert!(created.committed);
             assert_eq!(created.transition_epoch, 1);
             let snapshot = created.snapshot.unwrap();

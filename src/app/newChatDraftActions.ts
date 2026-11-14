@@ -5,6 +5,7 @@ import {
 } from "../domain/chatOwnership";
 import { openNewChatDraft, selectDraftHarness } from "./newChatDraftNavigation";
 import type { NewChatDraft, NewChatDraftSlice } from "./newChatDraftSlice";
+import type * as SendModule from "./runNewChatDraftSend";
 import type { WorkbenchState } from "./store";
 
 /** Loaded before the first draft opens; its mutations then run synchronously. */
@@ -31,11 +32,11 @@ export function createNewChatDraftActions(
       newChatDraft: { ...draft, creating: true, error: null },
       pendingFirstSend: submission,
     });
-    let runNewChatDraftSend: typeof import("./runNewChatDraftSend").runNewChatDraftSend;
+    let send: typeof SendModule;
     try {
       // Every module the send needs loads before anything is created, so a
       // failed chunk load cannot strand the draft mid-creation.
-      [{ runNewChatDraftSend }] = await Promise.all([
+      [send] = await Promise.all([
         import("./runNewChatDraftSend"),
         import("./runCreateChat"),
       ]);
@@ -47,7 +48,7 @@ export function createNewChatDraftActions(
       });
       return;
     }
-    await runNewChatDraftSend(set, get, draft, submission);
+    await send.runNewChatDraftSend(set, get, draft, submission);
   };
   return {
     openNewChatDraft: async (projectId) => {

@@ -2,7 +2,8 @@ use rusqlite::params;
 use uuid::Uuid;
 
 use super::{
-    ChatTitleSource, SIDE_CHAT_ID_PREFIX, placeholder_chat_title, require_one, validate_chat_identifier,
+    ChatTitleSource, SIDE_CHAT_ID_PREFIX, placeholder_chat_title, require_one,
+    validate_chat_identifier,
 };
 use crate::{
     acp::limits::LIMITS,
@@ -98,13 +99,8 @@ impl Database {
                 )));
             }
         }
-        let chat_id = insert_chat_with_identity(
-            &transaction,
-            project_id,
-            source_is_active,
-            parent,
-            chat_id,
-        )?;
+        let chat_id =
+            insert_chat_with_identity(&transaction, project_id, source_is_active, parent, chat_id)?;
         transaction.commit()?;
         Ok(chat_id)
     }
