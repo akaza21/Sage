@@ -7,8 +7,9 @@ import type { HeldInput } from "./pastedTextTypes";
 
 const MAX_UTF8_BYTES_PER_UNIT = 3;
 
-// UTF-16 length is a lower bound and 3 bytes per unit an upper one, so a huge
-// clipboard is never encoded.
+// 0 when the text fits, otherwise a lower bound on its UTF-8 size, not the
+// exact size. UTF-16 length is a lower bound and 3 bytes per unit an upper
+// one, so a huge clipboard is never encoded.
 function overCap(text: string): number {
   if (text.length * MAX_UTF8_BYTES_PER_UNIT <= MAX_CHAT_COMPOSER_BYTES)
     return 0;

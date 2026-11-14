@@ -4,7 +4,8 @@ import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { MenuPopover } from "../../ui/MenuPopover";
 
-// Native admission treats an absent capability as unsupported.
+// Native admission treats an absent capability as unsupported. A sessionless
+// chat may stage files: native checks the capability on the first send.
 function refusal(chatId: string): string | null {
   if (!isTauriRuntime())
     return "Attaching files needs the Sage desktop app with an ACP harness.";

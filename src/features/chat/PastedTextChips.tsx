@@ -50,6 +50,7 @@ export function PastedTextChips({
                 disabled={disabled}
                 onClick={(event) => {
                   if (open) setPreviewId(null);
+                  // Return focus to the composer before removing the focused chip.
                   event.currentTarget
                     .closest("form")
                     ?.querySelector("textarea")

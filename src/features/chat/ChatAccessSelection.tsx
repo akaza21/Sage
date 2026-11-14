@@ -50,8 +50,7 @@ function ReportView({
   const shown = [view.effective, view.tone]
     .concat(view.candidates.map(({ id, label }) => id + label))
     .join("\n");
-  // The newest view is kept first, so a report always hands it over; a
-  // report is made only when what the trigger shows has changed.
+  // Value-based reports must receive the latest view.
   useLayoutEffect(() => {
     latest.current = view;
   });

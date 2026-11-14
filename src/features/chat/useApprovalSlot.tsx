@@ -148,7 +148,8 @@ class ApprovalBoundary extends Component<
   }
 }
 
-// The composer stays mounted (hidden) to keep its draft and Stop reachable.
+// The composer stays mounted (hidden) to keep its draft; a card failure
+// restores it, and with it Stop.
 export function useApprovalSlot(
   turn: TurnProjection | null | undefined,
   chatId: string | null,

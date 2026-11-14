@@ -6,7 +6,6 @@ import { SessionNoticeStrip } from "./SessionNoticeStrip";
 
 afterEach(cleanup);
 
-// The notices Codex startup produces (#238): a config problem and a reroute.
 const notices = safeSessionNotices([
   {
     level: "warning",

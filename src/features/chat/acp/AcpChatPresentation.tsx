@@ -367,7 +367,6 @@ export function AcpChatPresentation({
         incomplete={hasEarlier || countIncomplete}
       />
       {hasEarlier || historyError || countIncomplete ? (
-        // History notices stay in the navigation chunk.
         <NavigationPart
           part="AcpHistoryNotices"
           hasEarlier={hasEarlier}

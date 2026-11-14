@@ -69,6 +69,7 @@ export function ComposerCommandPanel({
     acpProjectionStoreFor(boundChatId),
     (state) => state.page,
   );
+  // Keep the runtime captured at open; reopening picks a new one.
   const [request] = useState(() => liveRequest(boundChatId, page));
   return (
     <MenuPopover

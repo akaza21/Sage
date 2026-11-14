@@ -101,6 +101,8 @@ function Interactions({
   }, [status]);
   const quotes = useMemo(() => contexts.filter(isTranscriptQuote), [contexts]);
   const page = useStore(acpProjectionStoreFor(chatId), (state) => state.page);
+  // A missing turn is foreign only once history is fully loaded (a side
+  // chat's parent answer never mounts here).
   const isForeign = useCallback(
     (quote: TranscriptQuoteContext) =>
       page?.nextCursor === null &&
