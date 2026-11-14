@@ -1,4 +1,4 @@
-import { Check, Sparkles, Target } from "../../ui/leanIcons";
+import { Check, Lightbulb, Paperclip, Target } from "../../ui/leanIcons";
 import {
   useContext,
   useLayoutEffect,
@@ -13,6 +13,7 @@ import type {
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
+import { attachRefusal } from "./composerAttachRefusal";
 import {
   sessionConfigControls,
   sessionModeActions,
@@ -24,11 +25,15 @@ import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
+import {
+  ComposerPlanAccess,
+  type PlanAccessTarget,
+} from "./ComposerPlanAccess";
 
 /** The "+" menu's own actions; each is offered only while present. */
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,
-  "imageAction" | "onOpenGoal" | "onCompact"
+  "onAttachFiles" | "attachRefusalChatId" | "onOpenGoal" | "onCompact"
 >;
 
 export function ComposerOptionsMenu({
@@ -59,7 +64,8 @@ export function ComposerOptionsMenu({
   const actionsKey = JSON.stringify([
     selectionKey,
     actions.sessionConfig?.sageAgentSessionId,
-    Boolean(actions.imageAction),
+    Boolean(actions.onAttachFiles),
+    Boolean(actions.planAccess),
     Boolean(actions.onOpenGoal),
     Boolean(actions.onCompact),
     canSelectEffort,
@@ -87,6 +93,7 @@ export function ComposerOptionsMenu({
       id={id}
       className="composer__popover composer__options"
       ariaLabel="Composer options menu"
+      initialFocus="selected"
       focusKey="options"
       restoreFocusOnTab
       open
@@ -102,9 +109,11 @@ export function ComposerOptionsMenu({
 export function ComposerAddActions({
   sessionConfig,
   projectAction,
+  planAccess,
   pending,
   disabled,
-  imageAction,
+  onAttachFiles,
+  attachRefusalChatId,
   onOpenGoal,
   onCompact,
   onOpenEffort,
@@ -114,9 +123,11 @@ export function ComposerAddActions({
 }: {
   sessionConfig: AcpSessionConfig | null;
   projectAction?: ReactNode;
+  planAccess?: PlanAccessTarget;
   pending: boolean;
   disabled: boolean;
-  imageAction?: { disabled: boolean; onChoose: () => void };
+  onAttachFiles?: () => void;
+  attachRefusalChatId?: string;
   onOpenGoal?: () => void;
   /** Present only while the session can compact its context. */
   onCompact?: () => void;
@@ -129,6 +140,10 @@ export function ComposerAddActions({
   ) => Promise<unknown>;
 }) {
   const modes = sessionModeActions(sessionConfig);
+  const attachRefused =
+    onAttachFiles && attachRefusalChatId !== undefined
+      ? attachRefusal(attachRefusalChatId)
+      : null;
   const { launch, chatAvailable } = useContext(AgentToolsContext);
   // The picker lists through the launching Chat's own session.
   const importable = useStore(
@@ -145,29 +160,38 @@ export function ComposerAddActions({
       <p className="menu-group-label composer__add-heading" aria-hidden="true">
         Add
       </p>
-      {projectAction}
-      {imageAction ? (
+      {onAttachFiles ? (
         <button
           type="button"
           role="menuitem"
-          className="menu-item"
-          disabled={imageAction.disabled}
+          className="menu-item composer__add-action"
+          aria-label="Files and folders"
+          aria-description={attachRefused ?? undefined}
+          aria-disabled={attachRefused !== null}
           tabIndex={-1}
           onClick={() => {
-            imageAction.onChoose();
+            if (attachRefused !== null) return;
             onClose();
+            onAttachFiles();
           }}
         >
-          Add images
+          <Paperclip size={14} aria-hidden="true" />
+          <span>Files and folders</span>
+          {attachRefused ? (
+            <span className="composer__action-description">
+              {attachRefused}
+            </span>
+          ) : null}
         </button>
       ) : null}
+      {projectAction}
       {onOpenGoal ? (
         <button
           type="button"
           role="menuitem"
           className="menu-item composer__add-action"
           aria-label="Goal"
-          aria-description="View the current goal"
+          aria-description="Set a goal to keep pursuing"
           tabIndex={-1}
           onClick={() => {
             onClose();
@@ -177,9 +201,63 @@ export function ComposerAddActions({
           <Target size={14} aria-hidden="true" />
           <span>Goal</span>
           <span className="composer__action-description">
-            View the current goal
+            Set a goal to keep pursuing
           </span>
         </button>
+      ) : null}
+      {planAccess ? (
+        <ComposerPlanAccess
+          target={planAccess}
+          disabled={disabled}
+          onClose={onClose}
+        />
+      ) : null}
+      {modes.length ? (
+        <div
+          role="group"
+          aria-label="Session mode"
+          aria-description={sessionConfig?.restored}
+          title={sessionConfig?.restored}
+          data-restored={sessionConfig?.restored ? true : undefined}
+        >
+          {modes.map((mode) => {
+            const plan = mode.name.toLocaleLowerCase() === "plan";
+            const label = plan ? "Plan mode" : mode.name || mode.id;
+            const selected = mode.id === sessionConfig?.modes?.currentModeId;
+            const description = plan
+              ? selected
+                ? "Plan mode is on"
+                : "Turn plan mode on"
+              : mode.description || undefined;
+            return (
+              <button
+                key={mode.id}
+                type="button"
+                role="menuitemradio"
+                className="menu-item composer__add-action"
+                aria-label={label}
+                aria-description={description}
+                aria-checked={selected}
+                disabled={disabled || pending}
+                tabIndex={-1}
+                onClick={() => {
+                  onClose();
+                  // Modes are exclusive; choosing the current one sends nothing.
+                  if (!selected) void onSetSessionMode(mode.id);
+                }}
+              >
+                {plan ? <Lightbulb size={14} aria-hidden="true" /> : null}
+                <span>{label}</span>
+                {description ? (
+                  <span className="composer__action-description">
+                    {description}
+                  </span>
+                ) : null}
+                {selected ? <Check size={14} aria-hidden="true" /> : null}
+              </button>
+            );
+          })}
+        </div>
       ) : null}
       {onCompact ? (
         <button
@@ -200,6 +278,18 @@ export function ComposerAddActions({
           </span>
         </button>
       ) : null}
+      {onOpenEffort ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-item"
+          tabIndex={-1}
+          onClick={onOpenEffort}
+          data-overflow-control="effort"
+        >
+          Thinking level
+        </button>
+      ) : null}
       {chatAvailable && importable ? (
         <button
           type="button"
@@ -214,18 +304,6 @@ export function ComposerAddActions({
           Open a Codex CLI session
         </button>
       ) : null}
-      {onOpenEffort ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-item"
-          tabIndex={-1}
-          onClick={onOpenEffort}
-          data-overflow-control="effort"
-        >
-          Thinking level
-        </button>
-      ) : null}
       <ChatSessionConfigControls
         sessionConfig={sessionConfig}
         group="other"
@@ -236,53 +314,6 @@ export function ComposerAddActions({
           return onSetSessionConfigOption(id, value);
         }}
       />
-      {modes.length ? (
-        <div
-          role="group"
-          aria-label="Session mode"
-          aria-description={sessionConfig?.restored}
-          title={sessionConfig?.restored}
-          data-restored={sessionConfig?.restored ? true : undefined}
-        >
-          {modes.map((mode) => {
-            const plan = mode.name.toLocaleLowerCase() === "plan";
-            const label = plan ? "Plan mode" : mode.name || mode.id;
-            const selected = mode.id === sessionConfig?.modes?.currentModeId;
-            const description = plan
-              ? selected
-                ? "Plan mode is on"
-                : "Plan mode is off"
-              : mode.description || undefined;
-            return (
-              <button
-                key={mode.id}
-                type="button"
-                role="menuitemradio"
-                className="menu-item composer__add-action"
-                aria-label={label}
-                aria-description={description}
-                aria-checked={selected}
-                disabled={disabled || pending}
-                tabIndex={-1}
-                onClick={() => {
-                  onClose();
-                  // Modes are exclusive; choosing the current one sends nothing.
-                  if (!selected) void onSetSessionMode(mode.id);
-                }}
-              >
-                {plan ? <Sparkles size={14} aria-hidden="true" /> : null}
-                <span>{label}</span>
-                {description ? (
-                  <span className="composer__action-description">
-                    {description}
-                  </span>
-                ) : null}
-                {selected ? <Check size={14} aria-hidden="true" /> : null}
-              </button>
-            );
-          })}
-        </div>
-      ) : null}
     </>
   );
 }

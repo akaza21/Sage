@@ -56,6 +56,12 @@
   overflow-wrap: anywhere;
 }
 
+/* A description wraps, though menu rows keep their labels on one line. */
+.menu-item > .composer__action-description {
+  overflow: visible;
+  white-space: normal;
+}
+
 .composer-access-menu__option {
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr) 14px;
@@ -64,9 +70,12 @@
 
 .composer-access-menu__option > .lucide-check {
   grid-column: 3;
+  grid-row: 1 / span 2;
+  align-self: center;
 }
 
-.composer-access-menu__option--full > svg:first-child,
+.composer-access-menu__option--full,
+.composer-access-menu__option--full .composer-access-menu__description,
 .composer-access-menu__warning {
   color: var(--composer-access-full);
 }

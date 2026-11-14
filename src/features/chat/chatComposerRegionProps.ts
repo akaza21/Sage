@@ -76,7 +76,9 @@ export interface ChatComposerRegionProps {
   missingBindingNotice: boolean;
   disabledReason: string | null;
   onRetryLoad?: (() => void) | null;
+  /** The chat's project; none for a side chat, which cannot switch it. */
   project: { name: string } | null | undefined;
+  newChat?: boolean;
   usage: ChatUsage | null;
   usageRequest?: AcpUsageRequest | null;
   goal: AcpGoalState;

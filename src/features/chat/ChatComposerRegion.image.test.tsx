@@ -83,6 +83,13 @@ function renderComposer(
   };
 }
 
+async function openAttachMenu() {
+  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+  await settleLazyModules();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Files and folders" }));
+  await settleLazyModules();
+}
+
 describe("composer image input", () => {
   it("unmounts hidden toolbar controls while preserving the draft", () => {
     const { container, rerenderComposer } = renderComposer();
@@ -254,9 +261,10 @@ describe("composer image input", () => {
       if (options && !options.hasAttribute("disabled")) {
         fireEvent.click(options);
         await screen.findByRole("menu", { name: "Composer options menu" });
+        expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
+        fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       }
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
-      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       expect(screen.getByRole("button", { name: "Pause goal" })).toBeEnabled();
       expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
     }
@@ -299,12 +307,10 @@ describe("composer image input", () => {
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
   });
 
-  it("omits unavailable image actions and refuses a dropped image", () => {
+  it("omits unavailable image actions and refuses a dropped image", async () => {
     const { onAddImages } = renderComposer();
-    expect(
-      screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
-    expect(screen.queryByText("Add images", { exact: true })).toBeNull();
+    await openAttachMenu();
+    expect(screen.queryByRole("menuitem", { name: "Images…" })).toBeNull();
     expect(screen.queryByLabelText("Choose images")).toBeNull();
     fireEvent.drop(screen.getByRole("form"), {
       dataTransfer: { files: [png()], types: ["Files"] },
@@ -382,15 +388,13 @@ describe("composer image input", () => {
     );
   });
 
-  it("opens the persistent chooser from Add and closes the only menu", async () => {
+  it("opens the persistent chooser from Add's attach menu and closes it", async () => {
     renderComposer({ imageInputAvailable: true });
     const chooser = screen.getByLabelText("Choose images");
     const choose = vi.spyOn(chooser, "click");
     const trigger = screen.getByRole("button", { name: "Composer options" });
-    fireEvent.click(trigger);
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Add images" }),
-    );
+    await openAttachMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Images…" }));
     expect(choose).toHaveBeenCalledOnce();
     expect(chooser.isConnected).toBe(true);
     expect(screen.queryByRole("menu")).toBeNull();
@@ -416,12 +420,8 @@ describe("composer image input", () => {
     });
     expect(onAddImages).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent("at most 4 images");
-    const options = screen.queryByRole("button", { name: "Composer options" });
-    if (options) {
-      fireEvent.click(options);
-      await screen.findByRole("menu", { name: "Composer options menu" });
-    }
-    expect(screen.getByRole("menuitem", { name: "Add images" })).toBeDisabled();
+    await openAttachMenu();
+    expect(screen.getByRole("menuitem", { name: "Images…" })).toBeDisabled();
   });
 
   it("shows an uploaded image thumbnail and removes its context", async () => {

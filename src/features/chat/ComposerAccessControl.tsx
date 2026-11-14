@@ -16,6 +16,7 @@ const ChatAccess = lazy(() => import("./ChatAccessSelection"));
 export interface AccessView {
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
+  defaultMode?: SessionAccessMode | null;
   error?: string | null;
   sessionId?: string;
   /** Holds a choice for a chat whose session has not started. */
@@ -26,6 +27,7 @@ export interface AccessView {
 
 export interface ComposerAccessControlProps {
   bindingId: string;
+  harnessName: string;
   /** The chat whose access is drafted; given only while it has no session. */
   chatId?: string;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
@@ -57,7 +59,7 @@ export function ComposerAccessControl(props: ComposerAccessControlProps) {
           <button
             ref={trigger}
             type="button"
-            className={`composer__control-trigger composer__access-label${tone ?? (effective === "workspaceWrite" ? " composer__access-label--write" : "")}`}
+            className={`composer__control-trigger composer__access-label${tone ?? ""}`}
             aria-label="Access options"
             aria-describedby={`${id}-scope`}
             aria-haspopup="menu"

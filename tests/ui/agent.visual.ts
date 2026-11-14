@@ -121,7 +121,6 @@ async function expectComposerControlRow(page: Page) {
     form.locator(".composer__access-label"),
     form.getByRole("button", { name: "Harness", exact: true }),
     form.getByLabel("Model", { exact: true }),
-    form.getByRole("button", { name: "Project: Sage", exact: true }),
     form.getByRole("button", { name: "Start dictation", exact: true }),
     form.getByRole("button", { name: "Send message", exact: true }),
   ];
@@ -137,7 +136,7 @@ async function expectComposerControlRow(page: Page) {
   expect(Math.max(...centers) - Math.min(...centers)).toBeLessThan(2);
 }
 
-async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
+async function expectComposerToolbarLaidOut(form: Locator) {
   const toolbar = form.locator(".composer__toolbar");
   await expect(toolbar).toBeVisible();
   // A resized pane refits its toolbar a frame or more later; measure the
@@ -188,18 +187,11 @@ async function expectComposerToolbarLaidOut(form: Locator, projectChip = true) {
       }),
     };
   });
-  // Measured fitting moves Project into options only after lower-priority labels compact.
-  // Wave 6: a new chat (such as a fresh side chat) shows Project on its home
-  // rather than in the composer.
   expect(geometry.buttons.map((button) => button.name)).toEqual([
     "Composer options",
-    "Attach files",
     "Access options",
     "Harness",
     "Model",
-    ...(!projectChip || geometry.fit.includes("project-menu")
-      ? []
-      : ["Project: Sage"]),
     "Start dictation",
     "Send message",
   ]);
@@ -665,26 +657,17 @@ test.describe("ED02 picker visual states", () => {
     });
     await expectComposerControlsLaidOut(page);
     const harnessTrigger = page.getByRole("button", { name: "Harness" });
-    // This narrow Chat lane has no room for every label beside the attach
-    // button: access and harness yield to their icons while the model keeps
-    // its name, and the harness trigger still names its selection.
+    // This narrow Chat lane has no room for every label: access yields to
+    // its icon while the harness and model keep their names.
     expect(
       await settledComposerFit(page.locator("form.composer").first()),
-    ).toEqual([
-      "placeholder",
-      "context",
-      "capacity",
-      "project",
-      "effort",
-      "access",
-      "harness",
-    ]);
+    ).toEqual(["placeholder", "context", "capacity", "effort", "access"]);
     await expect(harnessTrigger).toHaveAccessibleName("Harness");
     await expect(harnessTrigger).toHaveAccessibleDescription("Codex");
     await expect(harnessTrigger).toHaveText("Codex");
     await expect(
       harnessTrigger.locator(".searchable-picker__trigger-label"),
-    ).toBeHidden();
+    ).toBeVisible();
     await expectComposerPickerValue(
       page.getByLabel("Model", { exact: true }),
       "Model",
@@ -797,9 +780,9 @@ test.describe("V2-4 session mode picker", () => {
       "GPT-5",
     );
     await expect(closedTrigger).toHaveAttribute("aria-checked", "true");
-    await expect(page.locator(".project-scope")).toHaveText("Sage");
-    const projectTrigger = page.locator("form.composer").getByRole("button", {
-      name: "Project: Sage",
+    await expect(page.locator(".composer__location")).toHaveCount(0);
+    const projectTrigger = closedOptions.getByRole("menuitem", {
+      name: "Work in a project",
       exact: true,
     });
     await expect(projectTrigger).toBeEnabled();
@@ -1276,12 +1259,8 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         await expect
           .poll(async () => (await panes.nth(narrowIndex).boundingBox())!.width)
           .toBeLessThanOrEqual(280);
-        for (const [index, pane] of (await panes.all()).entries()) {
-          // The second pane is the new, turnless side chat.
-          await expectComposerToolbarLaidOut(
-            pane.locator("form.composer"),
-            index === 0,
-          );
+        for (const pane of await panes.all()) {
+          await expectComposerToolbarLaidOut(pane.locator("form.composer"));
           await expect(
             pane.getByRole("combobox", { name: "Message agent" }),
           ).toBeVisible();

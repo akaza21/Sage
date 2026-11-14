@@ -15,12 +15,14 @@ export interface StagedPromptFiles {
   /** The resource a paste just added. */
   added?: string;
 }
+/** What native's dialog picks: files, or one folder whose files it walks. */
+export type PromptPick = "files" | "folder";
 /** 16 files, 64 KB/file, 96 KB/batch; replacement is revision checked. */
 export interface PromptAttachmentsPort {
   /** Opens the native picker; the WebView never supplies paths. Null when cancelled. */
   stagePromptFiles(request: {
     owner: PromptFileOwner;
-    pick: "files" | "folder";
+    pick: PromptPick;
     expectedRevision: string | null;
   }): Promise<StagedPromptFiles | null>;
   /** Adds pasted composer text to the batch as one text resource. */

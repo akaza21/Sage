@@ -1,11 +1,10 @@
-import { useContext, useEffect, useRef } from "react";
+import { useContext, useRef } from "react";
 import { useRetainedElement } from "../../ui/useRetainedElement";
 import {
   AgentSessionChromeContext,
   usePinnedAgentChatOwner,
 } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
-import type { TurnProjection } from "../../domain/acp";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatTranscript } from "./ChatTranscript";
 import { useUsageRequest } from "./acp/useUsageRequest";
@@ -14,7 +13,6 @@ import {
   latestRetryPrompt,
   sessionActionAvailable,
   sessionActions,
-  terminalTurnStates,
   useAcpChatActions,
   useAcpChatHistory,
   useAcpChatLoadFailure,
@@ -24,12 +22,14 @@ import {
 import { useComposerFocusHotkey } from "./composerChrome";
 import { ChatHandoffControl, LazyHarnessNotice } from "./lazyParts";
 import { isSideChatId } from "../../workbench/sideChatState";
+import { isNewProjectChat } from "./newProjectChat";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 import { useApprovalSlot } from "./useApprovalSlot";
 import { useBoundChatComposer } from "./useBoundChatComposer";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
+import { useTerminalTurnFocus } from "./useTerminalTurnFocus";
 import {
   restoredSessionConfigView,
   withSessionConfigNotice,
@@ -80,8 +80,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const [editSummaryContainer, setEditSummaryContainer] =
     useRetainedElement<HTMLDivElement>();
-  const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
-  const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
   const focused = chatId == null || focusedChatId === chatId;
   const {
@@ -189,47 +187,24 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     void acpActions.submit(prompt, [], bindingId, modelId, { retryOf: turnId });
   };
 
-  useEffect(() => {
-    const priorId = priorActiveTurnId.current;
-    const priorTurn = priorId
-      ? acpPage?.turns.find((turn) => turn.id === priorId)
-      : null;
-    if (priorId && priorTurn && terminalTurnStates.has(priorTurn.state)) {
-      terminalFocusTurnId.current = priorId;
-      priorActiveTurnId.current = activeAcpTurn?.id ?? null;
-    } else if (activeAcpTurn) {
-      priorActiveTurnId.current = activeAcpTurn.id;
-    } else if (priorId && !priorTurn) {
-      priorActiveTurnId.current = null;
-    }
-    if (
-      focused &&
-      terminalFocusTurnId.current &&
-      !actionBusy &&
-      !projectTransitioning
-    ) {
-      const surface = surfaceRef.current;
-      const activeElement = document.activeElement;
-      const preserveFocus =
-        activeElement !== surface && surface?.contains(activeElement);
-      const composer = composerRef.current;
-      const statuses =
-        surface?.querySelectorAll<HTMLElement>("[data-turn-status]");
-      const terminalStatus = [...(statuses ?? [])].find(
-        (status) => status.dataset.turnStatus === terminalFocusTurnId.current,
-      );
-      const target = composer && !composer.disabled ? composer : terminalStatus;
-      if (!preserveFocus) target?.focus();
-      if (target || preserveFocus) terminalFocusTurnId.current = null;
-    }
-  }, [
-    acpPage,
-    activeAcpTurn,
+  useTerminalTurnFocus({
+    page: acpPage,
+    activeTurn: activeAcpTurn,
     actionBusy,
     canPrompt,
     focused,
     projectTransitioning,
-  ]);
+    surfaceRef,
+    composerRef,
+  });
+  const newChat = isNewProjectChat({
+    useNativeAcp,
+    page: acpPage,
+    project,
+    projectTransitioning,
+    ...acpHistory,
+    retentionIncomplete: acpRetentionIncomplete,
+  });
 
   return (
     <section
@@ -387,10 +362,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        // The project chip keeps one place in the toolbar before and after
-        // the first turn. A side chat belongs to its parent's project and
-        // cannot switch it, so it has no chip.
+        // A side chat belongs to its parent's project and cannot switch it.
         project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
+        newChat={newChat}
         usage={usage}
         usageRequest={usageRequest}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}

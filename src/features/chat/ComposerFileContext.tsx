@@ -1,14 +1,14 @@
 import type { RefObject } from "react";
-import { IconButton } from "../../ui/IconButton";
-import { Paperclip } from "../../ui/leanIcons";
+import type { PromptPick } from "../../ports/promptAttachments";
 import type * as AttachChunk from "./ComposerAttach";
+import type { ComposerImageAction } from "./ComposerAttach";
 import type * as MentionChunk from "./ComposerMentionController";
 import { lazyParts } from "./lazyParts";
 import type { useComposerFileContext } from "./useComposerFiles";
 
 type FileContext = ReturnType<typeof useComposerFileContext>;
 
-// The first-Chat path carries only these mounts and the attach button.
+// The first-Chat path carries only these mounts.
 const MentionPart = lazyParts<typeof MentionChunk>(
   () => import("./ComposerMentionController"),
 );
@@ -16,34 +16,12 @@ const AttachPart = lazyParts<typeof AttachChunk>(
   () => import("./ComposerAttach"),
 );
 
-export function ComposerAttachButton({
-  files,
-  fieldId,
-  disabled,
-}: {
-  files: FileContext;
-  fieldId: string;
-  disabled: boolean;
-}) {
-  return (
-    <IconButton
-      // Anchors the attach menu.
-      id={`${fieldId}-attach`}
-      className="composer__plus"
-      aria-label="Attach files"
-      disabled={disabled}
-      onClick={files.pressAttach}
-    >
-      <Paperclip size={15} aria-hidden="true" />
-    </IconButton>
-  );
-}
-
 export function ComposerFileParts({
   files,
   chatId,
   fieldRef,
   fieldId,
+  attachAnchorId,
   text,
   imageAction,
   onPickFiles,
@@ -54,10 +32,11 @@ export function ComposerFileParts({
   chatId: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
+  attachAnchorId: string;
   text: string;
-  imageAction?: { disabled: boolean; onChoose: () => void };
+  imageAction?: ComposerImageAction;
   /** Hands a pick to the chat's staged batch, which the paste part owns. */
-  onPickFiles: () => void;
+  onPickFiles: (pick: PromptPick) => void;
   hidden: boolean;
   /** The field cannot be edited. */
   disabled: boolean;
@@ -73,14 +52,14 @@ export function ComposerFileParts({
           text={text}
         />
       ) : null}
-      {/* Only the button and its menu: the staged batch and its chips
-          belong to the paste part, so this loads with the first press. */}
+      {/* Only the attach menu: the staged batch and its chips belong to
+          the paste part, so this loads with the first press. */}
       {chatId && files.attachPresses > 0 ? (
         <AttachPart
           part="ComposerAttach"
           chatId={chatId}
           presses={files.attachPresses}
-          triggerId={`${fieldId}-attach`}
+          triggerId={attachAnchorId}
           imageAction={imageAction}
           onPick={onPickFiles}
         />

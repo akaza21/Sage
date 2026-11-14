@@ -1,7 +1,7 @@
 import { IconButton } from "../../ui/IconButton";
 import { Plus } from "../../ui/leanIcons";
 
-import { useState, type ComponentProps, type ReactNode } from "react";
+import { useState, type ComponentProps } from "react";
 import type { ChatUsage } from "./acp/chatUsage";
 import { ComposerContext } from "./ComposerContext";
 import type { ComposerAccessTarget } from "./chatComposerRegionProps";
@@ -35,6 +35,7 @@ import type { DraftEffort } from "./DraftEffortControl";
 import { composerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModelState";
 import { ProjectScopeChip } from "./ProjectScopeChip";
+import { governedPlanMode } from "../../domain/governedSessionModes";
 import {
   harnessPickerCandidates,
   useComposerPopovers,
@@ -47,8 +48,7 @@ interface Props {
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
   accessTarget?: ComposerAccessTarget;
   addActions?: ComposerMenuActions;
-  /** The attach button, beside the options button. */
-  attachSlot?: ReactNode;
+  optionsTriggerId?: string;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
@@ -80,7 +80,7 @@ export function ChatHarnessControls({
   usageRequest,
   accessTarget,
   addActions = {},
-  attachSlot,
+  optionsTriggerId,
   availableBinding,
   canPrompt,
   modelLabelScope,
@@ -103,6 +103,7 @@ export function ChatHarnessControls({
 }: Props) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
+  const hasProjects = useWorkbenchStore((state) => state.projects.length > 0);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -228,18 +229,34 @@ export function ChatHarnessControls({
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
   const canSelectEffort = !!selectedConfigChoice(effortOption) || !!draftEffort;
-  const { controls, effortInMenu, projectInMenu, contextVisible } =
-    useComposerToolbarFit(
-      canSelectEffort,
-      Boolean(projectName),
-      active !== null && active !== "options",
-    );
+  const { controls, effortInMenu, contextVisible } = useComposerToolbarFit(
+    canSelectEffort,
+    active !== null && active !== "options",
+  );
+  const planAccess =
+    availableBinding &&
+    accessHarness?.bindingId &&
+    governedPlanMode(accessHarness.accessModes) &&
+    (accessTarget?.draftChatId || (sessionConfig && !sessionConfig.removed))
+      ? {
+          bindingId: accessHarness.bindingId,
+          chatId: accessTarget?.draftChatId,
+          sessionConfig,
+          capabilities: accessHarness.accessModes,
+          onOpenAccess: () => toggle("access"),
+        }
+      : undefined;
+  const projectAction =
+    projectName && hasProjects ? (
+      <ProjectScopeChip projectName={projectName} menuItem />
+    ) : undefined;
   // "+" is always the row's first control, as in Codex, so the toolbar keeps
   // the same shape in every chat; it is disabled while it has nothing to offer.
   const hasActions = Boolean(
     Object.values(addActions).some(Boolean) ||
+    planAccess ||
     effortInMenu ||
-    projectInMenu ||
+    projectAction ||
     modeOptions.length > 0 ||
     otherOptions.some((option) => option.type !== "unsupported"),
   );
@@ -261,6 +278,7 @@ export function ChatHarnessControls({
       >
         <IconButton
           ref={optionsTriggerRef}
+          id={optionsTriggerId}
           className="composer__plus"
           aria-label="Composer options"
           title={hasActions ? undefined : "No options for this harness"}
@@ -276,10 +294,10 @@ export function ChatHarnessControls({
         >
           <Plus size={16} aria-hidden="true" />
         </IconButton>
-        {attachSlot}
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
+            harnessName={accessHarness.name}
             chatId={accessTarget?.draftChatId}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
@@ -335,24 +353,6 @@ export function ChatHarnessControls({
           onSelectModel={chooseModel}
           onSetOption={onSetSessionConfigOption}
         />
-        {projectName && projectInMenu ? (
-          <span
-            className="project-scope"
-            data-overflow-control="project"
-            data-suspended
-          />
-        ) : projectName ? (
-          <ProjectScopeChip
-            projectName={projectName}
-            disabled={projectTransitioning || turnBusy}
-            popoverPlacement="above-end"
-            open={active === "project"}
-            onOpenChange={(open) => {
-              if (open && active !== "project") toggle("project");
-              else if (!open && active === "project") dismiss();
-            }}
-          />
-        ) : null}
         {active === "options" ? (
           <ComposerOptionsPart
             part="ComposerOptionsMenu"
@@ -370,11 +370,8 @@ export function ChatHarnessControls({
             onModeRemoved={onModeRemoved}
             triggerRef={optionsTriggerRef}
             onDismiss={dismiss}
-            projectAction={
-              projectInMenu && projectName ? (
-                <ProjectScopeChip projectName={projectName} menuItem />
-              ) : undefined
-            }
+            projectAction={projectAction}
+            planAccess={planAccess}
             sessionConfig={selectedSessionConfig}
             pending={modePending}
             disabled={turnBusy || projectTransitioning}

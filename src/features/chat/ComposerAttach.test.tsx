@@ -123,7 +123,25 @@ afterEach(() => {
   useWorkbenchStore.setState(initial, true);
 });
 
-describe("composer attach button", () => {
+async function openAttach() {
+  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+  await settleLazyModules();
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Files and folders" }),
+    );
+  });
+  await settleLazyModules();
+}
+
+async function pick(name: "Files…" | "Folder…" | "Images…") {
+  await openAttach();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("menuitem", { name }));
+  });
+}
+
+describe("composer attach from the + menu", () => {
   it("stages picked files natively and removes them by revision", async () => {
     withSession(true);
     native.mockImplementation(async (command: string) => {
@@ -134,9 +152,7 @@ describe("composer attach button", () => {
       throw new Error(command);
     });
     renderComposer();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
+    await pick("Files…");
     // Picked files join the chat's one batch, beside any pasted text. Its
     // owner loads lazily, so the pick lands after the batch read back.
     await settleLazyModules();
@@ -177,13 +193,24 @@ describe("composer attach button", () => {
       event.preventDefault(),
     );
     renderComposer({ onSubmit });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
+    await pick("Files…");
     await settleLazyModules();
     expect(await screen.findByText("a.md · 2 KB")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     expect(onSubmit).toHaveBeenCalledWith(expect.anything(), "r1");
+  });
+
+  it("stages a folder picked in native's folder dialog", async () => {
+    withSession(true);
+    native.mockImplementation(async (command: string) =>
+      command === "stage_prompt_files" ? staged("r1", ["src/a.ts"]) : null,
+    );
+    renderComposer();
+    await pick("Folder…");
+    expect(await screen.findByText("src/a.ts · 2 KB")).toBeInTheDocument();
+    expect(native).toHaveBeenCalledWith("stage_prompt_files", {
+      request: { owner, pick: "folder", expectedRevision: null },
+    });
   });
 
   it("shows the batch native already holds for the chat without a press", async () => {
@@ -203,9 +230,7 @@ describe("composer attach button", () => {
       command === "stage_prompt_files" ? staged("r1", ["a.md"]) : null,
     );
     const view = renderComposer();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
+    await pick("Files…");
     expect(await screen.findByText("a.md · 2 KB")).toBeInTheDocument();
     await act(async () => {
       view.rerender(composer({ dictationScope: "chat-b" }));
@@ -216,16 +241,22 @@ describe("composer attach button", () => {
     ).toHaveLength(1);
   });
 
-  it("refuses without opening the picker when the harness takes no files", async () => {
+  it("shows Files and folders disabled with its reason when the harness takes no files", async () => {
     withSession(false);
     native.mockResolvedValue(null);
     renderComposer();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
+    await openAttach();
+    const row = screen.getByRole("menuitem", { name: "Files and folders" });
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(row).toHaveAccessibleDescription(
+      "This harness does not accept attached files (no embedded-context support).",
+    );
+    expect(row).toHaveTextContent(/does not accept attached files/u);
+    // The press is refused in place: the "+" menu stays, no picker opens.
     expect(
-      await screen.findByText(/does not accept attached files/u),
+      screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "Attach" })).toBeNull();
     expect(native).not.toHaveBeenCalledWith(
       "stage_prompt_files",
       expect.anything(),
@@ -239,12 +270,7 @@ describe("composer attach button", () => {
     renderComposer({ imageInputAvailable: true, onAddImages });
     const chooser = screen.getByLabelText<HTMLInputElement>("Choose images");
     const click = vi.spyOn(chooser, "click");
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
-    await act(async () => {
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Images…" }));
-    });
+    await pick("Images…");
     expect(click).toHaveBeenCalledOnce();
     expect(native).not.toHaveBeenCalledWith(
       "stage_prompt_files",

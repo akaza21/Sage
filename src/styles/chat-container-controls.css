@@ -44,7 +44,6 @@
   .composer__effort-picker:not([aria-controls]),
 .composer [data-fit~="access"] .composer__access-label,
 .composer [data-fit~="harness"] .composer__harness,
-.composer [data-fit~="project"] .project-scope,
 .composer [data-fit~="effort"] .composer__effort-picker,
 .composer [data-fit~="model"] .composer__model-trigger {
   width: var(--composer-icon-target);
@@ -65,14 +64,6 @@
   .composer__harness
   :is(.searchable-picker__trigger-label, .searchable-picker__chevron),
 .composer
-  [data-fit~="project"]
-  .project-scope
-  :is(
-    .searchable-picker__trigger-label,
-    .searchable-picker__chevron,
-    .project-scope__label
-  ),
-.composer
   [data-fit~="effort"]
   .composer__effort-picker
   :is(.composer__effort-label, .composer__effort-chevron),
@@ -81,8 +72,7 @@
   [data-fit~="model"]
   .composer__model-trigger
   :is(.composer__model-label, svg:last-child),
-.composer [data-fit~="effort-menu"] .composer__effort-picker,
-.composer [data-fit~="project-menu"] > .project-scope {
+.composer [data-fit~="effort-menu"] .composer__effort-picker {
   display: none;
 }
 
@@ -95,20 +85,10 @@
   display: block;
 }
 
-.composer [data-fit~="harness"] .composer__harness .searchable-picker__trigger,
-.composer [data-fit~="project"] .project-scope .searchable-picker__trigger {
+.composer [data-fit~="harness"] .composer__harness .searchable-picker__trigger {
   min-width: var(--composer-icon-target);
   justify-content: center;
   padding: 0;
-}
-
-.composer [data-fit~="project"] .project-scope {
-  border: 0;
-}
-
-.composer [data-fit~="project"] .project-scope .searchable-picker {
-  width: 100%;
-  margin: 0;
 }
 
 /* The model name takes the room the other controls leave and truncates no

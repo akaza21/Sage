@@ -1,7 +1,7 @@
-import { Eye, MessageCircleQuestion, ShieldCheck } from "../../ui/leanIcons";
+import { Eye, Hand, Pencil } from "../../ui/leanIcons";
 
 export const ACCESS_ICONS = {
   readOnly: Eye,
-  ask: MessageCircleQuestion,
-  workspaceWrite: ShieldCheck,
+  ask: Hand,
+  workspaceWrite: Pencil,
 };
