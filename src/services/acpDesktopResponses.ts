@@ -72,6 +72,9 @@ function safeCapabilities(
     nativeSessionFork: value.nativeSessionFork,
     ...(value.nativeSessionCompact === true && { nativeSessionCompact: true }),
     ...(value.nativeReview === true && { nativeReview: true }),
+    ...(value.nativeBackgroundTerminals === true && {
+      nativeBackgroundTerminals: true,
+    }),
     activeTurnSteer: value.activeTurnSteer,
     childConversationProjection: value.childConversationProjection,
     childTranscriptRead: value.childTranscriptRead,

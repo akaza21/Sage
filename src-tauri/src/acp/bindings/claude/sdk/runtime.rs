@@ -294,7 +294,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.usage_request()
     }
     /// A passive read whose caller gave up: a usage or MCP read.
-    fn abandon_usage_read(&mut self) {
+    fn abandon_passive_read(&mut self) {
         self.abandon_passive_requests();
     }
     fn native_rpc_pending(&self) -> bool {

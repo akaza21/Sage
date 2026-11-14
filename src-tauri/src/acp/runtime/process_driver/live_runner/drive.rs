@@ -89,7 +89,7 @@ where
             state.native_rpc_pending(),
             native_reply,
         ) {
-            state.abandon_usage_read();
+            state.abandon_passive_read();
         }
         if let Err(error) = terminal::queue(&state, &host, &notified, &mut pending) {
             fail_pending_config(&mut pending_config, HostError::RecoveryRequired);

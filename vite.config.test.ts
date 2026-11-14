@@ -191,6 +191,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // A terminal turn's Git workspace changes load after the turn settles.
   "src/features/chat/acp/turnWorkspaceChanges.ts",
   "src/features/chat/acp/TurnEditSummary.tsx",
+  // The background terminal strip loads only while one runs.
+  "src/features/chat/acp/BackgroundTerminals.tsx",
   "src/features/harness/HarnessSignInStatus.tsx",
   // The Chat search dialog loads on the first Search chats request.
   "src/features/chatSearch/ChatSearchControl.tsx",

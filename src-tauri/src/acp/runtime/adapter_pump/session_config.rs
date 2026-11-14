@@ -69,6 +69,17 @@ pub(crate) fn write_usage_read<A: HarnessAdapter>(
     write_egress(adapter, transport, egress)
 }
 
+pub(crate) fn write_terminals<A: HarnessAdapter>(
+    adapter: &mut A,
+    transport: &mut impl EgressTransport,
+    action: &crate::acp::background_terminals::TerminalAction,
+) -> Result<(), crate::acp::runtime::HostError> {
+    let egress = adapter
+        .background_terminals(action)
+        .map_err(|_| crate::acp::runtime::HostError::Intent)?;
+    write_egress(adapter, transport, egress)
+}
+
 pub(crate) fn write_goal<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
@@ -189,8 +200,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.adapter.take_native_rpc_reply()
     }
-    pub(crate) fn abandon_usage_read(&mut self) {
-        self.adapter.abandon_usage_read();
+    pub(crate) fn abandon_passive_read(&mut self) {
+        self.adapter.abandon_passive_read();
     }
     pub(crate) fn write_goal(
         &mut self,
@@ -208,6 +219,15 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         self.ensure_live()
             .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
         write_usage_read(&mut self.adapter, transport)
+    }
+    pub(crate) fn write_terminals(
+        &mut self,
+        transport: &mut impl EgressTransport,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        self.ensure_live()
+            .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
+        write_terminals(&mut self.adapter, transport, action)
     }
     pub(crate) fn write_control(
         &mut self,
@@ -263,8 +283,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.adapter.take_native_rpc_reply()
     }
-    pub(crate) fn abandon_usage_read(&mut self) {
-        self.adapter.abandon_usage_read();
+    pub(crate) fn abandon_passive_read(&mut self) {
+        self.adapter.abandon_passive_read();
     }
     pub(crate) fn write_goal(
         &mut self,
@@ -278,6 +298,13 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         transport: &mut impl EgressTransport,
     ) -> Result<(), crate::acp::runtime::HostError> {
         write_usage_read(&mut self.adapter, transport)
+    }
+    pub(crate) fn write_terminals(
+        &mut self,
+        transport: &mut impl EgressTransport,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        write_terminals(&mut self.adapter, transport, action)
     }
     pub(crate) fn write_child(
         &mut self,

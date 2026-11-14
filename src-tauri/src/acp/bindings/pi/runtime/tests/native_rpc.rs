@@ -112,7 +112,7 @@ fn stats_that_arrive_after_the_caller_gave_up_refresh_usage_but_answer_no_one() 
     ready(&mut runtime);
     let read = runtime.read_usage().unwrap();
     let query = deliver(&mut runtime, read);
-    runtime.abandon_usage_read();
+    runtime.abandon_passive_read();
     assert!(!runtime.native_rpc_pending());
     let batch = runtime.ingest(&response(&query, stats()), &Mapper).unwrap();
     assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
@@ -126,7 +126,7 @@ fn a_reply_to_an_abandoned_read_never_answers_the_next_caller() {
     ready(&mut runtime);
     let first = runtime.read_usage().unwrap();
     let first = deliver(&mut runtime, first);
-    runtime.abandon_usage_read();
+    runtime.abandon_passive_read();
     let control = SessionControl::SetTitle {
         title: RequiredText::new("sessionTitle", "Named").unwrap(),
     };

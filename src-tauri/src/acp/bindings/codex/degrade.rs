@@ -35,6 +35,7 @@ struct OptionalCapabilities {
     native_session_fork: bool,
     native_session_compact: bool,
     native_review: bool,
+    native_background_terminals: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -63,6 +64,8 @@ const OBSERVED_CAPABILITY_EVIDENCE: [ObservedCapabilityEvidence; 1] =
             // same generated schema.
             native_session_compact: true,
             native_review: true,
+            // `thread/backgroundTerminals/*` are pinned from the same schema.
+            native_background_terminals: true,
         },
     }];
 
@@ -122,6 +125,7 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         native_session_fork: pinned,
         native_session_compact: pinned,
         native_review: pinned,
+        native_background_terminals: pinned,
     }
 }
 
@@ -157,6 +161,7 @@ pub(crate) fn projected_capabilities(
         native_session_fork: optional.native_session_fork,
         native_session_compact: optional.native_session_compact,
         native_review: optional.native_review,
+        native_background_terminals: optional.native_background_terminals,
         active_turn_steer: optional.active_turn_steer,
         child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,

@@ -286,7 +286,7 @@ impl HarnessAdapter for PiRuntime {
         self.begin_native(super::NativeRequest::SessionStats)
     }
 
-    fn abandon_usage_read(&mut self) {
+    fn abandon_passive_read(&mut self) {
         self.abandon_native();
     }
 

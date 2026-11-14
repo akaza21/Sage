@@ -11,8 +11,10 @@ use uuid::Uuid;
 
 use super::{
     acp::{
-        await_codex_discovery, get_acp_chat_page_inner, get_codex_discovery_inner,
-        get_codex_discovery_with_deadline, start_acp_session_inner,
+        codex_discovery::{
+            await_codex_discovery, get_codex_discovery_inner, get_codex_discovery_with_deadline,
+        },
+        get_acp_chat_page_inner, start_acp_session_inner,
     },
     *,
 };

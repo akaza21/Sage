@@ -12,6 +12,7 @@ use super::manifest::Platform;
 use super::policy::{APPROVAL_POLICY_NEVER, SANDBOX_READ_ONLY};
 use super::turn_policy::{TurnPolicySurface, TurnSettings, turn_policy, validate_turn_policy};
 
+mod background_terminals;
 mod goal;
 mod mcp;
 mod prompt_input;
@@ -88,6 +89,9 @@ pub(crate) enum RequestKind {
     GoalPause,
     GoalClear,
     RateLimitsRead,
+    TerminalsList,
+    TerminalsStop,
+    TerminalsStopAll,
     /// `skills/list` for the `/` menu.
     SkillsList,
     /// `thread/revert`: drops the latest Turn from the thread's history.
@@ -103,6 +107,13 @@ pub(crate) enum RequestKind {
 impl RequestKind {
     pub(crate) fn starts_turn(self) -> bool {
         matches!(self, Self::TurnStart | Self::Review | Self::Compact)
+    }
+
+    pub(crate) fn is_terminals(self) -> bool {
+        matches!(
+            self,
+            Self::TerminalsList | Self::TerminalsStop | Self::TerminalsStopAll
+        )
     }
 }
 
@@ -144,6 +155,9 @@ impl OutgoingRequest {
             RequestKind::GoalPause => "thread/goal/set",
             RequestKind::GoalClear => "thread/goal/clear",
             RequestKind::RateLimitsRead => "account/rateLimits/read",
+            RequestKind::TerminalsList => "thread/backgroundTerminals/list",
+            RequestKind::TerminalsStop => "thread/backgroundTerminals/terminate",
+            RequestKind::TerminalsStopAll => "thread/backgroundTerminals/clean",
             RequestKind::SkillsList => "skills/list",
             RequestKind::ThreadRevert => "thread/revert",
             RequestKind::McpList => "mcpServerStatus/list",

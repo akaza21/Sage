@@ -107,6 +107,8 @@ impl AcpService {
                 | NativeRpcReply::Forked(_)
                 | NativeRpcReply::Released
                 | NativeRpcReply::UsageRead
+                | NativeRpcReply::BackgroundTerminals(_)
+                | NativeRpcReply::TerminalsStopped
                 | NativeRpcReply::Controlled(_)
                 | NativeRpcReply::ControlRefused(_)
                 | NativeRpcReply::McpServers(_)

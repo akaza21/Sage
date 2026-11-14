@@ -113,6 +113,8 @@ fn fork_reply(result: Result<NativeRpcReply, HostError>) -> Result<ExternalId, C
             | NativeRpcReply::ChildTranscript(_)
             | NativeRpcReply::Released
             | NativeRpcReply::UsageRead
+            | NativeRpcReply::BackgroundTerminals(_)
+            | NativeRpcReply::TerminalsStopped
             | NativeRpcReply::Controlled(_)
             | NativeRpcReply::ControlRefused(_)
             | NativeRpcReply::McpServers(_)

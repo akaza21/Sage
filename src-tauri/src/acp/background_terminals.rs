@@ -1,0 +1,46 @@
+//! Commands a harness left running after the step that started them. Sage
+//! only lists and stops them through the harness; nothing is persisted.
+use serde::Serialize;
+
+use super::intent::SafeResourceLocation;
+
+/// Most terminals one listing carries; the harness is asked for no more.
+pub(crate) const MAX_BACKGROUND_TERMINALS: usize = 32;
+/// Byte cap of the opaque handle the WebView sends back to stop one.
+pub(crate) const TERMINAL_HANDLE_BYTES: usize = 128;
+/// Byte cap of one listed command line.
+pub(crate) const TERMINAL_COMMAND_BYTES: usize = 4_096;
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum TerminalAction {
+    List,
+    /// Stops the terminal with this handle from the latest listing.
+    Stop(String),
+    /// Stops every terminal the session left running.
+    StopAll,
+}
+
+impl TerminalAction {
+    pub(crate) fn bytes(&self) -> usize {
+        match self {
+            Self::Stop(handle) => handle.len() + 1,
+            Self::List | Self::StopAll => 1,
+        }
+    }
+}
+
+/// A handle is opaque to Sage and bounded before it reaches the harness.
+pub(crate) fn valid_handle(handle: &str) -> bool {
+    !handle.is_empty()
+        && handle.len() <= TERMINAL_HANDLE_BYTES
+        && !handle.chars().any(char::is_control)
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct BackgroundTerminal {
+    pub(crate) handle: String,
+    /// The sanitized command line.
+    pub(crate) command: String,
+    pub(crate) cwd: Option<SafeResourceLocation>,
+}
