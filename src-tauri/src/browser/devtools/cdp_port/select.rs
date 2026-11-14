@@ -16,8 +16,9 @@ const FRAME_BYTES: usize = 8_000_000;
 /// Steps use `:nth-child(k of tag)` because `tag:pseudo` would read as a URL
 /// scheme to `redact_console` and fail the send-time check. It never reads a
 /// form control's value, and `controls` says when the accessible name may
-/// embed one. The viewport is the visual one, so a pinch-zoomed page frames
-/// what it shows.
+/// embed one. Text the user cannot see is skipped, and password, hidden, card
+/// and one-time-code fields are `sensitive`. The viewport is the visual one,
+/// so a pinch-zoomed page frames what it shows.
 const READ_ELEMENT: &str = r#"function () {
   const root = this;
   if (!(root instanceof Element)) return null;

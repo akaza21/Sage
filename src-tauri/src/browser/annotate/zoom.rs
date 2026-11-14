@@ -18,6 +18,7 @@ fn clear(copy: &AtomicU64, label: &str) {
 }
 
 impl Annotate {
+    /// `None` when a popover covers the page, which keeps Annotate on.
     pub(crate) fn hiding(&self, label: &str, cover: bool) -> Option<Exit> {
         clear(&self.deferred, label);
         if cover {
@@ -30,7 +31,8 @@ impl Annotate {
         }
     }
 
-    /// Lock-free, as placing runs on the main thread.
+    /// Whether to show the page: a frozen one stays hidden until a zoom
+    /// unfreezes it. Lock-free, as placing runs on the main thread.
     pub(crate) fn placed(&self, label: &str) -> bool {
         clear(&self.covered, label);
         if self.is_frozen(label) {

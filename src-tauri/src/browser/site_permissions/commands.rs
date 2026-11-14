@@ -200,6 +200,8 @@ pub(crate) async fn browser_site_settings(
     site_settings(&state)
 }
 
+/// Changing an Allow to Block reloads that site's tabs so their access ends
+/// now.
 #[tauri::command]
 pub(crate) async fn browser_site_setting_set(
     app: AppHandle,

@@ -109,6 +109,7 @@ pub(super) fn chrome_major(version: &str) -> Option<u32> {
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) enum Left {
     Reset,
+    /// A reset step failed, so some override may still be on.
     Unknown,
 }
 

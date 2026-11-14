@@ -54,7 +54,8 @@ pub(crate) enum Outcome<'a> {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Settled {
     Committed,
-    /// Never evidence that a user navigation landed.
+    /// `Source()` committed through another navigation's commit; never
+    /// evidence that a user navigation landed.
     Adopted,
     Abandoned,
     Failed,

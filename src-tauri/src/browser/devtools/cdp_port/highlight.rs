@@ -27,8 +27,8 @@ pub(in crate::browser::devtools) const CLEAR: [(&str, &str); 2] = [
 pub(in crate::browser::devtools) const DISABLE: [(&str, &str); 2] =
     [("Overlay.disable", "{}"), ("DOM.disable", "{}")];
 
-/// Best effort: every step is permitless, so it can neither revoke the permit
-/// nor fail the act.
+/// True when the outline is on the page. Best effort: every step is
+/// permitless, so it can neither revoke the permit nor fail the act.
 pub(in crate::browser::devtools) fn mark<T: CdpTransport>(
     port: &CdpPort<T>,
     stamp: DocumentStamp,

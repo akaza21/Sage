@@ -33,6 +33,8 @@ impl ImportedFile {
         Ok((file, Self { path, identity }))
     }
 
+    /// Refuses unless the name still leads to the file the import read,
+    /// unchanged.
     pub(super) fn delete(&self) -> VaultResult<()> {
         delete_if_same(&self.path, |file| self.check(file))
     }

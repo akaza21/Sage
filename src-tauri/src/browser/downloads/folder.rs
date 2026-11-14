@@ -26,7 +26,9 @@ pub(crate) enum Plan {
     Silent(Placeholder),
     Ask {
         file_name: String,
+        /// Save the chosen folder as the download folder.
         remember: bool,
+        /// Where the dialog opens.
         directory: Option<PathBuf>,
     },
 }
@@ -41,7 +43,8 @@ pub(crate) fn plan(
     plan_before(stored, suggested, mime, taken, super::io::test_deadline())
 }
 
-/// A `Silent` path has been reserved on disk. This does file-system work, so
+/// `taken` reports destinations claimed by downloads still in flight. A
+/// `Silent` path has been reserved on disk. This does file-system work, so
 /// it runs off the WebView2 UI thread.
 pub(crate) fn plan_before(
     stored: Option<&Path>,
@@ -86,6 +89,7 @@ pub(crate) fn admit_folder(path: &Path) -> Option<PathBuf> {
     admit_folder_before(path, super::io::test_deadline())
 }
 
+/// `deadline` is the caller's original one, including queue time.
 pub(crate) fn admit_folder_before(path: &Path, deadline: Deadline) -> Option<PathBuf> {
     deadline.check().ok()?;
     if !path.is_absolute() {

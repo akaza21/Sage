@@ -26,6 +26,7 @@ pub(crate) use store::{Cursor, MAX_PAGE, MAX_REMOVE, MAX_SEARCH_CHARS, VisitPage
 use writer::{Write, Writer};
 
 pub(crate) const FILE_NAME: &str = "browsing-history.db";
+/// Visits past this many pending messages are dropped, never waited on.
 const QUEUE: usize = 256;
 const MAX_BATCH: usize = 64;
 const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
@@ -39,6 +40,7 @@ enum Request {
     Read(Read),
 }
 
+/// Applied after every write queued before it.
 enum Read {
     Page {
         search: String,
@@ -150,7 +152,8 @@ impl BrowsingHistory {
         self.ask(|reply| Read::Remove { ids, reply })
     }
 
-    /// Blocks; call it off the UI thread.
+    /// Removes visits in `[from, to)`, after every visit recorded before this
+    /// call. Blocks; call it off the UI thread.
     pub(crate) fn remove_range(&self, from: i64, to: i64) -> Result<usize, String> {
         self.ask(|reply| Read::RemoveRange { from, to, reply })
     }

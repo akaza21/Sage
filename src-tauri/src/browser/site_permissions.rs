@@ -67,9 +67,11 @@ pub(crate) struct PermissionSnapshot {
     origin: String,
     pending: Vec<PermissionPrompt>,
     decisions: Vec<PermissionDecisionView>,
+    /// The page held an Allow that has ended and has not reloaded since.
     stale_access: bool,
 }
 
+/// `None` for a non-admitted URL or an origin too long to save.
 pub(super) fn site_origin(source: &str) -> Option<String> {
     let origin = admit_url(source).ok()?.origin().ascii_serialization();
     (origin.len() <= MAX_SITE_ORIGIN_BYTES).then_some(origin)
@@ -200,6 +202,8 @@ impl SitePermissions {
         true
     }
 
+    /// The other pending prompts the saved answer now settles, as `(id, tab)`;
+    /// `None` when nothing was saved.
     pub(super) fn resolve_site(
         &mut self,
         id: u64,
@@ -267,6 +271,8 @@ impl SitePermissions {
         Ok(self.saved.remove(&key))
     }
 
+    /// Returns the origins that had an Allow, whose pages may still hold access
+    /// until they reload.
     pub(super) fn reset_all(&mut self) -> Result<BTreeSet<String>, String> {
         if let Some(store) = &self.store {
             store

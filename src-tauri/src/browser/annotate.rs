@@ -73,6 +73,8 @@ pub(crate) trait InspectOverlay {
         freeze: &dyn Fn(),
     ) -> Result<Selection, String>;
     fn release(&self, label: &str, reveal: bool, resume: bool) -> Result<(), String>;
+    /// Focuses the page when `page`, else Sage's webview, whose comment box
+    /// takes the typing.
     fn focus(&self, label: &str, page: bool) -> Result<(), String>;
     fn clear_outline(&self, label: &str) -> Result<(), String>;
 }
@@ -88,8 +90,9 @@ pub(crate) struct AnnotateChange {
     error: Option<String>,
 }
 
-/// The atomics are lock-free copies for the main thread, which must never
-/// wait on the mode lock while a native step needs that thread.
+/// The atomics are lock-free copies (tab numbers, 0 for none) for the main
+/// thread, which must never wait on the mode lock while a native step needs
+/// that thread.
 #[derive(Default)]
 pub(crate) struct Annotate {
     mode: Mutex<AnnotateMode>,
@@ -110,8 +113,8 @@ impl Annotate {
     }
 
     /// Holds the mode lock so a start cannot run its enables between the check
-    /// and `disable`; a busy lock skips `disable`. Never call it on the main
-    /// thread.
+    /// and `disable`; a busy lock skips `disable`. Returns whether `disable`
+    /// ran. Never call it on the main thread.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub(crate) fn disable_unless_annotating(&self, label: &str, disable: impl FnOnce()) -> bool {
         let Ok(mode) = self.mode.try_lock() else {

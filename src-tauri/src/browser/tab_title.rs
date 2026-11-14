@@ -1,6 +1,7 @@
 use super::BrowserTabs;
 
 impl<T> BrowserTabs<T> {
+    /// Returns whether the visible title changed.
     pub(super) fn set_document_title(&mut self, label: &str, url: &str, raw: &str) -> bool {
         let Some(tab) = self.entries.get_mut(label) else {
             return false;

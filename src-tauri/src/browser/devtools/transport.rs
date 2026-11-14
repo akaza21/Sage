@@ -67,24 +67,27 @@ pub(crate) trait CdpTransport {
         timeout: Duration,
     ) -> Result<String, BrowserFailure>;
 
+    /// The committed document the next command would act on.
     fn stamp(&self) -> Result<DocumentStamp, BrowserFailure>;
 
+    /// Whether an Agent command left this transport in the current dispatch.
     fn issued(&self) -> bool;
 
-    /// Stopped (Stop, Take over, detach), not spent on a navigation; a wait's
-    /// probes hold no permit, so this is how they learn to stop.
+    /// Stopped (Stop, Take over, detach), not spent on a navigation; false
+    /// without a permit. Wait probes bypass the permit, so they check this.
     fn stopped(&self) -> bool {
         false
     }
 
-    /// A lock-free read, for drawing only.
+    /// Whether the user's Annotate overlay is on this page. A lock-free read,
+    /// for drawing only.
     fn annotating(&self) -> bool {
         false
     }
 
-    /// No Annotate change may be under way either, so a start cannot enable its
-    /// overlay between the check and `steps`. It never waits; when Annotate is
-    /// busy it skips.
+    /// Runs `steps` only while this page does not annotate and no Annotate
+    /// change is under way, so a start cannot enable its overlay between the
+    /// check and `steps`. It never waits; when Annotate is busy it skips.
     fn unless_annotating(&self, steps: &mut dyn FnMut()) {
         if !self.annotating() {
             steps();

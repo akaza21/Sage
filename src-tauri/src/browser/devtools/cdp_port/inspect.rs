@@ -126,8 +126,9 @@ pub(crate) fn box_model_params(node_id: u64) -> String {
     json!({"nodeId": node_id}).to_string()
 }
 
-/// The box is in CSS px, while the hinge is drawn in unzoomed px, so the
-/// rectangle is scaled by the page `zoom` (1.0 at 100%).
+/// `None` for a missing, empty or malformed box. The box is in CSS px, while
+/// the hinge is drawn in unzoomed px, so the rectangle is scaled by the page
+/// `zoom` (1.0 at 100%).
 pub(crate) fn outline_params(box_model: &str, zoom: f64) -> Option<String> {
     if box_model.len() > BOX_MODEL_BYTES || !zoom.is_finite() || !(0.25..=5.0).contains(&zoom) {
         return None;

@@ -12,6 +12,7 @@ use super::{VaultError, VaultResult, cipher::VaultKey, file_identity::FileIdenti
 #[cfg(windows)]
 mod dpapi;
 
+/// A wrapped key file larger than this is not one Sage wrote.
 const MAX_WRAPPED_KEY_BYTES: u64 = 4 * 1024;
 
 pub(super) trait KeyProtector: Send + Sync {
@@ -22,6 +23,7 @@ pub(super) trait KeyProtector: Send + Sync {
     fn unprotect(&self, wrapped: &[u8]) -> VaultResult<Zeroizing<Vec<u8>>>;
 }
 
+/// `None` where Sage has not proven a key store yet.
 pub(super) fn platform_protector() -> Option<Arc<dyn KeyProtector>> {
     #[cfg(windows)]
     {
@@ -54,6 +56,8 @@ impl KeyFile {
         Self { path, protector }
     }
 
+    /// `None` when there is no key file yet; a file the protector cannot
+    /// unwrap is `KeyLost`.
     pub(super) fn load(&self) -> VaultResult<Option<LoadedKey>> {
         let Some(file) = self.open()? else {
             return Ok(None);

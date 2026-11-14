@@ -27,6 +27,7 @@ pub(crate) struct AgentWorld(Arc<Mutex<WorldCache>>);
 struct WorldCache {
     frame_id: Option<String>,
     target_info_refused: bool,
+    /// The navigation whose refused world last cleared the frame id.
     reread_navigation: Option<u64>,
     context: Option<(u64, u64)>,
 }
@@ -43,6 +44,8 @@ impl<T: CdpTransport> CdpPort<T> {
     /// `navigation` names the document by navigation id, so title or favicon
     /// changes keep the world. `None` means the page is loading and has no stamp:
     /// every step is a permitless read and the cached world is left as it is.
+    /// While the outgoing document's world still answers this fails with
+    /// `StaleHandle`, so a wait cannot succeed against the old document.
     pub(super) fn in_agent_world<R>(
         &self,
         navigation: Option<u64>,
@@ -145,8 +148,7 @@ impl<T: CdpTransport> CdpPort<T> {
         }
     }
 
-    /// The main frame's id equals the page target's id and outlives navigations,
-    /// so it is read once per port.
+    /// Cached across navigations; reread when the target changes.
     fn main_frame_id(
         &self,
         read_only: bool,

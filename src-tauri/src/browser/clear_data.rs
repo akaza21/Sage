@@ -269,6 +269,7 @@ pub(crate) async fn browser_clear_data(
     Ok(result)
 }
 
+/// A cleared profile with history left behind is not a success.
 #[cfg(windows)]
 fn pending_outcome(
     profile: Result<(), String>,

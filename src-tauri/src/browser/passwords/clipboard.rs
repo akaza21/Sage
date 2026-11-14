@@ -56,7 +56,8 @@ impl PendingClear {
         slot.generation
     }
 
-    /// The port calls this with the clipboard open, so no Copy can write between
+    /// `generation` `None` (quitting) clears whichever copy is due. The port
+    /// calls this with the clipboard open, so no Copy can write between
     /// this check and the clear. A clear that fails leaves the copy due for a
     /// retry or for quitting.
     pub(super) fn clear_due(

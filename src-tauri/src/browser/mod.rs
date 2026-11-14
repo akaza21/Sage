@@ -79,6 +79,7 @@ pub(crate) struct BrowserState {
     clearing_data: AtomicBool,
     browsing_history: browsing_history::BrowsingHistory,
     #[cfg_attr(not(windows), allow(dead_code))]
+    /// Device toolbar updates apply one at a time across tabs.
     device_updates: Mutex<()>,
 }
 
@@ -130,6 +131,7 @@ struct BrowserTab<T> {
     revision: u64,
     document_revision: u64,
     committed_url: Option<String>,
+    /// The latest visit queued to history; `None` when none was queued.
     visited_url: Option<String>,
     history: BrowserHistory,
     fallback_url: Option<String>,

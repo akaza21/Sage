@@ -17,6 +17,7 @@ pub(crate) struct CapturedPageContext {
     text: String,
 }
 
+/// Reads only while the page still shows `expected_revision`.
 pub(crate) fn capture_page_context<T: CdpTransport>(
     port: &mut CdpPort<T>,
     tab_id: &str,

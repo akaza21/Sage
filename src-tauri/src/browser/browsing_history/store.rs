@@ -23,6 +23,7 @@ pub(crate) struct Visit {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+/// The next page starts strictly older than this.
 pub(crate) struct Cursor {
     pub visited_at: i64,
     pub id: i64,
@@ -107,6 +108,7 @@ pub(super) fn insert(
     Ok(transaction.last_insert_rowid())
 }
 
+/// False when the visit no longer exists.
 pub(super) fn replace_url(
     transaction: &Transaction<'_>,
     id: i64,
@@ -156,6 +158,7 @@ pub(super) fn prune(transaction: &Transaction<'_>, now: i64) -> rusqlite::Result
     Ok(())
 }
 
+/// `search` matches URL or title, ASCII case-insensitive.
 pub(super) fn page(
     connection: &Connection,
     search: &str,
@@ -208,6 +211,7 @@ pub(super) fn remove(connection: &Connection, ids: &[i64]) -> rusqlite::Result<u
     )
 }
 
+/// Removes visits in `[from, to)`.
 pub(super) fn remove_range(connection: &Connection, from: i64, to: i64) -> rusqlite::Result<usize> {
     connection.execute(
         "DELETE FROM browser_visits WHERE visited_at >= ?1 AND visited_at < ?2",

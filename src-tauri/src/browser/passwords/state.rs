@@ -25,7 +25,6 @@ use super::{
 const DATABASE_FILE: &str = "passwords.db";
 const KEY_FILE: &str = "passwords.key";
 const LOCK_FILE: &str = "passwords.lock";
-/// The longest search accepted.
 const MAX_QUERY_BYTES: usize = 256;
 /// How long the vault stays open after its last use. Closing it drops the
 /// database connection and wipes the unwrapped key; the next use reopens it.
@@ -218,6 +217,7 @@ impl PasswordsState {
         }
     }
 
+    /// How long to wait before checking again; `None` once the vault is closed.
     fn close_if_idle(&self, now: Instant) -> Option<Duration> {
         let mut vault = lock(&self.0.vault);
         let idle_for = vault
@@ -304,10 +304,9 @@ impl PasswordsState {
     }
 
     /// Captures this import before the cancel worker is queued, so a late cancel
-    /// never reaches the next import. True acknowledges rollback; false means
-    /// commit already won. A commit in
-    /// progress is too late to cancel, so this request never waits for a durable
-    /// write.
+    /// never reaches the next import. True means the cancel was accepted, not
+    /// that the rollback completed; false means no active import, or the commit
+    /// was already admitted. Never waits for a durable write.
     pub(super) fn cancel_import_request(&self) -> impl FnOnce() -> bool + Send + 'static + use<> {
         let status = lock(&self.0.running_import).clone();
         move || {
@@ -335,6 +334,8 @@ impl PasswordsState {
         self.cancel_import_request()()
     }
 
+    /// The CSV holds every password in plain text; only the file that import
+    /// read, unchanged, is deleted.
     pub(crate) fn delete_imported_file(&self) -> VaultResult<()> {
         let mut imported = lock(&self.0.imported_file);
         imported

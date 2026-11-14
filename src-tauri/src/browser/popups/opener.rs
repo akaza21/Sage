@@ -41,6 +41,8 @@ impl PopupRequests {
         self.insert(opener, url, PopupState::NativeOpening)
     }
 
+    /// False when the opener closed or the entry was dropped first. `now`
+    /// starts the acknowledgement deadline.
     pub(crate) fn native_opened(&mut self, id: u64, tab_id: &str, now: Instant) -> bool {
         let Some((intent, state)) = self.entries.get_mut(&id) else {
             return false;
@@ -117,6 +119,7 @@ impl PopupRequests {
 pub(crate) enum NavigationVerdict {
     Admit,
     Deny,
+    /// Deny, and close the blank popup child that spent its grant on it.
     Abandon,
 }
 
@@ -162,6 +165,7 @@ pub(crate) fn emit_popup_intent(app: &AppHandle, id: u64) {
     }
 }
 
+/// False when nothing was queued.
 pub(crate) fn enqueue_intent(app: &AppHandle, opener: &str, requested: &Url) -> bool {
     let browser = app.state::<BrowserState>();
     let intent = browser.tabs.lock().ok().and_then(|tabs| {

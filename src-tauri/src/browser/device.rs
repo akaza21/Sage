@@ -14,6 +14,7 @@ pub(crate) use emulation::{Left, apply_with};
 mod native;
 
 pub(crate) const RESPONSIVE: &str = "responsive";
+/// Viewport bounds in CSS px.
 const MIN_SIDE: u32 = 50;
 const MAX_SIDE: u32 = 3840;
 const MIN_SCALE_PERCENT: u16 = 10;
@@ -173,7 +174,9 @@ pub(crate) fn unavailable_reason() -> Option<&'static str> {
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(tag = "state", content = "device", rename_all = "camelCase")]
 pub(crate) enum DeviceHeld {
+    /// `None`: the page holds no emulation.
     Known(Option<DeviceEmulation>),
+    /// A reset step failed, so some override may still be on.
     Unconfirmed,
 }
 

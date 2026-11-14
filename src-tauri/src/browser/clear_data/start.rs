@@ -13,6 +13,8 @@ pub(super) enum ClearStart {
     Begun(Vec<String>),
 }
 
+/// Refuses before any tab closes, any Agent access is revoked or the clear
+/// gate is claimed.
 pub(super) fn start_clear<T>(
     tabs: &std::sync::Mutex<super::super::BrowserTabs<T>>,
     clearing_data: &AtomicBool,

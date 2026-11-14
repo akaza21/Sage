@@ -18,6 +18,7 @@ pub(super) enum Write {
     Visit {
         tab: String,
         url: String,
+        /// `None` for a new document, which reports its title later.
         title: Option<String>,
         visited_at: i64,
         same_document: bool,
@@ -38,6 +39,7 @@ struct LastVisit {
 #[derive(Clone, Default)]
 pub(super) struct Writer {
     last: VecDeque<LastVisit>,
+    /// `None` before the first prune.
     since_prune: Option<usize>,
 }
 

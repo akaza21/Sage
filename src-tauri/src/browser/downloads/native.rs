@@ -34,6 +34,8 @@ struct PendingDownload {
     armed_at: Instant,
     app: AppHandle,
     tab_id: String,
+    /// Save the chosen folder once the download starts, if the stored folder
+    /// is still at this revision.
     remember: Option<i64>,
 }
 
