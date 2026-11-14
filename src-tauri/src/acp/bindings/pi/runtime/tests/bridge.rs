@@ -40,7 +40,7 @@ impl Journey {
         let mut runtime = fixture_runtime(99);
         if bridge {
             runtime.enable_bridge(
-                crate::workspace::Workspace::open("project", "root-pi", &root).unwrap(),
+                sage_workspace::Workspace::open("project", "root-pi", &root).unwrap(),
             );
         }
         ready(&mut runtime);

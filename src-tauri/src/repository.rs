@@ -19,7 +19,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::workspace::Workspace;
+    use sage_workspace::Workspace;
 
     #[cfg(windows)]
     use std::collections::HashMap;

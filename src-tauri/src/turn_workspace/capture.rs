@@ -5,10 +5,8 @@ use std::{
 
 use super::directory::Directory;
 use super::{MAX_TURN_WORKSPACE_CHANGES, WorkspaceMark, history, parse_mark};
-use crate::{
-    repository_git::{RepositoryBoundary, repository_boundary, run_git},
-    workspace::file_walk::MAX_WORKSPACE_FILES,
-};
+use crate::repository_git::{RepositoryBoundary, repository_boundary, run_git};
+use sage_workspace::file_walk::MAX_WORKSPACE_FILES;
 
 const MAX_INDEX_BYTES: usize = 16 * 1024 * 1024;
 const MAX_STATUS_BYTES: usize = 1024 * 1024;

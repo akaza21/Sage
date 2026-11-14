@@ -33,7 +33,7 @@ fn reply(id: &str, value: &str, token: EgressToken) -> Result<AdapterEgress, Ada
 }
 
 impl PiRuntime {
-    pub(crate) fn enable_bridge(&mut self, workspace: crate::workspace::Workspace) {
+    pub(crate) fn enable_bridge(&mut self, workspace: sage_workspace::Workspace) {
         self.bridge = Some(Bridge::new(workspace));
         self.translator.bridge_tools = true;
     }
@@ -45,7 +45,7 @@ impl PiRuntime {
     ) -> Result<(), AdapterRuntimeError> {
         let (project, _, root_id) = root.scope();
         let workspace =
-            crate::workspace::Workspace::open(project.as_str(), root_id.as_str(), root.as_path())
+            sage_workspace::Workspace::open(project.as_str(), root_id.as_str(), root.as_path())
                 .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         self.enable_bridge(workspace);
         Ok(())

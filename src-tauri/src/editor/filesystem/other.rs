@@ -2,7 +2,7 @@ use std::fs::File;
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::workspace::{RootIdentity, Workspace};
+use sage_workspace::{RootIdentity, Workspace};
 
 pub(in crate::editor) struct HeldParent;
 

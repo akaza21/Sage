@@ -60,7 +60,7 @@ test("BETA-0001 macOS CI compiles and tests the named shared contracts", async (
     /name:\s*Test Rust parallel phase\s*\n\s*run:\s*'([^']+)'/,
   );
   assert.ok(parallelPhase, "Rust matrix must run the parallel test phase");
-  for (const suite of ["workspace::notify", "editor_watch"]) {
+  for (const suite of ["workspace_notify", "editor_watch"]) {
     assert.ok(
       !parallelPhase[1].includes(`--skip ${suite}`),
       `the parallel phase must not skip ${suite}`,

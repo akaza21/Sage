@@ -3,15 +3,13 @@
 //! Steer carries no mentions: every binding that accepts it sends its text
 //! alone, so a resolved file would never reach the harness.
 use super::*;
-use crate::project_registry::ProjectRegistryStore;
-use crate::{
-    acp::{
-        prompt_mentions::{MentionRoot, Mentions, mention_tokens, resolve},
-        transcript_quote::Prompt,
-    },
-    workspace::Workspace,
+use crate::acp::{
+    prompt_mentions::{MentionRoot, Mentions, mention_tokens, resolve},
+    transcript_quote::Prompt,
 };
+use crate::project_registry::ProjectRegistryStore;
 use sage_acp_protocol::{contract::SageAgentSessionId, intent::BindingId};
+use sage_workspace::Workspace;
 
 /// The `@` tokens of `typed`, the person's own text: never attached context,
 /// which may quote untrusted pages.

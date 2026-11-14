@@ -1,6 +1,7 @@
 use sage_core::error::{AppError, AppResult};
 
-use crate::{git_budget, repository, workspace::Workspace};
+use crate::{git_budget, repository};
+use sage_workspace::Workspace;
 
 const MAX_GIT_ABORT_OUTPUT_BYTES: usize = 64 * 1024;
 
@@ -88,7 +89,7 @@ pub(crate) async fn abort_in_progress_with_policy(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::Workspace;
+    use sage_workspace::Workspace;
     use std::{fs, path::Path};
     use uuid::Uuid;
 

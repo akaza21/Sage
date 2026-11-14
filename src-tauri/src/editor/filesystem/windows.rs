@@ -17,7 +17,7 @@ use windows_sys::Win32::{
     },
 };
 
-use crate::workspace::{
+use sage_workspace::{
     RootIdentity, Workspace, open_held_parent, open_workspace_text_file, root_identity_file,
 };
 

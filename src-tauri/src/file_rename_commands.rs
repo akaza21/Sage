@@ -6,16 +6,15 @@ use tauri::State;
 
 use crate::{
     preview_lifecycle::on_committed_project_transition_epoch,
-    resource_commands::build_bootstrap_snapshot,
-    state::AppState,
+    resource_commands::build_bootstrap_snapshot, state::AppState,
     workbench_persistence::validate_layout,
-    workspace::file_rename::{FileRenameCommit, FileRenameMarker},
 };
 use sage_db::database::Database;
 use sage_domain::{
     file_operations::{FileRenameOutcome, RenameProjectFileRequest, RenameProjectFileResult},
     resource::ResourceRef,
 };
+use sage_workspace::file_rename::{FileRenameCommit, FileRenameMarker};
 
 use validation::{
     MAX_JAVASCRIPT_SAFE_INTEGER, ensure_request_resources_closed, ensure_resources_closed,

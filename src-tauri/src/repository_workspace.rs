@@ -3,8 +3,8 @@ use sage_core::error::{AppError, AppResult, RepositoryLayout};
 use crate::{
     git_budget,
     repository::{self, GitOutput, GitProcessPolicy},
-    workspace::Workspace,
 };
+use sage_workspace::Workspace;
 
 pub(crate) async fn repository_boundary(
     workspace: &Workspace,

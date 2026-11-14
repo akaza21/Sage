@@ -57,7 +57,7 @@ pub(crate) fn handle_run_event(app_handle: &AppHandle, event: RunEvent) {
         } if label == "main"
     ) || matches!(&event, RunEvent::Exit)
     {
-        if !GIT_EXIT.finished() && !crate::workspace::notify::cancel_all_workspace_watches() {
+        if !GIT_EXIT.finished() && !crate::workspace_notify::cancel_all_workspace_watches() {
             warn!("workspace watcher Git cleanup did not settle before window teardown");
             GIT_EXIT.start(app_handle.clone(), 0);
         }
@@ -109,7 +109,7 @@ pub(crate) fn handle_run_event(app_handle: &AppHandle, event: RunEvent) {
         );
         if !matches!(&outcome, ExitRequestOutcome::Deferred(_))
             && GIT_EXIT.defer(
-                crate::workspace::notify::cancel_all_workspace_watches,
+                crate::workspace_notify::cancel_all_workspace_watches,
                 || api.prevent_exit(),
                 || GIT_EXIT.start(app_handle.clone(), code.unwrap_or(0)),
             )

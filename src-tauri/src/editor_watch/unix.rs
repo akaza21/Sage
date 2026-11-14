@@ -9,7 +9,7 @@ use std::{
 use sage_core::error::{AppError, AppResult};
 
 use super::{ResourceRef, editor_notice_kind_from_unix_delivery, emit_if_active};
-use crate::workspace::notify::unix::{prepare_editor_watch, run_prepared};
+use crate::workspace_notify::unix::{prepare_editor_watch, run_prepared};
 
 pub(super) fn spawn_editor_watch(
     app: tauri::AppHandle,

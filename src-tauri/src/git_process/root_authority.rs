@@ -3,7 +3,7 @@ use std::{fs, path::Path};
 use sage_core::error::{AppError, AppResult};
 use tokio::process::Command;
 
-use crate::workspace::Workspace;
+use sage_workspace::Workspace;
 
 pub(crate) struct GitRootAuthority {
     directory: fs::File,
@@ -57,7 +57,7 @@ impl GitRootAuthority {
     /// Fails when `root` no longer names the retained directory, so a root
     /// that was moved or replaced after admission is refused before the spawn.
     pub(super) fn ensure_names(&self, root: &Path) -> AppResult<()> {
-        if crate::workspace::root_identity_path(root)? == directory_identity(&self.directory)? {
+        if sage_workspace::root_identity_path(root)? == directory_identity(&self.directory)? {
             Ok(())
         } else {
             Err(AppError::InvalidRequest(
@@ -77,8 +77,8 @@ fn open_directory(root: &Path) -> AppResult<fs::File> {
 }
 
 #[cfg(unix)]
-fn directory_identity(directory: &fs::File) -> AppResult<crate::workspace::RootIdentity> {
-    crate::workspace::root_identity_metadata(&directory.metadata()?)
+fn directory_identity(directory: &fs::File) -> AppResult<sage_workspace::RootIdentity> {
+    sage_workspace::root_identity_metadata(&directory.metadata()?)
 }
 
 #[cfg(unix)]
@@ -142,8 +142,8 @@ fn open_anchor(root: &Path) -> AppResult<Option<fs::File>> {
 }
 
 #[cfg(windows)]
-fn directory_identity(directory: &fs::File) -> AppResult<crate::workspace::RootIdentity> {
-    crate::workspace::root_identity_file(directory)
+fn directory_identity(directory: &fs::File) -> AppResult<sage_workspace::RootIdentity> {
+    sage_workspace::root_identity_file(directory)
 }
 
 #[cfg(windows)]
@@ -159,7 +159,7 @@ fn open_directory(_root: &Path) -> AppResult<fs::File> {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn directory_identity(_directory: &fs::File) -> AppResult<crate::workspace::RootIdentity> {
+fn directory_identity(_directory: &fs::File) -> AppResult<sage_workspace::RootIdentity> {
     Err(AppError::InvalidRequest(
         "safe Git root authority is unavailable on this platform".into(),
     ))

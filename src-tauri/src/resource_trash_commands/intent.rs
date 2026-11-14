@@ -8,18 +8,16 @@ use sage_core::{
 use sage_db::error::SqliteResultExt;
 use sha2::{Digest, Sha256};
 
-use crate::{
-    project_registry::RootRecord,
-    workspace::{
-        MAX_DIRECTORY_ENTRIES,
-        resource_trash::{ResourceTrashIdentity, TRASH_NAME},
-        root_identity_path,
-    },
-};
+use crate::project_registry::RootRecord;
 use sage_db::database::Database;
 use sage_domain::{
     file_operations::{TrashProjectResourceRequest, TrashResourceKind},
     resource::ResourceRef,
+};
+use sage_workspace::{
+    MAX_DIRECTORY_ENTRIES,
+    resource_trash::{ResourceTrashIdentity, TRASH_NAME},
+    root_identity_path,
 };
 
 use super::{MAX_JAVASCRIPT_SAFE_INTEGER, layout, parent_resource};
@@ -100,8 +98,8 @@ impl PendingTrashIntent {
                 "pending {TRASH_NAME} intent is corrupt"
             )));
         }
-        crate::workspace::validate_contract_path(&self.source.relative_path, false)?;
-        crate::workspace::validate_contract_path(&self.parent.relative_path, true)
+        sage_workspace::validate_contract_path(&self.source.relative_path, false)?;
+        sage_workspace::validate_contract_path(&self.parent.relative_path, true)
     }
 }
 

@@ -5,8 +5,8 @@ use std::{
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::workspace::{RootIdentity, Workspace, root_identity_path};
 use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
+use sage_workspace::{RootIdentity, Workspace, root_identity_path};
 
 /// A retained, project-qualified authority for exactly one registered root.
 /// It has no path-based production constructor and is intentionally not Clone.
@@ -129,7 +129,7 @@ fn open_directory(root: &Path) -> AppResult<fs::File> {
 
 #[cfg(unix)]
 fn directory_identity(directory: &fs::File) -> AppResult<RootIdentity> {
-    crate::workspace::root_identity_metadata(&directory.metadata()?)
+    sage_workspace::root_identity_metadata(&directory.metadata()?)
 }
 
 #[cfg(windows)]
@@ -150,7 +150,7 @@ fn open_directory(root: &Path) -> AppResult<fs::File> {
 
 #[cfg(windows)]
 fn directory_identity(directory: &fs::File) -> AppResult<RootIdentity> {
-    crate::workspace::root_identity_file(directory)
+    sage_workspace::root_identity_file(directory)
 }
 
 #[cfg(not(any(unix, windows)))]

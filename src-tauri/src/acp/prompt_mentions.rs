@@ -10,11 +10,11 @@
 //! accepts). Nothing is persisted: the durable prompt keeps only its text.
 use super::attached_context::files::{Resources, file_is_excluded};
 use crate::acp::prompt_files::secrets::path_is_secret;
-use crate::workspace::{
+use sage_core::limits::prompt_files::{DISPATCH_BYTES, FILE_BYTES};
+use sage_workspace::{
     RootIdentity, Workspace, decode_text_bytes, leaf_identity, open_workspace_text_file,
     search::handle_contract_relative, validate_contract_path,
 };
-use sage_core::limits::prompt_files::{DISPATCH_BYTES, FILE_BYTES};
 use std::{fs::File, io::Read, path::Path, sync::Arc};
 
 /// Distinct files one prompt sends; later mentions stay text only.

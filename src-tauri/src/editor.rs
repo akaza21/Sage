@@ -20,7 +20,6 @@ use crate::{
         reject_oversized_materialized, reject_unsupported_content, validate_line_ending,
     },
     editor_persistence::PersistedEditorBuffer,
-    workspace::Workspace,
 };
 use sage_db::database::Database;
 use sage_domain::{
@@ -30,6 +29,7 @@ use sage_domain::{
     },
     resource::ResourceRef,
 };
+use sage_workspace::Workspace;
 
 pub fn open_document(
     database: &Database,

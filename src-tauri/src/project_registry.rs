@@ -19,13 +19,14 @@ use sage_core::{
 };
 use uuid::Uuid;
 
-use crate::{state::ActiveProjectContext, workspace::Workspace};
+use crate::state::ActiveProjectContext;
 use sage_acp_protocol::contract::SageRootId;
 use sage_db::database::Database;
 use sage_domain::{
     project::{ProjectListItem, ProjectRootSummary, ProjectSummary},
     resource::ResourceRef,
 };
+use sage_workspace::Workspace;
 
 pub use create::project_name;
 pub(crate) use launch_root::ProjectRootAuthority;

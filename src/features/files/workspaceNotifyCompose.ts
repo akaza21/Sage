@@ -5,7 +5,7 @@ import type { ResourceRef } from "../../domain/workbench";
 export const WORKSPACE_NOTIFY_EVENT = "workspace-notify-v2";
 /**
  * The native watcher sends at most this many notices in one event; equal to
- * `MAX_BATCH_NOTICES` in `src-tauri/src/workspace/notify/batch.rs`.
+ * `MAX_BATCH_NOTICES` in `src-tauri/src/workspace_notify/batch.rs`.
  */
 export const MAX_NOTIFY_BATCH_NOTICES = 256;
 export const MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS = 8;

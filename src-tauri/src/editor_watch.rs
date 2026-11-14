@@ -238,8 +238,8 @@ fn editor_notice_kind_from_unix_delivery_case(
     action: u32,
     case_sensitive: bool,
 ) -> Option<EditorExternalWatchKind> {
-    if relative == crate::workspace::notify::OVERFLOW_RELATIVE_PATH
-        && action == crate::workspace::notify::OVERFLOW_NOTIFY_ACTION
+    if relative == crate::workspace_notify::OVERFLOW_RELATIVE_PATH
+        && action == crate::workspace_notify::OVERFLOW_NOTIFY_ACTION
     {
         return Some(EditorExternalWatchKind::Changed);
     }

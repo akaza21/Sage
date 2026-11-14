@@ -1,6 +1,6 @@
 use sage_core::error::{AppError, AppResult};
 
-use crate::workspace::Workspace;
+use sage_workspace::Workspace;
 
 pub const MAX_LOCAL_BRANCHES: usize = 64;
 pub(crate) const MAX_BRANCH_NAME_BYTES: usize = 255;
@@ -246,7 +246,7 @@ mod tests {
         use std::fs;
         use uuid::Uuid;
 
-        use crate::workspace::Workspace;
+        use sage_workspace::Workspace;
 
         let root = std::env::temp_dir().join(format!("sage-git-branches-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();

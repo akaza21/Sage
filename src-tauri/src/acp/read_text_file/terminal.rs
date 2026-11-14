@@ -6,19 +6,17 @@ use std::{
 
 use tokio::sync::oneshot;
 
-use crate::{
-    acp::{
-        resource_mapper::NativeResourceAdmission,
-        runtime::read_text_file::{ReadTextRange, ReadTextRequestId},
-        transport::P02Cancellation,
-    },
-    workspace::Workspace,
+use crate::acp::{
+    resource_mapper::NativeResourceAdmission,
+    runtime::read_text_file::{ReadTextRange, ReadTextRequestId},
+    transport::P02Cancellation,
 };
 use sage_acp_protocol::{
     contract::{BoundedVec, SafeText},
     intent::{NormalizedPayload, ToolCategory},
 };
 use sage_domain::resource::ResourceRef;
+use sage_workspace::Workspace;
 
 use super::{
     DiskAllowedState, ReadTextClassification, ReadTextFlushState, ReadTextNextAction, ReadTextOwner,

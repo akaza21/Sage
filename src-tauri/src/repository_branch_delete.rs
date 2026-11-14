@@ -6,8 +6,8 @@ use crate::{
         LocalBranchList, MAX_BRANCH_NAME_BYTES, list_local_branches, named_branch,
         valid_branch_name,
     },
-    workspace::Workspace,
 };
+use sage_workspace::Workspace;
 
 const MAX_GIT_DELETE_BRANCH_OUTPUT_BYTES: usize = 64 * 1024;
 
