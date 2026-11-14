@@ -173,8 +173,9 @@ impl AdmittedCodexBinding {
 #[cfg(windows)]
 fn npm_manifest_expectation(
     entrypoint: &std::path::Path,
-) -> Result<Option<crate::acp::process::ManifestExpectation>, crate::acp::process::LaunchError> {
-    use crate::acp::process::{LaunchError, ManifestExpectation};
+) -> Result<Option<crate::acp::process::ManifestExpectation>, sage_process::error::LaunchError> {
+    use crate::acp::process::ManifestExpectation;
+    use sage_process::error::LaunchError;
 
     let extension = entrypoint.extension().and_then(|value| value.to_str());
     if !extension

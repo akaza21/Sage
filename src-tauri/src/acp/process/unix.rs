@@ -9,6 +9,8 @@ use std::{
     process::{ChildStdin, ChildStdout},
 };
 
+use sage_process::error::LaunchError;
+
 use crate::acp::transport::{
     Frame, FrameError, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame,
 };
@@ -52,11 +54,11 @@ pub(crate) struct StdoutEndpoint {
 }
 
 impl StdoutEndpoint {
-    pub(crate) fn read(&mut self, target: &mut [u8]) -> Result<usize, super::LaunchError> {
+    pub(crate) fn read(&mut self, target: &mut [u8]) -> Result<usize, LaunchError> {
         if target.len() as u64 > sage_core::limits::LIMITS.wire.frame_bytes {
-            return Err(super::LaunchError::StdioLimit);
+            return Err(LaunchError::StdioLimit);
         }
-        self.stdout.read(target).map_err(|_| super::LaunchError::Io)
+        self.stdout.read(target).map_err(|_| LaunchError::Io)
     }
 
     pub(crate) fn read_frame(&mut self) -> Result<Option<Frame>, FrameError> {

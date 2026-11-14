@@ -1,4 +1,5 @@
-use crate::acp::process::{LaunchError, StdoutEndpoint};
+use crate::acp::process::StdoutEndpoint;
+use sage_process::error::LaunchError;
 
 use super::{DriverMailbox, ProcessTreeControl, ReaderTerminal};
 

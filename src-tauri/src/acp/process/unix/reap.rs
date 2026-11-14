@@ -7,11 +7,12 @@ use std::{
 };
 
 use crate::acp::{process::TreeCapacityLease, redaction::StderrRing};
+use sage_process::error::LaunchError;
 
 use super::{
     super::{
         platform::LaunchFailure,
-        supervisor::{LaunchError, LaunchFailureTracker, TreeExit, ZeroProcessToken},
+        supervisor::{LaunchFailureTracker, TreeExit, ZeroProcessToken},
     },
     RunningTree,
     containment::TreeControl,

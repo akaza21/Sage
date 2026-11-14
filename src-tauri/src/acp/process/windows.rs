@@ -6,7 +6,6 @@ mod clock;
 mod descendant_settlement_tests;
 mod encoding;
 mod io;
-mod job;
 mod native;
 mod observe;
 mod preview;
@@ -32,9 +31,7 @@ use self::clock::performance_clock;
 use self::encoding::{cmd_batch_launcher_command_line, cmd_working_directory};
 pub(crate) use self::encoding::{command_line, environment_block, wide_z};
 pub(crate) use self::io::{StdinEndpoint, StdoutEndpoint};
-use self::job::JobBoundary;
-pub(crate) use self::job::JobBoundary as TerminalJobBoundary;
-use self::native::{NativeHandle, StdioSet};
+use self::native::StdioSet;
 use self::observe::{observe_exit, try_observe_exit, wait_until};
 #[cfg(test)]
 pub(crate) use self::preview::PreviewJobBoundary;
@@ -48,7 +45,8 @@ use self::recovery::{classify_started_failure, fail_pre_spawn};
 use super::capacity::TreeCapacityLease;
 use super::identity::SpawnTimingReceipt;
 use super::platform::LaunchFailure;
-use super::supervisor::{EntryPointKind, LaunchError, LaunchSpec, RequiredContainment};
+use super::supervisor::{EntryPointKind, LaunchSpec, RequiredContainment};
+use sage_process::{error::LaunchError, handle::NativeHandle, job::JobBoundary};
 
 const MAX_WINDOWS_WIDE: usize = 32_767;
 

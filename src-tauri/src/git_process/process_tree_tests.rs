@@ -1,7 +1,8 @@
 use std::{fs, path::Path, time::Duration};
 
-use super::super::{GitProcessPolicy, repository_config, run};
-use super::MAX_PARALLEL_JOBS;
+use sage_process::process_tree::MAX_PARALLEL_JOBS;
+
+use super::{GitProcessPolicy, repository_config, run};
 
 fn git(root: &Path, args: &[&str]) {
     let status = crate::git_process::fixture_git()

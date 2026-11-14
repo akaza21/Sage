@@ -1,11 +1,12 @@
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::acp::{
-    process::{LaunchError, StdinEndpoint, TreeControl, TreeExit, ZeroProcessToken},
+    process::{StdinEndpoint, TreeControl, TreeExit, ZeroProcessToken},
     runtime::{EgressTransport, NonfatalRefusal, SessionTreeLease},
     scheduler::RuntimeOwner,
     transport::{FrameWriteOutcome, OutboundFrame},
 };
+use sage_process::error::LaunchError;
 
 use super::MailboxError;
 

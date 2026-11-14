@@ -1,6 +1,6 @@
 use windows_sys::Win32::System::Performance::{QueryPerformanceCounter, QueryPerformanceFrequency};
 
-use super::super::supervisor::LaunchError;
+use sage_process::error::LaunchError;
 
 pub(super) fn performance_clock() -> Result<(u64, u64), LaunchError> {
     let mut frequency = 0_i64;

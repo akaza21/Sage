@@ -13,12 +13,11 @@ use crate::acp::redaction::{SafeDiagnostic, SafeStderrDiagnostic};
 use super::artifact::VerifiedArtifact;
 use super::artifact::process_image_path;
 use super::io::StderrDrain;
-use super::job::JobBoundary;
-use super::native::NativeHandle;
 use super::{observe_exit, try_observe_exit, wait_until};
 use crate::acp::process::capacity::TreeCapacityLease;
-use crate::acp::process::supervisor::{LaunchError, TreeExit, ZeroProcessToken};
+use crate::acp::process::supervisor::{TreeExit, ZeroProcessToken};
 use crate::acp::process::{ProcessIdentityReceipt, SpawnTimingReceipt};
+use sage_process::{error::LaunchError, handle::NativeHandle, job::JobBoundary};
 
 pub(crate) struct RunningTree {
     stdin: super::io::StdinEndpoint,
@@ -279,7 +278,7 @@ impl TreeControl {
     pub(super) fn settled_root_and_stderr_membership_snapshot(&self) -> (u32, u32) {
         assert_eq!(try_observe_exit(self.0.process.raw()), Ok(true));
         assert_eq!(self.0.stderr.wait_until(Instant::now()), Ok(()));
-        self.0.job.membership_snapshot()
+        super::descendant_settlement_tests::membership_snapshot(self.0.job.raw())
     }
 
     #[cfg(test)]
@@ -287,7 +286,19 @@ impl TreeControl {
         &self,
         process: windows_sys::Win32::Foundation::HANDLE,
     ) -> bool {
-        self.0.job.contains_exact_handle(process)
+        let mut member = 0;
+        // SAFETY: both handles are retained by the diagnostic test and supervisor.
+        assert_ne!(
+            unsafe {
+                windows_sys::Win32::System::JobObjects::IsProcessInJob(
+                    process,
+                    self.0.job.raw(),
+                    &mut member,
+                )
+            },
+            0
+        );
+        member != 0
     }
 }
 
