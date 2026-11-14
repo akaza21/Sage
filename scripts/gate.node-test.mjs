@@ -29,8 +29,7 @@ test("fixture build shares the Rust tests' features and target environment", () 
   assert.deepEqual(fixture.command, [
     "cargo",
     "build",
-    "--manifest-path",
-    "src-tauri/Cargo.toml",
+    "--workspace",
     "--features",
     testFeatures().join(","),
     "--bin",
@@ -40,7 +39,7 @@ test("fixture build shares the Rust tests' features and target environment", () 
   for (const name of ["rust-parallel", "rust-git-proc", "rust-preview"]) {
     const rust = stepConfiguration(name);
     assert.equal(rust.env, fixture.env);
-    assert.deepEqual(rust.command.slice(2, 6), fixture.command.slice(2, 6));
+    assert.deepEqual(rust.command.slice(2, 5), fixture.command.slice(2, 5));
   }
 });
 

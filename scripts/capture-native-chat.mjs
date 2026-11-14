@@ -102,8 +102,7 @@ export async function capture(options) {
     started = Date.now();
     deadline = started + 90000;
     const debugDir = path.join(
-      process.env.CARGO_TARGET_DIR ||
-        path.join(workspace, "src-tauri", "target"),
+      process.env.CARGO_TARGET_DIR || path.join(workspace, "target"),
       "debug",
     );
     const build = executableIdentity(path.join(debugDir, "sage.exe"));
