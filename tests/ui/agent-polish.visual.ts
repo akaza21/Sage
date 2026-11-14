@@ -103,24 +103,46 @@ test("keeps title-bar height stable and omits an empty Editor tab row", async ({
 }) => {
   await page.setViewportSize({ width: 1380, height: 880 });
   await openScenario(page, "agent-single", "agent");
-  const title = page.locator(".title-bar");
-  const agent = (await title.boundingBox())!;
-  await expect(
-    title.locator(".title-bar__brand, .title-bar__mark"),
-  ).toHaveCount(0);
-  await page.getByRole("radio", { name: "Editor", exact: true }).focus();
-  await page.keyboard.press("Space");
-  expect((await title.boundingBox())!.height).toBe(agent.height);
-  await expect(
-    page.getByRole("region", { name: "Editor welcome" }),
-  ).toBeVisible();
-  expect((await page.locator(".workbench__tabs").boundingBox())!.height).toBe(
+  // The welcome canvas can load before the independently loaded tab strip.
+  let release = () => {};
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/src/workbench/TabStrip.tsx*", async (route) => {
+    await ready;
+    await route.continue();
+  });
+  const tabs = page.locator(".workbench__tabs");
+  const tablist = tabs.getByRole("tablist", {
+    name: "Tabs",
+    includeHidden: true,
+  });
+  try {
+    const title = page.locator(".title-bar");
+    const agent = (await title.boundingBox())!;
+    await expect(
+      title.locator(".title-bar__brand, .title-bar__mark"),
+    ).toHaveCount(0);
+    await page.getByRole("radio", { name: "Editor", exact: true }).focus();
+    await page.keyboard.press("Space");
+    expect((await title.boundingBox())!.height).toBe(agent.height);
+    await expect(
+      page.getByRole("region", { name: "Editor welcome" }),
+    ).toBeVisible();
+    await expect(tablist).toHaveCount(0);
+    expect((await tabs.boundingBox())!.height).toBe(0);
+    await expect(page.locator(".editor-welcome__mark use")).toHaveAttribute(
+      "href",
+      "/sage-mark.svg#mark",
+    );
+  } finally {
+    release();
+  }
+  await expect(tablist).toBeAttached();
+  await expect(tablist.getByRole("tab", { includeHidden: true })).toHaveCount(
     0,
   );
-  await expect(page.locator(".editor-welcome__mark use")).toHaveAttribute(
-    "href",
-    "/sage-mark.svg#mark",
-  );
+  expect((await tabs.boundingBox())!.height).toBe(0);
 });
 
 test("collapses the Agent sidebar at 480 and supports the sidebar shortcut", async ({
