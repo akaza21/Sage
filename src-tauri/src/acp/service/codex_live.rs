@@ -6,7 +6,6 @@ use std::{
 use crate::acp::{
     bindings::runtime::NativeRuntime,
     intent::IntentSnapshot,
-    limits::LIMITS,
     process::{PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit},
     resource_mapper::NativeResourceMapper,
     runtime::{
@@ -21,6 +20,7 @@ use crate::acp::{
         AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory, PrepareTurnCommand,
     },
 };
+use sage_core::limits::LIMITS;
 
 #[cfg(test)]
 use super::AcpService;

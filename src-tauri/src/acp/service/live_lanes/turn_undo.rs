@@ -1,6 +1,6 @@
 //! Undo holds the same lane claim as activation and idle/replacement parking.
 use super::*;
-use crate::acp::service::SessionControlError;
+use crate::acp::errors::SessionControlError;
 
 impl AcpService {
     pub(in crate::acp::service) fn claim_undo_lane(

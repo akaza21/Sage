@@ -52,7 +52,7 @@ where
 {
     pub(crate) turn: PreparedDriverTurn<A, J, R, T, C>,
     delivery: PromptDelivery,
-    access_mode: crate::settings_store::SessionAccessMode,
+    access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     cancel_intent: Option<HostCancelIntent>,
     cancel_wire: CancelWireState,
     cancel_attempts: u8,
@@ -71,7 +71,7 @@ where
     pub(crate) fn new(
         turn: PreparedDriverTurn<A, J, R, T, C>,
         prompt: Prompt,
-        access_mode: crate::settings_store::SessionAccessMode,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     ) -> Self {
         let turn_id = turn.dispatch.turn_id();
         debug_assert_ne!(

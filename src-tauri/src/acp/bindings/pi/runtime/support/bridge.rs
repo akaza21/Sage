@@ -11,16 +11,18 @@ use crate::{
             EgressToken, ResourceMapper,
         },
         contract::{SafeText, SageServerRequestId},
-        file_diff::{PairAdmission, admit_pair},
         intent::{
             ExternalId, FileChangeFacts, FileChangeOperation, NormalizedPayload,
             SafeResourceLocation,
         },
         lifecycle::{ItemLifecycle, ServerRequestState},
-        runtime::permissions::PermissionDecision,
         transport::{Frame, OutboundFrame, request_payload_digest},
     },
-    settings_store::SessionAccessMode,
+    acp_protocol::{
+        access_mode::SessionAccessMode,
+        file_diff::{PairAdmission, admit_pair},
+        permissions::PermissionDecision,
+    },
 };
 use serde_json::{Value, json};
 

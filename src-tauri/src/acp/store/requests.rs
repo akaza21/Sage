@@ -3,10 +3,10 @@ use rusqlite::{Transaction, params};
 #[cfg(test)]
 use crate::acp::lifecycle::ServerRequestState;
 #[cfg(test)]
-use crate::acp::runtime::permissions::{PermissionError, PermissionJournal};
-use crate::acp::{
-    contract::SageItemId,
-    runtime::permissions::{DeclineCommit, PermissionIntent},
+use crate::acp_protocol::permissions::{PermissionError, PermissionJournal};
+use crate::{
+    acp::contract::SageItemId,
+    acp_protocol::permissions::{DeclineCommit, PermissionIntent},
 };
 
 use super::{

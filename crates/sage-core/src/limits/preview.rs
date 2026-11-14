@@ -1,0 +1,68 @@
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PreviewLimits {
+    pub identifier_bytes: u64,
+    pub error_bytes: u64,
+    pub transition_epoch_max: u64,
+    pub url_bytes: u64,
+    pub url_candidates: u64,
+    pub browse_sessions_per_chat: u64,
+    pub browse_chats_per_project: u64,
+    pub browse_sessions_global: u64,
+    pub browse_history: u64,
+    pub browse_listeners: u64,
+    pub discovery_depth: u64,
+    pub packages_per_root: u64,
+    pub targets_per_project: u64,
+    pub directories_per_root: u64,
+    pub directory_entries: u64,
+    pub manifest_bytes: u64,
+    pub script_bytes: u64,
+    pub startup_output_bytes: u64,
+    pub startup_output_channel: u64,
+    pub output_drainers_per_child: u64,
+    pub startup_deadline_ms: u64,
+    pub startup_idle_deadline_ms: u64,
+    pub health_deadline_ms: u64,
+    pub health_probe_timeout_ms: u64,
+    pub health_retry_ms: u64,
+    pub process_termination_deadline_ms: u64,
+    pub frontend_listeners: u64,
+    pub revision_max: u64,
+}
+
+/// ACP P-02 whole-source cap, its exact `+1` disk probe, and the sole
+/// expanded response ceiling (six JSON bytes per input byte plus envelope).
+pub const P02_READ_TEXT_SOURCE_BYTES: usize = 2 * 1024 * 1024;
+pub const P02_READ_TEXT_PROBE_BYTES: usize = P02_READ_TEXT_SOURCE_BYTES + 1;
+pub const P02_READ_TEXT_RESPONSE_BYTES: usize = P02_READ_TEXT_SOURCE_BYTES * 6 + 65_536;
+
+pub const PREVIEW_LIMITS: PreviewLimits = PreviewLimits {
+    identifier_bytes: 512,
+    error_bytes: 8_192,
+    transition_epoch_max: 9_007_199_254_740_991,
+    url_bytes: 2_048,
+    url_candidates: 8,
+    browse_sessions_per_chat: 2,
+    browse_chats_per_project: 64,
+    browse_sessions_global: 128,
+    browse_history: 8,
+    browse_listeners: 8,
+    discovery_depth: 4,
+    packages_per_root: 8,
+    targets_per_project: 16,
+    directories_per_root: 256,
+    directory_entries: 256,
+    manifest_bytes: 256 * 1_024,
+    script_bytes: 4_096,
+    startup_output_bytes: 4_096,
+    startup_output_channel: 1,
+    output_drainers_per_child: 2,
+    startup_deadline_ms: 180_000,
+    startup_idle_deadline_ms: 30_000,
+    health_deadline_ms: 5_000,
+    health_probe_timeout_ms: 750,
+    health_retry_ms: 50,
+    process_termination_deadline_ms: 5_000,
+    frontend_listeners: 1,
+    revision_max: i64::MAX as u64,
+};

@@ -1,13 +1,15 @@
 use serde_json::{Value, json};
 
-use crate::acp::{
-    contract::{
-        RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
-        SageServerRequestId, SageTurnId,
+use crate::{
+    acp::{
+        contract::{
+            RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
+            SageServerRequestId, SageTurnId,
+        },
+        fixture::generated_cases::FrozenCase,
+        intent::ExternalId,
     },
-    fixture::generated_cases::FrozenCase,
-    intent::ExternalId,
-    runtime::permissions::{
+    acp_protocol::permissions::{
         DeclineCommit, DeclineTransport, PermissionDisposition, PermissionError, PermissionIntent,
         PermissionJournal, decline_permission,
     },

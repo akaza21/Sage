@@ -21,7 +21,6 @@ mod mailbox;
 mod normalizer;
 pub(crate) mod notice_routes;
 mod notifier;
-pub(crate) mod permissions;
 pub(crate) mod read_text_file;
 
 pub(crate) use activation_pump::{

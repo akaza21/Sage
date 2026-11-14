@@ -2,11 +2,13 @@
 //! collaboration row per subagent, and the subagent's own messages fill the
 //! child transcript Sage stores for that row.
 
-use crate::acp::{
-    bindings::codex::ChildTextRole,
-    contract::{BoundedVec, SafeText},
-    intent::NormalizedPayload,
-    lifecycle::ItemLifecycle,
+use crate::{
+    acp::{
+        contract::{BoundedVec, SafeText},
+        intent::NormalizedPayload,
+        lifecycle::ItemLifecycle,
+    },
+    acp_protocol::codex_protocol::ChildTextRole,
 };
 
 use super::*;

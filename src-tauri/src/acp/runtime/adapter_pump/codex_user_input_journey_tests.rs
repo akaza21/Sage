@@ -62,7 +62,7 @@ fn opened_codex(frames: &[serde_json::Value], prompt: Prompt) -> (CodexRuntime, 
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt_id = codex_request_id(&prompt);
@@ -123,7 +123,7 @@ async fn play_turn(
         .unwrap();
         pump.resolve_permission(
             sage_request,
-            crate::acp::runtime::permissions::PermissionDecision::Answer(answers),
+            crate::acp_protocol::permissions::PermissionDecision::Answer(answers),
             3,
         )
         .await
@@ -176,7 +176,7 @@ fn the_codex_user_input_journey_asks_and_is_answered_on_both_turns() {
         pump.queue_prompt(
             Prompt::new("prompt", "Ask again.").unwrap(),
             &client,
-            crate::settings_store::SessionAccessMode::ReadOnly,
+            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         )
         .unwrap();
         let mut transport = CaptureTransport(Vec::new());

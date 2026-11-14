@@ -9,12 +9,13 @@ use std::{fs, path::PathBuf};
 
 use serde_json::Value;
 
-use crate::acp::limits::LIMITS;
+use super::LIMITS;
 
 fn contract(name: &str) -> String {
     let checkout = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .expect("src-tauri has a checkout parent")
+        .ancestors()
+        .nth(2)
+        .expect("crates/sage-core has a checkout two levels up")
         .to_path_buf();
     let relative =
         PathBuf::from("docs/work-items/ADE-0006A-acp-session-foundation/contracts").join(name);

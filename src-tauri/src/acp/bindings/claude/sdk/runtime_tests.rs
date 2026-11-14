@@ -160,7 +160,7 @@ fn a_claude_code_turn_reaches_the_store_as_shared_events() {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Fix the bug").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     assert_eq!(user["type"], "user");
@@ -214,7 +214,7 @@ fn a_tool_approval_round_trips_to_claude_code() {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Run tests").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     feed(
@@ -240,7 +240,7 @@ fn a_tool_approval_round_trips_to_claude_code() {
     let egress = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .unwrap();
     let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -258,7 +258,7 @@ fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Write notes").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     let input = json!({"file_path":"/w/notes.txt","content":"x\n"});
@@ -288,7 +288,7 @@ fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
     let egress = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowAlways,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowAlways,
         })
         .unwrap();
     let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -310,7 +310,7 @@ fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
 
 #[test]
 fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
-    use crate::acp::runtime::permissions::PermissionDecision;
+    use crate::acp_protocol::permissions::PermissionDecision;
     for (decision, mode) in [
         (PermissionDecision::AllowOnce, "default"),
         (PermissionDecision::AllowAlways, "acceptEdits"),
@@ -322,7 +322,7 @@ fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
             AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "Plan the fix").unwrap(),
                 client_message_id: RequiredText::new("client", "client-1").unwrap(),
-                access_mode: crate::settings_store::SessionAccessMode::Ask,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
             },
         );
         let input = json!({"plan":"1. Fix the bug"});
@@ -394,7 +394,7 @@ fn a_prompt_claude_code_never_received_frees_the_next_prompt() {
     let prompt = |text: &str| AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", text).unwrap(),
         client_message_id: RequiredText::new("client", text).unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::Ask,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
     };
     let egress = runtime.command(prompt("first")).unwrap();
     runtime
@@ -413,7 +413,7 @@ fn an_edit_result_with_a_long_patch_finishes_its_row_instead_of_failing_the_sess
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Rewrite it").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     feed(
@@ -455,7 +455,7 @@ fn prompted() -> ClaudeSdkRuntime {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Fetch them all").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     runtime
@@ -505,7 +505,7 @@ fn subagent_and_parallel_approvals_past_the_card_limit_keep_the_session() {
     let answer = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(cards[1].as_str()).unwrap(),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .unwrap();
     let token = answer.into_token();
@@ -663,7 +663,7 @@ fn claudes_questions_become_a_question_card_and_the_answers_return_as_its_input(
     let egress = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
-            decision: crate::acp::runtime::permissions::PermissionDecision::Answer(answers),
+            decision: crate::acp_protocol::permissions::PermissionDecision::Answer(answers),
         })
         .unwrap();
     let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -712,7 +712,7 @@ fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
         ))
     );
     assert!(spawned.iter().any(|event| matches!(event,
-        AdapterEvent::ChildLiveItem { item_id, role: Some(crate::acp::bindings::codex::ChildTextRole::User), .. }
+        AdapterEvent::ChildLiveItem { item_id, role: Some(crate::acp_protocol::codex_protocol::ChildTextRole::User), .. }
             if item_id.as_str() == "prompt")));
     let inner = feed(
         &mut runtime,
@@ -763,7 +763,7 @@ fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
 
 #[test]
 fn a_prompt_larger_than_an_ordinary_frame_is_sent_as_a_prompt_frame() {
-    let ordinary = crate::acp::limits::LIMITS.wire.frame_bytes as usize;
+    let ordinary = sage_core::limits::LIMITS.wire.frame_bytes as usize;
     let user = json!({"type":"user","message":{"content":"x".repeat(ordinary)}});
     assert!(sdk_frame(&user).is_ok());
     let control = json!({"type":"control_request","request":{"note":"x".repeat(ordinary)}});
@@ -876,7 +876,7 @@ fn compact_runs_as_claude_codes_own_command_and_ends_its_turn() {
         AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     assert_eq!(user["message"]["content"][0]["text"], "/compact");

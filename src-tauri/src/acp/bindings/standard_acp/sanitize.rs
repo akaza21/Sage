@@ -16,9 +16,9 @@ mod review_tests;
 
 use crate::acp::{
     contract::{ContractError, SafeText},
-    limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
     redaction::text::{Mode, neutralized, redact},
 };
+use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
 pub(crate) fn normalized_text<const MAX: usize>(
     field: &'static str,

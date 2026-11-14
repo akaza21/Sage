@@ -203,7 +203,7 @@ fn prompt(
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "continue").unwrap(),
             client_message_id: RequiredText::new("client", client).unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         },
     )
 }
@@ -359,7 +359,7 @@ fn restore_share(service: &AcpService, owner: &RuntimeOwner) -> f64 {
     let started = std::time::Instant::now();
     service.restore_session_config(owner).unwrap();
     started.elapsed().as_secs_f64()
-        / std::time::Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc)
+        / std::time::Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc)
             .as_secs_f64()
 }
 

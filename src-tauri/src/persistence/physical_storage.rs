@@ -7,7 +7,7 @@ use std::{
 use rusqlite::Connection;
 use sage_core::error::{AppError, AppResult};
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 #[cfg(any(test, all(windows, feature = "acp-fixture")))]
 use super::WalConvergenceReceipt;

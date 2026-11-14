@@ -1,6 +1,5 @@
-use crate::acp::{
-    bindings::adapter::AdapterRuntimeError, intent::NormalizedPayload, limits::LIMITS,
-};
+use crate::acp::{bindings::adapter::AdapterRuntimeError, intent::NormalizedPayload};
+use sage_core::limits::LIMITS;
 
 use super::super::PiRuntime;
 

@@ -5,13 +5,10 @@ use super::super::{
     url::parse_allowed_preview_url,
 };
 use super::discovery_request;
-use crate::acp::{
-    contract::{
-        EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId,
-        SageProjectId,
-    },
-    limits::PREVIEW_LIMITS,
+use crate::acp::contract::{
+    EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
 };
+use sage_core::limits::PREVIEW_LIMITS;
 
 #[test]
 fn every_preview_phase_edge_is_explicitly_admitted_or_rejected() {

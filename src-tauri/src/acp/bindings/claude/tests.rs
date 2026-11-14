@@ -22,15 +22,15 @@ use crate::acp::{
         UnavailableResourceReason,
     },
     lifecycle::{ItemLifecycle, ToolState, TurnState},
-    limits::LIMITS,
-    runtime::read_text_file::{DeferredReadTextOwnerResolver, ExpectedOwnerScope},
-    service::{
+    read_text_file::{
         DiskAllowedState, ReadTextClassification, ReadTextFileService, ReadTextFlushAck,
         ReadTextFlushState, ReadTextOwner,
     },
+    runtime::read_text_file::{DeferredReadTextOwnerResolver, ExpectedOwnerScope},
     transport::{DeadlineAsyncWriter, FrameReader},
 };
 use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
+use sage_core::limits::LIMITS;
 
 struct P02Capture(Vec<u8>);
 impl AsyncWrite for P02Capture {

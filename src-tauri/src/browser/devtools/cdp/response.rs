@@ -104,7 +104,7 @@ mod tests {
 
     #[test]
     fn oversized_inline_native_result_is_rejected_without_retaining_its_buffer() {
-        let limit = crate::acp::limits::BROWSER_LIMITS.cdp_result_bytes;
+        let limit = sage_core::limits::BROWSER_LIMITS.cdp_result_bytes;
         let mut data = vec![b'x' as u16; limit + 1];
         data.push(0);
         let data = Arc::new(data);

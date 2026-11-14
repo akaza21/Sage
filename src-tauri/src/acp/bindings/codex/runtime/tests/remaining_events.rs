@@ -328,7 +328,7 @@ fn thread_settings_update_refreshes_the_model_and_effort() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "continue").unwrap(),
             client_message_id: RequiredText::new("client", "settings-effort").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();

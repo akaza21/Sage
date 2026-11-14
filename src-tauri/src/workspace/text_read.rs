@@ -9,9 +9,9 @@ use crate::workspace::{RootIdentity, leaf_identity};
 
 /// P-02's complete-source ceiling. Line selection happens only after admission.
 pub(crate) const MAX_TEXT_FILE_BYTES: u64 =
-    crate::acp::limits::preview::P02_READ_TEXT_SOURCE_BYTES as u64;
+    sage_core::limits::preview::P02_READ_TEXT_SOURCE_BYTES as u64;
 pub(crate) const TEXT_FILE_READ_PROBE_BYTES: u64 =
-    crate::acp::limits::preview::P02_READ_TEXT_PROBE_BYTES as u64;
+    sage_core::limits::preview::P02_READ_TEXT_PROBE_BYTES as u64;
 
 /// Opens a source exactly once beneath a held root authority. Metadata and the
 /// bounded read must use this handle, never reopen a path validated earlier.

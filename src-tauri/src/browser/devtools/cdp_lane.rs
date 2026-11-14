@@ -25,14 +25,12 @@ use super::{
     capability::DevtoolsCapability, cdp_port::CdpPort, cdp_port::page_context,
     screenshot::admit_jpeg, transport::CdpTransport,
 };
-use crate::acp::{
-    browser::{
-        BrowserAction, BrowserCommand, BrowserFailure, BrowserRequest, BrowserResult, BrowserScope,
-        ElementHandle, FillSecret, SnapshotNode, ViewportRegion, WaitCondition, dispatch,
-    },
-    limits::BROWSER_LIMITS,
+use crate::acp::browser::{
+    BrowserAction, BrowserCommand, BrowserFailure, BrowserRequest, BrowserResult, BrowserScope,
+    ElementHandle, FillSecret, SnapshotNode, ViewportRegion, WaitCondition, dispatch,
 };
 use chromium::Chromium;
+use sage_core::limits::BROWSER_LIMITS;
 use site::Site;
 
 const PASSWORD_CANARY: &str = "CANARY-PW-5f1e9c";

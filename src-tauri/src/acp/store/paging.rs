@@ -25,7 +25,7 @@ pub(crate) fn load_recovery_candidates(
          ORDER BY e.started_at, s.id
          LIMIT ?1",
     )?;
-    let live_tree_limit = crate::acp::limits::LIMITS.process.operational_live_trees as usize;
+    let live_tree_limit = sage_core::limits::LIMITS.process.operational_live_trees as usize;
     let rows = statement.query_map([live_tree_limit as i64 + 1], |row| {
         Ok((
             row.get::<_, String>(0)?,

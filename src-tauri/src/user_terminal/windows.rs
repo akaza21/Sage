@@ -28,7 +28,8 @@ use super::{
     OUTPUT_CHUNK_BYTES, TerminalError, TerminalFactory, TerminalOutputSink, TerminalProcess,
     TerminalSpawnFailure,
 };
-use crate::{acp::process::TerminalJobBoundary, project_registry::ProjectRootAuthority};
+use crate::project_registry::ProjectRootAuthority;
+use sage_process::job::JobBoundary;
 
 use environment::environment_block;
 #[cfg(test)]
@@ -76,8 +77,7 @@ impl TerminalFactory for ConPtyFactory {
         let pseudo = PseudoConsole(pseudo);
         drop(input_read);
         drop(output_write);
-        let job =
-            TerminalJobBoundary::create(DESCENDANT_LIMIT).map_err(|_| TerminalError::Backend)?;
+        let job = JobBoundary::create(DESCENDANT_LIMIT).map_err(|_| TerminalError::Backend)?;
         let attributes = AttributeList::new(pseudo.0)?;
         let mut startup = STARTUPINFOEXW::default();
         startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
@@ -117,7 +117,8 @@ impl TerminalFactory for ConPtyFactory {
             output_thread: None,
         };
         if contain_and_resume(&mut running, |job, process| {
-            job.assign(process).map_err(|_| TerminalError::Backend)
+            // SAFETY: `process` is the live handle of the suspended child.
+            unsafe { job.assign(process) }.map_err(|_| TerminalError::Backend)
         })
         .is_err()
         {
@@ -146,7 +147,7 @@ impl TerminalFactory for ConPtyFactory {
 
 struct ConPtyProcess {
     shell_path: String,
-    job: TerminalJobBoundary,
+    job: JobBoundary,
     process: Handle,
     thread: Handle,
     assigned: bool,
@@ -157,7 +158,7 @@ struct ConPtyProcess {
 
 fn contain_and_resume(
     running: &mut ConPtyProcess,
-    assign: impl FnOnce(&TerminalJobBoundary, HANDLE) -> Result<(), TerminalError>,
+    assign: impl FnOnce(&JobBoundary, HANDLE) -> Result<(), TerminalError>,
 ) -> Result<(), TerminalError> {
     assign(&running.job, running.process.0)?;
     let mut member = 0;

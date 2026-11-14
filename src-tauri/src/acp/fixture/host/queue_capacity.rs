@@ -1,18 +1,18 @@
 use serde_json::{Value, json};
 
-use crate::acp::{
-    contract::{
-        RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
-        SageServerRequestId, SageTurnId,
+use crate::{
+    acp::{
+        contract::{
+            RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
+            SageServerRequestId, SageTurnId,
+        },
+        fixture::generated_cases::FrozenCase,
+        intent::{ExternalId, Prompt},
+        runtime::{DriverMailbox, DriverMailboxError, JournalError, JournalHandle, JournalLane},
+        store::{AcpStore, StoreCommit, StoreError, StoreMutation},
+        transport::{EgressQueue, OutboundFrame, QueueError},
     },
-    fixture::generated_cases::FrozenCase,
-    intent::{ExternalId, Prompt},
-    runtime::{
-        DriverMailbox, DriverMailboxError, JournalError, JournalHandle, JournalLane,
-        permissions::PermissionIntent,
-    },
-    store::{AcpStore, StoreCommit, StoreError, StoreMutation},
-    transport::{EgressQueue, OutboundFrame, QueueError},
+    acp_protocol::permissions::PermissionIntent,
 };
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[

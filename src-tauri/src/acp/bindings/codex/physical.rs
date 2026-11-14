@@ -103,7 +103,7 @@ impl PhysicallyInspectedPackage {
             package_root: PathBuf::from(r"C:\Foreign\Codex\package"),
             codex_home: PathBuf::from(format!(
                 r"C:\SageHarnesses\CodexState\{}",
-                super::manifest::PINNED_PROTOCOL_IDENTITY
+                crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
             )),
             artifact_count: EXPECTED_FILE_COUNT,
             byte_len: super::manifest::PINNED_PACKAGE_UNPACKED_BYTES,
@@ -320,7 +320,7 @@ pub(super) mod portable_tests {
         .unwrap();
         let root = ConfiguredManagedPackageRoot::new(PathBuf::from(format!(
             r"C:\SageHarnesses\Codex\{}\package",
-            crate::acp::bindings::codex::manifest::PINNED_CODEX_VERSION
+            crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION
         )))
         .unwrap();
         assert_eq!(

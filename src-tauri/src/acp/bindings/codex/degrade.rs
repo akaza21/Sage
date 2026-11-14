@@ -4,7 +4,8 @@ use crate::acp::{
     intent::CapabilitySnapshotV1,
 };
 
-use super::manifest::{CuratedCapabilityCeiling, PINNED_CODEX_VERSION, pinned_codex_version};
+use super::manifest::CuratedCapabilityCeiling;
+use crate::acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, pinned_codex_version};
 
 const VERSION_TOKEN_BYTES_MAX: usize = 32;
 /// The debug desktop fixture's identity. It replays the observed pinned
@@ -115,7 +116,8 @@ fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilitie
 }
 
 fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCapabilities {
-    let pinned = ceiling.protocol_identity == super::manifest::PINNED_PROTOCOL_IDENTITY;
+    let pinned =
+        ceiling.protocol_identity == crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY;
     OptionalCapabilities {
         resume_session: ceiling.resume_session,
         load_session: ceiling.load_session,
@@ -208,7 +210,7 @@ pub(crate) enum ProjectionUnavailable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::bindings::codex::manifest::OBSERVED_PROTOCOL_IDENTITY;
+    use crate::acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY;
 
     fn observed_pinned_version() -> String {
         format!("codex-cli {PINNED_CODEX_VERSION}")
@@ -216,7 +218,7 @@ mod tests {
 
     fn pinned() -> CuratedCapabilityCeiling {
         CuratedCapabilityCeiling {
-            protocol_identity: super::super::manifest::PINNED_PROTOCOL_IDENTITY.into(),
+            protocol_identity: crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY.into(),
             new_session: true,
             resume_session: true,
             load_session: true,
@@ -245,7 +247,7 @@ mod tests {
         );
         assert_ne!(
             snapshot.protocol_version.as_str(),
-            super::super::manifest::PINNED_PROTOCOL_IDENTITY
+            crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
         );
     }
 
@@ -254,7 +256,7 @@ mod tests {
         let (snapshot, models) = projected_capabilities(&pinned(), None).unwrap();
         assert_eq!(
             snapshot.protocol_version.as_str(),
-            super::super::manifest::PINNED_PROTOCOL_IDENTITY
+            crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
         );
         assert!(models);
         assert!(snapshot.resume_session && snapshot.collaboration_event_projection);

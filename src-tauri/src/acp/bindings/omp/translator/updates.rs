@@ -8,9 +8,9 @@ use serde_json::{Map, Value};
 use crate::acp::{
     contract::{ItemLifecycle, RequiredText, SafeText, ToolState},
     intent::NormalizedPayload,
-    limits::LIMITS,
     runtime::host_browse::browse_tool_summary,
 };
+use sage_core::limits::LIMITS;
 
 use super::{ActiveTurn, OmpTranslator, ResourceMapper, TranslationError};
 use crate::acp::bindings::omp::{

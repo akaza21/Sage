@@ -1,5 +1,7 @@
-use super::{FILE_BYTES, FILE_COUNT, Resource, Resources, TOTAL_BYTES, secrets};
+use super::{Resource, Resources};
+use crate::acp::prompt_files::secrets;
 use crate::workspace::ignore_rules::{FolderChain, IgnoreRules, RuleFiles, global_excludes_path};
+use sage_core::limits::prompt_files::{FILE_BYTES, FILE_COUNT, TOTAL_BYTES};
 use std::{
     collections::BTreeSet,
     io::Read,

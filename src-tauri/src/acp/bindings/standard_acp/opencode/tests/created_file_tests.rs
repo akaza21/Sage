@@ -40,7 +40,7 @@ fn captured_created_file_is_published_only_after_approved_write_and_completion()
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "create captured file").expect("prompt"),
             client_message_id: RequiredText::new("client", "created-file").expect("client"),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         })
         .expect("prompt command");
     runtime
@@ -65,7 +65,7 @@ fn captured_created_file_is_published_only_after_approved_write_and_completion()
     let approval = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: scoped_permission_id("created-file", 61),
-            decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .expect("approval");
     runtime
@@ -143,7 +143,7 @@ fn differing_or_refused_client_write_never_projects_the_proposed_created_diff() 
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "create captured file").expect("prompt"),
                 client_message_id: RequiredText::new("client", label).expect("client"),
-                access_mode: crate::settings_store::SessionAccessMode::Ask,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
             })
             .expect("prompt command");
         runtime
@@ -161,7 +161,7 @@ fn differing_or_refused_client_write_never_projects_the_proposed_created_diff() 
         let approval = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id(label, 62),
-                decision: crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+                decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
             })
             .expect("approval");
         runtime

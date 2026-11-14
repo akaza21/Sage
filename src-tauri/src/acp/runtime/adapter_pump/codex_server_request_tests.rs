@@ -162,7 +162,7 @@ fn codex_withdrawing_a_question_resolves_the_journaled_request() {
             .unwrap();
         pump.resolve_permission(
             &request,
-            crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+            crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
             3,
         )
         .await
@@ -182,7 +182,7 @@ fn codex_withdrawing_a_question_resolves_the_journaled_request() {
 struct Ask {
     method: &'static str,
     params: serde_json::Value,
-    decision: fn() -> crate::acp::runtime::permissions::PermissionDecision,
+    decision: fn() -> crate::acp_protocol::permissions::PermissionDecision,
     reply: serde_json::Value,
 }
 
@@ -192,7 +192,7 @@ fn question() -> Ask {
         params: serde_json::json!({"questions":[{"id":"scope","header":"Scope",
             "question":"Which files?","isOther":true,"isSecret":false,"options":null}]}),
         decision: || {
-            crate::acp::runtime::permissions::PermissionDecision::Answer(
+            crate::acp_protocol::permissions::PermissionDecision::Answer(
                 serde_json::from_value(serde_json::json!([
                     {"questionId":"scope","text":"Changed files"}
                 ]))
@@ -207,7 +207,7 @@ fn command_approval() -> Ask {
     Ask {
         method: "item/commandExecution/requestApproval",
         params: serde_json::json!({"command":"ls"}),
-        decision: || crate::acp::runtime::permissions::PermissionDecision::AllowOnce,
+        decision: || crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         reply: serde_json::json!({"decision":"accept"}),
     }
 }
@@ -294,7 +294,7 @@ fn asks_on_two_turns(ask: Ask) {
         pump.queue_prompt(
             Prompt::new("prompt", "Ask again.").unwrap(),
             &client,
-            crate::settings_store::SessionAccessMode::ReadOnly,
+            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         )
         .unwrap();
         let mut transport = CaptureTransport(Vec::new());
@@ -337,7 +337,7 @@ fn a_late_codex_request_for_a_finished_turn_is_declined_not_left_waiting() {
         pump.queue_prompt(
             Prompt::new("prompt", "Again.").unwrap(),
             &client,
-            crate::settings_store::SessionAccessMode::ReadOnly,
+            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         )
         .unwrap();
         let mut transport = CaptureTransport(Vec::new());

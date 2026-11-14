@@ -16,8 +16,8 @@ use std::{collections::VecDeque, fmt, mem::size_of};
 use crate::acp::{
     bindings::codex::incoming::command_output_token,
     command_output::{RetainedCommandOutput, retain_command_output},
-    limits::{LIMITS, RETAINED_TOOL_OUTPUT_LINES},
 };
+use sage_core::limits::{LIMITS, RETAINED_TOOL_OUTPUT_LINES};
 
 const REDACTED: &str = "[redacted]";
 const SAFE_CHUNK_BYTES: usize = 4 * 1024;

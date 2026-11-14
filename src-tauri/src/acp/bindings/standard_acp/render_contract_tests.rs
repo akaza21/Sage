@@ -10,8 +10,8 @@ use super::{
 use crate::acp::{
     intent::{NormalizedPayload, SafeResourceRef, ToolExecution, UnavailableResourceReason},
     lifecycle::ItemLifecycle,
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 struct NoResources;
 

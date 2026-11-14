@@ -7,10 +7,11 @@ use std::{
 
 use super::{
     authority::{CodexAuthorityPrerequisite, CodexLaunchEnvironment},
-    manifest::{MetadataValidatedPacket, pinned_codex_version, pinned_schema_sha256},
+    manifest::MetadataValidatedPacket,
     reproduction::ReproducedPackagePrerequisite,
 };
 use crate::acp::bindings::characterisation::Characterisation;
+use crate::acp_protocol::codex_protocol::{pinned_codex_version, pinned_schema_sha256};
 
 pub(crate) const BINDING_ID: &str = "codex-app-server";
 const BINDING_DIGEST_INPUT: &[u8] = concat!(

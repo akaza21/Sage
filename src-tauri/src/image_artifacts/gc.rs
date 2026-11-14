@@ -70,7 +70,7 @@ pub(crate) fn reconcile_image_artifacts(connection: &Connection, root: &Path) ->
                 &full_path(root, &id),
                 full_bytes,
                 &full_sha256,
-                crate::acp::limits::STORED_IMAGE_BYTES as u64,
+                sage_core::limits::STORED_IMAGE_BYTES as u64,
             )?;
         }
         verify_file(

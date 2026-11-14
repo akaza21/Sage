@@ -4,7 +4,7 @@ use super::release_version::characterise_against;
 
 /// The releases each harness was tested with. Later releases keep the tested
 /// features (see [`characterise_against`]).
-const CODEX_TESTED_VERSION: &str = crate::acp::bindings::codex::CODEX_PINNED_VERSION;
+const CODEX_TESTED_VERSION: &str = crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 const CLAUDE_ADAPTER_TESTED_VERSION: &str = "0.76.0";
 
@@ -69,23 +69,23 @@ pub(crate) fn node_satisfies_declared_engine(node_version: &str, declared_range:
 mod tests {
     use super::*;
 
-    use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
+    use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
     #[test]
     fn a_codex_version_is_read_from_either_the_bare_or_prefixed_form() {
         assert_eq!(
-            codex_characterisation(&format!("codex-cli {CODEX_PINNED_VERSION}")),
+            codex_characterisation(&format!("codex-cli {PINNED_CODEX_VERSION}")),
             Characterisation::Characterised
         );
         assert_eq!(
-            codex_characterisation(CODEX_PINNED_VERSION),
+            codex_characterisation(PINNED_CODEX_VERSION),
             Characterisation::Characterised
         );
     }
 
     #[test]
     fn a_later_codex_release_keeps_the_tested_features_and_an_earlier_one_does_not() {
-        let [major, minor, patch] = CODEX_PINNED_VERSION
+        let [major, minor, patch] = PINNED_CODEX_VERSION
             .split('.')
             .map(|part| part.parse::<u32>().unwrap())
             .collect::<Vec<_>>()[..]
@@ -109,7 +109,7 @@ mod tests {
         }
         for version in [
             format!("{major}.{previous_minor}.0"),
-            format!("{CODEX_PINNED_VERSION}-rc.1"),
+            format!("{PINNED_CODEX_VERSION}-rc.1"),
             "0.146.0".to_owned(),
             String::new(),
             "codex-cli".to_owned(),

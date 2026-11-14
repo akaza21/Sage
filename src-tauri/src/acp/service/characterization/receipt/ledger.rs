@@ -122,7 +122,7 @@ impl ObservationLedger {
             || zero > close_committed
             || close_committed > wal_tick
             || wal_receipt.checkpoint_target_bytes()
-                != crate::acp::limits::LIMITS
+                != sage_core::limits::LIMITS
                     .migration
                     .wal_checkpoint_target_bytes
             || wal_receipt.wal_bytes() >= wal_receipt.checkpoint_target_bytes()
@@ -366,7 +366,7 @@ mod tests {
     fn wal() -> WalConvergenceReceipt {
         WalConvergenceReceipt::test_only(
             0,
-            crate::acp::limits::LIMITS
+            sage_core::limits::LIMITS
                 .migration
                 .wal_checkpoint_target_bytes,
             true,

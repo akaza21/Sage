@@ -3,7 +3,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::limits::PREVIEW_LIMITS;
+use sage_core::limits::PREVIEW_LIMITS;
 
 use super::{
     discovery::PreviewTargetRef,

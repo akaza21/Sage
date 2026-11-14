@@ -10,29 +10,33 @@ use std::{
     thread,
 };
 
-use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
-        AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+use crate::{
+    acp::{
+        bindings::adapter::{
+            AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
+            AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+        },
+        contract::{
+            ProjectionRevision, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId,
+            SageChatId, SageProjectId, SageServerRequestId, SageTurnId,
+        },
+        intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, SafeResourceRef},
+        lifecycle::{DeliveryState, ItemLifecycle, ServerRequestState, TurnState},
+        process::TreeExit,
+        runtime::{
+            ActiveTurnIntent, AdapterBatchJournal, AdapterPump, DurableAdapterEvent,
+            EgressTransport, JournalReceipt, NonfatalRefusal, ProjectionPublishError,
+            ProjectionPublishStatus, ProjectionPublisher, PumpIntent, PumpJournalError,
+            SessionPumpIntent,
+        },
+        scheduler::RuntimeOwner,
+        store::SendObservation,
+        transport::{Frame, FrameWriteOutcome, OutboundFrame},
     },
-    contract::{
-        ProjectionRevision, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageChatId,
-        SageProjectId, SageServerRequestId, SageTurnId,
-    },
-    intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, SafeResourceRef},
-    lifecycle::{DeliveryState, ItemLifecycle, ServerRequestState, TurnState},
-    limits::LIMITS,
-    process::{LaunchError, TreeExit},
-    runtime::{
-        ActiveTurnIntent, AdapterBatchJournal, AdapterPump, DurableAdapterEvent, EgressTransport,
-        JournalReceipt, NonfatalRefusal, ProjectionPublishError, ProjectionPublishStatus,
-        ProjectionPublisher, PumpIntent, PumpJournalError, SessionPumpIntent,
-        permissions::PermissionDecision,
-    },
-    scheduler::RuntimeOwner,
-    store::SendObservation,
-    transport::{Frame, FrameWriteOutcome, OutboundFrame},
+    acp_protocol::permissions::PermissionDecision,
 };
+use sage_core::limits::LIMITS;
+use sage_process::error::LaunchError;
 
 use super::driver::DriverState;
 use super::*;
@@ -261,7 +265,7 @@ impl AdapterBatchJournal for FakeJournal {
 
     fn transition_permission<'a>(
         &'a mut self,
-        _: &'a crate::acp::runtime::permissions::PermissionIntent,
+        _: &'a crate::acp_protocol::permissions::PermissionIntent,
         state: ServerRequestState,
         _: i64,
     ) -> Pin<Box<dyn Future<Output = Result<ProjectionRevision, PumpJournalError>> + Send + 'a>>

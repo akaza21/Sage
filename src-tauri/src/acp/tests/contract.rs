@@ -16,12 +16,12 @@ use crate::acp::{
         SteerAcpTurnRequest, validate_base_intent, validate_cancel_intent, validate_session_intent,
         validate_steer_intent,
     },
-    limits::LIMITS,
     projection::{
         AcpChatPage, ItemContent, ItemOrigin, ItemProjection, SessionProjection, TextRole,
         TurnProjection,
     },
 };
+use sage_core::limits::LIMITS;
 
 fn request_base() -> Value {
     json!({
@@ -501,10 +501,13 @@ fn every_ipc_request_is_closed_and_uses_camel_case() {
     });
     let attached = with(send.clone(), json!({"attachedContext": [context.clone()]}));
     assert!(serde_json::from_value::<SendAcpTurnRequest>(attached).is_ok());
-    assert!(serde_json::from_value::<SendAcpTurnRequest>(with(
-        send.clone(),
-        json!({"attachedContext": vec![context; crate::acp::limits::ATTACHED_CONTEXT_LIMIT + 1]})
-    )).is_err());
+    assert!(
+        serde_json::from_value::<SendAcpTurnRequest>(with(
+            send.clone(),
+            json!({"attachedContext": vec![context; sage_core::limits::ATTACHED_CONTEXT_LIMIT + 1]})
+        ))
+        .is_err()
+    );
     assert!(
         serde_json::from_value::<SendAcpTurnRequest>(with(send, json!({"queueLimit": 5}))).is_err()
     );

@@ -3,9 +3,9 @@ use serde_json::{Map, Value, json};
 use crate::acp::{
     contract::RequiredText,
     intent::{SafeResourceRef, UnavailableResourceReason},
-    limits::LIMITS,
     transport::{Frame, OutboundFrame},
 };
+use sage_core::limits::LIMITS;
 
 use super::{CodexDiscoveryError, CodexModelSnapshot, DiscoveryRequest};
 

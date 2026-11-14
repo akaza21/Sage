@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 
-use crate::acp::limits::{LIMITS, RETAINED_TOOL_OUTPUT_LINES};
+use sage_core::limits::{LIMITS, RETAINED_TOOL_OUTPUT_LINES};
 
 const TRUNCATED_PREFIX: &str = "[output truncated] ";
 

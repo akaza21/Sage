@@ -1,7 +1,7 @@
 use std::sync::{Arc, Mutex};
 
 use crate::acp::contract::SageAgentSessionId;
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CapacityScope {

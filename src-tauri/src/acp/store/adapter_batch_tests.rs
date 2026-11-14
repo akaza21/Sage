@@ -1,17 +1,20 @@
 use super::{extended_tests::*, *};
-use crate::acp::{
-    contract::{
-        ClientIntentId, EntityRevision, ProjectGeneration, RequiredText, SafeText, SchemaVersionV1,
+use crate::{
+    acp::{
+        contract::{
+            ClientIntentId, EntityRevision, ProjectGeneration, RequiredText, SafeText,
+            SchemaVersionV1,
+        },
+        intent::{
+            ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload, Prompt,
+            ToolCategory,
+        },
+        lifecycle::{ActivityLifecycle, ItemLifecycle, TurnState},
+        projection::{ActivityRole, ItemContent},
     },
-    intent::{
-        ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload, Prompt,
-        ToolCategory,
-    },
-    lifecycle::{ActivityLifecycle, ItemLifecycle, TurnState},
-    limits::LIMITS,
-    projection::{ActivityRole, ItemContent},
-    runtime::permissions::PermissionIntent,
+    acp_protocol::permissions::PermissionIntent,
 };
+use sage_core::limits::LIMITS;
 
 mod child_thread_tests;
 mod command_turn_tests;

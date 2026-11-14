@@ -11,7 +11,7 @@ impl AcpService {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
             .clear();
         let started = Instant::now();
-        let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        let budget = Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
         self.close_agent_tabs_for_shutdown(started + budget);
         self.clear_lane_channels();
         let settlement = self.read_text_files.terminalize_all();
@@ -139,7 +139,7 @@ impl Drop for AcpService {
         self.clear_lane_channels();
         let started = Instant::now();
         let settlement = self.read_text_files.terminalize_all();
-        let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
+        let budget = Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close);
         let recovery_deadline = started + budget;
         // A timed-out writer retains Arc-owned state and may still emit. Drop
         // must not claim a completed ACP teardown in that effect-unknown case.

@@ -3,10 +3,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{
-    limits::{LIMITS, PROMPT_INTENT_BYTES},
-    transport::ReservedQueue,
-};
+use crate::acp::transport::ReservedQueue;
+use sage_core::limits::{LIMITS, PROMPT_INTENT_BYTES};
 
 use super::types::{
     ConfigCompletion, HostCommand, HostError, HostReply, NativeRpcCompletion, SteerCompletion,

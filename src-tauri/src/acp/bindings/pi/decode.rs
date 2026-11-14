@@ -6,8 +6,8 @@ pub(super) const FRAME_BYTES: usize = 1_048_576;
 pub(super) const EXTERNAL_ID_BYTES: usize = 512;
 /// A prompt's text with its attached files inlined: everything one dispatch
 /// admits, plus each file's `<context>` wrapper.
-pub(super) const PROMPT_BYTES: usize = crate::acp::service::prompt_files::DISPATCH_BYTES
-    + crate::acp::service::prompt_files::FILE_COUNT * 512;
+pub(super) const PROMPT_BYTES: usize = sage_core::limits::prompt_files::DISPATCH_BYTES
+    + sage_core::limits::prompt_files::FILE_COUNT * 512;
 pub(super) const ITEM_BYTES: usize = 262_144;
 pub(super) const MODEL_ENTRIES: usize = 128;
 pub(super) const MODEL_BYTES: usize = 262_144;

@@ -1,5 +1,7 @@
 use super::{head_continuation::continues_on_later_release, *};
-use crate::acp::bindings::codex::{CODEX_BINDING_ID, CODEX_PINNED_VERSION};
+use crate::{
+    acp::bindings::codex::CODEX_BINDING_ID, acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
+};
 
 fn session_at(version: &str) -> DurableSession {
     DurableSession {
@@ -15,7 +17,7 @@ fn session_at(version: &str) -> DurableSession {
 }
 
 fn next_minor() -> String {
-    let mut parts = CODEX_PINNED_VERSION.split('.');
+    let mut parts = PINNED_CODEX_VERSION.split('.');
     let major = parts.next().unwrap();
     let minor: u64 = parts.next().unwrap().parse().unwrap();
     format!("{major}.{}.0", minor + 1)
@@ -28,14 +30,14 @@ fn an_earlier_parked_codex_session_continues_on_the_pinned_release() {
             continues_on_later_release(
                 &session_at(earlier),
                 CODEX_BINDING_ID,
-                CODEX_PINNED_VERSION
+                PINNED_CODEX_VERSION
             ),
             "{earlier}"
         );
     }
     for refused in [
         next_minor(),
-        CODEX_PINNED_VERSION.to_owned(),
+        PINNED_CODEX_VERSION.to_owned(),
         "0.146".into(),
         "earlier".into(),
     ] {
@@ -43,7 +45,7 @@ fn an_earlier_parked_codex_session_continues_on_the_pinned_release() {
             !continues_on_later_release(
                 &session_at(&refused),
                 CODEX_BINDING_ID,
-                CODEX_PINNED_VERSION
+                PINNED_CODEX_VERSION
             ),
             "{refused}"
         );
@@ -60,7 +62,7 @@ fn an_earlier_parked_codex_session_continues_on_the_pinned_release() {
         assert!(!continues_on_later_release(
             &session,
             CODEX_BINDING_ID,
-            CODEX_PINNED_VERSION
+            PINNED_CODEX_VERSION
         ));
     }
 }
@@ -77,7 +79,7 @@ fn a_parked_session_continues_after_its_harness_updates_past_the_pin() {
         "codex-cli 0.167.1"
     ));
     assert!(continues_on_later_release(
-        &session_at(CODEX_PINNED_VERSION),
+        &session_at(PINNED_CODEX_VERSION),
         CODEX_BINDING_ID,
         &next_minor()
     ));
@@ -137,7 +139,7 @@ fn a_later_codex_session_is_refused() {
             &later,
             CODEX_BINDING_ID,
             crate::acp::bindings::codex::CODEX_BINDING_DIGEST_HEX,
-            CODEX_PINNED_VERSION,
+            PINNED_CODEX_VERSION,
         ),
         Err(CodexSessionError::Intent)
     ));
@@ -145,7 +147,7 @@ fn a_later_codex_session_is_refused() {
 
 #[test]
 fn a_linked_session_resumes_the_earlier_thread() {
-    let mut linked = session_at(CODEX_PINNED_VERSION);
+    let mut linked = session_at(PINNED_CODEX_VERSION);
     linked.state = "created".into();
     linked.external_session_id = None;
     linked.resumed_thread = Some("thread-before-upgrade".into());
@@ -154,7 +156,7 @@ fn a_linked_session_resumes_the_earlier_thread() {
         Ok(ActivationMode::Resume { external_session_id, .. })
             if external_session_id.as_str() == "thread-before-upgrade"
     ));
-    let mut fresh = session_at(CODEX_PINNED_VERSION);
+    let mut fresh = session_at(PINNED_CODEX_VERSION);
     fresh.state = "created".into();
     fresh.external_session_id = None;
     assert!(matches!(

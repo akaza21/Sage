@@ -14,7 +14,7 @@ impl PreviewJobBoundary {
     pub(crate) fn create() -> Result<Self, LaunchError> {
         Ok(Self(JobBoundary::create(
             u32::try_from(
-                crate::acp::limits::LIMITS
+                sage_core::limits::LIMITS
                     .process
                     .windows_job_active_process_limit,
             )
@@ -23,14 +23,16 @@ impl PreviewJobBoundary {
     }
 
     pub(crate) fn assign_process(&self, process: HANDLE) -> Result<(), LaunchError> {
-        self.0.assign(process)
+        // SAFETY: both crate callers pass the raw handle of the preview
+        // process their recovery owns, which stays live for the call.
+        unsafe { self.0.assign(process) }
     }
 
     pub(crate) fn terminate_and_wait_zero(&self, deadline: Instant) -> Result<(), LaunchError> {
         self.0.terminate()?;
         self.0.wait_for_zero(
             u32::try_from(
-                crate::acp::limits::LIMITS
+                sage_core::limits::LIMITS
                     .process
                     .windows_job_active_process_limit,
             )
@@ -42,7 +44,7 @@ impl PreviewJobBoundary {
     pub(super) fn verify_exactly_one_member(&self) -> Result<(), LaunchError> {
         match self.0.active_processes(
             u32::try_from(
-                crate::acp::limits::LIMITS
+                sage_core::limits::LIMITS
                     .process
                     .windows_job_active_process_limit,
             )
@@ -100,12 +102,12 @@ impl PreviewLaunchRecovery {
             &self.job.0,
             self.process.raw(),
             self.assigned,
-            crate::acp::limits::LIMITS
+            sage_core::limits::LIMITS
                 .process
                 .windows_job_active_process_limit,
             Instant::now()
                 + Duration::from_millis(
-                    crate::acp::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
+                    sage_core::limits::PREVIEW_LIMITS.process_termination_deadline_ms,
                 ),
         )?;
         self.stdio.take();

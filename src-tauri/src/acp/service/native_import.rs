@@ -6,13 +6,16 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::acp::{
-    bindings::codex::{ChildTurn, MAX_SNAPSHOT_BYTES, NativeSessionsPage},
-    contract::{RuntimeEpoch, SageAgentSessionId, SageProjectId},
-    goal::{NativeRead, NativeRpcReply},
-    runtime::RuntimeHost,
-    scheduler::RuntimeOwner,
-    store::native_import::{held_threads, import_lister, imported_threads},
+use crate::{
+    acp::{
+        bindings::codex::NativeSessionsPage,
+        contract::{RuntimeEpoch, SageAgentSessionId, SageProjectId},
+        goal::{NativeRead, NativeRpcReply},
+        runtime::RuntimeHost,
+        scheduler::RuntimeOwner,
+        store::native_import::{held_threads, import_lister, imported_threads},
+    },
+    acp_protocol::codex_protocol::{ChildTurn, MAX_SNAPSHOT_BYTES},
 };
 
 use super::{AcpService, native_read::NativeReadError};
@@ -158,7 +161,7 @@ impl AcpService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{bindings::codex::ChildItem, lifecycle::ItemLifecycle};
+    use crate::{acp::lifecycle::ItemLifecycle, acp_protocol::codex_protocol::ChildItem};
 
     fn turn(id: &str, text_bytes: usize) -> ChildTurn {
         ChildTurn {

@@ -25,7 +25,7 @@ use crate::{
         },
         intent::{CapabilitySnapshotV1, ExternalId, IntentSnapshot, Prompt, SafeResourceRef},
         lifecycle::{DeliveryState, TurnState},
-        process::{LaunchError, TreeExit},
+        process::TreeExit,
         runtime::{
             ActivatedSession, ActivationJournal, BoundedThread, CoordinatorActivationJournal,
             HostCancelIntent, HostError, HostPromptIntent, IdleActivationParts, JournalHandle,
@@ -42,6 +42,7 @@ use crate::{
     },
     persistence::Database,
 };
+use sage_process::error::LaunchError;
 
 #[cfg(feature = "acp-fixture")]
 use super::worker_command::WorkerDeadlineAbort;
@@ -700,14 +701,14 @@ struct JournalThreadCleanup {
 impl JournalThreadCleanup {
     fn finish(self) {
         let deadline = Instant::now()
-            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.wal_convergence);
+            + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.wal_convergence);
         self.finish_before(deadline);
     }
 
     fn finish_before(mut self, deadline: Instant) {
         self.journal.close_when_drained();
         let wait_limit =
-            Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.wal_convergence);
+            Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.wal_convergence);
         let remaining = remaining_before(deadline).min(wait_limit);
         let result = self
             .thread
@@ -764,7 +765,7 @@ impl Drop for TestThreadCleanup {
 }
 
 fn tree_termination_deadline() -> Duration {
-    Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.tree_termination)
+    Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.tree_termination)
 }
 
 fn mailbox_deadline(clock: &dyn DriverClock, timeout_millis: u64) -> i64 {
@@ -787,7 +788,7 @@ fn mailbox_deadline_before(clock: &dyn DriverClock, deadline: Instant) -> i64 {
 #[cfg(feature = "acp-fixture")]
 fn wait_for_queued_control(mailbox: &DriverMailbox) {
     let deadline = Instant::now()
-        + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.cancel_dispatch);
+        + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.cancel_dispatch);
     while mailbox.retained_usage().1.0 == 0 {
         assert!(
             Instant::now() < deadline,
@@ -1079,7 +1080,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                             prompt: Prompt::new("prompt", "saturated cancel").unwrap(),
                             now_millis: now_millis + 3,
                         },
-                        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                     })
                     .unwrap();
                 assert_eq!(
@@ -1102,7 +1103,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                 ready_sender.send((turn_id, cancel.clone())).unwrap();
                 go_receiver
                     .recv_timeout(Duration::from_millis(
-                        crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
+                        sage_core::limits::LIMITS.deadlines_ms.explicit_close,
                     ))
                     .expect("cancel dispatch release before close deadline");
                 let started = Instant::now();
@@ -1120,10 +1121,10 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
 
             let mut state = FirstTurnWorkerState::Idle(Box::new(completed));
             for timeout_millis in [
-                crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
-                crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
-                crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc,
-                crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
+                sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc,
+                sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc,
+                sage_core::limits::LIMITS.deadlines_ms.ordinary_rpc,
+                sage_core::limits::LIMITS.deadlines_ms.explicit_close,
             ] {
                 let next = mailbox
                     .wait_next_until(
@@ -1139,7 +1140,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             }
             let (turn_id, cancel) = ready_receiver
                 .recv_timeout(Duration::from_millis(
-                    crate::acp::limits::LIMITS.deadlines_ms.explicit_close,
+                    sage_core::limits::LIMITS.deadlines_ms.explicit_close,
                 ))
                 .expect("cancel intent before close deadline");
             let durable_before = cancel_snapshot(&database, &turn_id);
@@ -1157,7 +1158,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             );
             assert_eq!(
                 messages,
-                crate::acp::limits::LIMITS.queues.driver_data_messages
+                sage_core::limits::LIMITS.queues.driver_data_messages
             );
             assert_eq!(bytes, messages);
             for _ in 0..messages {
@@ -1390,7 +1391,7 @@ async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline
                         prompt: Prompt::new("prompt", "hello").unwrap(),
                         now_millis: now + 3,
                     },
-                    access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 })
                 .unwrap();
             assert_eq!(
@@ -1782,7 +1783,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
                     prompt: Prompt::new("prompt", format!("prompt-{intent}")).unwrap(),
                     now_millis: at,
                 },
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
         };
 
@@ -2327,7 +2328,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
         let mut state = FirstTurnWorkerState::Idle(Box::new(completed));
         if case == CloseBeforeWriteCase::IdlePendingConfigReaderEofDeadline {
             let deadline = now
-                + i64::try_from(crate::acp::limits::LIMITS.deadlines_ms.tree_termination)
+                + i64::try_from(sage_core::limits::LIMITS.deadlines_ms.tree_termination)
                     .unwrap();
             let reason = configured_runner_reaches_reader_eof_deadline(
                 state,
@@ -2351,7 +2352,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                 | CloseBeforeWriteCase::IdleReaderEofDeadline
         ) {
             let deadline = now
-                + i64::try_from(crate::acp::limits::LIMITS.deadlines_ms.tree_termination)
+                + i64::try_from(sage_core::limits::LIMITS.deadlines_ms.tree_termination)
                     .unwrap();
             mailbox
                 .signal_reader_terminal(ReaderTerminal::Eof)
@@ -2400,7 +2401,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                         prompt: Prompt::new("prompt", "must-not-write-after-eof").unwrap(),
                         now_millis: now + 3,
                     },
-                    access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 }))
                 .unwrap();
             let command = mailbox
@@ -2645,7 +2646,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                         prompt: Prompt::new("prompt", "must-not-write").unwrap(),
                         now_millis: now + 3,
                     },
-                    access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 }))
                 .unwrap();
             let command = mailbox
@@ -2939,7 +2940,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
             ));
             assert!(matches!(state, FirstTurnWorkerState::Reusable(_)));
             let deadline = now
-                + i64::try_from(crate::acp::limits::LIMITS.deadlines_ms.tree_termination)
+                + i64::try_from(sage_core::limits::LIMITS.deadlines_ms.tree_termination)
                     .unwrap();
             if case == CloseBeforeWriteCase::ReusablePendingConfigReaderEofDeadline {
                 let reason = configured_runner_reaches_reader_eof_deadline(
@@ -2999,7 +3000,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                     if !active.ready_for_write() && !active.stdout_allowed()
             ));
             let deadline = now
-                + i64::try_from(crate::acp::limits::LIMITS.deadlines_ms.tree_termination)
+                + i64::try_from(sage_core::limits::LIMITS.deadlines_ms.tree_termination)
                     .unwrap();
             mailbox
                 .signal_reader_terminal(ReaderTerminal::Eof)

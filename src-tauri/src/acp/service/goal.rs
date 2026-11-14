@@ -74,7 +74,7 @@ impl AcpService {
         else {
             return;
         };
-        if !crate::acp::bindings::codex::speaks_pinned_protocol(
+        if !crate::acp_protocol::codex_protocol::speaks_pinned_protocol(
             session.capabilities.protocol_version.as_str(),
         ) {
             return;
@@ -107,7 +107,7 @@ impl AcpService {
         fit_goal_to_page_budget(
             page,
             size,
-            crate::acp::limits::LIMITS.durable.history_page_bytes as usize,
+            sage_core::limits::LIMITS.durable.history_page_bytes as usize,
         )
     }
 }
@@ -152,7 +152,7 @@ fn fit_goal_to_page_budget(
     } else {
         Err(StoreError::Capacity {
             resource: "historyPage",
-            limit: crate::acp::limits::LIMITS.durable.history_page_bytes,
+            limit: sage_core::limits::LIMITS.durable.history_page_bytes,
         })
     }
 }

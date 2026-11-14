@@ -2,9 +2,10 @@ use crate::acp::{
     bindings::{adapter::ResourceMapper, codex::normalize_transcript_item},
     contract::SafeText,
     intent::NormalizedPayload,
-    lifecycle::{ItemLifecycle, ToolState},
+    lifecycle::ItemLifecycle,
 };
-use serde::{Deserialize, Serialize};
+use crate::acp_protocol::codex_protocol::{ChildItem, ChildTextRole, ChildTurn, MAX_ITEMS};
+use serde::Serialize;
 use serde_json::Value;
 
 struct TranscriptMapper<'a, M: ?Sized>(&'a M);
@@ -29,46 +30,7 @@ impl<M: ResourceMapper + ?Sized> crate::acp::bindings::codex::ResourceMapper
 }
 
 const MAX_WIRE_BYTES: usize = 1_048_576;
-pub(crate) const MAX_SNAPSHOT_BYTES: usize = 4_194_304;
-pub(crate) const MAX_TURNS: usize = 128;
-pub(crate) const MAX_ITEMS: usize = 1024;
 const MAX_TEXT_BYTES: usize = 16_384;
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct ChildTranscriptSnapshot {
-    pub(crate) child_thread_id: String,
-    pub(crate) parent_thread_id: String,
-    pub(crate) turns: Vec<ChildTurn>,
-    #[serde(default)]
-    pub(crate) retention_limited: bool,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ChildTurn {
-    pub(crate) id: String,
-    pub(crate) status: String,
-    pub(crate) items: Vec<ChildItem>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub(crate) struct ChildItem {
-    pub(crate) id: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) role: Option<ChildTextRole>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub(crate) observed_sequence: Option<u64>,
-    pub(crate) lifecycle: ItemLifecycle,
-    pub(crate) tool_state: Option<ToolState>,
-    pub(crate) payload: NormalizedPayload,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) enum ChildTextRole {
-    User,
-    Assistant,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ChildTranscriptError {
@@ -112,19 +74,6 @@ pub(crate) const TURN_PAGE: usize = 4;
 pub(crate) const SESSION_PAGE: usize = 25;
 const MAX_CURSOR_BYTES: usize = 1024;
 const MAX_TITLE_CHARS: usize = 200;
-
-impl ChildTranscriptSnapshot {
-    pub(crate) fn within_bounds(&self) -> bool {
-        self.turns.len() <= MAX_TURNS
-            && self
-                .turns
-                .iter()
-                .map(|turn| turn.items.len())
-                .sum::<usize>()
-                <= MAX_ITEMS
-            && serde_json::to_vec(self).is_ok_and(|bytes| bytes.len() <= MAX_SNAPSHOT_BYTES)
-    }
-}
 
 /// The `result` of the response to `request_id`, or why there is none.
 fn page_result(wire: &[u8], request_id: u64) -> Result<Value, ChildTranscriptError> {

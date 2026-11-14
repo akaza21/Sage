@@ -8,8 +8,8 @@ use crate::acp::{
         session_event::{SessionNotice, SessionScopedEvent},
     },
     lifecycle::{ItemLifecycle, TurnState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::PiRuntime;
 use crate::acp::bindings::pi::{AdapterOutput, TerminalOutcome};

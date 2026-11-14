@@ -7,9 +7,9 @@ use crate::acp::{
     },
     intent::{ActivityProvenanceV1, ExternalId},
     lifecycle::ActivityLifecycle,
-    limits::LIMITS,
     projection::ActivityRole,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     EntityMutation, MutationDisposition, StoreError,

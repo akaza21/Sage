@@ -74,7 +74,7 @@ where
     Prepared {
         turn: Box<PreparedActivationTurn<A, R, T, C>>,
         prompt: crate::acp::intent::Prompt,
-        access_mode: crate::settings_store::SessionAccessMode,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
     },
     Active(Box<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>),
     Reusable(

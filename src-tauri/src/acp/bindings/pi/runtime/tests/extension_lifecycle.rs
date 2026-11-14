@@ -28,7 +28,7 @@ fn extension_command(runtime: &PiRuntime, client: &str) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt,
         client_message_id: RequiredText::new("client", client).unwrap(),
-        access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 
@@ -414,7 +414,7 @@ fn pending_session_reset_blocks_prompts_until_response_or_delivery_rollback() {
         let prompt = || AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect after reset").unwrap(),
             client_message_id: RequiredText::new("client", "after-reset").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         };
         assert!(
             runtime.command(prompt()).is_err(),

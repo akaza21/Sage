@@ -4,13 +4,11 @@ use super::events::ingest;
 use super::screenshot::admit_jpeg;
 use super::snapshot::{DocumentStamp, NativeNode};
 use super::wait::{WaitBudget, WaitStep};
-use crate::acp::{
-    browser::{
-        BrowserAction, BrowserCapability, BrowserCommand, BrowserFailure, BrowserRequest,
-        BrowserResult, BrowserScope, ViewportRegion, WaitCondition, dispatch,
-    },
-    limits::BROWSER_LIMITS,
+use crate::acp::browser::{
+    BrowserAction, BrowserCapability, BrowserCommand, BrowserFailure, BrowserRequest,
+    BrowserResult, BrowserScope, ViewportRegion, WaitCondition, dispatch,
 };
+use sage_core::limits::BROWSER_LIMITS;
 use std::sync::{Arc, Mutex};
 
 #[test]

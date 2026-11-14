@@ -7,7 +7,7 @@ use crate::acp::process::ZeroProcessToken;
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    process::{LaunchError, TreeExit},
+    process::TreeExit,
     runtime::{
         ActiveDispatch, ActiveTurnIntent, AdapterBatchJournal, CompletedPumpParts, PrepareDispatch,
         PrepareRecovery, ProjectIntentAuthority, SendCoordinator, SessionTreeLease,
@@ -15,6 +15,7 @@ use crate::acp::{
     scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
 };
+use sage_process::error::LaunchError;
 
 use super::{
     CoordinatorZeroToken, DriverClock, DriverError, DriverMailbox, ProcessAdapterDriver,

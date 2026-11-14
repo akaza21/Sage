@@ -1,4 +1,5 @@
-use crate::acp::{contract::SchemaVersionV1, intent::CapabilitySnapshotV1, limits::LIMITS};
+use crate::acp::{contract::SchemaVersionV1, intent::CapabilitySnapshotV1};
+use sage_core::limits::LIMITS;
 
 use super::ActivationPumpError;
 

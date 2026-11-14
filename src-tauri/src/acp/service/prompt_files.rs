@@ -1,4 +1,5 @@
 //! Ephemeral native prompt resources. No bytes or paths are persisted.
+use sage_core::limits::prompt_files::{FILE_COUNT, TOTAL_BYTES};
 use serde::Serialize;
 use std::{collections::BTreeMap, sync::Arc};
 
@@ -9,17 +10,11 @@ mod inline;
 pub(crate) mod limits;
 mod read;
 pub(crate) use read::file_is_excluded;
-pub(crate) mod secrets;
 #[cfg(test)]
 mod selection_tests;
 #[cfg(test)]
 mod tests;
 
-pub(crate) const FILE_BYTES: usize = 64 * 1024;
-pub(crate) const TOTAL_BYTES: usize = 96 * 1024;
-pub(crate) const FILE_COUNT: usize = 16;
-/// Prompt text, attached context and staged files together, per dispatch.
-pub(crate) const DISPATCH_BYTES: usize = 120 * 1024;
 /// The name a pasted-text resource carries; its URI still holds its own id.
 pub(crate) const PASTED_TEXT_NAME: &str = "pasted-text.txt";
 const OWNER_COUNT: usize = 16;

@@ -9,8 +9,8 @@ use crate::acp::{
     contract::SafeText,
     intent::TOOL_PROGRESS_BYTES,
     lifecycle::{ItemLifecycle, ToolState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ItemUpdateMode,

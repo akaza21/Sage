@@ -5,10 +5,8 @@ use std::sync::Arc;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-use crate::acp::{
-    intent::{CapabilitySnapshotV1, ImageMediaType},
-    limits::{PROMPT_IMAGE_COUNT, PROMPT_IMAGE_EDGE_PX, PROMPT_IMAGE_TOTAL_BYTES},
-};
+use crate::acp::intent::{CapabilitySnapshotV1, ImageMediaType};
+use sage_core::limits::{PROMPT_IMAGE_COUNT, PROMPT_IMAGE_EDGE_PX, PROMPT_IMAGE_TOTAL_BYTES};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PromptImage {
@@ -144,7 +142,7 @@ impl PromptImages {
     pub(crate) fn echoed(&self) -> Result<Vec<(&'static str, String)>, ImageRefusal> {
         admit_sizes(
             self.0.iter().map(|image| image.bytes.len()),
-            crate::acp::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES,
+            sage_core::limits::ECHOED_PROMPT_IMAGE_TOTAL_BYTES,
         )?;
         Ok(self
             .0
@@ -166,7 +164,7 @@ impl PromptImages {
             .iter()
             .map(|image| image.bytes.len().div_ceil(3) * 4)
             .sum::<usize>();
-        escaped.saturating_add(images + crate::acp::limits::PROMPT_FRAME_ENVELOPE_BYTES)
-            <= crate::acp::limits::LIMITS.wire.frame_bytes as usize
+        escaped.saturating_add(images + sage_core::limits::PROMPT_FRAME_ENVELOPE_BYTES)
+            <= sage_core::limits::LIMITS.wire.frame_bytes as usize
     }
 }

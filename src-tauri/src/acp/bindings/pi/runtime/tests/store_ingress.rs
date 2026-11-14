@@ -68,7 +68,7 @@ fn pi_consecutive_turn_items_and_images_ingest_without_identity_conflicts() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "Inspect read-only").unwrap(),
                 client_message_id: RequiredText::new("client", client.as_str()).unwrap(),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .unwrap();
         let prompt = deliver(&mut runtime, prompt);

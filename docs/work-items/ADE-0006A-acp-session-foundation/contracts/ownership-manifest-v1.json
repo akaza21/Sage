@@ -13,6 +13,7 @@
   "ownedDirectoryScopes": [
     "docs/work-items/ADE-0006A-acp-session-foundation/",
     "src-tauri/src/acp/",
+    "src-tauri/src/acp_protocol/",
     "src-tauri/src/persistence/",
     "src-tauri/src/session_events/",
     "src-tauri/src/settings_store/",
@@ -24,6 +25,16 @@
     "Cargo.lock",
     "Cargo.toml",
     "crates/sage-core/src/encoded_len.rs",
+    "crates/sage-core/src/limits.rs",
+    "crates/sage-core/src/limits/browser.rs",
+    "crates/sage-core/src/limits/fixture.rs",
+    "crates/sage-core/src/limits/images.rs",
+    "crates/sage-core/src/limits/preview.rs",
+    "crates/sage-core/src/limits/prompt_files.rs",
+    "crates/sage-core/src/limits/tests.rs",
+    "crates/sage-process/src/error.rs",
+    "crates/sage-process/src/handle.rs",
+    "crates/sage-process/src/job.rs",
     "eslint.config.js",
     "scripts/ade0006a-admission.mjs",
     "scripts/ade0006a-c0b-campaign-launch.mjs",
@@ -108,6 +119,7 @@
     "scripts/validate-ade0006a-c0b.node-test.mjs",
     "src-tauri/Cargo.toml",
     "src-tauri/migrations/005_acp_session_foundation.sql",
+    "src-tauri/src/acp_protocol.rs",
     "src-tauri/src/bin/acp_adversarial_fixture.rs",
     "src-tauri/src/commands.rs",
     "src-tauri/src/editor_persistence.rs",
@@ -183,7 +195,7 @@
     {
       "owner": "bf3-browser-capability-contract",
       "prefixes": ["src-tauri/src/acp/browser/"],
-      "files": ["src-tauri/src/acp/limits/browser.rs"]
+      "files": ["crates/sage-core/src/limits/browser.rs"]
     },
     {
       "owner": "mcp-injection-seam",
@@ -203,6 +215,12 @@
         "Cargo.lock",
         "Cargo.toml",
         "crates/sage-core/src/encoded_len.rs",
+        "crates/sage-core/src/limits.rs",
+        "crates/sage-core/src/limits/fixture.rs",
+        "crates/sage-core/src/limits/images.rs",
+        "crates/sage-core/src/limits/preview.rs",
+        "crates/sage-core/src/limits/prompt_files.rs",
+        "crates/sage-core/src/limits/tests.rs",
         "scripts/generate-acp-fixture-cases.mjs",
         "src-tauri/Cargo.toml",
         "src-tauri/migrations/005_acp_session_foundation.sql",
@@ -222,8 +240,6 @@
         "src-tauri/src/acp/command_output.rs",
         "src-tauri/src/acp/contract.rs",
         "src-tauri/src/acp/declared_test.rs",
-        "src-tauri/src/acp/file_diff.rs",
-        "src-tauri/src/acp/file_diff/line_counts.rs",
         "src-tauri/src/acp/fixture_protocol.rs",
         "src-tauri/src/acp/image_admit.rs",
         "src-tauri/src/acp/intent.rs",
@@ -244,10 +260,6 @@
         "src-tauri/src/acp/intent/user_input/limits.rs",
         "src-tauri/src/acp/intent/user_input/tests.rs",
         "src-tauri/src/acp/lifecycle.rs",
-        "src-tauri/src/acp/limits.rs",
-        "src-tauri/src/acp/limits/fixture.rs",
-        "src-tauri/src/acp/limits/images.rs",
-        "src-tauri/src/acp/limits/preview.rs",
         "src-tauri/src/acp/package_manifest.rs",
         "src-tauri/src/acp/projection.rs",
         "src-tauri/src/acp/prompt_mentions.rs",
@@ -255,6 +267,9 @@
         "src-tauri/src/acp/semantic_ingress.rs",
         "src-tauri/src/acp/session_action.rs",
         "src-tauri/src/acp/transcript_quote.rs",
+        "src-tauri/src/acp_protocol/access_mode.rs",
+        "src-tauri/src/acp_protocol/file_diff.rs",
+        "src-tauri/src/acp_protocol/file_diff/line_counts.rs",
         "src/domain/acp.ts"
       ]
     },
@@ -267,7 +282,9 @@
         "src-tauri/src/acp/transport/"
       ],
       "files": [
-        "src-tauri/src/acp/fixture/generated_journey_cases.rs",
+        "crates/sage-process/src/error.rs",
+        "crates/sage-process/src/handle.rs",
+        "crates/sage-process/src/job.rs",
         "src-tauri/src/acp/fixture/pause_tests.rs",
         "src-tauri/src/acp/fixture/wire_child_opened_tests.rs",
         "src-tauri/src/acp/fixture/wire_parity_tests.rs",
@@ -286,12 +303,15 @@
         "src-tauri/src/acp/redaction/spans.rs",
         "src-tauri/src/acp/redaction/text.rs",
         "src-tauri/src/acp/redaction/values.rs",
+        "src-tauri/src/acp_protocol/native_cases.rs",
+        "src-tauri/src/acp_protocol/native_cases/generated_journey_cases.rs",
         "src-tauri/src/bin/acp_adversarial_fixture.rs"
       ]
     },
     {
       "owner": "p2-runtime-store",
       "prefixes": [
+        "src-tauri/src/acp/read_text_file/",
         "src-tauri/src/acp/recovery/",
         "src-tauri/src/acp/runtime/",
         "src-tauri/src/acp/scheduler/",
@@ -320,7 +340,13 @@
         "src-tauri/src/acp/session_config/tests.rs",
         "src-tauri/src/acp/usage.rs",
         "src-tauri/src/side_chat.rs",
-        "src-tauri/src/side_chat_storage.rs"
+        "src-tauri/src/side_chat_storage.rs",
+        "src-tauri/src/acp/errors.rs",
+        "src-tauri/src/acp/prompt_files.rs",
+        "src-tauri/src/acp/prompt_files/secrets.rs",
+        "src-tauri/src/acp/read_text_file.rs",
+        "src-tauri/src/acp/turn_undo.rs",
+        "src-tauri/src/acp_protocol/permissions.rs"
       ]
     },
     {
@@ -366,7 +392,7 @@
         "src-tauri/src/acp/bindings/codex/",
         "src-tauri/testdata/acp/codex/"
       ],
-      "files": []
+      "files": ["src-tauri/src/acp_protocol/codex_protocol.rs"]
     },
     {
       "owner": "h2-pi-admission",
@@ -534,7 +560,8 @@
         "tools/footprint-control/tauri.conf.json",
         "tools/footprint-control/tauri.windows.package.conf.json",
         "src-tauri/src/acp/bindings/registry/tests.rs",
-        "src-tauri/src/acp/bindings/registry/pi_native_tests.rs"
+        "src-tauri/src/acp/bindings/registry/pi_native_tests.rs",
+        "src-tauri/src/acp_protocol.rs"
       ]
     }
   ],

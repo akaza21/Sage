@@ -5,7 +5,7 @@ use std::{
 
 use serde_json::{Value, json};
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::super::FixtureError;
 use super::{WireState, acp, codex};

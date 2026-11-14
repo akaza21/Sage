@@ -5,7 +5,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::*;
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 mod rollback;
 mod unavailable_binding;

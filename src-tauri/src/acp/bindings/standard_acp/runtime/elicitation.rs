@@ -6,13 +6,15 @@
 
 use serde_json::{Value, json};
 
-use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution,
-        EgressToken,
+use crate::{
+    acp::{
+        bindings::adapter::{
+            AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution,
+            EgressToken,
+        },
+        intent::{ExternalId, user_input::UserInputRequest},
     },
-    intent::{ExternalId, user_input::UserInputRequest},
-    runtime::permissions::PermissionDecision,
+    acp_protocol::permissions::PermissionDecision,
 };
 
 use super::super::elicitation::{self as codec, Elicitation};

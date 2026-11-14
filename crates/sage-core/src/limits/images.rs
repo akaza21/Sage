@@ -2,7 +2,7 @@
 //! sends. Every number below is either a product decision documented where it
 //! is set or derived from the transport limits it must fit.
 use super::LIMITS;
-use crate::acp::service::prompt_files::{DISPATCH_BYTES, TOTAL_BYTES as PROMPT_FILE_BYTES};
+use super::prompt_files::{DISPATCH_BYTES, TOTAL_BYTES as PROMPT_FILE_BYTES};
 
 /// Images one prompt may carry; the composer attaches at most this many.
 pub const PROMPT_IMAGE_COUNT: usize = 4;

@@ -5,13 +5,13 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Instant;
 
-use crate::acp::limits::LIMITS;
 use crate::acp::redaction::{SafeDiagnostic, SafeStderrDiagnostic, StderrRing};
 use crate::acp::transport::{
     Frame, FrameError, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame,
 };
+use sage_core::limits::LIMITS;
 
-use super::super::supervisor::LaunchError;
+use sage_process::error::LaunchError;
 
 /// Independently owned stdin authority. Blocking writes never hold the tree
 /// control lock, so cancellation can always dispatch concurrently.

@@ -1,8 +1,8 @@
 use crate::acp::{
     bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressResolution, EgressToken},
     intent::ExternalId,
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{DenyIntent, DenyStage, OmpRuntime, RequestKind};
 use crate::acp::bindings::omp::{AdapterEvent, Outbound};

@@ -13,12 +13,13 @@ use tokio::{
 };
 
 use sage_core::error::{AppError, AppResult, GitContainmentState};
+use sage_process::process_tree::wait_until_empty;
 
 #[cfg(test)]
 use super::test_support::{ForegroundObservation, ReaperTestControl, ReaperWaitMode};
 use super::{
     GitChild, GitOutput, GitProcessPolicy, GitRootAuthority, PostSpawnFailure, ProcessTree,
-    ReaderTasks, process_tree::wait_until_empty,
+    ReaderTasks,
 };
 
 mod reaper;

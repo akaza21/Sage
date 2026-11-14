@@ -98,7 +98,10 @@ mod tests {
     };
 
     use super::*;
-    use crate::acp::bindings::codex::{CODEX_PINNED_VERSION, test_identity::version_line};
+    use crate::{
+        acp::bindings::codex::test_identity::version_line,
+        acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
+    };
 
     #[cfg(windows)]
     fn write_package_manifest(directory: &std::path::Path) {
@@ -146,7 +149,7 @@ mod tests {
             Some(crate::harness_discovery::InstalledHarness {
                 id: "codex",
                 executable: executable.clone(),
-                version: Some(CODEX_PINNED_VERSION.into()),
+                version: Some(PINNED_CODEX_VERSION.into()),
             }),
             Arc::new(environment_tests::TestLaunchInputs::default()),
         ));
@@ -265,7 +268,7 @@ mod tests {
             Some(crate::harness_discovery::InstalledHarness {
                 id: "codex",
                 executable,
-                version: Some(CODEX_PINNED_VERSION.into()),
+                version: Some(PINNED_CODEX_VERSION.into()),
             }),
             Arc::new(environment_tests::TestLaunchInputs::default()),
         ));

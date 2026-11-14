@@ -5,8 +5,8 @@ use crate::acp::{
     contract::ProjectGeneration,
     intent::Prompt,
     lifecycle::{DeliveryState, ServerRequestState, SessionState, TurnState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 #[path = "cancelled_permission_tests.rs"]
 mod cancelled_permission_tests;

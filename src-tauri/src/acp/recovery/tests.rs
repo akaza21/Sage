@@ -228,7 +228,7 @@ fn restart_limit_plus_one_fails_without_recovering_any_tree() {
              CREATE TABLE turns(id TEXT, session_id TEXT, runtime_epoch INTEGER, state TEXT, delivery_state TEXT, revision INTEGER);",
         )
         .unwrap();
-    let trees = crate::acp::limits::LIMITS.process.operational_live_trees as i64 + 1;
+    let trees = sage_core::limits::LIMITS.process.operational_live_trees as i64 + 1;
     for index in 0..trees {
         connection
             .execute_batch(&format!(

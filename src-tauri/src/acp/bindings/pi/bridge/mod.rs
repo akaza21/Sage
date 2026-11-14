@@ -5,7 +5,7 @@ pub(crate) mod install;
 pub(crate) mod path;
 mod refusal;
 pub(crate) mod write;
-use crate::{settings_store::SessionAccessMode, workspace::Workspace};
+use crate::{acp_protocol::access_mode::SessionAccessMode, workspace::Workspace};
 #[cfg(any(test, feature = "acp-fixture"))]
 pub(crate) use refusal::MAX_REPLY_BYTES;
 pub(crate) use refusal::Refusal;

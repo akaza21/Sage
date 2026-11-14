@@ -11,9 +11,10 @@ use super::incoming::UNPROJECTED_DIAGNOSTIC;
 use super::*;
 use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
 use super::{
-    manifest::{PINNED_ARTIFACT_COUNT, PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY},
+    manifest::PINNED_ARTIFACT_COUNT,
     test_identity::{MANAGED_CODEX_HOME, user_agent, version_line},
 };
+use crate::acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY};
 
 mod command_summary_tests;
 mod file_change_sequence_tests;
@@ -37,14 +38,17 @@ const REPRODUCTION_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/package-reproduction-v1.json");
 const PACKAGE_ROOT: &str = concat!(
     r"C:\SageHarnesses\Codex\",
-    super::manifest::pinned_codex_version!(),
+    crate::acp_protocol::codex_protocol::pinned_codex_version!(),
     r"\package"
 );
 const ISOLATED_CODEX_HOME: &str = MANAGED_CODEX_HOME;
 
 #[test]
 fn the_protocol_identity_names_the_pinned_version_and_schema_prefix() {
-    assert!(CODEX_SCHEMA_SHA256.starts_with(super::manifest::pinned_schema_prefix!()));
+    assert!(
+        CODEX_SCHEMA_SHA256
+            .starts_with(crate::acp_protocol::codex_protocol::pinned_schema_prefix!())
+    );
     assert_eq!(
         PINNED_PROTOCOL_IDENTITY,
         format!(
@@ -56,9 +60,11 @@ fn the_protocol_identity_names_the_pinned_version_and_schema_prefix() {
 
 #[test]
 fn native_service_gates_admit_only_exact_managed_or_observed_identity() {
-    assert!(super::speaks_pinned_protocol(PINNED_PROTOCOL_IDENTITY));
-    assert!(super::speaks_pinned_protocol(
-        super::manifest::OBSERVED_PROTOCOL_IDENTITY
+    assert!(crate::acp_protocol::codex_protocol::speaks_pinned_protocol(
+        PINNED_PROTOCOL_IDENTITY
+    ));
+    assert!(crate::acp_protocol::codex_protocol::speaks_pinned_protocol(
+        crate::acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY
     ));
     let (major, rest) = PINNED_CODEX_VERSION.split_once('.').unwrap();
     let minor: u64 = rest.split_once('.').unwrap().0.parse().unwrap();
@@ -69,7 +75,10 @@ fn native_service_gates_admit_only_exact_managed_or_observed_identity() {
         format!("codex-app-server-observed-{next_minor}"),
         format!("codex-app-server-{PINNED_CODEX_VERSION}-unknown"),
     ] {
-        assert!(!super::speaks_pinned_protocol(&unknown), "{unknown}");
+        assert!(
+            !crate::acp_protocol::codex_protocol::speaks_pinned_protocol(&unknown),
+            "{unknown}"
+        );
     }
 }
 
@@ -1229,8 +1238,8 @@ fn pinned_codex_uses_captured_read_only_spellings_per_request_shape() {
 #[test]
 fn pinned_codex_admits_ask_and_workspace_write_before_turn_start() {
     for mode in [
-        crate::settings_store::SessionAccessMode::Ask,
-        crate::settings_store::SessionAccessMode::WorkspaceWrite,
+        crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+        crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
     ] {
         let mut candidate = adapter();
         negotiate(&mut candidate);
@@ -1254,7 +1263,7 @@ fn pinned_codex_admits_ask_and_workspace_write_before_turn_start() {
         assert_eq!(wire["params"]["sandboxPolicy"]["networkAccess"], false);
         assert_eq!(
             wire["params"]["approvalPolicy"],
-            if mode == crate::settings_store::SessionAccessMode::Ask {
+            if mode == crate::acp_protocol::access_mode::SessionAccessMode::Ask {
                 "on-request"
             } else {
                 "never"
@@ -1265,7 +1274,7 @@ fn pinned_codex_admits_ask_and_workspace_write_before_turn_start() {
 
 #[test]
 fn pinned_codex_dispatches_saved_ask_as_read_only() {
-    use crate::settings_store::SessionAccessMode;
+    use crate::acp_protocol::access_mode::SessionAccessMode;
 
     let mut candidate = adapter();
     ready(&mut candidate);

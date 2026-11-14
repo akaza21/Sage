@@ -6,9 +6,9 @@ use crate::acp::{
         NativeAuthUrl, NativeLoginId,
         discovery::{CodexDiscoveryRunError, DiscoveryZeroProcess},
     },
-    limits::LIMITS,
     transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     CodexAuthAccount,

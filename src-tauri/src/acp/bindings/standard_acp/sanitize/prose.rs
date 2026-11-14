@@ -1,9 +1,9 @@
 use super::neutralized;
 use crate::acp::{
     contract::ContractError,
-    limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS},
     redaction::text::{self, Mode},
 };
+use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
 pub(crate) fn sanitized_content_output(input: &str) -> Result<String, ContractError> {
     let maximum_input = LIMITS.wire.frame_bytes as usize;

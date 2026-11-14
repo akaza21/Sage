@@ -23,7 +23,7 @@ fn generated_child_opened_journey_admits_owner_and_reads_after_parent_completion
         let prompt = adapter.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         adapter.ingest(&codex_frame(serde_json::json!({"id":codex_request_id(&prompt),
             "result":{"turn":{"id":native_turn}}})), &Mapper).unwrap();
@@ -98,7 +98,7 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         let prompt = adapter.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         let prompt_id = codex_request_id(&prompt);
         adapter.ingest(&codex_frame(serde_json::json!({
@@ -203,8 +203,8 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         assert_eq!(snapshot.turns[0].status, "completed");
         assert_eq!(snapshot.turns[0].items[3].id, "late-command");
         assert!(snapshot.turns[0].items[..4].iter().all(|item| item.role.is_none()));
-        assert_eq!(snapshot.turns[0].items[4].role, Some(crate::acp::bindings::codex::ChildTextRole::Assistant));
-        assert_eq!(snapshot.turns[0].items[5].role, Some(crate::acp::bindings::codex::ChildTextRole::User));
+        assert_eq!(snapshot.turns[0].items[4].role, Some(crate::acp_protocol::codex_protocol::ChildTextRole::Assistant));
+        assert_eq!(snapshot.turns[0].items[5].role, Some(crate::acp_protocol::codex_protocol::ChildTextRole::User));
         assert!(matches!(snapshot.turns[0].items[0].payload,
             crate::acp::intent::NormalizedPayload::ToolCall { .. }));
         let mut read_wire: serde_json::Value = serde_json::from_str(include_str!(
@@ -225,7 +225,7 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         assert_eq!(merged.turns[0].items.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(),
             ["command-one", "file-one", "reason-one", "late-command", "item-1", "user-1"]);
         assert_eq!(merged.turns.iter().map(|turn| turn.items.len()).sum::<usize>(), 6);
-        assert_eq!(merged.turns[0].items[4].role, Some(crate::acp::bindings::codex::ChildTextRole::Assistant));
+        assert_eq!(merged.turns[0].items[4].role, Some(crate::acp_protocol::codex_protocol::ChildTextRole::Assistant));
         assert!(merged.turns.iter().flat_map(|turn| &turn.items).any(|item|
             matches!(item.payload, crate::acp::intent::NormalizedPayload::ToolCall { .. })));
         assert!(merged.turns.iter().flat_map(|turn| &turn.items).any(|item|
@@ -274,7 +274,7 @@ fn an_idle_child_item_publishes_its_epoch_without_moving_the_revision() {
         let prompt = adapter.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         let prompt_id = codex_request_id(&prompt);
         adapter.ingest(&codex_frame(serde_json::json!({

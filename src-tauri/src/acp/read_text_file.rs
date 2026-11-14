@@ -11,7 +11,6 @@ use std::{
 use crate::{
     acp::{
         contract::SageRootId,
-        limits::LIMITS,
         resource_mapper::{ConfiguredResourceRoot, NativeResourceAdmission, NativeResourceMapper},
         runtime::read_text_file::ReadTextRange,
     },
@@ -19,6 +18,7 @@ use crate::{
     persistence::Database,
     workspace::{Workspace, select_text_lines},
 };
+use sage_core::limits::LIMITS;
 
 const MAX_EDITABLE_BUFFER_BYTES: usize = 1024 * 1024;
 mod lifecycle;
@@ -179,10 +179,7 @@ impl ReadTextFileService {
             ),
         })
     }
-    pub(super) fn mapper_for_owner(
-        &self,
-        owner: &ReadTextOwner,
-    ) -> ReadTextResult<NativeResourceMapper> {
+    fn mapper_for_owner(&self, owner: &ReadTextOwner) -> ReadTextResult<NativeResourceMapper> {
         let roots = self
             .database
             .root_records(owner.project_id.as_str())

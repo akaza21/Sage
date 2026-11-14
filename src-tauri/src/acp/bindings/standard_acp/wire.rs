@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fmt};
 use serde::{Deserialize, Deserializer, de};
 use serde_json::{Map, Number, Value};
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 pub(crate) fn decode_frame(raw: &[u8]) -> Result<Value, WireError> {
     if raw.is_empty() || raw.len() as u64 > LIMITS.wire.frame_bytes || raw.contains(&0) {

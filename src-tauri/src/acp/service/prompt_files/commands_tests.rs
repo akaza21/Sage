@@ -187,7 +187,8 @@ fn a_closed_tab_releases_its_batch_and_a_reopened_tab_never_inherits_it() {
 
 #[test]
 fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
-    use super::super::{FILE_COUNT, PASTED_TEXT_NAME, TOTAL_BYTES};
+    use super::super::PASTED_TEXT_NAME;
+    use sage_core::limits::prompt_files::{FILE_COUNT, TOTAL_BYTES};
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let fixture = Fixture::new();
         let state = &fixture.state;

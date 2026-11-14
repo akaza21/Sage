@@ -1,7 +1,9 @@
 //! Wire identities a pinned Codex app-server reports, for tests that replay
 //! its `initialize` handshake. Everything is derived from the manifest pin.
 
-use super::manifest::{PINNED_CODEX_VERSION, pinned_codex_version, pinned_schema_prefix};
+use crate::acp_protocol::codex_protocol::{
+    PINNED_CODEX_VERSION, pinned_codex_version, pinned_schema_prefix,
+};
 
 /// The isolated `CODEX_HOME` of the curated packet under the default root.
 pub(crate) const MANAGED_CODEX_HOME: &str = concat!(

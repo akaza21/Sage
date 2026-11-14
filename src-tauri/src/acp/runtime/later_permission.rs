@@ -1,8 +1,10 @@
-use crate::acp::{
-    bindings::adapter::{AdapterEgress, EgressToken},
-    contract::SageServerRequestId,
-    intent::ExternalId,
-    runtime::permissions::PermissionDecision,
+use crate::{
+    acp::{
+        bindings::adapter::{AdapterEgress, EgressToken},
+        contract::SageServerRequestId,
+        intent::ExternalId,
+    },
+    acp_protocol::permissions::PermissionDecision,
 };
 
 /// Turns an adapter-owned permission reply into the common durable-decision

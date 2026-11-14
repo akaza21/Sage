@@ -1,6 +1,6 @@
 use serde::Deserialize;
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::manifest::{MetadataValidatedPacket, StatePolicy};
 

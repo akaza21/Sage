@@ -11,7 +11,7 @@ use super::types::{HostCommand, HostError, HostOutcome};
 impl RuntimeHost {
     pub(crate) fn close_deadline() -> Instant {
         Instant::now()
-            + Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close)
+            + Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close)
     }
 
     pub(crate) fn shutdown(&self, deadline: Instant) -> Result<(), HostError> {

@@ -177,7 +177,7 @@ fn fork_fails_closed_without_the_advertisement_and_during_a_prompt() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: RequiredText::new("client", "client-fork").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         })
         .unwrap();
     assert!(prompting.fork_session().is_err());
@@ -362,7 +362,7 @@ fn a_refused_fork_delete_during_a_prompt_is_written_once_idle() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: RequiredText::new("client", "client-defer").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         })
         .unwrap();
     let prompt_id = request_id(&prompt);
@@ -424,7 +424,7 @@ fn prompting(runtime: &mut ClaudeRuntime, client: &str) -> u64 {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: RequiredText::new("client", client).unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::Ask,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
         })
         .unwrap();
     let id = request_id(&prompt);

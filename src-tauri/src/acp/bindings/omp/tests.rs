@@ -18,13 +18,13 @@ use crate::acp::{
         COMMAND_RESOURCE_LIMIT, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
         ToolCategory, UnavailableResourceReason,
     },
-    limits::LIMITS,
-    runtime::read_text_file::{DeferredReadTextOwnerResolver, ExpectedOwnerScope},
-    service::{
+    read_text_file::{
         DiskAllowedState, ReadTextFileService, ReadTextFlushAck, ReadTextFlushState, ReadTextOwner,
     },
+    runtime::read_text_file::{DeferredReadTextOwnerResolver, ExpectedOwnerScope},
     transport::DeadlineAsyncWriter,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     AdapterEvent, ArtifactIdentity, CandidateManifest, CuratedOmpBinding, OMP_BUN_MINIMUM,
@@ -116,7 +116,7 @@ fn p02_omp_real_ingress_preflights_routes_service_and_preserves_numeric_id() {
             expected_editor_revision: handoff.begin.event.expected_editor_revision,
             token: handoff.begin.event.token.clone().into(),
             state: ReadTextFlushState::Classify {
-                state: crate::acp::service::ReadTextClassification::NotOpen,
+                state: crate::acp::read_text_file::ReadTextClassification::NotOpen,
                 editor_revision: None,
             },
         })

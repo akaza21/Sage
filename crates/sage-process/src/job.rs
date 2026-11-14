@@ -1,3 +1,7 @@
+//! A Windows Job Object that contains a whole process tree: kill-on-close,
+//! an active-process limit, no breakaway, and job accounting as the only
+//! membership authority.
+
 use std::mem::size_of;
 use std::ptr::{null, null_mut};
 use std::time::{Duration, Instant};
@@ -12,19 +16,20 @@ use windows_sys::Win32::System::JobObjects::{
     TerminateJobObject,
 };
 
-use super::super::supervisor::LaunchError;
-use super::native::NativeHandle;
+use crate::error::LaunchError;
+use crate::handle::NativeHandle;
 
-pub(crate) struct JobBoundary(NativeHandle);
+pub struct JobBoundary(NativeHandle);
 
 impl JobBoundary {
-    pub(crate) fn raw(&self) -> HANDLE {
+    pub fn raw(&self) -> HANDLE {
         self.0.raw()
     }
 
-    pub(crate) fn create(active_limit: u32) -> Result<Self, LaunchError> {
-        // SAFETY: null security/name creates an unnamed non-inheritable Job.
-        let job = NativeHandle::new(unsafe { CreateJobObjectW(null(), null()) })
+    pub fn create(active_limit: u32) -> Result<Self, LaunchError> {
+        // SAFETY: null security/name creates an unnamed non-inheritable Job,
+        // whose new handle is owned by nothing else.
+        let job = unsafe { NativeHandle::new(CreateJobObjectW(null(), null())) }
             .map_err(|_| LaunchError::ContainmentFailure)?;
         let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
         limits.BasicLimitInformation.LimitFlags =
@@ -47,15 +52,21 @@ impl JobBoundary {
         Ok(Self(job))
     }
 
-    pub(crate) fn assign(&self, process: HANDLE) -> Result<(), LaunchError> {
-        // SAFETY: both handles are live and assignment happens while suspended.
+    /// Assigns `process` to the Job, whose close kills it.
+    ///
+    /// # Safety
+    ///
+    /// `process` must be a live process handle the caller owns or borrows for
+    /// the call, so a stale value can never name an unrelated process.
+    pub unsafe fn assign(&self, process: HANDLE) -> Result<(), LaunchError> {
+        // SAFETY: the Job is live and the caller guarantees `process` is.
         if unsafe { AssignProcessToJobObject(self.0.raw(), process) } == 0 {
             return Err(LaunchError::ContainmentFailure);
         }
         Ok(())
     }
 
-    pub(crate) fn terminate(&self) -> Result<(), LaunchError> {
+    pub fn terminate(&self) -> Result<(), LaunchError> {
         // SAFETY: the Job is live and exclusively controlled by this supervisor.
         if unsafe { TerminateJobObject(self.0.raw(), 1) } == 0 {
             return Err(LaunchError::ContainmentFailure);
@@ -65,7 +76,7 @@ impl JobBoundary {
 
     /// Job accounting is the membership authority. No PID is reopened, so a
     /// recycled system PID can never make teardown wait on an unrelated process.
-    pub(crate) fn active_processes(&self, capacity: u32) -> Result<u32, LaunchError> {
+    pub fn active_processes(&self, capacity: u32) -> Result<u32, LaunchError> {
         let accounting = self.accounting()?;
         if accounting.ActiveProcesses > capacity {
             return Err(LaunchError::ContainmentFailure);
@@ -73,30 +84,8 @@ impl JobBoundary {
         Ok(accounting.ActiveProcesses)
     }
 
-    pub(super) fn total_processes(&self) -> Result<u32, LaunchError> {
+    pub fn total_processes(&self) -> Result<u32, LaunchError> {
         Ok(self.accounting()?.TotalProcesses)
-    }
-
-    #[cfg(test)]
-    pub(super) fn membership_snapshot(&self) -> (u32, u32) {
-        super::descendant_settlement_tests::membership_snapshot(self.0.raw())
-    }
-
-    #[cfg(test)]
-    pub(super) fn contains_exact_handle(&self, process: HANDLE) -> bool {
-        let mut member = 0;
-        // SAFETY: both handles are retained by the diagnostic test and supervisor.
-        assert_ne!(
-            unsafe {
-                windows_sys::Win32::System::JobObjects::IsProcessInJob(
-                    process,
-                    self.0.raw(),
-                    &mut member,
-                )
-            },
-            0
-        );
-        member != 0
     }
 
     fn accounting(&self) -> Result<JOBOBJECT_BASIC_ACCOUNTING_INFORMATION, LaunchError> {
@@ -120,11 +109,7 @@ impl JobBoundary {
 
     /// Teardown-only bounded convergence. No steady-state timer or polling is
     /// created; Job accounting remains the sole membership authority.
-    pub(crate) fn wait_for_zero(
-        &self,
-        capacity: u32,
-        deadline: Instant,
-    ) -> Result<(), LaunchError> {
+    pub fn wait_for_zero(&self, capacity: u32, deadline: Instant) -> Result<(), LaunchError> {
         bounded_zero_wait(
             || self.active_processes(capacity),
             deadline,

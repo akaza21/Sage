@@ -104,7 +104,7 @@ fn a_listed_skill_runs_with_the_skill_attached() {
             .command(AdapterCommand::Prompt {
                 prompt,
                 client_message_id: RequiredText::new("client", "client-1").unwrap(),
-                access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .unwrap();
         let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -131,7 +131,7 @@ fn typed_text_naming_a_skill_is_only_text() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "/pdf summarise it").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -218,7 +218,7 @@ fn an_oversized_skills_reply_is_a_refused_read_not_a_broken_session() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
 }
@@ -357,7 +357,7 @@ fn a_listed_review_runs_review_start_with_the_target_it_names() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();

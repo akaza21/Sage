@@ -316,7 +316,7 @@ fn pi_fixture_admits_the_bridge_only_for_cases_that_replay_it() {
         "pi-150-full-turn",
     ] {
         assert!(
-            crate::acp::fixture::native_case_uses_pi_bridge(case),
+            crate::acp_protocol::native_cases::native_case_uses_pi_bridge(case),
             "{case}"
         );
     }
@@ -327,7 +327,7 @@ fn pi_fixture_admits_the_bridge_only_for_cases_that_replay_it() {
         "pi-bridge-unknown",
     ] {
         assert!(
-            !crate::acp::fixture::native_case_uses_pi_bridge(case),
+            !crate::acp_protocol::native_cases::native_case_uses_pi_bridge(case),
             "{case}"
         );
     }

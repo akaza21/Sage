@@ -1,8 +1,7 @@
 use rusqlite::{Transaction, params};
 
-use crate::acp::{
-    intent::NormalizedPayload, limits::LIMITS, runtime::permissions::PermissionIntent,
-};
+use crate::{acp::intent::NormalizedPayload, acp_protocol::permissions::PermissionIntent};
+use sage_core::limits::LIMITS;
 
 use super::{StoreError, facts::hex_digest};
 

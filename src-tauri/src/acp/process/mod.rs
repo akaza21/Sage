@@ -9,8 +9,6 @@ mod supervisor;
 mod unix;
 #[cfg(windows)]
 mod windows;
-#[cfg(windows)]
-pub(crate) use windows::TerminalJobBoundary;
 #[cfg(all(windows, feature = "acp-fixture"))]
 pub(crate) use windows::monotonic_tick;
 #[cfg(windows)]
@@ -37,8 +35,8 @@ pub(crate) use platform::{
 pub(crate) use supervisor::TreeExit;
 pub(crate) use supervisor::ZeroProcessToken;
 pub(crate) use supervisor::{
-    ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, EntryPointKind, LaunchError,
-    LaunchSpec, ProcessDeadlines, RequiredContainment, TreeLimits,
+    ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, EntryPointKind, LaunchSpec,
+    ProcessDeadlines, RequiredContainment, TreeLimits,
 };
 #[cfg(all(test, windows))]
 struct FixtureLiveProcess {

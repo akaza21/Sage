@@ -5,7 +5,7 @@ use serde_json::Value;
 use super::{WireState, execute_with_io};
 
 pub(crate) fn child_opened_wire_for_test(read_id: u64) -> Vec<Value> {
-    let case = super::super::generated_cases::JOURNEY_CASES
+    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == "codex-child-opened")
         .unwrap();

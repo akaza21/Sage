@@ -2,10 +2,12 @@
 //! become one item update in the adapter transaction; no half-pair is published.
 
 use super::{ItemIngressCommand, MutationDisposition, StoreError};
-use crate::acp::{
-    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
-    file_diff::{DIFFS_PER_TURN, PairAdmission, admit_pair},
-    intent::{ExternalId, NormalizedPayload},
+use crate::{
+    acp::{
+        contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
+        intent::{ExternalId, NormalizedPayload},
+    },
+    acp_protocol::file_diff::{DIFFS_PER_TURN, PairAdmission, admit_pair},
 };
 use rusqlite::Transaction;
 
@@ -49,7 +51,7 @@ pub(super) fn apply_pair_in(
     };
     let pending_json =
         serde_json::to_string(&item.payload).map_err(|_| StoreError::Corrupt("file metadata"))?;
-    if pending_json.len() as u64 > crate::acp::limits::LIMITS.wire.normalized_item_bytes
+    if pending_json.len() as u64 > sage_core::limits::LIMITS.wire.normalized_item_bytes
         || super::facts::hex_digest(pending_json.as_bytes()) != item.payload_digest
     {
         return Err(StoreError::Corrupt("normalized item digest"));

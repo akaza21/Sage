@@ -4,7 +4,6 @@ use tauri::State;
 
 use crate::{
     acp::{
-        bindings::codex::ChildTranscriptSnapshot,
         contract::{
             ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageItemId,
             SageProjectId,
@@ -16,6 +15,7 @@ use crate::{
         service::{ChildTranscriptRead, ChildTranscriptReadError},
         store::child_transcript::{ChildTranscriptScope, SpawnModel, load_spawn_model},
     },
+    acp_protocol::codex_protocol::ChildTranscriptSnapshot,
     state::AppState,
 };
 

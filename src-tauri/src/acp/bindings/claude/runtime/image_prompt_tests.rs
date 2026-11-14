@@ -7,8 +7,8 @@ use super::*;
 use crate::acp::{
     attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
     intent::ImageMediaType,
-    limits::PROMPT_IMAGE_TOTAL_BYTES,
 };
+use sage_core::limits::PROMPT_IMAGE_TOTAL_BYTES;
 
 const PNG_1X1: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
@@ -42,7 +42,7 @@ fn prompt_with(images: Vec<PromptImage>) -> AdapterCommand {
         prompt,
         client_message_id: RequiredText::new("client", "image-prompt").unwrap(),
         // Ask is the access mode that selects the session's "default" mode.
-        access_mode: crate::settings_store::SessionAccessMode::Ask,
+        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
     }
 }
 
@@ -109,8 +109,8 @@ fn a_prompt_carrying_the_full_image_budget_fits_its_frame() {
     let egress = runtime.command(prompt_with(full)).unwrap();
 
     let payload = egress.frame().payload();
-    assert!(payload.len() > crate::acp::limits::LIMITS.wire.frame_bytes as usize);
-    assert!(payload.len() <= crate::acp::limits::PROMPT_FRAME_BYTES);
+    assert!(payload.len() > sage_core::limits::LIMITS.wire.frame_bytes as usize);
+    assert!(payload.len() <= sage_core::limits::PROMPT_FRAME_BYTES);
     let value: Value = serde_json::from_slice(payload).unwrap();
     assert_eq!(value["params"]["prompt"].as_array().unwrap().len(), 5);
 }

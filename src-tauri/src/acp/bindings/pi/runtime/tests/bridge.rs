@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::bindings::pi::bridge::Refusal;
-use crate::{acp::runtime::permissions::PermissionDecision, settings_store::SessionAccessMode};
+use crate::acp_protocol::{access_mode::SessionAccessMode, permissions::PermissionDecision};
 use std::path::PathBuf;
 #[cfg(feature = "acp-fixture")]
 #[path = "bridge_fixture.rs"]

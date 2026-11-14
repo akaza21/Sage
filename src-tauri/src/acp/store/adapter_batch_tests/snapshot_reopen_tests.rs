@@ -5,9 +5,9 @@ use crate::{
             ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageChatId,
             SageProjectId, SageRootId,
         },
-        file_diff::{SnapshotReadError, pair_digest},
         intent::{BindingId, SafeResourceLocation, SafeResourceRef},
     },
+    acp_protocol::file_diff::{SnapshotReadError, pair_digest},
     domain::{ProjectLayoutRequest, ResourceRef, WorkbenchTab},
     persistence::Database,
 };
@@ -87,8 +87,8 @@ fn reopen_reference_in(
     revision: u64,
     old: &str,
     new: &str,
-) -> crate::acp::file_diff::DiffRef {
-    crate::acp::file_diff::DiffRef {
+) -> crate::acp_protocol::file_diff::DiffRef {
+    crate::acp_protocol::file_diff::DiffRef {
         project_id: owner.project_id.as_str().into(),
         chat_id: owner.chat_id.as_str().into(),
         session_id: owner.session_id.as_str().into(),
@@ -158,7 +158,7 @@ fn reopen_reference(
     revision: u64,
     old: &str,
     new: &str,
-) -> crate::acp::file_diff::DiffRef {
+) -> crate::acp_protocol::file_diff::DiffRef {
     reopen_reference_in(
         &fixture.owner,
         &fixture.connection,

@@ -1,4 +1,5 @@
-use crate::acp::{browser::BrowserFailure, limits::BROWSER_LIMITS};
+use crate::acp::browser::BrowserFailure;
+use sage_core::limits::BROWSER_LIMITS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct WaitBudget {

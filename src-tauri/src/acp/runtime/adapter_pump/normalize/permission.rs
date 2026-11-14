@@ -110,7 +110,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .map_err(|_| AdapterPumpError::Intent)?;
         let egress = match self.adapter.command(AdapterCommand::ResolvePermission {
             request_id,
-            decision: crate::acp::runtime::permissions::PermissionDecision::Deny,
+            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
         }) {
             Ok(egress) => egress,
             Err(error) => {

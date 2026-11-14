@@ -5,24 +5,27 @@ use std::{
 
 use serde_json::{Value, json};
 
-use crate::acp::{
-    bindings::{
-        adapter::{
-            AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress,
-            AdapterEvent as SharedEvent, AdapterModel, AdapterOptionalEgress, AdapterRuntimeError,
-            EgressResolution, EgressToken, HarnessAdapter, RefusalDetail,
-            ResourceMapper as SharedResourceMapper,
+use crate::{
+    acp::{
+        bindings::{
+            adapter::{
+                AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress,
+                AdapterEvent as SharedEvent, AdapterModel, AdapterOptionalEgress,
+                AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, RefusalDetail,
+                ResourceMapper as SharedResourceMapper,
+            },
+            standard_acp::{profile_for, surface::auth_refusal_detail},
         },
-        standard_acp::{profile_for, surface::auth_refusal_detail},
+        contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+        intent::{CapabilitySnapshotV1, ExternalId},
+        lifecycle::TurnState,
+        mcp::{McpAdmission, McpCapabilities},
+        runtime::later_permission::resolve_later_permission,
+        transport::{Frame, OutboundFrame, request_payload_digest},
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
-    intent::{CapabilitySnapshotV1, ExternalId},
-    lifecycle::TurnState,
-    limits::LIMITS,
-    mcp::{McpAdmission, McpCapabilities},
-    runtime::{later_permission::resolve_later_permission, permissions::PermissionDecision},
-    transport::{Frame, OutboundFrame, request_payload_digest},
+    acp_protocol::permissions::PermissionDecision,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     AdapterEvent, CLAUDE_PROFILE_ID, ClaudeAuthState, ClaudeCapabilityOffer, ClaudeTranslator,

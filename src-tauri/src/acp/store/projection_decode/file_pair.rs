@@ -37,8 +37,8 @@ pub(super) fn admitted_pair_view(
     if truncated
         || snapshot_revision == 0
         || snapshot_revision > i64::MAX as u64
-        || old_bytes > crate::acp::file_diff::DIFF_SIDE_BYTES_MAX as u64
-        || new_bytes > crate::acp::file_diff::DIFF_SIDE_BYTES_MAX as u64
+        || old_bytes > crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX as u64
+        || new_bytes > crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX as u64
         || content_digest.len() != 64
         || !content_digest
             .bytes()
@@ -77,7 +77,7 @@ mod tests {
 
     #[test]
     fn available_pair_rejects_wrapping_revision_and_raw_side_plus_one() {
-        let cap = crate::acp::file_diff::DIFF_SIDE_BYTES_MAX as u64;
+        let cap = crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX as u64;
         assert!(admitted_pair_view(false, i64::MAX as u64, cap, cap, "a".repeat(64), true).is_ok());
         assert!(
             admitted_pair_view(false, i64::MAX as u64 + 1, cap, cap, "a".repeat(64), true).is_err()

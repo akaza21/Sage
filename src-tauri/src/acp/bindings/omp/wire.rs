@@ -3,7 +3,7 @@ use std::{collections::BTreeSet, fmt};
 use serde::{Deserialize, Deserializer, de};
 use serde_json::{Map, Number, Value};
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 pub(super) fn decode_frame(raw: &[u8]) -> Result<Value, WireError> {
     let raw = raw.strip_suffix(b"\n").unwrap_or(raw);

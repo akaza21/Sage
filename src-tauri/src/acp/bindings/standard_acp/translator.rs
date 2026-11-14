@@ -9,8 +9,8 @@ use crate::acp::{
         SafeResourceRef, ToolCategory, UnavailableResourceReason,
     },
     lifecycle::{ItemLifecycle, ToolState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 #[cfg(test)]
 use super::wire::decode_frame;

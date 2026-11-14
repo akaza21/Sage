@@ -11,9 +11,9 @@ use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
-    limits::LIMITS,
     transport::{Frame, OutboundFrame},
 };
+use sage_core::limits::LIMITS;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum State {

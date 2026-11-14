@@ -83,7 +83,7 @@ impl CodexRuntime {
         match disposition {
             IngressDisposition::Events(events) => {
                 if events.len()
-                    > crate::acp::limits::LIMITS
+                    > sage_core::limits::LIMITS
                         .queues
                         .journal_facts_per_transaction as usize
                 {

@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::acp::limits::LIMITS;
+use sage_core::limits::LIMITS;
 
 use super::cases::FixtureInvocation;
 use super::{FixtureError, process_ops, wire};

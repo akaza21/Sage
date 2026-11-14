@@ -266,7 +266,7 @@ fn exact_four_mib_png_is_kept_as_uploaded_and_larger_ones_are_normalised() {
     .unwrap();
     assert_eq!((normalized.width, normalized.height), (1, 1));
     assert!(normalized.byte_length < 1024);
-    bytes.resize(crate::acp::limits::IMAGE_UPLOAD_BYTES + 1, 0);
+    bytes.resize(sage_core::limits::IMAGE_UPLOAD_BYTES + 1, 0);
     assert!(
         ingest_image(
             &connection,
@@ -311,7 +311,7 @@ fn a_4k_screenshot_is_normalised_at_upload_and_retired_once_sent() {
         (noise.width, noise.height, noise.media_type),
         (2048, 1561, ImageMediaType::Jpeg)
     );
-    assert!(noise.byte_length as usize <= crate::acp::limits::STORED_IMAGE_BYTES);
+    assert!(noise.byte_length as usize <= sage_core::limits::STORED_IMAGE_BYTES);
 
     super::retire_sent_images(&connection, root, "p", "c", &[&image.artifact_id]).unwrap();
     assert!(verify_image_reference(&connection, root, "p", "c", &image).is_err());
@@ -324,7 +324,7 @@ fn a_4k_screenshot_is_normalised_at_upload_and_retired_once_sent() {
 #[test]
 fn uploads_queue_for_one_image_work_permit_without_holding_the_project_lock() {
     use std::{sync::Arc, time::Duration};
-    assert_eq!(crate::acp::limits::IMAGE_WORK_PERMITS, 1);
+    assert_eq!(sage_core::limits::IMAGE_WORK_PERMITS, 1);
     tokio::runtime::Builder::new_multi_thread()
         .enable_all()
         .build()

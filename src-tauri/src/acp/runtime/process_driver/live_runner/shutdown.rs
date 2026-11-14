@@ -155,5 +155,5 @@ where
 }
 
 pub(super) fn cleanup_budget() -> Duration {
-    Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close)
+    Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close)
 }

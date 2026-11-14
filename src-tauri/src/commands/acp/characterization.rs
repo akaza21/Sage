@@ -7,7 +7,6 @@ use crate::{
             AcpUnavailableReason, ActivateAcpSessionRequest, CancelAcpTurnRequest,
             CloseAcpSessionRequest, SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest,
         },
-        limits::LIMITS,
         runtime::HostCancelIntent,
         scheduler::RuntimeOwner,
         service::{CHARACTERIZATION_BINDING_DIGEST, CharacterizationError},
@@ -18,6 +17,7 @@ use crate::{
     project_registry::ProjectRootAuthority,
     state::AppState,
 };
+use sage_core::limits::LIMITS;
 
 use super::{
     errors::safe_message,

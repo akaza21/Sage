@@ -1,13 +1,12 @@
 use super::TreeCapacityLease;
 use super::platform::LaunchFailure;
-use super::supervisor::{
-    LaunchError, LaunchFailureTracker, LaunchSpec, TreeExit, ZeroProcessToken,
-};
+use super::supervisor::{LaunchFailureTracker, LaunchSpec, TreeExit, ZeroProcessToken};
 use crate::acp::{
     process::ProcessIdentityReceipt,
     redaction::{SafeDiagnostic, SafeStderrDiagnostic},
     transport::{Frame, FrameError, FrameWriteOutcome, OutboundFrame},
 };
+use sage_process::error::LaunchError;
 
 /// Placeholder authority for platforms that have not proved an enforced tree.
 /// It cannot be constructed through the product launch path.

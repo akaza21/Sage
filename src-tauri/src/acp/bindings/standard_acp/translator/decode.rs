@@ -7,8 +7,8 @@ use crate::acp::{
         PermissionOptionKind, ToolCategory,
     },
     lifecycle::{ItemLifecycle, ToolState},
-    limits::LIMITS,
 };
+use sage_core::limits::LIMITS;
 
 use super::super::profile::StandardAcpProfile;
 use super::super::sanitize::normalized_text;

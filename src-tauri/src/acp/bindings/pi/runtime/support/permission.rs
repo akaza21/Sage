@@ -1,9 +1,11 @@
 use serde_json::json;
 
-use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
-    contract::SageServerRequestId,
-    runtime::permissions::PermissionDecision,
+use crate::{
+    acp::{
+        bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressToken},
+        contract::SageServerRequestId,
+    },
+    acp_protocol::permissions::PermissionDecision,
 };
 
 use super::super::{DenyIntent, DenyStage, PiRuntime};

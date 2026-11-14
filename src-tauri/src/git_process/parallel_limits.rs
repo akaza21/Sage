@@ -21,7 +21,8 @@
 
 use std::collections::HashMap;
 
-use super::{GitOutput, process_tree::MAX_PARALLEL_JOBS};
+use super::GitOutput;
+use sage_process::process_tree::MAX_PARALLEL_JOBS;
 
 /// Each capped key, as listed lowercase by `git config`, with its name.
 const KEYS: [(&str, &str); 3] = [

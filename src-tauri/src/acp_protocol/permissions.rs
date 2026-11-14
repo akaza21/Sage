@@ -1,9 +1,9 @@
-#[cfg(test)]
-use crate::acp::limits::LIMITS;
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId, SageTurnId},
     intent::ExternalId,
 };
+#[cfg(test)]
+use sage_core::limits::LIMITS;
 
 /// A user choice for one exact, durably identified permission request.
 /// This remains a runtime-level value so host and adapter routing never need

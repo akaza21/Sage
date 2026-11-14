@@ -92,7 +92,7 @@ impl StandardAcpRuntime {
         let active = self.active.as_ref().ok_or(-32000)?;
         let turn = active.turn.as_ref().ok_or(-32000)?;
         if active.external_id.as_str() != session
-            || turn.access_mode == crate::settings_store::SessionAccessMode::ReadOnly
+            || turn.access_mode == crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly
             || self.close_pending
             || self.safety_alerted
         {

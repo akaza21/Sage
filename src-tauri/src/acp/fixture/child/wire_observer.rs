@@ -1,10 +1,10 @@
 use serde_json::{Value, json};
 
 use crate::acp::{
-    limits::LIMITS,
     runtime::protocol_failure_requests_tree_exit,
     transport::{FrameError, IncrementalFrameDecoder, StructuralError, validate_structure},
 };
+use sage_core::limits::LIMITS;
 
 use super::super::{generated_cases::FrozenCase, wire};
 
