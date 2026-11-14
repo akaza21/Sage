@@ -15,6 +15,7 @@ mod errors;
 mod goal;
 mod hook_runs;
 mod mcp;
+pub(crate) use mcp::{McpListAnswer, unbounded_mcp_list};
 mod mcp_tools;
 mod native_read;
 #[cfg(test)]

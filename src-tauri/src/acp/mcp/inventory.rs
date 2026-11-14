@@ -5,6 +5,12 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
+#[path = "codex_page.rs"]
+mod codex_page;
+
+pub(crate) use codex_page::CodexMcpPage;
+use codex_page::{CodexServerStatus, Text};
+
 /// Additional servers set the truncated flag instead of being listed.
 pub(crate) const MAX_LISTED_SERVERS: usize = 64;
 const MAX_NAME_BYTES: usize = 128;
@@ -76,23 +82,21 @@ pub(crate) struct McpInventory {
 
 impl McpInventory {
     /// A Codex `mcpServerStatus/list` result. A server without a usable
-    /// name is left out; `None` when the result has no server list.
-    pub(crate) fn from_codex(result: &Map<String, Value>) -> Option<Self> {
-        let data = result.get("data")?.as_array()?;
-        let servers: Vec<McpServer> = data
-            .iter()
-            .filter_map(Value::as_object)
+    /// name is left out.
+    pub(crate) fn from_codex(page: CodexMcpPage) -> Self {
+        let more = page.has_more();
+        let servers: Vec<McpServer> = page
+            .data
+            .into_iter()
+            .filter_map(|server| server.0)
             .filter_map(codex_server)
             .collect();
-        let more = result
-            .get("nextCursor")
-            .is_some_and(|cursor| !cursor.is_null());
         let actions = McpActions {
             reload: true,
             sign_in: crate::system_browser::available(),
             reconnect: false,
         };
-        Some(Self::listed(servers, more, actions))
+        Self::listed(servers, more, actions)
     }
 
     /// A Claude Code `mcp_status` reply. Its server configuration (URLs,
@@ -129,7 +133,11 @@ impl McpInventory {
 /// a cleaned name would act on no server.
 fn exact_name(server: &Map<String, Value>) -> Option<String> {
     let name = server.get("name")?.as_str()?;
-    (clean(name, MAX_NAME_BYTES).as_deref() == Some(name)).then(|| name.to_owned())
+    is_exact_name(name).then(|| name.to_owned())
+}
+
+fn is_exact_name(name: &str) -> bool {
+    clean(name, MAX_NAME_BYTES).as_deref() == Some(name)
 }
 
 fn claude_server(server: &Map<String, Value>) -> Option<McpServer> {
@@ -180,26 +188,14 @@ fn claude_server(server: &Map<String, Value>) -> Option<McpServer> {
     })
 }
 
-fn codex_server(server: &Map<String, Value>) -> Option<McpServer> {
-    let name = exact_name(server)?;
-    let info = server.get("serverInfo").and_then(Value::as_object);
-    let text = |key: &str, max| {
-        info.and_then(|info| info.get(key))
-            .and_then(Value::as_str)
-            .and_then(|value| clean(value, max))
-    };
-    let count = |key: &str| {
-        let length = match server.get(key) {
-            Some(Value::Object(map)) => map.len(),
-            Some(Value::Array(list)) => list.len(),
-            _ => 0,
-        };
-        u32::try_from(length).unwrap_or(u32::MAX)
-    };
+fn codex_server(server: CodexServerStatus) -> Option<McpServer> {
+    let name = server.name.0.filter(|name| is_exact_name(name))?;
+    let info = server.server_info.0.unwrap_or_default();
+    let text = |value: Text, max| value.0.and_then(|value| clean(&value, max));
     Some(McpServer {
-        title: text("title", MAX_TITLE_BYTES).filter(|title| *title != name),
-        version: text("version", MAX_NAME_BYTES),
-        connection: match server.get("runtimeStatus").and_then(Value::as_str) {
+        title: text(info.title, MAX_TITLE_BYTES).filter(|title| *title != name),
+        version: text(info.version, MAX_NAME_BYTES),
+        connection: match server.runtime_status.0.as_deref() {
             Some("notStarted") => McpConnection::NotStarted,
             Some("starting") => McpConnection::Starting,
             Some("connected") => McpConnection::Connected,
@@ -209,23 +205,17 @@ fn codex_server(server: &Map<String, Value>) -> Option<McpServer> {
             Some("disabled") => McpConnection::Disabled,
             _ => McpConnection::Unknown,
         },
-        auth: match server.get("authStatus").and_then(Value::as_str) {
+        auth: match server.auth_status.0.as_deref() {
             Some("oAuth") => McpAuth::OAuth,
             Some("bearerToken") => McpAuth::Token,
             Some("notLoggedIn") => McpAuth::SignedOut,
             Some("unsupported") => McpAuth::None,
             _ => McpAuth::Unknown,
         },
-        tools: count("tools"),
-        resources: count("resources"),
-        error: server
-            .get("toolsError")
-            .and_then(Value::as_str)
-            .and_then(|error| clean(error, MAX_ERROR_BYTES)),
-        origin: server
-            .get("httpOrigin")
-            .and_then(Value::as_str)
-            .and_then(origin),
+        tools: server.tools.0,
+        resources: server.resources.0,
+        error: text(server.tools_error, MAX_ERROR_BYTES),
+        origin: server.http_origin.0.as_deref().and_then(origin),
         name,
     })
 }
