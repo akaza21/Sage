@@ -113,8 +113,8 @@ pub(in crate::acp::service) fn next_runtime_epoch(
         .ok_or(CodexSessionError::Intent)
 }
 
-/// Linking a session it cannot resume would only defer the refusal to
-/// activation.
+/// Linking a session the admitted build cannot resume would only defer the
+/// refusal to activation.
 fn resumes_sessions(
     admitted: &crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
 ) -> Result<bool, CodexSessionError> {
