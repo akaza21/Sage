@@ -1,5 +1,5 @@
 import { useRef, useState, type DragEvent, type ClipboardEvent } from "react";
-import type { AgentSessionProjection } from "../../domain/acp";
+import type { AcpChatPage, AgentSessionProjection } from "../../domain/acp";
 import {
   MAX_IMAGE_UPLOAD_BYTES,
   MAX_PROMPT_IMAGES,
@@ -11,27 +11,38 @@ export const imageDisabledReason =
   "Image input is unavailable for the selected binding.";
 
 /**
- * Image input follows the selected session's negotiated ACP prompt
- * capability; a harness that has not advertised it never gets images.
+ * Images are a draft action of a native ACP binding. They follow the
+ * negotiated prompt capability of the session the next send resumes,
+ * whatever state it was left in, else of the binding's latest negotiated
+ * session in this chat. With neither, native admission checks the session
+ * that send starts, as it does for attached files.
  */
 export function composerImageAvailability(
-  useNativeAcp: boolean,
-  session:
-    Pick<AgentSessionProjection, "state" | "capabilities"> | null | undefined,
+  nextSession: Pick<AgentSessionProjection, "capabilities"> | null | undefined,
+  page: Pick<AcpChatPage, "sessions"> | null | undefined,
+  bindingId: string | null,
 ): { available: boolean; reason: string | null } {
-  if (!useNativeAcp) return { available: false, reason: imageDisabledReason };
-  if (!session || ["closed", "failed", "incompatible"].includes(session.state))
-    return {
-      available: false,
-      reason:
-        "Images can be attached once the session starts and the harness accepts them. Send a message to start it.",
-    };
-  if (session.capabilities.promptImages !== true)
+  if (!bindingId) return { available: false, reason: imageDisabledReason };
+  const bindingSessions = (page?.sessions ?? []).filter(
+    (session) => session.bindingId === bindingId && !session.legacy,
+  );
+  // A session whose activation never completed keeps placeholder capabilities.
+  const negotiated = [nextSession, ...bindingSessions.reverse()].find(
+    (session) => session && session.capabilities.protocolVersion !== "pending",
+  );
+  if (negotiated && negotiated.capabilities.promptImages !== true)
     return {
       available: false,
       reason: "This harness does not advertise image input.",
     };
   return { available: true, reason: null };
+}
+
+/** Choosing images for the draft; `reason` says why images are unavailable. */
+export interface ImageAction {
+  disabled: boolean;
+  reason?: string | null;
+  onChoose: () => void;
 }
 
 export function useComposerImageInput({
@@ -82,13 +93,14 @@ export function useComposerImageInput({
   };
   return {
     chooserRef,
-    action:
-      available && onAddImages
-        ? {
-            disabled: disabled || uploading || count >= MAX_PROMPT_IMAGES,
-            onChoose: () => chooserRef.current?.click(),
-          }
-        : undefined,
+    action: onAddImages
+      ? ({
+          disabled:
+            !available || disabled || uploading || count >= MAX_PROMPT_IMAGES,
+          reason: available ? null : reason,
+          onChoose: () => chooserRef.current?.click(),
+        } satisfies ImageAction)
+      : undefined,
     count,
     sendBlocked,
     accept,

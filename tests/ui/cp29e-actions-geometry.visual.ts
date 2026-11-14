@@ -47,13 +47,6 @@ for (const width of [1888, 720, 480]) {
       const folded =
         (await composer.getByRole("button", { name: /^Project: / }).count()) ===
         0;
-      if (profile.modes.length === 0 && !folded) {
-        await expect(trigger).toBeDisabled();
-        await expect(
-          page.getByRole("menu", { name: "Composer options menu" }),
-        ).toHaveCount(0);
-        return;
-      }
       await trigger.focus();
       await page.keyboard.press("Enter");
       const menu = page.getByRole("menu", {
@@ -75,11 +68,16 @@ for (const width of [1888, 720, 480]) {
           mode.name === "Plan" ? "Plan mode" : mode.name,
         ),
       );
-      for (const action of ["Files", "Plugins", "Goal", "Add images"]) {
+      for (const action of ["Files", "Plugins", "Goal"]) {
         await expect(
           menu.getByRole("menuitem", { name: action, exact: true }),
         ).toHaveCount(0);
       }
+      // Images are a draft action, offered and disabled where the harness
+      // does not take them, so "+" opens even with no session modes.
+      await expect(
+        menu.getByRole("menuitem", { name: "Add images", exact: true }),
+      ).toBeDisabled();
       // Measure the settled panel, not a frame of its enter animation.
       await waitForAnimations(menu);
       const anchor = await trigger.boundingBox();
@@ -126,11 +124,13 @@ for (const width of [1888, 720, 480]) {
           menu.locator('[role="menuitemradio"][aria-checked="true"]'),
         ).toHaveCount(1);
       }
-      await expect(first).toBeFocused();
-      await page.keyboard.press("End");
-      await expect(last).toBeFocused();
-      await page.keyboard.press("Home");
-      await expect(first).toBeFocused();
+      if (profile.modes.length > 0 || folded) {
+        await expect(first).toBeFocused();
+        await page.keyboard.press("End");
+        await expect(last).toBeFocused();
+        await page.keyboard.press("Home");
+        await expect(first).toBeFocused();
+      }
       await page.keyboard.press("Escape");
       await expect(menu).toHaveCount(0);
       await expect(trigger).toBeFocused();

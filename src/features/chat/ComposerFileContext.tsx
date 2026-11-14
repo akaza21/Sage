@@ -5,6 +5,7 @@ import type * as AttachChunk from "./ComposerAttach";
 import type * as MentionChunk from "./ComposerMentionController";
 import { lazyParts } from "./lazyParts";
 import type { useComposerFileContext } from "./useComposerFiles";
+import type { ImageAction } from "./useComposerImageInput";
 
 type FileContext = ReturnType<typeof useComposerFileContext>;
 
@@ -55,7 +56,7 @@ export function ComposerFileParts({
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
   text: string;
-  imageAction?: { disabled: boolean; onChoose: () => void };
+  imageAction?: ImageAction;
   /** Hands a pick to the chat's staged batch, which the paste part owns. */
   onPickFiles: () => void;
   hidden: boolean;
