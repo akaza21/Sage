@@ -3,13 +3,13 @@ use rusqlite::params;
 use super::*;
 use crate::{
     acp::store::{chat_fork::fork_source, load_chat_page},
-    domain::ProjectLayoutRequest,
     persistence::Database,
 };
 use sage_acp_protocol::{
     contract::{SageChatId, SageProjectId, SageTurnId},
     intent::ExternalId,
 };
+use sage_domain::chat::ProjectLayoutRequest;
 
 /// A capability snapshot of the pinned Codex binding that can fork.
 fn forkable() -> String {

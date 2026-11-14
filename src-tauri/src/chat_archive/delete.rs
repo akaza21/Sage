@@ -6,8 +6,9 @@ use sage_core::error::{AppError, AppResult};
 
 use crate::{
     acp::service::ChatRuntimeRelease, chat_lifecycle::validate_chat_identifier,
-    domain::ChatDeleteRequest, persistence::Database,
+    persistence::Database,
 };
+use sage_domain::chat::ChatDeleteRequest;
 
 impl Database {
     /// Deletes an archived Chat with its history and releases its usage, so

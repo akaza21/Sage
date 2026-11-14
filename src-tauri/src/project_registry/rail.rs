@@ -1,7 +1,7 @@
 use rusqlite::{Connection, params};
 use sage_core::error::AppResult;
 
-use crate::domain::{AgentRailChat, ProjectListItem};
+use sage_domain::project::{AgentRailChat, ProjectListItem};
 
 use super::MAX_PROJECTS;
 

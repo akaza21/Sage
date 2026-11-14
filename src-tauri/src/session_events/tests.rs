@@ -3,7 +3,7 @@ use std::{fs, path::Path, sync::mpsc, thread, time::Duration};
 use uuid::Uuid;
 
 use super::*;
-use crate::domain::{ProjectLayoutRequest, ProjectSwitchRequest};
+use sage_domain::{chat::ProjectLayoutRequest, project::ProjectSwitchRequest};
 
 mod welcome;
 
@@ -685,7 +685,7 @@ fn oversized_message_is_rejected_without_a_partial_turn() {
     assert_eq!(after, before);
 }
 
-fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
+fn layout(snapshot: &sage_domain::project::BootstrapSnapshot) -> ProjectLayoutRequest {
     ProjectLayoutRequest {
         project_id: snapshot.project.as_ref().unwrap().id.clone(),
         tabs: snapshot.tabs.clone(),

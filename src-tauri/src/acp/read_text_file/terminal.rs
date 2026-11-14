@@ -12,13 +12,13 @@ use crate::{
         runtime::read_text_file::{ReadTextRange, ReadTextRequestId},
         transport::P02Cancellation,
     },
-    domain::ResourceRef,
     workspace::Workspace,
 };
 use sage_acp_protocol::{
     contract::{BoundedVec, SafeText},
     intent::{NormalizedPayload, ToolCategory},
 };
+use sage_domain::resource::ResourceRef;
 
 use super::{
     DiskAllowedState, ReadTextClassification, ReadTextFlushState, ReadTextNextAction, ReadTextOwner,

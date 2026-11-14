@@ -298,11 +298,11 @@ mod tests {
         let snapshot = fixture.database.bootstrap_snapshot().unwrap();
         fixture
             .database
-            .rename_chat(&crate::domain::RenameChatRequest {
+            .rename_chat(&sage_domain::chat::RenameChatRequest {
                 project_id: fixture.project.clone(),
                 chat_id: fixture.chat.clone(),
                 title: "Release notes".into(),
-                current_layout: crate::domain::ProjectLayoutRequest {
+                current_layout: sage_domain::chat::ProjectLayoutRequest {
                     project_id: fixture.project.clone(),
                     tabs: snapshot.tabs,
                     active_tab_id: snapshot.active_tab_id,

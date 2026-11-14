@@ -8,7 +8,6 @@ use sage_core::{
 use sha2::{Digest, Sha256};
 
 use crate::{
-    domain::{ResourceRef, TrashProjectResourceRequest, TrashResourceKind},
     persistence::Database,
     project_registry::RootRecord,
     workspace::{
@@ -16,6 +15,10 @@ use crate::{
         resource_trash::{ResourceTrashIdentity, TRASH_NAME},
         root_identity_path,
     },
+};
+use sage_domain::{
+    file_operations::{TrashProjectResourceRequest, TrashResourceKind},
+    resource::ResourceRef,
 };
 
 use super::{MAX_JAVASCRIPT_SAFE_INTEGER, layout, parent_resource};

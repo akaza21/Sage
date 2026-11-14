@@ -18,7 +18,6 @@ use crate::{
         },
         transcript_quote::Prompt,
     },
-    domain::ProjectLayoutRequest,
     project_registry::ProjectRootAuthority,
 };
 use sage_acp_protocol::{
@@ -30,6 +29,7 @@ use sage_acp_protocol::{
     lifecycle::{ItemLifecycle, SessionState, ToolState, TurnState},
     scheduler::RuntimeOwner,
 };
+use sage_domain::chat::ProjectLayoutRequest;
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 #[path = "journey_tests/bootstrap_pause.rs"]

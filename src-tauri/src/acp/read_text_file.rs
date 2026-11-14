@@ -11,12 +11,12 @@ use crate::{
         resource_mapper::{ConfiguredResourceRoot, NativeResourceAdmission, NativeResourceMapper},
         runtime::read_text_file::ReadTextRange,
     },
-    domain::ResourceRef,
     persistence::Database,
     workspace::{Workspace, select_text_lines},
 };
 use sage_acp_protocol::contract::SageRootId;
 use sage_core::limits::LIMITS;
+use sage_domain::resource::ResourceRef;
 
 const MAX_EDITABLE_BUFFER_BYTES: usize = 1024 * 1024;
 mod lifecycle;

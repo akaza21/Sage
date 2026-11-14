@@ -5,10 +5,8 @@ use std::{
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    domain::ResourceRef,
-    workspace::{Workspace, validate_contract_path},
-};
+use crate::workspace::{Workspace, validate_contract_path};
+use sage_domain::resource::ResourceRef;
 
 pub(super) struct ContainedFile {
     pub(super) file: File,

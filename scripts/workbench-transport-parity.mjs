@@ -135,10 +135,7 @@ export async function readSources(root, relativeDirectory, extensions) {
 
 export async function workbenchTransportParityErrors(root) {
   const rustSource = [
-    await readFile(path.join(root, "src-tauri/src/domain.rs"), "utf8").catch(
-      () => "",
-    ),
-    await readSources(root, "src-tauri/src/domain", [".rs"]),
+    await readSources(root, "crates/sage-domain/src", [".rs"]),
   ].join("\n");
   const tsSource = [
     await readFile(path.join(root, "src/domain/workbench.ts"), "utf8").catch(

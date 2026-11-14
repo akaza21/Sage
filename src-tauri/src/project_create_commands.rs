@@ -13,11 +13,11 @@ use uuid::Uuid;
 
 use crate::{
     browser::BrowserState,
-    domain::ProjectTransitionResult,
     project_commands::{execute_committed_transition_checked, pick_folder},
     project_registry::{MAX_ROOTS_PER_PROJECT, project_name},
     state::AppState,
 };
+use sage_domain::project::ProjectTransitionResult;
 
 /// Picks held for open Create project dialogs. The oldest is dropped first.
 pub const MAX_PENDING_SOURCE_PICKS: usize = 32;

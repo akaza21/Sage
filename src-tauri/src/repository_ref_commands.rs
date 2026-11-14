@@ -3,11 +3,15 @@ use serde::Deserialize;
 use tauri::State;
 
 use crate::{
-    domain::{FileDiff, RepositoryRef, ResourceRef, RootRepositoryStatus},
     repository,
     repository_discovery::{self, MAX_REPOSITORIES_PER_PROJECT},
     state::AppState,
     workspace::Workspace,
+};
+use sage_domain::{
+    editor::FileDiff,
+    repository::{RepositoryRef, RootRepositoryStatus},
+    resource::ResourceRef,
 };
 
 #[derive(Debug, Deserialize)]

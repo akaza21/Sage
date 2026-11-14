@@ -166,7 +166,7 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
                 let snapshot = database.bootstrap_snapshot().unwrap();
                 SageChatId::parse(
                     database
-                        .create_chat(&crate::domain::ProjectLayoutRequest {
+                        .create_chat(&sage_domain::chat::ProjectLayoutRequest {
                             project_id: project.id.clone(),
                             tabs: snapshot.tabs,
                             active_tab_id: snapshot.active_tab_id,

@@ -1,10 +1,7 @@
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    domain::{GitFileMutationAction, ResourceRef},
-    git_budget, repository,
-    workspace::Workspace,
-};
+use crate::{git_budget, repository, workspace::Workspace};
+use sage_domain::{file_operations::GitFileMutationAction, resource::ResourceRef};
 use std::time::Duration;
 
 const MAX_GIT_ROOT_ID_BYTES: usize = 512;
@@ -189,7 +186,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{domain::GitFileMutationAction, repository, workspace::Workspace};
+    use crate::{repository, workspace::Workspace};
+    use sage_domain::file_operations::GitFileMutationAction;
 
     fn git(root: &Path, args: &[&str]) {
         assert!(

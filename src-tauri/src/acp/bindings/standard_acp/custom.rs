@@ -7,10 +7,8 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::{
-    domain::HarnessUnavailableReason,
-    settings_store::{CustomAcpAgent, MAX_CUSTOM_ACP_AGENTS, custom_acp_number},
-};
+use crate::settings_store::{CustomAcpAgent, MAX_CUSTOM_ACP_AGENTS, custom_acp_number};
+use sage_domain::harness::HarnessUnavailableReason;
 
 use super::{
     AdmittedStandardAcpBinding, StandardAcpArtifact, StandardAcpArtifactProvenance,
