@@ -28,7 +28,6 @@ import {
   requestChatSearchInFolder,
 } from "./chatSearchScope";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 
 function deferred<T>() {

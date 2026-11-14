@@ -10,6 +10,7 @@ export type GutterWorkerResult = GutterResult | { id: number; failed: true };
 
 type Listener = (result: GutterWorkerResult) => void;
 
+/** Lingering reuses the worker across File switches; it ends after the last connection closes. */
 export const GUTTER_WORKER_LINGER_MS = 5_000;
 
 export function createGutterWorkerPool(

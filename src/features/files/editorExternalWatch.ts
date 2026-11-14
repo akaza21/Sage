@@ -236,7 +236,6 @@ export async function applyEditorExternalWatchNotice(
   bridge: EditorStateBridge,
   editor: Pick<EditorPort, "openEditorDocument">,
 ): Promise<void> {
-  // The editor is read now, as the notice arrives.
   const active = bridge.getActiveEditor();
   if (!active || !noticeMatchesWatch(notice, active.resource)) {
     return;

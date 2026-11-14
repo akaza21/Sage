@@ -18,11 +18,12 @@ export type FindError =
   "invalid" | "inlineFlag" | "empty" | "timeout" | "unavailable";
 
 export interface FindMatches {
-  /** Flat `[from, to, from, to, …]` offsets; `inserts` holds each range's text. */
+  /** Flat `[from, to, from, to, …]` offsets. */
   ranges: number[];
   truncated: boolean;
   contentLimitExceeded: boolean;
   error?: FindError;
+  /** With a replacement: `inserts[i]` is the replacement text for range `i`. */
   inserts?: string[];
 }
 

@@ -32,6 +32,7 @@ export function sameContent(left: EditorContent, right: EditorContent) {
   return contentText(left) === contentText(right);
 }
 
+/** The last source string supplied to the editor, and whether the emitted document still equals it. */
 export interface EditorContentBase {
   content: string;
   unchanged: boolean;

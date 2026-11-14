@@ -6,7 +6,6 @@
   color: var(--color-status-foreground);
 }
 
-/* Ref 63: 28 px tall, 8 px corners, a 1 px ring a step above the composer. */
 .browser-element-chip__trigger {
   display: inline-flex;
   min-width: 0;

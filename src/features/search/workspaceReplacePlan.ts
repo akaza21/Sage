@@ -1,4 +1,4 @@
-// Loads on the first Replace, so the Search panel carries none of it.
+// Kept out of the initial Search chunk; loaded or preloaded with the Replace parts.
 
 import { useWorkbenchStore } from "../../app/store";
 import { resourceKey, sameResource } from "../../domain/resourceIdentity";

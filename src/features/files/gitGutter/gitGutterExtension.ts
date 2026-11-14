@@ -210,7 +210,7 @@ const changeGutter = gutter({
 
 type ResultSink = { current: (result: GutterWorkerResult) => void };
 
-/** Opening with it skips building a 1 MiB string on the main thread. */
+/** The current document's text, or null; a matching length is trusted without a compare. */
 export type KnownText = () => string | null;
 
 function documentText(doc: Text, knownText: KnownText) {
