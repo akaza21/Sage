@@ -253,7 +253,6 @@ impl SettingsStore {
     }
 }
 
-/// Refuses past `MAX_CUSTOM_ACP_AGENTS` live agents.
 fn next_number(connection: &Connection) -> AppResult<u32> {
     let live: i64 =
         connection.query_row("SELECT count(*) FROM custom_acp_agent_entries", [], |row| {

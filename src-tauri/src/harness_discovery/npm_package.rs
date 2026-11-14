@@ -23,6 +23,7 @@ pub(crate) fn npm_package_bin(npm_root: &Path, package: &str, name: &str) -> Opt
     npm_package_bin_from_manifest(npm_root, package, name, &manifest)
 }
 
+/// Launch callers supply verified, pinned manifest contents.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn npm_package_bin_from_manifest(
     npm_root: &Path,

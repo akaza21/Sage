@@ -15,7 +15,6 @@ const MARKER: &str = "/s3/command-ran";
 
 pub fn refused(path: &str, outcome: &str) -> bool {
     if path.starts_with("invoke ") {
-        // The bridge answered with an error, or the page has no bridge.
         matches!(outcome, "rejected" | "no-bridge")
     } else {
         // Raw messages may also be dropped unanswered, or the path absent.
