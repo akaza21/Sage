@@ -22,8 +22,7 @@ impl Default for DiscoveryState {
 }
 
 impl DiscoveryState {
-    /// Shows which harnesses are present while their versions are read. A
-    /// rediscovery keeps the last full result on screen until it finishes.
+    /// A rediscovery keeps the last full result until it finishes.
     pub(super) fn apply_presence(&self, discovered: Vec<InstalledHarness>) {
         let mut snapshot = self.0.write().expect("harness discovery lock poisoned");
         if !matches!(*snapshot, DiscoverySnapshot::Discovered(_)) {
@@ -64,7 +63,6 @@ impl DiscoveryState {
                 .iter()
                 .find(|candidate| candidate.id == "opencode"),
         );
-        // Pi launch facts are read only when its CLI is present.
         registry.pi_admission().apply_discovery(
             if discovered.iter().any(|candidate| candidate.id == "pi") {
                 crate::harness_discovery::discover_pi_launch()

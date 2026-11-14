@@ -53,13 +53,10 @@ pub struct AppState {
     pub project_transitions: tokio::sync::Mutex<u64>,
     pub startup_recovery_notice: Option<String>,
     pub terminals: crate::user_terminal::TerminalSessionPort,
-    /// Archive runtime releases still running; exit waits for them.
     pub archive_releases: crate::chat_archive_commands::ArchiveReleases,
 }
 
 impl AppState {
-    /// Every sweep interval, parks the harness runtimes of Chats left idle,
-    /// until the lanes shut down.
     pub(crate) fn release_idle_runtimes_periodically(app: tauri::AppHandle) {
         tauri::async_runtime::spawn(async move {
             let interval = crate::acp::service::AcpService::IDLE_SWEEP_INTERVAL;
@@ -261,7 +258,6 @@ impl AppState {
         if fixture_isolation {
             harnesses.apply_presence(Vec::new());
         }
-        // Chats deleted while Sage was not running keep no access choice.
         crate::settings_store::forget_removed_chat_access(&database, &settings);
         Ok(Self {
             database,
@@ -354,8 +350,6 @@ impl AppState {
     }
 }
 
-/// Emits committed projection notices, routing child-only changes per
-/// (project, chat, session) through a bounded LRU of last revisions.
 struct DesktopProjectionSink(
     tauri::AppHandle,
     std::sync::Mutex<crate::acp::intent::ProjectionNoticeRoutes>,

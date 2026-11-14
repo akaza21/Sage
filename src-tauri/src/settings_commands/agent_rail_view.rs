@@ -1,6 +1,6 @@
-//! The Agent sidebar layout commands. Like the other settings commands they
-//! run only for the main webview, and the record is closed, so the renderer
-//! can store nothing but the two listed choices.
+//! The record is closed, so the renderer can store nothing but the two listed
+//! choices.
+//! Main webview only: the guard in `ipc_commands.rs` rejects browser WebViews.
 
 use tauri::State;
 

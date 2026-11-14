@@ -1,8 +1,3 @@
-//! "Open a Codex CLI session": a native session started outside Sage in
-//! this Project becomes a new Chat that resumes it. The harness lists and
-//! reads the sessions; Rust owns the Chat, its resumable head session and
-//! the history read at import.
-
 use tauri::{Manager, State};
 
 use crate::{
@@ -30,12 +25,8 @@ use sage_core::{
 
 const MAX_CURSOR_BYTES: usize = 1024;
 const IMPORT_UNFINISHED: &str = "The session did not open; try again";
-/// The title of a session whose own title has nothing to show.
 const UNTITLED_IMPORT: &str = "Imported session";
 
-/// The stored Chat title for a session's title: whitespace and control
-/// characters collapsed, shortened at a word boundary to the Chat title
-/// byte limit, in the canonical stored form every Chat title takes.
 fn import_title(title: &str) -> String {
     let mut chat = String::new();
     for word in title
@@ -55,8 +46,6 @@ fn import_title(title: &str) -> String {
 }
 
 impl Database {
-    /// Creates the Chat for an imported session in one transaction: Chat row
-    /// and tab, title, resumable head session and its history.
     pub(crate) fn create_import_chat(
         &self,
         current_layout: &ProjectLayoutRequest,
@@ -116,8 +105,6 @@ impl Database {
     }
 }
 
-/// One page of the active Project's importable sessions, most recently
-/// active first. A Codex chat of the Project must be running to list them.
 #[tauri::command]
 pub async fn list_native_sessions(
     app: tauri::AppHandle,
@@ -190,8 +177,7 @@ pub async fn import_native_session(
     Ok(committed_transition(&state, &mut epoch).await)
 }
 
-/// The history an imported Chat continues from, oldest Turn first, with
-/// the session and runtime epoch it is shown under.
+/// Oldest Turn first.
 #[derive(serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ImportedHistoryView {

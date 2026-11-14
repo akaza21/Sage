@@ -1,5 +1,3 @@
-//! Creating a project: a name plus zero or more source folders.
-
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
@@ -17,11 +15,8 @@ use super::{
 };
 use crate::{domain::ProjectSummary, persistence::Database};
 
-/// The longest project name, in characters.
 pub const MAX_PROJECT_NAME_CHARS: usize = 64;
 
-/// Trims a project name and rejects one that is empty, too long or holds
-/// control characters.
 pub fn project_name(name: &str) -> AppResult<&str> {
     let name = name.trim();
     if name.is_empty() {
@@ -40,8 +35,6 @@ pub fn project_name(name: &str) -> AppResult<&str> {
     Ok(name)
 }
 
-/// Canonicalises each source folder, in order, and rejects duplicates and
-/// lists over the per-project root limit.
 fn canonical_sources(roots: &[PathBuf]) -> AppResult<Vec<PathBuf>> {
     if roots.len() > MAX_ROOTS_PER_PROJECT as usize {
         return Err(AppError::ResourceLimit(format!(
@@ -64,14 +57,11 @@ fn canonical_sources(roots: &[PathBuf]) -> AppResult<Vec<PathBuf>> {
 }
 
 impl Database {
-    /// Creates a project named after its folder and makes it active.
     pub fn create_project_from_root(&self, root: &Path) -> AppResult<ProjectSummary> {
         let canonical = canonical_folder(root)?;
         self.create_project_with_intent(&folder_name(&canonical), &[canonical], None)
     }
 
-    /// Creates a named project over `roots` and makes it active, provided the
-    /// active project is still `expected_active_project_id`.
     pub fn create_named_project_if_active(
         &self,
         name: &str,

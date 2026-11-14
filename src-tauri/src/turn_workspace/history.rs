@@ -36,8 +36,8 @@ pub(super) async fn read_head(root: &Path) -> Option<HeadMark> {
     }
 }
 
-/// Committed paths between `before` and `after`. `None` when history cannot
-/// be read; the bool is true when the bounded set was truncated.
+/// `None` when history cannot be read; the bool is true when the bounded set
+/// was truncated.
 pub(super) async fn committed_between(
     root: &Path,
     before: &HeadMark,
@@ -77,7 +77,6 @@ pub(super) async fn committed_between(
     Some((paths, truncated || output.stdout_truncated))
 }
 
-/// The empty tree in the repository's object format (an unborn HEAD).
 async fn empty_tree(root: &Path) -> Option<String> {
     let output = run_git(root, &["hash-object", "-t", "tree", "--stdin"], 256)
         .await
@@ -93,7 +92,6 @@ fn is_object_id(value: &str) -> bool {
     matches!(value.len(), 40 | 64) && value.bytes().all(|byte| byte.is_ascii_hexdigit())
 }
 
-/// Parses `git diff --name-status -z` records into a bounded path set.
 pub(super) fn parse_name_status(stdout: &[u8]) -> (BTreeMap<String, TurnWorkspaceOperation>, bool) {
     let mut paths = BTreeMap::new();
     let mut fields = stdout.split(|byte| *byte == 0);

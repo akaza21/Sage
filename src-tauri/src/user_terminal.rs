@@ -27,7 +27,6 @@ pub const OUTPUT_LINES: usize = 4_096;
 pub const INPUT_BYTES: usize = 4_096;
 pub const OUTPUT_CHUNK_BYTES: usize = 8_192;
 pub const OUTPUT_PAGE_BYTES: usize = 48_000;
-/// Largest grid a terminal may be created or resized to.
 pub const MAX_COLUMNS: u16 = 500;
 pub const MAX_ROWS: u16 = 300;
 
@@ -157,7 +156,6 @@ struct Session {
     process: Box<dyn TerminalProcess>,
 }
 
-/// Whether `scope` names a chat tab of its project, read off the async runtime.
 async fn chat_tab_exists(
     database: &crate::persistence::Database,
     scope: &TerminalScope,
@@ -190,7 +188,6 @@ impl TerminalSessionPort {
         Ok(session.process.shell_path().to_owned())
     }
 
-    /// Whether another terminal fits the global, project and chat limits.
     fn admits(&self, scope: &TerminalScope) -> Result<bool, TerminalError> {
         let sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
         let (project, chat) = sessions.values().fold((0, 0), |(project, chat), session| {

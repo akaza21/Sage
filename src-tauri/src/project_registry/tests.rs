@@ -618,7 +618,6 @@ fn inactive_project_lists_its_first_chats_by_update_and_by_manual_order() {
             .create_chat(&snapshot_layout(&database.bootstrap_snapshot().unwrap()))
             .unwrap();
     }
-    // The first chat by position is the least recently updated.
     let first: String = database
         .connection()
         .query_row(
@@ -793,7 +792,6 @@ fn rail_chat_finish_time_ignores_runtime_bookkeeping() {
                 rusqlite::params![project.id, chat, format!("turn-{ordinal}"), ordinal, terminal_at],
             ).unwrap();
         }
-        // Parking the session later moves the chat's update time only.
         connection
             .execute(
                 "UPDATE chats SET updated_at=9000 WHERE project_id=?1 AND id=?2",

@@ -41,7 +41,6 @@ pub fn open_document(
     };
     absent::note_opened(workspace, &resource, &buffer.base_fingerprint);
     validate_persisted_buffer(&buffer)?;
-    // A deleted File with a recovery buffer opens as that buffer.
     let Some(disk) = read_disk_document_if_present(workspace, &resource.relative_path)? else {
         return Ok(buffered_document(resource, None, buffer));
     };
@@ -108,24 +107,15 @@ pub fn save_document(
     save_document_with(database, workspace, resource, |_| Ok(()))
 }
 
-/// The points in a save at which `save_document_with` calls its observer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum SaveStage {
-    /// The parent directory is held and nothing is written yet.
     ParentHeld,
-    /// The temporary file holds the content but is not yet durable.
     TempWritten,
-    /// The conflict read has passed and the replace is next.
     BeforeReplace,
-    /// The temporary file has replaced the target; nothing is verified yet.
     AfterReplace,
-    /// The saved file is verified through the held directory and by its
-    /// path; only the recovery buffer delete is left.
     BeforeRecoveryClear,
 }
 
-/// Saves through the document's held parent directory. An error from
-/// `observe` fails the save at that stage, as the step there would.
 fn save_document_with(
     database: &Database,
     workspace: &Workspace,
@@ -146,7 +136,6 @@ fn save_document_with(
     if buffer.base_fingerprint == ABSENT_FINGERPRINT {
         return match disk {
             None => create_document(database, workspace, resource, buffer),
-            // Something was created at the path since the user kept the buffer.
             Some(disk) => Ok(conflict_result(resource, Some(disk), buffer)),
         };
     }
@@ -223,7 +212,6 @@ fn save_document_with(
         abandon();
         return Err(error);
     }
-    // The temporary file is now the target, so nothing is left to remove.
     database.clear_editor_pending_temp(workspace.project_id(), &resource)?;
     parent.sync()?;
 
@@ -266,8 +254,6 @@ fn save_document_with(
     })
 }
 
-/// Drops the recovery buffer whether or not the File still exists; a deleted
-/// File comes back as a clean deleted document.
 pub fn discard_document(
     database: &Database,
     workspace: &Workspace,
@@ -286,8 +272,7 @@ pub fn discard_document(
     )
 }
 
-/// Reload: puts the File as it is on disk in place of the buffer. A File
-/// that is gone is not reloaded as empty: the buffer stays, and the
+/// A File that is gone is not reloaded as empty: the buffer stays and the
 /// document comes back deleted.
 pub fn revert_document(
     database: &Database,

@@ -1,7 +1,4 @@
-//! Bounded, read-only discovery of user-installed harness CLIs.
-//!
-//! Discovery is separate from protocol characterisation and launch admission.
-//! A validated executable whose version cannot be read remains truthfully
+//! A validated executable whose version cannot be read stays
 //! present-but-unreadable rather than becoming absent or acquiring a guess.
 
 use std::{
@@ -48,14 +45,12 @@ pub(crate) use updates::{PublishedRelease, published_releases, update_sources};
 use validation::authentic_harness_file as validate_harness_file;
 use version_probe::run_version_command;
 
-/// The probe rejects paths whose platform-native byte representation is larger
-/// than this value.
+/// In the path's platform-native bytes.
 pub(crate) const PATH_BYTES_MAX: usize = 32 * 1024;
 pub(super) const KNOWN_INSTALL_ROOT_CAP: usize = 4;
 pub(super) const VERSION_OUTPUT_BYTES_MAX: usize = 16 * 1024;
 /// Long enough for a first run after an update, when the OS scans the new
-/// binary or Node compiles its cache; a probe that answers sooner returns
-/// sooner.
+/// binary or Node compiles its cache.
 pub(super) const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const VERSION_REAP_TIMEOUT: Duration = Duration::from_millis(250);
 pub(super) const VERSION_POLL_INTERVAL: Duration = Duration::from_millis(5);
@@ -182,14 +177,12 @@ impl std::fmt::Display for HarnessVersion {
     }
 }
 
-/// Where the executable's validated parent directory was discovered.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum DiscoverySource {
     Path,
     KnownInstallRoot,
 }
 
-/// A validated harness executable with a strictly parsed version.
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DiscoveredHarness {
@@ -198,7 +191,6 @@ pub(crate) struct DiscoveredHarness {
     pub(crate) source: DiscoverySource,
 }
 
-/// The complete truthful result of inspecting one named harness.
 #[cfg(test)]
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum HarnessDiscovery {
@@ -225,8 +217,6 @@ impl ProbeLimits {
     };
 }
 
-/// Shared validation used by legacy Codex host-presence reporting. This checks
-/// the same path and link discipline as full discovery without running a child.
 pub(crate) fn authentic_harness_file(path: &Path, expected_basename: &str) -> bool {
     validate_harness_file(path, expected_basename)
 }
@@ -251,9 +241,7 @@ pub(crate) fn authentic_npm_global_descendant(root: &Path, relative: impl AsRef<
     validation::authentic_descendant_file(root, relative)
 }
 
-/// Returns candidates formed from the first bounded set of valid PATH roots.
-/// Kept public within the crate so Codex's compatibility presence API can
-/// retain its exact historical PATH-only candidate set.
+/// PATH-only, so legacy Codex presence keeps its exact historical candidate set.
 pub(crate) fn path_candidates_for_basename(expected_basename: &str) -> Vec<PathBuf> {
     candidates::path_candidates_for_basename(expected_basename)
 }
@@ -307,9 +295,8 @@ fn present_candidate(
     })
 }
 
-// The pre-HR-1 projection still consumes the legacy installed-harness shape.
-// Keep that adapter here so it shares candidate validation and the bounded
-// version process rather than growing a parallel discovery path.
+/// The legacy installed-harness shape, kept here so it shares candidate
+/// validation and the bounded version process.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct InstalledHarness {
     pub(crate) id: &'static str,

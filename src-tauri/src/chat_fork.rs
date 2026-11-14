@@ -1,8 +1,3 @@
-//! "Branch in new chat": a native harness fork of a Chat's latest completed
-//! Turn becomes a new persistent Chat placed directly above its parent and
-//! titled `<parent title> (n)`. The harness owns the forked context; Rust owns
-//! the Chat, its resumable head session and the immutable lineage row.
-
 use rusqlite::params;
 use sage_core::{
     error::{AppError, AppResult},
@@ -30,9 +25,8 @@ use crate::{
 /// Chats than this, so a free number always exists.
 const MAX_FORK_NUMBER: u32 = 10_000;
 
-/// `<parent> (n)` with the smallest `n >= 2` no Project Chat already uses.
-/// The parent name is shortened at a character boundary so the whole title
-/// stays within the Chat title byte limit.
+/// `<parent> (n)` with the smallest free `n >= 2`, the parent shortened to fit
+/// the title byte limit.
 pub(crate) fn fork_title<'a>(
     parent_title: &str,
     taken: impl Iterator<Item = &'a str> + Clone,
@@ -52,12 +46,10 @@ pub(crate) fn fork_title<'a>(
     format!("{CHAT_TITLE_PREFIX}{parent}")
 }
 
-/// Why `create_fork_chat` made no fork Chat.
 #[derive(Debug)]
 pub(crate) enum ForkChatError {
-    /// Refused before the commit (stale source, layout or tab limit,
-    /// lineage validation): the transaction rolled back, nothing durable
-    /// names the native fork, and the caller deletes it.
+    /// Rolled back before the commit: nothing durable names the native fork, so
+    /// the caller deletes it.
     Refused(AppError),
     /// `COMMIT` itself failed. SQLite may still have made the Chat durable
     /// (the store treats this as CommitUnknown), so the fork is kept.
@@ -76,9 +68,6 @@ impl std::fmt::Display for ForkChatError {
 const FORK_UNFINISHED: &str = "The fork did not finish; try again";
 
 impl Database {
-    /// Creates the fork Chat for an already-forked native session in one
-    /// transaction: Chat row and tab (directly above the parent), title,
-    /// resumable head session and lineage. A changed source refuses it.
     pub(crate) fn create_fork_chat(
         &self,
         current_layout: &ProjectLayoutRequest,
@@ -98,8 +87,6 @@ impl Database {
     }
 }
 
-/// Every write of the fork Chat, inside the caller's transaction. Any error
-/// here is a refusal: the transaction rolls back when it is dropped.
 fn stage_fork_chat(
     transaction: &rusqlite::Transaction<'_>,
     current_layout: &ProjectLayoutRequest,
@@ -160,8 +147,6 @@ fn stage_fork_chat(
     Ok(chat_id)
 }
 
-/// Persists the current layout of the active Project and adds a new Chat to
-/// it, within the tab limit; `inactive` is the refusal for another Project.
 pub(crate) fn insert_layout_chat(
     transaction: &rusqlite::Transaction<'_>,
     current_layout: &ProjectLayoutRequest,
@@ -223,8 +208,6 @@ pub(crate) fn stale(epoch: u64, expected: u64, action: &str) -> Result<(), Strin
     Ok(())
 }
 
-/// Advances the Project transition epoch after a new Chat committed and
-/// answers with the authoritative snapshot.
 pub(crate) async fn committed_transition(
     state: &AppState,
     epoch: &mut u64,
@@ -318,11 +301,9 @@ pub async fn fork_chat(
     Ok(result)
 }
 
-/// What `fork_chat` learned about the fork Chat's commit.
 #[derive(Debug)]
 enum ForkCommit {
     Committed,
-    /// Refused before the commit, with the reason for the user.
     Refused(String),
     /// A failed `COMMIT` or a lost join: the Chat may be durable.
     Unknown,

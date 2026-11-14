@@ -1,8 +1,3 @@
-//! S8 on WebView2: the Agent command layer (`DevtoolsCapability<NativePort>`)
-//! finds the main frame (target info, or the frame-tree fallback), makes its
-//! isolated world without `Page.enable`, and reads and acts truthfully on a
-//! page that overrides its own globals, without the page seeing it.
-
 use std::time::Duration;
 
 use sage_lib::{
@@ -105,10 +100,9 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
     );
 }
 
-/// How many page hooks had fired after each step. Hits before the first
-/// mark (load) are the page's own load (in debug builds, Tauri's devtools
-/// hotkey init script runs `JSON.parse` at `DOMContentLoaded`); every later
-/// step must add none.
+/// Page hook hits after each step; every step after load must add none. In
+/// debug builds Tauri's devtools hotkey init script runs `JSON.parse` at
+/// `DOMContentLoaded`, so hits before the first mark (load) may come from it.
 #[derive(Default)]
 struct Timeline(Vec<(String, Result<Value, String>)>);
 
@@ -127,12 +121,10 @@ impl Timeline {
             .all(|(_, count)| count.as_ref() == Ok(baseline))
     }
 
-    /// The load baseline is zero, or, in a debug build only, exactly one hit:
-    /// the page's `JSON.parse` hook called directly by Tauri's devtools
-    /// hotkey init script. That script runs once per document and exists
-    /// only under `debug_assertions` or tauri's `devtools` feature
-    /// (`tauri` `webview/plugin.rs`), which Sage's release builds do not
-    /// enable. Any other load-time hit fails the check.
+    /// The load baseline is zero, or in a debug build exactly that one hit; any
+    /// other load-time hit fails. The init script runs once per document and
+    /// exists only under `debug_assertions` or tauri's `devtools` feature
+    /// (`tauri` `webview/plugin.rs`), which Sage's release builds do not enable.
     fn load_hits_are_tauri_devtools_only(&self, stacks: &Result<Value, String>) -> bool {
         let Some((_, Ok(baseline))) = self.0.first() else {
             return false;
@@ -181,7 +173,6 @@ fn devtools_hotkey_parse(stack: &str) -> bool {
             .is_some_and(|caller| caller.starts_with("at toggleDevtoolsHotkey (<anonymous>:7:"))
 }
 
-/// The raw CDP steps the Agent world rests on, on this WebView2 build.
 fn frame_and_world(lane: &Lane, report: &mut Report, tab: &str) {
     let info = lane.cdp(tab, "Target.getTargetInfo", &json!({}));
     let frame = match &info {

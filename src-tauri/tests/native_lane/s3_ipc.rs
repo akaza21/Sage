@@ -1,7 +1,5 @@
-//! S3 / BF-6c: a remote page in a Sage browser child tries every IPC path it
-//! can reach against a real Sage command. Each call must be refused, and the
-//! command must never run: `browser_open` of the marker URL would add a tab
-//! and fetch the marker from the fixture.
+//! `browser_open` of the marker URL would add a tab and fetch the marker from
+//! the fixture, so the marker shows whether a refused call still ran.
 
 use std::time::Duration;
 
@@ -15,10 +13,8 @@ use crate::{
 
 const MARKER: &str = "/s3/command-ran";
 
-/// Outcomes that refuse the call; `resolved` is never acceptable.
 pub fn refused(path: &str, outcome: &str) -> bool {
     if path.starts_with("invoke ") {
-        // The bridge answered with an error, or the page has no bridge.
         matches!(outcome, "rejected" | "no-bridge")
     } else {
         // Raw messages may also be dropped unanswered, or the path absent.

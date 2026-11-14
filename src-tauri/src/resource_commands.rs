@@ -316,7 +316,6 @@ pub async fn snapshot_editor_buffer(
     .map_err(|error| error.to_string())
 }
 
-/// "Keep mine" for an Editor buffer whose File changed or was deleted on disk.
 #[tauri::command]
 pub async fn rebase_editor_buffer(
     state: State<'_, AppState>,

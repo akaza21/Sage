@@ -250,7 +250,6 @@ mod tests {
             waited == -1 && std::io::Error::last_os_error().raw_os_error() == Some(libc::ECHILD)
         }
 
-        /// The child process has exited.
         #[cfg(windows)]
         fn settled(&self) -> bool {
             use std::os::windows::io::AsRawHandle;
@@ -1096,7 +1095,6 @@ mod tests {
 
     #[test]
     fn a_post_spawn_git_deadline_reaps_before_return_and_never_mutates_later() {
-        /// Long enough for a child that outlived the call to show its write.
         const AFTER_RETURN: Duration = Duration::from_millis(200);
 
         let root = std::env::temp_dir().join(format!("sage-git-mutate-{}", Uuid::new_v4()));

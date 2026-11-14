@@ -68,11 +68,9 @@ fn non_unicode_case_exits_two_without_panicking() {
     assert_eq!(status.code(), Some(2));
 }
 
-/// Runs the lost-Steer Codex journey case on the fixture executable with
-/// `requests` as its whole standard input, and returns its exit code and the
-/// JSON frames it wrote. The journey settles in milliseconds; a fixture that
-/// has not exited within the watchdog is killed and fails the test, so a
-/// hung fixture never holds the suite for its own 120 second replay bound.
+/// A fixture that has not exited within the watchdog is killed and fails the
+/// test, so a hung fixture never holds the suite for its own 120 second replay
+/// bound.
 fn lost_steer_journey(requests: &[serde_json::Value]) -> (Option<i32>, Vec<serde_json::Value>) {
     use std::{
         io::{Read, Write},

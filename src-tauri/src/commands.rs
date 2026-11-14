@@ -15,7 +15,6 @@ pub fn list_harnesses(state: State<'_, AppState>) -> Vec<HarnessDefinition> {
     state.harnesses.definitions()
 }
 
-/// Discovers the installed harnesses again, for Settings' Refresh discovery.
 #[tauri::command]
 pub async fn refresh_harnesses(app: tauri::AppHandle) -> Result<Vec<HarnessDefinition>, String> {
     tauri::async_runtime::spawn_blocking(move || AppState::rediscover_harnesses(&app))
@@ -181,7 +180,6 @@ mod model_lookup_tests {
                 .unwrap()
                 .recv_timeout(Duration::from_secs(15))
                 .unwrap();
-            // Delay the real lookup, without substituting its output.
             list_harness_models_inner(&self.harnesses, harness_id)
         }
     }

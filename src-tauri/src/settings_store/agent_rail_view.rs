@@ -1,7 +1,3 @@
-//! How the Agent sidebar is laid out: organized by project or in one list,
-//! sorted by last update or manual order. One closed record, so the WebView
-//! keeps only the rendered projection.
-
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::AppResult;
 use serde::{Deserialize, Serialize};

@@ -65,8 +65,6 @@ pub async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     let needs_numstat = changes
         .iter()
         .any(|change| change.worktree_status != "untracked");
-    // Everything below depends only on the status above, so the Git processes
-    // run side by side: a refresh waits for the slowest, not for their sum.
     let (tracking, numstat, listed, history, remotes, in_progress) = tokio::try_join!(
         tracking_status(workspace, branch.as_deref()),
         numstat(workspace, needs_numstat),
@@ -244,8 +242,6 @@ pub async fn project_status(
     }
 }
 
-/// Lines added and removed per changed File, against `HEAD` (or the empty
-/// tree in a repository with no commits yet).
 async fn numstat(workspace: &Workspace, needed: bool) -> AppResult<(NumstatByPath, bool)> {
     if !needed {
         return Ok((HashMap::new(), false));

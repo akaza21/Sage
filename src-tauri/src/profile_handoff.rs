@@ -1,5 +1,3 @@
-//! Launching Sage again brings the running copy to the front.
-//!
 //! The process that owns a profile listens on a doorbell named after that
 //! profile. A later launch that finds the profile owned rings it and exits;
 //! the owner raises its main window. Each profile has its own doorbell, so a
@@ -67,8 +65,7 @@ pub(crate) fn listen(_app: &tauri::AppHandle, _durable_dir: &Path) -> io::Result
     Ok(())
 }
 
-/// Asks the process that owns `durable_dir` to come to the front. Fails when
-/// no owner is listening.
+/// Fails when no owner is listening.
 #[cfg(windows)]
 pub(crate) fn ring(durable_dir: &Path) -> io::Result<()> {
     named_event::ring(&doorbell_name(durable_dir)?)

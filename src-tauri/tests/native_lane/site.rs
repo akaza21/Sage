@@ -1,7 +1,3 @@
-//! The loopback HTTP fixture: serves the lane's pages, counts every request
-//! target, and keeps the reports pages POST back (their only channel to the
-//! lane). One thread per connection, all of it bounded.
-
 use std::{
     collections::BTreeMap,
     io::{Read, Write},
@@ -21,10 +17,9 @@ const BODY_BYTES: usize = 64 * 1024;
 const MAX_CONNECTIONS: usize = 32;
 const MAX_TARGETS: usize = 256;
 const MAX_REPORTS: usize = 64;
-/// A response the browser must turn into a download, not a page.
 pub const DOWNLOAD: &str = "/download.bin";
 const DOWNLOAD_BODY: &[u8] = b"sage native lane download\n";
-/// A page whose response is held back long enough to press Stop.
+/// Held back long enough to press Stop.
 pub const SLOW: &str = "/slow.html";
 const SLOW_DELAY: Duration = Duration::from_secs(8);
 
@@ -114,14 +109,12 @@ impl Site {
         format!("http://{}", self.address)
     }
 
-    /// How many requests named exactly `target` (path and query).
     pub fn hits(&self, target: &str) -> u32 {
         self.log
             .lock()
             .map_or(0, |log| log.hits.get(target).copied().unwrap_or(0))
     }
 
-    /// Every report posted to `/report/<name>`, oldest first.
     pub fn reports(&self, name: &str) -> Vec<Value> {
         self.log.lock().map_or_else(
             |_| Vec::new(),
@@ -207,7 +200,6 @@ fn respond(mut stream: TcpStream, log: &Mutex<Log>) {
     let _ = stream.write_all(page.as_bytes());
 }
 
-/// The request head as text and whatever body bytes arrived with it.
 fn read_head(stream: &mut TcpStream) -> Option<(String, Vec<u8>)> {
     let mut buffer = Vec::new();
     let mut chunk = [0u8; 2048];

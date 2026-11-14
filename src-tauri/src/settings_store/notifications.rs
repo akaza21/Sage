@@ -1,5 +1,4 @@
-//! Native preference in the existing versioned settings rows; no new settings
-//! schema. The editor catalogue ignores this key and cannot modify it.
+//! The editor catalogue ignores this key and cannot modify it.
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};

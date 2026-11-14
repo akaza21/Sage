@@ -1,9 +1,6 @@
-//! Turn notices observe committed truth independently of WebView projections.
-//! Only commits that may admit a notice reach `observe`, which never blocks:
-//! it hands the commit to one notice thread, which claims receipts and
-//! dispatches them. Four dispatch slots that end once a notice is shown, no
-//! history, and two hashed visible chat IDs. The preference is cached here,
-//! so streamed content never touches notice storage.
+//! `observe` never blocks: it hands the commit to one notice thread, which
+//! claims receipts and dispatches them. The preference is cached here, so
+//! streamed content never touches notice storage.
 mod commands;
 mod platform;
 mod receipts;
@@ -30,14 +27,12 @@ const OPEN_EVENT: &str = "sage-notification-open-chat";
 
 #[derive(Default)]
 pub(crate) struct Notifications {
-    /// Mirrors the durable preference; written only by `start` and the
-    /// preference command, so publications never read settings.
+    /// Written only by `start` and the preference command, so publications never
+    /// read settings.
     enabled: AtomicBool,
     visibility: Mutex<visibility::Visibility>,
-    /// The notice thread's queue, started with the first observed commit.
     observed: OnceLock<Option<SyncSender<ProjectionChangedV1>>>,
     in_flight: Arc<AtomicUsize>,
-    /// Shown XDG notices still listening for a click; see `platform::xdg`.
     #[cfg(target_os = "linux")]
     click_routes: Arc<AtomicUsize>,
     pending_open: AtomicI64,
@@ -78,8 +73,8 @@ pub(crate) fn init() -> tauri::plugin::TauriPlugin<tauri::Wry> {
         }).build()
 }
 
-/// Loads the preference once the app state exists and retires receipts left
-/// by an earlier run, so a notice never describes another process's event.
+/// Retires receipts left by an earlier run, so a notice never describes
+/// another process's event.
 pub(crate) fn start(app: &tauri::AppHandle) {
     let (Some(state), Some(notifications)) = (
         app.try_state::<AppState>(),
@@ -99,9 +94,8 @@ pub(crate) fn start(app: &tauri::AppHandle) {
 }
 
 impl Notifications {
-    /// Applies a saved preference. Turning notices on publishes the flag before
-    /// retiring receipts admitted while they were off, so none is lost or
-    /// replayed from before the switch, and readies the platform.
+    /// Turning notices on publishes the flag before retiring receipts admitted
+    /// while they were off, so none is lost or replayed from before the switch.
     fn apply(
         &self,
         app: &tauri::AppHandle,
@@ -163,7 +157,6 @@ fn start_notice_thread(app: tauri::AppHandle) -> Option<SyncSender<ProjectionCha
     Some(sender)
 }
 
-/// Claims the commit's receipts and dispatches each one still worth showing.
 /// Never retry an uncertain OS delivery; dispatch failure cannot fail a Turn.
 fn announce(app: &tauri::AppHandle, notice: &ProjectionChangedV1) {
     let notifications = app.state::<Notifications>();
@@ -212,8 +205,8 @@ fn should_show(app: &tauri::AppHandle, id: i64) -> bool {
         .suppresses(&target.chat_id, focused && visible)
 }
 
-/// Opens a clicked notice's chat. `activation` is the token the platform
-/// granted for the click (XDG on Wayland), which lets Sage raise its window.
+/// `activation` is the platform's token for the click (XDG on Wayland), which
+/// lets Sage raise its window.
 fn clicked(app: &tauri::AppHandle, id: i64, activation: Option<String>) {
     let Some(state) = app.try_state::<AppState>() else {
         return;

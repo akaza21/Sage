@@ -21,8 +21,8 @@ const MAX_INDEX_RECORD_BYTES: usize = 8 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(tag = "state", rename_all = "camelCase")]
 pub enum FileGitBase {
-    /// No markers: untracked, ignored, conflicted, not a text blob, over the
-    /// editable cap, or the root is not a repository top level.
+    /// Untracked, ignored, conflicted, not a text blob, over the editable cap, or
+    /// the root is not a repository top level.
     Unavailable,
     /// The staged blob is still `oid`, which the caller already holds.
     Unchanged {
@@ -97,8 +97,7 @@ pub(crate) async fn file_git_base(
     )
 }
 
-/// The object id of the one stage-0 regular-file entry for `path`, if any.
-/// A conflicted path has stages 1–3; a symlink or submodule has no text.
+/// The one stage-0 regular-file entry; a conflicted path has stages 1-3.
 fn staged_text_blob(output: &[u8], path: &str) -> Option<String> {
     let mut records = output.split(|byte| *byte == 0).filter(|r| !r.is_empty());
     let record = std::str::from_utf8(records.next()?).ok()?;
@@ -114,7 +113,6 @@ fn staged_text_blob(output: &[u8], path: &str) -> Option<String> {
         .then(|| oid.to_owned())
 }
 
-/// The first line of a Git LFS pointer, which stands in for the real file.
 const LFS_POINTER_PREFIX: &[u8] = b"version https://git-lfs.github.com/spec/";
 
 /// UTF-8 text without NUL bytes, as the editor would open it. An LFS pointer
@@ -194,7 +192,6 @@ mod tests {
             FileGitBase::Unchanged { oid: oid.clone() }
         );
 
-        // Staging moves the base, as VS Code's gutter does.
         git(&root, &["add", "a.txt"]);
         let staged = base(&workspace, "a.txt", Some(&oid));
         assert_eq!(
@@ -224,7 +221,6 @@ mod tests {
             FileGitBase::Unavailable
         );
         assert_eq!(base(&workspace, "bin.dat", None), FileGitBase::Unavailable);
-        // Glob characters in a name are taken literally.
         assert!(matches!(
             base(&workspace, "[weird].txt", None),
             FileGitBase::Ready { content, .. } if content == "literal\n"

@@ -15,12 +15,12 @@ pub(super) struct Directory {
     path: std::path::PathBuf,
 }
 
-/// One entry's status, read without following a final link.
+/// Read without following a final link.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) struct EntryStatus {
     pub(super) regular_file: bool,
     pub(super) len: u64,
-    /// Modification time in nanoseconds since the Unix epoch.
+    /// Since the Unix epoch.
     pub(super) modified_nanos: Option<u64>,
 }
 
@@ -72,8 +72,8 @@ impl Directory {
             .map(|identity| identity.stable_bytes())
     }
 
-    /// The status of `relative`, `Some(None)` when it does not exist, or
-    /// `None` when it cannot be read from the directory that was opened.
+    /// `Some(None)` when it does not exist; `None` when it cannot be read from
+    /// the directory that was opened.
     pub(super) fn entry_status(&self, relative: &Path) -> Option<Option<EntryStatus>> {
         let parent_path = relative.parent()?;
         let parent = match self.child_result(parent_path) {
@@ -125,7 +125,7 @@ mod platform {
         open_directory(parent.as_raw_fd(), name)
     }
 
-    /// Opens a directory relative to `base`, refusing a final symbolic link.
+    /// Refuses a final symbolic link.
     fn open_directory(base: libc::c_int, name: &OsStr) -> std::io::Result<File> {
         let name = CString::new(name.as_bytes())?;
         // SAFETY: openat reads a NUL-terminated name and returns a new descriptor.

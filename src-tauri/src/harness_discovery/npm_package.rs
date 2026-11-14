@@ -1,5 +1,3 @@
-//! The module an installed npm package's bin runs, read from its manifest.
-//!
 //! Releases move their bin (Pi 1.x ships `dist/bundle/cli.js`) and npm
 //! changes its shim templates, so Sage reads the package's own declaration
 //! instead of parsing a shim or assuming a path.
@@ -12,12 +10,8 @@ use serde_json::Value;
 use super::claude::read_json;
 use super::validation::authentic_descendant_file;
 
-/// Longest bin target read from a package manifest.
 pub(super) const BIN_ENTRY_BYTES_MAX: usize = 256;
 
-/// The installed module that `package`'s `bin.<name>` names, under the npm
-/// root that holds `node_modules`. The package must be the named one and the
-/// module an authentic file inside it.
 #[cfg(test)]
 pub(crate) fn npm_package_bin(npm_root: &Path, package: &str, name: &str) -> Option<PathBuf> {
     let package_root = Path::new("node_modules").join(package);
@@ -29,7 +23,7 @@ pub(crate) fn npm_package_bin(npm_root: &Path, package: &str, name: &str) -> Opt
     npm_package_bin_from_manifest(npm_root, package, name, &manifest)
 }
 
-/// Resolves a bin from manifest contents already verified and pinned by launch.
+/// Launch callers supply verified, pinned manifest contents.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn npm_package_bin_from_manifest(
     npm_root: &Path,
@@ -48,9 +42,8 @@ pub(crate) fn npm_package_bin_from_manifest(
     authentic_descendant_file(npm_root, &entry).then(|| npm_root.join(entry))
 }
 
-/// The target of the bin `name` as a path relative to the package root:
-/// `bin.<name>`, or a single string `bin`, which npm names after the package
-/// without its scope.
+/// A single-string `bin` is named after the package without its scope, as npm
+/// does.
 pub(super) fn bin_entry(manifest: &Value, name: &str) -> Option<PathBuf> {
     let bin = manifest.get("bin")?;
     let target = match bin {
@@ -64,10 +57,8 @@ pub(super) fn bin_entry(manifest: &Value, name: &str) -> Option<PathBuf> {
     relative_module(target)
 }
 
-/// A bin target as a relative `/`-separated path naming a JavaScript module
-/// inside the package. Each component is a portable npm file name: ASCII
-/// letters, digits, `.`, `_` and `-`, never `.` or `..` alone, so no drive,
-/// stream, separator or parent can reach the path on any host.
+/// Each component is a portable npm file name, so no drive, stream, separator
+/// or parent can reach the path on any host.
 fn relative_module(bin: &str) -> Option<PathBuf> {
     let relative = bin.strip_prefix("./").unwrap_or(bin);
     if relative.is_empty() || relative.len() > BIN_ENTRY_BYTES_MAX {
@@ -210,14 +201,12 @@ mod tests {
             npm_package_bin(&root, "@openai/codex", "codex"),
             Some(root.join("node_modules/@openai/codex").join("bin/codex.js"))
         );
-        // Another package's manifest, a missing module or another bin name.
         manifest("@other/codex", "bin/codex.js");
         assert_eq!(npm_package_bin(&root, "@openai/codex", "codex"), None);
         manifest("@openai/codex", "bin/moved.js");
         assert_eq!(npm_package_bin(&root, "@openai/codex", "codex"), None);
         manifest("@openai/codex", "bin/codex.js");
         assert_eq!(npm_package_bin(&root, "@openai/codex", "codex-exec"), None);
-        // The single-string form names the bin after the unscoped package.
         std::fs::write(
             package.join("package.json"),
             serde_json::json!({"name": "@openai/codex", "bin": "bin/codex.js"}).to_string(),

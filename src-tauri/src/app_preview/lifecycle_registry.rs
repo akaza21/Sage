@@ -1,5 +1,3 @@
-//! Process lifecycle state with isolation for parallel native tests.
-//!
 //! Production has one registry because Sage has one current Project. Unit tests
 //! receive a registry per test worker thread, so one test cannot reserve or
 //! cancel another test's child while Cargo runs tests in parallel.

@@ -1,5 +1,3 @@
-//! Bounded native `.git` discovery under Project roots.
-//!
 //! Recognition uses filesystem metadata only. This module does not invoke Git
 //! CLI, follow directory reparse/symlinks, or scan curated vendor/VCS trees.
 

@@ -26,7 +26,6 @@ const HASHED_FILE_BYTES_MAX: u64 = 512 * 1024 * 1024;
 const DIGEST_CACHE_BYTES_MAX: u64 = 16 * 1024;
 const DIGEST_CACHE_ENTRIES_MAX: usize = 32;
 
-/// All facts needed to construct the Node-hosted Claude ACP launch contract.
 /// Paths are native-only and must never be projected to the renderer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct DiscoveredClaudeLaunch {
@@ -40,9 +39,6 @@ pub(crate) struct DiscoveredClaudeLaunch {
     pub(crate) node_sha256: String,
 }
 
-/// Discovery intentionally retains why a launch candidate cannot be made.
-/// `PresentVersionUnreadable` covers bounded package-metadata, SDK, and Node
-/// version reads: none are guessed from a shim or a filename.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ClaudeLaunchDiscovery {
     AdapterAbsent,
@@ -195,9 +191,8 @@ fn node_candidate_exists(paths: &[PathBuf]) -> bool {
         .any(|path| authentic_harness_file(path, node_basename()))
 }
 
-/// Node runtimes in the order a shell would pick them: PATH first, then the
-/// standard install folder. A version manager that puts its active Node first
-/// on PATH (nvm, fnm, Volta) is the one Sage runs.
+/// PATH first, as a shell would, so a version manager's active Node (nvm, fnm,
+/// Volta) is the one Sage runs.
 pub(super) fn node_candidates() -> Vec<PathBuf> {
     #[cfg_attr(not(windows), allow(unused_mut))]
     let mut candidates = path_candidates_for_basename(node_basename());
@@ -451,10 +446,6 @@ mod tests {
         fs::create_dir_all(&npm_root).expect("create npm root");
         write_adapter_layout(&npm_root);
         let adapter_root = adapter_package_root_from(vec![npm_root.clone()]).expect("adapter root");
-        // This fails under the former `parent()?.parent()?` reconstruction:
-        // that produces `<npm>/node_modules`, then probes a duplicate
-        // `node_modules/node_modules` segment. Passing the actual npm root
-        // proves the scoped package layout is resolved correctly.
         let adapter = read_adapter(&adapter_root.0, &adapter_root.1).expect("adapter metadata");
         assert_eq!(adapter.adapter_path, adapter_root.1.join(ADAPTER_ENTRY));
         assert_eq!(adapter.adapter_version, "0.76.0");
@@ -477,8 +468,6 @@ mod tests {
     fn standard_program_files_node_candidate_is_included() {
         let candidates = node_candidates();
         let expected = PathBuf::from(r"C:\Program Files\nodejs\node.exe");
-        // This discriminates because omitting the standard Node install root
-        // makes a PATH without Node unable to locate the installed runtime.
         assert!(candidates.iter().any(|candidate| candidate == &expected));
     }
 

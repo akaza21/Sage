@@ -21,11 +21,11 @@ impl Event {
     }
 }
 
-/// At most four indexed receipt rows per publication. The journal creates
-/// receipts atomically with the exact event, so delayed projection publication
-/// cannot miss a completion followed by another Turn or an approval resolution.
-/// Claims precede dispatch even while the chat is visible, so refreshes never
-/// replay them. An approval is announced only while its request is pending.
+/// The journal creates receipts atomically with the exact event, so delayed
+/// projection publication cannot miss a completion followed by another Turn or
+/// an approval resolution. Claims precede dispatch even while the chat is
+/// visible, so refreshes never replay them. An approval is announced only
+/// while its request is pending.
 pub(super) fn claim(
     connection: &Connection,
     notice: &ProjectionChangedV1,
@@ -76,8 +76,7 @@ pub(super) fn claim(
     Ok(claimed)
 }
 
-/// Marks every unclaimed receipt as handled without announcing it. Used when
-/// the process starts and when notices are turned on, so a notice only ever
+/// Run at startup and when notices are turned on, so a notice only ever
 /// describes an event observed while notices were on in this process.
 pub(super) fn retire_pending(connection: &Connection) -> AppResult<usize> {
     Ok(connection.execute(

@@ -86,7 +86,6 @@ fn rename_preserves_chat_activity_in_the_recent_rail() {
 fn the_display_title_is_the_name_the_user_gave_without_the_stored_prefix() {
     let stored = canonical_chat_title("  Fix login  ").unwrap();
     assert_eq!(super::chat_display_title(&stored), "Fix login");
-    // A title the user chose to start with the prefix keeps it.
     let doubled = canonical_chat_title("Chat: notes").unwrap();
     assert_eq!(super::chat_display_title(&doubled), "Chat: notes");
     assert_eq!(super::chat_display_title("Untitled"), "Untitled");

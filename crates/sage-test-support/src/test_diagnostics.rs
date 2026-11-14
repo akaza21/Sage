@@ -1,5 +1,3 @@
-//! The one tracing capture for unit tests in this binary.
-//!
 //! tracing caches each callsite's `Interest` process-wide, decided on whichever
 //! thread first reaches the callsite. A scoped `with_default` subscriber, or a
 //! global filter that answers `always`/`never` there (as `filter_fn` does), lets
@@ -20,7 +18,6 @@ use tracing_subscriber::{
 
 type Buffer = Arc<Mutex<Vec<u8>>>;
 
-/// Bytes one capture keeps; later output is dropped.
 const CAPTURE_BYTES: usize = 1024 * 1024;
 
 struct Route {
@@ -32,7 +29,6 @@ thread_local! {
     static ROUTE: RefCell<Option<Route>> = const { RefCell::new(None) };
 }
 
-/// Admits an event only while its own thread is capturing.
 struct CapturingThread;
 
 impl<S> Filter<S> for CapturingThread {
@@ -106,12 +102,10 @@ impl Drop for RouteScope {
     }
 }
 
-/// Runs `body` and returns what it logged on this thread.
 pub fn capture_diagnostics<T>(body: impl FnOnce() -> T) -> (T, String) {
     capture_matching(|_| true, body)
 }
 
-/// Runs `body` and returns what it logged on this thread that `admit` accepts.
 pub fn capture_matching<T>(
     admit: fn(&Metadata<'_>) -> bool,
     body: impl FnOnce() -> T,

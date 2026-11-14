@@ -1,7 +1,3 @@
-//! The Rust half of the Downloads/Tab/Comment/Escape regression: the real
-//! cancellation command must leave the native WebView2 controller hidden.
-//! Playwright separately drives those keys through the production components.
-
 use std::time::Duration;
 
 use sage_lib::native_lane::Lane;

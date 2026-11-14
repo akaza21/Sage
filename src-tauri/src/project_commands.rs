@@ -278,7 +278,6 @@ pub(crate) async fn cancelled_transition(state: &AppState) -> ProjectTransitionR
     }
 }
 
-/// The failure's public text; detail it leaves out goes to the log.
 fn logged_public_message(error: &sage_core::error::AppError) -> String {
     if error.hides_detail() {
         tracing::warn!(%error, "project transition failed");

@@ -1,5 +1,3 @@
-//! Win32 path spelling and reserved device names.
-//!
 //! `std::fs::canonicalize` returns verbatim paths on Windows. Sage keeps them
 //! for identity checks, but programs that receive a path as an argument or
 //! setting expect the ordinary form: Node.js, for one, cannot start a main
@@ -11,13 +9,9 @@
 
 use std::path::{Path, PathBuf};
 
-/// Win32's ordinary path limit in UTF-16 code units, including the terminating
-/// NUL; paths reaching this length stay verbatim without long-path support.
+/// Win32's path limit in UTF-16 code units, including the terminating NUL.
 const MAX_PATH: usize = 260;
 
-/// `path` in its ordinary Win32 spelling when that names the same file;
-/// otherwise `path` unchanged. Reserved device-name components and ordinary
-/// spellings of `MAX_PATH` or more UTF-16 code units stay verbatim.
 pub fn simplified(path: &Path) -> PathBuf {
     match path.to_str().and_then(simplified_text) {
         Some(text) => PathBuf::from(text),
@@ -25,9 +19,6 @@ pub fn simplified(path: &Path) -> PathBuf {
     }
 }
 
-/// A program and its arguments as a child process should receive them: each
-/// verbatim path that has an equivalent ordinary spelling is rewritten, and
-/// every other argument is kept as it is.
 pub fn ordinary_invocation(
     program: &Path,
     args: &[std::ffi::OsString],
@@ -40,10 +31,9 @@ pub fn ordinary_invocation(
     )
 }
 
-/// The ordinary spelling of a verbatim local-drive or UNC path, or `None` when
-/// `text` is not verbatim or Win32 would read its ordinary form differently: a
-/// reserved device-name component, a component ending in `.` or a space, or a
-/// path of `MAX_PATH` or more UTF-16 code units.
+/// `None` when Win32 would read the ordinary form differently: a reserved
+/// device-name component, a component ending in `.` or a space, or a path of
+/// `MAX_PATH` or more UTF-16 code units.
 fn simplified_text(text: &str) -> Option<String> {
     let simple = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{rest}")

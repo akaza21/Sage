@@ -110,7 +110,6 @@ fn pre_spawn_root_rebind_never_runs_the_replacement_repository_config() {
     let hook_moved = moved.clone();
     let hook_swapped = Arc::clone(&swapped);
     let policy = GitProcessPolicy::read(Duration::from_secs(3)).with_before_spawn_hook(move || {
-        // Runs after admission inspected the original repository.
         if fs::rename(&hook_root, &hook_moved).is_ok() {
             hook_swapped.store(true, Ordering::SeqCst);
             fs::create_dir(&hook_root).unwrap();
@@ -144,7 +143,6 @@ fn pre_spawn_root_rebind_never_runs_the_replacement_repository_config() {
             !sentinel.exists(),
             "the replacement repository's filter ran"
         );
-        // Control: Git does run the replacement's filter when unpinned.
         git(&root, &["status", "--porcelain"]);
         assert!(sentinel.exists(), "fixture filter is not live");
     }
@@ -174,7 +172,6 @@ fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
         &safe.join("main"),
         &["worktree", "add", "-q", "-b", "linked", "../linked"],
     );
-    // A neighbouring git dir with the same relative shape and a hostile filter.
     git(
         &attacker.join("main"),
         &["worktree", "add", "-q", "-b", "linked", "../decoy/linked"],
@@ -211,7 +208,7 @@ fn moving_a_linked_worktree_never_reaches_a_neighbouring_git_dir() {
     // Admission pins Git to the worktree's `.git` file, whose absolute target
     // names the safe repository's git dir, so a moved worktree never reaches
     // the neighbouring one.
-    assert!(!sentinel.exists(), "the neighbouring git dir's filter ran"); // Control: a git dir relative to the moved worktree reaches the decoy.
+    assert!(!sentinel.exists(), "the neighbouring git dir's filter ran");
     if !swapped.load(Ordering::SeqCst) {
         fs::rename(&linked, &moved).unwrap();
     }
@@ -276,7 +273,6 @@ fn replacing_a_nested_roots_ancestor_never_reaches_git() {
     ));
     assert!(!spawned.load(Ordering::SeqCst));
     assert!(!sentinel.exists());
-    // The boundary still reports the nested state rather than a failure.
     assert!(matches!(
         tokio::runtime::Runtime::new()
             .unwrap()
