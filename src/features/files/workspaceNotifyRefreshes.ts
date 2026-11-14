@@ -34,6 +34,8 @@ function settled(run: () => void | Promise<void>): Promise<void> {
 /**
  * A notice for a folder that is refreshing marks it dirty and requeues it when
  * the refresh ends, since that refresh may have listed it before the change.
+ * Every resync passes through, even while one runs: the listing side coalesces
+ * them and runs once more after a resync that a change overtook.
  */
 export function createNotifyRefreshes(
   invalidate: WorkspaceNotifyHooks["invalidate"],

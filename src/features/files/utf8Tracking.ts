@@ -32,7 +32,8 @@ export function documentUtf8Length(document: Text): number {
 
 /**
  * Each changed range is widened by one code unit on both sides, so an edit that
- * splits or joins a surrogate pair is counted with its neighbour.
+ * splits or joins a surrogate pair is counted with its neighbour; any split the
+ * widening causes is identical in both documents and cancels.
  */
 export function utf8Delta(transaction: Transaction): number {
   const before = transaction.startState.doc;

@@ -22,7 +22,6 @@ const HIDE_MS = 150;
 const CARD_WIDTH = 347;
 const LABEL_CHARS = 48;
 
-/** Contract §4: `Element N · <role> "<name>"`, cut to 48 characters. */
 export function browserElementLabel({
   ordinal,
   role,
@@ -34,7 +33,6 @@ export function browserElementLabel({
     : label.join("");
 }
 
-/** Contract §4: the tooltip names the page and the selector. */
 const elementTip = ({ url, selector }: BrowserElementContext) =>
   `${url}\n${selector}`;
 

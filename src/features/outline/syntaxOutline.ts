@@ -46,6 +46,7 @@ export interface OutlineSymbol {
   /** 1-based line and UTF-16 column of the declaration name. */
   line: number;
   column: number;
+  /** UTF-16 offset of the declaration name, for caret navigation. */
   offset: number;
   depth: number;
 }

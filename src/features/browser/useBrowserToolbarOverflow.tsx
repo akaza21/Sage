@@ -17,7 +17,8 @@ const SUBPIXEL = 0.5;
 /**
  * Each step is written to the toolbar and measured before paint, and a fit
  * always starts again from the full row, so actions that appear later never
- * count twice.
+ * count twice. The page actions stay in one portal host, so moving it keeps
+ * the chosen chat and pending operations.
  */
 export function useBrowserToolbarOverflow(
   menuOpen: boolean,

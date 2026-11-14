@@ -49,7 +49,6 @@ function mount(doc: string, editing: Partial<EditorEditing> = {}) {
   });
 }
 
-/** Runs a key the way CodeMirror's keydown handler does. */
 function press(
   view: EditorView,
   key: string,

@@ -41,6 +41,7 @@ export interface WorkspaceNotifyNotice {
   rootId: string;
   relativePath: string;
   kind: string;
+  /** False for listing/search delivery; Git may be decided separately. */
   gitRelevant?: boolean;
 }
 

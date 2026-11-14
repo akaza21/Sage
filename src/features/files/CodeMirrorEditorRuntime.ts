@@ -133,7 +133,8 @@ function baseFor(content: string, document: Text): DocumentBase | null {
 }
 
 /**
- * A value import of `editorContent` would pull it into the CodeMirror chunk.
+ * `sameContent`, restated: a value import of `editorContent` would make the
+ * File surface load CodeMirror eagerly.
  */
 function sameText(left: EditorContent, right: EditorContent) {
   if (left === right) return true;

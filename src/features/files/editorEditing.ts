@@ -99,8 +99,8 @@ export const EDITING_KEYS: readonly (KeyBinding & {
     mac: "Mod-Alt-]",
     run: unfoldCode,
   },
-  // Tab too: read-only Files get none of these keys, so the editor cannot
-  // indent only while a save briefly locks it.
+  // Browser shortcuts such as Ctrl+D stay off even when a command does nothing,
+  // and Tab too, so it does not leave the editor while a save briefly locks it.
 ].map((binding) => ({ ...binding, preventDefault: true }));
 
 /**
@@ -254,6 +254,7 @@ function treeMoved(update: ViewUpdate) {
 function foldGutter(): Extension {
   return [
     foldArrows,
+    // Low precedence puts the arrows after the line numbers, as in VS Code.
     Prec.low(
       gutter({
         class: "cm-foldGutter",

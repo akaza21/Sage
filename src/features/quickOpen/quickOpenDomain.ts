@@ -17,6 +17,7 @@ export interface QuickOpenRequest {
   generation: number;
   session: number;
   recent: readonly ResourceRef[];
+  /** An empty query also lists Files never opened, after the recent ones. */
   browse?: boolean;
 }
 
@@ -30,6 +31,7 @@ export interface QuickOpenResponse {
   results: QuickOpenMatch[];
   indexedFiles: number;
   truncated: boolean;
+  /** A fresher index is being built; asking again shortly sees it. */
   refreshing: boolean;
 }
 

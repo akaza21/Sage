@@ -88,6 +88,8 @@ export interface FileEditorController {
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,
   ): Promise<EditorSaveResult | null>;
+  /** With `reload`, a File that is gone keeps its edits, and the document is
+   * returned for the caller to show rather than shown. */
   discard(
     bridge: EditorStateBridge,
     canCommit: (resource: ResourceRef) => boolean,

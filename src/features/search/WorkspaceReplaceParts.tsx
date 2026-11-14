@@ -1,4 +1,5 @@
-// Loaded only when the user opens Replace, so Search alone carries none of it.
+// Loaded when Replace opens, or preloaded on idle and from the toggle, so
+// Search alone carries none of it.
 
 import type { Dispatch, SetStateAction } from "react";
 

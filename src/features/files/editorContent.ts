@@ -4,7 +4,11 @@ import type { Text } from "@codemirror/state";
 export const MAX_EDITABLE_CONTENT_BYTES = 1024 * 1024;
 export const MAX_FIND_QUERY_LENGTH = 256;
 
-/** Only the type is imported, so CodeMirror stays out of the core bundle. */
+/**
+ * Holding the editor's immutable Text spares building the whole File as a
+ * string per keystroke. Only the type is imported, so CodeMirror stays out of
+ * the core bundle.
+ */
 export type EditorContent = string | Text;
 
 const strings = new WeakMap<Text, string>();

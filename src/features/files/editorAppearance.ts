@@ -8,7 +8,8 @@ export interface EditorAppearance {
 
 /**
  * Written out because a value import of the catalogue would pull it into the
- * CodeMirror chunk; the catalogue test keeps the two equal.
+ * CodeMirror chunk; the catalogue test keeps the two equal. For the same
+ * reason, only the runtime may value-import this module.
  */
 export const DEFAULT_EDITOR_APPEARANCE: EditorAppearance = {
   fontSize: 13,

@@ -26,6 +26,7 @@ export interface GutterResult {
   version: number;
   hunks: number[];
   truncated?: boolean;
+  /** The worker has no document for `id`; the editor must send `open` again. */
   lost?: boolean;
 }
 
@@ -60,7 +61,11 @@ function lineStarts(text: string, lines: readonly string[]): Int32Array {
   return starts;
 }
 
-/** Done by hand so the worker stays free of the CodeMirror runtime. */
+/**
+ * Applies `ChangeSet.toJSON()`: a number keeps that many characters,
+ * `[deleted, ...lines]` replaces some. Done by hand so the worker stays free
+ * of the CodeMirror runtime.
+ */
 export function applyChanges(text: string, changes: unknown): string {
   if (!Array.isArray(changes)) throw new Error("malformed changes");
   const parts: string[] = [];

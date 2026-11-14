@@ -9,7 +9,10 @@ type ReadBase = (
   knownOid: string | null,
 ) => Promise<FileGitBase>;
 
-/** Sizes count UTF-16 code units × 2. */
+/**
+ * Sizes count UTF-16 code units × 2. A File asks with the blob id it last saw,
+ * so an unchanged index sends no text over IPC.
+ */
 export function createGutterBaseCache(
   read: ReadBase,
   maxBytes = MAX_GUTTER_BASE_BYTES,

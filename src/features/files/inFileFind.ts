@@ -18,6 +18,7 @@ export type FindError =
   "invalid" | "inlineFlag" | "empty" | "timeout" | "unavailable";
 
 export interface FindMatches {
+  /** Flat `[from, to, from, to, …]` offsets; `inserts` holds each range's text. */
   ranges: number[];
   truncated: boolean;
   contentLimitExceeded: boolean;
@@ -182,6 +183,7 @@ export function createFindWorkerClient(
     }
   }
   return {
+    /** Resolves `null` when a newer request or `dispose` replaced this one. */
     run(request: FindRequest): Promise<FindMatches | null> {
       return new Promise((settle) => {
         if (!running) return start(request, settle);
