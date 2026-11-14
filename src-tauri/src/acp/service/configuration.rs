@@ -1,13 +1,11 @@
 use std::sync::Arc;
 
-use crate::{
-    acp::{
-        bindings::registry::BindingRegistry,
-        runtime::{NotificationSink, ProjectionNotifier},
-        store::StoreError,
-    },
-    persistence::Database,
+use crate::acp::{
+    bindings::registry::BindingRegistry,
+    runtime::{NotificationSink, ProjectionNotifier},
+    store::StoreError,
 };
+use sage_db::database::Database;
 
 #[cfg(test)]
 use crate::acp::bindings::codex::CodexBindingRegistration;

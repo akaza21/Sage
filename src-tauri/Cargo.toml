@@ -35,6 +35,7 @@ regex.workspace = true
 rusqlite.workspace = true
 sage-acp-protocol.workspace = true
 sage-core.workspace = true
+sage-db.workspace = true
 sage-domain.workspace = true
 sage-process.workspace = true
 serde.workspace = true
@@ -54,6 +55,7 @@ zeroize.workspace = true
 
 [dev-dependencies]
 sage-acp-protocol = { workspace = true, features = ["test-support"] }
+sage-db = { workspace = true, features = ["test-support"] }
 sage-test-support.workspace = true
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
@@ -106,7 +108,7 @@ required-features = ["native-lane"]
 
 [features]
 default = []
-acp-fixture = ["sage-acp-protocol/fixture"]
+acp-fixture = ["sage-acp-protocol/fixture", "sage-db/fixture"]
 acp-schema = ["sage-acp-protocol/acp-schema"]
 # Runs browser::devtools tests against a real headless Chromium (unix only).
 cdp-lane = []

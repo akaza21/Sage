@@ -1,7 +1,12 @@
 use std::{fs, path::Path};
 
-use crate::{acp::store::load_chat_page, persistence::Database};
+use crate::acp::store::load_chat_page;
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::session_events::SessionEventStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::contract::{SageChatId, SageProjectId};
+use sage_db::database::Database;
 
 fn page(database: &Database, project: &str, chat: &str) -> crate::acp::projection::AcpChatPage {
     load_chat_page(
@@ -19,7 +24,7 @@ fn new_project_reopens_empty_and_first_prompt_installs_only_real_turn_usage() {
     let root = base.join("project");
     fs::create_dir_all(&root).unwrap();
     let path = base.join("sage.db");
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let chat = snapshot.active_tab_id.unwrap();
@@ -33,7 +38,7 @@ fn new_project_reopens_empty_and_first_prompt_installs_only_real_turn_usage() {
     assert_eq!(usage(&database), (1, 0, 0, 0, 0, 0));
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     assert!(reopened.bootstrap_snapshot().unwrap().messages.is_empty());
     assert!(
         page(&reopened, &project.id, &chat)
@@ -59,7 +64,7 @@ fn new_project_reopens_empty_and_first_prompt_installs_only_real_turn_usage() {
     assert!(counters.5 > 0);
     drop(reopened);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     assert_eq!(reopened.bootstrap_snapshot().unwrap().messages.len(), 2);
     assert_eq!(
         page(&reopened, &project.id, &chat).turns.as_slice().len(),
@@ -72,7 +77,7 @@ fn new_project_reopens_empty_and_first_prompt_installs_only_real_turn_usage() {
 
 #[test]
 fn fresh_local_project_first_chat_loads_empty_history() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.ensure_local_project().unwrap();
     assert!(project.roots.is_empty());
     let snapshot = database.bootstrap_snapshot().unwrap();
@@ -94,7 +99,7 @@ fn fresh_local_project_first_chat_loads_empty_history() {
 
 #[test]
 fn local_project_starts_without_a_simulator_session_or_turn() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     database.ensure_local_project().unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     assert_eq!(snapshot.project.unwrap().name, "Local");

@@ -36,8 +36,7 @@ fn a_prompt_that_may_have_been_delivered_after_an_undo_relaunch_retires_the_sess
             .unwrap();
         }
         assert!(chat.fixture.pending().is_some());
-        let reopened =
-            crate::persistence::Database::open(&chat.fixture.root.join("sage.db")).unwrap();
+        let reopened = crate::database::open_database(&chat.fixture.root.join("sage.db")).unwrap();
         crate::acp::recovery::recover_after_restart(&mut reopened.connection(), 120).unwrap();
         let page = store::load_chat_page(
             &reopened.connection(),
@@ -98,8 +97,7 @@ fn a_crash_before_undo_dispatch_keeps_the_turns_files_and_transcript() {
             )
             .unwrap();
         }
-        let reopened =
-            crate::persistence::Database::open(&chat.fixture.root.join("sage.db")).unwrap();
+        let reopened = crate::database::open_database(&chat.fixture.root.join("sage.db")).unwrap();
         crate::acp::recovery::recover_after_restart(&mut reopened.connection(), 70).unwrap();
         assert_eq!(chat.fixture.page_turns(), [LAST, FIRST]);
         assert_eq!(
@@ -166,8 +164,7 @@ fn undo_interrupted_after_persisting_the_intent_recovers_on_restart() {
             )
             .unwrap();
         }
-        let reopened =
-            crate::persistence::Database::open(&chat.fixture.root.join("sage.db")).unwrap();
+        let reopened = crate::database::open_database(&chat.fixture.root.join("sage.db")).unwrap();
         crate::acp::recovery::recover_after_restart(&mut reopened.connection(), 70).unwrap();
         if !confirmed {
             assert_eq!(chat.fixture.page_turns(), visible);
@@ -263,7 +260,7 @@ fn undo_interrupted_after_persisting_the_intent_recovers_on_restart() {
             )
             .unwrap();
         }
-        let reopened = crate::persistence::Database::open(&fixture.root.join("sage.db")).unwrap();
+        let reopened = crate::database::open_database(&fixture.root.join("sage.db")).unwrap();
         crate::acp::recovery::recover_after_restart(&mut reopened.connection(), 70).unwrap();
         assert_eq!(fixture.page_turns(), [FIRST]);
         store::turn_undo::intent::ensure_settled(

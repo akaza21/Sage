@@ -3,6 +3,7 @@ use std::path::{Component, Path};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::{
     acp::resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
     project_registry::RootRecord,

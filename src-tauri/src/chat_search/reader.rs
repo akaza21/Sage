@@ -2,8 +2,9 @@ use std::time::Instant;
 
 use rusqlite::Connection;
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 
-use crate::persistence::Database;
+use sage_db::database::Database;
 
 pub(super) fn with_snapshot<ResultValue>(
     database: &Database,
@@ -18,9 +19,11 @@ pub(super) fn with_snapshot<ResultValue>(
         locked = database.connection();
         &mut locked
     };
-    connection.progress_handler(1_000, Some(move || Instant::now() >= deadline))?;
+    connection
+        .progress_handler(1_000, Some(move || Instant::now() >= deadline))
+        .db()?;
     let reset = ResetProgress(connection);
-    let _snapshot = reset.0.unchecked_transaction()?;
+    let _snapshot = reset.0.unchecked_transaction().db()?;
     search(reset.0)
 }
 

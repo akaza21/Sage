@@ -2,6 +2,7 @@ use std::collections::BTreeMap;
 
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use super::SettingsStore;
 use sage_acp_protocol::access_mode::SessionAccessMode;
@@ -30,21 +31,24 @@ pub(super) fn migrate(connection: &rusqlite::Connection) -> AppResult<()> {
             [],
             |row| row.get(0),
         )
-        .optional()?;
+        .optional()
+        .db()?;
     match existing {
-        None => connection.execute_batch(BINDING_ACCESS_MODES)?,
+        None => connection.execute_batch(BINDING_ACCESS_MODES).db()?,
         Some(sql) if sql == BINDING_ACCESS_MODES.trim_end_matches(';') => {}
         // Another build admitted other modes. Rebuild with this build's
         // check, keeping every choice it knows; a choice it does not know
         // (from a newer build) falls back to the binding's default.
-        Some(_) => connection.execute_batch(&format!(
-            "ALTER TABLE binding_access_modes RENAME TO binding_access_modes_previous;
+        Some(_) => connection
+            .execute_batch(&format!(
+                "ALTER TABLE binding_access_modes RENAME TO binding_access_modes_previous;
              {BINDING_ACCESS_MODES}
              INSERT INTO binding_access_modes(binding_id,mode)
                SELECT binding_id,mode FROM binding_access_modes_previous
                WHERE mode IN ({DEFAULT_MODES});
              DROP TABLE binding_access_modes_previous;"
-        ))?,
+            ))
+            .db()?,
     }
     Ok(())
 }
@@ -71,17 +75,21 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         if let Some(binding) = restored_binding {
-            transaction.execute(
-                "INSERT OR IGNORE INTO binding_access_modes(binding_id,mode)
+            transaction
+                .execute(
+                    "INSERT OR IGNORE INTO binding_access_modes(binding_id,mode)
                 SELECT ?1,mode FROM session_access_mode WHERE singleton=1",
-                [binding],
-            )?;
+                    [binding],
+                )
+                .db()?;
         }
-        transaction.execute("DELETE FROM session_access_mode WHERE singleton=1", [])?;
+        transaction
+            .execute("DELETE FROM session_access_mode WHERE singleton=1", [])
+            .db()?;
         let modes = read_modes(&transaction)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(modes)
     }
 
@@ -94,16 +102,20 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let transaction = connection.transaction()?;
-        transaction.execute("DELETE FROM binding_access_modes", [])?;
+        let transaction = connection.transaction().db()?;
+        transaction
+            .execute("DELETE FROM binding_access_modes", [])
+            .db()?;
         for (binding, mode) in modes {
             let mode = serde_json::to_value(mode).expect("access mode serializes");
-            transaction.execute(
-                "INSERT INTO binding_access_modes(binding_id,mode) VALUES (?1,?2)",
-                params![binding, mode.as_str()],
-            )?;
+            transaction
+                .execute(
+                    "INSERT INTO binding_access_modes(binding_id,mode) VALUES (?1,?2)",
+                    params![binding, mode.as_str()],
+                )
+                .db()?;
         }
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(modes.clone())
     }
 
@@ -123,19 +135,23 @@ fn migration_pending(connection: &rusqlite::Connection) -> AppResult<bool> {
             [],
             |row| row.get::<_, i64>(0),
         )
-        .optional()?
+        .optional()
+        .db()?
         .is_some())
 }
 
 fn read_modes(connection: &rusqlite::Connection) -> AppResult<SessionAccessModes> {
     let mut statement = connection
-        .prepare("SELECT binding_id,mode FROM binding_access_modes ORDER BY binding_id LIMIT 9")?;
-    let rows = statement.query_map([], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
+        .prepare("SELECT binding_id,mode FROM binding_access_modes ORDER BY binding_id LIMIT 9")
+        .db()?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .db()?;
     let mut modes = BTreeMap::new();
     for row in rows {
-        let (binding, mode) = row?;
+        let (binding, mode) = row.db()?;
         // A mode this build does not know (a newer build wrote it) is left
         // out, so that binding falls back to its least permissive default.
         match serde_json::from_value::<SessionAccessMode>(serde_json::Value::String(mode)) {

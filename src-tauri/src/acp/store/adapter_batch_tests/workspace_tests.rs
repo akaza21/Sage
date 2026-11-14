@@ -1,13 +1,11 @@
 use super::*;
-use crate::{
-    acp::runtime::{JournalHandle, JournalLane},
-    persistence::Database,
-};
+use crate::acp::runtime::{JournalHandle, JournalLane};
+use sage_db::database::Database;
 use std::path::PathBuf;
 
 fn workspace_fixture() -> (Database, AdapterStoreOwner, PathBuf) {
     let fixture = migrated_fixture();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     {
         let mut connection = database.connection();
         let backup = rusqlite::backup::Backup::new(&fixture.connection, &mut connection).unwrap();

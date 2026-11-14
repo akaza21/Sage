@@ -10,6 +10,7 @@ use uuid::Uuid;
 use super::terminal::MAX_PENDING_READS;
 use super::*;
 use crate::acp::{runtime::read_text_file::ReadTextRequestId, transport::DeadlineAsyncWriter};
+use crate::project_registry::create::ProjectCreateStore;
 use sage_acp_protocol::contract::{
     ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
 };
@@ -44,7 +45,7 @@ fn fixture() -> (std::path::PathBuf, ReadTextFileService, String, ResourceRef) {
     let root = std::env::temp_dir().join(format!("sage-p02-egress-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     fs::write(root.join("file.txt"), "one\ntwo\n").unwrap();
-    let database = Database::open(":memory:".as_ref()).unwrap();
+    let database = crate::database::open_database(":memory:".as_ref()).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
     (

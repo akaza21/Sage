@@ -5,6 +5,7 @@ mod browser_mcp;
 mod models;
 mod undo;
 
+use crate::acp::bindings::codex::runtime::authority::CodexRootAuthorityStore;
 use crate::acp::bindings::{
     claude::{AdmittedClaudeBinding, ClaudeBindingRegistration},
     codex::{AdmittedCodexBinding, CodexBindingRegistration},
@@ -359,7 +360,7 @@ impl AdmittedBindingRecord<'_> {
 
     pub(crate) fn project_root(
         &self,
-        database: &crate::persistence::Database,
+        database: &sage_db::database::Database,
         context: &crate::state::ActiveProjectContext<'_>,
     ) -> Result<BindingProjectRoot, ()> {
         match self.record.root_policy {

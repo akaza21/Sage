@@ -16,6 +16,7 @@ publish = false
 # Internal crates, by path, so members write `sage-core.workspace = true`.
 sage-acp-protocol = { path = "crates/sage-acp-protocol" }
 sage-core = { path = "crates/sage-core" }
+sage-db = { path = "crates/sage-db" }
 sage-domain = { path = "crates/sage-domain" }
 sage-process = { path = "crates/sage-process" }
 sage-test-support = { path = "crates/sage-test-support" }

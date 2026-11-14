@@ -2,13 +2,15 @@ use std::path::PathBuf;
 
 use sage_core::error::{AppError, AppResult};
 
-#[cfg(test)]
-use crate::persistence::Database;
+use crate::project_registry::ProjectRegistryStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     browser::BrowserState, preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot, state::AppState,
 };
 use sage_acp_protocol::contract::SageProjectId;
+#[cfg(test)]
+use sage_db::database::Database;
 use sage_domain::{
     chat::ProjectLayoutRequest,
     project::{ProjectSwitchRequest, ProjectTransitionResult},
@@ -328,6 +330,9 @@ fn apply_add_root_selection(
 
 #[cfg(test)]
 mod tests {
+    use crate::project_registry::ProjectRegistryStore;
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use std::{
         path::Path,
         sync::{Arc, mpsc},
@@ -335,6 +340,7 @@ mod tests {
     };
 
     use super::*;
+    use sage_db::error::SqliteResultExt;
     use uuid::Uuid;
 
     #[test]
@@ -360,7 +366,7 @@ mod tests {
 
     #[test]
     fn picker_cancellation_does_not_create_or_mutate_projects() {
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         assert!(!apply_add_root_selection(&database, "unused", None).unwrap());
         assert_eq!(database.project_count().unwrap(), 0);
     }
@@ -370,7 +376,7 @@ mod tests {
         tokio::runtime::Runtime::new().unwrap().block_on(async {
             let root = std::env::temp_dir().join(format!("sage-layout-epoch-{}", Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();
-            let database = Database::open(Path::new(":memory:")).unwrap();
+            let database = crate::database::open_database(Path::new(":memory:")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let selected = sage_domain::resource::ResourceRef {
@@ -421,7 +427,7 @@ mod tests {
             std::fs::create_dir_all(&first_root).unwrap();
             std::fs::create_dir_all(&second_root).unwrap();
             let state = Arc::new(AppState::new(
-                Database::open(Path::new(":memory:")).unwrap(),
+                crate::database::open_database(Path::new(":memory:")).unwrap(),
             ));
             let (started_tx, started_rx) = mpsc::channel();
             let (release_tx, release_rx) = mpsc::channel();
@@ -466,7 +472,8 @@ mod tests {
     fn transition_epoch_rejects_a_stale_aba_intent_before_mutation() {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         runtime.block_on(async {
-            let state = AppState::new(Database::open(Path::new(":memory:")).unwrap());
+            let state =
+                AppState::new(crate::database::open_database(Path::new(":memory:")).unwrap());
             let roots =
                 std::env::temp_dir().join(format!("sage-transition-aba-{}", Uuid::new_v4()));
             let first_root = roots.join("project-a");
@@ -519,7 +526,8 @@ mod tests {
     fn committed_projection_failure_preserves_the_advanced_epoch() {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         runtime.block_on(async {
-            let state = AppState::new(Database::open(Path::new(":memory:")).unwrap());
+            let state =
+                AppState::new(crate::database::open_database(Path::new(":memory:")).unwrap());
             let database = state.database.clone();
             let root =
                 std::env::temp_dir().join(format!("sage-transition-recovery-{}", Uuid::new_v4()));
@@ -529,7 +537,8 @@ mod tests {
                 database.create_project_from_root(&operation_root)?;
                 database
                     .connection()
-                    .execute_batch("DROP TABLE workbench_tabs")?;
+                    .execute_batch("DROP TABLE workbench_tabs")
+                    .db()?;
                 Ok(())
             })
             .await;
@@ -561,7 +570,8 @@ mod tests {
                 1,
             )
             .unwrap();
-            let state = AppState::new(Database::open(Path::new(":memory:")).unwrap());
+            let state =
+                AppState::new(crate::database::open_database(Path::new(":memory:")).unwrap());
             let selected = root.clone();
             let result = execute_committed_transition_checked(
                 &state,
@@ -585,7 +595,8 @@ mod tests {
     fn committed_project_transition_stops_the_previous_epoch_preview_but_a_failed_one_does_not() {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         runtime.block_on(async {
-            let state = AppState::new(Database::open(Path::new(":memory:")).unwrap());
+            let state =
+                AppState::new(crate::database::open_database(Path::new(":memory:")).unwrap());
             let root =
                 std::env::temp_dir().join(format!("sage-transition-preview-{}", Uuid::new_v4()));
             std::fs::create_dir_all(&root).unwrap();
