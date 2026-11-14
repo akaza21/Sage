@@ -8,6 +8,7 @@ use std::{
     sync::Arc,
 };
 
+use sage_core::error::{AppError, AppResult};
 use windows_sys::Win32::Storage::FileSystem::{
     BY_HANDLE_FILE_INFORMATION, DELETE, FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS,
     FILE_FLAG_OPEN_REPARSE_POINT, FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_DELETE,
@@ -16,7 +17,6 @@ use windows_sys::Win32::Storage::FileSystem::{
 
 use crate::{
     domain::{DirectoryListing, TrashResourceKind},
-    error::{AppError, AppResult},
     workspace::{root_identity_file, root_identity_path},
 };
 

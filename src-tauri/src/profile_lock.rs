@@ -150,7 +150,7 @@ mod tests {
 
     impl TestDir {
         fn new() -> Self {
-            let path = crate::test_paths::temp_dir()
+            let path = sage_test_support::test_paths::temp_dir()
                 .join(format!("sage-profile-lock-{}", uuid::Uuid::new_v4()));
             fs::create_dir_all(&path).unwrap();
             Self(path)

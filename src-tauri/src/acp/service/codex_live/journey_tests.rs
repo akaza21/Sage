@@ -44,7 +44,7 @@ mod browser_reconnect_tests;
 #[test]
 #[cfg(windows)]
 fn unavailable_binding_cannot_start_a_live_codex_session() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup = FixtureSetup::in_memory(CodexBindingRegistration::unavailable_for_test()).await;
 
@@ -83,7 +83,7 @@ fn unavailable_binding_cannot_start_a_live_codex_session() {
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
 fn two_sequential_turns_share_one_session_and_converge_to_zero() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup =
             FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
@@ -112,7 +112,7 @@ fn two_sequential_turns_share_one_session_and_converge_to_zero() {
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
 fn restart_resume_then_another_turn_reads_sqlite() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let registration = CodexBindingRegistration::admitted_for_journey_test(&[
             "codex-journey-turn-success",
@@ -188,7 +188,7 @@ fn restart_resume_then_another_turn_reads_sqlite() {
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
 fn cancel_then_reuse_session_converges_to_zero_orphans() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup =
             FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
@@ -211,7 +211,7 @@ fn cancel_then_reuse_session_converges_to_zero_orphans() {
                 owner: owner.clone(),
                 turn_id: turn_id.clone(),
                 client_intent_id: ClientIntentId::new(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .unwrap_or_else(|error| {
                 panic!(
@@ -256,7 +256,7 @@ fn cancel_then_reuse_session_converges_to_zero_orphans() {
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
 fn child_exit_after_item_completion_fails_the_turn_and_ends_the_runtime_epoch() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup =
             FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
@@ -390,7 +390,7 @@ fn child_exit_after_item_completion_fails_the_turn_and_ends_the_runtime_epoch() 
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
 fn lost_steer_result_keeps_an_outcome_unknown_queue_row_after_reopen() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup = FixtureSetup::file_backed(
             CodexBindingRegistration::admitted_for_observed_steer_journey_test(&[
@@ -407,7 +407,7 @@ fn lost_steer_result_keeps_an_outcome_unknown_queue_row_after_reopen() {
 fn desktop_codex_fixture_lost_steer_result_survives_file_backed_reopen() {
     use sha2::{Digest, Sha256};
 
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let proof_root = Path::new(env!("CARGO_MANIFEST_DIR"))
             .parent()
@@ -421,7 +421,7 @@ fn desktop_codex_fixture_lost_steer_result_survives_file_backed_reopen() {
             b"sage-disposable-profile-v1\n",
         )
         .unwrap();
-        let artifact_root = crate::test_paths::temp_dir()
+        let artifact_root = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-cp14-artifact-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&artifact_root).unwrap();
         let artifact = artifact_root.join("acp-adversarial-fixture.exe");
@@ -439,8 +439,8 @@ fn desktop_codex_fixture_lost_steer_result_survives_file_backed_reopen() {
         let profile = crate::launch_profile::resolve_launch_profile(
             Some(profile_root.as_os_str()),
             Some(project_root.as_os_str()),
-            crate::test_paths::temp_dir().join("sage-cp14-normal-durable"),
-            crate::test_paths::temp_dir().join("sage-cp14-normal-webview"),
+            sage_test_support::test_paths::temp_dir().join("sage-cp14-normal-durable"),
+            sage_test_support::test_paths::temp_dir().join("sage-cp14-normal-webview"),
         )
         .unwrap();
         let selection = crate::launch_profile::resolve_codex_fixture_selection(
@@ -643,7 +643,7 @@ async fn assert_lost_steer_result_after_reopen(
 #[test]
 #[cfg(windows)]
 fn unsigned_or_observation_only_cannot_launch() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         for (registration, unavailable) in [
             (
@@ -908,7 +908,7 @@ impl FixtureSetup {
             binding_digest: "forged".into(),
             harness_version: None,
             model_id: None,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         }
     }
 
@@ -921,7 +921,7 @@ impl FixtureSetup {
             session_id: owner.session_id.clone(),
             runtime_epoch: owner.runtime_epoch,
             artifact_digest: "forged".into(),
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         }
     }
 
@@ -935,7 +935,7 @@ impl FixtureSetup {
             expected_projection_revision: self.page(owner).projection_revision,
             client_intent_id: ClientIntentId::new(),
             prompt: Prompt::new("prompt", "Complete this short test turn.").unwrap(),
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         }
     }
 
@@ -947,7 +947,7 @@ impl FixtureSetup {
             client_intent_id: ClientIntentId::new(),
             session_id: owner.session_id.clone(),
             runtime_epoch: owner.runtime_epoch,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         }
     }
 
@@ -1031,7 +1031,7 @@ impl FixtureSetup {
 
     #[track_caller]
     fn wait_until(&self, condition: impl Fn() -> bool) {
-        crate::test_wait::until("production Codex journey", condition);
+        sage_test_support::test_wait::until("production Codex journey", condition);
     }
 }
 

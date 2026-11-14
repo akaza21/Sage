@@ -23,6 +23,7 @@
   "ownedFileScopes": [
     "Cargo.lock",
     "Cargo.toml",
+    "crates/sage-core/src/encoded_len.rs",
     "eslint.config.js",
     "scripts/ade0006a-admission.mjs",
     "scripts/ade0006a-c0b-campaign-launch.mjs",
@@ -201,6 +202,7 @@
       "files": [
         "Cargo.lock",
         "Cargo.toml",
+        "crates/sage-core/src/encoded_len.rs",
         "scripts/generate-acp-fixture-cases.mjs",
         "src-tauri/Cargo.toml",
         "src-tauri/migrations/005_acp_session_foundation.sql",
@@ -220,7 +222,6 @@
         "src-tauri/src/acp/command_output.rs",
         "src-tauri/src/acp/contract.rs",
         "src-tauri/src/acp/declared_test.rs",
-        "src-tauri/src/acp/encoded_len.rs",
         "src-tauri/src/acp/file_diff.rs",
         "src-tauri/src/acp/file_diff/line_counts.rs",
         "src-tauri/src/acp/fixture_protocol.rs",

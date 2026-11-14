@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Barrier, Mutex, MutexGuard},
 };
 
-use crate::error::AppResult;
+use sage_core::error::AppResult;
 
 static AFTER_METADATA_BARRIER: Mutex<Option<Arc<Barrier>>> = Mutex::new(None);
 

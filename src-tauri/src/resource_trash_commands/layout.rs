@@ -1,9 +1,11 @@
 use rusqlite::params;
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 
 use crate::{
     domain::{ResourceRef, TrashProjectResourceRequest},
-    error::{AppError, AppResult},
-    persistence::now_millis,
     workspace::resource_trash::TRASH_NAME,
 };
 

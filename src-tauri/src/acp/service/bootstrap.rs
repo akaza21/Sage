@@ -32,9 +32,9 @@ impl AcpService {
             .enqueue_one(
                 JournalLane::Control,
                 StoreMutation::RecoverAfterRestart {
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
-                u64::try_from(crate::persistence::now_millis())
+                u64::try_from(sage_core::time::now_millis())
                     .unwrap_or_default()
                     .saturating_add(30_000),
             )
@@ -58,7 +58,7 @@ impl AcpService {
                 .map_err(|_| StoreError::Corrupt("browser recovery storage"))?;
             crate::acp::store::browser_operations::recover_started(
                 &mut connection,
-                crate::persistence::now_millis(),
+                sage_core::time::now_millis(),
             )?;
         }
         let session_starts =

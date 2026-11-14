@@ -11,7 +11,8 @@ use std::{
 };
 
 use super::{MAX_ROOTS, MAX_WATCHES, batch::WorkspaceNotifyBatch, tracked};
-use crate::{error::AppError, git_process};
+use crate::git_process;
+use sage_core::error::AppError;
 
 pub(super) const MAX_GIT_PATHS: usize = super::batch::MAX_BATCH_NOTICES;
 const MAX_GIT_PATH_BYTES: usize = 1024 * 1024;

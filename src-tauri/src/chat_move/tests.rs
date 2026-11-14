@@ -1,8 +1,9 @@
 use std::fs;
 
+use sage_core::error::AppError;
+
 use crate::{
     domain::{MoveChatRequest, ProjectLayoutRequest, ProjectSwitchRequest},
-    error::AppError,
     persistence::Database,
 };
 

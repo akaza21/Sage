@@ -586,7 +586,7 @@ fn project_list_includes_bounded_chats_for_every_project() {
         .connection()
         .execute(
             "UPDATE chats SET updated_at=?3 WHERE project_id=?1 AND id=?2",
-            rusqlite::params![sage.id, latest, crate::persistence::now_millis() + 10_000],
+            rusqlite::params![sage.id, latest, sage_core::time::now_millis() + 10_000],
         )
         .unwrap();
     let projects = database.project_list().unwrap();

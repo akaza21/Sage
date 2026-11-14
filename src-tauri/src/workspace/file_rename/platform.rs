@@ -1,10 +1,8 @@
 use std::{fs::File, path::Path};
 
-use crate::{
-    domain::DirectoryListing,
-    error::{AppError, AppResult},
-    workspace::RootIdentity,
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::{domain::DirectoryListing, workspace::RootIdentity};
 
 #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 use crate::workspace::root_identity_path;

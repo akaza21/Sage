@@ -1,3 +1,4 @@
+use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::{
@@ -5,7 +6,6 @@ use crate::{
         GitFileMutationCommandError, GitRepositoryRemoteTransportRequest,
         GitRepositoryRemoteTransportResult,
     },
-    error::{AppError, AppResult, GitContainmentState},
     repository_remote_transport,
     state::AppState,
     workspace::Workspace,

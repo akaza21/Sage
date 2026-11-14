@@ -34,7 +34,8 @@ fn a_checkpointed_newer_profile_is_refused_before_recovery_beside_a_nonempty_wal
 
 fn refuses_newer_profile_untouched(with_wal: bool) {
     let directory = TestDir(
-        crate::test_paths::temp_dir().join(format!("sage-newer-profile-{}", uuid::Uuid::new_v4())),
+        sage_test_support::test_paths::temp_dir()
+            .join(format!("sage-newer-profile-{}", uuid::Uuid::new_v4())),
     );
     std::fs::create_dir_all(&directory.0).unwrap();
     let path = directory.0.join("sage.db");
@@ -335,7 +336,8 @@ fn wal_startup_reuses_one_bounded_snapshot_and_reads_committed_data() {
 
 fn test_directory() -> TestDir {
     let directory = TestDir(
-        crate::test_paths::temp_dir().join(format!("sage-preflight-{}", uuid::Uuid::new_v4())),
+        sage_test_support::test_paths::temp_dir()
+            .join(format!("sage-preflight-{}", uuid::Uuid::new_v4())),
     );
     std::fs::create_dir_all(&directory.0).unwrap();
     // Startup always owns this lock; create it before byte-for-byte snapshots.

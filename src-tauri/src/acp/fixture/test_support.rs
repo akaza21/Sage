@@ -23,7 +23,7 @@ impl FixtureDeadline {
         Self {
             started,
             // Bound fixture setup and scheduling with the shared test hang guard.
-            deadline: started + crate::test_wait::HANG_GUARD,
+            deadline: started + sage_test_support::test_wait::HANG_GUARD,
         }
     }
 

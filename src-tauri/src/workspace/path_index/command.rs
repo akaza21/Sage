@@ -1,12 +1,12 @@
 //! The `quick_open_query` command: one bounded query against the active
 //! project's path index.
 
+use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
     domain::ResourceRef,
-    error::{AppError, AppResult},
     settings_store::EditorValue,
     state::AppState,
     workspace::{Workspace, ignore_rules::global_excludes_path},

@@ -6,7 +6,7 @@ use serde::Serialize;
 
 /// The length `serde_json::to_vec(value)` would have, counted as it is
 /// written so no buffer is allocated.
-pub(crate) fn encoded_len<T: Serialize + ?Sized>(value: &T) -> serde_json::Result<usize> {
+pub fn encoded_len<T: Serialize + ?Sized>(value: &T) -> serde_json::Result<usize> {
     let mut counter = Counter(0);
     serde_json::to_writer(&mut counter, value)?;
     Ok(counter.0)

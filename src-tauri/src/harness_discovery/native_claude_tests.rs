@@ -28,7 +28,7 @@ impl Profile {
 
     fn version(&self, version: &str) -> PathBuf {
         let path = self.0.join(".local/share/claude/versions").join(version);
-        crate::test_executable::write(
+        sage_test_support::test_executable::write(
             &path,
             format!("#!/bin/sh\nprintf '%s\\n' '{version} (Claude Code)'\n"),
         )

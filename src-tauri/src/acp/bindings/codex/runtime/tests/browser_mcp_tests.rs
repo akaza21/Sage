@@ -188,7 +188,7 @@ fn browser_failure_before_first_prompt_is_reported_once_after_turn_bind() {
             "threadId": "thread-1"
         }
     }));
-    let (_, diagnostics) = crate::test_diagnostics::capture_diagnostics(|| {
+    let (_, diagnostics) = sage_test_support::test_diagnostics::capture_diagnostics(|| {
         for _ in 0..2 {
             let early = runtime.ingest(&failed, &Mapper).unwrap();
             assert!(matches!(early.events(), [AdapterEvent::IgnoredLate]));
@@ -239,7 +239,7 @@ fn browser_startup_warning_is_emitted_once_for_accepted_failure() {
             }
         }))
     };
-    let (_, diagnostics) = crate::test_diagnostics::capture_diagnostics(|| {
+    let (_, diagnostics) = sage_test_support::test_diagnostics::capture_diagnostics(|| {
         assert!(runtime.ingest(&failure("foreign-thread"), &Mapper).is_err());
         runtime.ingest(&failure("thread-1"), &Mapper).unwrap();
         runtime.ingest(&failure("thread-1"), &Mapper).unwrap();

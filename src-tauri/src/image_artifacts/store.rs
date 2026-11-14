@@ -1,6 +1,7 @@
 use std::{fs, io::Cursor, path::Path};
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -13,7 +14,6 @@ use crate::{
         },
         migration,
     },
-    error::{AppError, AppResult},
     image_attachment::{ImageAttachedContext, ImageAttachmentKind, MAX_OUTGOING_IMAGE_BYTES},
 };
 /// A stored full image is read back within the store bound.

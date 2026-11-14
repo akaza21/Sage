@@ -1,10 +1,10 @@
 use std::path::{Component, PathBuf};
 
 use rusqlite::{Connection, params};
+use sage_core::error::{AppError, AppResult};
 
 use crate::{
     editor_persistence::{MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES},
-    error::{AppError, AppResult},
     project_registry::{RootRecord, canonical_comparison_key},
     workspace::validate_contract_path,
 };

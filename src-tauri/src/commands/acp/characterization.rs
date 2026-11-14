@@ -45,7 +45,7 @@ pub(super) async fn start(
                     .expect("static characterization version is bounded"),
             ),
             model_id: request.model_id,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .await
         .map_err(map_error)?;
@@ -74,7 +74,7 @@ pub(super) async fn activate(
                 session_id: request.session_id,
                 runtime_epoch: request.runtime_epoch,
                 artifact_digest,
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
             project_root,
         )
@@ -127,7 +127,7 @@ pub(super) fn send(
             expected_projection_revision,
             client_intent_id,
             prompt,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .map_err(|failure| SendAcpTurnFailure {
             failure: map_error(failure.error),
@@ -153,7 +153,7 @@ pub(super) fn cancel(
             },
             turn_id: request.turn_id,
             client_intent_id: request.client_intent_id,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .map_err(map_error)?;
     mutation_response(state, project_id, chat_id)
@@ -174,7 +174,7 @@ pub(super) fn close(
             client_intent_id: request.client_intent_id,
             session_id: request.session_id,
             runtime_epoch: request.runtime_epoch,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .map_err(map_error)?;
     mutation_response(state, project_id, chat_id)

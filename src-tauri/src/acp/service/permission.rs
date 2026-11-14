@@ -132,9 +132,9 @@ impl AcpService {
                     runtime_epoch,
                     request_id: request_id.clone(),
                     state,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 }),
-                u64::try_from(crate::persistence::now_millis())
+                u64::try_from(sage_core::time::now_millis())
                     .unwrap_or_default()
                     .saturating_add(crate::acp::limits::LIMITS.deadlines_ms.ordinary_rpc),
             )

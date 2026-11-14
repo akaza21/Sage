@@ -1,9 +1,7 @@
 use rusqlite::params;
+use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    domain::{RepositoryRef, ResourceRef},
-    error::{AppError, AppResult},
-};
+use crate::domain::{RepositoryRef, ResourceRef};
 
 use super::validate_resource_for_project;
 

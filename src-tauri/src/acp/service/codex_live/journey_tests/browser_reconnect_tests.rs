@@ -80,7 +80,7 @@ fn connects(database: crate::persistence::Database, owner: RuntimeOwner) -> bool
     let (mut server, token) = BrowserMcpServer::issue_for_session(
         FakeBrowserCapability::default(),
         owner.session_id.as_str().into(),
-        u64::try_from(crate::persistence::now_millis()).unwrap(),
+        u64::try_from(sage_core::time::now_millis()).unwrap(),
     );
     let environment = host.child_environment(owner.session_id.as_str(), token);
     let stopped = Arc::new(AtomicBool::new(false));
@@ -150,7 +150,7 @@ impl AcpStore for ActivationStore {
 
 #[test]
 fn browser_take_over_stop_then_next_turn_reconnects() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let mut setup =
             FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
@@ -225,7 +225,7 @@ fn browser_take_over_stop_then_next_turn_reconnects() {
                 owner: owner.clone(),
                 turn_id,
                 client_intent_id: ClientIntentId::new(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .unwrap();
         setup.wait_for_cancelled(&owner);

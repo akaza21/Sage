@@ -158,7 +158,7 @@ impl Lane<'_> {
                 session_id: owner.session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
                 exit_kind,
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
         )
         .map_err(|_error| {

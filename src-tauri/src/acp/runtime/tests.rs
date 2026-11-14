@@ -362,7 +362,7 @@ impl AcpStore for BlockingCommitStore {
         ready.notify_all();
         while !state.1 {
             let (next, timed) = ready
-                .wait_timeout(state, crate::test_wait::HANG_GUARD)
+                .wait_timeout(state, sage_test_support::test_wait::HANG_GUARD)
                 .unwrap();
             state = next;
             assert!(
@@ -387,8 +387,9 @@ fn in_flight_ticket_timeout_is_commit_unknown_and_retains_capacity() {
         .enqueue_one(
             JournalLane::Data,
             begin_mutation("in-flight-timeout"),
-            super::journal::now_millis()
-                .saturating_add(u64::try_from(crate::test_wait::BUDGET.as_millis()).unwrap()),
+            super::journal::now_millis().saturating_add(
+                u64::try_from(sage_test_support::test_wait::BUDGET.as_millis()).unwrap(),
+            ),
         )
         .unwrap();
     let thread = std::thread::spawn(move || runner.run_blocking());
@@ -396,7 +397,7 @@ fn in_flight_ticket_timeout_is_commit_unknown_and_retains_capacity() {
     let mut state = state_lock.lock().unwrap();
     while !state.0 {
         let (next, timed) = ready
-            .wait_timeout(state, crate::test_wait::HANG_GUARD)
+            .wait_timeout(state, sage_test_support::test_wait::HANG_GUARD)
             .unwrap();
         state = next;
         assert!(

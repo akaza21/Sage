@@ -6,11 +6,11 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use sage_core::error::{AppError, AppResult};
 use uuid::Uuid;
 
 use crate::{
     domain::{GitFileMutationAction, ResourceRef},
-    error::{AppError, AppResult},
     workspace::Workspace,
 };
 
@@ -60,7 +60,7 @@ impl Fixture {
 
         let sentinel = base.join("tool-ran");
         let script = base.join("sentinel-tool");
-        crate::test_executable::write(
+        sage_test_support::test_executable::write(
             &script,
             format!(
                 "#!/bin/sh\necho ran > \"{}\"\nexit 91\n",

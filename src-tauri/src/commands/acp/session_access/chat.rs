@@ -87,7 +87,7 @@ pub(crate) async fn set_chat_access(
         .map_err(|_| access_unreadable())?;
     state
         .settings
-        .set_chat_access(session, request.mode, crate::persistence::now_millis())
+        .set_chat_access(session, request.mode, sage_core::time::now_millis())
         .map_err(|_| access_unreadable())?;
     let stepped_down = previous.is_some_and(SessionAccessMode::needs_confirmation);
     let transition = state.project_transitions.lock().await;
@@ -160,7 +160,7 @@ impl LiveChatHost for LiveChat<'_> {
                     owner: owner.clone(),
                     turn_id,
                     client_intent_id: ClientIntentId::new(),
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
             )
             .map_err(dispatch_error)?;
@@ -222,7 +222,7 @@ pub(crate) fn prepare_chat_access(
         .prepare_chat_access(
             request.session_id.as_str(),
             request.mode,
-            crate::persistence::now_millis(),
+            sage_core::time::now_millis(),
         )
         .map_err(|_| access_unreadable())?;
     Ok(AccessConfirmation {
@@ -277,12 +277,7 @@ pub(super) async fn grant_confirmed(
     }
     let pending = state
         .settings
-        .chat_access_pending(
-            session,
-            request.mode,
-            token,
-            crate::persistence::now_millis(),
-        )
+        .chat_access_pending(session, request.mode, token, sage_core::time::now_millis())
         .map_err(|_| access_unreadable())?;
     if !pending {
         return Err(confirmation_missing());
@@ -304,12 +299,7 @@ pub(super) async fn grant_confirmed(
     }
     state
         .settings
-        .grant_chat_access(
-            session,
-            request.mode,
-            token,
-            crate::persistence::now_millis(),
-        )
+        .grant_chat_access(session, request.mode, token, sage_core::time::now_millis())
         .map_err(|_| confirmation_missing())?;
     tracing::warn!(
         session_id = session,

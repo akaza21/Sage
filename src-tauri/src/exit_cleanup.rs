@@ -99,7 +99,7 @@ mod tests {
 
     #[test]
     fn destroyed_window_delayed_cleanup_reissues_exit_within_the_bound() {
-        crate::test_wait::guarded("windowless delayed cleanup", async {
+        sage_test_support::test_wait::guarded("windowless delayed cleanup", async {
             let exit = GitExitCleanup(AtomicU8::new(IDLE));
             let (scheduled, retry) = tokio::sync::oneshot::channel();
             assert!(exit.defer(
@@ -140,7 +140,7 @@ mod tests {
 
     #[test]
     fn permanently_blocked_cleanup_abandons_before_reissuing_final_exit() {
-        crate::test_wait::guarded("windowless final teardown", async {
+        sage_test_support::test_wait::guarded("windowless final teardown", async {
             let exit = GitExitCleanup(AtomicU8::new(RETRYING));
             let abandoned = std::cell::Cell::new(false);
             let (sent, received) = tokio::sync::oneshot::channel();

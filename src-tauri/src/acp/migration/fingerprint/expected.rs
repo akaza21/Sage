@@ -1,8 +1,9 @@
 use std::sync::OnceLock;
 
 use rusqlite::Connection;
+use sage_core::error::AppResult;
 
-use crate::{error::AppResult, project_migration};
+use crate::project_migration;
 
 use super::super::{INITIAL, V2, V3, V6, V7, V8, V9, V10, V11, V12, V13, V14, V15, V16, legacy};
 use super::{MAX_SCHEMA_VERSION, V10_LEGACY_SESSION_EVENTS, schema_fingerprint};

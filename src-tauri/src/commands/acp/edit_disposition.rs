@@ -67,7 +67,7 @@ fn record_agent_edit_disposition_inner(
                 expected_revision: request.expected_revision,
                 state: request.state,
             },
-            crate::persistence::now_millis(),
+            sage_core::time::now_millis(),
         )
         .map_err(store_error)?;
     }

@@ -1,3 +1,4 @@
+use sage_core::error::{AppError, AppResult};
 use tauri::State;
 
 use crate::{
@@ -5,7 +6,6 @@ use crate::{
         MoveChatRequest, PinChatRequest, ProjectLayoutRequest, ProjectTransitionResult,
         RenameChatRequest,
     },
-    error::{AppError, AppResult},
     persistence::Database,
     preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,

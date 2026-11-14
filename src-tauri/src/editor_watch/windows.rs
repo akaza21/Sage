@@ -8,6 +8,7 @@ use std::{
     },
 };
 
+use sage_core::error::{AppError, AppResult};
 use windows_sys::Win32::{
     Foundation::HANDLE,
     Storage::FileSystem::{
@@ -19,7 +20,6 @@ use windows_sys::Win32::{
 };
 
 use super::{EditorExternalWatchKind, ResourceRef, emit_if_active, notice_kind_for_path};
-use crate::error::{AppError, AppResult};
 
 const WAIT_OBJECT_0: u32 = 0;
 const WAIT_TIMEOUT: u32 = 258;

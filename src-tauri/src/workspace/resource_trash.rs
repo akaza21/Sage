@@ -3,10 +3,9 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use crate::{
-    domain::{DirectoryListing, ResourceRef, TrashResourceKind},
-    error::{AppError, AppResult},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::domain::{DirectoryListing, ResourceRef, TrashResourceKind};
 
 use super::Workspace;
 

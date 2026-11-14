@@ -5,9 +5,8 @@ use std::{
 };
 
 use rusqlite::{Connection, OpenFlags};
+use sage_core::error::{AppError, AppResult};
 use sha2::{Digest, Sha256};
-
-use crate::error::{AppError, AppResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

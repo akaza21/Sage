@@ -1,8 +1,9 @@
 use std::{collections::HashMap, time::Instant};
 
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     domain::{ProjectRepositoryStatus, ResourceRef, RootRepositoryStatus},
-    error::{AppError, AppResult},
     repository::{
         RepositoryBoundary, ensure_success, repository_boundary, repository_diff_base, run_git,
     },

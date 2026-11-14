@@ -1,10 +1,10 @@
 use std::sync::Arc;
 
+use sage_core::error::{AppError, AppResult};
 use tauri::State;
 
 use crate::{
     domain::{FileRenameOutcome, RenameProjectFileRequest, RenameProjectFileResult, ResourceRef},
-    error::{AppError, AppResult},
     persistence::Database,
     preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,

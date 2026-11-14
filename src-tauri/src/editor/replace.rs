@@ -1,6 +1,8 @@
 //! Workspace Replace on disk: one File at a time, through the same held
 //! parent walk, limits and atomic replace as a save.
 
+use sage_core::error::{AppError, AppResult};
+
 use super::{
     filesystem::{
         HeldParent, ensure_path_names, read_disk_document, split_contract_path,
@@ -15,7 +17,6 @@ use crate::{
         reject_unsupported_content,
     },
     editor_persistence::{PersistedEditorBuffer, ReplaceRecord},
-    error::{AppError, AppResult},
     persistence::Database,
     workspace::{Workspace, directory_skip::protected_workspace_name},
 };

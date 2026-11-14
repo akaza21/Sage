@@ -4,6 +4,10 @@ mod create;
 mod title_source;
 pub(crate) use auto_title::{auto_title_first_prompt_in, title_line};
 pub(crate) use create::insert_new_chat;
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 pub(crate) use title_source::{
     ChatTitleSource, SIDE_CHAT_ID_PREFIX, apply_harness_title_in, clear_harness_title_in,
     placeholder_chat_title,
@@ -11,8 +15,7 @@ pub(crate) use title_source::{
 
 use crate::{
     domain::RenameChatRequest,
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
+    persistence::Database,
     workbench_persistence::persist_layout_in,
     workbench_restore::validate_tab_projection,
 };

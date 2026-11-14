@@ -1,10 +1,10 @@
 use rusqlite::params;
+use sage_core::error::{AppError, AppResult};
 
 use crate::{
     editor_persistence::{
         MAX_DIRTY_BUFFERS, MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES,
     },
-    error::{AppError, AppResult},
     project_registry::{MAX_PROJECTS, MAX_ROOTS_PER_PROJECT},
     workbench_persistence::MAX_RESTORED_TABS,
 };

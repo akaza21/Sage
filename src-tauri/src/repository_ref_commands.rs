@@ -1,9 +1,9 @@
+use sage_core::error::{AppError, AppResult};
 use serde::Deserialize;
 use tauri::State;
 
 use crate::{
     domain::{FileDiff, RepositoryRef, ResourceRef, RootRepositoryStatus},
-    error::{AppError, AppResult},
     repository,
     repository_discovery::{self, MAX_REPOSITORIES_PER_PROJECT},
     state::AppState,

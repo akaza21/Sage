@@ -4,7 +4,7 @@ use std::{io, path::Path};
 
 /// Write a script, preserving the caller's choice of executable permissions.
 /// Callers own the fixture path; it must not be written again during execution.
-pub(crate) fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> io::Result<()> {
+pub fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> io::Result<()> {
     #[cfg(unix)]
     {
         use std::{

@@ -23,7 +23,7 @@ impl Lane<'_> {
         };
         // Hand this thread to Tokio's blocking pool while preserving synchronous
         // durable settlement; unrelated async commands can keep making progress.
-        crate::blocking::in_place(recover);
+        sage_core::blocking::in_place(recover);
     }
 
     pub(super) fn host_failed_closed(&self, host: &Arc<RuntimeHost>) -> bool {

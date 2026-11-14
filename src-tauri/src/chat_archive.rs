@@ -1,11 +1,11 @@
 use std::collections::HashSet;
 
 use rusqlite::{OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 
 use crate::{
     chat_lifecycle::validate_chat_identifier,
     domain::{ArchivedChatSummary, ChatLifecycleRequest, ProjectLayoutRequest, WorkbenchTab},
-    error::{AppError, AppResult},
     persistence::Database,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
     workbench_restore::validate_tab_projection,
@@ -241,7 +241,7 @@ fn restore_foreign_chat(
         chat_id,
         "Chat does not belong to that Project",
     )?;
-    let now = crate::persistence::now_millis();
+    let now = sage_core::time::now_millis();
     let position: i64 = transaction.query_row(
         "SELECT COALESCE(MAX(position),-1)+1 FROM workbench_tabs WHERE project_id=?1",
         [project_id],
@@ -289,7 +289,7 @@ fn archive_foreign_chat(
             "Chat is not attached to that Project".into(),
         ));
     };
-    let now = crate::persistence::now_millis();
+    let now = sage_core::time::now_millis();
     transaction.execute(
         "DELETE FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
         params![project_id, chat_id],

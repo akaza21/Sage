@@ -107,7 +107,7 @@ mod tests {
 
         assert!(matches!(
             error,
-            crate::error::AppError::UnsafeRepositoryConfig(_)
+            sage_core::error::AppError::UnsafeRepositoryConfig(_)
         ));
         let message = error.to_string();
         assert!(message.contains("Sage did not run Git here"), "{message}");

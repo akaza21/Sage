@@ -18,7 +18,7 @@ const MAX_PATH: usize = 260;
 /// `path` in its ordinary Win32 spelling when that names the same file;
 /// otherwise `path` unchanged. Reserved device-name components and ordinary
 /// spellings of `MAX_PATH` or more UTF-16 code units stay verbatim.
-pub(crate) fn simplified(path: &Path) -> PathBuf {
+pub fn simplified(path: &Path) -> PathBuf {
     match path.to_str().and_then(simplified_text) {
         Some(text) => PathBuf::from(text),
         None => path.to_path_buf(),
@@ -28,8 +28,7 @@ pub(crate) fn simplified(path: &Path) -> PathBuf {
 /// A program and its arguments as a child process should receive them: each
 /// verbatim path that has an equivalent ordinary spelling is rewritten, and
 /// every other argument is kept as it is.
-#[cfg_attr(not(windows), allow(dead_code))]
-pub(crate) fn ordinary_invocation(
+pub fn ordinary_invocation(
     program: &Path,
     args: &[std::ffi::OsString],
 ) -> (PathBuf, Vec<std::ffi::OsString>) {
@@ -45,7 +44,7 @@ pub(crate) fn ordinary_invocation(
 /// `text` is not verbatim or Win32 would read its ordinary form differently: a
 /// reserved device-name component, a component ending in `.` or a space, or a
 /// path of `MAX_PATH` or more UTF-16 code units.
-pub(crate) fn simplified_text(text: &str) -> Option<String> {
+fn simplified_text(text: &str) -> Option<String> {
     let simple = if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
         format!(r"\\{rest}")
     } else {
@@ -66,7 +65,7 @@ pub(crate) fn simplified_text(text: &str) -> Option<String> {
 /// whatever follows the first dot, and after trimming trailing spaces from the
 /// stem. Through a verbatim path they become literal files that Win32 tools and
 /// Git cannot handle, so write admission refuses them on every platform.
-pub(crate) fn windows_reserved_device_name(filename: &str) -> bool {
+pub fn windows_reserved_device_name(filename: &str) -> bool {
     let stem = filename.split('.').next().unwrap_or(filename).trim_end();
     let upper = stem.to_ascii_uppercase();
     if matches!(

@@ -1,3 +1,4 @@
+use sage_core::error::{AppError, AppResult};
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},
@@ -9,7 +10,6 @@ use crate::{
         CreateProjectFileRequest, CreateProjectFileResult, CreateProjectFolderRequest,
         CreateProjectFolderResult, FileCreationOutcome,
     },
-    error::{AppError, AppResult},
     persistence::Database,
     state::AppState,
     workspace::Workspace,

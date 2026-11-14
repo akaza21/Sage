@@ -33,9 +33,9 @@ export async function verifySource(workspace, expected, tool = sourceTool) {
   if ((await cleanSource(workspace, tool)) !== expected)
     throw new Error("source-drift");
 }
-// The committed inputs of a native build: the app crate plus the workspace
-// manifest and lockfile at the repository root.
-const NATIVE_INPUTS = ["src-tauri", "Cargo.toml", "Cargo.lock"];
+// The committed inputs of a native build: the app crate, the workspace crates
+// it links, and the workspace manifest and lockfile at the repository root.
+const NATIVE_INPUTS = ["src-tauri", "crates", "Cargo.toml", "Cargo.lock"];
 /**
  * Debug fixture builds admit disposable profiles only below
  * `<build checkout>/work/cp-native-proof`, fixed at compile time. Binaries from a

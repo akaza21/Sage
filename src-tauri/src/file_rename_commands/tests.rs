@@ -6,13 +6,14 @@ use std::{
 };
 
 use rusqlite::params;
+use sage_core::time::now_millis;
 use uuid::Uuid;
 
 use super::*;
 use crate::{
     domain::{ProjectLayoutRequest, RenameProjectFileRequest, ResourceRef, WorkbenchTab},
     editor_coordination::EditorOperationKind,
-    persistence::{Database, now_millis},
+    persistence::Database,
     state::AppState,
 };
 

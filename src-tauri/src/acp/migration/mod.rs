@@ -45,12 +45,12 @@ pub(crate) use image_files::{read_image_file, remove_image_file};
 use std::{fs, path::Path, time::Duration};
 
 use rusqlite::{Connection, TransactionBehavior, backup::Backup};
-
-use crate::{
+use sage_core::{
     error::{AppError, AppResult},
-    persistence::now_millis,
-    project_migration,
+    time::now_millis,
 };
+
+use crate::project_migration;
 
 use self::{
     backup::{VerifiedBackup, ensure, load_retained_pair, verify_sqlite},

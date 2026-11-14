@@ -145,7 +145,7 @@ fn snapshot(job: &CaptureJob, budget: Duration) -> Result<String, StoreError> {
         let root = job.root.clone();
         let baseline = before.clone();
         let now = bounded_snapshot(budget, move || {
-            tauri::async_runtime::block_on(async {
+            sage_core::rt::block_on(async {
                 tokio::time::timeout(
                     budget,
                     capture_after(std::path::Path::new(&root), &baseline),

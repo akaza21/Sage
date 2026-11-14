@@ -6,10 +6,11 @@
 //! the most recently read chats.
 
 use rusqlite::{Connection, params};
+use sage_core::error::AppResult;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
-use crate::{chat_lifecycle::validate_chat_identifier, error::AppResult};
+use crate::chat_lifecycle::validate_chat_identifier;
 
 /// One mark for every chat the rail can show (`MAX_RAIL_CHATS`), which are
 /// also the chats the cross-project attention query considers
@@ -101,7 +102,7 @@ impl SettingsStore {
     ) -> AppResult<ChatReadMarkWrite> {
         validate_chat_identifier("Chat ID", &mark.chat_id)?;
         if mark.read_through < 0 {
-            return Err(crate::error::AppError::InvalidRequest(
+            return Err(sage_core::error::AppError::InvalidRequest(
                 "chat read time is negative".into(),
             ));
         }

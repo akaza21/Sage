@@ -1,7 +1,6 @@
-use crate::{
-    domain::{DirectoryListing, ResourceRef},
-    error::{AppError, AppResult},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::domain::{DirectoryListing, ResourceRef};
 
 use std::path::Path;
 use std::sync::{

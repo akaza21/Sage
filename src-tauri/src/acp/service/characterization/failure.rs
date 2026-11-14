@@ -49,7 +49,7 @@ impl AcpService {
                 "characterizationLaunchFailed",
             )
             .map_err(|_| CharacterizationError::Session)?,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         };
         if session
             .fail_activation_after_zero_process(fail_command, proof)

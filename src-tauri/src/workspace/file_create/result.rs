@@ -1,7 +1,6 @@
-use crate::{
-    domain::{DirectoryListing, ResourceRef, WorkspaceEntry},
-    error::AppResult,
-};
+use sage_core::error::AppResult;
+
+use crate::domain::{DirectoryListing, ResourceRef, WorkspaceEntry};
 
 #[derive(Debug)]
 pub(crate) struct FileCreateCommit {

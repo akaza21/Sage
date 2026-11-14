@@ -95,7 +95,7 @@ impl DeveloperModePolicy for LeaseDeveloperPolicy {
 }
 
 fn record(settings: &SettingsStore, entry: &CdpAuditEntry) -> bool {
-    match settings.record_cdp_audit(entry, crate::persistence::now_millis()) {
+    match settings.record_cdp_audit(entry, sage_core::time::now_millis()) {
         Ok(()) => true,
         Err(error) => {
             tracing::warn!(%error, "browser developer-mode audit row was not written");

@@ -1,7 +1,6 @@
 pub mod acp;
 pub(crate) mod app_preview_commands;
 mod app_run_events;
-pub(crate) mod blocking;
 #[cfg_attr(
     not(windows),
     allow(dead_code, reason = "the in-app browser runtime is WebView2-only")
@@ -30,7 +29,6 @@ mod editor_content;
 mod editor_coordination;
 mod editor_persistence;
 mod editor_watch;
-mod error;
 mod file_create_commands;
 mod file_rename_commands;
 mod git_budget;
@@ -104,18 +102,9 @@ mod side_chat_storage;
 mod startup_refusal;
 mod state;
 mod system_browser;
-#[cfg(test)]
-mod test_diagnostics;
-#[cfg(test)]
-mod test_executable;
-#[cfg(test)]
-mod test_paths;
-#[cfg(test)]
-mod test_wait;
 mod turn_workspace;
 pub mod user_terminal;
 mod voice_input;
-mod win32_path;
 #[cfg(windows)]
 mod window_frame;
 mod window_memory;
@@ -133,6 +122,7 @@ pub use browser::native_lane;
 
 use std::{fs, sync::Arc};
 
+use sage_core::error::AppError;
 use tauri::{Manager, webview::PageLoadEvent};
 use tracing::{info, warn};
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
@@ -141,7 +131,6 @@ use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 #[cfg(all(windows, feature = "acp-fixture"))]
 use crate::launch_profile::{DesktopFixtureMode, resolve_desktop_fixture_mode_from_environment};
 use crate::{
-    error::AppError,
     launch_profile::{reject_unavailable_fixture_environment_inputs, resolve_launch_profile},
     persistence::Database,
     profile_lock::{ProfileLock, ProfileLockError},
@@ -172,8 +161,16 @@ fn is_sage_target(metadata: &tracing::Metadata<'_>) -> bool {
 #[cfg(not(any(debug_assertions, feature = "diagnostics")))]
 fn initialize_tracing() {}
 
+/// Code outside the app reaches the async runtime through `sage_core::rt`.
+/// Hands that runtime to Tauri before anything touches Tauri's, so the process
+/// keeps one Tokio runtime. Call it before building any `tauri::Builder`.
+pub(crate) fn share_async_runtime() {
+    tauri::async_runtime::set(sage_core::rt::handle().clone());
+}
+
 pub fn run() {
     initialize_tracing();
+    share_async_runtime();
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

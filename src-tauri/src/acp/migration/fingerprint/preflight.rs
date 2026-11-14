@@ -2,7 +2,7 @@ use std::{io::Read, path::Path};
 
 use rusqlite::Connection;
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::super::{limits, paths::MigrationPaths, platform, probe};
 use super::{

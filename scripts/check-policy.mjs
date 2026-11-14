@@ -16,25 +16,49 @@ import { q02SharedHelperPolicyErrors } from "./q02-shared-helpers-policy.mjs";
 import { packageResourcePolicyErrors } from "./package-resource-policy.mjs";
 
 const reviewedSpawnModules = new Map([
-  ["git_process.rs", "Git CLI execution boundary"],
-  ["acp/process/unix/spawn.rs", "Contained ACP harness launch on Unix"],
-  ["user_terminal/unix.rs", "User terminal shell launch on Unix"],
-  ["app_preview/lifecycle.rs", "User-requested app preview server"],
-  ["harness_discovery/version_probe.rs", "Bounded harness version discovery"],
-  ["workspace/search/helper_process.rs", "Bounded workspace search helper"],
-  ["codex_helper_boundary/caller.rs", "Provisioning helper caller"],
-  ["commands/acp/claude_auth.rs", "Claude Code sign-in"],
-  ["acp/bindings/claude/sdk/probe.rs", "Bounded Claude Code model probe"],
-  ["acp/fixture/process_ops.rs", "Feature-gated adversarial process fixture"],
+  ["src-tauri/src/git_process.rs", "Git CLI execution boundary"],
   [
-    "acp/fixture/host/redaction_observer.rs",
+    "src-tauri/src/acp/process/unix/spawn.rs",
+    "Contained ACP harness launch on Unix",
+  ],
+  ["src-tauri/src/user_terminal/unix.rs", "User terminal shell launch on Unix"],
+  [
+    "src-tauri/src/app_preview/lifecycle.rs",
+    "User-requested app preview server",
+  ],
+  [
+    "src-tauri/src/harness_discovery/version_probe.rs",
+    "Bounded harness version discovery",
+  ],
+  [
+    "src-tauri/src/workspace/search/helper_process.rs",
+    "Bounded workspace search helper",
+  ],
+  [
+    "src-tauri/src/codex_helper_boundary/caller.rs",
+    "Provisioning helper caller",
+  ],
+  ["src-tauri/src/commands/acp/claude_auth.rs", "Claude Code sign-in"],
+  [
+    "src-tauri/src/acp/bindings/claude/sdk/probe.rs",
+    "Bounded Claude Code model probe",
+  ],
+  [
+    "src-tauri/src/acp/fixture/process_ops.rs",
+    "Feature-gated adversarial process fixture",
+  ],
+  [
+    "src-tauri/src/acp/fixture/host/redaction_observer.rs",
     "Feature-gated redaction observer",
   ],
   [
-    "browser/devtools/cdp_lane/chromium.rs",
+    "src-tauri/src/browser/devtools/cdp_lane/chromium.rs",
     "Feature-gated Chromium measurement lane",
   ],
-  ["test_executable.rs", "Test-only executable fixture writer"],
+  [
+    "crates/sage-test-support/src/test_executable.rs",
+    "Test-only executable fixture writer",
+  ],
 ]);
 
 const frontendSecurityPatterns = [
@@ -45,6 +69,8 @@ const frontendSecurityPatterns = [
 ];
 const rustProcessPattern =
   /\bCommand\s*::\s*new\s*\(|\bstd\s*::\s*process\s*::\s*Command\b/u;
+// Rust sources of the app crate and of every workspace crate.
+const rustSourcePath = /^(?:src-tauri|crates\/[^/]+)\/src\/.+\.rs$/u;
 const testSourcePath =
   /(?:^|\/)tests(?:\/|\.rs$)|_tests\.rs$|\.test\.[cm]?[jt]sx?$/u;
 
@@ -134,11 +160,9 @@ export function sourceSecurityErrors(file, source) {
         ([, description]) => `${relative} contains forbidden ${description}.`,
       );
   }
-  const rustRoot = "src-tauri/src/";
   if (
-    relative.startsWith(rustRoot) &&
-    relative.endsWith(".rs") &&
-    !reviewedSpawnModules.has(relative.slice(rustRoot.length)) &&
+    rustSourcePath.test(relative) &&
+    !reviewedSpawnModules.has(relative) &&
     rustProcessPattern.test(rustProductionSource(source))
   ) {
     return [`${relative} creates processes outside a reviewed spawn module.`];
@@ -747,8 +771,19 @@ const workspaceCargoToml = await readFile(
   path.join(root, "Cargo.toml"),
   "utf8",
 );
-const cargoManifests = [cargoToml, workspaceCargoToml];
-for (const error of memberDependencyErrors(cargoToml)) fail(error);
+const crateManifestPaths = (await readdir(path.join(root, "crates")))
+  .sort()
+  .map((crate) => `crates/${crate}/Cargo.toml`);
+const crateManifests = await Promise.all(
+  crateManifestPaths.map((file) => readFile(path.join(root, file), "utf8")),
+);
+const cargoManifests = [cargoToml, workspaceCargoToml, ...crateManifests];
+for (const [file, manifest] of [
+  ["src-tauri/Cargo.toml", cargoToml],
+  ...crateManifestPaths.map((file, index) => [file, crateManifests[index]]),
+]) {
+  for (const error of memberDependencyErrors(file, manifest)) fail(error);
+}
 const nativeLibrary = await readFile(
   path.join(root, "src-tauri/src/lib.rs"),
   "utf8",
@@ -932,6 +967,7 @@ const sourceInventory = await discoverSourceFilesWithCssBound(root);
 const securityFiles = [
   ...sourceInventory.files,
   ...(await filesBelow("src-tauri/src")),
+  ...(await filesBelow("crates")),
 ];
 for (const file of securityFiles.filter((file) =>
   /\.(?:[cm]?[jt]sx?|rs)$/.test(file),
@@ -1074,24 +1110,31 @@ if (failures.length > 0) {
   );
 }
 
-// Every dependency table of the app crate takes its crate from the workspace
-// and may only add `optional`, so the pins, default features and feature
-// sets the checks above read from the workspace manifest are what builds.
-function memberDependencyErrors(manifest) {
+// Every dependency table of a workspace member takes its crate from the
+// workspace and may only add `optional`, so the pins, default features and
+// feature sets the checks above read from the workspace manifest are what
+// builds.
+function memberDependencyErrors(file, manifest) {
   const errors = [];
   const tables = manifest.matchAll(
-    /^\[(?:target\.[^\]]+\.)?(?:build-|dev-)?dependencies\]\r?\n([\s\S]*?)(?=^\[|(?![\s\S]))/gmu,
+    /^\[(?:target\.[^\]]+\.)?(build-|dev-)?dependencies\]\r?\n([\s\S]*?)(?=^\[|(?![\s\S]))/gmu,
   );
-  for (const [, body] of tables) {
+  for (const [, kind, body] of tables) {
     for (const line of body.split(/\r?\n/u)) {
       if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+      // Test helpers never reach a shipped or build-time binary.
+      if (kind !== "dev-" && /^sage-test-support\b/u.test(line)) {
+        errors.push(
+          `${file} may take sage-test-support only as a dev-dependency.`,
+        );
+      }
       if (
         !/^[A-Za-z0-9_-]+(?:\.workspace\s*=\s*true|\s*=\s*\{\s*workspace\s*=\s*true\s*,\s*optional\s*=\s*true\s*\})\s*$/u.test(
           line,
         )
       ) {
         errors.push(
-          `src-tauri/Cargo.toml must take dependencies from the workspace: ${line.trim()}`,
+          `${file} must take dependencies from the workspace: ${line.trim()}`,
         );
       }
     }

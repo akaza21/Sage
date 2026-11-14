@@ -112,7 +112,7 @@ pub(crate) fn admit_folder_before(path: &Path, deadline: Deadline) -> Option<Pat
         return None;
     }
     // WebView2 and the Settings row want the ordinary spelling.
-    let canonical = crate::win32_path::simplified(&std::fs::canonicalize(path).ok()?);
+    let canonical = sage_core::win32_path::simplified(&std::fs::canonicalize(path).ok()?);
     deadline.check().ok()?;
     if !canonical.is_dir() {
         return None;

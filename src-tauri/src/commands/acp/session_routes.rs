@@ -56,7 +56,7 @@ pub(crate) async fn start_acp_session_inner(
                 binding_digest: String::new(),
                 harness_version: None,
                 model_id: request.model_id,
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
         )
         .await
@@ -121,7 +121,7 @@ pub(crate) async fn activate_acp_session_inner(
                 session_id: request.session_id,
                 runtime_epoch: request.runtime_epoch,
                 artifact_digest: String::new(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
             project_root,
         )

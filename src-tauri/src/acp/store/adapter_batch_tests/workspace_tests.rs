@@ -32,7 +32,7 @@ fn workspace_fixture() -> (Database, AdapterStoreOwner, PathBuf) {
 }
 
 fn register(database: &Database, root: &std::path::Path, key: &str) {
-    let baseline = tauri::async_runtime::block_on(crate::turn_workspace::capture(root)).unwrap();
+    let baseline = sage_core::rt::block_on(crate::turn_workspace::capture(root)).unwrap();
     crate::turn_workspace::remember(
         &mut database.connection(),
         "session-one",

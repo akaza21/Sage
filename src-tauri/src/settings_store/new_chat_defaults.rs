@@ -6,10 +6,10 @@
 //! they cannot use instead of rewriting it.
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
-use crate::error::{AppError, AppResult};
 
 /// The longest harness, model or effort identifier the store keeps.
 pub const MAX_NEW_CHAT_DEFAULT_BYTES: usize = 256;

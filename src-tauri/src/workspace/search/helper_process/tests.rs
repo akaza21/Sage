@@ -40,7 +40,7 @@ fn sleeping_process() -> ProcessSpec {
 
 #[test]
 fn deadline_kills_and_reaps_the_actual_helper_process() {
-    crate::test_wait::guarded("search helper run deadline", async {
+    sage_test_support::test_wait::guarded("search helper run deadline", async {
         let (_cancel, receiver) = oneshot::channel();
         let error = run_with_spec(
             HelperRequest::new(request("needle"), Vec::new(), None),
@@ -58,7 +58,7 @@ fn deadline_kills_and_reaps_the_actual_helper_process() {
 
 #[test]
 fn cancellation_kills_and_reaps_the_actual_helper_process() {
-    crate::test_wait::guarded("search helper cancellation", async {
+    sage_test_support::test_wait::guarded("search helper cancellation", async {
         let (cancel, receiver) = oneshot::channel();
         let cancellation = tokio::spawn(async move {
             sleep(Duration::from_millis(100)).await;
@@ -81,7 +81,7 @@ fn cancellation_kills_and_reaps_the_actual_helper_process() {
 
 #[test]
 fn forced_reap_handoff_keeps_the_process_under_a_registered_owner() {
-    crate::test_wait::guarded("search helper forced reap handoff", async {
+    sage_test_support::test_wait::guarded("search helper forced reap handoff", async {
         let (_cancel, receiver) = oneshot::channel();
         let error = run_with_spec(
             HelperRequest::new(request("needle"), Vec::new(), None),
@@ -99,7 +99,7 @@ fn forced_reap_handoff_keeps_the_process_under_a_registered_owner() {
 
 #[test]
 fn stalled_reap_policy_returns_at_its_bound() {
-    crate::test_wait::guarded("search helper stalled reap bound", async {
+    sage_test_support::test_wait::guarded("search helper stalled reap bound", async {
         let reaped = bounded_reap(
             std::future::pending::<std::io::Result<std::process::ExitStatus>>(),
             Duration::from_millis(25),
@@ -111,7 +111,7 @@ fn stalled_reap_policy_returns_at_its_bound() {
 
 #[test]
 fn exact_helper_process_receives_only_its_allowlisted_environment() {
-    crate::test_wait::guarded("search helper environment allowlist", async {
+    sage_test_support::test_wait::guarded("search helper environment allowlist", async {
         let spec = ProcessSpec {
             executable: std::env::current_exe().unwrap(),
             arguments: vec![

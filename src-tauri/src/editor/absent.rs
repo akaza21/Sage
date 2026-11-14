@@ -7,6 +7,8 @@ use std::{
     sync::{LazyLock, Mutex},
 };
 
+use sage_core::error::{AppError, AppResult};
+
 use super::filesystem::{
     DiskDocument, HeldParent, cleanup_failed_save, cleanup_recorded_temp, is_not_found,
     read_disk_document, read_disk_document_if_present, split_contract_path,
@@ -26,7 +28,6 @@ use crate::{
         reject_oversized_materialized, reject_unsupported_content, validate_line_ending,
     },
     editor_persistence::PersistedEditorBuffer,
-    error::{AppError, AppResult},
     persistence::Database,
     workspace::{Workspace, file_create::admit_created_path},
 };

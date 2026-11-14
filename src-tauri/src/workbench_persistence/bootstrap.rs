@@ -1,4 +1,5 @@
 use rusqlite::{OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 
 use crate::{
     acp::intent::CapabilitySnapshotV1,
@@ -6,7 +7,6 @@ use crate::{
         BootstrapSnapshot, HarnessDefinition, ProjectListItem, ProjectRepositoryStatus,
         WorkbenchTab,
     },
-    error::{AppError, AppResult},
     harnesses::HarnessCatalog,
     persistence::Database,
     project_registry::MAX_PROJECTS,

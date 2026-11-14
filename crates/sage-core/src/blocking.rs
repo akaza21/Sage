@@ -6,7 +6,7 @@ use tokio::runtime::{Handle, RuntimeFlavor};
 /// of a multi-thread runtime so blocking work (SQLite, process waits) does
 /// not stall them. On a current-thread runtime, or outside any runtime, it
 /// just runs `work`, since `block_in_place` would panic there.
-pub(crate) fn in_place<R>(work: impl FnOnce() -> R) -> R {
+pub fn in_place<R>(work: impl FnOnce() -> R) -> R {
     if Handle::try_current()
         .is_ok_and(|handle| handle.runtime_flavor() == RuntimeFlavor::MultiThread)
     {

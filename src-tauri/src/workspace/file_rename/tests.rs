@@ -115,7 +115,7 @@ fn windows_empty_folder_rename_is_explicitly_refused_without_mutation() {
     let result = fixture.workspace.rename_empty_folder(&source, "renamed");
 
     assert!(
-        matches!(result, Err(crate::error::AppError::Unsupported(message)) if message.contains("identity-scoped directory-mutation guard"))
+        matches!(result, Err(sage_core::error::AppError::Unsupported(message)) if message.contains("identity-scoped directory-mutation guard"))
     );
     assert!(fixture.root.join("src/empty").is_dir());
     assert!(!fixture.root.join("src/renamed").exists());
@@ -184,7 +184,7 @@ fn post_commit_listing_failure_is_unconfirmed_instead_of_escaping() {
             "new.rs",
             || Ok(()),
             |_| {
-                Err(crate::error::AppError::InvalidRequest(
+                Err(sage_core::error::AppError::InvalidRequest(
                     "injected listing failure".into(),
                 ))
             },
@@ -287,7 +287,7 @@ fn unsupported_platform_fails_without_mutating_the_source() {
         .rename_file(&source, "new.rs")
         .unwrap_err();
 
-    assert!(matches!(error, crate::error::AppError::Unsupported(_)));
+    assert!(matches!(error, sage_core::error::AppError::Unsupported(_)));
     assert_eq!(
         fs::read_to_string(fixture.root.join("src/old.rs")).unwrap(),
         "preserve\n"
