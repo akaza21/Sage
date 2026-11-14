@@ -551,7 +551,6 @@ fn a_permission_with_no_title_anywhere_falls_back_to_the_harness_generic_text() 
 #[test]
 fn an_unusable_title_degrades_to_the_generic_text_without_failing_the_frame() {
     for title in [
-        Value::from("w".repeat(513)),
         Value::from(format!("Write{}hr6.txt", '\0')),
         Value::from("   "),
         Value::from(4_i64),
@@ -566,6 +565,17 @@ fn an_unusable_title_degrades_to_the_generic_text_without_failing_the_frame() {
             "{title}"
         );
     }
+}
+
+#[test]
+fn a_title_longer_than_a_label_reaches_the_summary_clipped_as_the_tool_card_label() {
+    let title = "w".repeat(513);
+    let mut translator = started(claude(), json!({ "kind": "edit" }));
+    let (_, summary) = permission(
+        &mut translator,
+        json!({ "kind": "edit", "title": title.clone() }),
+    );
+    assert_eq!(summary, format!("{}\u{2026}", "w".repeat(509)));
 }
 
 #[test]
