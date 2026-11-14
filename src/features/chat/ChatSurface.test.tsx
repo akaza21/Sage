@@ -528,7 +528,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
   });
 
-  it("offers files and the project from Add in a new chat", async () => {
+  it("offers files, refused outside the desktop app, and the project from Add in a new chat", async () => {
     hooks.page = { ...projection(), turns: [], nextCursor: null };
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "Sage", roots: [] },
@@ -539,9 +539,13 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     await openComposerOptions();
     const menu = screen.getByRole("menu", { name: "Composer options menu" });
-    expect(
-      within(menu).getByRole("menuitem", { name: "Files and folders" }),
-    ).toBeEnabled();
+    const files = within(menu).getByRole("menuitem", {
+      name: "Files and folders",
+    });
+    expect(files).toHaveAttribute("aria-disabled", "true");
+    expect(files).toHaveAccessibleDescription(
+      "Attaching files needs the Sage desktop app with an ACP harness.",
+    );
     expect(
       within(menu).getByRole("menuitem", { name: "Work in a project" }),
     ).toHaveAccessibleDescription("Sage");
@@ -2350,13 +2354,7 @@ describe("ChatSurface ACP resource integration", () => {
     const modeInput = screen.getByRole("menuitemradio", {
       name: "Review changes",
     });
-    await waitFor(() =>
-      expect(
-        screen.getByRole("menu", { name: "Composer options menu" }),
-      ).toContainElement(document.activeElement as HTMLElement),
-    );
-    act(() => modeInput.focus());
-    expect(modeInput).toHaveFocus();
+    await waitFor(() => expect(modeInput).toHaveFocus());
     hooks.page = {
       ...hooks.page!,
       sessionConfig: {

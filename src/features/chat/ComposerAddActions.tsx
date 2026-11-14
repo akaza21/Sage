@@ -13,6 +13,7 @@ import type {
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
+import { attachRefusal } from "./composerAttachRefusal";
 import {
   sessionConfigControls,
   sessionModeActions,
@@ -32,7 +33,7 @@ import {
 /** The "+" menu's own actions; each is offered only while present. */
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,
-  "onAttachFiles" | "onOpenGoal" | "onCompact"
+  "onAttachFiles" | "attachRefusalChatId" | "onOpenGoal" | "onCompact"
 >;
 
 export function ComposerOptionsMenu({
@@ -92,6 +93,7 @@ export function ComposerOptionsMenu({
       id={id}
       className="composer__popover composer__options"
       ariaLabel="Composer options menu"
+      initialFocus="selected"
       focusKey="options"
       restoreFocusOnTab
       open
@@ -111,6 +113,7 @@ export function ComposerAddActions({
   pending,
   disabled,
   onAttachFiles,
+  attachRefusalChatId,
   onOpenGoal,
   onCompact,
   onOpenEffort,
@@ -126,6 +129,8 @@ export function ComposerAddActions({
   disabled: boolean;
   /** Opens the attach menu on the "+" button. */
   onAttachFiles?: () => void;
+  /** The chat whose refusal of files, if any, the row shows disabled. */
+  attachRefusalChatId?: string;
   onOpenGoal?: () => void;
   /** Present only while the session can compact its context. */
   onCompact?: () => void;
@@ -138,6 +143,10 @@ export function ComposerAddActions({
   ) => Promise<unknown>;
 }) {
   const modes = sessionModeActions(sessionConfig);
+  const attachRefused =
+    onAttachFiles && attachRefusalChatId !== undefined
+      ? attachRefusal(attachRefusalChatId)
+      : null;
   const { launch, chatAvailable } = useContext(AgentToolsContext);
   // The picker lists through the launching Chat's own session.
   const importable = useStore(
@@ -159,14 +168,23 @@ export function ComposerAddActions({
           type="button"
           role="menuitem"
           className="menu-item composer__add-action"
+          aria-label="Files and folders"
+          aria-description={attachRefused ?? undefined}
+          aria-disabled={attachRefused !== null}
           tabIndex={-1}
           onClick={() => {
+            if (attachRefused !== null) return;
             onClose();
             onAttachFiles();
           }}
         >
           <Paperclip size={14} aria-hidden="true" />
           <span>Files and folders</span>
+          {attachRefused ? (
+            <span className="composer__action-description">
+              {attachRefused}
+            </span>
+          ) : null}
         </button>
       ) : null}
       {projectAction}

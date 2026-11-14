@@ -1,22 +1,28 @@
-import { chooseChatAccess } from "../../app/sessionAccessActions";
-import type { SessionAccessMode } from "../../domain/sessionAccessMode";
 import { Lightbulb } from "../../ui/leanIcons";
 import { ChatAccessView } from "./ChatAccessView";
+import {
+  chooseAccess,
+  CONFIRMED_ACCESS,
+  requestAccessConfirmation,
+} from "./chatAccessChoice";
 import type { ComposerAccessControlProps } from "./ComposerAccessControl";
 
 /** The chat whose access the "+" menu's Plan mode switches. */
 export type PlanAccessTarget = Pick<
   ComposerAccessControlProps,
   "bindingId" | "chatId" | "sessionConfig" | "capabilities"
->;
+> & {
+  /** Opens the access menu, where a mode that needs one is confirmed. */
+  onOpenAccess: () => void;
+};
 
 /**
  * Plan mode where the harness's access modes carry its session modes: on
  * gives the chat the Plan access mode, off its default, through the access
- * menu's own path (the live chat's access, or the draft its session takes).
+ * menu's own path, including its confirmation for a default that needs one.
  */
 export function ComposerPlanAccess({
-  target,
+  target: { onOpenAccess, ...target },
   disabled,
   onClose,
 }: {
@@ -30,8 +36,6 @@ export function ComposerPlanAccess({
         if (!candidates.some((mode) => mode.id === "plan")) return null;
         const on = effective === "plan";
         const next = on ? defaultMode : "plan";
-        const choose = (mode: SessionAccessMode) =>
-          sessionId ? void chooseChatAccess(sessionId, mode) : onDraft?.(mode);
         const description = on ? "Turn plan mode off" : "Turn plan mode on";
         return (
           <button
@@ -45,7 +49,10 @@ export function ComposerPlanAccess({
             tabIndex={-1}
             onClick={() => {
               onClose();
-              if (next) choose(next);
+              if (next && CONFIRMED_ACCESS.includes(next)) {
+                requestAccessConfirmation(next);
+                onOpenAccess();
+              } else if (next) chooseAccess({ sessionId, onDraft }, next);
             }}
           >
             <Lightbulb size={14} aria-hidden="true" />

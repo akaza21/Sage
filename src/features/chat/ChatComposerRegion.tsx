@@ -354,6 +354,7 @@ export function ChatComposerRegion({
               accessTarget={accessTarget}
               addActions={{
                 onAttachFiles: files.attach,
+                attachRefusalChatId: files.refusalChatId,
                 onOpenGoal: goalDetails.onOpen,
                 onCompact,
               }}

@@ -1,6 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
 import {
-  chooseChatAccess,
   grantChatAccess,
   PERMISSIVE_ACCESS as PERMISSIVE,
   prepareChatAccess,
@@ -14,14 +13,14 @@ import { Check } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { CHAT_ACCESS_ICONS as ICONS } from "./chatAccessIcons";
+import {
+  chooseAccess,
+  clearAccessConfirmation,
+  CONFIRMED_ACCESS as CONFIRMED,
+  requestedAccessConfirmation,
+} from "./chatAccessChoice";
 
 const FULL_ACCESS: SessionAccessMode = "fullAccess";
-
-/** Modes confirmed before they apply. */
-const CONFIRMED: readonly SessionAccessMode[] = [
-  "workspaceWrite",
-  ...PERMISSIVE,
-];
 
 const WARNING: Partial<Record<SessionAccessMode, string>> = {
   auto: "Claude's own checks decide which actions run without asking. Sage does not review them, and there is no filesystem sandbox.",
@@ -53,8 +52,15 @@ export default function ComposerAccessMenu({
   onDraft?: (mode: SessionAccessMode) => void;
   onDismiss: () => void;
 }) {
+  // Plan mode turning off opens the menu on its default's confirmation.
   const [confirmation, setConfirmation] =
-    useState<SessionAccessModeCapability | null>(null);
+    useState<SessionAccessModeCapability | null>(
+      () =>
+        candidates.find(
+          (candidate) => candidate.id === requestedAccessConfirmation(),
+        ) ?? null,
+    );
+  useEffect(() => clearAccessConfirmation(), []);
   const [token, setToken] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const permissive =
@@ -82,11 +88,8 @@ export default function ComposerAccessMenu({
     };
   }, [permissive, sessionId]);
   const close = () => setClosing(true);
-  /** Gives the chat a mode that needs no native token, or drafts it. */
-  const choose = (mode: SessionAccessMode) => {
-    if (sessionId) void chooseChatAccess(sessionId, mode);
-    else onDraft?.(mode);
-  };
+  const choose = (mode: SessionAccessMode) =>
+    chooseAccess({ sessionId, onDraft }, mode);
   // Without a session or a draft to hold it, a choice has nowhere to go.
   const selectable = !!sessionId || !!onDraft;
   if (closing) return null;

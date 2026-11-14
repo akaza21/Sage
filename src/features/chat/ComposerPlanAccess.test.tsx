@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useChatAccessDrafts } from "../../app/chatAccessDrafts";
@@ -171,6 +172,76 @@ it("switches a live chat's access to Plan and back to its default", async () => 
   await waitFor(() =>
     expect(port.set).toHaveBeenLastCalledWith("session-1", "ask"),
   );
+});
+
+it("confirms a default that needs confirmation before Plan turns off", async () => {
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        ...useWorkbenchStore.getState().harnesses[0]!,
+        accessModes: [
+          governed[1]!,
+          {
+            id: "workspaceWrite",
+            label: "Workspace edits",
+            description: "Edits files in the workspace without asking.",
+            fallback: true,
+            sessionModeId: "acceptEdits",
+          },
+        ],
+      },
+    ],
+  });
+  port.get.mockResolvedValue("plan");
+  renderControls({
+    sessionConfig: decodeSessionConfig({
+      sageAgentSessionId: "session-1",
+      runtimeEpoch: "1",
+      configRevision: "1",
+      modes: {
+        currentModeId: "plan",
+        availableModes: [
+          { id: "plan", name: "Plan" },
+          { id: "acceptEdits", name: "Accept edits" },
+        ],
+      },
+      configOptions: [],
+    }),
+    accessTarget: { bindingId: "governed-binding" },
+  });
+  const on = await planRow();
+  await waitFor(() => expect(on).toHaveAttribute("aria-checked", "true"));
+  fireEvent.click(on);
+  // Plan off takes the access menu's own confirmation, never a direct switch.
+  const dialog = await screen.findByRole("dialog", {
+    name: "Switch to Workspace edits?",
+  });
+  expect(port.set).not.toHaveBeenCalled();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(port.set).not.toHaveBeenCalled();
+  expect(
+    screen.getByRole("button", { name: "Access options" }),
+  ).toHaveTextContent("Plan");
+
+  fireEvent.click(await planRow());
+  fireEvent.click(
+    within(
+      await screen.findByRole("dialog", { name: "Switch to Workspace edits?" }),
+    ).getByRole("button", { name: "Switch access" }),
+  );
+  await waitFor(() =>
+    expect(port.set).toHaveBeenCalledExactlyOnceWith(
+      "session-1",
+      "workspaceWrite",
+    ),
+  );
+  // Opening the access menu afterwards shows the menu, not a confirmation.
+  fireEvent.click(screen.getByRole("button", { name: "Access options" }));
+  expect(
+    await screen.findByRole("menu", { name: "Access mode" }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("dialog")).toBeNull();
 });
 
 it("offers no access Plan row where access modes do not carry session modes", async () => {

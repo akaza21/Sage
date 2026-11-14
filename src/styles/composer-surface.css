@@ -80,38 +80,6 @@
   display: none;
 }
 
-/* Where a new chat runs: a quiet band attached above the input, as in Codex.
-   The project picker drops its chip so both read as labels. */
-.composer__location {
-  --project-scope-trigger-border: 0;
-  --project-scope-trigger-fill: transparent;
-  --project-scope-trigger-blur: none;
-  --project-scope-trigger-shadow: none;
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: var(--space-2);
-  padding: var(--space-1) var(--space-2);
-  border-bottom: var(--border-width) solid var(--composer-border);
-  color: var(--composer-muted-text);
-  background: var(--color-surface);
-  font-size: var(--font-size-xs);
-}
-
-.composer__location-item {
-  display: inline-flex;
-  flex: none;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-1);
-  white-space: nowrap;
-}
-
-.composer__location .project-scope,
-.composer__location .searchable-picker__trigger {
-  color: inherit;
-}
-
 .composer__body {
   display: block;
   min-height: 0;
@@ -288,29 +256,6 @@
 
 .composer__controls > .select-control {
   flex: 0 1 auto;
-}
-
-/* In the "+" menu the project picker is a plain row: Work in a project. */
-.composer__options .project-scope {
-  --project-scope-trigger-border: 0;
-  --project-scope-trigger-fill: transparent;
-  --project-scope-trigger-blur: none;
-  --project-scope-trigger-shadow: none;
-  display: flex;
-  max-width: none;
-  height: auto;
-}
-
-.composer__options .project-scope .searchable-picker__trigger {
-  width: 100%;
-}
-
-.composer__options .project-scope .searchable-picker__chevron {
-  display: none;
-}
-
-.composer__options .project-scope .composer__action-description {
-  margin-inline-start: var(--space-2);
 }
 
 .project-scope {

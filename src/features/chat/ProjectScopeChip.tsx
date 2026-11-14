@@ -5,6 +5,7 @@ import { hasActiveAcpTurn } from "../../app/acpProjectionRegistry";
 import { Folder } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import type { MenuPlacement } from "../../ui/menuPopoverPosition";
+import "./project-scope-menu-item.css";
 
 export function ProjectScopeChip({
   projectName,

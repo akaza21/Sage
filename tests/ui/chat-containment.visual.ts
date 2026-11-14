@@ -987,10 +987,15 @@ test("a harness notice takes its own row above the transcript and composer", asy
   const surface = page.locator(".chat-surface");
   const transcript = surface.locator(".message-list");
   const composer = surface.locator("form.composer");
-  // This empty chat's location strip mounts once its history settles.
+  // This empty chat's location strip and lazy context rows mount once its
+  // history settles; measure the composer they leave.
   await expect(
     composer.getByRole("group", { name: "Chat location" }),
   ).toBeVisible();
+  await expect(
+    composer.getByRole("list", { name: "Attached context" }),
+  ).toBeVisible();
+  await expect(composer.getByRole("alert")).toBeVisible();
   const before = (await transcript.boundingBox())!;
   const composerBefore = (await composer.boundingBox())!;
   await page.evaluate(async () => {

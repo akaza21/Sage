@@ -1,5 +1,6 @@
 import { Laptop } from "../../ui/leanIcons";
 import { ProjectScopeChip } from "./ProjectScopeChip";
+import "./composer-location.css";
 
 /**
  * Where a new chat will run, above its input as in Codex: this computer,

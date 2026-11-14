@@ -255,32 +255,26 @@ for (const width of [1888, 720, 480]) {
           exact: true,
         });
         await expect(access.locator(".lucide-eye")).toHaveCount(1);
-        // Access is a pill that is plain at rest: no border or fill, and
-        // inline padding only while it shows its label (an icon-only pill
-        // centres its glyph instead).
-        const pill = await access.evaluate((element) => {
-          const style = getComputedStyle(element);
-          const probe = document.createElement("div");
-          probe.style.paddingLeft = "var(--space-2)";
-          element.append(probe);
-          const padding = getComputedStyle(probe).paddingLeft;
-          probe.remove();
-          const label = element.querySelector(".composer__access-text");
-          return {
-            border: [style.borderTopWidth, style.borderLeftWidth],
-            fill: style.backgroundColor,
-            padding: style.paddingLeft,
-            expected:
-              label && label.getBoundingClientRect().width > 0
-                ? padding
-                : "0px",
-          };
+        // Access is a pill that is plain at rest: no border or fill. Only
+        // the widest composer keeps its label, padded by the pill's
+        // --space-2 (8px); narrower ones centre the icon alone.
+        const labelled = width === 1888;
+        await expect(access.locator(".composer__access-text")).toBeVisible({
+          visible: labelled,
         });
-        expect(pill).toEqual({
+        expect(
+          await access.evaluate((element) => {
+            const style = getComputedStyle(element);
+            return {
+              border: [style.borderTopWidth, style.borderLeftWidth],
+              fill: style.backgroundColor,
+              padding: style.paddingLeft,
+            };
+          }),
+        ).toEqual({
           border: ["0px", "0px"],
           fill: "rgba(0, 0, 0, 0)",
-          padding: pill.expected,
-          expected: pill.expected,
+          padding: labelled ? "8px" : "0px",
         });
         await access.click();
         await expect(

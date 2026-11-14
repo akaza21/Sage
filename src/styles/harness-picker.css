@@ -56,6 +56,12 @@
   overflow-wrap: anywhere;
 }
 
+/* A description wraps, though menu rows keep their labels on one line. */
+.menu-item > .composer__action-description {
+  overflow: visible;
+  white-space: normal;
+}
+
 .composer-access-menu__option {
   display: grid;
   grid-template-columns: 14px minmax(0, 1fr) 14px;

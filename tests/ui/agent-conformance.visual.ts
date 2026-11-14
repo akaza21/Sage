@@ -1081,10 +1081,16 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     });
     await options.click();
     const menu = page.getByRole("menu", { name: "Composer options menu" });
-    // Any usable binding takes attached files.
-    await expect(
-      menu.getByRole("menuitem", { name: "Files and folders", exact: true }),
-    ).toBeEnabled();
+    // Any usable binding offers files; outside the desktop app the row says
+    // why it cannot attach them instead of acting.
+    const files = menu.getByRole("menuitem", {
+      name: "Files and folders",
+      exact: true,
+    });
+    await expect(files).toHaveAttribute("aria-disabled", "true");
+    await expect(files).toHaveAccessibleDescription(
+      "Attaching files needs the Sage desktop app with an ACP harness.",
+    );
     const project = menu.getByRole("menuitem", {
       name: "Work in a project",
       exact: true,

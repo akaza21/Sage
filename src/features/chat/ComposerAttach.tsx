@@ -1,9 +1,8 @@
 import { useId, useMemo, useState } from "react";
 
-import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
-import { isTauriRuntime } from "../../ports/nativeInvoke";
 import type { PromptPick } from "../../ports/promptAttachments";
 import { MenuPopover } from "../../ui/MenuPopover";
+import { attachRefusal as refusal } from "./composerAttachRefusal";
 import type { useComposerImageInput } from "./useComposerImageInput";
 
 /** The composer's image action, offered as the attach menu's Images item. */
@@ -15,23 +14,6 @@ const PICKS = [
   ["files", "Files…"],
   ["folder", "Folder…"],
 ] as const satisfies readonly (readonly [PromptPick, string])[];
-
-/**
- * Why files cannot be staged for this chat's next message, or null. Native
- * admission treats an absent capability as unsupported; a chat without a
- * session yet is checked again when its first message starts one.
- */
-function refusal(chatId: string): string | null {
-  if (!isTauriRuntime())
-    return "Attaching files needs the Sage desktop app with an ACP harness.";
-  const page = acpProjectionStoreFor(chatId).getState().page;
-  const session = page?.sessions.find(
-    (item) => item.id === page.currentSessionId,
-  );
-  return session && session.capabilities.promptResources !== true
-    ? "This harness does not accept attached files (no embedded-context support)."
-    : null;
-}
 
 /**
  * Lazy: loads with the first Files and folders press. Says why files

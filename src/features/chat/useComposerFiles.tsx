@@ -30,8 +30,11 @@ export function useComposerFiles({
   attachable: boolean;
 }) {
   const files = useComposerFileContext(parts.text);
+  const attach = attachable && !parts.disabled ? files.pressAttach : undefined;
   return {
     parts: <ComposerFileParts files={files} {...parts} />,
-    attach: attachable && !parts.disabled ? files.pressAttach : undefined,
+    attach,
+    /** The chat whose refusal the row shows; images keep the menu open. */
+    refusalChatId: attach && !parts.imageAction ? parts.chatId : undefined,
   };
 }

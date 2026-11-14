@@ -246,6 +246,7 @@ export function ChatHarnessControls({
           chatId: accessTarget?.draftChatId,
           sessionConfig,
           capabilities: accessHarness.accessModes,
+          onOpenAccess: () => toggle("access"),
         }
       : undefined;
   // Work in a project is offered only with projects to choose from.

@@ -243,14 +243,22 @@ describe("composer attach from the + menu", () => {
     ).toHaveLength(1);
   });
 
-  it("refuses without opening the picker when the harness takes no files", async () => {
+  it("shows Files and folders disabled with its reason when the harness takes no files", async () => {
     withSession(false);
     native.mockResolvedValue(null);
     renderComposer();
     await openAttach();
+    const row = screen.getByRole("menuitem", { name: "Files and folders" });
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(row).toHaveAccessibleDescription(
+      "This harness does not accept attached files (no embedded-context support).",
+    );
+    expect(row).toHaveTextContent(/does not accept attached files/u);
+    // The press is refused in place: the "+" menu stays, no picker opens.
     expect(
-      await screen.findByText(/does not accept attached files/u),
+      screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "Attach" })).toBeNull();
     expect(native).not.toHaveBeenCalledWith(
       "stage_prompt_files",
       expect.anything(),

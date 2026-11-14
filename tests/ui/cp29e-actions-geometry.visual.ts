@@ -122,7 +122,12 @@ for (const width of [1888, 720, 480]) {
           menu.locator('[role="menuitemradio"][aria-checked="true"]'),
         ).toHaveCount(1);
       }
-      await expect(first).toBeFocused();
+      // The menu opens on the current mode, else on its first row.
+      await expect(
+        profile.modes.length > 0
+          ? menu.locator('[role="menuitemradio"][aria-checked="true"]')
+          : first,
+      ).toBeFocused();
       await page.keyboard.press("End");
       await expect(last).toBeFocused();
       await page.keyboard.press("Home");
