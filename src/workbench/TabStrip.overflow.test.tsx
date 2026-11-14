@@ -94,10 +94,8 @@ describe("TabStrip overflow", () => {
     fireEvent.wheel(strip, { deltaY: 600 });
     const resized = (target: Element) =>
       notify([{ target } as ResizeObserverEntry], {} as ResizeObserver);
-    // A Git mark or status dot widens a tab the reader is not on.
     resized(strip.children[8]);
     expect(strip.scrollLeft).toBe(600);
-    // The active tab's own row resizing brings it back into view.
     resized(strip.children[0]);
     expect(strip.scrollLeft).toBe(0);
   });
@@ -150,7 +148,6 @@ describe("TabStrip overflow", () => {
     layOut(strip);
     fireEvent.scroll(strip);
     expect(strip.dataset.overflow).toBe("end");
-    // The pane widens until all twelve 120 px tabs fit.
     Object.defineProperty(strip, "clientWidth", { value: 120 * 12 });
     resized!(
       [{ target: strip } as unknown as ResizeObserverEntry],

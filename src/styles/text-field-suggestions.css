@@ -1,4 +1,3 @@
-/* A listbox that opens above a text field which keeps the focus. */
 .text-field-suggestions.menu-popover {
   display: flex;
   flex-direction: column;
@@ -72,8 +71,6 @@
   font-size: var(--font-size-xs);
 }
 
-/* One line per command, cut with an ellipsis; the full text stays in the
-   row's accessible label. */
 .text-field-suggestions__description {
   overflow: hidden;
   white-space: nowrap;

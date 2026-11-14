@@ -447,7 +447,6 @@
   }
 }
 
-/* A rested-on Agent rail row's card, portalled beside the rail. */
 .agent-rail-hover-card {
   position: fixed;
   margin-left: var(--agent-rail-hover-card-gap);

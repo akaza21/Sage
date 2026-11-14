@@ -33,8 +33,6 @@ import "./agent-tool-panel.css";
 import { useAgentChangesState } from "./agentChangesState";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 
-// Lazy tool launch host: scoped Changes/Files picker, bounded resources and side chat.
-
 import {
   agentToolResources,
   type AgentToolResource,
@@ -101,7 +99,6 @@ const ImportPart = lazyParts<typeof ImportChunk>(
   () => import("../features/chat/ImportedHistory"),
 );
 
-/** A tool launch's host, or the Codex CLI session picker. */
 export function AgentToolHost({ launch }: { launch: AgentLaunch }) {
   return launch.tool === "sessionImport" ? (
     <ImportPart part="ImportSessionDialog" />
@@ -110,7 +107,6 @@ export function AgentToolHost({ launch }: { launch: AgentLaunch }) {
   );
 }
 
-/** Activate the launch's Chat before its picker; retain side-chat start errors until dismissed. */
 function ToolHost({ launch }: { launch: AgentToolLaunch }) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const generation = useWorkbenchStore((state) => state.projectGeneration);
@@ -239,7 +235,6 @@ export function AgentToolPanel({
   const input = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [error, setError] = useState("");
-  // Select tab/project/transition state only; ignore unrelated store writes.
   const tabs = useWorkbenchStore((value) => value.tabs);
   const activeTabId = useWorkbenchStore((value) => value.activeTabId);
   const project = useWorkbenchStore((value) => value.project);

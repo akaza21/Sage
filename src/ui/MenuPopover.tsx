@@ -29,7 +29,6 @@ import {
   typeaheadIndex,
 } from "./listNavigation";
 
-/** Pause after which typed letters start a new typeahead search. */
 const TYPEAHEAD_RESET_MS = 500;
 
 const ITEM_SELECTOR = [
@@ -39,7 +38,6 @@ const ITEM_SELECTOR = [
   '[role="option"]',
 ].join(",");
 const POPOVER_GAP = 4;
-/** The style keys the placement functions set. */
 const POSITION_KEYS = [
   "left",
   "top",
@@ -68,11 +66,8 @@ function enabledMenuItems(container: HTMLElement) {
 
 const MENU_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
 
-/**
- * The enabled item a key moves to. `items` holds only enabled items: natively
- * disabled ones cannot take focus, while `aria-disabled` ones stay focusable
- * so a screen reader can say why they are unavailable.
- */
+/** `aria-disabled` items stay focusable so a screen reader can say why they
+ * are unavailable. */
 function menuIndexForKey(key: string, items: HTMLElement[]) {
   return listIndexForKey(
     key,
@@ -138,10 +133,7 @@ export function MenuPopover({
   className?: string;
   focusKey?: string | number | boolean;
   focusStrategy?: FocusStrategy;
-  /**
-   * Leaves focus where it is when the menu opens, for a body that arrived
-   * after its open and found that focus had moved on meanwhile.
-   */
+  /** For a body that arrived late: leaves focus where it moved meanwhile. */
   holdFocus?: boolean;
   id: string;
   initialFocus?: InitialFocus;
@@ -150,13 +142,7 @@ export function MenuPopover({
   gap?: number;
   onDismiss: (reason: MenuDismissReason) => void;
   open: boolean;
-  /** Top-level menus only; nested menus follow their parent. */
   placement?: MenuPlacement;
-  /**
-   * Places the popover itself, for example at a right-click's pointer
-   * (`pointerPopoverPosition`), instead of beside the trigger. The trigger
-   * still takes the focus back when the menu closes.
-   */
   positionAt?: (popover: HTMLElement) => CSSProperties;
   portalTarget?: PortalTarget;
   restoreFocusOnTab?: boolean;
@@ -231,8 +217,6 @@ export function MenuPopover({
     const popover = popoverRef.current;
     const trigger = triggerRef.current;
     if (!popover || !trigger) return;
-    // A trigger that stops rendering (for example a compacted composer
-    // control) leaves no anchor, so the popover closes instead of drifting.
     const updatePosition = () =>
       typeof trigger.checkVisibility === "function" &&
       !trigger.checkVisibility()
@@ -310,7 +294,7 @@ export function MenuPopover({
   const { layer, onKeyDown: layerKeyDown } = useDismissLayer(open, {
     inside: [popoverRef, triggerRef],
     onOutside: () => onDismiss("outside"),
-    // Without roving focus, focus stays in a field that owns Escape.
+    // Non-roving menus leave Escape to the focused text field.
     onEscape:
       focusStrategy === "none"
         ? undefined

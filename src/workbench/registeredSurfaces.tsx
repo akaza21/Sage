@@ -9,9 +9,7 @@ import {
   type CanvasSurfaceOptions,
 } from "./surfaceRegistry";
 
-// Explorer starts loading with the workbench but stays out of its startup
-// bundle, which the Agent window shares. Once loaded it renders directly, so
-// the Editor shows no loading state after the first moment.
+// Explorer stays out of the startup bundle, which the Agent window shares.
 let explorerModule: typeof ExplorerModule | null = null;
 const loadExplorerSurface = () =>
   import("../features/files/ExplorerSurface").then((module) => {
@@ -128,7 +126,6 @@ export function registerWorkbenchSurfaces(): void {
   registerCanvasSurface("browser", ({ tab }) => (
     <LazyCanvasSurface tab={tab} label="Browser" load={loadBrowserSurface} />
   ));
-  // A failed early load shows its retry when Explorer is opened.
   void loadExplorerSurface().catch(() => undefined);
   registerToolSurface("explorer", ExplorerToolSurface);
   registerToolSurface("search", () => (

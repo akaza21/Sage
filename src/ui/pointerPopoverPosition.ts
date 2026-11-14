@@ -2,17 +2,11 @@ import type { CSSProperties } from "react";
 
 import { GUTTER } from "./menuPopoverPosition";
 
-/** A viewport point, such as where a right-click landed. */
 export interface PopoverPoint {
   x: number;
   y: number;
 }
 
-/**
- * Opens a context menu at the pointer, as a native one does: its top-left
- * corner at the point, flipped to the left of or above the point where the
- * viewport has no room after it, and clamped inside the viewport otherwise.
- */
 export function pointerPopoverPosition(
   point: PopoverPoint,
   popover: HTMLElement,

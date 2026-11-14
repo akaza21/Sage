@@ -11,7 +11,6 @@ import type { WorkbenchState } from "./store";
 type Set = (partial: Partial<WorkbenchState>) => void;
 type Get = () => WorkbenchState;
 
-/** Sign-out and API key sign-in change the account; discovery re-reads it. */
 export const accountChange =
   (set: Set, get: Get) =>
   async (

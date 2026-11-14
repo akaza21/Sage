@@ -761,7 +761,6 @@ it("collapses Pinned and Projects but keeps Recents open", async () => {
     fireEvent.click(disclosure);
     expect(disclosure).toHaveAttribute("aria-expanded", "false");
   }
-  // Recents is a plain heading, as in Codex: it never collapses.
   expect(
     within(screen.getByRole("region", { name: "Recents" })).getByRole(
       "heading",

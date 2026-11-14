@@ -1,6 +1,5 @@
-// The Workbench close sequence and its trace. Kept apart from the workspace
-// watcher so the startup bundle that traces close stages does not carry the
-// watcher; the watcher registers its unbind here when it binds a Project.
+// Kept apart from the workspace watcher so the startup bundle does not carry
+// it.
 
 import { errorMessage } from "../domain/errors";
 import { invokeNative, isTauriRuntime } from "../ports/nativeInvoke";
@@ -43,10 +42,8 @@ async function runCloseStage(
 }
 
 /**
- * The close path holds and flushes Editor settings through this hook, so the
- * settings store and its catalogue load with the Workbench instead of in the
- * startup bundle. The store binds itself when its module loads; until then
- * nothing can be pending, so holding and flushing do nothing.
+ * Through this hook the settings store and its catalogue stay out of the
+ * startup bundle; until it binds nothing can be pending.
  */
 interface EditorSettingsClose {
   hold(): () => void;
@@ -59,11 +56,6 @@ export function bindEditorSettingsClose(close: EditorSettingsClose) {
   editorSettingsClose = close;
 }
 
-/**
- * The watcher's unbind, registered by the watcher module once it binds a
- * Project. Until then no session exists, so closing loads and unwatches
- * nothing.
- */
 let workspaceNotifyClose: (() => Promise<void>) | null = null;
 
 export function bindWorkspaceNotifyClose(unbind: () => Promise<void>) {

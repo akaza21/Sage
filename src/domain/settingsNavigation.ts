@@ -7,7 +7,6 @@ import {
   type KeymapScope,
 } from "./keymapRegistry";
 
-/** A shortcut with the sentence the Keyboard settings page shows for it. */
 export type DescribedKeymapBinding = KeymapBinding & { description: string };
 
 /**
@@ -140,7 +139,6 @@ export const FIND_BAR_BINDINGS: readonly DescribedKeymapBinding[] =
     },
   ]);
 
-/** Every shortcut the Keyboard settings page lists. */
 export const SETTINGS_KEYMAP_BINDINGS: readonly DescribedKeymapBinding[] = [
   ...KEYMAP_BINDINGS.map((binding) => ({
     ...binding,
@@ -166,8 +164,6 @@ export interface SettingsPage {
   entries: readonly SettingsEntry[];
 }
 
-// Editor entries come from the settings catalogue, so a new setting is
-// searchable as soon as it has a registry entry.
 const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   ...EDITOR_SETTINGS.map((spec) => ({
     id: spec.key,
@@ -184,7 +180,6 @@ const EDITOR_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   },
 ]);
 
-/** The Editor's Keyboard page lists app-wide and Editor shortcuts only. */
 export const EDITOR_KEYMAP_SCOPES: readonly KeymapScope[] = [
   "Global",
   "Editor",
@@ -238,7 +233,6 @@ const BROWSER_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   },
 ]);
 
-// BF-7b-1: the saved-password vault (Codex ref 48). Import is CSV only here.
 const PASSWORD_ENTRIES: readonly SettingsEntry[] = Object.freeze([
   {
     id: "passwords.saved",

@@ -86,7 +86,6 @@ vi.mock("../services/userTerminalDesktop", async (importOriginal) => ({
   },
   closeUserTerminal: async () => undefined,
 }));
-// The dock's shown/hidden preference is stored natively; start it hidden.
 vi.mock("../services/terminalDockSettingsDesktop", () => ({
   getTerminalDockVisible: async () => false,
   setTerminalDockVisible: async (visible: boolean) => visible,
@@ -136,7 +135,6 @@ vi.mock("../features/chat/ChatSurface", () => ({
 
 const initialState = useWorkbenchStore.getState();
 
-// Each case starts in the Editor; the Agent case chooses Agent itself.
 beforeEach(() => writeWorkbenchLayout({ windowMode: "editor" }));
 
 afterEach(() => {

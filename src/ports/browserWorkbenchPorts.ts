@@ -90,7 +90,6 @@ const project: ProjectPort = {
     ),
 };
 
-/** Rejects where the native command would, rather than throwing. */
 const settle = <T>(run: () => T): Promise<T> =>
   new Promise((resolve) => resolve(run()));
 
@@ -253,7 +252,6 @@ const settings: SettingsPort = {
     writeBrowserEditorSettings(editorSettings);
     return Promise.resolve(editorSettings);
   },
-  // New chat defaults live in the native settings store only.
   getNewChatDefaults: () =>
     Promise.reject(
       new Error("New chat defaults are not available in the browser adapter"),

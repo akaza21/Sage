@@ -214,7 +214,6 @@ export const acpDesktop = {
   },
 };
 
-/** Native Git ledger request, independent of the full Chat adapter object. */
 export function getTurnWorkspaceChanges(request: {
   projectId: string;
   projectGeneration: string;

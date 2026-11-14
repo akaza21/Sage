@@ -6,7 +6,6 @@ import type {
   SageProjectId,
 } from "./acp";
 
-/** One live runtime whose harness usage limits are read. */
 export interface AcpUsageRequest {
   projectId: SageProjectId;
   projectGeneration: ProjectGeneration;
@@ -23,7 +22,6 @@ export interface UsageWindow {
   resetsAt: number | null;
 }
 
-/** What the current session has spent so far, as its harness counts it. */
 export interface SessionSpend {
   inputTokens: number;
   outputTokens: number;
@@ -38,7 +36,6 @@ export interface UsageSnapshot {
   plan: string | null;
   limitReached: boolean;
   windows: UsageWindow[];
-  /** The session's own spend, for harnesses that report one. */
   session: SessionSpend | null;
 }
 

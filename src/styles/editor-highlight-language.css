@@ -1,8 +1,5 @@
-/*
- * Editor highlights use one quiet state language. This layer is intentionally
- * last and Editor-owned so Agent surfaces and shared resource defaults retain
- * their independent presentation.
- */
+/* This layer is intentionally last and Editor-owned, so Agent surfaces keep
+   their own presentation. */
 @media (forced-colors: none) {
   .workbench--editor .tab--active {
     background: var(--editor-selection-fill);
@@ -14,7 +11,6 @@
     box-shadow: inset 0 0 0 1px var(--editor-active-edge);
   }
 
-  /* Pressed controls remain distinct without reading as keyboard focus. */
   .workbench--editor .file-header__preview[aria-pressed="true"],
   .workbench--editor .editor-find__button[aria-pressed="true"],
   .workbench--editor
@@ -42,7 +38,6 @@
     box-shadow: inset 0 0 0 1px var(--editor-active-edge);
   }
 
-  /* Compact fields use their border as the sole edge plus a soft falloff. */
   .workbench--editor .workspace-search__input:focus-within,
   .workbench--editor .workspace-search__filters input:focus-visible,
   .workbench--editor
@@ -86,7 +81,6 @@
     box-shadow: inset 0 0 0 1px var(--editor-focus-edge);
   }
 
-  /* Bordered actions keep one blue edge instead of stacking border + ring. */
   .workbench--editor .source-root__primary:focus-visible,
   .workbench--editor .source-change__resolve:focus-visible {
     border-color: var(--color-border-strong);
@@ -111,7 +105,6 @@
     box-shadow: var(--editor-focus-halo-shadow);
   }
 
-  /* File and Diff share document syntax; these overrides belong to Editor. */
   .workbench--editor .resource-document {
     --resource-document-selection: var(--editor-code-selection);
   }

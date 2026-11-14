@@ -16,7 +16,6 @@ interface TerminalDockStore {
 
 const writes = createSettingWriter(false);
 
-/** Disposable projection of the native dock preference; sessions own their lifecycle. */
 export const useTerminalDockStore = create<TerminalDockStore>((set, get) => ({
   visible: false,
   ready: false,

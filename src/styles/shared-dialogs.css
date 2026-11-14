@@ -45,8 +45,6 @@
   margin-top: 20px;
 }
 
-/* A dialog laid out by one gap: title, description, field, content, then
-   the actions row. */
 .dialog-body {
   display: grid;
   gap: var(--space-3);
@@ -167,9 +165,6 @@
   box-shadow: var(--focus-ring-inset);
 }
 
-/* A palette under the title bar's Search chats control: it keeps its top
-   edge as results arrive and fits its content up to a cap; past it, only
-   the results scroll. */
 .chat-search-dialog {
   --chat-search-dialog-top: calc(var(--chrome-row-height) + var(--space-6));
   width: min(620px, calc(100vw - 32px));
@@ -242,7 +237,6 @@
   border-color: var(--color-focus-ring);
 }
 
-/* Out of flow at the header's end, beside the title. */
 .chat-search-dialog__close {
   position: absolute;
   top: var(--space-3);

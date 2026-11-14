@@ -21,7 +21,6 @@ function entryByteLength(entry: object): number {
   return bytes;
 }
 
-/** Bytes the entries add inside an array literal: each entry and its comma. */
 function entriesByteLength(entries: readonly object[]): number {
   let total = Math.max(0, entries.length - 1);
   for (const entry of entries) total += entryByteLength(entry);

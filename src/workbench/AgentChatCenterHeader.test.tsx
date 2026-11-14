@@ -29,7 +29,6 @@ vi.mock("../features/chat/acp/useAcpChatLiveSnapshot", () => ({
   useAcpChatLiveSnapshot: (chatId: string) => snapshot(chatId, true),
 }));
 
-// The header menu body loads when the window first idles.
 beforeAll(() => preloadAgentHeaderMenu());
 
 const initialState = useWorkbenchStore.getState();
@@ -92,7 +91,6 @@ it("keeps the parent's own live session chrome while its side chat is focused", 
     />,
   );
   await settleLazyModules();
-  // Status and actions in the parent cell both belong to the parent.
   expect(screen.getByRole("status")).toHaveAccessibleName(
     "Chat status: Working",
   );

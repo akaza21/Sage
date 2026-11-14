@@ -217,7 +217,6 @@ it("hides a revealed password once an import may have replaced it", async () => 
     screen.getByText(/Imported passwords.csv: 0 added, 1 updated\./),
   ).toBeVisible();
   expect(screen.queryByText("old-secret")).toBeNull();
-  // Its hide timer went with it: a new reveal is not cut short by the old one.
   native.reveal.mockResolvedValue("new-secret");
   await act(async () => {
     fireEvent.click(within(row).getByRole("button", { name: "Show" }));
@@ -255,7 +254,6 @@ it("drops a reveal the OS confirmed after the vault was reloaded", async () => {
   render(<SettingsPasswordsPage visible={all()} />);
   const row = await screen.findByRole("group", { name: "ada on example.com" });
   fireEvent.click(within(row).getByRole("button", { name: "Show" }));
-  // Another window's change arrives while the OS prompt is open.
   fireEvent.change(
     screen.getByRole("searchbox", { name: "Search passwords" }),
     { target: { value: "ada" } },
@@ -321,7 +319,6 @@ it("shows an import that finished while Settings was suspended, with Import avai
     await screen.findByRole("button", { name: "Cancel import" }),
   ).toBeVisible();
   await act(async () => view.rerender(<Suspendable mode="hidden" />));
-  // Hiding asks Rust to cancel, but the commit had already won.
   expect(native.cancelImport).toHaveBeenCalledTimes(1);
   native.overview.mockResolvedValue(ready());
   await act(async () =>
@@ -353,7 +350,6 @@ it("clears a new password typed into Edit while Settings is suspended", async ()
   const password = within(form).getByLabelText("New password");
   fireEvent.change(password, { target: { value: "draft-secret" } });
   await act(async () => view.rerender(<Suspendable mode="hidden" />));
-  // The hidden tree keeps its DOM, so the draft must be gone from it too.
   expect(password).toHaveValue("");
   await act(async () => view.rerender(<Suspendable mode="visible" />));
   expect(within(form).getByLabelText("New password")).toHaveValue("");
@@ -399,7 +395,6 @@ it("edits a username", async () => {
 it.each(["Delete", "Delete all saved passwords"])(
   "%s preserves saved entries on Cancel and Escape, and deletes only on confirmation",
   async (action) => {
-    // Model the native vault at the IPC boundary, including reloads after dismissal.
     let entries = [
       { id: "one", origin: "https://one.example.test", username: "user-one" },
       { id: "two", origin: "https://two.example.test", username: "user-two" },
@@ -561,7 +556,6 @@ it("reports too-late cancellation before displaying a delayed committed import",
   await screen.findByText("No saved passwords");
   fireEvent.click(screen.getByRole("button", { name: "Import CSV…" }));
   const cancel = await screen.findByRole("button", { name: "Cancel import" });
-  // Native commit has finished, but its IPC response has not arrived yet.
   entries = [ADA];
   fireEvent.click(cancel);
   expect(

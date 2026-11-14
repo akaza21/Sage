@@ -10,8 +10,6 @@ describe("decodeSessionAction", () => {
       '{"kind":"review","target":{"kind":"baseBranch","branch":"main"}}',
       '{"kind":"review","target":{"kind":"commit","sha":"1a2b3c4"}}',
       '{"kind":"review","target":{"kind":"custom","instructions":"check the error paths"}}',
-      // The native side owns what a target's text may say; a stored
-      // action is only shown, so any text it kept is shown as kept.
       '{"kind":"review","target":{"kind":"baseBranch","branch":"two words"}}',
     ])
       expect(decodeSessionAction(JSON.parse(stored))).toEqual(

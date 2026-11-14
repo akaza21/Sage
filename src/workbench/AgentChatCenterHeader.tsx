@@ -11,10 +11,8 @@ const SideHeadersPart = lazyParts<typeof SideHeadersChunk>(
   () => import("./AgentSideChatHeaders"),
 );
 
-/** Name the focused Chat; side-chat panes each own a column-aligned header cell. */
 export interface AgentChatCenterHeaderProps {
   tabs: readonly WorkbenchTab[];
-  /** Displayed panes if any is a side chat, else null. */
   paneIds: readonly string[] | null;
   focusedId: string | null;
   focusedSnapshot: ChatLiveSnapshot;

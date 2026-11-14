@@ -8,20 +8,17 @@ export interface SaveAllFailure {
   message: string;
 }
 
-/** What the last Save All could not save, for the project it ran in. */
 export interface SaveAllReport {
   projectId: string;
   failures: SaveAllFailure[];
 }
 
 /**
- * State for the conflict banner and Save All. Their actions are in
- * `editorConflictActions`, which loads on first use, outside the initial
- * bundle.
+ * The actions live in `editorConflictActions`, which loads on first use,
+ * outside the initial bundle.
  */
 export interface EditorConflictSlice {
   saveAllReport: SaveAllReport | null;
-  /** The File the banner's Compare is showing, as its disk version. */
   editorCompareKey: string | null;
 }
 

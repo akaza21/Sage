@@ -46,7 +46,6 @@ export interface SessionAccessModeCapability {
   label: string;
   description: string;
   fallback?: boolean;
-  /** The harness session mode this access mode selects. */
   sessionModeId?: string;
 }
 
@@ -71,10 +70,6 @@ export function sessionAccessModeAvailability(
   return { effective: requested ?? null, unavailableReason: null };
 }
 
-/**
- * The modes to offer. Auto and Full access are never a default: only a live
- * chat's access menu (`ChatAccessSelection.tsx`) offers them, confirmed.
- */
 export function sessionAccessModeCandidates(
   capabilities: readonly SessionAccessModeCapability[] | undefined,
   liveChat?: boolean,

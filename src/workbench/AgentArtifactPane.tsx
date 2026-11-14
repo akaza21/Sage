@@ -66,7 +66,6 @@ const AgentArtifactHeader = lazy(() =>
   })),
 );
 
-// The pane's header names the resource, so canvases leave out their own.
 const PANE_CANVAS = { readOnly: true, hostHeader: true };
 
 export function AgentArtifactPane({

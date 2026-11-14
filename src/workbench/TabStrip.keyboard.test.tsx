@@ -66,7 +66,6 @@ describe("TabStrip keyboard", () => {
     const activateTab = renderStrip(0);
     const tab = screen.getByRole("tab", { name: "file2.ts" });
     tab.focus();
-    // Not prevented, so the button's native activation opens the tab.
     expect(fireEvent.keyDown(tab, { key: "Enter" })).toBe(true);
     expect(fireEvent.keyDown(tab, { key: " " })).toBe(true);
     fireEvent.click(tab);

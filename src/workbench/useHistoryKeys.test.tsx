@@ -42,7 +42,6 @@ function showFile(resource: ResourceRef) {
   });
 }
 
-/** The active File and the caret the editor was asked to put there. */
 function where() {
   const state = useWorkbenchStore.getState();
   const tab = state.tabs.find((item) => item.id === state.activeTabId);
@@ -70,11 +69,6 @@ const atStart = { file: "src/c.ts", caret: null };
 const oneBack = { file: "src/b.ts", caret: "1:1" };
 const twoBack = { file: "src/a.ts", caret: "40:7" };
 
-/**
- * A trip starts once the history module's dynamic import settles; after
- * that, the Editor is still where it was only if nothing asked to travel.
- * The history is left whole: one Go back then lands on b, not a.
- */
 async function expectNoTrip() {
   await settleLazyModules();
   expect(where()).toEqual(atStart);
@@ -95,7 +89,6 @@ beforeEach(() => {
       });
     },
   });
-  // Visited: a (caret at 40:7), then b, and now c.
   notePlace({ projectId: "project", resource: a, line: 40, column: 7 });
   notePlace({ projectId: "project", resource: b, line: 1, column: 1 });
   notePlace({ projectId: "project", resource: c, line: 1, column: 1 });
@@ -202,7 +195,6 @@ describe("editor history keys (ED-2b)", () => {
     terminal.onData((data) => sent.push(data));
 
     press({ ...altLeft, keyCode: 37 }, terminal.textarea!);
-    // The shell gets its word-left sequence.
     expect(sent).toEqual(["\u001b[1;3D"]);
     await expectNoTrip();
 
@@ -214,7 +206,6 @@ describe("editor history keys (ED-2b)", () => {
 
     window.dispatchEvent(new MouseEvent("mouseup", { button: 3 }));
     await vi.waitFor(() => expect(where()).toEqual(oneBack));
-    // The primary button is neither.
     window.dispatchEvent(new MouseEvent("mouseup", { button: 0 }));
     await settleLazyModules();
     expect(where()).toEqual(oneBack);

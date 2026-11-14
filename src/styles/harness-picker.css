@@ -1,6 +1,3 @@
-/* Codex-style plain control: brand mark and name on the composer fill, with
-   the shared control hover. The name shows whole or not at all:
-   the measured toolbar steps hide it when only the mark fits. */
 .composer__harness.composer__control-trigger {
   --picker-trigger-icon-size: var(--icon-size-md);
   height: var(--control-height-compact);

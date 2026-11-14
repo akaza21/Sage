@@ -374,7 +374,6 @@ describe("per-Chat disposable ownership", () => {
       },
     });
 
-    // Other restore entry points keep reporting in the workbench.
     expect(await useWorkbenchStore.getState().restoreChat(chatB.id)).toBe(
       false,
     );

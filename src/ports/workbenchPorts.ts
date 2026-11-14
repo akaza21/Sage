@@ -260,7 +260,6 @@ export interface ChatPort {
     request: ChatLifecycleRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
-  /** Permanently deletes an archived Chat and its history. */
   deleteChat(
     request: ChatDeleteRequest,
     expectedTransitionEpoch: number,
@@ -286,7 +285,6 @@ export interface ForkChatRequest {
 
 export interface AgentPort {
   listHarnesses(): Promise<HarnessDefinition[]>;
-  /** Discovers the installed harnesses again, picking up updates. */
   refreshHarnesses(): Promise<HarnessDefinition[]>;
   listHarnessModels(harnessId: string): Promise<ModelOption[]>;
   sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult>;

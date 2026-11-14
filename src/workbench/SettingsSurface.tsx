@@ -22,9 +22,6 @@ export function SettingsSurface() {
   const [activePageId, setActivePageId] = useState<SettingsPageId>(
     () => useSettingsPageRequest.getState().page ?? SETTINGS_PAGES[0].id,
   );
-  // A caller such as the browser's menu asks for a page: the first render
-  // opens on it, and while Settings is open a new request switches to it with
-  // the search cleared. Either way the request is then forgotten.
   useEffect(() => {
     useSettingsPageRequest.setState({ page: null });
     return useSettingsPageRequest.subscribe(({ page }) => {
@@ -63,7 +60,6 @@ export function SettingsSurface() {
       aria-label="Settings"
       aria-busy={persistencePhase === "loading"}
     >
-      {/* Search leads, as in VS Code: the tab already names the page. */}
       <header className="settings-surface__header">
         <h1 className="sr-only">Settings</h1>
         <label className="settings-surface__search">

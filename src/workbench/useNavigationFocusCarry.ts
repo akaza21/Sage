@@ -3,15 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 const label = (element: Element) =>
   element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "";
 
-/**
- * Folding or unfolding the Agent rail swaps the icon rail for the full rail,
- * which unmounts the focused control. When focus was in the rail, carry it to
- * the control with the same name in the new rail (or its first control)
- * instead of dropping it to the document body. The folded rail loads lazily,
- * so each rail reports its own mount through the returned callback ref and
- * focus is restored once, at that moment. Any other focus in the meantime
- * cancels the restore.
- */
+/** The folded rail loads lazily; restore when its ref mounts, unless focus
+ * moved meanwhile. */
 export function useNavigationFocusCarry(collapsed: boolean) {
   const focused = useRef<Element | null>(null);
   const pending = useRef<string | null>(null);
@@ -54,8 +47,6 @@ export function useNavigationFocusCarry(collapsed: boolean) {
     if (!previous || previous.isConnected) return;
     focused.current = null;
     pending.current = label(previous);
-    // A rail that mounted in this commit is ready now; a lazy one restores
-    // from its ref when it arrives.
     if (rail.current) restore(rail.current);
   }, [collapsed, restore]);
   return useCallback(

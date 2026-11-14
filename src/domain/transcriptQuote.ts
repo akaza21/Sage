@@ -5,7 +5,6 @@ import { utf8ByteLength } from "./text";
 /** Quote and comment bytes; equals MAX_ATTACHED_CONTEXT_NOTE_BYTES (Rust mirrors it). */
 export const MAX_TRANSCRIPT_QUOTE_BYTES = 4096;
 
-/** A selection inside one assistant answer; disposable WebView state until sent. */
 export interface TranscriptQuote {
   turnId: string;
   itemId: string;
@@ -16,10 +15,8 @@ export interface TranscriptQuote {
 
 export interface TranscriptQuoteContext {
   kind: "transcriptQuote";
-  /**
-   * Wire field bounded 1-8. Display numbers and the prompt's "Annotation N"
-   * follow the draft order, so deletions never need a renumbering pass.
-   */
+  /** Wire field bounded 1-8. Transcript badges and the prompt's "Annotation N"
+   * number by draft position, so a deletion needs no ordinal rewrite. */
   ordinal: number;
   sourceTurnId: string;
   sourceItemId: string;
@@ -49,7 +46,6 @@ const identifier = (value: unknown) =>
   ![...value].some((c) => c < " " || (c >= "\x7f" && c <= "\x9f"));
 const offset = (value: unknown): value is number => safeOrdinal(value) !== null;
 
-/** Admits an exact-key, byte-bounded quote; returns the validated value itself. */
 export function parseTranscriptQuoteContext(
   value: unknown,
 ): TranscriptQuoteContext | null {

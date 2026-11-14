@@ -13,7 +13,6 @@ import {
 } from "./workbenchSidebarResize";
 
 const NAVIGATION_RESIZE_MIN = 761;
-/** The chat floor, its splitter gutters and the Files floor side by side. */
 const INLINE_RESOURCE_SPAN =
   AGENT_CHAT_MIN_WIDTH + 16 + AGENT_ARTIFACT_WIDTH.minWidth;
 const INLINE_RESOURCE_MIN =
@@ -29,7 +28,6 @@ export function agentWorkbenchLayout({
   viewportWidth: number;
   artifactExpanded: boolean;
   navigationCollapsed?: boolean;
-  /** Widths the person dragged a splitter to; the rest follow the window. */
   requestedWidths?: Partial<AgentDesktopSidebarWidths>;
   prioritize?: AgentDesktopSidebarPriority;
 }) {
@@ -46,7 +44,6 @@ export function agentWorkbenchLayout({
       Math.min(defaults.leftRailWidth, navigationCap),
     artifactWidth: requestedWidths?.artifactWidth ?? defaults.artifactWidth,
   };
-  // Files open at their proportional share unless the person resized them.
   const artifactShare =
     requestedWidths?.artifactWidth ?? Math.round(viewportWidth * 0.45);
   const expandedNavigationBounds = {
@@ -60,12 +57,9 @@ export function agentWorkbenchLayout({
         )
       : navigationCap,
   };
-  // Files sit beside the expanded rail only when the chat keeps its floor
-  // and the Files keep their share. Otherwise opening them folds the rail to
-  // its icon strip, as the Codex desktop app does, and closing them brings
-  // the rail back. Once the person drags either splitter, the Files only
-  // need their floor: the allocator trades width between the rail and the
-  // Files by resize priority, so a drag never folds the rail it is sizing.
+  // Once the person drags either splitter, the allocator trades width between
+  // the rail and the Files by resize priority, so a drag never folds the rail
+  // it is sizing.
   const filesRoomBesideNavigation =
     viewportWidth -
     clampWorkbenchSidebarWidth(
@@ -143,8 +137,6 @@ export function agentWorkbenchLayout({
     (artifactInline ? widths.artifactWidth + 8 : 0);
   const artifactOverlay = artifactExpanded && !artifactInline;
   const artifactModal = artifactOverlay && chatWidth < 320;
-  // A drawer takes the whole hidden chat column, so no blank strip is left
-  // beside it; a modal sheet floats over a scrim on the narrowest windows.
   const artifactOverlayWidth = artifactModal
     ? Math.min(420, viewportWidth - 16)
     : chatWidth;

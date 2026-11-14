@@ -33,14 +33,9 @@ export const MAX_ATTACHED_CONTEXT_NOTE_BYTES = 4 * 1024;
 export const MAX_OUTGOING_IMAGE_BYTES = 4 * 1024 * 1024;
 /** Mirrors `PROMPT_IMAGE_COUNT`. */
 export const MAX_PROMPT_IMAGES = 4;
-/**
- * Mirrors `IMAGE_UPLOAD_BYTES`: an attached file before Sage normalises it.
- * A send then checks the images against the prompt bounds and names any that
- * still exceed them.
- */
+/** Mirrors `IMAGE_UPLOAD_BYTES`: an attached file before Sage normalises it. */
 export const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
 
-/** `bytes` as KiB or MiB, for messages built from the mirrored limits. */
 export function formatImageBytes(bytes: number): string {
   return bytes % (1024 * 1024) === 0
     ? `${bytes / (1024 * 1024)} MiB`

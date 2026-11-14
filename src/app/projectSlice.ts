@@ -26,7 +26,6 @@ export interface ProjectSlice {
   initialize: () => Promise<void>;
   persistLayout: () => Promise<void>;
   closeWorkbench: () => Promise<void>;
-  /** Creates a named project from picked folders; true once committed. */
   createProject: (request: CreateProjectRequest) => Promise<boolean>;
   ensureLocalProject: () => Promise<void>;
   addProjectRoot: () => Promise<void>;

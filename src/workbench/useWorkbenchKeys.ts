@@ -22,7 +22,6 @@ import {
 import { usesMetaModifier } from "../ui/shortcutLabel";
 import type { WorkbenchWindowMode } from "./workbenchWindowMode";
 
-/** Window-level commands shared by Agent and Editor, guarded by resource modals. */
 export function useWorkbenchKeys({
   resourceModal,
   windowMode,
@@ -34,7 +33,6 @@ export function useWorkbenchKeys({
   toggleAgentNavigation: () => void;
   setWindowMode: Dispatch<SetStateAction<WorkbenchWindowMode>>;
 }) {
-  // Own the Editor lifetime even while its deferred UI is still loading.
   useEffect(() => {
     if (windowMode === "editor") return closeQuickOpen;
   }, [windowMode]);
@@ -53,7 +51,6 @@ export function useWorkbenchKeys({
         if (windowMode === "agent") useAgentSettingsState.getState().open();
         else void useWorkbenchStore.getState().openSettings();
       }
-      // In Agent mode the same chord opens the Chat's Files picker.
       if (
         windowMode === "editor" &&
         matchesPlatformChord(keymapBinding("quickOpen"), event, apple)
@@ -101,7 +98,6 @@ export function useWorkbenchKeys({
   }, [resourceModal, toggleAgentNavigation, setWindowMode, windowMode]);
 }
 
-/** The terminal controller loads when a native workbench is available. */
 export function useTerminalDock(blocked: boolean) {
   const [terminal, setTerminal] = useState(DISCONNECTED_TERMINAL);
   const isBlocked = useEffectEvent(() => blocked);

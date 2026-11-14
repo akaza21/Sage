@@ -18,7 +18,6 @@ import { isTauriRuntime } from "../ports/nativeInvoke";
 
 export type AgentTool = "changes" | "terminal" | "files" | "sideChat";
 
-// Outside Agent, no Chat owns New-tab launchers: disable all.
 export const AgentToolsContext = createContext<{
   launch: (tool: AgentTool | "sessionImport", chatId?: string) => void;
   chatAvailable: boolean;
@@ -29,20 +28,17 @@ export const AgentToolsContext = createContext<{
   terminalAvailable: false,
 });
 
-// Nested project actions close the header menu and restore trigger focus.
 export const AgentHeaderMenuContext = createContext<{
   close: () => void;
   returnFocus: () => void;
 } | null>(null);
 
-/** A single launch, run by the lazy New-tab host, including Chat activation/picker or side chat. */
 export type AgentToolLaunch = {
   tool: Exclude<AgentTool, "terminal">;
   chatId: string;
   focus: HTMLElement | null;
   seq: number;
 };
-/** A tool launch, or opening the Codex CLI session picker. */
 export type AgentLaunch =
   AgentToolLaunch | (Omit<AgentToolLaunch, "tool"> & { tool: "sessionImport" });
 export type AgentToolRequest = {
@@ -62,7 +58,6 @@ const KEYBOARD_TOOLS: readonly Exclude<AgentTool, "terminal">[] = [
 ];
 let launchSeq = 0;
 
-/** Launch owner; null without an open owning Chat. */
 function agentToolOwner(explicitId?: string): string | null {
   const state = useWorkbenchStore.getState();
   const owner = explicitId ?? pinnedAgentChatOwner();

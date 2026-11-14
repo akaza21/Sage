@@ -17,9 +17,6 @@
   font-family: var(--font-family-ui);
 }
 
-/* Editor chrome geometry, read by the components that own each part. The
-   center region is an inset card; tabs, the canvas and the tool sidebar sit
-   on the panel colour. */
 .workbench--editor {
   --workbench-card-margin: var(--space-1) var(--space-1) var(--space-1) 0;
   --center-region-tabs-height: var(--tab-height);
@@ -31,7 +28,6 @@
   --radius-title-bar-search: var(--radius-sm);
   --placeholder-title-gap: var(--space-2);
   --placeholder-body-font-size: var(--font-size-sm);
-  /* A canvas-coloured activity rail whose buttons fill its width. */
   --activity-rail-gap: calc(var(--space-1) / 2);
   --activity-rail-width: var(--editor-activity-width);
   --activity-rail-fill: var(--color-canvas);
@@ -86,7 +82,6 @@
     --color-selection: var(--doc-selection);
     --elevation-popover: var(--doc-elevation-popover);
     --elevation-floating: var(--doc-elevation-floating);
-    /* Re-evaluate shared highlights against the Editor colour projection. */
     --highlight-focus-edge: color-mix(
       in srgb,
       var(--color-accent) 68%,
@@ -145,10 +140,6 @@
       var(--highlight-focus-edge);
     --menu-focus-edge: var(--editor-focus-edge);
     --menu-selected-fill: var(--editor-selection-fill);
-    /* Role tokens the Editor's components read. Persistent selection is a
-       quiet fill with a hairline edge; a focused region gets a contained
-       hairline instead of a full ring; search matches stay amber; count
-       badges read as quantity, not selection. */
     --row-selected-fill: var(--editor-selection-fill);
     --row-selected-shadow: inset var(--border-width) 0 0
       var(--editor-selection-edge);

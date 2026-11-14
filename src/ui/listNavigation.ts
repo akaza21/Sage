@@ -1,13 +1,10 @@
 import { useCallback, useState } from "react";
 
-/** Which arrow keys step through a list, following WAI-ARIA. */
 export type ListOrientation = "horizontal" | "vertical";
 
 export interface ListNavigationOptions {
   orientation: ListOrientation;
-  /** Menus, listboxes and tabs wrap past the ends; trees stop at them. */
   wrap: boolean;
-  /** Enables PageUp and PageDown, which move this far and stop at the ends. */
   pageSize?: number;
 }
 
@@ -16,10 +13,6 @@ const STEP_KEYS: Record<ListOrientation, Record<string, -1 | 1>> = {
   vertical: { ArrowUp: -1, ArrowDown: 1 },
 };
 
-/**
- * The first enabled index among `steps` items walking from `from` by
- * `direction`, wrapping past the ends or stopping at them; null if none.
- */
 function walk(
   disabled: readonly boolean[],
   from: number,
@@ -38,10 +31,8 @@ function walk(
 }
 
 /**
- * The index a key moves to from `current`, passing over disabled items.
- * `current` is -1 when no item is active yet: the forward keys then land on
- * the first enabled item and the backward keys on the last. Returns null for
- * a key that does not navigate, or when no other item can become active.
+ * `current` is -1 when no item is active. Null for a key that does not
+ * navigate, or when no other item can become active.
  */
 export function listIndexForKey(
   key: string,
@@ -67,7 +58,6 @@ export function listIndexForKey(
     : walk(disabled, current + direction, direction, wrap, last);
 }
 
-/** True when a modifier is held, so the arrow keys belong to someone else. */
 export function hasNavigationModifier(event: {
   altKey: boolean;
   ctrlKey: boolean;
@@ -77,12 +67,7 @@ export function hasNavigationModifier(event: {
   return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
 }
 
-/**
- * The item a typeahead query moves to, or -1. `labels` holds only the items
- * that can take focus. The search starts after the active item and wraps, so
- * pressing the same letter again moves on to the next item that starts with
- * it, while a longer query stays on the active item while it still matches.
- */
+/** `labels` holds only the items that can take focus. */
 export function typeaheadIndex(
   labels: readonly string[],
   current: number,
@@ -101,15 +86,11 @@ export function typeaheadIndex(
   return -1;
 }
 
-/** Rows PageUp and PageDown move in a list that pops up from a field. */
 export const ACTIVE_OPTION_PAGE_SIZE = 10;
 
 /**
- * The active row of a list that pops up from a text field which keeps the
- * focus (the WAI-ARIA combobox with aria-activedescendant). The row is kept
- * by id, so it follows its row when the list is reordered. When that id is
- * gone, `fallback` decides: "first" makes the first row active, "none"
- * leaves nothing active so Enter keeps its meaning in the field.
+ * `fallback: "none"` leaves no row active, so Enter keeps its meaning in the
+ * field.
  */
 export function useActiveOption(
   ids: readonly string[],
@@ -119,11 +100,7 @@ export function useActiveOption(
   const chosen = chosenId === null ? -1 : ids.indexOf(chosenId);
   const activeIndex =
     chosen >= 0 ? chosen : fallback === "first" && ids.length > 0 ? 0 : -1;
-  /**
-   * Moves the active row for ArrowUp and ArrowDown (wrapping) and PageUp and
-   * PageDown (stopping at the ends). Home and End move to the ends; callers
-   * whose field is editable leave those keys to the caret.
-   */
+  // Editable-field callers must leave Home/End to the caret.
   const move = useCallback(
     (key: string) => {
       const next = listIndexForKey(

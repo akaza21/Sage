@@ -64,10 +64,7 @@ export interface SetAcpSessionConfigOptionRequest extends AcpSessionMutationInte
   configId: string;
   value: AcpConfigValue;
 }
-/**
- * A choice for a session with no live runtime: stored, shown as restored,
- * and applied before the session's next prompt.
- */
+/** Stores the choice; the session applies it before its next prompt. */
 export interface QueueAcpSessionConfigChoiceRequest {
   projectId: SageProjectId;
   projectGeneration: ProjectGeneration;
@@ -166,13 +163,9 @@ export interface AcpCapabilitySet {
   promptImages?: boolean;
   cancel: boolean;
   nativeSessionFork: boolean;
-  /** Absent unless the harness can open sessions started outside Sage. */
   nativeSessionImport?: boolean;
-  /** Absent unless the harness negotiated it. */
   nativeSessionCompact?: boolean;
-  /** Absent unless the harness negotiated it. */
   nativeReview?: boolean;
-  /** Absent unless the harness lists and stops the commands it left running. */
   nativeBackgroundTerminals?: boolean;
   activeTurnSteer: boolean;
   childConversationProjection: boolean;
@@ -249,7 +242,6 @@ export interface RunAcpSessionActionRequest extends AcpSessionMutationIntent {
 export interface StartAcpSessionRequest extends AcpMutationIntent {
   bindingId: CuratedBindingId;
   modelId: CuratedModelId | null;
-  /** A thinking level chosen before the session existed. */
   effort?: string;
 }
 
@@ -259,9 +251,8 @@ interface AcpTurnContent {
 }
 
 /**
- * The staged prompt files a send carries: the chat's batch at a revision, or
- * for Retry of a turn the files that turn's prompt carried. Native refuses a
- * Retry whose files are no longer held rather than sending it without them.
+ * Native refuses a Retry whose files are no longer held rather than sending it
+ * without them.
  */
 export type StagedSelection = { revision: string } | { retryOf: SageTurnId };
 
@@ -351,7 +342,6 @@ export type AcpCommandFailure = AcpCommandFailureDetail & {
   promptDispatch?: "notStarted" | "unknown";
 };
 
-/** A rail read contains no transcript items, activities or session pages. */
 export interface AcpChatStatus {
   projectId: SageProjectId;
   chatId: SageChatId;

@@ -4,7 +4,6 @@ import { sessionRailStatusLabel } from "../features/chat/acp/sessionRail";
 export const AGENT_RAIL_ORGANIZE_MODES = ["project", "list"] as const;
 export type AgentRailOrganizeMode = (typeof AGENT_RAIL_ORGANIZE_MODES)[number];
 
-/** "Last updated" or the person's own order ("Manual order"). */
 export const AGENT_RAIL_ORDERINGS = ["recency", "manual"] as const;
 export type AgentRailOrdering = (typeof AGENT_RAIL_ORDERINGS)[number];
 

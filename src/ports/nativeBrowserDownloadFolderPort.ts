@@ -6,9 +6,8 @@ import { invokeNative } from "./nativeInvoke";
  * Change opens a native folder picker in Rust.
  */
 export interface BrowserDownloadFolder {
-  /** The saved folder, or null when the next download asks. */
+  /** Null or unavailable: the next download asks for a folder again. */
   path: string | null;
-  /** False when the saved folder is gone or read-only; the next download asks. */
   available: boolean;
   /** SQLite change sequence, shared by snapshots, replies, and events. */
   revision: number;
@@ -49,10 +48,6 @@ export function admitDownloadFolder(input: unknown): BrowserDownloadFolder {
   };
 }
 
-/**
- * Calls `onChange` when Rust saves a folder outside the Settings buttons
- * (the first download's Save dialog). Returns the unsubscribe function.
- */
 export async function listenBrowserDownloadFolder(
   onChange: (folder: BrowserDownloadFolder) => void,
 ): Promise<() => void> {

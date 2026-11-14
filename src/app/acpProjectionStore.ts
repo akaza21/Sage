@@ -55,10 +55,8 @@ interface AcpProjectionState {
   page: AcpChatPage | null;
   retainedBytes: number;
   retentionIncomplete: boolean;
-  /** The newest-page load in flight; a later one supersedes it. */
   activeLoad: AcpPageLoadIntent | null;
-  /** The earlier-history load in flight, tracked apart so a refresh of the
-   * newest page never drops it. */
+  /** Kept apart from `activeLoad` so a newest-page refresh never drops it. */
   historyLoad: AcpPageLoadIntent | null;
   requestSequence: number;
   pendingChange: AcpProjectionChangedEvent | null;
@@ -68,10 +66,9 @@ interface AcpProjectionState {
     event: AcpSessionConfigChangedV1,
   ) => ProjectionNoticeDisposition;
   takeSessionConfigChange: () => AcpSessionConfigChangedV1 | null;
-  /** Why the newest page could not be loaded. */
   error: string | null;
-  /** Why an earlier-history page could not be loaded, kept apart from
-   * `error` so a refresh and a history load never clear each other's. */
+  /** Kept apart from `error` so a refresh and a history load never clear
+   * each other's. */
   historyError: string | null;
   loadNonce: number;
   activateScope: (scope: AcpProjectionScope) => void;
@@ -82,7 +79,6 @@ interface AcpProjectionState {
     page: AcpChatPage,
   ) => ProjectionCommitDisposition;
   failPageLoad: (intent: AcpPageLoadIntent, message: string) => boolean;
-  /** Records a refresh that failed before it could take a load slot. */
   failRefresh: (message: string) => void;
   applyAuthoritativePage: (
     scope: AcpProjectionScope,
@@ -195,9 +191,8 @@ function trimToByteLimit(page: AcpChatPage): {
 }
 
 /**
- * Lays a newest page over the page shown. When the loaded history it keeps
- * would pass the retention caps, the newest page alone is shown instead, so
- * trimming never leaves a gap behind a cursor that skips it.
+ * Past the retention caps the newest page alone is shown, so trimming never
+ * leaves a gap behind a cursor that skips it.
  */
 function retainNewest(current: AcpChatPage | null, page: AcpChatPage) {
   const retained = trimToByteLimit(

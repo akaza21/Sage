@@ -10,7 +10,7 @@ export interface SideChatEntry {
 
 /** At most one side chat per Project and eight in all (Rust enforces the same). */
 export const MAX_SIDE_CHATS = 8;
-/** Non-persisted 43/57 split. */
+/** The 43/57 split; never persisted. */
 export const SIDE_CHAT_SPLIT = 43;
 
 export const useSideChatState = create<{
@@ -25,11 +25,10 @@ export const useSideChatState = create<{
   pairedId: null,
 }));
 
-/** Rust/fixture temporary Chat ID prefix. */
+/** The "side-" prefix is shared with Rust and fixtures. */
 export const isSideChatId = (id: string | null | undefined) =>
   Boolean(id?.startsWith("side-"));
 
-/** The rail chat for `activeId`: a side chat's parent, else itself. */
 export function railChatIdIn(
   sides: readonly SideChatEntry[],
   activeId: string | null,
@@ -37,12 +36,10 @@ export function railChatIdIn(
   return sides.find((side) => side.id === activeId)?.parentChatId ?? activeId;
 }
 
-/** A focused side chat isn't in the rail; its parent retains window title/highlight. */
 export function useRailChatId(activeId: string | null) {
   return useSideChatState((state) => railChatIdIn(state.sides, activeId));
 }
 
-/** A parent Chat reads as working while one of its side chats runs. */
 export function useParentChatStatus() {
   const sides = useSideChatState((state) => state.sides);
   return <S extends string | undefined>(chatId: string, status: S) =>

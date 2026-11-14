@@ -28,8 +28,6 @@
   flex-shrink: 0;
 }
 
-/* Session status and errors take only the room the controls leave, so a
-   transient message never compacts the control the person is using. */
 .composer .composer__controls > .select-control__reason {
   min-width: 0;
   flex: 1 1 0;
@@ -206,8 +204,6 @@
   }
 }
 
-/* Only when every control is already an icon does the row wrap, with the
-   dictation and send actions on a row of their own. */
 .composer [data-fit~="wrap"] {
   flex-wrap: wrap;
 }

@@ -3,10 +3,6 @@ import { useWorkbenchStore } from "../app/store";
 import { X } from "../ui/leanIcons";
 import { chatRowErrorId } from "./chatRowError";
 
-/**
- * A refused archive, restore or delete, shown under the row it was started
- * from. Dismissing it returns focus to the control for that action.
- */
 export default function ChatRowErrorNotice({
   error,
   title,

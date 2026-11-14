@@ -27,7 +27,6 @@ describe("useActiveOption", () => {
     expect(result.current.activeId).toBe("row-2");
     act(() => result.current.move("ArrowDown"));
     expect(result.current.activeId).toBe("row-0");
-    // Up from nothing active lands on the last row.
     const fresh = renderHook(() => useActiveOption(ids(3), "none")).result;
     act(() => fresh.current.move("ArrowUp"));
     expect(fresh.current.activeId).toBe("row-2");
@@ -72,7 +71,6 @@ describe("useActiveOption", () => {
     expect(result.current).toMatchObject({ activeId: "b", activeIndex: 1 });
     rerender({ list: ["c", "a"], fallback: "first" });
     expect(result.current).toMatchObject({ activeId: "c", activeIndex: 0 });
-    // The chosen row is remembered, so it is active again if it returns.
     expect(result.current.chosenId).toBe("b");
     rerender({ list: ["c", "a"], fallback: "none" });
     expect(result.current).toMatchObject({ activeId: null, activeIndex: -1 });

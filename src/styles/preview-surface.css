@@ -29,8 +29,6 @@
   margin: 0;
 }
 
-/* Task list items show their checkbox in place of the bullet; a numbered
-   task keeps its number. */
 ul > .markdown-task {
   list-style: none;
 }

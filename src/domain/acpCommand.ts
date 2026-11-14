@@ -2,7 +2,6 @@ import type { AcpSessionAction } from "./acpSessionAction";
 import { isRecord } from "./guards";
 import { utf8ByteLength } from "./text";
 
-/** Where a command comes from, as its harness reports it. */
 export const commandSources = [
   "builtin",
   "skill",
@@ -17,20 +16,17 @@ export type AcpCommandSource = (typeof commandSources)[number];
 export const isCommandSource = (value: unknown): value is AcpCommandSource =>
   commandSources.includes(value as AcpCommandSource);
 
-/** A panel a listed command opens in the chat instead of being sent. */
 export const commandPanels = ["status", "mcp"] as const;
 export type AcpCommandPanel = (typeof commandPanels)[number];
 
 export const isCommandPanel = (value: unknown): value is AcpCommandPanel =>
   commandPanels.includes(value as AcpCommandPanel);
 
-/** The listed command a Turn ran. */
 export interface AcpTurnCommand {
   name: string;
   source: AcpCommandSource;
 }
 
-/** A stored command mark, or null for one this build cannot show. */
 export function decodeTurnCommand(value: unknown): AcpTurnCommand | null {
   if (!isRecord(value) || Object.keys(value).length !== 2) return null;
   const { name, source } = value;
@@ -42,13 +38,11 @@ export function decodeTurnCommand(value: unknown): AcpTurnCommand | null {
     : null;
 }
 
-/** Each session action, as the harness's own command it runs as. */
 const actionCommands = {
   compact: { name: "compact", source: "builtin" },
   review: { name: "review", source: "builtin" },
 } as const satisfies Record<AcpSessionAction["kind"], AcpTurnCommand>;
 
-/** The command a Turn's prompt ran: a listed command or a session action. */
 export function turnCommand(turn: {
   command?: AcpTurnCommand;
   sessionAction?: AcpSessionAction;

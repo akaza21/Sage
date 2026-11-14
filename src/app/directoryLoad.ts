@@ -23,10 +23,6 @@ const directoryLoads = new WeakMap<
   DirectoryLoad
 >();
 
-/**
- * Loads bounded directory listings, rejects stale results, and coalesces
- * refreshes during an active read into trailing reads in the same task.
- */
 export async function runLoadDirectory(
   get: () => WorkbenchState,
   set: (partial: object | ((state: WorkbenchState) => object)) => void,

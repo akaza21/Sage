@@ -5,7 +5,6 @@ function subscribe(notify: () => void) {
   return () => document.removeEventListener("visibilitychange", notify);
 }
 
-/** Minimized windows sleep their rendering while resource owners stay alive. */
 export function useDocumentVisible() {
   return useSyncExternalStore(
     subscribe,

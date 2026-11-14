@@ -49,7 +49,6 @@ function childTarget(
     : undefined;
 }
 
-/** A starting or working child still counts as working. */
 export function liveAgent(status: AgentStatus | undefined) {
   return status === "starting" || status === "working";
 }
@@ -168,8 +167,6 @@ export function projectTaskResources(
           const label = item.payload.label?.trim();
           const operation = item.payload.operation;
           const live = liveAgent(agent?.status);
-          // Start and completion only advance a live child; an interrupt
-          // stops it, and nothing but another spawn revives it.
           if (invocation && agent)
             agents.set(invocation, {
               ...agent,
@@ -258,7 +255,6 @@ export function projectTaskResources(
           });
       }
       if (item.kind === "toolCall") {
-        // Web pages by host; integrations by the harness's own server name.
         const source = item.payload.presentation;
         const label =
           source.kind === "fetch"

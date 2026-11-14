@@ -214,8 +214,7 @@ export function Workbench() {
   );
   const editorCenterVisible = !drawerOpen;
   // The retained terminal session follows the region hosting its portal, not
-  // the persisted open preference. Agent overlays cover the entire center;
-  // Editor adopts the same dock unless its tool drawer covers that center.
+  // the persisted open preference.
   const terminalVisible =
     terminal.visible &&
     documentVisible &&

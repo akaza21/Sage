@@ -1,23 +1,10 @@
-// Keeps Git state current without a click (EP-12), as VS Code does. Three
-// triggers ask for a refresh: a workspace change notice, a changed stamp of
-// the Git files a commit, checkout or stage touches (checked every 500 ms),
-// and, where the watcher cannot see every edit, a poll of Git. They share one
-// debounce, which waits at most MAX_WAIT_MS so a busy build cannot hold a
-// refresh back, and one refresh at a time. While the window is hidden nothing
-// runs; showing or focusing it refreshes once.
-//
-// After the watcher loses events (a resync notice) Git is polled too, until
-// RESYNC_POLL_MS passes without another: the refresh the resync asks for
-// already covers what was lost, and the poll covers a burst still running.
-//
-// The poll backs off: each poll that finds nothing new doubles the wait, up
-// to a cap that keeps an idle window's Git work near 0.5% of one core, and
-// any sign of activity (a notice, focus, a Git operation, a poll that found a
-// change) brings it back to its fastest.
+// The poll backs off up to a cap that keeps an idle window's Git work near 0.5%
+// of one core.
 
 import type { WorkspaceNotifyNotice } from "../features/files/workspaceNotifyCompose";
 
 export const REFRESH_DEBOUNCE_MS = 300;
+/** Caps the debounce so a busy build cannot hold a refresh back. */
 export const MAX_WAIT_MS = 1_500;
 export const STAMP_INTERVAL_MS = 500;
 export const MIN_POLL_MS = 2_000;
@@ -49,7 +36,6 @@ const isGitInternal = (path: string) => /(?:^|\/)\.git(?:\/|$)/i.test(path);
 const clamp = (low: number, high: number, value: number) =>
   Math.min(high, Math.max(low, value));
 
-/** The wait before a poll, after `idlePolls` polls in a row found nothing. */
 export const pollDelay = (statusMs: number, idlePolls = 0) =>
   Math.min(
     clamp(MIN_IDLE_POLL_MS, MAX_IDLE_POLL_MS, statusMs * IDLE_STATUS_FACTOR),
@@ -57,7 +43,6 @@ export const pollDelay = (statusMs: number, idlePolls = 0) =>
       2 ** idlePolls,
   );
 
-/** Starts the triggers; the returned function stops them all. */
 export function startRepositoryAutoRefresh(
   deps: RepositoryAutoRefreshDeps,
 ): () => void {
@@ -69,15 +54,11 @@ export function startRepositoryAutoRefresh(
   let rerun = false;
   let stampInFlight = false;
   let lastStamp: string | null = null;
-  // Until when a resync keeps the poll on, where the watcher sees every edit.
   let resyncPollUntil = -Infinity;
   const polling = () => deps.pollAlways || performance.now() < resyncPollUntil;
   let idlePolls = 0;
-  // Whether anything but the poll asked for the pending refresh.
   let activity = false;
-  // How long the last refresh took, which paces the poll.
   let lastRefreshMs = 0;
-  // When the oldest unanswered ask came in, which bounds the debounce.
   let askedAt: number | null = null;
 
   const visible = () => document.visibilityState === "visible";
@@ -122,13 +103,11 @@ export function startRepositoryAutoRefresh(
     refreshing = false;
     if (stopped) return;
     if (outcome === "changed") idlePolls = 0;
-    // A notice that came in while it ran keeps the poll at its fastest.
     else if (outcome === "unchanged" && pollOnly && !activity) {
       idlePolls = Math.min(MAX_BACKOFF_STEPS, idlePolls + 1);
     }
+    // A rename, commit or Project change kept it from running: retry soon.
     if (outcome === "skipped") {
-      // A rename, commit or Project change kept it from running: try again
-      // in a moment, when the store is likely free.
       pollTimer = clear(pollTimer);
       pollTimer = setTimeout(() => request(), STAMP_INTERVAL_MS);
       return;
@@ -186,8 +165,7 @@ export function startRepositoryAutoRefresh(
   const onFocus = () => request();
 
   const stopNotices = deps.subscribeNotices((notice) => {
-    // The watcher lost events: poll for a while, in case the burst that
-    // overflowed it is still going.
+    // The watcher lost events: poll a while in case the burst is still going.
     if (notice.kind === "resync") {
       const wasPolling = polling();
       resyncPollUntil = performance.now() + RESYNC_POLL_MS;

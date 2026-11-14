@@ -1,6 +1,5 @@
 import { Activity, useState, type ReactNode } from "react";
 
-/** Mounts children on their first visible render, then keeps them asleep under Activity while hidden. */
 export function RetainedActivity({
   visible,
   children,

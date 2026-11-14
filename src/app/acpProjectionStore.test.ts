@@ -238,7 +238,6 @@ describe("ACP projection request intents", () => {
     const streaming = page("2", [turn(2)]);
     streaming.nextCursor = "older" as AcpPageCursor;
     store().completePageLoad(store().beginPageLoad(null), streaming);
-    // The history read lands after the stream has moved the revision again.
     expect(store().completePageLoad(history, page("3", [turn(1)]))).toBe(
       "accepted",
     );

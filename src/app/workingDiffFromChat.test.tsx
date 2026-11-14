@@ -111,8 +111,6 @@ it.each([true, false])(
       additions: null,
       deletions: null,
     });
-    // An older summary-only card must still work after a later saved edit of
-    // the same resource; its explicit working-tree intent is independent.
     const later = snapshotPage().turns[0];
     page.turns = [
       ...page.turns,

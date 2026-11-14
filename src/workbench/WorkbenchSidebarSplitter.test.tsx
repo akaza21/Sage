@@ -45,7 +45,6 @@ describe("WorkbenchSidebarSplitter", () => {
     const splitter = screen.getByRole("separator", {
       name: "Resize files and preview",
     });
-    // A trailing sidebar grows as its splitter moves left.
     fireEvent.keyDown(splitter, { key: "ArrowLeft" });
     fireEvent.keyDown(splitter, { key: "ArrowRight" });
     expect(onChange.mock.calls).toEqual([

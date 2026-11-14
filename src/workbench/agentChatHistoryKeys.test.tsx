@@ -43,7 +43,6 @@ function showProject(projectId: string, activeTabId: string) {
   });
 }
 
-/** The Agent window: its title bar notes chats, its keys travel. */
 function AgentWindow() {
   useHistoryKeys("agent");
   return <TitleBar mode="agent" onModeChange={() => undefined} />;
@@ -96,7 +95,6 @@ it("goes back and forward between chats on Alt+arrows and the mouse buttons", as
 it("keeps the way back while a pending send holds the project, then takes it", async () => {
   render(<AgentWindow />);
   act(() => showProject("project-b", "b1"));
-  // The real project switch refuses while a send is pending.
   useWorkbenchStore.setState({ sending: true });
 
   fireEvent.keyDown(document.body, { key: "ArrowLeft", altKey: true });
@@ -120,7 +118,6 @@ it("keeps Back when a refused switch leaves the retained chat showing", async ()
     useWorkbenchStore.setState({ activeTabId: "a2" });
     pinAgentChatOwner("a2");
   });
-  // A file opens beside the chat; the Agent body keeps showing a2.
   act(() =>
     useWorkbenchStore.setState({
       tabs: [
@@ -136,7 +133,6 @@ it("keeps Back when a refused switch leaves the retained chat showing", async ()
         },
       ],
       activeTabId: "file:notes",
-      // The real activation flushes the editor first and stops when it fails.
       activateTab: initialState.activateTab,
       flushActiveEditor: async () => {
         throw new Error("disk unavailable");

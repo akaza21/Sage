@@ -35,7 +35,6 @@ export interface SearchablePickerOption {
   disabledReason?: string;
   icon?: HarnessBrand | "generic";
   logo?: string;
-  /** A secondary action rendered beside the option, e.g. "Sign in". */
   action?: { label: string; accessibleLabel?: string; onAction: () => void };
 }
 
@@ -47,17 +46,11 @@ const renderPopover = (
   props: PopoverProps,
 ) => <Loaded {...props} />;
 
-/** Renders the open list; its picker mounts it once the chunk is in. */
 function PopoverSlot(props: PopoverProps) {
   const Loaded = loadedSearchablePickerPopover();
   return Loaded ? renderPopover(Loaded, props) : null;
 }
 
-/**
- * The open list once its chunk has arrived, whichever picker asked for it.
- * It is fetched when the window is idle; a picker opened before then asks
- * again, and closes if that fails so the next open retries.
- */
 function usePopoverLoad(wanted: boolean, onFailure: () => void) {
   const Loaded = useSyncExternalStore(
     subscribeSearchablePicker,
@@ -114,7 +107,6 @@ export function SearchablePicker({
   onOpenChange?: (open: boolean) => void;
   popoverClassName?: string;
   popoverGap?: number;
-  /** Where the list opens relative to its trigger; see MenuPlacement. */
   popoverPlacement?: MenuPlacement;
   triggerClassName?: string;
   triggerRole?: "menuitem";
@@ -134,8 +126,6 @@ export function SearchablePicker({
   const open = controlledOpen ?? internalOpen;
   const setOpen = onOpenChange ?? setInternalOpen;
   const expanded = open && !disabled;
-  // Once opened, the list stays mounted; the typed query lives here, so it
-  // also outlives a close and the too-many-candidates notice.
   const [opened, setOpened] = useState(expanded);
   if (expanded && !opened) setOpened(true);
   const [draft, setDraft] = useState("");

@@ -1,4 +1,3 @@
-/** Live activities of a chat's current session, and its Undo. */
 export type SessionActivityState =
   "running" | "completed" | "failed" | "cancelled";
 
@@ -14,8 +13,10 @@ export interface SessionActivity {
 
 export interface AcpSessionSurface {
   activities: readonly SessionActivity[];
-  /** The latest turn, when the running session can undo its file changes. */
+  /**
+   * Latest turn the running session can undo; `undoKeepsFiles` means
+   * conversation-only undo.
+   */
   undoTurn?: string;
-  /** Undo removes the turn from the conversation only; files stay. */
   undoKeepsFiles?: boolean;
 }

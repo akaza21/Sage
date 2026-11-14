@@ -135,7 +135,6 @@ describe("repository auto refresh", () => {
     expect(changeStamp.mock.calls.length).toBeGreaterThanOrEqual(5);
     expect(refresh).not.toHaveBeenCalled();
     stamp = "b";
-    // No debounce for a stamp change: within one tick, well under 1 s.
     await advance(STAMP_INTERVAL_MS + 10);
     expect(refresh).toHaveBeenCalledTimes(1);
     await advance(STAMP_INTERVAL_MS * 5);
@@ -144,7 +143,6 @@ describe("repository auto refresh", () => {
 
   it("keeps no timers and runs nothing while hidden", async () => {
     start();
-    // After an overflow the poll is armed too, so every timer is live here.
     notice("", "resync");
     await advance(STAMP_INTERVAL_MS);
     expect(refresh).toHaveBeenCalledTimes(1);
@@ -280,7 +278,6 @@ describe("repository auto refresh", () => {
     start(true);
     await advance(MIN_IDLE_POLL_MS * 4);
     const gaps = times.slice(1).map((time, index) => time - times[index]!);
-    // The sixth poll found a change, so the seventh comes at the fastest pace.
     expect(gaps[4]).toBe(MIN_IDLE_POLL_MS + REFRESH_DEBOUNCE_MS);
     expect(gaps[5]).toBe(MIN_POLL_MS + REFRESH_DEBOUNCE_MS);
   });

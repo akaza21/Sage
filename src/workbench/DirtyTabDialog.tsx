@@ -30,8 +30,6 @@ function DirtyTabConfirmation({
     const state = activeCommands();
     if (!state) return;
     state.cancelCloseTab();
-    // Cancel goes back to typing in the active File, whether the close began
-    // in its editor (Ctrl+W) or on a tab's close button.
     // Only an editor that is open can take the request, so a stale one never
     // steals the focus later.
     const editor = state.activeEditor;
@@ -66,10 +64,8 @@ function DirtyTabConfirmation({
     <ModalDialog
       className="dirty-dialog--editor"
       labelledBy="dirty-dialog-title"
-      // With no File to type in (a Diff or Settings tab is active), Cancel
-      // puts the focus back where the close began. The editor's own focus
-      // request runs after this restore, as React runs every effect cleanup
-      // before the next effects. After Save or Discard the tab is gone.
+      // The editor's own focus request runs after this restore, as React runs
+      // every effect cleanup before the next effects.
       restoreFocus
       onDismiss={dismiss}
     >

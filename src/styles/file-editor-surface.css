@@ -177,9 +177,6 @@
   background: var(--color-surface);
 }
 
-/* VS Code's find widget: a Replace chevron down the left edge, the query
-   box holding its option toggles, then status and navigation. The replace
-   row's children share the same columns, so both boxes line up. */
 .editor-find--overlay {
   position: absolute;
   z-index: var(--z-floating);
@@ -287,8 +284,6 @@
   gap: 4px;
 }
 
-/* Find and Replace marks. Every match is filled; the current one also gets
-   an edge, so it stays visible under the selection that follows it. */
 .editor-input .cm-editor .cm-findMatch {
   background: var(--resource-document-find-match);
 }
@@ -416,8 +411,6 @@
   cursor: pointer;
 }
 
-/* A chevron, pointing down while the block is open. Like VS Code, open
-   blocks show it only while the pointer is over the gutter. */
 .editor-input .cm-foldMarker {
   display: block;
   width: 8px;
@@ -561,8 +554,6 @@
   }
 }
 
-/* Change markers against the staged text, as VS Code's gutter draws
-   them: a bar for added and changed lines, a wedge where lines were deleted. */
 .editor-input .git-gutter .cm-gutterElement {
   position: relative;
   width: 6px;

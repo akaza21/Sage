@@ -43,7 +43,6 @@ afterEach(() => {
 
 it("records the visible chat as read without the sidebar mounted", () => {
   render(<ViewedChatReadMark chatIds={["chat-a"]} visible />);
-  // Through the latest Turn's finish time, not the chat's update time.
   expect(chatReadThrough("chat-a")).toBe(5_000);
 });
 
@@ -65,12 +64,10 @@ it("leaves a parent unread while only its side chat is displayed", () => {
     ],
     activeTabId: "side-a",
   });
-  // A compact layout shows the focused side chat alone.
   const { rerender } = render(
     <ViewedChatReadMark chatIds={["side-a"]} visible />,
   );
   expect(chatReadThrough("chat-a")).toBeUndefined();
-  // Side by side, the parent's answer is on screen.
   rerender(<ViewedChatReadMark chatIds={["chat-a", "side-a"]} visible />);
   expect(chatReadThrough("chat-a")).toBe(5_000);
 });

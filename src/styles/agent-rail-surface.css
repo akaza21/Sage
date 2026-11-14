@@ -196,14 +196,10 @@
   opacity: 1;
 }
 
-/* Rows stack on a 28px pitch, as in the reference: no extra gap above or
-   below an expanded project. */
 .workbench--agent .project-entry {
   gap: 0;
 }
 
-/* A project's chats span the full list, so their hover and selected fill
-   does too; only the title is indented under the project name. */
 .workbench--agent .project-chats {
   padding: 0;
 }
@@ -477,7 +473,6 @@
   padding-bottom: 7px;
 }
 
-/* The dot or spinner is centered where Archive appears on hover. */
 .workbench--agent .project-chat__trailing > .project-chat__state {
   min-width: var(--agent-rail-trailing-control);
   justify-content: center;

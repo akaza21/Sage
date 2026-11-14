@@ -5,9 +5,7 @@ interface ArchiveUndo {
   chatId: string;
   title: string;
 }
-// Interaction badges retain only the same bounded working set as the rail.
 const MAX_INTERACTION_CHATS = 64;
-// An archive undo is a short-lived action, not persistent navigation.
 export const ARCHIVE_UNDO_MS = 8_000;
 let undoTimer: ReturnType<typeof setTimeout> | undefined;
 const listeners = new Set<() => void>();
@@ -89,11 +87,9 @@ export function pruneAgentRailInteractions(chatIds: ReadonlySet<string>) {
   publish();
 }
 
-/** How long the pointer rests on a rail row before its hover card shows. */
 const HOVER_CARD_DELAY_MS = 500;
 const MONTH_MS = 30 * 86_400_000;
 
-/** Codex's compact age: now, then m, h, d, mo and y. */
 export function agentRailHoverAge(updatedAt: number | undefined, now: number) {
   if (!updatedAt || !Number.isFinite(updatedAt) || now < updatedAt) return "";
   const minutes = Math.floor((now - updatedAt) / 60_000);
@@ -107,10 +103,6 @@ export function agentRailHoverAge(updatedAt: number | undefined, now: number) {
   return months < 12 ? `${months}mo` : `${Math.floor(months / 12)}y`;
 }
 
-/**
- * Which rail row's hover card shows, after the pointer rests on it. Leaving
- * the row, pressing it or scrolling anywhere hides the card.
- */
 export function useRailHoverCard() {
   const [card, setCard] = useState<{
     chatId: string;

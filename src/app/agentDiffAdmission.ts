@@ -12,7 +12,6 @@ export { snapshotProjectionRevision } from "./snapshotProjection";
 
 export { snapshotTabIsPresent } from "./snapshotTabPresence";
 
-/** A new card action must be the exact currently displayed retained projection. */
 export function selectedSnapshotIsCurrent(
   state: WorkbenchState,
   value: AgentDiffRef,

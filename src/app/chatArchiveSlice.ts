@@ -4,11 +4,8 @@ import { errorMessage } from "../domain/errors";
 import type * as ArchiveActions from "./chatArchiveActions";
 import type { WorkbenchState } from "./store";
 
-/** A Chat action started from a rail or archived-list row. */
 export type ChatRowAction = "archive" | "restore" | "delete";
 
-/** A row action the backend refused, shown on the row it was started from
- * instead of in whichever Chat is open. */
 export interface ChatRowError {
   projectId: string;
   chatId: string;
@@ -16,8 +13,6 @@ export interface ChatRowError {
   message: string;
 }
 
-/** Where a refused archive or restore reports: the row it was started from,
- * or the workbench's shared error. */
 export type ChatActionReport = "row" | "workbench";
 
 export interface ChatArchiveSlice {
@@ -32,14 +27,12 @@ export interface ChatArchiveSlice {
     projectId?: string,
     report?: ChatActionReport,
   ) => Promise<boolean>;
-  /** Permanently deletes an archived Chat; callers confirm first. A refusal
-   * is reported on the Chat's archived row. */
+  /** Permanent; callers confirm first. */
   deleteChat: (chatId: string, projectId?: string) => Promise<boolean>;
   dismissChatRowError: () => void;
 }
 
-/** The archive, restore and delete actions load with the first one used,
- * outside the initial bundle; a load failure is reported like a refusal. */
+/** Loaded with the first action used, outside the initial bundle. */
 export const createChatArchiveSlice: StateCreator<
   WorkbenchState,
   [],

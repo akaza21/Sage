@@ -13,13 +13,10 @@ export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
   const setSidebarView = useWorkbenchStore((state) => state.setSidebarView);
 
   const openView = (view: SidebarView) => setSidebarView(view);
-  // Browse files also moves focus into the Explorer, even when it is already
-  // open: to the selected row, or else the first row. Explorer mounts on a
-  // later render, its chunk may still be loading on a cold start, and its
-  // rows wait for the first listing, so this retries for a few frames and
-  // settles for any button in the tree on the last one. It gives up if focus
-  // moved on meanwhile. The compact drawer focusing its own panel doesn't
-  // count as moving on.
+  // Explorer mounts on a later render, its chunk may still be loading on a cold
+  // start, and its rows wait for the first listing, so this retries for a few
+  // frames, giving up if focus moved on (the compact drawer focusing its own
+  // panel doesn't count).
   const browseFiles = (event: MouseEvent<HTMLButtonElement>) => {
     const button = event.currentTarget;
     openView("explorer");

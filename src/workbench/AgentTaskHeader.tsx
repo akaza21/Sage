@@ -27,7 +27,6 @@ import { AgentTaskResourcesPart } from "./agentTaskHeaderLazy";
 import { AgentToolsContext } from "./AgentToolsProvider";
 import { AgentNavigationPart } from "./agentNavigationLazy";
 
-/** Delay after mount before preloading the resources panel, off the first frame. */
 const RESOURCES_PRELOAD_DELAY_MS = 1000;
 
 function preloadResources() {
@@ -69,8 +68,6 @@ export function AgentTaskHeader({
     if (!document.getElementById(resourcesId)) setResourcesOpen(false);
     if (!document.getElementById(renameId)) setRenaming(false);
   }, [resourcesId, renameId]);
-  // Until their lazy parts load, the trigger stands in for the popover and
-  // the rename form.
   useDismissLayer(resourcesOpen || renaming, {
     inside: [resourcesTriggerRef],
     onOutside: dismissPending,
@@ -164,7 +161,8 @@ export function AgentTaskHeader({
             onOpenChange={setMenuOpen}
             onRename={() => {
               setRenaming(true);
-              // Keep keyboard dismissal available while the rename form loads.
+              // Keep Escape/Tab dismissal reachable while the rename
+              // form loads.
               resourcesTriggerRef.current?.focus();
             }}
             sessionChrome={sessionChrome}

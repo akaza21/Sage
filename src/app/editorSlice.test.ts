@@ -134,8 +134,6 @@ describe("typing in the active editor", () => {
       content: "base\nabc",
       revision: 3,
     });
-    // Tab strips and the sidebar subscribe to `tabs`; later keystrokes must
-    // not hand them a new array.
     expect(tabChanges).toHaveLength(1);
     expect(tabChanges[0][0]).toMatchObject({ dirty: true });
     expect(state.tabs).toBe(tabChanges[0]);
