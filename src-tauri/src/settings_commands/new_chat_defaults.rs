@@ -12,11 +12,11 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::{
-    domain::HarnessInstallState,
     harnesses::HarnessCatalog,
     settings_store::{NewChatDefaults, SettingsStore},
     state::AppState,
 };
+use sage_domain::harness::HarnessInstallState;
 
 /// What harness discovery says about the stored default harness.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]

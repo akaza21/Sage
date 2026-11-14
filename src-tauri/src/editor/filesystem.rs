@@ -8,12 +8,12 @@ use sage_core::error::{AppError, AppResult};
 use uuid::Uuid;
 
 use crate::{
-    domain::{DocumentVersion, ResourceRef},
     editor_content::{MAX_EDITABLE_BYTES, detect_line_ending, fingerprint},
     editor_persistence::PersistedEditorBuffer,
     persistence::Database,
     workspace::{RootIdentity, Workspace, leaf_identity, open_workspace_text_file},
 };
+use sage_domain::{editor::DocumentVersion, resource::ResourceRef};
 
 pub(super) use self::platform::HeldParent;
 

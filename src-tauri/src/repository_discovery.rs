@@ -10,7 +10,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::domain::RepositoryRef;
+use sage_domain::repository::RepositoryRef;
 
 pub const MAX_REPOSITORIES_PER_ROOT: usize = 8;
 pub const MAX_REPOSITORIES_PER_PROJECT: usize = 32;

@@ -1,0 +1,16 @@
+[package]
+name = "sage-domain"
+description = "The IPC types Sage's frontend sees."
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+sage-acp-protocol.workspace = true
+serde.workspace = true

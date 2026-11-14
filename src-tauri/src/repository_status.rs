@@ -3,12 +3,15 @@ use std::{collections::HashMap, time::Instant};
 use sage_core::error::{AppError, AppResult};
 
 use crate::{
-    domain::{ProjectRepositoryStatus, ResourceRef, RootRepositoryStatus},
     repository::{
         RepositoryBoundary, ensure_success, repository_boundary, repository_diff_base, run_git,
     },
     repository_parse::{ParsedStatus, merge_numstat, parse_status},
     workspace::Workspace,
+};
+use sage_domain::{
+    repository::{ProjectRepositoryStatus, RootRepositoryStatus},
+    resource::ResourceRef,
 };
 
 const MAX_STATUS_BYTES: usize = 4 * 1024 * 1024;

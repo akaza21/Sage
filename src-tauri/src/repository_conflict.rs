@@ -2,10 +2,9 @@ use std::path::PathBuf;
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    domain::{FileChange, GitFileMutationAction, ResourceRef},
-    repository,
-    workspace::Workspace,
+use crate::{repository, workspace::Workspace};
+use sage_domain::{
+    file_operations::GitFileMutationAction, repository::FileChange, resource::ResourceRef,
 };
 
 const MAX_GIT_ADMIN_PATH_BYTES: usize = 32 * 1024;

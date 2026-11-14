@@ -5,14 +5,14 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::{
-    domain::{
-        GitFileMutationCommandError, GitFileMutationError, GitFileMutationErrorKind,
-        GitFileMutationRequest, GitFileMutationResult, GitProcessState,
-    },
     repository,
     repository_mutation::{mutate_file, mutate_file_with_process_policy},
     state::AppState,
     workspace::Workspace,
+};
+use sage_domain::file_operations::{
+    GitFileMutationCommandError, GitFileMutationError, GitFileMutationErrorKind,
+    GitFileMutationRequest, GitFileMutationResult, GitProcessState,
 };
 
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
@@ -79,7 +79,8 @@ async fn mutate_git_file_inner_with_policy_override(
             "Git mutation Project identity exceeds its bounded contract".into(),
         ));
     }
-    if request.action == crate::domain::GitFileMutationAction::Discard && !request.discard_confirmed
+    if request.action == sage_domain::file_operations::GitFileMutationAction::Discard
+        && !request.discard_confirmed
     {
         return Err(AppError::InvalidRequest(
             "Git discard requires explicit confirmation".into(),
@@ -151,11 +152,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{
-        domain::{GitFileMutationAction, GitFileMutationRequest},
-        persistence::Database,
-        state::AppState,
-    };
+    use crate::{persistence::Database, state::AppState};
+    use sage_domain::file_operations::{GitFileMutationAction, GitFileMutationRequest};
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
@@ -211,7 +209,7 @@ mod tests {
                 &state,
                 GitFileMutationRequest {
                     project_id: project.id.clone(),
-                    resource: crate::domain::ResourceRef {
+                    resource: sage_domain::resource::ResourceRef {
                         root_id: root_id.clone(),
                         relative_path: "new.txt".into(),
                     },
@@ -258,7 +256,7 @@ mod tests {
 
             let request = GitFileMutationRequest {
                 project_id: project.id,
-                resource: crate::domain::ResourceRef {
+                resource: sage_domain::resource::ResourceRef {
                     root_id,
                     relative_path: "tracked.txt".into(),
                 },
@@ -314,7 +312,7 @@ mod tests {
                 &state,
                 GitFileMutationRequest {
                     project_id: project.id,
-                    resource: crate::domain::ResourceRef {
+                    resource: sage_domain::resource::ResourceRef {
                         root_id: root_id.clone(),
                         relative_path: "new.txt".into(),
                     },
@@ -357,7 +355,7 @@ mod tests {
                 &state,
                 GitFileMutationRequest {
                     project_id: "p".repeat(512),
-                    resource: crate::domain::ResourceRef {
+                    resource: sage_domain::resource::ResourceRef {
                         root_id: root_id.clone(),
                         relative_path: "new.txt".into(),
                     },
@@ -375,7 +373,7 @@ mod tests {
                 &state,
                 GitFileMutationRequest {
                     project_id: "p".repeat(513),
-                    resource: crate::domain::ResourceRef {
+                    resource: sage_domain::resource::ResourceRef {
                         root_id,
                         relative_path: "new.txt".into(),
                     },
@@ -410,7 +408,7 @@ mod tests {
                 repository::GitProcessPolicy::with_deadline_wait_gate(Duration::from_millis(50));
             let request = GitFileMutationRequest {
                 project_id: project.id,
-                resource: crate::domain::ResourceRef {
+                resource: sage_domain::resource::ResourceRef {
                     root_id: root_id.clone(),
                     relative_path: "new.txt".into(),
                 },
@@ -427,7 +425,7 @@ mod tests {
 
             assert_eq!(
                 result.error.as_ref().unwrap().kind,
-                crate::domain::GitFileMutationErrorKind::EffectUnknown
+                sage_domain::file_operations::GitFileMutationErrorKind::EffectUnknown
             );
             let authoritative_changes =
                 serde_json::to_value(&result.repositories.roots[0].changes).unwrap();
@@ -465,7 +463,7 @@ mod tests {
                 repository::GitProcessPolicy::with_deadline_wait_gate(Duration::from_millis(50));
             let request = GitFileMutationRequest {
                 project_id: project.id,
-                resource: crate::domain::ResourceRef {
+                resource: sage_domain::resource::ResourceRef {
                     root_id: root_id.clone(),
                     relative_path: "tracked.txt".into(),
                 },
@@ -482,7 +480,7 @@ mod tests {
 
             assert_eq!(
                 result.error.as_ref().unwrap().kind,
-                crate::domain::GitFileMutationErrorKind::EffectUnknown
+                sage_domain::file_operations::GitFileMutationErrorKind::EffectUnknown
             );
             let authoritative_changes =
                 serde_json::to_value(&result.repositories.roots[0].changes).unwrap();
@@ -521,7 +519,7 @@ mod tests {
                 &state,
                 GitFileMutationRequest {
                     project_id: project.id,
-                    resource: crate::domain::ResourceRef {
+                    resource: sage_domain::resource::ResourceRef {
                         root_id,
                         relative_path: "new.txt".into(),
                     },
@@ -591,7 +589,7 @@ mod tests {
                 &state,
                 GitFileMutationRequest {
                     project_id: project.id,
-                    resource: crate::domain::ResourceRef {
+                    resource: sage_domain::resource::ResourceRef {
                         root_id,
                         relative_path: "new.txt".into(),
                     },
@@ -608,7 +606,7 @@ mod tests {
 
             assert_eq!(
                 result.error.as_ref().unwrap().kind,
-                crate::domain::GitFileMutationErrorKind::EffectUnknown
+                sage_domain::file_operations::GitFileMutationErrorKind::EffectUnknown
             );
             assert_eq!(
                 result.repositories.roots[0].changes[0].index_status,
@@ -646,7 +644,7 @@ mod tests {
                 &state,
                 GitFileMutationRequest {
                     project_id: project.id,
-                    resource: crate::domain::ResourceRef {
+                    resource: sage_domain::resource::ResourceRef {
                         root_id,
                         relative_path: "new.txt".into(),
                     },
@@ -663,7 +661,7 @@ mod tests {
 
             assert_eq!(
                 result.error.as_ref().unwrap().kind,
-                crate::domain::GitFileMutationErrorKind::EffectUnknown
+                sage_domain::file_operations::GitFileMutationErrorKind::EffectUnknown
             );
             assert_eq!(
                 result.repositories.roots[0].changes[0].index_status,
@@ -693,7 +691,7 @@ mod tests {
             let snapshot = database.bootstrap_snapshot().unwrap();
             let request = GitFileMutationRequest {
                 project_id: project.id,
-                resource: crate::domain::ResourceRef {
+                resource: sage_domain::resource::ResourceRef {
                     root_id: snapshot.project.unwrap().roots[0].id.clone(),
                     relative_path: "new.txt".into(),
                 },
@@ -784,7 +782,7 @@ mod tests {
             let snapshot = database.bootstrap_snapshot().unwrap();
             let request = GitFileMutationRequest {
                 project_id: project.id,
-                resource: crate::domain::ResourceRef {
+                resource: sage_domain::resource::ResourceRef {
                     root_id: snapshot.project.unwrap().roots[0].id.clone(),
                     relative_path: "new.txt".into(),
                 },
@@ -882,7 +880,7 @@ mod tests {
             let snapshot = database.bootstrap_snapshot().unwrap();
             let request = GitFileMutationRequest {
                 project_id: project.id,
-                resource: crate::domain::ResourceRef {
+                resource: sage_domain::resource::ResourceRef {
                     root_id: snapshot.project.unwrap().roots[0].id.clone(),
                     relative_path: "new.txt".into(),
                 },

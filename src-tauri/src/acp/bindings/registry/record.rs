@@ -13,8 +13,8 @@ use crate::acp::bindings::{
         OpenCodeBindingRegistration, StandardAcpBindingSource,
     },
 };
-use crate::domain::HarnessCharacterisation;
 use sage_acp_protocol::intent::CapabilitySnapshotV1;
+use sage_domain::harness::HarnessCharacterisation;
 
 use super::{AuthProvider, ModelProvider, RegistryAdmissionUnavailable, WireIdentity};
 

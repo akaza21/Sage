@@ -2,7 +2,8 @@ use std::{fs, path::PathBuf};
 
 use uuid::Uuid;
 
-use crate::{domain::TrashResourceKind, workspace::Workspace};
+use crate::workspace::Workspace;
+use sage_domain::file_operations::TrashResourceKind;
 
 struct Fixture {
     root: PathBuf,
@@ -51,7 +52,7 @@ fn preflight_admits_one_regular_file_and_one_empty_folder() {
 #[test]
 fn preflight_rejects_root_kind_mismatch_and_nonempty_folder_without_mutation() {
     let fixture = Fixture::new();
-    let root = crate::domain::ResourceRef {
+    let root = sage_domain::resource::ResourceRef {
         root_id: "root".into(),
         relative_path: String::new(),
     };

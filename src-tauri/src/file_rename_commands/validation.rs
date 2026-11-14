@@ -4,11 +4,8 @@ use sage_core::{
     time::now_millis,
 };
 
-use crate::{
-    domain::{RenameProjectFileRequest, ResourceRef},
-    project_registry::RootRecord,
-    workspace::Workspace,
-};
+use crate::{project_registry::RootRecord, workspace::Workspace};
+use sage_domain::{file_operations::RenameProjectFileRequest, resource::ResourceRef};
 
 use super::RenameKind;
 

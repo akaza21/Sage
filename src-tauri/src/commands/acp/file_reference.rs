@@ -5,11 +5,11 @@ use tauri::State;
 
 use crate::{
     acp::resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
-    domain::ResourceRef,
     project_registry::RootRecord,
     state::AppState,
 };
 use sage_acp_protocol::contract::SageRootId;
+use sage_domain::resource::ResourceRef;
 
 const MAX_REFERENCE_BYTES: usize = 4096;
 

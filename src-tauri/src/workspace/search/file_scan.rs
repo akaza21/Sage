@@ -1,6 +1,7 @@
 use std::io::Read;
 
-use crate::{domain::ResourceRef, workspace::Workspace};
+use crate::workspace::Workspace;
+use sage_domain::resource::ResourceRef;
 
 use super::{
     contained_file::{ContainedFile, open_contained_file},

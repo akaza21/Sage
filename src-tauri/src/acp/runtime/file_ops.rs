@@ -3,10 +3,12 @@ use std::sync::{Arc, atomic::AtomicBool};
 use sage_core::error::{AppError, AppResult};
 
 use crate::{
-    domain::{BufferSnapshotRequest, ResourceRef, TrashResourceKind},
     editor,
     persistence::Database,
     workspace::{Workspace, file_rename::FileRenameMarker, resource_trash::ResourceTrashMarker},
+};
+use sage_domain::{
+    editor::BufferSnapshotRequest, file_operations::TrashResourceKind, resource::ResourceRef,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

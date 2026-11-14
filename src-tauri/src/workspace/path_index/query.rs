@@ -5,7 +5,7 @@ use std::{
     collections::{BinaryHeap, HashMap},
 };
 
-use crate::domain::ResourceRef;
+use sage_domain::resource::ResourceRef;
 
 use super::{
     IndexInputs, ProjectIndex, Readied, Ticket, claim_generation, ready,

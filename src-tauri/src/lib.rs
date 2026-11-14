@@ -23,7 +23,6 @@ mod chat_search_commands;
 #[doc(hidden)]
 pub mod codex_helper_boundary;
 mod commands;
-mod domain;
 mod editor;
 mod editor_content;
 mod editor_coordination;

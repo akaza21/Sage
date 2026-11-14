@@ -17,12 +17,12 @@ use crate::{
         codex::{CodexHostPresence, observe_codex_host_presence},
         registry::{BindingRegistry, ModelProvider},
     },
-    domain::{HarnessDefinition, HarnessInstallState, HarnessTransport, ModelOption},
     harness_discovery::{InstalledHarness, known_harness_spec},
 };
+use sage_domain::harness::{HarnessDefinition, HarnessInstallState, HarnessTransport, ModelOption};
 
 #[cfg(test)]
-use crate::domain::HarnessUnavailableReason;
+use sage_domain::harness::HarnessUnavailableReason;
 
 #[cfg(test)]
 use crate::acp::bindings::codex::CodexBindingRegistration;
@@ -294,12 +294,12 @@ impl HarnessCatalog {
         for definition in &mut definitions {
             let spec = known_harness_spec(&definition.id);
             definition.brand = spec.and_then(|spec| spec.brand);
-            definition.sign_in =
-                spec.and_then(|spec| spec.sign_in)
-                    .map(|sign_in| crate::domain::HarnessSignIn {
-                        command: sign_in.command.into(),
-                        hint: sign_in.hint.into(),
-                    });
+            definition.sign_in = spec.and_then(|spec| spec.sign_in).map(|sign_in| {
+                sage_domain::harness::HarnessSignIn {
+                    command: sign_in.command.into(),
+                    hint: sign_in.hint.into(),
+                }
+            });
             if let Some(discovered) = self.discovered(&definition.id) {
                 definition.version = discovered.version.as_deref().and_then(safe_display_version);
             }
@@ -497,7 +497,7 @@ mod tests {
 
     #[test]
     fn curated_harnesses_carry_their_brand_and_others_have_none() {
-        use crate::domain::HarnessBrand;
+        use sage_domain::harness::HarnessBrand;
         let catalog = HarnessCatalog::with_codex_registration_and_presence(
             CodexBindingRegistration::unavailable_for_test(),
             CodexHostPresence::Absent,
@@ -595,7 +595,7 @@ mod tests {
         assert_eq!(opencode.bound_version.as_deref(), Some("1.18.21"));
         assert_eq!(
             opencode.characterisation,
-            Some(crate::domain::HarnessCharacterisation::Characterised)
+            Some(sage_domain::harness::HarnessCharacterisation::Characterised)
         );
         assert!(opencode.unavailable_reason.is_none());
     }
@@ -606,11 +606,11 @@ mod tests {
         for (version, characterisation) in [
             (
                 "1.18.20",
-                crate::domain::HarnessCharacterisation::Uncharacterised,
+                sage_domain::harness::HarnessCharacterisation::Uncharacterised,
             ),
             (
                 "1.19.0",
-                crate::domain::HarnessCharacterisation::NewerThanTested,
+                sage_domain::harness::HarnessCharacterisation::NewerThanTested,
             ),
         ] {
             let root = std::env::temp_dir()
@@ -1037,7 +1037,7 @@ mod tests {
         );
         assert_eq!(
             by_id(&definitions, "claude-code").unavailable_reason,
-            Some(crate::domain::HarnessUnavailableReason::AdapterAbsent),
+            Some(sage_domain::harness::HarnessUnavailableReason::AdapterAbsent),
         );
         assert_eq!(
             by_id(&definitions, "opencode").unavailable_reason,
@@ -1184,7 +1184,7 @@ mod tests {
         assert_eq!(entry.install_state, "available");
         assert_eq!(
             entry.characterisation,
-            Some(crate::domain::HarnessCharacterisation::Uncharacterised)
+            Some(sage_domain::harness::HarnessCharacterisation::Uncharacterised)
         );
         assert_eq!(entry.bound_version.as_deref(), Some("0.75.0"));
         assert!(entry.unavailable_reason.is_none());

@@ -6,7 +6,11 @@ use std::{
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::domain::{DirectoryListing, ResourceRef, TextFile, WorkspaceEntry};
+use sage_domain::{
+    editor::TextFile,
+    project::{DirectoryListing, WorkspaceEntry},
+    resource::ResourceRef,
+};
 
 #[cfg(windows)]
 pub(crate) mod atomic_write_windows;

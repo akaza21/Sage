@@ -2,12 +2,13 @@ use std::fs;
 
 use sage_core::error::AppError;
 
-use crate::{
-    domain::{MoveChatRequest, ProjectLayoutRequest, ProjectSwitchRequest},
-    persistence::Database,
+use crate::persistence::Database;
+use sage_domain::{
+    chat::{MoveChatRequest, ProjectLayoutRequest},
+    project::ProjectSwitchRequest,
 };
 
-fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
+fn layout(snapshot: &sage_domain::project::BootstrapSnapshot) -> ProjectLayoutRequest {
     ProjectLayoutRequest {
         project_id: snapshot.project.as_ref().unwrap().id.clone(),
         tabs: snapshot.tabs.clone(),
