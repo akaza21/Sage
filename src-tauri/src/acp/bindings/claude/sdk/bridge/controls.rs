@@ -99,8 +99,9 @@ impl SdkBridge {
         })
     }
 
-    /// None changes what Sage holds, and Claude Code may still finish a reconnect. The request id
-    /// stays known, so the late reply is dropped rather than read as a frame Sage never asked for.
+    /// Passive requests change nothing Sage holds, and Claude Code may still finish a reconnect.
+    /// The request id stays known, so the late reply is dropped rather than read as a frame Sage
+    /// never asked for.
     pub(in crate::acp::bindings::claude::sdk) fn abandon_passive_requests(&mut self) {
         for pending in self.pending.values_mut() {
             if matches!(pending, Pending::Passive(_)) {

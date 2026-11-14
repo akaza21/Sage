@@ -344,10 +344,10 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
 
     /// Claude Code's own output can exceed the structure limits sized for ACP frames: an edit's
-    /// result carries its whole patch in `tool_use_result`, which Sage never reads. Still out of
-    /// bounds, a turn's end or a reply to Sage keeps only what ends it, a control request is
-    /// refused so Claude Code is not left waiting, and anything else is dropped (an unfinished
-    /// tool row ends as failed with the turn).
+    /// result carries its whole patch in `tool_use_result`, which Sage never reads. Such a frame is
+    /// read without those fields. Still out of bounds, a turn's end or a reply to Sage keeps only
+    /// what ends it, a control request is refused so Claude Code is not left waiting, and anything
+    /// else is dropped (an unfinished tool row ends as failed with the turn).
     fn discard_invalid_response(
         &mut self,
         frame: &Frame,

@@ -9,7 +9,8 @@ use crate::domain::HarnessCharacterisation;
 const COMPONENT_DIGITS_MAX: usize = 10;
 const PRERELEASE_BYTES_MAX: usize = 64;
 
-/// Build metadata after `+` is accepted and ignored, as semantic versioning specifies.
+/// A `major.minor.patch` release with an optional `-prerelease` tag. Build metadata after `+` is
+/// accepted and ignored, as semantic versioning specifies.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct ReleaseVersion {
     core: (u64, u64, u64),
