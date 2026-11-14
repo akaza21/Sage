@@ -153,7 +153,6 @@ pub(super) fn refuse_governed_mode_change(
     Ok(())
 }
 
-/// A mode or option value for a session with no live runtime.
 #[derive(Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub(crate) enum QueuedChoice {
@@ -177,9 +176,6 @@ pub(crate) struct QueueSessionConfigChoiceRequest {
     pub session_id: SageAgentSessionId,
     pub choice: QueuedChoice,
 }
-/// Stores a choice made while the chat's session has no live runtime. The
-/// composer shows it as restored, and the restore applies it before the
-/// session's next prompt, as it does every stored choice.
 #[tauri::command]
 pub(crate) async fn queue_acp_session_config_choice(
     state: State<'_, AppState>,
@@ -203,8 +199,6 @@ pub(crate) async fn queue_acp_session_config_choice(
     if snapshot.session_id.as_ref() != Some(&request.session_id) {
         return Err(intent_error(IntentError::ForeignSession));
     }
-    // A live runtime that has not reported its config yet takes the choice
-    // once it has, as a parked session does on resume.
     let runtime = snapshot
         .runtime_epoch
         .map(|runtime_epoch| crate::acp::scheduler::RuntimeOwner {

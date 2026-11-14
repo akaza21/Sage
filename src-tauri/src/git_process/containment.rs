@@ -149,7 +149,6 @@ pub(super) async fn cleanup_failure(
         tree,
     } = git;
     let cleanup_started = Instant::now();
-    // Terminating the tree also ends the root, and whatever the root started.
     let tree_terminated = tree.terminate();
     let actual_kill_succeeded = tree_terminated || (!failure.reaped && child.start_kill().is_ok());
     #[cfg(test)]
@@ -352,7 +351,6 @@ mod tests {
                 .unwrap();
             assert_eq!(harness.observation().quarantined_owners, 1);
 
-            // A process outside this registry must remain untouched.
             let mut unrelated = crate::git_process::fixture_git()
                 .args(["hash-object", "--stdin"])
                 .stdin(std::process::Stdio::piped())

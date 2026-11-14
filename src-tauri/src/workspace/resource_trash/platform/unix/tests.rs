@@ -16,8 +16,6 @@ thread_local! {
     static HOME: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
 }
 
-/// The data directory a test on this thread trashes into, instead of the
-/// user's own.
 #[cfg(target_os = "linux")]
 pub(super) fn home_override() -> Option<PathBuf> {
     HOME.with(|home| home.borrow().clone())
@@ -151,7 +149,6 @@ fn taken_names_get_a_numbered_name_and_older_items_are_kept() {
     let fixture = Fixture::new();
     fs::create_dir_all(fixture.trash().join("files")).unwrap();
     fs::create_dir_all(fixture.trash().join("info")).unwrap();
-    // An earlier item's record, and an item whose record is missing.
     fs::write(fixture.trash().join("info/file.rs.trashinfo"), "older\n").unwrap();
     fs::write(fixture.trash().join("files/file.2.rs"), "orphan\n").unwrap();
 
@@ -240,7 +237,6 @@ fn an_item_swapped_in_at_the_source_name_is_put_back() {
         open_authority(fixture.parent("src"), "file.rs", TrashResourceKind::File).unwrap();
     fs::create_dir(fixture.trash()).unwrap();
     let trash = freedesktop::trash_directory(&fs::File::open(fixture.trash()).unwrap()).unwrap();
-    // The held source moved away and a different file was trashed instead.
     fs::rename(
         fixture.root.join("src/file.rs"),
         fixture.root.join("src/moved.rs"),
@@ -272,7 +268,6 @@ fn an_item_that_cannot_be_put_back_stays_in_the_trash_with_a_warning() {
         open_authority(fixture.parent("src"), "file.rs", TrashResourceKind::File).unwrap();
     fs::create_dir(fixture.trash()).unwrap();
     let trash = freedesktop::trash_directory(&fs::File::open(fixture.trash()).unwrap()).unwrap();
-    // The source name is occupied again, so putting back would replace it.
     fs::write(fixture.trash().join("files/file.rs"), "swapped\n").unwrap();
 
     let warning = freedesktop::settle(&authority, &trash, c"file.rs", c"file.rs.trashinfo");
@@ -304,7 +299,6 @@ fn another_volume_uses_its_own_trash_directory_per_the_specification() {
     let volume = |path: &std::path::Path| fs::metadata(path).unwrap().dev();
     let open = |path: &std::path::Path| fs::File::open(path).unwrap();
 
-    // No shared directory: a private .Trash-$uid is made.
     fs::create_dir(&top).unwrap();
     assert!(freedesktop::topdir_trash(&open(&top), volume(&top)).is_some());
     let private = top.join(format!(".Trash-{}", uid()));
@@ -312,7 +306,6 @@ fn another_volume_uses_its_own_trash_directory_per_the_specification() {
     assert_eq!(fs::metadata(&private).unwrap().mode() & 0o777, 0o700);
     fs::remove_dir_all(&private).unwrap();
 
-    // A sticky shared directory gets a per-user subdirectory.
     fs::create_dir(top.join(".Trash")).unwrap();
     fs::set_permissions(top.join(".Trash"), fs::Permissions::from_mode(0o1777)).unwrap();
     assert!(freedesktop::topdir_trash(&open(&top), volume(&top)).is_some());
@@ -320,7 +313,6 @@ fn another_volume_uses_its_own_trash_directory_per_the_specification() {
     assert!(!private.exists());
     fs::remove_dir_all(top.join(".Trash")).unwrap();
 
-    // A shared directory that is not sticky is ignored.
     fs::create_dir(top.join(".Trash")).unwrap();
     fs::set_permissions(top.join(".Trash"), fs::Permissions::from_mode(0o777)).unwrap();
     assert!(freedesktop::topdir_trash(&open(&top), volume(&top)).is_some());
@@ -329,7 +321,6 @@ fn another_volume_uses_its_own_trash_directory_per_the_specification() {
     fs::remove_dir_all(&private).unwrap();
     fs::remove_dir_all(top.join(".Trash")).unwrap();
 
-    // A private directory that is a link is refused, and its target untouched.
     let elsewhere = fixture.base.join("elsewhere");
     fs::create_dir(&elsewhere).unwrap();
     std::os::unix::fs::symlink(&elsewhere, &private).unwrap();
@@ -367,7 +358,6 @@ fn the_volume_top_is_the_highest_ancestor_and_records_hold_the_path_below_it() {
             .as_bytes()
     );
     assert!(!below.starts_with(b"/"));
-    // A path that does not lead to the walked top is refused.
     assert!(freedesktop::path_below_top(&source, &top, steps + 1).is_err());
 }
 

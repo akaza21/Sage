@@ -1,13 +1,9 @@
-//! Sage's path glob dialect, used by Search's include and exclude fields and
-//! by the `files.exclude` setting. A pattern matches a whole Project-relative
-//! path with `/` separators: a `**` segment matches any number of segments,
-//! `*` any run of characters within a segment and `?` one character. Matching
-//! is case-sensitive. Mirrored in src/domain/pathGlob.ts.
+//! Whole project-relative `/` paths; a standalone `**` segment matches zero or
+//! more segments; case-sensitive.
+//! Mirrored in src/domain/pathGlob.ts.
 
 pub(crate) const MAX_PATH_GLOB_BYTES: usize = 256;
 
-/// Relative, bounded, without control characters, drive letters, backslashes
-/// or empty, `.` and `..` segments.
 pub(crate) fn valid_path_glob(pattern: &str) -> bool {
     !pattern.is_empty()
         && pattern.len() <= MAX_PATH_GLOB_BYTES
@@ -19,7 +15,6 @@ pub(crate) fn valid_path_glob(pattern: &str) -> bool {
             .all(|segment| !matches!(segment, "" | "." | ".."))
 }
 
-/// A pattern split once into segments: `None` for `**`, else its characters.
 type Segments = Vec<Option<Vec<char>>>;
 
 fn segments(text: &str) -> Segments {
@@ -51,7 +46,6 @@ fn segments_match(pattern: &Segments, path: &[&str]) -> bool {
     previous[path.len()]
 }
 
-/// ASCII names, the common case, are matched without collecting characters.
 fn segment_matches(pattern: &[char], value: &str) -> bool {
     if value.is_ascii() {
         wildcard_matches(pattern, value.as_bytes())
@@ -89,9 +83,6 @@ where
         .all(|character| *character == '*')
 }
 
-/// A list of patterns sorted once for a walk. The common shapes `**/name` and
-/// `**/*.ext` are a comparison of the last segment, so a walk does not run
-/// the general matcher for each entry and pattern.
 #[derive(Debug, Default)]
 pub(crate) struct PathGlobs {
     names: Vec<String>,
@@ -100,7 +91,6 @@ pub(crate) struct PathGlobs {
 }
 
 impl PathGlobs {
-    /// Invalid patterns are left out and logged; callers admit patterns first.
     pub(crate) fn new(patterns: &[String]) -> Self {
         let mut globs = Self::default();
         for pattern in patterns {
@@ -133,9 +123,6 @@ impl PathGlobs {
         {
             return true;
         }
-        // A pattern's first and last segments must match the path's, which
-        // rules out most entries before the full match; the path is split
-        // once for the patterns left.
         let first = path.split('/').next().unwrap_or(path);
         let mut segments: Option<Vec<&str>> = None;
         self.others.iter().any(|pattern| {

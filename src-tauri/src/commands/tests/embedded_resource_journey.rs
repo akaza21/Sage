@@ -1,11 +1,6 @@
-//! Staged files on the native send path, end to end, against the fixture's
-//! `custom-acp-embedded-resources` case run as a user-defined ACP agent: the
-//! fixture executable with the arguments `--case`, the case, `--seed`, `0`,
-//! as the real-app batch adds it under Settings › Your ACP agents. The agent
-//! advertises embedded context and answers each prompt with every resource
-//! it received (name, type, size and SHA-256), so the transcript proves which
-//! bytes reached it: a long paste staged and sent, then the same file resent
-//! by Retry of that turn.
+//! The fixture's `custom-acp-embedded-resources` case answers each prompt
+//! with every resource it received (name, type, size and SHA-256), so the
+//! transcript proves which bytes reached it.
 
 use sha2::{Digest, Sha256};
 
@@ -29,7 +24,6 @@ const CASE: &str = "custom-acp-embedded-resources";
 const AGENT: &str = "custom-acp-1";
 const PROMPT: &str = "Summarize the attached log";
 
-/// The fixture binary cargo builds beside the test executable's directory.
 fn fixture_agent() -> CustomAcpAgent {
     let executable = std::env::current_exe()
         .unwrap()
@@ -81,7 +75,6 @@ impl Journey {
             .count()
     }
 
-    /// The prompt and the agent's answer of turn `index`.
     fn exchange(&self, index: usize) -> (SageTurnId, String, String) {
         let page = self.page();
         let turn = &page.turns.as_slice()[index];
@@ -209,7 +202,6 @@ fn a_staged_paste_reaches_the_agent_as_an_embedded_resource_and_retry_resends_it
             journey.owner.project_id.as_str(),
             journey.owner.chat_id.as_str(),
         );
-        // A paste over the composer cap, as the composer stages it.
         let log: String = (0..2000)
             .map(|line| format!("synthetic log line {line:04}\n"))
             .collect();
@@ -236,7 +228,6 @@ fn a_staged_paste_reaches_the_agent_as_an_embedded_resource_and_retry_resends_it
         let (sent, prompt, answer) = journey.exchange(0);
         assert_eq!(prompt, PROMPT);
         assert_eq!(answer, received);
-        // The batch left the stage with the send; only Retry resends it.
         assert!(
             journey
                 .state

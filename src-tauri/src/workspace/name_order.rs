@@ -1,11 +1,7 @@
-//! Explorer name order, as VS Code's default Explorer sort: names compare
-//! without case, and a run of digits compares by its value, so `file2`
-//! comes before `file10`. Callers put folders first.
-
 use std::cmp::Ordering;
 
-/// Total order over names: the natural order, then the exact name, so names
-/// that differ only in case or leading zeros still sort the same every time.
+/// The exact name breaks ties, so names that differ only in case or leading
+/// zeros still sort the same every time.
 pub(crate) fn explorer_name_cmp(left: &str, right: &str) -> Ordering {
     natural_cmp(left, right).then_with(|| left.cmp(right))
 }

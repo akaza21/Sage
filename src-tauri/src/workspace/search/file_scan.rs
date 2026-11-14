@@ -12,16 +12,14 @@ use super::{
 /// A NUL byte this early marks a File as binary, as in VS Code and Git.
 pub(super) const BINARY_SNIFF_BYTES: u64 = 8_192;
 
-/// What one Search query asks of every File.
 #[derive(Clone, Copy)]
 pub(super) struct ScanQuery<'a> {
     pub(super) literal: &'a LiteralQuery,
     pub(super) whole_word: bool,
 }
 
-/// Reading and matching one File, which depends on nothing but the File, so
-/// it can run ahead on another thread. `apply_scan` then charges it to the
-/// budget in walk order, exactly as if it had just run.
+/// Depends on nothing but the File, so it can run ahead on another thread;
+/// `apply_scan` then charges it to the budget in walk order.
 pub(super) enum FileScan {
     Unopened,
     Opened { byte_len: u64, body: FileBody },
@@ -171,7 +169,6 @@ impl SearchEngine {
         }
     }
 
-    /// One File's matches, at most as many as a page holds.
     fn collect_matches(
         &self,
         resource: ResourceRef,
@@ -179,8 +176,6 @@ impl SearchEngine {
         query: ScanQuery<'_>,
     ) -> Vec<WorkspaceSearchMatch> {
         let mut matches = Vec::new();
-        // Most Files hold no match: one pass over the bytes settles that
-        // before any line is split out.
         if !query.literal.file_may_match(content) {
             return matches;
         }
@@ -201,9 +196,8 @@ impl SearchEngine {
     }
 }
 
-/// Builds the matches of one line. Columns are counted on from the last
-/// match and the preview is made once, so a long line with many matches
-/// costs one pass, not one per match.
+/// Columns count on from the last match and the preview is built once, so a long
+/// line costs one pass, not one per match.
 pub(super) struct LineMatches<'a> {
     line: &'a str,
     max_preview_chars: usize,

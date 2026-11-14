@@ -142,14 +142,12 @@ mod linux {
         fn poll(fds: *mut PollFd, nfds: u64, timeout: c_int) -> c_int;
     }
 
-    /// A folder's device and inode.
     type FolderId = (u64, u64);
 
     pub(crate) struct Prepared {
         fd: c_int,
         root: PathBuf,
-        /// The root folder the tree watch started on. A rewatch that finds
-        /// anything else at the root's path stops the watch.
+        /// A rewatch that finds anything else at the root's path stops the watch.
         root_id: Option<FolderId>,
         folders: unix_events::InotifyFolders,
         max_entries: u64,
@@ -165,9 +163,6 @@ mod linux {
         prepare_within(directories, subfolders, unix_events::MAX_UNIX_WATCH_ENTRIES)
     }
 
-    /// Watches the first of `directories`. With `subfolders`, it is the
-    /// root of a bounded folder tree that `run` watches again whenever its
-    /// shape changes, examining at most `max_entries` entries each time.
     pub(super) fn prepare_within(
         directories: &[PathBuf],
         subfolders: bool,
@@ -177,7 +172,6 @@ mod linux {
         if fd < 0 {
             return Err(std::io::Error::last_os_error());
         }
-        // Dropping `prepared` on any early return closes the descriptor.
         let mut prepared = Prepared {
             fd,
             root: directories.first().cloned().unwrap_or_default(),
@@ -201,14 +195,11 @@ mod linux {
         Ok(prepared)
     }
 
-    /// Watches the root's bounded folder tree as it is now. The root must
-    /// still be the folder the watch started on. Each subfolder is opened
-    /// from its open parent without following symlinks and watched through
-    /// that descriptor, so nothing reached through a symlink, and nothing
-    /// swapped in after the folder was listed, is watched in its place.
-    /// Past the folder cap or the entry limit the walk stops and the rest
-    /// stays unwatched, as the resync after a tree change covers it. Only
-    /// with `strict` does a folder that cannot be watched fail the walk.
+    /// Each subfolder is opened from its open parent without following symlinks
+    /// and watched through that descriptor, so symlinks are refused and nothing swapped in
+    /// after a folder is opened is watched in its place.
+    /// Past the caps it still succeeds, partly watched; the tree-change resync covers it.
+    /// Initial setup fails on descendant-watch errors; rewatch tolerates them.
     fn watch_tree(
         prepared: &Prepared,
         strict: bool,
@@ -262,7 +253,6 @@ mod linux {
         Ok((folders, root_id))
     }
 
-    /// Watches the folder `folder` holds open, wherever its path now leads.
     fn add_watch_on(fd: c_int, folder: &File) -> std::io::Result<c_int> {
         let path = CString::new(format!("/proc/self/fd/{}", folder.as_raw_fd()))
             .map_err(|_| std::io::Error::new(std::io::ErrorKind::InvalidInput, "notify path"))?;
@@ -273,7 +263,6 @@ mod linux {
         Ok(watch)
     }
 
-    /// The entries of one open folder.
     struct Listing(*mut libc::DIR);
 
     impl Listing {
@@ -287,7 +276,6 @@ mod linux {
             Some(Self(stream))
         }
 
-        /// The next entry's name and type, skipping `.` and `..`.
         fn next_entry(&mut self) -> Option<(CString, u8)> {
             loop {
                 let entry = unsafe { libc::readdir(self.0) };
@@ -302,7 +290,6 @@ mod linux {
             }
         }
 
-        /// Opens the entry `name` if it is a folder and not a symlink.
         fn open_folder(&self, name: &CStr) -> Option<File> {
             let fd = unsafe {
                 libc::openat(
@@ -321,8 +308,6 @@ mod linux {
         }
     }
 
-    /// Watches the tree as it is now and removes the watches of folders
-    /// that left it. A substituted root fails, which stops the watch.
     fn rewatch(prepared: &mut Prepared) -> std::io::Result<()> {
         let (next, _) = watch_tree(prepared, false)?;
         for watch in prepared.folders.dropped_from(&next) {

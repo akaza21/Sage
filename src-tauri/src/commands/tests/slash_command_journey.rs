@@ -1,7 +1,6 @@
-//! The `/` menu's command route against the `claude-slash-commands` fixture
-//! subprocess: the fixture advertises `compact`, `review` (with an input hint)
-//! and `init`, then refuses any prompt whose wire text differs from
-//! `/review 42`, `/compact` and a plain prompt, in that order.
+//! The `claude-slash-commands` fixture advertises `compact`, `review` (with
+//! an input hint) and `init`, then refuses any prompt whose wire text differs
+//! from `/review 42`, `/compact` and a plain prompt, in that order.
 
 use super::*;
 use crate::acp::bindings::registry::BindingRegistry;
@@ -165,8 +164,6 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
         assert_eq!(names, ["compact", "review", "init"]);
         let revision = list.revision;
 
-        // A stale revision, as after the list changed under a pick, sends
-        // nothing: the fixture would refuse any unexpected prompt.
         let stale = run(
             &state,
             command(&state, &owner, revision + 1, "review", Some("42")),

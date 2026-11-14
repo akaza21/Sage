@@ -58,7 +58,6 @@ impl SearchEngine {
         let Ok(content) = std::str::from_utf8(&bytes) else {
             return false;
         };
-        // Only the cursor's own line can hold it.
         let Some(raw_line) = content
             .split('\n')
             .nth(cursor.line_number.saturating_sub(1) as usize)
@@ -137,7 +136,6 @@ impl SearchEngine {
         budget.bytes_scanned += bytes.len() as u64;
         counters.files_scanned += 1;
         counters.bytes_scanned += bytes.len() as u64;
-        // Lines before the cursor's hold nothing new.
         let skipped = cursor.line_number.saturating_sub(1) as usize;
         for (line_index, raw_line) in content.split('\n').enumerate().skip(skipped) {
             let line = raw_line.strip_suffix('\r').unwrap_or(raw_line);

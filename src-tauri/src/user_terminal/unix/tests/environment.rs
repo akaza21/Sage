@@ -1,6 +1,3 @@
-//! The environment the terminal's shell starts with: the allowlist itself, and
-//! the exact environment a process spawned on the PTY receives.
-
 use std::{ffi::OsString, fs::File, path::Path, time::Instant};
 
 use super::{super::shell::environment_from, *};
@@ -127,7 +124,6 @@ fn session_variables_fail_closed_when_oversized_or_holding_nul() {
     };
     assert!(environment_from(Path::new("/bin/zsh"), with_nul).is_err());
 
-    // Each fits alone, but together they pass the total budget.
     let crowded = |name: &str| match name {
         "XAUTHORITY" | "DBUS_SESSION_BUS_ADDRESS" => Some(OsString::from("/".repeat(8_000))),
         "PATH" => Some(OsString::from("/".repeat(1_000))),
@@ -141,11 +137,8 @@ fn session_variables_fail_closed_when_oversized_or_holding_nul() {
     assert!(environment_from(Path::new("/bin/zsh"), within).is_ok());
 }
 
-/// Set in the copy of the test binary that the exact environment test starts.
 const EXACT_MARKER: &str = "SAGE_PTY_TEST_EXACT_ENVIRONMENT";
 
-/// The whole host environment of that copy: allowed names, a lowercase
-/// variant of one, credentials and Sage's own variables.
 const HOST: [(&str, &str); 12] = [
     ("HOME", "/home/sage"),
     ("PATH", "/usr/bin:/bin"),

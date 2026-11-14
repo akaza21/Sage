@@ -1,5 +1,3 @@
-//! The whole process tree a Git child starts.
-//!
 //! On Windows `git` on PATH is usually Git for Windows' `cmd\git.exe`, a
 //! launcher that starts the real `mingw64\bin\git.exe`, which in turn starts
 //! filters, transports and helpers. Terminating only the spawned process
@@ -8,8 +6,6 @@
 //! resumed, so nothing it starts can escape the job. Killing the tree
 //! terminates the job, and an exit is proven only once job accounting shows
 //! no active process.
-//!
-//! Elsewhere the tree is just the spawned process, as before.
 //!
 //! Git can also run several children at once (parallel checkout workers,
 //! parallel fetches). [`MAX_PARALLEL_JOBS`] is derived from the same capacity,
@@ -24,7 +20,6 @@ pub(super) const TREE_HEADROOM: u32 = 8;
 /// Processes one parallel job may need: a submodule fetch can be Git, its
 /// transport and a helper; a checkout worker is one process.
 pub(super) const PROCESSES_PER_JOB: u32 = 3;
-/// The most parallel jobs Git may run, whatever the repository configures.
 pub(super) const MAX_PARALLEL_JOBS: u32 = (MAX_TREE_PROCESSES - TREE_HEADROOM) / PROCESSES_PER_JOB;
 
 const _: () = assert!(TREE_HEADROOM + MAX_PARALLEL_JOBS * PROCESSES_PER_JOB <= MAX_TREE_PROCESSES);
@@ -56,7 +51,6 @@ impl ProcessTree {
         true
     }
 
-    /// Nothing is held here.
     pub(super) fn close(self) {}
 }
 
@@ -81,12 +75,9 @@ mod windows {
         fn NtResumeProcess(process: HANDLE) -> i32;
     }
 
-    /// One Job Object handle per Git child, closed when the tree is dropped;
-    /// closing it kills anything still running.
     pub(in super::super) struct ProcessTree(JobBoundary);
 
     impl ProcessTree {
-        /// Assigns the suspended `child` to a new job, then resumes it.
         pub(in super::super) fn contain(child: &Child) -> io::Result<Self> {
             let process = child
                 .raw_handle()
@@ -106,16 +97,15 @@ mod windows {
             Ok(Self(job))
         }
 
-        /// Terminates every process in the tree; true when the job accepted it.
+        /// True when the job accepted it.
         pub(in super::super) fn terminate(&self) -> bool {
             self.0.terminate().is_ok()
         }
 
-        /// Closes the job handle; kill-on-close ends anything still running.
+        /// Dropping the job handle kills anything still running (kill-on-close).
         pub(in super::super) fn close(self) {}
 
-        /// True once job accounting shows no active process. A failed query
-        /// proves nothing, so it counts as not empty.
+        /// A failed query proves nothing, so it counts as not empty.
         pub(in super::super) fn is_empty(&self) -> bool {
             self.0
                 .active_processes(MAX_TREE_PROCESSES)
@@ -124,13 +114,11 @@ mod windows {
     }
 }
 
-/// A spawned Git root together with the tree it may start.
 pub(super) struct GitChild {
     pub(super) root: tokio::process::Child,
     pub(super) tree: ProcessTree,
 }
 
-/// Waits up to `budget` for the tree to empty.
 pub(super) async fn wait_until_empty(tree: &ProcessTree, budget: std::time::Duration) -> bool {
     let deadline = tokio::time::Instant::now() + budget;
     loop {

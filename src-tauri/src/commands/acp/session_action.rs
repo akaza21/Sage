@@ -10,9 +10,6 @@ pub(crate) struct RunSessionActionRequest {
     pub(crate) action: SessionAction,
 }
 
-/// Runs a session action as a Turn on the idle session. The host refuses it
-/// before any Turn is prepared unless the session negotiated the action, and
-/// the binding refuses it again at dispatch.
 #[tauri::command]
 pub(crate) async fn run_session_action(
     state: State<'_, AppState>,
@@ -37,7 +34,6 @@ pub(crate) async fn run_session_action(
             runtime_epoch: session.runtime_epoch,
             prompt,
             attached_context: AttachedContexts::default(),
-            // A session action carries no staged files.
             staged: None,
         },
     )

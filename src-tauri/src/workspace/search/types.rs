@@ -44,7 +44,6 @@ pub struct WorkspaceSearchRequest {
     pub case_sensitive: bool,
     #[serde(default)]
     pub whole_word: bool,
-    /// The query is a regular expression.
     #[serde(default)]
     pub use_regex: bool,
     #[serde(default)]
@@ -61,7 +60,6 @@ pub struct WorkspaceSearchRequest {
 }
 
 impl WorkspaceSearchRequest {
-    /// The `files.exclude` patterns this search leaves out.
     pub fn files_exclude(&self) -> Vec<String> {
         self.files_exclude
             .clone()

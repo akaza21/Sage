@@ -18,22 +18,16 @@ const ASCII_FOLDING_SPECIALS: [&str; 2] = ["\u{0130}", "\u{212A}"];
 /// byte is folded once however many matches it holds.
 const FOLD_WINDOW_BYTES: usize = 16 * 1024;
 
-/// A literal query, set up once per search and shared by every thread that
-/// matches with it. All matching is linear in the text searched.
 pub(super) struct LiteralQuery {
     case_sensitive: bool,
     ascii: bool,
-    /// The query as typed.
     exact: Finder<'static>,
-    /// The query lowercased as a whole, which for ASCII is ASCII folding.
     folded: Finder<'static>,
     specials: [Finder<'static>; 2],
     /// Set in regular-expression mode, where it decides every match.
     pattern: Option<Regex>,
 }
 
-/// The search's query: the text as typed or, with `use_regex`, a regular
-/// expression. An invalid or oversized expression is refused here.
 pub(super) fn search_query(
     text: &str,
     case_sensitive: bool,
@@ -79,14 +73,12 @@ impl LiteralQuery {
         }
     }
 
-    /// The regular expression, in regular-expression mode.
     pub(super) fn pattern(&self) -> Option<&Regex> {
         self.pattern.as_ref()
     }
 
-    /// Hands `visit` the byte range of each of the line's matches until it
-    /// returns false: leftmost first, each search resuming where the last
-    /// match ended. A line can hold millions, so none are collected here.
+    /// Leftmost first, until `visit` returns false. A line can hold millions of
+    /// matches, so none are collected here.
     pub(super) fn for_each_match(
         &self,
         line: &str,
@@ -139,8 +131,7 @@ impl LiteralQuery {
         matches
     }
 
-    /// False only when no line of `content` can hold a match, so a File can
-    /// be passed over without splitting it into lines. True is only a maybe.
+    /// False only when no line can hold a match; true is only a maybe.
     pub(super) fn file_may_match(&self, content: &str) -> bool {
         let bytes = content.as_bytes();
         if let Some(pattern) = &self.pattern {
@@ -166,10 +157,7 @@ impl LiteralQuery {
     }
 }
 
-/// Reports each match of the ASCII-lowercase `needle` in `haystack`,
-/// ignoring ASCII case, until `report` returns false. Each window of
-/// `window` bytes, plus enough to finish a match that starts in it, is
-/// lowercased once into a fixed buffer.
+/// `needle` is ASCII-lowercase; reports matches until `report` returns false.
 fn ascii_folded_matches(
     haystack: &[u8],
     needle: &Finder<'_>,
@@ -209,10 +197,8 @@ fn ascii_folded_matches(
     }
 }
 
-/// Reports each match of the lowercased `needle` in `line` lowercased one
-/// character at a time, as ranges of whole characters of `line`, until
-/// `report` returns false. This is what lowercasing the rest of the line
-/// after each match and searching it gives, one window at a time.
+/// This is what lowercasing the rest of the line after each match and
+/// searching it gives, one window at a time.
 fn unicode_folded_matches(
     line: &str,
     needle: &Finder<'_>,
@@ -267,8 +253,6 @@ fn unicode_folded_matches(
     }
 }
 
-/// The first character boundary of `text` at or after `index`, capped at its
-/// length.
 fn ceil_char_boundary(text: &str, index: usize) -> usize {
     (index.min(text.len())..=text.len())
         .find(|&candidate| text.is_char_boundary(candidate))

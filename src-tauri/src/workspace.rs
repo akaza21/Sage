@@ -39,9 +39,6 @@ pub(crate) use identity::root_identity_file;
 pub(crate) use identity::root_identity_metadata;
 pub(crate) use identity::{leaf_identity, root_identity_path};
 
-/// Opens a canonical root-relative directory through held, no-follow handles
-/// from the verified root, for operations that must stay inside that
-/// directory after the walk.
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub(crate) use file_create::platform::open_parent as open_held_parent;
 
@@ -776,8 +773,6 @@ mod tests {
                 })
                 .is_err()
         );
-        // A replacement before read is resolved only through held no-follow
-        // directories; an outside parent symlink is rejected, not followed.
         fs::rename(root.join("src"), root.join("src-old")).unwrap();
         symlink(root.parent().unwrap(), root.join("src")).unwrap();
         assert!(

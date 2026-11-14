@@ -1,8 +1,8 @@
-//! Closed-file rename on macOS and Linux. Unix cannot hold a path against
-//! rename the way Windows withholds FILE_SHARE_DELETE, so every directory is
-//! opened component by component without following links and the rename runs
-//! inside the held parent descriptor. The source is held open, so its inode
-//! cannot be freed and its identity reused while it is re-proven.
+//! Unix cannot hold a path against rename the way Windows withholds
+//! FILE_SHARE_DELETE, so every directory is opened component by component
+//! without following links and the rename runs inside the held parent
+//! descriptor. The source is held open, so its inode cannot be freed and its
+//! identity reused while it is re-proven.
 
 use std::{
     ffi::CString,
@@ -33,8 +33,6 @@ fn c_name(name: &str) -> AppResult<CString> {
     CString::new(name).map_err(|_| AppError::InvalidRequest("file rename name contains NUL".into()))
 }
 
-/// Opens `name` (relative to `parent`, or absolute without one) as a
-/// directory, refusing a final symbolic link.
 fn open_directory(parent: Option<&File>, name: &CString) -> AppResult<File> {
     let base = parent.map_or(libc::AT_FDCWD, AsRawFd::as_raw_fd);
     // SAFETY: openat reads a NUL-terminated name and returns a new descriptor.
@@ -117,8 +115,6 @@ fn open_source(parent: &File, name: &CString) -> AppResult<File> {
     Ok(source)
 }
 
-/// The identity of the regular file `name` in `parent`, without following a
-/// link.
 fn file_identity_at(parent: &File, name: &CString) -> AppResult<RootIdentity> {
     let stat = stat_at(parent, name)?;
     if stat.st_mode & libc::S_IFMT != libc::S_IFREG {
@@ -244,12 +240,9 @@ fn rename_once(parent: &File, from: &CString, to: &CString, mode: RenameMode) ->
     Ok(())
 }
 
-/// Renames and then checks that the file now at the target is `source`. The
-/// rename is by name, so a file swapped in at the source name in the instant
-/// after the last check would have moved instead. It is moved back the same
-/// way, which replaces nothing. Something did change on disk meanwhile, so
-/// that outcome is reported as an unconfirmed rename with a warning, never as
-/// a failure before mutation.
+/// The rename is by name, so a file swapped in at the source name in the
+/// instant after the last check would have moved instead. A no-replace move
+/// back is attempted; either way the rename is unconfirmed, with a warning.
 fn rename_bound(
     parent: &File,
     names: (&CString, &CString),
@@ -419,7 +412,6 @@ mod tests {
         let parent = File::open(root).unwrap();
         let names = (c_name("swapped.rs").unwrap(), c_name("new.rs").unwrap());
 
-        // The held source is elsewhere, as if swapped out just before.
         let warning = rename_bound(
             &parent,
             (&names.0, &names.1),
@@ -447,8 +439,6 @@ mod tests {
         );
     }
 
-    /// On a case-sensitive file system a hard link under a case variant of
-    /// the name is a collision, never a plain rename.
     #[test]
     fn a_hard_link_under_a_case_variant_is_a_collision() {
         let dir =

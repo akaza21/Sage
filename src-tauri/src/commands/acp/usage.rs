@@ -5,8 +5,7 @@ use crate::acp::{
 };
 use serde::Deserialize;
 
-/// Names one live runtime. A read needs no projection revision: usage is
-/// harness state, not Chat state.
+/// A read needs no projection revision: usage is harness state, not Chat state.
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct AcpUsageRequest {
@@ -34,7 +33,6 @@ pub(crate) async fn get_acp_usage(
     .map_err(|_| internal_error())
 }
 
-/// The runtime the request names, while it is still the Chat's current one.
 pub(super) async fn current_owner(
     state: &AppState,
     request: AcpUsageRequest,

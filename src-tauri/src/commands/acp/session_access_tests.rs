@@ -6,13 +6,10 @@ use crate::acp::session_config::{
 use serde_json::json;
 use std::sync::Mutex;
 
-/// A live session that reports `current` as its mode and records each
-/// mode change Sage asks for.
 struct Session {
     config: Option<SessionConfig>,
     configure: Result<(), HostError>,
     applied: Mutex<Vec<ConfigMutation>>,
-    /// A running turn, and whether cancelling it works.
     turn: Option<Result<(), AcpIpcError>>,
     cancelled: Mutex<u32>,
 }
@@ -93,7 +90,6 @@ fn the_chosen_mode_is_selected_before_the_prompt() {
         session.applied(),
         vec![ConfigMutation::Mode(ConfigId::new("id", "plan").unwrap())]
     );
-    // Already there: nothing to change.
     let session = Session::reporting("plan", CLAUDE);
     select(&session, SessionAccessMode::Plan).unwrap();
     assert!(session.applied().is_empty());
@@ -101,14 +97,12 @@ fn the_chosen_mode_is_selected_before_the_prompt() {
 
 #[test]
 fn a_failed_select_stops_the_prompt() {
-    // The send path returns this error before dispatching the prompt.
     let mut session = Session::reporting("default", CLAUDE);
     session.configure = Err(HostError::ConfigMutationRejected);
     assert!(matches!(
         select(&session, SessionAccessMode::AcceptEdits),
         Err(AcpIpcError::Rejected { .. })
     ));
-    // A session that has not reported its modes is not guessed at.
     let mut session = Session::reporting("default", CLAUDE);
     session.config = None;
     assert!(matches!(
@@ -135,7 +129,6 @@ fn a_mode_the_session_does_not_offer_is_refused() {
 fn every_full_access_turn_is_logged() {
     let session = Session::reporting("default", CLAUDE);
     let (results, captured) = sage_test_support::test_diagnostics::capture_diagnostics(|| {
-        // The first turn switches the session; the next ones find it there.
         let first = select(&session, SessionAccessMode::FullAccess);
         let session = Session::reporting("bypassPermissions", CLAUDE);
         let second = select(&session, SessionAccessMode::FullAccess);
@@ -149,7 +142,6 @@ fn every_full_access_turn_is_logged() {
             .count(),
         3
     );
-    // A turn that never reached the session is not recorded as run.
     let session = Session::reporting("default", &["default"]);
     let (result, captured) = sage_test_support::test_diagnostics::capture_diagnostics(|| {
         select(&session, SessionAccessMode::FullAccess)
@@ -178,9 +170,7 @@ fn a_governed_binding_refuses_mode_changes_outside_the_access_path() {
         assert!(refuse_governed_mode_change(Some(true), live, &bypass).is_err());
         assert!(refuse_governed_mode_change(Some(true), live, &mode_option).is_err());
         assert!(refuse_governed_mode_change(Some(true), live, &model_option).is_ok());
-        // Harnesses whose access Sage enforces itself keep their mode menu.
         assert!(refuse_governed_mode_change(Some(false), live, &bypass).is_ok());
-        // A binding that cannot be routed fails closed.
         assert!(refuse_governed_mode_change(None, live, &bypass).is_err());
         assert!(refuse_governed_mode_change(None, live, &mode_option).is_err());
         assert!(refuse_governed_mode_change(None, live, &model_option).is_ok());
@@ -244,15 +234,12 @@ fn stepping_down_from_a_permissive_mode_cancels_the_running_turn() {
     session.turn = Some(Ok(()));
     assert!(choose(&session, SessionAccessMode::Plan, true));
     assert_eq!(*session.cancelled.lock().unwrap(), 1);
-    // The next prompt selects the new mode; the turn is not switched mid-run.
     assert!(session.applied().is_empty());
-    // A change between narrower modes leaves the turn running in its own.
     let mut session = Session::reporting("acceptEdits", CLAUDE);
     session.turn = Some(Ok(()));
     assert!(!choose(&session, SessionAccessMode::Plan, false));
     assert_eq!(*session.cancelled.lock().unwrap(), 0);
     assert!(session.applied().is_empty());
-    // A cancel that fails is not reported as done.
     session.turn = Some(Err(AcpIpcError::RecoveryRequired {
         message: safe_message("The runtime is gone."),
     }));
@@ -262,12 +249,10 @@ fn stepping_down_from_a_permissive_mode_cancels_the_running_turn() {
 #[test]
 fn a_chat_can_step_down_while_its_harness_is_unavailable() {
     use SessionAccessMode::{AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly, WorkspaceWrite};
-    // No Claude build is bound in a fresh registry.
     let registry = crate::acp::bindings::registry::BindingRegistry::default();
     for mode in [Ask, AcceptEdits, Plan] {
         assert!(chat::carries_mode(&registry, "claude-agent-acp", mode));
     }
-    // Only to a mode in Claude's own table, and never up to a permissive one.
     for mode in [ReadOnly, WorkspaceWrite, FullAccess, Auto] {
         assert!(!chat::carries_mode(&registry, "claude-agent-acp", mode));
     }
@@ -323,7 +308,6 @@ async fn a_grant_needs_a_pending_token_and_a_deliberate_allow() {
     let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
     let state = AppState::try_new(database).unwrap();
     let access = || state.settings.chat_access("session-access").unwrap();
-    // Without a pending token no dialog opens.
     let dialog = Dialog::answering(true);
     assert!(matches!(
         grant(&state, &dialog, PATIENT, "missing").await,
@@ -338,7 +322,6 @@ async fn a_grant_needs_a_pending_token_and_a_deliberate_allow() {
             sage_core::time::now_millis(),
         )
         .unwrap();
-    // Cancel, and an Allow quicker than a person reads, grant nothing.
     let hasty = native_confirm::Timing {
         min_decision: std::time::Duration::from_secs(60),
         ..PATIENT
@@ -354,7 +337,6 @@ async fn a_grant_needs_a_pending_token_and_a_deliberate_allow() {
         assert_eq!(dialog.shown.lock().unwrap().len(), 1);
         assert_eq!(access(), None);
     }
-    // Refusals leave the token for a deliberate Allow, which spends it.
     let dialog = Dialog::answering(true);
     grant(&state, &dialog, PATIENT, &token).await.unwrap();
     assert_eq!(access(), Some(SessionAccessMode::FullAccess));

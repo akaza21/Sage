@@ -1,5 +1,3 @@
-//! Bounded index lookup for one window. Git reads a fresh index, so force-adds
-//! and index removals need no watcher-owned membership/fingerprint cache.
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,
@@ -11,6 +9,7 @@ use sage_core::error::AppError;
 
 const MAX_TRACKED_PATH_BYTES: usize = 16 * 1024 * 1024;
 
+/// Index membership is queried fresh, never cached, so force-adds and removals count.
 pub(super) async fn all_untracked(
     root: &Path,
     paths: &BTreeMap<String, bool>,

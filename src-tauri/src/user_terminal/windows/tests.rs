@@ -18,8 +18,6 @@ fn launch_suspended_conpty(application: &[u16], command: &[u16]) -> SuspendedCon
     launch_suspended_conpty_with(application, command, None)
 }
 
-/// With `environment`, the process starts with that block as the terminal's
-/// shell does; without it, the process inherits this one's environment.
 fn launch_suspended_conpty_with(
     application: &[u16],
     command: &[u16],
@@ -267,7 +265,6 @@ fn shell_environment_disables_current_directory_command_search() {
     assert!(entries.iter().any(|entry| entry.starts_with("ComSpec=")));
 }
 
-/// The entries of a block, which must end with two NULs.
 fn entries(block: &[u16]) -> Vec<(String, String)> {
     assert!(block.ends_with(&[0, 0]), "{block:?}");
     String::from_utf16(&block[..block.len() - 2])
@@ -280,7 +277,6 @@ fn entries(block: &[u16]) -> Vec<(String, String)> {
         .collect()
 }
 
-/// A host that has only `name`, set to `value`.
 fn only(name: &'static str, value: OsString) -> impl Fn(&str) -> Option<OsString> {
     move |asked| (asked == name).then(|| value.clone())
 }
@@ -291,7 +287,6 @@ fn host_value(name: &str) -> String {
 
 const SEARCH: &str = "NoDefaultCurrentDirectoryInExePath";
 
-/// Every variable the terminal passes, sorted by name ignoring case.
 const PASSED_IN_ORDER: [&str; 30] = [
     "ALLUSERSPROFILE",
     "APPDATA",
@@ -327,7 +322,6 @@ const PASSED_IN_ORDER: [&str; 30] = [
 
 #[test]
 fn listed_variables_pass_sorted_by_name_and_everything_else_stays_out() {
-    // The host has a value for every name, listed or not.
     let host = |name: &str| Some(OsString::from(host_value(name)));
     let received = entries(&environment_block_from(host).unwrap());
     let expected = PASSED_IN_ORDER
@@ -408,7 +402,6 @@ fn long_values_pass_up_to_the_variable_limit_and_the_block_cap_holds() {
         Err(TerminalError::Backend)
     );
 
-    // A `PATH` at the limit fits beside every other listed variable.
     let crowded = |name: &str| {
         let length = if name == "PATH" { 32_767 } else { 1_000 };
         Some(OsString::from("v".repeat(length)))
@@ -417,7 +410,6 @@ fn long_values_pass_up_to_the_variable_limit_and_the_block_cap_holds() {
         entries(&environment_block_from(crowded).unwrap()).len(),
         PASSED_IN_ORDER.len()
     );
-    // Two variables at the limit are over the block's cap.
     let two = |name: &str| {
         matches!(name, "PATH" | "PSModulePath").then(|| OsString::from("v".repeat(32_767)))
     };
@@ -430,7 +422,6 @@ fn a_value_holding_nul_fails_closed() {
     assert_eq!(environment_block_from(host), Err(TerminalError::Backend));
 }
 
-/// Set in the copy of the test binary that the ConPTY environment test starts.
 const HOST_MARKER: &str = "SAGE_CONPTY_TEST_HOST_ENVIRONMENT";
 /// The `USERDOMAIN` of that copy. A process with this value and the terminal's
 /// `NoDefaultCurrentDirectoryInExePath=1` was started with the terminal's block.
@@ -470,11 +461,6 @@ fn wait_for(output: &TerminalOutputSink, needle: &str) {
     assert!(found.is_ok(), "no {needle:?} in {:?}", text());
 }
 
-/// Reruns this test in a child whose whole environment is a few listed
-/// variables, a host value for the command search setting, credentials and a
-/// Sage variable. That child starts a copy of the test binary on a ConPTY with
-/// the terminal's block, which writes back the environment it received, and
-/// then starts a real terminal and reads `%LOCALAPPDATA%` back from `echo`.
 #[test]
 fn a_process_on_the_conpty_receives_exactly_the_allowlisted_environment() {
     const NAME: &str = "a_process_on_the_conpty_receives_exactly_the_allowlisted_environment";

@@ -1,10 +1,6 @@
-//! Moving a closed file or empty folder to the system trash on macOS and
-//! Linux. As in file rename, every directory is opened component by component
-//! without following links, and the source is held open so its inode cannot
-//! be freed and its identity reused while it is re-proven. Linux moves the
-//! item inside the held parent (freedesktop.rs); macOS hands its path to the
-//! system Trash (macos.rs). Either way, the item that arrived in the trash is
-//! checked against the held source afterwards and put back if it differs.
+//! Every directory is opened component by component without following links,
+//! and the source is held open so its inode cannot be freed and its identity
+//! reused while it is re-proven.
 
 use std::{
     ffi::{CStr, CString},
@@ -67,8 +63,6 @@ fn c_name(name: &str) -> AppResult<CString> {
         .map_err(|_| AppError::InvalidRequest(format!("{TRASH_NAME} name contains NUL")))
 }
 
-/// Opens `name` (relative to `parent`, or absolute without one) as a
-/// directory, refusing a final symbolic link.
 fn open_directory(parent: Option<&File>, name: &CStr, flags: libc::c_int) -> std::io::Result<File> {
     let base = parent.map_or(libc::AT_FDCWD, AsRawFd::as_raw_fd);
     // SAFETY: openat reads a NUL-terminated name and returns a new descriptor.
@@ -117,8 +111,6 @@ fn stat_identity(stat: libc::stat) -> RootIdentity {
     }
 }
 
-/// The identity of `name` in `parent` if it is still the kind requested,
-/// without following a link.
 fn identity_at(parent: &File, name: &CStr, kind: TrashResourceKind) -> AppResult<RootIdentity> {
     let stat = stat_at(parent, name)?;
     let format = stat.st_mode & libc::S_IFMT;
@@ -266,7 +258,6 @@ fn verify_visible_authority(
     Ok(())
 }
 
-/// The visible path and the held parent both still name the held source.
 fn verify_visible_source(authority: &ResourceTrashAuthority) -> AppResult<()> {
     let held = identity_at(&authority.parent, &authority.name, authority.proof.kind)?;
     let visible = std::fs::symlink_metadata(&authority.source_path)?;

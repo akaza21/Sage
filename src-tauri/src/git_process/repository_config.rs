@@ -1,5 +1,3 @@
-//! Admission check for repository-local Git configuration.
-//!
 //! Sage clears the global and system Git config, but Git still honours the
 //! repository's own `config` and `config.worktree`. Several keys there name a
 //! program Git runs: content filters, diff and merge drivers, transport
@@ -21,9 +19,9 @@
 //! Sage runs Git there. The admitted layouts are the root's own `.git`
 //! directory, a separate git dir and a linked worktree (see [`layout`]).
 //! Every `gitdir:` and `commondir` file is read the way Git reads it, and
-//! every directory on the paths they name is fingerprinted and must be a real
-//! directory, never a symlink or junction, so nothing can be repointed later
-//! without changing a watched entry. Every cache hit re-checks all of them.
+//! every directory on the paths they name is fingerprinted by the identity of
+//! what it reaches, links included, so retargeting a link invalidates the
+//! cached verdict. Every cache hit re-checks all of them.
 //!
 //! A hostile process writing `.git/config` concurrently, between this check
 //! and the spawn, is out of scope: it already runs with the user's full
@@ -55,14 +53,11 @@ pub(super) use paths::os_path;
 use policy::{path_protection_keys, path_protection_refusal, refusal_message};
 
 const GIT_DIR_NAME: &str = ".git";
-/// Files inside a git dir that make Git read repository data from elsewhere.
 const POINTER_FILES: [&str; 2] = ["commondir", "gitdir"];
 const MAX_LOCATION_BYTES: usize = 64 * 1024;
 const MAX_CONFIG_LIST_BYTES: usize = 1024 * 1024;
 
-/// Fails with [`AppError::UnsafeRepositoryConfig`] when the repository that
-/// Git would open at `root` configures a command-running key. Otherwise
-/// returns that repository, or `None` when `root` is in no repository.
+/// `None` when `root` is in no repository.
 pub(super) async fn admit(
     root: &Path,
     authority: Option<&GitRootAuthority>,
@@ -126,8 +121,6 @@ impl From<Refusal> for AppError {
 }
 
 impl Admission {
-    /// Roughly what this verdict keeps alive: every watched path and its
-    /// fingerprint.
     fn retained_bytes(&self) -> usize {
         self.watched
             .iter()
@@ -151,8 +144,7 @@ impl Admission {
 
 struct Probe {
     admission: Admission,
-    /// False when the fingerprints cannot prove the verdict stays valid, so
-    /// the next call probes again.
+    /// False when the fingerprints cannot prove the verdict stays valid.
     cacheable: bool,
 }
 
@@ -262,8 +254,6 @@ impl Probe {
                     refusal_message,
                 )
                 .await?;
-                // Only a repository that sets a parallel-job key pays for
-                // reading the values, once per changed config.
                 if refusal.is_none() {
                     repository.parallel = Some(if parallel_limits::lists_any(&listing.stdout) {
                         read_parallel_caps(root, authority, &repository).await
@@ -298,8 +288,6 @@ impl Probe {
     }
 }
 
-/// True when a `.git` entry on the discovery path, or the `config` inside a
-/// `.git` directory there, exists but cannot be read.
 fn has_unreadable_config(ancestors: &[(PathBuf, Fingerprint)]) -> bool {
     ancestors
         .iter()
@@ -319,12 +307,6 @@ const UNREADABLE: &str = "Sage did not run Git here because it could not read th
 const TOO_LARGE: &str = "Sage did not run Git here because this repository's Git config is too \
      large or unusual to check. Use the terminal for Git in this folder.";
 
-/// The refusal a `--name-only` config listing earns: a command-running key,
-/// named by `message`, or a Git path protection switched off. Turning
-/// `core.protectNTFS` or `core.protectHFS` off lets the index hold names the
-/// filesystem resolves to another entry, so only an explicit `true` passes.
-/// The effective values of the repository's parallel-job settings. A read
-/// that fails holds every key to one.
 async fn read_parallel_caps(
     root: &Path,
     authority: Option<&GitRootAuthority>,
@@ -341,6 +323,9 @@ async fn read_parallel_caps(
     parallel_limits::ParallelLimits::from_probe(values.as_ref().ok())
 }
 
+/// Turning `core.protectNTFS` or `core.protectHFS` off lets the index hold
+/// names the filesystem resolves to another entry, so only an explicit `true`
+/// passes.
 async fn listed_config_refusal(
     root: &Path,
     authority: Option<&GitRootAuthority>,

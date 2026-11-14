@@ -1,7 +1,3 @@
-//! The workspace Replace commands. A preview reads each File and says what
-//! a Replace would change and the fingerprint it saw; an apply writes each
-//! File only if it still has that fingerprint.
-
 use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -22,7 +18,6 @@ use crate::{
     state::AppState,
 };
 
-/// The Files one Replace may name: every File a Search's pages can show.
 pub const MAX_REPLACE_FILES: usize = MAX_SEARCH_RESULTS * MAX_SEARCH_PAGES;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -84,8 +79,7 @@ pub enum ReplaceProblemKind {
     /// Not replaced: protected, too large, unreadable.
     Refused,
     NoMatches,
-    /// Replaced, but not proven durable or in place, so the replaced text
-    /// is also kept as the File's unsaved edits.
+    /// Replaced, but not proven durable or in place, so also kept as unsaved edits.
     KeptUnsaved,
 }
 
@@ -177,7 +171,6 @@ pub async fn apply_workspace_replace(
     .map_err(|error| error.to_string())
 }
 
-/// What a Replace makes of text the editor holds, such as unsaved edits.
 /// It runs off the async runtime: a large text takes real work.
 #[tauri::command]
 pub async fn replace_workspace_text(
@@ -221,8 +214,8 @@ fn validate_files(project_id: &str, count: usize) -> Result<(), String> {
     Ok(())
 }
 
-/// Runs `operation` in turn with the editor's own operations, while the
-/// project the request was made in stays active.
+/// Runs in turn with the editor's own operations, while the request's project
+/// stays active.
 async fn run_in_project<T: Send + 'static>(
     state: &AppState,
     project_id: &str,
@@ -285,7 +278,6 @@ pub(crate) fn preview(
                 MAX_EDITABLE_BYTES as usize,
             )
             .and_then(|done| {
-                // Refused here as the write would refuse it.
                 replaced_file_text(&source.content, &done.content, &source.line_ending)?;
                 Ok(done)
             });

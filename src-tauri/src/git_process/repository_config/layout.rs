@@ -1,5 +1,3 @@
-//! Which repository layouts admission accepts, and every file each relies on.
-//!
 //! Three layouts are admitted, all with the opened root as the work tree:
 //! - the root's own `.git` directory, as both git dir and common dir;
 //! - a separate git dir: `.git` is a `gitdir:` file naming a git dir with no
@@ -25,9 +23,6 @@ use super::{
 };
 use crate::git_process::parallel_limits::ParallelLimits;
 
-/// The repository admission inspected. Admitted Git calls run with these
-/// explicit locations, so they open exactly this repository.
-///
 /// `git_dir` and `work_tree` are relative to the root: the child's working
 /// directory is the identity-checked root handle, so a directory swapped in
 /// at the root's name, or a move of the root, cannot redirect them. For a
@@ -60,8 +55,6 @@ impl AdmittedRepository {
     }
 }
 
-/// An admitted layout: the repository, everything it was decided from, and
-/// the config files Git reads for it.
 pub(super) struct Layout {
     pub(super) repository: AdmittedRepository,
     pub(super) watched: Vec<(PathBuf, Fingerprint)>,
@@ -105,13 +98,11 @@ pub(super) fn resolve(
     })
 }
 
-/// What `rev-parse` reported, canonicalized.
 struct Reported {
     git_dir: PathBuf,
     common_dir: PathBuf,
 }
 
-/// The config files Git reads for an admitted layout.
 type Admitted = Vec<PathBuf>;
 
 fn own_directory(
@@ -144,9 +135,7 @@ fn gitfile(
     let ((path, fingerprint), commondir) = watch_reading(git_dir.join("commondir"));
     watched.push((path, fingerprint.clone()));
     let common_dir = match (fingerprint, commondir) {
-        // A separate git dir.
         (Fingerprint::Missing, _) => git_dir.clone(),
-        // A linked worktree's git dir, sharing `<common>`.
         (Fingerprint::Contents { .. }, Some(commondir)) => {
             walk(&git_dir, paths::commondir_path(&commondir)?, &mut |path| {
                 push_watch(watched, path)
@@ -165,9 +154,6 @@ fn push_watch(watched: &mut Vec<(PathBuf, Fingerprint)>, path: PathBuf) -> Finge
     fingerprint
 }
 
-/// Walks `written` from `base` the way the operating system (and so Git)
-/// resolves it, stamping every directory on the way with `watch`, and returns
-/// the canonical directory it reaches.
 fn walk(
     base: &Path,
     written: &str,
@@ -182,8 +168,6 @@ fn walk(
     prefixes.last()?.canonicalize().ok()
 }
 
-/// The config Git reads from `common`, and the per-worktree config from
-/// `git_dir` (the same directory outside a linked worktree).
 fn configs(common: &Path, git_dir: &Path) -> Vec<PathBuf> {
     let mut configs = vec![common.join("config"), common.join("config.worktree")];
     if git_dir != common {

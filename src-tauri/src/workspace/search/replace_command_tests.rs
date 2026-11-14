@@ -61,7 +61,6 @@ impl Fixture {
         apply(self.database(), &Replacer::new(spec).unwrap(), targets)
     }
 
-    /// Previews `resources` and replaces everything the preview saw.
     fn replace_all(
         &self,
         spec: &ReplaceSpec,
@@ -139,10 +138,8 @@ fn previews_then_replaces_each_file_whole() {
             .collect::<Vec<_>>(),
         [2, 1]
     );
-    // Line ends are kept as the File had them.
     assert_eq!(fixture.read("src/a.txt"), "new one\r\nnew two\r\n");
     assert_eq!(fixture.read("src/deep/c.txt"), "the new line\n");
-    // The new File replaced the old at once: no temporary file is left.
     let names = fs::read_dir(fixture.root.join("src"))
         .unwrap()
         .map(|entry| entry.unwrap().file_name().into_string().unwrap())
@@ -160,7 +157,6 @@ fn previews_then_replaces_each_file_whole() {
             .mode();
         assert_eq!(mode & 0o777, 0o640);
     }
-    // The fingerprint reported is the File's now.
     let reread = editor::read_for_replace(fixture.database(), &fixture.workspace, &first).unwrap();
     assert_eq!(reread.fingerprint, applied.replaced[0].fingerprint);
 }
@@ -170,7 +166,6 @@ fn refuses_a_file_that_changed_since_the_preview() {
     let fixture = Fixture::new();
     let resource = fixture.write("notes.md", "keep old\n");
     let preview = fixture.preview(&spec("old", "new"), std::slice::from_ref(&resource));
-    // Someone edits the File after the preview.
     fixture.write("notes.md", "inserted\nkeep old\n");
 
     let applied = fixture.apply(&spec("old", "new"), &targets(&preview));
@@ -204,7 +199,6 @@ fn refuses_protected_folders_and_leaves_them_alone() {
                 && problem.message.contains("protected folders"))
     );
 
-    // Even with a fingerprint in hand, an apply is refused.
     let fingerprint = crate::editor_content::fingerprint(b"url = old\n");
     let applied = fixture.apply(
         &spec("old", "new"),
@@ -382,7 +376,6 @@ fn preview_refuses_what_the_write_would_refuse_for_its_line_ends() {
         preview.problems[0].message
     );
 
-    // A File with a carriage return of its own is still replaced in.
     let applied = fixture.replace_all(&spec("b", "c"), &[resource]);
     assert_eq!(applied.replaced.len(), 1);
     assert_eq!(fixture.read("cr.txt"), "a\rc\n");

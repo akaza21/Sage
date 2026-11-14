@@ -1,6 +1,5 @@
 use super::*;
 
-/// The path a gitfile in `repo` names, as walked from there.
 fn target(bytes: &[u8]) -> Option<PathBuf> {
     written_prefixes(Path::new("repo"), gitfile_path(bytes)?)?.pop()
 }
@@ -97,10 +96,8 @@ fn drive_and_unc_paths_start_where_git_starts_them() {
 #[test]
 fn starts_git_and_win32_could_read_differently_are_refused() {
     for target in [
-        // The current drive's root, and a drive's current directory.
         "/work/data.git",
         "C:work/data.git",
-        // Verbatim and device namespaces, and incomplete or odd shares.
         r"\\?\C:\work\data.git",
         r"\\.\pipe\data.git",
         r"\\server",

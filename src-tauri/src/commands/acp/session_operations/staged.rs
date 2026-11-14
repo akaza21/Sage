@@ -1,10 +1,6 @@
-//! Which staged prompt files a send carries, resolved against durable state.
 use super::*;
 use crate::acp::attached_context::files::{Resources, Selection, attachment, retry_origin};
 
-/// A Retry names a turn; its durable record says what the prompt carried.
-/// A session action carries no files, so the staged ones stay for the next
-/// prompt.
 pub(super) fn resolve(
     state: &AppState,
     project: &SageProjectId,
@@ -34,8 +30,6 @@ pub(super) fn resolve(
     })
 }
 
-/// The characterization harness takes no files: a send that names some is
-/// refused, and a stale selection keeps its own message.
 #[cfg(all(windows, feature = "acp-fixture"))]
 pub(super) fn characterization_carries_none(
     state: &AppState,
@@ -60,7 +54,6 @@ pub(super) fn characterization_carries_none(
     })
 }
 
-/// Records what a dispatched prompt carried, under its client intent.
 pub(super) fn record_sent(
     state: &AppState,
     project: &SageProjectId,
@@ -99,7 +92,6 @@ mod tests {
     use super::*;
     use crate::acp::contract::ClientIntentId;
 
-    /// A chat with an open tab and a pasted batch named by the next send.
     fn sent_batch() -> (
         AppState,
         SageProjectId,
@@ -149,7 +141,6 @@ mod tests {
             let intent = ClientIntentId::parse("intent-sent").unwrap();
             record_sent(&state, &project, &chat, &intent, &files);
             let stages = state.acp.file_stages.lock().unwrap();
-            // The next message does not carry the same files again.
             assert!(
                 stages.list(project.as_str(), chat.as_str()).is_none(),
                 "{breakage}"
@@ -175,12 +166,10 @@ mod tests {
         let mut action = Prompt::new("prompt", "/compact").unwrap();
         action.action =
             Some(serde_json::from_value(serde_json::json!({"kind": "compact"})).unwrap());
-        // Even naming the batch, an action carries none and leaves it staged.
         let selection = resolve(&state, &project, &chat, named(), &action).unwrap();
         assert!(matches!(selection, Selection::None));
         let intent = ClientIntentId::parse("intent-action").unwrap();
         record_sent(&state, &project, &chat, &intent, &Resources::default());
-        // The next prompt that names the batch still carries it.
         let prompt = Prompt::new("prompt", "next").unwrap();
         let selection = resolve(&state, &project, &chat, named(), &prompt).unwrap();
         let stages = state.acp.file_stages.lock().unwrap();

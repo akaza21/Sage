@@ -36,7 +36,6 @@ const FOLDERS_AHEAD_PER_WORKER: u64 = 5;
 /// A larger folder is left to the walk, which bounds what one listing holds.
 const MAX_LISTED_ENTRIES: usize = 4_096;
 
-/// A folder in the walk's queue.
 pub(super) struct QueuedFolder {
     pub(super) path: PathBuf,
     pub(super) relative: String,
@@ -45,22 +44,15 @@ pub(super) struct QueuedFolder {
     pub(super) parent_rules: FolderChain,
 }
 
-/// One folder, listed and read ahead.
 pub(super) struct Listing {
-    /// Every entry, in the order the platform listed them, shared with the
-    /// worker reading the folder's Files.
     pub(super) entries: Arc<[io::Result<DirEntry>]>,
-    /// The rules in force inside the folder, from the complete listing.
     pub(super) folder_rules: FolderChain,
-    /// The folder's Files as a worker reads them, so the walk can go on as
-    /// soon as each one is done. Any other File the walk reads itself.
     pub(super) scans: FolderScans,
 }
 
 /// Scans of one folder's Files, arriving in the walk's order (by name).
 pub(super) struct FolderScans {
     arriving: Option<mpsc::Receiver<(String, FileScan)>>,
-    /// The first scan past the File last asked for.
     next: Option<(String, FileScan)>,
 }
 
@@ -72,9 +64,8 @@ impl FolderScans {
         }
     }
 
-    /// The scan of the File named `name`, waiting while a worker reads it;
-    /// None if the worker passed it over or stopped first. The walk asks in
-    /// name order, the order the worker reads in.
+    /// `None` if the worker passed the File over or stopped first. The walk asks
+    /// in name order, the order the worker reads in.
     pub(super) fn take(&mut self, name: &str) -> Option<FileScan> {
         loop {
             let (scanned, scan) = match self.next.take() {
@@ -82,7 +73,6 @@ impl FolderScans {
                 None => self.arriving.as_ref()?.recv().ok()?,
             };
             match scanned.as_str().cmp(name) {
-                // A File the walk did not read, so the scan is not needed.
                 NameOrder::Less => continue,
                 NameOrder::Equal => return Some(scan),
                 NameOrder::Greater => {
@@ -99,20 +89,16 @@ struct Job {
     directory: PathBuf,
     relative: String,
     parent_rules: FolderChain,
-    /// The active phase's deadline, including continuation replay.
     phase_deadline: Option<Instant>,
-    /// The page's remaining read budget; None during continuation replay.
+    /// `None` during continuation replay, which reads no Files.
     reads: Option<ReadBudget>,
 }
 
-/// What the page has left, for the reads ahead; None while a continuation
-/// replays, which reads no Files.
 #[derive(Clone, Copy)]
 pub(super) struct ReadBudget {
     pub(super) bytes_left: u64,
 }
 
-/// What the workers share with the walk, borrowed for the walk's length.
 #[derive(Clone, Copy)]
 pub(super) struct WalkContext<'a> {
     pub(super) engine: &'a SearchEngine,
@@ -124,11 +110,9 @@ pub(super) struct WalkContext<'a> {
     pub(super) query: ScanQuery<'a>,
 }
 
-/// Lists and reads the next few folders of the walk's queue on worker
-/// threads. The walk still goes through each listing in its own order and
-/// charges every entry and File to the budget then, so results, counters,
-/// limits and continuations are the same as without it; only the waiting
-/// for the disk overlaps.
+/// The walk still charges every entry and File to the budget in its own
+/// order, so results, counters, limits and continuations are the same as
+/// without read-ahead; only the waiting for the disk overlaps.
 pub(super) struct Prefetch {
     jobs: Option<mpsc::Sender<Job>>,
     results: mpsc::Receiver<(u64, Option<Listing>)>,
@@ -138,8 +122,6 @@ pub(super) struct Prefetch {
     stop: Arc<AtomicBool>,
 }
 
-/// Search's threads in all, the walk's included: at most four, and never
-/// more than the machine has cores.
 pub(super) fn search_threads() -> usize {
     std::thread::available_parallelism()
         .map(usize::from)
@@ -148,7 +130,7 @@ pub(super) fn search_threads() -> usize {
 }
 
 impl Prefetch {
-    /// None on a single core, where the walk does everything itself.
+    /// `None` on a single core, where the walk does everything itself.
     pub(super) fn start<'scope>(
         scope: &'scope Scope<'scope, '_>,
         context: WalkContext<'scope>,
@@ -201,9 +183,8 @@ impl Prefetch {
         })
     }
 
-    /// Hands out the queued folders not yet handed out, up to a few ahead
-    /// of `front`, the number of the folder at the head of `queue`. Folders
-    /// are numbered in the order they were queued.
+    /// `front` is the number of the folder at the head of `queue`; folders are
+    /// numbered in the order they were queued.
     pub(super) fn submit_ahead(
         &mut self,
         queue: &VecDeque<QueuedFolder>,
@@ -234,8 +215,7 @@ impl Prefetch {
         }
     }
 
-    /// Folder `id`'s listing, waiting for it if a worker still has it; None
-    /// if it was never handed out or the worker left it to the walk.
+    /// `None` if it was never handed out or the worker left it to the walk.
     pub(super) fn take(&mut self, id: u64) -> Option<Listing> {
         if id >= self.submitted {
             return None;
@@ -259,11 +239,8 @@ impl Drop for Prefetch {
     }
 }
 
-/// Lists the folder, hands the listing to `deliver` and then reads its
-/// Files one by one in name order, each handed over as soon as it is read.
-/// Returns early, without delivering, for a folder the walk should list
-/// itself. Nothing that may touch the disk per entry runs before delivery,
-/// so the walk is never kept waiting past where it would have read a File.
+/// Nothing that may touch the disk per entry runs before delivery, so the
+/// walk is never kept waiting past where it would have read a File.
 fn read_folder(
     context: WalkContext<'_>,
     job: Job,
@@ -371,9 +348,8 @@ fn read_folder(
     }
 }
 
-/// The root-relative path of an entry the walk will read as a File, by the
-/// walk's own tests; None for anything else. Getting this wrong costs only
-/// speed: the walk reads any File that was not read ahead itself.
+/// `None` for anything the walk won't read as a File. Getting this wrong
+/// costs only speed: the walk reads any File that was not read ahead itself.
 fn searchable_file(
     entry: &DirEntry,
     name: &str,
