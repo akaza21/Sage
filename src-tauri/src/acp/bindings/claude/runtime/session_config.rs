@@ -101,8 +101,6 @@ impl ClaudeRuntime {
             .and_then(|active| active.config.current_mode())
             .map(str::to_owned)
     }
-    /// Applies a mode or config update. A mode change the running turn was
-    /// not given cancels that turn (`mode_guard.rs`).
     pub(super) fn config_notification(
         &mut self,
         value: &Value,

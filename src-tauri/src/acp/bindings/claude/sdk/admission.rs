@@ -1,7 +1,4 @@
-//! Admission of the installed Claude Code CLI for the SDK protocol.
-//!
-//! Discovery reports the native `claude` executable and its version. Sage admits a
-//! CLI from the release line whose SDK protocol this binding covers, pins the
+//! Sage admits a CLI from the release line whose SDK protocol this binding covers, pins the
 //! exact file by SHA-256, and revalidates it before every launch.
 
 use std::{
@@ -27,19 +24,15 @@ use crate::{
 use super::launch::SessionLaunch;
 
 pub(crate) const CLAUDE_SDK_BINDING_ID: &str = "claude-code-sdk";
-/// The Claude Code release the recorded fixtures replay.
 #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
 pub(crate) const CLAUDE_CODE_VERSION: &str = "2.1.319";
 /// The oldest release with every control request Sage sends; an earlier one
-/// is refused because those requests would fail. Every later release is
-/// admitted: the 2.1 line is the tested one, and later lines run with the
-/// tested features and a "newer than tested" notice.
+/// is refused because those requests would fail.
 const SUPPORTED_MINIMUM: &str = "2.1.300";
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:claude-code-sdk:v1:";
 
-/// Fixed SDK-mode arguments; the session arguments follow them. The mode is
-/// forced to `default` so a settings file cannot start Claude Code in a
-/// mode the picker does not show (bypass would skip every approval).
+/// The mode is forced to `default` so a settings file cannot start Claude Code in a mode the
+/// picker does not show (bypass would skip every approval).
 pub(super) const SDK_ARGS: [&str; 12] = [
     "--output-format",
     "stream-json",
@@ -83,7 +76,6 @@ impl From<ClaudeSdkAdmissionUnavailable> for HarnessUnavailableReason {
     }
 }
 
-/// The replay case a desktop fixture build launches instead of the CLI.
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 type Fixture = Option<crate::launch_profile::FixtureSelection>;
 #[cfg(not(all(windows, feature = "acp-fixture", debug_assertions)))]
@@ -111,8 +103,6 @@ pub(crate) struct AdmittedClaudeSdkBinding {
     fixture: Fixture,
 }
 
-/// Where a release sits against the tested 2.1 line, which keeps the SDK
-/// protocol this binding covers from [`SUPPORTED_MINIMUM`] on.
 fn version_characterisation(version: &str) -> HarnessCharacterisation {
     let (Some(found), Some(minimum)) = (
         ReleaseVersion::parse(version),
@@ -216,8 +206,6 @@ impl AdmittedClaudeSdkBinding {
     pub(crate) fn artifact_digest(&self) -> &str {
         &self.sha256_hex
     }
-    /// The CLI a model probe may start: none for a replay fixture, whose
-    /// artifact is not the CLI.
     pub(super) fn probe_executable(&self) -> Option<&std::path::Path> {
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if self.fixture.is_some() {
@@ -232,7 +220,6 @@ impl AdmittedClaudeSdkBinding {
         version_characterisation(&self.version)
     }
 
-    /// The admitted file is unchanged and still the one the launcher names.
     pub(crate) fn revalidate(&self) -> Result<(), ClaudeSdkAdmissionUnavailable> {
         let current = self.launcher == self.executable
             || std::fs::canonicalize(&self.launcher).is_ok_and(|path| path == self.executable);
@@ -299,8 +286,6 @@ impl AdmittedClaudeSdkBinding {
 }
 
 impl AdmittedClaudeSdkBinding {
-    /// Claude Code's profile, where it keeps each session's transcript: a
-    /// replay case's own profile, or the one the launch environment names.
     pub(crate) fn config_directory(&self) -> Option<PathBuf> {
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if let Some(selection) = &self.fixture {
@@ -310,8 +295,6 @@ impl AdmittedClaudeSdkBinding {
     }
 }
 
-/// The variables Claude Code needs to find its profile, credentials and
-/// tools, as the ACP Claude launch allows.
 pub(crate) fn launch_environment() -> Vec<(OsString, OsString)> {
     crate::acp::bindings::claude::LAUNCH_ENVIRONMENT_KEYS
         .iter()
@@ -333,7 +316,6 @@ enum RegistrationState {
 #[derive(Debug)]
 pub(crate) struct ClaudeSdkBindingRegistration {
     state: Mutex<RegistrationState>,
-    /// Fixture registrations never take discovery of the real CLI.
     fixture_only: bool,
 }
 
@@ -356,9 +338,8 @@ impl ClaudeSdkBindingRegistration {
         };
     }
 
-    /// The admitted CLI, revalidated. Claude Code updates itself, in place
-    /// or by repointing its launcher, so a changed file still on the
-    /// supported line is admitted again.
+    /// Claude Code updates itself, in place or by repointing its launcher, so a changed file still
+    /// on the supported line is admitted again.
     pub(crate) fn refresh(
         &self,
     ) -> Result<Arc<AdmittedClaudeSdkBinding>, ClaudeSdkAdmissionUnavailable> {

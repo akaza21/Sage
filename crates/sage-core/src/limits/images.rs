@@ -1,6 +1,3 @@
-//! Attached image bounds, from the file a user picks to the frame a prompt
-//! sends. Every number below is either a product decision documented where it
-//! is set or derived from the transport limits it must fit.
 use super::LIMITS;
 use super::prompt_files::{DISPATCH_BYTES, TOTAL_BYTES as PROMPT_FILE_BYTES};
 
@@ -35,7 +32,6 @@ pub const IMAGE_NORMALIZE_PEAK_BYTES: u64 = IMAGE_UPLOAD_BYTES as u64
 /// Native memory all image normalisation may hold at once, uploads and
 /// prompt sends together.
 pub const IMAGE_WORK_MEMORY_BYTES: u64 = 256 * 1024 * 1024;
-/// Normalisations that may run at once: as many peaks as fit the ceiling.
 pub const IMAGE_WORK_PERMITS: usize =
     (IMAGE_WORK_MEMORY_BYTES / IMAGE_NORMALIZE_PEAK_BYTES) as usize;
 
@@ -81,9 +77,7 @@ const fn base64_len(bytes: usize) -> usize {
 /// and the per-block base64 padding of every image and file.
 pub const PROMPT_FRAME_ENVELOPE_BYTES: usize = 4096;
 /// The one outbound frame class larger than `WireLimits::frame_bytes`: an
-/// ACP `session/prompt` request carrying images. It is what the largest prompt
-/// needs: the images as base64, plus the prompt text and staged files that
-/// dispatch admits (`DISPATCH_BYTES`) with every byte escaped at its worst.
+/// ACP `session/prompt` request carrying images.
 /// Inbound frames keep the ordinary bound.
 pub const PROMPT_FRAME_BYTES: usize = base64_len(PROMPT_IMAGE_TOTAL_BYTES)
     + JSON_ESCAPE_MAX_BYTES * DISPATCH_BYTES
@@ -93,16 +87,12 @@ pub const PROMPT_FRAME_BYTES: usize = base64_len(PROMPT_IMAGE_TOTAL_BYTES)
 /// data frames are queued.
 pub const PROMPT_EGRESS_RESERVE_BYTES: usize = PROMPT_FRAME_BYTES + 1;
 
-/// The JSON envelope of one normalized image item around its base64 data.
 pub const NORMALIZED_IMAGE_ENVELOPE_BYTES: usize = 256;
 /// Decoded bytes of the transcript copy of one sent image: the most whose
 /// base64 still fits one normalized item with its envelope.
 pub const IMAGE_PREVIEW_BYTES: usize =
     (LIMITS.wire.normalized_item_bytes as usize - NORMALIZED_IMAGE_ENVELOPE_BYTES) / 4 * 3;
-/// A prompt intent's own fields beside its text, files, images and previews.
 pub const PROMPT_INTENT_OVERHEAD_BYTES: usize = 8192;
-/// The retained bytes of the largest prompt intent: every image, its
-/// preview, the text and files dispatch admits, and the intent's own fields.
 /// Each queue a prompt passes through holds one of this size.
 pub const PROMPT_INTENT_BYTES: usize = PROMPT_IMAGE_TOTAL_BYTES
     + PROMPT_IMAGE_COUNT * IMAGE_PREVIEW_BYTES
@@ -123,13 +113,9 @@ const _: () = assert!(
         && STORED_IMAGE_BYTES <= IMAGE_UPLOAD_BYTES
         && STORED_IMAGE_PIXELS <= IMAGE_UPLOAD_PIXELS
         && IMAGE_PREVIEW_EDGE_PX <= PROMPT_IMAGE_EDGE_PX
-        // Staged files are part of the dispatch budget the frame is sized by.
         && PROMPT_FILE_BYTES <= DISPATCH_BYTES
-        // At least one normalisation fits the ceiling, and all that run fit it.
         && IMAGE_WORK_PERMITS >= 1
         && IMAGE_WORK_PERMITS as u64 * IMAGE_NORMALIZE_PEAK_BYTES <= IMAGE_WORK_MEMORY_BYTES
-        // A prompt with every image, its previews, text and files fits the
-        // process driver's data lane.
         && PROMPT_INTENT_BYTES < LIMITS.queues.driver_data_bytes as usize
         && base64_len(IMAGE_PREVIEW_BYTES) + NORMALIZED_IMAGE_ENVELOPE_BYTES
             <= LIMITS.wire.normalized_item_bytes as usize
@@ -139,7 +125,6 @@ const _: () = assert!(
 mod tests {
     use super::*;
 
-    /// The value of `export const NAME = a * b * c;` in the frontend mirror.
     fn mirrored(name: &str) -> usize {
         let source = include_str!("../../../../src/domain/attachedContext.ts");
         let prefix = format!("export const {name} = ");

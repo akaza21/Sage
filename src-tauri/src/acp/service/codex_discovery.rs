@@ -889,7 +889,6 @@ mod tests {
         let (manager, owner, mut joined) =
             admitted_joined_flight("joined-expired", CodexDiscoveryDeadline::new().unwrap());
         assert!(manager.discover(owner).is_ok());
-        // The owner has completed; only the joined caller's own deadline is expired.
         joined.deadline = CodexDiscoveryDeadline::for_test(Duration::ZERO, Duration::ZERO);
         assert_eq!(
             joined.deadline.ensure_total(),

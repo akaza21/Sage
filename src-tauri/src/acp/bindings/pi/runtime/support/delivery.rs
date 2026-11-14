@@ -47,8 +47,6 @@ impl PiRuntime {
         Ok(())
     }
 
-    /// Settles a request's reservation once its frame was queued, written
-    /// or refused.
     pub(in crate::acp::bindings::pi::runtime) fn resolve_request(
         &mut self,
         token: &EgressToken,

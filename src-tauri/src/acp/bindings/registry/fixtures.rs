@@ -1,5 +1,3 @@
-//! Registries for debug fixture launches: one binding active, the rest closed.
-
 use std::sync::Arc;
 
 use super::{

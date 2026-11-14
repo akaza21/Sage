@@ -38,7 +38,6 @@ fn a_parked_head_resumes_cut_before_an_undone_turn_or_restarts_without_history()
             if external_session_id.as_str() == "thread-a" && turn == "00000000-0000-4000-8000-000000000002"
     ));
 
-    // With its first turn undone too, the thread holds nothing to keep.
     fixture.undo("turn-1", false);
     assert!(restarts_after_undo(&fixture.database, &load(&parked), &parked).unwrap());
     let command = RestartSessionCommand {

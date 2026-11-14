@@ -109,8 +109,6 @@ impl PiRuntime {
 }
 
 impl PiRuntime {
-    /// The reply to a pending extension question: its answer, or a cancelled
-    /// dialog when the user declines. `None` when no question is pending.
     fn answer_question(
         &mut self,
         decision: &PermissionDecision,

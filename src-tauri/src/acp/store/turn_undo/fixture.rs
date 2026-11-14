@@ -1,5 +1,3 @@
-//! A Chat with a parked Claude Code head session, for undo tests.
-
 use rusqlite::params;
 
 use super::*;
@@ -29,13 +27,10 @@ impl Drop for Fixture {
 }
 
 impl Fixture {
-    /// A Chat whose parked head session `session-a` is bound to a native
-    /// thread and has run no Turn yet.
     pub(crate) fn new() -> Self {
         Self::on(crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID)
     }
 
-    /// The same Chat with `session-a` bound to `binding`.
     pub(crate) fn on(binding: &str) -> Self {
         Self::with_thread(binding, "thread-a", CAPABILITIES)
     }
@@ -71,7 +66,6 @@ impl Fixture {
         }
     }
 
-    /// The latest runtime epoch of `session-a`.
     pub(crate) fn epoch(&self) -> i64 {
         self.database
             .connection()
@@ -83,8 +77,6 @@ impl Fixture {
             .unwrap()
     }
 
-    /// A completed Turn of `session-a` in its latest runtime, created after
-    /// every earlier one.
     pub(crate) fn turn(&self, id: &str, ordinal: i64) {
         let epoch = self.epoch();
         self.database
@@ -105,7 +97,6 @@ impl Fixture {
             .unwrap();
     }
 
-    /// A later runtime of `session-a` that has exited again.
     pub(crate) fn relaunch(&self) {
         let epoch = self.epoch() + 1;
         self.database
@@ -117,7 +108,6 @@ impl Fixture {
             .unwrap();
     }
 
-    /// Starts a later runtime of `session-a` and keeps it running.
     pub(crate) fn run(&self) {
         let epoch = self.epoch() + 1;
         self.database

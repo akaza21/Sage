@@ -1,7 +1,3 @@
-//! A user-defined agent driven through the standard ACP runtime with a
-//! scripted agent: the handshake it advertises, sign-in, a plain turn and
-//! `elicitation/create` answered through the shared question card.
-
 use std::{path::PathBuf, sync::Arc};
 
 use serde_json::{Value, json};

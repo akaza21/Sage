@@ -792,7 +792,6 @@ mod tests {
                 ..
             }
         )));
-        // Three thought snapshots, then the answer text ends the thought block.
         assert_eq!(
             events
                 .iter()
@@ -922,8 +921,6 @@ mod tests {
         runtime
             .resolve_egress(initialize.into_token(), EgressResolution::Written)
             .expect("initialize written");
-        // Even when OpenCode lists a method that needs no input, Sage does not
-        // call `authenticate` for it: OpenCode keeps its own sign-in guidance.
         let mut initialized = inbound_smoke_frames()
             .into_iter()
             .next()

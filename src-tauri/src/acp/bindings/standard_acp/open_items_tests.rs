@@ -1,6 +1,3 @@
-//! ACP has no message end: the translator closes text, thought and plan items
-//! from the thought-to-answer boundary and the prompt response.
-
 use serde_json::{Value, json};
 
 use super::{

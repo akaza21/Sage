@@ -1,16 +1,9 @@
-//! Sizes a chat page against its byte budget while only the fields around
-//! its transcript change.
-
 use sage_core::encoded_len::encoded_len;
 
 use crate::acp::{intent::AcpChatPage, store::StoreError};
 
-/// The encoding of the empty turn list a page shell is measured with.
 const EMPTY_TURNS: usize = "[]".len();
 
-/// A page's transcript measured once. Fitting the session config and goal
-/// to the budget only changes the fields around it, so each check encodes
-/// those fields alone rather than the whole page again.
 pub(super) struct PageBytes {
     turns: usize,
 }
@@ -21,7 +14,7 @@ impl PageBytes {
         Ok(Self { turns })
     }
 
-    /// The page's encoded length. Its turns must be the ones measured.
+    /// The page's turns must be the ones measured.
     pub(super) fn of(&self, page: &mut AcpChatPage) -> Result<usize, StoreError> {
         let turns = std::mem::take(&mut page.turns);
         let shell = encoded_len(page);

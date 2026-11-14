@@ -431,7 +431,6 @@ fn each_turn_projects_only_its_own_operations_in_order() {
         start(&mut connection, epoch, &operation).unwrap();
         started.push(operation);
     }
-    // Terminals land after later Turns' facts; each still joins its own start.
     for (index, phase) in [(0, "completed"), (3, "failed"), (1, "denied")] {
         let operation = &mut started[index];
         operation.phase = phase.into();

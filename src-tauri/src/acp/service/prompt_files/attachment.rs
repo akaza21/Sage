@@ -1,13 +1,9 @@
-//! Staged batches live only as long as the chat tab they were staged in.
 use super::FileStages;
 
-/// The one ownership rule for staged batches: a batch lives only while the
-/// chat tab attachment it was staged in still exists. Any path that closes a
-/// tab, deletes, moves or archives a chat, or saves a layout without the tab
-/// ends that attachment; this drops the batch so it no longer counts against
-/// the owner and memory caps and is never sent from a reopened tab. Attachment
-/// commands and sends run it before they read stages, and layout persistence
-/// runs it after a commit so closed tabs release their memory promptly.
+/// A batch lives only while the chat tab attachment it was staged in still
+/// exists. Attachment commands and sends run this before they read stages,
+/// and layout persistence runs it after a commit so closed tabs release their
+/// memory promptly.
 pub(crate) fn release_detached(
     stages: &std::sync::Mutex<FileStages>,
     database: &crate::persistence::Database,
@@ -47,8 +43,6 @@ pub(crate) fn release_detached(
     }
 }
 
-/// The client intent of a turn in this chat and how many resources its
-/// prompt carried, from the count persisted with the prompt (never bytes).
 pub(crate) fn retry_origin(
     database: &crate::persistence::Database,
     project: &str,

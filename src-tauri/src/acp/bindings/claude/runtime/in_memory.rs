@@ -1,5 +1,3 @@
-//! A new or resumed Claude runtime driven in memory, for service tests that need
-//! the real binding's wire behaviour without a child process.
 use super::*;
 use crate::acp::bindings::runtime::NativeRuntime;
 use crate::acp::{
@@ -74,8 +72,6 @@ impl InMemoryClaude {
         Ok(request)
     }
 
-    /// Lets the binding apply one config change and returns the request it
-    /// wrote to the harness, if any.
     pub(crate) fn configure(
         &mut self,
         intent: &ConfigIntent,
@@ -86,7 +82,6 @@ impl InMemoryClaude {
         }
     }
 
-    /// Delivers one frame from the harness to the binding.
     pub(crate) fn receive(&mut self, value: Value) -> Result<(), AdapterRuntimeError> {
         self.0
             .ingest(&frame(&value), &super::tests::Mapper)

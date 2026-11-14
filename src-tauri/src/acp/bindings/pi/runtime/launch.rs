@@ -11,14 +11,12 @@ use crate::acp::{
 
 use super::PiRuntime;
 
-/// One launch of Pi: the installed release, or the test fixture's child.
 pub(crate) trait PiLaunch: Send {
-    /// The launch for this runtime epoch; a launch is used at most once.
+    /// A launch is used at most once.
     fn launch_spec(&mut self, epoch: RuntimeEpoch) -> Result<LaunchSpec, AdapterRuntimeError>;
 }
 
 impl PiRuntime {
-    /// Gives this runtime the authority to start its Pi process.
     pub(crate) fn with_launch(mut self, launch: impl PiLaunch + 'static) -> Self {
         self.launch = Some(Box::new(launch));
         self

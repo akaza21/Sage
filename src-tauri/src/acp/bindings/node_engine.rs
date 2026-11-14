@@ -1,11 +1,8 @@
-//! Whether a Node release meets a package's declared `engines.node` range.
-
 use std::ops::Bound::{self, Excluded, Included, Unbounded};
 
 #[path = "node_engine_range.rs"]
 mod range;
 
-/// Longest `engines.node` value Sage evaluates.
 pub(crate) const RANGE_BYTES_MAX: usize = 256;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
@@ -28,7 +25,6 @@ pub(crate) fn satisfies(range: &str, node: NodeVersion) -> Option<bool> {
     Some(satisfied)
 }
 
-/// A Node release written `22.18.0` or `v22.18.0`.
 pub(crate) fn parse_node_version(text: &str) -> Option<NodeVersion> {
     let text = text.trim();
     // Sage policy: prerelease Node runtimes are never admitted.

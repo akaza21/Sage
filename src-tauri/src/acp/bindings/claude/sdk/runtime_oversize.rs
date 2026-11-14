@@ -1,5 +1,3 @@
-//! Claude Code frames past the structure limits sized for ACP frames.
-
 use serde_json::Value;
 
 use super::{ClaudeSdkRuntime, SdkBridge, sdk_frame};
@@ -29,8 +27,6 @@ impl ResourceMapper for NoResources {
 }
 
 impl ClaudeSdkRuntime {
-    /// A frame too large to read whole, kept as far as Sage needs it (see
-    /// `discard_invalid_response`).
     pub(super) fn ingest_oversize(
         &mut self,
         frame: &Frame,

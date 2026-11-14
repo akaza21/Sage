@@ -186,7 +186,6 @@ impl PiTranslator {
         match turn.lifecycle.settle(incoming)? {
             None => Ok(vec![AdapterOutput::DuplicateIgnored]),
             Some(settled) => {
-                // A card left open is gone with its turn.
                 self.pending_ui = None;
                 // Sage's policy abort is not the user's stop.
                 let incoming = if denied {
@@ -366,8 +365,6 @@ impl PiTranslator {
     }
 }
 
-/// Harness text shown as-is: control and invisible characters neutralized,
-/// secrets redacted, trimmed and clipped. `None` when nothing is left.
 fn display_text(value: Option<&Value>, max: usize) -> Option<String> {
     let text = neutralized(value?.as_str()?, true);
     let text = clip_display(redact_structured_text(&text).trim(), max);

@@ -61,7 +61,6 @@ fn requests_nothing_can_ask_are_cancelled_and_unshowable_ones_declined() {
     let decline = Elicitation::Reply(json!({"action": "decline"}));
     assert_eq!(admit(&ask_params("s1"), "s1", false), cancel);
     assert_eq!(admit(&ask_params("other"), "s1", true), cancel);
-    // Request-scoped (no session) requests have no Turn to own them.
     assert_eq!(
         admit(
             &json!({"mode": "form", "requestId": 4, "message": "m",

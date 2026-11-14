@@ -60,7 +60,6 @@ fn compact_is_listed_once_and_takes_the_place_of_a_same_named_template() {
             ),
         ]
     );
-    // Pi's `/session` opens the session's status in the chat.
     assert_eq!(
         runtime.available_commands().snapshot().commands[1].dispatch,
         crate::acp::slash_commands::CommandDispatch::Panel(
@@ -79,7 +78,6 @@ fn slash_compact_runs_pis_compaction_as_a_turn_with_its_compaction_item() {
         request,
         json!({"type":"compact","id":request["id"],"customInstructions":"keep the API notes"})
     );
-    // Pi compacts before it answers, so its events arrive first.
     let started = runtime
         .ingest(
             &frame(json!({"type":"compaction_start","reason":"manual"})),
@@ -104,11 +102,8 @@ fn slash_compact_runs_pis_compaction_as_a_turn_with_its_compaction_item() {
         turn_states(&done),
         [crate::acp::lifecycle::TurnState::Completed]
     );
-    // A bare `/compact` sends no instructions, and the session takes prompts again.
     let request = slash(&mut runtime, "/compact", revision);
     assert_eq!(request, json!({"type":"compact","id":request["id"]}));
-    // Pi reports a session too small to compact as a failed compaction; its
-    // reason reaches the user as a notice beside the failed compaction item.
     runtime
         .ingest(
             &frame(json!({"type":"compaction_start","reason":"manual"})),
@@ -224,8 +219,6 @@ fn the_compact_action_runs_pis_compaction_without_a_listed_command() {
     let mut runtime = fixture_runtime(1);
     ready(&mut runtime);
     assert!(runtime.capabilities().unwrap().native_session_compact);
-    // The composer's Compact button sends the action with its `/compact`
-    // prompt text and no command revision, even before commands are listed.
     let action = crate::acp::session_action::SessionAction::Compact {};
     let mut prompt = Prompt::new("prompt", action.prompt_text()).unwrap();
     prompt.action = Some(action);
@@ -265,6 +258,5 @@ fn a_review_action_is_refused_since_pi_has_no_review() {
         }),
         Err(AdapterRuntimeError::UnsupportedCommand)
     ));
-    // Nothing was reserved: the session still takes a prompt.
     running(&mut runtime);
 }

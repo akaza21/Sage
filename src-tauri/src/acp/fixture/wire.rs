@@ -68,12 +68,10 @@ pub(super) struct WireState {
     /// Server requests the fixture has sent. Codex numbers its own requests
     /// from one counter per connection, so an id is never reused.
     server_requests_sent: u64,
-    /// The question request still waiting for the client's answer.
     pending_user_input: Option<u64>,
     user_input_echo: Option<String>,
     pi: pi::PiWireState,
     acp_config: Option<acp::AcpConfig>,
-    /// What prompts carry, once `initialize` advertised embedded context.
     embedded_context: Option<acp::EmbeddedContext>,
     /// The model the client opened or resumed the Codex thread with.
     codex_thread_model: Option<String>,
@@ -110,8 +108,6 @@ impl WireState {
         }
     }
 
-    /// A launch's starting state: a Claude Code SDK case opens the session
-    /// its `harness_args` name.
     pub(super) fn launched(harness_args: &[String]) -> Result<Self, FixtureError> {
         let mut state = Self::new();
         state.claude_sdk = claude_sdk::SdkWireState::launched(harness_args)?;
@@ -206,8 +202,6 @@ fn await_client_kind(
     let expected_method = match kind {
         "codexInitialize" => Some("initialize"),
         "codexStart" => Some("thread/start"),
-        // A journey that runs across an app restart: a new thread first,
-        // the same thread resumed after.
         "codexStartOrResume" => Some("thread/start|thread/resume"),
         "codexResume" => Some("thread/resume"),
         "codexModelList" => Some("model/list"),
@@ -254,8 +248,6 @@ fn await_client(
     }
 }
 
-/// The frame a Codex journey step named `shape` answers request `id` with,
-/// outside a running journey.
 #[cfg(any(test, all(windows, debug_assertions)))]
 pub(super) fn codex_reply(shape: &str, id: u64) -> Option<Value> {
     let mut state = WireState::new();

@@ -86,7 +86,6 @@ impl PiRuntime {
         ))
     }
 
-    /// Pi dropped a timed dialog without a word; its card goes too.
     pub(super) fn expire_dialog(
         &mut self,
         id: String,

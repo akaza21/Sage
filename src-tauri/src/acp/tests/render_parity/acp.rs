@@ -1,6 +1,3 @@
-//! Standard ACP wire for each scenario, through the shared translator with
-//! Claude's profile (the current Claude binding) or a plain ACP profile.
-
 use serde_json::{Value, json};
 
 use super::{FILE, Fact, Mapper, NEW_TEXT, OLD_TEXT, Scenario};
@@ -21,7 +18,6 @@ fn steerable(scenario: Scenario) -> bool {
     scenario != Scenario::SteeredMessage
 }
 
-/// No vendor updates and no command field: what any ACP agent gets.
 pub(super) fn generic(scenario: Scenario) -> Option<Vec<Fact>> {
     steerable(scenario).then(|| run("gemini-cli", scenario))
 }

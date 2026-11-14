@@ -1,4 +1,4 @@
-//! Browser-specific permission gate. A UI-backed decider is required before admission.
+//! A UI-backed decider is required before admission.
 use super::{
     BrowserCapability, BrowserCommand, BrowserFailure, BrowserRequest, BrowserResult, BrowserScope,
     developer::DeveloperModePolicy,

@@ -5,9 +5,7 @@ use crate::{
 };
 
 impl AcpService {
-    /// Narrow typed `DiffRef -> {oldText,newText,metadata}` lookup through the
-    /// same page-read reservation as history pages. Never exposes a BLOB
-    /// through the generic page payload.
+    /// Never exposes a BLOB through the generic page payload.
     pub(crate) async fn read_file_snapshot(
         &self,
         project_id: &SageProjectId,

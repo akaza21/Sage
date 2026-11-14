@@ -159,7 +159,6 @@ fn first_chat_real_turn_two_bootstrap_authorizes_snapshot_fill_without_replay() 
         let trace = Arc::new(Mutex::new(Trace::default()));
         trace.lock().unwrap().browser.open_tab(scope.clone());
 
-        // First real prompt, protocol completion, and production terminal handling.
         setup
             .service
             .send_codex_turn(setup.turn_command(&runtime_owner))
@@ -303,7 +302,6 @@ fn first_chat_real_turn_two_bootstrap_authorizes_snapshot_fill_without_replay() 
         call.finish();
         assert_eq!(trace.lock().unwrap().issued, 2);
 
-        // Hand back is chat/tab-scoped and restores a fresh authorized request.
         assert!(setup.service.take_over_browser_tab("browser-1"));
         let other_chat = setup.create_chat();
         setup
@@ -363,7 +361,7 @@ fn first_chat_real_turn_two_bootstrap_authorizes_snapshot_fill_without_replay() 
                     .unwrap();
             } else {
                 setup.service.revoke_browser_tab("browser-1");
-            } // Stop's service operation.
+            }
             assert_eq!(outcome(&events), Err(BrowserFailure::Denied));
             call.finish();
             assert!(

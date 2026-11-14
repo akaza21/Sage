@@ -1,8 +1,6 @@
-//! The mode and option values a session reports, as config choices.
 use super::{ConfigKind, ConfigMutation, ConfigValue, SessionConfig};
 
-/// The session's current value for the mode or option `choice` names, or
-/// `None` when the session does not offer it.
+/// Returns `None` when the session does not report the mode or option, or the option has an unsupported kind.
 pub(crate) fn current_value(
     config: &SessionConfig,
     choice: &ConfigMutation,
@@ -35,7 +33,6 @@ pub(crate) fn current_value(
     }
 }
 
-/// Every mode and option value `config` reports.
 pub(crate) fn values(config: &SessionConfig) -> Vec<ConfigMutation> {
     let mode = config
         .modes
@@ -57,7 +54,6 @@ pub(crate) fn values(config: &SessionConfig) -> Vec<ConfigMutation> {
     mode.into_iter().chain(options).collect()
 }
 
-/// The values `new` reports that differ from what `old` reported.
 pub(crate) fn changes(old: &SessionConfig, new: &SessionConfig) -> Vec<ConfigMutation> {
     values(new)
         .into_iter()
@@ -65,7 +61,6 @@ pub(crate) fn changes(old: &SessionConfig, new: &SessionConfig) -> Vec<ConfigMut
         .collect()
 }
 
-/// Whether `a` and `b` set the same mode or option.
 pub(crate) fn same_target(a: &ConfigMutation, b: &ConfigMutation) -> bool {
     match (a, b) {
         (ConfigMutation::Mode(_), ConfigMutation::Mode(_)) => true,

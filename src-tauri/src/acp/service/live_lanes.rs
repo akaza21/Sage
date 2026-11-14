@@ -1,10 +1,3 @@
-//! Bounded concurrent live runtimes.
-//!
-//! Each lane owns one runtime slot, a one-tree scheduler, its session
-//! coordinator, and one retained recovery. Routing selects the lane holding
-//! an exact runtime owner or reserves a lane for a new activation. The
-//! `operational_live_trees` limit bounds total live harness trees.
-
 use std::{
     ops::Deref,
     sync::{
@@ -25,18 +18,14 @@ use super::{
     runtime_slot::RuntimeSlotError,
 };
 
-/// Number of concurrently live harness runtimes Sage admits.
 pub(crate) const LIVE_RUNTIME_LANES: usize = LIMITS.process.operational_live_trees as usize;
 
-/// The explicit-close deadline from now: the bound on one release or close.
 pub(crate) fn explicit_close_deadline() -> Instant {
     Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close)
 }
 
-/// Why a Chat's live runtime was not released.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChatRuntimeRelease {
-    /// A Turn is running; the user stops it first.
     TurnRunning,
     /// An activation or another release holds the lane; once it lets go, a
     /// retry may succeed.
@@ -50,7 +39,6 @@ pub(crate) enum ChatRuntimeRelease {
 }
 
 impl ChatRuntimeRelease {
-    /// The refusal shown to the user for `action` ("archiving", "deleting").
     pub(crate) fn message(self, action: &str) -> String {
         match self {
             Self::TurnRunning => format!("Stop this Chat's running turn before {action} it"),
@@ -107,7 +95,6 @@ impl LiveLane {
             .is_some()
     }
 
-    /// True when this lane retains any authority for the exact owner.
     fn holds(&self, owner: &RuntimeOwner) -> bool {
         self.runtime.owner().as_ref() == Some(owner)
             || self
@@ -117,9 +104,8 @@ impl LiveLane {
             || self.recovery_owner().as_ref() == Some(owner)
     }
 
-    /// True when this lane retains any authority for the same session at any
-    /// runtime epoch. A re-activation must land where an older epoch's
-    /// recovery can be reclaimed first.
+    /// A re-activation must land where an older epoch's recovery can be reclaimed
+    /// first.
     fn holds_session(&self, owner: &RuntimeOwner) -> bool {
         let same = |candidate: &RuntimeOwner| {
             candidate.project_id == owner.project_id
@@ -138,8 +124,6 @@ impl LiveLane {
         self.runtime.is_empty() && self.scheduler.active().is_none() && !self.has_recovery()
     }
 
-    /// An idle runtime that would make room for another Chat, but whose
-    /// harness is answering a session control.
     fn answering_while_idle(&self) -> bool {
         !self.has_recovery()
             && self.scheduler.active().is_some_and(|active| {
@@ -152,7 +136,6 @@ impl LiveLane {
     }
 }
 
-/// Lane-specific runtime authority with shared service access through `Deref`.
 pub(super) struct Lane<'a> {
     service: &'a AcpService,
     pub(super) runtime: Arc<RuntimeSlot>,
@@ -173,7 +156,6 @@ impl Deref for Lane<'_> {
     }
 }
 
-/// Releases a lane's activation reservation however activation ends.
 pub(super) struct ActivationClaim<'a> {
     lane: &'a LiveLane,
 }
@@ -213,7 +195,6 @@ impl AcpService {
         (0..self.lanes.len()).map(|index| self.lane_at(index))
     }
 
-    /// The lane retaining any authority for this exact owner.
     pub(super) fn lane_for(&self, owner: &RuntimeOwner) -> Option<Lane<'_>> {
         self.lanes
             .iter()
@@ -238,14 +219,10 @@ impl AcpService {
             .count()
     }
 
-    /// Picks the lane for a new activation and reserves it until the claim is
-    /// dropped, so concurrent activations never race for one lane. Order:
-    /// a lane already holding this session, a free lane, a lane with
-    /// resumable idle runtime, then a lane retaining recovery
-    /// (which activation parks). Busy lanes are never chosen. Choosing a lane
-    /// that holds another Chat's idle runtime claims that runtime's idle park
-    /// at once; one whose harness is answering a session control is passed
-    /// over for the next candidate.
+    /// Order: a lane already holding this session, a free lane, a lane with
+    /// resumable idle runtime, then a lane retaining recovery (which activation
+    /// parks). Busy lanes are never chosen; one whose harness is answering a
+    /// session control is passed over for the next candidate.
     pub(super) fn claim_activation_lane(
         &self,
         owner: &RuntimeOwner,
@@ -294,12 +271,9 @@ impl AcpService {
         Err(CodexSessionError::Capacity)
     }
 
-    /// Parks the Chat's live runtime through the explicit-close park an
-    /// evicted idle lane takes, so an archived or deleted Chat holds no
-    /// harness process; a later restore resumes the session. A lane retaining
-    /// recovery for the Chat is driven first. A reserved Turn is refused.
-    /// `still_wanted` is asked once the lane is claimed, so a Chat restored
-    /// meanwhile keeps its runtime; `deadline` bounds the whole release.
+    /// A lane retaining recovery for the Chat is driven first. A reserved Turn is
+    /// refused. `still_wanted` is asked once the lane is claimed, so a Chat
+    /// restored meanwhile keeps its runtime; `deadline` bounds the whole release.
     pub(crate) fn release_chat_runtime(
         &self,
         project: &crate::acp::contract::SageProjectId,
@@ -429,8 +403,6 @@ impl AcpService {
         order
     }
 
-    /// An idle runtime a park releases and the next activation resumes;
-    /// eviction and idle release park only these.
     fn parks_resumably(&self, index: usize) -> bool {
         let lane = &self.lanes[index];
         lane.scheduler.active().is_some_and(|active| {

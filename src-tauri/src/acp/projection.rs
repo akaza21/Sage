@@ -41,7 +41,6 @@ pub enum PermissionRequestSource {
 }
 
 impl PermissionRequestSource {
-    /// The card's heading in the transcript.
     pub fn label(self) -> &'static str {
         match self {
             Self::Browser => "Browser permission",
@@ -166,7 +165,6 @@ pub enum FileOperation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FilePairState {
-    /// An immutable snapshot revision is retained for the narrow read.
     Available,
     /// No pair was admitted (legacy summary, harness without pair evidence,
     /// or unavailable resource). Never fabricated text.
@@ -207,7 +205,6 @@ pub enum ItemContent {
         role: TextRole,
         text: SafeText<262144>,
     },
-    /// A message the user steered into the running Turn, at its place.
     UserPrompt {
         text: SafeText<262144>,
     },
@@ -407,15 +404,12 @@ pub struct AcpChatPage {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) restored_session_config:
         Option<super::session_config::choices::RestoredSessionConfig>,
-    /// What the composer says about a stored choice the current session
-    /// could not take back, such as a saved model it no longer offers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) session_config_notice: Option<super::session_config::notices::SessionConfigNotice>,
     pub(crate) goal: super::goal::GoalState,
     /// The current session's live runtime reports usage limits.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) usage: bool,
-    /// Notices and live activities of the current session.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) session_surface: Option<super::intent::session_event::SessionSurfaceView>,
     pub project_id: SageProjectId,
@@ -426,7 +420,6 @@ pub struct AcpChatPage {
     pub sessions: BoundedVec<SessionProjection, 32>,
     pub turns: BoundedVec<TurnProjection, 20>,
     pub next_cursor: Option<PageCursor>,
-    /// The Chat this one was natively forked from (durable `chat_lineage`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) forked_from: Option<SageChatId>,
     /// The parent Turn the fork carries history through, inclusive.

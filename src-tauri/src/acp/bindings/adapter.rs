@@ -68,7 +68,6 @@ pub(crate) trait ResourceMapper {
         None
     }
 
-    /// Optional bounded UTF-8 context for reconstructing a reported edit.
     /// Callers must validate the patch against it before retaining a snapshot.
     fn read_diff_context(&self, _resource: &SafeResourceRef) -> Option<String> {
         None

@@ -1,11 +1,3 @@
-//! Take over pauses the Agent's browser call; Hand back resumes it. A call
-//! refused, before it was issued, because the user holds a tab of its chat
-//! waits, as a permission card does, for the user to hand the tab back, and
-//! then runs once more under a fresh authority, so it asks permission again.
-//! Only a hand back resumes it: Stop or a detach that leaves no tab held
-//! ends the pause with the call's own failure, and the turn ending, the
-//! owner moving on or the wait running out end it with `UserControl`.
-
 #![cfg_attr(not(windows), allow(dead_code))]
 
 use std::time::{Duration, Instant};
@@ -16,7 +8,6 @@ use super::BrowserFailure;
 pub(crate) const HAND_BACK_WAIT: Duration = Duration::from_secs(300);
 pub(crate) const POLL: Duration = Duration::from_millis(100);
 
-/// What the pause reads from the attachments and the turn.
 pub(crate) struct PauseSignals<Holds, Generation, Current> {
     /// Whether the user holds any tab of the call's chat.
     pub(crate) user_holds: Holds,
@@ -41,8 +32,6 @@ pub(crate) fn paused<T>(outcome: &Result<T, BrowserFailure>, declined_by_take_ov
     }
 }
 
-/// Runs `attempt`, and when `is_paused` says the user's take over refused
-/// it, waits for a hand back and runs it once more.
 pub(crate) fn run_with_pause<T, Holds, Generation, Current>(
     mut attempt: impl FnMut() -> Result<T, BrowserFailure>,
     is_paused: impl FnOnce(&Result<T, BrowserFailure>) -> bool,
@@ -69,7 +58,6 @@ where
             if (signals.hand_backs)() != generation {
                 return attempt();
             }
-            // Stop or a detach: nothing was handed back, nothing resumes.
             return match first {
                 Err(BrowserFailure::UserControl) => Err(BrowserFailure::Denied),
                 other => other,
@@ -91,8 +79,6 @@ mod tests {
     const WAIT: Duration = Duration::from_secs(5);
     const TICK: Duration = Duration::from_millis(1);
 
-    /// A chat whose user holds a tab for `polls` reads, then lets go, and
-    /// hands back when `hand_back` is set.
     struct Chat {
         holds_for: Cell<u32>,
         hand_back: bool,
@@ -157,7 +143,6 @@ mod tests {
 
     #[test]
     fn stop_while_paused_does_not_resume() {
-        // The user stops the held tab: no tab is held, nothing was handed back.
         let chat = Chat::new(3, false);
         assert_eq!(
             chat.run(BrowserFailure::UserControl, || true),
@@ -224,7 +209,6 @@ mod tests {
     fn only_a_take_over_counts_as_a_pause() {
         assert!(paused::<()>(&Err(BrowserFailure::UserControl), false));
         assert!(paused::<()>(&Err(BrowserFailure::Denied), true));
-        // An explicit Deny on one tab while the user holds another tab.
         assert!(!paused::<()>(&Err(BrowserFailure::Denied), false));
         assert!(!paused::<()>(&Err(BrowserFailure::OutcomeUnknown), true));
         assert!(!paused(&Ok(()), true));
@@ -232,7 +216,6 @@ mod tests {
 
     #[test]
     fn a_hand_back_of_another_tab_waits_for_the_held_one() {
-        // A hand back moved the generation, but a tab is still held.
         let holds = Cell::new(4_u32);
         let generation = Cell::new(0);
         let attempts = Cell::new(0);

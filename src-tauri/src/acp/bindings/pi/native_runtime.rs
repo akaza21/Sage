@@ -1,5 +1,3 @@
-//! Launchable Pi runtime with read-only fallback and optional curated bridge.
-
 use std::sync::Arc;
 
 use crate::acp::{
@@ -46,7 +44,6 @@ impl RuntimeFactory for PiNativeRuntimeFactory {
     }
 }
 
-/// The installed Pi release, launched in the chat's project root.
 struct InstalledPi {
     binding: Arc<AdmittedPiBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,

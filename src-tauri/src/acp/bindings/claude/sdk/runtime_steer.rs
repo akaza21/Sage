@@ -1,7 +1,3 @@
-//! Messages sent while Claude is working, on the runtime side: each is a
-//! request Sage waits on until Claude Code reports it queued (see
-//! `bridge::steer`).
-
 use super::{SdkBridge, Sent, sdk_frame};
 use crate::acp::bindings::adapter::{
     AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution, EgressToken,
@@ -54,7 +50,6 @@ impl Steering {
         Ok(AdapterEgress::new(frame, EgressToken::request(request_id)))
     }
 
-    /// Each message's answer, once; a message never written is refused.
     pub(super) fn answers(&mut self, steers: Vec<(String, bool)>) -> Vec<AdapterEvent> {
         let unsent = std::mem::take(&mut self.unsent)
             .into_iter()
@@ -74,7 +69,6 @@ impl Steering {
             .collect()
     }
 
-    /// Settles a message's delivery; false when the token is not one.
     pub(super) fn resolve(
         &mut self,
         token: &EgressToken,

@@ -23,7 +23,6 @@ pub struct UserInputLimits {
     pub minimum: Option<Number>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub maximum: Option<Number>,
-    /// How many options a multi-select answer chooses.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub min_items: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -35,7 +34,6 @@ impl UserInputLimits {
         *self == Self::default()
     }
 
-    /// Whether every lower bound is at most its upper bound.
     pub(crate) fn is_ordered(&self) -> bool {
         let numbers = match (&self.minimum, &self.maximum) {
             (Some(minimum), Some(maximum)) => compare(minimum, maximum).is_le(),
@@ -52,8 +50,6 @@ impl UserInputLimits {
                 .is_none_or(|(a, b)| a <= b)
     }
 
-    /// Checks free text against its length limits and, for a number
-    /// question, the number grammar and range.
     pub(super) fn check_text(&self, kind: UserInputKind, text: &str) -> Result<(), UserInputError> {
         if !within(text.chars().count(), self.min_length, self.max_length) {
             return Err(UserInputError::TextLength);
@@ -78,7 +74,6 @@ impl UserInputLimits {
         Ok(())
     }
 
-    /// Checks how many options a multi-select answer chose.
     pub(super) fn check_items(&self, chosen: usize) -> Result<(), UserInputError> {
         if within(chosen, self.min_items, self.max_items) {
             Ok(())

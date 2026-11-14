@@ -428,8 +428,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
     assert!(read_snapshot(&fixture.connection, &valid, &roots).is_ok());
     let usage_before = reopen_usage(&fixture);
 
-    // Missing pair after compaction releases only its bytes and reads as
-    // unavailable; the failed read itself never mutates usage or Git/disk.
     fixture
         .connection
         .execute("DELETE FROM acp_file_change_snapshots", [])
@@ -443,7 +441,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
     let reread_usage = reopen_usage(&fixture);
     assert_eq!(usage_after_delete, reread_usage);
 
-    // Restore one row for the remaining corruption classes.
     apply_adapter_inbound_batch(
         &mut fixture.connection,
         reopen_pair_batch(&fixture.owner, "reopen-file", "old", "second"),
@@ -452,7 +449,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
     let second = reopen_reference(&fixture, 2, "old", "second");
     let usage_second = reopen_usage(&fixture);
 
-    // Owner mismatch is stale, never the new bytes.
     let mut forged = second.clone();
     forged.chat_id = "other".into();
     assert_eq!(
@@ -460,8 +456,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
         Err(SnapshotReadError::Stale)
     );
 
-    // Raw-length mismatch cannot be stored: the durable CHECK rejects it
-    // fail-closed without mutating usage.
     assert!(
         fixture
             .connection
@@ -480,7 +474,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
         .unwrap_or(());
     assert_eq!(reopen_usage(&fixture), usage_second);
 
-    // Invalid UTF-8 and digest mismatch are corrupt.
     fixture
         .connection
         .execute_batch(
@@ -539,14 +532,12 @@ fn new_pair_shares_aggregate_accounting_without_double_charge() {
     )
     .unwrap();
     let usage_once = reopen_usage(&fixture);
-    // Retransmission of identical bytes is idempotent and does not double charge.
     apply_adapter_inbound_batch(
         &mut fixture.connection,
         reopen_pair_batch(&fixture.owner, "reopen-file", "old", "new"),
     )
     .unwrap();
     assert_eq!(reopen_usage(&fixture), usage_once);
-    // Evolving content charges only its delta once and reconciles across ledgers.
     apply_adapter_inbound_batch(
         &mut fixture.connection,
         reopen_pair_batch(&fixture.owner, "reopen-file", "old", "evolved"),
@@ -571,7 +562,6 @@ fn new_pair_shares_aggregate_accounting_without_double_charge() {
         )
         .unwrap();
     assert_eq!(session, (reconciled.0, reconciled.0 + reconciled.1));
-    // Exact-fit then +1 with facts still respects the shared turn ledger.
     let used: i64 = fixture
         .connection
         .query_row(

@@ -71,7 +71,6 @@ mod tests {
         let during = switch.generation.load(Ordering::SeqCst);
         assert!(!switch.is_current(0));
         assert!(!switch.is_current(during));
-        // Both successful and failed writes leave through the same guard.
         drop(transition);
         assert!(!switch.is_current(0));
         assert!(!switch.is_current(during));

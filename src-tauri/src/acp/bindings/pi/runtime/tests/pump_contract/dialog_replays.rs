@@ -116,7 +116,6 @@ fn cancelled_dialog_replay_does_not_replace_a_genuine_pending_approval() {
         let batch = runtime
             .ingest(&frame(approval_dialog("fresh", method)), &Mapper)
             .unwrap();
-        // The card offers exactly the answers the runtime can deliver below.
         assert!(matches!(batch.events(), [AdapterEvent::PermissionRequest {
             external_request_id,
             payload: NormalizedPayload::PermissionRequest {

@@ -2,8 +2,6 @@ pub(crate) use crate::domain::HarnessCharacterisation as Characterisation;
 
 use super::release_version::characterise_against;
 
-/// The releases each harness was tested with. Later releases keep the tested
-/// features (see [`characterise_against`]).
 const CODEX_TESTED_VERSION: &str = crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 const CLAUDE_ADAPTER_TESTED_VERSION: &str = "0.76.0";
@@ -56,8 +54,6 @@ pub(crate) fn claude_characterisation(
     }
 }
 
-/// Whether a Node release meets both Sage's own floor and the range a
-/// package declares in `engines.node`.
 pub(crate) fn node_satisfies_declared_engine(node_version: &str, declared_range: &str) -> bool {
     super::node_engine::parse_node_version(node_version).is_some_and(|node| {
         node.0 >= u64::from(NODE_ENGINE_FLOOR_MAJOR)

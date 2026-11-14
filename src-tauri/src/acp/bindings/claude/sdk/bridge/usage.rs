@@ -1,7 +1,3 @@
-//! The plan's usage limits, read with Claude Code's `get_usage` control
-//! request: each window's share used and when it resets, as Claude Code's
-//! `/usage` reports them.
-
 use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
@@ -21,7 +17,6 @@ const WINDOWS: [(&str, Option<&str>, i64, bool); 4] = [
     ("seven_day_sonnet", Some("Sonnet"), SEVEN_DAYS, false),
 ];
 
-/// What a usage read learned about the account.
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::acp::bindings::claude::sdk) enum UsageReply {
     Limits(UsageSnapshot),
@@ -35,8 +30,7 @@ pub(super) fn read_request() -> Value {
     json!({"subtype": "get_usage", "skip_behaviors": true})
 }
 
-/// Claude Code's reply as the read's native answer. A failed or unreadable
-/// reply is refused and leaves the last snapshot standing.
+/// A failed or unreadable reply is refused and leaves the last snapshot standing.
 pub(super) fn answered(reply: Option<&Value>, inbound: &mut Inbound) {
     let usage = reply.and_then(usage_reply);
     inbound.native = Some(if usage.is_some() {
@@ -138,7 +132,6 @@ mod tests {
             panic!("limits");
         };
         assert_eq!(snapshot.plan.as_deref(), Some("Max"));
-        // Nearly used, and one model at its cap, still leave the plan open.
         assert!(!snapshot.limit_reached);
         assert_eq!(
             snapshot.windows,

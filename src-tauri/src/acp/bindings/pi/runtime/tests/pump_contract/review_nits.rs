@@ -1,6 +1,5 @@
 use super::*;
 
-/// A dialog Sage cannot show: no title to ask, and nothing to choose.
 fn unsupported_dialog(method: &str) -> Value {
     json!({"type":"extension_ui_request","id":format!("dialog-{method}"),"method":method,
         "options":[]})

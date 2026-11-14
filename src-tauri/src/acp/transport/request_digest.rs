@@ -4,8 +4,7 @@ use super::{Frame, StructuralError};
 
 const DOMAIN: &[u8] = b"sage-acp-request-v1\0";
 
-/// Hashes the exact top-level JSON-RPC request identity from a structurally
-/// validated frame. The method is hashed as decoded UTF-8 while `params` keeps
+/// The method is hashed as decoded UTF-8 while `params` keeps
 /// its exact JSON token bytes; neither value is retained after this call.
 pub(crate) fn request_payload_digest(frame: &Frame) -> Result<[u8; 32], StructuralError> {
     let (method, params) = request_parts(frame.as_bytes())?;

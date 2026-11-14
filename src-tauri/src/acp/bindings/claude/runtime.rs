@@ -69,11 +69,9 @@ pub(crate) struct ClaudeRuntime {
     delivery_unknown: Option<DeliveryUnknown>,
     refusal_detail: Option<RefusalDetail>,
     deferred: Vec<AdapterEvent>,
-    /// Questions the next permission request asks instead of an approval.
     next_user_input: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
     session_root: Option<String>,
     native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
-    /// Recent sessions this runtime forked (bounded; see `fork.rs`).
     forks: Vec<fork::TrackedFork>,
     /// The SDK bridge reports subagents, so their transcripts are stored.
     stores_children: bool,
@@ -139,8 +137,6 @@ impl ClaudeRuntime {
         ))
     }
 
-    /// The session state machine alone, for a binding that owns the launch
-    /// and speaks to Claude Code itself.
     pub(crate) fn for_session(
         binding_digest: [u8; 32],
         runtime_epoch: RuntimeEpoch,

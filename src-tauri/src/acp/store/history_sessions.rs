@@ -1,5 +1,3 @@
-//! The sessions of one chat, as the chat page projects them.
-
 use rusqlite::params;
 
 use crate::acp::{

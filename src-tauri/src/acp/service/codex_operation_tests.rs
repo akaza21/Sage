@@ -106,7 +106,6 @@ fn live_operations_run_concurrently_up_to_the_lane_count_and_fill_capacity() {
         gate.begin(&gate.prepare_live().unwrap()),
         Err(CodexDiscoveryRunError::Busy)
     ));
-    // Full capacity rejects ephemeral work at begin.
     let ephemeral = gate.prepare().unwrap();
     assert!(matches!(
         gate.begin(&ephemeral),
@@ -114,7 +113,6 @@ fn live_operations_run_concurrently_up_to_the_lane_count_and_fill_capacity() {
     ));
     drop(ephemeral);
     live.pop().unwrap().settle(Ok(()));
-    // A held live admission plus running work at capacity rejects admission.
     let replacement = gate.prepare_live().unwrap();
     live.push(gate.begin(&replacement).unwrap());
     let held: Vec<_> = (1..LIVE_OPERATIONS)
@@ -133,14 +131,11 @@ fn live_operations_run_concurrently_up_to_the_lane_count_and_fill_capacity() {
 #[test]
 fn ephemeral_discovery_is_admitted_beside_live_sessions_with_spare_capacity() {
     let gate = CodexOperationGate::new();
-    // A live session (Claude, Pi, or a retained completed one) holds a lane.
     let live_prepared = gate.prepare_live().unwrap();
     let live = gate.begin(&live_prepared).unwrap();
     let ephemeral = gate.prepare().unwrap();
     let discovery = gate.begin(&ephemeral).unwrap();
-    // Only one ephemeral operation at a time.
     assert!(matches!(gate.prepare(), Err(CodexDiscoveryRunError::Busy)));
-    // Live work fills the remaining lanes and then stops at capacity.
     let mut more = Vec::new();
     for _ in 2..LIVE_OPERATIONS {
         let prepared = gate.prepare_live().unwrap();
