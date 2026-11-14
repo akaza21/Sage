@@ -282,6 +282,18 @@ fn a_model_described_with_metadata_sage_does_not_read_is_still_offered() {
         .map(|model| model.id.as_str())
         .collect::<Vec<_>>();
     assert_eq!(ids, ["future-model", "minimal"]);
+    let levels = content
+        .models
+        .iter()
+        .map(|model| {
+            model
+                .effort_levels
+                .iter()
+                .map(RequiredText::as_str)
+                .collect::<Vec<_>>()
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(levels, [vec!["ultra"], vec![]]);
     assert_eq!(
         content.default_model_id.as_ref().map(RequiredText::as_str),
         Some("future-model")

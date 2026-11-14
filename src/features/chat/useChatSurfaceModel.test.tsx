@@ -166,10 +166,43 @@ it("enables image input only when the selected session advertises it", () => {
   view.rerender({ ...args, page: imagePage });
   expect(view.result.current.imageInput.available).toBe(true);
   expect(view.result.current.imageInput.reason).toBeNull();
+  // A failed session is resumed by the next send with what it negotiated.
+  view.rerender({
+    ...args,
+    page: {
+      ...imagePage,
+      sessions: [{ ...imageSession, state: "failed" }],
+    } as never,
+  });
+  expect(view.result.current.imageInput).toEqual({
+    available: true,
+    reason: null,
+  });
+  // No session yet: the session the next send starts is checked natively.
   view.rerender({ ...args, page: { ...imagePage, sessions: [] } as never });
-  expect(view.result.current.imageInput.available).toBe(false);
-  expect(view.result.current.imageInput.reason).toMatch(
-    /once the session starts/,
+  expect(view.result.current.imageInput).toEqual({
+    available: true,
+    reason: null,
+  });
+  // An activation that never negotiated defers to the binding's last session.
+  view.rerender({
+    ...args,
+    page: {
+      ...page,
+      currentSessionId: "session-b",
+      sessions: [
+        page.sessions[0],
+        {
+          ...page.sessions[0],
+          id: "session-b",
+          state: "failed",
+          capabilities: { protocolVersion: "pending", prompt: false },
+        },
+      ],
+    } as never,
+  });
+  expect(view.result.current.imageInput.reason).toBe(
+    "This harness does not advertise image input.",
   );
 });
 
@@ -235,6 +268,75 @@ it("blocks native submission on a failed Chat load and permits it after retry su
   expect(result.current.composerEnabled).toBe(true);
   result.current.submit(event);
   expect(submit).toHaveBeenCalledOnce();
+});
+
+it("keeps a chat whose session failed editable, sendable and taking images", () => {
+  useSessionAccessModeStore.setState({
+    ready: true,
+    modes: { "binding-a": "readOnly" },
+  });
+  const submit = vi.fn(async () => undefined);
+  const failed = { ...imageSession, state: "failed" };
+  const { result, rerender } = renderHook(
+    (page: AcpChatPage) =>
+      useChatSurfaceModel({
+        harnesses: [
+          {
+            id: "harness-a",
+            name: "Harness A",
+            transport: "acp" as const,
+            bindingId: "binding-a",
+            installState: "available" as const,
+            source: "builtIn" as const,
+            accessModes: [
+              {
+                id: "readOnly" as const,
+                label: "Read-only",
+                description: "Read workspace files.",
+                fallback: true,
+              },
+            ],
+          },
+        ],
+        selectedHarnessId: "harness-a",
+        selectedModelId: null,
+        page,
+        discoveryPhase: "ready" as const,
+        composerText: "Try again",
+        attachedContext: [],
+        sending: false,
+        chatError: null,
+        projectTransitioning: false,
+        focused: true,
+        acpActions: {
+          busy: false,
+          error: null,
+          cancellableTurnId: null,
+          submit,
+          cancel: vi.fn(),
+          close: vi.fn(),
+          end: vi.fn(),
+        },
+        sendPrompt: vi.fn(),
+      }),
+    { initialProps: { ...imagePage, sessions: [failed] } as never },
+  );
+  expect(result.current.composerEnabled).toBe(true);
+  expect(result.current.disabledReason).toBeNull();
+  expect(result.current.imageInput.available).toBe(true);
+  // The next send resumes the failed session, so nothing is drafted for it.
+  expect(result.current.accessTarget.draftChatId).toBeUndefined();
+  result.current.submit({ preventDefault: vi.fn() } as unknown as FormEvent);
+  expect(submit).toHaveBeenCalledOnce();
+  // A failed activation leaves no head: the next send starts a session, so
+  // access and thinking level are drafted for it.
+  rerender({
+    ...imagePage,
+    currentSessionId: null,
+    sessions: [failed],
+  } as never);
+  expect(result.current.accessTarget.draftChatId).toBe("chat-a");
+  expect(result.current.composerEnabled).toBe(true);
 });
 
 it("keeps draft editing enabled while a queued prompt is saving without queueing twice", () => {

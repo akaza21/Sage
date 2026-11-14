@@ -62,13 +62,15 @@ export interface AcpSessionConfig {
 /**
  * A session's config while it has no live one: what it last reported, with
  * its stored choices as the current values. A choice made on it is stored
- * and applied before the session's next prompt: on resume when it has no
- * runtime (`resume`), or once its live runtime reports (`report`).
+ * and applied before the next prompt: on resume when the session has no
+ * runtime (`resume`), once its live runtime reports (`report`), or, in a
+ * chat with no current session, by the session the next send starts on the
+ * same harness and model (`start`).
  */
 export type AcpRestoredSessionConfig = Omit<
   AcpSessionConfig,
   "runtimeEpoch" | "configRevision" | "removed" | "restored" | "notice"
-> & { awaiting: "resume" | "report" };
+> & { awaiting: "resume" | "report" | "start" };
 /**
  * A stored choice the session could not take back: the saved value of
  * `configId`, the value the session uses instead, and why.

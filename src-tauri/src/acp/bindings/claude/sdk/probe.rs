@@ -83,10 +83,6 @@ pub(crate) fn known_models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<Mod
     }
 }
 
-pub(crate) fn offers(binding: &AdmittedClaudeSdkBinding, model: &str) -> bool {
-    known_models(binding).is_some_and(|models| models.iter().any(|m| m.id == model))
-}
-
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
@@ -215,15 +211,10 @@ fn effort_levels(entry: &Value) -> Option<Vec<String>> {
     (!levels.is_empty()).then_some(levels)
 }
 
-pub(crate) fn offers_effort(binding: &AdmittedClaudeSdkBinding, model: &str, effort: &str) -> bool {
-    known_models(binding).is_some_and(|models| {
-        models.iter().any(|entry| {
-            entry.id == model
-                && entry.effort_levels.as_ref().is_some_and(|levels| {
-                    effort == super::config::DEFAULT_EFFORT || levels.iter().any(|l| l == effort)
-                })
-        })
-    })
+pub(crate) fn launch_effort_option(model: &ModelOption, effort: &str) -> Option<&'static str> {
+    (model.effort_levels.is_some()
+        && (effort == super::config::DEFAULT_EFFORT || model.lists_effort(effort)))
+    .then_some(super::config::EFFORT_ID)
 }
 
 #[cfg(test)]
@@ -311,13 +302,18 @@ mod tests {
             {"value": "haiku"},
         ]}));
         *lock(&PROBED) = Some((binding.binding_digest(), Probed::Models(models)));
-        assert!(offers(&binding, "haiku"));
-        assert!(!offers(&binding, "opus"));
-        assert!(offers_effort(&binding, "default", "high"));
-        assert!(offers_effort(&binding, "default", "default"));
-        assert!(!offers_effort(&binding, "default", "max"));
-        assert!(!offers_effort(&binding, "haiku", "low"));
-        assert!(!offers_effort(&binding, "haiku", "default"));
+        let known = known_models(&binding).unwrap();
+        let launched = |model| ModelOption::launched(&known, model);
+        assert_eq!(launched(Some("haiku")).unwrap().id, "haiku");
+        assert!(launched(Some("opus")).is_none());
+        let default = launched(None).unwrap();
+        assert_eq!(default.id, "default");
+        let haiku = launched(Some("haiku")).unwrap();
+        assert_eq!(launch_effort_option(default, "high"), Some("effort"));
+        assert_eq!(launch_effort_option(default, "default"), Some("effort"));
+        assert_eq!(launch_effort_option(default, "max"), None);
+        assert_eq!(launch_effort_option(haiku, "low"), None);
+        assert_eq!(launch_effort_option(haiku, "default"), None);
     }
 
     #[test]
@@ -331,7 +327,6 @@ mod tests {
         ));
         assert!(models(&binding).is_none());
         assert!(known_models(&binding).is_none());
-        assert!(!offers(&binding, "default"));
     }
 
     #[cfg(unix)]

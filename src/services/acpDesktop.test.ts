@@ -464,6 +464,34 @@ describe("ACP desktop bridge", () => {
     expect(JSON.stringify(response)).not.toContain("never-retain");
   });
 
+  it("keeps each discovered model's thinking levels and refuses unsafe ones", async () => {
+    setDesktopRuntime(true);
+    const projection = (effortLevels: unknown) => ({
+      projectId: "project-a",
+      projectGeneration: "7",
+      rootId: "root-a",
+      bindingId: "codex-app-server",
+      runtimeEpoch: "2",
+      account: "managedChatgpt",
+      models: [
+        { id: "gpt-a", name: "A", isDefault: true, effortLevels },
+        { id: "gpt-b", name: "B", isDefault: false },
+      ],
+      defaultModelId: "gpt-a",
+    });
+    invokeMock.mockResolvedValue(projection(["low", "high"]));
+    const response = await acpHarnessDesktop.discoverCodex(discoveryRequest);
+    expect(response.models.map((model) => model.effortLevels)).toEqual([
+      ["low", "high"],
+      undefined,
+    ]);
+
+    invokeMock.mockResolvedValue(projection(["low", ""]));
+    await expect(
+      acpHarnessDesktop.discoverCodex(discoveryRequest),
+    ).rejects.toMatchObject({ failure: { kind: "internal" } });
+  });
+
   it("rejects duplicate or inconsistent discovery models", async () => {
     setDesktopRuntime(true);
     invokeMock.mockResolvedValue({

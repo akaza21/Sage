@@ -26,6 +26,9 @@ pub(crate) enum Awaiting {
     /// A live runtime that has not reported its config yet: the choices are
     /// reapplied once it does.
     Report,
+    /// The chat has no head: the session the next send starts on the same
+    /// binding and model takes the choices over, and reapplies them.
+    Start,
 }
 
 const MODE_KIND: &str = "mode";

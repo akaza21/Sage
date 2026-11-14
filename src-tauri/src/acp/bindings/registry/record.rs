@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 #[cfg(windows)]
 mod browser_mcp;
+mod models;
 mod undo;
 
 use crate::acp::bindings::{
@@ -14,7 +15,7 @@ use crate::acp::bindings::{
     },
 };
 use sage_acp_protocol::intent::CapabilitySnapshotV1;
-use sage_domain::harness::HarnessCharacterisation;
+use sage_domain::harness::{HarnessCharacterisation, ModelOption};
 
 use super::{AuthProvider, ModelProvider, RegistryAdmissionUnavailable, WireIdentity};
 
@@ -40,6 +41,9 @@ type CancelDispatch =
         &crate::acp::service::AcpService,
         crate::acp::runtime::HostCancelIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError>;
+/// The config option through which a session that starts on the listed
+/// `model` takes thinking level `effort`, when the binding offers it then.
+type LaunchEffort = fn(&ModelOption, &str) -> Option<&'static str>;
 type CloseDispatch =
     fn(
         &crate::acp::service::AcpService,
@@ -89,11 +93,26 @@ pub(crate) struct BindingRecord {
     pub(super) turn_dispatch: TurnDispatch,
     pub(super) cancel_dispatch: CancelDispatch,
     pub(super) close_dispatch: CloseDispatch,
+    /// How a session takes a thinking level drafted before it started;
+    /// `None` when the binding takes none at start.
+    pub(super) launch_effort: Option<LaunchEffort>,
     pub(crate) model_provider: ModelProvider,
     pub(crate) auth_provider: AuthProvider,
 }
 
 impl BindingRecord {
+    /// `None` when the binding lists no models outside a session: Codex lists
+    /// them through account discovery in a project root, and Pi only from
+    /// inside a running session.
+    pub(crate) fn launch_models(&self, probe: bool) -> Option<Vec<ModelOption>> {
+        match &self.admission {
+            Admission::ClaudeSdk(registration) => {
+                super::claude_sdk::launch_models(registration, probe)
+            }
+            _ => None,
+        }
+    }
+
     #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn harness_id(&self) -> &'static str {
         self.harness_id
@@ -326,48 +345,6 @@ impl AdmittedBindingRecord<'_> {
                 artifact_digest: binding.artifact_digest(),
                 harness_version: binding.harness_version(),
             },
-        }
-    }
-
-    pub(crate) fn accepts_launch_model(&self, model: &str) -> bool {
-        super::claude_sdk::accepts_launch_model(&self.binding, model)
-    }
-
-    pub(crate) fn launch_effort_choice(
-        &self,
-        model: Option<&str>,
-        effort: &str,
-    ) -> Option<sage_acp_protocol::session_config::ConfigMutation> {
-        super::claude_sdk::launch_effort_choice(&self.binding, model, effort)
-    }
-
-    pub(crate) fn has_model_discovery(&self) -> Result<bool, RegistryAdmissionUnavailable> {
-        match (&self.binding, self.record.model_provider) {
-            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-            (AdmittedBinding::Pi(_), super::ModelProvider::NoAccountModels) => Ok(false),
-            (AdmittedBinding::Codex(binding), super::ModelProvider::CodexAccount) => binding
-                .model_discovery_available()
-                .map_err(RegistryAdmissionUnavailable::Codex),
-            (AdmittedBinding::Codex(binding), super::ModelProvider::NoAccountModels)
-                if binding.is_desktop_fixture() =>
-            {
-                Ok(false)
-            }
-            (
-                AdmittedBinding::Claude(_) | AdmittedBinding::ClaudeSdk(_),
-                super::ModelProvider::ClaudeAdapter,
-            ) => Ok(false),
-            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-            (AdmittedBinding::Claude(binding), super::ModelProvider::NoAccountModels)
-                if binding.is_fixture() =>
-            {
-                Ok(false)
-            }
-            (AdmittedBinding::StandardAcp { .. }, super::ModelProvider::NoAccountModels) => {
-                Ok(false)
-            }
-            (AdmittedBinding::PiNative(_), super::ModelProvider::NoAccountModels) => Ok(false),
-            _ => Err(RegistryAdmissionUnavailable::Drift),
         }
     }
 

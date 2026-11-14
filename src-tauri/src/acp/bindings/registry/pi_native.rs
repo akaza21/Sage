@@ -31,6 +31,7 @@ pub(super) fn record(registration: Arc<PiBindingRegistration>) -> BindingRecord 
         turn_dispatch: crate::acp::service::AcpService::send_session_turn,
         cancel_dispatch: crate::acp::service::AcpService::cancel_session_turn,
         close_dispatch: crate::acp::service::AcpService::close_session,
+        launch_effort: None,
         model_provider: ModelProvider::NoAccountModels,
         auth_provider: AuthProvider::None,
     }

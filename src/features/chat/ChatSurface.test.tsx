@@ -442,6 +442,7 @@ describe("ChatSurface ACP resource integration", () => {
         bindingId: "absent-binding" as never,
         runtimeEpoch: null,
         state: "created" as const,
+        capabilities: { protocolVersion: "pending", prompt: false } as never,
       })),
     };
     useWorkbenchStore.setState({
@@ -2116,10 +2117,8 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     await openComposerOptions();
 
-    expect(screen.queryByText("Thinking budget")).toBeNull();
-    expect(
-      screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
+    // The menu opens for its draft action, disabled for this harness.
+    expect(screen.getByRole("menuitem", { name: "Add images" })).toBeDisabled();
     expect(
       screen.queryByRole("button", { name: "Session thinking budget" }),
     ).toBeNull();
@@ -4472,6 +4471,7 @@ describe("ChatSurface per-chat composer", () => {
           residency: "cold",
           legacy: false,
           runtimeEpoch: null,
+          capabilities: { protocolVersion: "pending", prompt: false },
         },
       ] as never,
       turns: [

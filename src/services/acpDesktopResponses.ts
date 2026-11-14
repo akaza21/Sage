@@ -196,14 +196,22 @@ export function safeAcpMutationResponse(
       ? null
       : decodeSessionConfig(projection.sessionConfig);
   if (projection.sessionConfig != null && !sessionConfig) return null;
-  // Restored config belongs to the current session and never sits beside a
-  // live one; anything else is dropped rather than shown.
+  // Restored config belongs to the session the next send runs: the current
+  // one, or with none the chat's last session, which a started session goes
+  // on from. It never sits beside a live one; anything else is dropped
+  // rather than shown.
   const restoredConfig =
     projection.restoredSessionConfig == null || sessionConfig
       ? null
       : decodeRestoredSessionConfig(projection.restoredSessionConfig);
+  const restoredOwner =
+    currentSessionId === null
+      ? safeSessions.filter((session) => !session.legacy).at(-1)?.id
+      : currentSessionId;
   const restoredSessionConfig =
-    restoredConfig?.sageAgentSessionId === currentSessionId
+    restoredConfig &&
+    restoredConfig.sageAgentSessionId === restoredOwner &&
+    (restoredConfig.awaiting === "start") === (currentSessionId === null)
       ? restoredConfig
       : null;
   const sessionConfigNotice =

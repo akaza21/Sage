@@ -179,7 +179,8 @@ pub(crate) struct QueueSessionConfigChoiceRequest {
 }
 /// Stores a choice made while the chat's session has no live runtime. The
 /// composer shows it as restored, and the restore applies it before the
-/// session's next prompt, as it does every stored choice.
+/// next prompt of that session, or of the one a send starts from it, as it
+/// does every stored choice.
 #[tauri::command]
 pub(crate) async fn queue_acp_session_config_choice(
     state: State<'_, AppState>,
@@ -200,7 +201,19 @@ pub(crate) async fn queue_acp_session_config_choice(
         &snapshot,
     )
     .map_err(intent_error)?;
-    if snapshot.session_id.as_ref() != Some(&request.session_id) {
+    // The choice is for the session the chat's next send runs: its head, or
+    // with none the session it ran last, which a started session goes on from.
+    let target = match snapshot.session_id.clone() {
+        Some(head) => Some(head),
+        None => crate::acp::store::ended_head(
+            &state.database.connection(),
+            request.project_id.as_str(),
+            request.chat_id.as_str(),
+        )
+        .map_err(store_error)?
+        .map(|ended| ended.session_id),
+    };
+    if target.as_ref() != Some(&request.session_id) {
         return Err(intent_error(IntentError::ForeignSession));
     }
     // A live runtime that has not reported its config yet takes the choice
@@ -234,6 +247,7 @@ pub(crate) async fn queue_acp_session_config_choice(
                     message: safe_message("The session configuration changed; reload and retry."),
                 }
             }
+            crate::acp::service::QueueError::Foreign => intent_error(IntentError::ForeignSession),
             crate::acp::service::QueueError::Store => AcpIpcError::RecoveryRequired {
                 message: safe_message("The session configuration choice could not be saved."),
             },

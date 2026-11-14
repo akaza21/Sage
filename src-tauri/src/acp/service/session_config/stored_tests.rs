@@ -137,3 +137,86 @@ fn a_stored_choice_without_a_snapshot_still_shows_its_value() {
         }])
     );
 }
+
+/// A chat whose only session failed after its effort was stored as high.
+fn failed_chat() -> AcpService {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    crate::acp::session_config::choices::record(
+        &service.database.connection(),
+        &owner(1).session_id,
+        &option("effort", "high"),
+        1,
+    )
+    .unwrap();
+    service
+        .database
+        .connection()
+        .execute_batch(
+            "UPDATE agent_sessions SET state='failed',terminal_at=1 WHERE id='session-restore';
+             DELETE FROM chat_session_heads WHERE session_id='session-restore';
+             INSERT INTO acp_project_usage(project_id,chat_count,session_count,turn_count,
+               item_count,fact_count,payload_bytes,revision)
+             VALUES('project-restore',1,1,0,0,0,0,0);",
+        )
+        .unwrap();
+    service
+}
+
+/// Starts the chat's next session, as a send does, and returns the choices
+/// it holds.
+fn start_next(service: &AcpService, binding: &str, model: Option<&str>) -> Vec<ConfigMutation> {
+    let revision: i64 = service
+        .database
+        .connection()
+        .query_row(
+            "SELECT projection_revision FROM chats WHERE id='chat-restore'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let next = crate::acp::store::start_session(
+        &mut service.database.write_connection().unwrap(),
+        crate::acp::store::StartSessionCommand {
+            project_id: owner(1).project_id,
+            chat_id: owner(1).chat_id,
+            expected_projection_revision: sage_acp_protocol::contract::ProjectionRevision::new(
+                revision as u64,
+            )
+            .unwrap(),
+            client_intent_id: sage_acp_protocol::contract::ClientIntentId::parse("intent-next")
+                .unwrap(),
+            binding_id: sage_acp_protocol::intent::BindingId::new("bindingId", binding).unwrap(),
+            binding_digest: "a".repeat(64),
+            harness_version: None,
+            model_id: model
+                .map(|model| sage_acp_protocol::intent::ModelId::new("modelId", model).unwrap()),
+            now_millis: 2,
+        },
+    )
+    .unwrap()
+    .session_id;
+    crate::acp::session_config::choices::load(&service.database.connection(), &next).unwrap()
+}
+
+#[test]
+fn a_failed_session_hands_its_choices_to_the_session_the_next_send_starts() {
+    let service = failed_chat();
+    // No head: the page offers the failed session's choice for the next send.
+    let restored = restored_page(&service);
+    assert_eq!(restored["sageAgentSessionId"], "session-restore");
+    assert_eq!(restored["awaiting"], "start");
+    assert_eq!(restored["configOptions"][0]["currentValue"], "high");
+    // The session a send starts on the same binding and model takes it over.
+    assert_eq!(
+        start_next(&service, "opencode-acp", None),
+        [option("effort", "high")]
+    );
+}
+
+#[test]
+fn a_session_started_on_another_model_or_binding_takes_no_choices_over() {
+    assert!(start_next(&failed_chat(), "opencode-acp", Some("other-model")).is_empty());
+    assert!(start_next(&failed_chat(), "claude-sdk", None).is_empty());
+}

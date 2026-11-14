@@ -105,7 +105,8 @@ fn account_type(account: &Map<String, Value>) -> Option<&str> {
 
 /// Members Sage does not read (tiers, modalities, upgrade copy and so on) are
 /// ignored, so a model the service describes with new metadata is still offered.
-/// Hidden models are skipped, as Codex's own picker does.
+/// Hidden models are skipped, as Codex's own picker does. An unreadable
+/// thinking level list leaves the model without levels.
 pub(super) fn parse_model(
     value: &Value,
 ) -> Result<Option<CodexModelSnapshot>, CodexDiscoveryError> {
@@ -124,6 +125,15 @@ pub(super) fn parse_model(
         name: RequiredText::new("modelName", name.to_owned())
             .map_err(|_| CodexDiscoveryError::ModelCatalog)?,
         is_default,
+        effort_levels: model
+            .get("supportedReasoningEfforts")
+            .and_then(|efforts| {
+                crate::acp::bindings::codex::incoming::parse_reasoning_efforts(efforts).ok()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .map(|effort| effort.id)
+            .collect(),
     }))
 }
 
