@@ -100,6 +100,13 @@ mod tests {
     use super::*;
     use crate::acp::bindings::codex::{CODEX_PINNED_VERSION, test_identity::version_line};
 
+    #[cfg(windows)]
+    fn write_package_manifest(directory: &std::path::Path) {
+        let package = directory.join("node_modules/@openai/codex");
+        fs::create_dir_all(&package).unwrap();
+        fs::write(package.join("package.json"), br#"{"name":"@openai/codex"}"#).unwrap();
+    }
+
     #[test]
     fn startup_promotes_a_runnable_discovered_codex_cli() {
         let nonce = SystemTime::now()
@@ -108,6 +115,8 @@ mod tests {
             .as_nanos();
         let directory = std::env::temp_dir().join(format!("sage-discovered-codex-{nonce}"));
         fs::create_dir_all(&directory).unwrap();
+        #[cfg(windows)]
+        write_package_manifest(&directory);
         #[cfg(windows)]
         let executable = directory.join("codex.cmd");
         #[cfg(not(windows))]
@@ -158,6 +167,8 @@ mod tests {
             .as_nanos();
         let directory = std::env::temp_dir().join(format!("sage-updated-codex-{nonce}"));
         fs::create_dir_all(&directory).unwrap();
+        #[cfg(windows)]
+        write_package_manifest(&directory);
         #[cfg(windows)]
         let executable = directory.join("codex.cmd");
         #[cfg(not(windows))]

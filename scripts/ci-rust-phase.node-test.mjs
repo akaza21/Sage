@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import test from "node:test";
 
+import { changeScope } from "./change-scope.mjs";
 import {
   declaredCargoFeatures,
   lintFeatures,
@@ -163,9 +164,11 @@ test("CI keeps hosted-runner spend bounded", async () => {
 
 test("CI plans Rust from both sides of every changed path", async () => {
   const plan = jobBlock(await readFile(workflowPath, "utf8"), "plan");
-  const rustPaths = plan.match(/^ {10}RUST_PATHS: (.+)$/m);
-  assert.ok(rustPaths, "the plan job must name the Rust paths");
-  const rustPath = new RegExp(rustPaths[1]);
+  assert.match(
+    plan,
+    /import \{ changeScope \} from "\.\/scripts\/change-scope\.mjs";/,
+  );
+  const needsRust = (files) => changeScope(files).rust;
 
   // Each changed-file listing emits a rename's old path as well as its new one.
   assert.match(
@@ -189,7 +192,7 @@ test("CI plans Rust from both sides of every changed path", async () => {
     renamedOutOfRust.filename,
     renamedOutOfRust.previous_filename,
   ];
-  assert.ok(listed.some((file) => rustPath.test(file)));
+  assert.ok(needsRust(listed));
 
   for (const file of [
     "src-tauri/src/lib.rs",
@@ -198,12 +201,13 @@ test("CI plans Rust from both sides of every changed path", async () => {
     "src/features/chat/acp/rendererRecreationPacket.ts",
     "rust-toolchain.toml",
     "scripts/cargo-features.mjs",
+    "scripts/change-scope.mjs",
     ".github/workflows/ci.yml",
   ]) {
-    assert.ok(rustPath.test(file), `${file} must run Rust`);
+    assert.ok(needsRust([file]), `${file} must run Rust`);
   }
   for (const file of ["README.md", "src/app/App.tsx", "package.json"]) {
-    assert.ok(!rustPath.test(file), `${file} alone must not run Rust`);
+    assert.ok(!needsRust([file]), `${file} alone must not run Rust`);
   }
 });
 

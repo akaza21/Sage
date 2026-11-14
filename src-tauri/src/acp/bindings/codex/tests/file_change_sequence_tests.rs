@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::lifecycle::ItemLifecycle;
 
 #[cfg(windows)]
 struct TempRoot(std::path::PathBuf);
@@ -101,7 +102,7 @@ fn completed_file_change_notification_has_journal_compatible_shape() {
                     ..
                 },
                 tool_state: Some(crate::acp::lifecycle::ToolState::Completed),
-                lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+                lifecycle: ItemLifecycle::Completed,
                 ..
             },
             IncomingEvent::Item {
@@ -111,6 +112,47 @@ fn completed_file_change_notification_has_journal_compatible_shape() {
             },
         ] if label.as_str() == "Edited src/lib.rs"
     ));
+}
+
+#[test]
+fn a_declined_or_failed_file_change_settles_its_diff_without_an_edit_row() {
+    for (status, settled) in [
+        ("declined", ItemLifecycle::Cancelled),
+        ("failed", ItemLifecycle::Failed),
+    ] {
+        let mut adapter = adapter();
+        ready(&mut adapter);
+        arm_turn(&mut adapter, 2, "client-file-change");
+        let turn = json!({"method":"turn/started","params":{
+            "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+        }});
+        adapter
+            .ingest(&serde_json::to_vec(&turn).unwrap(), &Mapper)
+            .unwrap();
+        let file = json!({"method":"item/completed","params":{
+            "threadId":"thread-1","turnId":"turn-1","item":{
+                "type":"fileChange","id":"file-1","status":status,
+                "changes":[{"path":"C:\\repo\\src\\lib.rs","kind":{"type":"update"},"diff":"opaque"}]
+            }
+        }});
+        let IngressDisposition::Events(events) = adapter
+            .ingest(&serde_json::to_vec(&file).unwrap(), &Mapper)
+            .unwrap()
+        else {
+            panic!("expected file change event");
+        };
+        assert!(
+            matches!(
+                events.as_slice(),
+                [IncomingEvent::Item {
+                    lifecycle,
+                    payload: NormalizedPayload::FileChangeDiff { .. },
+                    ..
+                }] if *lifecycle == settled
+            ),
+            "{status}: {events:?}"
+        );
+    }
 }
 
 #[test]
@@ -187,7 +229,7 @@ fn created_file_becomes_openable_when_completed_after_disk_write() {
         payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
         ..
     }, IncomingEvent::Item {
-        lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+        lifecycle: ItemLifecycle::Completed,
         tool_state: None,
         payload: NormalizedPayload::FileChangeDiff {
             resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
@@ -244,7 +286,7 @@ fn modified_file_binds_only_its_final_existing_location() {
         payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
         ..
     }, IncomingEvent::Item {
-        lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+        lifecycle: ItemLifecycle::Completed,
         payload: NormalizedPayload::FileChangeDiff {
             resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
             operation: crate::acp::intent::FileChangeOperation::Updated,
@@ -301,7 +343,7 @@ fn deleted_file_settles_without_an_openable_location() {
             payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
             ..
         }, IncomingEvent::Item {
-            lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+            lifecycle: ItemLifecycle::Completed,
             payload: NormalizedPayload::FileChangeDiff {
                 resource: crate::acp::intent::SafeResourceLocation::Unavailable {
                     reason: crate::acp::intent::UnavailableResourceReason::Missing,
