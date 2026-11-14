@@ -82,7 +82,9 @@ export function NewChatDraftSurface({
     !!harness?.bindingId &&
     selectedHarnessId === draft.harnessId &&
     discoveryPhase === "ready" &&
-    !!draft.modelId;
+    (models.length
+      ? models.some((model) => model.id === draft.modelId)
+      : draft.modelId === null);
   return (
     <div
       className="agent-chat-center surface surface--card"

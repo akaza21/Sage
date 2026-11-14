@@ -279,6 +279,55 @@ it("notCreated keeps the draft and allows a retry that creates exactly one chat"
   );
 });
 
+it("sends with Pi's default when discovery returns its empty pre-session catalog", async () => {
+  // Native HarnessCatalog::models_for returns [] for Pi's ACP binding.
+  const pi = {
+    id: "pi",
+    name: "Pi",
+    description: "Local Pi RPC harness",
+    source: "builtIn" as const,
+    transport: "acp" as const,
+    accountModelDiscovery: false,
+    installState: "available" as const,
+    bindingId: "pi-rpc",
+    accessModes: [],
+  };
+  resetHarnessModelCache();
+  vi.mocked(desktop.listHarnessModels).mockResolvedValue([]);
+  useWorkbenchStore.setState({ harnesses: [harness, pi] });
+  await useWorkbenchStore.getState().selectDraftHarness(pi.id);
+  const create = vi.mocked(ports.chat.createChat).getMockImplementation()!;
+  vi.mocked(ports.chat.createChat).mockImplementation(async (...args) => {
+    const result = await create(...args);
+    if (result.snapshot)
+      result.snapshot = {
+        ...result.snapshot,
+        harnesses: [pi],
+        selectedHarnessId: pi.id,
+        selectedModelId: null,
+      };
+    return result;
+  });
+  const before = await ports.project.getBootstrapSnapshot();
+  mount(true);
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "Use Pi's default" } });
+  expect(screen.getByRole("button", { name: "Model" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  await settleLazyModules();
+  const after = await ports.project.getBootstrapSnapshot();
+  expect(after.tabs).toHaveLength(before.tabs.length + 1);
+  expect(starts).toMatchObject([
+    { chatId: after.activeTabId, bindingId: "pi-rpc", modelId: null },
+  ]);
+  expect(prompts).toMatchObject([
+    { chatId: after.activeTabId, prompt: "Use Pi's default" },
+  ]);
+  expect(composer()).toHaveValue("");
+});
+
 it.each([
   { layout: "created", accessRefused: false, inactiveTarget: false },
   { layout: "created", accessRefused: true, inactiveTarget: false },
@@ -385,15 +434,6 @@ it.each([
           screen.getByRole("button", { name: "Send message" }),
         ).toBeEnabled(),
       );
-      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    }
-    if (inactiveTarget) {
-      expect(
-        screen.queryByRole("region", { name: "New chat draft" }),
-      ).toBeNull();
-      expect(composer()).toHaveValue("Keep my unconfirmed request");
-      expect(composer()).toBeEnabled();
-      expect(prompts).toEqual([]);
       fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     }
     await waitFor(() => expect(prompts).toHaveLength(1));
@@ -942,6 +982,61 @@ it("cancels a submission when navigation wins before the send code loads", async
   expect(composer()).toBeEnabled();
 });
 
+it("cancels a retained draft's retry when the user leaves and returns during its activation", async () => {
+  const state = useWorkbenchStore.getState();
+  const previousId = state.activeTabId!;
+  const create = vi.mocked(ports.chat.createChat).getMockImplementation()!;
+  vi.mocked(ports.chat.createChat).mockImplementationOnce(async (...args) => ({
+    ...(await create(...args)),
+    snapshot: null,
+  }));
+  const bootstrap = ports.project.getBootstrapSnapshot.bind(ports.project);
+  const projection = vi
+    .spyOn(ports.project, "getBootstrapSnapshot")
+    .mockRejectedValue(new Error("Projection unavailable"));
+  state.updateNewChatDraft({ text: "Retry only with my permission" });
+  await state.sendNewChatDraft();
+  const created = await bootstrap();
+  projection.mockImplementation(async () => ({
+    ...withHarnessSnapshot(await bootstrap()),
+    activeTabId: previousId,
+  }));
+  let release!: () => void;
+  vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
+    .mockResolvedValue(undefined)
+    .mockResolvedValueOnce(undefined)
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+  mount();
+  await settleLazyModules();
+  let reloading!: Promise<void>;
+  act(() => {
+    reloading = state.reloadNewChatDraft();
+  });
+  await waitFor(() => expect(release).toBeTypeOf("function"));
+  await act(async () => state.activateTab(previousId));
+  await act(async () => state.activateTab(created.activeTabId!));
+  await act(async () => {
+    release();
+    await reloading;
+  });
+  await settleLazyModules();
+  expect(composer()).toHaveValue("Retry only with my permission");
+  expect(prompts).toEqual([]);
+  expect(starts).toEqual([]);
+  expect((await bootstrap()).tabs).toEqual(created.tabs);
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0]).toMatchObject({
+    chatId: created.activeTabId,
+    prompt: "Retry only with my permission",
+  });
+});
+
 it.each([false, true])(
   "retries the same created chat after a refused project switch during watcher binding (reopen refused: %s)",
   async (refuseReopen) => {
@@ -1005,17 +1100,6 @@ it.each([false, true])(
       target: { value: "Edited after recovery" },
     });
     fireEvent.submit(screen.getByRole("form"));
-    if (refuseReopen) {
-      await waitFor(() =>
-        expect(
-          screen.queryByRole("region", { name: "New chat draft" }),
-        ).toBeNull(),
-      );
-      await settleLazyModules();
-      expect(composer()).toHaveValue("Edited after recovery");
-      expect(prompts).toEqual([]);
-      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
-    }
     await waitFor(() => expect(prompts).toHaveLength(1));
     expect(prompts[0]).toMatchObject({
       chatId: created.activeTabId,
@@ -1025,6 +1109,9 @@ it.each([false, true])(
       created.tabs,
     );
     expect(created.tabs).toHaveLength(before.tabs.length + 1);
+    await settleLazyModules();
+    expect(composer()).toHaveValue("");
+    expect(prompts).toHaveLength(1);
   },
 );
 

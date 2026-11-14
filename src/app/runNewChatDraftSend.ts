@@ -42,12 +42,13 @@ export async function runNewChatDraftSend(
       !harness?.bindingId ||
       initial.harnessDiscoveryPhase !== "ready" ||
       harness.installState !== "available" ||
-      !model ||
+      initial.selectedHarnessId !== draft.harnessId ||
+      (initial.models.length ? !model : draft.modelId !== null) ||
       (draft.access &&
         !sessionAccessModeCandidates(harness.accessModes, true).some(
           (mode) => mode.id === draft.access,
         )) ||
-      (draft.effort && !model.effortLevels?.includes(draft.effort))
+      (draft.effort && !model?.effortLevels?.includes(draft.effort))
     )
       throw new Error("Choose an available harness and model before sending.");
 
@@ -79,15 +80,14 @@ export async function runNewChatDraftSend(
     }
     requireProject();
     const chatId = creation.chatId;
-    const dispatch =
-      get().pendingFirstSend === submission && get().activeTabId === chatId;
     if (get().archivedChats.some((chat) => chat.id === chatId)) {
       if (!(await get().restoreChat(chatId)))
         throw new Error(
           "Could not reopen the created chat. Retry to continue.",
         );
     }
-    if (get().activeTabId !== chatId) await get().activateTab(chatId);
+    if (get().activeTabId !== chatId)
+      await get().activateTab(chatId, submission);
     requireProject();
     const state = get();
     const owner = state.captureChatOwnership(chatId);
@@ -118,7 +118,7 @@ export async function runNewChatDraftSend(
       newChatDraft: null,
       agentCenter: "chat",
       pendingFirstSend:
-        dispatch && state.pendingFirstSend === submission
+        state.pendingFirstSend === submission
           ? { ...submission, chatId }
           : null,
     });

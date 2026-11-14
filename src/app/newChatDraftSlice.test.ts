@@ -38,6 +38,53 @@ it("bounds draft UTF-8 text and keeps the previous chat's text independently", a
   expect(useWorkbenchStore.getState().agentCenter).toBe("chat");
 });
 
+it.each([
+  { phase: "ready" as const, modelId: "removed-model", empty: false },
+  { phase: "ready" as const, modelId: null, empty: false },
+  { phase: "error" as const, modelId: null, empty: true },
+  { phase: "checking" as const, modelId: null, empty: true },
+])(
+  "retains the draft without creating for $phase discovery and model $modelId (empty: $empty)",
+  async ({ phase, modelId, empty }) => {
+    const state = useWorkbenchStore.getState();
+    const before = await ports.project.getBootstrapSnapshot();
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "draft-harness",
+          name: "Draft harness",
+          description: "Fixture ACP harness",
+          source: "builtIn",
+          transport: "acp",
+          installState: "available",
+          bindingId: "draft-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+      selectedHarnessId: "draft-harness",
+      models: empty ? [] : [{ id: "model-a", name: "Model A" }],
+      harnessDiscoveryPhase: phase,
+      newChatDraft: {
+        ...state.newChatDraft!,
+        harnessId: "draft-harness",
+        modelId,
+        text: "Keep this until discovery permits sending",
+      },
+    });
+    await state.sendNewChatDraft();
+    expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(
+      before.tabs,
+    );
+    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+      text: "Keep this until discovery permits sending",
+      modelId,
+      submission: { status: "released" },
+      error: "Choose an available harness and model before sending.",
+    });
+    expect(useWorkbenchStore.getState().pendingFirstSend).toBeNull();
+  },
+);
+
 it("updates draft choices synchronously and freezes edits as soon as sending starts", async () => {
   const state = useWorkbenchStore.getState();
   useWorkbenchStore.setState({

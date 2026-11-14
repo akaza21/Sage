@@ -31,6 +31,7 @@ export interface ChatSlice {
   activateChat: (
     chatId: string,
     requestedTabs?: WorkbenchTab[],
+    submission?: NonNullable<WorkbenchState["pendingFirstSend"]>,
   ) => Promise<void>;
   renameChat: (
     chatId: string,
@@ -50,7 +51,7 @@ export const createChatSlice: StateCreator<
     createChatTransitionContext(set, get);
 
   return {
-    activateChat: async (chatId, requestedTabs) => {
+    activateChat: async (chatId, requestedTabs, submission) => {
       const current = currentProjectLayout(get());
       const tabs = requestedTabs ?? current?.tabs;
       if (
@@ -61,7 +62,12 @@ export const createChatSlice: StateCreator<
       ) {
         return;
       }
-      set({ agentCenter: "chat", pendingFirstSend: null });
+      // Only the initiating send may carry its authorization through activation.
+      set({
+        agentCenter: "chat",
+        pendingFirstSend:
+          get().pendingFirstSend === submission ? submission : null,
+      });
       const expectedTransitionEpoch = get().nativeTransitionEpoch;
       const requested = { ...current, tabs, activeTabId: chatId };
       const classify = (snapshot: BootstrapSnapshot) => {

@@ -127,7 +127,10 @@ export interface WorkbenchState
   repositoryRefreshSuperseded: boolean;
   repositoryRequestGeneration: number;
   selectRoot: (rootId: string) => void;
-  activateTab: (tabId: string) => Promise<void>;
+  activateTab: (
+    tabId: string,
+    submission?: NonNullable<WorkbenchState["pendingFirstSend"]>,
+  ) => Promise<void>;
   closeTab: (tabId: string) => void;
   refreshRepository: () => Promise<void>;
   setSidebarView: (view: SidebarView) => void;
@@ -209,7 +212,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       void get().loadDirectory(childResource(selectedRootId));
     },
 
-    activateTab: async (tabId) => {
+    activateTab: async (tabId, submission) => {
       const generation = get().projectGeneration;
       const projectId = get().project?.id;
       if (
@@ -223,7 +226,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       if (!tab) {
         return;
       }
-      if (get().pendingFirstSend && get().pendingFirstSend?.chatId !== tab.id)
+      if (get().pendingFirstSend !== submission)
         set({ pendingFirstSend: null });
       if (
         tab.kind === "chat" &&
@@ -250,7 +253,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
           return;
         }
         if (tab.kind === "chat") {
-          await get().activateChat(tab.id);
+          await get().activateChat(tab.id, undefined, submission);
           return;
         }
         set({
