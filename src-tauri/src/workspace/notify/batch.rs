@@ -52,7 +52,6 @@ fn path_key(notice: &WorkspaceNotifyNotice) -> PathKey {
 pub(super) struct NoticeBatch {
     git_windows: HashMap<String, GitWindow>,
     notices: Vec<WorkspaceNotifyNotice>,
-    /// Each queued notice's position in `notices`.
     index: HashMap<PathKey, usize>,
     /// The resync notice of each root that overflowed or lost records. Its
     /// paths are dropped, since the resync reloads every listing they touch.

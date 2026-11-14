@@ -195,7 +195,8 @@ impl<'a> Ranking<'a> {
                         }
                         None => continue,
                     },
-                    // An empty query lists recently opened Files only, as VS Code does.
+                    // An empty query lists recently opened Files only when not browsing, as
+                    // VS Code does.
                     None => match self.recent_rank(&root.root_id, stored.path, stored.base) {
                         Some(rank) => -(rank as i32),
                         None if self.browse => -BROWSED,

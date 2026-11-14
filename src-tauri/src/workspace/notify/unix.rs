@@ -196,8 +196,8 @@ mod linux {
     }
 
     /// Each subfolder is opened from its open parent without following symlinks
-    /// and watched through that descriptor, so nothing reached through a symlink,
-    /// and nothing swapped in after the folder was listed, is watched in its place.
+    /// and watched through that descriptor, so symlinks are refused and nothing swapped in
+    /// after a folder is opened is watched in its place.
     /// Past the caps it still succeeds, partly watched; the tree-change resync covers it.
     /// Initial setup fails on descendant-watch errors; rewatch tolerates them.
     fn watch_tree(

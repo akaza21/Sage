@@ -42,7 +42,6 @@ pub(super) struct Walk<'a> {
     pub(super) rules: &'a IgnoreRules,
     pub(super) excluded: &'a PathGlobs,
     pub(super) stop: &'a AtomicBool,
-    /// Files this walk may add.
     pub(super) room: usize,
     /// Paths and bytes the root held last time, to size the arena once.
     pub(super) expect: (usize, usize),

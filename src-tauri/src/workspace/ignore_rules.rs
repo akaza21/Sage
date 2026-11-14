@@ -3,10 +3,11 @@
 //! `.gitignore` files apply up to the nearest repository, then that
 //! repository's `.git/info/exclude`, then the user's global excludes file.
 //!
-//! Only rule files inside the root count (VS Code's `search.useParentIgnoreFiles`
-//! off), so a repository around the root, such as a home-folder dotfiles
-//! repository ignoring `*`, cannot hide a Project. Rule files are opened
-//! without following links, as Git 2.32 and later do.
+//! Only `.ignore` and `.gitignore` files inside the root count (VS Code's
+//! `search.useParentIgnoreFiles` off), so a repository around the root, such as a
+//! home-folder dotfiles repository ignoring `*`, cannot hide a Project. Those files
+//! are opened without following links, as Git 2.32 and later do. The global excludes
+//! file and the resolved repository exclude may lie outside the root and follow links.
 
 use std::{
     ffi::OsStr,
@@ -348,7 +349,7 @@ fn skipped(path: &Path, reason: &str) -> Skipped {
     Skipped
 }
 
-/// `None` when no pattern remains.
+/// `None` when no pattern remains. Invalid patterns are skipped to match Git.
 fn matcher(bytes: &[u8]) -> Option<Gitignore> {
     let text = String::from_utf8_lossy(bytes);
     // The root `.` makes the matcher take paths as given, relative to the

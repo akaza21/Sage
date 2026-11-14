@@ -138,7 +138,6 @@ struct UnixPtyProcess {
     input: Option<SyncSender<Vec<u8>>>,
     stop: Arc<AtomicBool>,
     threads: Vec<JoinHandle<()>>,
-    /// Consecutive scans that found the session empty.
     empty_scans: u8,
     /// The session was proven empty and the shell reaped. Its pid may now be
     /// reused, so nothing is signalled again.

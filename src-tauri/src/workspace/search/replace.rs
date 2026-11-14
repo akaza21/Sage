@@ -11,7 +11,6 @@ use super::{
 };
 
 pub const MAX_REPLACEMENT_BYTES: usize = 2 * 1024;
-/// Changed lines shown for one File, and for one whole Replace.
 pub const MAX_PREVIEW_LINES_PER_FILE: usize = 50;
 pub const MAX_PREVIEW_LINES: usize = 2_000;
 

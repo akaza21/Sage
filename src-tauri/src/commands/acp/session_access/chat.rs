@@ -1,5 +1,5 @@
-//! Stepping down from Full access or Auto while a turn runs cancels that
-//! turn, so nothing keeps running with access the person just took away.
+//! Stepping down from Full access or Auto while a turn runs attempts to cancel that turn.
+//! Cancellation errors are only logged, so a failure can leave the running turn unchanged.
 
 use super::native_confirm::{self, ConfirmDialog, ConfirmGate, Refusal, Timing};
 use super::*;

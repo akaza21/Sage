@@ -363,8 +363,8 @@ fn changed_item_warning(put_back: bool) -> String {
 
 /// Checks that the item now in the trash is the held source. The move is by
 /// name, so an item swapped in at the source name in the instant after the
-/// last check would have moved instead; it is moved back the same way, which
-/// replaces nothing.
+/// last check would have moved instead. Rollback is attempted the same way, which
+/// replaces nothing; on failure the item stays in Trash with a warning.
 pub(super) fn settle(
     authority: &ResourceTrashAuthority,
     trash: &TrashDirectory,

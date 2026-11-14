@@ -69,7 +69,6 @@ struct Slot {
     /// or swap it.
     index: Option<Arc<ProjectIndex>>,
     refreshing: bool,
-    /// Counts forgets.
     epoch: u64,
     /// The epoch at which each Project closed in this run was last
     /// forgotten, so a query checked before that keeps nothing.

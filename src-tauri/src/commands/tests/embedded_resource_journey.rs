@@ -202,7 +202,6 @@ fn a_staged_paste_reaches_the_agent_as_an_embedded_resource_and_retry_resends_it
             journey.owner.project_id.as_str(),
             journey.owner.chat_id.as_str(),
         );
-        // A paste over the composer cap, as the composer stages it.
         let log: String = (0..2000)
             .map(|line| format!("synthetic log line {line:04}\n"))
             .collect();
