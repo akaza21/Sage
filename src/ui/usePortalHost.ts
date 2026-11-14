@@ -6,6 +6,8 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
+// Keep the portal target stable so moving containers does not remount the
+// resource.
 export function usePortalHost(
   container: HTMLElement | null | RefObject<HTMLElement | null>,
   className = "",

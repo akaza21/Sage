@@ -1,5 +1,6 @@
 export const TOOLTIP_DELAY_MS = 600;
 export const TOOLTIP_SKIP_DELAY_MS = 300;
+// Allow the pointer to cross the gap from the control to the tooltip.
 export const TOOLTIP_HIDE_GRACE_MS = 100;
 const GAP = 6;
 const EDGE = 8;
