@@ -81,7 +81,7 @@ export function LeftSidebar({
   const project = useWorkbenchStore((state) => state.project);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
-  const createChat = useWorkbenchStore((state) => state.createChat);
+  const createChat = useWorkbenchStore((state) => state.openNewChatDraft);
   const interactions = useAgentRailInteractions();
   const openSettings = useAgentSettingsState((state) => state.open);
   const loadRepositoryInventory = useWorkbenchStore(

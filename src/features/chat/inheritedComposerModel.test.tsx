@@ -59,7 +59,6 @@ function renderControls(props: Record<string, unknown> = {}) {
     <ChatHarnessControls
       availableBinding={false}
       canPrompt
-      discoveryPhase="ready"
       modelLabelScope="project/side-1"
       inheritScope="side-1"
       sessionHarnessId={null}

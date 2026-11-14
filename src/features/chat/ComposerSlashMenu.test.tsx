@@ -650,10 +650,10 @@ describe("composer slash commands", () => {
     const panel = await screen.findByRole("dialog", { name: "MCP servers" });
     expect(onSubmit).not.toHaveBeenCalled();
     expect(field).toHaveValue("");
+    expect(await within(panel).findByText("Sign-in required")).toBeVisible();
     expect(mcp.read).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: "session-a", runtimeEpoch: "3" }),
     );
-    expect(await within(panel).findByText("Sign-in required")).toBeVisible();
     expect(within(panel).getByText("files")).toBeVisible();
     expect(within(panel).getByText("2 tools")).toBeVisible();
     expect(

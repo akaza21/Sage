@@ -1,3 +1,4 @@
+import { useDraftShown } from "./shownAgentChat";
 import { useEffect, useRef, type CSSProperties, type ReactNode } from "react";
 import type { PreviewTargetRef } from "../domain/previewProjection";
 
@@ -58,6 +59,10 @@ export default function AgentWorkbenchBodyView({
   const [artifactHeader, setArtifactHeader] =
     useRetainedElement<HTMLDivElement>();
   const railRef = useNavigationFocusCarry(navigationCollapsed);
+  const draftShown = useDraftShown();
+  useEffect(() => {
+    if (draftShown && layout.artifactOverlay) onArtifactExpandedChange(false);
+  }, [draftShown, layout.artifactOverlay, onArtifactExpandedChange]);
   const homeFocusPending = useRef(false);
   useEffect(() => {
     if (!homeFocusPending.current || drawerOpen) return;

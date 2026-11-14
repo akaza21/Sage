@@ -74,6 +74,8 @@ export default function ChatAccessSelection({
   capabilities,
   sessionConfig: session,
   chatId,
+  value,
+  onChange,
   id,
   triggerRef,
   open,
@@ -126,7 +128,13 @@ export default function ChatAccessSelection({
       {withMenu}
     </LiveChatAccess>
   ) : (
-    <ChatAccessDraftSelection chatId={chatId} error={error} {...props}>
+    <ChatAccessDraftSelection
+      chatId={chatId}
+      value={value}
+      onChange={onChange}
+      error={error}
+      {...props}
+    >
       {withMenu}
     </ChatAccessDraftSelection>
   );

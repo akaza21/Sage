@@ -9,6 +9,7 @@ import {
 } from "./projectIntent";
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
+import type { CreateChatResult } from "./runCreateChat";
 import {
   commitIdentityChatResult,
   createChatTransitionContext,
@@ -17,10 +18,12 @@ import {
   matchesRenameProjection,
   type ProjectionOutcome,
 } from "./chatTransitions";
-import { runCreateChat } from "./runCreateChat";
 
 export interface ChatSlice {
-  createChat: (projectId?: string) => Promise<void>;
+  createChat: (
+    projectId?: string,
+    chatId?: string,
+  ) => Promise<CreateChatResult>;
   pinChat: (chatId: string, projectId?: string) => Promise<void>;
   moveChat: (
     chatId: string,
@@ -31,6 +34,7 @@ export interface ChatSlice {
   activateChat: (
     chatId: string,
     requestedTabs?: WorkbenchTab[],
+    submission?: NonNullable<WorkbenchState["pendingFirstSend"]>,
   ) => Promise<void>;
   renameChat: (
     chatId: string,
@@ -50,7 +54,7 @@ export const createChatSlice: StateCreator<
     createChatTransitionContext(set, get);
 
   return {
-    activateChat: async (chatId, requestedTabs) => {
+    activateChat: async (chatId, requestedTabs, submission) => {
       const current = currentProjectLayout(get());
       const tabs = requestedTabs ?? current?.tabs;
       if (
@@ -61,6 +65,12 @@ export const createChatSlice: StateCreator<
       ) {
         return;
       }
+      // Only the initiating send may carry its authorization through activation.
+      set({
+        agentCenter: "chat",
+        pendingFirstSend:
+          get().pendingFirstSend === submission ? submission : null,
+      });
       const expectedTransitionEpoch = get().nativeTransitionEpoch;
       const requested = { ...current, tabs, activeTabId: chatId };
       const classify = (snapshot: BootstrapSnapshot) => {
@@ -291,8 +301,15 @@ export const createChatSlice: StateCreator<
       }
     },
 
-    createChat: async (projectId) => {
-      await runCreateChat(
+    createChat: async (projectId, chatId) => {
+      const source = get();
+      const { runCreateChat } = await import("./runCreateChat");
+      if (
+        get().project?.id !== source.project?.id ||
+        get().chatOwnershipEpoch !== source.chatOwnershipEpoch
+      )
+        return { status: "not-created" };
+      return runCreateChat(
         {
           set,
           get,
@@ -301,6 +318,7 @@ export const createChatSlice: StateCreator<
           chat,
         },
         projectId,
+        chatId,
       );
     },
   };

@@ -46,6 +46,7 @@ function installDesktopBackend() {
           committed: true,
           transitionEpoch: (args.expectedTransitionEpoch as number) + 1,
           projectId: args.projectId,
+          chatId: args.chatId,
         };
       case "get_editor_settings":
         return { "editor.fontSize": 21 };
@@ -91,11 +92,13 @@ describe("S0.3 workbench port seam", () => {
     const created = await ports.chat.createChat(
       layout,
       snapshot.transitionEpoch,
+      undefined,
+      "33333333-3333-4333-8333-333333333333",
     );
     expect(created.committed).toBe(true);
     expect(created.transitionEpoch).toBe(snapshot.transitionEpoch + 1);
     const newChatId = created.snapshot!.activeTabId;
-    expect(newChatId).not.toBe(snapshot.activeTabId);
+    expect(newChatId).toBe("33333333-3333-4333-8333-333333333333");
     expect(
       (await ports.project.getBootstrapSnapshot()).tabs.map((tab) => tab.id),
     ).toContain(newChatId);
@@ -130,11 +133,13 @@ describe("S0.3 workbench port seam", () => {
         },
         9,
         "desktop-project",
+        "44444444-4444-4444-8444-444444444444",
       ),
     ).toMatchObject({
       committed: true,
       transitionEpoch: 10,
       projectId: "desktop-project",
+      chatId: "44444444-4444-4444-8444-444444444444",
     });
     expect(await ports.settings.getEditorSettings()).toEqual({
       "editor.fontSize": 21,

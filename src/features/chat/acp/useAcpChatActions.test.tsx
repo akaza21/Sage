@@ -160,7 +160,6 @@ describe("useAcpChatActions per-Chat ownership", () => {
       <ChatHarnessControls
         availableBinding
         canPrompt
-        discoveryPhase="ready"
         modelLabelScope="chat-a"
         sessionHarnessId="fixture"
         selectedHarnessId="fixture"

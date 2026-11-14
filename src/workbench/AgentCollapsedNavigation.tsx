@@ -71,7 +71,7 @@ export function AgentNewChatButton() {
       aria-label="New chat"
       title="New chat"
       disabled={transitioning}
-      onClick={() => void useWorkbenchStore.getState().createChat()}
+      onClick={() => void useWorkbenchStore.getState().openNewChatDraft()}
     >
       <SquarePen size={15} aria-hidden="true" />
     </button>

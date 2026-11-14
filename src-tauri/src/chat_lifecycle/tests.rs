@@ -3,7 +3,7 @@ use std::fs;
 use uuid::Uuid;
 
 use super::*;
-use crate::domain::{RenameChatRequest, WorkbenchTab};
+use crate::domain::{ProjectLayoutRequest, RenameChatRequest, WorkbenchTab};
 
 fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
     ProjectLayoutRequest {
@@ -13,6 +13,50 @@ fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
         selected_root_id: snapshot.selected_root_id.clone(),
         selected_resource: snapshot.selected_resource.clone(),
     }
+}
+
+#[test]
+fn requested_creation_identity_survives_reopen_and_cannot_replace_another_chat() {
+    let root = std::env::temp_dir().join(format!("sage-chat-identity-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let path = root.join("sage.db");
+    let database = Database::open(&path).unwrap();
+    let project = database.create_project_from_root(&root).unwrap();
+    let initial = database.bootstrap_snapshot().unwrap();
+    let chat_id = Uuid::new_v4().to_string();
+    assert_eq!(
+        database
+            .create_chat_with_identity(&project.id, &layout(&initial), None, Some(&chat_id))
+            .unwrap(),
+        chat_id
+    );
+    database
+        .append_simulator_turn(&chat_id, "kept question", "kept answer")
+        .unwrap();
+    let created = database.bootstrap_snapshot().unwrap();
+    let existing_id = initial.active_tab_id.as_deref().unwrap();
+    for invalid in [existing_id, chat_id.as_str(), "side-invalid", ""] {
+        assert!(
+            database
+                .create_chat_with_identity(&project.id, &layout(&initial), None, Some(invalid))
+                .is_err()
+        );
+    }
+    drop(database);
+    let reopened = Database::open(&path).unwrap();
+    let restored = reopened.bootstrap_snapshot().unwrap();
+    assert_eq!(restored.active_tab_id.as_deref(), Some(chat_id.as_str()));
+    assert_eq!(restored.tabs.len(), initial.tabs.len() + 1);
+    assert_eq!(
+        serde_json::to_value(&restored.tabs).unwrap(),
+        serde_json::to_value(&created.tabs).unwrap()
+    );
+    assert_eq!(
+        serde_json::to_value(&restored.messages).unwrap(),
+        serde_json::to_value(&created.messages).unwrap()
+    );
+    drop(reopened);
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

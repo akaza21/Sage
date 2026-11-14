@@ -21,12 +21,16 @@ import type { AccessView } from "./ComposerAccessControl";
  */
 export function ChatAccessDraftSelection({
   bindingId,
+  value,
+  onChange,
   chatId,
   capabilities,
   error,
   children,
 }: {
   bindingId: string;
+  value?: SessionAccessMode | null;
+  onChange?: (value: SessionAccessMode) => void;
   chatId: string | undefined;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
   error: string | null;
@@ -34,7 +38,10 @@ export function ChatAccessDraftSelection({
 }) {
   const { effective } = useSessionAccessSelection(bindingId, capabilities);
   // Per-chat modes are offered only where they can be drafted.
-  const candidates = sessionAccessModeCandidates(capabilities, !!chatId);
+  const candidates = sessionAccessModeCandidates(
+    capabilities,
+    !!chatId || !!onChange,
+  );
   const draft = useChatAccessDrafts((state) =>
     chatId ? state.drafts[chatId] : undefined,
   );
@@ -42,7 +49,7 @@ export function ChatAccessDraftSelection({
     (candidate) =>
       draft?.bindingId === bindingId && candidate.id === draft.mode,
   )?.id;
-  const shown = drafted ?? effective;
+  const shown = (onChange ? value : drafted) ?? effective;
   return children({
     candidates,
     effective: shown,
@@ -50,12 +57,14 @@ export function ChatAccessDraftSelection({
     icon: shown ? CHAT_ACCESS_ICONS[shown] : undefined,
     tone: shown === "fullAccess" ? " composer__access-label--full" : undefined,
     // The harness default needs no draft.
-    onDraft: !chatId
-      ? undefined
-      : (mode: SessionAccessMode) =>
-          draftChatAccess(
-            chatId,
-            mode === effective ? null : { bindingId, mode },
-          ),
+    onDraft:
+      onChange ??
+      (!chatId
+        ? undefined
+        : (mode: SessionAccessMode) =>
+            draftChatAccess(
+              chatId,
+              mode === effective ? null : { bindingId, mode },
+            )),
   });
 }

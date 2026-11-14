@@ -299,15 +299,15 @@ test(
 );
 
 test(
-  "a smoke run types in the focused Chat when two composers are visible",
+  "a smoke run types in the unsaved draft after leaving the previous Chat",
   { timeout: 180_000 },
   async (t) => {
     const site = await servePage(
       t,
       `${inertControls(["Editor", ...requiredControls.filter((label) => label !== "New chat")])}
-      <button onclick="document.getElementById('existing').className = ''; document.getElementById('old-composer').readOnly = true; document.getElementById('next').hidden = false">New chat</button>
+      <button onclick="document.getElementById('existing').hidden = true; document.getElementById('next').hidden = false">New chat</button>
       <section id="existing" aria-label="Chat pane Existing" class="agent-chat-pane--focused"><textarea id="old-composer" role="combobox" aria-expanded="false" aria-label="Message agent"></textarea></section>
-      <section id="next" aria-label="Chat pane New chat" class="agent-chat-pane--focused" hidden><textarea role="combobox" aria-expanded="false" aria-label="Message agent"></textarea></section>`,
+      <section id="next" aria-label="New chat draft" data-new-chat-draft hidden><textarea role="combobox" aria-expanded="false" aria-label="Message agent"></textarea></section>`,
     );
     const run = await runSmoke(t, [`--url=http://127.0.0.1:${site.port}/`]);
 

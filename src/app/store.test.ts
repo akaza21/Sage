@@ -517,7 +517,10 @@ describe("workbench resource and project navigation", () => {
       vi.spyOn(projectPort, "getBootstrapSnapshot").mockRejectedValue(
         new TypeError("Cannot read properties of undefined (reading invoke)"),
       );
-      await useWorkbenchStore.getState().createChat();
+      expect(await useWorkbenchStore.getState().createChat()).toEqual({
+        status: "unconfirmed",
+        reconcile: expect.any(Function),
+      });
       expect(useWorkbenchStore.getState()).toMatchObject({
         phase: "ready",
         projectTransitioning: false,
@@ -532,8 +535,11 @@ describe("workbench resource and project navigation", () => {
   );
 
   it("creates a Chat from the current layout and adopts its authoritative projection", async () => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "11111111-1111-4111-8111-111111111111",
+    );
     const newChat: WorkbenchTab = {
-      id: "chat:new",
+      id: "11111111-1111-4111-8111-111111111111",
       kind: "chat",
       title: "Chat: New chat 2",
       position: 1,
@@ -576,7 +582,10 @@ describe("workbench resource and project navigation", () => {
       }),
     );
 
-    await useWorkbenchStore.getState().createChat();
+    expect(await useWorkbenchStore.getState().createChat()).toEqual({
+      status: "confirmed",
+      chatId: newChat.id,
+    });
 
     expect(create).toHaveBeenCalledWith(
       {
@@ -587,6 +596,8 @@ describe("workbench resource and project navigation", () => {
         selectedResource: null,
       },
       0,
+      undefined,
+      newChat.id,
     );
     expect(useWorkbenchStore.getState()).toMatchObject({
       nativeTransitionEpoch: 1,
@@ -599,8 +610,11 @@ describe("workbench resource and project navigation", () => {
   });
 
   it("settles a new Chat projection while Codex model discovery is still pending", async () => {
+    vi.spyOn(crypto, "randomUUID").mockReturnValue(
+      "22222222-2222-4222-8222-222222222222",
+    );
     const newChat: WorkbenchTab = {
-      id: "chat:pending-models",
+      id: "22222222-2222-4222-8222-222222222222",
       kind: "chat",
       title: "Chat: New chat 2",
       position: 1,

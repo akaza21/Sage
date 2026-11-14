@@ -1,3 +1,4 @@
+import type { ControlledDraftPickers } from "./chatHarnessControlsProps";
 import type { FormEvent, ReactNode, RefObject } from "react";
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import type { AcpGoalState } from "../../domain/acpGoal";
@@ -20,6 +21,7 @@ export interface ComposerAccessTarget {
 }
 
 export interface ChatComposerRegionProps {
+  draftPickers?: ControlledDraftPickers;
   /** Kept mounted while an approval holds the slot, so the draft survives. */
   hidden?: boolean;
   approvalSlot?: ReactNode;
@@ -47,7 +49,7 @@ export interface ChatComposerRegionProps {
   steerAvailable?: boolean;
   projectTransitioning: boolean;
   workbenchError: string | null;
-  chatError: string | null;
+  chatError: ReactNode;
   /** The harness that refused for sign-in; its guidance replaces chatError. */
   signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
   claudeSignInRequired?: boolean;

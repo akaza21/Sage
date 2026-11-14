@@ -243,6 +243,7 @@ export interface ChatPort {
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
     projectId?: string,
+    chatId?: string,
   ): Promise<ProjectTransitionResult>;
   activateChat(
     currentLayout: ProjectLayoutRequest,

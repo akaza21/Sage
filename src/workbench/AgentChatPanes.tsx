@@ -4,6 +4,7 @@ import {
   Fragment,
   memo,
   useCallback,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -21,7 +22,9 @@ import {
   releaseAgentChatOwner,
   usePinnedAgentChatOwner,
 } from "../app/agentChatOwner";
+import { draftShownFor } from "../app/newChatDraftSlice";
 import { useWorkbenchStore } from "../app/store";
+import { whenIdle } from "../ui/whenIdle";
 import { ChatSurface } from "../features/chat/ChatSurface";
 import { pinUnreadAckIds } from "../features/chat/acp/chatUnread";
 import { AcpProjectionOwnerContext } from "../features/chat/acp/AcpProjectionOwnerContext";
@@ -44,6 +47,11 @@ const SplitterPart = lazyParts<typeof SplitterChunk>(
   () => import("./AgentChatSplitter"),
 );
 
+import type * as DraftChunk from "../features/chat/NewChatDraftSurface";
+const DraftPart = lazyParts<typeof DraftChunk>(
+  () => import("../features/chat/NewChatDraftSurface"),
+);
+
 const AgentChatCenterHeader = memo(ChatCenterHeader);
 
 export function AgentChatPanes({
@@ -57,6 +65,16 @@ export function AgentChatPanes({
   navigationCollapsed?: boolean;
   onArtifactHeaderMount?: (node: HTMLDivElement | null) => void;
 }) {
+  const draftOpened = useWorkbenchStore(
+    (state) => state.agentCenter === "draft",
+  );
+  useEffect(
+    () =>
+      visible
+        ? whenIdle(() => void DraftPart.preload().catch(() => undefined))
+        : undefined,
+    [visible],
+  );
   const runtime = useContext(AgentChatRuntimeContext);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
@@ -100,21 +118,29 @@ export function AgentChatPanes({
         chatIds.includes(entry.parentChatId),
     ),
   );
-  const splitRequested = Boolean(
-    side &&
-    pairedId === side.id &&
-    (!activeTabId ||
-      !chatIds.includes(activeTabId) ||
-      activeTabId === side.id ||
-      activeTabId === side.parentChatId),
-  );
+  const splitRequested =
+    !draftOpened &&
+    Boolean(
+      side &&
+      pairedId === side.id &&
+      (!activeTabId ||
+        !chatIds.includes(activeTabId) ||
+        activeTabId === side.id ||
+        activeTabId === side.parentChatId),
+    );
   const focusCandidates =
     splitRequested && side ? [side.parentChatId, side.id] : chatIds;
-  const focusedId = focusedAgentChatId(
-    focusCandidates,
-    activeTabId,
-    previousFocusedId ?? lastFocusedId,
+  const focusedChatId = draftOpened
+    ? null
+    : focusedAgentChatId(
+        focusCandidates,
+        activeTabId,
+        previousFocusedId ?? lastFocusedId,
+      );
+  const draftShown = useWorkbenchStore((state) =>
+    draftShownFor(state, focusedChatId),
   );
+  const focusedId = draftShown ? null : focusedChatId;
   if (lastFocusedId !== focusedId) setLastFocusedId(focusedId);
   const displayedIds = useMemo(
     () =>
@@ -211,6 +237,14 @@ export function AgentChatPanes({
     observer.observe(panes);
     return () => observer.disconnect();
   }, [compact, splitRequested, visible]);
+
+  if (draftShown)
+    return visible ? (
+      <DraftPart
+        part="NewChatDraftSurface"
+        navigationCollapsed={navigationCollapsed}
+      />
+    ) : null;
 
   if (!focusedId) {
     return (
