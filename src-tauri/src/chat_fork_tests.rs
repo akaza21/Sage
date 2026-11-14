@@ -506,7 +506,7 @@ fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
     assert_eq!(
         row,
         (
-            "Fix the build".into(),
+            "Chat: Fix the build".into(),
             "harness".into(),
             "ready".into(),
             "cold".into(),

@@ -17,7 +17,7 @@ use crate::{
         },
     },
     chat_fork::{committed_transition, insert_layout_chat, stale},
-    chat_lifecycle::MAX_CHAT_TITLE_BYTES,
+    chat_lifecycle::{CHAT_TITLE_PREFIX, MAX_CHAT_TITLE_BYTES, canonical_chat_title},
     domain::{ProjectLayoutRequest, ProjectTransitionResult},
     error::{AppError, AppResult},
     persistence::{Database, now_millis},
@@ -26,12 +26,18 @@ use crate::{
 
 const MAX_CURSOR_BYTES: usize = 1024;
 const IMPORT_UNFINISHED: &str = "The session did not open; try again";
+/// The title of a session whose own title has nothing to show.
+const UNTITLED_IMPORT: &str = "Imported session";
 
-/// The session's title with whitespace collapsed, shortened at a word
-/// boundary to the Chat title byte limit.
+/// The stored Chat title for a session's title: whitespace and control
+/// characters collapsed, shortened at a word boundary to the Chat title
+/// byte limit, in the canonical stored form every Chat title takes.
 fn import_title(title: &str) -> String {
     let mut chat = String::new();
-    for word in title.split_whitespace() {
+    for word in title
+        .split(|character: char| character.is_whitespace() || character.is_control())
+        .filter(|word| !word.is_empty())
+    {
         let separator = usize::from(!chat.is_empty());
         if chat.len() + separator + word.len() > MAX_CHAT_TITLE_BYTES {
             break;
@@ -41,10 +47,7 @@ fn import_title(title: &str) -> String {
         }
         chat.push_str(word);
     }
-    if chat.is_empty() {
-        chat.push_str("Imported session");
-    }
-    chat
+    canonical_chat_title(&chat).unwrap_or_else(|_| format!("{CHAT_TITLE_PREFIX}{UNTITLED_IMPORT}"))
 }
 
 impl Database {
@@ -223,12 +226,25 @@ pub async fn read_imported_history(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_lifecycle::chat_display_title;
 
     #[test]
     fn import_titles_collapse_whitespace_and_stay_within_the_title_limit() {
-        assert_eq!(import_title("  Fix\n the   build "), "Fix the build");
-        assert_eq!(import_title(" \t"), "Imported session");
-        let long = import_title(&"word ".repeat(MAX_CHAT_TITLE_BYTES));
+        let shown = |title: &str| chat_display_title(&import_title(title)).to_owned();
+        assert_eq!(import_title("  Fix\n the   build "), "Chat: Fix the build");
+        assert_eq!(shown(" \t"), UNTITLED_IMPORT);
+        assert_eq!(shown("\u{feff}"), UNTITLED_IMPORT);
+        assert_eq!(shown("Fix\u{7}the build"), "Fix the build");
+        let long = shown(&"word ".repeat(MAX_CHAT_TITLE_BYTES));
         assert!(long.len() <= MAX_CHAT_TITLE_BYTES && long.ends_with("word"));
+    }
+
+    #[test]
+    fn an_imported_title_that_starts_like_the_stored_prefix_shows_whole() {
+        assert_eq!(import_title("Chat: notes"), "Chat: Chat: notes");
+        assert_eq!(
+            chat_display_title(&import_title("Chat: notes")),
+            "Chat: notes"
+        );
     }
 }
