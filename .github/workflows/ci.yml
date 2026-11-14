@@ -60,7 +60,6 @@ jobs:
         with:
           tool: cargo-deny@0.20.2
       - name: Audit Rust dependencies
-        working-directory: src-tauri
         run: cargo deny check advisories bans sources
       - run: npm audit --omit=dev --audit-level=moderate
       - run: npm audit --audit-level=critical
@@ -95,8 +94,6 @@ jobs:
           AFTER: ${{ github.sha }}
           PLATFORMS: ${{ inputs.platforms }}
           REPOSITORY: ${{ github.repository }}
-          # Paths the Rust crate compiles in or reads in its tests.
-          RUST_PATHS: ^(src-tauri/|testdata/|tests/fixtures/|docs/work-items/|scripts/ade|scripts/cargo-features\.mjs$|src/features/chat/acp/|rust-toolchain\.toml$|\.github/workflows/)
         run: |
           set -euo pipefail
           frontend=true
@@ -122,8 +119,15 @@ jobs:
               ;;
           esac
           # Past the API's file limit the list is incomplete, so Rust runs.
+          # scripts/change-scope.mjs names the paths the Rust crate depends
+          # on; the local `gate changed` mode reads the same list.
           if [ -f changed-files ] && [ "$(wc -l < changed-files)" -lt "$limit" ] \
-            && ! grep -Eq "$RUST_PATHS" changed-files; then
+            && [ "$(node --input-type=module -e '
+              import { readFileSync } from "node:fs";
+              import { changeScope } from "./scripts/change-scope.mjs";
+              const files = readFileSync("changed-files", "utf8").split("\n");
+              console.log(changeScope(files.filter(Boolean)).rust);
+            ')" = "false" ]; then
             rust=false
           fi
 
@@ -245,6 +249,11 @@ jobs:
     needs: plan
     if: needs.plan.outputs.rust == 'true'
     runs-on: ${{ matrix.os }}
+    env:
+      # CI never attaches a debugger, and debug info is most of what the test
+      # binaries cost to compile, link and cache. Locally the dev profile keeps
+      # line tables for backtraces.
+      CARGO_PROFILE_DEV_DEBUG: 0
     # A cold-cache run builds and runs the parallel test phase in about 20
     # minutes on ubuntu-latest, before Clippy, the serial phases and the
     # release check. The macOS runner is the slowest lane: its parallel phase
@@ -275,25 +284,32 @@ jobs:
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri
+          workspaces: . -> target
           # Branches restore main's cache instead of each writing their own,
           # which would evict it under the repository's cache quota.
           save-if: ${{ github.ref == 'refs/heads/main' }}
           cache-on-failure: true
-      - run: cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check
+          # Keep Sage's own build outputs too. tauri::generate_context! writes
+          # the window icon into the crate's OUT_DIR while rustc runs, and
+          # Cargo marks a crate stale when an input is newer than the start of
+          # its compile. When the restored cache has no OUT_DIR, the first
+          # test phase creates that file and the next phase recompiles the
+          # whole crate (about two and a half minutes on ubuntu-latest).
+          cache-workspace-crates: true
+      - run: cargo fmt --all -- --check
       - name: Create Tauri frontend placeholder
         run: >-
           node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
-      - run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features "${{ matrix.lint-features }}" -- -D warnings
+      - run: cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings
       # The parallel phase includes the shared-contract suites
       # (workspace::notify, editor_watch) on every platform it runs on.
       - name: Test Rust parallel phase
-        run: 'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview'
+        run: 'cargo test --workspace --features "${{ matrix.test-features }}" -- --skip repository_mutation_commands::tests:: --skip app_preview'
       - name: Test repository mutation commands serially
-        run: 'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1'
+        run: 'cargo test --workspace --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1'
       - name: Test app preview serially
-        run: 'cargo test --manifest-path src-tauri/Cargo.toml --features "${{ matrix.test-features }}" app_preview -- --test-threads=1'
-      - run: cargo check --manifest-path src-tauri/Cargo.toml --release --lib
+        run: 'cargo test --workspace --features "${{ matrix.test-features }}" app_preview -- --test-threads=1'
+      - run: cargo check -p sage --release --lib
 
   merge-gate:
     name: Merge gate

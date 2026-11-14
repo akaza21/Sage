@@ -116,8 +116,7 @@ export function createDevPlan(
             command: executableName("cargo", platform),
             args: [
               "test",
-              "--manifest-path",
-              "src-tauri/Cargo.toml",
+              "--workspace",
               "--features",
               testFeatures(platform).join(","),
               filter,

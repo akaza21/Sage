@@ -187,7 +187,7 @@
         "platformOverlay": "src-tauri/tauri.windows.conf.json"
       },
       "provenance": {
-        "cargoLock": "src-tauri/Cargo.lock",
+        "cargoLock": "Cargo.lock",
         "frontendDependencyMode": "npm-package-lock-v3",
         "frontendLock": "package-lock.json",
         "frontendDist": "dist"

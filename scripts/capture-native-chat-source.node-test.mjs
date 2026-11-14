@@ -648,7 +648,7 @@ test("named build checkout admission rejects untracked native inputs", async () 
           return args.includes("--untracked-files=all")
             ? "?? src-tauri/src/untracked.rs"
             : "";
-        return "e".repeat(40);
+        return ["e", "e", "e"].map((digit) => digit.repeat(40)).join("\n");
       },
       () => {},
     ),
@@ -657,7 +657,7 @@ test("named build checkout admission rejects untracked native inputs", async () 
 });
 test("a named build checkout must be absolute, clean and carry the same native tree", async () => {
   const build = path.resolve("synthetic-build");
-  const tree = "e".repeat(40);
+  const tree = ["a", "b", "c"].map((digit) => digit.repeat(40)).join("\n");
   const plain = [];
   const tool =
     ({ workspaceTree = tree, buildTree = tree, status = "" } = {}) =>
@@ -672,10 +672,17 @@ test("a named build checkout must be absolute, clean and carry the same native t
           "--untracked-files=all",
           "--",
           "src-tauri",
+          "Cargo.toml",
+          "Cargo.lock",
         ]);
         return status;
       }
-      assert.deepEqual(args.slice(2), ["rev-parse", "HEAD:src-tauri"]);
+      assert.deepEqual(args.slice(2), [
+        "rev-parse",
+        "HEAD:src-tauri",
+        "HEAD:Cargo.toml",
+        "HEAD:Cargo.lock",
+      ]);
       return args[1] === workspace ? workspaceTree : buildTree;
     };
   const check = (file, directory = false) => plain.push([file, directory]);
@@ -689,6 +696,8 @@ test("a named build checkout must be absolute, clean and carry the same native t
   assert.deepEqual(plain, [
     [build, true],
     [path.join(build, "src-tauri", "Cargo.toml"), false],
+    [path.join(build, "Cargo.toml"), false],
+    [path.join(build, "Cargo.lock"), false],
   ]);
   await assert.rejects(
     buildCheckout(workspace, "relative", tool(), check),

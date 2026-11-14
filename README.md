@@ -113,6 +113,7 @@ node scripts/validate-performance-budgets.mjs
 Native local gates (Windows, macOS, Linux):
 
 ```powershell
+npm run gate:changed  # only what your diff from origin/main needs (see below)
 npm run gate:static   # policy, prettier, eslint, tsc, rustfmt (about a minute)
 npm run gate:fast     # static + Vitest + strict Clippy
 npm run gate:rust     # three-phase Rust tests (parallel, then git-process and preview serially)
@@ -120,6 +121,13 @@ npm run gate:full     # fast + rust + budgets + build + bundle cap
 npm run smoke         # headless rendered-app walkthrough with screenshots
 npm run lane new X    # one-writer worktree for ticket X; `lane done X` integrates to main
 ```
+
+`gate:changed` picks steps the way CI picks lanes (`scripts/change-scope.mjs`):
+prettier and ESLint on the changed files, `tsc`, the Vitest files that import
+them (every Vitest file when shared config such as `package.json` changes), the
+Node budget tests when a script changed, and rustfmt, Clippy and the Rust test
+phases only when the change touches a path the Rust crate depends on. Run
+`gate:full` and the real-app checks before merging.
 
 The Cargo target directory is a per-machine choice and is never tracked.
 Either set `CARGO_TARGET_DIR` in the shell you build from, or create an
@@ -160,7 +168,7 @@ After the native prerequisites are installed:
 
 ```powershell
 npm run tauri dev
-cargo test --manifest-path src-tauri/Cargo.toml
+cargo test --workspace
 npm run gate:fast
 ```
 
@@ -172,3 +180,8 @@ platform (`scripts/cargo-features.mjs`).
 
 The base installer must not grow a bundled Node runtime, Chromium, Monaco,
 libgit2, a VS Code extension host, or built-in harness runtimes.
+
+## License
+
+Sage is licensed under the [Apache License, Version 2.0](LICENSE). See
+[NOTICE](NOTICE) and [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

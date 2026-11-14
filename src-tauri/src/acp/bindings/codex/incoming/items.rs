@@ -35,8 +35,8 @@ use tool_kinds::{explore_presentation, mcp_tool, read_path, web_search};
 
 use presentation::{
     ToolPresentationInput, bounded_command_summary, bounded_label, bounded_summary,
-    context_compaction, declared_tool_state, lenient_tool_state, parse_tool_state, tool,
-    tool_with_summary, tool_with_summary_status,
+    context_compaction, declared_tool_state, lenient_tool_state, parse_tool_state,
+    terminal_lifecycle, tool, tool_with_summary, tool_with_summary_status,
 };
 
 pub(super) fn normalize_materialized_command(

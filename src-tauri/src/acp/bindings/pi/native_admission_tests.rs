@@ -22,7 +22,14 @@ fn every_pi_release_of_the_launched_package_is_admitted() {
 fn node_engine_is_checked_against_the_discovered_runtime() {
     assert_eq!(engine_satisfied(">=20.6.0", "22.18.0"), Some(true));
     assert_eq!(engine_satisfied(">=20.6.0", "20.5.9"), Some(false));
-    assert_eq!(engine_satisfied("^20", "22.18.0"), None);
+    assert_eq!(
+        engine_satisfied("^20.19.0 || >=22.12.0", "22.18.0"),
+        Some(true)
+    );
+    assert_eq!(engine_satisfied("^20", "22.18.0"), Some(false));
+    assert_eq!(engine_satisfied("^20.6.0-rc.1", "22.18.0"), Some(false));
+    assert_eq!(engine_satisfied("^20.6.0-rc.1", "20.6.0"), Some(true));
+    assert_eq!(engine_satisfied(">=20.6.0", "garbage"), None);
 }
 
 #[test]

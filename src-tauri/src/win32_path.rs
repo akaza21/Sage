@@ -25,6 +25,22 @@ pub(crate) fn simplified(path: &Path) -> PathBuf {
     }
 }
 
+/// A program and its arguments as a child process should receive them: each
+/// verbatim path that has an equivalent ordinary spelling is rewritten, and
+/// every other argument is kept as it is.
+#[cfg_attr(not(windows), allow(dead_code))]
+pub(crate) fn ordinary_invocation(
+    program: &Path,
+    args: &[std::ffi::OsString],
+) -> (PathBuf, Vec<std::ffi::OsString>) {
+    (
+        simplified(program),
+        args.iter()
+            .map(|arg| simplified(Path::new(arg)).into_os_string())
+            .collect(),
+    )
+}
+
 /// The ordinary spelling of a verbatim local-drive or UNC path, or `None` when
 /// `text` is not verbatim or Win32 would read its ordinary form differently: a
 /// reserved device-name component, a component ending in `.` or a space, or a
@@ -86,6 +102,24 @@ mod tests {
         );
         assert_eq!(simplified_text(r"\\?\C:\odd.\dir"), None);
         assert_eq!(simplified_text(r"\\?\C:\trailing \dir"), None);
+        for device in [
+            "nul",
+            "CON.js",
+            "aux.tar.gz",
+            "Com1",
+            "lpt9.txt",
+            "COM\u{b9}",
+        ] {
+            assert_eq!(
+                simplified_text(&format!(r"\\?\C:\dir\{device}")),
+                None,
+                "{device}"
+            );
+        }
+        assert_eq!(
+            simplified_text(r"\\?\C:\console\nullable\com10").as_deref(),
+            Some(r"C:\console\nullable\com10")
+        );
         assert_eq!(simplified_text(r"\\?\Volume{x}\dir"), None);
         assert_eq!(simplified_text("/home/me"), None);
         assert_eq!(simplified_text(r"C:\already\plain"), None);
@@ -105,6 +139,57 @@ mod tests {
         let ordinary = format!(r"C:\{}", "界".repeat(100));
         let verbatim = format!(r"\\?\{ordinary}");
         assert_eq!(simplified(Path::new(&verbatim)), PathBuf::from(ordinary));
+    }
+
+    #[test]
+    fn invocation_paths_obey_the_utf16_max_path_boundary() {
+        // Each supplementary character occupies two UTF-16 code units.
+        let ordinary = format!(r"C:\{}", "\u{1f680}".repeat(128));
+        let verbatim = format!(r"\\?\{ordinary}");
+        let at_limit = format!("{verbatim}a");
+        assert_eq!(
+            simplified_text(&verbatim).as_deref(),
+            Some(ordinary.as_str())
+        );
+        assert_eq!(simplified_text(&at_limit), None);
+        assert_eq!(simplified(Path::new(&at_limit)), PathBuf::from(&at_limit));
+        let (program, args) = ordinary_invocation(
+            Path::new(&verbatim),
+            &[verbatim.clone().into(), at_limit.clone().into()],
+        );
+        assert_eq!(program, PathBuf::from(&ordinary));
+        assert_eq!(args, [ordinary, at_limit].map(std::ffi::OsString::from));
+    }
+
+    #[test]
+    fn invocation_keeps_reserved_names_and_trailing_spaces_verbatim() {
+        let paths = [
+            r"\\?\C:\NUL\node.exe",
+            r"\\?\C:\CLOCK$\cli.js",
+            r"\\?\UNC\server\share\CONIN$\cli.js",
+            r"\\?\C:\trailing \cli.js",
+        ];
+        let (program, args) =
+            ordinary_invocation(Path::new(paths[0]), &paths.map(std::ffi::OsString::from));
+        assert_eq!(program, PathBuf::from(paths[0]));
+        assert_eq!(args, paths.map(std::ffi::OsString::from));
+    }
+
+    #[test]
+    fn a_child_receives_ordinary_program_and_path_arguments() {
+        let (program, args) = ordinary_invocation(
+            Path::new(r"\\?\C:\nodejs\node.exe"),
+            &[
+                r"\\?\C:\npm\cli.js".into(),
+                "--mode=rpc".into(),
+                r"\\?\C:\odd.\keep".into(),
+            ],
+        );
+        assert_eq!(program, PathBuf::from(r"C:\nodejs\node.exe"));
+        assert_eq!(
+            args,
+            [r"C:\npm\cli.js", "--mode=rpc", r"\\?\C:\odd.\keep"].map(std::ffi::OsString::from)
+        );
     }
 
     #[test]

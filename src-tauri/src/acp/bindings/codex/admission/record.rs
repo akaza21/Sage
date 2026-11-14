@@ -67,6 +67,9 @@ impl AdmittedCodexBinding {
         ))
         .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
         let entrypoint = observed_entrypoint_identity(&executable)?;
+        #[cfg(windows)]
+        let manifest = npm_manifest_expectation(&entrypoint.path)
+            .map_err(|_| CodexAdmissionUnavailable::IndependentAdmission)?;
         let binding_digest = observed_binding_digest(&entrypoint);
         let artifact_digest = sha256_hex(entrypoint.sha256);
         let binding_digest_hex = sha256_hex(binding_digest);
@@ -82,6 +85,8 @@ impl AdmittedCodexBinding {
             observed: Some(ObservedEntrypoint {
                 environment,
                 inputs,
+                #[cfg(windows)]
+                manifest,
             }),
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             desktop_fixture: None,
@@ -163,6 +168,28 @@ impl AdmittedCodexBinding {
             _cleanup: None,
         })
     }
+}
+
+#[cfg(windows)]
+fn npm_manifest_expectation(
+    entrypoint: &std::path::Path,
+) -> Result<Option<crate::acp::process::ManifestExpectation>, crate::acp::process::LaunchError> {
+    use crate::acp::process::{LaunchError, ManifestExpectation};
+
+    let extension = entrypoint.extension().and_then(|value| value.to_str());
+    if !extension
+        .is_some_and(|value| value.eq_ignore_ascii_case("cmd") || value.eq_ignore_ascii_case("bat"))
+    {
+        return Ok(None);
+    }
+    let path = entrypoint
+        .parent()
+        .ok_or(LaunchError::InvalidAbsolutePath)?
+        .join("node_modules")
+        .join("@openai")
+        .join("codex")
+        .join("package.json");
+    ManifestExpectation::record(path).map(Some)
 }
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
