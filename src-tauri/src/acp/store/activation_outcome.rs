@@ -61,8 +61,8 @@ struct ActivationRow {
     latest_epoch: i64,
 }
 
-/// The same native session, with capabilities equal up to the tolerated
-/// `nativeSessionFork` upgrade.
+/// The same native session, with capabilities that differ from the stored
+/// ones only by upgrades (see `CapabilitySnapshotV1::resumes_as`).
 fn resumes(row: &ActivationRow, command: &CompleteActivationCommand) -> bool {
     row.external_session_id.as_deref() == Some(command.external_session_id.as_str())
         && resumable(&row.capabilities_json, &command.capabilities_json)

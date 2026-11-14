@@ -26,9 +26,9 @@ pub(crate) mod read_text_file;
 
 pub(crate) use activation_pump::{
     ActivatedSession, ActivationFlush, ActivationIntent, ActivationJournal, ActivationMode,
-    ActivationPump, ActivationPumpError, ActivationTransport, CoordinatorActivationHandoff,
-    CoordinatorActivationJournal, CoordinatorShutdownHandoff, IdleActivationParts,
-    RecoveryActivationParts, TeardownActivationParts,
+    ActivationPump, ActivationPumpError, ActivationStartupStep, ActivationTransport,
+    CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
+    IdleActivationParts, RecoveryActivationParts, TeardownActivationParts,
 };
 #[cfg(test)]
 pub(crate) use activation_pump::{ActivationJournalError, ActivationReceipt};

@@ -110,6 +110,109 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
     }
 }
 
+impl CapabilitySnapshotV1 {
+    /// Whether a session negotiated with `self` resumes under `negotiated`.
+    ///
+    /// Fixed facts must match exactly. Each driven capability is either
+    /// fixed or an upgrade: a capability Sage learned to drive after a
+    /// session was stored. A stored session negotiated it off (or lacks
+    /// the field, which reads as off), so the same harness may now
+    /// negotiate it on and the session still resumes. Its stored snapshot
+    /// stays immutable, so the chat keeps offering the upgrade as off
+    /// (fail closed); the live runtime admits only what it negotiated now.
+    /// An upgrade never goes back from on to off.
+    pub(crate) fn resumes_as(&self, negotiated: &Self) -> bool {
+        let (fixed, upgrades) = self.resume_terms();
+        let (now_fixed, now_upgrades) = negotiated.resume_terms();
+        fixed == now_fixed
+            && upgrades
+                .iter()
+                .zip(now_upgrades)
+                .all(|(&was, now)| !was || now)
+    }
+
+    /// Splits the snapshot into the facts a resume must match and the
+    /// capabilities it may gain. The destructure names every field, so a
+    /// new capability cannot compile until it is classified here.
+    fn resume_terms(&self) -> (ResumeFixed<'_>, [bool; RESUME_UPGRADES]) {
+        let Self {
+            schema_version,
+            protocol_version,
+            new_session,
+            resume_session,
+            load_session,
+            close_session,
+            prompt,
+            prompt_resources,
+            prompt_images,
+            cancel,
+            native_session_fork,
+            native_session_compact,
+            native_session_import,
+            native_review,
+            native_background_terminals,
+            active_turn_steer,
+            child_conversation_projection,
+            child_transcript_read,
+            collaboration_event_projection,
+            multi_root_extension_schema_id,
+            model_count,
+            config_count,
+        } = self;
+        (
+            ResumeFixed {
+                schema_version,
+                protocol_version,
+                new_session,
+                resume_session,
+                load_session,
+                close_session,
+                prompt,
+                cancel,
+                child_conversation_projection,
+                child_transcript_read,
+                collaboration_event_projection,
+                multi_root_extension_schema_id,
+                model_count,
+                config_count,
+            },
+            [
+                *prompt_resources,
+                *prompt_images,
+                *native_session_fork,
+                *native_session_compact,
+                *native_session_import,
+                *native_review,
+                *native_background_terminals,
+                *active_turn_steer,
+            ],
+        )
+    }
+}
+
+/// How many capabilities [`CapabilitySnapshotV1::resume_terms`] admits as
+/// upgrades.
+const RESUME_UPGRADES: usize = 8;
+
+/// The facts of a negotiation a resumed session must still match.
+#[derive(PartialEq, Eq)]
+struct ResumeFixed<'a> {
+    schema_version: &'a SchemaVersionV1,
+    protocol_version: &'a RequiredText<64>,
+    new_session: &'a bool,
+    resume_session: &'a bool,
+    load_session: &'a bool,
+    close_session: &'a bool,
+    prompt: &'a bool,
+    cancel: &'a bool,
+    child_conversation_projection: &'a bool,
+    child_transcript_read: &'a bool,
+    collaboration_event_projection: &'a bool,
+    multi_root_extension_schema_id: &'a Option<RequiredText<128>>,
+    model_count: &'a u16,
+    config_count: &'a u16,
+}
+
 fn is_false(value: &bool) -> bool {
     !value
 }

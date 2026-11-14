@@ -408,6 +408,8 @@ fn mutation_shape(mutation: &StoreMutation) -> (&str, &str, bool) {
 }
 
 #[cfg(test)]
+mod activation_resume_tests;
+#[cfg(test)]
 mod adapter_batch_tests;
 #[cfg(test)]
 mod extended_tests;

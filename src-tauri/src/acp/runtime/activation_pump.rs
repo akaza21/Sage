@@ -116,7 +116,33 @@ enum Phase {
     AwaitingSession,
     Ready,
     RecoveryRequired,
-    Teardown,
+    /// Failed closed at the given startup step.
+    Teardown(ActivationStartupStep),
+}
+
+/// The activation step a startup is at, or failed closed at.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ActivationStartupStep {
+    Initialize,
+    SessionNew,
+    SessionResume,
+    SessionLoad,
+    /// Recording the ready session in the store.
+    ActivationCommit,
+    ReadyHandoff,
+}
+
+impl ActivationStartupStep {
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Initialize => "initialize",
+            Self::SessionNew => "session/new",
+            Self::SessionResume => "session/resume",
+            Self::SessionLoad => "session/load",
+            Self::ActivationCommit => "activation-commit",
+            Self::ReadyHandoff => "ready-handoff",
+        }
+    }
 }
 
 impl Phase {
@@ -263,7 +289,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
     }
 
     pub(crate) fn teardown_required(&self) -> bool {
-        self.phase == Phase::Teardown
+        matches!(self.phase, Phase::Teardown(_))
     }
 
     #[cfg(test)]
@@ -280,17 +306,22 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             && self.egress.control_usage().0 == 0
     }
 
-    pub(crate) fn startup_phase(&self) -> &'static str {
+    pub(crate) fn startup_step(&self) -> ActivationStartupStep {
         match self.phase {
-            Phase::Dormant | Phase::InitializeQueued | Phase::AwaitingInitialized => "initialize",
+            Phase::Dormant | Phase::InitializeQueued | Phase::AwaitingInitialized => {
+                ActivationStartupStep::Initialize
+            }
             Phase::Initialized | Phase::SessionQueued | Phase::AwaitingSession => {
                 match self.intent.mode {
-                    ActivationMode::New { .. } => "session/new",
-                    ActivationMode::Resume { .. } => "session/resume",
-                    ActivationMode::Load { .. } => "session/load",
+                    ActivationMode::New { .. } => ActivationStartupStep::SessionNew,
+                    ActivationMode::Resume { .. } => ActivationStartupStep::SessionResume,
+                    ActivationMode::Load { .. } => ActivationStartupStep::SessionLoad,
                 }
             }
-            Phase::Ready | Phase::RecoveryRequired | Phase::Teardown => "ready-handoff",
+            // Only an unresolved activation commit asks for recovery.
+            Phase::RecoveryRequired => ActivationStartupStep::ActivationCommit,
+            Phase::Ready => ActivationStartupStep::ReadyHandoff,
+            Phase::Teardown(step) => step,
         }
     }
 
@@ -334,7 +365,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
     pub(crate) fn try_into_teardown_parts(
         self,
     ) -> ActivationHandoff<TeardownActivationParts<A, J, R>, A, J, R> {
-        if self.phase != Phase::Teardown {
+        if !matches!(self.phase, Phase::Teardown(_)) {
             return Err(Box::new((self, ActivationPumpError::NotQuiescent)));
         }
         Ok(TeardownActivationParts {
@@ -346,7 +377,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
 
     fn ensure_live(&self) -> Result<(), ActivationPumpError> {
         match self.phase {
-            Phase::Teardown => Err(ActivationPumpError::TeardownRequired),
+            Phase::Teardown(_) => Err(ActivationPumpError::TeardownRequired),
             Phase::RecoveryRequired => Err(ActivationPumpError::RecoveryRequired),
             _ => Ok(()),
         }
@@ -422,7 +453,14 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
     }
 
     fn fail_closed(&mut self) {
-        self.phase = Phase::Teardown;
+        self.fail_closed_at(self.startup_step());
+    }
+
+    /// Tears the activation down, keeping the step of the first failure.
+    fn fail_closed_at(&mut self, step: ActivationStartupStep) {
+        if !matches!(self.phase, Phase::Teardown(_)) {
+            self.phase = Phase::Teardown(step);
+        }
         self.ready = None;
     }
 }
