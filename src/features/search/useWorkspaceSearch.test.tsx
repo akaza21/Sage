@@ -1,10 +1,19 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
+import { useEditorSettingsStore } from "../../app/editorSettingsStore";
 import { pathGlobMatcher } from "../../domain/pathGlobMatcher";
-import { resetWorkspaceNotifyComposeForTests } from "../files/workspaceNotifyCompose";
+import {
+  resetWorkspaceNotifyComposeForTests,
+  syncLiveProjectWorkspaceNotify,
+  type WorkspaceNotifyHooks,
+  type WorkspaceNotifyNotice,
+} from "../files/workspaceNotifyCompose";
 
-import type { WorkspaceSearchResponse } from "./workspaceSearchDomain";
+import type {
+  WorkspaceSearchGateway,
+  WorkspaceSearchResponse,
+} from "./workspaceSearchDomain";
 import { useWorkspaceSearch } from "./useWorkspaceSearch";
 import { loadWorkspaceSearchChecks } from "./workspaceSearchDesktop";
 
@@ -255,6 +264,177 @@ describe("workspace Search state", () => {
       await Promise.resolve();
     });
     expect(search).toHaveBeenCalledTimes(2);
+  });
+
+  it("updates ignored Search results after an edit and deletion when ignore rules are disabled", async () => {
+    vi.useFakeTimers();
+    const settings = useEditorSettingsStore.getState().settings;
+    useEditorSettingsStore.setState({
+      settings: { ...settings, "search.useIgnoreFiles": false },
+    });
+    let content: string | null = "needle before";
+    const gateway: WorkspaceSearchGateway = {
+      async search(request) {
+        return {
+          ...response(request.query),
+          transitionEpoch: 7,
+          indexGeneration: 3,
+          matches:
+            request.useIgnoreFiles === false && content?.includes(request.query)
+              ? [
+                  {
+                    resource: { rootId: "root-a", relativePath: "dist/app.js" },
+                    lineNumber: 1,
+                    columnNumber: 1,
+                    preview: content,
+                  },
+                ]
+              : [],
+        };
+      },
+    };
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    const hooks: WorkspaceNotifyHooks = {
+      watch: async () => ({ generation: 1 }),
+      unwatch: async () => undefined,
+      async listen(listener) {
+        emit = listener;
+        return () => undefined;
+      },
+      // A slow Explorer must not hold up delivery to Search.
+      invalidate: () => new Promise<void>(() => undefined),
+    };
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 7,
+        indexGeneration: 3,
+        gateway,
+      }),
+    );
+    const ignored = {
+      projectId: "project-a",
+      projectGeneration: 3,
+      transitionEpoch: 7,
+      rootId: "root-a",
+      relativePath: "dist",
+      kind: "ignored",
+    };
+    try {
+      await syncLiveProjectWorkspaceNotify(
+        {
+          projectId: "project-a",
+          projectGeneration: 3,
+          transitionEpoch: 7,
+          roots: [{ rootId: "root-a" }],
+        },
+        hooks,
+      );
+      act(() => result.current.setQuery("needle"));
+      act(() => result.current.setIncludePatternText("dist/"));
+      await act(async () => result.current.submit());
+      expect(result.current.state.response?.matches[0]?.preview).toBe(
+        "needle before",
+      );
+
+      content = "needle after";
+      await act(async () => emit(ignored));
+      expect(result.current.state.response?.matches[0]?.preview).toBe(
+        "needle after",
+      );
+
+      content = null;
+      act(() => {
+        for (let index = 0; index < 50; index += 1) emit(ignored);
+      });
+      await act(async () => vi.advanceTimersByTimeAsync(999));
+      expect(result.current.state.response?.matches[0]?.preview).toBe(
+        "needle after",
+      );
+      await act(async () => vi.advanceTimersByTimeAsync(1));
+      expect(result.current.state.phase).toBe("results");
+      expect(result.current.state.response?.matches).toEqual([]);
+    } finally {
+      unmount();
+      await syncLiveProjectWorkspaceNotify(null, hooks);
+      useEditorSettingsStore.setState({ settings });
+      vi.useRealTimers();
+    }
+  });
+
+  it("removes existing matches when exclusion rules trigger a root resync", async () => {
+    const settings = useEditorSettingsStore.getState().settings;
+    useEditorSettingsStore.setState({
+      settings: { ...settings, "search.useIgnoreFiles": true },
+    });
+    let excluded = false;
+    const match = {
+      resource: { rootId: "root-a", relativePath: "scratch/notes.md" },
+      lineNumber: 1,
+      columnNumber: 1,
+      preview: "needle",
+    };
+    const gateway: WorkspaceSearchGateway = {
+      async search(request) {
+        return {
+          ...response(request.query),
+          indexGeneration: 1,
+          matches: excluded && request.useIgnoreFiles !== false ? [] : [match],
+        };
+      },
+    };
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    const hooks: WorkspaceNotifyHooks = {
+      watch: async () => ({ generation: 1 }),
+      unwatch: async () => undefined,
+      async listen(listener) {
+        emit = listener;
+        return () => undefined;
+      },
+      invalidate() {},
+    };
+    const { result, unmount } = renderHook(() =>
+      useWorkspaceSearch({
+        projectId: "project-a",
+        transitionEpoch: 4,
+        indexGeneration: 1,
+        gateway,
+      }),
+    );
+    try {
+      await syncLiveProjectWorkspaceNotify(
+        {
+          projectId: "project-a",
+          projectGeneration: 1,
+          transitionEpoch: 4,
+          roots: [{ rootId: "root-a" }],
+        },
+        hooks,
+      );
+      act(() => result.current.setQuery("needle"));
+      await act(async () => result.current.submit());
+      expect(result.current.state.response?.matches).toEqual([match]);
+
+      excluded = true;
+      // The native relevance filter turns an in-place info/exclude edit into
+      // this resync, since .git paths themselves never reach the WebView.
+      await act(async () =>
+        emit({
+          projectId: "project-a",
+          projectGeneration: 1,
+          transitionEpoch: 4,
+          rootId: "root-a",
+          relativePath: "lost-notices",
+          kind: "resync",
+        }),
+      );
+      expect(result.current.state.phase).toBe("results");
+      expect(result.current.state.response?.matches).toEqual([]);
+    } finally {
+      unmount();
+      await syncLiveProjectWorkspaceNotify(null, hooks);
+      useEditorSettingsStore.setState({ settings });
+    }
   });
 
   it("does not search an unsubmitted draft when a notice arrives", async () => {

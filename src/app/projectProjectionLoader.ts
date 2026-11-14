@@ -10,7 +10,6 @@ import {
   snapshotProjection,
 } from "./projectProjection";
 import type { WorkbenchState } from "./store";
-import { bindWorkspaceNotifyFromState } from "./workspaceNotifyLifecycle";
 
 export async function loadProjectProjection(
   set: StoreApi<WorkbenchState>["setState"],
@@ -90,6 +89,9 @@ export async function loadProjectProjection(
       }
     }
     try {
+      // The watcher loads with the first Project, off the startup path.
+      const { bindWorkspaceNotifyFromState } =
+        await import("./workspaceNotifyLifecycle");
       await bindWorkspaceNotifyFromState(get);
     } catch {
       /* watch failure must not fail Project projection */

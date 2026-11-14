@@ -16,7 +16,7 @@ import { errorMessage } from "../domain/errors";
 import { currentProjectLayout as layout } from "./projectProjection";
 import { loadProjectProjection } from "./projectProjectionLoader";
 import type { WorkbenchState } from "./store";
-import { closeLiveWorkbench } from "./workspaceNotifyLifecycle";
+import { closeLiveWorkbench } from "./workbenchClose";
 import { hasActiveAcpTurn } from "./acpProjectionRegistry";
 
 export interface ProjectSlice {

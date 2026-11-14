@@ -6,6 +6,10 @@
 // refresh back, and one refresh at a time. While the window is hidden nothing
 // runs; showing or focusing it refreshes once.
 //
+// After the watcher loses events (a resync notice) Git is polled too, until
+// RESYNC_POLL_MS passes without another: the refresh the resync asks for
+// already covers what was lost, and the poll covers a burst still running.
+//
 // The poll backs off: each poll that finds nothing new doubles the wait, up
 // to a cap that keeps an idle window's Git work near 0.5% of one core, and
 // any sign of activity (a notice, focus, a Git operation, a poll that found a
@@ -20,6 +24,8 @@ export const MIN_POLL_MS = 2_000;
 export const MAX_POLL_MS = 15_000;
 export const MIN_IDLE_POLL_MS = 30_000;
 export const MAX_IDLE_POLL_MS = 120_000;
+/** How long Git is polled after the watcher's last lost-events resync. */
+export const RESYNC_POLL_MS = 60_000;
 const POLL_STATUS_FACTOR = 10;
 const IDLE_STATUS_FACTOR = 200;
 const MAX_BACKOFF_STEPS = 8;
@@ -63,7 +69,9 @@ export function startRepositoryAutoRefresh(
   let rerun = false;
   let stampInFlight = false;
   let lastStamp: string | null = null;
-  let polling = deps.pollAlways;
+  // Until when a resync keeps the poll on, where the watcher sees every edit.
+  let resyncPollUntil = -Infinity;
+  const polling = () => deps.pollAlways || performance.now() < resyncPollUntil;
   let idlePolls = 0;
   // Whether anything but the poll asked for the pending refresh.
   let activity = false;
@@ -134,7 +142,7 @@ export function startRepositoryAutoRefresh(
 
   const schedulePoll = () => {
     pollTimer = clear(pollTimer);
-    if (stopped || !polling || !visible()) return;
+    if (stopped || !polling() || !visible()) return;
     pollTimer = setTimeout(
       () => request(REFRESH_DEBOUNCE_MS, true),
       pollDelay(lastRefreshMs, idlePolls),
@@ -178,11 +186,12 @@ export function startRepositoryAutoRefresh(
   const onFocus = () => request();
 
   const stopNotices = deps.subscribeNotices((notice) => {
-    // The watcher lost events, or cannot say which file changed: from now on
-    // the poll covers what it misses.
-    if (notice.kind === "resync" && !polling) {
-      polling = true;
-      schedulePoll();
+    // The watcher lost events: poll for a while, in case the burst that
+    // overflowed it is still going.
+    if (notice.kind === "resync") {
+      const wasPolling = polling();
+      resyncPollUntil = performance.now() + RESYNC_POLL_MS;
+      if (!wasPolling) schedulePoll();
     }
     if (!isGitInternal(notice.relativePath)) request();
   });
