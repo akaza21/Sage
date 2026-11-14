@@ -18,7 +18,8 @@ export function browserSiteSettings(): Promise<unknown> {
 
 export interface BrowserSiteSettingsView {
   settings: BrowserSiteSetting[];
-  /** Sites still using an Allow that ended, until their pages reload. */
+  /** Sites whose pages may still use an ended Allow until their documents are
+   * replaced. */
   staleSites: string[];
 }
 

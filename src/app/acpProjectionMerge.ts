@@ -96,7 +96,7 @@ export function normalizeProjectionPage(page: AcpChatPage): AcpChatPage {
 
 /**
  * A history page is anchored by its cursor, not by the live revision, so the
- * page-level fields stay those of the page shown.
+ * live page metadata stays that of the page shown.
  */
 export function mergeHistoryPage(
   current: AcpChatPage,
@@ -113,8 +113,8 @@ export function mergeHistoryPage(
 }
 
 /**
- * Earlier Turns and Items the page shown already loaded stay, so a refresh
- * during a stream never drops loaded history.
+ * When the windows overlap, earlier Turns and Items the page shown already
+ * loaded stay, so a refresh during a stream never drops loaded history.
  */
 export function mergeNewestPage(
   current: AcpChatPage | null,

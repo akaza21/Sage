@@ -53,8 +53,8 @@ export interface AcpSessionConfig {
   restored?: string;
   notice?: string;
 }
-/** Stored choices apply on resume when there is no runtime (`resume`), or
- * once the live runtime reports (`report`). */
+/** Stored choices apply before the next prompt: on resume when there is no
+ * runtime (`resume`), or once the live runtime reports (`report`). */
 export type AcpRestoredSessionConfig = Omit<
   AcpSessionConfig,
   "runtimeEpoch" | "configRevision" | "removed" | "restored" | "notice"

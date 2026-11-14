@@ -24,7 +24,6 @@ export function useOwnedFieldAttributes(
       field.getAttribute(name),
     ]);
     apply(field, next);
-    // Each render puts back what it found before the next one applies.
     return () => apply(field, held);
   });
 }

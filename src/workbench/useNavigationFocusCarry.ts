@@ -3,6 +3,8 @@ import { useCallback, useEffect, useLayoutEffect, useRef } from "react";
 const label = (element: Element) =>
   element.getAttribute("aria-label") ?? element.textContent?.trim() ?? "";
 
+/** The folded rail loads lazily; restore when its ref mounts, unless focus
+ * moved meanwhile. */
 export function useNavigationFocusCarry(collapsed: boolean) {
   const focused = useRef<Element | null>(null);
   const pending = useRef<string | null>(null);

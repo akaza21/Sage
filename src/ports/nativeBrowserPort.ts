@@ -271,7 +271,7 @@ export interface BrowserPermissionSnapshot {
     kind: BrowserPermissionKind;
     decision: "allow" | "deny";
   }>;
-  /** An Allow that ended stays in effect until the page reloads. */
+  /** The page may still use an ended Allow until its document is replaced. */
   staleAccess: boolean;
 }
 

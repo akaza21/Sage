@@ -1,8 +1,8 @@
 import { utf8ByteLength } from "./text";
 
 /**
- * Whole-path glob: `**` spans segments, `*` and `?` stay within one;
- * case-sensitive. Mirrors src-tauri/src/workspace/path_glob.rs; both test
+ * Matches whole project-relative / paths; a whole ** segment matches zero or
+ * more segments; * and ? match within a segment; case-sensitive. Mirrors src-tauri/src/workspace/path_glob.rs; both test
  * against path_glob/cases.json.
  */
 

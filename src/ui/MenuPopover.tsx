@@ -294,6 +294,7 @@ export function MenuPopover({
   const { layer, onKeyDown: layerKeyDown } = useDismissLayer(open, {
     inside: [popoverRef, triggerRef],
     onOutside: () => onDismiss("outside"),
+    // Non-roving menus leave Escape to the focused text field.
     onEscape:
       focusStrategy === "none"
         ? undefined

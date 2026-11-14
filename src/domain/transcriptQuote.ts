@@ -15,8 +15,8 @@ export interface TranscriptQuote {
 
 export interface TranscriptQuoteContext {
   kind: "transcriptQuote";
-  /** Wire field bounded 1-8. Numbering follows draft order, so deletions never
-   * renumber. */
+  /** Wire field bounded 1-8. Display numbers follow draft order and can change
+   * after a deletion; stored ordinals need no rewrite. */
   ordinal: number;
   sourceTurnId: string;
   sourceItemId: string;

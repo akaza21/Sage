@@ -6,6 +6,7 @@ import { invokeNative } from "./nativeInvoke";
  * Change opens a native folder picker in Rust.
  */
 export interface BrowserDownloadFolder {
+  /** Null or unavailable: the next download asks for a folder again. */
   path: string | null;
   available: boolean;
   /** SQLite change sequence, shared by snapshots, replies, and events. */

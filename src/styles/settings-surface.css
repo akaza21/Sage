@@ -479,7 +479,6 @@
   }
 }
 
-/* Codex ref 65: an elevated-risk setting names its risk above its label. */
 .settings-surface__risk {
   color: var(--color-danger);
   font-size: var(--font-size-xs);

@@ -332,5 +332,6 @@ export interface AcpChatPage {
    * projection revision, so child activity never stales a user action.
    */
   childProjectionEpoch?: number;
+  /** Current session's newest notices, oldest first, at most 16. */
   sessionNotices?: readonly SessionNotice[];
 }

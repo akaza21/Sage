@@ -11,6 +11,7 @@ export interface TextFieldSuggestion {
   description?: string;
   hint?: string;
   accessibleLabel: string;
+  /** Rows that share a group must be contiguous. */
   group?: string;
 }
 

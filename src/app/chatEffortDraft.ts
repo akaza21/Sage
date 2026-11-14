@@ -8,6 +8,7 @@ export interface ChatEffortDraft {
   effort: string;
 }
 
+/** Stays held until the session starts, so a failed start resends it on retry. */
 export const useChatEffortDraft = create<{ draft: ChatEffortDraft | null }>(
   () => ({ draft: null }),
 );

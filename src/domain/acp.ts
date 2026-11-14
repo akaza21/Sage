@@ -64,6 +64,7 @@ export interface SetAcpSessionConfigOptionRequest extends AcpSessionMutationInte
   configId: string;
   value: AcpConfigValue;
 }
+/** Stores the choice; the session applies it before its next prompt. */
 export interface QueueAcpSessionConfigChoiceRequest {
   projectId: SageProjectId;
   projectGeneration: ProjectGeneration;

@@ -88,6 +88,7 @@ export function useChangesOnExpand(
   generation: number,
 ) {
   const wasExpanded = useRef(expanded);
+  // Survives until the owner arrives; collapsing cancels it.
   const pending = useRef(false);
   useEffect(() => {
     if (expanded !== wasExpanded.current) pending.current = expanded;
