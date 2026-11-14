@@ -4,7 +4,7 @@
 
 // Paths the Rust crate compiles in or reads in its tests.
 export const rustPathPattern =
-  /^(src-tauri\/|testdata\/|tests\/fixtures\/|docs\/work-items\/|scripts\/ade|scripts\/(?:cargo-features|change-scope)\.mjs$|src\/features\/chat\/acp\/|rust-toolchain\.toml$|\.github\/workflows\/)/;
+  /^(Cargo\.(?:toml|lock)$|deny\.toml$|crates\/|src-tauri\/|testdata\/|tests\/fixtures\/|docs\/work-items\/|scripts\/ade|scripts\/(?:cargo-features|change-scope)\.mjs$|src\/features\/chat\/acp\/|rust-toolchain\.toml$|\.github\/workflows\/)/;
 
 // Inputs every Vitest file depends on: a change here can affect any test, so
 // the whole suite runs instead of the tests that import the changed files.
@@ -24,7 +24,7 @@ const lintWidePattern =
 // What the Node budget tests read: the scripts themselves and the workflow,
 // manifest and package files their contract tests parse.
 const nodeTestInputPattern =
-  /^(scripts\/|\.github\/workflows\/|src-tauri\/Cargo\.toml$|package(-lock)?\.json$)/;
+  /^(scripts\/|\.github\/workflows\/|Cargo\.toml$|src-tauri\/Cargo\.toml$|package(-lock)?\.json$)/;
 
 const lintablePattern = /\.(?:[cm]?[jt]sx?)$/;
 const typeInputPattern = /\.(?:[cm]?[jt]sx?|json)$/;

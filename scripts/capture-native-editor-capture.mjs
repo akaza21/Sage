@@ -147,8 +147,7 @@ export async function captureEditor(options, root = workspace) {
     const build = executableIdentity(
       process.env.NATIVE_EDITOR_EXE ||
         path.join(
-          process.env.CARGO_TARGET_DIR ||
-            path.join(root, "src-tauri", "target"),
+          process.env.CARGO_TARGET_DIR || path.join(root, "target"),
           "debug",
           "sage.exe",
         ),

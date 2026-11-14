@@ -349,8 +349,7 @@ test("developer plan keeps Cargo filters sequential and overlaps only language l
         "cargo",
         [
           "test",
-          "--manifest-path",
-          "src-tauri/Cargo.toml",
+          "--workspace",
           "--features",
           "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
           "module::first_test",
@@ -360,8 +359,7 @@ test("developer plan keeps Cargo filters sequential and overlaps only language l
         "cargo",
         [
           "test",
-          "--manifest-path",
-          "src-tauri/Cargo.toml",
+          "--workspace",
           "--features",
           "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
           "module::second_test",
@@ -468,11 +466,10 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
   assert.deepEqual(
     plan.groups[1].commands.map(({ args }) => args),
     [
-      ["fmt", "--manifest-path", "src-tauri/Cargo.toml", "--", "--check"],
+      ["fmt", "--all", "--", "--check"],
       [
         "clippy",
-        "--manifest-path",
-        "src-tauri/Cargo.toml",
+        "--workspace",
         "--all-targets",
         "--features",
         "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics,native-lane",
@@ -482,8 +479,7 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
       ],
       [
         "test",
-        "--manifest-path",
-        "src-tauri/Cargo.toml",
+        "--workspace",
         "--features",
         "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
         "--",
