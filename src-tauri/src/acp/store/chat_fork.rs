@@ -16,22 +16,6 @@ use super::{
     sessions::{ensure_one, ensure_session_capacity, update_chat},
 };
 
-/// Whether a session stored with the `stored` capability snapshot resumes
-/// under the `negotiated` one; see [`CapabilitySnapshotV1::resumes_as`].
-/// A snapshot that does not decode is a conflict.
-pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
-    if stored == negotiated {
-        return true;
-    }
-    match (
-        serde_json::from_str::<CapabilitySnapshotV1>(stored),
-        serde_json::from_str::<CapabilitySnapshotV1>(negotiated),
-    ) {
-        (Ok(stored), Ok(negotiated)) => stored.resumes_as(&negotiated),
-        _ => false,
-    }
-}
-
 /// The Turn a fork is taken through: the latest completed Turn of the Chat's
 /// live head session.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,8 +28,8 @@ pub(crate) struct ForkSource {
 }
 
 /// Admits a fork only from the latest completed Turn of a hot head session
-/// whose own durable capabilities admit `nativeSessionFork`, with no Turn in
-/// flight. Temporary side chats are never fork sources.
+/// whose latest committed negotiation admits `nativeSessionFork`, with no
+/// Turn in flight. Temporary side chats are never fork sources.
 pub(crate) fn fork_source(
     connection: &Connection,
     project_id: &SageProjectId,
@@ -273,115 +257,4 @@ pub(crate) fn forked_from(
             ))
         })
         .transpose()
-}
-
-#[cfg(test)]
-mod tests {
-    use serde_json::{Value, json};
-
-    use super::resumable_capabilities;
-
-    /// A snapshot as a build that predates every optional capability stored
-    /// it: optional flags that were off are absent.
-    fn stored() -> Value {
-        json!({
-            "schemaVersion": 1,
-            "protocolVersion": "p",
-            "newSession": true,
-            "resumeSession": true,
-            "loadSession": false,
-            "closeSession": true,
-            "prompt": true,
-            "cancel": true,
-            "nativeSessionFork": false,
-            "activeTurnSteer": false,
-            "childConversationProjection": false,
-            "childTranscriptRead": false,
-            "collaborationEventProjection": false,
-            "multiRootExtensionSchemaId": null,
-            "modelCount": 1,
-            "configCount": 0
-        })
-    }
-
-    fn with(mut snapshot: Value, key: &str, value: Value) -> Value {
-        snapshot[key] = value;
-        snapshot
-    }
-
-    fn resumes(stored: &Value, negotiated: &Value) -> bool {
-        resumable_capabilities(&stored.to_string(), &negotiated.to_string())
-    }
-
-    const UPGRADES: [&str; 8] = [
-        "promptResources",
-        "promptImages",
-        "nativeSessionFork",
-        "nativeSessionCompact",
-        "nativeSessionImport",
-        "nativeReview",
-        "nativeBackgroundTerminals",
-        "activeTurnSteer",
-    ];
-
-    #[test]
-    fn every_capability_upgrade_resumes_but_never_a_downgrade() {
-        assert!(resumes(&stored(), &stored()));
-        for key in UPGRADES {
-            let upgraded = with(stored(), key, json!(true));
-            assert!(resumes(&stored(), &upgraded), "{key} upgrade must resume");
-            assert!(!resumes(&upgraded, &stored()), "{key} downgrade must not");
-            // An explicit off resumes like the absent field it replaces.
-            let explicit = with(stored(), key, json!(false));
-            assert!(resumes(&explicit, &upgraded), "{key} from explicit off");
-        }
-        let all = UPGRADES
-            .iter()
-            .fold(stored(), |snapshot, key| with(snapshot, key, json!(true)));
-        assert!(resumes(&stored(), &all));
-    }
-
-    #[test]
-    fn any_change_to_a_fixed_fact_is_a_conflict_even_beside_an_upgrade() {
-        let changes = [
-            ("protocolVersion", json!("q")),
-            ("newSession", json!(false)),
-            ("resumeSession", json!(false)),
-            ("loadSession", json!(true)),
-            ("closeSession", json!(false)),
-            ("prompt", json!(false)),
-            ("cancel", json!(false)),
-            ("childConversationProjection", json!(true)),
-            ("childTranscriptRead", json!(true)),
-            ("collaborationEventProjection", json!(true)),
-            ("multiRootExtensionSchemaId", json!("roots")),
-            ("modelCount", json!(2)),
-            ("configCount", json!(1)),
-        ];
-        for (key, value) in changes {
-            let changed = with(stored(), key, value);
-            assert!(!resumes(&stored(), &changed), "{key} change must conflict");
-            let upgraded = with(changed, "nativeBackgroundTerminals", json!(true));
-            assert!(!resumes(&stored(), &upgraded), "{key} beside an upgrade");
-        }
-    }
-
-    #[test]
-    fn a_missing_required_flag_a_malformed_value_or_garbage_is_a_conflict() {
-        let mut missing = stored();
-        missing.as_object_mut().unwrap().remove("activeTurnSteer");
-        assert!(!resumes(&stored(), &missing));
-        assert!(!resumes(&missing, &stored()));
-        assert!(!resumes(
-            &stored(),
-            &with(stored(), "activeTurnSteer", json!("yes"))
-        ));
-        // A snapshot stored by a newer build names a capability this one
-        // does not know.
-        assert!(!resumes(
-            &with(stored(), "unknownFlag", json!(false)),
-            &stored()
-        ));
-        assert!(!resumable_capabilities(&stored().to_string(), "not json"));
-    }
 }

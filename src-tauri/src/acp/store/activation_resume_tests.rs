@@ -1,9 +1,9 @@
-//! A parked session resumes under the capabilities its harness negotiates
-//! now, as long as they differ from the stored ones only by upgrades.
+//! A resumed session records its live negotiation; only duplicate commits
+//! within the same runtime epoch must match its recorded capabilities.
 
 use rusqlite::Connection;
 
-use super::extended_tests::{capabilities, setup, start};
+use super::extended_tests::{setup, start};
 use super::*;
 use crate::acp::{
     contract::{ClientIntentId, RequiredText},
@@ -19,11 +19,8 @@ fn chat() -> SageChatId {
     SageChatId::parse("chat-one").unwrap()
 }
 
-fn with_background_terminals(capabilities: &str, on: bool) -> String {
-    let mut snapshot: CapabilitySnapshotV1 = serde_json::from_str(capabilities).unwrap();
-    snapshot.native_background_terminals = on;
-    serde_json::to_string(&snapshot).unwrap()
-}
+const OLD_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":false,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":false,"nativeSessionFork":false,"activeTurnSteer":false,"childConversationProjection":false,"childTranscriptRead":false,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
+const NEW_CODEX: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-observed-0.167.1","newSession":true,"resumeSession":true,"loadSession":false,"closeSession":false,"prompt":true,"promptResources":true,"promptImages":true,"cancel":true,"nativeSessionFork":true,"nativeSessionCompact":true,"nativeSessionImport":true,"nativeReview":true,"nativeBackgroundTerminals":true,"activeTurnSteer":true,"childConversationProjection":false,"childTranscriptRead":true,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
 
 fn activate(connection: &mut Connection, session: &SageAgentSessionId, epoch: u64) {
     let expected: i64 = connection
@@ -53,20 +50,25 @@ fn complete(
     epoch: u64,
     capabilities_json: String,
 ) -> Result<SessionMutation, StoreError> {
-    complete_activation(
-        connection,
-        CompleteActivationCommand {
-            project_id: project(),
-            chat_id: chat(),
-            session_id: session.clone(),
-            runtime_epoch: RuntimeEpoch::new(epoch).unwrap(),
-            binding_digest: "a".repeat(64),
-            artifact_digest: "d".repeat(64),
-            external_session_id: ExternalId::new("external", "resumed-thread").unwrap(),
-            capabilities_json,
-            now_millis: 20 * epoch as i64 + 5,
-        },
-    )
+    complete_activation(connection, completion(session, epoch, capabilities_json))
+}
+
+fn completion(
+    session: &SageAgentSessionId,
+    epoch: u64,
+    capabilities_json: String,
+) -> CompleteActivationCommand {
+    CompleteActivationCommand {
+        project_id: project(),
+        chat_id: chat(),
+        session_id: session.clone(),
+        runtime_epoch: RuntimeEpoch::new(epoch).unwrap(),
+        binding_digest: "a".repeat(64),
+        artifact_digest: "d".repeat(64),
+        external_session_id: ExternalId::new("external", "resumed-thread").unwrap(),
+        capabilities_json,
+        now_millis: 20 * epoch as i64 + 5,
+    }
 }
 
 /// Starts a session with `stored` capabilities, parks it, and reactivates
@@ -78,20 +80,24 @@ fn parked_and_reactivated(stored: String) -> (Connection, SageAgentSessionId) {
         .session_id;
     activate(&mut connection, &session, 1);
     complete(&mut connection, &session, 1, stored).unwrap();
+    park_and_reactivate(&mut connection, &session, 1);
+    (connection, session)
+}
+
+fn park_and_reactivate(connection: &mut Connection, session: &SageAgentSessionId, epoch: u64) {
     park_session_after_zero_process(
-        &mut connection,
+        connection,
         ParkSessionCommand {
             project_id: project(),
             chat_id: chat(),
             session_id: session.clone(),
-            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            runtime_epoch: RuntimeEpoch::new(epoch).unwrap(),
             exit_kind: RequiredText::new("exitKind", "idleAfterTurn").unwrap(),
-            now_millis: 30,
+            now_millis: 20 * epoch as i64 + 10,
         },
     )
     .unwrap();
-    activate(&mut connection, &session, 2);
-    (connection, session)
+    activate(connection, session, epoch + 1);
 }
 
 fn stored_capabilities(connection: &Connection, session: &SageAgentSessionId) -> String {
@@ -105,31 +111,170 @@ fn stored_capabilities(connection: &Connection, session: &SageAgentSessionId) ->
 }
 
 #[test]
-fn a_session_stored_before_a_capability_existed_resumes_once_it_is_negotiated() {
-    // A build that predates the capability omits its field entirely.
-    let stored = capabilities();
-    assert!(!stored.contains("nativeBackgroundTerminals"));
-    let (mut connection, session) = parked_and_reactivated(stored.clone());
-    let resumed = complete(
-        &mut connection,
-        &session,
-        2,
-        with_background_terminals(&stored, true),
-    )
-    .unwrap();
+fn a_degraded_codex_session_resumes_and_records_the_live_negotiation() {
+    let (mut connection, session) = parked_and_reactivated(OLD_CODEX.into());
+    let resumed = complete(&mut connection, &session, 2, NEW_CODEX.into()).unwrap();
     assert_eq!(resumed.state, SessionState::Ready);
-    // The stored snapshot stays as negotiated first, so the upgrade stays off.
-    assert_eq!(stored_capabilities(&connection, &session), stored);
+    assert_eq!(stored_capabilities(&connection, &session), NEW_CODEX);
+    let page = load_chat_page(&connection, project(), chat(), None).unwrap();
+    assert_eq!(
+        page.sessions.as_slice()[0].capabilities,
+        serde_json::from_str::<CapabilitySnapshotV1>(NEW_CODEX).unwrap()
+    );
 }
 
 #[test]
-fn a_session_never_resumes_without_a_capability_it_was_stored_with() {
-    let stored = with_background_terminals(&capabilities(), true);
-    let (mut connection, session) = parked_and_reactivated(stored);
+fn a_capability_lost_on_resume_is_no_longer_stored_as_on() {
+    let (mut connection, session) = parked_and_reactivated(NEW_CODEX.into());
+    let mut negotiated: CapabilitySnapshotV1 = serde_json::from_str(NEW_CODEX).unwrap();
+    negotiated.cancel = false;
+    let negotiated = serde_json::to_string(&negotiated).unwrap();
+    let resumed = complete(&mut connection, &session, 2, negotiated.clone()).unwrap();
+    assert_eq!(resumed.state, SessionState::Ready);
+    assert_eq!(stored_capabilities(&connection, &session), negotiated);
+    let page = load_chat_page(&connection, project(), chat(), None).unwrap();
+    assert!(!page.sessions.as_slice()[0].capabilities.cancel);
+}
+
+#[test]
+fn a_codex_protocol_version_change_resumes() {
+    let (mut connection, session) = parked_and_reactivated(NEW_CODEX.into());
+    let negotiated = NEW_CODEX.replace("0.167.1", "0.168.0");
+    let resumed = complete(&mut connection, &session, 2, negotiated.clone()).unwrap();
+    assert_eq!(resumed.state, SessionState::Ready);
+    assert_eq!(stored_capabilities(&connection, &session), negotiated);
+}
+
+#[test]
+fn changed_model_and_config_catalog_counts_resume() {
+    let (mut connection, session) = parked_and_reactivated(NEW_CODEX.into());
+    let mut negotiated: CapabilitySnapshotV1 = serde_json::from_str(NEW_CODEX).unwrap();
+    negotiated.model_count = 5;
+    negotiated.config_count = 3;
+    let negotiated = serde_json::to_string(&negotiated).unwrap();
+    let resumed = complete(&mut connection, &session, 2, negotiated.clone()).unwrap();
+    assert_eq!(resumed.state, SessionState::Ready);
+    assert_eq!(stored_capabilities(&connection, &session), negotiated);
+}
+
+#[test]
+fn a_different_external_session_id_still_conflicts() {
+    let (mut connection, session) = parked_and_reactivated(OLD_CODEX.into());
+    let mut command = completion(&session, 2, NEW_CODEX.into());
+    command.external_session_id = ExternalId::new("external", "other-thread").unwrap();
     assert!(matches!(
-        complete(&mut connection, &session, 2, capabilities()),
+        complete_activation(&mut connection, command),
         Err(StoreError::Conflict {
             resource: "activationResume"
         })
     ));
+    assert_eq!(stored_capabilities(&connection, &session), OLD_CODEX);
+    assert_eq!(
+        complete(&mut connection, &session, 2, NEW_CODEX.into())
+            .unwrap()
+            .state,
+        SessionState::Ready
+    );
+}
+
+#[test]
+fn duplicate_commits_match_only_the_running_epochs_snapshot() {
+    let (mut connection, session) = parked_and_reactivated(OLD_CODEX.into());
+    let resumed = complete(&mut connection, &session, 2, NEW_CODEX.into()).unwrap();
+    let duplicate = complete(&mut connection, &session, 2, NEW_CODEX.into()).unwrap();
+    assert_eq!(duplicate.disposition, MutationDisposition::Duplicate);
+    assert_eq!(duplicate.revision, resumed.revision);
+    assert_eq!(duplicate.projection_revision, resumed.projection_revision);
+
+    // Neither a gain nor a loss is a duplicate of this epoch's negotiation.
+    for (cancel, close_session) in [(false, false), (true, true)] {
+        let mut changed: CapabilitySnapshotV1 = serde_json::from_str(NEW_CODEX).unwrap();
+        changed.cancel = cancel;
+        changed.close_session = close_session;
+        assert!(matches!(
+            complete(
+                &mut connection,
+                &session,
+                2,
+                serde_json::to_string(&changed).unwrap()
+            ),
+            Err(StoreError::Conflict {
+                resource: "activationResult"
+            })
+        ));
+    }
+    assert!(matches!(
+        complete(&mut connection, &session, 2, OLD_CODEX.into()),
+        Err(StoreError::Conflict {
+            resource: "activationResult"
+        })
+    ));
+    assert_eq!(stored_capabilities(&connection, &session), NEW_CODEX);
+}
+
+#[test]
+fn fork_admission_follows_the_latest_negotiation_in_both_directions() {
+    use crate::acp::contract::SageTurnId;
+
+    let (mut connection, session) = parked_and_reactivated(OLD_CODEX.into());
+    connection
+        .execute_batch(
+            "CREATE TABLE workbench_tabs(id TEXT PRIMARY KEY,kind TEXT,metadata_json TEXT);
+             INSERT INTO workbench_tabs VALUES('chat-one','chat','{}');",
+        )
+        .unwrap();
+    complete(&mut connection, &session, 2, NEW_CODEX.into()).unwrap();
+    connection
+        .execute(
+            "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,
+           client_intent_id,state,delivery_state,revision,created_at,updated_at,terminal_at)
+         VALUES('turn-fork','project-one','chat-one',?1,2,0,'intent-fork','completed',
+           'correlated',0,46,47,47)",
+            [session.as_str()],
+        )
+        .unwrap();
+    let turn = SageTurnId::parse("turn-fork").unwrap();
+    let source = chat_fork::fork_source(&connection, &project(), &chat(), &turn).unwrap();
+    assert_eq!(source.session_id, session);
+    assert_eq!(source.runtime_epoch, RuntimeEpoch::new(2).unwrap());
+
+    park_and_reactivate(&mut connection, &session, 2);
+    let mut negotiated: CapabilitySnapshotV1 = serde_json::from_str(NEW_CODEX).unwrap();
+    negotiated.native_session_fork = false;
+    complete(
+        &mut connection,
+        &session,
+        3,
+        serde_json::to_string(&negotiated).unwrap(),
+    )
+    .unwrap();
+    assert!(matches!(
+        chat_fork::fork_source(&connection, &project(), &chat(), &turn),
+        Err(StoreError::Conflict {
+            resource: "forkCapability"
+        })
+    ));
+}
+
+#[test]
+fn an_invalid_negotiation_cannot_replace_the_stored_snapshot() {
+    let (mut connection, session) = parked_and_reactivated(OLD_CODEX.into());
+    for invalid in [
+        "not json".into(),
+        NEW_CODEX.replace("\"cancel\":true", "\"cancel\":\"yes\""),
+        NEW_CODEX.replace("\"schemaVersion\":1", "\"schemaVersion\":2"),
+        NEW_CODEX.replace("\"modelCount\":0", "\"modelCount\":129"),
+    ] {
+        assert!(matches!(
+            complete(&mut connection, &session, 2, invalid),
+            Err(StoreError::Corrupt("activation result"))
+        ));
+        assert_eq!(stored_capabilities(&connection, &session), OLD_CODEX);
+    }
+    assert_eq!(
+        complete(&mut connection, &session, 2, NEW_CODEX.into())
+            .unwrap()
+            .state,
+        SessionState::Ready
+    );
 }

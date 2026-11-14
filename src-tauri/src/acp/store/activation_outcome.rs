@@ -1,7 +1,5 @@
 use rusqlite::{OptionalExtension, params};
 
-use super::chat_fork::resumable_capabilities as resumable;
-
 use crate::acp::{
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
@@ -61,13 +59,9 @@ struct ActivationRow {
     latest_epoch: i64,
 }
 
-/// The same native session, with capabilities that differ from the stored
-/// ones only by upgrades (see `CapabilitySnapshotV1::resumes_as`).
-fn resumes(row: &ActivationRow, command: &CompleteActivationCommand) -> bool {
-    row.external_session_id.as_deref() == Some(command.external_session_id.as_str())
-        && resumable(&row.capabilities_json, &command.capabilities_json)
-}
-
+/// Commits this epoch's valid negotiation for the same native session.
+/// Capabilities may change across epochs; a duplicate within a running
+/// epoch must match the capabilities that epoch already committed.
 pub(crate) fn complete_activation(
     connection: &mut rusqlite::Connection,
     command: CompleteActivationCommand,
@@ -83,7 +77,9 @@ pub(crate) fn complete_activation(
     )?;
     verify_digests(&row, &command.binding_digest, &command.artifact_digest)?;
     if row.epoch_state == "running" && matches!(row.session_state.as_str(), "ready" | "active") {
-        if resumes(&row, &command) {
+        if row.external_session_id.as_deref() == Some(command.external_session_id.as_str())
+            && row.capabilities_json == command.capabilities_json
+        {
             return duplicate(&command.session_id, command.runtime_epoch, &row);
         }
         return Err(StoreError::Conflict {
@@ -104,7 +100,7 @@ pub(crate) fn complete_activation(
                 resource: "activationFill",
             });
         }
-    } else if !resumes(&row, &command) {
+    } else if row.external_session_id.as_deref() != Some(command.external_session_id.as_str()) {
         return Err(StoreError::Conflict {
             resource: "activationResume",
         });
@@ -149,12 +145,14 @@ pub(crate) fn complete_activation(
         ensure_one(
             transaction.execute(
                 "UPDATE agent_sessions SET state='ready',residency='hot',revision=?2,
-                 projection_revision=?3,updated_at=?4 WHERE id=?1 AND state='recovering'",
+                 projection_revision=?3,updated_at=?4,capabilities_json=?5
+                 WHERE id=?1 AND state='recovering'",
                 params![
                     command.session_id.as_str(),
                     next.get() as i64,
                     projection.get() as i64,
-                    command.now_millis
+                    command.now_millis,
+                    command.capabilities_json
                 ],
             )?,
             "session",
