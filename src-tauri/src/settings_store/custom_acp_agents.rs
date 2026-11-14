@@ -9,6 +9,7 @@ use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
@@ -162,22 +163,26 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut statement = connection.prepare(
-            "SELECT number, name, executable, args_json, env_json
+        let mut statement = connection
+            .prepare(
+                "SELECT number, name, executable, args_json, env_json
              FROM custom_acp_agent_entries ORDER BY number LIMIT 4",
-        )?;
-        let rows = statement.query_map([], |row| {
-            Ok((
-                row.get::<_, u32>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-                row.get::<_, String>(3)?,
-                row.get::<_, String>(4)?,
-            ))
-        })?;
+            )
+            .db()?;
+        let rows = statement
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, u32>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                    row.get::<_, String>(3)?,
+                    row.get::<_, String>(4)?,
+                ))
+            })
+            .db()?;
         let mut agents = Vec::with_capacity(MAX_CUSTOM_ACP_AGENTS);
         for row in rows {
-            let (number, name, executable, args, env) = row?;
+            let (number, name, executable, args, env) = row.db()?;
             let draft = CustomAcpAgentDraft {
                 id: None,
                 name,
@@ -212,15 +217,17 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         let number = match draft.id.as_deref() {
             Some(id) => {
                 let number = custom_acp_number(id).ok_or_else(|| invalid("id is unknown"))?;
-                let updated = transaction.execute(
-                    "UPDATE custom_acp_agent_entries
+                let updated = transaction
+                    .execute(
+                        "UPDATE custom_acp_agent_entries
                      SET name=?2, executable=?3, args_json=?4, env_json=?5 WHERE number=?1",
-                    params![number, name, executable, args_json, env_json],
-                )?;
+                        params![number, name, executable, args_json, env_json],
+                    )
+                    .db()?;
                 if updated == 0 {
                     return Err(invalid("id is unknown"));
                 }
@@ -232,11 +239,11 @@ impl SettingsStore {
                     "INSERT INTO custom_acp_agent_entries(number, name, executable, args_json, env_json)
                      VALUES (?1, ?2, ?3, ?4, ?5)",
                     params![number, name, executable, args_json, env_json],
-                )?;
+                ).db()?;
                 number
             }
         };
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(CustomAcpAgent {
             id: custom_acp_id(number),
             name,
@@ -254,17 +261,19 @@ impl SettingsStore {
             .execute(
                 "DELETE FROM custom_acp_agent_entries WHERE number=?1",
                 [number],
-            )?;
+            )
+            .db()?;
         Ok(())
     }
 }
 
 /// Claims the next id number, refusing a fifth live agent.
 fn next_number(connection: &Connection) -> AppResult<u32> {
-    let live: i64 =
-        connection.query_row("SELECT count(*) FROM custom_acp_agent_entries", [], |row| {
+    let live: i64 = connection
+        .query_row("SELECT count(*) FROM custom_acp_agent_entries", [], |row| {
             row.get(0)
-        })?;
+        })
+        .db()?;
     if live >= MAX_CUSTOM_ACP_AGENTS as i64 {
         return Err(invalid(
             "limit reached: remove an agent before adding another",
@@ -276,16 +285,19 @@ fn next_number(connection: &Connection) -> AppResult<u32> {
             [],
             |row| row.get(0),
         )
-        .optional()?
+        .optional()
+        .db()?
         .unwrap_or(0);
     let number = last
         .checked_add(1)
         .ok_or_else(|| invalid("ids are exhausted"))?;
-    connection.execute(
-        "INSERT INTO custom_acp_agent_ids(singleton, last) VALUES (1, ?1)
+    connection
+        .execute(
+            "INSERT INTO custom_acp_agent_ids(singleton, last) VALUES (1, ?1)
          ON CONFLICT(singleton) DO UPDATE SET last=excluded.last",
-        [number],
-    )?;
+            [number],
+        )
+        .db()?;
     Ok(number)
 }
 

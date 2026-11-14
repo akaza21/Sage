@@ -9,13 +9,14 @@ use std::collections::HashMap;
 
 use rusqlite::Connection;
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 use serde::Serialize;
 
 use crate::{
-    persistence::Database,
     project_registry::{CHAT_LATEST_TURN_ID, rail_chat_ids, rail_chat_set},
     settings_store::{ChatReadMark, ChatReadMarkWrite, SettingsStore},
 };
+use sage_db::database::Database;
 
 /// The most chats one answer lists. Chats awaiting an approval come first,
 /// then the most recently finished, so a cut never hides an approval behind
@@ -78,15 +79,15 @@ pub(crate) fn chat_attention_in(
     connection: &Connection,
     read_through: &HashMap<String, i64>,
 ) -> AppResult<ChatAttentionList> {
-    let mut statement = connection.prepare(&attention_candidates())?;
-    let mut rows = statement.query([])?;
+    let mut statement = connection.prepare(&attention_candidates()).db()?;
+    let mut rows = statement.query([]).db()?;
     let mut list = ChatAttentionList::default();
-    while let Some(row) = rows.next()? {
-        let chat_id: String = row.get(1)?;
-        let reason = if row.get::<_, bool>(2)? {
+    while let Some(row) = rows.next().db()? {
+        let chat_id: String = row.get(1).db()?;
+        let reason = if row.get::<_, bool>(2).db()? {
             AttentionReason::AwaitingApproval
         } else {
-            let finished_at: i64 = row.get(3)?;
+            let finished_at: i64 = row.get(3).db()?;
             if read_through
                 .get(&chat_id)
                 .is_some_and(|mark| finished_at <= *mark)
@@ -100,7 +101,7 @@ pub(crate) fn chat_attention_in(
             break;
         }
         list.chats.push(ChatAttention {
-            project_id: row.get(0)?,
+            project_id: row.get(0).db()?,
             chat_id,
             reason,
         });

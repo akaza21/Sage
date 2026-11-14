@@ -45,7 +45,7 @@ pub(crate) enum JournalError {
 #[derive(Debug, Clone)]
 pub(crate) struct JournalHandle {
     queue: Arc<Queue>,
-    workspace_database: Option<crate::persistence::Database>,
+    workspace_database: Option<sage_db::database::Database>,
 }
 
 pub(crate) struct JournalRunner<S> {
@@ -55,7 +55,7 @@ pub(crate) struct JournalRunner<S> {
 
 pub(crate) struct JournalBatchBuilder {
     queue: Arc<Queue>,
-    workspace_database: Option<crate::persistence::Database>,
+    workspace_database: Option<sage_db::database::Database>,
     lane: JournalLane,
     mutations: Vec<StoreMutation>,
     reservation: Option<Reservation>,
@@ -84,7 +84,7 @@ struct QueueState {
 
 #[derive(Debug)]
 struct Envelope {
-    workspace_database: Option<crate::persistence::Database>,
+    workspace_database: Option<sage_db::database::Database>,
     workspace_result: Option<Result<(), StoreError>>,
     sequence: u64,
     deadline_millis: u64,
@@ -120,10 +120,7 @@ impl JournalHandle {
         )
     }
 
-    pub(crate) fn with_workspace_tracking(
-        mut self,
-        database: crate::persistence::Database,
-    ) -> Self {
+    pub(crate) fn with_workspace_tracking(mut self, database: sage_db::database::Database) -> Self {
         self.workspace_database = Some(database);
         self
     }

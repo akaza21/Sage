@@ -6,6 +6,7 @@ use sage_core::error::AppResult;
 use serde::Serialize;
 use tauri::State;
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::{
     editor_content::MAX_EDITABLE_BYTES,
     repository::{RepositoryBoundary, ensure_success, repository_boundary},

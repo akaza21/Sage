@@ -3,6 +3,7 @@
 use rusqlite::OptionalExtension;
 
 use super::*;
+use crate::project_registry::ProjectRegistryStore;
 use crate::turn_workspace::{self, TurnWorkspaceChange};
 use sage_acp_protocol::contract::{ClientIntentId, SageAgentSessionId};
 

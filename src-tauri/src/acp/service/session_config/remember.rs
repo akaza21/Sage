@@ -8,6 +8,7 @@ use sage_acp_protocol::{
     scheduler::RuntimeOwner,
     session_config::{ConfigMutation, ConfigValue, SessionConfig, reported::current_value},
 };
+use sage_db::error::SqliteResultExt;
 
 use super::AcpService;
 
@@ -47,20 +48,21 @@ fn model_notice(
 }
 
 pub(super) fn remember(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     owner: &RuntimeOwner,
     choice: &ConfigMutation,
 ) {
     let stored = database.write_connection().and_then(|mut connection| {
-        let transaction = connection.transaction()?;
-        notices::clear(&transaction, &owner.session_id, choice)?;
+        let transaction = connection.transaction().db()?;
+        notices::clear(&transaction, &owner.session_id, choice).db()?;
         choices::record(
             &transaction,
             &owner.session_id,
             choice,
             sage_core::time::now_millis(),
-        )?;
-        transaction.commit().map_err(Into::into)
+        )
+        .db()?;
+        transaction.commit().db()
     });
     if let Err(error) = stored {
         tracing::warn!(?error, "session config choice was not stored");
@@ -79,8 +81,7 @@ impl AcpService {
         self.database
             .write_connection()
             .and_then(|connection| {
-                choices::record(&connection, session, choice, sage_core::time::now_millis())
-                    .map_err(Into::into)
+                choices::record(&connection, session, choice, sage_core::time::now_millis()).db()
             })
             .inspect_err(|error| tracing::warn!(?error, "starting config choice was not stored"))
             .unwrap_or(false)
@@ -117,7 +118,7 @@ impl AcpService {
                 notice,
                 sage_core::time::now_millis(),
             )
-            .map_err(Into::into)
+            .db()
         });
         replaced
             .inspect_err(|error| tracing::warn!(?error, "session config choice was not stored"))

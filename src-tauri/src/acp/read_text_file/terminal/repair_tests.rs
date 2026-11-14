@@ -4,7 +4,7 @@ use crate::acp::{
     service::AcpService,
     transport::DeadlineAsyncWriter,
 };
-use crate::persistence::Database;
+use crate::project_registry::create::ProjectCreateStore;
 use sage_acp_protocol::contract::{
     ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
 };
@@ -29,7 +29,7 @@ impl Fixture {
         let root = std::env::temp_dir().join(format!("sage-p02-repair-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         fs::write(root.join("file.txt"), "hello").unwrap();
-        let database = Database::open(":memory:".as_ref()).unwrap();
+        let database = crate::database::open_database(":memory:".as_ref()).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
         Self {

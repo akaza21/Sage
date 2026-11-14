@@ -1,7 +1,9 @@
+use crate::chat_purge::ChatPurgeStore;
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
-use crate::persistence::Database;
 use rusqlite::params;
+use sage_db::database::Database;
 
 pub(crate) fn validate_parent(
     transaction: &rusqlite::Transaction<'_>,
@@ -13,17 +15,17 @@ pub(crate) fn validate_parent(
         "SELECT COUNT(*) FROM chats WHERE id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1)",
         [],
         |row| row.get(0),
-    )?;
+    ).db()?;
     let exists: bool = transaction.query_row(
         "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id=?2 AND id NOT IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1))",
         params![project, parent],
         |row| row.get(0),
-    )?;
+    ).db()?;
     let project_has_side: bool = transaction.query_row(
         "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1))",
         [project],
         |row| row.get(0),
-    )?;
+    ).db()?;
     if !exists || project_has_side || count >= 8 {
         return Err(AppError::InvalidRequest("Close the existing side chat before opening another; up to eight Projects may own a temporary Chat".into()));
     }
@@ -31,7 +33,7 @@ pub(crate) fn validate_parent(
 }
 
 pub(crate) fn is_temporary(connection: &rusqlite::Connection, chat_id: &str) -> AppResult<bool> {
-    Ok(connection.query_row("SELECT EXISTS(SELECT 1 FROM workbench_tabs WHERE id=?1 AND kind='chat' AND json_extract(metadata_json,'$.ephemeral')=1)", [chat_id], |row| row.get(0))?)
+    connection.query_row("SELECT EXISTS(SELECT 1 FROM workbench_tabs WHERE id=?1 AND kind='chat' AND json_extract(metadata_json,'$.ephemeral')=1)", [chat_id], |row| row.get(0)).db()
 }
 
 pub(crate) fn refuse_persistence(
@@ -54,7 +56,7 @@ pub(crate) fn refuse_parent_removal(
     let owns_side: bool = connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM workbench_tabs WHERE project_id=?1 AND id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) AND json_extract(metadata_json,'$.parentChatId')=?2)",
         params![project, chat], |row| row.get(0),
-    )?;
+    ).db()?;
     if owns_side {
         return Err(AppError::InvalidRequest(
             "Close this Chat's side chat before moving or archiving it".into(),
@@ -67,9 +69,9 @@ pub(crate) fn validate_layout(
     connection: &rusqlite::Connection,
     layout: &sage_domain::chat::ProjectLayoutRequest,
 ) -> AppResult<()> {
-    let rows = connection.prepare("SELECT id,json_extract(metadata_json,'$.parentChatId') FROM workbench_tabs WHERE project_id=?1 AND id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) LIMIT 9")?
-        .query_map([&layout.project_id], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?)))?
-        .collect::<Result<Vec<_>,_>>()?;
+    let rows = connection.prepare("SELECT id,json_extract(metadata_json,'$.parentChatId') FROM workbench_tabs WHERE project_id=?1 AND id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) LIMIT 9").db()?
+        .query_map([&layout.project_id], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?))).db()?
+        .collect::<Result<Vec<_>,_>>().db()?;
     if rows.len() > 8
         || rows.iter().any(|(side, parent)| {
             [side, parent].iter().any(|id| {
@@ -87,17 +89,24 @@ pub(crate) fn validate_layout(
     Ok(())
 }
 
-impl Database {
+/// Temporary side Chats, on the shared database.
+pub(crate) trait SideChatStore {
     /// Removes every temporary Chat. One failed purge does not stop the
     /// others; the first error is returned after all were attempted.
-    pub(crate) fn purge_side_chats(&self) -> AppResult<()> {
+    fn purge_side_chats(&self) -> AppResult<()>;
+
+    fn remove_side_chat(&self, project: &str, chat: &str) -> AppResult<()>;
+}
+
+impl SideChatStore for Database {
+    fn purge_side_chats(&self) -> AppResult<()> {
         let rows = self
             .connection()
-            .prepare("SELECT project_id,id FROM chats WHERE id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) ORDER BY id LIMIT 9")?
+            .prepare("SELECT project_id,id FROM chats WHERE id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) ORDER BY id LIMIT 9").db()?
             .query_map([], |row| {
                 Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+            }).db()?
+            .collect::<Result<Vec<_>, _>>().db()?;
         let mut failure = (rows.len() > 8)
             .then(|| AppError::ResourceLimit("temporary Chat registry exceeds eight".into()));
         for (project, chat) in rows.into_iter().take(8) {
@@ -109,12 +118,15 @@ impl Database {
         failure.map_or(Ok(()), Err)
     }
 
-    pub(crate) fn remove_side_chat(&self, project: &str, chat: &str) -> AppResult<()> {
-        let exists: bool = self.connection().query_row(
-            "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id=?2)",
-            params![project, chat],
-            |row| row.get(0),
-        )?;
+    fn remove_side_chat(&self, project: &str, chat: &str) -> AppResult<()> {
+        let exists: bool = self
+            .connection()
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id=?2)",
+                params![project, chat],
+                |row| row.get(0),
+            )
+            .db()?;
         if !exists {
             return Ok(());
         }
@@ -135,11 +147,15 @@ mod purge_tests;
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_lifecycle::store::ChatLifecycleStore;
+    use crate::project_registry::ProjectRegistryStore;
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
     #[test]
     fn temporary_chats_are_hidden_deleted_and_durable_guards_are_restored() {
         let root = std::env::temp_dir().join(format!("sage-side-chat-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database = Database::open(&root.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project = snapshot.project.as_ref().unwrap().id.clone();
@@ -218,7 +234,7 @@ mod tests {
             .create_chat_with_parent(&project, &layout, Some(&parent))
             .unwrap();
         drop(database);
-        let reopened = Database::open(&root.join("sage.db")).unwrap();
+        let reopened = crate::database::open_database(&root.join("sage.db")).unwrap();
         assert_eq!(
             reopened
                 .connection()

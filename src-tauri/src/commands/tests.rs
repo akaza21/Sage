@@ -18,21 +18,25 @@ use super::{
     },
     *,
 };
-use crate::{
-    acp::{
-        bindings::codex::CodexDiscoveryDeadline,
-        ipc::{
-            AcpConflictResource, AcpIpcError, AcpUnavailableReason, GetAcpChatPageRequest,
-            GetCodexDiscoveryRequest, StartAcpSessionRequest,
-        },
-        projection::{ItemContent, TextRole},
+#[cfg(windows)]
+use crate::acp::bindings::codex::runtime::authority::CodexRootAuthorityStore;
+use crate::acp::{
+    bindings::codex::CodexDiscoveryDeadline,
+    ipc::{
+        AcpConflictResource, AcpIpcError, AcpUnavailableReason, GetAcpChatPageRequest,
+        GetCodexDiscoveryRequest, StartAcpSessionRequest,
     },
-    persistence::Database,
+    projection::{ItemContent, TextRole},
 };
+use crate::project_registry::create::ProjectCreateStore;
+use crate::session_events::SessionEventStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::{
     contract::{ClientIntentId, ProjectGeneration, SageChatId, SageProjectId},
     intent::BindingId,
 };
+#[cfg(windows)]
+use sage_db::database::Database;
 
 #[cfg(windows)]
 use super::acp::{
@@ -79,7 +83,7 @@ mod embedded_resource_journey;
 pub(super) fn state_with_project() -> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let chat_id = database
         .bootstrap_snapshot()
@@ -92,7 +96,7 @@ pub(super) fn state_with_project() -> (AppState, String, String, std::path::Path
 fn state_with_unavailable_codex_project() -> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let chat_id = database
         .bootstrap_snapshot()
@@ -138,7 +142,7 @@ fn state_with_internal_opencode_registry() -> (AppState, String, String, std::pa
         r#"{"name":"opencode-ai","version":"1.18.21","bin":{"opencode":"./bin/opencode.exe"}}"#,
     )
     .unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let chat_id = database
         .bootstrap_snapshot()
@@ -221,7 +225,7 @@ async fn seed_internal_opencode_session(
 fn state_with_admitted_codex_project() -> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let chat_id = database
         .bootstrap_snapshot()
@@ -251,7 +255,7 @@ fn state_with_admitted_codex_project() -> (AppState, String, String, std::path::
 fn state_with_registry_test_binding_project() -> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let chat_id = database
         .bootstrap_snapshot()
@@ -1168,7 +1172,7 @@ fn characterization_new_session_send_preserves_invalid_request_classification() 
             std::env::temp_dir().join(format!("sage-acp-characterization-{}", Uuid::new_v4()));
         let project_root = root.join("project");
         fs::create_dir_all(&project_root).unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&project_root).unwrap();
         let chat = database
             .bootstrap_snapshot()

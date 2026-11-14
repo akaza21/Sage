@@ -1,6 +1,7 @@
 use std::{fs, path::Path};
 
 use rusqlite::{Connection, params};
+use sage_db::error::SqliteResultExt;
 
 use sage_core::error::{AppError, AppResult};
 
@@ -105,11 +106,13 @@ pub(super) fn preflight_original_schema(
         verify_file_envelope(live)?;
     } else if schema == SchemaClass::CurrentV10LegacySessionEvents {
         verify_file_envelope(live)?;
-        let has_events: bool = connection.query_row(
-            "SELECT EXISTS(SELECT 1 FROM session_events LIMIT 1)",
-            [],
-            |row| row.get(0),
-        )?;
+        let has_events: bool = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM session_events LIMIT 1)",
+                [],
+                |row| row.get(0),
+            )
+            .db()?;
         if has_events {
             return Err(AppError::InvalidRequest(
                 "historical v10 session events must be empty before migration".into(),
@@ -181,29 +184,33 @@ pub(super) fn preflight_with_bounds(
     if payload_bytes > bounds.payload_bytes {
         return limit("legacy payloads exceed 256 MiB");
     }
-    let oversized_session: bool = connection.query_row(
-        "SELECT EXISTS(
+    let oversized_session: bool = connection
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM session_events
            GROUP BY session_id
            HAVING SUM(length(CAST(payload_json AS BLOB))) > ?1
            LIMIT 1
          )",
-        [SESSION_PAYLOAD_BYTES],
-        |row| row.get(0),
-    )?;
+            [SESSION_PAYLOAD_BYTES],
+            |row| row.get(0),
+        )
+        .db()?;
     if oversized_session {
         return limit("a legacy session payload exceeds 64 MiB");
     }
-    let invalid_event: bool = connection.query_row(
-        "SELECT EXISTS(
+    let invalid_event: bool = connection
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM session_events
            WHERE length(CAST(id AS BLOB)) NOT BETWEEN 1 AND 512
               OR length(CAST(payload_json AS BLOB)) > ?1
            LIMIT 1
          )",
-        [ITEM_BYTES as i64],
-        |row| row.get(0),
-    )?;
+            [ITEM_BYTES as i64],
+            |row| row.get(0),
+        )
+        .db()?;
     if invalid_event {
         return limit("a legacy event violates its ID or 256 KiB payload bound");
     }
@@ -224,7 +231,9 @@ pub(super) fn preflight_with_bounds(
 
 fn bounded_count(connection: &Connection, table: &str, limit_value: i64) -> AppResult<i64> {
     let query = format!("SELECT COUNT(*) FROM (SELECT 1 FROM {table} LIMIT ?1)");
-    let count = connection.query_row(&query, [limit_value + 1], |row| row.get(0))?;
+    let count = connection
+        .query_row(&query, [limit_value + 1], |row| row.get(0))
+        .db()?;
     if count > limit_value {
         return limit(&format!(
             "legacy {table} exceeds its {limit_value}-row limit"
@@ -244,7 +253,9 @@ fn bounded_group(
            SELECT 1 FROM {table} GROUP BY {owner} HAVING COUNT(*) > ?1 LIMIT 1
          )"
     );
-    let exceeded: bool = connection.query_row(&query, [limit_value], |row| row.get(0))?;
+    let exceeded: bool = connection
+        .query_row(&query, [limit_value], |row| row.get(0))
+        .db()?;
     if exceeded {
         return limit(&format!(
             "legacy {table} exceeds its {limit_value}-row per-owner limit"
@@ -254,8 +265,9 @@ fn bounded_group(
 }
 
 fn aggregate_session_metadata(connection: &Connection) -> AppResult<i64> {
-    Ok(connection.query_row(
-        "SELECT COALESCE(SUM(
+    connection
+        .query_row(
+            "SELECT COALESCE(SUM(
            length(CAST(id AS BLOB)) + length(CAST(project_id AS BLOB)) +
            length(CAST(chat_tab_id AS BLOB)) + length(CAST(harness_id AS BLOB)) +
            COALESCE(length(CAST(harness_version AS BLOB)), 0) +
@@ -263,18 +275,21 @@ fn aggregate_session_metadata(connection: &Connection) -> AppResult<i64> {
            COALESCE(length(CAST(external_session_id AS BLOB)), 0)
          ), 0)
          FROM (SELECT * FROM agent_sessions LIMIT ?1)",
-        [SESSIONS + 1],
-        |row| row.get(0),
-    )?)
+            [SESSIONS + 1],
+            |row| row.get(0),
+        )
+        .db()
 }
 
 fn aggregate_payload_bytes(connection: &Connection) -> AppResult<i64> {
-    Ok(connection.query_row(
-        "SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))), 0)
+    connection
+        .query_row(
+            "SELECT COALESCE(SUM(length(CAST(payload_json AS BLOB))), 0)
          FROM (SELECT payload_json FROM session_events LIMIT ?1)",
-        [EVENTS + 1],
-        |row| row.get(0),
-    )?)
+            [EVENTS + 1],
+            |row| row.get(0),
+        )
+        .db()
 }
 
 fn verify_legacy_ownership(connection: &Connection) -> AppResult<()> {
@@ -302,7 +317,7 @@ fn verify_legacy_ownership(connection: &Connection) -> AppResult<()> {
          )",
         [],
         |row| row.get(0),
-    )?;
+    ).db()?;
     if invalid {
         return Err(AppError::InvalidRequest(
             "legacy session ownership or sequence metadata is corrupt".into(),
@@ -345,11 +360,13 @@ fn sidecar_len(live: &Path, suffix: &str) -> AppResult<u64> {
 }
 
 fn table_exists(connection: &Connection, name: &str) -> AppResult<bool> {
-    Ok(connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?1)",
-        params![name],
-        |row| row.get(0),
-    )?)
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_schema WHERE type='table' AND name=?1)",
+            params![name],
+            |row| row.get(0),
+        )
+        .db()
 }
 
 fn limit<T>(message: &str) -> AppResult<T> {

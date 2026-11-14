@@ -3,6 +3,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
@@ -17,12 +18,14 @@ pub struct BrowserPreferences {
 }
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS browser_preferences (
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS browser_preferences (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
            show_full_url INTEGER NOT NULL CHECK (show_full_url IN (0, 1))
          ) STRICT;",
-    )?;
+        )
+        .db()?;
     Ok(())
 }
 
@@ -38,7 +41,8 @@ impl SettingsStore {
                 [],
                 |row| row.get::<_, bool>(0),
             )
-            .optional()?;
+            .optional()
+            .db()?;
         Ok(show_full_url
             .map(|show_full_url| BrowserPreferences { show_full_url })
             .unwrap_or_default())
@@ -52,11 +56,13 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection.execute(
-            "INSERT INTO browser_preferences(singleton, show_full_url) VALUES (1, ?1)
+        connection
+            .execute(
+                "INSERT INTO browser_preferences(singleton, show_full_url) VALUES (1, ?1)
              ON CONFLICT(singleton) DO UPDATE SET show_full_url = excluded.show_full_url",
-            params![value.show_full_url],
-        )?;
+                params![value.show_full_url],
+            )
+            .db()?;
         Ok(value)
     }
 }

@@ -12,6 +12,7 @@ use crate::acp::{
     store::DatabaseAcpStore,
 };
 use crate::browser::state_query::bootstrap_fixture::BrowserDocumentFixture;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::contract::SageAgentSessionId;
 use std::sync::{Arc, Mutex, mpsc};
 

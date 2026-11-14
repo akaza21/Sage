@@ -6,6 +6,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use super::SettingsStore;
 use crate::browser::site_permissions::{Decision, PermissionKind};
@@ -17,15 +18,17 @@ pub const MAX_SITE_PERMISSIONS: usize = 256;
 pub const MAX_SITE_ORIGIN_BYTES: usize = 512;
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS browser_site_permissions (
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS browser_site_permissions (
            origin TEXT NOT NULL CHECK (length(origin) BETWEEN 8 AND 512),
            kind TEXT NOT NULL CHECK (kind IN
              ('camera', 'microphone', 'geolocation', 'notifications', 'clipboardRead')),
            decision TEXT NOT NULL CHECK (decision IN ('allow', 'deny')),
            PRIMARY KEY (origin, kind)
          ) STRICT, WITHOUT ROWID;",
-    )?;
+        )
+        .db()?;
     Ok(())
 }
 
@@ -73,20 +76,24 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut statement = connection.prepare(
-            "SELECT origin, kind, decision FROM browser_site_permissions
+        let mut statement = connection
+            .prepare(
+                "SELECT origin, kind, decision FROM browser_site_permissions
              ORDER BY origin, kind LIMIT ?1",
-        )?;
-        let rows = statement.query_map(params![MAX_SITE_PERMISSIONS as i64], |row| {
-            Ok((
-                row.get::<_, String>(0)?,
-                row.get::<_, String>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        })?;
+            )
+            .db()?;
+        let rows = statement
+            .query_map(params![MAX_SITE_PERMISSIONS as i64], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .db()?;
         let mut saved = Vec::new();
         for row in rows {
-            let (origin, kind, decision) = row?;
+            let (origin, kind, decision) = row.db()?;
             // The CHECK constraints admit only known values; anything else is
             // skipped rather than trusted.
             if let (Some(kind), Some(decision)) =
@@ -113,33 +120,36 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         let exists = transaction
             .query_row(
                 "SELECT 1 FROM browser_site_permissions WHERE origin = ?1 AND kind = ?2",
                 params![origin, kind_text(kind)],
                 |_| Ok(()),
             )
-            .optional()?
+            .optional()
+            .db()?
             .is_some();
         if !exists {
-            let count: i64 = transaction.query_row(
-                "SELECT COUNT(*) FROM browser_site_permissions",
-                [],
-                |row| row.get(0),
-            )?;
+            let count: i64 = transaction
+                .query_row("SELECT COUNT(*) FROM browser_site_permissions", [], |row| {
+                    row.get(0)
+                })
+                .db()?;
             if count >= MAX_SITE_PERMISSIONS as i64 {
                 return Err(AppError::ResourceLimit(format!(
                     "Sage keeps at most {MAX_SITE_PERMISSIONS} site permissions"
                 )));
             }
         }
-        transaction.execute(
-            "INSERT INTO browser_site_permissions(origin, kind, decision) VALUES (?1, ?2, ?3)
+        transaction
+            .execute(
+                "INSERT INTO browser_site_permissions(origin, kind, decision) VALUES (?1, ?2, ?3)
              ON CONFLICT(origin, kind) DO UPDATE SET decision = excluded.decision",
-            params![origin, kind_text(kind), decision_text(decision)],
-        )?;
-        transaction.commit()?;
+                params![origin, kind_text(kind), decision_text(decision)],
+            )
+            .db()?;
+        transaction.commit().db()?;
         Ok(())
     }
 
@@ -153,10 +163,13 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        Ok(connection.execute(
-            "DELETE FROM browser_site_permissions WHERE origin = ?1 AND kind = ?2",
-            params![origin, kind_text(kind)],
-        )? > 0)
+        Ok(connection
+            .execute(
+                "DELETE FROM browser_site_permissions WHERE origin = ?1 AND kind = ?2",
+                params![origin, kind_text(kind)],
+            )
+            .db()?
+            > 0)
     }
 
     /// Forgets every answer.
@@ -165,7 +178,9 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection.execute("DELETE FROM browser_site_permissions", [])?;
+        connection
+            .execute("DELETE FROM browser_site_permissions", [])
+            .db()?;
         Ok(())
     }
 

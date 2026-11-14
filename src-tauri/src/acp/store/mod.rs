@@ -7,7 +7,7 @@ mod browser_permission_tests;
 mod cancel;
 pub(crate) mod chat_fork;
 pub(crate) mod child_transcript;
-mod commands;
+pub(crate) mod commands;
 mod database_store;
 pub(crate) mod edit_disposition;
 mod facts;
@@ -279,7 +279,7 @@ pub(crate) struct StoreCommit {
 }
 
 pub(crate) struct DatabaseAcpStore {
-    database: crate::persistence::Database,
+    database: sage_db::database::Database,
 }
 
 impl AcpStore for DatabaseAcpStore {

@@ -1,6 +1,7 @@
 use std::{fs, path::Path, time::Duration};
 
 use rusqlite::{Connection, OpenFlags, backup::Backup};
+use sage_db::error::SqliteResultExt;
 
 use sage_core::{
     error::{AppError, AppResult},
@@ -94,8 +95,11 @@ fn with_pinned_source<T>(
     let source = Connection::open_with_flags(
         &paths.live,
         OpenFlags::SQLITE_OPEN_READ_WRITE | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )?;
-    source.execute_batch("PRAGMA busy_timeout=0; BEGIN IMMEDIATE;")?;
+    )
+    .db()?;
+    source
+        .execute_batch("PRAGMA busy_timeout=0; BEGIN IMMEDIATE;")
+        .db()?;
     let class = classify_connection(&source)?;
     if !class.requires_retained_backup() {
         return invalid("backup source does not require an original-schema backup");
@@ -104,9 +108,9 @@ fn with_pinned_source<T>(
     verify_sqlite(&source)?;
     let source_set = source_set(paths, &source)?;
     let result = operation(&source_set)?;
-    source.execute_batch("ROLLBACK")?;
+    source.execute_batch("ROLLBACK").db()?;
     live_anchor.verify_path(&paths.live)?;
-    source.close().map_err(|(_, error)| error)?;
+    source.close().map_err(|(_, error)| error).db()?;
     Ok(result)
 }
 
@@ -194,25 +198,37 @@ fn create_backup_stage(paths: &MigrationPaths, nonce: &str) -> AppResult<()> {
     let source = Connection::open_with_flags(
         &paths.live,
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_NO_MUTEX,
-    )?;
+    )
+    .db()?;
     let destination_anchor = stage_owner::create_bound_stage(
         &paths.backup_stage,
         &paths.backup_journal,
         &paths.backup_stage_owner,
         nonce,
     )?;
-    let mut destination = Connection::open(&paths.backup_stage)?;
-    destination.pragma_update(None, "journal_mode", "TRUNCATE")?;
-    let page_size: i64 = source.pragma_query_value(None, "page_size", |row| row.get(0))?;
-    destination.pragma_update(None, "page_size", page_size)?;
-    destination.pragma_update(
-        None,
-        "max_page_count",
-        (TEMP_SQLITE_BYTES as i64) / page_size.max(1),
-    )?;
-    Backup::new(&source, &mut destination)?.run_to_completion(256, Duration::ZERO, None)?;
-    source.close().map_err(|(_, error)| error)?;
-    destination.close().map_err(|(_, error)| error)?;
+    let mut destination = Connection::open(&paths.backup_stage).db()?;
+    destination
+        .pragma_update(None, "journal_mode", "TRUNCATE")
+        .db()?;
+    let page_size: i64 = source
+        .pragma_query_value(None, "page_size", |row| row.get(0))
+        .db()?;
+    destination
+        .pragma_update(None, "page_size", page_size)
+        .db()?;
+    destination
+        .pragma_update(
+            None,
+            "max_page_count",
+            (TEMP_SQLITE_BYTES as i64) / page_size.max(1),
+        )
+        .db()?;
+    Backup::new(&source, &mut destination)
+        .db()?
+        .run_to_completion(256, Duration::ZERO, None)
+        .db()?;
+    source.close().map_err(|(_, error)| error).db()?;
+    destination.close().map_err(|(_, error)| error).db()?;
     source_anchor.verify_path(&paths.live)?;
     destination_anchor.verify_path(&paths.backup_stage)?;
     destination_anchor.sync()?;
@@ -375,13 +391,16 @@ pub(super) fn source_set(
 }
 
 pub(super) fn verify_sqlite(connection: &Connection) -> AppResult<()> {
-    let quick: String = connection.query_row("PRAGMA quick_check(1)", [], |row| row.get(0))?;
+    let quick: String = connection
+        .query_row("PRAGMA quick_check(1)", [], |row| row.get(0))
+        .db()?;
     if quick != "ok" {
         return invalid("SQLite quick_check failed");
     }
     let foreign_key_error: bool = connection
         .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
-        .optional()?
+        .optional()
+        .db()?
         .unwrap_or(false);
     if foreign_key_error {
         return invalid("SQLite foreign_key_check failed");

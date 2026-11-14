@@ -7,6 +7,8 @@ use crate::acp::{
     },
     mcp::McpAdmission,
 };
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId};
 
 #[test]
@@ -41,8 +43,7 @@ fn browser_activation(version: &str, browser_admitted: bool) {
         registration
             .authenticate_observed_for_test(executable.clone(), version.into())
             .unwrap();
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();

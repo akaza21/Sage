@@ -29,10 +29,47 @@ impl RepositoryLayout {
     }
 }
 
+/// A failed database operation. sage-core does not link SQLite, so the
+/// driver's error is held here opaquely; `sage-db` makes these from its
+/// rusqlite errors. `Display`, `Debug` and `source` read through to the
+/// driver's error, so logs and messages read as they did when `AppError`
+/// held it directly. `AppError::source` is this wrapper, so reach the driver's
+/// error with [`DatabaseError::downcast_ref`].
+pub struct DatabaseError(Box<dyn std::error::Error + Send + Sync + 'static>);
+
+impl DatabaseError {
+    pub fn new(error: impl std::error::Error + Send + Sync + 'static) -> Self {
+        Self(Box::new(error))
+    }
+
+    /// The driver's error, for callers that tell SQLite failures apart.
+    pub fn downcast_ref<E: std::error::Error + 'static>(&self) -> Option<&E> {
+        self.0.downcast_ref()
+    }
+}
+
+impl std::fmt::Display for DatabaseError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.0, formatter)
+    }
+}
+
+impl std::fmt::Debug for DatabaseError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Debug::fmt(&self.0, formatter)
+    }
+}
+
+impl std::error::Error for DatabaseError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.0.source()
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum AppError {
     #[error("database operation failed: {0}")]
-    Database(#[from] rusqlite::Error),
+    Database(#[source] DatabaseError),
 
     #[error("unknown harness: {0}")]
     UnknownHarness(String),
@@ -138,10 +175,9 @@ mod tests {
             "Sage could not finish this change; try again."
         );
         assert!(!interrupted.public_message().contains("panicked"));
-        let database = AppError::Database(rusqlite::Error::SqliteFailure(
-            rusqlite::ffi::Error::new(rusqlite::ffi::SQLITE_BUSY),
-            Some("database is locked in chat_tabs".into()),
-        ));
+        let database = AppError::Database(DatabaseError::new(std::io::Error::other(
+            "database is locked in chat_tabs",
+        )));
         assert_eq!(
             database.public_message(),
             "Sage could not save this change; try again."

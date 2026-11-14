@@ -11,6 +11,7 @@ use std::{
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use serde::Serialize;
 use serde_json::Value;
 
@@ -290,18 +291,22 @@ fn note_once(problem: &'static str, key: &str) {
 /// the legacy `editor_appearance` columns. Runs inside the store's opening
 /// transaction, after those columns are brought up to date.
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS editor_settings (
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS editor_settings (
            key TEXT PRIMARY KEY CHECK (length(key) BETWEEN 1 AND 128),
            value TEXT NOT NULL CHECK (json_valid(value)),
            version INTEGER NOT NULL CHECK (version >= 1)
          ) STRICT;",
-    )?;
-    let empty: bool = connection.query_row(
-        "SELECT NOT EXISTS (SELECT 1 FROM editor_settings)",
-        [],
-        |row| row.get(0),
-    )?;
+        )
+        .db()?;
+    let empty: bool = connection
+        .query_row(
+            "SELECT NOT EXISTS (SELECT 1 FROM editor_settings)",
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if !empty {
         return Ok(());
     }
@@ -323,7 +328,8 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
                 ])
             },
         )
-        .optional()?;
+        .optional()
+        .db()?;
     for (key, value) in legacy.into_iter().flatten() {
         upsert(connection, key, &value)?;
     }
@@ -340,22 +346,28 @@ fn json(value: &EditorValue) -> Value {
 }
 
 fn upsert(connection: &Connection, key: &str, value: &Value) -> AppResult<()> {
-    connection.execute(
-        "INSERT INTO editor_settings(key, value, version) VALUES (?1, ?2, ?3)
+    connection
+        .execute(
+            "INSERT INTO editor_settings(key, value, version) VALUES (?1, ?2, ?3)
          ON CONFLICT(key) DO UPDATE SET value = excluded.value, version = excluded.version",
-        params![key, value.to_string(), ROW_VERSION],
-    )?;
+            params![key, value.to_string(), ROW_VERSION],
+        )
+        .db()?;
     Ok(())
 }
 
 fn read(connection: &Connection) -> AppResult<EditorSettings> {
     let mut settings = defaults();
-    let mut statement = connection.prepare("SELECT key, value FROM editor_settings")?;
-    let rows = statement.query_map([], |row| {
-        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-    })?;
+    let mut statement = connection
+        .prepare("SELECT key, value FROM editor_settings")
+        .db()?;
+    let rows = statement
+        .query_map([], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+        })
+        .db()?;
     for row in rows {
-        let (key, raw) = row?;
+        let (key, raw) = row.db()?;
         let Some(spec) = spec(&key) else {
             note_once("unknown key", &key);
             continue;
@@ -405,11 +417,11 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         for (key, value) in admitted {
             upsert(&transaction, key, &json(&value))?;
         }
-        transaction.commit()?;
+        transaction.commit().db()?;
         read(&connection)
     }
 }

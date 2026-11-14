@@ -1,6 +1,7 @@
 use tauri::{AppHandle, Manager, RunEvent};
 use tracing::{info, warn};
 
+use crate::side_chat_storage::SideChatStore;
 use crate::{browser::BrowserState, preview_lifecycle, state::AppState};
 
 #[path = "exit_cleanup.rs"]

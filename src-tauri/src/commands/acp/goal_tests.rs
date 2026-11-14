@@ -1,4 +1,6 @@
 use super::*;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use std::{
     path::Path,
     sync::{
@@ -8,20 +10,17 @@ use std::{
     time::Instant,
 };
 
-use crate::{
-    acp::{
-        background_terminals::{BackgroundTerminal, TerminalAction},
-        goal::{GoalSnapshot, GoalState, GoalStatus, NativeRpcIntent, NativeRpcReply},
-        runtime::{
-            HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
-            NativeRpcCompletionSink, PromptWrite, RuntimeEngine, RuntimeHost,
-        },
-        store::{
-            ActivateSessionCommand, AdapterTurnCursor, CompleteActivationCommand,
-            StartSessionCommand, activate_session, complete_activation, start_session,
-        },
+use crate::acp::{
+    background_terminals::{BackgroundTerminal, TerminalAction},
+    goal::{GoalSnapshot, GoalState, GoalStatus, NativeRpcIntent, NativeRpcReply},
+    runtime::{
+        HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, NativeRpcCompletionSink,
+        PromptWrite, RuntimeEngine, RuntimeHost,
     },
-    persistence::Database,
+    store::{
+        ActivateSessionCommand, AdapterTurnCursor, CompleteActivationCommand, StartSessionCommand,
+        activate_session, complete_activation, start_session,
+    },
 };
 use sage_acp_protocol::{
     contract::{RequiredText, SageTurnId, SchemaVersionV1},
@@ -146,7 +145,7 @@ pub(in crate::commands::acp) fn fixture(
 ) -> (AppState, ExistingGoalRequest, Arc<AtomicUsize>) {
     let root = std::env::temp_dir().join(format!("sage-goal-ipc-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let chat = database
         .bootstrap_snapshot()

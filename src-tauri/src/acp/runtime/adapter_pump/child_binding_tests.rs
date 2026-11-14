@@ -301,7 +301,7 @@ fn an_idle_child_item_publishes_its_epoch_without_moving_the_revision() {
         let parent_done = concat!(r#"{"method":"turn/completed","params":{"threadId":"external-session","turn":{"id":"turn-1","status":"completed"}}}"#, "\n");
         assert!(pump.push_stdout_chunk(parent_done.as_bytes(), 10).await.unwrap());
         let mut idle = pump.try_into_completed_parts().ok().expect("terminal handoff");
-        let revision = |database: &crate::persistence::Database| -> (i64, i64) {
+        let revision = |database: &sage_db::database::Database| -> (i64, i64) {
             database.connection().query_row(
                 "SELECT projection_revision,updated_at FROM chats WHERE id='chat-one'",
                 [], |row| Ok((row.get(0)?, row.get(1)?)),

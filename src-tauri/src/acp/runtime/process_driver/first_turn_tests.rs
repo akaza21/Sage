@@ -12,33 +12,31 @@ use std::{
 
 use uuid::Uuid;
 
-use crate::{
-    acp::{
-        bindings::{
-            adapter::{
-                AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
-                AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
-            },
-            codex::{CodexRuntime, Platform},
+use crate::acp::{
+    bindings::{
+        adapter::{
+            AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
+            AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
         },
-        ipc::IntentSnapshot,
-        process::TreeExit,
-        runtime::{
-            ActivatedSession, ActivationJournal, BoundedThread, CoordinatorActivationJournal,
-            HostCancelIntent, HostError, HostPromptIntent, IdleActivationParts, JournalHandle,
-            LiveRuntimePort, LiveWrite, ProjectIntentAuthority, ProjectionMailbox, SendCoordinator,
-            SessionCoordinator,
-        },
-        store::{
-            AcpStore, ActivateSessionCommand, CompleteActivationCommand, DatabaseAcpStore,
-            PrepareTurnCommand, SessionMutation, StartSessionCommand, StoreCommit, StoreError,
-            StoreMutation,
-        },
-        transcript_quote::Prompt,
-        transport::{Frame, FrameWriteOutcome, OutboundFrame},
+        codex::{CodexRuntime, Platform},
     },
-    persistence::Database,
+    ipc::IntentSnapshot,
+    process::TreeExit,
+    runtime::{
+        ActivatedSession, ActivationJournal, BoundedThread, CoordinatorActivationJournal,
+        HostCancelIntent, HostError, HostPromptIntent, IdleActivationParts, JournalHandle,
+        LiveRuntimePort, LiveWrite, ProjectIntentAuthority, ProjectionMailbox, SendCoordinator,
+        SessionCoordinator,
+    },
+    store::{
+        AcpStore, ActivateSessionCommand, CompleteActivationCommand, DatabaseAcpStore,
+        PrepareTurnCommand, SessionMutation, StartSessionCommand, StoreCommit, StoreError,
+        StoreMutation,
+    },
+    transcript_quote::Prompt,
+    transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
+use crate::project_registry::create::ProjectCreateStore;
 use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
@@ -48,6 +46,7 @@ use sage_acp_protocol::{
     lifecycle::{DeliveryState, TurnState},
     scheduler::{RuntimeOwner, Scheduler},
 };
+use sage_db::database::Database;
 use sage_process::error::LaunchError;
 
 #[cfg(feature = "acp-fixture")]
@@ -808,7 +807,7 @@ fn wait_for_queued_control(mailbox: &DriverMailbox) {
 async fn prepare_first_turn_fixture() -> FirstTurnFixture {
     let root = TempRoot::new("sage-first-turn");
     fs::create_dir_all(root.path()).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(root.path()).unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse("chat-first-turn").unwrap();
@@ -1613,7 +1612,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let root = std::env::temp_dir().join(format!("sage-two-turns-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse("chat-two-turns").unwrap();
@@ -2145,7 +2144,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let root = TempRoot::new("sage-idle-close");
         fs::create_dir_all(root.path()).unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(root.path()).unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse("chat-idle-close").unwrap();

@@ -7,6 +7,7 @@
 
 use rusqlite::{Connection, params};
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
@@ -53,14 +54,16 @@ pub struct ChatReadMarks {
 }
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS chat_read_marks (
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS chat_read_marks (
            chat_id TEXT PRIMARY KEY,
            read_through INTEGER NOT NULL CHECK (read_through >= 0),
            -- Read order: the most recently read marks are kept.
            sequence INTEGER NOT NULL
          ) STRICT;",
-    )?;
+        )
+        .db()?;
     Ok(())
 }
 
@@ -70,18 +73,22 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mut statement = connection.prepare(
-            "SELECT chat_id, read_through FROM chat_read_marks
+        let mut statement = connection
+            .prepare(
+                "SELECT chat_id, read_through FROM chat_read_marks
              ORDER BY sequence DESC LIMIT ?1",
-        )?;
+            )
+            .db()?;
         let marks = statement
             .query_map([MAX_CHAT_READ_MARKS as i64], |row| {
                 Ok(ChatReadMark {
                     chat_id: row.get(0)?,
                     read_through: row.get(1)?,
                 })
-            })?
-            .collect::<Result<Vec<_>, _>>()?;
+            })
+            .db()?
+            .collect::<Result<Vec<_>, _>>()
+            .db()?;
         Ok(ChatReadMarks {
             marks,
             capacity: MAX_CHAT_READ_MARKS,
@@ -110,15 +117,17 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let transaction = connection.transaction()?;
-        transaction.execute(
-            "INSERT INTO chat_read_marks(chat_id, read_through, sequence)
+        let transaction = connection.transaction().db()?;
+        transaction
+            .execute(
+                "INSERT INTO chat_read_marks(chat_id, read_through, sequence)
              VALUES (?1, ?2, (SELECT COALESCE(MAX(sequence), 0) + 1 FROM chat_read_marks))
              ON CONFLICT(chat_id) DO UPDATE SET
                read_through = MAX(read_through, excluded.read_through),
                sequence = excluded.sequence",
-            params![mark.chat_id, mark.read_through],
-        )?;
+                params![mark.chat_id, mark.read_through],
+            )
+            .db()?;
         let evicted = transaction
             .prepare(
                 "DELETE FROM chat_read_marks WHERE chat_id IN (
@@ -128,7 +137,8 @@ impl SettingsStore {
                    LIMIT MAX(0, (SELECT COUNT(*) FROM chat_read_marks) - ?1)
                  )
                  RETURNING chat_id",
-            )?
+            )
+            .db()?
             .query_map(
                 params![
                     MAX_CHAT_READ_MARKS as i64,
@@ -136,14 +146,18 @@ impl SettingsStore {
                     serde_json::Value::from(retained).to_string()
                 ],
                 |row| row.get(0),
-            )?
-            .collect::<Result<Vec<String>, _>>()?;
-        let (read_through, sequence) = transaction.query_row(
-            "SELECT read_through, sequence FROM chat_read_marks WHERE chat_id = ?1",
-            [&mark.chat_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        transaction.commit()?;
+            )
+            .db()?
+            .collect::<Result<Vec<String>, _>>()
+            .db()?;
+        let (read_through, sequence) = transaction
+            .query_row(
+                "SELECT read_through, sequence FROM chat_read_marks WHERE chat_id = ?1",
+                [&mark.chat_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .db()?;
+        transaction.commit().db()?;
         Ok(ChatReadMarkWrite {
             mark: ChatReadMark {
                 chat_id: mark.chat_id.clone(),
@@ -162,9 +176,12 @@ impl SettingsStore {
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         let chats = connection
-            .prepare("SELECT chat_id FROM chat_read_marks")?
-            .query_map([], |row| row.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
+            .prepare("SELECT chat_id FROM chat_read_marks")
+            .db()?
+            .query_map([], |row| row.get::<_, String>(0))
+            .db()?
+            .collect::<Result<Vec<_>, _>>()
+            .db()?;
         Ok(chats)
     }
 
@@ -176,13 +193,14 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         let mut forgotten = 0;
         for chat in chat_ids {
-            forgotten +=
-                transaction.execute("DELETE FROM chat_read_marks WHERE chat_id = ?1", [chat])?;
+            forgotten += transaction
+                .execute("DELETE FROM chat_read_marks WHERE chat_id = ?1", [chat])
+                .db()?;
         }
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(forgotten)
     }
 
@@ -192,7 +210,8 @@ impl SettingsStore {
         self.0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
-            .execute("DELETE FROM chat_read_marks WHERE chat_id = ?1", [chat_id])?;
+            .execute("DELETE FROM chat_read_marks WHERE chat_id = ?1", [chat_id])
+            .db()?;
         Ok(())
     }
 }

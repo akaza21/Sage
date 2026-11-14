@@ -1,4 +1,4 @@
-mod create;
+pub(crate) mod create;
 mod launch_root;
 mod local;
 mod rail;
@@ -7,6 +7,7 @@ pub(crate) use rail::MAX_AGENT_RAIL_CHATS_PER_PROJECT;
 pub(crate) use rail::{
     CHAT_FINISHED_AT, CHAT_LATEST_TURN_ID, MAX_RAIL_CHATS, rail_chat_ids, rail_chat_set,
 };
+use sage_db::error::SqliteResultExt;
 mod seed;
 
 use std::path::{Path, PathBuf};
@@ -18,8 +19,9 @@ use sage_core::{
 };
 use uuid::Uuid;
 
-use crate::{persistence::Database, state::ActiveProjectContext, workspace::Workspace};
+use crate::{state::ActiveProjectContext, workspace::Workspace};
 use sage_acp_protocol::contract::SageRootId;
+use sage_db::database::Database;
 use sage_domain::{
     project::{ProjectListItem, ProjectRootSummary, ProjectSummary},
     resource::ResourceRef,
@@ -59,8 +61,42 @@ pub(crate) fn persisted_path_text(path: &Path) -> AppResult<&str> {
     })
 }
 
-impl Database {
-    pub(crate) fn selected_project_root_authority(
+/// Projects, their roots and root authority, on the shared database.
+pub(crate) trait ProjectRegistryStore {
+    fn selected_project_root_authority(
+        &self,
+        context: &ActiveProjectContext<'_>,
+    ) -> AppResult<ProjectRootAuthority>;
+
+    fn project_root_authority(
+        &self,
+        context: &ActiveProjectContext<'_>,
+        root_id: &SageRootId,
+    ) -> AppResult<ProjectRootAuthority>;
+
+    fn project_count(&self) -> AppResult<i64>;
+
+    fn project_list(&self) -> AppResult<Vec<ProjectListItem>>;
+
+    fn active_project_id(&self) -> AppResult<Option<String>>;
+
+    fn repair_active_project(&self) -> AppResult<Option<String>>;
+
+    fn project_summary(&self, project_id: &str) -> AppResult<ProjectSummary>;
+
+    fn root_records(&self, project_id: &str) -> AppResult<Vec<RootRecord>>;
+
+    fn resolve_active_resource(&self, resource: &ResourceRef) -> AppResult<Workspace>;
+
+    fn root_record(&self, root_id: &str) -> AppResult<RootRecord>;
+
+    fn ensure_local_project(&self) -> AppResult<ProjectSummary>;
+
+    fn add_project_root(&self, project_id: &str, root: &Path) -> AppResult<ProjectSummary>;
+}
+
+impl ProjectRegistryStore for Database {
+    fn selected_project_root_authority(
         &self,
         context: &ActiveProjectContext<'_>,
     ) -> AppResult<ProjectRootAuthority> {
@@ -70,7 +106,8 @@ impl Database {
                 "SELECT selected_root_id FROM project_layouts WHERE project_id = ?1",
                 [context.project_id().as_str()],
                 |row| row.get::<_, Option<String>>(0),
-            )?
+            )
+            .db()?
             .ok_or_else(|| {
                 AppError::InvalidRequest("the active project has no selected root".into())
             })?;
@@ -80,7 +117,7 @@ impl Database {
         self.project_root_authority(context, &root_id)
     }
 
-    pub(crate) fn project_root_authority(
+    fn project_root_authority(
         &self,
         context: &ActiveProjectContext<'_>,
         root_id: &SageRootId,
@@ -113,17 +150,17 @@ impl Database {
         )
     }
 
-    pub fn project_count(&self) -> AppResult<i64> {
-        Ok(self
-            .connection()
-            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))?)
+    fn project_count(&self) -> AppResult<i64> {
+        self.connection()
+            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+            .db()
     }
 
-    pub fn project_list(&self) -> AppResult<Vec<ProjectListItem>> {
+    fn project_list(&self) -> AppResult<Vec<ProjectListItem>> {
         load_project_list(&self.connection())
     }
 
-    pub fn active_project_id(&self) -> AppResult<Option<String>> {
+    fn active_project_id(&self) -> AppResult<Option<String>> {
         Ok(self
             .connection()
             .query_row(
@@ -131,20 +168,22 @@ impl Database {
                 [],
                 |row| row.get(0),
             )
-            .optional()?
+            .optional()
+            .db()?
             .flatten())
     }
 
-    pub fn repair_active_project(&self) -> AppResult<Option<String>> {
+    fn repair_active_project(&self) -> AppResult<Option<String>> {
         let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         let configured = transaction
             .query_row(
                 "SELECT active_project_id FROM app_state WHERE singleton = 1",
                 [],
                 |row| row.get::<_, Option<String>>(0),
             )
-            .optional()?
+            .optional()
+            .db()?
             .flatten();
         let configured_exists = configured.as_ref().is_some_and(|project_id| {
             transaction
@@ -166,29 +205,32 @@ impl Database {
                     [],
                     |row| row.get::<_, String>(0),
                 )
-                .optional()?
+                .optional()
+                .db()?
         };
-        transaction.execute(
-            "INSERT INTO app_state(singleton, active_project_id, updated_at)
+        transaction
+            .execute(
+                "INSERT INTO app_state(singleton, active_project_id, updated_at)
              VALUES (1, ?1, ?2)
              ON CONFLICT(singleton) DO UPDATE SET
                active_project_id = excluded.active_project_id,
                updated_at = excluded.updated_at",
-            params![active, now_millis()],
-        )?;
-        transaction.commit()?;
+                params![active, now_millis()],
+            )
+            .db()?;
+        transaction.commit().db()?;
         Ok(active)
     }
 
-    pub fn project_summary(&self, project_id: &str) -> AppResult<ProjectSummary> {
+    fn project_summary(&self, project_id: &str) -> AppResult<ProjectSummary> {
         project_summary_in(&self.connection(), project_id)
     }
 
-    pub fn root_records(&self, project_id: &str) -> AppResult<Vec<RootRecord>> {
+    fn root_records(&self, project_id: &str) -> AppResult<Vec<RootRecord>> {
         root_records_in(&self.connection(), project_id)
     }
 
-    pub fn resolve_active_resource(&self, resource: &ResourceRef) -> AppResult<Workspace> {
+    fn resolve_active_resource(&self, resource: &ResourceRef) -> AppResult<Workspace> {
         let active = self
             .active_project_id()?
             .ok_or_else(|| AppError::InvalidRequest("no project is active".into()))?;
@@ -201,7 +243,7 @@ impl Database {
         Workspace::open(&root.project_id, &root.id, &root.absolute_path)
     }
 
-    pub fn root_record(&self, root_id: &str) -> AppResult<RootRecord> {
+    fn root_record(&self, root_id: &str) -> AppResult<RootRecord> {
         self.connection()
             .query_row(
                 "SELECT id, project_id, absolute_path, ordinal
@@ -216,43 +258,48 @@ impl Database {
                     })
                 },
             )
-            .optional()?
+            .optional()
+            .db()?
             .ok_or_else(|| AppError::InvalidRequest("unknown project root".into()))
     }
 
-    pub fn ensure_local_project(&self) -> AppResult<ProjectSummary> {
+    fn ensure_local_project(&self) -> AppResult<ProjectSummary> {
         local::ensure_local_project(self)
     }
 
-    pub fn add_project_root(&self, project_id: &str, root: &Path) -> AppResult<ProjectSummary> {
+    fn add_project_root(&self, project_id: &str, root: &Path) -> AppResult<ProjectSummary> {
         let canonical = canonical_folder(root)?;
         let canonical_key = canonical_comparison_key(&canonical);
         let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         let active = active_project_in(&transaction)?;
         if active.as_deref() != Some(project_id) {
             return Err(AppError::InvalidRequest(
                 "roots can only be added to the active project".into(),
             ));
         }
-        let count: i64 = transaction.query_row(
-            "SELECT COUNT(*) FROM project_roots WHERE project_id = ?1",
-            [project_id],
-            |row| row.get(0),
-        )?;
+        let count: i64 = transaction
+            .query_row(
+                "SELECT COUNT(*) FROM project_roots WHERE project_id = ?1",
+                [project_id],
+                |row| row.get(0),
+            )
+            .db()?;
         if count >= MAX_ROOTS_PER_PROJECT {
             return Err(AppError::ResourceLimit(format!(
                 "project reached its {MAX_ROOTS_PER_PROJECT}-root limit"
             )));
         }
-        let duplicate = transaction.query_row(
-            "SELECT EXISTS(
+        let duplicate = transaction
+            .query_row(
+                "SELECT EXISTS(
                SELECT 1 FROM project_roots
                WHERE project_id = ?1 AND canonical_key = ?2
              )",
-            params![project_id, canonical_key],
-            |row| row.get::<_, bool>(0),
-        )?;
+                params![project_id, canonical_key],
+                |row| row.get::<_, bool>(0),
+            )
+            .db()?;
         if duplicate {
             return Err(AppError::InvalidRequest(
                 "this canonical folder is already a project root".into(),
@@ -260,12 +307,14 @@ impl Database {
         }
         let root_id = Uuid::new_v4().to_string();
         insert_root(&transaction, project_id, &root_id, &canonical, count)?;
-        transaction.execute(
-            "UPDATE projects SET updated_at = ?2 WHERE id = ?1",
-            params![project_id, now_millis()],
-        )?;
+        transaction
+            .execute(
+                "UPDATE projects SET updated_at = ?2 WHERE id = ?1",
+                params![project_id, now_millis()],
+            )
+            .db()?;
         let summary = project_summary_in(&transaction, project_id)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(summary)
     }
 }
@@ -274,11 +323,13 @@ pub(super) fn project_summary_in(
     connection: &Connection,
     project_id: &str,
 ) -> AppResult<ProjectSummary> {
-    let name = connection.query_row(
-        "SELECT name FROM projects WHERE id = ?1",
-        [project_id],
-        |row| row.get::<_, String>(0),
-    )?;
+    let name = connection
+        .query_row(
+            "SELECT name FROM projects WHERE id = ?1",
+            [project_id],
+            |row| row.get::<_, String>(0),
+        )
+        .db()?;
     let roots = root_records_in(connection, project_id)?
         .into_iter()
         .map(|root| root_summary(&root))
@@ -291,11 +342,13 @@ pub(super) fn project_summary_in(
 }
 
 fn root_records_in(connection: &Connection, project_id: &str) -> AppResult<Vec<RootRecord>> {
-    let mut statement = connection.prepare(
-        "SELECT id, project_id, absolute_path, ordinal
+    let mut statement = connection
+        .prepare(
+            "SELECT id, project_id, absolute_path, ordinal
          FROM project_roots WHERE project_id = ?1
          ORDER BY ordinal LIMIT ?2",
-    )?;
+        )
+        .db()?;
     let roots = statement
         .query_map(params![project_id, MAX_ROOTS_PER_PROJECT + 1], |row| {
             Ok(RootRecord {
@@ -304,8 +357,10 @@ fn root_records_in(connection: &Connection, project_id: &str) -> AppResult<Vec<R
                 absolute_path: PathBuf::from(row.get::<_, String>(2)?),
                 ordinal: row.get(3)?,
             })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        })
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     if roots.len() > MAX_ROOTS_PER_PROJECT as usize {
         return Err(AppError::ResourceLimit(format!(
             "project exceeds its {MAX_ROOTS_PER_PROJECT}-root limit"

@@ -12,6 +12,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use super::SettingsStore;
 use sage_acp_protocol::access_mode::SessionAccessMode;
@@ -27,8 +28,9 @@ const MAX_SESSION_ID_BYTES: usize = 256;
 const MODES: &str = "'readOnly','ask','workspaceWrite','acceptEdits','plan','auto','fullAccess'";
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(&format!(
-        "CREATE TABLE IF NOT EXISTS chat_access_confirmations (
+    connection
+        .execute_batch(&format!(
+            "CREATE TABLE IF NOT EXISTS chat_access_confirmations (
            session_id TEXT PRIMARY KEY CHECK (length(session_id) BETWEEN 1 AND 256),
            mode TEXT NOT NULL CHECK (mode IN ({MODES})),
            token TEXT NOT NULL CHECK (length(token) = 36),
@@ -40,7 +42,8 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
            chosen_at INTEGER NOT NULL,
            sequence INTEGER NOT NULL
          ) STRICT;"
-    ))?;
+        ))
+        .db()?;
     Ok(())
 }
 
@@ -78,18 +81,22 @@ fn record(
     mode: SessionAccessMode,
     now: i64,
 ) -> AppResult<()> {
-    transaction.execute(
-        "INSERT INTO chat_access_choices(session_id,mode,chosen_at,sequence)
+    transaction
+        .execute(
+            "INSERT INTO chat_access_choices(session_id,mode,chosen_at,sequence)
          VALUES (?1,?2,?3,(SELECT COALESCE(MAX(sequence),0)+1 FROM chat_access_choices))
          ON CONFLICT(session_id) DO UPDATE SET
            mode=excluded.mode, chosen_at=excluded.chosen_at, sequence=excluded.sequence",
-        params![session_id, mode_text(mode), now],
-    )?;
-    transaction.execute(
-        "DELETE FROM chat_access_choices WHERE session_id NOT IN (
+            params![session_id, mode_text(mode), now],
+        )
+        .db()?;
+    transaction
+        .execute(
+            "DELETE FROM chat_access_choices WHERE session_id NOT IN (
            SELECT session_id FROM chat_access_choices ORDER BY sequence DESC LIMIT ?1)",
-        [MAX_CHAT_ACCESS_CHOICES as i64],
-    )?;
+            [MAX_CHAT_ACCESS_CHOICES as i64],
+        )
+        .db()?;
     Ok(())
 }
 
@@ -109,13 +116,15 @@ impl SettingsStore {
             ));
         }
         let mut connection = self.lock();
-        let transaction = connection.transaction()?;
-        transaction.execute(
-            "DELETE FROM chat_access_confirmations WHERE session_id=?1",
-            [session_id],
-        )?;
+        let transaction = connection.transaction().db()?;
+        transaction
+            .execute(
+                "DELETE FROM chat_access_confirmations WHERE session_id=?1",
+                [session_id],
+            )
+            .db()?;
         record(&transaction, session_id, mode, now)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     }
 
@@ -135,30 +144,36 @@ impl SettingsStore {
         }
         let token = uuid::Uuid::new_v4().to_string();
         let mut connection = self.lock();
-        let transaction = connection.transaction()?;
-        transaction.execute(
-            "DELETE FROM chat_access_confirmations WHERE expires_at <= ?1",
-            [now],
-        )?;
-        transaction.execute(
-            "INSERT INTO chat_access_confirmations(session_id,mode,token,expires_at)
+        let transaction = connection.transaction().db()?;
+        transaction
+            .execute(
+                "DELETE FROM chat_access_confirmations WHERE expires_at <= ?1",
+                [now],
+            )
+            .db()?;
+        transaction
+            .execute(
+                "INSERT INTO chat_access_confirmations(session_id,mode,token,expires_at)
              VALUES (?1,?2,?3,?4)
              ON CONFLICT(session_id) DO UPDATE SET
                mode=excluded.mode, token=excluded.token, expires_at=excluded.expires_at",
-            params![
-                session_id,
-                mode_text(mode),
-                token,
-                now + ACCESS_CONFIRMATION_MILLIS
-            ],
-        )?;
-        transaction.execute(
-            "DELETE FROM chat_access_confirmations WHERE session_id NOT IN (
+                params![
+                    session_id,
+                    mode_text(mode),
+                    token,
+                    now + ACCESS_CONFIRMATION_MILLIS
+                ],
+            )
+            .db()?;
+        transaction
+            .execute(
+                "DELETE FROM chat_access_confirmations WHERE session_id NOT IN (
                SELECT session_id FROM chat_access_confirmations
                ORDER BY expires_at DESC LIMIT ?1)",
-            [MAX_PENDING_CONFIRMATIONS as i64],
-        )?;
-        transaction.commit()?;
+                [MAX_PENDING_CONFIRMATIONS as i64],
+            )
+            .db()?;
+        transaction.commit().db()?;
         Ok(token)
     }
 
@@ -173,12 +188,16 @@ impl SettingsStore {
         now: i64,
     ) -> AppResult<bool> {
         validate_session(session_id)?;
-        Ok(self.lock().query_row(
-            "SELECT EXISTS(SELECT 1 FROM chat_access_confirmations
+        Ok(self
+            .lock()
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM chat_access_confirmations
              WHERE session_id=?1 AND mode=?2 AND token=?3 AND expires_at > ?4)",
-            params![session_id, mode_text(mode), token, now],
-            |row| row.get::<_, bool>(0),
-        )? && mode.needs_confirmation())
+                params![session_id, mode_text(mode), token, now],
+                |row| row.get::<_, bool>(0),
+            )
+            .db()?
+            && mode.needs_confirmation())
     }
 
     /// Spends the session's token and records the confirmed mode. The token
@@ -192,22 +211,24 @@ impl SettingsStore {
     ) -> AppResult<()> {
         validate_session(session_id)?;
         let mut connection = self.lock();
-        let transaction = connection.transaction()?;
-        transaction.execute(
-            "DELETE FROM chat_access_confirmations WHERE expires_at <= ?1",
-            [now],
-        )?;
+        let transaction = connection.transaction().db()?;
+        transaction
+            .execute(
+                "DELETE FROM chat_access_confirmations WHERE expires_at <= ?1",
+                [now],
+            )
+            .db()?;
         let spent = transaction.execute(
             "DELETE FROM chat_access_confirmations WHERE session_id=?1 AND mode=?2 AND token=?3",
             params![session_id, mode_text(mode), token],
-        )?;
+        ).db()?;
         if spent != 1 || !mode.needs_confirmation() {
             return Err(AppError::InvalidRequest(
                 "This confirmation is missing, used or expired. Confirm again.".into(),
             ));
         }
         record(&transaction, session_id, mode, now)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     }
 
@@ -216,16 +237,21 @@ impl SettingsStore {
     pub fn clear_chat_access(&self, session_id: &str) -> AppResult<bool> {
         validate_session(session_id)?;
         let mut connection = self.lock();
-        let transaction = connection.transaction()?;
-        transaction.execute(
-            "DELETE FROM chat_access_confirmations WHERE session_id=?1",
-            [session_id],
-        )?;
-        let cleared = transaction.execute(
-            "DELETE FROM chat_access_choices WHERE session_id=?1",
-            [session_id],
-        )? == 1;
-        transaction.commit()?;
+        let transaction = connection.transaction().db()?;
+        transaction
+            .execute(
+                "DELETE FROM chat_access_confirmations WHERE session_id=?1",
+                [session_id],
+            )
+            .db()?;
+        let cleared = transaction
+            .execute(
+                "DELETE FROM chat_access_choices WHERE session_id=?1",
+                [session_id],
+            )
+            .db()?
+            == 1;
+        transaction.commit().db()?;
         Ok(cleared)
     }
 
@@ -239,7 +265,8 @@ impl SettingsStore {
                 [session_id],
                 |row| row.get(0),
             )
-            .optional()?;
+            .optional()
+            .db()?;
         Ok(text.and_then(|text| read_mode(session_id, &text)))
     }
 
@@ -250,13 +277,17 @@ impl SettingsStore {
     ) -> AppResult<usize> {
         let sessions: Vec<String> = {
             let connection = self.lock();
-            let mut statement = connection.prepare(
-                "SELECT session_id FROM chat_access_choices
+            let mut statement = connection
+                .prepare(
+                    "SELECT session_id FROM chat_access_choices
                  UNION SELECT session_id FROM chat_access_confirmations",
-            )?;
+                )
+                .db()?;
             statement
-                .query_map([], |row| row.get(0))?
-                .collect::<Result<_, _>>()?
+                .query_map([], |row| row.get(0))
+                .db()?
+                .collect::<Result<_, _>>()
+                .db()?
         };
         let mut forgotten = 0;
         for session in sessions {
@@ -279,15 +310,18 @@ impl SettingsStore {
 /// while Sage was not running. Every delete path calls this once its own
 /// delete has committed.
 pub fn forget_removed_chat_access(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     settings: &SettingsStore,
 ) {
     let result = settings.retain_chat_access(|session| {
-        Ok(database.connection().query_row(
-            "SELECT EXISTS(SELECT 1 FROM agent_sessions WHERE id=?1)",
-            [session],
-            |row| row.get::<_, bool>(0),
-        )?)
+        database
+            .connection()
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM agent_sessions WHERE id=?1)",
+                [session],
+                |row| row.get::<_, bool>(0),
+            )
+            .db()
     });
     if let Err(error) = result {
         tracing::warn!(?error, "Chat access cleanup will retry later");

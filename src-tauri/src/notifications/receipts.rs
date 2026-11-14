@@ -1,5 +1,6 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 use serde::Serialize;
 
 use crate::acp::ipc::ProjectionChangedV1;
@@ -30,8 +31,9 @@ pub(super) fn claim(
     connection: &Connection,
     notice: &ProjectionChangedV1,
 ) -> AppResult<Vec<(i64, Event)>> {
-    let mut statement = connection.prepare_cached(
-        "SELECT r.id,r.kind,
+    let mut statement = connection
+        .prepare_cached(
+            "SELECT r.id,r.kind,
            (r.request_id IS NULL OR EXISTS(
              SELECT 1 FROM server_requests q
              WHERE q.id=r.request_id AND q.state IN ('received','asked')
@@ -39,7 +41,8 @@ pub(super) fn claim(
          JOIN turns t ON t.id=r.turn_id
          WHERE r.session_id=?1 AND r.claimed=0 AND t.project_id=?2 AND r.chat_id=?3
          ORDER BY r.id LIMIT 4",
-    )?;
+        )
+        .db()?;
     let rows = statement
         .query_map(
             params![
@@ -54,14 +57,19 @@ pub(super) fn claim(
                     row.get::<_, bool>(2)?,
                 ))
             },
-        )?
-        .collect::<Result<Vec<_>, _>>()?;
+        )
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     let mut claimed = Vec::with_capacity(rows.len());
     for (id, kind, actionable) in rows {
-        if connection.execute(
-            "UPDATE turn_notification_receipts SET claimed=1 WHERE id=?1 AND claimed=0",
-            [id],
-        )? == 1
+        if connection
+            .execute(
+                "UPDATE turn_notification_receipts SET claimed=1 WHERE id=?1 AND claimed=0",
+                [id],
+            )
+            .db()?
+            == 1
         {
             let event = match kind.as_str() {
                 "completed" => Event::Completed,
@@ -80,10 +88,12 @@ pub(super) fn claim(
 /// the process starts and when notices are turned on, so a notice only ever
 /// describes an event observed while notices were on in this process.
 pub(super) fn retire_pending(connection: &Connection) -> AppResult<usize> {
-    Ok(connection.execute(
-        "UPDATE turn_notification_receipts SET claimed=1 WHERE claimed=0",
-        [],
-    )?)
+    connection
+        .execute(
+            "UPDATE turn_notification_receipts SET claimed=1 WHERE claimed=0",
+            [],
+        )
+        .db()
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -94,11 +104,11 @@ pub struct OpenChat {
 }
 
 pub(super) fn target(connection: &Connection, id: i64) -> AppResult<Option<OpenChat>> {
-    Ok(connection.query_row(
+    connection.query_row(
         "SELECT c.project_id,c.id FROM turn_notification_receipts r JOIN chats c ON c.id=r.chat_id
          JOIN turns t ON t.id=r.turn_id AND t.chat_id=c.id WHERE r.id=?1",
         [id], |row| Ok(OpenChat { project_id:row.get(0)?,chat_id:row.get(1)? }),
-    ).optional()?)
+    ).optional().db()
 }
 
 #[cfg(test)]

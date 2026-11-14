@@ -1,18 +1,19 @@
 use rusqlite::params;
 
 use super::*;
-use crate::{
-    acp::store::{
-        AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory,
-        CompleteActivationCommand, abort_activation, activate_session, complete_activation,
-        load_chat_page,
-    },
-    persistence::Database,
+use crate::acp::store::{
+    AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory,
+    CompleteActivationCommand, abort_activation, activate_session, complete_activation,
+    load_chat_page,
 };
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::{
     contract::{ClientIntentId, RuntimeEpoch},
     intent::{ExternalId, NormalizedPayload, ToolCategory},
 };
+use sage_db::database::Database;
 
 const EARLIER_DIGEST: &str = "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1";
 const CURRENT_DIGEST: &str = "c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2c2";
@@ -35,7 +36,7 @@ impl Fixture {
     fn new() -> Self {
         let root = std::env::temp_dir().join(format!("sage-resume-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database = Database::open(&root.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project = snapshot.project.as_ref().unwrap().id.clone();

@@ -4,6 +4,7 @@
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
@@ -32,13 +33,15 @@ pub struct AgentRailView {
 }
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS agent_rail_view (
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS agent_rail_view (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
            organize TEXT NOT NULL CHECK (organize IN ('project', 'list')),
            ordering TEXT NOT NULL CHECK (ordering IN ('recency', 'manual'))
          ) STRICT;",
-    )?;
+        )
+        .db()?;
     Ok(())
 }
 
@@ -54,7 +57,8 @@ impl SettingsStore {
                 [],
                 |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)),
             )
-            .optional()?;
+            .optional()
+            .db()?;
         Ok(stored
             .map(|(organize, ordering)| AgentRailView {
                 organize: if organize == "list" {
@@ -84,13 +88,15 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection.execute(
-            "INSERT INTO agent_rail_view(singleton, organize, ordering) VALUES (1, ?1, ?2)
+        connection
+            .execute(
+                "INSERT INTO agent_rail_view(singleton, organize, ordering) VALUES (1, ?1, ?2)
              ON CONFLICT(singleton) DO UPDATE SET
                organize = excluded.organize,
                ordering = excluded.ordering",
-            params![organize, ordering],
-        )?;
+                params![organize, ordering],
+            )
+            .db()?;
         Ok(value)
     }
 }

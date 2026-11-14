@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use super::SettingsStore;
 
@@ -22,26 +23,34 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     if has_table(connection, "browser_download_folder")?
         && !has_column(connection, "browser_download_folder", "revision")?
     {
-        connection.execute_batch(
-            "ALTER TABLE browser_download_folder RENAME TO browser_download_folder_v1;",
-        )?;
+        connection
+            .execute_batch(
+                "ALTER TABLE browser_download_folder RENAME TO browser_download_folder_v1;",
+            )
+            .db()?;
     }
     // Earlier development builds also kept placeholder records for a crash
     // sweep; Sage no longer deletes anything after a crash.
-    connection.execute_batch("DROP TABLE IF EXISTS browser_download_reservations;")?;
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS browser_download_folder (
+    connection
+        .execute_batch("DROP TABLE IF EXISTS browser_download_reservations;")
+        .db()?;
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS browser_download_folder (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
            path TEXT CHECK (path IS NULL OR length(path) BETWEEN 1 AND 4096),
            revision INTEGER NOT NULL CHECK (revision >= 0)
          ) STRICT;",
-    )?;
+        )
+        .db()?;
     if has_table(connection, "browser_download_folder_v1")? {
-        connection.execute_batch(
-            "INSERT OR IGNORE INTO browser_download_folder(singleton, path, revision)
+        connection
+            .execute_batch(
+                "INSERT OR IGNORE INTO browser_download_folder(singleton, path, revision)
                SELECT singleton, path, 1 FROM browser_download_folder_v1;
              DROP TABLE browser_download_folder_v1;",
-        )?;
+            )
+            .db()?;
     }
     Ok(())
 }
@@ -53,7 +62,8 @@ fn has_table(connection: &Connection, table: &str) -> AppResult<bool> {
             params![table],
             |_| Ok(()),
         )
-        .optional()?
+        .optional()
+        .db()?
         .is_some())
 }
 
@@ -64,7 +74,8 @@ fn has_column(connection: &Connection, table: &str, column: &str) -> AppResult<b
             params![table, column],
             |_| Ok(()),
         )
-        .optional()?
+        .optional()
+        .db()?
         .is_some())
 }
 
@@ -122,17 +133,20 @@ fn read(connection: &Connection) -> AppResult<DownloadFolderRecord> {
                 })
             },
         )
-        .optional()?
+        .optional()
+        .db()?
         .unwrap_or_default())
 }
 
 fn write(connection: &Connection, text: Option<&str>) -> AppResult<()> {
-    connection.execute(
-        "INSERT INTO browser_download_folder(singleton, path, revision) VALUES (1, ?1, 1)
+    connection
+        .execute(
+            "INSERT INTO browser_download_folder(singleton, path, revision) VALUES (1, ?1, 1)
          ON CONFLICT(singleton) DO UPDATE
          SET path = excluded.path, revision = browser_download_folder.revision + 1",
-        params![text],
-    )?;
+            params![text],
+        )
+        .db()?;
     Ok(())
 }
 

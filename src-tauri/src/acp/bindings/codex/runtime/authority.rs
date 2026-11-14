@@ -2,13 +2,14 @@ use std::sync::Arc;
 
 use sage_core::error::{AppError, AppResult};
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::{
     acp::bindings::{adapter::AdapterRuntimeError, codex::admission::AdmittedCodexBinding},
-    persistence::Database,
     project_registry::ProjectRootAuthority,
     state::ActiveProjectContext,
 };
 use sage_acp_protocol::contract::{SageProjectId, SageRootId};
+use sage_db::database::Database;
 
 /// Codex beta is frozen to exactly one registered Project root. This wrapper
 /// cannot be created by the generic characterization selected-root path.
@@ -75,8 +76,16 @@ impl CodexProjectRootAuthority {
     }
 }
 
-impl Database {
-    pub(crate) fn codex_project_root_authority(
+/// Codex's project root authority, on the shared database.
+pub(crate) trait CodexRootAuthorityStore {
+    fn codex_project_root_authority(
+        &self,
+        context: &ActiveProjectContext<'_>,
+    ) -> AppResult<CodexProjectRootAuthority>;
+}
+
+impl CodexRootAuthorityStore for Database {
+    fn codex_project_root_authority(
         &self,
         context: &ActiveProjectContext<'_>,
     ) -> AppResult<CodexProjectRootAuthority> {

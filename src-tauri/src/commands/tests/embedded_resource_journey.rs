@@ -10,6 +10,8 @@
 use sha2::{Digest, Sha256};
 
 use super::*;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     acp::{
         attached_context::files::{PASTED_TEXT_NAME, attachment},
@@ -132,7 +134,7 @@ async fn open_journey() -> Journey {
     let root = std::env::temp_dir().join(format!("sage-embedded-journey-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     let root = root.canonicalize().unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let chat = database
         .bootstrap_snapshot()

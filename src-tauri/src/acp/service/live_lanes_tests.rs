@@ -1,4 +1,7 @@
 use super::*;
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId};
 
 #[path = "live_lanes_test_engine.rs"]
@@ -53,7 +56,7 @@ fn activation_deadline() -> Instant {
 
 fn service() -> AcpService {
     let database =
-        crate::persistence::Database::open(std::path::Path::new(":memory:")).expect("database");
+        crate::database::open_database(std::path::Path::new(":memory:")).expect("database");
     AcpService::new(database).expect("service")
 }
 
@@ -149,8 +152,7 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
     use crate::acp::store::{ActivateSessionCommand, StartSessionCommand, StoreError};
     use sage_acp_protocol::contract::ClientIntentId;
     tauri::async_runtime::block_on(async {
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let root = std::env::current_dir().unwrap().canonicalize().unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let project_id = SageProjectId::parse(project.id.clone()).unwrap();

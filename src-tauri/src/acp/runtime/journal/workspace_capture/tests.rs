@@ -50,8 +50,8 @@ fn terminal(chat: &str) -> StoreMutation {
     }
 }
 
-fn capture_database() -> crate::persistence::Database {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+fn capture_database() -> sage_db::database::Database {
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     database.connection().execute_batch(
         "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project','Project',1,1,1);
          INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('slow','project',0,'Chat',0,1,1);
@@ -64,7 +64,7 @@ fn capture_database() -> crate::persistence::Database {
     database
 }
 
-fn staging(database: &crate::persistence::Database) -> (bool, bool, String, i64) {
+fn staging(database: &sage_db::database::Database) -> (bool, bool, String, i64) {
     database.connection().query_row(
         "SELECT terminal_json IS NOT NULL,result_json IS NOT NULL,baseline_json,payload_bytes FROM acp_turn_workspace_changes WHERE session_id='session-slow'",
         [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?)),
@@ -72,7 +72,7 @@ fn staging(database: &crate::persistence::Database) -> (bool, bool, String, i64)
 }
 
 fn prepare_staging(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     mutations: &[StoreMutation],
     budget: Duration,
 ) -> Result<(), StoreError> {
@@ -98,7 +98,7 @@ fn stalled_optional_capture_keeps_capacity_but_does_not_stall_other_chats_journa
     let _capture_guard = crate::turn_workspace::capture_test_lock();
     let (committed, commits) = sync_channel(4);
     let (handle, runner) = JournalHandle::new(RecordingStore(committed));
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let handle = handle.with_workspace_tracking(database);
     let first = handle
         .enqueue_one(JournalLane::Control, terminal("slow"), 0)
@@ -206,7 +206,7 @@ fn saturated_optional_capture_workers_skip_fifth_capture_without_losing_capacity
     let _capture_guard = crate::turn_workspace::capture_test_lock();
     let (committed, commits) = sync_channel(8);
     let (handle, runner) = JournalHandle::new(RecordingStore(committed));
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let handle = handle.with_workspace_tracking(database);
     let (cleanup, started, exited) =
         CaptureActor::start(&handle, runner, Arc::new(|_, _, _| Ok(())));
@@ -357,7 +357,7 @@ fn deferred_terminal_keeps_same_owner_order_across_lanes_and_deadlines() {
     let _capture_guard = crate::turn_workspace::capture_test_lock();
     let (committed, commits) = sync_channel(4);
     let (handle, runner) = JournalHandle::new(RecordingStore(committed));
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let handle = handle.with_workspace_tracking(database);
     let first = handle
         .enqueue_one(JournalLane::Data, terminal("slow"), now_millis() + 30_000)

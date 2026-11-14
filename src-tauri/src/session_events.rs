@@ -1,6 +1,7 @@
 pub(crate) mod legacy_welcome;
 mod store;
 
+use sage_db::error::SqliteResultExt;
 #[cfg(test)]
 pub(crate) use store::seed_legacy_welcome;
 
@@ -11,8 +12,8 @@ use sage_core::{
 };
 use serde::{Deserialize, Serialize};
 
-use crate::persistence::Database;
 use sage_core::limits::LIMITS;
+use sage_db::database::Database;
 use sage_domain::chat::{ChatMessage, SimulatorTurnResult};
 
 #[cfg(test)]
@@ -32,9 +33,52 @@ struct MessagePayload {
     text: String,
 }
 
-impl Database {
+/// Simulator turns and Chat messages, on the shared database.
+pub(crate) trait SessionEventStore {
     #[cfg(test)]
-    pub(crate) fn append_simulator_turn(
+    fn append_simulator_turn(
+        &self,
+        chat_id: &str,
+        user_text: &str,
+        assistant_text: &str,
+    ) -> AppResult<SimulatorTurnResult>;
+
+    fn append_simulator_turn_for_model(
+        &self,
+        chat_id: &str,
+        model_id: &str,
+        user_text: &str,
+        assistant_text: &str,
+    ) -> AppResult<SimulatorTurnResult>;
+
+    #[cfg(test)]
+    fn append_simulator_turn_with_hook(
+        &self,
+        chat_id: &str,
+        user_text: &str,
+        assistant_text: &str,
+        after_first_insert: impl FnOnce(),
+    ) -> AppResult<SimulatorTurnResult>;
+
+    #[cfg(test)]
+    fn append_simulator_turn_for_model_with_hook(
+        &self,
+        chat_id: &str,
+        model_id: &str,
+        user_text: &str,
+        assistant_text: &str,
+        after_first_insert: impl FnOnce(),
+    ) -> AppResult<SimulatorTurnResult>;
+
+    #[cfg(test)]
+    fn messages(&self, session_id: &str) -> AppResult<Vec<ChatMessage>>;
+
+    fn messages_for_chat(&self, chat_id: &str) -> AppResult<Vec<ChatMessage>>;
+}
+
+impl SessionEventStore for Database {
+    #[cfg(test)]
+    fn append_simulator_turn(
         &self,
         chat_id: &str,
         user_text: &str,
@@ -48,18 +92,18 @@ impl Database {
         )
     }
 
-    pub(crate) fn append_simulator_turn_for_model(
+    fn append_simulator_turn_for_model(
         &self,
         chat_id: &str,
         model_id: &str,
         user_text: &str,
         assistant_text: &str,
     ) -> AppResult<SimulatorTurnResult> {
-        self.append_simulator_turn_inner(chat_id, model_id, user_text, assistant_text, || {})
+        append_simulator_turn_inner(self, chat_id, model_id, user_text, assistant_text, || {})
     }
 
     #[cfg(test)]
-    pub(crate) fn append_simulator_turn_with_hook(
+    fn append_simulator_turn_with_hook(
         &self,
         chat_id: &str,
         user_text: &str,
@@ -76,7 +120,7 @@ impl Database {
     }
 
     #[cfg(test)]
-    pub(crate) fn append_simulator_turn_for_model_with_hook(
+    fn append_simulator_turn_for_model_with_hook(
         &self,
         chat_id: &str,
         model_id: &str,
@@ -84,7 +128,8 @@ impl Database {
         assistant_text: &str,
         after_first_insert: impl FnOnce(),
     ) -> AppResult<SimulatorTurnResult> {
-        self.append_simulator_turn_inner(
+        append_simulator_turn_inner(
+            self,
             chat_id,
             model_id,
             user_text,
@@ -93,50 +138,53 @@ impl Database {
         )
     }
 
-    fn append_simulator_turn_inner(
-        &self,
-        chat_id: &str,
-        model_id: &str,
-        user_text: &str,
-        assistant_text: &str,
-        after_first_insert: impl FnOnce(),
-    ) -> AppResult<SimulatorTurnResult> {
-        let payloads = [
-            payload("user", user_text)?,
-            payload("assistant", assistant_text)?,
-        ];
-        let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
-        let session_id = store::append_turn(
-            &transaction,
-            chat_id,
-            model_id,
-            &payloads,
-            now_millis(),
-            after_first_insert,
-        )?;
-        let messages = messages_for_chat_in(&transaction, chat_id)?;
-        transaction.commit()?;
-        Ok(SimulatorTurnResult {
-            session_id,
-            messages,
-        })
-    }
-
     #[cfg(test)]
-    pub(crate) fn messages(&self, session_id: &str) -> AppResult<Vec<ChatMessage>> {
-        let chat_id: String = self.connection().query_row(
-            "SELECT chat_id FROM agent_sessions WHERE id=?1",
-            [session_id],
-            |row| row.get(0),
-        )?;
+    fn messages(&self, session_id: &str) -> AppResult<Vec<ChatMessage>> {
+        let chat_id: String = self
+            .connection()
+            .query_row(
+                "SELECT chat_id FROM agent_sessions WHERE id=?1",
+                [session_id],
+                |row| row.get(0),
+            )
+            .db()?;
         self.messages_for_chat(&chat_id)
     }
 
-    pub(crate) fn messages_for_chat(&self, chat_id: &str) -> AppResult<Vec<ChatMessage>> {
+    fn messages_for_chat(&self, chat_id: &str) -> AppResult<Vec<ChatMessage>> {
         let connection = self.connection();
         messages_for_chat_in(&connection, chat_id)
     }
+}
+
+fn append_simulator_turn_inner(
+    database: &Database,
+    chat_id: &str,
+    model_id: &str,
+    user_text: &str,
+    assistant_text: &str,
+    after_first_insert: impl FnOnce(),
+) -> AppResult<SimulatorTurnResult> {
+    let payloads = [
+        payload("user", user_text)?,
+        payload("assistant", assistant_text)?,
+    ];
+    let mut connection = database.write_connection()?;
+    let transaction = connection.transaction().db()?;
+    let session_id = store::append_turn(
+        &transaction,
+        chat_id,
+        model_id,
+        &payloads,
+        now_millis(),
+        after_first_insert,
+    )?;
+    let messages = messages_for_chat_in(&transaction, chat_id)?;
+    transaction.commit().db()?;
+    Ok(SimulatorTurnResult {
+        session_id,
+        messages,
+    })
 }
 
 fn messages_for_chat_in(
@@ -144,9 +192,12 @@ fn messages_for_chat_in(
     chat_id: &str,
 ) -> AppResult<Vec<ChatMessage>> {
     verify_chat_item_ledgers(connection, chat_id)?;
-    let welcome = legacy_welcome::turn_id(connection, chat_id)?.unwrap_or_default();
-    let mut statement = connection.prepare(
-        "WITH ordered AS (
+    let welcome = legacy_welcome::turn_id(connection, chat_id)
+        .db()?
+        .unwrap_or_default();
+    let mut statement = connection
+        .prepare(
+            "WITH ordered AS (
                SELECT i.id,i.session_id,i.payload_json,i.created_at,
                       ROW_NUMBER() OVER (
                         ORDER BY s.ordinal,t.ordinal,t.id,i.ordinal,i.id
@@ -160,21 +211,24 @@ fn messages_for_chat_in(
              )
              SELECT id,session_id,sequence,payload_json,created_at FROM ordered
              ORDER BY sequence DESC LIMIT ?2",
-    )?;
-    let mut rows = statement.query(params![
-        chat_id,
-        MAX_BOOTSTRAP_MESSAGES,
-        crate::harnesses::SIMULATOR_ID,
-        welcome
-    ])?;
+        )
+        .db()?;
+    let mut rows = statement
+        .query(params![
+            chat_id,
+            MAX_BOOTSTRAP_MESSAGES,
+            crate::harnesses::SIMULATOR_ID,
+            welcome
+        ])
+        .db()?;
     let mut messages = Vec::with_capacity(MAX_BOOTSTRAP_MESSAGES as usize);
     let mut bytes = 0_i64;
-    while let Some(row) = rows.next()? {
-        let id: String = row.get(0)?;
-        let session_id: String = row.get(1)?;
-        let sequence: i64 = row.get(2)?;
-        let payload: String = row.get(3)?;
-        let created_at: i64 = row.get(4)?;
+    while let Some(row) = rows.next().db()? {
+        let id: String = row.get(0).db()?;
+        let session_id: String = row.get(1).db()?;
+        let sequence: i64 = row.get(2).db()?;
+        let payload: String = row.get(3).db()?;
+        let created_at: i64 = row.get(4).db()?;
         let row_bytes = id.len() as i64 + session_id.len() as i64 + payload.len() as i64;
         if bytes.saturating_add(row_bytes) > MAX_BOOTSTRAP_MESSAGE_BYTES {
             break;
@@ -210,20 +264,23 @@ fn payload(role: &str, text: &str) -> AppResult<String> {
 }
 
 fn verify_chat_item_ledgers(connection: &rusqlite::Connection, chat_id: &str) -> AppResult<()> {
-    let session_count: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM (
+    let session_count: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM (
            SELECT 1 FROM agent_sessions WHERE chat_id=?1 LIMIT ?2
          )",
-        params![chat_id, LIMITS.durable.sessions_per_chat as i64 + 1],
-        |row| row.get(0),
-    )?;
+            params![chat_id, LIMITS.durable.sessions_per_chat as i64 + 1],
+            |row| row.get(0),
+        )
+        .db()?;
     if session_count > LIMITS.durable.sessions_per_chat as i64 {
         return Err(AppError::ResourceLimit(
             "simulator Chat exceeds its session-attempt limit".into(),
         ));
     }
-    let mismatch: bool = connection.query_row(
-        "SELECT EXISTS(
+    let mismatch: bool = connection
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM agent_sessions s
            LEFT JOIN acp_session_usage u ON u.session_id=s.id
            WHERE s.chat_id=?1 AND (
@@ -235,9 +292,10 @@ fn verify_chat_item_ledgers(connection: &rusqlite::Connection, chat_id: &str) ->
              )
            ) LIMIT 1
          )",
-        params![chat_id, MAX_SESSION_EVENTS, MAX_SESSION_EVENTS + 1],
-        |row| row.get(0),
-    )?;
+            params![chat_id, MAX_SESSION_EVENTS, MAX_SESSION_EVENTS + 1],
+            |row| row.get(0),
+        )
+        .db()?;
     if mismatch {
         return Err(AppError::InvalidRequest(
             "simulator Chat usage ledger does not match durable Items".into(),

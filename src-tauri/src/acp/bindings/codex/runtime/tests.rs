@@ -1,6 +1,9 @@
 use sage_core::error::AppError;
 
+use crate::acp::bindings::codex::runtime::authority::CodexRootAuthorityStore;
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent, version_line};
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
 use sage_acp_protocol::codex_protocol::{OBSERVED_PROTOCOL_IDENTITY, PINNED_PROTOCOL_IDENTITY};
 use serde_json::{Value, json};
 
@@ -19,7 +22,7 @@ use crate::acp::{
     transport::{Frame, IncrementalFrameDecoder},
 };
 use crate::project_registry::ProjectRootAuthority;
-use crate::{persistence::Database, state::AppState};
+use crate::state::AppState;
 use sage_acp_protocol::{
     contract::{
         ProjectGeneration, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageProjectId,
@@ -29,6 +32,7 @@ use sage_acp_protocol::{
     lifecycle::ItemLifecycle,
     permissions::PermissionDecision,
 };
+use sage_db::database::Database;
 
 mod background_terminal_tests;
 mod browser_mcp_tests;
@@ -118,7 +122,7 @@ fn codex_authority_accepts_exactly_one_registered_root_without_process_admission
             std::env::temp_dir().join(format!("sage-codex-one-root-{}", uuid::Uuid::new_v4()));
         let root = base.join("root");
         std::fs::create_dir_all(&root).unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let state = AppState::new(database.clone());
         let project_id = SageProjectId::parse(project.id).unwrap();
@@ -151,7 +155,7 @@ fn codex_authority_rejects_two_registered_roots_without_process_admission() {
         let second = base.join("second");
         std::fs::create_dir_all(&first).unwrap();
         std::fs::create_dir_all(&second).unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&first).unwrap();
         database.add_project_root(&project.id, &second).unwrap();
         let state = AppState::new(database.clone());

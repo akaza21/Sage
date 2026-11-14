@@ -29,7 +29,6 @@ use crate::{
         BrowserCommand, BrowserFailure, BrowserRequest, BrowserResult, BrowserScope, dispatch,
     },
     launch_profile::{PROFILE_MARKER_BYTES, PROFILE_MARKER_NAME, resolve_launch_profile},
-    persistence::Database,
     settings_store::SettingsStore,
     state::AppState,
 };
@@ -150,7 +149,7 @@ fn boot(app: &mut tauri::App, root: &Path) -> Result<(), Box<dyn std::error::Err
         app.path().app_data_dir()?,
         app.path().app_local_data_dir()?,
     )?;
-    let database = Database::open(Path::new(":memory:"))?;
+    let database = crate::database::open_database(Path::new(":memory:"))?;
     let browser = BrowserState::new(&profile, app.path().app_local_data_dir()?, &[], 1)
         .map_err(std::io::Error::other)?;
     let settings = SettingsStore::open(Path::new(":memory:"))?;

@@ -2,7 +2,7 @@ use super::*;
 
 struct Store {
     directory: std::path::PathBuf,
-    database: crate::persistence::Database,
+    database: sage_db::database::Database,
 }
 
 impl Store {
@@ -10,7 +10,7 @@ impl Store {
         let directory =
             std::env::temp_dir().join(format!("sage-prompt-images-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir(&directory).unwrap();
-        let database = crate::persistence::Database::open(&directory.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
         {
             let connection = database.connection();
             connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();

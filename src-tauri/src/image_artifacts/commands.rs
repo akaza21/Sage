@@ -3,8 +3,10 @@ use sage_core::error::{AppError, AppResult};
 use serde::Deserialize;
 use tauri::State;
 
-use crate::{image_attachment::ImageAttachedContext, persistence::Database, state::AppState};
+use crate::project_registry::ProjectRegistryStore;
+use crate::{image_attachment::ImageAttachedContext, state::AppState};
 use sage_acp_protocol::intent::ImageMediaType;
+use sage_db::database::Database;
 
 use super::store::{ingest_image, normalize_upload, remove_pending_image};
 

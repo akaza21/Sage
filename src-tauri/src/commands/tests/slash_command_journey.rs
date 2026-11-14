@@ -88,7 +88,8 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
         )
         .unwrap();
         let selection = fixture_selection(&directory, "claude-slash-commands");
-        let database = Database::open(&directory.join("profile/durable/sage.db")).unwrap();
+        let database =
+            crate::database::open_database(&directory.join("profile/durable/sage.db")).unwrap();
         let project = database
             .create_project_from_root(&selection.project_root)
             .unwrap();

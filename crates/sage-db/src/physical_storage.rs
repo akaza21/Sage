@@ -9,18 +9,49 @@ use sage_core::error::{AppError, AppResult};
 
 use sage_core::limits::LIMITS;
 
-#[cfg(any(test, all(windows, feature = "acp-fixture")))]
-use super::WalConvergenceReceipt;
+use crate::error::SqliteResultExt;
+
+#[cfg(any(feature = "test-support", all(windows, feature = "fixture")))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct WalConvergenceReceipt {
+    wal_bytes: u64,
+    checkpoint_target_bytes: u64,
+    checkpointed: bool,
+}
+
+#[cfg(any(feature = "test-support", all(windows, feature = "fixture")))]
+impl WalConvergenceReceipt {
+    pub fn wal_bytes(self) -> u64 {
+        self.wal_bytes
+    }
+
+    pub fn checkpoint_target_bytes(self) -> u64 {
+        self.checkpoint_target_bytes
+    }
+
+    pub fn checkpointed(self) -> bool {
+        self.checkpointed
+    }
+
+    #[cfg(all(feature = "test-support", feature = "fixture", windows))]
+    pub fn test_only(wal_bytes: u64, checkpoint_target_bytes: u64, checkpointed: bool) -> Self {
+        Self {
+            wal_bytes,
+            checkpoint_target_bytes,
+            checkpointed,
+        }
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
-pub(super) struct StorageLimits {
+pub struct StorageLimits {
     main_bytes: u64,
     checkpoint_bytes: u64,
     wal_hard_bytes: u64,
 }
 
 impl StorageLimits {
-    pub(super) fn production() -> Self {
+    pub fn production() -> Self {
         Self {
             main_bytes: LIMITS.migration.live_sqlite_bytes,
             checkpoint_bytes: LIMITS.migration.wal_checkpoint_target_bytes,
@@ -28,8 +59,8 @@ impl StorageLimits {
         }
     }
 
-    #[cfg(test)]
-    pub(super) fn fixture(main_bytes: u64, checkpoint_bytes: u64, wal_hard_bytes: u64) -> Self {
+    #[cfg(feature = "test-support")]
+    pub fn fixture(main_bytes: u64, checkpoint_bytes: u64, wal_hard_bytes: u64) -> Self {
         Self {
             main_bytes,
             checkpoint_bytes,
@@ -44,18 +75,18 @@ struct State {
 }
 
 #[derive(Debug)]
-pub(super) struct PhysicalStorage {
+pub(crate) struct PhysicalStorage {
     path: Option<PathBuf>,
     limits: StorageLimits,
     state: Mutex<State>,
 }
 
 impl PhysicalStorage {
-    pub(super) fn path(&self) -> Option<&Path> {
+    pub(crate) fn path(&self) -> Option<&Path> {
         self.path.as_deref()
     }
 
-    pub(super) fn new(path: &Path, limits: StorageLimits) -> Self {
+    pub(crate) fn new(path: &Path, limits: StorageLimits) -> Self {
         Self {
             path: (path != Path::new(":memory:")).then(|| path.to_owned()),
             limits,
@@ -63,18 +94,22 @@ impl PhysicalStorage {
         }
     }
 
-    pub(super) fn configure(&self, connection: &Connection) -> AppResult<()> {
-        let page_size: i64 = connection.pragma_query_value(None, "page_size", |row| row.get(0))?;
+    pub(crate) fn configure(&self, connection: &Connection) -> AppResult<()> {
+        let page_size: i64 = connection
+            .pragma_query_value(None, "page_size", |row| row.get(0))
+            .db()?;
         let page_size = u64::try_from(page_size.max(1)).unwrap_or(1);
         let max_pages =
             i64::try_from((self.limits.main_bytes / page_size).max(1)).map_err(|_| {
                 AppError::ResourceLimit("SQLite page limit is not representable".into())
             })?;
-        connection.pragma_update(None, "max_page_count", max_pages)?;
+        connection
+            .pragma_update(None, "max_page_count", max_pages)
+            .db()?;
         Ok(())
     }
 
-    pub(super) fn admit_write(&self, connection: &Connection) -> AppResult<()> {
+    pub(crate) fn admit_write(&self, connection: &Connection) -> AppResult<()> {
         let Some(path) = &self.path else {
             return Ok(());
         };
@@ -103,7 +138,7 @@ impl PhysicalStorage {
         Ok(())
     }
 
-    pub(super) fn observe_after_write(&self, connection: &Connection) {
+    pub(crate) fn observe_after_write(&self, connection: &Connection) {
         let Some(path) = &self.path else { return };
         let Ok((main, wal)) = physical_bytes(path) else {
             lock(&self.state).recovery_required = true;
@@ -121,8 +156,8 @@ impl PhysicalStorage {
         }
     }
 
-    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
-    pub(super) fn converge_for_observation(
+    #[cfg(any(feature = "test-support", all(windows, feature = "fixture")))]
+    pub(crate) fn converge_for_observation(
         &self,
         connection: &Connection,
     ) -> AppResult<WalConvergenceReceipt> {
@@ -145,16 +180,17 @@ impl PhysicalStorage {
         })
     }
 
-    #[cfg(test)]
-    pub(super) fn recovery_required(&self) -> bool {
+    #[cfg(feature = "test-support")]
+    pub(crate) fn recovery_required(&self) -> bool {
         lock(&self.state).recovery_required
     }
 }
 
 fn checkpoint(connection: &Connection, mode: &str) -> AppResult<bool> {
     let sql = format!("PRAGMA wal_checkpoint({mode})");
-    let result: (i64, i64, i64) =
-        connection.query_row(&sql, [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))?;
+    let result: (i64, i64, i64) = connection
+        .query_row(&sql, [], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)))
+        .db()?;
     Ok(result.0 != 0)
 }
 

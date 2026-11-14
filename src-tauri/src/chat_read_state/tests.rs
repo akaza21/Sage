@@ -4,6 +4,10 @@ use rusqlite::params;
 use uuid::Uuid;
 
 use super::*;
+use crate::chat_archive::ChatArchiveStore;
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     project_registry::MAX_AGENT_RAIL_CHATS_PER_PROJECT,
     settings_store::{ChatReadMark, MAX_CHAT_READ_MARKS},
@@ -29,7 +33,7 @@ impl Fixture {
         fs::create_dir_all(&base).unwrap();
         Self {
             base,
-            database: Database::open(std::path::Path::new(":memory:")).unwrap(),
+            database: crate::database::open_database(std::path::Path::new(":memory:")).unwrap(),
             settings: SettingsStore::in_memory().unwrap(),
             updates: Cell::new(SEEDED_UPDATE_BASE),
         }

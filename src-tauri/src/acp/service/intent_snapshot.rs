@@ -1,16 +1,14 @@
 use rusqlite::{OptionalExtension, params};
 
-use crate::{
-    acp::{
-        ipc::IntentSnapshot,
-        store::{StoreError, parse_turn_state},
-    },
-    persistence::Database,
+use crate::acp::{
+    ipc::IntentSnapshot,
+    store::{StoreError, parse_turn_state},
 };
 use sage_acp_protocol::contract::{
     EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageAgentSessionId,
     SageChatId, SageProjectId, SageTurnId,
 };
+use sage_db::database::Database;
 
 type SnapshotRow = (
     i64,

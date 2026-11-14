@@ -3,22 +3,19 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    acp::{
-        fixture::adapter::FixtureAdapter,
-        process::{TreeCapacityPool, TreeExit},
-        runtime::{
-            ActivationFlush, ActivationIntent, ActivationMode, ActivationPump,
-            CoordinatorActivationHandoff, CoordinatorActivationJournal, SessionCoordinator,
-            SessionTreeLease, ZeroProcessProof,
-        },
-        store::{
-            ActivateSessionCommand, PrepareTurnCommand, SendObservation, TurnMutationCommand,
-            begin_send, load_chat_page, prepare_turn, record_send_observation,
-        },
-        transcript_quote::Prompt,
+use crate::acp::{
+    fixture::adapter::FixtureAdapter,
+    process::{TreeCapacityPool, TreeExit},
+    runtime::{
+        ActivationFlush, ActivationIntent, ActivationMode, ActivationPump,
+        CoordinatorActivationHandoff, CoordinatorActivationJournal, SessionCoordinator,
+        SessionTreeLease, ZeroProcessProof,
     },
-    persistence::Database,
+    store::{
+        ActivateSessionCommand, PrepareTurnCommand, SendObservation, TurnMutationCommand,
+        begin_send, load_chat_page, prepare_turn, record_send_observation,
+    },
+    transcript_quote::Prompt,
 };
 use sage_acp_protocol::{
     contract::{
@@ -29,6 +26,7 @@ use sage_acp_protocol::{
     lifecycle::{DeliveryState, TurnState},
     scheduler::RuntimeOwner,
 };
+use sage_db::database::Database;
 
 use super::{
     super::{

@@ -1,19 +1,17 @@
 use super::*;
 
-use crate::{
-    acp::{
-        bindings::adapter::{AdapterCommand, EgressResolution, HarnessAdapter},
-        runtime::{
-            ActiveTurnIntent, AdapterPump, EgressTransport, JournalHandle, ProjectionMailbox,
-            SessionPumpIntent, SqliteAdapterBatchJournal,
-        },
-        store::DatabaseAcpStore,
-        transcript_quote::Prompt,
-        transport::FrameWriteOutcome,
+use crate::acp::{
+    bindings::adapter::{AdapterCommand, EgressResolution, HarnessAdapter},
+    runtime::{
+        ActiveTurnIntent, AdapterPump, EgressTransport, JournalHandle, ProjectionMailbox,
+        SessionPumpIntent, SqliteAdapterBatchJournal,
     },
-    persistence::Database,
+    store::DatabaseAcpStore,
+    transcript_quote::Prompt,
+    transport::FrameWriteOutcome,
 };
 use sage_acp_protocol::contract::{SageChatId, SageProjectId, SageTurnId};
+use sage_db::database::Database;
 
 use super::tests::{Mapper, frame, initialize, request_id};
 
@@ -271,7 +269,8 @@ fn session_intent() -> SessionPumpIntent {
 fn migrated_database(runtime: &ClaudeRuntime) -> Database {
     let capabilities = serde_json::to_string(&runtime.capabilities().expect("ready capabilities"))
         .expect("serialize capabilities");
-    let database = Database::open(std::path::Path::new(":memory:")).expect("database");
+    let database =
+        crate::database::open_database(std::path::Path::new(":memory:")).expect("database");
     let connection = database.connection();
     connection
         .execute_batch(&format!(

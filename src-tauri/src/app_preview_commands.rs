@@ -4,8 +4,10 @@ mod app_preview;
 use rusqlite::params;
 use tauri::{AppHandle, Emitter, Manager, State};
 
-use crate::{acp::ipc::ACP_PROJECTION_CHANGED_EVENT, persistence::Database, state::AppState};
+use crate::project_registry::ProjectRegistryStore;
+use crate::{acp::ipc::ACP_PROJECTION_CHANGED_EVENT, state::AppState};
 use sage_acp_protocol::contract::ProjectGeneration;
+use sage_db::database::Database;
 
 use self::app_preview::{
     PreviewDiscoveryRequest, PreviewDiscoveryResponse, PreviewError, PreviewFailure,
@@ -257,7 +259,7 @@ mod tests {
             std::env::temp_dir().join(format!("sage-preview-owner-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("sage.db");
-        let database = Database::open(&path).unwrap();
+        let database = crate::database::open_database(&path).unwrap();
         let state = AppState::try_new(database).unwrap();
         state
             .database

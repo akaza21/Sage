@@ -5,13 +5,14 @@ use sage_core::{
     error::{AppError, AppResult},
     time::now_millis,
 };
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     acp::attached_context::{AttachedContext, AttachedContexts},
     image_artifacts::verify_image_reference,
-    persistence::Database,
 };
+use sage_db::database::Database;
 
 const MAX_PROMPTS: usize = 8;
 const MAX_PROMPT_BYTES: usize = 16 * 1024;
@@ -89,7 +90,8 @@ fn stored_prompts(
             params![project_id, chat_id],
             |row| row.get(0),
         )
-        .optional()?;
+        .optional()
+        .db()?;
     let prompts = json
         .and_then(|json| serde_json::from_str::<Vec<serde_json::Value>>(&json).ok())
         .unwrap_or_default();
@@ -99,8 +101,23 @@ fn stored_prompts(
         .collect())
 }
 
-impl Database {
-    pub(crate) fn replace_chat_queued_prompts(
+/// Queued Chat prompts, on the shared database.
+pub(crate) trait ChatQueueStore {
+    fn replace_chat_queued_prompts(
+        &self,
+        project_id: &str,
+        chat_id: &str,
+        prompts: &[DurableQueuedPrompt],
+    ) -> AppResult<()>;
+
+    fn project_chat_queued_prompts(
+        &self,
+        project_id: &str,
+    ) -> AppResult<HashMap<String, Vec<DurableQueuedPrompt>>>;
+}
+
+impl ChatQueueStore for Database {
+    fn replace_chat_queued_prompts(
         &self,
         project_id: &str,
         chat_id: &str,
@@ -127,14 +144,15 @@ impl Database {
             }
         }
         let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         let belongs: Option<i64> = transaction
             .query_row(
                 "SELECT 1 FROM chats WHERE project_id=?1 AND id=?2",
                 params![project_id, chat_id],
                 |row| row.get(0),
             )
-            .optional()?;
+            .optional()
+            .db()?;
         if belongs.is_none() {
             return Err(AppError::InvalidRequest(
                 "Queued Chat owner is absent".into(),
@@ -159,11 +177,13 @@ impl Database {
             let root = self.image_artifact_root()?;
             for (id, (_, image)) in &images {
                 verify_image_reference(&transaction, root, project_id, chat_id, image)?;
-                let state: String = transaction.query_row(
-                    "SELECT lifecycle FROM chat_image_artifacts WHERE id=?1",
-                    [id],
-                    |row| row.get(0),
-                )?;
+                let state: String = transaction
+                    .query_row(
+                        "SELECT lifecycle FROM chat_image_artifacts WHERE id=?1",
+                        [id],
+                        |row| row.get(0),
+                    )
+                    .db()?;
                 if !matches!(state.as_str(), "pending" | "queued") {
                     return Err(AppError::InvalidRequest(
                         "Image artifact cannot enter a queued prompt".into(),
@@ -173,10 +193,12 @@ impl Database {
         }
         let mut queued_statement = transaction.prepare(
             "SELECT id FROM chat_image_artifacts WHERE project_id=?1 AND chat_id=?2 AND lifecycle='queued' ORDER BY id",
-        )?;
+        ).db()?;
         let queued_rows = queued_statement
-            .query_map(params![project_id, chat_id], |row| row.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
+            .query_map(params![project_id, chat_id], |row| row.get::<_, String>(0))
+            .db()?
+            .collect::<Result<Vec<_>, _>>()
+            .db()?;
         drop(queued_statement);
         let mut retired = Vec::new();
         for id in queued_rows {
@@ -184,7 +206,7 @@ impl Database {
                 transaction.execute(
                     "UPDATE chat_image_artifacts SET lifecycle='retired',queue_id=NULL,updated_at=?2 WHERE id=?1",
                     params![id, now_millis()],
-                )?;
+                ).db()?;
                 retired.push(id);
             }
         }
@@ -192,24 +214,28 @@ impl Database {
             transaction.execute(
                 "UPDATE chat_image_artifacts SET lifecycle='queued',queue_id=?2,updated_at=?3 WHERE id=?1",
                 params![id, queue_id, now_millis()],
-            )?;
+            ).db()?;
         }
         if prompts.is_empty() {
-            transaction.execute(
-                "DELETE FROM chat_queued_prompts WHERE project_id=?1 AND chat_id=?2",
-                params![project_id, chat_id],
-            )?;
+            transaction
+                .execute(
+                    "DELETE FROM chat_queued_prompts WHERE project_id=?1 AND chat_id=?2",
+                    params![project_id, chat_id],
+                )
+                .db()?;
         } else {
-            transaction.execute(
-                "INSERT INTO chat_queued_prompts(project_id, chat_id, prompts_json, updated_at)
+            transaction
+                .execute(
+                    "INSERT INTO chat_queued_prompts(project_id, chat_id, prompts_json, updated_at)
                  VALUES (?1, ?2, ?3, ?4)
                  ON CONFLICT(chat_id) DO UPDATE SET
                    prompts_json=excluded.prompts_json,
                    updated_at=excluded.updated_at",
-                params![project_id, chat_id, json, now_millis()],
-            )?;
+                    params![project_id, chat_id, json, now_millis()],
+                )
+                .db()?;
         }
-        transaction.commit()?;
+        transaction.commit().db()?;
         if !retired.is_empty() {
             let root = self.image_artifact_root()?;
             for id in retired {
@@ -219,7 +245,7 @@ impl Database {
         Ok(())
     }
 
-    pub(crate) fn project_chat_queued_prompts(
+    fn project_chat_queued_prompts(
         &self,
         project_id: &str,
     ) -> AppResult<HashMap<String, Vec<DurableQueuedPrompt>>> {
@@ -229,19 +255,21 @@ impl Database {
             ));
         }
         let connection = self.connection();
-        let mut statement = connection.prepare(
-            "SELECT chat_id, prompts_json FROM chat_queued_prompts
+        let mut statement = connection
+            .prepare(
+                "SELECT chat_id, prompts_json FROM chat_queued_prompts
              WHERE project_id=?1 ORDER BY chat_id LIMIT 129",
-        )?;
-        let mut rows = statement.query([project_id])?;
+            )
+            .db()?;
+        let mut rows = statement.query([project_id]).db()?;
         let mut result = HashMap::new();
         let mut expected_images = HashSet::new();
-        while let Some(row) = rows.next()? {
+        while let Some(row) = rows.next().db()? {
             if result.len() >= 128 {
                 return Err(AppError::ResourceLimit("Too many Chat queues".into()));
             }
-            let chat_id: String = row.get(0)?;
-            let json: String = row.get(1)?;
+            let chat_id: String = row.get(0).db()?;
+            let json: String = row.get(1).db()?;
             if json.len() > MAX_QUEUE_BYTES {
                 return Err(AppError::ResourceLimit(
                     "Chat prompt queue exceeds 512 KiB".into(),
@@ -265,11 +293,13 @@ impl Database {
                             &chat_id,
                             image,
                         )?;
-                        let identity: (String, String) = connection.query_row(
-                            "SELECT lifecycle,queue_id FROM chat_image_artifacts WHERE id=?1",
-                            [&image.artifact_id],
-                            |row| Ok((row.get(0)?, row.get(1)?)),
-                        )?;
+                        let identity: (String, String) = connection
+                            .query_row(
+                                "SELECT lifecycle,queue_id FROM chat_image_artifacts WHERE id=?1",
+                                [&image.artifact_id],
+                                |row| Ok((row.get(0)?, row.get(1)?)),
+                            )
+                            .db()?;
                         if identity.0 != "queued" || identity.1 != prompt.id {
                             return Err(AppError::InvalidRequest(
                                 "Queued image artifact has a mismatched queue identity".into(),
@@ -289,10 +319,12 @@ impl Database {
         drop(statement);
         let mut queued_statement = connection.prepare(
             "SELECT id FROM chat_image_artifacts WHERE project_id=?1 AND lifecycle='queued' ORDER BY id",
-        )?;
+        ).db()?;
         let queued_rows = queued_statement
-            .query_map([project_id], |row| row.get::<_, String>(0))?
-            .collect::<Result<Vec<_>, _>>()?;
+            .query_map([project_id], |row| row.get::<_, String>(0))
+            .db()?
+            .collect::<Result<Vec<_>, _>>()
+            .db()?;
         if queued_rows.len() != expected_images.len()
             || queued_rows.iter().any(|id| !expected_images.contains(id))
         {

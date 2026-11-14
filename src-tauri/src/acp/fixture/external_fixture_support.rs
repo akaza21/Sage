@@ -4,18 +4,17 @@ use std::{
     time::Duration,
 };
 
-use crate::{
-    acp::{
-        process::{TreeControl, TreeExit},
-        runtime::{BoundedThread, JournalHandle, SessionCoordinator, ThreadWaitError},
-        store::{DatabaseAcpStore, SessionMutation, StartSessionCommand, load_chat_page},
-    },
-    persistence::Database,
+use crate::acp::{
+    process::{TreeControl, TreeExit},
+    runtime::{BoundedThread, JournalHandle, SessionCoordinator, ThreadWaitError},
+    store::{DatabaseAcpStore, SessionMutation, StartSessionCommand, load_chat_page},
 };
+use crate::project_registry::create::ProjectCreateStore;
 use sage_acp_protocol::{
     contract::{ClientIntentId, RequiredText, SafeText, SageChatId, SageProjectId},
     scheduler::Scheduler,
 };
+use sage_db::database::Database;
 
 use super::external_fixture_adapters::{CommitCheckingPublisher, hex};
 use super::test_support::{FixtureDeadline, JournalCleanup};
@@ -49,7 +48,7 @@ pub(super) async fn prepare_fixture_environment(
     let project_root = temp_root.path().join("project");
     std::fs::create_dir_all(&project_root).unwrap();
     let database_path = temp_root.path().join("sage.db");
-    let database = Database::open(&database_path).unwrap();
+    let database = crate::database::open_database(&database_path).unwrap();
     let project = database.create_project_from_root(&project_root).unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse(chat_id).unwrap();

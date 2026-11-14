@@ -152,7 +152,7 @@ fn gone() -> AcpIpcError {
 
 /// The verified, owner-bound stored bytes of each image.
 fn load(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     project_id: &str,
     chat_id: &str,
     images: &[&ImageAttachedContext],
@@ -220,7 +220,7 @@ fn normalize(
 
 #[cfg(test)]
 fn read(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     project_id: &str,
     chat_id: &str,
     images: &[&ImageAttachedContext],

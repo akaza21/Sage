@@ -248,7 +248,7 @@ fn native_pi_subprocess_real_binding_pump_sqlite_settlement_and_idle_configurati
             assert!(selection.consume_one_shot().is_err());
             let registry = Arc::new(BindingRegistry::desktop_pi_fixture(selection).unwrap());
             let reopened = AcpService::new_with_registry_for_test(
-                crate::persistence::Database::open(&database_path).unwrap(),
+                crate::database::open_database(&database_path).unwrap(),
                 registry,
             )
             .unwrap();

@@ -2,13 +2,14 @@ use std::collections::HashSet;
 
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use crate::{
     chat_lifecycle::validate_chat_identifier,
-    persistence::Database,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
     workbench_restore::validate_tab_projection,
 };
+use sage_db::database::Database;
 use sage_domain::chat::{
     ArchivedChatSummary, ChatLifecycleRequest, ProjectLayoutRequest, WorkbenchTab,
 };
@@ -31,15 +32,17 @@ pub(crate) fn archived_chats_in(
            )
          ORDER BY c.ordinal,c.id
          LIMIT ?2",
-    )?;
+    ).db()?;
     let rows = statement
         .query_map(params![project_id, MAX_ARCHIVED_CHATS as i64 + 1], |row| {
             Ok(ArchivedChatSummary {
                 id: row.get(0)?,
                 title: row.get(1)?,
             })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        })
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     if rows.len() > MAX_ARCHIVED_CHATS {
         return Err(AppError::ResourceLimit(format!(
             "Project exceeds its {MAX_ARCHIVED_CHATS}-archived-Chat limit"
@@ -66,13 +69,20 @@ pub(crate) fn archived_chats_in(
     Ok(rows)
 }
 
-impl Database {
-    pub(crate) fn archive_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()> {
+/// Archiving and restoring Chats, on the shared database.
+pub(crate) trait ChatArchiveStore {
+    fn archive_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()>;
+
+    fn restore_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()>;
+}
+
+impl ChatArchiveStore for Database {
+    fn archive_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()> {
         crate::side_chat_storage::refuse_persistence(&self.connection(), &request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         crate::side_chat_storage::refuse_parent_removal(
             &transaction,
             &request.project_id,
@@ -113,15 +123,15 @@ impl Database {
         } else {
             archive_foreign_chat(&transaction, &request.project_id, &request.chat_id)?;
         }
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     }
 
-    pub(crate) fn restore_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()> {
+    fn restore_chat(&self, request: &ChatLifecycleRequest) -> AppResult<()> {
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         if source_is_active(&transaction, &request.project_id)? {
             validate_request(request)?;
             let attached = require_exact_attached_chats(&transaction, &request.current_layout)?;
@@ -171,7 +181,7 @@ impl Database {
         } else {
             restore_foreign_chat(&transaction, &request.project_id, &request.chat_id)?;
         }
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     }
 }
@@ -188,11 +198,13 @@ fn validate_request(request: &ChatLifecycleRequest) -> AppResult<()> {
 }
 
 fn source_is_active(transaction: &rusqlite::Transaction<'_>, project_id: &str) -> AppResult<bool> {
-    let active = transaction.query_row(
-        "SELECT active_project_id FROM app_state WHERE singleton=1",
-        [],
-        |row| row.get::<_, Option<String>>(0),
-    )?;
+    let active = transaction
+        .query_row(
+            "SELECT active_project_id FROM app_state WHERE singleton=1",
+            [],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .db()?;
     Ok(active.as_deref() == Some(project_id))
 }
 
@@ -208,7 +220,8 @@ fn chat_title_on_project(
             params![project_id, chat_id],
             |row| row.get::<_, String>(0),
         )
-        .optional()?
+        .optional()
+        .db()?
         .ok_or_else(|| AppError::InvalidRequest(missing.into()))
 }
 
@@ -217,21 +230,25 @@ fn restore_foreign_chat(
     project_id: &str,
     chat_id: &str,
 ) -> AppResult<()> {
-    let attached: i64 = transaction.query_row(
-        "SELECT COUNT(*) FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
-        params![project_id, chat_id],
-        |row| row.get(0),
-    )?;
+    let attached: i64 = transaction
+        .query_row(
+            "SELECT COUNT(*) FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
+            params![project_id, chat_id],
+            |row| row.get(0),
+        )
+        .db()?;
     if attached != 0 {
         return Err(AppError::InvalidRequest(
             "Chat is already attached to that Project".into(),
         ));
     }
-    let tab_count: i64 = transaction.query_row(
-        "SELECT COUNT(*) FROM workbench_tabs WHERE project_id=?1",
-        [project_id],
-        |row| row.get(0),
-    )?;
+    let tab_count: i64 = transaction
+        .query_row(
+            "SELECT COUNT(*) FROM workbench_tabs WHERE project_id=?1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .db()?;
     if tab_count >= MAX_RESTORED_TABS as i64 {
         return Err(AppError::ResourceLimit(format!(
             "project layout has reached its {MAX_RESTORED_TABS}-tab limit"
@@ -244,23 +261,29 @@ fn restore_foreign_chat(
         "Chat does not belong to that Project",
     )?;
     let now = sage_core::time::now_millis();
-    let position: i64 = transaction.query_row(
-        "SELECT COALESCE(MAX(position),-1)+1 FROM workbench_tabs WHERE project_id=?1",
-        [project_id],
-        |row| row.get(0),
-    )?;
-    transaction.execute(
-        "INSERT INTO workbench_tabs
+    let position: i64 = transaction
+        .query_row(
+            "SELECT COALESCE(MAX(position),-1)+1 FROM workbench_tabs WHERE project_id=?1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .db()?;
+    transaction
+        .execute(
+            "INSERT INTO workbench_tabs
          (id, project_id, kind, title, position, pinned, dirty, status,
           metadata_json, created_at, updated_at)
          VALUES (?1, ?2, 'chat', ?3, ?4, 0, 0, 'idle', '{}', ?5, ?5)",
-        params![chat_id, project_id, title, position, now],
-    )?;
+            params![chat_id, project_id, title, position, now],
+        )
+        .db()?;
     crate::chat_lifecycle::attach_chat_tab_in(transaction, project_id, chat_id, now)?;
-    transaction.execute(
-        "UPDATE project_layouts SET active_tab_id=?2, updated_at=?3 WHERE project_id=?1",
-        params![project_id, chat_id, now],
-    )?;
+    transaction
+        .execute(
+            "UPDATE project_layouts SET active_tab_id=?2, updated_at=?3 WHERE project_id=?1",
+            params![project_id, chat_id, now],
+        )
+        .db()?;
     Ok(())
 }
 
@@ -269,11 +292,13 @@ fn archive_foreign_chat(
     project_id: &str,
     chat_id: &str,
 ) -> AppResult<()> {
-    let attached: i64 = transaction.query_row(
-        "SELECT COUNT(*) FROM chat_tabs WHERE project_id=?1",
-        [project_id],
-        |row| row.get(0),
-    )?;
+    let attached: i64 = transaction
+        .query_row(
+            "SELECT COUNT(*) FROM chat_tabs WHERE project_id=?1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .db()?;
     if attached <= 1 {
         return Err(AppError::InvalidRequest(
             "the last attached chat cannot be archived".into(),
@@ -285,21 +310,26 @@ fn archive_foreign_chat(
             params![project_id, chat_id],
             |row| row.get(0),
         )
-        .optional()?;
+        .optional()
+        .db()?;
     let Some(tab_id) = tab_id else {
         return Err(AppError::InvalidRequest(
             "Chat is not attached to that Project".into(),
         ));
     };
     let now = sage_core::time::now_millis();
-    transaction.execute(
-        "DELETE FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
-        params![project_id, chat_id],
-    )?;
-    transaction.execute(
-        "DELETE FROM workbench_tabs WHERE project_id=?1 AND id=?2 AND kind='chat'",
-        params![project_id, tab_id],
-    )?;
+    transaction
+        .execute(
+            "DELETE FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
+            params![project_id, chat_id],
+        )
+        .db()?;
+    transaction
+        .execute(
+            "DELETE FROM workbench_tabs WHERE project_id=?1 AND id=?2 AND kind='chat'",
+            params![project_id, tab_id],
+        )
+        .db()?;
     let source_next: Option<String> = transaction
         .query_row(
             "SELECT id FROM workbench_tabs
@@ -308,12 +338,15 @@ fn archive_foreign_chat(
             [project_id],
             |row| row.get(0),
         )
-        .optional()?;
-    transaction.execute(
-        "UPDATE project_layouts SET active_tab_id=?2, updated_at=?3
+        .optional()
+        .db()?;
+    transaction
+        .execute(
+            "UPDATE project_layouts SET active_tab_id=?2, updated_at=?3
          WHERE project_id=?1 AND active_tab_id=?4",
-        params![project_id, source_next, now, chat_id],
-    )?;
+            params![project_id, source_next, now, chat_id],
+        )
+        .db()?;
     Ok(())
 }
 
@@ -328,13 +361,16 @@ fn require_exact_attached_chats(
         .map(|tab| tab.id.clone())
         .collect::<HashSet<_>>();
     let mut statement = transaction
-        .prepare("SELECT chat_id FROM chat_tabs WHERE project_id=?1 ORDER BY chat_id LIMIT ?2")?;
+        .prepare("SELECT chat_id FROM chat_tabs WHERE project_id=?1 ORDER BY chat_id LIMIT ?2")
+        .db()?;
     let rows = statement
         .query_map(
             params![layout.project_id, MAX_ARCHIVED_CHATS as i64 + 1],
             |row| row.get::<_, String>(0),
-        )?
-        .collect::<Result<Vec<_>, _>>()?;
+        )
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     if rows.len() > MAX_ARCHIVED_CHATS {
         return Err(AppError::ResourceLimit(format!(
             "Project exceeds its {MAX_ARCHIVED_CHATS}-attached-Chat limit"
@@ -378,7 +414,7 @@ fn archived_layout(
     Ok(next)
 }
 
-mod delete;
+pub(crate) mod delete;
 pub(crate) use delete::is_archived_chat;
 
 #[cfg(test)]

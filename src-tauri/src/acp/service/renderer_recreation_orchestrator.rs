@@ -163,7 +163,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::persistence::Database;
+    use sage_db::database::Database;
 
     fn announcement_packet(slots: u8) -> String {
         format!(
@@ -172,7 +172,7 @@ mod tests {
     }
 
     fn seeded_reload_chat() -> (AcpService, Database, SageProjectId, SageChatId) {
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         database
             .connection()
             .execute_batch(

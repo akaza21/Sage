@@ -3,6 +3,7 @@
 //! reads the sessions; Rust owns the Chat, its resumable head session and
 //! the history read at import.
 
+use sage_db::error::SqliteResultExt;
 use tauri::{Manager, State};
 
 use crate::{
@@ -15,7 +16,6 @@ use crate::{
     },
     chat_fork::{committed_transition, insert_layout_chat, stale},
     chat_lifecycle::{CHAT_TITLE_PREFIX, MAX_CHAT_TITLE_BYTES, canonical_chat_title},
-    persistence::Database,
     state::AppState,
 };
 use sage_acp_protocol::{
@@ -23,6 +23,7 @@ use sage_acp_protocol::{
     intent::ExternalId,
     scheduler::RuntimeOwner,
 };
+use sage_db::database::Database;
 use sage_domain::{chat::ProjectLayoutRequest, project::ProjectTransitionResult};
 
 use sage_core::{
@@ -56,10 +57,22 @@ fn import_title(title: &str) -> String {
     canonical_chat_title(&chat).unwrap_or_else(|_| format!("{CHAT_TITLE_PREFIX}{UNTITLED_IMPORT}"))
 }
 
-impl Database {
+/// Chats for imported native sessions, on the shared database.
+pub(crate) trait ImportChatStore {
     /// Creates the Chat for an imported session in one transaction: Chat row
     /// and tab, title, resumable head session and its history.
-    pub(crate) fn create_import_chat(
+    fn create_import_chat(
+        &self,
+        current_layout: &ProjectLayoutRequest,
+        lister: &RuntimeOwner,
+        thread: &ExternalId,
+        title: &str,
+        history_json: &str,
+    ) -> AppResult<String>;
+}
+
+impl ImportChatStore for Database {
+    fn create_import_chat(
         &self,
         current_layout: &ProjectLayoutRequest,
         lister: &RuntimeOwner,
@@ -73,7 +86,7 @@ impl Database {
             ));
         }
         let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         let chat_id = insert_layout_chat(
             &transaction,
             current_layout,
@@ -82,19 +95,23 @@ impl Database {
         let title = import_title(title);
         // The title is the session's own name or preview as the harness
         // listed it, so a name the harness reports later may replace it.
-        transaction.execute(
-            "UPDATE chats SET title=?3,title_source=?4 WHERE project_id=?1 AND id=?2",
-            rusqlite::params![
-                current_layout.project_id,
-                chat_id,
-                title,
-                crate::chat_lifecycle::ChatTitleSource::Harness.as_str()
-            ],
-        )?;
-        transaction.execute(
-            "UPDATE workbench_tabs SET title=?3 WHERE project_id=?1 AND id=?2",
-            rusqlite::params![current_layout.project_id, chat_id, title],
-        )?;
+        transaction
+            .execute(
+                "UPDATE chats SET title=?3,title_source=?4 WHERE project_id=?1 AND id=?2",
+                rusqlite::params![
+                    current_layout.project_id,
+                    chat_id,
+                    title,
+                    crate::chat_lifecycle::ChatTitleSource::Harness.as_str()
+                ],
+            )
+            .db()?;
+        transaction
+            .execute(
+                "UPDATE workbench_tabs SET title=?3 WHERE project_id=?1 AND id=?2",
+                rusqlite::params![current_layout.project_id, chat_id, title],
+            )
+            .db()?;
         let chat = SageChatId::parse(chat_id.clone())
             .map_err(|_| AppError::InvalidRequest("imported Chat id is invalid".into()))?;
         install_import(
@@ -113,7 +130,7 @@ impl Database {
                 error => error.to_string(),
             })
         })?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(chat_id)
     }
 }

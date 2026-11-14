@@ -1,5 +1,8 @@
 use super::*;
 use crate::acp::store::{StartSessionCommand, load_chat_page, start_session};
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::session_events::SessionEventStore;
 use sage_acp_protocol::{
     contract::{ClientIntentId, ProjectionRevision, SageChatId, SageProjectId},
     intent::BindingId,
@@ -11,7 +14,7 @@ fn unknown_persisted_binding_restores_as_unavailable_without_losing_the_chat() {
     let root = base.join("root");
     fs::create_dir_all(&root).unwrap();
     let path = base.join("sage.db");
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let chat_id = initial.active_tab_id.unwrap();
@@ -43,7 +46,7 @@ fn unknown_persisted_binding_restores_as_unavailable_without_losing_the_chat() {
     .unwrap();
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     let snapshot = reopened.bootstrap_snapshot_with_catalog(&catalog).unwrap();
     assert_eq!(snapshot.project.as_ref().unwrap().id, project.id);
     assert_eq!(snapshot.active_tab_id.as_deref(), Some(chat_id.as_str()));

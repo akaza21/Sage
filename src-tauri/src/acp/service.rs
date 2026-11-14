@@ -4,23 +4,21 @@ use std::sync::{
     atomic::{AtomicBool, Ordering},
 };
 
-use crate::{
-    acp::{
-        bindings::registry::{AdmittedBindingRecord, BindingRegistry, RegistryUnavailable},
-        ipc::{AcpChatPage, IntentSnapshot},
-        runtime::{
-            BoundedThread, JournalHandle, ProjectionNotifier, ProjectionPublisher,
-            SessionCoordinator, ThreadWaitError,
-        },
-        store::{StoreError, load_chat_page},
+use crate::acp::{
+    bindings::registry::{AdmittedBindingRecord, BindingRegistry, RegistryUnavailable},
+    ipc::{AcpChatPage, IntentSnapshot},
+    runtime::{
+        BoundedThread, JournalHandle, ProjectionNotifier, ProjectionPublisher, SessionCoordinator,
+        ThreadWaitError,
     },
-    persistence::Database,
+    store::{StoreError, load_chat_page},
 };
 use sage_acp_protocol::{
     contract::{ProjectGeneration, SageChatId, SageProjectId},
     intent::{BindingId, PageCursor},
     page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
 };
+use sage_db::database::Database;
 
 #[cfg(test)]
 use crate::acp::bindings::codex::CodexBindingRegistration;

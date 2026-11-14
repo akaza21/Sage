@@ -1,4 +1,5 @@
 use super::*;
+use sage_db::error::SqliteResultExt;
 
 pub(super) const V19: &str = include_str!("../../../migrations/019_turn_workspace_changes.sql");
 
@@ -22,14 +23,18 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV18 {
         return invalid("workspace summaries require exact schema v18");
     }
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V19)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (19,?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 19)?;
-    transaction.commit()?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(V19).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version,applied_at) VALUES (19,?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 19).db()?;
+    transaction.commit().db()?;
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV19 {
         return invalid("database did not reach exact schema v19");
     }

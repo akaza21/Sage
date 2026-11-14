@@ -1,5 +1,8 @@
-use crate::{persistence::Database, state::AppState};
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::side_chat_storage::SideChatStore;
+use crate::state::AppState;
 use sage_acp_protocol::contract::{SageChatId, SageProjectId};
+use sage_db::database::Database;
 use sage_domain::{chat::ProjectLayoutRequest, project::ProjectTransitionResult};
 use tauri::{Manager, State};
 
@@ -54,7 +57,7 @@ fn owned_side_chat(
 
 /// Deletes the Chat, then (only once that succeeded) records the opt-out.
 fn finish_close(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     settings: &crate::settings_store::SettingsStore,
     project_id: &str,
     chat_id: &str,
@@ -217,12 +220,15 @@ fn list_side_chats_inner(database: &Database) -> Result<Vec<SideChatSummary>, St
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::chat_lifecycle::store::ChatLifecycleStore;
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
 
     #[tokio::test]
     async fn side_chat_lookup_reports_parent_and_running_and_refuses_overflow() {
         let root = std::env::temp_dir().join(format!("sage-side-list-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database = Database::open(&root.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let project = database.create_project_from_root(&root).unwrap().id;
         let parent = database
             .bootstrap_snapshot()
@@ -302,7 +308,7 @@ mod tests {
     fn the_opt_out_is_saved_only_after_the_side_chat_is_gone() {
         let root = std::env::temp_dir().join(format!("sage-side-close-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let settings =
             crate::settings_store::SettingsStore::open(&root.join("settings.db")).unwrap();
         database.create_project_from_root(&root).unwrap();
@@ -345,7 +351,7 @@ mod tests {
         use sage_acp_protocol::access_mode::SessionAccessMode::FullAccess;
         let root = std::env::temp_dir().join(format!("sage-side-grant-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let settings = crate::settings_store::SettingsStore::in_memory().unwrap();
         let project = database.create_project_from_root(&root).unwrap().id;
         let parent = database

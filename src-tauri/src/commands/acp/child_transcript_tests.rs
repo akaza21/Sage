@@ -1,4 +1,6 @@
 use super::*;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
@@ -13,20 +15,17 @@ use std::{
     time::Instant,
 };
 
-use crate::{
-    acp::{
-        bindings::codex::{NativeTurnsPage, test_transcript::child_read as child_read_for_test},
-        goal::{GoalState, NativeRead, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
-        runtime::{
-            HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
-            NativeRpcCompletionSink, PromptWrite, RuntimeEngine, RuntimeHost,
-        },
-        store::{
-            ActivateSessionCommand, AdapterTurnCursor, CompleteActivationCommand,
-            StartSessionCommand, activate_session, complete_activation, start_session,
-        },
+use crate::acp::{
+    bindings::codex::{NativeTurnsPage, test_transcript::child_read as child_read_for_test},
+    goal::{GoalState, NativeRead, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
+    runtime::{
+        HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, NativeRpcCompletionSink,
+        PromptWrite, RuntimeEngine, RuntimeHost,
     },
-    persistence::Database,
+    store::{
+        ActivateSessionCommand, AdapterTurnCursor, CompleteActivationCommand, StartSessionCommand,
+        activate_session, complete_activation, start_session,
+    },
 };
 use sage_acp_protocol::{
     contract::{ClientIntentId, RequiredText, SafeText, SageTurnId, SchemaVersionV1},
@@ -186,7 +185,7 @@ async fn child_ipc_journey(
             std::env::temp_dir().join(format!("sage-cp18d-ipc-{}", uuid::Uuid::new_v4()))
         });
     std::fs::create_dir_all(&root).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let chat = database
         .bootstrap_snapshot()

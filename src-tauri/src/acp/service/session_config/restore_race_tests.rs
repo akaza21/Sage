@@ -5,20 +5,18 @@ use super::restore_tests::{
 };
 use super::stored_tests::seed_chat;
 use super::*;
-use crate::{
-    acp::{
-        runtime::HostError,
-        session_config::{
-            choices,
-            notices::{self, NoticeReason, SessionConfigNotice},
-        },
+use crate::acp::{
+    runtime::HostError,
+    session_config::{
+        choices,
+        notices::{self, NoticeReason, SessionConfigNotice},
     },
-    persistence::Database,
 };
 use sage_acp_protocol::session_config::{ConfigId, ConfigMutation};
 
 fn service() -> AcpService {
-    AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap()
+    AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+        .unwrap()
 }
 
 fn store(service: &AcpService, choice: &ConfigMutation, at: i64) {
@@ -277,7 +275,7 @@ fn a_pick_made_before_a_live_runtime_reports_is_applied_once_it_does() {
         std::env::temp_dir().join(format!("sage-config-unreported-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&directory).unwrap();
     let path = directory.join("sage.db");
-    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
     seed_chat(&service);
     let first = owner(1);
     start(&service, &first, effort("low"));
@@ -291,7 +289,7 @@ fn a_pick_made_before_a_live_runtime_reports_is_applied_once_it_does() {
     );
     service.shutdown_blocking().unwrap();
     drop(service);
-    let service = AcpService::new(Database::open(&path).unwrap()).unwrap();
+    let service = AcpService::new(crate::database::open_database(&path).unwrap()).unwrap();
     let resumed = owner(2);
     service
         .lane_at(0)

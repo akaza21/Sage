@@ -1,14 +1,15 @@
 use rusqlite::params;
 
 use super::*;
-use crate::{acp::projection::TurnTerminalReasonProjection, persistence::Database};
+use crate::acp::projection::TurnTerminalReasonProjection;
 use sage_acp_protocol::{
     contract::{ClientIntentId, SchemaVersionV1},
     lifecycle::{TurnState, TurnTerminalOutcome, TurnTerminalReason},
 };
+use sage_db::database::Database;
 
 fn seeded() -> Database {
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let connection = database.connection();
     connection
         .execute_batch(&format!(

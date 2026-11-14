@@ -371,7 +371,7 @@ fn provenance() -> ActivityProvenanceV1 {
     }
 }
 
-fn seeded_activity_page(counts: &[usize]) -> crate::persistence::Database {
+fn seeded_activity_page(counts: &[usize]) -> sage_db::database::Database {
     let fixture = SchemaFixture::project_chat();
     let connection = fixture.database.connection();
     connection.execute("INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,binding_digest,capabilities_json,state,residency,terminal_at,created_at,updated_at) VALUES('session-a','project-a','chat-a',0,'binding',?1,?2,'closed','cold',1,1,1)", rusqlite::params![DIGEST_A, PENDING_CAPABILITIES]).unwrap();

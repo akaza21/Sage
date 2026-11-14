@@ -1,5 +1,6 @@
 use rusqlite::Connection;
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use super::{MAX_COLUMNS, MAX_SCHEMA_OBJECTS, MAX_SCHEMA_VERSION, SchemaClass, invalid, limit};
 
@@ -8,11 +9,13 @@ use super::{MAX_COLUMNS, MAX_SCHEMA_OBJECTS, MAX_SCHEMA_VERSION, SchemaClass, in
 /// version column, forcing a scan even though they are indexed.
 pub(super) fn reject_newer_history(connection: &Connection) -> AppResult<()> {
     admit_history_index(connection)?;
-    let newest: Option<i64> = connection.query_row(
-        "SELECT MAX(version COLLATE BINARY) FROM schema_migrations",
-        [],
-        |row| row.get(0),
-    )?;
+    let newest: Option<i64> = connection
+        .query_row(
+            "SELECT MAX(version COLLATE BINARY) FROM schema_migrations",
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if let Some(stored_version) = newest {
         reject_version(stored_version)?;
     }
@@ -20,33 +23,36 @@ pub(super) fn reject_newer_history(connection: &Connection) -> AppResult<()> {
 }
 
 fn admit_history_index(connection: &Connection) -> AppResult<()> {
-    let ordinary_table: bool = connection.query_row(
-        "SELECT EXISTS(
+    let ordinary_table: bool = connection
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM pragma_table_list
            WHERE schema='main' AND name='schema_migrations' AND type='table' AND wr=0
          )",
-        [],
-        |row| row.get(0),
-    )?;
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if !ordinary_table {
         return limit("migration history requires an ordinary rowid table");
     }
     let mut statement = connection
-        .prepare("SELECT name, type, pk FROM pragma_table_xinfo('schema_migrations') LIMIT ?1")?;
-    let mut rows = statement.query([MAX_COLUMNS as i64 + 1])?;
+        .prepare("SELECT name, type, pk FROM pragma_table_xinfo('schema_migrations') LIMIT ?1")
+        .db()?;
+    let mut rows = statement.query([MAX_COLUMNS as i64 + 1]).db()?;
     let mut columns = 0;
     let mut version_key = false;
-    while let Some(row) = rows.next()? {
+    while let Some(row) = rows.next().db()? {
         columns += 1;
         if columns > MAX_COLUMNS {
             return limit("migration history exceeds the 128-column bound");
         }
-        let primary_key: i64 = row.get(2)?;
+        let primary_key: i64 = row.get(2).db()?;
         if primary_key == 0 {
             continue;
         }
-        let name: String = row.get(0)?;
-        let declared_type: String = row.get(1)?;
+        let name: String = row.get(0).db()?;
+        let declared_type: String = row.get(1).db()?;
         if primary_key != 1
             || !name.eq_ignore_ascii_case("version")
             || !declared_type.eq_ignore_ascii_case("INTEGER")
@@ -61,13 +67,15 @@ fn admit_history_index(connection: &Connection) -> AppResult<()> {
     // An INTEGER primary key with no separate primary-key index aliases the
     // rowid. In particular this excludes SQLite's inline PRIMARY KEY DESC
     // exception. Bound metadata inspection as well as history inspection.
-    let (indexes, separate_primary): (i64, bool) = connection.query_row(
-        "SELECT COUNT(*), COALESCE(MAX(origin='pk'), 0) FROM (
+    let (indexes, separate_primary): (i64, bool) = connection
+        .query_row(
+            "SELECT COUNT(*), COALESCE(MAX(origin='pk'), 0) FROM (
            SELECT origin FROM pragma_index_list('schema_migrations') LIMIT ?1
          )",
-        [MAX_SCHEMA_OBJECTS as i64 + 1],
-        |row| Ok((row.get(0)?, row.get(1)?)),
-    )?;
+            [MAX_SCHEMA_OBJECTS as i64 + 1],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .db()?;
     if indexes > MAX_SCHEMA_OBJECTS as i64 || separate_primary {
         return limit("migration history requires version to alias the INTEGER rowid");
     }

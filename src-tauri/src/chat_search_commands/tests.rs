@@ -3,7 +3,9 @@ use std::{fs, path::Path};
 use uuid::Uuid;
 
 use super::search_project_chats_inner;
-use crate::{chat_search::ProjectChatSearchRequest, persistence::Database, state::AppState};
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::{chat_search::ProjectChatSearchRequest, state::AppState};
 
 fn root(label: &str) -> std::path::PathBuf {
     let path = std::env::temp_dir().join(format!("sage-chat-search-{label}-{}", Uuid::new_v4()));
@@ -16,7 +18,7 @@ fn command_searches_a_non_active_project_without_switching() {
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let first_root = root("first");
         let second_root = root("second");
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let first = database.create_project_from_root(&first_root).unwrap();
         let state = AppState::new(database.clone());
         let request = ProjectChatSearchRequest {

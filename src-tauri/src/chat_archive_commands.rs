@@ -4,8 +4,11 @@ use std::{
 };
 
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 use tauri::{Manager, State};
 
+use crate::chat_archive::ChatArchiveStore;
+use crate::chat_archive::delete::ArchivedChatDeleteStore;
 use crate::{
     acp::service::{ChatRuntimeRelease, explicit_close_deadline},
     chat_commands::{execute_chat_transition, failed_transition},
@@ -228,7 +231,7 @@ pub(crate) async fn delete_chat_inner(
 /// a delete and its mark removal leaves behind. Marks are view state, so a
 /// failure is only logged.
 pub(crate) fn forget_read_marks_of_deleted_chats(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     settings: &crate::settings_store::SettingsStore,
 ) {
     // Each store's lock is taken alone: collect, check, then forget.
@@ -236,11 +239,13 @@ pub(crate) fn forget_read_marks_of_deleted_chats(
         let connection = database.connection();
         let mut missing = Vec::new();
         for chat in marked {
-            let exists: bool = connection.query_row(
-                "SELECT EXISTS(SELECT 1 FROM chats WHERE id=?1)",
-                [&chat],
-                |row| row.get(0),
-            )?;
+            let exists: bool = connection
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM chats WHERE id=?1)",
+                    [&chat],
+                    |row| row.get(0),
+                )
+                .db()?;
             if !exists {
                 missing.push(chat);
             }

@@ -10,6 +10,7 @@ use std::{
 use sage_core::error::{AppError, AppResult};
 use tauri::{Emitter, State};
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::state::AppState;
 use sage_domain::resource::ResourceRef;
 

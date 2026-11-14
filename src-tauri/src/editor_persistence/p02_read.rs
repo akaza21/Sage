@@ -1,11 +1,12 @@
 use rusqlite::{OptionalExtension, params};
+use sage_db::error::SqliteResultExt;
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::persistence::Database;
+use sage_db::database::Database;
 use sage_domain::resource::ResourceRef;
 
 #[cfg(test)]
@@ -16,10 +17,29 @@ pub(crate) fn revise_after_preflight_for_test(enabled: bool) {
     REVISE_AFTER_PREFLIGHT_FOR_TEST.store(enabled, Ordering::SeqCst);
 }
 
-impl Database {
+/// Bounded reads of durable editor buffers, on the shared database.
+pub(crate) trait EditorBufferReadStore {
     /// Reads only durable dirty-buffer identity/revision. This is the P-02
     /// barrier authority and deliberately never materializes buffer content.
-    pub(crate) fn editor_buffer_revision(
+    fn editor_buffer_revision(
+        &self,
+        project_id: &str,
+        resource: &ResourceRef,
+    ) -> AppResult<Option<u64>>;
+
+    /// Preflights signed metadata and bounds the SQLite fetch in one read
+    /// transaction before Rust receives a buffer-content allocation.
+    fn read_editor_buffer_bounded(
+        &self,
+        project_id: &str,
+        resource: &ResourceRef,
+        expected_revision: u64,
+        max_bytes: usize,
+    ) -> AppResult<String>;
+}
+
+impl EditorBufferReadStore for Database {
+    fn editor_buffer_revision(
         &self,
         project_id: &str,
         resource: &ResourceRef,
@@ -32,7 +52,8 @@ impl Database {
                 params![project_id, resource.root_id, resource.relative_path],
                 |row| row.get::<_, i64>(0),
             )
-            .optional()?;
+            .optional()
+            .db()?;
         match revision {
             Some(value) if value > 0 => Ok(Some(value as u64)),
             Some(_) => Err(AppError::InvalidRequest(
@@ -42,9 +63,7 @@ impl Database {
         }
     }
 
-    /// Preflights signed metadata and bounds the SQLite fetch in one read
-    /// transaction before Rust receives a buffer-content allocation.
-    pub(crate) fn read_editor_buffer_bounded(
+    fn read_editor_buffer_bounded(
         &self,
         project_id: &str,
         resource: &ResourceRef,
@@ -56,7 +75,7 @@ impl Database {
         let max_bytes = i64::try_from(max_bytes)
             .map_err(|_| AppError::ResourceLimit("dirty-buffer cap is invalid".into()))?;
         let mut connection = self.connection();
-        let transaction = connection.transaction()?;
+        let transaction = connection.transaction().db()?;
         let metadata = transaction
             .query_row(
                 "SELECT revision, buffer_byte_len, length(CAST(buffer_content AS BLOB))
@@ -71,7 +90,8 @@ impl Database {
                     ))
                 },
             )
-            .optional()?
+            .optional()
+            .db()?
             .ok_or_else(|| AppError::InvalidRequest("dirty-buffer disappeared".into()))?;
         if metadata.0 != expected_revision
             || metadata.0 <= 0
@@ -88,11 +108,13 @@ impl Database {
         if REVISE_AFTER_PREFLIGHT_FOR_TEST.swap(false, Ordering::SeqCst) {
             // Narrow test-only interleave: the second guarded fetch must reject
             // a row changed after metadata validation in this same transaction.
-            transaction.execute(
-                "UPDATE editor_buffers SET revision = revision + 1
+            transaction
+                .execute(
+                    "UPDATE editor_buffers SET revision = revision + 1
                  WHERE project_id = ?1 AND root_id = ?2 AND relative_path = ?3",
-                params![project_id, resource.root_id, resource.relative_path],
-            )?;
+                    params![project_id, resource.root_id, resource.relative_path],
+                )
+                .db()?;
         }
         let content = transaction
             .query_row(
@@ -111,7 +133,8 @@ impl Database {
                 ],
                 |row| row.get::<_, String>(0),
             )
-            .optional()?
+            .optional()
+            .db()?
             .ok_or_else(|| AppError::InvalidRequest("dirty-buffer changed during read".into()))?;
         if i64::try_from(content.len()).ok() != Some(metadata.1) || content.as_bytes().contains(&0)
         {
@@ -119,13 +142,13 @@ impl Database {
                 "dirty-buffer content is corrupt".into(),
             ));
         }
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(content)
     }
 }
-
 #[cfg(test)]
 mod tests {
+    use crate::project_registry::create::ProjectCreateStore;
     use std::fs;
 
     use rusqlite::params;
@@ -136,7 +159,7 @@ mod tests {
     fn fixture() -> (std::path::PathBuf, Database, String, ResourceRef) {
         let root = std::env::temp_dir().join(format!("sage-p02-row-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let resource = ResourceRef {
             root_id: project.roots[0].id.clone(),

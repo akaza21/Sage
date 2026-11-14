@@ -1,6 +1,7 @@
 use std::path::Path;
 
 use rusqlite::{Connection, types::ValueRef};
+use sage_db::error::SqliteResultExt;
 use sha2::{Digest, Sha256};
 
 mod expected;
@@ -147,22 +148,28 @@ pub(super) fn classify_path(path: &Path) -> AppResult<SchemaClass> {
 }
 
 pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaClass> {
-    let marker: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
-    let tables: i64 = connection.query_row(
-        "SELECT COUNT(*) FROM (
+    let marker: i64 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .db()?;
+    let tables: i64 = connection
+        .query_row(
+            "SELECT COUNT(*) FROM (
            SELECT 1 FROM sqlite_schema
            WHERE type='table' AND name NOT LIKE 'sqlite_%' LIMIT ?1
          )",
-        [MAX_SCHEMA_OBJECTS as i64 + 1],
-        |row| row.get(0),
-    )?;
-    let has_migrations: bool = connection.query_row(
-        "SELECT EXISTS(
+            [MAX_SCHEMA_OBJECTS as i64 + 1],
+            |row| row.get(0),
+        )
+        .db()?;
+    let has_migrations: bool = connection
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_migrations'
          )",
-        [],
-        |row| row.get(0),
-    )?;
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if !has_migrations {
         if marker == 0 && tables == 0 {
             return Ok(SchemaClass::Fresh);
@@ -171,9 +178,12 @@ pub(super) fn classify_connection(connection: &Connection) -> AppResult<SchemaCl
     }
     reject_newer_history(connection)?;
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version COLLATE BINARY LIMIT ?1")?
-        .query_map([MAX_SCHEMA_VERSION as i64 + 1], |row| row.get::<_, i64>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
+        .prepare("SELECT version FROM schema_migrations ORDER BY version COLLATE BINARY LIMIT ?1")
+        .db()?
+        .query_map([MAX_SCHEMA_VERSION as i64 + 1], |row| row.get::<_, i64>(0))
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     if versions.is_empty()
         || versions.len() > MAX_SCHEMA_VERSION
         || versions
@@ -215,24 +225,26 @@ pub(super) fn database_fingerprint(connection: &Connection) -> AppResult<Databas
 }
 
 fn schema_fingerprint(connection: &Connection) -> AppResult<String> {
-    let mut statement = connection.prepare(
-        "SELECT type, name, tbl_name, COALESCE(sql, '')
+    let mut statement = connection
+        .prepare(
+            "SELECT type, name, tbl_name, COALESCE(sql, '')
          FROM sqlite_schema
          WHERE name NOT LIKE 'sqlite_%'
          ORDER BY type, name, tbl_name
          LIMIT ?1",
-    )?;
-    let mut rows = statement.query([MAX_SCHEMA_OBJECTS as i64 + 1])?;
+        )
+        .db()?;
+    let mut rows = statement.query([MAX_SCHEMA_OBJECTS as i64 + 1]).db()?;
     let mut hash = Sha256::new();
     let mut count = 0_usize;
     let mut bytes = 0_usize;
-    while let Some(row) = rows.next()? {
+    while let Some(row) = rows.next().db()? {
         count += 1;
         if count > MAX_SCHEMA_OBJECTS {
             return limit("schema contains too many objects");
         }
         for index in 0..4 {
-            let value: String = row.get(index)?;
+            let value: String = row.get(index).db()?;
             bytes = bytes.saturating_add(value.len());
             if bytes > MAX_SCHEMA_BYTES {
                 return limit("schema text exceeds 1 MiB");
@@ -249,11 +261,14 @@ fn logical_fingerprint(connection: &Connection) -> AppResult<String> {
             "SELECT name FROM sqlite_schema
              WHERE type='table' AND name NOT LIKE 'sqlite_%'
              ORDER BY name LIMIT ?1",
-        )?
+        )
+        .db()?
         .query_map([MAX_SCHEMA_OBJECTS as i64 + 1], |row| {
             row.get::<_, String>(0)
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        })
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     if table_names.len() > MAX_SCHEMA_OBJECTS {
         return limit("logical fingerprint has too many tables");
     }
@@ -269,17 +284,17 @@ fn logical_fingerprint(connection: &Connection) -> AppResult<String> {
             .collect::<Vec<_>>()
             .join(",");
         let query = format!("SELECT * FROM {quoted} ORDER BY {order}");
-        let mut statement = connection.prepare(&query)?;
+        let mut statement = connection.prepare(&query).db()?;
         let column_count = statement.column_count();
-        let mut rows = statement.query([])?;
-        while let Some(row) = rows.next()? {
+        let mut rows = statement.query([]).db()?;
+        while let Some(row) = rows.next().db()? {
             total_rows += 1;
             if total_rows > MAX_LOGICAL_ROWS {
                 return limit("logical fingerprint exceeds 200,000 rows");
             }
             hash.update([0xff]);
             for index in 0..column_count {
-                update_value(&mut hash, row.get_ref(index)?);
+                update_value(&mut hash, row.get_ref(index).db()?);
             }
         }
     }
@@ -289,11 +304,14 @@ fn logical_fingerprint(connection: &Connection) -> AppResult<String> {
 fn table_columns(connection: &Connection, quoted_table: &str) -> AppResult<Vec<String>> {
     let table = quoted_table.trim_matches('"').replace("\"\"", "\"");
     let columns = connection
-        .prepare("SELECT name FROM pragma_table_xinfo(?1) LIMIT ?2")?
+        .prepare("SELECT name FROM pragma_table_xinfo(?1) LIMIT ?2")
+        .db()?
         .query_map(rusqlite::params![table, MAX_COLUMNS as i64 + 1], |row| {
             row.get::<_, String>(0)
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        })
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     if columns.is_empty() || columns.len() > MAX_COLUMNS {
         return invalid("table has no columns or exceeds the 128-column bound");
     }

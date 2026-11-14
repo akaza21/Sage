@@ -1,15 +1,21 @@
 mod limits;
-mod p02_read;
-mod replace_record;
+pub(crate) mod p02_read;
+pub(crate) mod replace_record;
 mod snapshot_revision;
+pub(crate) mod store;
+
+#[cfg(test)]
+use self::store::EditorBufferStore;
 
 use rusqlite::{OptionalExtension, params};
 use sage_core::{
     error::{AppError, AppResult},
     time::now_millis,
 };
+use sage_db::error::SqliteResultExt;
 
-use crate::{persistence::Database, workbench_restore::validate_resource_for_project};
+use crate::workbench_restore::validate_resource_for_project;
+use sage_db::database::Database;
 use sage_domain::{
     editor::{BufferSnapshotAck, BufferSnapshotRequest},
     resource::ResourceRef,
@@ -33,133 +39,35 @@ pub struct PersistedEditorBuffer {
     pub pending_temp_path: Option<String>,
 }
 
-impl Database {
-    pub fn editor_buffer(
-        &self,
-        project_id: &str,
-        resource: &ResourceRef,
-    ) -> AppResult<Option<PersistedEditorBuffer>> {
-        self.connection()
-            .query_row(
-                "SELECT root_id, relative_path, base_fingerprint, base_byte_len,
-                        base_modified_at, line_ending, buffer_content,
-                        buffer_byte_len, buffer_fingerprint, revision,
-                        pending_temp_path
-                 FROM editor_buffers
-                 WHERE project_id = ?1 AND root_id = ?2 AND relative_path = ?3",
-                params![project_id, resource.root_id, resource.relative_path],
-                editor_buffer_from_row,
-            )
-            .optional()
-            .map_err(Into::into)
+fn write_editor_buffer(
+    database: &Database,
+    project_id: &str,
+    request: &BufferSnapshotRequest,
+    content: &str,
+    buffer_fingerprint: &str,
+    rebase: bool,
+) -> AppResult<BufferSnapshotAck> {
+    let byte_len = content.len() as i64;
+    let mut connection = database.write_connection()?;
+    let transaction = connection.transaction().db()?;
+    // A rebase skips both guards: it replaces the base, and its revision
+    // may be lower than the row's (the WebView's count restarts when a
+    // File is reopened). That is safe only because rebase_editor_buffer
+    // runs as a Terminal operation, after every snapshot queued before
+    // it and before any queued after; a snapshot that then carries the
+    // old base is refused by the base guard.
+    let (stored, settled) = settled_by_stored(
+        &transaction,
+        project_id,
+        request,
+        buffer_fingerprint,
+        rebase,
+    )?;
+    if let Some(ack) = settled {
+        return Ok(ack);
     }
-
-    pub fn dirty_editor_buffers(
-        &self,
-        project_id: &str,
-        root_id: Option<&str>,
-    ) -> AppResult<Vec<PersistedEditorBuffer>> {
-        let connection = self.connection();
-        preflight_dirty_recovery(&connection, project_id)?;
-        let sql = if root_id.is_some() {
-            "SELECT root_id, relative_path, base_fingerprint, base_byte_len,
-                    base_modified_at, line_ending, buffer_content,
-                    buffer_byte_len, buffer_fingerprint, revision,
-                    pending_temp_path
-             FROM editor_buffers
-             WHERE project_id = ?1 AND root_id = ?2
-             ORDER BY updated_at DESC
-             LIMIT 17"
-        } else {
-            "SELECT root_id, relative_path, base_fingerprint, base_byte_len,
-                    base_modified_at, line_ending, buffer_content,
-                    buffer_byte_len, buffer_fingerprint, revision,
-                    pending_temp_path
-             FROM editor_buffers
-             WHERE project_id = ?1
-             ORDER BY updated_at DESC
-             LIMIT 17"
-        };
-        let mut statement = connection.prepare(sql)?;
-        let mapped = if let Some(root_id) = root_id {
-            statement.query_map(params![project_id, root_id], editor_buffer_from_row)?
-        } else {
-            statement.query_map(params![project_id], editor_buffer_from_row)?
-        };
-        let buffers = mapped.collect::<Result<Vec<_>, _>>()?;
-        if buffers.len() > MAX_DIRTY_BUFFERS as usize {
-            return Err(AppError::ResourceLimit(format!(
-                "project exceeds its {MAX_DIRTY_BUFFERS}-buffer recovery limit"
-            )));
-        }
-        if buffers
-            .iter()
-            .any(|buffer| buffer.content.len() as u64 != buffer.byte_len)
-        {
-            return Err(AppError::InvalidRequest(
-                "dirty-buffer byte metadata is corrupt".into(),
-            ));
-        }
-        drop(statement);
-        drop(connection);
-        for buffer in &buffers {
-            let connection = self.connection();
-            validate_resource_for_project(&connection, project_id, &buffer.resource)?;
-        }
-        Ok(buffers)
-    }
-
-    pub fn persist_editor_buffer(
-        &self,
-        project_id: &str,
-        request: &BufferSnapshotRequest,
-        content: &str,
-        buffer_fingerprint: &str,
-    ) -> AppResult<BufferSnapshotAck> {
-        self.write_editor_buffer(project_id, request, content, buffer_fingerprint, false)
-    }
-
-    /// "Keep mine": writes the buffer on a new base, `request.base`, in one
-    /// transaction. Unlike a snapshot it replaces the durable base instead of
-    /// refusing a different one; the caller has checked that base is on disk.
-    pub fn rebase_editor_buffer(
-        &self,
-        project_id: &str,
-        request: &BufferSnapshotRequest,
-        content: &str,
-        buffer_fingerprint: &str,
-    ) -> AppResult<BufferSnapshotAck> {
-        self.write_editor_buffer(project_id, request, content, buffer_fingerprint, true)
-    }
-
-    fn write_editor_buffer(
-        &self,
-        project_id: &str,
-        request: &BufferSnapshotRequest,
-        content: &str,
-        buffer_fingerprint: &str,
-        rebase: bool,
-    ) -> AppResult<BufferSnapshotAck> {
-        let byte_len = content.len() as i64;
-        let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
-        // A rebase skips both guards: it replaces the base, and its revision
-        // may be lower than the row's (the WebView's count restarts when a
-        // File is reopened). That is safe only because rebase_editor_buffer
-        // runs as a Terminal operation, after every snapshot queued before
-        // it and before any queued after; a snapshot that then carries the
-        // old base is refused by the base guard.
-        let (stored, settled) = settled_by_stored(
-            &transaction,
-            project_id,
-            request,
-            buffer_fingerprint,
-            rebase,
-        )?;
-        if let Some(ack) = settled {
-            return Ok(ack);
-        }
-        let (other_count, other_bytes): (i64, i64) = transaction.query_row(
+    let (other_count, other_bytes): (i64, i64) = transaction
+        .query_row(
             "SELECT COUNT(*), COALESCE(SUM(buffer_byte_len), 0)
              FROM editor_buffers
              WHERE project_id = ?1
@@ -170,20 +78,22 @@ impl Database {
                 request.resource.relative_path
             ],
             |row| Ok((row.get(0)?, row.get(1)?)),
-        )?;
-        if !stored && other_count >= MAX_DIRTY_BUFFERS {
-            return Err(AppError::ResourceLimit(format!(
-                "project already has the {MAX_DIRTY_BUFFERS}-buffer limit"
-            )));
-        }
-        if other_bytes + byte_len > MAX_TOTAL_DIRTY_BYTES {
-            return Err(AppError::ResourceLimit(format!(
-                "dirty buffers exceed the {} MiB project limit",
-                MAX_TOTAL_DIRTY_BYTES / 1024 / 1024
-            )));
-        }
-        let updated_at = now_millis();
-        transaction.execute(
+        )
+        .db()?;
+    if !stored && other_count >= MAX_DIRTY_BUFFERS {
+        return Err(AppError::ResourceLimit(format!(
+            "project already has the {MAX_DIRTY_BUFFERS}-buffer limit"
+        )));
+    }
+    if other_bytes + byte_len > MAX_TOTAL_DIRTY_BYTES {
+        return Err(AppError::ResourceLimit(format!(
+            "dirty buffers exceed the {} MiB project limit",
+            MAX_TOTAL_DIRTY_BYTES / 1024 / 1024
+        )));
+    }
+    let updated_at = now_millis();
+    transaction
+        .execute(
             "INSERT INTO editor_buffers (
                project_id, root_id, relative_path, base_fingerprint,
                base_byte_len, base_modified_at, line_ending, buffer_content,
@@ -217,106 +127,23 @@ impl Database {
                 request.revision as i64,
                 updated_at,
             ],
-        )?;
-        set_matching_tab_dirty(
-            &transaction,
-            project_id,
-            &request.resource,
-            true,
-            updated_at,
-        )?;
-        transaction.commit()?;
-        Ok(BufferSnapshotAck {
-            revision: request.revision,
-            persisted_at: updated_at as u64,
-            dirty: true,
-            applied: true,
-        })
-    }
-
-    pub fn apply_clean_editor_snapshot(
-        &self,
-        project_id: &str,
-        request: &BufferSnapshotRequest,
-    ) -> AppResult<BufferSnapshotAck> {
-        let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
-        // A clean snapshot's text is the base's.
-        let (stored, settled) = settled_by_stored(
-            &transaction,
-            project_id,
-            request,
-            &request.base.fingerprint,
-            false,
-        )?;
-        if let Some(ack) = settled {
-            return Ok(ack);
-        }
-        if stored {
-            delete_buffer_in(&transaction, project_id, &request.resource, now_millis())?;
-        }
-        let persisted_at = now_millis();
-        transaction.commit()?;
-        Ok(BufferSnapshotAck {
-            revision: request.revision,
-            persisted_at: persisted_at as u64,
-            dirty: false,
-            applied: true,
-        })
-    }
-
-    pub fn set_editor_pending_temp(
-        &self,
-        project_id: &str,
-        resource: &ResourceRef,
-        temp_path: &str,
-    ) -> AppResult<()> {
-        let updated = self.write_connection()?.execute(
-            "UPDATE editor_buffers
-             SET pending_temp_path = ?4, updated_at = ?5
-             WHERE project_id = ?1 AND root_id = ?2 AND relative_path = ?3",
-            params![
-                project_id,
-                resource.root_id,
-                resource.relative_path,
-                temp_path,
-                now_millis()
-            ],
-        )?;
-        if updated != 1 {
-            return Err(AppError::InvalidRequest(
-                "dirty buffer disappeared before save".into(),
-            ));
-        }
-        Ok(())
-    }
-
-    pub fn clear_editor_pending_temp(
-        &self,
-        project_id: &str,
-        resource: &ResourceRef,
-    ) -> AppResult<()> {
-        self.write_connection()?.execute(
-            "UPDATE editor_buffers
-             SET pending_temp_path = NULL, updated_at = ?4
-             WHERE project_id = ?1 AND root_id = ?2 AND relative_path = ?3",
-            params![
-                project_id,
-                resource.root_id,
-                resource.relative_path,
-                now_millis()
-            ],
-        )?;
-        Ok(())
-    }
-
-    pub fn delete_editor_buffer(&self, project_id: &str, resource: &ResourceRef) -> AppResult<()> {
-        let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
-        delete_buffer_in(&transaction, project_id, resource, now_millis())?;
-        transaction.commit()?;
-        Ok(())
-    }
+        )
+        .db()?;
+    set_matching_tab_dirty(
+        &transaction,
+        project_id,
+        &request.resource,
+        true,
+        updated_at,
+    )
+    .db()?;
+    transaction.commit().db()?;
+    Ok(BufferSnapshotAck {
+        revision: request.revision,
+        persisted_at: updated_at as u64,
+        dirty: true,
+        applied: true,
+    })
 }
 
 fn delete_buffer_in(
@@ -377,6 +204,7 @@ fn set_matching_tab_dirty(
 
 #[cfg(test)]
 mod recovery_bound_tests {
+    use crate::project_registry::create::ProjectCreateStore;
     use std::{fs, path::Path};
 
     use rusqlite::params;
@@ -387,7 +215,7 @@ mod recovery_bound_tests {
     fn fixture() -> (std::path::PathBuf, Database, String, String) {
         let root = std::env::temp_dir().join(format!("sage-buffer-limit-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let root_id = project.roots[0].id.clone();
         (root, database, project.id, root_id)

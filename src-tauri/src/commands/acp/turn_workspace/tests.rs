@@ -1,12 +1,15 @@
 use super::*;
 use crate::acp::store::{StartSessionCommand, start_session};
+use crate::chat_lifecycle::store::ChatLifecycleStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::{contract::ProjectionRevision, intent::BindingId};
 
 #[tokio::test]
 async fn optional_baseline_releases_transition_before_waiting_and_never_blocks_send_on_capacity() {
     let root = std::env::temp_dir().join(format!("sage-send-capture-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(&project.id).unwrap();
@@ -115,7 +118,7 @@ fn workspace_marks(state: &AppState) -> i64 {
 async fn an_archive_during_the_unlocked_capture_fails_the_send_as_stale() {
     let root = std::env::temp_dir().join(format!("sage-send-archive-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
-    let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&root.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
     let layout = |snapshot: sage_domain::project::BootstrapSnapshot| {

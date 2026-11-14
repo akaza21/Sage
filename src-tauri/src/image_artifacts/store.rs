@@ -2,6 +2,7 @@ use std::{fs, io::Cursor, path::Path};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
@@ -89,7 +90,7 @@ pub(crate) fn ingest_image(
              label,created_at,updated_at
              ) VALUES (?1,?2,?3,NULL,NULL,NULL,'pending',?4,?5,?6,?7,?8,?9,?10,?11,unixepoch(),unixepoch())",
             params![id, project_id, chat_id, media_type.as_str(), width, height, bytes.len() as i64, hash, thumbnail.len() as i64, format!("{:x}", Sha256::digest(&thumbnail)), label],
-        )?;
+        ).db()?;
         Ok(())
     })();
     if stored.is_err() {
@@ -314,11 +315,13 @@ pub(crate) fn remove_pending_image(
         return Err(invalid("image artifact id is not canonical"));
     }
     validate_root(root)?;
-    let removed = connection.execute(
-        "DELETE FROM chat_image_artifacts
+    let removed = connection
+        .execute(
+            "DELETE FROM chat_image_artifacts
          WHERE id=?1 AND project_id=?2 AND chat_id=?3 AND lifecycle='pending'",
-        params![artifact_id, project_id, chat_id],
-    )?;
+            params![artifact_id, project_id, chat_id],
+        )
+        .db()?;
     if removed != 1 {
         return Err(invalid("pending image artifact is unavailable"));
     }
@@ -357,7 +360,8 @@ pub(crate) fn verify_image_reference(
                 ))
             },
         )
-        .optional()?;
+        .optional()
+        .db()?;
     let Some((mime, width, height, length, hash, state, label)) = row else {
         return Err(invalid("image artifact is unavailable"));
     };

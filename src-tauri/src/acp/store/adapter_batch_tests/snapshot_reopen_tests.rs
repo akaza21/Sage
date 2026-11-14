@@ -1,5 +1,6 @@
 use super::*;
-use crate::persistence::Database;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageChatId,
@@ -8,6 +9,7 @@ use sage_acp_protocol::{
     file_diff::{SnapshotReadError, pair_digest},
     intent::{BindingId, SafeResourceLocation, SafeResourceRef},
 };
+use sage_db::database::Database;
 use sage_domain::{
     chat::{ProjectLayoutRequest, WorkbenchTab},
     resource::ResourceRef,
@@ -179,7 +181,7 @@ fn file_backed_fixture() -> (Database, PathBuf, PathBuf, AdapterStoreOwner, Sage
     let root = directory.join("project-root");
     fs::create_dir_all(&root).unwrap();
     let path = directory.join("sage.db");
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let bootstrap = database.bootstrap_snapshot().unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
@@ -342,7 +344,7 @@ fn populated_pair_and_durable_diff_ref_reopen_without_git_or_disk_fallback() {
         .unwrap();
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     let roots = [root_id.clone()];
     let connection = reopened.connection();
     assert_eq!(reopen_blobs_in(&connection, 1), before_blobs);

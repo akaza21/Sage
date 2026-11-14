@@ -1,3 +1,6 @@
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use std::{fs, path::Path, sync::mpsc, thread, time::Duration};
 
 use uuid::Uuid;
@@ -57,7 +60,7 @@ fn chat(database: &Database, session_id: &str) -> String {
 
 #[test]
 fn simulator_seed_and_turn_are_v5_and_ledgers_remain_exact() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let appended = database
@@ -126,7 +129,7 @@ fn historical_welcome_is_closed_and_first_prompt_lazily_installs_head() {
     let base = std::env::temp_dir().join(format!("sage-fresh-chat-v5-{}", Uuid::new_v4()));
     fs::create_dir_all(&base).unwrap();
     let path = base.join("sage.db");
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let initial = database.bootstrap_snapshot().unwrap();
@@ -153,7 +156,7 @@ fn historical_welcome_is_closed_and_first_prompt_lazily_installs_head() {
     assert_eq!(welcome_shape, ("closed".into(), "cold".into(), 0, 0, 0));
 
     drop(database);
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     assert!(database.bootstrap_snapshot().unwrap().messages.is_empty());
 
     let appended = database
@@ -183,7 +186,7 @@ fn historical_welcome_is_closed_and_first_prompt_lazily_installs_head() {
     let session_id = appended.session_id;
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     let restored = reopened.bootstrap_snapshot().unwrap();
     assert_eq!(restored.session_id, Some(session_id));
     assert_eq!(restored.messages.len(), 2);
@@ -196,7 +199,7 @@ fn simulator_model_identity_restores_reuses_and_replaces_attempts() {
     let base = std::env::temp_dir().join(format!("sage-simulator-model-{}", Uuid::new_v4()));
     fs::create_dir_all(&base).unwrap();
     let path = base.join("sage.db");
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let deep = database
@@ -214,7 +217,7 @@ fn simulator_model_identity_restores_reuses_and_replaces_attempts() {
     assert_eq!(deep_model, "sim-deep");
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     let restored = reopened.bootstrap_snapshot().unwrap();
     assert_eq!(
         restored.session_id.as_deref(),
@@ -270,7 +273,7 @@ fn simulator_model_identity_restores_reuses_and_replaces_attempts() {
     assert_eq!(fast.messages.len(), 6);
     drop(reopened);
 
-    let restarted = Database::open(&path).unwrap();
+    let restarted = crate::database::open_database(&path).unwrap();
     let restored = restarted.bootstrap_snapshot().unwrap();
     assert_eq!(restored.session_id, Some(fast.session_id));
     assert_eq!(restored.selected_model_id.as_deref(), Some("sim-fast"));
@@ -280,7 +283,7 @@ fn simulator_model_identity_restores_reuses_and_replaces_attempts() {
 
 #[test]
 fn simulator_model_replacement_and_turn_roll_back_as_one_transaction() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let deep = database
@@ -343,7 +346,7 @@ fn simulator_model_replacement_and_turn_roll_back_as_one_transaction() {
 
 #[test]
 fn full_session_ledger_blocks_new_turn_without_touching_history() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let session_id = database
@@ -393,7 +396,7 @@ fn simulator_preserves_ade0005_capacity_boundary_after_v5() {
     let base = std::env::temp_dir().join(format!("sage-capacity-v5-{}", Uuid::new_v4()));
     fs::create_dir_all(&base).unwrap();
     let database_path = base.join("sage.db");
-    let database = Database::open(&database_path).unwrap();
+    let database = crate::database::open_database(&database_path).unwrap();
     let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
 
@@ -423,7 +426,7 @@ fn simulator_preserves_ade0005_capacity_boundary_after_v5() {
     ));
 
     drop(database);
-    let reopened = Database::open(&database_path).unwrap();
+    let reopened = crate::database::open_database(&database_path).unwrap();
     let projection = reopened.messages(&session_id).unwrap();
     assert_eq!(projection.len(), MAX_BOOTSTRAP_MESSAGES as usize);
     assert_eq!(projection.last().unwrap().sequence, 5_000);
@@ -436,7 +439,7 @@ fn native_reopen_is_idempotent_for_simulator_projection_and_ledgers() {
     let base = std::env::temp_dir().join(format!("sage-simulator-reopen-{}", Uuid::new_v4()));
     fs::create_dir_all(&base).unwrap();
     let path = base.join("sage.db");
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let appended = database
@@ -453,7 +456,7 @@ fn native_reopen_is_idempotent_for_simulator_projection_and_ledgers() {
         )
         .unwrap();
     drop(database);
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     let usage_after: (i64, i64, i64) = reopened
         .connection()
         .query_row(
@@ -481,7 +484,7 @@ fn native_reopen_is_idempotent_for_simulator_projection_and_ledgers() {
 
 #[test]
 fn simulator_turn_rolls_back_both_items_when_interrupted() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &session_id);
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -501,7 +504,7 @@ fn simulator_turn_waits_for_project_switch_and_restart_is_stable() {
     fs::create_dir_all(&root_a).unwrap();
     fs::create_dir_all(&root_b).unwrap();
     let database_path = base.join("sage.db");
-    let database = Database::open(&database_path).unwrap();
+    let database = crate::database::open_database(&database_path).unwrap();
     let project_a = database.create_project_from_root(&root_a).unwrap();
     let welcome_session_a =
         install_legacy_welcome(&database, &project_a.id, "simulatorTurnCommitted");
@@ -535,7 +538,7 @@ fn simulator_turn_waits_for_project_switch_and_restart_is_stable() {
     let session_a = turn.join().unwrap().unwrap().session_id;
     switching.join().unwrap().unwrap();
     drop(database);
-    let reopened = Database::open(&database_path).unwrap();
+    let reopened = crate::database::open_database(&database_path).unwrap();
     assert_eq!(reopened.messages(&session_a).unwrap().len(), 2);
     assert_eq!(reopened.active_project_id().unwrap(), Some(project_b.id));
     drop(reopened);
@@ -544,7 +547,7 @@ fn simulator_turn_waits_for_project_switch_and_restart_is_stable() {
 
 #[test]
 fn inactive_simulator_session_is_rejected_before_any_item() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let session_a = legacy_welcome_session(&database);
     let chat_a = chat(&database, &session_a);
     let _session_b = legacy_welcome_session(&database);
@@ -574,7 +577,7 @@ fn inactive_simulator_session_is_rejected_before_any_item() {
 
 #[test]
 fn transcript_uses_latest_bounded_window() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &session_id);
     let mut connection = database.connection();
@@ -604,7 +607,7 @@ fn transcript_uses_latest_bounded_window() {
 
 #[test]
 fn native_projection_truncates_oldest_messages_without_rejecting_durable_turns() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let welcome_session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &welcome_session_id);
     let large = "x".repeat(240_000);
@@ -639,7 +642,7 @@ fn native_projection_truncates_oldest_messages_without_rejecting_durable_turns()
 
 #[test]
 fn transcript_rejects_a_mismatched_item_ledger_before_projection() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let session_id = legacy_welcome_session(&database);
     database
         .connection()
@@ -658,7 +661,7 @@ fn transcript_rejects_a_mismatched_item_ledger_before_projection() {
 
 #[test]
 fn oversized_message_is_rejected_without_a_partial_turn() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let session_id = legacy_welcome_session(&database);
     let chat_id = chat(&database, &session_id);
     let before: i64 = database

@@ -7,6 +7,7 @@
 use super::native_confirm::{self, ConfirmDialog, ConfirmGate, Refusal, Timing};
 use super::*;
 use crate::acp::bindings::access_policy::lists_mode;
+use crate::project_registry::ProjectRegistryStore;
 use sage_acp_protocol::contract::ClientIntentId;
 use tauri::Manager;
 
