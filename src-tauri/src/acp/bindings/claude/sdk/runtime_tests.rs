@@ -1007,3 +1007,32 @@ fn usage_limits_read_through_claude_code_and_an_api_key_account_reports_none() {
     );
     assert_eq!(usage.state(), UsageState::Unsupported);
 }
+
+#[test]
+fn a_command_longer_than_a_tool_label_keeps_the_session_and_clips_its_label() {
+    const COMMAND: &str = r#"Get-ChildItem src-tauri\src -Directory | Select -Expand Name; "---"; Get-ChildItem src-tauri\src -Recurse -File | ? { $_.Name -match 'claude' } | % { $_.FullName.Replace((Get-Location).Path,'') + "  " + (Get-Content $_.FullName | Measure-Object -Line).Lines }; "---FEATURES"; Get-ChildItem src\features -Directory | Select -Expand Name; "--- PTY/terminal"; Get-ChildItem src-tauri\src -Recurse -File | ? { $_.FullName -match 'pty|terminal' } | Select -First 10 | % { $_.FullName.Replace((Get-Location).Path,'') }; "--- acp runtimes"; Get-ChildItem src-tauri\src\acp -Directory -Recurse | Select -First 40 | % { $_.FullName.Replace((Get-Location).Path,'') }"#;
+    let mut runtime = prompted();
+    let events = feed(
+        &mut runtime,
+        json!({"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"toolu_1","name":"PowerShell","input":{"command":COMMAND,"description":"Survey Rust modules"}}]}}),
+    );
+    let (label, input_summary) = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::Item {
+                payload:
+                    NormalizedPayload::ToolCall {
+                        label,
+                        input_summary,
+                        ..
+                    },
+                ..
+            } => Some((label.as_str(), input_summary.as_ref().map(|s| s.as_str()))),
+            _ => None,
+        })
+        .expect("the command reaches the store as a tool row");
+    assert_eq!(label.len(), 512);
+    assert!(COMMAND.starts_with(label.trim_end_matches('\u{2026}')));
+    assert!(label.ends_with('\u{2026}'));
+    assert_eq!(input_summary, Some(COMMAND));
+}

@@ -45,16 +45,23 @@ fn upgrading_a_populated_ledger_seeks_undo_intents_and_recovers_only_the_unsettl
         let mut connection = fixture.database.connection();
         // Persist an old schema with ordinary history, a settled attempt and
         // a second attempt on the same Turn. Its receipt must name its start.
+        let identity_trigger = crate::acp::migration::historical_trigger_sql(
+            27,
+            "deny_agent_session_identity_mutation",
+        )
+        .unwrap();
         connection
-            .execute_batch(
-                "DROP INDEX idx_session_facts_undo_start;
+            .execute_batch(&format!(
+                "DROP TRIGGER deny_agent_session_identity_mutation;
+             {identity_trigger};
+             DROP INDEX idx_session_facts_undo_start;
              DROP INDEX idx_session_facts_undo_recovery;
              DROP INDEX idx_session_facts_undo_settled;
              DROP TABLE acp_imported_histories;
              DROP INDEX idx_agent_sessions_external_session;
              DELETE FROM schema_migrations WHERE version>=28;
              PRAGMA user_version=27;",
-            )
+            ))
             .unwrap();
         let tx = connection.transaction().unwrap();
         for _ in 0..2048 {

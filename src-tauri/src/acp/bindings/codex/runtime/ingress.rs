@@ -1,9 +1,29 @@
+use super::super::state::{McpListAnswer, unbounded_mcp_list};
 use super::*;
 use crate::acp::bindings::adapter::ResourceMapper;
 use crate::acp::transport::{Frame, request_payload_digest};
 use sage_acp_protocol::intent::ExternalId;
 
 impl CodexRuntime {
+    /// A response past the structural bounds every frame is held to. Only
+    /// an MCP list, a model page or a fork answer may be one; any other
+    /// fails the session.
+    pub(super) fn discard_invalid_answer(
+        &mut self,
+        frame: &Frame,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let id = crate::acp::bindings::adapter::response_id_for_discard(frame)
+            .ok_or(AdapterRuntimeError::Frame)?;
+        match self.inner.take_mcp_list_answer(id) {
+            Some(McpListAnswer::Awaited) => {
+                self.native_rpc_reply = Some(unbounded_mcp_list(frame.as_bytes()));
+            }
+            Some(McpListAnswer::Abandoned) => {}
+            None => return self.discard_invalid_model_page(id),
+        }
+        super::support::one(AdapterEvent::IgnoredLate)
+    }
+
     pub(super) fn ingest_frame(
         &mut self,
         frame: &Frame,
