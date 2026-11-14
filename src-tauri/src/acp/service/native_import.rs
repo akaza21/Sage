@@ -12,7 +12,7 @@ use crate::acp::{
     goal::{NativeRead, NativeRpcReply},
     runtime::RuntimeHost,
     scheduler::RuntimeOwner,
-    store::native_import::{import_lister, imported_threads},
+    store::native_import::{held_threads, import_lister, imported_threads},
 };
 
 use super::{AcpService, native_read::NativeReadError};
@@ -102,13 +102,26 @@ impl AcpService {
             .map_err(|_| NativeReadError::RecoveryRequired)?;
         let read = NativeRead::ImportableSessions { cursor, excluded };
         match self.native_page(&owner, &host, read)? {
-            NativeRpcReply::SessionsPage(page) => Ok(ListedSessions {
-                page,
-                lister: ImportLister {
-                    session_id: owner.session_id,
-                    runtime_epoch: owner.runtime_epoch,
-                },
-            }),
+            NativeRpcReply::SessionsPage(mut page) => {
+                // The harness leaves out only the newest imports; every
+                // thread a session holds would be refused, so none shows.
+                let listed: Vec<_> = page
+                    .sessions
+                    .iter()
+                    .map(|session| session.thread_id.as_str())
+                    .collect();
+                let held = held_threads(&self.database.connection(), project, &listed)
+                    .map_err(|_| NativeReadError::RecoveryRequired)?;
+                page.sessions
+                    .retain(|session| !held.contains(&session.thread_id));
+                Ok(ListedSessions {
+                    page,
+                    lister: ImportLister {
+                        session_id: owner.session_id,
+                        runtime_epoch: owner.runtime_epoch,
+                    },
+                })
+            }
             _ => Err(NativeReadError::RecoveryRequired),
         }
     }

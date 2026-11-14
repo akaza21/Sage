@@ -8,3 +8,8 @@ CREATE TABLE acp_imported_histories (
     CHECK (json_valid(history_json) AND length(CAST(history_json AS BLOB)) BETWEEN 2 AND 4194304),
   created_at INTEGER NOT NULL
 ) STRICT;
+
+-- An import refuses, and a listing leaves out, a thread a Project session
+-- already holds; both look the thread up by Project.
+CREATE INDEX idx_agent_sessions_external_session
+  ON agent_sessions(project_id, external_session_id);

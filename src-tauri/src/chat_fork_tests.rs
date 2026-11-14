@@ -545,6 +545,69 @@ fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
 }
 
 #[test]
+fn a_listing_leaves_out_every_thread_the_project_holds() {
+    use crate::acp::store::native_import::{
+        HELD_THREADS, held_threads, import_lister, imported_threads,
+    };
+    let importable = forkable().replace(
+        r#""nativeSessionFork":true"#,
+        r#""nativeSessionFork":true,"nativeSessionImport":true"#,
+    );
+    let fixture = Fixture::new(&importable);
+    let (project, _) = fixture.ids();
+    let lister = import_lister(&fixture.database.connection(), &project, None)
+        .unwrap()
+        .expect("the hot Codex chat lists sessions");
+    let thread = ExternalId::new("externalSessionId", "thread-cli".to_owned()).unwrap();
+    fixture
+        .database
+        .create_import_chat(
+            &fixture.layout(),
+            &lister,
+            &thread,
+            "Session",
+            r#"{"turns":[],"retentionLimited":false}"#,
+        )
+        .expect("import");
+    let connection = fixture.database.connection();
+    // The harness is asked to leave out only imported threads, but an
+    // import refuses every thread a Project session holds, so a page is
+    // filtered against all of them.
+    assert_eq!(
+        imported_threads(&connection, &project).unwrap(),
+        ["thread-cli"]
+    );
+    let held = held_threads(
+        &connection,
+        &project,
+        &["thread-cli", "thread-parent", "thread-new"],
+    )
+    .unwrap();
+    assert_eq!(
+        held,
+        ["thread-cli", "thread-parent"]
+            .map(String::from)
+            .into_iter()
+            .collect()
+    );
+    // Each listed thread is an indexed lookup, never a scan of the Project.
+    let plan = connection
+        .prepare(&format!("EXPLAIN QUERY PLAN {HELD_THREADS}"))
+        .unwrap()
+        .query_map(rusqlite::params![project.as_str(), "[]"], |row| {
+            row.get::<_, String>(3)
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+    assert!(
+        plan.contains("idx_agent_sessions_external_session"),
+        "{plan}"
+    );
+}
+
+#[test]
 fn an_import_reads_only_on_the_runtime_that_listed_it() {
     use crate::acp::{
         contract::{RuntimeEpoch, SageAgentSessionId},

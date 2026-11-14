@@ -189,7 +189,8 @@ pub(crate) fn imported_session(
 }
 
 /// The native threads the Project has imported, newest first, at most the
-/// 100 a listing can leave out.
+/// 100 a listing asks the harness to leave out. A page is still filtered
+/// by `held_threads`, since an import refuses any thread a session holds.
 pub(crate) fn imported_threads(
     connection: &Connection,
     project_id: &SageProjectId,
@@ -204,4 +205,25 @@ pub(crate) fn imported_threads(
         .query_map([project_id.as_str()], |row| row.get(0))?
         .collect::<Result<_, _>>()?;
     Ok(threads)
+}
+
+/// The held threads among a JSON array of thread ids: an indexed lookup
+/// per listed thread.
+pub(crate) const HELD_THREADS: &str = "SELECT external_session_id FROM agent_sessions
+     WHERE project_id=?1 AND external_session_id IN (SELECT value FROM json_each(?2))";
+
+/// Which of `threads` (one listed page) a Project session already holds,
+/// so an import of them would be refused.
+pub(crate) fn held_threads(
+    connection: &Connection,
+    project_id: &SageProjectId,
+    threads: &[&str],
+) -> Result<std::collections::HashSet<String>, StoreError> {
+    let threads =
+        serde_json::to_string(threads).map_err(|_| StoreError::Corrupt("listed threads"))?;
+    let mut statement = connection.prepare_cached(HELD_THREADS)?;
+    let held = statement
+        .query_map(params![project_id.as_str(), threads], |row| row.get(0))?
+        .collect::<Result<_, _>>()?;
+    Ok(held)
 }

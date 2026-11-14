@@ -365,7 +365,7 @@ fn the_fold_keeps_the_usage_ledger_and_activity_parents_consistent() {
 fn the_folded_history_projects_one_tool_call_per_tool() {
     let mut connection = seeded();
     schema_upgrade::apply_v11(&mut connection).unwrap();
-    // The page reads the v16 child-epoch, v21 session-surface and v25
+    // The page reads the v16 child-epoch, v21 session-surface and v29
     // imported-history tables; this history predates them.
     connection
         .execute_batch(

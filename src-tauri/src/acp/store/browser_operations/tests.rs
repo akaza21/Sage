@@ -611,6 +611,7 @@ fn upgraded_store_with_a_duplicate_terminal_recovers_only_the_unfinished_operati
                  DROP INDEX idx_session_facts_undo_recovery;
                  DROP INDEX idx_session_facts_undo_settled;
                  DROP TABLE acp_imported_histories;
+                 DROP INDEX idx_agent_sessions_external_session;
                  DELETE FROM schema_migrations WHERE version>=27;
                  PRAGMA user_version=26;",
             )
