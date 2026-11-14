@@ -18,6 +18,7 @@ mod platform;
 mod platform_anchor;
 #[cfg(test)]
 mod portable_coverage_tests;
+mod post_v18;
 mod probe;
 mod publish;
 mod schema_upgrade;
@@ -142,18 +143,7 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
         .as_ref()
         .map(|paths| MigrationLock::acquire(paths.parent()))
         .transpose()?;
-    workspace_changes::apply(&mut opened.connection)?;
-    title_provenance::apply(&mut opened.connection)?;
-    session_scope::apply(&mut opened.connection)?;
-    notifications::apply(&mut opened.connection)?;
-    config_choices::apply(&mut opened.connection)?;
-    session_resume_link::apply(&mut opened.connection)?;
-    title_source::apply(&mut opened.connection)?;
-    session_facts_turn_index::apply(&mut opened.connection)?;
-    operation_terminal_index::apply(&mut opened.connection)?;
-    turn_undo_intent_indexes::apply(&mut opened.connection)?;
-    imported_history::apply(&mut opened.connection)?;
-    session_capabilities::apply(&mut opened.connection)?;
+    post_v18::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
