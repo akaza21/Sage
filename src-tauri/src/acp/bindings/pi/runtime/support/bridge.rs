@@ -41,7 +41,6 @@ impl PiRuntime {
         self.translator.bridge_tools = true;
     }
 
-    /// Grants the bridge write authority over the session's project root.
     /// Callers enable it only when the bundled extension is present in Pi.
     pub(crate) fn enable_bridge_for_root(
         &mut self,
@@ -64,7 +63,6 @@ impl PiRuntime {
         }
     }
 
-    /// Drops the retained old/new pair; a later commit then finds nothing to write.
     pub(in crate::acp::bindings::pi::runtime) fn discard_bridge_edit(&mut self) {
         if let Some(bridge) = self.bridge.as_mut() {
             bridge.pending = None;
@@ -172,7 +170,6 @@ impl PiRuntime {
         if title != "sage.pi.commit.v1" {
             return refused(Refusal::Unsupported);
         }
-        // A commit names the one approved edit; anything else was never approved.
         let Some(pending) = bridge.pending.take() else {
             return refused(Refusal::NotApproved);
         };

@@ -15,8 +15,7 @@ use super::{AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, Translati
 const MAX_CLOSED_AT_TURN_END: usize = MAX_EVENTS_PER_FRAME / 2;
 
 impl StandardAcpTranslator {
-    /// The fallback key base of the current thought block. A closed block's
-    /// later thoughts open a new item instead of reopening a completed one.
+    /// A closed block's later thoughts open a new item instead of reopening a completed one.
     pub(super) fn thought_base(&self) -> String {
         match self.thought_block {
             0 => "thought".to_owned(),
@@ -24,8 +23,6 @@ impl StandardAcpTranslator {
         }
     }
 
-    /// A plan item counts toward the turn's item cap like text and tools; a
-    /// new plan id past the cap is refused before it is remembered.
     pub(super) fn admit_open_item(&self, key: &str) -> Result<(), TranslationError> {
         if !self.open_items.contains_key(key)
             && self.tracked_item_count() >= LIMITS.wire.items_per_turn as usize
@@ -43,7 +40,6 @@ impl StandardAcpTranslator {
             .count()
     }
 
-    /// Remembers the latest snapshot of an item ACP will not close.
     pub(super) fn remember_open(&mut self, events: &[AdapterEvent]) {
         for event in events {
             if let AdapterEvent::Item {
@@ -64,7 +60,6 @@ impl StandardAcpTranslator {
         }
     }
 
-    /// Answer text after an untagged thought ends that thought block.
     pub(super) fn close_thought_block(&mut self) -> Result<Vec<AdapterEvent>, TranslationError> {
         let key = turn_scoped_key(&self.thought_base(), self.turn_scope())?;
         let Some((external_key, payload)) = self.open_items.remove(key.as_str()) else {
@@ -74,7 +69,6 @@ impl StandardAcpTranslator {
         Ok(vec![completed(external_key, payload)])
     }
 
-    /// Closes the turn's open output before a non-cancelled turn terminal.
     pub(super) fn close_open_items(&mut self, events: &mut Vec<AdapterEvent>) {
         let open = std::mem::take(&mut self.open_items);
         events.extend(

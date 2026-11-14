@@ -1,13 +1,9 @@
-//! Installs a new session as its Chat's head: the session row, its usage
-//! counters and the head pointer, replacing any earlier head of the Chat.
-
 use rusqlite::{Transaction, params};
 
 use crate::acp::contract::{ProjectionRevision, SageAgentSessionId};
 
 use super::{StoreError, sessions::increment_session_usage};
 
-/// The durable identity of a session installed as a Chat head.
 pub(super) struct HeadSession<'a> {
     pub(super) project: &'a str,
     pub(super) chat: &'a str,
@@ -62,7 +58,6 @@ pub(super) fn install_head_session(
         params![session.project, session.chat, session_id.as_str()],
     )?;
     increment_session_usage(transaction, session.project)?;
-    // Head replacement is delete-then-insert in one transaction.
     transaction.execute(
         "DELETE FROM chat_session_heads WHERE project_id=?1 AND chat_id=?2",
         params![session.project, session.chat],

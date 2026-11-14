@@ -1,7 +1,5 @@
 use super::*;
 
-/// Pi keeps a queued steer across an abort and would run it ahead of the next
-/// prompt; a Turn that steered must leave Pi's queue empty.
 #[tokio::test]
 async fn pi_pump_steer_is_answered_and_the_ended_turn_clears_pi_queue() {
     let fixture = Fixture::new();

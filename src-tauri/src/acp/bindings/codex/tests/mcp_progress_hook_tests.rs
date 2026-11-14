@@ -49,7 +49,6 @@ fn progress(item: &str, message: &str) -> Vec<u8> {
     }}))
 }
 
-/// The one item event a frame produced, with its status line.
 fn item_update(
     disposition: IngressDisposition,
 ) -> (String, ItemLifecycle, Option<ToolState>, Option<String>) {

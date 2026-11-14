@@ -10,8 +10,6 @@ pub(crate) struct RetainedCommandOutput {
     pub(crate) truncated: bool,
 }
 
-/// Joins text blocks exactly as they appeared in one bounded wire frame.
-///
 /// Callers must sanitize the joined value before retaining it: separate block
 /// sanitization would lose token context such as `Bearer` followed by a value.
 pub(crate) fn join_command_output_blocks<'a>(
@@ -79,7 +77,6 @@ pub(crate) fn retain_command_output(input: &str) -> Option<RetainedCommandOutput
 }
 
 impl RetainedCommandOutput {
-    /// Composes the bounded presentation without modifying marker-free state.
     pub(crate) fn display_text(&self) -> Option<String> {
         if !self.truncated {
             let mut display = String::new();

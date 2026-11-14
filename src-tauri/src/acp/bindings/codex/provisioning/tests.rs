@@ -17,7 +17,6 @@ const NAMED_FILES: [&str; 8] = [
     "README.md",
 ];
 
-/// The named fixtures padded out to the pinned package's file count.
 fn fixture_files() -> Vec<PathBuf> {
     NAMED_FILES
         .iter()

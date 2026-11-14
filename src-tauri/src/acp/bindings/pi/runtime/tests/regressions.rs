@@ -354,7 +354,6 @@ fn pi_aborted_assistant_message_end_cancels_its_thought() {
                 payload: NormalizedPayload::ThoughtSummary { .. },
                 ..
             },
-            // The message never streamed text, so no empty answer appears.
             AdapterEvent::Absorbed
         ]
     ));
@@ -393,7 +392,6 @@ fn pi_observed_write_is_declined_and_aborted_without_offering_approval() {
         }),
         Err(AdapterRuntimeError::LaterPermissionMiss)
     ));
-    // Sage's policy stopped the Turn, not the user, so it ends Interrupted.
     let abort = batch.into_parts().1.remove(0);
     runtime.commit_mandatory_egress(abort.token()).unwrap();
     let abort = deliver(&mut runtime, abort);

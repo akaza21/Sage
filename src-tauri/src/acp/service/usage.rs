@@ -8,9 +8,8 @@ use crate::acp::{
 };
 
 impl AcpService {
-    /// Refreshes the runtime's usage limits from its harness, then answers
-    /// with what the harness last reported. A read that misses its deadline
-    /// is abandoned and still serves the last snapshot.
+    /// A read that misses its deadline is abandoned and still serves the last
+    /// snapshot.
     pub(crate) fn read_usage(&self, owner: RuntimeOwner) -> UsageState {
         let Some(lane) = self.lane_for(&owner) else {
             return UsageState::Offline;
@@ -37,7 +36,6 @@ impl AcpService {
         cell.state()
     }
 
-    /// Marks the page when its live runtime can report usage limits.
     pub(super) fn compose_usage(&self, page: &mut AcpChatPage) {
         page.usage = self
             .current_usage_cell(page)

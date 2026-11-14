@@ -1,5 +1,3 @@
-//! Launching Claude Code for one admitted session.
-
 use std::sync::Arc;
 
 use crate::acp::{

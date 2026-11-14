@@ -55,10 +55,8 @@ enum Token {
     },
 }
 
-/// An oversized frame, once scanned to its end.
 #[derive(Debug, PartialEq, Eq)]
 pub(super) enum Scanned {
-    /// A response to the request with this id.
     Reply(u64),
     /// One complete value with no top-level id; nothing waits on it.
     Idless,
@@ -293,7 +291,7 @@ impl OversizeIdScanner {
         Ok(())
     }
 
-    /// What the whole frame was. A frame naming a `method` is a request or
+    /// A frame naming a `method` is a request or
     /// a notification, never a reply, whatever its id.
     pub(super) fn finish(&self) -> Scanned {
         if !self.is_complete() {
@@ -306,7 +304,6 @@ impl OversizeIdScanner {
         }
     }
 
-    /// The frame was one complete JSON value, whether or not it had an id.
     fn is_complete(&self) -> bool {
         matches!(self.token, Token::None)
             && matches!(self.expect, Expect::Done)
@@ -315,7 +312,6 @@ impl OversizeIdScanner {
     }
 }
 
-/// The character a one-letter escape such as `\t` stands for.
 fn unescaped(letter: u8) -> u16 {
     u16::from(match letter {
         b'b' => 0x08,

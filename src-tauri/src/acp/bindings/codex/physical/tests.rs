@@ -52,8 +52,6 @@ const FIXTURE_FILES: [(&str, &[u8], &str); 8] = [
     ),
 ];
 
-/// Content of the files that pad the named fixtures out to the pinned
-/// package's file count.
 const PADDING_FILE_BYTES: &[u8] = b"x";
 
 fn padding_files() -> impl Iterator<Item = PathBuf> {
@@ -64,8 +62,6 @@ fn padding_files() -> impl Iterator<Item = PathBuf> {
     })
 }
 
-/// Paths for exactly the pinned file count whose files and distinct parent
-/// directories together make `entries` traversal entries.
 fn paths_with_entry_count(entries: usize) -> Vec<PathBuf> {
     let mut directories = entries - EXPECTED_FILE_COUNT;
     let paths = (0..EXPECTED_FILE_COUNT)

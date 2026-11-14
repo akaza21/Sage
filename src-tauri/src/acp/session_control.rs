@@ -1,7 +1,4 @@
-//! Requests that act on a running harness session without starting a turn:
-//! undoing a turn's file changes, stopping one running activity, naming
-//! the session after its chat, and listing, reloading, reconnecting or
-//! signing in to its MCP servers.
+//! These requests act on a running harness session without starting a turn.
 
 use super::{contract::SageTurnId, intent::ExternalId};
 
@@ -12,8 +9,6 @@ pub(crate) enum SessionControl {
     UndoTurn { turn_id: SageTurnId },
     /// Stops one running activity the harness reported as stoppable.
     StopActivity { activity_id: ExternalId },
-    /// Names the harness's session after its chat, where the harness lists
-    /// its sessions by name.
     SetTitle {
         title: super::contract::RequiredText<{ super::intent::session_event::SESSION_TITLE_BYTES }>,
     },
@@ -25,7 +20,6 @@ pub(crate) enum SessionControl {
     SignInMcpServer {
         name: super::contract::RequiredText<128>,
     },
-    /// Connects one MCP server again, without changing its configuration.
     ReconnectMcpServer {
         name: super::contract::RequiredText<128>,
     },

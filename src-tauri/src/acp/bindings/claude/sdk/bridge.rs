@@ -1,14 +1,7 @@
-//! The Agent SDK protocol, presented as ACP session traffic.
-//!
 //! Claude Code's SDK protocol is stream-json over stdio: `user` messages in,
 //! `assistant`/`user`/`stream_event`/`result` messages out, and
 //! `control_request`/`control_response` pairs in both directions for
-//! initialize, permissions, interrupts and settings. Sage's Claude session
-//! state machine and translator speak ACP, the model every binding projects
-//! into. The bridge holds the small amount of state needed to map one onto
-//! the other: which control reply answers which ACP request, which ACP
-//! permission id stands for which `can_use_tool` request, and the running
-//! prompt that a `result` completes.
+//! initialize, permissions, interrupts and settings.
 
 use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
@@ -30,7 +23,6 @@ mod usage;
 
 pub(super) use usage::UsageReply;
 
-/// Bounds on per-turn bookkeeping; the inner session caps pending requests.
 const MAX_PENDING: usize = 32;
 /// Approval cards the session holds until the user's answer is written:
 /// open, or answered but not yet delivered.
@@ -50,8 +42,6 @@ pub(super) enum BridgeError {
     Capacity,
 }
 
-/// What one SDK frame becomes: ACP frames for the session, and replies Sage
-/// owes Claude Code directly (for control requests the session never sees).
 #[derive(Debug, Default, PartialEq)]
 pub(super) struct Inbound {
     pub(super) acp: Vec<Value>,
@@ -59,13 +49,10 @@ pub(super) struct Inbound {
     /// Approval cards to cancel, by wire id, before the ACP frames: Claude
     /// Code no longer waits on them.
     pub(super) withdrawn: Vec<u64>,
-    /// Session-scoped facts: notices, activities, the effective model.
     pub(super) session: Vec<crate::acp::intent::session_event::SessionScopedEvent>,
     /// Questions the permission request in `acp` asks instead.
     pub(super) questions: Option<crate::acp::intent::user_input::UserInputRequest>,
-    /// The reply to a session control.
     pub(super) native: Option<crate::acp::goal::NativeRpcReply>,
-    /// What a usage read learned about the plan's limits.
     pub(super) usage: Option<UsageReply>,
     /// Subagent facts, applied before the ACP frames.
     pub(super) children: Vec<crate::acp::bindings::claude::runtime::ChildEvent>,
@@ -87,11 +74,8 @@ enum Pending {
         value: String,
     },
     Interrupt,
-    /// Withdrawing a waiting mid-turn message, on the way to an interrupt.
     Withdraw(String),
-    /// A session control; its reply completes the native request.
     Control,
-    /// A passive request Sage stops waiting for at its deadline.
     Passive(controls::PassiveRequest),
     /// A passive request whose caller gave up: its late reply is dropped.
     Abandoned,
@@ -141,19 +125,15 @@ pub(super) struct SdkBridge {
     held: Option<Value>,
 }
 
-/// What a written SDK frame changed, so an undelivered one can be undone.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Sent {
     Prompt,
     Control(String),
     Answer(String),
-    /// A mid-turn message, by id.
     Steer(String),
 }
 
 impl SdkBridge {
-    /// `session_id` is the Claude session the CLI was launched to create or
-    /// resume; `launch_model` the model it was launched with, if any.
     pub(super) fn new(session_id: String, launch_model: Option<String>) -> Self {
         Self {
             session_id,
@@ -189,8 +169,6 @@ impl SdkBridge {
         Ok(json!({"type": "control_request", "request_id": request_id, "request": request}))
     }
 
-    /// The state a written frame changed, if Claude Code never receiving it
-    /// would leave the bridge waiting.
     pub(super) fn sent(sdk: &Value) -> Option<Sent> {
         match sdk.get("type").and_then(Value::as_str)? {
             "user" => Some(Sent::Prompt),
@@ -213,8 +191,6 @@ impl SdkBridge {
         }))
     }
 
-    /// What Sage still needs from a frame too large to read: a turn's end,
-    /// or a failed reply to one of Sage's own requests.
     pub(super) fn essentials(sdk: &Value) -> Option<Value> {
         match sdk.get("type")?.as_str()? {
             "result" => {
@@ -244,7 +220,6 @@ impl SdkBridge {
         }
     }
 
-    /// Claude Code never received a frame: forget what it started.
     pub(super) fn undo(&mut self, sent: &Sent) {
         match sent {
             Sent::Prompt => {

@@ -8,14 +8,12 @@ use super::{ConfigId, ConfigKind, ConfigMutation, ConfigOption, ConfigValue, Ses
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum ModeSelection {
-    /// The session is already in the mode.
     Current,
     /// Apply this mutation; `previous` is the mode it leaves.
     Change {
         previous: Option<String>,
         mutation: ConfigMutation,
     },
-    /// The session does not advertise the mode.
     NotOffered,
 }
 
@@ -41,7 +39,6 @@ impl SessionConfig {
         }
     }
 
-    /// Moves the mode option to `mode`, when it offers it.
     pub(super) fn set_mode_option(&mut self, mode: &ConfigId) {
         let Some(option) = self.mode_option() else {
             return;
@@ -62,8 +59,6 @@ impl SessionConfig {
         }
     }
 
-    /// Moves the plain session modes to the mode option's value, after the
-    /// agent reported its options alone.
     pub(crate) fn follow_mode_option(&mut self) {
         let Some(ConfigKind::Select { current_value, .. }) =
             self.mode_option().map(|option| option.kind.clone())
@@ -77,8 +72,6 @@ impl SessionConfig {
         }
     }
 
-    /// Whether every source the session reports its mode in says `mode`:
-    /// the mode option and the plain session modes, where present.
     pub(crate) fn in_mode(&self, mode: &str) -> bool {
         let option = self.mode_option().map(|option| match &option.kind {
             ConfigKind::Select { current_value, .. } => current_value.as_str() == mode,
@@ -123,8 +116,6 @@ impl SessionConfig {
         }
     }
 
-    /// Whether `mutation` changes the session mode: a plain mode change, or
-    /// a value for the option that restates the modes.
     pub(crate) fn changes_mode(&self, mutation: &ConfigMutation) -> bool {
         match mutation {
             ConfigMutation::Mode(_) => true,
@@ -270,7 +261,6 @@ mod tests {
             moved.select_mode("default"),
             ModeSelection::Change { .. }
         ));
-        // A reported mode moves the option with it.
         let mut reported = split;
         reported
             .set_current_mode(ConfigId::new("id", "bypassPermissions").unwrap())

@@ -53,7 +53,6 @@ impl SensitiveBytes {
         &self.0
     }
 
-    /// Discards the sensitive allocation and exposes only bounded diagnostic metadata.
     pub(crate) fn redact(self, code: DiagnosticCode) -> SafeDiagnostic {
         SafeDiagnostic {
             code,

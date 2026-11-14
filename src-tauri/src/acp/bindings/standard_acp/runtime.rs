@@ -1,9 +1,3 @@
-//! The standard ACP runtime: one profile-driven runtime for every agent
-//! that speaks plain ACP over stdio. A [`StandardAcpProfile`] carries what
-//! differs between agents (labels, the session mode to pin, the launch
-//! policy, whether elicitation is offered); a [`StandardAcpBindingSource`]
-//! re-proves the admitted binding before launch.
-
 mod auth;
 mod commands;
 mod elicitation;

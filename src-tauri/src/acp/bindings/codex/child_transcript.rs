@@ -49,7 +49,6 @@ pub(crate) struct NativeTurnsPage {
     pub(crate) next_cursor: Option<String>,
 }
 
-/// A native session started outside Sage, as the import picker lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NativeSessionSummary {
@@ -59,7 +58,6 @@ pub(crate) struct NativeSessionSummary {
     pub(crate) updated_at: i64,
 }
 
-/// One `thread/list` page of importable sessions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NativeSessionsPage {
@@ -70,12 +68,10 @@ pub(crate) struct NativeSessionsPage {
 /// Turns asked for per `thread/turns/list` page. Small pages keep one long
 /// Turn from making a page too large; 32 pages still hold `MAX_TURNS`.
 pub(crate) const TURN_PAGE: usize = 4;
-/// Sessions asked for per `thread/list` page.
 pub(crate) const SESSION_PAGE: usize = 25;
 const MAX_CURSOR_BYTES: usize = 1024;
 const MAX_TITLE_CHARS: usize = 200;
 
-/// The `result` of the response to `request_id`, or why there is none.
 fn page_result(wire: &[u8], request_id: u64) -> Result<Value, ChildTranscriptError> {
     if wire.len() > MAX_WIRE_BYTES {
         return Err(ChildTranscriptError::Capacity);

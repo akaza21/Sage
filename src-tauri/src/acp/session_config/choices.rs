@@ -1,21 +1,16 @@
-//! Durable last-confirmed session config choices (schema v23).
-//!
 //! The live overlay is never journaled; this table keeps only the value the
 //! harness last confirmed for each mode or option, so a resumed runtime can
-//! reapply it. Rows are rewritten in place and capped per session.
+//! reapply it.
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{ConfigId, ConfigKind, ConfigMutation, ConfigValue, SessionConfig};
 use crate::acp::contract::{BoundedVec, SageAgentSessionId};
 use sage_core::limits::{LIMITS, SESSION_CONFIG_CHOICE_BYTES, SESSION_CONFIG_CHOICES_PER_SESSION};
 
-/// A session's config while it has no live runtime: what it last reported,
-/// with its stored choices as the current values.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct RestoredSessionConfig {
     pub sage_agent_session_id: SageAgentSessionId,
-    /// What has to happen before the shown choices are the session's.
     pub awaiting: Awaiting,
     #[serde(flatten)]
     pub config: SessionConfig,
@@ -63,7 +58,6 @@ fn from_columns(kind: &str, config_id: String, value_json: &str) -> Option<Confi
     })
 }
 
-/// Stores `choice` as the session's confirmed value for its mode or option.
 /// A new option beyond the per-session cap, or an oversized value, is not
 /// stored. Returns whether a row was written.
 pub(crate) fn record(
@@ -96,8 +90,7 @@ pub(crate) fn record(
     Ok(written > 0)
 }
 
-/// Gives session `to` the confirmed choices of session `from` (a fork
-/// continues its parent's session). Runs in the caller's transaction.
+/// Runs in the caller's transaction.
 pub(crate) fn copy(
     connection: &Connection,
     from: &SageAgentSessionId,
@@ -121,8 +114,7 @@ pub(crate) fn copy(
     Ok(())
 }
 
-/// Keeps `config` as what the session last reported, for showing while it
-/// has no live runtime. A config past the live bound is not stored.
+/// A config past the live bound is not stored.
 pub(crate) fn save_snapshot(
     connection: &Connection,
     session: &SageAgentSessionId,
@@ -145,8 +137,7 @@ pub(crate) fn save_snapshot(
     Ok(())
 }
 
-/// What a session without a live runtime shows: the config it last reported
-/// with its stored choices as the current values. A stored choice the
+/// A stored choice the
 /// snapshot does not offer is left out (the restore falls back for it); with
 /// no snapshot, each stored option shows only its own value. `None` when
 /// nothing is stored.
@@ -191,7 +182,6 @@ fn with_stored(
     Ok(Some(config))
 }
 
-/// The value stored for the mode or option `choice` sets.
 pub(crate) fn get(
     connection: &Connection,
     session: &SageAgentSessionId,
@@ -258,7 +248,6 @@ pub(crate) fn replace_if_stored(
     Ok(replaced)
 }
 
-/// Sets `choice` as the current value in `config` when `config` offers it.
 /// An option `config` lacks is added with the stored value as its only
 /// choice, so its label still shows.
 fn apply(config: &mut SessionConfig, choice: &ConfigMutation) {
@@ -386,7 +375,6 @@ mod tests {
         for index in 0..SESSION_CONFIG_CHOICES_PER_SESSION {
             assert!(record(&connection, &session, &select(&format!("o{index}"), "a"), 1).unwrap());
         }
-        // A new option past the cap is not stored; a known one still updates.
         assert!(!record(&connection, &session, &select("extra", "a"), 2).unwrap());
         assert!(record(&connection, &session, &select("o0", "b"), 3).unwrap());
         let stored = load(&connection, &session).unwrap();
@@ -424,7 +412,6 @@ mod tests {
         assert!(record(&connection, &parent, &fast, 2).unwrap());
         copy(&connection, &parent, &fork).unwrap();
         assert_eq!(load(&connection, &fork).unwrap(), [mode.clone(), fast]);
-        // The two sessions' choices are separate from then on.
         assert!(replace_if_stored(&mut connection, &fork, &mode, None, None, 3).unwrap());
         assert!(load(&connection, &parent).unwrap().contains(&mode));
     }
@@ -450,7 +437,6 @@ mod tests {
             current: ConfigId::new("current", "a").unwrap(),
             reason: super::super::notices::NoticeReason::NotOffered,
         };
-        // The restore read "retired"; a pick of "b" was stored since.
         record(&connection, &session, &model("b"), 1).unwrap();
         super::super::notices::set(&connection, &session, &notice("old"), 1).unwrap();
         let stale = model("retired");
@@ -469,7 +455,6 @@ mod tests {
         assert_eq!(load(&connection, &session).unwrap(), [model("b")]);
         let kept = super::super::notices::load(&connection, &session).unwrap();
         assert_eq!(kept.unwrap().saved.as_str(), "old");
-        // Against the value actually stored, it writes and settles the notice.
         assert!(
             replace_if_stored(
                 &mut connection,

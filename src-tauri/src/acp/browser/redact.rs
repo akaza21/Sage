@@ -102,8 +102,6 @@ fn sensitive(key: &str) -> bool {
     )
 }
 
-/// Whether a bare value looks like a credential: a known token prefix, a
-/// JWT, a hex run of 32 or more characters, or a random-looking token.
 fn secret_like(value: &str) -> bool {
     BARE_TOKENS.is_match(value) || SECRET_SHAPES.is_match(value) || random_token(value)
 }

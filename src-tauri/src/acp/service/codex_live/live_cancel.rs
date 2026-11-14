@@ -59,12 +59,7 @@ impl Lane<'_> {
         self.park_idle_runtime(deadline)
     }
 
-    /// Parks this lane's runtime through the graceful explicit close a
-    /// replacement uses: the host drains, parks its session durably and
-    /// exits, and a later activation resumes it. Ok(false) leaves the
-    /// runtime as it was: no runtime, a reserved Turn, a host without
-    /// shutdown recovery, a session control still waiting for its answer,
-    /// or a refused idle drain.
+    /// Ok(false) leaves the runtime as it was.
     pub(crate) fn park_idle_runtime(
         &self,
         deadline: std::time::Instant,

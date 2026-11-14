@@ -14,12 +14,9 @@ use crate::acp::{
 use super::super::{PiRuntime, RequestKind};
 use crate::acp::bindings::pi::Operation;
 
-/// Pi's own commands that RPC runs by name rather than as a prompt. As in
-/// Pi's CLI, they take the place of a template or skill of the same name.
-/// RPC does not list Pi's built-ins, so their wording is Pi's own from its
-/// command table.
+/// Pi's built-in commands take precedence over templates or skills of the same name. RPC does
+/// not list them, so their wording comes from Pi's command table.
 const COMPACT: &str = "compact";
-/// Pi's session info and stats, which Sage's status panel shows.
 const SESSION: &str = "session";
 
 /// One entry of Pi's `get_commands`. Its `source` says what the command
@@ -43,9 +40,7 @@ fn command(value: &Value) -> Result<AvailableCommand, AdapterRuntimeError> {
     )
 }
 
-/// Pi's commands with its built-ins added, so they list like any other. A
-/// catalog larger than Sage's list keeps its first commands, leaving room
-/// for the built-ins.
+/// A catalog larger than Sage's list keeps its first commands, leaving room for the built-ins.
 fn with_builtins(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
     let builtins = [
         AvailableCommand::new(
@@ -89,8 +84,6 @@ impl PiRuntime {
         Ok(AdapterEvent::Absorbed)
     }
 
-    /// Sends a prompt as Pi expects it: a built-in command by its own request,
-    /// an extension command as a command turn, anything else as a prompt.
     pub(in crate::acp::bindings::pi::runtime) fn begin_prompt(
         &mut self,
         prompt: &Prompt,
@@ -107,7 +100,6 @@ impl PiRuntime {
             prompt.action.is_none() && matches!(command, Some((CommandDispatch::CommandTurn, ..)));
         let turn_key = turn_key.to_owned();
         let operation = match (&prompt.action, command) {
-            // The composer's Compact action is Pi's own compaction, as `/compact` is.
             (Some(SessionAction::Compact {}), _) => Operation::Compact {
                 turn_key,
                 instructions: None,

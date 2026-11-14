@@ -8,8 +8,6 @@ use super::{OutgoingRequest, RequestError, RequestKind};
 const MCP_PAGE: u32 = crate::acp::mcp::inventory::MAX_LISTED_SERVERS as u32;
 
 impl OutgoingRequest {
-    /// `mcpServerStatus/list` through the thread's own MCP connections,
-    /// with tools and auth only: resources are counted, not read.
     pub(crate) fn mcp_list(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
         Self::build(
             id,
@@ -26,7 +24,6 @@ impl OutgoingRequest {
         Self::build(id, RequestKind::McpReload, Value::Null)
     }
 
-    /// `mcpServer/oauth/login` for one server, on the thread's connection.
     pub(crate) fn mcp_sign_in(
         id: u64,
         thread_id: &RequiredText<512>,
@@ -74,7 +71,6 @@ mod tests {
                 json!({"name": "notion", "threadId": "thread-1"})
             )
         );
-        // Each method is one the pinned app-server advertises.
         let pinned: Value = serde_json::from_str(include_str!(
             "../../../../../testdata/acp/codex/observed-effort-schema.json"
         ))

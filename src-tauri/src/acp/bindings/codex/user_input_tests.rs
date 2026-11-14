@@ -1,7 +1,3 @@
-//! Codex `item/tool/requestUserInput` journeys against the harness-neutral
-//! question contract: single choice, free-text "other", secret, cancel,
-//! interrupt and harness withdrawal.
-
 use serde_json::{Value, json};
 
 use crate::{
@@ -25,8 +21,6 @@ fn ask(adapter: &mut CodexAdapter, id: u64, auto_resolution_ms: Option<u64>) -> 
     )
 }
 
-/// Asks the three standard questions with the given `isBlocking` and
-/// `autoResolutionMs` fields.
 fn ask_timed(adapter: &mut CodexAdapter, id: u64, timing: Value) -> NormalizedPayload {
     let mut frame = json!({"id": id, "method": "item/tool/requestUserInput", "params": {
         "threadId": "thread-1", "turnId": "turn-1", "itemId": format!("call-{id}"),

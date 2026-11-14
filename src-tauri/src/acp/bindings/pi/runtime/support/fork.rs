@@ -1,8 +1,6 @@
-//! Forking a Pi chat through Sage's Branch action. Pi's `clone` copies the
-//! session at its current position and moves the process onto the copy, so
-//! the runtime reads the copy's file with `get_state` and moves back onto
-//! its own session with `switch_session`. The fork chat then reopens the
-//! copy in its own runtime, as any saved Pi chat reopens.
+//! Pi's `clone` copies the session at its current position and moves the process onto the
+//! copy, so the runtime reads the copy's file with `get_state` and moves back onto its own
+//! session with `switch_session`.
 
 use serde_json::Value;
 
@@ -18,7 +16,6 @@ use crate::acp::{
 use super::super::{PiRuntime, RequestKind};
 use super::session::{SESSION_DIR_SCAN_LIMIT, session_path};
 
-/// Forks a runtime holds until their chats commit or their copies are removed.
 /// A full ledger refuses the next fork rather than make a copy it cannot track.
 const MAX_TRACKED_FORKS: usize = 8;
 
@@ -29,8 +26,6 @@ pub(in crate::acp::bindings::pi::runtime) struct ForkCopy {
     cleanup_pending: bool,
 }
 
-/// A fork under way reserves one ledger slot until it settles. No other
-/// fork may start meanwhile. Its command id names the step it waits on.
 #[derive(Debug)]
 pub(in crate::acp::bindings::pi::runtime) struct Fork {
     step: ForkStep,
@@ -50,7 +45,6 @@ impl Drop for PiRuntime {
     fn drop(&mut self) {
         // Recovery can outlive the process. Retry refused-copy deletions
         // once when ownership ends, including EOF before a return reply.
-        // Confirmed forks awaiting their Chat's commit remain untouched.
         self.retry_fork_cleanup();
         if let Some(Fork {
             step: ForkStep::Returning { home, fork },
@@ -63,7 +57,6 @@ impl Drop for PiRuntime {
 }
 
 impl PiRuntime {
-    /// Starts a fork of the idle session through its latest reply.
     pub(in crate::acp::bindings::pi::runtime) fn begin_fork(
         &mut self,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -84,8 +77,6 @@ impl PiRuntime {
         Ok(egress)
     }
 
-    /// The file of the chat's own session, which Pi writes once it has a
-    /// message; a session with none has nothing to fork.
     fn home_path(&self) -> Option<String> {
         let dir = self.session_dir.as_deref()?;
         let key = self.external_session.as_ref()?;
@@ -95,17 +86,14 @@ impl PiRuntime {
             .ok()
     }
 
-    /// Whether `command_id` is the request the fork under way waits on.
     pub(super) fn is_fork_step(&self, command_id: &str) -> bool {
         self.fork
             .as_ref()
             .is_some_and(|fork| fork.command_id == command_id)
     }
 
-    /// Takes the next fork step from Pi's answer. Pi must always be moved
-    /// back onto the chat's session, whether or not the caller still waits,
-    /// so each step is sent regardless; only the last one answers the
-    /// caller. A Pi that cannot be moved back leaves the runtime unusable.
+    /// Pi must always be moved back onto the chat's session, whether or not the caller still waits,
+    /// so each step is sent regardless.
     pub(super) fn fork_reply(
         &mut self,
         command: NativeCommand,
@@ -133,9 +121,7 @@ impl PiRuntime {
                 // A failed `get_state` leaves the copy's file unknown: Pi's
                 // `clone` answer does not name it, and the session folder is
                 // shared with every other Pi chat, so no file can be safely
-                // picked as the copy. Pi is still moved back and the fork is
-                // refused; that copy stays in Pi's own session list and
-                // keeps its reserved ledger slot.
+                // picked as the copy.
                 let fork = data.as_ref().and_then(fork_key);
                 let path = home.clone();
                 (
@@ -152,7 +138,6 @@ impl PiRuntime {
             }
             _ => return Err(self.lost_fork()),
         };
-        // Keep ownership of the copy across reserving/writing the next step.
         // A failed return must not discard the only record of Pi's clone.
         self.fork.as_mut().ok_or(AdapterRuntimeError::Frame)?.step = step;
         let Ok(egress) = self.begin_one(Operation::Native(request), RequestKind::Native) else {
@@ -171,8 +156,6 @@ impl PiRuntime {
         Ok(Some(egress))
     }
 
-    /// Pi is back on the chat's session: the copy it reported becomes the
-    /// fork, unless it is the chat's own file or no caller wants it.
     fn settle_fork(
         &mut self,
         home: &str,
@@ -191,7 +174,6 @@ impl PiRuntime {
             return self.answer_fork(awaited, NativeRpcReply::Rejected);
         };
         if !awaited {
-            // No chat will open a copy its caller gave up on.
             self.cleanup_fork_copy(self.forks.len() - 1);
             return None;
         }
@@ -210,8 +192,6 @@ impl PiRuntime {
     fn lost_fork(&mut self) -> AdapterRuntimeError {
         if let Some(fork) = self.fork.take() {
             if let ForkStep::Returning { home, fork } = fork.step {
-                // No Chat can own this failed fork. Remove its known copy,
-                // retaining failed deletions in the bounded cleanup ledger.
                 let _ = self.settle_fork(&home, fork, false);
             } else {
                 // Pi may have cloned before we could read the copy's name.
@@ -226,8 +206,6 @@ impl PiRuntime {
         AdapterRuntimeError::Operation
     }
 
-    /// A fork step that never reached Pi. Before the clone Pi is still on
-    /// the chat's session; after it, Pi may be on the copy.
     pub(super) fn fork_step_dropped(&mut self, command_id: &str) {
         if !self.is_fork_step(command_id) {
             return;
@@ -242,10 +220,6 @@ impl PiRuntime {
         }
     }
 
-    /// Lets go of a fork this runtime made. A committed fork is its chat's
-    /// now; a refused one leaves only the copy's file, which is removed so
-    /// Pi does not list a chat Sage never opened. Failed deletions still take
-    /// a ledger slot and are retried before the next fork can clone.
     pub(in crate::acp::bindings::pi::runtime) fn release_fork_copy(
         &mut self,
         fork: &ExternalId,
@@ -270,8 +244,6 @@ impl PiRuntime {
         Ok(None)
     }
 
-    /// One pass over at most eight entries per fork attempt; no retry queue
-    /// or background task can outlive this runtime or grow beyond its ledger.
     fn retry_fork_cleanup(&mut self) {
         for index in (0..self.forks.len()).rev() {
             if self.forks[index].cleanup_pending {
@@ -304,15 +276,12 @@ impl PiRuntime {
         (self.remove_file_for_test)(path)
     }
 
-    /// Removes the saved copy of a fork no chat holds; true once no such
-    /// file is left. The key names a file inside Pi's session folder only.
     fn remove_copy(&self, fork: &ExternalId) -> bool {
         let Some(dir) = self.session_dir.as_deref() else {
             return false;
         };
-        // Fork keys come from `session_file_key`, so they name the exact
-        // file in this directory. Do not use an existence probe: it would
-        // mistake inaccessible metadata for a copy that is already gone.
+        // Do not use an existence probe: it would mistake inaccessible
+        // metadata for a copy that is already gone.
         let file = dir.join(format!("{}.jsonl", fork.as_str()));
         match self.remove_file(&file) {
             Ok(()) => true,
@@ -321,8 +290,7 @@ impl PiRuntime {
     }
 }
 
-/// The chat key of the copy Pi moved onto, from `get_state`. Only a saved
-/// copy can be reopened, so a bare session id does not count.
+/// Only a saved copy can be reopened, so a bare session id does not count.
 fn fork_key(state: &Value) -> Option<String> {
     session_file_key(state.get("sessionFile")?.as_str()?).map(str::to_owned)
 }

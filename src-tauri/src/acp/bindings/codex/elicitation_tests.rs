@@ -1,6 +1,3 @@
-//! Codex `mcpServer/elicitation/request` on the shared question card,
-//! `currentTime/read`, and MCP servers whose sign-in expired.
-
 use serde_json::{Value, json};
 
 use crate::{
@@ -46,7 +43,6 @@ fn asked(adapter: &mut CodexAdapter, frame: &Value) -> NormalizedPayload {
     payload.clone()
 }
 
-/// The reply sent at once, without asking the user.
 fn immediate(adapter: &mut CodexAdapter, frame: &Value) -> Value {
     let IngressDisposition::Events(events) = ingest(adapter, frame) else {
         panic!("the request must be answered");
@@ -282,7 +278,6 @@ fn current_time_read_is_answered_with_whole_unix_seconds() {
     assert!((before..before + 5).contains(&now), "{now} is not now");
 }
 
-/// The notice a failed startup status projects; the turn keeps running.
 fn startup_failure_notice(adapter: &mut CodexAdapter, failure: Value) -> String {
     let mut frame = json!({"method": "mcpServer/startupStatus/updated", "params": {
         "threadId": "thread-1", "name": "tickets", "status": "failed"

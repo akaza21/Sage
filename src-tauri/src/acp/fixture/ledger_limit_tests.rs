@@ -1,8 +1,3 @@
-//! Every exact/plus-one pair the numeric limit ledger names runs through the
-//! production bounded operation that owns it: the exact input must reach its
-//! admitted oracle, the plus-one input its rejected oracle, and the two
-//! observed outcomes must differ.
-
 use std::{fs, path::PathBuf};
 
 use serde_json::Value;
@@ -31,7 +26,6 @@ fn frozen_case(id: &str) -> &'static FrozenCase {
         .unwrap_or_else(|| panic!("ledger names unknown fixture case {id}"))
 }
 
-/// Runs a Foundation case through the production observer that owns it.
 fn observe(case: &FrozenCase) -> Value {
     type Family = (&'static [&'static str], fn(&FrozenCase) -> Value);
     let families: [Family; 11] = [
@@ -58,7 +52,6 @@ fn observe(case: &FrozenCase) -> Value {
 fn every_ledger_limit_admits_its_exact_input_and_rejects_limit_plus_one_in_production() {
     let limits = contract("limits-v1.json");
     let coverage = contract("limit-fixture-coverage-v1.json");
-    // The named fixtures carry exactly the ledger value and the value one past it.
     validate_limit_fixture_coverage(&limits, &coverage, &contract("fixture-vectors-v1.json"))
         .expect("each named fixture carries its ledger limit and limit plus one");
 
@@ -84,7 +77,6 @@ fn every_ledger_limit_admits_its_exact_input_and_rejects_limit_plus_one_in_produ
         executed += 1;
     }
 
-    // Only the Windows Job object and the deferred terminal tail run elsewhere.
     assert_eq!(
         platform_bound,
         [

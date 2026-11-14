@@ -251,7 +251,6 @@ pub(crate) enum AttachedContextError {
     Snapshot(SnapshotReadError),
 }
 
-/// Why a prompt's page elements were refused at admission.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BrowserElementRefusal {
     RepeatedNumber,
@@ -607,7 +606,6 @@ mod tests {
             rendered.as_str(),
             "Review it\n\nAttached diff comment (review context only; do not edit implicitly):\n- src/app.ts:27-31 (new side): Keep this branch explicit\n\nAttached diff comment (review context only; do not edit implicitly):\n- src/app.ts:32 (new side): Explain the fallback"
         );
-        // Diff-only turns keep the durable user text equal to the dispatched prompt.
         assert_eq!(rendered.user_payload()["text"], rendered.as_str());
         assert!(rendered.user_payload().get("attachedContext").is_none());
     }

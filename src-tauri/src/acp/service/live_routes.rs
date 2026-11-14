@@ -1,5 +1,3 @@
-//! Service entry points that route one exact runtime owner to its live lane.
-//!
 //! An owner no lane holds is stale or foreign; it is refused here without
 //! touching any lane.
 
@@ -25,8 +23,6 @@ impl AcpService {
             .map(drop)
     }
 
-    /// Activates the session `command` names, or the head session that
-    /// continues it, and returns the runtime that now runs.
     pub(in crate::acp::service) async fn activate_head_session(
         &self,
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
@@ -160,8 +156,6 @@ impl AcpService {
         }
     }
 
-    /// Drives every lane's retained recovery once. It reports whether any
-    /// lane reclaimed capacity and fails if any lane still retains authority.
     pub(in crate::acp::service) fn shutdown_codex_recovery(
         &self,
         deadline: Instant,

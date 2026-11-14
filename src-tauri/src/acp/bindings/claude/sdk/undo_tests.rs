@@ -1,4 +1,3 @@
-//! Real transcript files and SQLite transitions across the undo boundary.
 use super::{
     launch::SessionLaunch,
     transcript::{self, TranscriptError},
@@ -183,7 +182,6 @@ fn undo_on_an_unreadable_transcript_fails_and_keeps_the_turn() {
     );
     assert_eq!(chat.fixture.page_turns(), [LAST, FIRST]);
     assert!(chat.fixture.pending().is_none());
-    // Missing parent links cannot be mistaken for a proven first prompt.
     std::fs::write(
         &chat.transcript,
         serde_json::json!({"type":"user",

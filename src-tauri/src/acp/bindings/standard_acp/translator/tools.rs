@@ -367,8 +367,6 @@ impl StandardAcpTranslator {
         self.stated_or_fallback_label(id, category)
     }
 
-    /// The label the harness stated, else the command line of an untitled
-    /// command, else the category's plain name. Fallbacks are never stored.
     pub(super) fn stated_or_fallback_label(
         &self,
         id: &str,

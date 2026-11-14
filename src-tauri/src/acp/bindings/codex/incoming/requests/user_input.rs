@@ -1,6 +1,3 @@
-//! `item/tool/requestUserInput` (Codex `ToolRequestUserInputParams`) mapped
-//! onto the harness-neutral `UserInputRequest`.
-
 use serde_json::{Map, Value, json};
 
 use crate::acp::{

@@ -83,9 +83,7 @@ fn scope(parent: &Path) -> Result<(&Path, IgnoreRules, FolderChain, bool), &'sta
     honoured(&rules)?;
     Ok((root, rules, chain, ignored))
 }
-/// Whether the regular file at `path` is one an attachment never carries:
-/// inside `.git` or `node_modules`, or excluded by the same ignore rules a
-/// staged selection obeys. Errors when the rules cannot be applied in full.
+/// Errors when the rules cannot be applied in full.
 pub(crate) fn file_is_excluded(path: &Path) -> Result<bool, &'static str> {
     let parent = path.parent().ok_or("Cannot attach a filesystem root.")?;
     let (root, rules, chain, ignored) = scope(parent)?;

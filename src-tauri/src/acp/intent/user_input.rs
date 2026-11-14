@@ -1,17 +1,9 @@
-//! Harness-neutral "the harness asks the user" contract.
-//!
 //! A harness question rides the server-request pipeline beside approvals: it
 //! is journaled as a `PermissionRequest` whose payload carries
 //! `user_input`, so cancellation, turn interrupt and harness withdrawal reuse
 //! the approval lifecycle. Answers never enter the journal, transcript or
 //! diagnostics; they exist only in the in-memory decision and the reply
-//! frame. Every field below is bounded; the caps are part of the contract.
-//!
-//! One model covers every question a harness asks: Codex user-input
-//! questions, ACP and MCP elicitation forms and sign-in links (see `form`),
-//! and Pi extension dialogs. A question's `kind`, `multi_select` and option
-//! `value`s say how its answer is typed on the wire; `url` turns the request
-//! into "open this link", answered by confirming it.
+//! frame.
 
 use std::fmt;
 
@@ -25,9 +17,7 @@ mod limits;
 
 pub use limits::UserInputLimits;
 
-/// Most questions one request may ask.
 pub const USER_INPUT_MAX_QUESTIONS: usize = 8;
-/// Most selectable options one question may offer.
 pub const USER_INPUT_MAX_OPTIONS: usize = 8;
 /// Longest answer text, and longest prefilled text, in UTF-8 bytes.
 pub const USER_INPUT_TEXT_BYTES: usize = 16_384;
@@ -45,24 +35,19 @@ pub struct UserInputOption {
 }
 
 impl UserInputOption {
-    /// The wire value of this option.
     pub fn value(&self) -> &str {
         self.value.as_ref().unwrap_or(&self.label).as_str()
     }
 }
 
-/// How a question's answer is entered and typed on the wire.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum UserInputKind {
     /// One line of text, or a choice sent as its option value.
     #[default]
     Text,
-    /// Several lines of text (an editor).
     Multiline,
-    /// A finite decimal number.
     Number,
-    /// A whole number.
     Integer,
     /// Yes or no: the options' values are `true` and `false`.
     Boolean,
@@ -74,8 +59,7 @@ impl UserInputKind {
     }
 }
 
-/// A link the harness asks the user to open, typically to sign in. Only
-/// `http` and `https` links with a host and no credentials are admitted.
+/// Only `http` and `https` links with a host and no credentials are admitted.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UserInputUrl {
@@ -101,26 +85,21 @@ pub struct UserInputQuestion {
     pub secret: bool,
     #[serde(default, skip_serializing_if = "UserInputKind::is_text")]
     pub kind: UserInputKind,
-    /// Several options may be chosen (`selectedOptions`).
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub multi_select: bool,
-    /// The question may be left unanswered.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub optional: bool,
-    /// Text the answer field starts with.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub initial_text: Option<SafeText<USER_INPUT_TEXT_BYTES>>,
     /// Free text is sent under this field id instead of the question's own,
     /// for forms that pair a choice with a separate "other" field.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub other_answer_id: Option<RequiredText<128>>,
-    /// Limits on the answer; absent when none apply.
     #[serde(default, skip_serializing_if = "UserInputLimits::is_unset")]
     pub limits: UserInputLimits,
 }
 
 impl UserInputQuestion {
-    /// A question with no options and default flags.
     pub(crate) fn text(
         id: RequiredText<128>,
         header: SafeText<256>,
@@ -237,7 +216,7 @@ pub struct UserInputRequest {
     pub url: Option<UserInputUrl>,
 }
 
-/// One answered question. Unanswered questions are simply omitted.
+/// Unanswered questions are omitted.
 #[derive(Clone, PartialEq, Eq, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UserInputAnswer {
@@ -253,7 +232,7 @@ pub struct UserInputAnswer {
     pub text: Option<RequiredText<USER_INPUT_TEXT_BYTES>>,
 }
 
-/// The user's answers to one request. Answer text never appears in `Debug`
+/// Answer text never appears in `Debug`
 /// output, so it cannot leak through logs or error reports.
 #[derive(Clone, PartialEq, Eq, Deserialize)]
 #[serde(transparent)]
@@ -308,7 +287,6 @@ impl UserInputAnswers {
         self.0.as_slice()
     }
 
-    /// Bytes this value retains, for bounded mailbox accounting.
     pub fn retained_bytes(&self) -> usize {
         self.as_slice()
             .iter()
@@ -333,16 +311,11 @@ impl UserInputAnswers {
 }
 
 impl UserInputRequest {
-    /// The auto-resolution window, clamped to the admitted maximum.
     pub fn auto_resolution_window_ms(&self) -> Option<u64> {
         self.auto_resolution_ms
             .map(|value| value.min(USER_INPUT_MAX_AUTO_RESOLUTION_MS))
     }
 
-    /// Checks answers against exactly the questions this request asked: each
-    /// names a distinct question, chooses only offered options, gives text
-    /// only where text is admitted, and every required question is
-    /// answered. A link request is answered with no answers.
     pub fn admit(&self, answers: &UserInputAnswers) -> Result<(), UserInputError> {
         let questions = self.questions.as_slice();
         let answers = answers.as_slice();
@@ -372,8 +345,6 @@ impl UserInputRequest {
         Ok(())
     }
 
-    /// The typed form content for admitted answers, keyed by field id:
-    /// option values, booleans and numbers as each question's kind says.
     pub fn content(&self, answers: &UserInputAnswers) -> serde_json::Map<String, Value> {
         let mut content = serde_json::Map::new();
         for answer in answers.as_slice() {

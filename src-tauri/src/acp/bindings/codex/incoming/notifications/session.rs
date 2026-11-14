@@ -1,5 +1,3 @@
-//! Notifications about the bound thread itself rather than one of its Turns.
-
 use serde_json::{Map, Value};
 
 use crate::acp::bindings::session_title::harness_title_event;

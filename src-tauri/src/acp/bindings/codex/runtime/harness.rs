@@ -28,7 +28,6 @@ impl HarnessAdapter for CodexRuntime {
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         self.inner.skills()
     }
-    /// Reads the skills while idle, first and after Codex says they changed.
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let wanted = self.inner.skills_wanted();
         wanted
@@ -101,8 +100,6 @@ impl HarnessAdapter for CodexRuntime {
         self.request(CodexAdapter::rate_limits_read)
     }
 
-    /// A passive read whose caller gave up: a usage, MCP list,
-    /// background-terminal list or import read.
     fn abandon_passive_read(&mut self) {
         self.inner.abandon_rate_limits_read();
         self.inner.abandon_mcp_read();

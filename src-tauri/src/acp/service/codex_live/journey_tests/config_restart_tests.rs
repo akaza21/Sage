@@ -1,8 +1,3 @@
-//! Session config across a graceful app restart, through the real bindings
-//! and the replay fixture process: the first launch opens a new session and
-//! takes a choice, the app exits the way ExitRequested does (the runtime is
-//! parked and its child ends as Cancelled), and the next launch resumes the
-//! same session and shows the choice again before its prompt.
 use super::*;
 use crate::acp::bindings::registry::{BindingProjectRoot, BindingRegistry};
 use crate::acp::lifecycle::Residency;
@@ -114,7 +109,6 @@ fn confirmed_model(setup: &FixtureSetup, owner: &RuntimeOwner) -> Option<String>
     Some(snapshot.config.confirmed_model?.id.as_str().to_owned())
 }
 
-/// The config a cold chat shows before its runtime resumes.
 fn restored(setup: &FixtureSetup, owner: &RuntimeOwner) -> serde_json::Value {
     let page = setup.page(owner);
     assert!(page.session_config.is_none());
@@ -135,8 +129,6 @@ fn wait_shown(setup: &FixtureSetup, owner: &RuntimeOwner, id: &str, value: &str)
     setup.wait_until(|| shown(setup, owner, id).as_deref() == Some(value));
 }
 
-/// Shuts the service down the way the app's ExitRequested handler does and
-/// checks the session was parked, not failed.
 fn exit_gracefully(
     setup: FixtureSetup,
     owner: &RuntimeOwner,
@@ -306,13 +298,9 @@ fn claude_config_choices_survive_a_graceful_restart() {
             runtime_epoch: RuntimeEpoch::new(2).unwrap(),
             ..first.clone()
         };
-        // Opened after the restart, the cold chat shows the stored choices
-        // with the labels the harness gave them, before anything resumes.
         let restored = restored(&setup, &resumed);
         assert_eq!(option_value(&restored, "model"), "fixture-model-deep");
         assert_eq!(option_value(&restored, "effort"), "high");
-        // The second launch resumes the parked session; before the fix the
-        // fixture's launch receipt refused it and activation failed as Intent.
         activate_claude(&setup, &resumed).await;
         wait_shown(&setup, &resumed, "model", "fixture-model-deep");
         wait_shown(&setup, &resumed, "effort", "high");
@@ -343,8 +331,6 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
             &profile.selection.project_root,
         )
         .await;
-        // The composer's model menu: Sage's own discovery reads the case's
-        // catalogue and offers both models.
         let root = setup.root();
         let binding = setup.service.codex_registration().refresh().unwrap();
         let request = crate::acp::ipc::GetCodexDiscoveryRequest {
@@ -364,8 +350,6 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
         let menu = discovery.discover(prepared).unwrap();
         let listed: Vec<_> = menu.models.iter().map(|model| model.id.as_str()).collect();
         assert_eq!(listed, ["fixture-model", "fixture-model-deep"]);
-        // Picked before the first send, the model opens the thread. After a
-        // Turn, model and effort both change live, for the next turn/start.
         let deep = crate::acp::intent::ModelId::new("modelId", "fixture-model-deep").unwrap();
         let revision = setup
             .service
@@ -385,8 +369,6 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
             session_id: started.session_id,
             runtime_epoch: RuntimeEpoch::new(1).unwrap(),
         };
-        // thread/start, then model/list and thread/goal/get in the order the
-        // live runner writes them, then one Turn.
         setup.activate(&first).await.unwrap();
         setup.wait_for_ready(&first);
         wait_shown(&setup, &first, "effort", "medium");
@@ -406,12 +388,9 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
             runtime_epoch: RuntimeEpoch::new(2).unwrap(),
             ..first.clone()
         };
-        // Before anything resumes, the cold chat shows both as restored.
         let restored = restored(&setup, &resumed);
         assert_eq!(option_value(&restored, "model"), "fixture-model");
         assert_eq!(option_value(&restored, "effort"), "high");
-        // thread/resume reports the session's opening model at the Medium
-        // default, and Sage puts the stored choices back before the prompt.
         setup
             .activate(&resumed)
             .await

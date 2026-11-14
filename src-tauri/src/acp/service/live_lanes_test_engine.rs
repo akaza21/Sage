@@ -2,8 +2,7 @@ use super::*;
 use crate::acp::{contract::SageTurnId, runtime::*, store::AdapterTurnCursor};
 use std::time::Instant;
 
-/// An idle runtime. With `answering`, a native RPC waits there for the test
-/// to answer it, as a harness answering a session control does.
+/// With `answering`, a native RPC waits there for the test to answer it.
 #[derive(Default)]
 pub(super) struct IdleEngine {
     pub(super) answering: Option<Arc<Mutex<Option<NativeRpcCompletionSink>>>>,

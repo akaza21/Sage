@@ -178,7 +178,6 @@ fn account_snapshot_distinguishes_anonymous_states_without_identity_data() {
         );
     }
 
-    // Account members Sage does not read never decide the sign-in state.
     for (account, expected) in [
         (
             json!({"type":"chatgpt","email":"private@example.test","planType":"future_plan","token":"never-retain"}),
@@ -331,8 +330,6 @@ fn model_catalog_rejects_page_count_identity_default_hidden_and_empty_violations
         );
     }
 
-    // Hidden models are left out, as in Codex's own picker; a page of only
-    // hidden models leaves nothing to offer.
     let mut hidden = ready();
     let request = hidden.model_request().unwrap();
     let mut hidden_model = model("hidden", "Hidden", false);
@@ -489,9 +486,6 @@ fn exact_pinned_binary_discovery_hook_proves_bounded_zero_process_cleanup() {
     discovery.revalidate().expect("authority remains current");
 }
 
-/// What the composer's model menu shows for the desktop restart replay: Sage
-/// reads the case's own `model/list` frame with its real discovery protocol
-/// and keeps every model the session lists.
 #[cfg(feature = "acp-fixture")]
 #[test]
 fn a_replay_case_offers_every_model_its_session_lists() {

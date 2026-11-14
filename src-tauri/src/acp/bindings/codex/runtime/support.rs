@@ -141,7 +141,6 @@ pub(super) fn model_values(
     Ok(output)
 }
 
-/// The thinking level `model` takes, at `current`, when it advertises any.
 pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<serde_json::Value> {
     if model.supported_efforts.is_empty() {
         return None;
@@ -179,10 +178,8 @@ pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<se
     Some(option)
 }
 
-/// The thread's model, `current`, as a choice among the listed models. A
-/// model Codex did not list (one its picker hides) is still the thread's, so
-/// it is offered first, named by its id: the composer then shows what the
-/// thread runs and can move it to a listed model.
+/// A model Codex did not list (one its picker hides) is still the thread's,
+/// so it is offered first, named by its id.
 pub(super) fn model_option(
     catalog: &[ModelDescriptor],
     current: &crate::acp::intent::ModelId,

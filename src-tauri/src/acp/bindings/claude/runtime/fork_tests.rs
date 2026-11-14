@@ -1,6 +1,3 @@
-//! Unstable ACP `session/fork` replay for the characterised claude-agent-acp
-//! 0.76.0 / SDK 1.4.0 pair, using the captured initialize advertisement.
-
 use serde_json::{Value, json};
 
 use super::fork::MAX_TRACKED_FORKS;
@@ -253,7 +250,6 @@ fn the_captured_fork_replies_replay_and_a_fresh_session_fork_is_rejected() {
         })
         .unwrap();
     assert_eq!(frames[fork_answer + 1].0, "out");
-    // So `session/close` cannot release it: the adapter does not know it.
     assert_eq!(
         captured_answer(&frames, "session/close", CAPTURED_FORK)["error"]["data"]["details"],
         "Session not found"
@@ -264,7 +260,6 @@ fn the_captured_fork_replies_replay_and_a_fresh_session_fork_is_rejected() {
     forked(&mut runtime, &frames);
     assert!(!runtime.native_rpc_pending());
 
-    // A session with no stored prompt cannot be forked (the captured refusal).
     let mut fresh = ClaudeRuntime::fixture();
     ready_with(&mut fresh, captured_initialize_result());
     let (id, _) = fork(&mut fresh);
@@ -282,7 +277,6 @@ fn updates_for_a_forked_session_are_absorbed_without_touching_the_parent() {
     let frames = captured_fork_frames();
     let mut runtime = ClaudeRuntime::fixture();
     ready_with(&mut runtime, captured_initialize_result());
-    // While the fork is in flight, the fork id is not yet known.
     let (id, _) = fork(&mut runtime);
     let early = json!({"jsonrpc":"2.0","method":"session/update","params":{
         "sessionId": CAPTURED_FORK,
@@ -294,7 +288,6 @@ fn updates_for_a_forked_session_are_absorbed_without_touching_the_parent() {
     answer["id"] = json!(id);
     runtime.ingest(&frame(answer), &Mapper).unwrap();
     runtime.take_native_rpc_reply();
-    // After it, every schema update kind for the fork id is absorbed too.
     for update in [
         json!({"sessionUpdate":"available_commands_update","availableCommands":[]}),
         json!({"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"x"}}),
@@ -306,7 +299,6 @@ fn updates_for_a_forked_session_are_absorbed_without_touching_the_parent() {
         let batch = runtime.ingest(&frame(value), &Mapper).unwrap();
         assert!(matches!(batch.events(), [SharedEvent::Absorbed]));
     }
-    // A session nobody forked is still foreign and refused.
     let foreign = json!({"jsonrpc":"2.0","method":"session/update","params":{
         "sessionId":"claude-session-9",
         "update":{"sessionUpdate":"available_commands_update","availableCommands":[]}
@@ -369,7 +361,6 @@ fn a_refused_fork_delete_during_a_prompt_is_written_once_idle() {
     runtime
         .resolve_egress(prompt.into_token(), EgressResolution::Written)
         .unwrap();
-    // A committed fork needs nothing; a refused one is deferred.
     assert!(runtime.defer_fork_release(&fork, false));
     assert_eq!(
         runtime.take_native_rpc_reply(),
@@ -418,7 +409,6 @@ fn forked_session(runtime: &mut ClaudeRuntime, index: usize) -> ExternalId {
     ExternalId::new("externalSessionId", format!("claude-fork-{index}")).unwrap()
 }
 
-/// Starts a prompt and returns its request id.
 fn prompting(runtime: &mut ClaudeRuntime, client: &str) -> u64 {
     let prompt = runtime
         .command(AdapterCommand::Prompt {
@@ -471,17 +461,14 @@ fn a_wanted_delete_is_never_evicted_and_a_full_ledger_refuses_new_forks() {
     let forks: Vec<_> = (0..MAX_TRACKED_FORKS)
         .map(|index| forked_session(&mut runtime, index))
         .collect();
-    // Every fork but the newest is refused during a prompt: its delete is wanted.
     let prompt = prompting(&mut runtime, "client-2");
     for fork in &forks[..MAX_TRACKED_FORKS - 1] {
         assert!(runtime.defer_fork_release(fork, false));
     }
     end_prompt(&mut runtime, prompt);
-    // The one settled fork is evicted for a new fork; wanted deletes stay.
     let newest = forked_session(&mut runtime, MAX_TRACKED_FORKS);
     assert!(runtime.defer_fork_release(&forks[0], false));
     assert!(!runtime.defer_fork_release(&forks[MAX_TRACKED_FORKS - 1], false));
-    // Now every slot is wanted, so a further fork is a capacity refusal.
     let prompt = prompting(&mut runtime, "client-3");
     assert!(runtime.defer_fork_release(&newest, false));
     end_prompt(&mut runtime, prompt);
@@ -505,7 +492,6 @@ fn a_wanted_delete_is_never_evicted_and_a_full_ledger_refuses_new_forks() {
     assert!(runtime.deferred_fork_release().unwrap().is_none());
 }
 
-/// Writes every wanted delete at idle and returns the forks they name.
 fn drain_wanted_deletes(runtime: &mut ClaudeRuntime) -> Vec<String> {
     let mut deleted = Vec::new();
     while let Some(egress) = runtime.deferred_fork_release().unwrap() {
@@ -533,7 +519,6 @@ fn a_fork_rejected_for_a_full_ledger_still_deletes_its_stored_copy() {
     let forks: Vec<_> = (0..MAX_TRACKED_FORKS)
         .map(|index| forked_session(&mut runtime, index))
         .collect();
-    // Every slot becomes wanted while the next fork is in flight.
     let (id, _) = fork(&mut runtime);
     for fork in &forks {
         assert!(runtime.defer_fork_release(fork, false));
@@ -548,8 +533,6 @@ fn a_fork_rejected_for_a_full_ledger_still_deletes_its_stored_copy() {
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Rejected)
     );
-    // The adapter already stored the copy, so its delete is wanted too, and
-    // the over-full ledger refuses further forks until the deletes land.
     assert!(matches!(
         runtime.fork_session(),
         Err(AdapterRuntimeError::BatchCount)
@@ -557,7 +540,6 @@ fn a_fork_rejected_for_a_full_ledger_still_deletes_its_stored_copy() {
     let deleted = drain_wanted_deletes(&mut runtime);
     assert_eq!(deleted.len(), MAX_TRACKED_FORKS + 1);
     assert!(deleted.iter().any(|fork| fork == "claude-fork-late"));
-    // Settled again, the ledger makes room for a new fork.
     forked_session(&mut runtime, MAX_TRACKED_FORKS + 1);
 }
 

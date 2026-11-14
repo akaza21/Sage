@@ -1,4 +1,4 @@
-//! Bounded watchdog observations; never include child output or evidence paths.
+//! Never include child output or evidence paths.
 use std::{
     io::Read,
     process::{Child, ExitStatus},

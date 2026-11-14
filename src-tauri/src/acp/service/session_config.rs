@@ -88,7 +88,6 @@ impl AcpService {
         }
         result.map(|_| ())
     }
-    /// The owner of the live runtime that runs `session_id`, if one does.
     pub(crate) fn live_owner_of(
         &self,
         session_id: &crate::acp::contract::SageAgentSessionId,
@@ -98,8 +97,6 @@ impl AcpService {
             .filter_map(|lane| lane.runtime.owner())
             .find(|owner| owner.session_id == *session_id)
     }
-    /// The turn `owner`'s live session is running, while it can still be
-    /// cancelled.
     pub(crate) fn cancellable_turn(
         &self,
         owner: &RuntimeOwner,
@@ -114,7 +111,6 @@ impl AcpService {
             });
         Ok(snapshot.turn_id.filter(|_| current))
     }
-    /// Reports `config` as the live session's, as a runtime would.
     #[cfg(all(test, windows))]
     pub(crate) fn report_session_config_for_test(
         &self,
@@ -128,7 +124,6 @@ impl AcpService {
         lane.runtime.config.update(owner, config).unwrap();
         lane.runtime.config.publish(owner);
     }
-    /// The session config the live runtime last reported for `owner`.
     pub(crate) fn live_session_config(
         &self,
         owner: &RuntimeOwner,
@@ -174,9 +169,6 @@ impl AcpService {
                     .map_or(0, |c| c.config.config_options.as_slice().len() as u16);
             }
         }
-        // A session without a live config shows what it last reported, with
-        // its stored choices, until its runtime resumes and reports again. A
-        // live runtime that has not reported yet shows them the same way.
         page.restored_session_config = None;
         page.session_config_notice = None;
         let current = sessions
@@ -214,10 +206,6 @@ impl AcpService {
         Ok(())
     }
 
-    /// Keeps the page within its budget. A restored config that does not
-    /// fit shows only the stored choices, and none at all if even those do
-    /// not fit, and then the notice goes too; the transcript always stays
-    /// loadable.
     pub(super) fn fit_session_config_to_page_budget(
         &self,
         page: &mut AcpChatPage,

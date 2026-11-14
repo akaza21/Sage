@@ -226,8 +226,6 @@ impl AttachmentLease {
             })
     }
 
-    /// Whether this live attachment holds developer approval. The tab's
-    /// indicator aggregates this across all attachments in `agent_control`.
     pub(crate) fn developer_mode_active(&self) -> bool {
         self.is_live()
             && !self.user_controls()
@@ -252,7 +250,6 @@ impl AttachmentLease {
         had_grant
     }
 
-    /// Keeps the grant across an in-site commit and ends it on any other.
     pub(super) fn end_developer_mode_unless_on(&self, url: &str) {
         let incoming = origin_of(url);
         let changed = origin_of(&self.url) != incoming;
@@ -286,8 +283,7 @@ impl BrowserAttachments {
         }
     }
 
-    /// Ends every developer-mode grant, as the Settings switch going off
-    /// does. Returns the tabs that held one.
+    /// Returns the tab labels that held a developer-mode grant.
     pub(crate) fn end_developer_mode(&self) -> Vec<String> {
         let mut leases = Vec::new();
         if let Ok(entries) = self.entries.lock() {

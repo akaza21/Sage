@@ -87,8 +87,6 @@ pub(in crate::acp::bindings::codex) fn trial_read<T>(read: impl FnOnce() -> T) -
     read()
 }
 
-/// False inside `trial_read`; every diagnostic on the ingestion path checks
-/// it before it reports.
 pub(in crate::acp::bindings::codex) fn reports_diagnostics() -> bool {
     !TRIAL_READ.with(std::cell::Cell::get)
 }
@@ -179,7 +177,6 @@ pub(crate) enum IncomingEvent {
         turn_id: ScopedExternalId,
         payload: NormalizedPayload,
     },
-    /// A fact about the session rather than one Turn, such as a hook run.
     Session {
         id: ScopedExternalId,
         event: crate::acp::intent::session_event::SessionScopedEvent,
@@ -212,20 +209,16 @@ pub(crate) enum IngressDisposition {
     DroppedRawReasoning,
     GoalMutationRejected,
     GoalMutationApplied,
-    /// Codex's answer to a session control, such as undoing a Turn.
     Controlled(crate::acp::goal::NativeRpcReply),
-    /// A limit bucket Codex pushed.
     UsageUpdated(rate_limits::RateLimitBucket),
     /// The answer to a usage read; `None` when nothing usable was reported.
     UsageRead(Option<rate_limits::RateLimits>),
-    /// Codex refused to report usage for this account.
     UsageRefused,
     /// The account signed in to ChatGPT, so usage may be reported again.
     UsageReset,
     /// The answer to a background-terminal request; `None` when Codex
     /// refused it or answered outside the pinned shape.
     Terminals(Option<crate::acp::goal::NativeRpcReply>),
-    /// Codex changed the thread's model or effort.
     SettingsUpdated {
         model: crate::acp::intent::ModelId,
         effort: Option<RequiredText<512>>,

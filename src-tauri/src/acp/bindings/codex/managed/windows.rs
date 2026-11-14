@@ -450,8 +450,6 @@ mod tests {
             Err(ManagedStagingError::PackageAcl)
         );
 
-        // Apply the real dangerous-access observation to every owner class while
-        // neutralizing the independent foreign-grant predicate.
         for owner in [
             OwnerClass::LocalSystem,
             OwnerClass::BuiltinAdministrators,
@@ -472,9 +470,6 @@ mod tests {
             );
         }
 
-        // Paired safe controls isolate both policy dimensions: LocalSystem and
-        // BuiltinAdministrators must pass once dangerous access is removed,
-        // while CurrentUser and Other must remain rejected on ownership alone.
         for (owner, expected) in [
             (OwnerClass::LocalSystem, Ok(())),
             (OwnerClass::BuiltinAdministrators, Ok(())),

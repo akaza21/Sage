@@ -1,8 +1,3 @@
-//! Line change counts for one old/new text pair, as a reader of the diff sees
-//! them: a line both sides keep in order is not counted, a line only the old
-//! side has is a deletion and a line only the new side has is an addition.
-//! Shared by every binding that receives whole-file sides instead of a patch.
-
 /// Work bound for the shortest-edit search (Myers, O((N+M)·D)). A small edit
 /// to a large file stays cheap; a pair too different to settle within it has
 /// unknown counts rather than an estimate.

@@ -9,7 +9,6 @@ struct Window {
     resets_at: Option<i64>,
 }
 
-/// One metered Codex limit bucket, keyed by its `limitId`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct RateLimitBucket {
     id: Option<String>,
@@ -19,7 +18,6 @@ pub(crate) struct RateLimitBucket {
     reached: bool,
 }
 
-/// The account's buckets as of the last read, with pushed buckets merged in.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub(crate) struct RateLimits {
     buckets: Vec<RateLimitBucket>,
@@ -71,8 +69,6 @@ impl RateLimits {
         self.merge(bucket);
     }
 
-    /// Replaces the bucket with the same `limitId`, or admits a new one while
-    /// under the cap.
     fn merge(&mut self, bucket: RateLimitBucket) {
         if let Some(known) = self.buckets.iter_mut().find(|known| known.id == bucket.id) {
             *known = bucket;
@@ -118,7 +114,6 @@ impl RateLimits {
     }
 }
 
-/// The bucket an `account/rateLimits/updated` notification carries.
 pub(in crate::acp::bindings::codex) fn pushed_bucket(
     params: &Map<String, Value>,
 ) -> Option<RateLimitBucket> {

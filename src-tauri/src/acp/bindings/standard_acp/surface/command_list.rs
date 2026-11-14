@@ -1,4 +1,3 @@
-//! Ephemeral, bounded command advertisements. No durable history or inferred commands.
 use crate::acp::{
     bindings::adapter::AdapterRuntimeError,
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
@@ -15,7 +14,6 @@ pub(crate) const MAX_COMMAND_BYTES: usize = 256 * 1024;
 mod entry;
 pub(crate) use entry::*;
 
-/// Admits a whole list: bounded in count and bytes, names unique.
 fn admit(commands: Vec<AvailableCommand>) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
     if commands.len() > MAX_COMMANDS {
         return Err(AdapterRuntimeError::BatchCount);
@@ -41,9 +39,8 @@ pub(crate) struct CommandList {
 }
 
 impl CommandList {
-    /// Takes a binding's newly parsed list. A failed parse still counts as a
-    /// new revision and leaves the list empty, so stale command authority is
-    /// never usable.
+    /// A failed parse still counts as a new revision and leaves the list empty, so stale command
+    /// authority is never usable.
     pub(crate) fn replace(
         &mut self,
         parsed: Result<Vec<AvailableCommand>, AdapterRuntimeError>,
@@ -57,7 +54,6 @@ impl CommandList {
         self.commands = admit(parsed?)?;
         Ok(())
     }
-    /// The listed command a `/name …` prompt runs at this revision.
     pub(crate) fn find(&self, revision: u64, text: &str) -> Option<&AvailableCommand> {
         let name = text.strip_prefix('/')?.split_whitespace().next()?;
         (revision == self.revision)
@@ -133,8 +129,6 @@ impl CommandState {
             .ok_or(AdapterRuntimeError::Operation)?
             .validate(revision, text)
     }
-    /// The source of the listed command a `/name …` prompt runs at this
-    /// revision, which the Turn keeps beside its prompt.
     pub(crate) fn command(
         &self,
         revision: u64,
@@ -207,7 +201,6 @@ impl CommandChannel {
             announced: 0,
         });
     }
-    /// Adopts the owner's live list and announces each new revision once.
     pub(crate) fn update(&self, owner: &RuntimeOwner, list: Arc<CommandState>) {
         let revision = {
             let mut slot = self.slot();

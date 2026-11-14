@@ -1,11 +1,3 @@
-//! Codex notices: harness warnings, configuration and deprecation notices,
-//! and model reroutes, projected as session-scoped events.
-//!
-//! Each notice is a short Sage-authored lead plus the harness text. Harness
-//! text is redacted, stripped of control, bidi and zero-width characters,
-//! and clipped per part (`PART_BYTES`) and as a whole
-//! (`SESSION_NOTICE_TEXT_BYTES`). The session surface keeps the newest
-//! `SESSION_NOTICES_MAX` notices and already collapses identical ones.
 //! Notices for child or fork threads are filtered earlier, in `incoming.rs`.
 //! Only missing or wrongly typed required fields are malformed: fields or
 //! enum values added upstream are tolerated, so a benign app-server addition
@@ -35,10 +27,8 @@ const MODEL_BYTES: usize = 512;
 /// summary cannot crowd the details out of the notice.
 const PART_BYTES: usize = 448;
 const FILE_NAME_BYTES: usize = 96;
-/// World-writable folders named in a sandbox warning.
 const SAMPLE_FOLDERS: usize = 3;
 
-/// `warning`: a harness warning, optionally aimed at one thread.
 pub(super) fn warning(
     adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
@@ -67,14 +57,10 @@ pub(super) fn warning(
     }
 }
 
-/// The startup failure reason that means the server's sign-in expired.
 pub(super) const REAUTHENTICATION_REQUIRED: &str = "reauthenticationRequired";
 
-/// `mcpServer/startupStatus/updated` with `failed`: an MCP server did not
-/// start. Codex keeps running without it, so the session goes on and says
-/// why the server's tools are missing: its sign-in expired, or Codex's own
-/// error text (redacted and clipped) when it gives one. Before a thread is
-/// bound the notice is held, like `warning`.
+/// Codex keeps running when an MCP server fails to start, so report the
+/// missing tools without ending the session.
 pub(super) fn mcp_startup_failed(
     adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
@@ -102,7 +88,6 @@ pub(super) fn mcp_startup_failed(
     single(adapter.thread_session_id(thread).map_err(identity)?, notice)
 }
 
-/// `guardianWarning`: a warning from Codex's automatic approval reviewer.
 pub(super) fn guardian_warning(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
@@ -122,7 +107,6 @@ pub(super) fn guardian_warning(
     single(adapter.thread_session_id(thread).map_err(identity)?, notice)
 }
 
-/// `configWarning`: Codex could not apply part of its configuration.
 pub(super) fn config_warning(
     adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
@@ -150,7 +134,6 @@ pub(super) fn config_warning(
     thread_less(adapter, notice)
 }
 
-/// `deprecationNotice`: a Codex feature or setting in use is deprecated.
 pub(super) fn deprecation_notice(
     adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
@@ -165,9 +148,6 @@ pub(super) fn deprecation_notice(
     )
 }
 
-/// `model/rerouted`: Codex answered the turn with a different model than
-/// the one Sage requested. The effective model becomes the session's model
-/// and a notice names both, so the picker is never silently wrong.
 pub(super) fn model_rerouted(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
@@ -203,10 +183,6 @@ pub(super) fn model_rerouted(
     ]))
 }
 
-/// `model/verification`: the backend recommends account verification
-/// because the chat keeps being flagged. It explains slower responses and
-/// what the user can do, so it is user-meaningful and becomes a notice.
-/// Verification kinds Sage does not know are ignored.
 pub(super) fn model_verification(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
@@ -236,11 +212,8 @@ pub(super) fn model_verification(
     )
 }
 
-/// `model/safetyBuffering/updated`: identity-checked and deliberately not
-/// projected. It toggles a transient "still reviewing" state within one
-/// running turn (the turn already shows as running) and offers a retry on a
-/// faster model that only Codex's own UI can perform. A durable notice
-/// would outlive the state it describes.
+/// Deliberately not projected: a durable notice would outlive the transient
+/// state it describes.
 pub(super) fn model_safety_buffering(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
@@ -249,11 +222,7 @@ pub(super) fn model_safety_buffering(
     Ok(IngressDisposition::IgnoredLate)
 }
 
-/// `modelProvider/authRecoveryStarted` and `.../authRecoveryCompleted`:
-/// Codex is renewing, or has finished renewing, the model provider's
-/// sign-in during a turn. The completion carries no success flag, so its
-/// wording stays neutral; the harness message, when there is one, says how
-/// it went. A payload Sage cannot read is ignored.
+/// The completion carries no success flag, so its wording stays neutral.
 pub(super) fn auth_recovery(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
@@ -284,9 +253,6 @@ pub(super) fn auth_recovery(
     )
 }
 
-/// `windows/worldWritableWarning`: folders other users can write to, which
-/// the Windows sandbox cannot protect. All are counted and a few named by
-/// their last path segment, as config paths are.
 pub(super) fn world_writable_warning(
     adapter: &mut CodexAdapter,
     params: &Map<String, Value>,
@@ -344,10 +310,8 @@ fn thread_less(
     }
 }
 
-/// The session of a turn-scoped notice. It must name the bound thread and
-/// the active or the just-finished Turn. With no active Turn an unknown Turn
-/// is replayed history (as on resume) and is ignored; while a Turn is active
-/// a different Turn is a foreign identity.
+/// With no active Turn an unknown Turn is replayed history (as on resume) and
+/// is ignored; while a Turn is active a different Turn is a foreign identity.
 pub(super) fn turn_session(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
@@ -367,8 +331,6 @@ pub(super) fn turn_session(
     }
 }
 
-/// `turn_session` for an informational notice, whose unreadable identity is
-/// ignored rather than ending the session. A foreign one still fails.
 pub(super) fn informational_session(
     adapter: &CodexAdapter,
     params: &Map<String, Value>,
@@ -399,7 +361,6 @@ pub(super) fn notice(
     }))
 }
 
-/// An absent or null field is `None`; otherwise it must be valid text.
 fn optional_text<'a>(
     params: &'a Map<String, Value>,
     key: &str,
@@ -411,8 +372,7 @@ fn optional_text<'a>(
     }
 }
 
-/// Human-readable harness text: redacted, neutralized and clipped to
-/// `PART_BYTES`. The raw value is already bounded by the frame limit.
+/// The raw value is already bounded by the frame limit.
 pub(super) fn human(params: &Map<String, Value>, key: &str) -> Result<String, IngressError> {
     let value = params
         .get(key)
@@ -435,8 +395,6 @@ fn optional_human(params: &Map<String, Value>, key: &str) -> Result<Option<Strin
     }
 }
 
-/// Strips control, bidi and zero-width characters (keeping line breaks),
-/// trims, and clips to `max` bytes.
 fn clean(value: &str, max: usize) -> String {
     clip(neutralized(value, true).trim(), max)
 }

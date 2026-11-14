@@ -1,6 +1,3 @@
-//! Journeys a real-app check reads back: each answers with what Sage sent,
-//! or replays a frame Sage must read past.
-
 use serde_json::{Value, json};
 
 use super::capture::replay_native;
@@ -42,7 +39,6 @@ fn the_codex_config_echo_names_the_model_and_effort_turn_start_sent() {
         codex_answer(&picked),
         "This turn/start named model: fixture-model-deep; effort: high."
     );
-    // What the client sent is quoted as sent, never read as a placeholder.
     let literal = replay_native(
         "codex-config-echo",
         &codex_turn(json!({"model":"m-$PROMPT_ECHO","input":[]})),
@@ -182,8 +178,6 @@ fn the_pi_large_run_ends_with_one_oversized_frame_then_takes_a_second_prompt() {
     assert_eq!(after.last().unwrap().as_str(), Some("agent_settled"));
 }
 
-/// Runs `steps` against `requests` and returns the frames written, or the
-/// first step's error.
 fn run_sdk(steps: &[Value], requests: &[Value]) -> Result<Vec<Value>, super::FixtureError> {
     let mut input = std::io::Cursor::new(lines(requests).into_bytes());
     let mut output = Vec::new();
@@ -215,7 +209,6 @@ fn only_a_waiting_follow_up_is_withdrawn() {
             .collect()
     };
 
-    // Waiting: an unknown id is not cancelled, the message's own id is.
     let waiting = run_sdk(
         &[
             wait("claudeSdkFollowUp"),
@@ -244,7 +237,6 @@ fn only_a_waiting_follow_up_is_withdrawn() {
         .collect();
     assert_eq!(states, ["queued", "cancelled"]);
 
-    // Running: it can no longer be withdrawn, nor queued again.
     let running = run_sdk(
         &[
             wait("claudeSdkFollowUp"),

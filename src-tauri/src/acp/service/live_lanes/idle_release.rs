@@ -1,15 +1,3 @@
-//! Releases the harness processes of Chats the user has left.
-//!
-//! A live runtime with no Turn running is parked through the graceful close
-//! an evicted lane takes once its Chat has been out of view and idle for
-//! `HIDDEN_IDLE`, or idle for `SHOWN_IDLE` even in view. The next send
-//! resumes the session. Only runtimes eviction could park are parked: a
-//! resumable session whose runtime has completed a Turn.
-//!
-//! The WebView reports the Chats it shows with the visibility it reports for
-//! turn notices. Until its first report, no Chat counts as out of view and
-//! only the `SHOWN_IDLE` rule applies.
-
 use std::{
     collections::{HashMap, HashSet},
     sync::{
@@ -23,12 +11,9 @@ use crate::acp::{contract::SageChatId, scheduler::RuntimeOwner};
 
 use super::{AcpService, ActivationClaim, explicit_close_deadline};
 
-/// Idle time after which a Chat out of view is released.
 const HIDDEN_IDLE: Duration = Duration::from_secs(2 * 60);
-/// Idle time after which a Chat still in view is released.
 const SHOWN_IDLE: Duration = Duration::from_secs(15 * 60);
 
-/// Which Chats are in view, and since when each live one has not been.
 #[derive(Debug, Default)]
 pub(crate) struct IdleRelease {
     view: Mutex<View>,
@@ -47,7 +32,6 @@ struct View {
 }
 
 impl View {
-    /// Whether a live runtime idle since `idle_since` is due for release.
     fn due(&mut self, chat: &SageChatId, idle_since: Instant, now: Instant) -> bool {
         let idle = now.saturating_duration_since(idle_since);
         if idle >= SHOWN_IDLE {
@@ -65,24 +49,19 @@ impl View {
 }
 
 impl IdleRelease {
-    /// Stops sweeping; a park already running finishes first.
     pub(crate) fn stop(&self) {
         self.stopped.store(true, Ordering::Release);
         drop(self.sweep.lock().unwrap_or_else(PoisonError::into_inner));
     }
 
-    /// Whether sweeping has stopped.
     pub(crate) fn is_stopped(&self) -> bool {
         self.stopped.load(Ordering::Acquire)
     }
 }
 
 impl AcpService {
-    /// How often idle runtimes are looked at.
     pub(crate) const IDLE_SWEEP_INTERVAL: Duration = Duration::from_secs(15);
 
-    /// Records the Chats the WebView shows; every other Chat is out of view
-    /// from now.
     pub(crate) fn set_shown_chats(&self, chats: impl IntoIterator<Item = SageChatId>) {
         let now = Instant::now();
         let shown: HashSet<SageChatId> = chats.into_iter().collect();
@@ -100,8 +79,7 @@ impl AcpService {
         view.shown = Some(shown);
     }
 
-    /// Parks every live runtime due for release, at `now`. Answers how many
-    /// were parked, or None once sweeping has stopped.
+    /// Answers how many were parked, or None once sweeping has stopped.
     pub(crate) fn release_idle_runtimes(&self, now: Instant) -> Option<usize> {
         let release = &self.idle_release;
         let _sweep = release.sweep.lock().unwrap_or_else(PoisonError::into_inner);
@@ -120,8 +98,6 @@ impl AcpService {
         Some(parked)
     }
 
-    /// The lanes whose idle runtime is due, with the idle mark each was due
-    /// at. Out-of-view marks of Chats without a live runtime are dropped.
     pub(in crate::acp::service) fn idle_runtimes_due(
         &self,
         now: Instant,
@@ -157,9 +133,6 @@ impl AcpService {
             .collect()
     }
 
-    /// Parks one due lane under its activation claim, after checking that no
-    /// Turn or activation has used it since it was found due, and answers
-    /// whether its runtime was released.
     pub(in crate::acp::service) fn park_idle_lane(
         &self,
         index: usize,

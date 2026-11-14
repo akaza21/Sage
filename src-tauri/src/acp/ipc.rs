@@ -41,7 +41,7 @@ pub struct GetAcpChatPageRequest {
     pub cursor: Option<PageCursor>,
 }
 
-/// Narrow owner-bound immutable snapshot read. Returns one bounded pair,
+/// Returns one bounded pair,
 /// never raw event JSON and never a history-page payload.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -177,7 +177,6 @@ pub struct ActivateAcpSessionRequest {
     pub runtime_epoch: RuntimeEpoch,
 }
 
-/// Which staged prompt files a send carries.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub enum StagedSelection {

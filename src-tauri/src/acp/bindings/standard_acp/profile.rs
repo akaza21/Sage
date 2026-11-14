@@ -18,7 +18,6 @@ pub(crate) enum StandardAcpVersionShape {
     Unprobed,
 }
 
-/// What the launch environment adds beyond the baseline and passthrough keys.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum StandardAcpLaunchPolicy {
     Inherit,
@@ -56,12 +55,9 @@ pub(crate) struct StandardAcpProfile {
     pub(crate) vendor_updates: &'static [(&'static str, UnmappedUpdate)],
     pub(crate) passthrough_env: &'static [&'static str],
     pub(crate) remediation: &'static str,
-    /// Names the agent in Sage's own notices ("OpenCode completed ...").
     pub(crate) agent_label: &'static str,
-    /// The session mode every prompt runs in, when the agent advertises it.
     pub(crate) session_mode: Option<&'static str>,
     pub(crate) launch_policy: StandardAcpLaunchPolicy,
-    /// Whether the runtime advertises and answers `elicitation/create`.
     pub(crate) elicitation: bool,
     /// Whether a `session/new` refused for sign-in leads Sage to call
     /// `authenticate` with a method that needs no input and to keep a notice

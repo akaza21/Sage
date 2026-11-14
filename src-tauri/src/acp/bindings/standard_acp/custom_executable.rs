@@ -1,7 +1,4 @@
-//! The one check a user-defined agent's executable passes, both when the
-//! user saves it in Settings and every time Sage admits it for launch.
-//! Sage launches the file directly, never through a shell. On Windows,
-//! process creation silently runs `.cmd` and `.bat` files through
+//! On Windows, process creation silently runs `.cmd` and `.bat` files through
 //! `cmd.exe /c`, which would interpret `&`, `%VAR%` and `^` in the
 //! arguments, so only a native `.exe` is accepted there.
 
@@ -9,18 +6,14 @@ use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum ExecutableRefusal {
-    /// Windows: anything but a native `.exe`.
     NotNative,
     Missing,
-    /// A link; Sage launches only the file itself.
     Link {
         target: Option<PathBuf>,
     },
     NotAFile,
-    /// Unix: no execute permission.
     #[cfg(unix)]
     NotExecutable,
-    /// The path crosses a link or sits outside a usable local folder.
     Unusable,
 }
 
@@ -46,8 +39,7 @@ impl ExecutableRefusal {
     }
 }
 
-/// Whether `path` names a file the platform runs without a shell. `windows`
-/// is a parameter so the rule is testable on every platform.
+/// `windows` is a parameter so the rule is testable on every platform.
 pub(crate) fn native_executable_name(path: &Path, windows: bool) -> bool {
     !windows
         || path
@@ -56,7 +48,6 @@ pub(crate) fn native_executable_name(path: &Path, windows: bool) -> bool {
             .is_some_and(|extension| extension.eq_ignore_ascii_case("exe"))
 }
 
-/// Proves `path` is a launchable regular file and returns its metadata.
 pub(crate) fn check_custom_executable(path: &Path) -> Result<std::fs::Metadata, ExecutableRefusal> {
     if !native_executable_name(path, cfg!(windows)) {
         return Err(ExecutableRefusal::NotNative);
@@ -85,7 +76,6 @@ pub(crate) fn check_custom_executable(path: &Path) -> Result<std::fs::Metadata, 
     Ok(metadata)
 }
 
-/// Test helper: writes an executable file the check admits.
 #[cfg(test)]
 pub(crate) fn write_test_executable(path: &Path, bytes: &[u8]) {
     std::fs::write(path, bytes).expect("write executable");

@@ -154,8 +154,6 @@ impl CodexAdapter {
         self.child_read_tombstone.is_some() || !self.abandoned_reads.is_empty()
     }
 
-    /// Stops waiting for a read whose caller gave up, when the read abandons
-    /// at its deadline; its late answer is dropped by `take_abandoned_read`.
     pub(crate) fn abandon_native_read(&mut self) {
         let Some(id) = self
             .read_scope()
@@ -170,7 +168,6 @@ impl CodexAdapter {
         self.abandoned_reads.push(id);
     }
 
-    /// Whether `id` answers an abandoned read, which is then over.
     pub(crate) fn take_abandoned_read(&mut self, id: u64) -> bool {
         let before = self.abandoned_reads.len();
         self.abandoned_reads.retain(|dead| *dead != id);

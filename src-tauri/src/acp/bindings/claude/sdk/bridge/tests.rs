@@ -102,7 +102,6 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
         .collect();
     assert_eq!(kinds, ["allow_once", "allow_always", "reject_once"]);
 
-    // Allow-always on an edit names the mode the guard lets the turn enter.
     assert_eq!(
         request["params"]["options"][1]["optionId"],
         "allow-always-accept-edits"
@@ -638,7 +637,6 @@ fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
     assert!(
         matches!(&failed.native, Some(NativeRpcReply::ControlRefused(Some(text))) if text.as_str() == "No task with that id")
     );
-    // A turn id that names no SDK message cannot be undone.
     assert_eq!(
         bridge.session_control(&SessionControl::UndoTurn {
             turn_id: crate::acp::contract::SageTurnId::parse("turn-legacy").unwrap(),
@@ -695,7 +693,6 @@ fn mcp_servers_are_listed_and_reconnected_one_control_at_a_time() {
     let again = bridge.session_control(&reconnect).unwrap();
     let done = bridge.inbound(success(&again, json!({}))).unwrap();
     assert_eq!(done.native, Some(NativeRpcReply::Controlled(None)));
-    // A reply that is not a list is refused rather than shown as empty.
     let list = bridge
         .session_control(&SessionControl::ReadMcpServers)
         .unwrap();
@@ -703,7 +700,6 @@ fn mcp_servers_are_listed_and_reconnected_one_control_at_a_time() {
         .inbound(success(&list, json!({"servers": []})))
         .unwrap();
     assert_eq!(odd.native, Some(NativeRpcReply::Rejected));
-    // Reloading and signing in happen in Claude Code's own `/mcp`.
     for control in [
         SessionControl::ReloadMcpServers,
         SessionControl::SignInMcpServer {
@@ -730,7 +726,6 @@ fn an_abandoned_mcp_list_frees_the_session_and_its_late_reply_is_dropped() {
         assert!(!bridge.controlling(), "an abandoned list holds nothing");
         abandoned.push(list);
     }
-    // Four lists Claude Code never answered hold back further lists only.
     assert_eq!(
         bridge.session_control(&SessionControl::ReadMcpServers),
         Err(BridgeError::Capacity)
@@ -769,7 +764,6 @@ fn an_abandoned_reconnect_frees_the_session_and_counts_toward_the_bound() {
             "an abandoned reconnect holds nothing"
         );
     }
-    // Neither MCP request is sent past the bound; other controls still are.
     assert_eq!(
         bridge.session_control(&reconnect),
         Err(BridgeError::Capacity)
@@ -783,8 +777,6 @@ fn an_abandoned_reconnect_frees_the_session_and_counts_toward_the_bound() {
     assert!(bridge.session_control(&reconnect).is_ok());
 }
 
-/// The blocks `Mentions::blocks` sends for an `@` mention: the file's text
-/// when embedded context is offered, otherwise a sized link.
 #[test]
 fn an_at_mention_reaches_claude_code_as_context_or_a_path_mention() {
     let (uri, path) = if cfg!(windows) {
@@ -860,8 +852,6 @@ fn a_message_sent_mid_turn_is_queued_and_the_turn_ends_after_it_runs() {
     let queued = bridge.inbound(lifecycle(&uuid, "queued")).unwrap();
     assert_eq!(queued.steers, [(uuid.clone(), true)]);
 
-    // The running reply ends before Claude Code takes the message up: the
-    // turn goes on.
     let first = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":1}})).unwrap();
     assert!(!ended(&first) && first.acp.is_empty());
     bridge.inbound(lifecycle(&uuid, "started")).unwrap();
@@ -870,7 +860,6 @@ fn a_message_sent_mid_turn_is_queued_and_the_turn_ends_after_it_runs() {
     let last = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{"input_tokens":2}})).unwrap();
     assert!(ended(&last));
     assert!(last.steers.is_empty());
-    // A later lifecycle frame for it changes nothing.
     assert!(
         bridge
             .inbound(lifecycle(&uuid, "completed"))
@@ -936,7 +925,6 @@ fn stopping_withdraws_waiting_messages_before_interrupting() {
         next.replies[0]["request"],
         json!({"subtype":"cancel_async_message","message_uuid":second})
     );
-    // A message already running is not withdrawn; the interrupt stops it.
     let next = bridge.inbound(json!({"type":"control_response","response":{"subtype":"error","request_id":next.replies[0]["request_id"],"error":"not queued"}})).unwrap();
     assert_eq!(next.steers, [(second, false)]);
     let interrupt = &next.replies[0];
@@ -1006,8 +994,6 @@ fn a_late_withdrawal_reply_never_interrupts_the_next_turn() {
             &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
         )
         .unwrap();
-    // The run ends before Claude Code answers the withdrawal: the turn
-    // waits for the answer, then ends without reaching the next one.
     let end = bridge
         .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
         .unwrap();
@@ -1037,8 +1023,6 @@ fn a_message_taken_up_while_its_withdrawal_is_in_flight_is_interrupted_in_its_tu
             &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
         )
         .unwrap();
-    // The run ends and Claude Code takes the message up before reading the
-    // withdrawal.
     let first = bridge
         .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
         .unwrap();
@@ -1063,7 +1047,6 @@ fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
     let project = config.join("projects").join("-w");
     std::fs::create_dir_all(&project).unwrap();
     let mut bridge = initialized();
-    // The turn's reply reaches the transcript before Claude Code answers.
     let sdk = bridge.fork(Some(config.clone())).unwrap();
     assert_eq!(sdk["request"]["subtype"], "get_settings");
     assert!(bridge.controlling());
@@ -1078,7 +1061,6 @@ fn a_fork_answers_once_claude_code_replies_and_never_mid_turn() {
     };
     let fork = crate::acp::bindings::claude::sdk::fork::Fork::parse(id.as_str()).unwrap();
     assert_eq!((fork.source.as_str(), fork.at.as_str()), (SESSION, REPLY));
-    // No profile, or Claude Code refusing, rejects the fork.
     let sdk = bridge.fork(None).unwrap();
     let reply = bridge.inbound(success(&sdk, json!({}))).unwrap();
     assert_eq!(
@@ -1110,8 +1092,6 @@ fn answer_text_on_either_side_of_a_tool_call_stays_two_items() {
     assert_eq!(before, "msg_a:0");
     assert_eq!(after, "msg_b:0");
 
-    // Within one message, every delta of a block shares its item and a
-    // later block starts its own.
     let delta = |bridge: &mut SdkBridge, index: u64, text: &str| {
         let chunk = bridge.inbound(json!({"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","index":index,"delta":{"type":"text_delta","text":text}}})).unwrap();
         updates(&chunk)[0]["itemId"].clone()
@@ -1120,8 +1100,6 @@ fn answer_text_on_either_side_of_a_tool_call_stays_two_items() {
     assert_eq!(delta(&mut bridge, 2, "Second block."), "msg_b:2");
     assert_eq!(delta(&mut bridge, 2, " Continued."), "msg_b:2");
 
-    // Text Claude Code wrote itself, never streamed, is keyed by its
-    // message and block the same way.
     let unstreamed = bridge
         .inbound(
             json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_c","content":[

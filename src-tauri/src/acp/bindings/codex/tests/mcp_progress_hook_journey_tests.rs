@@ -1,7 +1,3 @@
-//! The `codex-mcp-progress` and `codex-hook-run` native replay journeys,
-//! frame for frame, through the real Codex binding: what the app shows for
-//! a reporting MCP call and for hooks around a tool call.
-
 use super::*;
 use crate::acp::{
     intent::{
@@ -11,15 +7,12 @@ use crate::acp::{
     lifecycle::{ItemLifecycle, ToolState},
 };
 
-/// What one journey frame projected into the transcript or the session.
 #[derive(Debug, PartialEq, Eq)]
 enum Shown {
     Tool(String, ItemLifecycle, Option<ToolState>, Option<String>),
     Hook(String, String, SessionActivityState, Option<String>),
 }
 
-/// Replays `case` through a Codex adapter opened on the fixture's thread and
-/// returns what each turn frame showed, ending at the completed turn.
 fn replay(case: &str) -> Vec<Shown> {
     let requests = [
         json!({"id":900,"method":"initialize"}),

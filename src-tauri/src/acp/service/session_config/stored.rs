@@ -1,12 +1,3 @@
-//! A session's config while it has no live runtime.
-//!
-//! What a live session reports is kept as its snapshot. A parked or
-//! restarted chat shows that snapshot with the stored choices as current
-//! values, marked as restored, until the resumed runtime reports its own
-//! config. A choice made meanwhile is stored the same way a confirmed one
-//! is, so the restore reapplies it before the next prompt: the runtime is
-//! not started just to change a setting, and the restore stays the one path
-//! that brings a resumed session to its stored choices.
 use crate::acp::{
     contract::SageAgentSessionId,
     scheduler::RuntimeOwner,
@@ -18,10 +9,8 @@ use crate::acp::{
 
 use super::AcpService;
 
-/// Why a choice for a session without a live runtime was not stored.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum QueueError {
-    /// Nothing restored offers this mode or value.
     NotOffered,
     /// The session's runtime reports its config: change it there.
     Live,
@@ -47,7 +36,6 @@ impl AcpService {
         })
     }
 
-    /// The config a session without a live runtime shows, if any is stored.
     pub(in crate::acp::service) fn restored_session_config(
         &self,
         session: &SageAgentSessionId,
@@ -58,7 +46,6 @@ impl AcpService {
             .flatten()
     }
 
-    /// Only the session's stored choices, for a page with no room for more.
     pub(in crate::acp::service) fn stored_choices_view(
         &self,
         session: &SageAgentSessionId,
@@ -69,8 +56,6 @@ impl AcpService {
             .flatten()
     }
 
-    /// What the composer says about a stored choice the session could not
-    /// take back.
     pub(in crate::acp::service) fn session_config_notice(
         &self,
         session: &SageAgentSessionId,
@@ -92,7 +77,6 @@ impl AcpService {
         choice: &ConfigMutation,
     ) -> Result<(), QueueError> {
         let lane = runtime.and_then(|owner| self.lane_for(owner).zip(Some(owner)));
-        // A runtime that reports its config takes changes through it.
         if lane
             .as_ref()
             .is_some_and(|(lane, owner)| lane.runtime.config.live_snapshot(owner).is_some())
@@ -117,7 +101,6 @@ impl AcpService {
                 .config
                 .rearm_restore(owner, std::slice::from_ref(choice));
         }
-        // The pick settles any notice about its option, in the same write.
         let stored = self.database.write_connection().and_then(|mut connection| {
             let transaction = connection.transaction()?;
             notices::clear(&transaction, session, choice)?;

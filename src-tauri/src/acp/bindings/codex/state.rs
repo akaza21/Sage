@@ -113,7 +113,6 @@ struct PermissionRequestEntry {
     item_id: String,
     response: Vec<u8>,
     state: ServerRequestState,
-    /// The form an MCP elicitation asked; its answers are typed against it.
     form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
 }
 
@@ -196,7 +195,6 @@ pub(crate) struct CodexAdapter {
     active_terminal_id_bytes: usize,
     active_unretried_error_fingerprints: Vec<[u8; 32]>,
     active_approval_reviews: Vec<String>,
-    /// Sage wrote `turn/interrupt` for the active Turn.
     active_turn_user_stop: bool,
     active_turn_plan: Option<turn_end::PlanEntries>,
     previous_turn: Option<TurnTombstone>,
@@ -217,13 +215,10 @@ pub(crate) struct CodexAdapter {
     child_read_tombstone: Option<u64>,
     /// Import reads whose caller gave up; their late answers are dropped.
     abandoned_reads: Vec<u64>,
-    /// The project root the bound thread was started or resumed in.
     native_root: Option<super::request::NativeProjectRoot>,
     listed_sessions: Vec<String>,
     rate_limits_abandoned: rate_limits::AbandonedReads,
-    /// Background-terminal listings whose caller gave up; late answers are dropped.
     terminals_tombstones: Vec<u64>,
-    /// An `/mcp` read whose caller gave up; its late answer is dropped.
     mcp_read_tombstones: Vec<u64>,
     skills: skills::Skills,
     pending_fork: Option<u64>,
@@ -321,7 +316,6 @@ impl CodexAdapter {
             .find_map(|(pending, kind)| (*pending == id).then_some(*kind))
     }
 
-    /// Whether a request of `kind` is still waiting for its answer.
     pub(crate) fn awaits(&self, kind: RequestKind) -> bool {
         self.pending.iter().any(|(_, pending)| *pending == kind)
     }

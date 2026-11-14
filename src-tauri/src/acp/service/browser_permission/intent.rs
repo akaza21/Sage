@@ -1,5 +1,3 @@
-//! The card's journal intent and request kind (ADR-0009, ADR-0009b).
-
 use super::BrowserPermissionOwner;
 use crate::{
     acp::{
@@ -68,8 +66,6 @@ pub(super) fn local_intent(
 /// `browserPermission` so no other decision can answer it.
 const DEVELOPER_REQUEST_KIND: &str = "browserDeveloperPermission";
 
-/// Deny answers any card; developer mode answers only an elevated one, and
-/// the ordinary choices only an ordinary one.
 pub(super) fn choice_fits(elevated: bool, choice: BrowserPermissionChoice) -> bool {
     match choice {
         BrowserPermissionChoice::Deny => true,

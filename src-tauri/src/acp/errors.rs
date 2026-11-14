@@ -1,6 +1,3 @@
-//! Errors that the runtime and the bindings report to the service driving
-//! them. The service maps them to IPC errors; nothing here knows about IPC.
-
 use crate::acp::contract::SafeText;
 
 #[derive(Debug, thiserror::Error)]

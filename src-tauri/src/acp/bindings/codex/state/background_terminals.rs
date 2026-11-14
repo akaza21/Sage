@@ -6,8 +6,6 @@ use crate::acp::{background_terminals::TerminalAction, bindings::codex::request:
 const MAX_ABANDONED_LISTS: usize = 4;
 
 impl CodexAdapter {
-    /// Lists or stops the bound thread's background terminals, one request
-    /// at a time and only once the session negotiated them.
     pub(crate) fn background_terminals(
         &mut self,
         id: u64,
@@ -38,8 +36,6 @@ impl CodexAdapter {
         self.pending.iter().any(|(_, kind)| kind.is_terminals())
     }
 
-    /// Stops waiting for a listing whose caller gave up. Its late answer is
-    /// discarded by `take_terminals_tombstone`.
     pub(crate) fn abandon_terminals_list(&mut self) {
         if let Some(&(id, _)) = self
             .pending

@@ -1,5 +1,3 @@
-//! Commands a harness left running after the step that started them. Sage
-//! only lists and stops them through the harness; nothing is persisted.
 use serde::Serialize;
 
 use super::intent::SafeResourceLocation;
@@ -8,7 +6,6 @@ use super::intent::SafeResourceLocation;
 pub(crate) const MAX_BACKGROUND_TERMINALS: usize = 32;
 /// Byte cap of the opaque handle the WebView sends back to stop one.
 pub(crate) const TERMINAL_HANDLE_BYTES: usize = 128;
-/// Byte cap of one listed command line.
 pub(crate) const TERMINAL_COMMAND_BYTES: usize = 4_096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -16,7 +13,6 @@ pub(crate) enum TerminalAction {
     List,
     /// Stops the terminal with this handle from the latest listing.
     Stop(String),
-    /// Stops every terminal the session left running.
     StopAll,
 }
 
@@ -29,7 +25,6 @@ impl TerminalAction {
     }
 }
 
-/// A handle is opaque to Sage and bounded before it reaches the harness.
 pub(crate) fn valid_handle(handle: &str) -> bool {
     !handle.is_empty()
         && handle.len() <= TERMINAL_HANDLE_BYTES

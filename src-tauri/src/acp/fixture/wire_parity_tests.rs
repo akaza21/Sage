@@ -1,7 +1,3 @@
-//! Waves 6-8 native capture replays (scripts/acp-native-parity-events.mjs):
-//! the fork RPCs, MCP / web-search / mixed tool rows and second Turns answer
-//! the bound client exactly and project through the real bindings.
-
 use crate::acp::{
     bindings::standard_acp::{
         profile_for,
@@ -37,7 +33,6 @@ fn lines(requests: &[Value]) -> String {
         .collect()
 }
 
-/// A Codex capture's client side through the first Turn, then `tail`.
 fn codex_requests(tail: &[Value]) -> String {
     lines(&[
         json!({"id":1,"method":"initialize"}),
@@ -63,7 +58,6 @@ fn response(frames: &[Value], id: u64) -> &Value {
         .unwrap_or_else(|| panic!("no response {id}"))
 }
 
-/// Each completed Codex item normalized by the real Codex binding.
 fn codex_tools(case: &str) -> Vec<(ToolCategory, Option<ToolState>, Option<String>)> {
     let frames = replay_native(
         case,
@@ -149,7 +143,6 @@ fn claude_fork_cases_advertise_unstable_fork_and_answer_one_session_fork() {
     assert!(offer.fork_session);
     assert!(offer.close_session);
     assert_eq!(response(&frames, 4)["result"]["sessionId"], FORK);
-    // Non-fork Claude cases keep the established initialize offer.
     let plain = replay_native(
         "claude-turn-completed",
         &claude_requests(&[json!({"id":4,"method":"session/close"})]),

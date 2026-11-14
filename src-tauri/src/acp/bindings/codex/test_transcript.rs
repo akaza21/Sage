@@ -1,10 +1,7 @@
-//! Child transcript snapshots built from captured wire, for tests.
-
 use super::{NativeTurnsPage, child_transcript::ChildTranscriptError, normalize_turns_page};
 use crate::acp::bindings::adapter::ResourceMapper;
 use crate::acp_protocol::codex_protocol::ChildTranscriptSnapshot;
 
-/// The snapshot a read of `child` under `parent` keeps for `page`.
 pub(crate) fn child_snapshot(
     page: NativeTurnsPage,
     child: &str,
@@ -18,8 +15,6 @@ pub(crate) fn child_snapshot(
     }
 }
 
-/// Normalizes a captured `thread/read` child transcript as the single
-/// `thread/turns/list` page holding its Turns.
 pub(crate) fn child_read<M: ResourceMapper + ?Sized>(
     wire: &[u8],
     request_id: u64,
