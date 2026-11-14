@@ -10,7 +10,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
         SchemaClass::CurrentOperationTerminalIndex
         | SchemaClass::CurrentTurnUndoIntentIndexes
-        | SchemaClass::CurrentImportedHistory => {
+        | SchemaClass::CurrentImportedHistory
+        | SchemaClass::CurrentSessionCapabilities => {
             return Ok(());
         }
         SchemaClass::CurrentSessionFactsTurnIndex => {}

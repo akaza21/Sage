@@ -69,9 +69,7 @@ pub(crate) use first_turn_tests::{
 mod tests;
 #[cfg(test)]
 mod worker_tests;
-pub(crate) use activation::{
-    ActivationDriverError, ActivationProcessDriver, ActivationStartupStep,
-};
+pub(crate) use activation::{ActivationDriverError, ActivationProcessDriver};
 pub(crate) use activation_parts::{
     ActivationProjectionRecoveryHandoff, ActivationZeroProcessHandoff,
     CompletedActivationDriverParts, FirstTurnBindFailure, PrepareActivationTurnError,

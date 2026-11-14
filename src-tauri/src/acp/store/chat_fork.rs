@@ -3,11 +3,10 @@
 //! `chat_lineage` row in the same transaction that creates the fork Chat.
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
-use serde_json::Value;
 
 use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
-    intent::ExternalId,
+    intent::{CapabilitySnapshotV1, ExternalId},
 };
 
 use super::{
@@ -16,44 +15,6 @@ use super::{
     session_head::{HeadSession, install_head_session},
     sessions::{ensure_one, ensure_session_capacity, update_chat},
 };
-
-const FORK_CAPABILITY: &str = "nativeSessionFork";
-pub(crate) const IMPORT_CAPABILITY: &str = "nativeSessionImport";
-
-/// Capabilities a harness may gain once Sage learns to drive them, with
-/// whether a snapshot records them when false.
-const UPGRADES: [(&str, bool); 5] = [
-    (FORK_CAPABILITY, true),
-    ("activeTurnSteer", true),
-    ("nativeSessionCompact", false),
-    (IMPORT_CAPABILITY, false),
-    ("promptImages", false),
-];
-
-/// A session negotiated before Sage drove one of its harness's methods
-/// stored that capability as off; the same harness now negotiates it on.
-/// Such upgrades still resume the session. Its stored snapshot stays
-/// immutable, so the session keeps reporting them off (fail closed).
-pub(crate) fn resumable_capabilities(stored: &str, negotiated: &str) -> bool {
-    if stored == negotiated {
-        return true;
-    }
-    let (Ok(Value::Object(mut stored)), Ok(Value::Object(mut negotiated))) = (
-        serde_json::from_str::<Value>(stored),
-        serde_json::from_str::<Value>(negotiated),
-    ) else {
-        return false;
-    };
-    UPGRADES.iter().all(|(key, recorded)| {
-        let (was, now) = (stored.remove(*key), negotiated.remove(*key));
-        let off = match was {
-            Some(Value::Bool(false)) => true,
-            None => !recorded,
-            _ => false,
-        };
-        was == now || (off && now == Some(Value::Bool(true)))
-    }) && stored == negotiated
-}
 
 /// The Turn a fork is taken through: the latest completed Turn of the Chat's
 /// live head session.
@@ -67,8 +28,8 @@ pub(crate) struct ForkSource {
 }
 
 /// Admits a fork only from the latest completed Turn of a hot head session
-/// whose own durable capabilities admit `nativeSessionFork`, with no Turn in
-/// flight. Temporary side chats are never fork sources.
+/// whose latest committed negotiation admits `nativeSessionFork`, with no
+/// Turn in flight. Temporary side chats are never fork sources.
 pub(crate) fn fork_source(
     connection: &Connection,
     project_id: &SageProjectId,
@@ -107,10 +68,8 @@ pub(crate) fn fork_source(
             resource: "forkRuntime",
         });
     };
-    let admits_fork = serde_json::from_str::<Value>(&capabilities)
-        .ok()
-        .and_then(|value| value.get(FORK_CAPABILITY).and_then(Value::as_bool))
-        == Some(true);
+    let admits_fork = serde_json::from_str::<CapabilitySnapshotV1>(&capabilities)
+        .is_ok_and(|snapshot| snapshot.native_session_fork);
     if !admits_fork || residency != "hot" || !matches!(state.as_str(), "ready" | "active") {
         return Err(StoreError::Conflict {
             resource: "forkCapability",
@@ -298,69 +257,4 @@ pub(crate) fn forked_from(
             ))
         })
         .transpose()
-}
-
-#[cfg(test)]
-mod tests {
-    use super::resumable_capabilities;
-
-    const STORED: &str =
-        r#"{"schemaVersion":1,"protocolVersion":"p","prompt":true,"nativeSessionFork":false}"#;
-
-    #[test]
-    fn only_the_fork_upgrade_of_an_otherwise_equal_snapshot_still_resumes() {
-        assert!(resumable_capabilities(STORED, STORED));
-        assert!(resumable_capabilities(
-            STORED,
-            r#"{"schemaVersion":1,"protocolVersion":"p","prompt":true,"nativeSessionFork":true}"#
-        ));
-        // A downgrade, any other drift, or garbage is still a conflict.
-        let forkable = STORED.replace("false", "true");
-        assert!(!resumable_capabilities(&forkable, STORED));
-        assert!(!resumable_capabilities(
-            STORED,
-            r#"{"schemaVersion":1,"protocolVersion":"p","prompt":false,"nativeSessionFork":true}"#
-        ));
-        assert!(!resumable_capabilities(STORED, "not json"));
-    }
-
-    #[test]
-    fn the_import_upgrade_also_resumes_but_never_a_downgrade() {
-        let imported = STORED.replace('}', r#","nativeSessionImport":true}"#);
-        assert!(resumable_capabilities(STORED, &imported));
-        let both = imported.replace(
-            r#""nativeSessionFork":false"#,
-            r#""nativeSessionFork":true"#,
-        );
-        assert!(resumable_capabilities(STORED, &both));
-        assert!(!resumable_capabilities(&imported, STORED));
-        let other = imported.replace(r#""prompt":true"#, r#""prompt":false"#);
-        assert!(!resumable_capabilities(STORED, &other));
-    }
-
-    #[test]
-    fn steer_and_compact_upgrades_still_resume_but_never_a_downgrade() {
-        let stored = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"activeTurnSteer":false}"#;
-        let upgraded = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"nativeSessionCompact":true,"activeTurnSteer":true}"#;
-        assert!(resumable_capabilities(stored, upgraded));
-        assert!(!resumable_capabilities(upgraded, stored));
-        // A recorded flag cannot go missing.
-        assert!(!resumable_capabilities(
-            stored,
-            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false}"#
-        ));
-        assert!(!resumable_capabilities(
-            stored,
-            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":false,"activeTurnSteer":"yes"}"#
-        ));
-    }
-
-    #[test]
-    fn a_session_from_before_prompt_images_still_resumes_with_them() {
-        let stored = r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":true}"#;
-        let upgraded =
-            r#"{"schemaVersion":1,"prompt":true,"nativeSessionFork":true,"promptImages":true}"#;
-        assert!(resumable_capabilities(stored, upgraded));
-        assert!(!resumable_capabilities(upgraded, stored));
-    }
 }

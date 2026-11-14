@@ -5,7 +5,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/028_turn_undo_int
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentTurnUndoIntentIndexes | SchemaClass::CurrentImportedHistory => {
+        SchemaClass::CurrentTurnUndoIntentIndexes
+        | SchemaClass::CurrentImportedHistory
+        | SchemaClass::CurrentSessionCapabilities => {
             return Ok(());
         }
         SchemaClass::CurrentOperationTerminalIndex => {}

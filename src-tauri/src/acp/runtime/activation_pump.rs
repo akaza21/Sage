@@ -27,8 +27,11 @@ mod ingress;
 mod intent;
 mod mode;
 mod parts;
+mod phase;
+mod startup_step;
 
 use intent::{digest, validate_intent};
+use phase::Phase;
 
 pub(crate) use coordinator_journal::{
     CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
@@ -36,6 +39,7 @@ pub(crate) use coordinator_journal::{
 pub(crate) use ingress::is_available_commands_update;
 pub(crate) use mode::ActivationMode;
 pub(crate) use parts::{IdleActivationParts, RecoveryActivationParts, TeardownActivationParts};
+pub(crate) use startup_step::ActivationStartupStep;
 
 #[cfg(test)]
 mod tests;
@@ -106,28 +110,6 @@ pub(crate) enum ActivationFlush {
     Written,
     RetriedZeroBytes,
     DeliveryUnknown,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Phase {
-    Dormant,
-    InitializeQueued,
-    AwaitingInitialized,
-    Initialized,
-    SessionQueued,
-    AwaitingSession,
-    Ready,
-    RecoveryRequired,
-    Teardown,
-}
-
-impl Phase {
-    /// Adapter requests that join the bounded initialization budget: the
-    /// handshake itself, and ACP sign-in while the session is not yet ready
-    /// (`authenticate`, then `session/new` again).
-    fn admits_initialization_request(self, session_ready: bool) -> bool {
-        self == Self::AwaitingInitialized || (self == Self::AwaitingSession && !session_ready)
-    }
 }
 
 #[derive(Debug, thiserror::Error)]
@@ -265,7 +247,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
     }
 
     pub(crate) fn teardown_required(&self) -> bool {
-        self.phase == Phase::Teardown
+        matches!(self.phase, Phase::Teardown(_))
     }
 
     #[cfg(test)]
@@ -282,18 +264,8 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             && self.egress.control_usage().0 == 0
     }
 
-    pub(crate) fn startup_phase(&self) -> &'static str {
-        match self.phase {
-            Phase::Dormant | Phase::InitializeQueued | Phase::AwaitingInitialized => "initialize",
-            Phase::Initialized | Phase::SessionQueued | Phase::AwaitingSession => {
-                match self.intent.mode {
-                    ActivationMode::New { .. } => "session/new",
-                    ActivationMode::Resume { .. } => "session/resume",
-                    ActivationMode::Load { .. } => "session/load",
-                }
-            }
-            Phase::Ready | Phase::RecoveryRequired | Phase::Teardown => "ready-handoff",
-        }
+    pub(crate) fn startup_step(&self) -> ActivationStartupStep {
+        self.phase.startup_step(&self.intent.mode)
     }
 
     pub(crate) fn try_into_idle_parts(
@@ -336,7 +308,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
     pub(crate) fn try_into_teardown_parts(
         self,
     ) -> ActivationHandoff<TeardownActivationParts<A, J, R>, A, J, R> {
-        if self.phase != Phase::Teardown {
+        if !matches!(self.phase, Phase::Teardown(_)) {
             return Err(Box::new((self, ActivationPumpError::NotQuiescent)));
         }
         Ok(TeardownActivationParts {
@@ -348,7 +320,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
 
     fn ensure_live(&self) -> Result<(), ActivationPumpError> {
         match self.phase {
-            Phase::Teardown => Err(ActivationPumpError::TeardownRequired),
+            Phase::Teardown(_) => Err(ActivationPumpError::TeardownRequired),
             Phase::RecoveryRequired => Err(ActivationPumpError::RecoveryRequired),
             _ => Ok(()),
         }
@@ -424,7 +396,14 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
     }
 
     fn fail_closed(&mut self) {
-        self.phase = Phase::Teardown;
+        self.fail_closed_at(self.startup_step());
+    }
+
+    /// Tears the activation down, keeping the step of the first failure.
+    fn fail_closed_at(&mut self, step: ActivationStartupStep) {
+        if !matches!(self.phase, Phase::Teardown(_)) {
+            self.phase = Phase::Teardown(step);
+        }
         self.ready = None;
     }
 }

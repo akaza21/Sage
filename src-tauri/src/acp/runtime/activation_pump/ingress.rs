@@ -364,7 +364,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                 Ok(())
             }
             Err(ActivationJournalError::Rejected) => {
-                self.fail_closed();
+                self.fail_closed_at(ActivationStartupStep::ActivationCommit);
                 Err(ActivationPumpError::TeardownRequired)
             }
             Ok(_) | Err(ActivationJournalError::CommitUnknown) => {
