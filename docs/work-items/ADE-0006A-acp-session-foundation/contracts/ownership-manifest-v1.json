@@ -21,6 +21,8 @@
     "src/features/chat/acp/"
   ],
   "ownedFileScopes": [
+    "Cargo.lock",
+    "Cargo.toml",
     "eslint.config.js",
     "scripts/ade0006a-admission.mjs",
     "scripts/ade0006a-c0b-campaign-launch.mjs",
@@ -103,7 +105,6 @@
     "scripts/validate-ade0006a-c0b-plan.mjs",
     "scripts/validate-ade0006a-c0b-results.mjs",
     "scripts/validate-ade0006a-c0b.node-test.mjs",
-    "src-tauri/Cargo.lock",
     "src-tauri/Cargo.toml",
     "src-tauri/migrations/005_acp_session_foundation.sql",
     "src-tauri/src/bin/acp_adversarial_fixture.rs",
@@ -198,8 +199,9 @@
         "src-tauri/src/acp/tests/"
       ],
       "files": [
+        "Cargo.lock",
+        "Cargo.toml",
         "scripts/generate-acp-fixture-cases.mjs",
-        "src-tauri/Cargo.lock",
         "src-tauri/Cargo.toml",
         "src-tauri/migrations/005_acp_session_foundation.sql",
         "src-tauri/src/acp/attached_context.rs",

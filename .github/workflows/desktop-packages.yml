@@ -33,7 +33,7 @@ jobs:
           targets: aarch64-apple-darwin,x86_64-apple-darwin
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
           cache-on-failure: true
       - run: npm ci
       - name: Build the universal installer
@@ -42,7 +42,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          bundle=src-tauri/target/universal-apple-darwin/release/bundle
+          bundle=target/universal-apple-darwin/release/bundle
           set -- "$bundle"/dmg/*.dmg
           test "$#" -eq 1
           dmg="$1"
@@ -113,7 +113,7 @@ jobs:
           toolchain: stable-2026-07-16
       - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: src-tauri -> target
+          workspaces: . -> target
       - run: npm ci
       - name: Build the Windows installer
         run: npm run tauri build -- --bundles nsis --ci -- --locked
@@ -121,7 +121,7 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Path work/windows-package
-          Copy-Item src-tauri/target/release/bundle/nsis/*.exe work/windows-package/
+          Copy-Item target/release/bundle/nsis/*.exe work/windows-package/
           Set-Content work/windows-package/source.txt $env:GITHUB_SHA
           Get-ChildItem work/windows-package -Filter *.exe | ForEach-Object {
             $hash = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash

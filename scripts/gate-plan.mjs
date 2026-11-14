@@ -1,10 +1,8 @@
 import { lintFeatures, testFeatures } from "./cargo-features.mjs";
 import { environmentForGateStep } from "./gate-env.mjs";
 
-const manifest = "src-tauri/Cargo.toml";
 const cargoConfiguration = [
-  "--manifest-path",
-  manifest,
+  "--workspace",
   "--features",
   testFeatures().join(","),
 ];
@@ -19,15 +17,7 @@ export const steps = {
   prettier: ["npx", "prettier", "--check", "."],
   eslint: ["npx", "eslint", "."],
   typescript: ["npx", "tsc", "--noEmit"],
-  rustfmt: [
-    "cargo",
-    "fmt",
-    "--manifest-path",
-    manifest,
-    "--all",
-    "--",
-    "--check",
-  ],
+  rustfmt: ["cargo", "fmt", "--all", "--", "--check"],
   vitest: {
     command: ["npx", "vitest", "run", ...vitestExclude],
     env: environmentForGateStep("vitest"),
@@ -35,8 +25,7 @@ export const steps = {
   clippy: [
     "cargo",
     "clippy",
-    "--manifest-path",
-    manifest,
+    "--workspace",
     "--all-targets",
     "--features",
     lintFeatures().join(","),
