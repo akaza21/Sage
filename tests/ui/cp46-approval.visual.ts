@@ -240,10 +240,10 @@ test("CP-46 approval replaces the composer slot, opens its menu above, and yield
   // Allow once holds focus on arrival and shows Codex's 2 px ring: a 1 px
   // accent outline plus a 1 px accent spread (no 2 px outlines by policy).
   await expect(allow).toHaveCSS("outline-style", "solid");
-  await expect(allow).toHaveCSS("outline-color", "rgb(58, 131, 247)");
+  await expect(allow).toHaveCSS("outline-color", "rgb(132, 184, 122)");
   await expect(allow).toHaveCSS(
     "box-shadow",
-    "rgb(58, 131, 247) 0px 0px 0px 1px",
+    "rgb(132, 184, 122) 0px 0px 0px 1px",
   );
   // The running row keeps a spinner beside the Awaiting approval pill.
   await expect(

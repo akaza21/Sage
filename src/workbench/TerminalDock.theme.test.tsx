@@ -30,7 +30,9 @@ const handle = {
 // evaluates its @media rules, so the media query result is emulated here by
 // applying the app stylesheet's own forced-colors rules while the stubbed
 // query reports active.
-const appStylesheet = readFileSync("src/styles/global.css", "utf8");
+const appStylesheet = substituteRootTokens(
+  readFileSync("src/styles/global.css", "utf8"),
+);
 // The styles the running app gives the dock: xterm's own and the dock's.
 const dockStylesheets = [
   "node_modules/@xterm/xterm/css/xterm.css",
@@ -39,6 +41,32 @@ const dockStylesheets = [
 let forcedColors = false;
 let forcedColorsRules: HTMLStyleElement | null = null;
 const mediaListeners = new Map<string, Set<() => void>>();
+
+/**
+ * A browser substitutes `var()` references when it computes a custom
+ * property, so a token aliasing another reads back as a colour. jsdom returns
+ * the reference verbatim, so the theme's root aliases are substituted here.
+ */
+function substituteRootTokens(css: string): string {
+  const block = /^:root \{$[\s\S]*?^\}$/mu.exec(css)!;
+  const root = block[0];
+  const tokens = new Map(
+    Array.from(root.matchAll(/^\s*(--[\w-]+):\s*([^;]+);/gmu), (match) => [
+      match[1],
+      match[2].trim(),
+    ]),
+  );
+  const resolve = (value: string): string => {
+    const alias = /^var\((--[\w-]+)\)$/u.exec(value)?.[1];
+    const target = alias && tokens.get(alias);
+    return target ? resolve(target) : value;
+  };
+  const resolved = root.replace(
+    /^(\s*--[\w-]+:\s*)(var\(--[\w-]+\));/gmu,
+    (_, head: string, value: string) => `${head}${resolve(value)};`,
+  );
+  return css.replace(root, resolved);
+}
 
 function forcedColorsBlock(sheet: CSSStyleSheet): string {
   const block = Array.from(sheet.cssRules).find(
@@ -182,10 +210,10 @@ it("renders in the app theme's canvas, text, selection and mono font", async () 
     background: "#141414",
     foreground: "#c5c5c5",
     cursor: "#c5c5c5",
-    selectionBackground: "#264f78",
+    selectionBackground: "#294126",
   });
   expect(rendered(".xterm-rows", "color")).toBe("#c5c5c5");
-  expect(rendered(".xterm-selection div", "background-color")).toBe("#264f78");
+  expect(rendered(".xterm-selection div", "background-color")).toBe("#294126");
   await waitFor(() =>
     expect(
       (container.querySelector(".xterm-scrollable-element") as HTMLElement)
@@ -230,7 +258,7 @@ it("follows the forced-colors palette while mounted and keeps its output", async
   // show here that it stopped drawing the dark palette.
   expect(rendered(".xterm-rows", "color")).not.toBe("#c5c5c5");
   expect(rendered(".xterm-selection div", "background-color")).not.toBe(
-    "#264f78",
+    "#294126",
   );
 
   setForcedColors(false, theme.sheet!);
@@ -240,7 +268,7 @@ it("follows the forced-colors palette while mounted and keeps its output", async
     (container.querySelector(".xterm-scrollable-element") as HTMLElement).style
       .backgroundColor,
   ).toBe("rgb(20, 20, 20)");
-  expect(rendered(".xterm-selection div", "background-color")).toBe("#264f78");
+  expect(rendered(".xterm-selection div", "background-color")).toBe("#294126");
   expect(opened).toHaveBeenCalledTimes(1);
   expect(terminal.buffer.active.getLine(0)?.translateToString(true)).toBe(
     OUTPUT,

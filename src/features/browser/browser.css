@@ -477,7 +477,7 @@
 .browser-annotate__outline {
   position: absolute;
   box-sizing: border-box;
-  border: 2px solid var(--browser-annotate-blue);
+  border: 2px solid var(--color-accent);
   pointer-events: none;
 }
 .browser-annotate__badge {
@@ -485,8 +485,8 @@
   width: 24px;
   height: 24px;
   border-radius: var(--radius-circle);
-  color: var(--browser-bright-text);
-  background: var(--browser-annotate-blue);
+  color: var(--color-accent-foreground);
+  background: var(--color-accent);
   font-size: 12px;
   font-weight: 600;
   line-height: 24px;

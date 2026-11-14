@@ -131,7 +131,7 @@
 
 .browser-element-chip button:focus-visible,
 .browser-element-card button:focus-visible {
-  outline: var(--focus-ring-width) solid var(--chat-annotation-accent);
+  outline: var(--focus-ring-width) solid var(--color-accent);
   outline-offset: -1px;
 }
 

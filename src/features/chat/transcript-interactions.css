@@ -75,7 +75,7 @@
 .annotation-chip button:focus-visible,
 .annotation-card button:focus-visible,
 .side-chat-tab__close:focus-visible {
-  outline: var(--focus-ring-width) solid var(--chat-annotation-accent);
+  outline: var(--focus-ring-width) solid var(--color-accent);
   outline-offset: -1px;
 }
 
@@ -83,8 +83,8 @@
   width: 24px;
   height: 24px;
   border-radius: var(--radius-annotation-badge);
-  background: var(--chat-annotation-accent);
-  color: var(--color-status-foreground);
+  background: var(--color-accent);
+  color: var(--color-accent-foreground);
   font-size: 12px;
   font-weight: 600;
   line-height: 24px;
@@ -389,7 +389,7 @@
 }
 
 .close-side-chat-dialog .button--danger:is(:focus-visible, :focus) {
-  outline: var(--focus-ring-width) solid var(--chat-annotation-accent);
+  outline: var(--focus-ring-width) solid var(--color-accent);
   outline-offset: 0;
-  box-shadow: 0 0 0 1px var(--chat-annotation-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
 }

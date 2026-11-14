@@ -103,10 +103,10 @@
     {
       "id": "badge-fill",
       "ref": "reference/60",
-      "source": "M1b sampled the badge fill rgb(51, 156, 255) at x1110 y718",
+      "source": "M1b sampled Codex's accent fill rgb(51, 156, 255) at x1110 y718; Sage fills the badge with its own accent",
       "selector": ".browser-annotate__badge",
       "measure": "background-color",
-      "expected": "rgb(51, 156, 255)"
+      "expected": "rgb(132, 184, 122)"
     },
     {
       "id": "comment-pill-under-element",
