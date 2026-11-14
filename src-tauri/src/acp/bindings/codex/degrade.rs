@@ -36,6 +36,7 @@ struct OptionalCapabilities {
     native_session_compact: bool,
     native_session_import: bool,
     native_review: bool,
+    native_background_terminals: bool,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -67,6 +68,8 @@ const OBSERVED_CAPABILITY_EVIDENCE: [ObservedCapabilityEvidence; 1] =
             // same generated schema.
             native_session_import: true,
             native_review: true,
+            // `thread/backgroundTerminals/*` are pinned from the same schema.
+            native_background_terminals: true,
         },
     }];
 
@@ -128,6 +131,7 @@ fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCa
         // The managed home is Sage's own, so it holds no CLI sessions.
         native_session_import: false,
         native_review: pinned,
+        native_background_terminals: pinned,
     }
 }
 
@@ -164,6 +168,7 @@ pub(crate) fn projected_capabilities(
         native_session_compact: optional.native_session_compact,
         native_session_import: optional.native_session_import,
         native_review: optional.native_review,
+        native_background_terminals: optional.native_background_terminals,
         active_turn_steer: optional.active_turn_steer,
         child_transcript_read: optional.child_transcript_read,
         multi_root_extension_schema_id: None,

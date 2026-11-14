@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { childResource, parentResource } from "../../domain/resourceIdentity";
 import {
   MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+  MAX_NOTIFY_BATCH_NOTICES,
   MAX_NOTIFY_LISTING_WAITERS,
   MAX_NOTIFY_SEARCH_SUBSCRIBERS,
   acceptWorkspaceNotifyNotice,
@@ -14,10 +15,13 @@ import {
   resetNotifyListingAdmission,
   resetWorkspaceNotifyComposeForTests,
   subscribeWorkspaceNotifySearch,
+  subscribeWorkspaceNotifyRepository,
   syncLiveProjectWorkspaceNotify,
   type LiveProjectNotifyStamp,
   type WorkspaceNotifyNotice,
+  workspaceNotifyBatchNotices,
 } from "./workspaceNotifyCompose";
+import type { ResourceRef } from "../../domain/workbench";
 
 const live: LiveProjectNotifyStamp = {
   projectId: "project-a",
@@ -50,10 +54,57 @@ describe("workspace notify compose", () => {
     expect(acceptWorkspaceNotifyNotice(notice, live)).toEqual(notice);
   });
 
+  it("accepts native Git relevance only as an optional boolean", () => {
+    const output = { ...notice, gitRelevant: false };
+    expect(acceptWorkspaceNotifyNotice(output, live)).toEqual(output);
+    expect(
+      acceptWorkspaceNotifyNotice({ ...notice, gitRelevant: "false" }, live),
+    ).toBeNull();
+  });
+
   it("accepts a resync notice and maps it to the root listing", () => {
     const resync = { ...notice, relativePath: "lost-notices", kind: "resync" };
     expect(acceptWorkspaceNotifyNotice(resync, live)).toEqual(resync);
     expect(listingResourceForNotify(resync)).toEqual(childResource("root-a"));
+  });
+
+  it("delivers listing/search immediately and routes the later Git decision only to repositories", async () => {
+    const searches: WorkspaceNotifyNotice[] = [];
+    const repositories: WorkspaceNotifyNotice[] = [];
+    const listings: ResourceRef[] = [];
+    let emit: (value: unknown) => void = () => undefined;
+    const stopSearch = subscribeWorkspaceNotifySearch((value) =>
+      searches.push(value),
+    );
+    const stopRepository = subscribeWorkspaceNotifyRepository((value) =>
+      repositories.push(value),
+    );
+    await syncLiveProjectWorkspaceNotify(live, {
+      watch: async () => ({ generation: 1 }),
+      unwatch: async () => undefined,
+      listen: async (listener) => {
+        emit = listener;
+        return () => undefined;
+      },
+      invalidate: (_notice, listing) => {
+        listings.push(listing);
+      },
+    });
+    const listing = { ...notice, gitRelevant: false };
+    emit(listing);
+    expect(searches).toEqual([listing]);
+    expect(listings).toEqual([childResource("root-a", "src")]);
+    expect(repositories).toEqual([]);
+
+    const decision = { ...notice, kind: "repository" };
+    emit(decision);
+    expect(repositories).toEqual([decision]);
+    expect(searches).toEqual([listing]);
+    expect(listings).toHaveLength(1);
+    emit({ ...decision, transitionEpoch: 6 });
+    expect(repositories).toHaveLength(1);
+    stopSearch();
+    stopRepository();
   });
 
   it("rejects a notice whose path or kind is outside the native bounds", () => {
@@ -186,13 +237,13 @@ describe("workspace notify compose", () => {
     expect(invalidate).toHaveBeenCalledTimes(1);
   });
 
-  it("coalesces a second notice for a listing that is already refreshing", async () => {
+  it("refreshes a folder once more when notices arrive during its refresh", async () => {
     let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
-    let finish: () => void = () => undefined;
+    const finishers: Array<() => void> = [];
     const invalidate = vi.fn(
-      () =>
+      (_notice: WorkspaceNotifyNotice) =>
         new Promise<void>((resolve) => {
-          finish = resolve;
+          finishers.push(resolve);
         }),
     );
     await syncLiveProjectWorkspaceNotify(live, {
@@ -205,9 +256,17 @@ describe("workspace notify compose", () => {
       invalidate,
     });
     emit(notice);
-    emit(notice);
+    emit({ ...notice, relativePath: "src/other.ts" });
+    emit({ ...notice, relativePath: "src/third.ts" });
     expect(invalidate).toHaveBeenCalledTimes(1);
-    finish();
+    finishers[0]();
+    await vi.waitFor(() => expect(invalidate).toHaveBeenCalledTimes(2));
+    expect(invalidate.mock.calls[1][0]).toMatchObject({
+      relativePath: "src/third.ts",
+    });
+    finishers[1]();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(invalidate).toHaveBeenCalledTimes(2);
   });
 
   it("never coalesces an ignore-file change into a running folder refresh", async () => {
@@ -241,10 +300,16 @@ describe("workspace notify compose", () => {
     }
   });
 
-  it("drops a ninth distinct in-flight listing refresh", async () => {
+  it("queues a ninth distinct folder refresh until a slot frees", async () => {
     expect(MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS).toBe(8);
     let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
-    const invalidate = vi.fn(() => new Promise<void>(() => undefined));
+    const finishers: Array<() => void> = [];
+    const invalidate = vi.fn(
+      (_notice: WorkspaceNotifyNotice, _listing: ResourceRef) =>
+        new Promise<void>((resolve) => {
+          finishers.push(resolve);
+        }),
+    );
     await syncLiveProjectWorkspaceNotify(live, {
       watch: vi.fn().mockResolvedValue({ generation: 1 }),
       unwatch: vi.fn(),
@@ -260,10 +325,56 @@ describe("workspace notify compose", () => {
     expect(invalidate).toHaveBeenCalledTimes(8);
     emit({ ...notice, relativePath: "lost-notices", kind: "resync" });
     expect(invalidate).toHaveBeenCalledTimes(9);
-    expect(invalidate).toHaveBeenCalledWith(
+    expect(invalidate).toHaveBeenLastCalledWith(
       { ...notice, relativePath: "lost-notices", kind: "resync" },
       childResource("root-a"),
     );
+    finishers[0]();
+    await vi.waitFor(() => expect(invalidate).toHaveBeenCalledTimes(10));
+    expect(invalidate).toHaveBeenLastCalledWith(
+      { ...notice, relativePath: "dir-8/file.ts" },
+      childResource("root-a", "dir-8"),
+    );
+  });
+
+  it("stops throttled ignored-folder refreshes when the session ends", async () => {
+    vi.useFakeTimers();
+    let emit: (value: WorkspaceNotifyNotice) => void = () => undefined;
+    const invalidate = vi.fn();
+    const hooks = {
+      watch: vi.fn().mockResolvedValue({ generation: 1 }),
+      unwatch: vi.fn(),
+      async listen(next: (value: unknown) => void) {
+        emit = next;
+        return () => undefined;
+      },
+      invalidate,
+    };
+    await syncLiveProjectWorkspaceNotify(live, hooks);
+    const ignored = { ...notice, relativePath: "target", kind: "ignored" };
+    emit(ignored);
+    emit(ignored);
+    await syncLiveProjectWorkspaceNotify(null, hooks);
+    expect(vi.getTimerCount()).toBe(0);
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(invalidate).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("reads the notices of a bounded native batch only", () => {
+    expect(workspaceNotifyBatchNotices({ notices: [notice] })).toEqual([
+      notice,
+    ]);
+    expect(workspaceNotifyBatchNotices(notice)).toEqual([]);
+    expect(workspaceNotifyBatchNotices({ notices: [], extra: 1 })).toEqual([]);
+    expect(
+      workspaceNotifyBatchNotices({
+        notices: Array.from(
+          { length: MAX_NOTIFY_BATCH_NOTICES + 1 },
+          () => notice,
+        ),
+      }),
+    ).toEqual([]);
   });
 
   it("rejects a listing-slot wait beyond the cache-sized waiter cap", async () => {

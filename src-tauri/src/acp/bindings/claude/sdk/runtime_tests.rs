@@ -960,7 +960,7 @@ fn mcp_servers_list_through_claude_code_and_an_abandoned_list_frees_the_session(
     };
     let first = list(&mut runtime);
     assert!(runtime.native_rpc_pending());
-    runtime.abandon_usage_read();
+    runtime.abandon_passive_read();
     assert!(!runtime.native_rpc_pending());
     // The late reply is dropped, not read as a frame Sage never asked for.
     let late = reply(&mut runtime, &first, json!({"mcpServers": []}));

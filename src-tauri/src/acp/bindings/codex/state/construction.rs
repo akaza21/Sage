@@ -91,6 +91,7 @@ impl CodexAdapter {
             native_root: None,
             listed_sessions: Vec::new(),
             rate_limits_abandoned: super::rate_limits::AbandonedReads::default(),
+            terminals_tombstones: Vec::new(),
             mcp_read_tombstones: Vec::new(),
             skills: Default::default(),
             pending_fork: None,

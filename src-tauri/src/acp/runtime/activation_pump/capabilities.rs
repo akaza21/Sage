@@ -54,6 +54,9 @@ pub(super) fn intersect(
             && advertised.native_session_import
             && policy.native_session_import,
         native_review: curated.native_review && advertised.native_review && policy.native_review,
+        native_background_terminals: curated.native_background_terminals
+            && advertised.native_background_terminals
+            && policy.native_background_terminals,
         active_turn_steer: curated.active_turn_steer
             && advertised.active_turn_steer
             && policy.active_turn_steer,
@@ -107,6 +110,7 @@ mod tests {
             native_session_compact: false,
             native_session_import: false,
             native_review: false,
+            native_background_terminals: false,
             active_turn_steer: false,
             child_conversation_projection: false,
             child_transcript_read: false,

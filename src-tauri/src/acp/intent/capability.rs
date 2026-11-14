@@ -27,6 +27,9 @@ pub struct CapabilitySnapshotV1 {
     pub native_session_import: bool,
     #[serde(skip_serializing_if = "is_false")]
     pub native_review: bool,
+    /// The harness lists and stops the commands it left running.
+    #[serde(skip_serializing_if = "is_false")]
+    pub native_background_terminals: bool,
     pub active_turn_steer: bool,
     pub child_conversation_projection: bool,
     pub child_transcript_read: bool,
@@ -58,6 +61,8 @@ struct CapabilitySnapshotWire {
     native_session_import: bool,
     #[serde(default)]
     native_review: bool,
+    #[serde(default)]
+    native_background_terminals: bool,
     active_turn_steer: bool,
     child_conversation_projection: bool,
     child_transcript_read: bool,
@@ -93,6 +98,7 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
             native_session_compact: wire.native_session_compact,
             native_session_import: wire.native_session_import,
             native_review: wire.native_review,
+            native_background_terminals: wire.native_background_terminals,
             active_turn_steer: wire.active_turn_steer,
             child_conversation_projection: wire.child_conversation_projection,
             child_transcript_read: wire.child_transcript_read,

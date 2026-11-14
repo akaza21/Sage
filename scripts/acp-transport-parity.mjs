@@ -19,6 +19,7 @@ export const FROZEN_ACP_TRANSPORT_FIELDS = Object.freeze({
     "loadSession",
     "modelCount",
     "multiRootExtensionSchemaId",
+    "nativeBackgroundTerminals",
     "nativeReview",
     "nativeSessionCompact",
     "nativeSessionFork",

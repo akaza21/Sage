@@ -84,6 +84,7 @@ impl HarnessAdapter for CodexRuntime {
             || self.inner.child_read_pending()
             || self.inner.fork_rpc_pending()
             || self.inner.rate_limits_read_pending()
+            || self.inner.terminals_pending()
             || self.inner.revert_pending()
             || self.inner.mcp_pending()
     }
@@ -97,12 +98,21 @@ impl HarnessAdapter for CodexRuntime {
         self.request(CodexAdapter::rate_limits_read)
     }
 
-    /// A passive read whose caller gave up: a usage, MCP list or import
-    /// read.
-    fn abandon_usage_read(&mut self) {
+    /// A passive read whose caller gave up: a usage, MCP list,
+    /// background-terminal list or import read.
+    fn abandon_passive_read(&mut self) {
         self.inner.abandon_rate_limits_read();
         self.inner.abandon_mcp_read();
+        self.inner.abandon_terminals_list();
         self.inner.abandon_native_read();
+    }
+
+    fn background_terminals(
+        &mut self,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.native_rpc_reply = None;
+        self.request(|adapter, id| adapter.background_terminals(id, action))
     }
 
     /// Each read whose reply may be past the frame bound keeps the decoder

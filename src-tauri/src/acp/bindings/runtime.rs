@@ -203,8 +203,14 @@ impl HarnessAdapter for NativeRuntime {
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.0.read_usage()
     }
-    fn abandon_usage_read(&mut self) {
-        self.0.abandon_usage_read()
+    fn abandon_passive_read(&mut self) {
+        self.0.abandon_passive_read()
+    }
+    fn background_terminals(
+        &mut self,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        self.0.background_terminals(action)
     }
     fn answered_control(&mut self, control: &crate::acp::session_control::SessionControl) -> bool {
         self.0.answered_control(control)

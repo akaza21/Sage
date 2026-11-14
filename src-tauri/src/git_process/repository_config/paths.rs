@@ -134,7 +134,7 @@ fn start(target: &str) -> Start<'_> {
 /// `path` in the form the operating system normalises the way Git's paths
 /// are normalised. A canonical Windows path is verbatim (`\\?\C:\...`), which
 /// would take `..` literally, so its plain form is used instead.
-pub(super) fn os_path(path: &Path) -> PathBuf {
+pub(in crate::git_process) fn os_path(path: &Path) -> PathBuf {
     #[cfg(windows)]
     {
         let text = path.to_string_lossy();

@@ -2726,7 +2726,7 @@ fn an_abandoned_import_read_drops_its_late_answer_and_the_chat_keeps_serving() {
         let abandoned: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
         // The caller gave up at its deadline: nothing is awaited any more,
         // yet the decoder still accepts the read's oversized answer.
-        pump.abandon_usage_read();
+        pump.abandon_passive_read();
         assert!(!pump.native_rpc_pending());
         assert!(pump.adapter.child_read_pending());
         assert!(
@@ -2744,7 +2744,7 @@ fn an_abandoned_import_read_drops_its_late_answer_and_the_chat_keeps_serving() {
         let mut output = CaptureTransport(Vec::new());
         pump.write_child(&mut output, &listing).unwrap();
         let oversized: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
-        pump.abandon_usage_read();
+        pump.abandon_passive_read();
         pump.adapter
             .accept_oversized_response(oversized["id"].as_u64().unwrap())
             .unwrap();

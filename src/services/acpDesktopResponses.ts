@@ -45,6 +45,7 @@ const OPTIONAL_CAPABILITIES = [
   "nativeSessionCompact",
   "nativeSessionImport",
   "nativeReview",
+  "nativeBackgroundTerminals",
 ] as const;
 
 function safeCapabilities(

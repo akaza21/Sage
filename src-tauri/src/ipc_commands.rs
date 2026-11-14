@@ -118,7 +118,7 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::file_snapshot::get_acp_file_snapshot,
         commands::acp::child_transcript::get_acp_child_transcript,
         commands::acp::file_reference::resolve_chat_file_reference,
-        commands::acp::get_codex_discovery,
+        commands::acp::codex_discovery::get_codex_discovery,
         #[cfg(any(debug_assertions, feature = "diagnostics"))]
         commands::acp::runtime_identity::get_codex_runtime_identity,
         commands::acp::codex_auth::get_codex_auth,
@@ -138,6 +138,8 @@ pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
         commands::acp::slash_commands::list_acp_commands,
         commands::acp::slash_commands::run_acp_command,
         commands::acp::usage::get_acp_usage,
+        commands::acp::background_terminals::get_background_terminals,
+        commands::acp::background_terminals::stop_background_terminals,
         commands::acp::mcp::read_acp_mcp_servers,
         commands::acp::mcp::reload_acp_mcp_servers,
         commands::acp::mcp::sign_in_acp_mcp_server,

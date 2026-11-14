@@ -6,15 +6,19 @@ use crate::acp::bindings::codex::state::{TurnBinding, TurnStartFailure};
 /// key); a backend failure is an internal error.
 const INVALID_REQUEST: i64 = -32600;
 
-pub(super) fn response(
+pub(super) fn response<M: ResourceMapper>(
     adapter: &mut CodexAdapter,
     object: &Map<String, Value>,
+    mapper: &M,
 ) -> Result<IngressDisposition, IngressError> {
     let id = object
         .get("id")
         .and_then(Value::as_u64)
         .ok_or(IngressError::Malformed)?;
-    if adapter.take_rate_limits_tombstone(id) || adapter.take_mcp_tombstone(id) {
+    if adapter.take_rate_limits_tombstone(id)
+        || adapter.take_terminals_tombstone(id)
+        || adapter.take_mcp_tombstone(id)
+    {
         return Ok(IngressDisposition::IgnoredLate);
     }
     let kind = adapter.pending_kind(id).ok_or(IngressError::Uncorrelated)?;
@@ -73,6 +77,15 @@ pub(super) fn response(
                 .get("result")
                 .and_then(Value::as_object)
                 .and_then(super::rate_limits::RateLimits::read),
+        ));
+    }
+    if kind.is_terminals() {
+        adapter.take_pending(id);
+        return Ok(IngressDisposition::Terminals(
+            object
+                .get("result")
+                .filter(|_| !object.contains_key("error"))
+                .and_then(|result| super::background_terminals::reply(kind, result, mapper)),
         ));
     }
     if let Some(error) = object.get("error") {
@@ -266,6 +279,9 @@ pub(super) fn response(
         | RequestKind::ForkRelease
         | RequestKind::ForkDelete
         | RequestKind::RateLimitsRead
+        | RequestKind::TerminalsList
+        | RequestKind::TerminalsStop
+        | RequestKind::TerminalsStopAll
         | RequestKind::SkillsList
         | RequestKind::ThreadRevert
         | RequestKind::McpList

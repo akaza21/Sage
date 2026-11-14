@@ -37,6 +37,10 @@ pub(crate) enum NativeRpcRequest {
     },
     /// Refreshes the runtime's usage-limit snapshot from the harness.
     UsageRead,
+    /// Lists or stops the commands the harness left running. Only a runtime
+    /// whose negotiated capabilities admit `nativeBackgroundTerminals`
+    /// accepts it.
+    BackgroundTerminals(crate::acp::background_terminals::TerminalAction),
     /// Acts on the running session without starting a turn.
     Control(crate::acp::session_control::SessionControl),
 }
@@ -112,6 +116,11 @@ pub(crate) enum NativeRpcReply {
     Released,
     /// The harness answered a usage read; the snapshot is in the usage cell.
     UsageRead,
+    /// The terminals the harness still runs, at most
+    /// `MAX_BACKGROUND_TERMINALS` of them.
+    BackgroundTerminals(Vec<crate::acp::background_terminals::BackgroundTerminal>),
+    /// The harness took a stop request.
+    TerminalsStopped,
     /// The harness carried out a session control; the text says what it did.
     Controlled(Option<crate::acp::contract::SafeText<512>>),
     /// The harness declined a session control, with its reason if it gave one.
@@ -128,6 +137,9 @@ impl NativeRpcIntent {
     pub(crate) fn passive(&self) -> bool {
         match &self.request {
             NativeRpcRequest::UsageRead => true,
+            NativeRpcRequest::BackgroundTerminals(
+                crate::acp::background_terminals::TerminalAction::List,
+            ) => true,
             NativeRpcRequest::Control(control) => control.abandons_at_deadline(),
             NativeRpcRequest::Read(read) => read.abandons_at_deadline(),
             _ => false,
@@ -139,6 +151,9 @@ impl NativeRpcIntent {
     pub(crate) fn answers_at_once(&self) -> bool {
         match &self.request {
             NativeRpcRequest::UsageRead => true,
+            NativeRpcRequest::BackgroundTerminals(
+                crate::acp::background_terminals::TerminalAction::List,
+            ) => true,
             NativeRpcRequest::Control(control) => control.answers_at_once(),
             _ => false,
         }
@@ -154,6 +169,7 @@ impl NativeRpcIntent {
                 NativeRpcRequest::Read(read) => read.bytes() + 1,
                 NativeRpcRequest::ForkSession | NativeRpcRequest::UsageRead => 1,
                 NativeRpcRequest::ReleaseFork { fork, .. } => fork.as_str().len() + 1,
+                NativeRpcRequest::BackgroundTerminals(action) => action.bytes(),
                 NativeRpcRequest::Control(control) => control.actual_bytes() + 1,
             }
     }

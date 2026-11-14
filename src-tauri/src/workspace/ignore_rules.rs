@@ -24,7 +24,7 @@ use std::{
     ffi::OsStr,
     fs::{File, OpenOptions},
     io::{ErrorKind, Read},
-    path::{Component, Path, PathBuf},
+    path::{Path, PathBuf},
     sync::{
         Arc,
         atomic::{AtomicBool, Ordering},
@@ -35,6 +35,11 @@ use ignore::{
     Match,
     gitignore::{Gitignore, GitignoreBuilder},
 };
+
+mod repository;
+#[cfg(test)]
+use repository::git_target;
+use repository::repository_exclude;
 
 /// A larger rule file is skipped and logged, which bounds the time and
 /// memory one file can cost a walk. Real ignore files are a few KiB.
@@ -65,6 +70,15 @@ impl RuleFiles {
         self.ignore |= is(".ignore");
         self.gitignore |= is(".gitignore");
         self.repository |= is(".git");
+    }
+
+    /// These names without `.ignore`, which only ripgrep-style tools read:
+    /// what Git itself ignores.
+    pub(crate) fn git_only(self) -> Self {
+        Self {
+            ignore: false,
+            ..self
+        }
     }
 
     /// The rule-bearing names in `directory`, found without listing it.
@@ -179,13 +193,9 @@ impl IgnoreRules {
         };
         let ignore = read(files.ignore, ".ignore");
         let gitignore = read(files.gitignore, ".gitignore");
-        let repository = files.repository.then(|| {
-            self.honour(repository_exclude(
-                &self.root,
-                &directory,
-                relative.is_empty(),
-            ))
-        });
+        let repository = files
+            .repository
+            .then(|| self.honour(repository_exclude(self, &directory, relative.is_empty())));
         if ignore.is_none() && gitignore.is_none() && repository.is_none() {
             return parent.clone();
         }
@@ -283,47 +293,33 @@ impl IgnoreRules {
 pub(crate) fn global_excludes_path() -> Option<PathBuf> {
     static PATH: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     PATH.get_or_init(|| {
-        ignore::gitignore::gitconfig_excludes_path().filter(|path| path.is_absolute())
+        ignore::gitignore::gitconfig_excludes_path()
+            .map(|path| {
+                // Tilde expansion can append Git's `/` to a verbatim Windows
+                // home. There `/` is a literal, not a path separator.
+                #[cfg(windows)]
+                let path = {
+                    use std::ffi::OsString;
+                    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+
+                    let wide: Vec<u16> = path
+                        .as_os_str()
+                        .encode_wide()
+                        .map(|unit| {
+                            if unit == u16::from(b'/') {
+                                u16::from(b'\\')
+                            } else {
+                                unit
+                            }
+                        })
+                        .collect();
+                    PathBuf::from(OsString::from_wide(&wide))
+                };
+                path.components().collect::<PathBuf>()
+            })
+            .filter(|path| path.is_absolute())
     })
     .clone()
-}
-
-/// The `info/exclude` matcher of the repository in `directory`. A `.git` file
-/// (a worktree or submodule) names its Git directory, and a worktree's
-/// `commondir` names the shared one that holds `info/exclude`. Only the
-/// root's own `.git` file (a worktree opened as the Project) may lead outside
-/// the root.
-fn repository_exclude(
-    root: &Path,
-    directory: &Path,
-    is_root: bool,
-) -> Result<Option<Gitignore>, Skipped> {
-    let dot_git = directory.join(".git");
-    let Some(metadata) = present(&dot_git, dot_git.symlink_metadata())? else {
-        return Ok(None);
-    };
-    let mut git_directory = if metadata.is_dir() {
-        dot_git
-    } else {
-        let Some(link) = read_rules(&dot_git, false)? else {
-            return Ok(None);
-        };
-        String::from_utf8(link)
-            .ok()
-            .and_then(|link| {
-                let target = link.trim().strip_prefix("gitdir:")?;
-                git_target(directory, target, root, is_root)
-            })
-            .ok_or_else(|| unresolved(&dot_git))?
-    };
-    let commondir = git_directory.join("commondir");
-    if let Some(common) = read_rules(&commondir, true)? {
-        git_directory = String::from_utf8(common)
-            .ok()
-            .and_then(|common| git_target(&git_directory, &common, root, is_root))
-            .ok_or_else(|| unresolved(&commondir))?;
-    }
-    Ok(read_rules(&git_directory.join("info").join("exclude"), true)?.and_then(|b| matcher(&b)))
 }
 
 /// Only `NotFound` means there is no repository. Any other inspection error
@@ -342,48 +338,6 @@ fn present(
 fn unresolved(path: &Path) -> Skipped {
     skipped(path, "Git directory reference not followed");
     Skipped
-}
-
-/// Where a `gitdir:` or `commondir` value written in `base` leads, resolved
-/// without touching the file system. Network paths (`\\host\share`,
-/// `//host`) are refused, and unless `outside_allowed` the result must stay
-/// inside `root`, so a `.git` file in a cloned or unzipped folder cannot make
-/// a listing contact another machine (an automounted `/net/host`, say).
-fn git_target(base: &Path, text: &str, root: &Path, outside_allowed: bool) -> Option<PathBuf> {
-    let text = text.trim();
-    if text.is_empty() || text.starts_with("\\\\") || text.starts_with("//") {
-        return None;
-    }
-    let path = Path::new(text);
-    let relative = path.components().all(|component| {
-        matches!(
-            component,
-            Component::Normal(_) | Component::CurDir | Component::ParentDir
-        )
-    });
-    if !relative && !path.is_absolute() {
-        return None;
-    }
-    #[cfg(windows)]
-    if !relative
-        && !matches!(
-            path.components().next(),
-            Some(Component::Prefix(prefix)) if matches!(prefix.kind(), std::path::Prefix::Disk(_))
-        )
-    {
-        return None;
-    }
-    let mut target = PathBuf::new();
-    for component in base.join(path).components() {
-        match component {
-            Component::CurDir => {}
-            Component::ParentDir => {
-                target.pop();
-            }
-            other => target.push(other),
-        }
-    }
-    (outside_allowed || target.starts_with(root)).then_some(target)
 }
 
 /// Reads a rule file up to the cap. A missing file is `Ok(None)`; a link when

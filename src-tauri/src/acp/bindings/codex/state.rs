@@ -1,5 +1,6 @@
 mod action_handoff;
 mod approval_reviews;
+mod background_terminals;
 pub(crate) mod capabilities;
 mod fork;
 #[cfg(test)]
@@ -220,6 +221,8 @@ pub(crate) struct CodexAdapter {
     native_root: Option<super::request::NativeProjectRoot>,
     listed_sessions: Vec<String>,
     rate_limits_abandoned: rate_limits::AbandonedReads,
+    /// Background-terminal listings whose caller gave up; late answers are dropped.
+    terminals_tombstones: Vec<u64>,
     /// An `/mcp` read whose caller gave up; its late answer is dropped.
     mcp_read_tombstones: Vec<u64>,
     skills: skills::Skills,

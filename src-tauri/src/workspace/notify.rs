@@ -12,6 +12,10 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::state::AppState;
 
+mod batch;
+mod git_relevance;
+mod relevance;
+mod tracked;
 #[cfg(any(target_os = "macos", target_os = "linux"))]
 pub(crate) mod unix;
 #[cfg(any(not(windows), test))]
@@ -20,18 +24,19 @@ mod watch;
 #[cfg(windows)]
 mod windows;
 
-pub use watch::{deliver_workspace_notify_action, relative_from_notify_name};
+pub use watch::relative_from_notify_name;
 
 const MAX_IDENTIFIER_BYTES: usize = 512;
 const MAX_RESOURCE_PATH_BYTES: usize = 16 * 1024;
 const MAX_ROOTS: usize = 8;
-#[cfg(test)]
-const MAX_QUEUE: usize = 64;
 const MAX_WATCHES: usize = 8;
 pub(crate) const OVERFLOW_NOTIFY_ACTION: u32 = 8;
 pub(crate) const OVERFLOW_RELATIVE_PATH: &str = "lost-notices";
+/// Something changed inside the ignored folder the record names.
+pub(crate) const IGNORED_BELOW_NOTIFY_ACTION: u32 = 9;
 
-pub const WORKSPACE_NOTIFY_EVENT: &str = "workspace-notify-v1";
+/// Each event carries a [`batch::WorkspaceNotifyBatch`].
+pub const WORKSPACE_NOTIFY_EVENT: &str = "workspace-notify-v2";
 
 #[derive(Debug)]
 pub struct WorkspaceNotifyError {
@@ -61,6 +66,10 @@ pub struct WorkspaceNotifyNotice {
     pub root_id: String,
     pub relative_path: String,
     pub kind: String,
+    /// False for listing/search delivery while Git is decided separately.
+    /// Repository decisions and conservative fallbacks omit this field.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub git_relevant: Option<bool>,
 }
 
 #[derive(Debug)]
@@ -74,11 +83,6 @@ pub struct WorkspaceNotifySession {
 
 fn reject(code: &'static str) -> WorkspaceNotifyError {
     WorkspaceNotifyError { code }
-}
-
-#[cfg(test)]
-fn is_object(value: &Value) -> bool {
-    value.as_object().is_some()
 }
 
 fn exact_keys(value: &Value, keys: &[&str]) -> bool {
@@ -142,57 +146,13 @@ fn root_id_value(value: &Value) -> Result<String, WorkspaceNotifyError> {
         .ok_or_else(|| reject("schema-invalid"))
 }
 
-#[cfg(test)]
-fn notice(value: &Value) -> Result<WorkspaceNotifyNotice, WorkspaceNotifyError> {
-    if !exact_keys(
-        value,
-        &[
-            "projectId",
-            "projectGeneration",
-            "transitionEpoch",
-            "rootId",
-            "relativePath",
-            "kind",
-        ],
-    ) {
-        return Err(reject("schema-invalid"));
-    }
-    let project_id = value["projectId"]
-        .as_str()
-        .filter(|item| bounded_identifier(item))
-        .ok_or_else(|| reject("schema-invalid"))?;
-    let project_generation =
-        safe_counter(&value["projectGeneration"]).ok_or_else(|| reject("schema-invalid"))?;
-    let transition_epoch =
-        safe_counter(&value["transitionEpoch"]).ok_or_else(|| reject("schema-invalid"))?;
-    let root_id = value["rootId"]
-        .as_str()
-        .filter(|item| bounded_identifier(item))
-        .ok_or_else(|| reject("schema-invalid"))?;
-    let relative = value["relativePath"]
-        .as_str()
-        .filter(|item| relative_path(item))
-        .ok_or_else(|| reject("schema-invalid"))?;
-    let kind = value["kind"]
-        .as_str()
-        .filter(|item| matches!(*item, "created" | "changed" | "deleted" | "resync"))
-        .ok_or_else(|| reject("schema-invalid"))?;
-    Ok(WorkspaceNotifyNotice {
-        project_id: project_id.to_string(),
-        project_generation,
-        transition_epoch,
-        root_id: root_id.to_string(),
-        relative_path: relative.to_string(),
-        kind: kind.to_string(),
-    })
-}
-
 fn kind_for_action(action: u32) -> Option<&'static str> {
     match action {
         1 | 5 => Some("created"),
         2 | 4 => Some("deleted"),
         3 => Some("changed"),
         OVERFLOW_NOTIFY_ACTION => Some("resync"),
+        IGNORED_BELOW_NOTIFY_ACTION => Some("ignored"),
         _ => None,
     }
 }
@@ -253,6 +213,13 @@ fn registry() -> std::sync::MutexGuard<'static, NotifyRegistry> {
         })
         .lock()
         .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+pub(crate) fn cancel_all_workspace_watches() -> bool {
+    for watch in registry().watches.values() {
+        watch.cancelled.store(true, Ordering::Release);
+    }
+    git_relevance::wait_for_queries()
 }
 
 pub fn apply_watch_workspace_notify(value: &Value) -> Result<u32, WorkspaceNotifyError> {
@@ -337,8 +304,12 @@ fn emit_queued_workspace_notices(app: &AppHandle, bind: &Value) {
     else {
         return;
     };
-    for notice in drain_queued_workspace_notices(project_id) {
-        let _ = app.emit(WORKSPACE_NOTIFY_EVENT, notice);
+    let notices = drain_queued_workspace_notices(project_id);
+    if !notices.is_empty() {
+        let _ = app.emit(
+            WORKSPACE_NOTIFY_EVENT,
+            batch::WorkspaceNotifyBatch { notices },
+        );
     }
 }
 
@@ -407,38 +378,92 @@ impl WorkspaceNotifySession {
             root_id: root_id.to_string(),
             relative_path: relative.to_string(),
             kind: kind.to_string(),
+            git_relevant: None,
         }))
-    }
-
-    #[cfg(test)]
-    pub fn push(&mut self, value: &Value) -> Result<(), WorkspaceNotifyError> {
-        if !is_object(value) {
-            return Err(reject("schema-invalid"));
-        }
-        let parsed = notice(value)?;
-        if parsed.project_id != self.project_id
-            || parsed.project_generation != self.project_generation
-            || parsed.transition_epoch != self.transition_epoch
-        {
-            return Err(reject("notify-stale"));
-        }
-        if !self.roots.contains(&parsed.root_id) {
-            return Err(reject("notify-substituted"));
-        }
-        if self.queue.len() >= MAX_QUEUE {
-            return Err(reject("notify-overflow"));
-        }
-        self.queue.push(parsed);
-        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::watch::authenticate_workspace_notify_root;
+    use super::watch::{authenticate_workspace_notify_root, deliver_workspace_notify_action};
     use super::*;
     use serde_json::{Value, json};
     use std::sync::{Mutex, OnceLock};
+
+    const MAX_QUEUE: usize = 64;
+    fn is_object(value: &Value) -> bool {
+        value.as_object().is_some()
+    }
+
+    const NOTICE_KINDS: [&str; 5] = ["created", "changed", "deleted", "resync", "ignored"];
+
+    fn notice(value: &Value) -> Result<WorkspaceNotifyNotice, WorkspaceNotifyError> {
+        if !exact_keys(
+            value,
+            &[
+                "projectId",
+                "projectGeneration",
+                "transitionEpoch",
+                "rootId",
+                "relativePath",
+                "kind",
+            ],
+        ) {
+            return Err(reject("schema-invalid"));
+        }
+        let project_id = value["projectId"]
+            .as_str()
+            .filter(|item| bounded_identifier(item))
+            .ok_or_else(|| reject("schema-invalid"))?;
+        let project_generation =
+            safe_counter(&value["projectGeneration"]).ok_or_else(|| reject("schema-invalid"))?;
+        let transition_epoch =
+            safe_counter(&value["transitionEpoch"]).ok_or_else(|| reject("schema-invalid"))?;
+        let root_id = value["rootId"]
+            .as_str()
+            .filter(|item| bounded_identifier(item))
+            .ok_or_else(|| reject("schema-invalid"))?;
+        let relative = value["relativePath"]
+            .as_str()
+            .filter(|item| relative_path(item))
+            .ok_or_else(|| reject("schema-invalid"))?;
+        let kind = value["kind"]
+            .as_str()
+            .filter(|item| NOTICE_KINDS.contains(item))
+            .ok_or_else(|| reject("schema-invalid"))?;
+        Ok(WorkspaceNotifyNotice {
+            project_id: project_id.to_string(),
+            project_generation,
+            transition_epoch,
+            root_id: root_id.to_string(),
+            relative_path: relative.to_string(),
+            kind: kind.to_string(),
+            git_relevant: None,
+        })
+    }
+
+    impl WorkspaceNotifySession {
+        pub fn push(&mut self, value: &Value) -> Result<(), WorkspaceNotifyError> {
+            if !is_object(value) {
+                return Err(reject("schema-invalid"));
+            }
+            let parsed = notice(value)?;
+            if parsed.project_id != self.project_id
+                || parsed.project_generation != self.project_generation
+                || parsed.transition_epoch != self.transition_epoch
+            {
+                return Err(reject("notify-stale"));
+            }
+            if !self.roots.contains(&parsed.root_id) {
+                return Err(reject("notify-substituted"));
+            }
+            if self.queue.len() >= MAX_QUEUE {
+                return Err(reject("notify-overflow"));
+            }
+            self.queue.push(parsed);
+            Ok(())
+        }
+    }
 
     fn stamp_json() -> Value {
         json!({
@@ -738,10 +763,20 @@ mod tests {
     fn classify_unknown_action_is_ignore() {
         assert!(
             bind_ok()
-                .classify("root-a", "src/main.ts", 9)
+                .classify("root-a", "src/main.ts", 10)
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn classify_ignored_below_action_names_the_ignored_folder() {
+        let notice = bind_ok()
+            .classify("root-a", "target", IGNORED_BELOW_NOTIFY_ACTION)
+            .unwrap()
+            .unwrap();
+        assert_eq!(notice.kind, "ignored");
+        assert_eq!(notice.relative_path, "target");
     }
 
     #[test]
@@ -870,8 +905,8 @@ mod tests {
     }
 
     #[test]
-    fn event_name_is_workspace_notify_v1() {
-        assert_eq!(workspace_notify_event_name(), "workspace-notify-v1");
+    fn event_name_is_workspace_notify_v2() {
+        assert_eq!(workspace_notify_event_name(), "workspace-notify-v2");
     }
 
     #[test]
@@ -1010,7 +1045,7 @@ mod tests {
             let notices = drain_queued_workspace_notices("project-a");
             assert_eq!(notices.len(), 1);
             assert_eq!(notices[0].kind, "changed");
-            assert_eq!(workspace_notify_event_name(), "workspace-notify-v1");
+            assert_eq!(workspace_notify_event_name(), "workspace-notify-v2");
             assert!(drain_queued_workspace_notices("project-a").is_empty());
         });
     }

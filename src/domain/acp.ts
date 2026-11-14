@@ -172,6 +172,8 @@ export interface AcpCapabilitySet {
   nativeSessionCompact?: boolean;
   /** Absent unless the harness negotiated it. */
   nativeReview?: boolean;
+  /** Absent unless the harness lists and stops the commands it left running. */
+  nativeBackgroundTerminals?: boolean;
   activeTurnSteer: boolean;
   childConversationProjection: boolean;
   childTranscriptRead: boolean;

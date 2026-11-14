@@ -135,6 +135,10 @@ const REQUIRED_DYNAMIC_FACADES = [
   "node_modules/@tauri-apps/api/event.js",
   // Releasing an open File's tabs for a move (ED-16) loads with that move.
   "src/app/openFileRelease.ts",
+  // The workspace watcher session and its listing refreshes load with the
+  // first bound Project.
+  "src/app/workspaceNotifyLifecycle.ts",
+  "src/features/files/workspaceNotifyRefreshes.ts",
   // Explorer's files.exclude matcher loads beside the startup bundle.
   "src/domain/pathGlobMatcher.ts",
   // The device toolbar, its state, handles and styles load when first shown.
@@ -189,6 +193,8 @@ const REQUIRED_DYNAMIC_FACADES = [
   // A terminal turn's Git workspace changes load after the turn settles.
   "src/features/chat/acp/turnWorkspaceChanges.ts",
   "src/features/chat/acp/TurnEditSummary.tsx",
+  // The background terminal strip loads only while one runs.
+  "src/features/chat/acp/BackgroundTerminals.tsx",
   "src/features/harness/HarnessSignInStatus.tsx",
   // The Chat search dialog loads on the first Search chats request.
   "src/features/chatSearch/ChatSearchControl.tsx",

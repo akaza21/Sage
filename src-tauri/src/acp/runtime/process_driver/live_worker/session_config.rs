@@ -66,11 +66,11 @@ where
         }
     }
 
-    pub(crate) fn abandon_usage_read(&mut self) {
+    pub(crate) fn abandon_passive_read(&mut self) {
         match self {
-            Self::Idle(idle) => idle.parts.abandon_usage_read(),
-            Self::Reusable(parts) => parts.completed.abandon_usage_read(),
-            Self::Active(active) => active.turn.driver.abandon_usage_read(),
+            Self::Idle(idle) => idle.parts.abandon_passive_read(),
+            Self::Reusable(parts) => parts.completed.abandon_passive_read(),
+            Self::Active(active) => active.turn.driver.abandon_passive_read(),
             _ => {}
         }
     }
@@ -114,6 +114,9 @@ where
                 crate::acp::goal::NativeRpcRequest::UsageRead => {
                     idle.parts.write_usage_read(&mut idle.transport)
                 }
+                crate::acp::goal::NativeRpcRequest::BackgroundTerminals(action) => {
+                    idle.parts.write_terminals(&mut idle.transport, action)
+                }
                 crate::acp::goal::NativeRpcRequest::Control(control) => {
                     idle.parts.write_control(&mut idle.transport, control)
                 }
@@ -134,6 +137,9 @@ where
                 crate::acp::goal::NativeRpcRequest::UsageRead => {
                     parts.completed.write_usage_read(&mut parts.transport)
                 }
+                crate::acp::goal::NativeRpcRequest::BackgroundTerminals(action) => parts
+                    .completed
+                    .write_terminals(&mut parts.transport, action),
                 crate::acp::goal::NativeRpcRequest::Control(control) => {
                     parts.completed.write_control(&mut parts.transport, control)
                 }
