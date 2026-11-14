@@ -29,13 +29,14 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
     pendingFirstSend: null,
     draftFocusRequest,
     newChatDraft: state.newChatDraft ?? {
+      id: {},
       projectId: state.project.id,
       text: "",
       harnessId: state.selectedHarnessId,
       modelId: state.selectedModelId,
       access: null,
       effort: null,
-      creating: false,
+      submission: { status: "released" },
       error: null,
     },
   });
@@ -48,7 +49,12 @@ export async function selectDraftHarness(
 ) {
   const state = get();
   const draft = state.newChatDraft;
-  if (!draft || draft.creating || state.projectTransitioning) return;
+  if (
+    !draft ||
+    draft.submission.status === "submitting" ||
+    state.projectTransitioning
+  )
+    return;
   const changed = draft.harnessId !== harnessId;
   if (changed)
     set({

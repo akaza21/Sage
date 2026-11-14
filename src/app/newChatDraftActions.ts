@@ -5,7 +5,6 @@ import {
 } from "../domain/chatOwnership";
 import { openNewChatDraft, selectDraftHarness } from "./newChatDraftNavigation";
 import type { NewChatDraft, NewChatDraftSlice } from "./newChatDraftSlice";
-import type * as SendModule from "./runNewChatDraftSend";
 import type { WorkbenchState } from "./store";
 
 /** Loaded before the first draft opens; its mutations then run synchronously. */
@@ -23,7 +22,12 @@ export function createNewChatDraftActions(
 > {
   let selectionRequest: object | undefined;
   const submit = async (draft: NewChatDraft) => {
-    const submittingDraft = { ...draft, creating: true, error: null };
+    if (draft.submission.status === "submitting") return;
+    const attempt = {
+      status: "submitting" as const,
+      creation: draft.submission,
+    };
+    const submittingDraft = { ...draft, submission: attempt, error: null };
     const submission = {
       projectId: draft.projectId,
       chatId: null,
@@ -33,25 +37,41 @@ export function createNewChatDraftActions(
       newChatDraft: submittingDraft,
       pendingFirstSend: submission,
     });
-    let send: typeof SendModule;
+    let released = {
+      submission: attempt.creation,
+      error: "",
+    };
     try {
       // Every module the send needs loads before anything is created, so a
       // failed chunk load cannot strand the draft mid-creation.
-      [send] = await Promise.all([
+      const [send] = await Promise.all([
         import("./runNewChatDraftSend"),
         import("./runCreateChat"),
       ]);
+      released = await send.runNewChatDraftSend(
+        set,
+        get,
+        submittingDraft,
+        submission,
+      );
     } catch (error) {
+      released.error = boundedChatError(String(error));
+    } finally {
       const state = get();
-      if (state.newChatDraft !== submittingDraft) return;
-      set({
-        newChatDraft: { ...draft, error: boundedChatError(String(error)) },
-        pendingFirstSend:
-          state.pendingFirstSend === submission ? null : state.pendingFirstSend,
-      });
-      return;
+      // Draft identity survives project ownership recovery. Only this attempt
+      // may release it; navigation to another project must not resurrect it.
+      if (
+        state.newChatDraft?.id === draft.id &&
+        state.newChatDraft.submission === attempt
+      )
+        set({
+          newChatDraft: { ...state.newChatDraft, ...released },
+          pendingFirstSend:
+            state.pendingFirstSend === submission
+              ? null
+              : state.pendingFirstSend,
+        });
     }
-    await send.runNewChatDraftSend(set, get, submittingDraft, submission);
   };
   return {
     openNewChatDraft: async (projectId) => {
@@ -70,7 +90,7 @@ export function createNewChatDraftActions(
     },
     updateNewChatDraft: (patch) => {
       const draft = get().newChatDraft;
-      if (!draft || draft.creating) return;
+      if (!draft || draft.submission.status === "submitting") return;
       try {
         if (patch.text !== undefined) validateChatComposerText(patch.text);
         set({ newChatDraft: { ...draft, ...patch, error: null } });
@@ -85,7 +105,7 @@ export function createNewChatDraftActions(
       const draft = state.newChatDraft;
       if (
         !draft ||
-        draft.creating ||
+        draft.submission.status === "submitting" ||
         state.selectedHarnessId !== draft.harnessId
       )
         return;
@@ -107,7 +127,8 @@ export function createNewChatDraftActions(
       const draft = get().newChatDraft;
       if (
         !draft ||
-        draft.creating ||
+        draft.submission.status === "submitting" ||
+        draft.submission.status === "unconfirmed" ||
         !draft.text.trim() ||
         get().projectTransitioning
       )
@@ -118,7 +139,7 @@ export function createNewChatDraftActions(
       const state = get();
       const draft = state.newChatDraft;
       if (
-        !draft?.reconcileCreation ||
+        draft?.submission.status !== "unconfirmed" ||
         state.project?.id !== draft.projectId ||
         state.projectTransitioning ||
         state.pendingFirstSend

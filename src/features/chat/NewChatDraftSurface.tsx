@@ -34,7 +34,12 @@ export function NewChatDraftSurface({
   const chooseHarness = useWorkbenchStore((state) => state.selectDraftHarness);
   const chooseModel = useWorkbenchStore((state) => state.selectDraftModel);
   const composerRef = useRef<HTMLTextAreaElement>(null);
-  useComposerFocusHotkey(composerRef, !draft?.creating && !transitioning);
+  const submitting = draft?.submission.status === "submitting";
+  const unconfirmed =
+    draft?.submission.status === "unconfirmed" ||
+    (draft?.submission.status === "submitting" &&
+      draft.submission.creation.status === "unconfirmed");
+  useComposerFocusHotkey(composerRef, !submitting && !transitioning);
   const harness = harnesses.find((harness) => harness.id === draft?.harnessId);
   useEffect(() => {
     composerRef.current?.focus();
@@ -52,7 +57,7 @@ export function NewChatDraftSurface({
   useEffect(() => {
     if (
       !draft ||
-      draft.creating ||
+      submitting ||
       transitioning ||
       draft.harnessId !== selectedHarnessId ||
       discoveryPhase !== "ready" ||
@@ -67,6 +72,7 @@ export function NewChatDraftSurface({
     draft,
     models,
     selectedHarnessId,
+    submitting,
     transitioning,
   ]);
   if (!draft || !project) return null;
@@ -111,17 +117,17 @@ export function NewChatDraftSurface({
           disabledReasonId="new-chat-disabled"
           text={draft.text}
           attachedContext={emptyContext}
-          enabled={!draft.creating}
-          sendBlocked={!canSend}
-          actionBusy={draft.creating}
+          enabled={!submitting}
+          sendBlocked={!canSend || unconfirmed}
+          actionBusy={submitting}
           activeTurn={false}
           projectTransitioning={transitioning}
           workbenchError={null}
           chatError={
-            draft.error || draft.reconcileCreation ? (
+            draft.error || unconfirmed ? (
               <>
                 {draft.error}
-                {draft.reconcileCreation ? (
+                {unconfirmed ? (
                   <button
                     type="button"
                     className="button button--compact"

@@ -79,7 +79,7 @@ it("unlocks a retained draft when navigation cancels a send whose module then fa
   await state.openNewChatDraft();
   expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
     text: "Keep this cancelled prompt",
-    creating: false,
+    submission: { status: "released" },
   });
   state.updateNewChatDraft({ text: "Edited after cancellation" });
   expect(useWorkbenchStore.getState().newChatDraft?.text).toBe(
@@ -120,7 +120,7 @@ it("cancels deferred sending after failed project switching recovers the origina
   expect(useWorkbenchStore.getState().pendingFirstSend).toBeNull();
   expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
     text: "Send only after I retry",
-    creating: false,
+    submission: { status: "released" },
   });
   state.updateNewChatDraft({ text: "Retry after recovery" });
   await state.sendNewChatDraft();

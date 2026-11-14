@@ -10,6 +10,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
+import * as workspaceNotify from "../../app/workspaceNotifyLifecycle";
 import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useChatAccessDrafts } from "../../app/chatAccessDrafts";
@@ -635,7 +636,9 @@ it.each(["open", "close"])(
     await state.sendNewChatDraft();
     const native = await bootstrap();
     const createdId = native.activeTabId!;
-    expect(useWorkbenchStore.getState().newChatDraft?.creating).toBe(true);
+    expect(useWorkbenchStore.getState().newChatDraft?.submission.status).toBe(
+      "unconfirmed",
+    );
     projection.mockImplementation(async () =>
       withHarnessSnapshot(await bootstrap()),
     );
@@ -719,6 +722,85 @@ it("reattaches the draft's own archived creation instead of creating another cha
   const after = await bootstrap();
   expect(after.tabs.filter((tab) => tab.kind === "chat")).toHaveLength(2);
   expect(after.archivedChats).toEqual([]);
+});
+
+it("lets an unconfirmed draft be edited and reloads its creation with the edited prompt", async () => {
+  const state = useWorkbenchStore.getState();
+  const before = await ports.project.getBootstrapSnapshot();
+  const create = vi.mocked(ports.chat.createChat).getMockImplementation()!;
+  vi.mocked(ports.chat.createChat).mockImplementationOnce(async (...args) => ({
+    ...(await create(...args)),
+    snapshot: null,
+  }));
+  const bootstrap = ports.project.getBootstrapSnapshot.bind(ports.project);
+  const projection = vi
+    .spyOn(ports.project, "getBootstrapSnapshot")
+    .mockRejectedValue(new Error("Projection unavailable"));
+  state.updateNewChatDraft({ text: "Original unconfirmed prompt" });
+  await state.sendNewChatDraft();
+  const created = await bootstrap();
+  mount();
+  await settleLazyModules();
+  expect(composer()).toBeEnabled();
+  fireEvent.change(composer(), {
+    target: { value: "Edited while unconfirmed" },
+  });
+  expect(composer()).toHaveValue("Edited while unconfirmed");
+  expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Reload chats" })).toBeEnabled();
+  projection.mockImplementation(async () =>
+    withHarnessSnapshot(await bootstrap()),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Reload chats" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0]).toMatchObject({
+    chatId: created.activeTabId,
+    prompt: "Edited while unconfirmed",
+  });
+  expect((await bootstrap()).tabs).toEqual(created.tabs);
+  expect(created.tabs).toHaveLength(before.tabs.length + 1);
+});
+
+it("preserves the previous chat composer when Home reload overlaps draft reconciliation", async () => {
+  const state = useWorkbenchStore.getState();
+  const previousId = state.activeTabId!;
+  state.setChatComposer(
+    state.captureChatOwnership(previousId)!,
+    "Previous chat's next prompt",
+  );
+  const create = vi.mocked(ports.chat.createChat).getMockImplementation()!;
+  vi.mocked(ports.chat.createChat).mockImplementationOnce(async (...args) => ({
+    ...(await create(...args)),
+    snapshot: null,
+  }));
+  const bootstrap = ports.project.getBootstrapSnapshot.bind(ports.project);
+  const projection = vi
+    .spyOn(ports.project, "getBootstrapSnapshot")
+    .mockRejectedValue(new Error("Projection unavailable"));
+  state.updateNewChatDraft({ text: "Recover this draft" });
+  await state.sendNewChatDraft();
+  projection.mockImplementation(async () =>
+    withHarnessSnapshot(await bootstrap()),
+  );
+  let release!: () => void;
+  vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
+    .mockResolvedValue(undefined)
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+  const reloading = state.reloadNewChatDraft();
+  await waitFor(() => expect(release).toBeTypeOf("function"));
+  await state.initialize();
+  release();
+  await reloading;
+  expect(useWorkbenchStore.getState().chatUiById[previousId].composerText).toBe(
+    "Previous chat's next prompt",
+  );
+  expect(useWorkbenchStore.getState().newChatDraft).toBeNull();
+  expect(useWorkbenchStore.getState().composerText).toBe("Recover this draft");
 });
 
 it("keeps draft picker choices separate from the previous chat and its defaults", async () => {
@@ -859,6 +941,92 @@ it("cancels a submission when navigation wins before the send code loads", async
   expect(composer()).toHaveValue("Keep this draft for later");
   expect(composer()).toBeEnabled();
 });
+
+it.each([false, true])(
+  "retries the same created chat after a refused project switch during watcher binding (reopen refused: %s)",
+  async (refuseReopen) => {
+    const before = await ports.project.getBootstrapSnapshot();
+    let release!: () => void;
+    vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
+      .mockResolvedValue(undefined)
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            release = resolve;
+          }),
+      );
+    mount();
+    await settleLazyModules();
+    fireEvent.change(composer(), { target: { value: "Keep my created chat" } });
+    fireEvent.submit(screen.getByRole("form"));
+    await waitFor(() => expect(release).toBeTypeOf("function"));
+    const created = await ports.project.getBootstrapSnapshot();
+    const epoch = useWorkbenchStore.getState().chatOwnershipEpoch;
+    const bootstrap = ports.project.getBootstrapSnapshot.bind(ports.project);
+    vi.spyOn(ports.project, "getBootstrapSnapshot").mockImplementation(
+      async () => withHarnessSnapshot(await bootstrap()),
+    );
+    vi.spyOn(ports.project, "switchProject").mockRejectedValueOnce(
+      new Error("Switch refused"),
+    );
+    await act(async () =>
+      useWorkbenchStore.getState().switchProject("missing-project"),
+    );
+    expect(useWorkbenchStore.getState().chatOwnershipEpoch).toBeGreaterThan(
+      epoch,
+    );
+    await act(async () => release());
+    await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+    await settleLazyModules();
+    expect(composer()).toBeEnabled();
+    expect(composer()).toHaveValue("Keep my created chat");
+    expect(screen.getByRole("alert")).toHaveTextContent(/retry/i);
+    expect(prompts).toEqual([]);
+    if (refuseReopen) {
+      await act(async () =>
+        useWorkbenchStore.getState().activateTab(before.activeTabId!),
+      );
+      await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+      vi.mocked(ports.chat.activateChat).mockResolvedValueOnce({
+        committed: false,
+        snapshot: null,
+        transitionEpoch: created.transitionEpoch,
+        recoveryError: "Activation refused",
+      });
+      await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+      await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+      await settleLazyModules();
+      expect(composer()).toBeEnabled();
+      expect(composer()).toHaveValue("Keep my created chat");
+      expect(screen.getByRole("alert")).toHaveTextContent(/retry/i);
+      expect(prompts).toEqual([]);
+    }
+    fireEvent.change(composer(), {
+      target: { value: "Edited after recovery" },
+    });
+    fireEvent.submit(screen.getByRole("form"));
+    if (refuseReopen) {
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("region", { name: "New chat draft" }),
+        ).toBeNull(),
+      );
+      await settleLazyModules();
+      expect(composer()).toHaveValue("Edited after recovery");
+      expect(prompts).toEqual([]);
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    }
+    await waitFor(() => expect(prompts).toHaveLength(1));
+    expect(prompts[0]).toMatchObject({
+      chatId: created.activeTabId,
+      prompt: "Edited after recovery",
+    });
+    expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(
+      created.tabs,
+    );
+    expect(created.tabs).toHaveLength(before.tabs.length + 1);
+  },
+);
 
 it("keeps effort selectable when the narrow toolbar exhausts its compaction steps", async () => {
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(

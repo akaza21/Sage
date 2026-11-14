@@ -1,19 +1,22 @@
 import type { StoreApi } from "zustand";
 import { boundedChatError } from "../domain/chatOwnership";
+import { errorMessage } from "../domain/errors";
 import { sessionAccessModeCandidates } from "../domain/sessionAccessMode";
 import { draftChatAccess } from "./chatAccessDrafts";
 import { useChatEffortDraft } from "./chatEffortDraft";
-import type { NewChatDraft } from "./newChatDraftSlice";
+import type { DraftCreation, NewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
 
 export async function runNewChatDraftSend(
   set: StoreApi<WorkbenchState>["setState"],
   get: StoreApi<WorkbenchState>["getState"],
-  draft: NewChatDraft,
+  draft: NewChatDraft & {
+    submission: { status: "submitting"; creation: DraftCreation };
+  },
   submission: NonNullable<WorkbenchState["pendingFirstSend"]>,
 ) {
+  let creation = draft.submission.creation;
   const initial = get();
-  const epoch = submission.ownershipEpoch;
   const harness = initial.harnesses.find(
     (harness) => harness.id === draft.harnessId,
   );
@@ -21,38 +24,21 @@ export async function runNewChatDraftSend(
     initial.selectedHarnessId === draft.harnessId
       ? initial.models.find((model) => model.id === draft.modelId)
       : null;
-  const owns = () =>
-    get().project?.id === draft.projectId &&
-    get().chatOwnershipEpoch === epoch &&
-    get().newChatDraft === draft;
-  // Dispatch can be cancelled, or recovery can advance ownership while
-  // retaining the draft. Neither submission may create a durable Chat.
-  if (initial.pendingFirstSend !== submission || !owns()) {
-    if (initial.newChatDraft === draft)
-      set({
-        newChatDraft: { ...draft, creating: !!draft.reconcileCreation },
-        pendingFirstSend:
-          initial.pendingFirstSend === submission
-            ? null
-            : initial.pendingFirstSend,
-      });
-    return;
-  }
-  const fail = (error: string) => {
-    if (owns())
-      set({
-        newChatDraft: {
-          ...draft,
-          creating: false,
-          error: boundedChatError(error),
-          reconcileCreation: undefined,
-        },
-        pendingFirstSend: null,
-      });
+  const requireProject = () => {
+    const state = get();
+    if (
+      state.project?.id !== draft.projectId ||
+      state.chatOwnershipEpoch !== submission.ownershipEpoch ||
+      state.projectTransitioning ||
+      state.newChatDraft?.id !== draft.id
+    )
+      throw new Error("Project changed during submission. Retry to continue.");
   };
-  if (
-    !draft.reconcileCreation &&
-    (initial.project?.id !== draft.projectId ||
+  try {
+    requireProject();
+    if (initial.pendingFirstSend !== submission)
+      throw new Error("Chat submission cancelled. Retry to continue.");
+    if (
       !harness?.bindingId ||
       initial.harnessDiscoveryPhase !== "ready" ||
       harness.installState !== "available" ||
@@ -61,70 +47,86 @@ export async function runNewChatDraftSend(
         !sessionAccessModeCandidates(harness.accessModes, true).some(
           (mode) => mode.id === draft.access,
         )) ||
-      (draft.effort && !model.effortLevels?.includes(draft.effort)))
-  ) {
-    fail("Choose an available harness and model before sending.");
-    return;
-  }
-  const result = await (draft.reconcileCreation
-    ? draft.reconcileCreation()
-    : initial.createChat());
-  if (!owns()) return;
-  if (result.status === "not-created") {
-    fail(get().error ?? "Could not create the chat. Try again.");
-    return;
-  }
-  if (result.status === "unconfirmed") {
-    set({
-      newChatDraft: {
-        ...draft,
-        creating: true,
-        error: boundedChatError(
-          get().error ??
-            "Chat creation is unconfirmed. Reload chats before trying again.",
-        ),
-        reconcileCreation: result.reconcile,
-      },
-      pendingFirstSend: null,
+      (draft.effort && !model.effortLevels?.includes(draft.effort))
+    )
+      throw new Error("Choose an available harness and model before sending.");
+
+    if (creation.status !== "created") {
+      const result = await (creation.status === "unconfirmed"
+        ? creation.reconcile()
+        : initial.createChat());
+      // Record the durable result before validating this attempt's ownership.
+      // A recovered project can invalidate the attempt, never its creation.
+      switch (result.status) {
+        case "confirmed":
+          creation = { status: "created", chatId: result.chatId };
+          break;
+        case "unconfirmed":
+          creation = {
+            status: "unconfirmed",
+            reconcile: result.reconcile ?? (() => Promise.resolve(result)),
+          };
+          throw new Error(
+            get().error ??
+              "Chat creation is unconfirmed. Reload chats before trying again.",
+          );
+        default:
+          creation = { status: "released" };
+          throw new Error(
+            get().error ?? "Could not create the chat. Try again.",
+          );
+      }
+    }
+    requireProject();
+    const chatId = creation.chatId;
+    const dispatch =
+      get().pendingFirstSend === submission && get().activeTabId === chatId;
+    if (get().archivedChats.some((chat) => chat.id === chatId)) {
+      if (!(await get().restoreChat(chatId)))
+        throw new Error(
+          "Could not reopen the created chat. Retry to continue.",
+        );
+    }
+    if (get().activeTabId !== chatId) await get().activateTab(chatId);
+    requireProject();
+    const state = get();
+    const owner = state.captureChatOwnership(chatId);
+    if (!owner || state.activeTabId !== chatId)
+      throw new Error("Could not open the created chat. Retry to continue.");
+    // From here through clearing the draft, handoff is synchronous. No project
+    // transition can erase the composer between its assignment and release.
+    state.setChatHarnessSelection(owner, {
+      harnessId: draft.harnessId,
+      modelId: draft.modelId,
     });
-    return;
-  }
-  if (result.status !== "confirmed") return;
-  const chatId = result.chatId;
-  const state = get();
-  const owner = state.captureChatOwnership(chatId);
-  if (!owner) return;
-  state.setChatHarnessSelection(owner, {
-    harnessId: draft.harnessId,
-    modelId: draft.modelId,
-  });
-  state.setChatComposer(owner, draft.text);
-  if (harness?.bindingId && draft.access)
-    draftChatAccess(chatId, {
-      bindingId: harness.bindingId,
-      mode: draft.access,
-    });
-  if (harness?.bindingId && draft.modelId && draft.effort)
-    useChatEffortDraft.setState({
-      draft: {
-        chatId,
+    state.setChatComposer(owner, draft.text);
+    if (draft.access)
+      draftChatAccess(chatId, {
         bindingId: harness.bindingId,
-        modelId: draft.modelId,
-        effort: draft.effort,
-      },
-    });
-  const dispatch =
-    state.pendingFirstSend === submission && state.activeTabId === chatId;
-  set({
-    newChatDraft: null,
-    agentCenter: "chat",
-    pendingFirstSend: dispatch
-      ? {
-          projectId: draft.projectId,
+        mode: draft.access,
+      });
+    if (draft.modelId && draft.effort)
+      useChatEffortDraft.setState({
+        draft: {
           chatId,
-          ownershipEpoch: epoch,
-        }
-      : null,
-  });
-  if (state.activeTabId !== chatId) await state.activateTab(chatId);
+          bindingId: harness.bindingId,
+          modelId: draft.modelId,
+          effort: draft.effort,
+        },
+      });
+    set({
+      newChatDraft: null,
+      agentCenter: "chat",
+      pendingFirstSend:
+        dispatch && state.pendingFirstSend === submission
+          ? { ...submission, chatId }
+          : null,
+    });
+    return { submission: creation, error: "" };
+  } catch (error) {
+    return {
+      submission: creation,
+      error: boundedChatError(errorMessage(error)),
+    };
+  }
 }

@@ -71,12 +71,12 @@ it("updates draft choices synchronously and freezes edits as soon as sending sta
   expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
     text: "First prompt",
     modelId: "plain",
-    creating: true,
+    submission: { status: "submitting" },
   });
   await sending;
   expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
     text: "First prompt",
-    creating: false,
+    submission: { status: "released" },
     error: "Choose an available harness and model before sending.",
   });
 });

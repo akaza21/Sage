@@ -206,13 +206,18 @@ export const createProjectSlice: StateCreator<
         const snapshot =
           await getWorkbenchPorts().project.getBootstrapSnapshot();
         const draft = get().newChatDraft;
+        const creation =
+          draft?.submission.status === "submitting"
+            ? draft.submission.creation
+            : draft?.submission;
         await loadProjectProjection(
           set,
           get,
           snapshot,
           generation,
-          draft?.reconcileCreation !== undefined &&
-            draft.projectId === snapshot.project?.id,
+          creation !== undefined &&
+            creation.status !== "released" &&
+            draft?.projectId === snapshot.project?.id,
         );
       } catch (error) {
         set({

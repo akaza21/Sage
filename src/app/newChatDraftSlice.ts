@@ -4,16 +4,22 @@ import type { createNewChatDraftActions } from "./newChatDraftActions";
 import type { CreateChatResult } from "./runCreateChat";
 import type { WorkbenchState } from "./store";
 
+export type DraftCreation =
+  | { status: "released" }
+  | { status: "created"; chatId: string }
+  | { status: "unconfirmed"; reconcile: () => Promise<CreateChatResult> };
+
 export interface NewChatDraft {
+  /** Stable across immutable edits and project ownership recovery. */
+  id: object;
   projectId: string;
   text: string;
   harnessId: string | null;
   modelId: string | null;
   access: SessionAccessMode | null;
   effort: string | null;
-  creating: boolean;
+  submission: DraftCreation | { status: "submitting"; creation: DraftCreation };
   error: string | null;
-  reconcileCreation?: () => Promise<CreateChatResult>;
 }
 
 export interface NewChatDraftSlice {

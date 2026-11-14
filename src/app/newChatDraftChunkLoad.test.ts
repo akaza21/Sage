@@ -29,7 +29,7 @@ it("keeps the draft editable and sendable after its send module fails to load", 
   expect(useWorkbenchStore.getState().pendingFirstSend).toBeNull();
   expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
     text: "Keep this prompt",
-    creating: false,
+    submission: { status: "released" },
     error: expect.stringMatching(/module/),
   });
 
@@ -38,7 +38,7 @@ it("keeps the draft editable and sendable after its send module fails to load", 
   await state.sendNewChatDraft();
   expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
     text: "Keep this prompt, edited",
-    creating: false,
+    submission: { status: "released" },
     error: "Choose an available harness and model before sending.",
   });
 });
