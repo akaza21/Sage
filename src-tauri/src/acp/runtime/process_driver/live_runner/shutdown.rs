@@ -3,8 +3,10 @@ use std::time::{Duration, Instant};
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     process::{TreeControl, TreeExit},
-    runtime::{BoundedThread, ProjectIntentAuthority},
+    redaction::SafeStderrDiagnostic,
+    runtime::{BoundedThread, ProjectIntentAuthority, terminal_detail},
 };
+use sage_acp_protocol::lifecycle::TurnTerminalOutcome;
 
 use super::{
     DriverMailbox, FirstTurnWorkerContext, FirstTurnWorkerState, RetainedRunnerRecovery,
@@ -121,6 +123,7 @@ where
                             .recover_runtime_after_zero_process_retained(
                                 context.owner.clone(),
                                 proof,
+                                runtime_loss(&exit, root_exit, control),
                             )
                             .is_ok();
                     }
@@ -151,6 +154,26 @@ where
     (
         (!clean_shutdown).then(|| Box::new(exit.state) as RetainedRunnerRecovery),
         recovered_after_exit,
+    )
+}
+
+fn runtime_loss<A, R, T>(
+    exit: &RunnerExit<A, R, T>,
+    root_exit: TreeExit,
+    control: &TreeControl,
+) -> TurnTerminalOutcome
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+{
+    let stderr = control.stderr_diagnostic().ok();
+    terminal_detail::runtime_lost(
+        terminal_detail::observed_exit(exit.reason, root_exit),
+        exit.state.teardown_outcome(),
+        stderr
+            .as_ref()
+            .and_then(SafeStderrDiagnostic::json_rpc_error_message),
     )
 }
 

@@ -36,6 +36,17 @@ pub(crate) struct SafeStderrDiagnostic {
     pub(crate) method: Option<String>,
     pub(crate) error_code: Option<String>,
     pub(crate) error_message: Option<String>,
+    json_rpc: bool,
+}
+
+impl SafeStderrDiagnostic {
+    /// The harness's JSON-RPC error message. A sanitized plain-text stderr
+    /// line stays a native diagnostic and is never handed out for storage.
+    pub(crate) fn json_rpc_error_message(&self) -> Option<&str> {
+        self.json_rpc
+            .then_some(self.error_message.as_deref())
+            .flatten()
+    }
 }
 
 /// Sensitive bytes never implement `Debug`, `Display`, `Clone`, or `Serialize`.
@@ -176,6 +187,7 @@ impl StderrRing {
                 method,
                 error_code,
                 error_message,
+                json_rpc: true,
             };
         }
         std::str::from_utf8(&bytes)
@@ -185,6 +197,7 @@ impl StderrRing {
                 method: None,
                 error_code: Some("child-stderr".to_owned()),
                 error_message: Some(sanitize_diagnostic_text(message)),
+                json_rpc: false,
             })
             .unwrap_or_else(empty_stderr_diagnostic)
     }
@@ -200,6 +213,7 @@ fn empty_stderr_diagnostic() -> SafeStderrDiagnostic {
         method: None,
         error_code: None,
         error_message: None,
+        json_rpc: false,
     }
 }
 

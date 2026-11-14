@@ -37,6 +37,7 @@ impl SessionCoordinator {
         &self,
         owner: RuntimeOwner,
         proof: ZeroProcessProof,
+        terminal_reason: TurnTerminalOutcome,
     ) -> Result<ZeroProcessProof, (SessionCoordinatorError, ZeroProcessProof)> {
         if proof.owner != owner {
             return Err((SessionCoordinatorError::Intent, proof));
@@ -48,6 +49,7 @@ impl SessionCoordinator {
                 chat_id: owner.chat_id.clone(),
                 session_id: owner.session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
+                terminal_reason,
                 now_millis: sage_core::time::now_millis(),
             }),
             deadline(JournalLane::Control),

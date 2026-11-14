@@ -1,14 +1,17 @@
 use rusqlite::{OptionalExtension, params};
 
-use crate::acp::store::{
-    RecoverRuntimeCommand, RecoveryCandidate, StoreError, load_recovery_candidates,
-    next_projection_revision, terminalize_recovery_epoch,
+use crate::acp::{
+    runtime::terminal_detail::sage_closed,
+    store::{
+        RecoverRuntimeCommand, RecoveryCandidate, StoreError, load_recovery_candidates,
+        next_projection_revision, recordable_terminal_reason, terminalize_recovery_epoch,
+    },
 };
 #[cfg(test)]
 use sage_acp_protocol::lifecycle::DeliveryState;
 use sage_acp_protocol::{
     contract::{ProjectionRevision, SageTurnId},
-    lifecycle::{SessionState, TurnState},
+    lifecycle::{SessionState, TurnState, TurnTerminalOutcome},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -29,8 +32,9 @@ pub(crate) fn recover_after_restart(
         terminal_turn: None,
         projection_revision: None,
     };
+    let closed = sage_closed();
     for candidate in load_recovery_candidates(connection)? {
-        let recovered = recover_candidate(connection, candidate, now_millis)?;
+        let recovered = recover_candidate(connection, candidate, now_millis, &closed)?;
         report.recovered_sessions += recovered.recovered_sessions;
         report.terminal_turn = recovered.terminal_turn.or(report.terminal_turn);
         report.projection_revision = recovered.projection_revision;
@@ -53,7 +57,12 @@ pub(crate) fn recover_runtime_after_zero_process(
         .into_iter()
         .find(|candidate| exact_candidate(candidate, &command))
     {
-        Some(candidate) => recover_candidate(connection, candidate, command.now_millis),
+        Some(candidate) => recover_candidate(
+            connection,
+            candidate,
+            command.now_millis,
+            &recordable_terminal_reason(command.terminal_reason.clone()),
+        ),
         None => replay_recovered_runtime(connection, &command),
     }?;
     Ok(report)
@@ -135,6 +144,7 @@ fn recover_candidate(
     connection: &mut rusqlite::Connection,
     candidate: RecoveryCandidate,
     now_millis: i64,
+    reason: &TurnTerminalOutcome,
 ) -> Result<RecoveryReport, StoreError> {
     if candidate.session_state.is_terminal() || candidate.session_state == SessionState::Created {
         return Err(StoreError::Corrupt("live epoch has invalid session state"));
@@ -193,6 +203,7 @@ fn recover_candidate(
             &candidate.chat_id,
             &candidate.session_id,
             candidate.runtime_epoch,
+            reason,
             projection,
             now_millis,
         )?

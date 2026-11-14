@@ -163,6 +163,8 @@ fn journal_close_and_native_end_capture_the_terminal_turn() {
                     chat_id: owner.chat_id,
                     session_id: owner.session_id,
                     runtime_epoch: owner.runtime_epoch,
+                    terminal_reason:
+                        sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited.into(),
                     now_millis: 8,
                 }),
                 0,

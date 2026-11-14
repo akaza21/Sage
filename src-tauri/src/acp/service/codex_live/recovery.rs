@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::runtime::terminal_detail::runtime_stopped;
 
 mod pending;
 pub(in crate::acp::service) use pending::PendingCodexRecovery;
@@ -252,10 +253,11 @@ impl Lane<'_> {
                 proof,
                 host,
             } => match host.abandon_startup() {
-                Ok(()) => match self
-                    .sessions
-                    .recover_runtime_after_zero_process_retained(owner.clone(), proof)
-                {
+                Ok(()) => match self.sessions.recover_runtime_after_zero_process_retained(
+                    owner.clone(),
+                    proof,
+                    runtime_stopped(),
+                ) {
                     Ok(proof) => {
                         drop(lease);
                         self.release_runtime_slot(owner, proof).err()
@@ -312,7 +314,11 @@ impl Lane<'_> {
             }
             PendingCodexRecovery::RuntimeProjection { owner, proof } => self
                 .sessions
-                .recover_runtime_after_zero_process_retained(owner.clone(), proof)
+                .recover_runtime_after_zero_process_retained(
+                    owner.clone(),
+                    proof,
+                    runtime_stopped(),
+                )
                 .map_err(|(_, proof)| proof)
                 .and_then(|proof| {
                     self.release_runtime_slot(owner.clone(), proof)
@@ -345,7 +351,7 @@ impl Lane<'_> {
         })?;
         let proof = self
             .sessions
-            .recover_runtime_after_zero_process_retained(owner.clone(), proof)
+            .recover_runtime_after_zero_process_retained(owner.clone(), proof, runtime_stopped())
             .map_err(|(_, proof)| PendingCodexRecovery::RuntimeProjection {
                 owner: owner.clone(),
                 proof,
