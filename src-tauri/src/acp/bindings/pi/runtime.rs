@@ -104,6 +104,7 @@ pub(crate) struct PiRuntime {
     pub(super) available_models: Vec<ModelSummary>,
     pub(super) current_thinking: Option<String>,
     pub(super) available_thinking: Vec<String>,
+    /// Pi's auto-compaction setting, once `get_state` has reported it.
     pub(super) auto_compaction: Option<bool>,
     commands: std::sync::Arc<crate::acp::slash_commands::CommandState>,
     commands_pending: bool,
@@ -119,6 +120,7 @@ pub(crate) struct PiRuntime {
     pub(super) usage: std::sync::Arc<crate::acp::usage::UsageCell>,
     /// A fork under way, while Pi is away from the chat's session.
     fork: Option<support::Fork>,
+    /// Unsettled forks and refused copies whose cleanup has not succeeded.
     forks: Vec<support::ForkCopy>,
     launch: Option<Box<dyn PiLaunch>>,
     #[cfg(test)]

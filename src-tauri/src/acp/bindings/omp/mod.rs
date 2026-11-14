@@ -1,5 +1,5 @@
-//! It remains launch-ineligible until the complete Bun/native-addon artifact graph and
-//! authority are independently admitted.
+//! This OMP binding remains launch-ineligible until the complete Bun/native-addon artifact graph
+//! and authority are independently admitted.
 
 mod manifest;
 mod protocol;

@@ -51,6 +51,8 @@ impl SdkBridge {
         )
     }
 
+    /// Claude Code's reply to a withdrawal, whatever it was: the message no
+    /// longer waits on Sage, and the stop moves on.
     /// A stop whose turn already ended goes no further, so a late reply never interrupts the next
     /// turn.
     pub(super) fn withdrawn(&mut self, uuid: &str, inbound: &mut Inbound) {

@@ -13,6 +13,8 @@ use crate::acp::{
 /// up; at this many, further passive requests wait until one is answered.
 const MAX_ABANDONED_REQUESTS: usize = 4;
 
+/// A request that changes nothing Sage holds, so its caller may give up on
+/// it (see `SessionControl::abandons_at_deadline`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PassiveRequest {
     McpList,
@@ -97,8 +99,8 @@ impl SdkBridge {
         })
     }
 
-    /// The request id stays known, so the late reply is dropped rather than read as a frame Sage
-    /// never asked for.
+    /// None changes what Sage holds, and Claude Code may still finish a reconnect. The request id
+    /// stays known, so the late reply is dropped rather than read as a frame Sage never asked for.
     pub(in crate::acp::bindings::claude::sdk) fn abandon_passive_requests(&mut self) {
         for pending in self.pending.values_mut() {
             if matches!(pending, Pending::Passive(_)) {

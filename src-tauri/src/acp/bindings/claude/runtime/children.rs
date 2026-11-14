@@ -12,6 +12,7 @@ use super::*;
 /// Subagents one session follows at once; more show as ordinary tool rows.
 pub(crate) const OPEN_CHILDREN: usize = 16;
 
+/// What the SDK bridge saw of a subagent, keyed by its `Task` tool use.
 #[derive(Debug, Clone, PartialEq)]
 pub(crate) enum ChildEvent {
     Spawned {
@@ -20,6 +21,7 @@ pub(crate) enum ChildEvent {
         prompt: String,
         model: Option<String>,
     },
+    /// An ACP `session/update` from inside the subagent.
     Update {
         key: String,
         update: Value,

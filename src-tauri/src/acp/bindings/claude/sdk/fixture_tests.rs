@@ -63,8 +63,6 @@ fn replay_with(case: &str, prompts: &[Value]) -> Replay {
     replay_in(case, prompts, &launched)
 }
 
-/// Prompts are sent in order with ids from 3; a message sent while Claude works says "Only
-/// the first page". The client approves the first permission option it is asked about.
 fn replay_in(case: &str, prompts: &[Value], launched: &Launched) -> Replay {
     let session = launched.launch.session_id.as_str();
     let mut bridge = SdkBridge::new(session.into(), None);

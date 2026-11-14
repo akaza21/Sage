@@ -219,8 +219,8 @@ pub(crate) fn offers_mode(
     turn_mode_for_binding(registry, binding, Some(mode), None) == Some(mode)
 }
 
-/// A chat may always step down to such a mode, even while its harness is unavailable, and to
-/// no other.
+/// A chat may step down only to a mode in the routed binding's own table, even while its harness
+/// is unavailable.
 pub(crate) fn lists_mode(
     registry: &super::registry::BindingRegistry,
     binding: &str,
@@ -246,8 +246,9 @@ pub(crate) fn lists_mode(
     }
 }
 
-/// Only the access path may then change the session mode. None when the binding cannot be
-/// routed, so the caller decides how to fail closed.
+/// When access is enforced through harness session modes, only the access path may change the
+/// session mode. None when the binding cannot be routed, so the caller decides how to fail
+/// closed.
 pub(crate) fn governs_session_modes(
     registry: &super::registry::BindingRegistry,
     binding: &str,

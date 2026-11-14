@@ -59,7 +59,9 @@ pub(crate) enum CommandDispatch {
     /// Run by the host as the session action its name and input name, with
     /// the action's capability gate (Codex's `compact` and `review`).
     Action,
-    /// Opens a panel in the chat and sends nothing (Codex's `status` and `mcp`).
+    /// Opens a panel in the chat and sends nothing (Codex's `status` and
+    /// `mcp`). The WebView learns the panel from the list, since it opens
+    /// the panel without running the command.
     Panel(CommandPanel),
 }
 
@@ -205,6 +207,7 @@ fn clipped(text: &str, cap: usize) -> Result<String, AdapterRuntimeError> {
     bounded(&text[..end], cap)
 }
 
+/// ACP `availableCommands`, in advertised order.
 pub(crate) fn parse_acp(value: &Value) -> Result<Vec<AvailableCommand>, AdapterRuntimeError> {
     value
         .as_array()

@@ -6,6 +6,8 @@ use crate::acp::bindings::adapter::{
 /// Request ids for mid-turn messages, apart from the session's own.
 const STEER_REQUESTS: u64 = 1 << 62;
 
+/// Mid-turn messages awaiting Claude Code's word, by id, with the request
+/// id Sage waits on.
 pub(super) struct Steering {
     open: Vec<(String, u64)>,
     /// Messages never written, whose refusal the next batch carries.

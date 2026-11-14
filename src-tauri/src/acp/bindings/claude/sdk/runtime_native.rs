@@ -11,7 +11,7 @@ use crate::acp::{
 };
 
 impl ClaudeSdkRuntime {
-    /// One runs at a time, so its token finds it.
+    /// Only one native control request runs at a time, so its delivery token identifies it.
     pub(super) fn control_egress(
         &mut self,
         sdk: &Value,

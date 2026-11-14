@@ -24,6 +24,8 @@ mod usage;
 pub(super) use usage::UsageReply;
 
 const MAX_PENDING: usize = 32;
+/// Approval cards the session holds until the user's answer is written:
+/// open, or answered but not yet delivered.
 const OPEN_APPROVALS: usize = sage_core::limits::LIMITS.queues.server_requests_per_session as usize;
 const MAX_TRACKED_TOOLS: usize = 1_024;
 /// A message's final frames follow its stream directly, so only the most
@@ -48,6 +50,7 @@ pub(super) struct Inbound {
     /// Code no longer waits on them.
     pub(super) withdrawn: Vec<u64>,
     pub(super) session: Vec<crate::acp::intent::session_event::SessionScopedEvent>,
+    /// Questions the permission request in `acp` asks instead.
     pub(super) questions: Option<crate::acp::intent::user_input::UserInputRequest>,
     pub(super) native: Option<crate::acp::goal::NativeRpcReply>,
     pub(super) usage: Option<UsageReply>,
@@ -104,6 +107,7 @@ pub(super) struct SdkBridge {
     interrupted: bool,
     auth_failed: bool,
     permissions: BTreeMap<u64, Permission>,
+    /// Claude Code request ids whose answer is not yet delivered.
     answering: BTreeSet<String>,
     next_permission: u64,
     tools: BTreeMap<String, String>,
@@ -114,6 +118,7 @@ pub(super) struct SdkBridge {
     streamed: VecDeque<String>,
     retrying: bool,
     compacting: bool,
+    /// Mid-turn messages Claude Code has not yet taken up.
     steers: Vec<String>,
     /// A run's `result` that did not end the turn, for when no waiting
     /// message runs after all.
@@ -233,6 +238,8 @@ impl SdkBridge {
         }
     }
 
+    /// A frame reached Claude Code (or never will): an answered approval no
+    /// longer holds the session's card.
     pub(super) fn delivered(&mut self, sent: &Sent) {
         if let Sent::Answer(request_id) = sent {
             self.answering.remove(request_id);

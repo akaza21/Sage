@@ -40,9 +40,9 @@ impl ClaudeRuntime {
         })
     }
 
-    /// The new session is not bound here: the fork Chat resumes it in its own runtime. A ledger
-    /// with no settled fork answers `Rejected`, but the adapter has already stored the copy, so
-    /// it is tracked with its delete wanted.
+    /// The new session is not bound here: the fork Chat resumes it in its own runtime. A full
+    /// ledger with no settled fork answers `Rejected`, but the adapter has already stored the
+    /// copy, so it is tracked with its delete wanted.
     pub(super) fn fork_response(
         &mut self,
         value: &Value,

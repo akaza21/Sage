@@ -12,6 +12,7 @@ pub(crate) struct SessionLaunch {
     pub(crate) session_id: String,
     pub(crate) resume: bool,
     pub(crate) model: Option<String>,
+    /// The validated assistant reply UUID resolved and persisted by Undo.
     pub(crate) rewind_at: Option<String>,
 }
 

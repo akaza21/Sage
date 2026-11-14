@@ -108,6 +108,8 @@ impl StandardAcpRuntime {
         AdapterBatch::new(vec![event], Vec::new())
     }
 
+    /// Answers a pending elicitation with the user's decision, or `None`
+    /// when `request_id` names no elicitation.
     pub(super) fn resolve_elicitation(
         &mut self,
         request_id: &str,
@@ -149,6 +151,8 @@ impl StandardAcpRuntime {
         ))
     }
 
+    /// Settles the egress of an elicitation reply; `None` when `request_id`
+    /// names no elicitation.
     pub(super) fn settle_elicitation(
         &mut self,
         request_id: &str,

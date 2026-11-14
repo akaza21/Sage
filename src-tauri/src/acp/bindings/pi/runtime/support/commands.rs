@@ -14,8 +14,8 @@ use crate::acp::{
 use super::super::{PiRuntime, RequestKind};
 use crate::acp::bindings::pi::Operation;
 
-/// As in Pi's CLI, they take the place of a template or skill of the same name. RPC does not
-/// list Pi's built-ins, so their wording is Pi's own from its command table.
+/// Pi's built-in commands take precedence over templates or skills of the same name. RPC does
+/// not list them, so their wording comes from Pi's command table.
 const COMPACT: &str = "compact";
 const SESSION: &str = "session";
 

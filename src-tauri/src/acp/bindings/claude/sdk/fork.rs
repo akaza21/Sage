@@ -13,6 +13,8 @@ use super::transcript::{is_uuid, last_reply, transcript};
 
 const SEPARATOR: char = '~';
 
+/// A fork of `source` cut after its assistant message `at`, to become the
+/// Claude session `session`.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) struct Fork {
     pub(super) session: String,

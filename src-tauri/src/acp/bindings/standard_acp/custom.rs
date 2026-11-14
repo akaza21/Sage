@@ -34,7 +34,6 @@ const fn custom_profile(id: &'static str) -> StandardAcpProfile {
         fixed_args: &[],
         version_probe_args: &[],
         version_shape: StandardAcpVersionShape::Unprobed,
-        // What Sage implements: approved file writes; reads are refused.
         client_capabilities: StandardAcpClientCapabilities {
             read_text_file: false,
             write_text_file: true,

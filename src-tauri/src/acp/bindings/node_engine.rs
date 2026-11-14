@@ -6,6 +6,7 @@ mod range;
 pub(crate) const RANGE_BYTES_MAX: usize = 256;
 const MAX_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 
+/// A release version: major, minor, patch.
 pub(crate) type NodeVersion = (u64, u64, u64);
 
 /// Evaluates npm's strict ranges against release runtimes only.

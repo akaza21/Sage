@@ -17,6 +17,7 @@ pub(crate) fn client_capability() -> Value {
 
 #[derive(Debug, PartialEq)]
 pub(crate) enum Elicitation {
+    /// Show the card; keep `form` to type the answer.
     Ask {
         payload: Box<NormalizedPayload>,
         form: Box<UserInputRequest>,

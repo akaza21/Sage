@@ -148,6 +148,7 @@ pub(crate) trait HarnessAdapter {
     ) -> bool {
         false
     }
+    /// The next deferred fork release, written while the runtime is idle.
     fn deferred_fork_release(&mut self) -> AdapterOptionalEgress {
         Ok(None)
     }
@@ -161,9 +162,12 @@ pub(crate) trait HarnessAdapter {
     fn accept_oversized_response(&mut self, _id: u64) -> Result<(), AdapterRuntimeError> {
         Err(AdapterRuntimeError::Frame)
     }
+    /// Whether an oversized frame without a request id (such as a large
+    /// tool result) is skipped rather than failing the session.
     fn skips_oversize_frames(&self) -> bool {
         false
     }
+    /// An oversized frame without a request id was read past and dropped.
     fn oversize_frame_skipped(&mut self) {}
     /// Answers a session control the harness has already carried out
     /// without writing a frame: the answer waits in the native RPC reply.

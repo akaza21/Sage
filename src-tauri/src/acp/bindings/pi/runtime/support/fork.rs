@@ -32,6 +32,8 @@ pub(in crate::acp::bindings::pi::runtime) struct Fork {
     command_id: String,
 }
 
+/// Each step keeps the path of the chat's own session file (`home`), which
+/// Pi is moved back onto and which a copy must never be mistaken for.
 #[derive(Debug, Clone)]
 enum ForkStep {
     Cloning { home: String },

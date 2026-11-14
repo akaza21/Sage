@@ -35,8 +35,8 @@ impl StandardAcpTranslator {
             })
     }
 
-    /// Terminal output is the only carrier of that text; text content is already the item's output
-    /// summary and is never repeated in the tail. Retained tails share one per-turn byte budget;
+    /// Only terminal-block output contributes to the tail; text content is already the item's
+    /// output summary and is never repeated there. Retained tails share one per-turn byte budget;
     /// past it the earlier tail stays.
     pub(super) fn record_command_outcome(
         &mut self,

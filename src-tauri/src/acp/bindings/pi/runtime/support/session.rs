@@ -56,8 +56,9 @@ impl PiRuntime {
     }
 }
 
-/// Chats from before that key carry Pi's bare id, and Pi names the file
-/// `<timestamp>_<id>.jsonl`; those are looked up by a scan that stops after `limit` entries.
+/// Older chats keyed by Pi's bare id require a scan for `<timestamp>_<id>.jsonl`, bounded by
+/// `limit` entries; file-name keys open directly. Pi writes the file once the chat has a
+/// message, so a chat that never had one has nothing to reopen.
 pub(super) fn session_path(dir: &Path, key: &str, limit: usize) -> Option<PathBuf> {
     if !crate::acp::bindings::pi::protocol::is_session_key(key) {
         return None;
