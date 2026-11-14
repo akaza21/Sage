@@ -2,10 +2,11 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{repository_branch_delete, state::AppState, workspace::Workspace};
+use crate::{repository_branch_delete, state::AppState};
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryCheckoutRequest, GitRepositoryCheckoutResult,
 };
+use sage_workspace::Workspace;
 
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
 const MAX_GIT_ROOT_ID_BYTES: usize = 512;

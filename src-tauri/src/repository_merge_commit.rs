@@ -2,7 +2,8 @@ use std::path::PathBuf;
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{repository, workspace::Workspace};
+use crate::repository;
+use sage_workspace::Workspace;
 
 const MAX_GIT_ADMIN_PATH_BYTES: usize = 32 * 1024;
 const MAX_GIT_OID_BYTES: usize = 128;

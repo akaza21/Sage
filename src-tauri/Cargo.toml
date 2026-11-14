@@ -26,10 +26,8 @@ aes-gcm.workspace = true
 base64.workspace = true
 csv-core.workspace = true
 getrandom.workspace = true
-ignore.workspace = true
 jpeg-decoder.workspace = true
 jpeg-encoder.workspace = true
-memchr.workspace = true
 png.workspace = true
 regex.workspace = true
 rusqlite.workspace = true
@@ -38,6 +36,7 @@ sage-core.workspace = true
 sage-db.workspace = true
 sage-domain.workspace = true
 sage-process.workspace = true
+sage-workspace.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 sha2.workspace = true
@@ -57,6 +56,7 @@ zeroize.workspace = true
 sage-acp-protocol = { workspace = true, features = ["test-support"] }
 sage-db = { workspace = true, features = ["test-support"] }
 sage-test-support.workspace = true
+sage-workspace = { workspace = true, features = ["test-support"] }
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 libc.workspace = true

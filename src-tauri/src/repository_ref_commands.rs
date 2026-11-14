@@ -7,13 +7,13 @@ use crate::{
     repository,
     repository_discovery::{self, MAX_REPOSITORIES_PER_PROJECT},
     state::AppState,
-    workspace::Workspace,
 };
 use sage_domain::{
     editor::FileDiff,
     repository::{RepositoryRef, RootRepositoryStatus},
     resource::ResourceRef,
 };
+use sage_workspace::Workspace;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]

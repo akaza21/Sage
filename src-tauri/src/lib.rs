@@ -116,7 +116,8 @@ mod window_viewport;
 mod workbench_diff_ref;
 mod workbench_persistence;
 mod workbench_restore;
-mod workspace;
+mod workspace_commands;
+mod workspace_notify;
 
 #[cfg(all(feature = "native-lane", not(all(windows, debug_assertions))))]
 compile_error!("the native-lane feature boots WebView2 and is for Windows debug builds only");
@@ -139,8 +140,8 @@ use crate::{
     profile_lock::{ProfileLock, ProfileLockError},
     startup_refusal::Refusal,
     state::AppState,
-    workspace::development_workspace_root,
 };
+use sage_workspace::development_workspace_root;
 
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 fn initialize_tracing() {

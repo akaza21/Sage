@@ -15,10 +15,10 @@ use crate::{
         reject_unsupported_content,
     },
     editor_persistence::{PersistedEditorBuffer, ReplaceRecord},
-    workspace::{Workspace, directory_skip::protected_workspace_name},
 };
 use sage_db::database::Database;
 use sage_domain::resource::ResourceRef;
+use sage_workspace::{Workspace, directory_skip::protected_workspace_name};
 
 /// `content` has `\n` line ends; `line_ending` is the File's own, restored on write.
 pub struct ReplaceSource {

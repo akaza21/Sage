@@ -5,8 +5,9 @@ use sage_core::{
 };
 use sage_db::error::SqliteResultExt;
 
-use crate::{project_registry::RootRecord, workspace::Workspace};
+use crate::project_registry::RootRecord;
 use sage_domain::{file_operations::RenameProjectFileRequest, resource::ResourceRef};
+use sage_workspace::Workspace;
 
 use super::RenameKind;
 

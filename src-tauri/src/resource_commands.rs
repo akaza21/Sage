@@ -11,7 +11,6 @@ use crate::{
         MAX_RESOURCE_TABS, MAX_RESTORED_TAB_BYTES, MAX_RESTORED_TABS, tab_projection_bytes,
         validate_tab_projection,
     },
-    workspace::Workspace,
 };
 use sage_domain::{
     chat::WorkbenchTab,
@@ -23,6 +22,7 @@ use sage_domain::{
     repository::ProjectRepositoryStatus,
     resource::ResourceRef,
 };
+use sage_workspace::Workspace;
 
 #[tauri::command]
 pub async fn get_bootstrap_snapshot(

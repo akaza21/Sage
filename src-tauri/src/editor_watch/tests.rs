@@ -1,5 +1,5 @@
 use super::*;
-use crate::workspace::notify::unix_events::{UnixWatchKind, unix_watch_delivery};
+use crate::workspace_notify::unix_events::{UnixWatchKind, unix_watch_delivery};
 
 static WATCH_TEST_LOCK: Mutex<()> = Mutex::new(());
 
