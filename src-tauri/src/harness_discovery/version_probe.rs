@@ -198,6 +198,7 @@ mod tests {
         }
 
         fn run(&mut self, stage: &str, command: &mut Command, deadline: Duration) -> Finished {
+            // Capture to files so a full output pipe cannot stall the child while we wait.
             let stdout_path = self.path("stdout.txt");
             let stderr_path = self.path("stderr.txt");
             let child = command

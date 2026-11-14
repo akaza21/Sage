@@ -42,9 +42,8 @@ pub struct ChatAttentionList {
 }
 
 /// Rail chats whose latest Turn waits on an approval or has finished,
-/// approvals first, then newest finish first. The read marks retain exactly
-/// these chats (see `mark_read`), so a
-/// chat the user has read keeps its mark while it is listed here.
+/// approvals first, then newest finish first. Read marks retain rail chats, so a read chat keeps
+/// its mark while listed here.
 /// Only rail chats are looked up, so at most `MAX_RAIL_CHATS` rows reach the sort.
 fn attention_candidates() -> String {
     format!(

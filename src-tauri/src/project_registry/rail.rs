@@ -13,7 +13,6 @@ const RAIL_RECENCY_ORDER: &str =
 
 const RAIL_POSITION_ORDER: &str = "w.pinned DESC, w.position, w.id";
 
-/// Tabs aliased `w` with their chats aliased `c` (NULL when not attached).
 const RAIL_CHAT_TABS: &str = "FROM workbench_tabs w
          LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
          LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
