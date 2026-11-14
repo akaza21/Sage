@@ -1,6 +1,5 @@
-//! The Agent sidebar layout commands. Like the other settings commands they
-//! run only for the main webview, and the record is closed, so the renderer
-//! can store nothing but the two listed choices.
+//! The record is closed, so the renderer can store nothing but the two listed
+//! choices.
 
 use tauri::State;
 

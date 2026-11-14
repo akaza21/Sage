@@ -1,12 +1,9 @@
-//! XDG notices over the session bus. Each notice is sent from its own private
-//! connection, which then listens for that notice's click or close. The
-//! dispatch slot is released as soon as the notice is shown. At most
-//! `MAX_IN_FLIGHT` notices keep a click route, each for `CLICK_WINDOW`: the
-//! expiry sent to the server is only a hint, and servers such as GNOME Shell
-//! may never report a close, so no route can hold a thread forever. A notice
-//! whose route ends is withdrawn, so no notice is left that cannot open its
-//! chat. A click carries the activation token the server sends just before
-//! it, so Wayland compositors let Sage raise its window.
+//! Each notice is sent from its own private connection, which then listens for
+//! that notice's click or close. At most `MAX_IN_FLIGHT` notices keep a click
+//! route, each for `CLICK_WINDOW`: the expiry sent to the server is only a
+//! hint, and servers such as GNOME Shell may never report a close, so no route
+//! can hold a thread forever. A notice whose route ends is withdrawn, so no
+//! notice is left that cannot open its chat.
 use super::super::{Event, Notifications, Permit, clicked};
 use dbus::{
     arg::PropMap,
@@ -69,14 +66,13 @@ pub(in crate::notifications) fn dispatch(
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum Response {
-    /// Clicked, with the activation token the server sent for the click.
     Clicked(Option<String>),
     Closed,
 }
 
-/// Raises the window with a click's activation token. GTK spends the token
-/// on its next focus request, which Wayland compositors otherwise refuse
-/// without a recent input event; on X11 it is a plain focus request.
+/// GTK spends the token on its next focus request, which Wayland compositors
+/// otherwise refuse without a recent input event; on X11 it is a plain focus
+/// request.
 pub(in crate::notifications) fn present(window: &tauri::WebviewWindow, token: String) {
     use gtk::prelude::*;
     let target = window.clone();
@@ -104,8 +100,8 @@ pub(in crate::notifications) fn present(window: &tauri::WebviewWindow, token: St
     }
 }
 
-/// A shown notice and the private connection that sent it. Servers address
-/// signals by notice id, so the connection only reacts to its own notice.
+/// Servers address signals by notice id, so the connection only reacts to its
+/// own notice.
 struct Shown {
     bus: Connection,
     notice: Arc<AtomicU32>,
@@ -172,7 +168,6 @@ impl Shown {
         })
     }
 
-    /// Waits for this notice's click or close, never past `window`.
     fn wait(&self, window: Duration) -> Option<Response> {
         let deadline = Instant::now() + window;
         loop {
@@ -187,8 +182,7 @@ impl Shown {
         }
     }
 
-    /// Removes a notice whose click route ended. Best effort: the server
-    /// may already have dropped it.
+    /// Best effort: the server may already have dropped it.
     fn withdraw(&self) {
         let id = self.notice.load(Ordering::Acquire);
         let closed: Result<(), dbus::Error> = self

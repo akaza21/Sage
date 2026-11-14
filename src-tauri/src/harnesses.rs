@@ -123,8 +123,6 @@ impl HarnessCatalog {
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 
-    /// Claims an update check of these harnesses; false while a recent one
-    /// covers them.
     pub(crate) fn begin_update_check(&self, harness_ids: &[&'static str]) -> bool {
         self.published.begin_check(harness_ids)
     }
@@ -331,7 +329,6 @@ impl HarnessCatalog {
         self.models_for(harness_id, SIMULATOR_IN_CATALOG, true)
     }
 
-    /// The models already known for a harness, without starting a probe.
     pub fn known_models(&self, harness_id: &str) -> AppResult<Vec<ModelOption>> {
         self.models_for(harness_id, SIMULATOR_IN_CATALOG, false)
     }
@@ -371,8 +368,6 @@ impl HarnessCatalog {
             .find(|definition| definition.id == harness_id)
             .ok_or_else(|| AppError::UnknownHarness(harness_id.into()))?;
 
-        // Claude Code is asked for its models before any session runs, so
-        // the picker offers what the installed build lists.
         if definition.install_state == "available"
             && definition.binding_id.as_deref()
                 == Some(crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID)
@@ -961,7 +956,6 @@ mod tests {
         let sdk = crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID;
         let acp = crate::acp::bindings::claude::CLAUDE_BINDING_ID;
         let mut definitions = catalog.definitions();
-        // Either Claude binding keeps its harness until discovery settles.
         for binding in [sdk, acp] {
             assert_eq!(
                 catalog.restore_binding(binding, &mut definitions),
@@ -973,8 +967,6 @@ mod tests {
                 .iter()
                 .all(|entry| !entry.id.starts_with("unavailable-binding:"))
         );
-        // Discovery that finds no CLI hands the harness to the ACP adapter;
-        // until the ACP side settles too, a restore still keeps the harness.
         registry.claude_sdk_admission().apply_discovery(None);
         assert_eq!(
             catalog.harness_id_for_binding(sdk).as_deref(),

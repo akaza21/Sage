@@ -7,13 +7,10 @@ use crate::domain::{DiffHunk, DiffLine, FileChange, FileDiff, ResourceRef};
 const MAX_CHANGES: usize = 300;
 pub const MAX_DIFF_LINES: usize = 1_200;
 
-/// Git status as parsed, capped at `MAX_CHANGES` entries.
 pub struct ParsedStatus {
     pub branch: Option<String>,
     pub changes: Vec<FileChange>,
-    /// The change cap was exceeded, or Git output was cut short.
     pub truncated: bool,
-    /// Another change followed the full list, so more than `MAX_CHANGES` exist.
     pub overflowed: bool,
 }
 
@@ -504,7 +501,6 @@ mod tests {
         assert_eq!(changes.len(), 1);
         assert_eq!(changes[0].resource.relative_path, "complete.txt");
         assert!(truncated);
-        // Cut-short output proves nothing about how many changes exist.
         assert!(!overflowed);
     }
 

@@ -1,16 +1,8 @@
-//! How a buffer snapshot meets the buffer already stored for its File.
-
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
 
 use crate::domain::{BufferSnapshotAck, BufferSnapshotRequest};
 
-/// Whether a buffer is stored for the snapshot's File, and the answer when
-/// that buffer already settles the snapshot: an older revision is not
-/// applied, the same revision with the same text already is, and the same
-/// revision with other text is an error, never an acknowledgement.
-/// A `rebase` only asks whether a buffer is stored: it replaces the base and
-/// the revision, so neither guard applies to it.
 pub(super) fn settled_by_stored(
     transaction: &rusqlite::Transaction<'_>,
     project_id: &str,

@@ -1,5 +1,5 @@
-//! The native Claude installer links its launcher to a versioned executable.
-//! Only that layout is allowed. Admission still pins and revalidates the file.
+//! Only the native installer's versioned-executable layout is allowed.
+//! Admission still pins and revalidates the file.
 
 use std::path::{Path, PathBuf};
 
@@ -40,7 +40,6 @@ pub(super) fn target(path: &Path) -> Option<PathBuf> {
     Some(target)
 }
 
-/// Bound filesystem checks and reject symlinks in the launcher and store's parents.
 fn plain_ancestors(path: &Path) -> bool {
     let mut ancestors = path.ancestors();
     for _ in 0..128 {

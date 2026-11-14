@@ -36,7 +36,6 @@ fn a_missing_package_is_absent() {
 fn a_foreign_package_or_bin_is_never_admitted() {
     for (name, bin) in [
         ("@other/pi-coding-agent", "dist/cli.js"),
-        // A declared bin that is not installed.
         (crate::acp::bindings::pi::PI_PACKAGE, "dist/other.js"),
         (
             crate::acp::bindings::pi::PI_PACKAGE,
@@ -111,7 +110,6 @@ fn the_curated_package_with_node_is_present_with_digests() {
 
 #[test]
 fn the_entrypoint_is_the_bin_the_installed_release_declares() {
-    // Pi 1.x moved its `pi` bin to the bundled build.
     let root = npm_root_with_entry(
         crate::acp::bindings::pi::PI_PACKAGE,
         "dist/bundle/cli.js",

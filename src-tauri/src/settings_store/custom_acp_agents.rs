@@ -1,8 +1,5 @@
-//! User-defined ACP agents: a display name, an executable and its
-//! arguments, and the names of environment variables to pass through.
-//! Only variable names are stored, never their values, so a secret stays
-//! in the user's environment. At most four agents exist at once. Each gets
-//! a fresh `custom-acp-<n>` id from a persisted counter that never goes
+//! Only variable names are stored, never their values, so a secret stays in
+//! the user's environment. Ids come from a persisted counter that never goes
 //! back, so chats bound to a removed agent never pass to a later one.
 
 use std::path::Path;
@@ -32,7 +29,6 @@ pub struct CustomAcpAgent {
     pub env: Vec<String>,
 }
 
-/// An agent as the user submits it; `id` is absent for a new agent.
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CustomAcpAgentDraft {
@@ -43,8 +39,6 @@ pub struct CustomAcpAgentDraft {
     pub env: Vec<String>,
 }
 
-/// The number a custom agent id names: `custom-acp-<n>`, `n` in
-/// `1..=u32::MAX`, written without sign or leading zeros.
 pub fn custom_acp_number(id: &str) -> Option<u32> {
     let digits = id.strip_prefix(ID_PREFIX)?;
     if digits.is_empty() || digits.starts_with('0') || !digits.bytes().all(|b| b.is_ascii_digit()) {
@@ -95,8 +89,8 @@ fn invalid(message: &str) -> AppError {
     AppError::InvalidRequest(format!("custom ACP agent {message}"))
 }
 
-/// Checks the shape of a submitted agent. Whether the executable exists is
-/// the caller's check, made against the disk when the agent is admitted.
+/// Whether the executable exists is the caller's check, made against the disk
+/// when the agent is admitted.
 pub fn validate_custom_acp_agent(
     draft: &CustomAcpAgentDraft,
 ) -> AppResult<(String, String, Vec<String>, Vec<String>)> {
@@ -200,8 +194,6 @@ impl SettingsStore {
         Ok(agents)
     }
 
-    /// Updates the agent `draft.id` names, or adds a new agent under the
-    /// next id the counter has never issued.
     pub fn save_custom_acp_agent(&self, draft: &CustomAcpAgentDraft) -> AppResult<CustomAcpAgent> {
         let (name, executable, args, env) = validate_custom_acp_agent(draft)?;
         let args_json =
@@ -259,7 +251,6 @@ impl SettingsStore {
     }
 }
 
-/// Claims the next id number, refusing a fifth live agent.
 fn next_number(connection: &Connection) -> AppResult<u32> {
     let live: i64 =
         connection.query_row("SELECT count(*) FROM custom_acp_agent_entries", [], |row| {

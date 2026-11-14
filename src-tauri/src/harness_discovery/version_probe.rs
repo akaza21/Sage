@@ -19,9 +19,6 @@ pub(super) struct VersionCommandOutput {
     pub(super) stderr: StreamOutput,
 }
 
-/// This is the strengthened descendant of the old synchronous version probe.
-/// It retains bounded bytes while continuously draining both pipes, enforces a
-/// command deadline, and uses a separately bounded reap attempt after timeout.
 pub(super) fn run_version_command(
     path: &Path,
     limits: ProbeLimits,
@@ -29,8 +26,6 @@ pub(super) fn run_version_command(
     run_bounded_command(path, &[std::ffi::OsStr::new("--version")], None, limits)
 }
 
-/// Runs `path` with fixed arguments under the version probe's bounds: no
-/// stdin, bounded output from both pipes, a deadline and a bounded reap.
 pub(super) fn run_bounded_command(
     path: &Path,
     args: &[&std::ffi::OsStr],
@@ -157,9 +152,6 @@ mod tests {
     use super::run_version_command;
     use crate::harness_discovery::ProbeLimits;
 
-    /// Prints the console window handle it sees, then its arguments, so a
-    /// probe proves both that it ran without a console window and that the
-    /// fixed `--version` argument reached it.
     const CONSOLE_FIXTURE: &str = r#"
         #[link(name = "kernel32")]
         unsafe extern "system" {
@@ -177,8 +169,6 @@ mod tests {
     const DETACHED_RUN_DEADLINE: Duration = Duration::from_secs(60);
     const SUBPROCESS_POLL_INTERVAL: Duration = Duration::from_millis(10);
 
-    /// Names the fixture for the re-run of the console test that stands in for
-    /// a release build: a process with no console of its own.
     const DETACHED_FIXTURE_ENV: &str = "SAGE_VERSION_PROBE_DETACHED_FIXTURE";
 
     struct Finished {
@@ -187,9 +177,6 @@ mod tests {
         stderr: Vec<u8>,
     }
 
-    /// Owns a fresh temp directory and the subprocess running for it, if any.
-    /// Dropping it, including while a failed assertion unwinds, kills and reaps
-    /// a live subprocess first and then removes the directory.
     struct Fixture {
         directory: PathBuf,
         child: Option<Child>,
@@ -210,9 +197,6 @@ mod tests {
             self.directory.join(name)
         }
 
-        /// Runs `command` to exit within `deadline`, capturing its output in
-        /// files so no pipe can stall it. Past the deadline the subprocess is
-        /// killed and reaped, and the test fails naming `stage`.
         fn run(&mut self, stage: &str, command: &mut Command, deadline: Duration) -> Finished {
             let stdout_path = self.path("stdout.txt");
             let stderr_path = self.path("stderr.txt");
@@ -282,15 +266,13 @@ mod tests {
         console.parse().unwrap()
     }
 
-    /// The detached re-run writes its findings here, next to the fixture, so
-    /// they do not depend on how a console-less process's stdout is wired.
+    /// Not stdout, which a console-less process may not have wired up.
     fn report_path(fixture: &Path) -> PathBuf {
         fixture.with_file_name("report.txt")
     }
 
-    /// Runs inside the detached re-run. Like a GUI-subsystem release build it
-    /// has no console, so a console child started without CREATE_NO_WINDOW
-    /// gets a new console window of its own.
+    /// Like a GUI-subsystem release build this has no console, so a console child
+    /// started without CREATE_NO_WINDOW gets a new console window of its own.
     fn report_from_detached_process(executable: &Path) {
         assert_eq!(
             unsafe { windows_sys::Win32::System::Console::GetConsoleWindow() } as usize,

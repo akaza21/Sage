@@ -1,8 +1,5 @@
-//! S10: a certificate nobody trusts must stop every Sage navigation path
-//! before any page content arrives: the chrome's open and navigate, the
-//! Agent's OpenTab, and the Agent's Navigate. Sage installs no
-//! `ServerCertificateErrorDetected` handler, so WebView2's default (deny)
-//! applies; the source check keeps it that way.
+//! Sage installs no `ServerCertificateErrorDetected` handler, so WebView2's
+//! default (deny) applies; the source check keeps it that way.
 
 use std::{sync::atomic::Ordering, time::Duration};
 
@@ -14,7 +11,6 @@ use crate::{
     tls::{SECRET, TlsSite},
 };
 
-/// What would turn WebView2's certificate deny into an allow.
 const BYPASSES: &[&str] = &[
     "ServerCertificateErrorDetected",
     "SERVER_CERTIFICATE_ERROR_ACTION",
@@ -92,7 +88,6 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         ),
         before,
     );
-    // The Agent's Navigate on a tab that is back on an admitted page.
     let back = lane.navigate(&tab, &plain).ok().and_then(|()| {
         wait_for(Duration::from_secs(15), || {
             lane.settled_url(&tab).filter(|url| *url == plain)
@@ -130,10 +125,8 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
     );
 }
 
-/// The tab never committed the HTTPS URL, its document never showed the
-/// fixture's text, and the fixture never decrypted a request. On the first
-/// attempt WebView2 must also have connected, so the refusal was observed
-/// rather than assumed; later attempts may reuse Chromium's verdict.
+/// On the first attempt WebView2 must also have connected, so the refusal was
+/// observed rather than assumed; later attempts may reuse Chromium's verdict.
 fn refused(
     lane: &Lane,
     report: &mut Report,

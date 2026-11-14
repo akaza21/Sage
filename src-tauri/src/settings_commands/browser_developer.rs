@@ -1,14 +1,10 @@
-//! Browser developer mode (ADR-0009b): the Settings switch. Like the other
-//! browser settings commands they run only for the main webview. Only
-//! WebView2 has CDP, so elsewhere the switch is unavailable. Turning it off
-//! ends every live grant at once and tells the browser chrome, so its
-//! Developer mode tag goes away.
+//! Browser developer mode (ADR-0009b). Only WebView2 has CDP, so elsewhere the
+//! switch is unavailable.
 
 use tauri::State;
 
 use crate::state::AppState;
 
-/// Whether this platform's browser can offer developer mode at all.
 const AVAILABLE: bool = cfg!(windows);
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]

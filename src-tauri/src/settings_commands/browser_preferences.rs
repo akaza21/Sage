@@ -1,9 +1,6 @@
-//! Browser settings commands (BF-7d), alongside the other durable settings
-//! commands. They run only for the main webview: the
-//! invoke guard in `ipc_commands.rs` rejects every browser tab before any
-//! command runs. The record is closed (`deny_unknown_fields`), so a renderer
-//! can store nothing but the listed choices, and no reply carries a URL,
-//! cookie or password.
+//! The record is closed (`deny_unknown_fields`), so a renderer can store
+//! nothing but the listed choices, and no reply carries a URL, cookie or
+//! password.
 
 use tauri::State;
 

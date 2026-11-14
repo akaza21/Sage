@@ -143,8 +143,6 @@ fn image_rows_leave_in_bounded_batches_and_files_only_after_commit() {
         })
         .collect::<Vec<_>>();
     {
-        // Batches run inside the caller's transaction; a rollback keeps every
-        // row and file.
         let mut connection = database.write_connection().unwrap();
         let transaction = connection.transaction().unwrap();
         let taken = crate::chat_purge::take_chat_images(&transaction, &project, &side, 2).unwrap();
@@ -172,11 +170,6 @@ fn image_rows_leave_in_bounded_batches_and_files_only_after_commit() {
     std::fs::remove_dir_all(root).unwrap();
 }
 
-/// A purge that would leave a dangling reference is refused by SQLite at
-/// COMMIT (deferred foreign keys), surfacing as
-/// `AppError::Database(SqliteFailure { extended_code: 787 /* FOREIGNKEY */ })`.
-/// The whole transaction rolls back, so the Chat and every lifted guard
-/// trigger survive.
 #[test]
 fn a_purge_leaving_a_dangling_reference_is_refused_at_commit_and_guards_survive() {
     let Fixture {

@@ -78,7 +78,6 @@ pub(crate) struct GitProcessPolicy {
     spawned_hook: Option<GitSpawnHook>,
     #[cfg(test)]
     deadline_wait_gate: Option<Arc<test_support::DeadlineWaitGate>>,
-    /// A Git trace2 event target, to prove which repositories Git opened.
     #[cfg(test)]
     trace2_event: Option<std::path::PathBuf>,
 }
@@ -235,7 +234,6 @@ pub(crate) async fn run(
     run_inner(root, args, stdout_limit, policy, None).await
 }
 
-/// Bounded watch input, using status's configuration, admission and cleanup.
 pub(crate) async fn run_cancellable(
     root: &Path,
     args: &[&str],
@@ -274,7 +272,6 @@ async fn run_inner(
             .as_ref()
             .is_some_and(|authority| !authority.anchors_repository())
     {
-        // A `.git` that appeared after the root handle was taken.
         return Err(AppError::InvalidRequest(
             "workspace root changed before Git access".into(),
         ));

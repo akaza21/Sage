@@ -1,6 +1,3 @@
-//! The WebView2 native lane: boots Sage's real browser code on real WebView2
-//! in hidden windows and checks S3 (page IPC), S10 (TLS), S8 (Agent devtools)
-//! and S1 (popup opener) against loopback fixtures, with no user input.
 //! Run it with `npm run test:native-lane` on Windows; see
 //! docs/work-items/BROWSER-FIRST-CLASS/native-lane.md.
 
@@ -57,9 +54,7 @@ mod lane {
         site::Site,
     };
 
-    /// The whole lane, Tauri start to exit; a hang past it fails the run.
     const LANE_BUDGET: Duration = Duration::from_secs(300);
-    /// How long WebView2's processes get to release the profile at exit.
     const RELEASE_BUDGET: Duration = Duration::from_secs(30);
 
     type Case = fn(&Lane, &Site, &mut Report);
@@ -139,7 +134,6 @@ mod lane {
         std::fs::create_dir_all(root)
     }
 
-    /// Removes the profile once WebView2's processes let go of it.
     fn release(root: &Path) -> Result<Duration, String> {
         let started = Instant::now();
         loop {
@@ -153,7 +147,6 @@ mod lane {
         }
     }
 
-    /// Fails the run, rather than hanging the queue, if the lane overruns.
     fn watchdog(done: Arc<AtomicBool>, root: String) {
         std::thread::spawn(move || {
             let deadline = Instant::now() + LANE_BUDGET;

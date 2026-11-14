@@ -88,8 +88,6 @@ pub(crate) fn validate_layout(
 }
 
 impl Database {
-    /// Removes every temporary Chat. One failed purge does not stop the
-    /// others; the first error is returned after all were attempted.
     pub(crate) fn purge_side_chats(&self) -> AppResult<()> {
         let rows = self
             .connection()

@@ -1,7 +1,6 @@
-//! Settings > Browser > Downloads. These commands run only for the main
-//! webview (the invoke guard in `ipc_commands.rs` rejects browser tabs), and
-//! none takes a path: Change opens a native folder picker in Rust, so neither
-//! the renderer, a page nor the Agent can point downloads somewhere else.
+//! None of these commands takes a path: Change opens a native folder picker in
+//! Rust, so neither the renderer, a page nor the Agent can point downloads
+//! somewhere else.
 
 use std::path::{Path, PathBuf};
 
@@ -19,10 +18,8 @@ use crate::{
     state::AppState,
 };
 
-/// What the Downloads row shows. `path` is the saved folder as stored;
-/// `available` is false when it no longer exists or cannot be written, in
-/// which case the next download asks again. `revision` orders this snapshot
-/// against replies and events even when the availability probe is slow.
+/// `revision` orders this snapshot against replies and events even when the
+/// availability probe is slow.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DownloadFolderView {
@@ -53,7 +50,6 @@ async fn view_with_probe(
     }
 }
 
-/// Saves `chosen` as the download folder after admitting it.
 pub(crate) async fn remember_folder(store: &SettingsStore, chosen: &Path) -> Result<(), String> {
     remember_with_probe(store, chosen, io::executor(), admit_folder_before).await
 }
@@ -83,9 +79,8 @@ async fn remember_with_probe(
     Ok(())
 }
 
-/// Saves the folder of the first download's Save-dialog choice, unless the
-/// stored folder changed since the download read it at `revision` (Settings
-/// chose or reset one while the dialog was open). Returns whether it saved.
+/// Skipped when the stored folder changed since the download read it at
+/// `revision` (Settings chose or reset one while the dialog was open).
 // Called by the WebView2 download handler, which only Windows builds.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) async fn remember_first_choice(
@@ -106,7 +101,6 @@ pub(crate) async fn remember_first_choice(
         })
 }
 
-/// Tells an open Settings page that the download folder changed.
 pub(crate) fn emit_folder_changed(app: &AppHandle, store: &SettingsStore) {
     // Every caller has just admitted and saved the folder. Announce that
     // value without starting another filesystem probe or delayed event.

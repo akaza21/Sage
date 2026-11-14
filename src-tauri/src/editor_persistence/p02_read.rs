@@ -41,8 +41,6 @@ impl Database {
         }
     }
 
-    /// Preflights signed metadata and bounds the SQLite fetch in one read
-    /// transaction before Rust receives a buffer-content allocation.
     pub(crate) fn read_editor_buffer_bounded(
         &self,
         project_id: &str,

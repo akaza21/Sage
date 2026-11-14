@@ -1,5 +1,3 @@
-//! Which Git operation is stopped part way, read with one Git call.
-//!
 //! Matches `repository_conflict::{merge,rebase,cherry_pick,revert}_in_progress`,
 //! which ask Git for each marker path separately; the status refresh runs
 //! this instead so it spawns one process, not five or more.
@@ -114,14 +112,12 @@ mod tests {
         assert!(cherry.cherry_pick && !cherry.merge);
         let revert = classify([false, false, true, false, false, false]);
         assert!(revert.revert && !revert.cherry_pick);
-        // A cherry-pick stopped inside a rebase is neither.
         let both = classify([false, true, false, true, true, false]);
         assert!(!both.cherry_pick && !both.rebase);
         let merge_and_revert = classify([true, false, true, false, false, false]);
         assert_eq!(merge_and_revert, InProgress::default());
     }
 
-    /// Every combination of markers gives what the four separate checks give.
     #[test]
     fn one_call_matches_the_separate_checks_for_every_marker_combination() {
         use crate::repository_conflict::{

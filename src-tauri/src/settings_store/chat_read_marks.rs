@@ -1,10 +1,3 @@
-//! Which chat updates the user has already seen. The Agent rail marks a
-//! finished chat Unread until it is viewed; the mark has to outlive a reload
-//! or a restart, or every finished chat comes back Unread. A mark records the
-//! chat's last update time at the moment it was viewed, so a later update
-//! makes the chat Unread again. Marks are view state for one user, bounded to
-//! the most recently read chats.
-
 use rusqlite::{Connection, params};
 use sage_core::error::AppResult;
 use serde::{Deserialize, Serialize};
@@ -12,39 +5,32 @@ use serde::{Deserialize, Serialize};
 use super::SettingsStore;
 use crate::chat_lifecycle::validate_chat_identifier;
 
-/// One mark for every chat the rail can show (`MAX_RAIL_CHATS`), which are
-/// also the chats the cross-project attention query considers
-/// (chat_read_state.rs). Eviction drops marks of chats the rail no longer
-/// shows first, so a chat it shows keeps its mark.
+/// The rail's chats are also the chats the cross-project attention query
+/// considers (chat_read_state.rs). Eviction drops marks of chats the rail no
+/// longer shows first, so a chat it shows keeps its mark.
 pub const MAX_CHAT_READ_MARKS: usize = crate::project_registry::MAX_RAIL_CHATS;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChatReadMark {
     pub chat_id: String,
-    /// The chat's update time, in Unix milliseconds, that the user has seen.
     pub read_through: i64,
 }
 
-/// What a read wrote: the mark the store now holds, and the chats whose
-/// marks it evicted to stay within the bound. The store alone decides
-/// eviction, so the rail applies `evicted` rather than guessing.
+/// The store alone decides eviction, so the rail applies `evicted` rather than
+/// guessing.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatReadMarkWrite {
     #[serde(flatten)]
     pub mark: ChatReadMark,
     pub evicted: Vec<String>,
-    /// The store's write order. Answers to writes for different chats can
-    /// arrive in any order; this tells the rail which one the store applied
-    /// last.
+    /// Answers to writes for different chats can arrive in any order; this tells
+    /// the rail which one the store applied last.
     pub sequence: i64,
-    /// The most marks the store keeps (`MAX_CHAT_READ_MARKS`); the rail
-    /// bounds its copy by it.
     pub capacity: usize,
 }
 
-/// The stored marks, most recently read first, with the store's bound.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatReadMarks {
@@ -88,13 +74,9 @@ impl SettingsStore {
         })
     }
 
-    /// Records that the chat was seen through `read_through`. A mark never
-    /// moves back, so a stale write cannot make a seen update Unread again.
-    ///
-    /// Past the bound, the least recently read marks of chats outside
-    /// `retained` (the chats the rail can show) go first; the mark just
-    /// written is kept. Since `retained` never exceeds the bound, a retained
-    /// mark is only dropped when every other mark is retained too.
+    /// A mark never moves back, so a stale write cannot make a seen update Unread
+    /// again. Since `retained` never exceeds the bound, a retained mark is only
+    /// evicted when every other mark is retained too.
     pub fn mark_chat_read(
         &self,
         mark: &ChatReadMark,
@@ -155,7 +137,6 @@ impl SettingsStore {
         })
     }
 
-    /// Every chat that holds a mark, in no order.
     pub fn chat_read_mark_ids(&self) -> AppResult<Vec<String>> {
         let connection = self
             .0
@@ -168,9 +149,8 @@ impl SettingsStore {
         Ok(chats)
     }
 
-    /// Forgets these chats' marks in one transaction, as startup does for
-    /// chats that no longer exist: a deleted chat's mark is dropped with it,
-    /// but a crash between the two writes can leave the mark behind.
+    /// A deleted chat's mark is dropped with it, but a crash between the two
+    /// writes can leave the mark behind.
     pub fn forget_chat_read_marks(&self, chat_ids: &[String]) -> AppResult<usize> {
         let mut connection = self
             .0
@@ -186,7 +166,6 @@ impl SettingsStore {
         Ok(forgotten)
     }
 
-    /// Forgets the mark, so the chat's latest update shows as Unread.
     pub fn mark_chat_unread(&self, chat_id: &str) -> AppResult<()> {
         validate_chat_identifier("Chat ID", chat_id)?;
         self.0

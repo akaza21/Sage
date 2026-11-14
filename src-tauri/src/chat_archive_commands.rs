@@ -16,8 +16,6 @@ use crate::{
     state::AppState,
 };
 
-/// Archive releases still running after their archive answered. Exit waits
-/// for them, within its shutdown budget, before shutting the lanes down.
 #[derive(Debug, Default)]
 pub struct ArchiveReleases {
     running: Mutex<usize>,
@@ -35,8 +33,6 @@ impl ArchiveReleases {
         self.settled.notify_all();
     }
 
-    /// Waits until no archive release is running or `deadline` passes, and
-    /// answers whether they all settled.
     pub(crate) fn wait_settled(&self, deadline: Instant) -> bool {
         let mut running = self.running.lock().unwrap_or_else(PoisonError::into_inner);
         while *running > 0 {
@@ -54,7 +50,6 @@ impl ArchiveReleases {
     }
 }
 
-/// Ends one tracked archive release however its task ends.
 struct ReleaseRunning<'a>(&'a ArchiveReleases);
 
 impl Drop for ReleaseRunning<'_> {
@@ -63,8 +58,6 @@ impl Drop for ReleaseRunning<'_> {
     }
 }
 
-/// Archives a Chat and answers as soon as the archive commits; the Chat's
-/// runtime is released afterwards in the background.
 #[tauri::command]
 pub async fn archive_chat(
     app: tauri::AppHandle,
@@ -95,7 +88,6 @@ pub async fn restore_chat(
     Ok(restore_chat_inner(&state, request, expected_transition_epoch).await)
 }
 
-/// Permanently deletes an archived Chat and forgets its read mark.
 #[tauri::command]
 pub async fn delete_chat(
     state: State<'_, AppState>,
@@ -133,9 +125,6 @@ async fn release_until(
         .await
 }
 
-/// Releases an archived Chat's runtime after its archive has answered,
-/// within the explicit-close deadline. An outcome other than a release is
-/// logged; delete releases the runtime again before it deletes the Chat.
 pub(crate) async fn release_archived_runtime(state: &AppState, project: &str, chat: &str) {
     let (Ok(project), Ok(chat)) = (
         SageProjectId::parse(project.to_owned()),
@@ -157,7 +146,6 @@ pub(crate) async fn release_archived_runtime(state: &AppState, project: &str, ch
     }
 }
 
-/// The Chat's typed identity when it is an archived Chat of that Project.
 fn archived_identity(
     state: &AppState,
     request: &ChatDeleteRequest,
@@ -254,9 +242,6 @@ pub(crate) fn forget_read_marks_of_deleted_chats(
     }
 }
 
-/// Archives the Chat and settles its Chat-scoped state. The caller releases
-/// its runtime afterwards with `release_archived_runtime`, so archive never
-/// waits on a harness exiting.
 pub(crate) async fn archive_chat_inner(
     state: &AppState,
     request: ChatLifecycleRequest,
@@ -271,12 +256,10 @@ pub(crate) async fn archive_chat_inner(
         move |database| database.archive_chat(&request),
     )
     .await;
-    if result.committed {
-        // An archived chat is off the rail, so its read mark goes with it; a
-        // restored chat starts without one.
-        if let Err(error) = state.settings.mark_chat_unread(&chat_id) {
-            tracing::warn!(?error, "archived Chat keeps its read mark");
-        }
+    if result.committed
+        && let Err(error) = state.settings.mark_chat_unread(&chat_id)
+    {
+        tracing::warn!(?error, "archived Chat keeps its read mark");
     }
     if result.committed
         && let (Ok(project), Ok(chat)) =

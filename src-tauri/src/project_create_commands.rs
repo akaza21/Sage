@@ -1,5 +1,3 @@
-//! The Create project dialog's commands.
-//!
 //! The WebView never names a folder path. It asks for a native folder pick,
 //! gets back an opaque token for the chosen folder, and creates the project
 //! from those tokens. Only folders the person picked can become roots.
@@ -19,17 +17,14 @@ use crate::{
     state::AppState,
 };
 
-/// Picks held for open Create project dialogs. The oldest is dropped first.
 pub const MAX_PENDING_SOURCE_PICKS: usize = 32;
 
-/// Folders the person picked in a Create project dialog, by token.
 #[derive(Default)]
 pub struct ProjectSourcePicks {
     picks: Mutex<VecDeque<(String, PathBuf)>>,
 }
 
 impl ProjectSourcePicks {
-    /// Holds `path` and returns the token that names it.
     pub fn admit(&self, path: PathBuf) -> String {
         let token = Uuid::new_v4().to_string();
         let mut picks = self
@@ -43,7 +38,6 @@ impl ProjectSourcePicks {
         token
     }
 
-    /// The folders `tokens` name, in order. Any unknown token fails the lot.
     pub fn resolve(&self, tokens: &[String]) -> AppResult<Vec<PathBuf>> {
         let picks = self
             .picks

@@ -134,7 +134,6 @@ fn archive_and_restore_preserve_history_across_restart() {
         archived.archived_chats,
         vec![crate::domain::ArchivedChatSummary {
             id: first_chat_id.clone(),
-            // The first prompt auto-titles a default-titled chat.
             title: "Chat: remember me".into(),
         }]
     );

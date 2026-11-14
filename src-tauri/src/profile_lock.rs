@@ -1,5 +1,3 @@
-//! Exclusive ownership of a durable profile directory.
-//!
 //! Startup recovery treats every row it finds as left over from a previous
 //! run, so two Sage processes on one profile would recover each other's live
 //! Turns, side chats and browser operations. The process that holds this lock
@@ -16,8 +14,6 @@ use std::{
 
 const LOCK_FILE_NAME: &str = "sage.profile.lock";
 
-/// Proof that this process owns a profile directory. Dropping it releases
-/// ownership; Sage keeps it for the whole process lifetime.
 #[derive(Debug)]
 pub(crate) struct ProfileLock {
     _file: File,
@@ -25,7 +21,6 @@ pub(crate) struct ProfileLock {
 
 #[derive(Debug)]
 pub(crate) enum ProfileLockError {
-    /// Another live process holds the profile.
     Held(PathBuf),
     Io(io::Error),
 }
@@ -59,7 +54,6 @@ impl From<io::Error> for ProfileLockError {
 }
 
 impl ProfileLock {
-    /// Takes the profile without waiting. `durable_dir` must already exist.
     pub(crate) fn acquire(durable_dir: &Path) -> Result<Self, ProfileLockError> {
         let file = open_plain_file(&durable_dir.join(LOCK_FILE_NAME))?;
         match file.try_lock() {
@@ -130,7 +124,6 @@ mod platform {
         os::unix::fs::{MetadataExt, OpenOptionsExt},
     };
 
-    /// Refuses a symbolic link at open.
     pub(super) fn restrict(options: &mut OpenOptions) {
         options.custom_flags(libc::O_NOFOLLOW);
     }
@@ -198,7 +191,6 @@ mod tests {
 
         let error = ProfileLock::acquire(&directory.0).unwrap_err();
         assert!(matches!(error, ProfileLockError::Io(_)), "{error}");
-        // The link's target was never locked on the refused profile's behalf.
         let _owner = ProfileLock::acquire(&elsewhere.0).unwrap();
     }
 

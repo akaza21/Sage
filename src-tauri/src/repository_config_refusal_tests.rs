@@ -1,6 +1,3 @@
-//! Every Source Control entry point refuses a repository whose own config
-//! names a program, before Git can launch it.
-
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -24,8 +21,6 @@ struct Fixture {
 }
 
 impl Fixture {
-    /// A repository with a commit, a second branch and a local remote, so
-    /// each operation would reach Git if the config were not refused.
     fn new() -> Self {
         let base = std::env::temp_dir().join(format!("sage-git-refusal-{}", Uuid::new_v4()));
         let remote = base.join("remote.git");

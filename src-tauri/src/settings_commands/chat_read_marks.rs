@@ -1,7 +1,3 @@
-//! The Agent rail's read marks, and the cross-project attention they feed.
-//! Like the other settings commands they run only for the main webview; the
-//! store validates and bounds every mark.
-
 use tauri::State;
 
 use crate::{
@@ -18,9 +14,8 @@ pub(crate) fn chat_read_marks(state: State<'_, AppState>) -> Result<ChatReadMark
         .map_err(|error| error.to_string())
 }
 
-/// Records a read mark, keeping the marks of every chat the rail can show.
-/// Finding those chats reads the project database, so it runs off the main
-/// thread.
+/// Finding the rail's chats reads the project database, so it runs off the
+/// main thread.
 #[tauri::command]
 pub(crate) async fn chat_mark_read(
     state: State<'_, AppState>,
@@ -44,8 +39,7 @@ pub(crate) fn chat_mark_unread(state: State<'_, AppState>, chat_id: String) -> R
         .map_err(|error| error.to_string())
 }
 
-/// Chats in any project that wait on an approval or finished unseen. It
-/// reads every project's chats, so it runs off the main thread.
+/// Reads every project's chats, so it runs off the main thread.
 #[tauri::command]
 pub(crate) async fn chat_attention(
     state: State<'_, AppState>,

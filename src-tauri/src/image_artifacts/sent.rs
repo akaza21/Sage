@@ -1,5 +1,3 @@
-//! Image artifacts a native prompt has sent are retired once the prompt is
-//! handed to the harness.
 use std::path::Path;
 
 use rusqlite::{Connection, params};
@@ -9,10 +7,6 @@ use crate::acp::migration;
 
 use super::store::{full_path, validate_root};
 
-/// Composer images become retired once their prompt was handed over: the
-/// transcript keeps its own copy, reconciliation drops the row's full file,
-/// and a later send can no longer reuse the artifact. Queued images stay with
-/// the queue, which retires them itself.
 pub(crate) fn retire_sent_images(
     connection: &Connection,
     root: &Path,

@@ -75,7 +75,6 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
         }
     }
     let branch = symbolic_branch(workspace).await?;
-    // Each read needs only the branch, so they run side by side.
     let (tracking, listed, history, remotes, in_progress, staged) = tokio::try_join!(
         repository::tracking_status(workspace, branch.as_deref()),
         crate::repository_branches::list_local_branches(workspace),
@@ -112,15 +111,11 @@ async fn status(workspace: &Workspace) -> AppResult<RootRepositoryStatus> {
     })
 }
 
-/// Staged changes, capped at `MAX_CHANGES`.
 struct StagedChanges {
     changes: Vec<FileChange>,
-    /// Another change followed the full list, so more than `MAX_CHANGES` exist.
     overflowed: bool,
 }
 
-/// What the index holds against `HEAD` (or the empty tree before the first
-/// commit).
 async fn staged_changes(workspace: &Workspace) -> AppResult<StagedChanges> {
     let base = diff_base(workspace).await?;
     let output = crate::repository_workspace::run_git(

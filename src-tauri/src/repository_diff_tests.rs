@@ -75,7 +75,6 @@ async fn scoped_diffs_refuse_repository_textconv_and_show_raw_content() {
         );
     }
 
-    // With the driver removed, every scope shows the raw content.
     git(&repo.0, &["config", "--unset", "diff.sentinel.textconv"]);
     for (scope, removed, added) in [
         (None, "base", "working"),

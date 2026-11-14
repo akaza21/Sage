@@ -51,7 +51,6 @@ fn a_shim_beside_its_npm_package_updates_through_npm() {
             command: "npm install -g @openai/codex@latest".into(),
         }]
     );
-    // Another package's shim in the same folder is not attributed to it.
     assert_eq!(
         update_command("pi", crate::acp::bindings::pi::PI_PACKAGE, &shim),
         None
@@ -83,7 +82,6 @@ fn the_lookup_reads_what_npm_reports_and_nothing_else() {
     let root = temp_root();
     let npm_cli = root.join("lib/node_modules/npm/bin/npm-cli.js");
     std::fs::create_dir_all(npm_cli.parent().unwrap()).unwrap();
-    // npm runs from the folder that holds it, never a shared one.
     let npm_root = root.join("lib");
     for (printed, expected) in [
         ("0.168.0", Some("0.168.0")),

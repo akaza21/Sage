@@ -1,7 +1,3 @@
-//! Where each catalog harness stands: detecting, available, unavailable or
-//! not installed. `definitions()` projects these states as strings; callers
-//! that branch on a state use the typed value from `install_state_of`.
-
 use super::{HarnessCatalog, SIMULATOR_ID, SIMULATOR_IN_CATALOG, simulator_admission};
 use crate::{domain::HarnessInstallState, harness_discovery::known_harness_spec};
 
@@ -36,8 +32,6 @@ impl HarnessCatalog {
         }
     }
 
-    /// The install state of a harness in Sage's catalog, or `None` when the
-    /// catalog does not list it. Agrees with `definitions()` entry for entry.
     pub(crate) fn install_state_of(&self, harness_id: &str) -> Option<HarnessInstallState> {
         self.install_state_for(harness_id, SIMULATOR_IN_CATALOG)
     }

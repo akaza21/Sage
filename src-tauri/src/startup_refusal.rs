@@ -1,5 +1,3 @@
-//! Launches that must stop before opening the profile's databases.
-//!
 //! Tauri runs setup inside the event loop and panics on a setup error, so a
 //! refusal never returns one: it says what happened and ends the process with
 //! an ordinary exit. Nothing has been opened yet, so there is nothing to
@@ -13,13 +11,10 @@ use crate::launch_profile::{LaunchProfile, PROFILE_MARKER_BYTES, PROFILE_MARKER_
 
 #[derive(Debug)]
 pub(crate) enum Refusal {
-    /// Another live process owns the profile.
     ProfileInUse,
-    /// A newer Sage migrated the profile; the text is the error's detail.
     NewerProfile(String),
 }
 
-/// How a refused launch ends.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct Ending {
     pub(crate) code: i32,
@@ -31,9 +26,6 @@ const ALREADY_OPEN: &str = "Sage is already open.";
 const NEWER_PROFILE: &str = "This Sage data was saved by a newer version of Sage. Install the \
      latest Sage to open it. Your data has not been changed.";
 
-/// Decides how a refused launch of `profile` ends. `hand_off` asks the
-/// profile's owner to come to the front; it is tried only for the everyday
-/// profile, where a second launch means "show me Sage".
 pub(crate) fn ending(
     refusal: &Refusal,
     profile: &LaunchProfile,
@@ -78,7 +70,6 @@ pub(crate) fn ending(
     }
 }
 
-/// Reports `refusal` and exits the process.
 pub(crate) fn exit(refusal: Refusal, profile: &LaunchProfile) -> ! {
     let ending = ending(&refusal, profile, crate::profile_handoff::ring);
     eprintln!("{}", ending.stderr);

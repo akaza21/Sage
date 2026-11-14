@@ -61,8 +61,6 @@ pub struct RootRepositoryStatus {
     pub revert_in_progress: bool,
     pub changes: Vec<FileChange>,
     pub truncated: bool,
-    /// More changes exist than `changes` lists (the cap was passed). A
-    /// truncated status without it may be complete or not.
     #[serde(default)]
     pub changes_overflowed: bool,
     pub elapsed_ms: u64,

@@ -1,8 +1,5 @@
-//! The editor settings catalogue. One closed registry lists each key with its
-//! type, default and range, and the values live as versioned key/value rows.
 //! `src/domain/editorSettingsCatalogue.ts` mirrors the registry, and a parity
-//! test keeps the two equal, so adding a setting is one entry on each side and
-//! never a schema change.
+//! test keeps the two equal.
 
 use std::{
     collections::{BTreeMap, HashSet},
@@ -17,21 +14,16 @@ use serde_json::Value;
 use super::SettingsStore;
 use crate::workspace::path_glob::valid_path_glob;
 
-/// The row format version. A later format bumps it and converts older rows.
 const ROW_VERSION: i64 = 1;
 
-/// A registry default, written in the registry itself.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SettingValue {
     Bool(bool),
     Int(i64),
-    /// One of a `Choice` setting's names.
     Text(&'static str),
-    /// A `Globs` setting's patterns.
     Globs(&'static [&'static str]),
 }
 
-/// A setting's current value, as stored and sent to the webview.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(untagged)]
 pub enum EditorValue {
@@ -66,25 +58,19 @@ impl PartialEq<SettingValue> for EditorValue {
     }
 }
 
-/// The most patterns a `Globs` setting holds.
 pub const MAX_GLOBS: usize = 50;
 
 #[derive(Debug, Clone, Copy)]
 pub enum SettingKind {
     Bool,
-    /// A whole number in `min..=max`; when `choices` is not empty, only those
-    /// values are allowed.
     Int {
         min: i64,
         max: i64,
         choices: &'static [i64],
     },
-    /// One name from a fixed list.
     Choice {
         choices: &'static [&'static str],
     },
-    /// Up to `MAX_GLOBS` patterns in Sage's path glob dialect
-    /// (`workspace::path_glob`), each valid on its own.
     Globs,
 }
 
@@ -197,7 +183,6 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
     },
 ];
 
-/// Every registry key with its current value; keys never go missing.
 pub type EditorSettings = BTreeMap<&'static str, EditorValue>;
 
 fn spec(key: &str) -> Option<&'static SettingSpec> {
@@ -211,9 +196,6 @@ fn defaults() -> EditorSettings {
         .collect()
 }
 
-/// The value as the registry allows it: whole numbers are clamped to the
-/// range, then moved to the nearest allowed choice (the lower one on a tie).
-/// `None` means the value has the wrong type.
 fn admit(spec: &SettingSpec, value: &Value) -> Option<EditorValue> {
     match spec.kind {
         SettingKind::Bool => value.as_bool().map(EditorValue::Bool),
@@ -235,8 +217,6 @@ fn admit(spec: &SettingSpec, value: &Value) -> Option<EditorValue> {
     }
 }
 
-/// A JSON array of at most `MAX_GLOBS` valid path globs; a repeated pattern
-/// keeps its first place.
 fn admit_globs(value: &Value) -> Option<Vec<String>> {
     let items = value.as_array().filter(|items| items.len() <= MAX_GLOBS)?;
     let mut patterns: Vec<String> = Vec::with_capacity(items.len());
@@ -249,7 +229,6 @@ fn admit_globs(value: &Value) -> Option<Vec<String>> {
     Some(patterns)
 }
 
-/// The `files.exclude` patterns a Search uses when its request names none.
 pub fn default_files_exclude() -> Vec<String> {
     match spec("files.exclude").map(|spec| spec.default) {
         Some(SettingValue::Globs(patterns)) => {
@@ -259,8 +238,8 @@ pub fn default_files_exclude() -> Vec<String> {
     }
 }
 
-/// A JSON number that is a whole number within JavaScript's safe-integer
-/// range, so Rust and the TypeScript catalogue admit the same values.
+/// Within JavaScript's safe-integer range, so Rust and the TypeScript
+/// catalogue admit the same values.
 fn safe_integer(value: &Value) -> Option<i64> {
     const MAX_SAFE: i64 = (1 << 53) - 1;
     let number = value.as_i64().or_else(|| {
@@ -272,8 +251,8 @@ fn safe_integer(value: &Value) -> Option<i64> {
     (number.abs() <= MAX_SAFE).then_some(number)
 }
 
-/// Logs a problem with a stored or requested key once per process, so a
-/// stale row from a newer Sage does not repeat on every read.
+/// Once per process, so a stale row from a newer Sage does not repeat on every
+/// read.
 fn note_once(problem: &'static str, key: &str) {
     static NOTED: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
     let first = NOTED
@@ -286,9 +265,8 @@ fn note_once(problem: &'static str, key: &str) {
     }
 }
 
-/// Creates the rows table and, the first time, copies the five values from
-/// the legacy `editor_appearance` columns. Runs inside the store's opening
-/// transaction, after those columns are brought up to date.
+/// Runs inside the store's opening transaction, after the legacy
+/// `editor_appearance` columns are brought up to date.
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS editor_settings (
@@ -383,9 +361,6 @@ impl SettingsStore {
         )
     }
 
-    /// Stores the given keys and returns every value. Unknown keys are
-    /// ignored and logged once; out-of-range numbers are clamped; a value of
-    /// the wrong type rejects the whole change.
     pub fn set_editor_settings(
         &self,
         changes: &BTreeMap<String, Value>,
@@ -479,8 +454,6 @@ mod tests {
              ) STRICT;
              INSERT INTO editor_appearance VALUES (1, 16, 8, 1, 0, 1);",
         );
-        // The five legacy values carry over; settings added later read their
-        // defaults.
         let mut expected = defaults();
         expected.extend([
             ("editor.fontSize", EditorValue::Int(16)),

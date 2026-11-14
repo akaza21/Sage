@@ -1,10 +1,3 @@
-//! Real App Preview children for native tests outside this module.
-//!
-//! Project-transition commands own the epoch bumps that must retire Preview
-//! children, but they cannot reach the lifecycle registry directly. This
-//! fixture starts a genuine `npm run dev` HTTP server through the production
-//! lifecycle so those tests can observe whether the process really stopped.
-
 use std::{fs, net::TcpStream, path::PathBuf};
 
 use super::{
@@ -20,8 +13,6 @@ const server = http.createServer((_, response) => response.end());
 server.listen(0, "127.0.0.1", () => console.log(`http://127.0.0.1:${server.address().port}`));
 "#;
 
-/// A Preview child admitted for one Project-transition epoch.
-///
 /// The registry is per test thread, so the transition under test must run on
 /// the thread that started the child (for example inside `Runtime::block_on`).
 pub(crate) struct ServingPreview {
@@ -31,8 +22,6 @@ pub(crate) struct ServingPreview {
 }
 
 impl ServingPreview {
-    /// Starts a real HTTP server bound to `transition_epoch` and returns once
-    /// the production lifecycle has observed its loopback origin.
     pub(crate) fn start(transition_epoch: u64) -> Self {
         let root =
             std::env::temp_dir().join(format!("sage-preview-epoch-{}", uuid::Uuid::new_v4()));
@@ -76,9 +65,6 @@ impl ServingPreview {
         Self { root, target, port }
     }
 
-    /// Whether the child still accepts connections and the registry still
-    /// owns it. Cleanup proves tree-zero and joins the output drainers before
-    /// it returns, so a stopped child has already closed its listener.
     pub(crate) fn is_serving(&self) -> bool {
         let owned = lifecycle::test_owned_child_count() == 1;
         let listening = TcpStream::connect(("127.0.0.1", self.port)).is_ok();

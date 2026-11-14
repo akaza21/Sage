@@ -1,18 +1,14 @@
-//! Built-in browser preferences (BF-7d). One bounded record; every field is
-//! closed and validated here, so the WebView never stores browser settings.
-
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::AppResult;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
 
-/// The Browser settings page's stored choices. Unknown fields are refused, so
-/// a renderer cannot persist anything beyond this record.
+/// Unknown fields are refused, so a renderer cannot persist anything beyond
+/// this record.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserPreferences {
-    /// Show the path, query and fragment in the address bar, not only the host.
     pub show_full_url: bool,
 }
 
@@ -142,7 +138,6 @@ mod tests {
         };
         store.set_browser_preferences(value).unwrap();
         drop(store);
-        // Opening again leaves the migrated table and its row alone.
         assert_eq!(
             SettingsStore::open(&path)
                 .unwrap()

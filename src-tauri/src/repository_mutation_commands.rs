@@ -169,9 +169,6 @@ mod tests {
         );
     }
 
-    /// Makes `git add new.txt` wait in a clean filter, after it has taken
-    /// `index.lock` and before it writes the index. A process stopped by a
-    /// zero timeout then never stages the File, however fast the machine.
     /// The filter is required, so a missing shell fails the test instead of
     /// quietly skipping the wait. It leaves the repository folder, so a
     /// leftover filter outliving a killed add doesn't hold it as its working
@@ -497,10 +494,6 @@ mod tests {
         });
     }
 
-    /// Stages `new.txt` through a held clean filter, lets the deadline kill
-    /// the add, and proves the kill was complete: the background reaper
-    /// confirms the exit, the stage never lands, and nothing still holds the
-    /// repository open, so it can be deleted.
     fn killed_stage_never_lands(command_timeout: Duration) {
         let _serial = sage_test_support::test_wait::serial_process_guard();
         tokio::runtime::Runtime::new().unwrap().block_on(async {

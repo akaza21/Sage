@@ -1,6 +1,3 @@
-//! Permanent deletion of an archived Chat, through the same purge that
-//! removes temporary side chats.
-
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
 
@@ -10,8 +7,6 @@ use crate::{
 };
 
 impl Database {
-    /// Deletes an archived Chat with its history and releases its usage, so
-    /// the Project can create a Chat in its place.
     pub(crate) fn delete_archived_chat(&self, request: &ChatDeleteRequest) -> AppResult<()> {
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
@@ -21,8 +16,6 @@ impl Database {
     }
 }
 
-/// Whether the Chat belongs to that Project and is archived: attached to no
-/// tab of any Project.
 pub(crate) fn is_archived_chat(
     connection: &Connection,
     project: &str,
@@ -37,7 +30,6 @@ pub(crate) fn is_archived_chat(
     )?)
 }
 
-/// Whether one of the Chat's Turns has not reached a terminal state.
 pub(super) fn has_running_turn(
     connection: &Connection,
     project: &str,
@@ -50,7 +42,6 @@ pub(super) fn has_running_turn(
     )?)
 }
 
-/// Whether the Chat holds prompts queued to send after its current Turn.
 pub(super) fn has_queued_prompts(
     connection: &Connection,
     project: &str,
@@ -63,9 +54,6 @@ pub(super) fn has_queued_prompts(
     )?)
 }
 
-/// Admits only an archived Chat of that Project with no running Turn, no
-/// live runtime and no fork descending from it. The delete command releases
-/// an idle runtime before this runs.
 fn admit_archived(connection: &Connection, project: &str, chat: &str) -> AppResult<()> {
     let state = connection
         .query_row(

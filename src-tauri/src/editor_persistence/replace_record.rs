@@ -1,5 +1,3 @@
-//! The recovery record a workspace Replace keeps while it swaps a File.
-
 use rusqlite::params;
 use sage_core::{
     error::{AppError, AppResult},
@@ -23,13 +21,6 @@ const MATCHES_RECORD: &str = "project_id = ?1 AND root_id = ?2 AND relative_path
      AND pending_temp_path = ?4 AND buffer_fingerprint = ?5";
 
 impl Database {
-    /// Records a workspace Replace about to swap `buffer.resource` on disk,
-    /// as a save records its pending temporary file: a recovery buffer that
-    /// holds the replaced text and names the temporary file. Startup
-    /// recovery removes the temporary file and, once the File on disk is the
-    /// replaced text, the buffer; if the swap never happened, the replaced
-    /// text stays as unsaved edits. Refused when the File already has a
-    /// buffer, or when one more would break the recovery limits.
     pub fn record_replace_in_progress(
         &self,
         project_id: &str,
@@ -65,7 +56,6 @@ impl Database {
                 "it has unsaved changes in the editor".into(),
             ));
         }
-        // The record must never leave the project unrecoverable.
         if let Err(error) = preflight_dirty_recovery(&transaction, project_id) {
             return Err(match error {
                 AppError::ResourceLimit(_) => AppError::ResourceLimit(
@@ -78,7 +68,6 @@ impl Database {
         Ok(())
     }
 
-    /// Drops the record once nothing is left for recovery to do.
     pub fn delete_replace_record(&self, project_id: &str, record: &ReplaceRecord) -> AppResult<()> {
         self.write_connection()?.execute(
             &format!("DELETE FROM editor_buffers WHERE {MATCHES_RECORD}"),
@@ -93,10 +82,6 @@ impl Database {
         Ok(())
     }
 
-    /// Turns the record into a buffer holding the File's own text, still
-    /// naming the temporary file: a Replace that could not remove its
-    /// temporary file leaves recovery that file to remove and nothing to
-    /// keep.
     pub fn neutralize_replace_record(
         &self,
         project_id: &str,
@@ -126,9 +111,6 @@ impl Database {
         Ok(())
     }
 
-    /// Keeps the replaced text as the File's unsaved edits, with no
-    /// temporary file left to name, and marks its tab dirty: the File was
-    /// replaced but could not be proven durable or in place.
     pub fn keep_replace_as_unsaved(
         &self,
         project_id: &str,
