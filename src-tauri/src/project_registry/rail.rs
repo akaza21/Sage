@@ -24,8 +24,8 @@ pub(crate) const MAX_RAIL_CHATS: usize = crate::workbench_restore::MAX_RESTORED_
     + (MAX_PROJECTS as usize - 1) * 2 * MAX_AGENT_RAIL_CHATS_PER_PROJECT as usize;
 
 /// Every chat the rail can show, as rows of `project_id`, `tab_id` and `id`
-/// (the attached chat's id, or NULL). Ranking reads only tab and chat rows, so callers can look up Turns for these
-/// rows alone.
+/// (the attached chat's id, or NULL). Ranking reads only tab and chat rows, so
+/// callers can look up Turns for these rows alone.
 pub(crate) fn rail_chat_set() -> String {
     format!(
         "(SELECT ranked.project_id AS project_id, ranked.tab_id AS tab_id, ranked.id AS id
