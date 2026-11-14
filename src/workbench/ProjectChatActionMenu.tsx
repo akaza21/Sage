@@ -27,8 +27,8 @@ import {
   preloadAgentHeaderMenu,
   subscribeAgentHeaderMenu,
 } from "./agentTaskHeaderLazy";
-// The menu's Hand off item loads with it, so it renders in the menu's
-// first commit. A failed Hand off chunk leaves the rest of the menu working.
+// The menu's Hand off item loads with it, so it renders in the menu's first
+// commit.
 const ActionsPart = lazyParts<typeof ActionsChunk>(() =>
   Promise.all([
     import("./ProjectChatActionPopover"),
@@ -109,8 +109,6 @@ export function ProjectChatActionMenu(props: ProjectChatMenuProps) {
   );
 }
 
-// The Agent header "…": the project row hosts the chat actions
-// above as a nested menu, then Changes opens this Chat's diff picker.
 export function AgentHeaderMore({
   scope,
   title,
@@ -142,9 +140,6 @@ export function AgentHeaderMore({
   if (disabled && open) setOpenScope(null);
   const trigger = useRef<HTMLButtonElement>(null);
   const menuId = useId();
-  // The menu body loads once the window is idle, or on the trigger's first
-  // hover, focus or press, and then stays mounted like any kept menu. It
-  // mounts only once loaded; an open before then waits for it here.
   const loaded = useSyncExternalStore(
     subscribeAgentHeaderMenu,
     agentHeaderMenuReady,
@@ -234,10 +229,6 @@ export function AgentHeaderMore({
   );
 }
 
-/**
- * A rail row's trailing state. Running and unread rows show only a glyph
- * (spinner, dot); a failed or waiting row that is open keeps its label.
- */
 export function ProjectChatTrailingState({
   awaitingApproval,
   focused,
@@ -301,11 +292,6 @@ export function ProjectChatRailGlyph({
 
 const HOVER_CARD_WIDTH = 288;
 
-/**
- * The card beside a rested-on rail row, as in Codex: level with the row and
- * starting where the row ends, over the center pane. It never takes the
- * pointer and adds nothing for assistive technology, which reads the row.
- */
 export function ProjectChatHoverCard({
   row,
   shownAt,
@@ -314,7 +300,6 @@ export function ProjectChatHoverCard({
   project,
 }: {
   row: DOMRect;
-  /** When the card appeared; its age reads from then. */
   shownAt: number;
   title: string;
   updatedAt?: number;

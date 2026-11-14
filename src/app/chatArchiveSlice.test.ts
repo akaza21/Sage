@@ -46,7 +46,6 @@ const railChat = (id: string, position: number) => ({
   pinned: false,
   position,
 });
-// Switching Project takes a new projection generation.
 const switchToProjectB = () =>
   useWorkbenchStore.setState((state) => ({
     project: project("project-b"),
@@ -83,7 +82,6 @@ afterEach(() => {
 it("drops an archive started before a Project switch that finished while its actions loaded", async () => {
   const archive = vi.spyOn(getWorkbenchPorts().chat, "archiveChat");
   const archiving = useWorkbenchStore.getState().archiveChat("chat:a1");
-  // The next Project has one attached Chat, which could not be archived.
   switchToProjectB();
   chunk.release();
 
@@ -98,7 +96,6 @@ it("still runs an archive that names its Project after a Project switch", async 
   const archive = vi
     .spyOn(getWorkbenchPorts().chat, "archiveChat")
     .mockRejectedValue(new Error("refused by the test"));
-  // A rail row archives a Chat of another Project by naming it.
   const archiving = useWorkbenchStore
     .getState()
     .archiveChat("chat:x1", "project-x", "row");

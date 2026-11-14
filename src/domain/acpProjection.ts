@@ -60,7 +60,6 @@ export type ToolPresentation =
       label: string;
       resources: readonly SafeResourceLocation[];
     }
-  /** The query, when the harness carried one, is the item's inputSummary. */
   | { kind: "webSearch"; label: string }
   | {
       kind: "move";
@@ -107,7 +106,6 @@ export type ToolPresentation =
       toolLabel: string;
       argumentsSummary: string | null;
       resultSummary: string | null;
-      /** Latest status line of a running call; absent once it is terminal. */
       progress?: string;
     }
   | {
@@ -157,7 +155,6 @@ type ToolItem<Kind extends string, Payload> = AcpItemIdentity & {
 
 export type AcpItem =
   | PlainItem<"text", { role: "user" | "assistant" | "system"; text: string }>
-  /** A message the user steered into the running Turn, at its place. */
   | PlainItem<"userPrompt", { text: string }>
   | PlainItem<"thoughtSummary", { summary: string }>
   | PlainItem<"compactionNotice", Record<string, never>>
@@ -195,11 +192,8 @@ export type AcpItem =
         offeredOptionKinds?: Array<
           "allow_once" | "allow_always" | "reject_once" | "reject_always"
         > | null;
-        /** The kind of tool the request gates, when the projection names it. */
         category?: ToolPresentation["kind"];
-        /** The harness's own explanation; absent when it gave none. */
         reason?: string | null;
-        /** The harness's questions when it asks the user, not for approval. */
         userInput?: UserInputRequest | null;
       }
     >
@@ -244,9 +238,8 @@ export interface HarnessActivityProjection {
 }
 
 /**
- * A session activity row (a hook run, say) in the work list of the Turn
- * that owns it; native `TurnSessionActivityProjection`. A Turn
- * holds at most `SESSION_ACTIVITIES_MAX` of them.
+ * Native `TurnSessionActivityProjection`; a Turn holds at most
+ * `SESSION_ACTIVITIES_MAX`.
  */
 export interface TurnSessionActivity {
   kind: string;
@@ -259,11 +252,8 @@ export const SESSION_ACTIVITIES_MAX = 16;
 
 export interface TurnProjection {
   attachedContext?: readonly AttachedContext[];
-  /** The session action this Turn ran. */
   sessionAction?: AcpSessionAction;
-  /** The Turn ran a session action this build cannot run again. */
   unrecognizedAction?: true;
-  /** The listed command this Turn's prompt ran. */
   command?: AcpTurnCommand;
   id: SageTurnId;
   sessionId: SageAgentSessionId;
@@ -311,25 +301,18 @@ export interface AgentSessionProjection {
 /** Most notices one session keeps (Rust `SESSION_NOTICES_MAX`). */
 export const SESSION_NOTICES_MAX = 16;
 
-/** A harness notice about the session rather than one Turn. */
 export interface SessionNotice {
   level: "info" | "warning" | "error";
   text: string;
-  /** Who raised it, such as "codex config". */
   source: string | null;
 }
 
 export interface AcpChatPage {
   sessionConfig?: AcpSessionConfig | null;
-  /** The current session's restored config while it has no live one. */
   restoredSessionConfig?: AcpRestoredSessionConfig | null;
-  /** A stored choice the current session could not take back. */
   sessionConfigNotice?: AcpSessionConfigNotice | null;
   goal?: AcpGoalState;
-  /** The current session's live runtime reports usage limits. */
   usage?: true;
-  /** The session's activities and Undo, still undecoded: the panel that
-   * shows them decodes them (`decodeSessionSurface`). */
   sessionSurface?: unknown;
   projectId: SageProjectId;
   chatId: SageChatId;
@@ -343,13 +326,11 @@ export interface AcpChatPage {
   forkedFrom?: SageChatId;
   /** The parent Turn the fork carries history through, inclusive. */
   forkedFromTurnId?: SageTurnId;
-  /** The Chat continues a session imported from outside Sage. */
   importedHistory?: true;
   /**
    * Child-transcript invalidation epoch (opaque). It moves without the
    * projection revision, so child activity never stales a user action.
    */
   childProjectionEpoch?: number;
-  /** The current session's newest notices, oldest first (at most 16). */
   sessionNotices?: readonly SessionNotice[];
 }

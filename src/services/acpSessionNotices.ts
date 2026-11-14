@@ -17,11 +17,6 @@ function safeNotice(value: unknown): SessionNotice | null {
   return { level: value.level as SessionNotice["level"], text, source };
 }
 
-/**
- * Decodes the page's session notices. They are display-only, so a malformed
- * notice is dropped rather than refusing the page, and at most the newest
- * `SESSION_NOTICES_MAX` are kept.
- */
 export function safeSessionNotices(value: unknown): SessionNotice[] {
   if (!Array.isArray(value)) return [];
   return value

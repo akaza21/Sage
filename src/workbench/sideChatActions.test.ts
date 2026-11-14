@@ -167,7 +167,6 @@ it("creates a temporary Chat on the parent's harness and model, seeded with the 
     { chatId: "side-test" },
     { harnessId: "custom-acp", modelId: "model-selected" },
   );
-  // The first send starts the session exactly like any new Chat.
   expect(fake.start).not.toHaveBeenCalled();
   expect(fake.attach).toHaveBeenCalledWith(
     { chatId: "side-test" },

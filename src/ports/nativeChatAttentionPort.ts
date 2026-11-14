@@ -13,7 +13,6 @@ export type ChatAttention = {
 /** At most `MAX_CHAT_ATTENTION` (64) chats, approvals first. */
 export interface ChatAttentionList {
   chats: ChatAttention[];
-  /** More chats need attention than `chats` lists. */
   truncated: boolean;
 }
 

@@ -81,7 +81,6 @@ it("keeps a Chat's Preview across a switch to another Chat and back", () => {
       url: "http://127.0.0.1:4173/",
     }),
   ).not.toBeNull();
-  // The next Chat's projection is still loading: nothing is released.
   act(() => useWorkbenchStore.setState({ activeTabId: "chat-a" }));
   expect(browseSessionForOwner(owner("chat-b"))).not.toBeNull();
   act(() => seed("chat-a"));
@@ -90,7 +89,6 @@ it("keeps a Chat's Preview across a switch to another Chat and back", () => {
   expect(browseSessionForOwner(owner("chat-b"))?.href).toBe(
     "http://127.0.0.1:4173/",
   );
-  // Only two recent Chats are retained.
   act(() => useWorkbenchStore.setState({ activeTabId: "chat-a" }));
   act(() => seed("chat-c"));
   act(() => useWorkbenchStore.setState({ activeTabId: "chat-c" }));

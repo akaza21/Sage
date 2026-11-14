@@ -326,10 +326,6 @@ export function RepositoryCommitControl({
   );
 }
 
-/**
- * Sizes the field to its content; the stylesheet's min- and max-height bound
- * it, and a longer message scrolls inside the field.
- */
 function fitToContent(field: HTMLTextAreaElement) {
   field.style.height = "auto";
   const borders = field.offsetHeight - field.clientHeight;

@@ -17,7 +17,6 @@ export interface AgentRailChat {
   position: number;
   status?: SessionStatus;
   updatedAt?: number;
-  /** When the latest Turn finished; read marks compare against it. */
   finishedAt?: number;
 }
 
@@ -141,7 +140,6 @@ export interface ProjectSwitchRequest {
   currentLayout: ProjectLayoutRequest;
 }
 
-/** A folder picked for a new project; the token stands in for its path. */
 export interface ProjectSourceFolder {
   token: string;
   name: string;
@@ -161,10 +159,6 @@ export const MAX_PROJECT_NAME_CHARS = 64;
  */
 export const MAX_PROJECT_LABEL_UNITS = 255;
 
-/**
- * The name to show for a listed project. It is whole for every name the
- * native layer can store; layouts shorten it with an ellipsis, not here.
- */
 export function projectLabel(name: unknown): string {
   return typeof name === "string" && name.length > 0
     ? name.slice(0, MAX_PROJECT_LABEL_UNITS)

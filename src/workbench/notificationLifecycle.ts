@@ -3,7 +3,6 @@ import type {
   NotificationPort,
 } from "../ports/nativeNotificationPort";
 
-/** One native generation per mounted pane projection. No interval or history. */
 export function observeNotificationVisibility(
   port: NotificationPort,
   chatIds: readonly string[],
@@ -50,7 +49,6 @@ export function observeNotificationVisibility(
   };
 }
 
-/** Coalesces wakeups while navigation runs; native retains only the last click. */
 export function listenNotificationNavigation(
   port: NotificationPort,
   ready: () => boolean,

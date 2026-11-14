@@ -1,8 +1,8 @@
 import type { EditorSettingKey } from "./editorSettingsCatalogue";
 
 /**
- * The Settings page's words for each editor setting. Kept out of the
- * catalogue, which loads at startup, so they load with the Settings page.
+ * Kept out of the catalogue, which loads at startup, so these load with the
+ * Settings page.
  */
 
 export const EDITOR_SETTING_GROUPS = [
@@ -20,7 +20,6 @@ export interface EditorSettingCopy {
   group: EditorSettingGroup;
   label: string;
   description: string;
-  /** Integer settings: the unit after each value. */
   unit?: string;
   /** Choice settings: display labels as [other platforms, macOS]. */
   choiceLabels?: Readonly<Record<string, readonly [string, string]>>;

@@ -2,7 +2,6 @@
   width: min(560px, calc(100vw - var(--space-8)));
 }
 
-/* Rows are shared menu items, at the dialog's text size. */
 .agent-tool-panel__list {
   --menu-row-size: var(--font-size-sm);
 

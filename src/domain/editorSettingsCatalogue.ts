@@ -28,11 +28,9 @@ export interface IntegerSettingSpec extends EntryShape {
 export interface ChoiceSettingSpec extends EntryShape {
   kind: "choice";
   default: string;
-  /** Names in settings-page order. */
   choices: readonly string[];
 }
 
-/** Path globs (`pathGlob.ts`), each valid on its own. */
 export interface GlobsSettingSpec extends EntryShape {
   kind: "globs";
   default: readonly string[];
@@ -216,7 +214,6 @@ function admitGlobs(value: unknown): readonly string[] | undefined {
     : Object.freeze(patterns);
 }
 
-/** Lists compare by their patterns (which never hold NUL), other values by identity. */
 export function sameEditorSettingValue(
   a: EditorSettingValue,
   b: EditorSettingValue,
@@ -230,7 +227,6 @@ export function sameEditorSettingValue(
   );
 }
 
-/** Drop unknown keys; default missing/mistyped values. */
 export function admitEditorSettings(input: unknown): EditorSettings {
   const record =
     typeof input === "object" && input !== null

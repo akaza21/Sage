@@ -8,14 +8,10 @@ export function searchablePickerOptionId(prefix: string, id: string) {
   return `${prefix}-option-${encodeURIComponent(id)}`;
 }
 
-// A SearchablePicker's open list (search, rows, keys, MenuPopover) loads
-// apart from its trigger. It is fetched when the window is idle, and again
-// on the trigger's first hover, focus or press, so it is ready before it opens.
 let Popover: typeof PopoverChunk.SearchablePickerPopover | null = null;
 let pending: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 export const loadedSearchablePickerPopover = () => Popover;
-/** Tells every picker waiting on the list when it arrives, whoever asked. */
 export function subscribeSearchablePicker(listener: () => void) {
   listeners.add(listener);
   return () => void listeners.delete(listener);

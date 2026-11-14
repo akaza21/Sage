@@ -51,7 +51,6 @@ export function harnessUnavailableReason(
 
 import type { SessionAccessModeCapability } from "./sessionAccessMode";
 
-/** A curated harness's brand mark, set by the native catalogue. */
 export type HarnessBrand = "claude" | "codex" | "opencode" | "pi";
 
 interface HarnessDefinitionBase {
@@ -64,17 +63,11 @@ interface HarnessDefinitionBase {
   version?: string | null;
   versionChecking?: boolean;
   boundVersion?: string | null;
-  /**
-   * Where the bound release sits against the release Sage was tested with.
-   * A newer release keeps the tested features; an uncharacterised one (older
-   * or unreadable) loses them.
-   */
   characterisation?:
     "characterised" | "newerThanTested" | "uncharacterised" | null;
   unavailableReason?: HarnessUnavailableReason | null;
   signIn?: { command: string; hint: string } | null;
   brand?: HarnessBrand | null;
-  /** A newer published release and the command that installs it. */
   update?: { latestVersion: string; command: string } | null;
 }
 
@@ -103,7 +96,6 @@ export interface ModelOption {
   description?: string;
   isDefault?: boolean;
   contextWindow?: number;
-  /** Thinking levels the harness lists for this model before a session. */
   effortLevels?: string[];
 }
 

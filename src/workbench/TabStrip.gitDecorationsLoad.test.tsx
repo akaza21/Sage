@@ -4,8 +4,6 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type { GitFileState } from "../domain/repository";
 import type { WorkbenchTab } from "../domain/workbench";
 
-// Holds the decoration chunk's import until a test releases it, as a slow
-// cold load would.
 const chunk = {
   state: { imports: 0, release: () => {}, gate: Promise.resolve() },
   hold() {
@@ -114,8 +112,6 @@ const releaseChunk = () =>
 it("holds a changed tab's mark room while the decorations load, so the strip does not shift (EP-13)", async () => {
   await mountTabs({ decorations: true, repository: changed });
 
-  // Loading: the changed tab already holds the mark's room; the clean one
-  // does not, and neither shows a mark yet.
   expect(tabA().querySelector(".tab__git-slot")).not.toBeNull();
   expect(tabB().querySelector(".tab__git-slot")).toBeNull();
   expect(document.querySelector(".git-badge")).toBeNull();
@@ -123,7 +119,6 @@ it("holds a changed tab's mark room while the decorations load, so the strip doe
 
   await releaseChunk();
 
-  // Loaded: the mark takes the room it held, in the same place.
   const edited = await screen.findByRole("tab", { name: "a.ts, Modified" });
   expect(edited.querySelector(".tab__git-slot")).toBeNull();
   expect(edited.lastElementChild).toHaveClass("git-badge");
@@ -182,7 +177,6 @@ it("shows no marks or held room when decorations are turned off while they load"
   expect(document.querySelector(".git-badge, .tab__git-slot")).toBeNull();
   expect(tabA()).toHaveAccessibleName("a.ts");
 
-  // Back on: the marks come back.
   setDecorations(true);
   expect(
     await screen.findByRole("tab", { name: "a.ts, Modified" }),

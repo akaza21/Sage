@@ -1,6 +1,5 @@
 import { useLayoutEffect, type RefObject } from "react";
 
-/** Attribute values for the field; null removes one. */
 export type FieldAttributes = Record<string, string | null>;
 
 function apply(field: HTMLElement, values: [string, string | null][]) {
@@ -10,14 +9,6 @@ function apply(field: HTMLElement, values: [string, string | null][]) {
   }
 }
 
-/**
- * Lets several pop-up lists share one text field's combobox attributes
- * (`aria-controls`, `aria-activedescendant` and the like): while `active`,
- * the field carries what `values` returns for it, and once it is not, or
- * the owner unmounts, the field gets back exactly what it held before.
- * Each owner therefore holds the attributes only while its own list is in
- * play and never clears another's.
- */
 export function useOwnedFieldAttributes(
   fieldRef: RefObject<HTMLElement | null>,
   active: boolean,

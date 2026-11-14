@@ -18,13 +18,11 @@ describe("native command list contract", () => {
       ],
     };
     expect(decodeCommandList(value)).toEqual(value);
-    // A command that opens a panel names it.
     const status = { ...value.commands[0]!, name: "status", panel: "status" };
     expect(
       decodeCommandList({ revision: 2, commands: [status] })?.commands[0]
         ?.panel,
     ).toBe("status");
-    // Other names the harness runs a command by are kept for the menu.
     const usage = { ...value.commands[0]!, name: "usage", aliases: ["cost"] };
     expect(
       decodeCommandList({ revision: 3, commands: [usage] })?.commands[0]

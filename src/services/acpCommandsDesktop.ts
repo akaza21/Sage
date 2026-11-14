@@ -15,7 +15,6 @@ import { safeAcpMutationResponse } from "./acpDesktopResponses";
 
 export type { AcpCommandSource };
 
-/** The `/` menu's section heading for each source, in section order. */
 export const commandSourceGroups = {
   builtin: "Commands",
   skill: "Skills",
@@ -31,13 +30,10 @@ export interface AvailableAcpCommand {
   description: string;
   inputHint: string | null;
   source: AcpCommandSource;
-  /** Opens this panel in the chat and sends nothing. */
   panel?: AcpCommandPanel;
-  /** Other names the harness runs this command by. */
   aliases?: string[];
 }
 
-// The native list's bounds.
 const MAX_COMMANDS = 512;
 const MAX_COMMAND_BYTES = 256 * 1024;
 const MAX_ALIASES = 8;

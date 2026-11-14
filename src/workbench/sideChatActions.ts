@@ -22,7 +22,10 @@ import {
   type SideChatEntry,
 } from "./sideChatState";
 
-/** Side chats share parent Project/harness/model and attach the selection. Rust owns lifecycle; first send starts a new session, requiring no fork capability. */
+/**
+ * Rust owns the lifecycle; the first send starts a new session, requiring no
+ * fork capability.
+ */
 let pending = false;
 /** Fixtures lack Rust preferences; native uses settings. */
 let confirmInBrowser = true;
@@ -111,7 +114,6 @@ export async function openSideChat(
     .getState()
     .sides.find((entry) => entry.projectId === layout.projectId);
   if (existing) {
-    // One side chat per Project: replace it once the user confirms the close.
     replacement = {
       parent:
         parentChatId === existing.id ? existing.parentChatId : parentChatId,
@@ -174,7 +176,6 @@ export async function openSideChat(
       projectId: layout.projectId,
       parentChatId,
     });
-    // The side session starts on `modelId` with no effort of its own.
     inheritComposerModel(created, source?.sessionConfig, {
       startsOnModelId: modelId,
     });
@@ -204,7 +205,6 @@ export function cancelCloseSideChat() {
 }
 
 export async function closeSideChat(id: string, dontAskAgain: boolean) {
-  // The pending replacement belongs to this close attempt only.
   const next = replacement;
   replacement = null;
   const state = useWorkbenchStore.getState();
@@ -218,7 +218,6 @@ export async function closeSideChat(id: string, dontAskAgain: boolean) {
   const expected = state.nativeTransitionEpoch;
   await exclusive(async () => {
     if (isTauriRuntime()) {
-      // Rust cancels the Turn, ends runtime and deletes Chat.
       const result = await nativeTransition(
         "close_side_chat",
         {

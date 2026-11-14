@@ -882,7 +882,6 @@ describe("workbench resource and project navigation", () => {
     expect(
       await useWorkbenchStore.getState().archiveChat("chat:cross", "cross"),
     ).toBe(true);
-    // The store forgets an archived chat's read mark, and so does the rail.
     expect(chatReadThrough("chat:cross")).toBeUndefined();
     resetChatReadMarks();
     expect(archive).toHaveBeenCalledWith(

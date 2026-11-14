@@ -81,7 +81,6 @@ beforeEach(() => {
     value: vi.fn(),
   });
   localStorage.clear();
-  // The Changes tab outlives a render, as it does across app remounts.
   useAgentChangesState.getState().close();
   compactViewport = true;
   const listeners = new Set<() => void>();
@@ -356,8 +355,6 @@ describe("compact Workbench project tools", () => {
     const rail = () =>
       screen.getByRole("complementary", { name: "Projects and chats" });
     within(rail()).getByRole("button", { name: "Home" }).focus();
-    // Below the modal threshold the overlay is dismissed, which unfolds the
-    // rail; focus follows Home into the full rail instead of dropping.
     vi.stubGlobal("innerWidth", 360);
     fireEvent(window, new Event("resize"));
     expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
@@ -1330,7 +1327,6 @@ describe("compact Workbench project tools", () => {
         name: "Show files and preview · Waiting",
       }),
     );
-    // Unpersisted, the Files open at their 45% share of the window.
     expect(
       screen.getByRole("separator", { name: "Resize files and preview" }),
     ).toHaveAttribute("aria-valuenow", "432");

@@ -9,7 +9,6 @@ import {
 
 interface EditorCaretStore {
   caret: EditorCaret | null;
-  /** False for a read-only File, such as one an Agent shows. */
   editable: boolean;
   publish: (document: Text, offset: number, editable?: boolean) => void;
   clear: () => void;
@@ -24,9 +23,8 @@ export const useEditorCaretStore = create<EditorCaretStore>((set) => ({
 }));
 
 /**
- * `active` says whether a caret applies. The editor passes its own document
- * with each offset, so the caret never pairs a new offset with the text of an
- * earlier render.
+ * The editor passes its own document with each offset, so the caret never pairs
+ * a new offset with the text of an earlier render.
  */
 export function useEditorCaretPublisher(active: boolean, editable = true) {
   useEffect(() => {

@@ -18,15 +18,11 @@ import {
 import { utf8ByteLength } from "../domain/text";
 import { withStyleNonce } from "../ports/styleNonce";
 
-/** How long input refused as busy keeps being offered before it is dropped. */
 const INPUT_RETRY_MS = 10_000;
-/** Backoff between offers of input the native side refused as busy. */
 const INPUT_RETRY_FIRST_DELAY_MS = 50;
 const INPUT_RETRY_MAX_DELAY_MS = 500;
-/** Pause before reading again after another reader held the output. */
 const READ_RETRY_DELAY_MS = 100;
 const SCROLLBACK_LINES = 1_000;
-/** The only system setting that redefines the theme tokens. */
 const FORCED_COLORS_QUERY = "(forced-colors: active)";
 // xterm requires two columns for wide characters and at least one row.
 const MIN_COLUMNS = 2;
@@ -81,8 +77,6 @@ export default function TerminalDock({
       fontSize: 12,
       lineHeight: 1.3,
     });
-    // Theme tokens are read again whenever the system palette changes, so an
-    // open terminal follows it. An unset token leaves xterm's own default.
     const applyTheme = () => {
       const tokens = getComputedStyle(document.documentElement);
       const token = (name: string) =>
@@ -107,8 +101,8 @@ export default function TerminalDock({
       let page: UserTerminalPage | undefined;
       try {
         while (!stopped) {
-          // Keep the reader and xterm screen across visibility changes. A pending
-          // native read owns an exclusive lease and cannot be replaced on hide.
+          // A pending native read owns an exclusive lease and cannot be
+          // replaced on hide.
           if (!showing) {
             await new Promise<void>((resolve) => {
               resumeRead = resolve;
@@ -259,7 +253,6 @@ export default function TerminalDock({
       if (!resizeActive) void drainResizes();
     };
     const palette = window.matchMedia?.(FORCED_COLORS_QUERY);
-    // A new font face can change the cell size, so the grid is refitted.
     const followTheme = () => {
       if (!showing) return;
       applyTheme();

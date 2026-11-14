@@ -38,8 +38,6 @@ const inventory = (
   elapsedMs: 1,
 });
 
-// The repository on disk as Git reports it. The change stamp covers HEAD and
-// the index, so a checkout moves it and a plain worktree edit does not.
 let onDisk = inventory("main");
 let headStamp = "main";
 const checkOut = (branch: string) => {
@@ -103,7 +101,6 @@ describe("useRepositoryAutoRefresh", () => {
     await vi.advanceTimersByTimeAsync(500);
 
     checkOut("feature");
-    // The next stamp tick (500 ms) sees the change and refreshes at once.
     await vi.advanceTimersByTimeAsync(1_000);
     expect(branchInStore()).toBe("feature");
 
@@ -124,7 +121,6 @@ describe("useRepositoryAutoRefresh", () => {
     useWorkbenchStore.setState({ projectTransitioning: true });
     renderHook(() => useRepositoryAutoRefresh());
 
-    // A worktree edit leaves the stamp alone, so only the focus asks.
     editFile("src/app.ts");
     window.dispatchEvent(new Event("focus"));
     await vi.advanceTimersByTimeAsync(400);

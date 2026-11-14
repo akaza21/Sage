@@ -1,14 +1,6 @@
 /*
- * Files and Diffs are one workbench resource in both window modes. Their
- * surrounding chrome may differ, but the document itself owns one palette,
- * density, selection treatment, and compact geometry.
- *
- * Colour authority lives in global.css as --doc-* / --diff-* tokens. This
- * sheet only aliases generic surface roles to that authority. Document
- * syntax colors are driven from --doc-syntax-* through the CodeMirror
- * highlight style in CodeMirrorEditorRuntime.ts (same tags, order, and
- * non-color treatments as the library default; only color sources change).
- * No raw colour lives here.
+ * Colour authority lives in global.css as --doc-* / --diff-* tokens; this
+ * sheet only aliases generic surface roles to it. No raw colour lives here.
  */
 .resource-document {
   --resource-document-header-height: 36px;

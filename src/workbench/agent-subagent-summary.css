@@ -60,7 +60,6 @@
   grid-column: 1 / -1;
 }
 
-/* Subagents tab: Active · N / Done · N; 56 px live rows, 40 px settled rows. */
 .subagent-list {
   padding-top: var(--space-4);
 }

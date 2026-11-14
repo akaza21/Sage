@@ -202,8 +202,6 @@ it("shows a collapsed project as running when any of its chats runs, even past t
 
 it("pins, unpins and archives a chat from its hover actions", async () => {
   seed();
-  // Stand-ins for the durable store: they change the projection the rail
-  // renders, or refuse, so the test reads what the person would see.
   let refuseArchive = false;
   useWorkbenchStore.setState({
     pinChat: async (chatId: string) =>
@@ -279,8 +277,6 @@ it("keeps the open chat in view In one list, even far down a manual order", () =
   const recents = within(screen.getByRole("region", { name: "Recents" }));
   const open = recents.getByRole("button", { name: "Open chat Task 39" });
   expect(open).toHaveAttribute("aria-current", "page");
-  // One list fills the rail with every chat it holds, in order, rather than
-  // paging; the open chat keeps its place instead of jumping the queue.
   const listed = recents
     .getAllByRole("button", { name: /^Open chat Task / })
     .map((button) => button.getAttribute("aria-label"));

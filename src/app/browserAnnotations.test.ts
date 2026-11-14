@@ -49,7 +49,6 @@ it("admits each field at its limit and rejects one byte more", () => {
       field,
     ).toBeNull();
   }
-  // Multi-byte text counts bytes, not characters.
   rejects({ title: "é".repeat(129) });
   rejects({ role: "a".repeat(65) });
   expect(parseBrowserElement({ ...item, role: "a".repeat(64) })).not.toBeNull();

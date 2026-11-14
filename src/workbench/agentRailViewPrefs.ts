@@ -55,13 +55,8 @@ function admitPrefs(input: unknown): AgentRailViewPrefs {
 }
 
 type AgentRailViewField = "organize" | "ordering";
-// Choices made while the stored layout is still loading; they win over it.
 const editedWhileLoading = new Set<AgentRailViewField>();
 
-/**
- * Load the stored layout once; a failed load keeps the defaults. A choice made
- * before the load returns is kept, and the merged layout is stored.
- */
 export function restoreAgentRailViewPrefs(): Promise<void> {
   if (restored || !isTauriRuntime()) return Promise.resolve();
   restoring ??= invokeNative("agent_rail_view")
@@ -84,11 +79,9 @@ export function restoreAgentRailViewPrefs(): Promise<void> {
       if (reconcile) persist(merged);
     })
     .catch(() => {
-      // The stored layout is unreadable. A choice already made must not be
-      // lost on restart, so store it with the defaults for the rest; with no
-      // pending choice, the next read tries again.
-      // Only a successful save completes restoration; if it fails too, the
-      // rail rolls back and a later read loads the stored layout.
+      // A choice already made must not be lost on restart, so store it with the
+      // defaults for the rest; with no pending choice, the next read tries
+      // again.
       if (editedWhileLoading.size === 0) return;
       editedWhileLoading.clear();
       persist({ organize: prefs.organize, ordering: prefs.ordering }, () => {

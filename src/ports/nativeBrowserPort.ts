@@ -112,7 +112,6 @@ export function hideBrowser(tabId: string): Promise<void> {
   return invokeNative("browser_hide", { tabId });
 }
 
-/** Hides the page while a toolbar popover covers it; Annotate stays on. */
 export function coverBrowser(tabId: string): Promise<void> {
   return invokeNative("browser_hide", { tabId, cover: true });
 }
@@ -127,9 +126,7 @@ export interface BrowserNavigation {
   canGoBack: boolean;
   canGoForward: boolean;
   zoomPercent: number;
-  /** The device toolbar's emulation, as Rust holds it for the tab. */
   device?: BrowserDevice | null;
-  /** A reset step failed, so some override may still be on the page. */
   deviceUnconfirmed?: boolean;
   error?: string | null;
   printUnavailableReason?: string | null;
@@ -137,8 +134,6 @@ export interface BrowserNavigation {
   deviceUnavailableReason?: string | null;
 }
 
-/** A device toolbar emulation: a preset id, the CSS viewport size and the
- * share of that size the page is drawn at to fit the pane. */
 export interface BrowserDevice {
   preset: string;
   width: number;
@@ -176,7 +171,6 @@ export type BrowserControlAction =
 
 /** Where the picked element sits in the viewport it was picked in (page CSS px). */
 export interface BrowserAnnotateSelection {
-  /** The accessible name, or a plain word for the role. */
   label: string;
   box: { x: number; y: number; width: number; height: number };
   viewport: {
@@ -204,17 +198,13 @@ export function browserControl(
   return invokeNative("browser_control", { tabId, action });
 }
 
-/** The tab's live Agent attachment as Rust holds it; null when none. */
 export interface BrowserAgentControl {
   projectId: string;
   chatId: string;
-  /** The user took the tab over; the Agent waits until Hand back. */
   userControl: boolean;
-  /** An approved developer-mode grant (CDP) is live on the tab. */
   developerMode: boolean;
 }
 
-/** Reads, takes over or hands back the tab; Rust answers with the state after it. */
 export function browserAgentControl(
   tabId: string,
   action: "agentControl" | "agentTakeOver" | "agentHandBack",
@@ -277,7 +267,6 @@ export interface BrowserPermissionSnapshot {
     kind: BrowserPermissionKind;
     decision: "allow" | "deny";
   }>;
-  /** The page held an Allow that ended and has not reloaded since. */
   staleAccess: boolean;
 }
 
@@ -295,7 +284,6 @@ export function browserPermissionResolve(
   return invokeNative("browser_permission_resolve", { tabId, id, allow });
 }
 
-/** Forgets one site's saved answer so it asks again (also Settings > Browser). */
 export function browserSiteSettingReset(
   origin: string,
   kind: BrowserPermissionKind,

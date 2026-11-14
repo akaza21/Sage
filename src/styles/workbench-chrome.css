@@ -58,7 +58,6 @@
   justify-content: center;
 }
 
-/* Back and Forward sit together, as in Codex's title bar. */
 .title-bar__history {
   display: flex;
   align-items: center;
@@ -241,7 +240,6 @@
   cursor: pointer;
 }
 
-/* Icons keep their size; only the title shrinks. */
 .tab__activate > svg {
   flex: none;
 }
@@ -382,7 +380,6 @@
   }
 }
 
-/* Overlay geometry and center sleep share the Workbench layout decision. */
 .workbench__body[data-editor-tools="overlay"] {
   position: relative;
   grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);

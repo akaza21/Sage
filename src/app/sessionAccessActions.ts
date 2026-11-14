@@ -8,9 +8,7 @@ import { chatAccessChanges } from "../ports/chatAccessChanges";
 // Loaded on demand, with the access menu or a live chat's access, so the
 // chat path carries none of it.
 interface ChatAccessStore {
-  /** Chats' own modes by session (null: the default), newest last. */
   modes: Readonly<Record<string, SessionAccessMode | null>>;
-  /** The last chat access change's failure or notice; never blocks sending. */
   error: string | null;
 }
 export const useChatAccessStore = create<ChatAccessStore>(() => ({
@@ -18,15 +16,12 @@ export const useChatAccessStore = create<ChatAccessStore>(() => ({
   error: null,
 }));
 const store = useChatAccessStore;
-/** Modes that run actions without asking take a confirmed native token. */
 export const PERMISSIVE_ACCESS: readonly SessionAccessMode[] = [
   "auto",
   "fullAccess",
 ];
-/** Chats whose mode is held; older ones are read again when shown. */
 const MAX_CHAT_MODES = 32;
 
-/** Records a chat's mode, keeping the newest `MAX_CHAT_MODES`. */
 export function withChatMode(
   modes: Readonly<Record<string, SessionAccessMode | null>>,
   sessionId: string,
@@ -41,7 +36,6 @@ export function withChatMode(
   );
 }
 
-/** Reads a chat's own mode from the native store. */
 export async function loadChatAccess(sessionId: string): Promise<void> {
   try {
     const mode = await chatAccessChanges().get(sessionId);
@@ -60,9 +54,8 @@ const record = (sessionId: string, mode: SessionAccessMode) =>
   }));
 
 /**
- * Gives the chat a mode that needs no confirmation. The native store
- * replaces whatever the chat had, Full access included, so stepping down
- * never depends on what this window believes the chat holds.
+ * The native store replaces whatever the chat had, so stepping down never
+ * depends on what this window believes the chat holds.
  */
 export async function chooseChatAccess(
   sessionId: string,
@@ -87,7 +80,6 @@ export async function chooseChatAccess(
   }
 }
 
-/** Opens the confirmation of a permissive mode; resolves to its token. */
 export async function prepareChatAccess(
   sessionId: string,
   mode: SessionAccessMode,
@@ -103,7 +95,6 @@ export async function prepareChatAccess(
   }
 }
 
-/** Spends the confirmation's token to give the chat a permissive mode. */
 export async function grantChatAccess(
   sessionId: string,
   mode: SessionAccessMode,
@@ -117,17 +108,11 @@ export async function grantChatAccess(
     store.setState({
       error: "This access was not granted. Confirm again.",
     });
-    // Show what the chat really holds after the refusal.
     await loadChatAccess(sessionId);
     return false;
   }
 }
 
-/**
- * Gives a chat's new session the access drafted before it existed, the way
- * the menu gives it once the session exists: a permissive mode only through
- * a fresh native confirmation, any other mode directly.
- */
 export async function applyChatAccessDraft(
   sessionId: string,
   mode: SessionAccessMode,

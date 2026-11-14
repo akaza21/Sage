@@ -7,11 +7,6 @@ export const PopoverPlacementContext = createContext<{
   position: CSSProperties;
 } | null>(null);
 
-/**
- * The side names where the menu prefers to open (it flips when the other side
- * has more room); "-end" aligns the menu's right edge with the trigger's and
- * "-start" opens from the trigger's left edge toward the right.
- */
 export type MenuPlacement =
   "below-end" | "below-start" | "above-start" | "above-end";
 
@@ -131,11 +126,10 @@ export function menuPopoverPosition(
 const MAX_CONTAINING_BLOCK_DEPTH = 32;
 
 /**
- * Positions are computed in viewport coordinates, but a popover portalled
- * into an element with a transform, filter or backdrop filter (a modal
- * dialog, for example) is fixed relative to that element instead. Shift the
- * position into that box so the popover lands where it was measured to fit;
- * otherwise its placement and the dialog's layout chase each other.
+ * A popover portalled into an element with a transform, filter or backdrop
+ * filter (a modal dialog, for example) is fixed relative to that element, not
+ * the viewport; otherwise its placement and the dialog's layout chase each
+ * other.
  */
 export function inFixedContainingBlock(
   position: CSSProperties,

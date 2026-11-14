@@ -1,5 +1,3 @@
-/* The picked command's input hint, drawn where a placeholder would be.
-   Loads with the composer's `/` command controller. */
 .composer__command-hint {
   position: absolute;
   inset: 0 0 auto;

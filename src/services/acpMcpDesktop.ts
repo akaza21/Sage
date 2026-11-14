@@ -10,7 +10,6 @@ import type { AcpUsageRequest } from "../domain/acpUsage";
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
 import { isOneOf, isRecord, safeText } from "./acpDesktopGuards";
 
-// The native inventory's bounds.
 const MAX_SERVERS = 64;
 const MAX_COUNT = 0xffff_ffff;
 
@@ -114,11 +113,9 @@ export const acpMcpDesktop = {
   async reload(request: AcpUsageRequest): Promise<McpInventory> {
     return inventory(await invokeAcp("reload_acp_mcp_servers", request));
   },
-  /** Connects one server again; answers with the list after it. */
   async reconnect(request: McpServerRequest): Promise<McpInventory> {
     return inventory(await invokeAcp("reconnect_acp_mcp_server", request));
   },
-  /** Opens the server's sign-in page in the user's browser. */
   async signIn(request: McpServerRequest): Promise<void> {
     await invokeAcp("sign_in_acp_mcp_server", request);
   },

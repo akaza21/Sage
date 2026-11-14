@@ -39,9 +39,6 @@ export function createChatArchiveActions(set: Set, get: Get) {
   const { applyProjection, loadAuthoritativeProjection, runChatTransition } =
     createChatTransitionContext(set, get);
 
-  /** Runs a row action and, when `report` is "row", moves a refusal the
-   * transition left in the shared error onto the row it was started from.
-   * A transition whose state is unknown keeps the workbench-wide error. */
   const runRowAction = async (
     action: ChatRowAction,
     chatId: string,

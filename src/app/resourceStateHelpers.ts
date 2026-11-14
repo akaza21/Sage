@@ -7,10 +7,6 @@ import type { ResourceRef } from "../domain/workbench";
 
 import type { ResourceState } from "./store";
 
-/**
- * Writes `keys` (newest last) with `value` and drops the oldest entries
- * beyond `limit`: the one insertion-ordered LRU every bounded record uses.
- */
 export function boundedRecordUpdate<V>(
   current: Record<string, V>,
   keys: readonly string[],

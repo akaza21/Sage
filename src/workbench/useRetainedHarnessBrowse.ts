@@ -4,10 +4,8 @@ import {
   setHarnessBrowseOwner,
 } from "../features/preview/harnessBrowse";
 
-/** Recently focused Chats whose harness Preview session survives a switch. */
 const MAX_RETAINED_BROWSE_CHATS = 2;
 
-/** Keep the two most recently focused Preview sessions, including an explicit pair. */
 export function useRetainedHarnessBrowse(
   owner: HarnessBrowseOwner | null,
   displayedIds: readonly string[],

@@ -39,7 +39,6 @@ export interface UserInputOption {
   description: string;
 }
 
-/** How an answer is entered; choices are typed by the native side. */
 export type UserInputKind =
   "text" | "multiline" | "number" | "integer" | "boolean";
 
@@ -47,20 +46,14 @@ export interface UserInputQuestion {
   id: string;
   header: string;
   question: string;
-  /** Absent for a free-text question. */
   options?: readonly UserInputOption[];
-  /** Free text is admitted beside the listed options. */
   allowsOther: boolean;
   /** Render masked; the answer is never retained. */
   secret: boolean;
   kind: UserInputKind;
-  /** Several options may be chosen. */
   multiSelect: boolean;
-  /** May be left unanswered. */
   optional: boolean;
-  /** Text the answer field starts with. */
   initialText?: string;
-  /** Limits on the answer; absent when none apply. */
   limits?: UserInputLimits;
 }
 
@@ -78,18 +71,14 @@ export interface UserInputLimits {
   maxItems?: number;
 }
 
-/** A link the harness asks the user to open, typically to sign in. */
 export interface UserInputUrl {
   url: string;
   host: string;
 }
 
-/** Questions a harness asks; carried on a `permissionRequest` item. */
 export interface UserInputRequest {
   questions: readonly UserInputQuestion[];
-  /** The request resolves itself, unanswered, this long after it arrived. */
   autoResolutionMs?: number;
-  /** Present for "open this link"; such a request has no questions. */
   url?: UserInputUrl;
 }
 
@@ -100,7 +89,6 @@ export interface UserInputAnswer {
   text?: string;
 }
 
-/** Cancel a question request with `resolvePermissionDecision` and `deny`. */
 export interface AnswerUserInputRequest {
   projectId: string;
   chatId: string;

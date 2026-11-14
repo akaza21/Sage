@@ -88,8 +88,6 @@ export function AgentChatPanes({
   const previousFocusedId = usePinnedAgentChatOwner();
   const [lastFocusedId, setLastFocusedId] = useState<string | null>(null);
   const chatIds = useMemo(() => collectChatTabIds(tabs), [tabs]);
-  // A side chat pairs with its parent (parent left) while either has focus;
-  // its 43 / 57 split lives in the side-chat store and is never persisted.
   const splitPercent = useSideChatState((state) => state.split);
   const pairedId = useSideChatState((state) => state.pairedId);
   const side = useSideChatState((state) =>

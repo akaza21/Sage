@@ -15,8 +15,8 @@ const place = (projectId: string, chatId: string) => ({ projectId, chatId });
 const key = ({ projectId, chatId }: AgentChatPlace) => `${projectId}/${chatId}`;
 
 /**
- * A window that opens what it is asked to unless told otherwise. A project
- * opens on its own active chat first, which the history must not record.
+ * A project opens on its own active chat first, which the history must not
+ * record.
  */
 function fakeWindow(outcomes: Record<string, AgentChatTrip> = {}) {
   const opened: string[] = [];
@@ -100,8 +100,6 @@ describe("agent chat history", () => {
       },
     });
     await goBackInAgentChats(view.open);
-    // The window moved to Angle, so Forward leads back to where it started,
-    // and the chat it could not open stays for Back to try again.
     await goForwardInAgentChats(view.open);
     expect(view.opened).toEqual(["angle/kept", "sage/start"]);
     await goBackInAgentChats(view.open);

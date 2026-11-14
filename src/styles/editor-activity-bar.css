@@ -39,8 +39,6 @@
   background: var(--activity-button-active-fill, var(--color-surface-active));
 }
 
-/* Hovering the active button shows the hover fill unless a mode keeps the
-   active fill. */
 .activity-rail__button--active:hover {
   background: var(
     --activity-button-active-hover-fill,
@@ -48,7 +46,6 @@
   );
 }
 
-/* The indicator sits on the rail edge, one rail inset outside the button. */
 .activity-rail__button--active::after {
   position: absolute;
   right: calc(-1 * var(--activity-rail-inset));

@@ -37,7 +37,6 @@ export interface ChildTranscriptRequest {
   agentKey: string;
 }
 
-/** The identity native transcript items are shown under. */
 export type TranscriptOwner = Pick<
   ChildTranscriptRequest,
   "projectId" | "chatId" | "sessionId" | "runtimeEpoch"
@@ -48,7 +47,6 @@ export type ChildTranscript =
       kind: "current" | "fromEarlierSession";
       retentionLimited: boolean;
       turns: TranscriptTurn[];
-      /** The spawn's requested model, only when the harness wire named it. */
       spawnModel?: { model: string; reasoningEffort?: string };
     }
   | {

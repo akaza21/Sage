@@ -1,4 +1,3 @@
-/** Official marks use external path data; custom and unavailable marks keep their existing assets. */
 export function PickerLogo({ logo, icon }: { logo?: string; icon?: string }) {
   const builtin = `/harness-${icon}.svg`;
   const src = logo ?? builtin;

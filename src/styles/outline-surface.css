@@ -117,7 +117,6 @@
   white-space: nowrap;
 }
 
-/* Messages wrap, so they sit outside the fixed-height row treatment. */
 .outline-surface__empty {
   margin: 0;
   padding: var(--space-3);

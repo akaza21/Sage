@@ -1,10 +1,9 @@
-/** Fields where keys such as Escape belong to text editing. */
 const TEXT_FIELD = "input, textarea, select, [contenteditable=true]";
 
 /**
- * Whether `target` sits in a field the user can type into. A read-only
- * editor stays focusable (and contenteditable) so the keyboard can reach it,
- * but it edits nothing, so shared keys such as Escape go to its container.
+ * A read-only editor stays focusable (and contenteditable) so the keyboard can
+ * reach it, but it edits nothing, so shared keys such as Escape go to its
+ * container.
  */
 export function isEditableTextTarget(target: EventTarget | null): boolean {
   if (!(target instanceof Element)) return false;

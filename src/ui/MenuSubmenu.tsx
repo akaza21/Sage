@@ -4,11 +4,6 @@ import { ChevronRight } from "./leanIcons";
 import { MenuPopover } from "./MenuPopover";
 import type { SubmenuGrace } from "./submenuGrace";
 
-/**
- * A menu item that opens a nested menu: on a pointer move the parent's grace
- * area does not hold, a click, Enter, Space or ArrowRight. ArrowLeft and
- * Escape close it back onto its item; a press outside closes it.
- */
 export function MenuSubmenu({
   label,
   leading,
@@ -29,8 +24,6 @@ export function MenuSubmenu({
   children: ReactNode;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // Whether the pointer came onto the item since a keyboard close, so a
-  // pointer resting on it does not reopen what Escape just closed.
   const pointerArrived = useRef(false);
   const submenuId = useId();
   const dismiss = () => {

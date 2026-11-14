@@ -230,8 +230,6 @@ export function ProjectChatActionPopover({
               completeAction(
                 onArchive ??
                   (() => {
-                    // A refusal shows on the Chat's rail row, not in the
-                    // composer of whichever Chat is open.
                     void useWorkbenchStore
                       .getState()
                       .archiveChat(chatId, projectId, "row");

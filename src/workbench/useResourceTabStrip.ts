@@ -6,12 +6,10 @@ import {
   type TabListActivation,
 } from "../ui/tabListKeys";
 
-/** A tab's row: the `.tab` wrapper that also holds its close button. */
 function tabRow(tab: HTMLElement): HTMLElement {
   return tab.closest<HTMLElement>(".tab") ?? tab;
 }
 
-/** The strip's scroll padding, which keeps a revealed tab clear of a fade. */
 function scrollPadding(strip: HTMLElement) {
   const style = getComputedStyle(strip);
   return {
@@ -20,10 +18,7 @@ function scrollPadding(strip: HTMLElement) {
   };
 }
 
-/**
- * Scrolls only the strip, never its ancestors, so the row is fully in view.
- * `scrollIntoView` would also scroll any scrollable pane around the strip.
- */
+/** `scrollIntoView` would also scroll any scrollable pane around the strip. */
 function revealInStrip(strip: HTMLElement, row: HTMLElement) {
   const bounds = strip.getBoundingClientRect();
   const rect = row.getBoundingClientRect();
@@ -34,13 +29,8 @@ function revealInStrip(strip: HTMLElement, row: HTMLElement) {
   else if (rect.right > right) strip.scrollLeft += rect.right - right;
 }
 
-/** Scroll offsets within this many pixels of an end count as at that end. */
 const EDGE_TOLERANCE_PX = 1;
 
-/**
- * Names the edges that hide tabs in `data-overflow` ("start", "end"), so the
- * stylesheet can fade them. Absent while every tab fits.
- */
 function markOverflowEdges(strip: HTMLElement) {
   const hidden = strip.scrollWidth - strip.clientWidth;
   const edges = [
@@ -49,17 +39,12 @@ function markOverflowEdges(strip: HTMLElement) {
   ]
     .filter(Boolean)
     .join(" ");
-  // Scroll events call this per frame; write only on a change.
   if ((strip.dataset.overflow ?? "") === edges) return;
   if (edges) strip.dataset.overflow = edges;
   else delete strip.dataset.overflow;
 }
 
-/**
- * A vertical wheel scrolls the strip sideways, as in VS Code and Chromium;
- * a trackpad's horizontal swipe scrolls it natively. A trackpad pinch
- * arrives as a wheel with Ctrl held, and is left alone.
- */
+/** A trackpad pinch arrives as a wheel with Ctrl held, and is left alone. */
 function scrollWithWheel(event: WheelEvent) {
   const strip = event.currentTarget as HTMLElement;
   if (
@@ -72,11 +57,6 @@ function scrollWithWheel(event: WheelEvent) {
   strip.scrollLeft += event.deltaY;
 }
 
-/**
- * Keeps one Tab stop on the selected tab, or the first tab when none is
- * selected, and returns the tab the reader is on: the focused tab while focus
- * is in the strip, otherwise the selected one.
- */
 function syncTabStop(strip: HTMLElement): HTMLElement | undefined {
   const tabs = tabListTabs(strip);
   const selected = tabs.find(
@@ -87,28 +67,16 @@ function syncTabStop(strip: HTMLElement): HTMLElement | undefined {
   return tabs.find((tab) => tab === document.activeElement) ?? selected;
 }
 
-/** Syncs the Tab stop and scrolls the tab the reader is on into view. */
 function revealSelectedTab(strip: HTMLElement) {
   const shown = syncTabStop(strip);
   if (shown) revealInStrip(strip, tabRow(shown));
 }
 
 export interface ResourceTabStripOptions {
-  /** Defaults to automatic: arrowing to a tab also selects it. */
   activation?: TabListActivation;
-  /**
-   * Identifies the selected tab. When it changes the selected tab is revealed
-   * before paint, rather than after the DOM observers report the change.
-   */
   revealKey?: string | null;
 }
 
-/**
- * A horizontal resource tab list: one Tab stop, arrow-key navigation, the
- * selected tab kept in view as tabs open, close and the strip resizes, wheel
- * scrolling, and `data-overflow` naming the edges that hide tabs. `ref` is the
- * scrolling element with `role="tablist"`.
- */
 export function useResourceTabStrip(
   ref: RefObject<HTMLElement | null>,
   { activation = "automatic", revealKey }: ResourceTabStripOptions = {},
@@ -117,7 +85,6 @@ export function useResourceTabStrip(
     const strip = ref.current;
     if (!strip) return;
     const observed = new Set<HTMLElement>();
-    // Tabs opened, closed or reselected: track their rows and reveal.
     const reveal = () => {
       const rows = new Set(tabListTabs(strip).map(tabRow));
       for (const row of observed) {
@@ -135,9 +102,8 @@ export function useResourceTabStrip(
       revealSelectedTab(strip);
       markOverflowEdges(strip);
     };
-    // A resize reveals only when it can move the tab the reader is on out of
-    // view: the strip itself, or that tab's own row. A background tab growing
-    // (a status dot, a favicon, a Git mark) must not undo manual scrolling.
+    // A background tab growing (a status dot, a favicon, a Git mark) must not
+    // undo manual scrolling.
     const resize =
       typeof ResizeObserver === "undefined"
         ? null

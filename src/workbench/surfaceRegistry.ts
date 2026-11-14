@@ -8,10 +8,6 @@ export type ToolSurfaceId =
 
 export type CanvasSurfaceOptions = {
   readOnly?: boolean;
-  /**
-   * The host already shows the resource's name, path, counts and view-only
-   * state above the canvas, so the surface leaves out its own copy.
-   */
   hostHeader?: boolean;
 };
 type CanvasSurface = ComponentType<

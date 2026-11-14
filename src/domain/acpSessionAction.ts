@@ -7,11 +7,9 @@ export type AcpReviewTarget =
   | { kind: "commit"; sha: string }
   | { kind: "custom"; instructions: string };
 
-/** Runs as a Turn on an idle session that negotiated it. */
 export type AcpSessionAction =
   { kind: "compact" } | { kind: "review"; target: AcpReviewTarget };
 
-/** Actions the chat offers directly. */
 export const sessionActions = {
   reviewChanges: { kind: "review", target: { kind: "uncommittedChanges" } },
   compact: { kind: "compact" },
@@ -35,7 +33,6 @@ const sameShape = (value: unknown, shape: unknown): boolean =>
         Object.keys(shape).every((key) => sameShape(value[key], shape[key]))
       : value === shape;
 
-/** The action a stored Turn ran, or null for one this build cannot show. */
 export function decodeSessionAction(value: unknown): AcpSessionAction | null {
   return shapes.some((shape) => sameShape(value, shape))
     ? (value as AcpSessionAction)

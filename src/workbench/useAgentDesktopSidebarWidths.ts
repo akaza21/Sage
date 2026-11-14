@@ -11,8 +11,6 @@ export function useAgentDesktopSidebarWidths(
   navigationCollapsed = false,
 ) {
   const [viewportWidth, setViewportWidth] = useState(window.innerWidth);
-  // Only widths the person dragged to; the layout derives the rest from the
-  // window, so untouched sidebars keep following resizes.
   const [widthRequests, setWidthRequests] = useState<
     Partial<AgentDesktopSidebarWidths>
   >({});

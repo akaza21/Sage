@@ -92,7 +92,6 @@ it("keeps the parent's own live session chrome while its side chat is focused", 
     />,
   );
   await settleLazyModules();
-  // Status and actions in the parent cell both belong to the parent.
   expect(screen.getByRole("status")).toHaveAccessibleName(
     "Chat status: Working",
   );

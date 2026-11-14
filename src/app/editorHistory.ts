@@ -1,9 +1,3 @@
-// Go Back and Go Forward through the places the Editor has been (ED-2b), as
-// in VS Code. A place is left behind when another File becomes active or the
-// caret moves more than FAR_LINES lines at once (Go to Line, an Outline or
-// Search result, a click far away). Moving a few lines updates the current
-// place instead.
-
 import type { ResourceRef } from "../domain/workbench";
 import { sameResource } from "../domain/resourceIdentity";
 import { useEditorCaretStore } from "./editorCaretStore";
@@ -19,9 +13,7 @@ export interface EditorPlace {
 
 interface Trip {
   place: EditorPlace;
-  /** Until `openFileLocation` returns, the File may still be opening. */
   opening: boolean;
-  /** A caret has moved in the File since it opened: the target landed. */
   arrived: boolean;
 }
 
@@ -39,7 +31,6 @@ let provisional = false;
 let trip: Trip | null = null;
 let stopWatching: (() => void) | null = null;
 
-/** Starts noting places. Every later call does nothing. */
 export function watchEditorHistory() {
   stopWatching ??= useEditorCaretStore.subscribe((caretState, previous) => {
     const state = useWorkbenchStore.getState();
@@ -71,7 +62,6 @@ export function watchEditorHistory() {
   });
 }
 
-/** For tests: forgets every place and stops noting them. */
 export function resetEditorHistory() {
   stopWatching?.();
   stopWatching = null;
@@ -99,8 +89,6 @@ export function notePlace(place: EditorPlace, remounted = false) {
   }
   if (trip) {
     if (sameResource(trip.place.resource, place.resource)) {
-      // The File arriving: its editor mounting, then the target applied
-      // (or, if something kept it from applying, the user's first move).
       current = place;
       if (!remounted) {
         trip.arrived = true;
@@ -113,7 +101,6 @@ export function notePlace(place: EditorPlace, remounted = false) {
     trip = null;
   }
   if (!current) {
-    // After a place that could not be opened: a new start.
     forward = [];
     current = place;
     provisional = true;
@@ -204,8 +191,6 @@ async function travel(backwards: boolean) {
     editor?.phase === "error" &&
     sameResource(editor.resource, target.resource)
   ) {
-    // Its File is gone (renamed, deleted) or unreadable: the place is
-    // dropped, so the next Go Back moves on, with the tab opened for it.
     trip = null;
     current = null;
     const tab = fileTabOf(target.resource);
@@ -222,12 +207,9 @@ async function travel(backwards: boolean) {
       !hadTab ||
       !busy);
   if (opened) {
-    // Its caret may still be on the way; the trip ends when it lands.
     if (thisTrip.arrived) trip = null;
     return;
   }
-  // Nothing opened. Busy for a moment (a save, a rename, a Project
-  // opening): keep the place for the next try. Otherwise skip it.
   trip = null;
   current = left;
   if (left) to.pop();

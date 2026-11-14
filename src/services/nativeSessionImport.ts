@@ -5,7 +5,6 @@ import { invokeNative } from "../ports/nativeInvoke";
 import { turnsForView } from "./acpChildTranscript";
 import { isRecord, safeIdentifier } from "./acpDesktopGuards";
 
-/** A native session started outside Sage that a new Chat can continue. */
 export interface NativeSessionSummary {
   threadId: string;
   title: string;
@@ -31,8 +30,6 @@ const PAGE_SIZE = 25;
  * `LISTED_SESSIONS_MAX`); it imports only those. */
 const LISTED_SESSIONS_MAX = 256;
 
-/** Whether a list already showing `shown` sessions may load another page
- * and still show only sessions its runtime remembers listing. */
 export function canListMoreSessions(shown: number): boolean {
   return shown + PAGE_SIZE <= LISTED_SESSIONS_MAX;
 }
@@ -41,7 +38,6 @@ function invalid(): never {
   throw new Error("Invalid native session response");
 }
 
-/** One page of the Project's importable sessions, newest activity first, on the runtime that listed earlier pages. */
 export async function listNativeSessions(
   projectId: string,
   cursor: string | null,
@@ -105,7 +101,6 @@ export interface ImportedHistory {
 // History never runs again here: unfinished work shows as stopped.
 const unfinished = new Set(["started", "streaming", "pending", "inProgress"]);
 
-/** The history an imported Chat continues from, as the imported session's Turns. */
 export async function readImportedHistory(
   projectId: string,
   chatId: string,

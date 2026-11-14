@@ -10,20 +10,12 @@ export interface ToolbarLayout {
   finish?: () => void;
   targets?: () => Element[];
   inRow?: (record: MutationRecord) => boolean;
-  /** Items declare stable data-overflow-control identities across presentations. */
   focus: {
     items: () => HTMLElement[];
     trigger: () => HTMLElement | null;
   };
 }
 
-/**
- * One bounded fitter for toolbars. Adapters supply their presentation and
- * overflow measurement; this owns the step walk and observation lifecycle.
- * Size changes caused by the fit itself do not schedule another fit. Content
- * changes fit before paint, including controls relocated into an open More.
- * Unmounting (or returning no layout) disconnects all work.
- */
 export function useToolbarOverflow(setup: () => ToolbarLayout | undefined) {
   const [tier, setTier] = useState(-1);
   const remembered = useRef<{ key: string; element: HTMLElement } | null>(null);

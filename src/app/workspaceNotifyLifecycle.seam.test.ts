@@ -406,7 +406,6 @@ describe("live Project workspace notify bind", () => {
         }
         await vi.advanceTimersByTimeAsync(0);
         refreshes.ignoredFolder(notice);
-        // The trailing notice matures while the first native read is pending.
         await vi.advanceTimersByTimeAsync(2_500);
         finishRead(before);
         await vi.advanceTimersByTimeAsync(0);
@@ -481,7 +480,6 @@ describe("live Project workspace notify bind", () => {
     try {
       await vi.advanceTimersByTimeAsync(0);
       expect(maxInFlight).toBe(8);
-      // End Explorer's read while the other listings still occupy their slots.
       finishers.shift()!();
       await vi.advanceTimersByTimeAsync(0);
       expect(maxInFlight).toBe(8);
@@ -532,8 +530,6 @@ describe("live Project workspace notify bind", () => {
       pollAlways: false,
     });
     try {
-      // Settle the folder's initial creation, then replay native batches from
-      // a build in a collapsed target/ with no tracked descendants.
       const notice = {
         projectId: "project-a",
         projectGeneration: 1,
@@ -657,8 +653,6 @@ describe("live Project workspace notify bind", () => {
           },
         ],
       };
-      // A .git directory notice can precede control.txt in the native window.
-      // Both paths survive Git classification; metadata alone stays filtered.
       emit({ ...notice, relativePath: ".git", kind: "repository" });
       await vi.advanceTimersByTimeAsync(REFRESH_DEBOUNCE_MS);
       expect(useWorkbenchStore.getState().repositories).toEqual(modified);

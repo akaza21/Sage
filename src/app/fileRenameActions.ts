@@ -121,8 +121,8 @@ function renameProjection(
 }
 
 /**
- * Renames a File or folder. It reads the store and claims the rename before
- * its first await, so a second rename asked for meanwhile is refused.
+ * Reads the store and claims the rename before its first await, so a second
+ * rename asked for meanwhile is refused.
  */
 export async function renameProjectResource(
   get: Get,
@@ -339,8 +339,6 @@ export async function renameProjectResource(
   }
 }
 
-/** Renames a File, closing a clean open copy for the rename and reopening
- * it at the new name. */
 export async function renameReleasingFile(
   get: Get,
   set: Set,
@@ -353,7 +351,6 @@ export async function renameReleasingFile(
   try {
     target = renameTargetResource(source, basename);
   } catch {
-    // The rename itself reports the invalid name.
     return rename();
   }
   const { moveReleasingFile } = await import("./openFileRelease");

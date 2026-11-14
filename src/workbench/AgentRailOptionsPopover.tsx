@@ -20,11 +20,6 @@ import {
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 
-/**
- * The open sidebar options menu. A lazy chunk: it loads on the first open,
- * so the rail's eager path carries only its trigger.
- */
-
 type IconComponent = ComponentType<{ size?: number; "aria-hidden"?: "true" }>;
 
 interface Choice<T extends string> {

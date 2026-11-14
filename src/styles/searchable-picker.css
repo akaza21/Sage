@@ -166,7 +166,6 @@
   gap: var(--space-2);
 }
 
-/* An unavailable option's reason is its visible second line. */
 .searchable-picker__reason {
   display: block;
   margin: 0;
@@ -228,7 +227,6 @@
   }
 }
 
-/* Sign-in action beside a harness picker row. */
 .searchable-picker__option-row {
   display: flex;
   align-items: center;

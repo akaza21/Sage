@@ -128,7 +128,6 @@ export async function openAgentArtifact(
     changes.selected &&
     changes.owner?.projectId === intent.owner.projectId &&
     changes.owner.chatId === intent.owner.chatId &&
-    // A sessionless Changes tab belongs to its whole Chat.
     (changes.owner.sessionId === null ||
       changes.owner.sessionId === intent.owner.sessionId);
   if (

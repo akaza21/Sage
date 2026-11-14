@@ -9,7 +9,6 @@ import { isTauriRuntime } from "../ports/desktopRuntime";
 import { acpDesktop } from "../services/acpDesktop";
 import { mirrorAgentRailStatus } from "./useAgentRailProjection";
 
-// Coalesce bursty projection events without retaining unbounded chat IDs.
 const MAX_DIRTY_CHATS = 64;
 const STATUS_COALESCE_MS = 50;
 export function useAgentRailStatus(visible: boolean) {
@@ -122,7 +121,6 @@ export function useAgentRailStatus(visible: boolean) {
   }, [projectId, generation, epoch, transitioning]);
 }
 
-/** Desktop status transport stays outside the ready workbench path and Activity. */
 export default function AgentRailStatusObserver({
   visible,
 }: {

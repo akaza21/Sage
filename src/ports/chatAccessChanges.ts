@@ -6,7 +6,6 @@ import { invokeNative, isTauriRuntime } from "./nativeInvoke";
  * the chat path.
  */
 export interface ChatAccessChanges {
-  /** The chat's own mode, or null when it uses its harness default. */
   get(sessionId: string): Promise<unknown>;
   /**
    * Sets a mode that needs no confirmation; it replaces any other. Stepping
@@ -16,7 +15,6 @@ export interface ChatAccessChanges {
     sessionId: string,
     mode: SessionAccessMode,
   ): Promise<{ turnCancelled?: boolean } | null | undefined>;
-  /** Opens a confirmation and returns the single-use token it expects. */
   prepare(
     sessionId: string,
     mode: SessionAccessMode,

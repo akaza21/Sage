@@ -3,11 +3,6 @@ import { useState, type KeyboardEvent, type PointerEvent } from "react";
 export type SplitterKey = "ArrowLeft" | "ArrowRight" | "Home" | "End";
 const SPLITTER_KEYS = ["ArrowLeft", "ArrowRight", "Home", "End"];
 
-/**
- * A vertical separator that resizes the panes beside it, by dragging or by
- * the arrow, Home and End keys. The caller turns a pointer position or key
- * into its value; Shift asks for a larger step.
- */
 export function Splitter({
   ariaLabel,
   className,
@@ -28,8 +23,6 @@ export function Splitter({
   onKeyResize: (key: SplitterKey, large: boolean) => void;
 }) {
   const [resizing, setResizing] = useState(false);
-  // Ends the drag however the capture ends: release, cancel, or the window
-  // losing the pointer, so a drag never outlives its capture.
   const endResize = () => setResizing(false);
   return (
     <div

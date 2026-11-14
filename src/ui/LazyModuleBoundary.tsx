@@ -117,7 +117,6 @@ export function DeferredModuleSurface<Props extends object>({
   return Surface ? render(Surface as ComponentType<Props>) : fallback;
 }
 
-/** A retry remounts the failed feature and invokes a fresh module request. */
 export function LazyModuleBoundary<Props extends object>({
   load,
   label,

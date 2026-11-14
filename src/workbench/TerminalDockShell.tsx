@@ -22,7 +22,6 @@ import {
   X,
 } from "../ui/leanIcons";
 
-/** The VT100 grid a shell starts with until the dock measures its screen. */
 const INITIAL_COLUMNS = 80;
 const INITIAL_ROWS = 24;
 const TERMINAL_MAX_PER_CHAT = 4;
@@ -60,7 +59,6 @@ type WorkbenchDockProps = {
   open: boolean;
 };
 
-/** Keep the session owner mounted while the visible center adopts its host. */
 export default function TerminalDockForWorkbench({
   container,
   inert,

@@ -41,8 +41,6 @@ it.each(["chat-current", "diff:current"])(
         finishedAt: 100,
       },
     };
-    // A rename moves the chat's update time; only a new Turn moves its
-    // finish time.
     const recent = (title: string, updatedAt: number, finishedAt = 100) => (
       <AgentRecentChats
         items={[
@@ -64,7 +62,6 @@ it.each(["chat-current", "diff:current"])(
       pinAgentChatOwner("chat-other");
     });
     expect(screen.queryByLabelText("Unread updates")).toBeNull();
-    // New activity while away still produces an unread indicator.
     view.rerender(recent("Renamed", 300, 300));
     expect(screen.getByLabelText("Unread updates")).toBeVisible();
   },
@@ -91,8 +88,6 @@ it("lists every recent task to fill the rail, without paging", () => {
   ).toHaveLength(20);
   expect(screen.queryByRole("button", { name: "Show more" })).toBeNull();
 
-  // When the store holds more chats than the rail admitted, the list
-  // continues in Chat search.
   view.rerender(
     <AgentRecentChats
       items={items}

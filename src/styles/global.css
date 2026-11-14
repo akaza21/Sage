@@ -31,10 +31,8 @@
   --radius-annotation-checkbox: 3px;
   color-scheme: dark;
 
-  /* Brand */
   --color-sage: #7fa877;
 
-  /* Color roles */
   --color-canvas: #141414;
   --color-panel: #141414;
   --color-surface: #232323;
@@ -139,8 +137,6 @@
   --agent-shell-center: #181818;
   --agent-shell-title-divider: #262626;
   --agent-shell-tab-border: #4c4c4c;
-  /* The future light palette should use the same chat-background token with
-     color-mix(in srgb, var(--color-sage) 26%, var(--agent-shell-center)). */
   --agent-shell-user-bubble: color-mix(
     in srgb,
     var(--color-sage) 22%,
@@ -197,8 +193,7 @@
   --browser-annotate-placeholder: #8c8c8c;
 
   /* File/Diff document authority (AV-03). Single source for the shared
-     document palette; consumers alias their generic roles to these tokens.
-     Values preserve the exact previous document visuals. */
+     document palette; consumers alias their generic roles to these tokens. */
   --doc-canvas: #141414;
   --doc-panel: #141414;
   --doc-surface: #232323;
@@ -233,11 +228,9 @@
   --doc-caret: #e1e7df;
   --doc-selection-background: #264f78;
   --doc-selection-foreground: #f4f7fb;
-  /* Editing marks, after VS Code's dark defaults. */
   --doc-bracket-match-border: #888888;
   --doc-bracket-match-background: rgb(0 100 0 / 0.1);
   --doc-occurrence-background: rgb(173 214 255 / 0.15);
-  /* Find matches, amber like Search results. */
   --doc-find-match-background: rgb(226 182 107 / 0.32);
   --doc-find-match-border: rgb(226 182 107 / 0.72);
   --doc-fold-placeholder-background: rgb(255 255 255 / 0.08);
@@ -265,7 +258,6 @@
     var(--doc-panel)
   );
 
-  /* Typography */
   --font-family-ui:
     Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -291,7 +283,6 @@
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
-  /* Four-pixel spacing and density */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -304,7 +295,7 @@
      modals above every popover so nothing paints over an open dialog. */
   --z-behind: -1;
   --z-raised: 1;
-  --z-sticky: 2; /* sticky rows and edge handles such as splitters */
+  --z-sticky: 2;
   --z-floating: 4;
   --z-sidebar-overlay: 10;
   --z-overlay-backdrop: 11;
@@ -353,7 +344,6 @@
   --reading-measure-compact: 56ch;
   --reading-measure-min: 44ch;
 
-  /* Shape, elevation, focus, and interaction */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -365,7 +355,6 @@
   --radius-turn-preview: 10px;
   --radius-pill: 999px;
   --radius-none: 0;
-  /* Part radii that window modes re-project. */
   --radius-center-region: var(--radius-none);
   --radius-title-bar-search: var(--radius-pill);
   --radius-activity-button: var(--radius-md);
@@ -440,7 +429,6 @@
   --motion-duration-bounce: 1s; /* s6/f0056, f0064, f0072 dot cycle */
   --motion-duration-indicator: 200ms; /* turn-navigator dash grow and tint */
 
-  /* Compatibility aliases for existing surfaces */
   --bg: var(--color-canvas);
   --surface: var(--color-panel);
   --surface-raised: var(--color-surface);
@@ -679,7 +667,6 @@ textarea:disabled,
     calc(var(--sidebar-width) + 46px);
 }
 
-/* Window modes set center rows; the shared surface primitive owns its frame. */
 .center-region {
   display: grid;
   min-width: 0;

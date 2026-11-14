@@ -6,7 +6,6 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 
-/** Adopt one stable portal host without remounting the resource it contains. */
 export function usePortalHost(
   container: HTMLElement | null | RefObject<HTMLElement | null>,
   className = "",

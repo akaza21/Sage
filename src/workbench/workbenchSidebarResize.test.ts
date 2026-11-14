@@ -24,8 +24,6 @@ describe("resizeWorkbenchSidebar", () => {
       artifactWidth: 621,
     });
   });
-  // The artifact pane opens at 45% of the window. Beside the 326 px sidebar
-  // at 1888 that leaves Chat about 45% of the remaining space.
   it("opens the desktop Agent rail and artifact pane at the reference proportions", () => {
     expect(initialAgentLeftRailWidth(1672)).toBe(326);
     expect(initialAgentArtifactWidth(1672)).toBe(752);

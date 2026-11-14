@@ -12,7 +12,6 @@ import { clearAgentRailUnread } from "./agentRailInteractions";
 
 const FINISHED_AT = 5_000;
 
-// The settings store holds Beta's read mark; it can refuse deletes.
 const store = vi.hoisted(() => ({
   marks: new Map<string, number>(),
   sequence: 0,
@@ -121,7 +120,6 @@ it("keeps a chat marked unread Unread after a restart", async () => {
   renderRail();
   await markBetaUnread();
   await vi.waitFor(() => expect(store.marks.has("chat:b")).toBe(false));
-  // Restart: the rail starts from the store alone.
   cleanup();
   clearAgentRailUnread();
   resetChatReadMarks();
@@ -138,7 +136,6 @@ it("offers Mark unread only on a chat whose last Turn finished", async () => {
   expect(
     await screen.findByRole("menu", { name: "Actions for Alpha" }),
   ).toBeInTheDocument();
-  // Alpha's last Turn was cancelled, so it has nothing to read through.
   expect(screen.queryByRole("menuitem", { name: "Mark unread" })).toBeNull();
 });
 
@@ -156,7 +153,6 @@ it("shows the chat read again when the store refuses Mark unread", async () => {
     screen.getByRole("button", { name: "Chat actions for Beta" }),
   );
   fireEvent.click(await screen.findByRole("menuitem", { name: "Mark unread" }));
-  // The store still holds the mark, so the row must not stay Unread.
   await vi.waitFor(() => expect(chatReadThrough("chat:b")).toBe(FINISHED_AT));
   await vi.waitFor(() => expect(betaUnread()).toBeNull());
 });

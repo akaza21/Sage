@@ -248,7 +248,6 @@ export const createEditorSlice: StateCreator<
   };
 };
 
-/** The active editor as the store holds it, with its tabs kept in step. */
 export function storeEditorBridge(
   set: StoreApi<WorkbenchState>["setState"],
   get: StoreApi<WorkbenchState>["getState"],
@@ -265,9 +264,8 @@ export function storeEditorBridge(
 }
 
 /**
- * Applies a dirty or status change to the editor's tab. The tabs array keeps
- * its identity when nothing changes, so a keystroke that leaves the tab dirty
- * does not re-render every tabs subscriber (EP-01).
+ * The tabs array keeps its identity when nothing changes, so a keystroke does
+ * not re-render every tabs subscriber (EP-01).
  */
 export function tabsWithEditorUpdate(
   tabs: WorkbenchState["tabs"],

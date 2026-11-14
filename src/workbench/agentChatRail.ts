@@ -20,7 +20,6 @@ export const MAX_AGENT_RAIL_CHATS_PER_PROJECT = 16;
 export const MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS = 5;
 export const MAX_AGENT_RAIL_CURRENT_CHATS = 64;
 export const MAX_AGENT_RAIL_PIN_IDS = 64;
-// Keep the ready rail small; retain a bounded page for explicit expansion.
 export const MAX_AGENT_RAIL_RECENT_CHATS = 8;
 export const MAX_AGENT_RAIL_RECENT_CANDIDATES = 64;
 export const MAX_AGENT_RAIL_ARCHIVED_PER_PROJECT = 64;
@@ -196,12 +195,7 @@ export interface AgentRailSections {
   pinned: AgentRailChatItem[];
   projects: AgentRailProjectGroup[];
   recent: AgentRailChatItem[];
-  /** Every unpinned chat in the chosen order, for "In one list". */
   all: AgentRailChatItem[];
-  /**
-   * When "In one list" cannot hold every chat (its own cap, or a project the
-   * rail admitted only in part), the folder where Chat search continues.
-   */
   allOverflowProjectId: string | null;
 }
 
@@ -259,14 +253,12 @@ export function deriveAgentRailSections(
   recentCandidates.sort((left, right) =>
     compareAgentRailViewChats(left.chat, right.chat, "recency"),
   );
-  // Manual order keeps the projects' order and each project's own order.
   if (ordering === "recency") {
     unpinned.sort((left, right) =>
       compareAgentRailViewChats(left.chat, right.chat, ordering),
     );
   }
   const all = unpinned.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES);
-  // The open chat always stays in the list, even past its cap.
   const active = unpinned.find((item) => item.chat.id === activeChatId);
   if (active && !all.includes(active)) all[all.length - 1] = active;
   return {
@@ -329,10 +321,6 @@ export function compareAgentRailChats(
   return left.position - right.position;
 }
 
-/**
- * The chats a project shows: its first few in the chosen order, or every
- * admitted chat once expanded. The open chat always stays in view.
- */
 export function visibleProjectChats(
   chats: ReadonlyArray<AgentRailChat>,
   activeId: string | null,

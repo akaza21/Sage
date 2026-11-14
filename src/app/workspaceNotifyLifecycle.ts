@@ -122,7 +122,6 @@ async function admittedLoadDirectory(
   }
 }
 
-/** Resyncs cached/expanded listings, including reads overtaken by changes. */
 async function reloadRootListings(
   get: () => WorkbenchState,
   rootId: string,
@@ -237,7 +236,6 @@ export function createWorkspaceNotifyHooks(
       if (notice.kind === "resync" || isIgnoreRuleFile(notice.relativePath)) {
         return refreshListingsForResync(get, notice);
       }
-      // Changes inside an ignored folder: its listings and those below.
       if (notice.kind === "ignored") {
         return reloadRootListings(get, notice.rootId, notice.relativePath);
       }

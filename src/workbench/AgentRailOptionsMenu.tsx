@@ -89,7 +89,6 @@ export function AgentPrimaryNavigation({
 import { lazyParts } from "../features/chat/lazyParts";
 import type * as OptionsPopoverChunk from "./AgentRailOptionsPopover";
 
-/** The open options menu (AgentRailOptionsPopover.tsx), loaded on first open. */
 const OptionsPopoverPart = lazyParts<typeof OptionsPopoverChunk>(
   () => import("./AgentRailOptionsPopover"),
 );

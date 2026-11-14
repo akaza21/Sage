@@ -164,7 +164,6 @@ describe("TabStrip middle click", () => {
       activeTabId: "file",
       pendingCloseTabId: null,
     });
-    // Calling the archive path would report that the last chat cannot close.
     expect(useWorkbenchStore.getState().error).toBeNull();
   });
 

@@ -15,11 +15,6 @@ import {
   useHarnessBrowseSession,
 } from "../features/preview/useHarnessBrowseSession";
 
-/**
- * The harness browse owner and its Preview. The Preview belongs to the
- * focused Chat only once that Chat owns the harness browse; while the next
- * Chat's projection loads, the previous Chat keeps ownership.
- */
 export function useFocusedBrowse(focusedOwner: AgentArtifactOwner | null) {
   const browseOwner = useHarnessBrowseOwner();
   const session = useHarnessBrowseSession(browseOwner);
@@ -58,11 +53,6 @@ export function useAgentArtifactFollowLifecycle({
   }, [availableTargets, browseSettled, focusedOwner]);
 }
 
-/**
- * Pins a browser tab opened by an explicit user request ("+", Ctrl+T, New
- * page). Agent-created tabs leave the Chat's follow and notification state
- * alone, even when the workbench makes them active.
- */
 export function useSelectOpenedBrowserTab({
   artifacts,
   activeTabId,
@@ -100,7 +90,6 @@ export function useSelectOpenedBrowserTab({
   }, [activeTabId, browserTabs, focusedOwner, userOpenedBrowserTabId]);
 }
 
-/** Expands a collapsed resource pane when a tab or Preview revision appears. */
 export function useExpandOnNewArtifact({
   artifacts,
   previewOpen,

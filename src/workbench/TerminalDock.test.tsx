@@ -56,7 +56,6 @@ vi.mock("@xterm/xterm", () => ({
         },
       },
     };
-    // Like xterm, options stay settable after construction.
     options: Record<string, unknown>;
     constructor(options: Record<string, unknown>) {
       xterm.options = options;
@@ -101,7 +100,6 @@ import TerminalDock from "./TerminalDock";
 
 import TerminalDockForWorkbench from "./TerminalDockShell";
 
-// The dock's screen box; it opens just large enough for xterm's 80 x 24.
 const space = { width: 645, height: 390 };
 for (const [property, axis] of [
   ["clientWidth", "width"],
@@ -316,7 +314,6 @@ it("sends no input after the dock is disposed during a busy backoff", async () =
   try {
     act(() => xterm.data?.("x"));
     expect(native.write).toHaveBeenCalledTimes(1);
-    // The refusal starts the backoff; the user then closes the terminal.
     await act(async () => {
       refuse?.({ code: "busy" });
       await vi.advanceTimersByTimeAsync(0);
@@ -467,7 +464,6 @@ it.each([
     setScreenSize(800, 160);
     resizeCallback?.();
     await waitFor(() => expectGrid(container, 800, 160, 100, 10));
-    // Cross to the other side, then return to the identical destination.
     setScreenSize(width === 16 ? 1600 : 16, height === 16 ? 320 : 16);
     resizeCallback?.();
     await waitFor(() =>

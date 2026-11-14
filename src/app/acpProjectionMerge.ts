@@ -95,11 +95,8 @@ export function normalizeProjectionPage(page: AcpChatPage): AcpChatPage {
 }
 
 /**
- * Merges an earlier-history page into the page shown. A history page is
- * anchored by its cursor, not by the live revision, so the page-level fields
- * (revision, title, head session) stay those of the page shown and each Turn,
- * Item and session merges by its own revision. The cursor moves back only
- * when the page extends the oldest edge the page shown still has.
+ * A history page is anchored by its cursor, not by the live revision, so the
+ * page-level fields stay those of the page shown.
  */
 export function mergeHistoryPage(
   current: AcpChatPage,
@@ -116,10 +113,8 @@ export function mergeHistoryPage(
 }
 
 /**
- * Lays a newest page over the page shown. Inside the newest page's window it
- * is authoritative; earlier Turns and Items the page shown already loaded stay,
- * with its cursor, so a refresh during a stream never drops loaded history.
- * Retained entities outside the window are not refreshed by the newest page.
+ * Earlier Turns and Items the page shown already loaded stay, so a refresh
+ * during a stream never drops loaded history.
  */
 export function mergeNewestPage(
   current: AcpChatPage | null,

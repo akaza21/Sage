@@ -10,7 +10,6 @@ import { MAX_PATH_GLOB_BYTES, validPathGlob } from "../../domain/pathGlob";
 import { utf8ByteLength } from "../../domain/text";
 import { X } from "../../ui/leanIcons";
 
-/** Why a new pattern cannot be added, in the store's own terms; null if it can. */
 function patternProblem(pattern: string, patterns: readonly string[]) {
   if (pattern === "") return "Enter a pattern.";
   if (patterns.includes(pattern)) return "That pattern is already listed.";
@@ -23,10 +22,6 @@ function patternProblem(pattern: string, patterns: readonly string[]) {
   return null;
 }
 
-/**
- * A list of glob patterns, as in VS Code's `files.exclude` editor: each
- * pattern with a remove button, then a field to add one.
- */
 export function GlobListSetting({
   spec,
   id,
@@ -45,8 +40,6 @@ export function GlobListSetting({
   const [problem, setProblem] = useState<string | null>(null);
   const list = useRef<HTMLUListElement>(null);
   const input = useRef<HTMLInputElement>(null);
-  // After a removal, focus moves to the pattern that took its place, or the
-  // field when none is left, instead of falling back to the page.
   const focusAfterRemove = useRef<number | null>(null);
   useLayoutEffect(() => {
     const index = focusAfterRemove.current;

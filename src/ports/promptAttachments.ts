@@ -12,7 +12,6 @@ export interface PromptFileOwner {
 export interface StagedPromptFiles {
   revision: string;
   files: { id: string; name: string; bytes: number }[];
-  /** The resource a paste just added. */
   added?: string;
 }
 /** 16 files, 64 KB/file, 96 KB/batch; replacement is revision checked. */
@@ -23,7 +22,6 @@ export interface PromptAttachmentsPort {
     pick: "files" | "folder";
     expectedRevision: string | null;
   }): Promise<StagedPromptFiles | null>;
-  /** Adds pasted composer text to the batch as one text resource. */
   stagePromptText(request: {
     owner: PromptFileOwner;
     expectedRevision: string | null;

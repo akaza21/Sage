@@ -9,10 +9,6 @@ import {
   type TextFieldSuggestionsState,
 } from "./textFieldSuggestionNavigation";
 
-/**
- * Contiguous rows of one section. Headings show only when the rows span
- * more than one section.
- */
 function sections(
   items: readonly TextFieldSuggestion[],
 ): { heading?: string; rows: readonly TextFieldSuggestion[] }[] {
@@ -25,14 +21,6 @@ function sections(
   return out[1] ? out : [{ rows: items }];
 }
 
-/**
- * A bounded listbox that opens beside a text field (for example the chat
- * composer's `/` commands, later its `@` mentions). The field keeps the
- * focus and points at the active row with aria-activedescendant; rows take
- * pointer picks without taking the focus. The field's owner keeps a polite
- * status region mounted beside the field, so announcements are not lost
- * when the popover mounts.
- */
 export function TextFieldSuggestions({
   anchorRef,
   ariaLabel,
@@ -131,7 +119,6 @@ export function TextFieldSuggestions({
         {sections(rendered).map(({ heading, rows }) =>
           heading ? (
             <div key={heading} role="group" aria-label={heading}>
-              {/* The group's name, shown; the label reads it out. */}
               <div aria-hidden="true">{heading}</div>
               {rows.map(option)}
             </div>

@@ -10,12 +10,9 @@ import {
   useAgentRailViewPrefs,
 } from "./agentRailViewPrefs";
 
-// A stand-in for the Rust settings store: it keeps one record and can refuse
-// writes, so the tests observe what survives rather than which calls ran.
 const settings = vi.hoisted(() => ({
   stored: null as null | { organize: string; ordering: string },
   refuseWrites: false,
-  // When set, the first read waits until the test releases it.
   slowRead: null as null | Promise<void>,
   refuseReads: false,
 }));
@@ -117,7 +114,6 @@ it("keeps a choice made while the stored layout is still loading", async () => {
 
   release();
   await act(() => loading);
-  // The pick survives the late read, and the untouched sort is restored.
   expect(agentRailViewPrefs()).toMatchObject({
     organize: "list",
     ordering: "manual",
@@ -139,7 +135,6 @@ it("stores a choice made during a load that then fails", async () => {
   release();
   await act(() => loading);
   expect(agentRailViewPrefs().organize).toBe("list");
-  // The choice reaches the store with defaults for what could not be read.
   await waitFor(() =>
     expect(settings.stored).toEqual({ organize: "list", ordering: "recency" }),
   );
@@ -170,7 +165,6 @@ it("loads the stored layout once storage recovers from a failed read and save", 
   act(() => setAgentRailOrganize("list"));
   release();
   await act(() => loading);
-  // Neither the read nor the save landed, so the rail shows the defaults.
   await waitFor(() => expect(agentRailViewPrefs().organize).toBe("project"));
 
   settings.refuseReads = false;

@@ -21,27 +21,21 @@ import {
 type GetState = StoreApi<WorkbenchState>["getState"];
 type SetState = StoreApi<WorkbenchState>["setState"];
 
-/** The tabs released for a move, as they were, to settle them afterwards. */
 export interface ReleasedFile {
   projectId: string;
-  /** Where the store stood at release; a failed move that moved these
-   * may still have changed the layout natively. */
+  /** A failed move may still have changed the layout natively. */
   projectGeneration: number;
   transitionEpoch: number;
   tabs: WorkbenchTab[];
-  /** The released tab that was active, if one was. */
   activeId: string | null;
-  /** The tab closing the active one would have activated instead. */
   neighbourId: string | null;
 }
 
-/** How the move ended, for `settleReleasedFile`. */
 export type ReleaseOutcome =
   | { kind: "failed" }
   | { kind: "renamed"; target: ResourceRef }
   | { kind: "gone" };
 
-/** The same conditions under which rename and recycle refuse to start. */
 function moveCannotStart(state: WorkbenchState, source: ResourceRef) {
   const root = state.project?.roots.find((item) => item.id === source.rootId);
   const parent = state.directoryListings[resourceKey(parentResource(source))];
@@ -78,9 +72,7 @@ function neighbourOf(
 
 /**
  * Native rename and recycle act only on closed Files, so a clean open File's
- * tabs are taken out first and settled afterwards. Returns null when nothing
- * is open, or when the move couldn't start anyway: then the action itself
- * reports why.
+ * tabs are taken out first and settled afterwards.
  */
 export async function releaseCleanFile(
   get: GetState,
@@ -131,12 +123,6 @@ export async function releaseCleanFile(
   };
 }
 
-/**
- * After a failed move the same tabs come back. After a rename the File tab
- * comes back under the new name, where it stood and pinned as before; Diff
- * tabs don't. When the File is gone, or the active tab didn't come back,
- * the tab closing it would have activated becomes active.
- */
 export async function settleReleasedFile(
   get: GetState,
   set: SetState,
@@ -191,7 +177,6 @@ export async function settleReleasedFile(
   if (!released.activeId || (reopened && get().activeTabId === reopened.id)) {
     return;
   }
-  // A Diff tab of the File was active: the File it showed takes its place.
   if (reopened) {
     await get().activateTab(reopened.id);
     return;
@@ -224,15 +209,13 @@ async function reopenAt(
   set((state) => {
     if (state.projectTransitioning) return {};
     const update = resourceTabUpdate(state, "file", resource);
-    // Only the tab is added: the active tab and the selection stay.
     return update.tabs ? { tabs: placed(update.tabs) } : {};
   });
 }
 
 /**
- * Runs a move of `source` with its clean open tabs released around it. The
- * stores load this module only when a move releases tabs, which keeps it off
- * the startup path.
+ * The stores load this module only when a move releases tabs, which keeps it
+ * off the startup path.
  */
 export async function moveReleasingFile(
   get: GetState,
