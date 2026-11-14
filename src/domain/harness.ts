@@ -63,6 +63,8 @@ interface HarnessDefinitionBase {
   version?: string | null;
   versionChecking?: boolean;
   boundVersion?: string | null;
+  /** A release newer than the tested one keeps the tested features; an older
+   * or unreadable one loses them. */
   characterisation?:
     "characterised" | "newerThanTested" | "uncharacterised" | null;
   unavailableReason?: HarnessUnavailableReason | null;

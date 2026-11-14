@@ -1,8 +1,9 @@
 import { utf8ByteLength } from "./text";
 
 /**
- * Mirrors src-tauri/src/workspace/path_glob.rs; both test against
- * path_glob/cases.json.
+ * Whole-path glob: `**` spans segments, `*` and `?` stay within one;
+ * case-sensitive. Mirrors src-tauri/src/workspace/path_glob.rs; both test
+ * against path_glob/cases.json.
  */
 
 export const MAX_PATH_GLOB_BYTES = 256;

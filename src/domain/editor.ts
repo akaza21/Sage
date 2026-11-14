@@ -50,6 +50,7 @@ export interface BufferSnapshotRequest {
   revision: number;
 }
 
+/** "Keep mine" onto `expectedDisk`; nothing changes if disk has moved on. */
 export interface BufferRebaseRequest {
   resource: ResourceRef;
   expectedDisk: DocumentVersion;
@@ -62,6 +63,7 @@ export interface BufferSnapshotAck {
   revision: number;
   persistedAt: number;
   dirty: boolean;
+  /** False when a newer snapshot was already stored. */
   applied: boolean;
 }
 

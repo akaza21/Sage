@@ -8,6 +8,7 @@ export interface Point {
 export const SUBMENU_GRACE_MS = 300;
 const BLEED = 5;
 
+/** Null for a stacked submenu: the pointer crosses no sibling diagonally. */
 export function graceArea(exit: Point, submenu: DOMRect): Point[] | null {
   if (exit.x > submenu.left && exit.x < submenu.right) return null;
   const right = submenu.left >= exit.x;

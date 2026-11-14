@@ -30,6 +30,7 @@ export interface AvailableAcpCommand {
   description: string;
   inputHint: string | null;
   source: AcpCommandSource;
+  /** Opens this panel in the chat and sends nothing. */
   panel?: AcpCommandPanel;
   aliases?: string[];
 }

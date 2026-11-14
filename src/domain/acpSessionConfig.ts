@@ -48,9 +48,13 @@ export interface AcpSessionConfig {
   confirmedEffort?: string;
   modes: AcpSessionModes | null;
   configOptions: AcpConfigOption[];
+  /** Only on the composer's view of a restored config: its controls' note; a
+   * choice on it is stored for the session to apply. */
   restored?: string;
   notice?: string;
 }
+/** Stored choices apply on resume when there is no runtime (`resume`), or
+ * once the live runtime reports (`report`). */
 export type AcpRestoredSessionConfig = Omit<
   AcpSessionConfig,
   "runtimeEpoch" | "configRevision" | "removed" | "restored" | "notice"

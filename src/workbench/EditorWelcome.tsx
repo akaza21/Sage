@@ -15,7 +15,8 @@ export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {
   const openView = (view: SidebarView) => setSidebarView(view);
   // Explorer mounts on a later render, its chunk may still be loading on a cold
   // start, and its rows wait for the first listing, so this retries for a few
-  // frames.
+  // frames, giving up if focus moved on (the compact drawer focusing its own
+  // panel doesn't count).
   const browseFiles = (event: MouseEvent<HTMLButtonElement>) => {
     const button = event.currentTarget;
     openView("explorer");

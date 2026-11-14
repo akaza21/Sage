@@ -855,7 +855,6 @@ textarea:disabled,
   }
 }
 
-/* Staggered rows: the Nth child waits N-1 steps; later rows share step 5. */
 @keyframes sage-row-in {
   from {
     opacity: 0.3;

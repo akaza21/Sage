@@ -53,6 +53,7 @@ export function useAgentArtifactFollowLifecycle({
   }, [availableTargets, browseSettled, focusedOwner]);
 }
 
+/** Pins only tabs the user opened; agent-created tabs never pin. */
 export function useSelectOpenedBrowserTab({
   artifacts,
   activeTabId,

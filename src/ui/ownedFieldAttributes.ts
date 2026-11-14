@@ -9,6 +9,7 @@ function apply(field: HTMLElement, values: [string, string | null][]) {
   }
 }
 
+/** Pop-up owners share the field, so each restores what it held before. */
 export function useOwnedFieldAttributes(
   fieldRef: RefObject<HTMLElement | null>,
   active: boolean,

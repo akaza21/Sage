@@ -21,6 +21,8 @@ function sections(
   return out[1] ? out : [{ rows: items }];
 }
 
+/** The field's owner keeps a polite status region mounted beside the field, so
+ * announcements are not lost when the popover mounts. */
 export function TextFieldSuggestions({
   anchorRef,
   ariaLabel,

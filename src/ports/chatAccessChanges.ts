@@ -15,6 +15,7 @@ export interface ChatAccessChanges {
     sessionId: string,
     mode: SessionAccessMode,
   ): Promise<{ turnCancelled?: boolean } | null | undefined>;
+  /** Opens a confirmation and returns the single-use token it expects. */
   prepare(
     sessionId: string,
     mode: SessionAccessMode,

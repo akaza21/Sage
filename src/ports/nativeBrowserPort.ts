@@ -112,6 +112,7 @@ export function hideBrowser(tabId: string): Promise<void> {
   return invokeNative("browser_hide", { tabId });
 }
 
+/** Hides the page while a toolbar popover covers it; Annotate stays on. */
 export function coverBrowser(tabId: string): Promise<void> {
   return invokeNative("browser_hide", { tabId, cover: true });
 }
@@ -127,6 +128,7 @@ export interface BrowserNavigation {
   canGoForward: boolean;
   zoomPercent: number;
   device?: BrowserDevice | null;
+  /** A reset step failed, so some override may still be on the page. */
   deviceUnconfirmed?: boolean;
   error?: string | null;
   printUnavailableReason?: string | null;
@@ -134,6 +136,8 @@ export interface BrowserNavigation {
   deviceUnavailableReason?: string | null;
 }
 
+/** Width and height are the CSS-px viewport; `scalePercent` is the share of
+ * it the page is drawn at to fit the pane. */
 export interface BrowserDevice {
   preset: string;
   width: number;
@@ -267,6 +271,7 @@ export interface BrowserPermissionSnapshot {
     kind: BrowserPermissionKind;
     decision: "allow" | "deny";
   }>;
+  /** An Allow that ended stays in effect until the page reloads. */
   staleAccess: boolean;
 }
 

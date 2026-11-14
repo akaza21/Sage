@@ -10,6 +10,7 @@ export interface ToolbarLayout {
   finish?: () => void;
   targets?: () => Element[];
   inRow?: (record: MutationRecord) => boolean;
+  /** Items keep stable data-overflow-control ids across presentations. */
   focus: {
     items: () => HTMLElement[];
     trigger: () => HTMLElement | null;

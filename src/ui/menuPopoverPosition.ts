@@ -128,8 +128,8 @@ const MAX_CONTAINING_BLOCK_DEPTH = 32;
 /**
  * A popover portalled into an element with a transform, filter or backdrop
  * filter (a modal dialog, for example) is fixed relative to that element, not
- * the viewport; otherwise its placement and the dialog's layout chase each
- * other.
+ * the viewport, so the position is shifted into that box; otherwise its
+ * placement and the dialog's layout chase each other.
  */
 export function inFixedContainingBlock(
   position: CSSProperties,

@@ -56,6 +56,7 @@ interface AcpProjectionState {
   retainedBytes: number;
   retentionIncomplete: boolean;
   activeLoad: AcpPageLoadIntent | null;
+  /** Kept apart from `activeLoad` so a newest-page refresh never drops it. */
   historyLoad: AcpPageLoadIntent | null;
   requestSequence: number;
   pendingChange: AcpProjectionChangedEvent | null;
@@ -66,6 +67,8 @@ interface AcpProjectionState {
   ) => ProjectionNoticeDisposition;
   takeSessionConfigChange: () => AcpSessionConfigChangedV1 | null;
   error: string | null;
+  /** Kept apart from `error` so a refresh and a history load never clear
+   * each other's. */
   historyError: string | null;
   loadNonce: number;
   activateScope: (scope: AcpProjectionScope) => void;

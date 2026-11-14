@@ -78,7 +78,9 @@ export interface UserInputUrl {
 
 export interface UserInputRequest {
   questions: readonly UserInputQuestion[];
+  /** Resolves itself, unanswered, this long after it arrived. */
   autoResolutionMs?: number;
+  /** Present for "open this link"; such a request has no questions. */
   url?: UserInputUrl;
 }
 
@@ -89,6 +91,7 @@ export interface UserInputAnswer {
   text?: string;
 }
 
+/** Cancel with `resolvePermissionDecision` and `deny`. */
 export interface AnswerUserInputRequest {
   projectId: string;
   chatId: string;

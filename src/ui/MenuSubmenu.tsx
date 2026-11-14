@@ -24,6 +24,7 @@ export function MenuSubmenu({
   children: ReactNode;
 }) {
   const triggerRef = useRef<HTMLButtonElement>(null);
+  // So a pointer resting on the item doesn't reopen what Escape just closed.
   const pointerArrived = useRef(false);
   const submenuId = useId();
   const dismiss = () => {

@@ -42,6 +42,7 @@ function place(node: HTMLElement, rect: DOMRect) {
   node.style.top = `${Math.round(top)}px`;
 }
 
+/** The node is aria-hidden because the control keeps its accessible name. */
 export function installTooltipLayer(): () => void {
   const node = document.createElement("div");
   node.className = "tooltip";

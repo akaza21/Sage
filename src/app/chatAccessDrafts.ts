@@ -43,6 +43,7 @@ function takeChatAccessDraft(
   return draft.bindingId === bindingId ? draft.mode : null;
 }
 
+/** The draft is spent even when applying it fails: the new session owns it. */
 export async function spendChatAccessDraft(
   chatId: string,
   session: { id: string; bindingId: string },

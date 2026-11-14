@@ -17,6 +17,7 @@ function safeNotice(value: unknown): SessionNotice | null {
   return { level: value.level as SessionNotice["level"], text, source };
 }
 
+/** Notices are display-only, so a malformed one is dropped, not the page. */
 export function safeSessionNotices(value: unknown): SessionNotice[] {
   if (!Array.isArray(value)) return [];
   return value

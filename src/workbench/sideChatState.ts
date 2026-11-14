@@ -24,6 +24,7 @@ export const useSideChatState = create<{
   pairedId: null,
 }));
 
+/** The "side-" prefix is shared with Rust and fixtures. */
 export const isSideChatId = (id: string | null | undefined) =>
   Boolean(id?.startsWith("side-"));
 

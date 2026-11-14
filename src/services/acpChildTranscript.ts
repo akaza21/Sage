@@ -47,6 +47,7 @@ export type ChildTranscript =
       kind: "current" | "fromEarlierSession";
       retentionLimited: boolean;
       turns: TranscriptTurn[];
+      /** The model the spawn requested, not necessarily the one it ran. */
       spawnModel?: { model: string; reasoningEffort?: string };
     }
   | {

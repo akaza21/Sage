@@ -27,6 +27,7 @@ export interface ChatArchiveSlice {
     projectId?: string,
     report?: ChatActionReport,
   ) => Promise<boolean>;
+  /** Permanent; callers confirm first. */
   deleteChat: (chatId: string, projectId?: string) => Promise<boolean>;
   dismissChatRowError: () => void;
 }

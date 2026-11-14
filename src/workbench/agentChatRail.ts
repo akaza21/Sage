@@ -16,7 +16,6 @@ export const MAX_AGENT_CHAT_MOVE_DESTINATIONS = 32;
 // A foreign project arrives with its first eight chats by last update and its
 // first eight by manual order, so either sort previews the right chats.
 export const MAX_AGENT_RAIL_CHATS_PER_PROJECT = 16;
-// A project lists its first few chats until "Show more" (Codex shows five).
 export const MAX_AGENT_RAIL_PROJECT_PREVIEW_CHATS = 5;
 export const MAX_AGENT_RAIL_CURRENT_CHATS = 64;
 export const MAX_AGENT_RAIL_PIN_IDS = 64;

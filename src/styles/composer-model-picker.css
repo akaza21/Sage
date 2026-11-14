@@ -42,6 +42,7 @@
   opacity: 1;
 }
 
+/* A restored value is muted until the running session reports it. */
 .composer__model-group
   [data-restored]
   :is(.composer__model-label, .composer__effort-label) {

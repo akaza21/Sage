@@ -160,6 +160,7 @@ export function startRepositoryAutoRefresh(
   const onFocus = () => request();
 
   const stopNotices = deps.subscribeNotices((notice) => {
+    // The watcher lost events: poll a while in case the burst is still going.
     if (notice.kind === "resync") {
       const wasPolling = polling();
       resyncPollUntil = performance.now() + RESYNC_POLL_MS;

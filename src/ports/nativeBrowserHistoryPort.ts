@@ -8,6 +8,7 @@ export interface BrowserVisit {
   visitedAt: number;
 }
 
+/** The next page is strictly older than this visit. */
 export interface BrowserHistoryCursor {
   visitedAt: number;
   id: number;

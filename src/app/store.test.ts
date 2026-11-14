@@ -1914,7 +1914,6 @@ describe("workbench resource and project navigation", () => {
 
     useWorkbenchStore.getState().closeTab(chatTab.id);
 
-    // The archive action loads with its first use.
     await vi.waitFor(() => expect(archive).toHaveBeenCalled());
     await vi.waitFor(() => {
       expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
@@ -1953,7 +1952,6 @@ describe("workbench resource and project navigation", () => {
 
     useWorkbenchStore.getState().closeTab(chatTab.id);
 
-    // The archive action loads with its first use.
     await vi.waitFor(() =>
       expect(getWorkbenchPorts().chat.archiveChat).toHaveBeenCalled(),
     );
@@ -2002,7 +2000,6 @@ describe("workbench resource and project navigation", () => {
 
     useWorkbenchStore.getState().closeTab(chatTab.id);
 
-    // The archive action loads with its first use.
     await vi.waitFor(() =>
       expect(getWorkbenchPorts().chat.archiveChat).toHaveBeenCalled(),
     );

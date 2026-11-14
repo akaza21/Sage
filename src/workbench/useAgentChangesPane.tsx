@@ -4,6 +4,8 @@ import { useAgentChangesState, type ChangesOwner } from "./agentChangesState";
 
 import { AgentChangesView, AgentChangesTab } from "./AgentChangesViews";
 
+/** Only a Chat whose loaded projection confirms it has no session yet owns a
+ * sessionless review. */
 export function changesOwnerFor(
   owner: AgentArtifactOwner | null,
   projectId: string | null,
@@ -77,6 +79,8 @@ export function useAgentChangesPane(
   };
 }
 
+/** Only the transition to expanded opens the Chat's changes, so closing the
+ * Changes tab sticks. */
 export function useChangesOnExpand(
   expanded: boolean,
   empty: boolean,

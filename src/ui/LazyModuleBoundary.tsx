@@ -83,7 +83,6 @@ export function DeferredModuleSurface<Props extends object>({
   const [result, setResult] = useState<ModuleResult>(() => {
     const Surface = attempt === 0 ? lazyModules.get(loader) : undefined;
     if (Surface) return { loader, phase: "ready", Surface };
-    // Start the import during the first render; the effect observes its result.
     void loadOnce(loader).catch(() => undefined);
     return { loader, phase: "loading" };
   });

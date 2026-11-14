@@ -217,6 +217,7 @@ export function projectTaskResources(
             if (!invocation) continue;
             const agent = agents.get(invocation);
             const status = agentStatus(state);
+            // A terminal child never returns to working without a new spawn.
             if (
               status &&
               (!agent || liveAgent(agent.status) || !liveAgent(status))

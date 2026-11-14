@@ -142,7 +142,6 @@
   text-align: left;
 }
 
-/* The cells are a grid and a flex row, so the row lays them out side by side. */
 .settings-surface__keymap tr {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

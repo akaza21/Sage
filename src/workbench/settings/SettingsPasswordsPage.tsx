@@ -27,7 +27,6 @@ import {
 } from "./savedPasswords";
 import "./settings-passwords.css";
 
-/** BF-7b-1 Settings › Passwords, after Codex ref 48. */
 export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const desktop = isTauriRuntime();
   const [search, setSearch] = useState("");

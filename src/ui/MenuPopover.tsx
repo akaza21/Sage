@@ -66,6 +66,8 @@ function enabledMenuItems(container: HTMLElement) {
 
 const MENU_KEYS = new Set(["ArrowDown", "ArrowUp", "Home", "End"]);
 
+/** `aria-disabled` items stay focusable so a screen reader can say why they
+ * are unavailable. */
 function menuIndexForKey(key: string, items: HTMLElement[]) {
   return listIndexForKey(
     key,
@@ -131,6 +133,7 @@ export function MenuPopover({
   className?: string;
   focusKey?: string | number | boolean;
   focusStrategy?: FocusStrategy;
+  /** For a body that arrived late: leaves focus where it moved meanwhile. */
   holdFocus?: boolean;
   id: string;
   initialFocus?: InitialFocus;
