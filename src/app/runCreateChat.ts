@@ -37,6 +37,7 @@ export async function runCreateChat(
     chat: ChatPort;
   },
   projectId?: string,
+  chatId: string = crypto.randomUUID(),
 ): Promise<CreateChatResult> {
   const { set, get, applyProjection, loadAuthoritativeProjection, chat } =
     input;
@@ -95,6 +96,7 @@ export async function runCreateChat(
     chat,
     current,
     expectedTransitionEpoch,
+    chatId,
   });
 }
 
@@ -112,12 +114,13 @@ async function createOnActiveProject(input: {
   chat: ChatPort;
   current: ProjectLayoutRequest;
   expectedTransitionEpoch: number;
+  chatId: string;
 }): Promise<CreateChatResult> {
   const { set, get, applyProjection, loadAuthoritativeProjection, chat } =
     input;
   // Native persists this identity as the Chat primary key in the creation
   // transaction. Recovery must never infer ownership from resource layout.
-  const chatId = crypto.randomUUID();
+  const { chatId } = input;
   let committed = false;
   let mutationInvoked = false;
   const classify = (snapshot: BootstrapSnapshot) => {

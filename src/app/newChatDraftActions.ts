@@ -24,6 +24,10 @@ export function createNewChatDraftActions(
     if (draft.submission.status === "submitting") return;
     const attempt = {
       status: "submitting" as const,
+      chatId:
+        draft.submission.status === "released"
+          ? crypto.randomUUID()
+          : draft.submission.chatId,
       creation: draft.submission,
     };
     const submittingDraft = { ...draft, submission: attempt, error: null };

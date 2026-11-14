@@ -3,7 +3,6 @@ import {
   draftChatAccess,
   useChatAccessDrafts,
 } from "../../app/chatAccessDrafts";
-import { useWorkbenchStore } from "../../app/store";
 import { useSessionAccessSelection } from "../../app/useSessionAccessSelection";
 import {
   sessionAccessModeCandidates,
@@ -62,16 +61,10 @@ export function ChatAccessDraftSelection({
       onChange ??
       (!chatId
         ? undefined
-        : (mode: SessionAccessMode) => {
-            const state = useWorkbenchStore.getState();
-            const intent = state.captureChatOwnership(chatId);
-            if (intent)
-              state.chooseChatDraft(intent, () =>
-                draftChatAccess(
-                  chatId,
-                  mode === effective ? null : { bindingId, mode },
-                ),
-              );
-          }),
+        : (mode: SessionAccessMode) =>
+            draftChatAccess(
+              chatId,
+              mode === effective ? null : { bindingId, mode },
+            )),
   });
 }

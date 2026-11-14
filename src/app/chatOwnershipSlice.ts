@@ -10,22 +10,19 @@ import {
   type ChatOwnershipIntent,
 } from "../domain/chatOwnership";
 import { createAttachedContextActions } from "./chatAttachedContextState";
-import {
-  createChatChoiceActions,
-  type ChatChoiceActions,
-} from "./chatChoiceActions";
 import type { WorkbenchState } from "./store";
 import { nextProjectGeneration } from "./projectIntent";
-import {
-  editedChatEntry as edited,
-  emptyChatOwnershipEntry as emptyEntry,
-} from "./chatOwnershipProjection";
+import { emptyChatOwnershipEntry as emptyEntry } from "./chatOwnershipProjection";
 
-export interface ChatOwnershipSlice extends ChatChoiceActions {
+export interface ChatOwnershipSlice {
   chatOwnershipEpoch: number;
   chatUiById: Record<string, ChatOwnershipEntry>;
   chatError: string | null;
   captureChatOwnership: (chatId?: string) => ChatOwnershipIntent | null;
+  setChatHarnessSelection: (
+    intent: ChatOwnershipIntent,
+    selection: { harnessId: string | null; modelId: string | null },
+  ) => boolean;
   setChatComposer: (intent: ChatOwnershipIntent, text: string) => boolean;
   attachChatContext: (
     intent: ChatOwnershipIntent,
@@ -116,7 +113,18 @@ export const createChatOwnershipSlice: StateCreator<
       transitionEpoch: state.nativeTransitionEpoch,
     };
   },
-  ...createChatChoiceActions(set, get, ownsChat),
+  setChatHarnessSelection: (intent, selection) => {
+    const state = get();
+    if (!ownsChat(state, intent)) return false;
+    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
+    set({
+      chatUiById: {
+        ...state.chatUiById,
+        [intent.chatId]: { ...entry, ...selection },
+      },
+    });
+    return true;
+  },
   setChatComposer: (intent, text) => {
     const state = get();
     if (!ownsChat(state, intent)) return false;
@@ -137,7 +145,7 @@ export const createChatOwnershipSlice: StateCreator<
       return false;
     }
     const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
-    const updated = { ...edited(entry), composerText };
+    const updated = { ...entry, composerText };
     const active = activeChatId(state) === intent.chatId;
     set({
       chatUiById: { ...state.chatUiById, [intent.chatId]: updated },
@@ -240,7 +248,7 @@ export const createChatOwnershipSlice: StateCreator<
         chatUiById: {
           ...state.chatUiById,
           [active.id]: {
-            ...edited(state.chatUiById[active.id] ?? emptyEntry()),
+            ...(state.chatUiById[active.id] ?? emptyEntry()),
             composerText,
           },
         },

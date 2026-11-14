@@ -10,6 +10,7 @@ import {
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
 import type { CreateChatResult } from "./runCreateChat";
+import { draftOwnedChatId } from "./newChatDraftSlice";
 import {
   commitIdentityChatResult,
   createChatTransitionContext,
@@ -20,7 +21,10 @@ import {
 } from "./chatTransitions";
 
 export interface ChatSlice {
-  createChat: (projectId?: string) => Promise<CreateChatResult>;
+  createChat: (
+    projectId?: string,
+    chatId?: string,
+  ) => Promise<CreateChatResult>;
   pinChat: (chatId: string, projectId?: string) => Promise<void>;
   moveChat: (
     chatId: string,
@@ -52,6 +56,10 @@ export const createChatSlice: StateCreator<
 
   return {
     activateChat: async (chatId, requestedTabs, submission) => {
+      if (!submission && chatId === draftOwnedChatId(get())) {
+        set({ agentCenter: "draft" });
+        return;
+      }
       const current = currentProjectLayout(get());
       const tabs = requestedTabs ?? current?.tabs;
       if (
@@ -298,7 +306,7 @@ export const createChatSlice: StateCreator<
       }
     },
 
-    createChat: async (projectId) => {
+    createChat: async (projectId, chatId) => {
       const source = get();
       const { runCreateChat } = await import("./runCreateChat");
       if (
@@ -315,6 +323,7 @@ export const createChatSlice: StateCreator<
           chat,
         },
         projectId,
+        chatId,
       );
     },
   };

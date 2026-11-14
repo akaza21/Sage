@@ -6,8 +6,12 @@ import type { WorkbenchState } from "./store";
 
 export type DraftCreation =
   | { status: "released" }
-  | { status: "created"; chatId: string; editRevision: number }
-  | { status: "unconfirmed"; reconcile: () => Promise<CreateChatResult> };
+  | { status: "created"; chatId: string }
+  | {
+      status: "unconfirmed";
+      chatId: string;
+      reconcile: () => Promise<CreateChatResult>;
+    };
 
 export interface NewChatDraft {
   /** Stable across immutable edits and project ownership recovery. */
@@ -18,7 +22,9 @@ export interface NewChatDraft {
   modelId: string | null;
   access: SessionAccessMode | null;
   effort: string | null;
-  submission: DraftCreation | { status: "submitting"; creation: DraftCreation };
+  submission:
+    | DraftCreation
+    | { status: "submitting"; chatId: string; creation: DraftCreation };
   error: string | null;
 }
 
@@ -33,8 +39,8 @@ export interface NewChatDraftSlice {
         projectId: string;
         chatId: string;
         ownershipEpoch: number;
-        /** The chat's revision once handed the prompt; any edit cancels. */
-        editRevision: number;
+        /** The text handed to the chat; an edit to it cancels the send. */
+        text: string;
       }
     | null;
   openNewChatDraft: (projectId?: string) => Promise<unknown>;
@@ -78,6 +84,21 @@ export const createNewChatDraftSlice: StateCreator<
       actions?.reloadNewChatDraft() ?? Promise.resolve(),
   };
 };
+
+/**
+ * The chat a draft is creating or has created. Until the draft hands off its
+ * prompt, opening that chat shows the draft, so the draft stays its only
+ * editing surface.
+ */
+export function draftOwnedChatId(
+  state: Pick<WorkbenchState, "newChatDraft" | "project">,
+) {
+  const draft = state.newChatDraft;
+  return draft?.projectId === state.project?.id &&
+    draft?.submission.status !== "released"
+    ? (draft?.submission.chatId ?? null)
+    : null;
+}
 
 export function projectNewChatDraft(
   state: Pick<WorkbenchState, "project">,

@@ -1037,62 +1037,7 @@ it("cancels a retained draft's retry when the user leaves and returns during its
   });
 });
 
-it("never overwrites what the user typed into the created chat before its handoff", async () => {
-  const before = await ports.project.getBootstrapSnapshot();
-  let release!: () => void;
-  vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
-    .mockResolvedValue(undefined)
-    .mockImplementationOnce(
-      () =>
-        new Promise<void>((resolve) => {
-          release = resolve;
-        }),
-    );
-  mount();
-  await settleLazyModules();
-  fireEvent.change(composer(), { target: { value: "Draft prompt" } });
-  let sending!: Promise<void>;
-  act(() => {
-    sending = useWorkbenchStore.getState().sendNewChatDraft();
-  });
-  await waitFor(() => expect(release).toBeTypeOf("function"));
-  const created = await ports.project.getBootstrapSnapshot();
-  const chatId = created.activeTabId!;
-  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
-  await settleLazyModules();
-  fireEvent.change(composer(), { target: { value: "My own words" } });
-  await act(async () => {
-    release();
-    await sending;
-  });
-  await settleLazyModules();
-  expect(composer()).toHaveValue("My own words");
-  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
-    text: "Draft prompt",
-    submission: { status: "created", chatId },
-  });
-
-  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
-  await settleLazyModules();
-  expect(useWorkbenchStore.getState().chatUiById[chatId].composerText).toBe(
-    "My own words",
-  );
-  expect(useWorkbenchStore.getState().newChatDraft?.text).toBe("Draft prompt");
-  expect(prompts).toEqual([]);
-
-  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
-  await settleLazyModules();
-  fireEvent.change(composer(), { target: { value: "" } });
-  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
-  await waitFor(() => expect(prompts).toHaveLength(1));
-  expect(prompts[0]).toMatchObject({ chatId, prompt: "Draft prompt" });
-  expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(
-    created.tabs,
-  );
-  expect(created.tabs).toHaveLength(before.tabs.length + 1);
-});
-
-it("keeps the model chosen in the created chat through a refused handoff and its retry", async () => {
+it("shows the draft, not its chat, when the chat it is creating is opened", async () => {
   let release!: () => void;
   vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
     .mockResolvedValue(undefined)
@@ -1111,27 +1056,91 @@ it("keeps the model chosen in the created chat through a refused handoff and its
   });
   await waitFor(() => expect(release).toBeTypeOf("function"));
   const chatId = (await ports.project.getBootstrapSnapshot()).activeTabId!;
-  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
+  await act(async () => useWorkbenchStore.getState().activateChat(chatId));
   await settleLazyModules();
-  fireEvent.click(screen.getByRole("button", { name: "Model" }));
-  fireEvent.click(await screen.findByRole("option", { name: /Model B/ }));
-  fireEvent.change(composer(), { target: { value: "Mine" } });
+  expect(useWorkbenchStore.getState().agentCenter).toBe("draft");
+  expect(screen.getByRole("region", { name: "New chat draft" })).toBeVisible();
+  expect(composer()).toHaveValue("Draft prompt");
+  expect(
+    useWorkbenchStore.getState().chatUiById[chatId]?.composerText ?? "",
+  ).toBe("");
   await act(async () => {
     release();
     await sending;
   });
-  await settleLazyModules();
-  expect(useWorkbenchStore.getState().newChatDraft?.error).toMatch(
-    /already has a message/,
-  );
-  fireEvent.change(composer(), { target: { value: "" } });
-  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
   await waitFor(() => expect(prompts).toHaveLength(1));
   expect(prompts[0]).toMatchObject({ chatId, prompt: "Draft prompt" });
-  expect(starts[0]?.modelId).toBe("model-b");
-  expect(useWorkbenchStore.getState().chatUiById[chatId].modelId).toBe(
-    "model-b",
+});
+
+it("hands a retried draft's model, access and effort to the chat it created", async () => {
+  let release!: () => void;
+  vi.spyOn(workspaceNotify, "bindWorkspaceNotifyFromState")
+    .mockResolvedValue(undefined)
+    .mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+  mount();
+  await settleLazyModules();
+  act(() =>
+    useWorkbenchStore.getState().updateNewChatDraft({
+      text: "Draft prompt",
+      access: "ask",
+      effort: "high",
+    }),
   );
+  let sending!: Promise<void>;
+  act(() => {
+    sending = useWorkbenchStore.getState().sendNewChatDraft();
+  });
+  await waitFor(() => expect(release).toBeTypeOf("function"));
+  const chatId = (await ports.project.getBootstrapSnapshot()).activeTabId!;
+  const bootstrap = ports.project.getBootstrapSnapshot.bind(ports.project);
+  vi.spyOn(ports.project, "getBootstrapSnapshot").mockImplementation(async () =>
+    withHarnessSnapshot(await bootstrap()),
+  );
+  vi.spyOn(ports.project, "switchProject").mockRejectedValueOnce(
+    new Error("Switch refused"),
+  );
+  await act(async () =>
+    useWorkbenchStore.getState().switchProject("missing-project"),
+  );
+  await act(async () => {
+    release();
+    await sending;
+  });
+  expect(useWorkbenchStore.getState().newChatDraft?.submission).toMatchObject({
+    status: "created",
+    chatId,
+  });
+  let handed: unknown;
+  const unsubscribe = useWorkbenchStore.subscribe((state, previous) => {
+    if (previous.newChatDraft && !state.newChatDraft)
+      handed = {
+        selection: state.chatUiById[chatId],
+        access: useChatAccessDrafts.getState().drafts[chatId],
+        effort: useChatEffortDraft.getState().draft,
+      };
+  });
+  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+  unsubscribe();
+  expect(handed).toMatchObject({
+    selection: {
+      harnessId: harness.id,
+      modelId: "model-a",
+      composerText: "Draft prompt",
+    },
+    access: { bindingId: harness.bindingId, mode: "ask" },
+    effort: {
+      chatId,
+      bindingId: harness.bindingId,
+      modelId: "model-a",
+      effort: "high",
+    },
+  });
 });
 
 it("does not auto-send a handed-off prompt the user edits before the chat's page loads", async () => {

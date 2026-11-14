@@ -44,7 +44,7 @@ export function FirstChatSend({
     );
     if (
       entry?.composerText &&
-      (entry.editRevision ?? 0) === pending.editRevision &&
+      entry.composerText === pending.text &&
       harness?.bindingId
     )
       void actions.submit(

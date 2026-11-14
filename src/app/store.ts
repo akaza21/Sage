@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   createNewChatDraftSlice,
+  draftOwnedChatId,
   type NewChatDraftSlice,
 } from "./newChatDraftSlice";
 
@@ -226,6 +227,8 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       if (!tab) {
         return;
       }
+      if (!submission && tab.id === draftOwnedChatId(get()))
+        return get().activateChat(tab.id);
       if (get().pendingFirstSend !== submission)
         set({ pendingFirstSend: null });
       if (

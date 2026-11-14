@@ -26,11 +26,6 @@ export interface ChatTurnOrder {
 
 export interface ChatOwnershipEntry {
   composerText: string;
-  /**
-   * Advances on every edit of the composer or of the chat's setup choices, so
-   * deferred work can tell whether the chat was edited since it looked.
-   */
-  editRevision?: number;
   attachedContext: readonly AttachedContext[];
   queuedPrompts?: readonly QueuedChatPrompt[];
   knownTurnOrder?: ChatTurnOrder | null;

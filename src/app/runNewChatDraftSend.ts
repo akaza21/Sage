@@ -11,7 +11,11 @@ export async function runNewChatDraftSend(
   set: StoreApi<WorkbenchState>["setState"],
   get: StoreApi<WorkbenchState>["getState"],
   attempt: NewChatDraft & {
-    submission: { status: "submitting"; creation: DraftCreation };
+    submission: {
+      status: "submitting";
+      chatId: string;
+      creation: DraftCreation;
+    };
   },
   submission: NonNullable<WorkbenchState["pendingFirstSend"]>,
 ) {
@@ -42,20 +46,17 @@ export async function runNewChatDraftSend(
     if (creation.status !== "created") {
       const result = await (creation.status === "unconfirmed"
         ? creation.reconcile()
-        : initial.createChat());
+        : initial.createChat(undefined, attempt.submission.chatId));
       // Record the durable result before validating this attempt's ownership.
       // A recovered project can invalidate the attempt, never its creation.
       switch (result.status) {
         case "confirmed":
-          creation = {
-            status: "created",
-            chatId: result.chatId,
-            editRevision: get().chatUiById[result.chatId]?.editRevision ?? 0,
-          };
+          creation = { status: "created", chatId: result.chatId };
           break;
         case "unconfirmed":
           creation = {
             status: "unconfirmed",
+            chatId: attempt.submission.chatId,
             reconcile: result.reconcile ?? (() => Promise.resolve(result)),
           };
           throw new Error(
@@ -70,7 +71,7 @@ export async function runNewChatDraftSend(
       }
     }
     current();
-    const { chatId, editRevision } = creation;
+    const { chatId } = creation;
     if (get().archivedChats.some((chat) => chat.id === chatId)) {
       if (!(await get().restoreChat(chatId)))
         throw new Error(
@@ -83,45 +84,33 @@ export async function runNewChatDraftSend(
     const owner = state.captureChatOwnership(chatId);
     if (!owner || state.activeTabId !== chatId)
       throw new Error("Could not open the created chat. Retry to continue.");
-    const entry = state.chatUiById[chatId];
-    if (entry?.composerText || entry?.attachedContext.length)
-      throw new Error(
-        "The new chat already has a message, so this prompt stays here. Clear that message to retry.",
-      );
     // From here through clearing the draft, handoff is synchronous. No project
     // transition can erase the composer between its assignment and release.
-    // Choices made in the chat since its creation are the user's and stay.
-    if ((entry?.editRevision ?? 0) === editRevision) {
-      state.setChatHarnessSelection(owner, {
-        harnessId: choice.harnessId,
-        modelId: choice.modelId,
+    state.setChatHarnessSelection(owner, {
+      harnessId: choice.harnessId,
+      modelId: choice.modelId,
+    });
+    if (choice.access)
+      draftChatAccess(chatId, {
+        bindingId: choice.bindingId,
+        mode: choice.access,
       });
-      if (choice.access)
-        draftChatAccess(chatId, {
+    if (choice.modelId && choice.effort)
+      useChatEffortDraft.setState({
+        draft: {
+          chatId,
           bindingId: choice.bindingId,
-          mode: choice.access,
-        });
-      if (choice.modelId && choice.effort)
-        useChatEffortDraft.setState({
-          draft: {
-            chatId,
-            bindingId: choice.bindingId,
-            modelId: choice.modelId,
-            effort: choice.effort,
-          },
-        });
-    }
+          modelId: choice.modelId,
+          effort: choice.effort,
+        },
+      });
     state.setChatComposer(owner, draft.text);
     set({
       newChatDraft: null,
       agentCenter: "chat",
       pendingFirstSend:
         state.pendingFirstSend === submission
-          ? {
-              ...submission,
-              chatId,
-              editRevision: get().chatUiById[chatId]?.editRevision ?? 0,
-            }
+          ? { ...submission, chatId, text: draft.text }
           : null,
     });
     return { submission: creation, error: "" };
