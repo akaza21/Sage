@@ -148,7 +148,8 @@ impl<T: CdpTransport> CdpPort<T> {
         }
     }
 
-    /// Cached across navigations; reread when the target changes.
+    /// Cached across navigations; reread once per navigation when a world cannot
+    /// be made with it (a swapped target).
     fn main_frame_id(
         &self,
         read_only: bool,
