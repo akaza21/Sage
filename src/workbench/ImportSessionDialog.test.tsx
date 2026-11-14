@@ -6,13 +6,14 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import type * as NativeSessionImport from "../services/nativeSessionImport";
 
 const { listNativeSessions, importNativeSession } = vi.hoisted(() => ({
   listNativeSessions: vi.fn(),
   importNativeSession: vi.fn(),
 }));
 vi.mock("../services/nativeSessionImport", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("../services/nativeSessionImport")>()),
+  ...(await importOriginal<typeof NativeSessionImport>()),
   listNativeSessions,
   importNativeSession,
 }));
