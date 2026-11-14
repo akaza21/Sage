@@ -20,11 +20,26 @@ impl Lane<'_> {
         self.runtime
             .reserve_start(prepared.owner.clone())
             .map_err(map_slot_error)?;
+        if matches!(
+            prepared.intent.mode,
+            crate::acp::runtime::ActivationMode::New { .. }
+        ) {
+            self.runtime.config.mark_new_session(&prepared.owner);
+        }
+        prepared.runtime.bind_activation(&prepared.intent.mode);
         let mut spec = match prepared.runtime.launch_spec() {
             Ok(spec) => spec,
-            Err(_) => {
+            Err(error) => {
                 let _ = self.runtime.abandon_start(&prepared.owner);
-                return Err(CodexSessionError::Intent);
+                return Err(
+                    if error
+                        == crate::acp::bindings::adapter::AdapterRuntimeError::RewindUnavailable
+                    {
+                        CodexSessionError::RewindUnavailable
+                    } else {
+                        CodexSessionError::Intent
+                    },
+                );
             }
         };
         spec.absolute_cleanup_deadline = Some(cleanup_deadline);
@@ -132,10 +147,16 @@ impl Lane<'_> {
         };
         prepared
             .runtime
+            .attach_commands(abort.owner.clone(), Arc::clone(&self.runtime.commands));
+        prepared
+            .runtime
             .attach_config(abort.owner.clone(), Arc::clone(&self.runtime.config));
         prepared
             .runtime
             .attach_goal(abort.owner.clone(), Arc::clone(&self.runtime.goal));
+        prepared
+            .runtime
+            .attach_usage(abort.owner.clone(), Arc::clone(&self.runtime.usage));
         let pump = match ActivationPump::new_retained(
             prepared.runtime,
             CoordinatorActivationJournal::new(session_lease),
@@ -301,6 +322,7 @@ impl Lane<'_> {
             &runner,
             &self.codex_recovery,
             Arc::clone(&active),
+            Arc::clone(&self.file_stages),
             #[cfg(any(debug_assertions, feature = "diagnostics"))]
             Arc::clone(&self.codex_runtime_identity),
         );

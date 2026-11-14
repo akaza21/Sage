@@ -10,7 +10,13 @@ impl PiRuntime {
     ) -> Result<ConfigReply, AdapterRuntimeError> {
         self.current_model = state.model.as_ref().map(model_key).transpose()?;
         self.current_thinking = state.thinking_level;
-        let _ = (state.has_session, state.is_streaming);
+        self.auto_compaction = state.auto_compaction;
+        let _ = state.is_streaming;
+        self.session_dir = state
+            .session_file
+            .as_deref()
+            .and_then(|file| std::path::Path::new(file).parent())
+            .map(std::path::Path::to_path_buf);
         if (self.refresh_thinking_after_model || self.available_thinking.is_empty())
             && self.active_turn.is_some()
             && self.thinking_request_command.is_none()

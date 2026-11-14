@@ -5,11 +5,18 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, expect, it, vi } from "vitest";
+import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
+
+// The header menu body loads when the window first idles.
+beforeAll(() => preloadAgentHeaderMenu());
 import { useWorkbenchStore } from "../app/store";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import type * as ResourcesChunk from "./AgentTaskResources";
+// Only the resources chunk is held cold here. The rename menu's chunk loads
+// with the file, so opening it never races a cold import against findByRole.
+import "./ProjectChatActionPopover";
 
 const gate = vi.hoisted(() => {
   let finish!: () => void;
@@ -52,7 +59,18 @@ it("cancels cold resources and rename on outside pointer, Escape and Tab before 
   );
   const outside = screen.getByRole("button", { name: "Composer" });
   const resources = screen.getByRole("button", { name: "Show chat resources" });
-  const rename = screen.getByRole("button", { name: "Rename chat" });
+  const actions = screen.getByRole("button", {
+    name: "Chat actions for Pending header task",
+  });
+  const openRename = async () => {
+    fireEvent.click(actions);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+    );
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Rename chat" }),
+    );
+  };
   resources.focus();
   fireEvent.keyDown(resources, { key: "Tab" });
   for (const key of ["Escape", "Tab", null]) {
@@ -65,18 +83,17 @@ it("cancels cold resources and rename on outside pointer, Escape and Tab before 
       fireEvent.pointerDown(outside);
     }
     expect(resources).toHaveAttribute("aria-expanded", "false");
-    rename.focus();
-    fireEvent.click(rename);
+    await openRename();
     expect(screen.getByText("Pending header")).toBeVisible();
-    if (key) fireEvent.keyDown(rename, { key });
+    expect(resources).toHaveFocus();
+    if (key) fireEvent.keyDown(resources, { key });
     else {
       outside.focus();
       fireEvent.pointerDown(outside);
     }
-    expect(rename).not.toBeDisabled();
+    expect(actions).not.toBeDisabled();
   }
-  rename.focus();
-  fireEvent.click(rename);
+  await openRename();
   mounted.rerender(
     <>
       <button>Composer</button>

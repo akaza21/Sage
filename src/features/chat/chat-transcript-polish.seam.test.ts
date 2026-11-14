@@ -18,7 +18,7 @@ describe("Chat transcript polish stylesheet seam", () => {
     );
     expect(acpCss).toMatch(/\.acp-turn__header\s*\{[^}]*grid-column:\s*1;/s);
     expect(transcriptCss).toMatch(
-      /\.message-list__content\s*\{[^}]*width:\s*min\(100%, var\(--reading-measure\)\);[^}]*margin-inline:\s*auto;/s,
+      /\.message-list__content\s*\{[^}]*width:\s*min\(100%, var\(--chat-column-measure\)\);[^}]*margin-inline:\s*auto;/s,
     );
   });
 
@@ -28,7 +28,7 @@ describe("Chat transcript polish stylesheet seam", () => {
       readFile(resolve("src/styles/changed-files-summary.css"), "utf8"),
     ]);
     expect(transcriptCss).toMatch(
-      /\.message-list__content\s*\{[^}]*width:\s*min\(100%, var\(--reading-measure\)\);[^}]*margin-inline:\s*auto;/s,
+      /\.message-list__content\s*\{[^}]*width:\s*min\(100%, var\(--chat-column-measure\)\);[^}]*margin-inline:\s*auto;/s,
     );
     expect(diffCss).toMatch(
       /\.acp-file-changes\s*\{[^}]*width:\s*var\(--edit-summary-width, min\(100%, var\(--reading-measure\)\)\);[^}]*margin:\s*var\(--edit-summary-margin, var\(--space-3\) auto 0\);/s,
@@ -40,21 +40,25 @@ describe("Chat transcript polish stylesheet seam", () => {
       resolve("src/features/chat/chat-transcript-polish.css"),
       "utf8",
     );
+    const activityCss = await readFile(
+      resolve("src/features/chat/acp/acp-activity-details.css"),
+      "utf8",
+    );
 
     expect(transcriptCss).toMatch(
-      /\.chat-transcript-work__groups \.acp-tool-rollup\s*\{[^}]*color:\s*color-mix\(\s*in srgb,\s*var\(--color-text-secondary\) 75%,\s*var\(--color-text-muted\)\s*\);[^}]*font-weight:\s*var\(--font-weight-regular\);/s,
+      /\.chat-transcript-work__groups \.acp-tool-rollup\s*\{[^}]*color:\s*var\(--color-text-secondary\);[^}]*font-weight:\s*var\(--font-weight-regular\);/s,
     );
     expect(transcriptCss).toMatch(
       /\.chat-transcript-work__groups \.acp-tool-rollup__meta\s*\{\s*display:\s*contents;/s,
     );
-    expect(transcriptCss).toMatch(
-      /\.chat-transcript-work__groups \.acp-tool-rollup__chevron\s*\{[^}]*opacity:\s*0;/s,
+    expect(activityCss).toMatch(
+      /\.acp-tool-rollup__chevron\s*\{[^}]*opacity:\s*0;/s,
+    );
+    expect(activityCss).toMatch(
+      /\.acp-tool-rollup > summary:hover[\s\S]*\.acp-tool-rollup__chevron[\s\S]*opacity:\s*1;/,
     );
     expect(transcriptCss).toMatch(
-      /\.chat-transcript-work__groups \.acp-tool-rollup > summary:hover[\s\S]*\.acp-tool-rollup__chevron[\s\S]*opacity:\s*1;/,
-    );
-    expect(transcriptCss).toMatch(
-      /\.chat-transcript-work > summary,\s*\.chat-transcript-work__heading\s*\{[^}]*border-bottom:\s*1px solid var\(--color-border-subtle\);/s,
+      /\.chat-transcript-work > summary,\s*\.chat-transcript-work__heading\s*\{[^}]*border-bottom:\s*var\(--border-width\) solid var\(--agent-shell-divider\);/s,
     );
     expect(transcriptCss).toMatch(
       /\.chat-transcript-work > summary\s*\{[^}]*cursor:\s*pointer;/s,
@@ -80,13 +84,12 @@ describe("Chat transcript polish stylesheet seam", () => {
       /\.acp-message--assistant,[\s\S]*?\.acp-message--system\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/,
     );
     expect(css).toMatch(
-      /\.acp-message--user\s*\{[^}]*max-width:\s*min\(100%, var\(--reading-measure-compact\)\);[^}]*border-radius:\s*var\(--radius-xl\);[^}]*background:\s*var\(--agent-shell-user-bubble\);/s,
+      /\.acp-message--user\s*\{[^}]*max-width:\s*70%;[^}]*border-radius:\s*var\(--radius-xl\);[^}]*background:\s*var\(--agent-shell-user-bubble\);/s,
     );
     expect(tokens).toMatch(/--radius-xl:\s*16px;/);
-    expect(tokens).toMatch(/--agent-shell-user-bubble:\s*#2f2f2f;/);
   });
 
-  it("declares hidden turn decorations and borderless tool/browser detail", async () => {
+  it("omits gutter decorations and declares borderless tool/browser detail", async () => {
     const css = (
       await Promise.all([
         readFile(
@@ -96,10 +99,10 @@ describe("Chat transcript polish stylesheet seam", () => {
         readFile(resolve("src/features/chat/acp/acp-chat.css"), "utf8"),
       ])
     ).join("\n");
-    expect(css).toMatch(/\.acp-turn::before\s*\{[^}]*display:\s*none;/s);
+    expect(css).not.toMatch(/\.acp-turn(?::|\[[^\]]+\]::)before/);
     expect(css).toMatch(/\.acp-turn__state\s*\{[^}]*display:\s*none;/s);
     expect(css).toMatch(
-      /\.chat-transcript-work > summary,\s*\.chat-transcript-work__heading\s*\{[^}]*border-bottom:\s*1px solid var\(--color-border-subtle\);/s,
+      /\.chat-transcript-work > summary,\s*\.chat-transcript-work__heading\s*\{[^}]*border-bottom:\s*var\(--border-width\) solid var\(--agent-shell-divider\);/s,
     );
     expect(css).toMatch(
       /\.chat-transcript-work__groups \.acp-tool-rollup__items \.acp-tool-card\s*\{[^}]*border:\s*0;[^}]*background:\s*transparent;/s,

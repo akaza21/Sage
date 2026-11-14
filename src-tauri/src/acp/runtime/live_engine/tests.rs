@@ -243,7 +243,12 @@ fn possible_bytes_commit_delivery_unknown_without_retry() {
     let host = super::super::RuntimeHost::start(engine).unwrap();
     let owner = owner();
     host.activate(owner.clone()).unwrap();
-    assert_eq!(host.send(prompt(&owner)), Err(HostError::DeliveryUnknown));
+    assert_eq!(
+        host.send(prompt(&owner)),
+        Err(crate::acp::intent::PromptSendError::unknown(
+            HostError::DeliveryUnknown
+        ))
+    );
     assert_eq!(
         trace.values(),
         vec![

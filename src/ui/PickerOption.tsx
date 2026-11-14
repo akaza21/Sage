@@ -1,5 +1,6 @@
 import { memo } from "react";
 import { Check } from "./leanIcons";
+import { PickerLogo } from "./PickerLogo";
 import type { SearchablePickerOption } from "./SearchablePicker";
 
 export const PickerOption = memo(function PickerOption({
@@ -9,7 +10,6 @@ export const PickerOption = memo(function PickerOption({
   id,
   onSelect,
   onActivate,
-  onOptionElement,
   onRender,
   selected,
   showSelectedCheck = false,
@@ -19,7 +19,6 @@ export const PickerOption = memo(function PickerOption({
   disabled?: boolean;
   id: string;
   onActivate?: (id: string) => void;
-  onOptionElement?: (id: string, element: HTMLButtonElement | null) => void;
   onRender?: (id: string) => void;
   onSelect: (id: string) => void;
   selected: boolean;
@@ -28,9 +27,8 @@ export const PickerOption = memo(function PickerOption({
   onRender?.(candidate.id);
   const unavailable = disabled || Boolean(candidate.disabledReason);
   const logo = candidate.logo ?? candidate.icon;
-  return (
+  const option = (
     <button
-      ref={(element) => onOptionElement?.(candidate.id, element)}
       id={id}
       type="button"
       role="option"
@@ -55,6 +53,11 @@ export const PickerOption = memo(function PickerOption({
             {candidate.subtitle}
           </span>
         ) : null}
+        {candidate.disabledReason ? (
+          <span id={`${id}-reason`} className="searchable-picker__reason">
+            {candidate.disabledReason}
+          </span>
+        ) : null}
       </span>
       {selected && (logo || showSelectedCheck) ? (
         <Check
@@ -63,35 +66,26 @@ export const PickerOption = memo(function PickerOption({
           aria-hidden="true"
         />
       ) : null}
-      {candidate.disabledReason ? (
-        <span id={`${id}-reason`} className="searchable-picker__reason">
-          {candidate.disabledReason}
-        </span>
-      ) : null}
     </button>
   );
-});
-
-/** Official marks use external path data; custom and unavailable marks keep their existing assets. */
-export function PickerLogo({ logo, icon }: { logo?: string; icon?: string }) {
-  const builtin = `/harness-${icon}.svg`;
-  const src = logo ?? builtin;
-  return src === builtin && (icon === "claude" || icon === "codex") ? (
-    <svg
-      className="harness-icon"
-      viewBox="0 0 24 24"
-      aria-hidden="true"
-      focusable="false"
-      data-harness-icon={icon}
-    >
-      <use href={`${src}#mark`} />
-    </svg>
+  const action = candidate.action;
+  return action ? (
+    <div className="searchable-picker__option-row" role="none">
+      {option}
+      <button
+        type="button"
+        className="searchable-picker__option-action"
+        aria-label={action.accessibleLabel ?? action.label}
+        disabled={disabled}
+        onClick={(event) => {
+          event.stopPropagation();
+          action.onAction();
+        }}
+      >
+        {action.label}
+      </button>
+    </div>
   ) : (
-    <img
-      src={src}
-      alt=""
-      aria-hidden="true"
-      data-harness-icon={icon ?? "generic"}
-    />
+    option
   );
-}
+});

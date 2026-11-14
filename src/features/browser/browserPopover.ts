@@ -1,5 +1,10 @@
 import { useEffect, useRef, type KeyboardEvent, type RefObject } from "react";
 
+import {
+  hasNavigationModifier,
+  listIndexForKey,
+} from "../../ui/listNavigation";
+
 /**
  * Closes an open toolbar popover when a pointer goes down outside every one
  * of `within`. A covering popover hides the native page, so outside clicks
@@ -43,22 +48,24 @@ export function browserMenuKeyDown(
     dismiss();
     return;
   }
-  if (!["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key)) return;
+  if (
+    !["ArrowUp", "ArrowDown", "Home", "End"].includes(event.key) ||
+    hasNavigationModifier(event)
+  )
+    return;
+  // Overflowed form controls retain their native navigation keys.
+  if ((event.target as Element).closest("select, input, textarea")) return;
   event.preventDefault();
   const items = Array.from(
     menu?.querySelectorAll<HTMLButtonElement>(
       '[role="menuitem"]:not(:disabled)',
     ) ?? [],
   );
-  if (!items.length) return;
-  const current = items.indexOf(document.activeElement as HTMLButtonElement);
-  const next =
-    event.key === "Home"
-      ? 0
-      : event.key === "End"
-        ? items.length - 1
-        : event.key === "ArrowDown"
-          ? (current + 1) % items.length
-          : (current - 1 + items.length) % items.length;
-  items[next]?.focus();
+  const next = listIndexForKey(
+    event.key,
+    items.indexOf(document.activeElement as HTMLButtonElement),
+    items.map(() => false),
+    { orientation: "vertical", wrap: true },
+  );
+  if (next !== null) items[next].focus();
 }

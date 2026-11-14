@@ -273,7 +273,7 @@ fn native_pi_subprocess_real_binding_pump_sqlite_settlement_and_idle_configurati
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(external, "pi-session-1-1");
+            assert_eq!(external, "2026-01-01T00-00-00-000Z_fixture-pi-session");
             reopened.shutdown_blocking().unwrap();
             drop(reopened);
             fs::remove_dir_all(directory).unwrap();

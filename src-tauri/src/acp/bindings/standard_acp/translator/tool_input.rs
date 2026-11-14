@@ -1,13 +1,14 @@
 use serde_json::{Map, Value};
 
-use super::super::profile::StandardAcpProfile;
 use super::StandardAcpTranslator;
 use crate::acp::{
     bindings::command_summary::sanitize_command_summary, contract::SafeText, intent::ToolCategory,
 };
 
+/// ACP leaves `rawInput` free-form; an execute tool's `command` string is the
+/// one shape agents share for the command line, so it is read for every
+/// agent rather than per harness.
 pub(super) fn command_input_patch(
-    profile: &StandardAcpProfile,
     category: ToolCategory,
     update: &Map<String, Value>,
 ) -> Option<Option<SafeText<65536>>> {
@@ -17,9 +18,20 @@ pub(super) fn command_input_patch(
     if category != ToolCategory::Execute {
         return None;
     }
-    let field = profile.command_input_field?;
-    let command = update.get("rawInput")?.as_object()?.get(field)?;
+    let command = update.get("rawInput")?.as_object()?.get("command")?;
     Some(command.as_str().and_then(sanitized_command_input))
+}
+
+/// The exit status an execute tool reports in `rawOutput`, in the ACP
+/// `TerminalExitStatus` spelling (`exitCode`) or the snake-case one agents
+/// that run commands themselves use.
+pub(super) fn command_exit_code(update: &Map<String, Value>) -> Option<i32> {
+    let output = update.get("rawOutput")?.as_object()?;
+    output
+        .get("exitCode")
+        .or_else(|| output.get("exit_code"))?
+        .as_i64()
+        .and_then(|code| i32::try_from(code).ok())
 }
 
 /// A standard ACP `fetch` tool whose raw input carries a query and no URL is

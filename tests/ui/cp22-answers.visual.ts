@@ -5,12 +5,7 @@ import {
   settleTranscriptAtEnd,
 } from "./shared/visualBrowserPrimitives";
 import { revealWorkedContent } from "./agentVisualHelpers";
-import {
-  flowchartSource,
-  pythonAnswer,
-  tableAnswer,
-  unlabelledAnswer,
-} from "./fixtures/cp22Answers";
+import { cp22MarkdownAnswers } from "./fixtures/cp22Answers";
 
 test.use({ deviceScaleFactor: 1 });
 
@@ -112,17 +107,35 @@ for (const width of [1888, 560, 480]) {
       await page.addStyleTag({
         content: `.agent-chat-panes { grid-template-columns: ${width}px !important; justify-content: center; }`,
       });
-    await installAnswer(page, tableAnswer);
+    await installAnswer(page, cp22MarkdownAnswers.table);
     await expect(page.getByRole("cell", { name: "a|b" })).toBeVisible();
     await expect(page.locator(".acp-markdown strong").first()).toHaveText(
       "Harnesses",
     );
     await settleTranscriptAtEnd(page);
+    const emphasis = page
+      .getByRole("cell", { name: "bounded", exact: true })
+      .locator("em");
+    await expect(emphasis).toHaveCSS("font-style", "italic");
+    // Computed font-style can say italic while synthesis suppression leaves
+    // the glyphs upright. Compare actual ink with the same text set upright.
+    const italic = await emphasis.screenshot();
+    await emphasis.evaluate((element) => {
+      (element as HTMLElement).style.fontStyle = "normal";
+    });
+    try {
+      const upright = await emphasis.screenshot();
+      expect(italic.equals(upright)).toBe(false);
+    } finally {
+      await emphasis.evaluate((element) => {
+        (element as HTMLElement).style.removeProperty("font-style");
+      });
+    }
     await assertContained(page);
     await expect(page.locator(".agent-chat-pane").first()).toHaveScreenshot(
       `cp22-table-${width}.png`,
     );
-    await installAnswer(page, pythonAnswer);
+    await installAnswer(page, cp22MarkdownAnswers.python);
     const code = page.getByRole("region", { name: "Python code" });
     await code.scrollIntoViewIfNeeded();
     await expectFilledCodePanel(code);
@@ -143,7 +156,7 @@ for (const width of [1888, 560, 480]) {
       await page.addStyleTag({
         content: `.agent-chat-panes { grid-template-columns: ${width}px !important; justify-content: center; }`,
       });
-    await installAnswer(page, unlabelledAnswer);
+    await installAnswer(page, cp22MarkdownAnswers.unlabelled);
     const code = page.getByRole("region", { name: "Code block" });
     await code.hover();
     await expectFilledCodePanel(code);
@@ -220,10 +233,7 @@ for (const width of [1888, 560, 480]) {
       await page.addStyleTag({
         content: `.agent-chat-panes { grid-template-columns: ${width}px !important; justify-content: center; }`,
       });
-    await installAnswer(
-      page,
-      `1. Password reset\n\n\`\`\`mermaid\n${flowchartSource}\n\`\`\``,
-    );
+    await installAnswer(page, cp22MarkdownAnswers.passwordReset);
     await expect(
       page.getByRole("img", { name: "Mermaid diagram" }),
     ).toBeVisible();
@@ -233,14 +243,14 @@ for (const width of [1888, 560, 480]) {
     await expect(page.locator(".agent-chat-pane").first()).toHaveScreenshot(
       `cp22-flowchart-${width}.png`,
     );
-    await installAnswer(page, "```mermaid\ngraph TD\nA -->", true);
+    await installAnswer(page, cp22MarkdownAnswers.streaming, true);
     await expect(
       page.getByRole("status", { name: "Receiving diagram source" }),
     ).toBeVisible();
     await expect(page.locator(".acp-code-block")).toHaveScreenshot(
       `cp22-streaming-${width}.png`,
     );
-    await installAnswer(page, "```mermaid\nunsupported diagram\n```");
+    await installAnswer(page, cp22MarkdownAnswers.fallback);
     await expect(page.getByText(/could not be drawn/)).toBeVisible();
     await expect(page.locator(".acp-mermaid")).toHaveScreenshot(
       `cp22-fallback-${width}.png`,
@@ -269,15 +279,84 @@ test("CP-22 admitted image viewer remains keyboard accessible", async ({
   await expect(trigger).toBeFocused();
 });
 
-test("CP-22 Pi-compatible text-only projection has no fabricated image controls", async ({
+test("CP-22 numbered setup answer keeps commands inside their step", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
   await openScenario(page, "rich", "agent");
   await installAnswer(
     page,
-    `${tableAnswer}\n\n${pythonAnswer}\n\n\`\`\`mermaid\n${flowchartSource}\n\`\`\``,
+    "## Run the app\n\n1. Run this command\n\n   ```sh\n   npm install\n   ```\n\n   Wait for the dependencies to finish installing.\n\n2. Start the app\n\n   ```sh\n   npm run dev\n   ```\n\n   Open the local address printed in the terminal.",
   );
+  const answer = page
+    .locator(".acp-message--assistant")
+    .last()
+    .locator(".acp-markdown");
+  const steps = answer.locator("ol > li");
+  await expect(steps).toHaveCount(2);
+  await expect(steps.nth(0).locator("pre")).toHaveText("npm install");
+  await expect(steps.nth(1).locator("pre")).toHaveText("npm run dev");
+  expect(
+    await steps
+      .nth(0)
+      .locator("pre")
+      .evaluate((command) =>
+        Boolean(
+          command.compareDocumentPosition(
+            command.closest("li")!.nextElementSibling!,
+          ) & Node.DOCUMENT_POSITION_FOLLOWING,
+        ),
+      ),
+  ).toBe(true);
+  await expect(
+    steps.nth(0).getByRole("button", { name: "Copy code" }),
+  ).toBeVisible();
+  await settleTranscriptAtEnd(page);
+  await assertContained(page);
+  await expect(answer).toHaveScreenshot("cp22-numbered-commands.png");
+});
+
+test("CP-22 quoted blocks keep code whitespace and their real renderers", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "rich", "agent");
+  await installAnswer(
+    page,
+    "> ## Quoted heading\n>\n> ```python\n> def greet(name):\n>     if name:\n>         print(name)\n>\n>     return name\n> ```\n>\n> | Name | Value |\n> | --- | --- |\n> | key | **value** |\n>\n> ```mermaid\n> flowchart LR\n> A --> B\n> ```\n>\n> - Child\n>   > Nested quote",
+  );
+  const quote = page
+    .locator(".acp-message--assistant")
+    .last()
+    .locator(".acp-markdown > blockquote");
+  await expect(
+    quote.getByRole("heading", { name: "Quoted heading" }),
+  ).toBeVisible();
+  const code = quote.getByRole("region", { name: "Python code" });
+  expect(await code.locator("pre").textContent()).toBe(
+    "def greet(name):\n    if name:\n        print(name)\n\n    return name",
+  );
+  await expect(code.getByRole("button", { name: "Copy code" })).toBeVisible();
+  await expect(quote.getByRole("table").locator("td strong")).toHaveText(
+    "value",
+  );
+  await expect(
+    quote.getByRole("img", { name: "Mermaid diagram" }),
+  ).toBeVisible();
+  await expect(quote.locator("li blockquote")).toHaveText("Nested quote");
+  expect(
+    await quote.evaluate((element) =>
+      [...element.children].map((child) => child.tagName),
+    ),
+  ).toEqual(["H2", "DIV", "DIV", "DIV", "UL"]);
+});
+
+test("CP-22 Pi-compatible text-only projection has no fabricated image controls", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "rich", "agent");
+  await installAnswer(page, cp22MarkdownAnswers.combined);
   await expect(
     page.getByRole("img", { name: "Mermaid diagram" }),
   ).toBeVisible();

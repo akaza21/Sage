@@ -3,6 +3,7 @@ import {
   openScenario,
   settleChatProjections,
   settleTranscriptAtEnd,
+  waitForAnimations,
 } from "./shared/visualBrowserPrimitives";
 
 test.use({ deviceScaleFactor: 1 });
@@ -60,6 +61,7 @@ for (const width of [1888, 720, 480]) {
         0,
       );
       const column = await box(pane.locator(".acp-turn__items").last());
+      await waitForAnimations(summary);
       const bounds = await box(summary);
       const composer = await box(pane.locator("form.composer"));
       expect(
@@ -100,6 +102,7 @@ for (const width of [1888, 720, 480]) {
         page.getByRole("tab", { name: "Review", exact: true }),
       ).toHaveCount(0);
       await collapseArtifactPane(page);
+      await expect(pill).toHaveAttribute("aria-expanded", "true");
       await pill.click();
       await edit(page, "completed");
       await expect(pane.locator(".acp-editing-files")).toHaveCount(0);
@@ -144,6 +147,7 @@ for (const width of [1888, 720, 480]) {
       const queue = composer.locator(".composer__queued");
       await expect(queue).toBeVisible();
       await expect(pill).toBeVisible();
+      await waitForAnimations(summary);
       const queueBounds = await box(queue);
       const pillBounds = await box(pill);
       expect(pillBounds.y + pillBounds.height).toBeLessThanOrEqual(
@@ -164,7 +168,7 @@ for (const width of [1888, 720, 480]) {
         (await box(queue)).y,
       );
       await summary
-        .getByRole("button", { name: /^Open file Review / })
+        .getByRole("button", { name: /^Open diff Review / })
         .last()
         .click({ trial: true });
       await composer
@@ -220,8 +224,12 @@ for (const width of [720, 480]) {
           .locator("li")
           .filter({ has: page.getByText("disclosure-0.tsx", { exact: true }) });
         await expect(
-          current.getByRole("button", { name: /Open file/ }),
+          current.getByRole("button", {
+            name: "Open diff Sage / src/disclosure-0.tsx",
+            exact: true,
+          }),
         ).toBeEnabled();
+        await waitForAnimations(summary);
         const bounds = await box(summary);
         const surface = await box(pane.locator(".chat-surface"));
         const transcript = await box(pane.locator(".message-list"));
@@ -370,7 +378,7 @@ test("CP-30d the selected chat keeps edit zones and queued trays free of resize 
       });
       const pill = summary.getByRole("button", { name: /files? changed/ });
       await pill.click();
-      const input = composer.getByRole("textbox", { name: "Message agent" });
+      const input = composer.getByRole("combobox", { name: "Message agent" });
       await input.fill("A retained draft. ".repeat(cycle % 2 ? 80 : 1));
       const tray = await box(queue);
       expect(tray.height).toBeGreaterThan(0);

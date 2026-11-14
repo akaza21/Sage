@@ -167,18 +167,20 @@ fn load_tabs(
             "persisted tabs exceed restore count or byte limits".into(),
         ));
     }
-    let mut statement = connection.prepare(
+    let mut statement = connection.prepare(&format!(
         "SELECT w.id, w.kind, w.title, w.position, w.pinned, w.dirty, w.status, w.metadata_json,
                 CASE
                   WHEN w.kind = 'chat' THEN COALESCE(c.updated_at, w.updated_at)
                   ELSE w.updated_at
-                END
+                END,
+                CASE WHEN w.kind = 'chat' THEN {} END
          FROM workbench_tabs w
          LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
          LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
          WHERE w.project_id = ?1
          ORDER BY w.position LIMIT ?2",
-    )?;
+        crate::project_registry::CHAT_FINISHED_AT
+    ))?;
     let rows = statement
         .query_map(params![project_id, MAX_RESTORED_TABS as i64 + 1], |row| {
             Ok((
@@ -191,6 +193,7 @@ fn load_tabs(
                 row.get::<_, Option<String>>(6)?,
                 row.get::<_, String>(7)?,
                 row.get::<_, Option<i64>>(8)?,
+                row.get::<_, Option<i64>>(9)?,
             ))
         })?
         .collect::<Result<Vec<_>, _>>()?;
@@ -204,7 +207,18 @@ fn load_tabs(
     let tabs = rows
         .into_iter()
         .map(
-            |(id, kind, title, position, pinned, dirty, status, metadata, updated_at)| {
+            |(
+                id,
+                kind,
+                title,
+                position,
+                pinned,
+                dirty,
+                status,
+                metadata,
+                updated_at,
+                finished_at,
+            )| {
                 if !ids.insert(id.clone()) || !positions.insert(position) {
                     return Err(AppError::InvalidRequest(
                         "persisted layout contains duplicate tab identity or position".into(),
@@ -292,6 +306,7 @@ fn load_tabs(
                     dirty,
                     status: restored_status,
                     updated_at: admit_tab_updated_at(updated_at),
+                    finished_at: admit_tab_updated_at(finished_at),
                     resource,
                     repository,
                     diff_ref,
@@ -543,6 +558,7 @@ mod tests {
             dirty: false,
             status: None,
             updated_at: None,
+            finished_at: None,
             resource: Some(resource.clone()),
             repository: None,
             diff_ref: None,
@@ -574,6 +590,7 @@ mod tests {
             dirty: false,
             status: None,
             updated_at: None,
+            finished_at: None,
             resource: Some(ResourceRef {
                 root_id: fixture.root_id.clone(),
                 relative_path: "main.rs".into(),
@@ -643,6 +660,7 @@ mod tests {
             dirty: false,
             status: None,
             updated_at: None,
+            finished_at: None,
             resource: Some(ResourceRef {
                 root_id: resource_root.into(),
                 relative_path: "main.rs".into(),

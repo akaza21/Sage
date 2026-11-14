@@ -21,7 +21,7 @@ pub(crate) enum ChatForkError {
     #[error("The harness did not confirm the fork; try again.")]
     RecoveryRequired,
     #[error(
-        "This chat's harness still holds too many earlier forks. Let its current turn finish, then try again."
+        "This chat's harness still holds too many earlier forks. Try again once its current turn ends or the chat restarts."
     )]
     TooManyForks,
 }
@@ -64,6 +64,13 @@ impl AcpService {
     /// fork Chat is committed or refused. Nothing durable depends on it: a
     /// release that cannot run leaves the fork loaded in the source runtime,
     /// bounded per runtime by the binding, until that runtime exits.
+    ///
+    /// The fork's answer and this release are two session controls with the
+    /// fork Chat's commit between them, and no control is in flight in that
+    /// window, so an idle park may end the source runtime there. That costs
+    /// only the release: a harness that keeps forks in memory drops them as
+    /// it exits, and a refused Pi fork's copy stays in Pi's own session
+    /// list, as it does whenever its removal fails.
     pub(crate) fn release_native_fork(
         &self,
         source: &ForkSource,
@@ -103,8 +110,16 @@ fn fork_reply(result: Result<NativeRpcReply, HostError>) -> Result<ExternalId, C
         Ok(NativeRpcReply::Rejected) => Err(ChatForkError::Rejected),
         Ok(
             NativeRpcReply::GoalApplied
-            | NativeRpcReply::ChildTranscript(_)
-            | NativeRpcReply::Released,
+            | NativeRpcReply::TurnsPage(_)
+            | NativeRpcReply::SessionsPage(_)
+            | NativeRpcReply::Released
+            | NativeRpcReply::UsageRead
+            | NativeRpcReply::BackgroundTerminals(_)
+            | NativeRpcReply::TerminalsStopped
+            | NativeRpcReply::Controlled(_)
+            | NativeRpcReply::ControlRefused(_)
+            | NativeRpcReply::McpServers(_)
+            | NativeRpcReply::McpSignIn(_),
         ) => Err(ChatForkError::RecoveryRequired),
         Err(HostError::Intent | HostError::State) => Err(ChatForkError::Unavailable),
         Err(HostError::Capacity) => Err(ChatForkError::TooManyForks),

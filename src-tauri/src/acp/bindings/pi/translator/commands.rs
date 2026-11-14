@@ -2,18 +2,43 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
 
-use super::{ActiveTurn, EventPhase, PENDING_COMMANDS, PendingKind, PiTranslator, validate_id};
+use super::{
+    ActiveTurn, PENDING_COMMANDS, PendingKind, PendingRequest, PiTranslator, TurnLifecycle,
+    TurnPhase, validate_id,
+};
 use crate::acp::bindings::pi::{
     decode::PROMPT_BYTES,
     protocol::{AdapterError, Outbound},
 };
 
 impl PiTranslator {
+    pub(crate) fn mark_command_turn(&mut self) -> Result<(), AdapterError> {
+        let active = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
+        active.lifecycle.mark_command()
+    }
+
+    pub(crate) fn mark_prompt_written(&mut self, command_id: &str) -> Result<(), AdapterError> {
+        let active = self.active.as_mut().ok_or(AdapterError::Correlation)?;
+        if active.prompt_command_id != command_id {
+            return Err(AdapterError::Correlation);
+        }
+        active.lifecycle.written()
+    }
+
     pub(crate) fn reject_before_write(&mut self, command_id: &str) -> Result<(), AdapterError> {
-        let kind = *self
+        let request = *self
             .pending
             .get(command_id)
             .ok_or(AdapterError::Correlation)?;
+        let kind = request.kind;
+        if kind.starts_turn() {
+            let active = self.active.as_ref().ok_or(AdapterError::Correlation)?;
+            if active.prompt_command_id != command_id
+                || active.lifecycle.phase != TurnPhase::Reserved
+            {
+                return Err(AdapterError::Correlation);
+            }
+        }
         if self
             .initialization
             .as_ref()
@@ -24,33 +49,33 @@ impl PiTranslator {
         }
         self.pending.remove(command_id);
         self.closed_config_requests.remove(command_id);
-        if kind == PendingKind::SetThinkingLevel {
-            self.pending_thinking = None;
-        }
+        self.clear_pending_setting(kind);
         match kind {
-            PendingKind::Prompt => {
-                let active = self.active.as_ref().ok_or(AdapterError::Correlation)?;
-                if active.prompt_command_id != command_id
-                    || active.event_phase != EventPhase::PromptIssued
-                {
-                    return Err(AdapterError::Correlation);
-                }
+            PendingKind::Prompt | PendingKind::Compact => {
                 self.active = None;
             }
             PendingKind::Abort => {
-                self.active
-                    .as_mut()
-                    .ok_or(AdapterError::Correlation)?
-                    .abort_requested = false;
+                if let Some(active) = self.active.as_mut()
+                    && request.owner == Some(active.lifecycle.owner)
+                    && active.lifecycle.terminal().is_none()
+                {
+                    active.lifecycle.resolve_abort(false);
+                }
             }
             PendingKind::State
             | PendingKind::Models
             | PendingKind::SetModel
+            | PendingKind::Commands
             | PendingKind::ThinkingLevels
             | PendingKind::SetThinkingLevel
+            | PendingKind::SetAutoCompaction
             | PendingKind::NewSession
+            | PendingKind::Resume
+            | PendingKind::Steer
+            | PendingKind::ClearQueue
             | PendingKind::Messages
-            | PendingKind::Entries => {}
+            | PendingKind::Entries
+            | PendingKind::Native(_) => {}
         }
         Ok(())
     }
@@ -59,33 +84,67 @@ impl PiTranslator {
         &mut self,
         turn_key: String,
         message: String,
+        images: Vec<Value>,
+    ) -> Result<Vec<Outbound>, AdapterError> {
+        validate_message(&message)?;
+        let mut fields = Map::new();
+        fields.insert("message".into(), Value::String(message));
+        if !images.is_empty() {
+            fields.insert("images".into(), Value::Array(images));
+        }
+        self.begin_turn(turn_key, PendingKind::Prompt, fields)
+    }
+
+    /// Pi's own compaction, run as a command turn: it compacts, emitting
+    /// its compaction events, before it answers the request.
+    pub(super) fn begin_compact(
+        &mut self,
+        turn_key: String,
+        instructions: Option<String>,
+    ) -> Result<Vec<Outbound>, AdapterError> {
+        let mut fields = Map::new();
+        if let Some(instructions) = instructions {
+            validate_message(&instructions)?;
+            fields.insert("customInstructions".into(), Value::String(instructions));
+        }
+        let outbound = self.begin_turn(turn_key, PendingKind::Compact, fields)?;
+        self.mark_command_turn()?;
+        Ok(outbound)
+    }
+
+    fn begin_turn(
+        &mut self,
+        turn_key: String,
+        kind: PendingKind,
+        fields: Map<String, Value>,
     ) -> Result<Vec<Outbound>, AdapterError> {
         if self.launch_admission.is_none() {
             return Err(AdapterError::LaunchNotAdmitted);
         }
         validate_id("Turn key", &turn_key)?;
-        if message.is_empty() || message.len() > PROMPT_BYTES || message.contains('\0') {
-            return Err(AdapterError::Limit("prompt bytes"));
+        if self
+            .pending
+            .values()
+            .any(|request| matches!(request.kind, PendingKind::NewSession | PendingKind::Resume))
+        {
+            return Err(AdapterError::SessionTransitionBusy);
         }
         if self
             .active
             .as_ref()
-            .is_some_and(|turn| turn.terminal.is_none())
+            .is_some_and(|turn| turn.lifecycle.terminal().is_none())
         {
             return Err(AdapterError::PromptAlreadyActive);
         }
-        let mut fields = Map::new();
-        fields.insert("message".into(), Value::String(message));
-        let outbound = self.issue(PendingKind::Prompt, fields)?;
+        let outbound = self.issue(kind, fields)?;
         self.active = Some(ActiveTurn {
             turn_key,
             prompt_command_id: outbound.command_id.clone(),
-            event_phase: EventPhase::PromptIssued,
-            abort_requested: false,
+            lifecycle: TurnLifecycle::new(self.next_command),
             authority_denied: false,
-            terminal: None,
             tools: BTreeMap::new(),
             compaction_active: false,
+            compaction_failure_shown: false,
             thought_active: false,
             settlement_outcome: super::TerminalOutcome::Completed,
             settlement_message: None,
@@ -93,10 +152,31 @@ impl PiTranslator {
             retry_notices: 0,
             retry_failed: false,
             retry_final_error: None,
+            retry_waiting: None,
             unknown_kinds: Default::default(),
             unknown_suppression_emitted: false,
+            last_reply: None,
+            dropped_frame: false,
+            reply_open: false,
         });
         Ok(vec![outbound])
+    }
+
+    /// Queues `message` into the running model loop; Pi delivers it after
+    /// the current tool calls finish. Once the loop has ended Pi would keep it
+    /// for the next prompt, so a steer is refused outside `ModelRunning`.
+    pub(super) fn begin_steer(&mut self, message: String) -> Result<Vec<Outbound>, AdapterError> {
+        validate_message(&message)?;
+        if self.active.as_ref().is_none_or(|turn| {
+            turn.authority_denied
+                || turn.lifecycle.terminal().is_some()
+                || turn.lifecycle.phase != TurnPhase::ModelRunning
+        }) {
+            return Err(AdapterError::StaleIntent);
+        }
+        let mut fields = Map::new();
+        fields.insert("message".into(), Value::String(message));
+        self.one(PendingKind::Steer, fields)
     }
 
     pub(super) fn one(
@@ -122,19 +202,52 @@ impl PiTranslator {
         let id = format!("pi-{}-{}", self.epoch, self.next_command);
         fields.insert("type".into(), Value::String(kind.command().into()));
         fields.insert("id".into(), Value::String(id.clone()));
+        // A prompt with images is sent as a prompt frame.
+        let frame_bytes = if fields.contains_key("images") {
+            crate::acp::limits::PROMPT_FRAME_BYTES
+        } else {
+            super::super::decode::FRAME_BYTES
+        };
         let line =
             serde_json::to_string(&Value::Object(fields)).map_err(|_| AdapterError::Malformed)?;
         if line
             .len()
             .checked_add(1)
-            .is_none_or(|wire_bytes| wire_bytes > super::super::decode::FRAME_BYTES)
+            .is_none_or(|wire_bytes| wire_bytes > frame_bytes)
         {
             return Err(AdapterError::Limit("outbound frame bytes"));
         }
-        self.pending.insert(id.clone(), kind);
+        let owner = match kind {
+            PendingKind::Prompt | PendingKind::Compact => Some(self.next_command),
+            PendingKind::Abort | PendingKind::Steer => {
+                self.active.as_ref().map(|turn| turn.lifecycle.owner)
+            }
+            _ => None,
+        };
+        self.pending
+            .insert(id.clone(), PendingRequest { kind, owner });
         Ok(Outbound {
             command_id: id,
             line,
         })
+    }
+}
+
+fn validate_message(message: &str) -> Result<(), AdapterError> {
+    if message.is_empty() || message.len() > PROMPT_BYTES || message.contains('\0') {
+        return Err(AdapterError::Limit("prompt bytes"));
+    }
+    Ok(())
+}
+
+impl PiTranslator {
+    /// Forgets the setting a refused, lost or unanswered config request
+    /// asked for, so the next change of that setting can be sent.
+    pub(super) fn clear_pending_setting(&mut self, kind: PendingKind) {
+        match kind {
+            PendingKind::SetThinkingLevel => self.pending_thinking = None,
+            PendingKind::SetAutoCompaction => self.pending_auto_compaction = None,
+            _ => {}
+        }
     }
 }

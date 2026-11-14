@@ -2,6 +2,7 @@ use serde_json::{Value, json};
 use std::fmt;
 
 mod browser_notice;
+pub(crate) mod inventory;
 
 const MAX_SERVERS: usize = 16;
 const MAX_NAME: usize = 128;

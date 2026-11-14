@@ -13,6 +13,7 @@ import {
 } from "./css-highlight-policy.mjs";
 import { workbenchTransportParityErrors } from "./workbench-transport-parity.mjs";
 import { q02SharedHelperPolicyErrors } from "./q02-shared-helpers-policy.mjs";
+import { packageResourcePolicyErrors } from "./package-resource-policy.mjs";
 
 const reviewedSpawnModules = new Map([
   ["git_process.rs", "Git CLI execution boundary"],
@@ -23,6 +24,7 @@ const reviewedSpawnModules = new Map([
   ["workspace/search/helper_process.rs", "Bounded workspace search helper"],
   ["codex_helper_boundary/caller.rs", "Provisioning helper caller"],
   ["commands/acp/claude_auth.rs", "Claude Code sign-in"],
+  ["acp/bindings/claude/sdk/probe.rs", "Bounded Claude Code model probe"],
   ["acp/fixture/process_ops.rs", "Feature-gated adversarial process fixture"],
   [
     "acp/fixture/host/redaction_observer.rs",
@@ -32,6 +34,7 @@ const reviewedSpawnModules = new Map([
     "browser/devtools/cdp_lane/chromium.rs",
     "Feature-gated Chromium measurement lane",
   ],
+  ["test_executable.rs", "Test-only executable fixture writer"],
 ]);
 
 const frontendSecurityPatterns = [
@@ -466,14 +469,12 @@ if (
   );
 }
 
-const declaredPackageMembers = [
-  ...(tauriConfig.bundle?.resources ?? []),
-  ...(tauriConfig.bundle?.externalBin ?? []),
-  ...(windowsBundle?.resources ?? []),
-  ...(windowsBundle?.externalBin ?? []),
-];
-if (declaredPackageMembers.length !== 0) {
-  fail("Production package resources and external binaries must remain empty.");
+for (const error of await packageResourcePolicyErrors({
+  tauriRoot: path.join(root, "src-tauri"),
+  bundle: tauriConfig.bundle,
+  windowsBundle,
+})) {
+  fail(error);
 }
 
 const cargoBinBlocks =
@@ -481,7 +482,7 @@ const cargoBinBlocks =
     /\[\[bin\]\][\s\S]*?(?=\r?\n\[(?:\[bin\]|features|profile\.)|$)/g,
   ) ?? [];
 const helperBinBlocks = cargoBinBlocks.filter((block) =>
-  /^name = "sage-codex-0146-elevated-helper"$/m.test(block),
+  /^name = "sage-codex-elevated-helper"$/m.test(block),
 );
 const cargoFeaturesBlock =
   packageCargoToml.match(/\[features\][\s\S]*?(?=\r?\n\[|$)/)?.[0] ?? "";
@@ -740,6 +741,14 @@ const cargoToml = await readFile(
   path.join(root, "src-tauri/Cargo.toml"),
   "utf8",
 );
+// External crates are pinned once, in the workspace manifest; members only
+// opt in with `.workspace = true` and choose whether a dependency is optional.
+const workspaceCargoToml = await readFile(
+  path.join(root, "Cargo.toml"),
+  "utf8",
+);
+const cargoManifests = [cargoToml, workspaceCargoToml];
+for (const error of memberDependencyErrors(cargoToml)) fail(error);
 const nativeLibrary = await readFile(
   path.join(root, "src-tauri/src/lib.rs"),
   "utf8",
@@ -817,12 +826,19 @@ if (/\bsourcemap\s*:\s*true\b/u.test(viteConfig)) {
   );
 }
 
-if (/^\s*git2\s*=/m.test(cargoToml)) {
+if (
+  cargoManifests.some((manifest) =>
+    /^\s*git2(?:\.workspace)?\s*=/m.test(manifest),
+  )
+) {
   fail("git2 is forbidden; Sage uses the installed Git CLI.");
 }
 
 if (
-  !/agent-client-protocol-schema\s*=\s*\{[^}]*version\s*=\s*"=1\.4\.0"[^}]*optional\s*=\s*true[^}]*default-features\s*=\s*false/s.test(
+  !/^agent-client-protocol-schema\s*=\s*\{[^}]*version\s*=\s*"=1\.4\.0"[^}]*default-features\s*=\s*false/mu.test(
+    workspaceCargoToml,
+  ) ||
+  !/^agent-client-protocol-schema\s*=\s*\{\s*workspace\s*=\s*true\s*,\s*optional\s*=\s*true\s*\}/mu.test(
     cargoToml,
   )
 ) {
@@ -831,7 +847,11 @@ if (
   );
 }
 
-if (/^agent-client-protocol\s*=/mu.test(cargoToml)) {
+if (
+  cargoManifests.some((manifest) =>
+    /^agent-client-protocol(?:\.workspace)?\s*=/mu.test(manifest),
+  )
+) {
   fail(
     "The ACP runtime crate is forbidden; Sage owns bounded transport and process control.",
   );
@@ -849,7 +869,7 @@ if (/^acp-runtime\s*=/mu.test(cargoToml)) {
   fail("The rejected acp-runtime feature must not be reachable.");
 }
 
-const schemaDeclaration = cargoToml.match(
+const schemaDeclaration = workspaceCargoToml.match(
   /^agent-client-protocol-schema\s*=\s*\{([^}]*)\}/mu,
 )?.[1];
 if (
@@ -860,7 +880,7 @@ if (
   fail("ACP schema tracing and unstable features must remain disabled.");
 }
 
-const tracingDeclaration = cargoToml.match(
+const tracingDeclaration = workspaceCargoToml.match(
   /^tracing-subscriber\s*=\s*\{([^}]*)\}/mu,
 )?.[1];
 if (
@@ -875,7 +895,7 @@ if (
   );
 }
 
-const windowsDeclaration = cargoToml.match(
+const windowsDeclaration = workspaceCargoToml.match(
   /^windows-sys\s*=\s*\{([\s\S]*?)^\] \}\s*$/mu,
 )?.[1];
 const windowsFeatures = [
@@ -1052,4 +1072,29 @@ if (failures.length > 0) {
   console.log(
     `policy: passed (${productionFiles.length} production modules checked)`,
   );
+}
+
+// Every dependency table of the app crate takes its crate from the workspace
+// and may only add `optional`, so the pins, default features and feature
+// sets the checks above read from the workspace manifest are what builds.
+function memberDependencyErrors(manifest) {
+  const errors = [];
+  const tables = manifest.matchAll(
+    /^\[(?:target\.[^\]]+\.)?(?:build-|dev-)?dependencies\]\r?\n([\s\S]*?)(?=^\[|(?![\s\S]))/gmu,
+  );
+  for (const [, body] of tables) {
+    for (const line of body.split(/\r?\n/u)) {
+      if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
+      if (
+        !/^[A-Za-z0-9_-]+(?:\.workspace\s*=\s*true|\s*=\s*\{\s*workspace\s*=\s*true\s*,\s*optional\s*=\s*true\s*\})\s*$/u.test(
+          line,
+        )
+      ) {
+        errors.push(
+          `src-tauri/Cargo.toml must take dependencies from the workspace: ${line.trim()}`,
+        );
+      }
+    }
+  }
+  return errors;
 }

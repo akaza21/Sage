@@ -25,21 +25,22 @@
   text-align: left;
 }
 
-.source-change:hover {
+.source-change:hover:not(.source-change--selected) {
   color: var(--color-text-primary);
   background: var(--color-surface-hover);
-}
-
-.source-change--selected {
-  color: var(--color-text-primary);
-  background: var(--color-surface-selected);
-  box-shadow: inset 2px 0 0 var(--color-accent);
 }
 
 .source-change--conflicted {
   border: 1px solid
     color-mix(in srgb, var(--color-danger) 45%, var(--color-border-subtle));
   background: color-mix(in srgb, var(--color-danger) 10%, var(--color-surface));
+}
+
+.source-change--selected {
+  /* Selection stays visible under hover and over the conflict fill. */
+  color: var(--color-text-primary);
+  background: var(--row-selected-fill, var(--color-surface-selected));
+  box-shadow: var(--row-selected-shadow, inset 2px 0 0 var(--color-accent));
 }
 
 .source-change__status {
@@ -150,9 +151,9 @@
   grid-column: 1 / -1;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin: 0 4px;
-  padding: 8px;
+  gap: var(--space-2);
+  margin: 0 var(--space-1);
+  padding: var(--space-2);
   border: 1px solid
     color-mix(in srgb, var(--color-danger) 42%, var(--color-border-subtle));
   border-radius: var(--radius-sm);
@@ -164,11 +165,11 @@
 .source-change__confirmation-actions {
   display: flex;
   flex: 0 0 auto;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .source-change__confirmation-button {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border: 1px solid var(--color-border-subtle);
   border-radius: var(--radius-sm);
   color: var(--color-text-secondary);

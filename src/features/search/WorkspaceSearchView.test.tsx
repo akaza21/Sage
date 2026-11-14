@@ -11,6 +11,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useLayoutEffect } from "react";
 
 import { useEditorSettingsStore } from "../../app/editorSettingsStore";
+import { pathGlobMatcher } from "../../domain/pathGlobMatcher";
 import type { WorkspaceSearchGateway } from "./workspaceSearchDomain";
 import { WorkspaceSearchView } from "./WorkspaceSearchView";
 
@@ -447,6 +448,187 @@ describe("Workspace Search view", () => {
     ).toBeVisible();
   });
 
+  describe("VS Code style include and exclude patterns", () => {
+    const projectFiles = [
+      "README.md",
+      "main.ts",
+      "src/app.tsx",
+      "src/lib/util.ts",
+      "src/lib/util.js",
+      "packages/web/src/index.ts",
+      "node_modules/p/index.ts",
+      "packages/web/node_modules/q/index.ts",
+      "dist/bundle.ts",
+    ];
+
+    /** A gateway that filters sample files with the real matcher, as native Search would. */
+    function filteringGateway() {
+      return vi.fn(
+        async (request: {
+          query: string;
+          includePatterns: string[];
+          excludePatterns: string[];
+        }) => {
+          const include = pathGlobMatcher(request.includePatterns);
+          const exclude = pathGlobMatcher(request.excludePatterns);
+          const kept = projectFiles.filter(
+            (path) =>
+              (request.includePatterns.length === 0 || include(path)) &&
+              !exclude(path),
+          );
+          return {
+            requestId: "request-a",
+            projectId: "project-a",
+            transitionEpoch: 4,
+            indexGeneration: 0,
+            query: request.query,
+            matches: kept.map((relativePath) => ({
+              resource: { rootId: "root-a", relativePath },
+              lineNumber: 1,
+              columnNumber: 1,
+              preview: request.query,
+            })),
+            roots: [
+              {
+                rootId: "root-a",
+                rootName: "Sage",
+                state: "complete" as const,
+                filesScanned: kept.length,
+                bytesScanned: kept.length,
+                entriesVisited: projectFiles.length,
+                skippedFiles: 0,
+                errorCount: 0,
+                message: null,
+              },
+            ],
+            truncated: false,
+            continuationToken: null,
+            limitReasons: [],
+            elapsedMs: 1,
+          };
+        },
+      );
+    }
+
+    function searchWithFilters(
+      search: WorkspaceSearchGateway["search"],
+      include: string,
+      exclude: string,
+    ) {
+      render(
+        <WorkspaceSearchView
+          projectId="project-a"
+          transitionEpoch={4}
+          indexGeneration={0}
+          gateway={{ search }}
+          onOpenMatch={vi.fn()}
+        />,
+      );
+      fireEvent.change(screen.getByLabelText("Search text"), {
+        target: { value: "needle" },
+      });
+      fireEvent.click(
+        screen.getByRole("button", { name: "Show Search filters" }),
+      );
+      fireEvent.change(screen.getByLabelText("Files to include"), {
+        target: { value: include },
+      });
+      fireEvent.change(screen.getByLabelText("Files to exclude"), {
+        target: { value: exclude },
+      });
+      submitWorkspaceSearch();
+    }
+
+    function shownPaths() {
+      return screen
+        .queryAllByRole("button", { name: /^Open .* at line 1, column 1$/ })
+        .map((row) =>
+          row
+            .getAttribute("aria-label")!
+            .replace(/^Open (.*) at line 1, column 1$/, "$1"),
+        )
+        .sort();
+    }
+
+    it.each([
+      [
+        "*.{ts,tsx}",
+        "node_modules",
+        ["**/*.ts", "**/*.tsx"],
+        ["**/node_modules", "**/node_modules/**"],
+        [
+          "dist/bundle.ts",
+          "main.ts",
+          "packages/web/src/index.ts",
+          "src/app.tsx",
+          "src/lib/util.ts",
+        ],
+      ],
+      [
+        "src",
+        "",
+        ["**/src", "**/src/**"],
+        [],
+        [
+          "packages/web/src/index.ts",
+          "src/app.tsx",
+          "src/lib/util.js",
+          "src/lib/util.ts",
+        ],
+      ],
+      [
+        "./src",
+        "*.js",
+        ["src", "src/**"],
+        ["**/*.js"],
+        ["src/app.tsx", "src/lib/util.ts"],
+      ],
+      [
+        "*.ts",
+        "dist/, node_modules",
+        ["**/*.ts"],
+        ["dist/**", "**/node_modules", "**/node_modules/**"],
+        ["main.ts", "packages/web/src/index.ts", "src/lib/util.ts"],
+      ],
+    ])(
+      "reads include %j and exclude %j as VS Code does",
+      async (include, exclude, includePatterns, excludePatterns, shown) => {
+        const search = filteringGateway();
+        searchWithFilters(search, include, exclude);
+
+        await waitFor(() => expect(search).toHaveBeenCalledTimes(1));
+        expect(search.mock.calls[0][0]).toMatchObject({
+          includePatterns,
+          excludePatterns,
+        });
+        await screen.findAllByRole("button", {
+          name: /^Open .* at line 1, column 1$/,
+        });
+        expect(shownPaths()).toEqual(shown);
+      },
+    );
+
+    it("shows the invalid-filter message and sends nothing when an expansion passes the limits", async () => {
+      const search = filteringGateway();
+      searchWithFilters(search, "a, b, c, d, e, f, g, h, i", "");
+
+      expect(
+        await screen.findByText("workspace Search path filters are invalid"),
+      ).toBeVisible();
+      expect(search).not.toHaveBeenCalled();
+    });
+
+    it("shows the invalid-filter message and sends nothing for a pasted run of brace groups", async () => {
+      const search = filteringGateway();
+      searchWithFilters(search, "{a}".repeat(20_000), "");
+
+      expect(
+        await screen.findByText("workspace Search path filters are invalid"),
+      ).toBeVisible();
+      expect(search).not.toHaveBeenCalled();
+    });
+  });
+
   it("asks native Search to keep ignored files only when the setting is off", async () => {
     const search = vi.fn().mockRejectedValue(new Error("stop"));
     render(
@@ -613,7 +795,7 @@ describe("Workspace Search view", () => {
       screen.getByRole("searchbox", { name: "Search text" }),
     ).toBeDisabled();
     expect(
-      screen.getByText("Open a Project to search its files."),
+      screen.getByText("Open a project to search its files."),
     ).toBeVisible();
   });
 

@@ -1,5 +1,6 @@
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterRuntimeError, HarnessAdapter, ResourceMapper},
+    intent::session_event::PendingSessionEvents,
     limits::LIMITS,
     transport::Frame,
 };
@@ -11,6 +12,9 @@ pub(crate) struct IdleActivationParts<A, J, R> {
     pub(super) journal: J,
     pub(super) resources: R,
     pub(super) session: ActivatedSession,
+    /// Session events admitted before the first Turn. The first Turn's pump
+    /// commits them; see `take_pending_session_events`.
+    pending_session_events: PendingSessionEvents,
 }
 
 pub(crate) struct RecoveryActivationParts<A, J, R> {
@@ -44,7 +48,19 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
             journal,
             resources,
             session,
+            pending_session_events: PendingSessionEvents::default(),
         }
+    }
+
+    pub(crate) fn with_pending_session_events(mut self, events: PendingSessionEvents) -> Self {
+        self.pending_session_events = events;
+        self
+    }
+
+    /// Hands the buffered session events to the first Turn, which is the
+    /// first owner able to commit them durably.
+    pub(crate) fn take_pending_session_events(&mut self) -> PendingSessionEvents {
+        std::mem::take(&mut self.pending_session_events)
     }
 
     pub(crate) fn session(&self) -> &ActivatedSession {
@@ -61,11 +77,43 @@ impl<A, J, R> IdleActivationParts<A, J, R> {
 }
 
 impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
+    pub(crate) fn receive_command_update(
+        &mut self,
+        frame: &Frame,
+    ) -> Result<(), AdapterRuntimeError> {
+        self.adapter.receive_command_update(frame)
+    }
+
+    pub(crate) fn validate_command_prompt(
+        &self,
+        prompt: &crate::acp::intent::Prompt,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        if let Some(revision) = prompt.command_revision {
+            self.adapter
+                .available_commands()
+                .validate(revision, prompt.as_str())
+                .map_err(|_| crate::acp::runtime::HostError::Intent)?;
+        }
+        Ok(())
+    }
+
     pub(crate) fn hydrate_model_config(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,
     ) {
         crate::acp::runtime::adapter_pump::session_config::hydrate_model_config(
+            &mut self.adapter,
+            transport,
+        );
+    }
+
+    /// Before the first turn the model catalog is read once, but the
+    /// command list is read again whenever the harness reports a change.
+    pub(crate) fn write_discovered_commands(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+    ) {
+        crate::acp::runtime::adapter_pump::session_config::write_discovered_commands(
             &mut self.adapter,
             transport,
         );
@@ -94,6 +142,9 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.adapter.take_native_rpc_reply()
     }
+    pub(crate) fn abandon_passive_read(&mut self) {
+        self.adapter.abandon_passive_read();
+    }
     pub(crate) fn write_goal(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,
@@ -105,17 +156,46 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
             action,
         )
     }
+    pub(crate) fn write_usage_read(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::write_usage_read(
+            &mut self.adapter,
+            transport,
+        )
+    }
+    pub(crate) fn write_terminals(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+        action: &crate::acp::background_terminals::TerminalAction,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::write_terminals(
+            &mut self.adapter,
+            transport,
+            action,
+        )
+    }
+    pub(crate) fn write_control(
+        &mut self,
+        transport: &mut impl crate::acp::runtime::EgressTransport,
+        control: &crate::acp::session_control::SessionControl,
+    ) -> Result<(), crate::acp::runtime::HostError> {
+        crate::acp::runtime::adapter_pump::session_config::write_control(
+            &mut self.adapter,
+            transport,
+            control,
+        )
+    }
     pub(crate) fn write_child(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,
-        child_thread_id: &str,
-        parent_thread_id: &str,
+        read: &crate::acp::goal::NativeRead,
     ) -> Result<(), crate::acp::runtime::HostError> {
         crate::acp::runtime::adapter_pump::session_config::write_child(
             &mut self.adapter,
             transport,
-            child_thread_id,
-            parent_thread_id,
+            read,
         )
     }
     pub(crate) fn write_release_fork(
@@ -142,6 +222,9 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     }
     pub(crate) fn child_read_pending(&self) -> bool {
         self.adapter.child_read_pending()
+    }
+    pub(crate) fn skips_oversize_frames(&self) -> bool {
+        self.adapter.skips_oversize_frames()
     }
     pub(crate) fn write_session_config(
         &mut self,
@@ -186,16 +269,30 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
                 } if catalog.is_none() => {
                     catalog = Some((models, next_cursor));
                 }
-                AdapterEvent::IgnoredLate | AdapterEvent::IgnoredDuplicate => {}
+                AdapterEvent::Session { id, event } => {
+                    let session = &self.session;
+                    if id.is_exact_session(
+                        &session.binding_digest,
+                        session.runtime_epoch,
+                        &session.session_id,
+                        &session.external_session_id,
+                    ) {
+                        self.pending_session_events.push(event);
+                    }
+                }
+                AdapterEvent::IgnoredLate
+                | AdapterEvent::IgnoredDuplicate
+                | AdapterEvent::Absorbed => {}
                 _ => return Err(AdapterPumpError::Frame),
             }
         }
         if catalog.is_none()
-            && egress
-                .iter()
-                .all(|value| value.token().cancelled_permission_request().is_some())
+            && egress.iter().all(|value| {
+                value.token().cancelled_permission_request().is_some()
+                    || value.token().is_native_rpc_continuation()
+            })
         {
-            return crate::acp::runtime::adapter_pump::write_idle_cancellations(
+            return crate::acp::runtime::adapter_pump::write_idle_egress(
                 &mut self.adapter,
                 egress,
                 transport,

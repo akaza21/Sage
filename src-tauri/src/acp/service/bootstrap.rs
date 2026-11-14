@@ -81,7 +81,9 @@ impl AcpService {
             configuration.registry.codex_admission().clone(),
             Arc::clone(&codex_gate),
         );
-        Ok(Self {
+        let service = Self {
+            file_stages: Arc::new(std::sync::Mutex::new(Default::default())),
+            file_stage_reader: Arc::new(tokio::sync::Mutex::new(())),
             read_text_files: super::ReadTextFileService::new(database.clone()),
             browser_permissions: std::sync::Mutex::new(std::collections::HashMap::new()),
             browser_attachments: crate::acp::browser::attachment::BrowserAttachments::default(),
@@ -92,6 +94,7 @@ impl AcpService {
             journal_thread: std::sync::Mutex::new(Some(journal_thread)),
             session_starts,
             lanes,
+            idle_release: Default::default(),
             publisher,
             notifier,
             page_reads: super::PageReadAdmission::default(),
@@ -104,6 +107,12 @@ impl AcpService {
             #[cfg(test)]
             codex_runtime_release_fail_once: std::sync::atomic::AtomicBool::new(false),
             #[cfg(test)]
+            lane_busy_refusals: Default::default(),
+            #[cfg(test)]
+            control_running_refusals: Default::default(),
+            #[cfg(test)]
+            yield_lane_on_busy: Default::default(),
+            #[cfg(test)]
             codex_runtime_release_fail_always: std::sync::atomic::AtomicBool::new(false),
             #[cfg(all(windows, feature = "acp-fixture"))]
             characterization: configuration.characterization,
@@ -113,7 +122,14 @@ impl AcpService {
             last_cancel_stage: std::sync::Mutex::new("none"),
             #[cfg(test)]
             runtime_port_finish_park_failure: std::sync::Mutex::new(false),
-        })
+        };
+        let recorder = service.session_config_recorder();
+        let snapshot = service.session_config_snapshot_recorder();
+        for lane in service.lanes() {
+            lane.runtime.config.set_recorder(recorder.clone());
+            lane.runtime.config.set_snapshot_recorder(snapshot.clone());
+        }
+        Ok(service)
     }
 }
 

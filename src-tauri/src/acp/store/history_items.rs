@@ -1,5 +1,6 @@
 use std::collections::BTreeMap;
 
+use crate::acp::encoded_len::encoded_len;
 use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
@@ -79,9 +80,8 @@ pub(super) fn load(input: HistoryLoad<'_>) -> Result<HistorySlice, StoreError> {
             Vec::new(),
             activity,
         )?;
-        let turn_bytes = serde_json::to_vec(&turn)
-            .map_err(|_| StoreError::Corrupt("turn projection serialization"))?
-            .len();
+        let turn_bytes =
+            encoded_len(&turn).map_err(|_| StoreError::Corrupt("turn projection serialization"))?;
         let turn_delta = turn_bytes + usize::from(!turns.is_empty());
         if used.saturating_add(turn_delta) > limit {
             let previous = turns.last().ok_or(StoreError::Capacity {
@@ -151,7 +151,7 @@ fn load_turn_items(
          FROM items i
          JOIN agent_sessions s ON s.id=i.session_id
          LEFT JOIN server_requests r
-           ON i.kind='permissionRequest' AND r.kind IN ('permission','browserPermission')
+           ON i.kind='permissionRequest' AND r.kind IN ('permission','browserPermission','browserDeveloperPermission')
           AND r.project_id=i.project_id AND r.chat_id=i.chat_id
           AND r.session_id=i.session_id AND r.turn_id=i.turn_id
           AND r.runtime_epoch=i.runtime_epoch
@@ -206,9 +206,8 @@ fn load_turn_items(
         }
         let permission = permission(row, &item)?;
         let projection = decode_item(item, permission, project_roots)?;
-        let item_bytes = serde_json::to_vec(&projection)
+        let item_bytes = encoded_len(&projection)
             .map_err(|_| StoreError::Corrupt("item projection serialization"))?
-            .len()
             + usize::from(!items.is_empty());
         if used.saturating_add(item_bytes) > page_limit {
             more = true;
@@ -260,6 +259,9 @@ fn permission(
                 match kind.as_str() {
                     "permission" => crate::acp::projection::PermissionRequestSource::Harness,
                     "browserPermission" => crate::acp::projection::PermissionRequestSource::Browser,
+                    "browserDeveloperPermission" => {
+                        crate::acp::projection::PermissionRequestSource::BrowserDeveloper
+                    }
                     _ => return Err(StoreError::Corrupt("permission source")),
                 },
             )))
@@ -278,8 +280,11 @@ fn project_turn(
 ) -> Result<TurnProjection, StoreError> {
     let (browser_operations, browser_operations_collapsed) =
         super::browser_operations::load(connection, row)?;
+    let prompt = super::super::transcript_quote::load_prompt_metadata(connection, &row.id)?;
     Ok(TurnProjection {
-        attached_context: super::super::transcript_quote::load_context(connection, &row.id)?,
+        attached_context: prompt.attached_context,
+        session_action: prompt.session_action,
+        command: prompt.command,
         id: SageTurnId::parse(row.id.clone()).map_err(|_| StoreError::Corrupt("turn id"))?,
         session_id: SageAgentSessionId::parse(row.session_id.clone())
             .map_err(|_| StoreError::Corrupt("session id"))?,
@@ -305,6 +310,7 @@ fn project_turn(
         browser_operations: BoundedVec::new("browserOperations", browser_operations)
             .map_err(|_| StoreError::Corrupt("browser operations bound"))?,
         browser_operations_collapsed,
+        session_activities: super::turn_activity_facts::load(connection, row)?,
     })
 }
 

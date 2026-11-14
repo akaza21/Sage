@@ -26,15 +26,18 @@ test("reserves the collapsed rail column while its controls load", async ({
     await expect(page.locator(".workbench")).toHaveClass(
       /workbench--navigation-collapsed/,
     );
-    expect((await page.locator(".center-region").boundingBox())!.width).toBe(
-      426,
-    );
+    const center = (await page.locator(".center-region").boundingBox())!;
+    expect(center.x).toBe(46);
+    expect(center.width).toBe(434);
   } finally {
     release();
   }
   await expect(
     page.getByRole("navigation", { name: "Primary navigation" }),
   ).toBeVisible();
+  const loadedCenter = (await page.locator(".center-region").boundingBox())!;
+  expect(loadedCenter.x).toBe(46);
+  expect(loadedCenter.width).toBe(434);
 });
 
 test("grows and shrinks the composer within its scroll bound", async ({
@@ -43,7 +46,7 @@ test("grows and shrinks the composer within its scroll bound", async ({
   await page.setViewportSize({ width: 1380, height: 880 });
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  const input = page.getByRole("textbox", { name: "Message agent" }).first();
+  const input = page.getByRole("combobox", { name: "Message agent" }).first();
   await expect(input).toBeEnabled();
   await input.fill("One line");
   const short = (await input.boundingBox())!.height;
@@ -100,24 +103,46 @@ test("keeps title-bar height stable and omits an empty Editor tab row", async ({
 }) => {
   await page.setViewportSize({ width: 1380, height: 880 });
   await openScenario(page, "agent-single", "agent");
-  const title = page.locator(".title-bar");
-  const agent = (await title.boundingBox())!;
-  await expect(
-    title.locator(".title-bar__brand, .title-bar__mark"),
-  ).toHaveCount(0);
-  await page.getByRole("radio", { name: "Editor", exact: true }).focus();
-  await page.keyboard.press("Space");
-  expect((await title.boundingBox())!.height).toBe(agent.height);
-  await expect(
-    page.getByRole("region", { name: "Editor welcome" }),
-  ).toBeVisible();
-  expect((await page.locator(".workbench__tabs").boundingBox())!.height).toBe(
+  // The welcome canvas can load before the independently loaded tab strip.
+  let release = () => {};
+  const ready = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route("**/src/workbench/TabStrip.tsx*", async (route) => {
+    await ready;
+    await route.continue();
+  });
+  const tabs = page.locator(".workbench__tabs");
+  const tablist = tabs.getByRole("tablist", {
+    name: "Tabs",
+    includeHidden: true,
+  });
+  try {
+    const title = page.locator(".title-bar");
+    const agent = (await title.boundingBox())!;
+    await expect(
+      title.locator(".title-bar__brand, .title-bar__mark"),
+    ).toHaveCount(0);
+    await page.getByRole("radio", { name: "Editor", exact: true }).focus();
+    await page.keyboard.press("Space");
+    expect((await title.boundingBox())!.height).toBe(agent.height);
+    await expect(
+      page.getByRole("region", { name: "Editor welcome" }),
+    ).toBeVisible();
+    await expect(tablist).toHaveCount(0);
+    expect((await tabs.boundingBox())!.height).toBe(0);
+    await expect(page.locator(".editor-welcome__mark use")).toHaveAttribute(
+      "href",
+      "/sage-mark.svg#mark",
+    );
+  } finally {
+    release();
+  }
+  await expect(tablist).toBeAttached();
+  await expect(tablist.getByRole("tab", { includeHidden: true })).toHaveCount(
     0,
   );
-  await expect(page.locator(".editor-welcome__mark use")).toHaveAttribute(
-    "href",
-    "/sage-mark.svg#mark",
-  );
+  expect((await tabs.boundingBox())!.height).toBe(0);
 });
 
 test("collapses the Agent sidebar at 480 and supports the sidebar shortcut", async ({
@@ -129,10 +154,13 @@ test("collapses the Agent sidebar at 480 and supports the sidebar shortcut", asy
     page.getByRole("button", { name: "Show projects and chats" }),
   ).toBeVisible();
   await expect(page.locator(".project-sidebar__scroll")).toHaveCount(0);
-  await expect(page.locator(".agent-task-header__harness-icon")).toBeVisible();
-  await expect(
-    page.locator(".agent-task-header__harness-icon use"),
-  ).toHaveAttribute("href", "/harness-codex.svg#mark");
+  const harnessStatus = page.locator(".agent-task-header__harness-status");
+  const info = harnessStatus.locator("summary");
+  await expect(info).toHaveAccessibleName("Harness status: Test simulator");
+  await expect(info.locator("svg.lucide-info")).toBeVisible();
+  await info.click();
+  await expect(harnessStatus.locator("p")).toHaveText("Test simulator");
+  await info.click();
   expect(
     (await page.locator(".agent-chat-pane").first().boundingBox())!.width,
   ).toBeGreaterThan(400);

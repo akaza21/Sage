@@ -1,5 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   takeCanonicalScreenshot,
 } from "./shared/visualBrowserPrimitives";
@@ -68,7 +69,12 @@ test("AP-C project disclosure, context actions, and honest project menu", async 
   await expect(disclosure).toHaveAttribute("aria-expanded", "false");
   await expect(projects.locator(".project-chat-row")).toHaveCount(0);
   await disclosure.click();
-  const row = projects.locator(".project-chat-row").first();
+  // Mark unread is offered only on a chat whose last Turn finished. The
+  // project's own chat is still working, so the menu opens on the finished
+  // chat, which is pinned.
+  const row = sidebar
+    .getByRole("region", { name: "Pinned" })
+    .locator(".project-chat-row", { hasText: "Agent navigation polish" });
   await row.click({ button: "right" });
   const menu = page.getByRole("menu", { name: /^Actions for / });
   await expect(
@@ -152,7 +158,7 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
     exact: true,
   });
   await trigger.click();
-  const query = page.getByRole("searchbox", { name: "Search Chats" });
+  const query = page.getByRole("combobox", { name: "Search chats" });
   await expect(query).toBeFocused();
   await expect(
     page
@@ -172,7 +178,7 @@ test("AP-C sidebar search and Ctrl+K share a focused live palette", async ({
   await expect(query).toHaveValue("");
 });
 
-test("Search Chats keeps Cancel reachable when a pending search fails", async ({
+test("Search chats keeps Close reachable when a pending search fails", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 690, height: 440 });
@@ -191,11 +197,12 @@ test("Search Chats keeps Cancel reachable when a pending search fails", async ({
     .locator("header.title-bar")
     .getByRole("button", { name: "Search chats" });
   await trigger.click();
-  const dialog = page.getByRole("dialog", { name: "Search Chats" });
+  const dialog = page.getByRole("dialog", { name: "Search chats" });
   await page.clock.runFor(250);
   await expect(dialog.getByRole("status")).toHaveText("Searching…");
-  const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+  const cancel = dialog.getByRole("button", { name: "Close", exact: true });
   await cancel.click({ trial: true });
+  await waitForAnimations(dialog);
   const before = (await cancel.boundingBox())!;
   await page.mouse.move(
     before.x + before.width / 2,
@@ -267,7 +274,7 @@ test("AP-C Show more lists a project's hidden chats in place", async ({
   });
   await expect(hidden).toHaveCount(0);
   await projects.getByRole("button", { name: "Show more" }).first().click();
-  await expect(page.getByRole("dialog", { name: "Search Chats" })).toHaveCount(
+  await expect(page.getByRole("dialog", { name: "Search chats" })).toHaveCount(
     0,
   );
   await hidden.click();
@@ -354,6 +361,102 @@ test("AP-C hover Pin and Archive take a real pointer click without opening the c
     sidebar.getByRole("button", { name: "Undo archive" }),
   ).toBeVisible();
   expect(await activeChat()).toBe(before);
+});
+
+test("AP-C a refused archived-chat delete shows on that row, not in the open chat", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-dual", "agent");
+  await installRailBrowseFixture(page);
+  const refusal = "Stop this Chat's running turn before deleting it";
+  await page.evaluate(async (message) => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { getWorkbenchPorts } =
+      await import("/src/ports/workbenchRuntime.ts");
+    useWorkbenchStore.setState((state) => ({
+      archivedChats: [{ id: "rail-fixture-6", title: "Agent rail task 6" }],
+      tabs: state.tabs.filter((tab) => tab.id !== "rail-fixture-6"),
+    }));
+    getWorkbenchPorts().chat.deleteChat = async (
+      _request,
+      expectedTransitionEpoch,
+    ) => ({
+      committed: false,
+      transitionEpoch: expectedTransitionEpoch,
+      snapshot: null,
+      recoveryError: message,
+    });
+  }, refusal);
+  const sidebar = page.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  await sidebar.getByRole("button", { name: "Archived chats: 1" }).click();
+  const archived = sidebar.getByRole("region", { name: "Archived chats" });
+  await archived
+    .getByRole("button", { name: "Delete chat Agent rail task 6" })
+    .click();
+  await page.getByRole("button", { name: "Delete chat", exact: true }).click();
+
+  const alert = archived.getByRole("alert");
+  await expect(alert).toHaveText(refusal);
+  await expect(page.getByText(refusal)).toHaveCount(1);
+  await expect(page.getByText(/invalid request/i)).toHaveCount(0);
+  await expect(
+    archived.getByRole("button", { name: "Delete chat Agent rail task 6" }),
+  ).toHaveAccessibleDescription(refusal);
+  await archived
+    .getByRole("button", { name: "Dismiss error for Agent rail task 6" })
+    .click();
+  await expect(archived.getByRole("alert")).toHaveCount(0);
+  await expect(
+    archived.getByRole("button", { name: "Delete chat Agent rail task 6" }),
+  ).toBeFocused();
+});
+
+test("AP-C a refused archive from the rail shows on that chat's row", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-dual", "agent");
+  await installRailBrowseFixture(page);
+  const refusal = "Stop this Chat's running turn before archiving it";
+  await page.evaluate(async (message) => {
+    const { getWorkbenchPorts } =
+      await import("/src/ports/workbenchRuntime.ts");
+    getWorkbenchPorts().chat.archiveChat = async (
+      _request,
+      expectedTransitionEpoch,
+    ) => ({
+      committed: false,
+      transitionEpoch: expectedTransitionEpoch,
+      snapshot: null,
+      recoveryError: message,
+    });
+  }, refusal);
+  const projects = page
+    .getByRole("complementary", { name: "Projects and chats" })
+    .getByRole("region", { name: "Projects" });
+  const archive = projects.getByRole("button", {
+    name: "Archive Agent rail task 6",
+    exact: true,
+  });
+  await archive
+    .locator("xpath=ancestor::*[contains(@class,'project-chat-row')][1]")
+    .hover();
+  await archive.click();
+
+  const alert = projects.getByRole("alert");
+  await expect(alert).toHaveText(refusal);
+  await expect(page.getByText(refusal)).toHaveCount(1);
+  await expect(archive).toHaveAccessibleDescription(refusal);
+  await projects
+    .getByRole("button", { name: "Dismiss error for Agent rail task 6" })
+    .click();
+  await expect(projects.getByRole("alert")).toHaveCount(0);
+  await expect(
+    projects.getByRole("button", {
+      name: "Chat actions for Agent rail task 6",
+    }),
+  ).toBeFocused();
 });
 
 test("AP-C resting on a chat row shows its title, age and project beside the rail", async ({
@@ -510,12 +613,14 @@ test("AP-C sidebar options open from the trigger toward the center pane", async 
   await trigger.click();
   const menu = page.getByRole("menu", { name: "Sidebar options" });
   await expect(menu).toBeVisible();
+  await waitForAnimations(menu);
   const triggerBox = (await trigger.boundingBox())!;
   const menuBox = (await menu.boundingBox())!;
   expect(Math.round(menuBox.x)).toBe(Math.round(triggerBox.x));
   await menu.getByRole("menuitem", { name: "Organize sidebar" }).click();
   const submenu = page.getByRole("menu", { name: "Organize sidebar" });
   await expect(submenu).toBeVisible();
+  await waitForAnimations(submenu);
   expect((await submenu.boundingBox())!.x).toBeGreaterThanOrEqual(
     menuBox.x + menuBox.width,
   );

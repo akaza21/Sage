@@ -96,6 +96,34 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("repository commit store", () => {
+  it("refuses an empty message without calling git", async () => {
+    const commit = vi.spyOn(desktop, "commitGitRepository");
+    await expect(
+      useWorkbenchStore.getState().commitRepository("root-a", "   "),
+    ).resolves.toBe(false);
+    expect(commit).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositoryCommit: null,
+      repositoryCommitError: {
+        rootId: "root-a",
+        kind: "failed",
+        message: "Commit message is required",
+      },
+    });
+  });
+
+  it("refuses to start while another repository command is running", async () => {
+    const commit = vi.spyOn(desktop, "commitGitRepository");
+    useWorkbenchStore.setState({
+      repositoryCheckout: { rootId: "root-b", branch: "main" },
+    });
+    await expect(
+      useWorkbenchStore.getState().commitRepository("root-a", "Busy"),
+    ).resolves.toBe(false);
+    expect(commit).not.toHaveBeenCalled();
+    expect(useWorkbenchStore.getState().repositoryCommit).toBeNull();
+  });
+
   it("commits one root and adopts its authoritative all-root projection", async () => {
     const commit = vi.spyOn(desktop, "commitGitRepository").mockResolvedValue({
       projectId: "project-a",

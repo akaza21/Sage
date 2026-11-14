@@ -6,10 +6,14 @@ mod tool_result;
 mod turn;
 use tool_result::{tool_images, tool_text};
 
-use super::{ActiveTurn, EventPhase, PiTranslator, TOOLS_PER_TURN};
+use super::{ActiveTurn, PiTranslator, TOOLS_PER_TURN, TurnPhase};
 use crate::acp::bindings::pi::{
     decode::{bounded_string, external_id, redact_structured_text},
     protocol::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome},
+};
+use crate::acp::{
+    intent::session_event::{SESSION_NOTICE_TEXT_BYTES, SESSION_TITLE_BYTES, SessionNoticeLevel},
+    redaction::text::{clip_display, neutralized},
 };
 
 impl PiTranslator {
@@ -18,11 +22,25 @@ impl PiTranslator {
         kind: &str,
         value: &Value,
     ) -> Result<Vec<AdapterOutput>, AdapterError> {
-        if matches!(
-            kind,
-            "thinking_level_changed" | "session_info_changed" | "queue_update" | "entry_appended"
-        ) {
-            return Ok(vec![AdapterOutput::LateIgnored]);
+        match kind {
+            "thinking_level_changed" | "queue_update" | "entry_appended" => {
+                return Ok(vec![AdapterOutput::LateIgnored]);
+            }
+            "session_info_changed" => {
+                return Ok(vec![
+                    display_text(value.get("name"), SESSION_TITLE_BYTES)
+                        .map_or(AdapterOutput::LateIgnored, AdapterOutput::Title),
+                ]);
+            }
+            "summarization_retry_scheduled" => return Ok(vec![turn::summary_retry(value)]),
+            "extension_error" => {
+                return Ok(vec![notice(
+                    SessionNoticeLevel::Error,
+                    "Pi extension",
+                    value.get("error"),
+                )]);
+            }
+            _ => {}
         }
         if kind == "extension_ui_request" {
             return self.extension_request(value);
@@ -34,7 +52,7 @@ impl PiTranslator {
             && self
                 .active
                 .as_ref()
-                .is_some_and(|turn| turn.terminal.is_some())
+                .is_some_and(|turn| turn.lifecycle.terminal().is_some())
         {
             return Ok(vec![AdapterOutput::LateIgnored]);
         }
@@ -50,20 +68,7 @@ impl PiTranslator {
             return Ok(vec![AdapterOutput::Absorbed]);
         }
         match kind {
-            "agent_start" => {
-                let turn = self.live_turn_any_phase()?;
-                if !matches!(
-                    turn.event_phase,
-                    EventPhase::PromptAccepted | EventPhase::AgentEnded
-                ) {
-                    return Err(AdapterError::EventSequence);
-                }
-                turn.event_phase = EventPhase::AgentRunning;
-                turn.settlement_message = None;
-                Ok(vec![AdapterOutput::TurnRunning {
-                    turn_key: turn.turn_key.clone(),
-                }])
-            }
+            "agent_start" => self.agent_start(),
             "agent_end" => self.agent_end(value),
             "agent_settled" => self.agent_settled(),
             "auto_retry_start" => self.retry_start(value),
@@ -73,6 +78,7 @@ impl PiTranslator {
                 if !assistant_message(value) {
                     return Ok(Vec::new());
                 }
+                self.live_turn()?.reply_open = true;
                 Ok(vec![AdapterOutput::TextStarted {
                     external_id: message_id(value)?,
                 }])
@@ -110,6 +116,12 @@ impl PiTranslator {
                 } else {
                     AdapterOutput::CompactionCompleted
                 });
+                // Pi's reason, such as nothing to compact yet, when the user asked.
+                if failed && !aborted && turn.lifecycle.is_command() {
+                    let reason = value.get("errorMessage");
+                    output.push(notice(SessionNoticeLevel::Warning, "Pi", reason));
+                    turn.compaction_failure_shown = true;
+                }
                 Ok(output)
             }
             _ => self.unknown_event(kind),
@@ -138,7 +150,7 @@ impl PiTranslator {
 
     fn live_turn(&mut self) -> Result<&mut ActiveTurn, AdapterError> {
         let turn = self.live_turn_any_phase()?;
-        if turn.event_phase != EventPhase::AgentRunning {
+        if turn.lifecycle.phase != TurnPhase::ModelRunning {
             return Err(AdapterError::EventSequence);
         }
         Ok(turn)
@@ -146,7 +158,7 @@ impl PiTranslator {
 
     fn live_turn_any_phase(&mut self) -> Result<&mut ActiveTurn, AdapterError> {
         let turn = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-        if turn.terminal.is_some() {
+        if turn.lifecycle.terminal().is_some() {
             return Err(AdapterError::StaleIntent);
         }
         Ok(turn)
@@ -159,19 +171,31 @@ impl PiTranslator {
         if self
             .active
             .as_ref()
-            .is_some_and(|turn| turn.terminal.is_none())
+            .is_some_and(|turn| turn.lifecycle.terminal().is_none())
         {
             self.close_config_requests();
         }
         let turn = self.active.as_mut().ok_or(AdapterError::StaleIntent)?;
-        match turn.terminal {
-            Some(current) if current == incoming => Ok(vec![AdapterOutput::DuplicateIgnored]),
-            Some(_) => Err(AdapterError::TerminalConflict),
-            None => {
-                turn.terminal = Some(incoming);
+        let denied = turn.authority_denied;
+        let incoming = if denied {
+            TerminalOutcome::Interrupted
+        } else {
+            incoming
+        };
+        let ended = turn.lifecycle.phase == TurnPhase::ModelEnded;
+        match turn.lifecycle.settle(incoming)? {
+            None => Ok(vec![AdapterOutput::DuplicateIgnored]),
+            Some(settled) => {
+                // A card left open is gone with its turn.
+                self.pending_ui = None;
+                // Sage's policy abort is not the user's stop.
+                let incoming = if denied {
+                    TerminalOutcome::Interrupted
+                } else {
+                    settled
+                };
                 let mut events = Vec::new();
-                if incoming == TerminalOutcome::Failed && turn.event_phase == EventPhase::AgentEnded
-                {
+                if incoming == TerminalOutcome::Failed && ended {
                     let message = turn
                         .retry_final_error
                         .take()
@@ -186,9 +210,18 @@ impl PiTranslator {
                     turn.compaction_active = false;
                     events.push(match incoming {
                         TerminalOutcome::Failed => AdapterOutput::CompactionFailed,
-                        TerminalOutcome::Completed | TerminalOutcome::Interrupted => {
-                            AdapterOutput::CompactionInterrupted
-                        }
+                        TerminalOutcome::Completed
+                        | TerminalOutcome::Cancelled
+                        | TerminalOutcome::Interrupted => AdapterOutput::CompactionInterrupted,
+                    });
+                }
+                // A wait to retry ends with its Turn; its activity row
+                // must not stay running in the chat.
+                if let Some(attempt) = turn.retry_waiting.take() {
+                    events.push(AdapterOutput::Retry {
+                        attempt,
+                        max_attempts: None,
+                        state: crate::acp::intent::session_event::SessionActivityState::Cancelled,
                     });
                 }
                 events.push(AdapterOutput::TurnTerminal {
@@ -204,7 +237,7 @@ impl PiTranslator {
         self.closed_config_requests.extend(
             self.pending
                 .iter()
-                .filter(|(_, kind)| kind.is_config())
+                .filter(|(_, request)| request.kind.is_config())
                 .map(|(id, _)| id.clone()),
         );
     }
@@ -226,7 +259,9 @@ impl PiTranslator {
             128,
         )?
         .ok_or(AdapterError::Malformed)?;
-        if name != "read" {
+        if name != "read"
+            && !(self.bridge_tools && matches!(name.as_str(), "write" | "edit" | "bash"))
+        {
             self.live_turn()?.authority_denied = true;
             return Ok(vec![AdapterOutput::AuthorityBlocked {
                 external_id: id,
@@ -329,6 +364,28 @@ impl PiTranslator {
         }
         self.pending_ui = None;
     }
+}
+
+/// Harness text shown as-is: control and invisible characters neutralized,
+/// secrets redacted, trimmed and clipped. `None` when nothing is left.
+fn display_text(value: Option<&Value>, max: usize) -> Option<String> {
+    let text = neutralized(value?.as_str()?, true);
+    let text = clip_display(redact_structured_text(&text).trim(), max);
+    (!text.is_empty()).then_some(text)
+}
+
+pub(super) fn notice(
+    level: SessionNoticeLevel,
+    source: &'static str,
+    text: Option<&Value>,
+) -> AdapterOutput {
+    display_text(text, SESSION_NOTICE_TEXT_BYTES).map_or(AdapterOutput::Absorbed, |text| {
+        AdapterOutput::Notice {
+            level,
+            source,
+            text,
+        }
+    })
 }
 
 fn required_tool_id(value: &Value) -> Result<String, AdapterError> {

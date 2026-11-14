@@ -51,15 +51,28 @@ impl ClaudeRuntime {
             AdapterCommand::Prompt {
                 prompt,
                 client_message_id,
-                ..
+                access_mode,
             } => {
                 self.require_capability(|value| value.prompt)?;
+                let blocks = crate::acp::attached_context::files::prompt_blocks(&prompt, self.capabilities.as_ref()).map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
                 if !self.auth.permits_prompt() {
                     return Err(AdapterRuntimeError::SignInRequired);
                 }
                 let id = self.next_request_id.checked_add(1).filter(|id| *id <= i64::MAX as u64).ok_or(AdapterRuntimeError::Operation)?;
                 let active = self.active.as_mut().ok_or(AdapterRuntimeError::Operation)?;
                 if active.turn.is_some() {
+                    return Err(AdapterRuntimeError::Operation);
+                }
+                // The prompt is written only while the session is, by every
+                // source it reports, in the mode selected for this turn; a
+                // flip after the select stops it here. An access mode Claude
+                // has no permission mode for is never sent at all.
+                let native_mode = crate::acp::bindings::access_policy::session_mode(
+                    super::super::CLAUDE_BINDING_ID,
+                    access_mode,
+                )
+                .ok_or(AdapterRuntimeError::Operation)?;
+                if !active.config.in_mode(native_mode) {
                     return Err(AdapterRuntimeError::Operation);
                 }
                 active.translator.begin_prompt(&id.to_string()).map_err(map_translation)?;
@@ -69,9 +82,12 @@ impl ClaudeRuntime {
                     client_message_id,
                     request_id: id,
                     cancel_written: false,
+                    native_mode: Some(native_mode),
+                    sanctioned_mode: None,
                 });
                 let external_session_id = active.external_id.clone();
-                match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":[{"type":"text","text":prompt.as_str()}]})) {
+                let message_id = active.turn.as_ref().map(|turn| turn.client_message_id.as_str().to_owned());
+                match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":blocks,"messageId":message_id})) {
                     Ok(egress) => Ok(egress),
                     Err(error) => {
                         let active = self
@@ -106,23 +122,33 @@ impl ClaudeRuntime {
                 if record.state != DenialState::Pending {
                     return Err(AdapterRuntimeError::LaterPermissionMiss);
                 }
+                let mut chosen = None;
                 let reply = match decision {
                     PermissionDecision::Ask => {
-                        let _ = resolve_later_permission(&request_id, decision, None)
+                        let _ = resolve_later_permission(&request_id, &decision, None)
                             .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
                         return Err(AdapterRuntimeError::Operation);
                     }
                     PermissionDecision::AllowOnce => {
-                        let option_id = record.allow_once_option_id.as_deref().ok_or(AdapterRuntimeError::Operation)?;
-                        let selected = permission_selected(&record.wire_id, option_id)?;
+                        let option_id = record.allow_once_option_id.clone().ok_or(AdapterRuntimeError::Operation)?;
+                        let selected = permission_selected(&record.wire_id, &option_id)?;
                         record.reply = PermissionReply::AllowOnce;
+                        chosen = Some(option_id);
                         selected
                     }
                     PermissionDecision::AllowAlways => {
-                        let option_id = record.allow_always_option_id.as_deref().ok_or(AdapterRuntimeError::Operation)?;
-                        let selected = permission_selected(&record.wire_id, option_id)?;
+                        let option_id = record.allow_always_option_id.clone().ok_or(AdapterRuntimeError::Operation)?;
+                        let selected = permission_selected(&record.wire_id, &option_id)?;
                         record.reply = PermissionReply::AllowAlways;
+                        chosen = Some(option_id);
                         selected
+                    }
+                    PermissionDecision::Answer(ref answers) => {
+                        if record.allow_once_option_id.as_deref() != Some("answer") {
+                            return Err(AdapterRuntimeError::UnsupportedCommand);
+                        }
+                        record.reply = PermissionReply::AllowOnce;
+                        answered(&record.wire_id, answers)?
                     }
                     PermissionDecision::Deny => {
                         record.reply = PermissionReply::Deny;
@@ -134,12 +160,48 @@ impl ClaudeRuntime {
                         super::denial(&external, &record.wire_id, false)?
                     }
                 };
-                resolve_later_permission(&request_id, decision, Some(reply))
+                if let Some(option_id) = chosen {
+                    self.sanction_option(&option_id);
+                }
+                resolve_later_permission(&request_id, &decision, Some(reply))
                     .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?
                     .ok_or(AdapterRuntimeError::LaterPermissionMiss)
             }
         }
     }
+}
+
+/// Answers ride on the `answer` option, as `{questionId, selectedOption?,
+/// text?}` entries the harness binding reads back.
+fn answered(
+    wire_id: &Value,
+    answers: &crate::acp::intent::user_input::UserInputAnswers,
+) -> Result<AdapterEgress, AdapterRuntimeError> {
+    let answers: Vec<Value> = answers
+        .as_slice()
+        .iter()
+        .map(|answer| {
+            json!({
+                "questionId": answer.question_id.as_str(),
+                "selectedOption": answer.selected_option.as_ref().map(|label| label.as_str()),
+                "selectedOptions": answer.selected_options.as_ref().map(|labels| {
+                    labels.as_slice().iter().map(|label| label.as_str()).collect::<Vec<_>>()
+                }),
+                "text": answer.text.as_ref().map(|text| text.as_str()),
+            })
+        })
+        .collect();
+    let bytes = serde_json::to_vec(&json!({
+        "jsonrpc": "2.0",
+        "id": wire_id,
+        "result": {"outcome": {"outcome": "selected", "optionId": "answer"}, "answers": answers},
+    }))
+    .map_err(|_| AdapterRuntimeError::Frame)?;
+    let frame = OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
+    Ok(AdapterEgress::new(
+        frame,
+        EgressToken::protocol_notification(),
+    ))
 }
 
 fn permission_selected(

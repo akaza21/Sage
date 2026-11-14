@@ -28,6 +28,42 @@ use super::{
 /// Number of concurrently live harness runtimes Sage admits.
 pub(crate) const LIVE_RUNTIME_LANES: usize = LIMITS.process.operational_live_trees as usize;
 
+/// The explicit-close deadline from now: the bound on one release or close.
+pub(crate) fn explicit_close_deadline() -> Instant {
+    Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close)
+}
+
+/// Why a Chat's live runtime was not released.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ChatRuntimeRelease {
+    /// A Turn is running; the user stops it first.
+    TurnRunning,
+    /// An activation or another release holds the lane; once it lets go, a
+    /// retry may succeed.
+    LaneBusy,
+    /// The park did not settle before its deadline; retrying now does not
+    /// help.
+    Unsettled,
+    /// The harness is still answering a session control (a fork, a usage
+    /// read, a setting change); once it answers, a retry may succeed.
+    ControlRunning,
+}
+
+impl ChatRuntimeRelease {
+    /// The refusal shown to the user for `action` ("archiving", "deleting").
+    pub(crate) fn message(self, action: &str) -> String {
+        match self {
+            Self::TurnRunning => format!("Stop this Chat's running turn before {action} it"),
+            Self::LaneBusy | Self::Unsettled => {
+                format!("This Chat's agent is still shutting down; try {action} it again")
+            }
+            Self::ControlRunning => {
+                format!("This Chat's agent is still answering a request; try {action} it again")
+            }
+        }
+    }
+}
+
 pub(super) type RecoveryCell = Arc<Mutex<Option<PendingCodexRecovery>>>;
 
 pub(super) struct LiveLane {
@@ -101,6 +137,19 @@ impl LiveLane {
     fn is_free(&self) -> bool {
         self.runtime.is_empty() && self.scheduler.active().is_none() && !self.has_recovery()
     }
+
+    /// An idle runtime that would make room for another Chat, but whose
+    /// harness is answering a session control.
+    fn answering_while_idle(&self) -> bool {
+        !self.has_recovery()
+            && self.scheduler.active().is_some_and(|active| {
+                !active.turn_reserved
+                    && self
+                        .runtime
+                        .for_owner(&active.tree)
+                        .is_ok_and(|host| !host.controls_settled())
+            })
+    }
 }
 
 /// Lane-specific runtime authority with shared service access through `Deref`.
@@ -110,6 +159,10 @@ pub(super) struct Lane<'a> {
     pub(super) scheduler: Scheduler,
     pub(super) sessions: SessionCoordinator,
     pub(super) codex_recovery: RecoveryCell,
+    /// The idle park claimed on another Chat's runtime when this lane was
+    /// chosen to evict it; its park takes it, and dropping it lets that
+    /// runtime's session controls through again.
+    pub(super) eviction: Mutex<Option<crate::acp::runtime::IdleParkClaim>>,
 }
 
 impl Deref for Lane<'_> {
@@ -131,6 +184,18 @@ impl Drop for ActivationClaim<'_> {
     }
 }
 
+impl Lane<'_> {
+    /// Parks this lane's idle runtime. A park that did not converge retains
+    /// its zero-process recovery, driven now as an activation's reclaim would.
+    fn park_or_reclaim(&self, deadline: Instant) {
+        if !matches!(self.park_idle_runtime(deadline), Ok(true))
+            && self.has_replacement_park_recovery()
+        {
+            let _ = self.shutdown_codex_recovery(deadline);
+        }
+    }
+}
+
 impl AcpService {
     pub(super) fn lane_at(&self, index: usize) -> Lane<'_> {
         let lane = &self.lanes[index];
@@ -140,6 +205,7 @@ impl AcpService {
             scheduler: lane.scheduler.clone(),
             sessions: lane.sessions.clone(),
             codex_recovery: Arc::clone(&lane.codex_recovery),
+            eviction: Mutex::new(None),
         }
     }
 
@@ -176,7 +242,10 @@ impl AcpService {
     /// dropped, so concurrent activations never race for one lane. Order:
     /// a lane already holding this session, a free lane, a lane with
     /// resumable idle runtime, then a lane retaining recovery
-    /// (which activation parks). Busy lanes are never chosen.
+    /// (which activation parks). Busy lanes are never chosen. Choosing a lane
+    /// that holds another Chat's idle runtime claims that runtime's idle park
+    /// at once; one whose harness is answering a session control is passed
+    /// over for the next candidate.
     pub(super) fn claim_activation_lane(
         &self,
         owner: &RuntimeOwner,
@@ -193,21 +262,114 @@ impl AcpService {
             if lane
                 .activating
                 .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
-                .is_ok()
+                .is_err()
             {
-                lane.last_activation.store(
-                    crate::persistence::now_millis().max(0) as u64,
-                    Ordering::Release,
-                );
-                return Ok((self.lane_at(index), ActivationClaim { lane }));
+                continue;
             }
+            let claim = ActivationClaim { lane };
+            let view = self.lane_at(index);
+            let evicted = lane
+                .scheduler
+                .active()
+                .filter(|_| !lane.holds_session(owner) && !lane.has_recovery())
+                .and_then(|active| lane.runtime.for_owner(&active.tree).ok());
+            if let Some(host) = evicted {
+                let Some(park) = host.claim_idle_park() else {
+                    continue;
+                };
+                *view
+                    .eviction
+                    .lock()
+                    .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(park);
+            }
+            lane.last_activation.store(
+                crate::persistence::now_millis().max(0) as u64,
+                Ordering::Release,
+            );
+            return Ok((view, claim));
+        }
+        if self.lanes.iter().any(|lane| lane.answering_while_idle()) {
+            return Err(CodexSessionError::CapacityAnswering);
         }
         Err(CodexSessionError::Capacity)
     }
 
+    /// Parks the Chat's live runtime through the explicit-close park an
+    /// evicted idle lane takes, so an archived or deleted Chat holds no
+    /// harness process; a later restore resumes the session. A lane retaining
+    /// recovery for the Chat is driven first. A reserved Turn is refused.
+    /// `still_wanted` is asked once the lane is claimed, so a Chat restored
+    /// meanwhile keeps its runtime; `deadline` bounds the whole release.
+    pub(crate) fn release_chat_runtime(
+        &self,
+        project: &crate::acp::contract::SageProjectId,
+        chat: &crate::acp::contract::SageChatId,
+        deadline: Instant,
+        still_wanted: impl Fn() -> bool,
+    ) -> Result<(), ChatRuntimeRelease> {
+        let same = |owner: &RuntimeOwner| &owner.project_id == project && &owner.chat_id == chat;
+        for (index, lane) in self.lanes.iter().enumerate() {
+            let active = lane.scheduler.active().filter(|active| same(&active.tree));
+            let recovering = lane.recovery_owner().as_ref().is_some_and(same);
+            if active.is_none() && !recovering {
+                continue;
+            }
+            if active.is_some_and(|active| active.turn_reserved) {
+                return Err(ChatRuntimeRelease::TurnRunning);
+            }
+            // An activation in flight on this lane owns it until it settles.
+            if lane
+                .activating
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_err()
+            {
+                #[cfg(test)]
+                self.observe_lane_busy_for_test(lane);
+                return Err(ChatRuntimeRelease::LaneBusy);
+            }
+            let _claim = ActivationClaim { lane };
+            if !still_wanted() {
+                return Ok(());
+            }
+            let view = self.lane_at(index);
+            if recovering {
+                let _ = view.shutdown_codex_recovery(deadline);
+            }
+            if lane
+                .scheduler
+                .active()
+                .is_some_and(|active| same(&active.tree))
+            {
+                view.park_or_reclaim(deadline);
+            }
+            let held = lane.scheduler.active().filter(|active| same(&active.tree));
+            // A prompt that won the idle-drain race keeps its runtime running.
+            if held.as_ref().is_some_and(|active| active.turn_reserved) {
+                return Err(ChatRuntimeRelease::TurnRunning);
+            }
+            // So does a session control the harness was answering: a park
+            // that leaves a parkable runtime untouched was refused for one,
+            // even if the harness has answered it since, and a retry parks it.
+            if !lane.has_recovery()
+                && held.as_ref().is_some_and(|active| {
+                    view.runtime
+                        .for_owner(&active.tree)
+                        .is_ok_and(|host| host.has_shutdown_recovery())
+                })
+            {
+                #[cfg(test)]
+                self.observe_control_running_for_test();
+                return Err(ChatRuntimeRelease::ControlRunning);
+            }
+            if held.is_some() || lane.recovery_owner().as_ref().is_some_and(same) {
+                return Err(ChatRuntimeRelease::Unsettled);
+            }
+        }
+        Ok(())
+    }
+
     fn reclaim_replacement_parks(&self, deadline: Instant) {
-        let deadline = deadline
-            .min(Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.explicit_close));
+        let deadline = deadline.min(explicit_close_deadline());
         for (index, lane) in self.lanes.iter().enumerate() {
             if Instant::now() >= deadline {
                 break;
@@ -252,13 +414,7 @@ impl AcpService {
             .lanes
             .iter()
             .enumerate()
-            .filter(|(index, lane)| {
-                lane.scheduler.active().is_some_and(|active| {
-                    !lane.has_recovery()
-                        && self.can_resume(&active.tree)
-                        && self.lane_at(*index).can_park_idle_runtime()
-                })
-            })
+            .filter(|(index, _)| self.parks_resumably(*index))
             .map(|(index, lane)| (lane.last_activation.load(Ordering::Acquire), index))
             .collect();
         idle.sort_unstable();
@@ -273,6 +429,17 @@ impl AcpService {
         order
     }
 
+    /// An idle runtime a park releases and the next activation resumes;
+    /// eviction and idle release park only these.
+    fn parks_resumably(&self, index: usize) -> bool {
+        let lane = &self.lanes[index];
+        lane.scheduler.active().is_some_and(|active| {
+            !lane.has_recovery()
+                && self.can_resume(&active.tree)
+                && self.lane_at(index).can_park_idle_runtime()
+        })
+    }
+
     fn can_resume(&self, owner: &RuntimeOwner) -> bool {
         self.database.connection().query_row(
             "SELECT capabilities_json FROM agent_sessions WHERE project_id=?1 AND chat_id=?2 AND id=?3 AND external_session_id IS NOT NULL",
@@ -282,6 +449,11 @@ impl AcpService {
             .is_some_and(|capabilities| capabilities.resume_session)
     }
 }
+
+mod idle_release;
+pub(crate) use idle_release::IdleRelease;
+mod release_retry;
+mod turn_undo;
 
 #[cfg(test)]
 #[path = "live_lanes_tests.rs"]

@@ -13,7 +13,7 @@ describe("ResourceStateNotice", () => {
       <ResourceStateNotice
         state="idle"
         title="Preview is idle"
-        detail="Preview shows loopback development servers started from this Chat."
+        detail="Preview shows loopback development servers started from this chat."
       />,
     );
 
@@ -25,7 +25,7 @@ describe("ResourceStateNotice", () => {
     expect(screen.getByText("Preview is idle")).toBeInTheDocument();
     expect(
       screen.getByText(
-        "Preview shows loopback development servers started from this Chat.",
+        "Preview shows loopback development servers started from this chat.",
       ),
     ).toBeInTheDocument();
   });

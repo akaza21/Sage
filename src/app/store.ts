@@ -14,6 +14,10 @@ import type {
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
 import { createEditorSlice, type EditorSlice } from "./editorSlice";
+import {
+  createEditorConflictSlice,
+  type EditorConflictSlice,
+} from "./editorConflictSlice";
 import { createFileCreateSlice, type FileCreateSlice } from "./fileCreateSlice";
 import { createFileRenameSlice, type FileRenameSlice } from "./fileRenameSlice";
 import { createHarnessSlice, type HarnessSlice } from "./harnessSlice";
@@ -80,6 +84,7 @@ export interface WorkbenchState
     ChatHandoffSlice,
     ChatOwnershipSlice,
     EditorSlice,
+    EditorConflictSlice,
     FileCreateSlice,
     FileRenameSlice,
     HarnessSlice,
@@ -171,6 +176,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     ...createResourceSlice(set, get, store),
     ...createFileNavigationSlice(set, get, store),
     ...createEditorSlice(set, get, store),
+    ...createEditorConflictSlice(set, get, store),
     ...createFileCreateSlice(set, get, store),
     ...createFileRenameSlice(set, get, store),
     ...createResourceTrashSlice(set, get, store),
@@ -276,7 +282,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         return;
       }
       const source = get();
-      const { openEditorSettings } =
+      const { default: openEditorSettings } =
         await import("../features/settings/openEditorSettings");
       return openEditorSettings(
         set,

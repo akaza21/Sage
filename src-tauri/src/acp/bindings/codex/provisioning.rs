@@ -6,7 +6,7 @@ use sha2::{Digest, Sha256};
 use super::{
     installed_role::SignedInstalledRole,
     managed::ManagedStagingPrerequisite,
-    manifest::{MetadataValidatedPacket, Platform},
+    manifest::{MetadataValidatedPacket, PINNED_ARTIFACT_COUNT, Platform, pinned_codex_version},
     physical::{
         ConfiguredCodexSourceRoot, ExpectedPhysicalFile, InspectionClaims,
         PhysicallyInspectedPackage, decode_digest, inspect_claims, inspect_codex_source,
@@ -29,12 +29,14 @@ pub(crate) use helper::{
     execute_boundary_remove, execute_boundary_update, helper_operation,
 };
 
-const SOURCE_FILE_COUNT: usize = 8;
+const SOURCE_FILE_COUNT: usize = PINNED_ARTIFACT_COUNT;
 const SOURCE_BYTES_MAX: u64 = 1024 * 1024 * 1024;
 const SOURCE_PATH_BYTES_MAX: usize = 32 * 1024;
 const RECEIPT_BYTES_MAX: usize = 64 * 1024;
-const STAGING_AUTH_ENV: &str = "SAGE_CODEX_0146_STAGE_ONLY";
+const STAGING_AUTH_ENV: &str = "SAGE_CODEX_STAGE_ONLY";
 const STAGING_AUTH_VALUE: &str = "prepare-sealed-offline-stage-no-publish";
+/// The sealed stage beside the managed package, scoped to the pinned release.
+const STAGE_NAME: &str = concat!(".sage-codex-", pinned_codex_version!(), "-stage");
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ProvisioningError {
@@ -92,7 +94,7 @@ enum SourceIdentity {
 }
 
 /// A retained, non-forgeable proof that an offline source tree contains only
-/// the exact pinned Codex 0.146.0 closure. It grants no staging, ACL, publish,
+/// the exact pinned Codex closure. It grants no staging, ACL, publish,
 /// catalog, admission, or launch authority.
 #[derive(Debug)]
 pub(crate) struct VerifiedCodexSource {

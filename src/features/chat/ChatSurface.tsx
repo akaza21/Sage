@@ -1,17 +1,19 @@
-import { useContext, useEffect, useRef, useState } from "react";
+import { useContext, useEffect, useRef } from "react";
+import { useRetainedElement } from "../../ui/useRetainedElement";
 import {
   AgentSessionChromeContext,
   usePinnedAgentChatOwner,
 } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import type { TurnProjection } from "../../domain/acp";
-import { LazyModuleBoundary } from "../../ui/LazyModuleBoundary";
 import { ChatComposerRegion } from "./ChatComposerRegion";
-import { ChatHandoffControl } from "./ChatHandoffControl";
 import { ChatTranscript } from "./ChatTranscript";
+import { useUsageRequest } from "./acp/useUsageRequest";
 import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
   latestRetryPrompt,
+  sessionActionAvailable,
+  sessionActions,
   terminalTurnStates,
   useAcpChatActions,
   useAcpChatHistory,
@@ -20,15 +22,18 @@ import {
   useRendererRecreationFocus,
 } from "./acp";
 import { useComposerFocusHotkey } from "./composerChrome";
-import { LazyHarnessNotice } from "./lazyParts";
-import { isNewProjectChat, newProjectScopeName } from "./newProjectChat";
+import { ChatHandoffControl, LazyHarnessNotice } from "./lazyParts";
+import { isSideChatId } from "../../workbench/sideChatState";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 import { useApprovalSlot } from "./useApprovalSlot";
 import { useBoundChatComposer } from "./useBoundChatComposer";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
-const loadQueueExecution = () => import("./ChatQueueExecution");
+import {
+  restoredSessionConfigView,
+  withSessionConfigNotice,
+} from "./restoredSessionConfigView";
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
   const setAgentSessionChrome = useContext(AgentSessionChromeContext);
@@ -51,9 +56,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     imageUploading,
     addImages,
     queuedPrompts,
-    queuedTurnBarrier,
-    knownTurnOrder,
-    observedOrder,
     sending,
     chatError,
     setComposerText,
@@ -62,7 +64,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     queuePrompt,
     updateQueuedPrompt,
     steerQueuedPrompt,
-    setQueuedTurnBarrier,
   } = useBoundChatComposer(chatId, acpPage ?? null);
   const projectTransitioning = useWorkbenchStore((s) => s.projectTransitioning);
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
@@ -78,17 +79,19 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const endRef = useRef<HTMLDivElement>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const [editSummaryContainer, setEditSummaryContainer] =
-    useState<HTMLDivElement | null>(null);
+    useRetainedElement<HTMLDivElement>();
   const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
   const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
   const focused = chatId == null || focusedChatId === chatId;
   const {
     selectedHarness,
+    selectedSession,
     useNativeAcp,
     availableBinding,
     harnessStatus,
     foregroundError,
+    signInHarness,
     modeError,
     modeChanging,
     actionBusy,
@@ -98,7 +101,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     canEndSession,
     canPrompt,
     sessionHarnessId,
-    accessBindingId,
+    accessTarget,
     sessionModelId,
     sessionPromptUnavailable,
     usage,
@@ -107,6 +110,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     queueAvailable,
     composerHotkeyEnabled,
     disabledReason,
+    imageInput,
     submit,
     closeSession,
     endSession,
@@ -135,20 +139,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       (prompt) => prompt.status === "saving",
     ),
   });
-  const queueExecution = {
-    queuedPrompts,
-    queuedTurnBarrier,
-    knownTurnOrder,
-    activeTurn: Boolean(activeAcpTurn),
-    actionBusy,
-    projectTransitioning,
-    canPrompt,
-    useNativeAcp,
-    observedOrder,
-    submit: acpActions.submit,
-    updateQueuedPrompt,
-    setQueuedTurnBarrier,
-  };
+  const usageRequest = useUsageRequest(useNativeAcp ? acpPage : null, epoch);
   useAgentSessionChromePublisher(
     setAgentSessionChrome,
     chatId,
@@ -180,11 +171,22 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     contentRef: transcriptContentRef,
     endRef,
   });
+  const sessionAction = (kind: keyof typeof sessionActions) => {
+    const action = sessionActions[kind];
+    return useNativeAcp &&
+      !actionBusy &&
+      !projectTransitioning &&
+      sessionActionAvailable(acpPage, action.kind)
+      ? () => void acpActions.runSessionAction(action)
+      : undefined;
+  };
+  const retry = acpPage && latestRetryPrompt(acpPage);
   const retryLastTurn = () => {
-    if (!acpPage || actionBusy || activeAcpTurn) return;
-    const retry = latestRetryPrompt(acpPage);
-    if (retry)
-      void acpActions.submit(retry.prompt, [], retry.bindingId, retry.modelId);
+    if (!retry || actionBusy || activeAcpTurn) return;
+    if (retry.action) return void acpActions.runSessionAction(retry.action);
+    // Retry resends what that turn carried, never the next one's paste.
+    const { prompt, bindingId, modelId, turnId } = retry;
+    void acpActions.submit(prompt, [], bindingId, modelId, { retryOf: turnId });
   };
 
   useEffect(() => {
@@ -229,28 +231,12 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     projectTransitioning,
   ]);
 
-  const newProjectChat = isNewProjectChat({
-    useNativeAcp,
-    page: acpPage,
-    project,
-    projectTransitioning,
-    ...acpHistory,
-    retentionIncomplete: acpRetentionIncomplete,
-  });
   return (
     <section
       ref={surfaceRef}
       className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}`}
       aria-label="Agent chat"
     >
-      {queuedPrompts.length || queuedTurnBarrier ? (
-        <LazyModuleBoundary
-          label="Queued messages"
-          load={loadQueueExecution}
-          fallback={null}
-          render={(Execution) => <Execution {...queueExecution} />}
-        />
-      ) : null}
       {!setAgentSessionChrome ? (
         <header className="surface-header">
           <SessionWorkingPill
@@ -323,10 +309,16 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         messages={messages}
         developmentSimulator={selectedHarness?.source === "development"}
         onRetry={
-          useNativeAcp && !projectTransitioning && !actionBusy && !activeAcpTurn
+          useNativeAcp &&
+          !projectTransitioning &&
+          !actionBusy &&
+          !activeAcpTurn &&
+          retry &&
+          (!retry.action || sessionActionAvailable(acpPage, retry.action.kind))
             ? retryLastTurn
             : undefined
         }
+        onReviewChanges={sessionAction("reviewChanges")}
         showJumpToLatest={showJumpToLatest}
         onJumpToLatest={jumpToLatest}
       />
@@ -338,13 +330,17 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         composerRef={composerRef}
         fieldId={composerFieldId}
         dictationScope={chatId ?? activeTabId ?? ""}
+        commandChatId={chatId}
         sessionId={acpPage?.currentSessionId ?? null}
         descriptionId={`${composerFieldId}-description`}
         disabledReasonId={`${composerFieldId}-disabled-reason`}
         text={composerText}
         attachedContext={attachedContext}
+        pasteSession={selectedSession}
         imagePreviews={imagePreviews}
         imageUploading={imageUploading}
+        imageInputAvailable={imageInput.available}
+        imageInputDisabledReason={imageInput.reason}
         onAddImages={addImages}
         enabled={composerEnabled}
         sendBlocked={sendBlocked}
@@ -356,12 +352,13 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         projectTransitioning={projectTransitioning}
         workbenchError={error}
         chatError={foregroundError}
+        signInHarness={signInHarness}
         claudeSignInRequired={
           selectedHarnessId === "claude-code" &&
           acpActions.errorKind === "signInRequired"
         }
         claudeAuthScope={`${project?.id ?? ""}:${epoch}:${chatId ?? activeTabId ?? ""}`}
-        accessBindingId={accessBindingId}
+        accessTarget={accessTarget}
         availableBinding={availableBinding}
         canPrompt={canPrompt}
         discoveryPhase={discoveryPhase}
@@ -370,20 +367,32 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         selectedHarnessId={selectedHarnessId}
         selectedModelId={selectedModelId}
         sessionPromptUnavailable={sessionPromptUnavailable}
-        sessionConfig={acpPage?.sessionConfig ?? null}
+        sessionConfig={withSessionConfigNotice(
+          acpPage?.sessionConfig ??
+            restoredSessionConfigView(
+              acpPage,
+              selectedHarness?.bindingId,
+              selectedModelId,
+            ),
+          acpPage?.sessionConfigNotice,
+        )}
         modePending={modeChanging}
         modeError={modeError}
         focused={focused}
         onSetSessionMode={acpActions.setSessionMode}
         onSetSessionConfigOption={acpActions.setSessionConfigOption}
+        onCompact={sessionAction("compact")}
         onSelectHarness={chooseHarness}
         onSelectModel={chooseModel}
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        project={newProjectChat ? null : project}
-        projectScopeName={newProjectScopeName(newProjectChat, acpPage, project)}
+        // The project chip keeps one place in the toolbar before and after
+        // the first turn. A side chat belongs to its parent's project and
+        // cannot switch it, so it has no chip.
+        project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
         usage={usage}
+        usageRequest={usageRequest}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}
         onSubmit={submit}
         onTextChange={setComposerText}

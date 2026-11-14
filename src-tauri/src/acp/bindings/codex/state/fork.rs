@@ -35,7 +35,7 @@ enum ForkState {
     Released,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct ForkEntry {
     thread: ExternalId,
     state: ForkState,
@@ -44,7 +44,7 @@ struct ForkEntry {
 }
 
 /// A release in flight; a background one is a deferred release nobody waits for.
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 struct PendingRelease {
     id: u64,
     index: usize,
@@ -52,7 +52,7 @@ struct PendingRelease {
     delete: bool,
 }
 
-#[derive(Debug, Default)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub(crate) struct ForkLedger {
     /// Recent fork threads, oldest first, each with its release state.
     threads: Vec<ForkEntry>,
@@ -321,7 +321,7 @@ impl CodexAdapter {
     pub(crate) fn fork(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.native_session_fork)?;
         if self.pending_fork.is_some()
-            || self.pending_child_read.is_some()
+            || self.pending_read.is_some()
             || self.turn_start_correlations.has_pending()
             || self.active_turn_id.is_some()
             || self.provisional_turn.is_some()

@@ -34,11 +34,11 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Sage did not admit this harness and will not start it.",
+      "Sage can't start this harness.",
     );
   });
 
-  it("names the bound build when Sage has not characterised it", () => {
+  it("names the harness and bound build when Sage has not characterised it", () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
@@ -62,13 +62,9 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Running build 0.99.0, which Sage has not characterised.",
+      "Claude Code 0.99.0 hasn't been tested with Sage yet, so some features are off.",
     );
-    expect(
-      screen.getByText(
-        /Optional features stay hidden until Sage verifies them for this build\. The core conversation still runs\./,
-      ),
-    ).toBeVisible();
+    expect(screen.getByText(/some features are off\./)).toBeVisible();
   });
 
   it("stays silent once the bound build is characterised", () => {
@@ -173,7 +169,7 @@ describe("HarnessDiscoveryNotice", () => {
     render(<HarnessDiscoveryNotice />);
 
     expect(screen.getByRole("status")).toHaveTextContent(
-      "Sage did not admit this harness and will not start it.",
+      "Sage can't start this harness.",
     );
     expect(screen.queryByText("someFutureReason")).toBeNull();
   });
@@ -202,7 +198,7 @@ describe("HarnessDiscoveryNotice", () => {
 
     expect(screen.getAllByRole("status")).toHaveLength(1);
     expect(screen.getByRole("status")).toHaveTextContent(
-      "This harness has not completed admission",
+      "Sage hasn't finished checking this harness",
     );
   });
 });

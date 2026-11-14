@@ -7,9 +7,8 @@ export const MAX_FIND_QUERY_LENGTH = 256;
 /**
  * File text as the store holds it: the string read from disk, or, once the
  * user edits, the editor's own immutable document. Keeping the document lets a
- * keystroke reach the store without building the whole File as a string
- * (EDIT-0005 EP-01). Only the type is imported, so CodeMirror stays out of the
- * core bundle.
+ * keystroke reach the store without building the whole File as a string.
+ * Only the type is imported, so CodeMirror stays out of the core bundle.
  */
 export type EditorContent = string | Text;
 

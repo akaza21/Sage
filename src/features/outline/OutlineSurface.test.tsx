@@ -13,6 +13,9 @@ import type { EditorDocument } from "../../domain/editor";
 import { OutlineSurface } from "./OutlineSurface";
 import { MAX_OUTLINE_SOURCE_CHARS } from "./outlineAvailability";
 import { MAX_OUTLINE_SYMBOLS } from "./syntaxOutline";
+// The Outline loads the TypeScript parser lazily. Load it with the file, so
+// the first test's findByText does not race its cold import.
+import "../files/editorLanguageJavaScript";
 const OUTLINE_SETTLE_MS = 200;
 
 const resource = { rootId: "root-a", relativePath: "src/example.ts" };
@@ -237,6 +240,7 @@ describe("OutlineSurface", () => {
   });
 
   it("says when the list stops at its cap", async () => {
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     activateResource();
     setContent(
       Array.from(
@@ -246,10 +250,18 @@ describe("OutlineSurface", () => {
     );
     render(<OutlineSurface />);
 
+    // The Outline parses in slices between timers, then renders 500 rows:
+    // run it to the end rather than poll it against a one-second clock.
+    await act(() => vi.runAllTimersAsync());
     expect(
-      await screen.findByText(`First ${MAX_OUTLINE_SYMBOLS} Symbols`),
+      screen.getByText(`First ${MAX_OUTLINE_SYMBOLS} Symbols`),
     ).toBeInTheDocument();
-    expect(screen.getAllByRole("treeitem")).toHaveLength(MAX_OUTLINE_SYMBOLS);
+    // Counting skips the visibility check, which runs jsdom's style cascade
+    // for each of the 500 rows and their ancestors: seconds under load.
+    const rows = screen.getAllByRole("treeitem", { hidden: true });
+    expect(rows).toHaveLength(MAX_OUTLINE_SYMBOLS);
+    expect(rows[0]).toBeVisible();
+    expect(rows.at(-1)).toBeVisible();
   });
 
   it("shows an honest empty state for a File type without an Outline", async () => {
@@ -258,7 +270,7 @@ describe("OutlineSurface", () => {
     render(<OutlineSurface />);
 
     expect(
-      await screen.findByText("No Outline for this File type."),
+      await screen.findByText("No outline for this file type."),
     ).toBeInTheDocument();
     expect(screen.queryAllByRole("button")).toHaveLength(0);
   });
@@ -268,7 +280,7 @@ describe("OutlineSurface", () => {
     setContent("x".repeat(MAX_OUTLINE_SOURCE_CHARS + 1));
     render(<OutlineSurface />);
     expect(
-      await screen.findByText("This File is too large for an Outline."),
+      await screen.findByText("This file is too large for an outline."),
     ).toBeInTheDocument();
   });
 
@@ -285,7 +297,7 @@ describe("OutlineSurface", () => {
     setContent('import "./side-effect";\n');
     render(<OutlineSurface />);
     expect(
-      await screen.findByText("No symbols for the active File."),
+      await screen.findByText("No symbols for the active file."),
     ).toBeInTheDocument();
   });
 
@@ -296,6 +308,6 @@ describe("OutlineSurface", () => {
     expect(await screen.findByText("1 Symbol")).toBeInTheDocument();
 
     act(() => useWorkbenchStore.setState({ activeEditor: null }));
-    expect(screen.getByText("No File is open.")).toBeInTheDocument();
+    expect(screen.getByText("No file is open.")).toBeInTheDocument();
   });
 });

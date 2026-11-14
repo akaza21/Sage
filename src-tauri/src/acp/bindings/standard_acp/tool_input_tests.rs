@@ -334,12 +334,14 @@ fn retained_command_input_never_admits_a_path_beyond_the_old_row_limit() {
 }
 
 #[test]
-fn non_execute_claude_and_other_standard_profiles_leave_command_input_absent() {
-    for (harness, kind) in [
-        ("claude-code", "edit"),
-        ("opencode", "execute"),
-        ("gemini-cli", "execute"),
-        ("cursor-agent", "execute"),
+fn every_standard_profile_carries_an_execute_command_and_no_other_kind_does() {
+    for (harness, kind, expected) in [
+        ("claude-code", "edit", None),
+        ("gemini-cli", "read", None),
+        ("claude-code", "execute", Some("npm run lint")),
+        ("opencode", "execute", Some("npm run lint")),
+        ("gemini-cli", "execute", Some("npm run lint")),
+        ("cursor-agent", "execute", Some("npm run lint")),
     ] {
         let events = update(
             &mut translator(harness),
@@ -348,8 +350,77 @@ fn non_execute_claude_and_other_standard_profiles_leave_command_input_absent() {
                 "rawInput": {"command": "npm run lint"}
             }),
         );
-        assert_eq!(input(&events), None, "{harness} {kind}");
+        assert_eq!(input(&events), expected, "{harness} {kind}");
     }
+}
+
+fn execution_of(events: &[AdapterEvent]) -> Option<(&str, &crate::acp::intent::ToolExecution)> {
+    events.iter().find_map(|event| match event {
+        AdapterEvent::Item {
+            payload:
+                NormalizedPayload::ToolCall {
+                    label, execution, ..
+                },
+            ..
+        } => Some((label.as_str(), execution)),
+        _ => None,
+    })
+}
+
+#[test]
+fn an_untitled_command_reads_as_its_command_line_not_a_stand_in() {
+    let events = update(
+        &mut translator("gemini-cli"),
+        json!({"sessionUpdate":"tool_call","toolCallId":"run","kind":"execute",
+            "status":"in_progress","rawInput":{"command":"cargo test --token sk-hidden"}}),
+    );
+    assert_eq!(
+        execution_of(&events).map(|(label, _)| label),
+        Some("cargo test --token [redacted]")
+    );
+    let unknown = update(
+        &mut translator("gemini-cli"),
+        json!({"sessionUpdate":"tool_call","toolCallId":"run","kind":"execute","status":"in_progress"}),
+    );
+    assert_eq!(
+        execution_of(&unknown).map(|(label, _)| label),
+        Some("Command tool")
+    );
+}
+
+#[test]
+fn a_reported_exit_code_survives_later_frames_and_content_output_is_not_repeated_in_the_tail() {
+    for raw_output in [json!({"exitCode": 2}), json!({"exit_code": 2})] {
+        let mut translator = translator("gemini-cli");
+        update(
+            &mut translator,
+            json!({"sessionUpdate":"tool_call","toolCallId":"run","kind":"execute",
+                "title":"make","status":"in_progress","rawInput":{"command":"make"}}),
+        );
+        let reported = update(
+            &mut translator,
+            json!({"sessionUpdate":"tool_call_update","toolCallId":"run","rawOutput":raw_output,
+                "content":[{"type":"content","content":{"type":"text","text":"boom"}}]}),
+        );
+        let (_, execution) = execution_of(&reported).expect("tool row");
+        assert_eq!(execution.exit_code, Some(2));
+        assert_eq!(execution.output_tail, None);
+        let settled = update(
+            &mut translator,
+            json!({"sessionUpdate":"tool_call_update","toolCallId":"run","status":"failed"}),
+        );
+        assert_eq!(
+            execution_of(&settled).expect("tool row").1.exit_code,
+            Some(2)
+        );
+    }
+    let mut unreported = translator("gemini-cli");
+    let events = update(
+        &mut unreported,
+        json!({"sessionUpdate":"tool_call","toolCallId":"run","kind":"execute","status":"completed",
+            "rawOutput":{"exitCode":"0"}}),
+    );
+    assert_eq!(execution_of(&events).expect("tool row").1.exit_code, None);
 }
 
 #[test]

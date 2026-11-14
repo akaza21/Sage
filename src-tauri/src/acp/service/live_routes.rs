@@ -20,6 +20,22 @@ impl AcpService {
         command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
     ) -> Result<(), CodexSessionError> {
+        self.activate_head_session(admitted, command, project_root)
+            .await
+            .map(drop)
+    }
+
+    /// Activates the session `command` names, or the head session that
+    /// continues it, and returns the runtime that now runs.
+    pub(in crate::acp::service) async fn activate_head_session(
+        &self,
+        admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
+        command: ActivateSessionCommand,
+        project_root: crate::acp::bindings::registry::BindingProjectRoot,
+    ) -> Result<RuntimeOwner, CodexSessionError> {
+        // Commits before the checks below; a refused activation leaves the
+        // linked head `created`, and a retry naming either session resumes it.
+        let command = self.continue_head_session(&admitted, command)?;
         let owner = RuntimeOwner {
             project_id: command.project_id.clone(),
             chat_id: command.chat_id.clone(),
@@ -27,15 +43,28 @@ impl AcpService {
             runtime_epoch: command.runtime_epoch,
         };
         let deadlines = super::codex_live::deadlines()?;
-        let (lane, _claim) = self.claim_activation_lane(&owner, deadlines.1)?;
-        lane.activate_session(admitted, command, project_root, deadlines)
-            .await
+        {
+            let (lane, _claim) = self.claim_activation_lane(&owner, deadlines.1)?;
+            lane.activate_session(admitted, command, project_root, deadlines)
+                .await?;
+        }
+        // A resumed session reports the adapter's defaults; the choices this
+        // chat made are reapplied before the activation answers, so before
+        // its next prompt can be sent. A change that left the runtime needing
+        // recovery is reported here rather than left silent.
+        self.restore_session_config(&owner)
+            .map_err(|_| CodexSessionError::Recovery)?;
+        Ok(owner)
     }
 
     pub(crate) fn send_session_turn(
         &self,
         intent: HostPromptIntent,
     ) -> Result<HostOutcome, PromptSendError<CodexSessionError>> {
+        // A harness that reported its options only after activation is
+        // restored here, before the prompt is dispatched. A no-op otherwise.
+        self.restore_session_config(&intent.owner())
+            .map_err(|_| PromptSendError::not_started(CodexSessionError::Recovery))?;
         self.lane_for(&intent.owner())
             .ok_or_else(|| PromptSendError::not_started(CodexSessionError::Intent))?
             .send_session_turn(intent)
@@ -61,14 +90,14 @@ impl AcpService {
         owner: &RuntimeOwner,
         turn_id: &crate::acp::contract::SageTurnId,
     ) -> bool {
-        self.load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
-            .is_ok_and(|page| {
-                page.turns.as_slice().iter().any(|turn| {
-                    turn.id == *turn_id
-                        && turn.session_id == owner.session_id
-                        && turn.state.is_terminal()
-                })
-            })
+        crate::acp::store::turn_is_terminal(
+            &self.database.connection(),
+            &owner.project_id,
+            &owner.chat_id,
+            &owner.session_id,
+            turn_id,
+        )
+        .unwrap_or(false)
     }
 
     pub(crate) fn close_session(
@@ -105,6 +134,10 @@ impl AcpService {
         {
             return Err(CodexSessionError::Intent);
         }
+        self.file_stages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear_chat(project.as_str(), chat.as_str());
         self.revoke_browser_chat(project, chat);
         let lane = self.lanes().find(|lane| {
             lane.scheduler.active().is_some_and(|active| {

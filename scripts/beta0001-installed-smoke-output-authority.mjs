@@ -1,6 +1,11 @@
 import { spawn } from "node:child_process";
 import { lstat, realpath, writeFile } from "node:fs/promises";
 import path from "node:path";
+import {
+  guardianPhaseSource,
+  observeGuardianStartup,
+} from "./beta0001-installed-smoke-output-diagnostics.mjs";
+import { recordGuardianStartup } from "./beta0001-installed-smoke-guardian-journal.mjs";
 
 const requestEnvironment = "SAGE_INSTALLED_SMOKE_OUTPUT_AUTHORITY";
 const startupTimeoutMs = 10_000;
@@ -14,16 +19,20 @@ const authorities = new WeakSet();
 const guardianSource = String.raw`
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+${guardianPhaseSource}
 $name = "SAGE_INSTALLED_SMOKE_OUTPUT_AUTHORITY"
 $encoded = [Environment]::GetEnvironmentVariable($name, "Process")
 [Environment]::SetEnvironmentVariable($name, $null, "Process")
 $request = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($encoded)) | ConvertFrom-Json
+Write-AuthorityPhase 'identity-start'
 $hostPath = (Get-Process -Id $PID -ErrorAction Stop).Path
 $hostItem = Get-Item -LiteralPath $hostPath -Force -ErrorAction Stop
 if ($hostItem.Length -ne [long]$request.powerShellBytes -or
     (Get-FileHash -LiteralPath $hostPath -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$request.powerShellSha256) {
   throw "Output guardian PowerShell identity changed."
 }
+Write-AuthorityPhase 'identity-verified'
+Write-AuthorityPhase 'compile-start'
 if (-not ("SageInstalledSmoke.DirectorySeal" -as [type])) {
 Add-Type -TypeDefinition @'
 using System;
@@ -103,14 +112,18 @@ namespace SageInstalledSmoke {
 }
 '@
 }
+Write-AuthorityPhase 'compile-complete'
 $seal = $null
 try {
+  Write-AuthorityPhase 'seal-start'
   $seal = [SageInstalledSmoke.DirectorySeal]::Acquire(
     [string]$request.outputDirectory,
     [bool]$request.create
   )
+  Write-AuthorityPhase 'seal-acquired'
   [Console]::Out.WriteLine((@{schemaVersion=1; status="ready"; root=$seal.Root} | ConvertTo-Json -Compress))
   [Console]::Out.Flush()
+  Write-AuthorityPhase 'ready-written'
   if ([Console]::In.ReadLine() -ne "release") { throw "Output authority release was not explicit." }
 } finally {
   if ($null -ne $seal) { $seal.Dispose() }
@@ -193,6 +206,81 @@ export async function failAfterTeardown(guardian, error, { release }) {
   throw error;
 }
 
+export function waitForGuardianAuthority(
+  guardian,
+  outputDirectory,
+  powerShell,
+  diagnostics = {},
+) {
+  const { child } = guardian;
+  const startup = observeGuardianStartup(child, diagnostics);
+  const recordStartup = diagnostics.recordStartup ?? recordGuardianStartup;
+  // The journal is written only after the guardian is settled, and nothing
+  // waits on it: a stalled disk must not delay the kill or the teardown.
+  const journal = (snapshot, outcome) => {
+    Promise.resolve()
+      .then(() => recordStartup(snapshot, outcome))
+      .catch(() => {});
+  };
+  return new Promise((resolve, reject) => {
+    let stdout = Buffer.alloc(0);
+    let stderrBytes = 0;
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      startup.dispose();
+      // Begin teardown in this turn, before any asynchronous diagnostic work.
+      failAfterTeardown(guardian, error, { release: false }).catch(reject);
+    };
+    const timer = setTimeout(() => {
+      const error = startup.timeoutError();
+      fail(error);
+      error.diagnosticReady = startup.collectCpu(error, powerShell);
+      journal(error.diagnostic, "timeout");
+    }, startupTimeoutMs);
+    child.stdout.on("data", (chunk) => {
+      if (settled) return;
+      stdout = Buffer.concat([stdout, chunk]);
+      if (stdout.byteLength > outputMaximumBytes) {
+        fail(new Error("installed-smoke-output-authority-stdout-oversize"));
+        return;
+      }
+      const newline = stdout.indexOf(0x0a);
+      if (newline < 0) return;
+      try {
+        const value = JSON.parse(stdout.subarray(0, newline).toString("utf8"));
+        if (
+          value?.schemaVersion !== 1 ||
+          value?.status !== "ready" ||
+          value?.root?.toLowerCase() !==
+            path.resolve(outputDirectory).toLowerCase()
+        ) {
+          throw new Error("installed-smoke-output-authority-proof-invalid");
+        }
+        settled = true;
+        clearTimeout(timer);
+        resolve({ ...guardian, root: path.resolve(outputDirectory) });
+        journal(startup.snapshot(), "ready");
+      } catch (error) {
+        fail(error);
+      }
+    });
+    child.stderr.on("data", (chunk) => {
+      stderrBytes += chunk.byteLength;
+      if (stderrBytes > outputMaximumBytes) {
+        fail(new Error("installed-smoke-output-authority-stderr-oversize"));
+      }
+    });
+    child.on("error", fail);
+    child.on("close", (code) => {
+      if (!settled)
+        fail(new Error(`installed-smoke-output-authority-exit-${code}`));
+    });
+  }).finally(() => startup.dispose());
+}
+
 export async function acquireInstalledSmokeOutputAuthority({
   outputDirectory,
   powerShell,
@@ -222,58 +310,18 @@ export async function acquireInstalledSmokeOutputAuthority({
     stdio: ["pipe", "pipe", "pipe"],
   });
   const guardian = guardianFor(child);
-  const authority = await new Promise((resolve, reject) => {
-    let stdout = Buffer.alloc(0);
-    let stderrBytes = 0;
-    let settled = false;
-    const fail = (error) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      reject(error);
-    };
-    const timer = setTimeout(
-      () => fail(new Error("installed-smoke-output-authority-timeout")),
-      startupTimeoutMs,
-    );
-    child.stdout.on("data", (chunk) => {
-      if (settled) return;
-      stdout = Buffer.concat([stdout, chunk]);
-      if (stdout.byteLength > outputMaximumBytes) {
-        fail(new Error("installed-smoke-output-authority-stdout-oversize"));
-        return;
-      }
-      const newline = stdout.indexOf(0x0a);
-      if (newline < 0) return;
-      try {
-        const value = JSON.parse(stdout.subarray(0, newline).toString("utf8"));
-        if (
-          value?.schemaVersion !== 1 ||
-          value?.status !== "ready" ||
-          value?.root?.toLowerCase() !==
-            path.resolve(outputDirectory).toLowerCase()
-        ) {
-          throw new Error("installed-smoke-output-authority-proof-invalid");
-        }
-        settled = true;
-        clearTimeout(timer);
-        resolve({ ...guardian, root: path.resolve(outputDirectory) });
-      } catch (error) {
-        fail(error);
-      }
-    });
-    child.stderr.on("data", (chunk) => {
-      stderrBytes += chunk.byteLength;
-      if (stderrBytes > outputMaximumBytes) {
-        fail(new Error("installed-smoke-output-authority-stderr-oversize"));
-      }
-    });
-    child.on("error", fail);
-    child.on("close", (code) => {
-      if (!settled)
-        fail(new Error(`installed-smoke-output-authority-exit-${code}`));
-    });
-  }).catch((error) => failAfterTeardown(guardian, error, { release: false }));
+  const authority = await waitForGuardianAuthority(
+    guardian,
+    outputDirectory,
+    powerShell,
+  ).catch(async (error) => {
+    // Teardown has already settled. Only reporting may wait for accounting;
+    // preserve the original startup error if teardown also failed.
+    const startupError =
+      error instanceof AggregateError ? error.errors[1] : error;
+    await startupError.diagnosticReady;
+    throw error;
+  });
   try {
     authority.identity = await ordinaryIdentity(
       authority.root,

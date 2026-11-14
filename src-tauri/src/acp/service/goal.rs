@@ -74,7 +74,7 @@ impl AcpService {
         else {
             return;
         };
-        if !crate::acp::bindings::codex::supports_native_0146_protocol(
+        if !crate::acp::bindings::codex::speaks_pinned_protocol(
             session.capabilities.protocol_version.as_str(),
         ) {
             return;
@@ -99,9 +99,14 @@ impl AcpService {
         };
     }
 
-    pub(super) fn fit_goal_to_page_budget(&self, page: &mut AcpChatPage) -> Result<(), StoreError> {
+    pub(super) fn fit_goal_to_page_budget(
+        &self,
+        page: &mut AcpChatPage,
+        size: &PageBytes,
+    ) -> Result<(), StoreError> {
         fit_goal_to_page_budget(
             page,
+            size,
             crate::acp::limits::LIMITS.durable.history_page_bytes as usize,
         )
     }
@@ -113,29 +118,36 @@ fn goal_reply(
     match result {
         Ok(NativeRpcReply::GoalApplied) => Ok(()),
         Ok(
-            NativeRpcReply::ChildTranscript(_)
+            NativeRpcReply::TurnsPage(_)
+            | NativeRpcReply::SessionsPage(_)
             | NativeRpcReply::TooLarge
             | NativeRpcReply::Rejected
             | NativeRpcReply::Forked(_)
-            | NativeRpcReply::Released,
+            | NativeRpcReply::Released
+            | NativeRpcReply::UsageRead
+            | NativeRpcReply::BackgroundTerminals(_)
+            | NativeRpcReply::TerminalsStopped
+            | NativeRpcReply::Controlled(_)
+            | NativeRpcReply::ControlRefused(_)
+            | NativeRpcReply::McpServers(_)
+            | NativeRpcReply::McpSignIn(_),
         ) => Err(crate::acp::runtime::HostError::RecoveryRequired),
         Err(error) => Err(error),
     }
 }
 
-fn fit_goal_to_page_budget(page: &mut AcpChatPage, limit: usize) -> Result<(), StoreError> {
-    let bytes = |page: &AcpChatPage| {
-        serde_json::to_vec(page)
-            .map(|value| value.len())
-            .map_err(|_| StoreError::Corrupt("goal page serialization"))
-    };
-    if bytes(page)? <= limit {
+fn fit_goal_to_page_budget(
+    page: &mut AcpChatPage,
+    size: &PageBytes,
+    limit: usize,
+) -> Result<(), StoreError> {
+    if size.of(page)? <= limit {
         return Ok(());
     }
     // Goal is ephemeral decoration; the bounded durable transcript must remain
     // loadable even when its page leaves no room for a large native Goal.
     page.goal = GoalState::Unavailable;
-    if bytes(page)? <= limit {
+    if size.of(page)? <= limit {
         Ok(())
     } else {
         Err(StoreError::Capacity {
@@ -166,6 +178,9 @@ mod tests {
     fn max_goal_degrades_when_history_page_has_no_spare_bytes() {
         let mut page = AcpChatPage {
             session_config: None,
+            restored_session_config: None,
+            session_config_notice: None,
+            session_surface: None,
             goal: GoalState::Goal {
                 snapshot: GoalSnapshot {
                     objective: "x".repeat(4_000),
@@ -177,6 +192,7 @@ mod tests {
                     updated_at: None,
                 },
             },
+            usage: false,
             project_id: SageProjectId::parse("project-goal").unwrap(),
             chat_id: SageChatId::parse("chat-goal").unwrap(),
             title: SafeText::new("chatTitle", "History").unwrap(),
@@ -187,7 +203,9 @@ mod tests {
             next_cursor: None,
             forked_from: None,
             forked_from_turn_id: None,
+            imported_history: false,
             child_projection_epoch: 0,
+            session_notices: Vec::new(),
         };
         let existing_turns = page.turns.clone();
         let full_goal = page.goal.clone();
@@ -195,7 +213,8 @@ mod tests {
         let near_bound = serde_json::to_vec(&page).unwrap().len() + 1;
         page.goal = full_goal;
         assert!(serde_json::to_vec(&page).unwrap().len() > near_bound);
-        fit_goal_to_page_budget(&mut page, near_bound).unwrap();
+        let size = PageBytes::measure(&page).unwrap();
+        fit_goal_to_page_budget(&mut page, &size, near_bound).unwrap();
         assert!(matches!(page.goal, GoalState::Unavailable));
         assert_eq!(page.turns, existing_turns);
         assert!(serde_json::to_vec(&page).unwrap().len() <= near_bound);

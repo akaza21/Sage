@@ -1,3 +1,5 @@
+import { Info } from "../../ui/leanIcons";
+
 /** Load-earlier control and the notices about history that is not shown. */
 export function AcpHistoryNotices({
   hasEarlier,
@@ -40,10 +42,25 @@ export function AcpHistoryNotices({
       ) : null}
       {retentionIncomplete ? (
         <p className="acp-history-notice">
-          Some Chat history was discarded to stay within memory limits.
+          Some chat history was discarded to stay within memory limits.
           Changed-file summaries show retained records only.
         </p>
       ) : null}
     </>
+  );
+}
+
+/** A system note about the turn, styled apart from the agent's own prose. */
+export function WorkspaceTrackingNotice() {
+  return (
+    <p
+      className="acp-system-notice"
+      role="status"
+      aria-label="Workspace tracking"
+    >
+      <Info size={14} aria-hidden="true" />
+      <span className="sr-only">System: </span>
+      <span>Workspace change tracking is incomplete for this turn.</span>
+    </p>
   );
 }

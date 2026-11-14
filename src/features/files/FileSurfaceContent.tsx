@@ -16,8 +16,12 @@ import { FileEditorHeader } from "./FileEditorHeader";
 import { FileEditorNotices } from "./FileEditorNotices";
 import { type FindControl, type FindOpenRequest } from "./FileFindBar";
 import { FileGoToLine, type FileGoToLineProps } from "./FileGoToLine";
-import { FileMarkdownPreview } from "./FileMarkdownPreview";
-import { canPreviewDiagram, canPreviewMarkdown } from "./markdownPreview";
+import { canPreviewDiagram, canPreviewMarkdown } from "./filePreviewKind";
+
+const loadMarkdownPreview = () =>
+  import("./FileMarkdownPreview").then(({ FileMarkdownPreview }) => ({
+    default: FileMarkdownPreview,
+  }));
 
 type ReadyEditorState = Extract<ActiveEditorState, { phase: "ready" }>;
 
@@ -54,7 +58,7 @@ interface FileSurfaceFindView {
   onClose: () => void;
 }
 
-// The Find bar, its matching and its worker load apart from the editor (EP-04).
+// The Find bar, its matching and its worker load apart from the editor.
 const loadFindBar = () =>
   import("./FileFindBar").then((module) => ({ default: module.FileFindBar }));
 
@@ -124,6 +128,7 @@ export function FileSurfaceContent({
         projectName={projectName}
         lineEnding={editor.document.lineEnding}
         diskByteLen={editor.document.disk.byteLen}
+        unwatched={editor.unwatched}
         persisting={editor.persisting}
         dirty={dirty}
         saving={editor.saving}
@@ -134,8 +139,9 @@ export function FileSurfaceContent({
         onTogglePreview={onTogglePreview}
       />
       <FileEditorNotices
-        conflict={editor.document.conflict}
+        document={editor.document}
         message={editor.message}
+        editable={!readOnly}
       />
       {languageNavigationStatus ? (
         <p role="status" className="file-language-navigation-status">
@@ -146,9 +152,15 @@ export function FileSurfaceContent({
         <FileGoToLine {...goTo} content={editor.content} />
       ) : null}
       {previewing ? (
-        <FileMarkdownPreview
-          source={contentText(editor.content)}
-          asDiagram={canPreviewDiagram(path) && !canPreviewMarkdown(path)}
+        <LazyModuleBoundary
+          load={loadMarkdownPreview}
+          label="Markdown preview"
+          render={(FileMarkdownPreview) => (
+            <FileMarkdownPreview
+              source={contentText(editor.content)}
+              asDiagram={canPreviewDiagram(path) && !canPreviewMarkdown(path)}
+            />
+          )}
         />
       ) : (
         <div className="file-editor-stage">

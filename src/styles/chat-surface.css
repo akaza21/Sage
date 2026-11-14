@@ -1,6 +1,7 @@
 @import "./chat-follow-end.css";
 
 .chat-surface {
+  --chat-column-measure: 42rem;
   --chat-column-gutter: var(--space-1);
   --chat-column-trailing: var(--scrollbar-size);
   position: relative;
@@ -11,7 +12,7 @@
   min-width: 0;
   height: 100%;
   grid-template-rows: auto minmax(0, 1fr) auto;
-  background: var(--color-canvas);
+  background: var(--agent-shell-center);
 }
 
 .chat-surface--agent {
@@ -21,6 +22,7 @@
 }
 
 .chat-surface--agent > .composer__notice,
+.chat-surface--agent > .build-notice,
 .chat-surface--agent > .composer__error {
   grid-area: notice;
 }
@@ -144,16 +146,13 @@
 
 .project-intro__icon {
   display: grid;
-  place-items: center;
-  color: var(--color-accent);
-  background: var(--color-accent-muted);
-}
-
-.project-intro__icon {
   width: var(--control-height-compact);
   height: var(--control-height-compact);
   flex: 0 0 var(--control-height-compact);
+  place-items: center;
   border-radius: var(--radius-md);
+  color: var(--color-accent);
+  background: var(--color-accent-muted);
 }
 
 .project-intro strong {
@@ -243,9 +242,9 @@
   }
 }
 
-.composer__control-trigger:hover,
-.composer__control-trigger:has([aria-expanded="true"]),
-.composer__control-trigger[aria-expanded="true"] {
+button.composer__control-trigger:hover,
+button.composer__control-trigger:has([aria-expanded="true"]),
+button.composer__control-trigger[aria-expanded="true"] {
   color: var(--color-status-foreground);
   background: var(--composer-control-hover);
 }
@@ -254,13 +253,9 @@
   width: min(300px, calc(100vw - 32px));
   max-width: min(300px, calc(100vw - 32px));
   max-height: min(420px, 65vh);
-  gap: 4px;
-  padding: 8px;
-  border: 1px solid var(--composer-menu-border);
-  border-radius: var(--radius-composer-menu);
+  gap: var(--space-1);
+  padding: var(--space-1);
   color: var(--composer-control-text);
-  background: var(--color-plane-raised);
-  box-shadow: var(--composer-menu-shadow);
 }
 
 .composer__popover:focus-visible {
@@ -298,12 +293,12 @@
   justify-content: center;
   padding: 0;
   border: 0;
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-pill);
   color: var(--composer-control-text);
   background: transparent;
   cursor: pointer;
-  font-size: 11px;
-  font-weight: 400;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-medium);
 }
 
 .composer__plus {
@@ -320,7 +315,7 @@
   gap: 4px;
   overflow: hidden;
   color: var(--composer-access-text);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -329,15 +324,8 @@
   color: var(--composer-access-write);
 }
 
-.composer__model-trigger {
-  max-width: 155px;
-  justify-content: flex-end;
-  gap: 4px;
-  margin-left: auto;
-  overflow: hidden;
-  font-size: 11px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.composer__access-label--full {
+  color: var(--composer-access-full);
 }
 
 .composer__plus:hover,

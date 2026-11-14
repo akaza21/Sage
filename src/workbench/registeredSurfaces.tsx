@@ -3,7 +3,11 @@ import { useState } from "react";
 import type { WorkbenchTab } from "../domain/workbench";
 import type * as ExplorerModule from "../features/files/ExplorerSurface";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
-import { registerCanvasSurface, registerToolSurface } from "./surfaceRegistry";
+import {
+  registerCanvasSurface,
+  registerToolSurface,
+  type CanvasSurfaceOptions,
+} from "./surfaceRegistry";
 
 // Explorer starts loading with the workbench but stays out of its startup
 // bundle, which the Agent window shares. Once loaded it renders directly, so
@@ -12,16 +16,13 @@ let explorerModule: typeof ExplorerModule | null = null;
 const loadExplorerSurface = () =>
   import("../features/files/ExplorerSurface").then((module) => {
     explorerModule = module;
-    return { default: module.ExplorerSurface };
+    return module;
   });
 const loadChatSurface = () =>
   import("../features/chat/ChatSurface").then(({ ChatSurface }) => ({
     default: ChatSurface,
   }));
-const loadSearchSurface = () =>
-  import("../features/search/SearchSurface").then(({ SearchSurface }) => ({
-    default: SearchSurface,
-  }));
+const loadSearchSurface = () => import("../features/search/SearchSurface");
 const loadOutlineSurface = () =>
   import("../features/outline/OutlineSurface").then(({ OutlineSurface }) => ({
     default: OutlineSurface,
@@ -38,10 +39,7 @@ const loadDiffSurface = () =>
   import("../features/diff/DiffSurface").then(({ DiffSurface }) => ({
     default: DiffSurface,
   }));
-const loadFileSurface = () =>
-  import("../features/files/FileSurface").then(({ FileSurface }) => ({
-    default: FileSurface,
-  }));
+const loadFileSurface = () => import("../features/files/FileSurface");
 const loadBrowserSurface = () =>
   import("../features/browser/BrowserSurface").then(({ BrowserSurface }) => ({
     default: BrowserSurface,
@@ -65,22 +63,21 @@ function LazyToolSurface({
 
 function LazyCanvasSurface({
   tab,
-  readOnly,
   label,
   load,
+  ...options
 }: {
   tab: WorkbenchTab;
-  readOnly?: boolean;
   label: string;
   load: () => Promise<{
-    default: React.ComponentType<{ tab: WorkbenchTab; readOnly?: boolean }>;
+    default: React.ComponentType<{ tab: WorkbenchTab } & CanvasSurfaceOptions>;
   }>;
-}) {
+} & CanvasSurfaceOptions) {
   return (
     <LazyModuleBoundary
       label={label}
       load={load}
-      render={(Surface) => <Surface tab={tab} readOnly={readOnly} />}
+      render={(Surface) => <Surface tab={tab} {...options} />}
     />
   );
 }
@@ -100,7 +97,7 @@ function ExplorerToolSurface() {
   // dialog) when its module arrives while the fallback is showing.
   const [loaded] = useState(() => explorerModule);
   return loaded ? (
-    <loaded.ExplorerSurface />
+    <loaded.default />
   ) : (
     <LazyToolSurface label="Explorer" load={loadExplorerSurface} />
   );
@@ -111,10 +108,11 @@ let registered = false;
 export function registerWorkbenchSurfaces(): void {
   if (registered) return;
   registerCanvasSurface("chat", ChatCanvas);
-  registerCanvasSurface("diff", ({ tab, readOnly }) => (
+  registerCanvasSurface("diff", ({ tab, readOnly, hostHeader }) => (
     <LazyCanvasSurface
       tab={tab}
       readOnly={readOnly}
+      hostHeader={hostHeader}
       label="Diff"
       load={loadDiffSurface}
     />

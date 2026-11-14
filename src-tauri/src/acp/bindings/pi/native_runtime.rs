@@ -1,22 +1,17 @@
-//! Launchable production Pi runtime: the read-only RPC translator plus the
-//! curated native launch of an admitted Pi package.
+//! Launchable Pi runtime with read-only fallback and optional curated bridge.
 
 use std::sync::Arc;
 
 use crate::acp::{
     bindings::{
-        adapter::{
-            AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
-            EgressToken, HarnessAdapter, ResourceMapper,
-        },
-        runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
+        adapter::AdapterRuntimeError,
+        runtime::{NativeRuntime, RuntimeFactory},
     },
-    contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
-    intent::CapabilitySnapshotV1,
-    transport::Frame,
+    contract::{RuntimeEpoch, SageAgentSessionId},
+    process::LaunchSpec,
 };
 
-use super::{PiRuntime, native_admission::AdmittedPiBinding};
+use super::{PiLaunch, PiRuntime, native_admission::AdmittedPiBinding};
 
 pub(crate) struct PiNativeRuntimeFactory {
     pub(crate) binding: Arc<AdmittedPiBinding>,
@@ -36,77 +31,33 @@ impl RuntimeFactory for PiNativeRuntimeFactory {
         self.binding
             .revalidate()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let adapter = PiRuntime::from_native_binding(
+        let mut adapter = PiRuntime::from_native_binding(
             self.binding.binding_digest(),
             runtime_epoch,
             session_id,
         );
-        Ok(NativeRuntime::new(PiNativeRuntime {
-            adapter,
+        if super::bridge::install::installed(self.binding.harness_version()).is_ok() {
+            adapter.enable_bridge_for_root(&self.root)?;
+        }
+        Ok(NativeRuntime::new(adapter.with_launch(InstalledPi {
             binding: self.binding,
             root: Some(self.root),
-            epoch: runtime_epoch,
-        }))
+        })))
     }
 }
 
-struct PiNativeRuntime {
-    adapter: PiRuntime,
+/// The installed Pi release, launched in the chat's project root.
+struct InstalledPi {
     binding: Arc<AdmittedPiBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,
-    epoch: RuntimeEpoch,
 }
 
-impl LaunchableRuntime for PiNativeRuntime {
-    fn launch_spec(&mut self) -> Result<crate::acp::process::LaunchSpec, AdapterRuntimeError> {
+impl PiLaunch for InstalledPi {
+    fn launch_spec(&mut self, epoch: RuntimeEpoch) -> Result<LaunchSpec, AdapterRuntimeError> {
         let root = self
             .root
             .take()
             .ok_or(AdapterRuntimeError::LaunchUnavailable)?;
-        self.binding.launch_spec(self.epoch.get(), root)
-    }
-}
-
-impl HarnessAdapter for PiNativeRuntime {
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
-        self.adapter.session_config()
-    }
-    fn config_pending(&self) -> bool {
-        self.adapter.config_pending()
-    }
-    fn configure(
-        &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
-    ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
-        self.adapter.configure(intent)
-    }
-    fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
-        self.adapter.capabilities()
-    }
-    fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
-        self.adapter.command(command)
-    }
-    fn cancel_permission(
-        &mut self,
-        request_id: &SageServerRequestId,
-    ) -> Result<AdapterEgress, AdapterRuntimeError> {
-        self.adapter.cancel_permission(request_id)
-    }
-    fn ingest(
-        &mut self,
-        frame: &Frame,
-        resources: &dyn ResourceMapper,
-    ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        self.adapter.ingest(frame, resources)
-    }
-    fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
-        self.adapter.commit_mandatory_egress(token)
-    }
-    fn resolve_egress(
-        &mut self,
-        token: EgressToken,
-        resolution: EgressResolution,
-    ) -> Result<(), AdapterRuntimeError> {
-        self.adapter.resolve_egress(token, resolution)
+        self.binding.launch_spec(epoch.get(), root)
     }
 }

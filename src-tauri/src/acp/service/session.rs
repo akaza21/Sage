@@ -27,6 +27,8 @@ struct DurableSession {
     harness_version: Option<String>,
     model_id: Option<String>,
     external_session_id: Option<String>,
+    /// The native thread of the earlier session this one resumes, if any.
+    resumed_thread: Option<String>,
     state: String,
     residency: String,
 }
@@ -78,14 +80,20 @@ impl AcpService {
                     command.model_id.as_ref(),
                 )
                 .map_err(|_| CodexSessionError::Intent)?;
-        } else if command.model_id.is_some() {
+        } else if command
+            .model_id
+            .as_ref()
+            .is_some_and(|model| !admitted.accepts_launch_model(model.as_str()))
+        {
             return Err(CodexSessionError::Intent);
         }
         command.binding_digest = identity.binding_digest_hex.to_owned();
-        command.harness_version = Some(
-            SafeText::new("harnessVersion", identity.harness_version)
-                .map_err(|_| CodexSessionError::Intent)?,
-        );
+        // A user-defined agent reports no version; its session stores none,
+        // as the schema admits only a non-empty version.
+        command.harness_version = (!identity.harness_version.is_empty())
+            .then(|| SafeText::new("harnessVersion", identity.harness_version))
+            .transpose()
+            .map_err(|_| CodexSessionError::Intent)?;
         self.session_starts
             .start_session(command)
             .await
@@ -134,35 +142,37 @@ impl AcpService {
             session_id: command.session_id.clone(),
             runtime_epoch: command.runtime_epoch,
         };
-        let session = load_durable_session(&self.database, &owner)?;
+        let session = load_durable_session(
+            &self.database,
+            &owner.project_id,
+            &owner.chat_id,
+            &owner.session_id,
+        )?;
         validate_session_identity(
             &session,
             registered_binding_id,
             identity.binding_digest_hex,
             identity.harness_version,
         )?;
+        if session.binding_digest != identity.binding_digest_hex {
+            rebind_claude_sdk_session(
+                &self.database,
+                &owner,
+                identity.binding_digest_hex,
+                identity.harness_version,
+            )?;
+        }
         let model = session
             .model_id
+            .clone()
             .map(|value| ModelId::new("modelId", value))
             .transpose()
             .map_err(|_| CodexSessionError::Intent)?;
         let native_root = project_root
             .native_root()
             .map_err(|_| CodexSessionError::Intent)?;
-        let mode = match (
-            session.state.as_str(),
-            session.residency.as_str(),
-            session.external_session_id,
-        ) {
-            ("created", "cold", None) => ActivationMode::New { native_root, model },
-            ("ready", "cold", Some(external)) => ActivationMode::Resume {
-                external_session_id: ExternalId::new("externalSessionId", external)
-                    .map_err(|_| CodexSessionError::Intent)?,
-                native_root,
-                model,
-            },
-            _ => return Err(CodexSessionError::Intent),
-        };
+        let rewind_at = pending_cut(&self.database, &owner)?;
+        let mode = activation_mode(session, native_root, model, rewind_at)?;
         let ceiling = admitted
             .supported_capabilities()
             .map_err(|error| CodexSessionError::Binding(error.into()))?;
@@ -223,26 +233,116 @@ impl AcpService {
 
 fn load_durable_session(
     database: &crate::persistence::Database,
-    owner: &RuntimeOwner,
+    project_id: &crate::acp::contract::SageProjectId,
+    chat_id: &crate::acp::contract::SageChatId,
+    session_id: &crate::acp::contract::SageAgentSessionId,
 ) -> Result<DurableSession, CodexSessionError> {
     database
         .connection()
         .query_row(
-            "SELECT binding_id,binding_digest,harness_version,model_id,external_session_id,state,residency
-             FROM agent_sessions WHERE project_id=?1 AND chat_id=?2 AND id=?3",
-            params![owner.project_id.as_str(), owner.chat_id.as_str(), owner.session_id.as_str()],
-            |row| Ok(DurableSession {
-                binding_id: row.get(0)?,
-                binding_digest: row.get(1)?,
-                harness_version: row.get(2)?,
-                model_id: row.get(3)?,
-                external_session_id: row.get(4)?,
-                state: row.get(5)?,
-                residency: row.get(6)?,
-            }),
+            "SELECT s.binding_id,s.binding_digest,s.harness_version,s.model_id,
+                    s.external_session_id,s.state,s.residency,earlier.external_session_id
+             FROM agent_sessions s
+             LEFT JOIN agent_sessions earlier ON earlier.id=s.resumes_session_id
+             WHERE s.project_id=?1 AND s.chat_id=?2 AND s.id=?3",
+            params![project_id.as_str(), chat_id.as_str(), session_id.as_str()],
+            |row| {
+                Ok(DurableSession {
+                    binding_id: row.get(0)?,
+                    binding_digest: row.get(1)?,
+                    harness_version: row.get(2)?,
+                    model_id: row.get(3)?,
+                    external_session_id: row.get(4)?,
+                    state: row.get(5)?,
+                    residency: row.get(6)?,
+                    resumed_thread: row.get(7)?,
+                })
+            },
         )
         .optional()
         .map_err(|_| CodexSessionError::Intent)?
+        .ok_or(CodexSessionError::Intent)
+}
+
+/// The undone Turn a resumed native thread is cut before, while one waits.
+/// A pending restart never reaches here: the head is replaced first.
+fn pending_cut(
+    database: &crate::persistence::Database,
+    owner: &RuntimeOwner,
+) -> Result<Option<String>, CodexSessionError> {
+    let rewind =
+        crate::acp::store::pending_thread_rewind(&database.connection(), owner.session_id.as_str())
+            .map_err(|_| CodexSessionError::Intent)?;
+    rewind
+        .filter(|rewind| rewind.thread == crate::acp::store::UndoneThread::Cut)
+        .map(|rewind| rewind.cut_at.ok_or(CodexSessionError::RewindUnavailable))
+        .transpose()
+}
+
+fn activation_mode(
+    session: DurableSession,
+    native_root: String,
+    model: Option<ModelId>,
+    rewind_at: Option<String>,
+) -> Result<ActivationMode, CodexSessionError> {
+    let thread = |external: String| {
+        ExternalId::new("externalSessionId", external).map_err(|_| CodexSessionError::Intent)
+    };
+    Ok(
+        match (
+            session.state.as_str(),
+            session.residency.as_str(),
+            session.external_session_id,
+            session.resumed_thread,
+        ) {
+            ("created", "cold", None, None) => ActivationMode::New { native_root, model },
+            // A session that continues an earlier one resumes its thread; the
+            // first activation records that thread as this session's own.
+            ("created", "cold", None, Some(external)) => ActivationMode::Resume {
+                external_session_id: thread(external)?,
+                native_root,
+                model,
+                rewind_at: None,
+            },
+            // A parked session resumes its own thread, cut before a Turn the
+            // user undid while one waits.
+            ("ready", "cold", Some(external), _) => ActivationMode::Resume {
+                external_session_id: thread(external)?,
+                native_root,
+                model,
+                rewind_at,
+            },
+            _ => return Err(CodexSessionError::Intent),
+        },
+    )
+}
+
+/// Moves a cold Claude Code SDK session to the admitted CLI after an
+/// update; validation admits no other binding whose digest differs.
+fn rebind_claude_sdk_session(
+    database: &crate::persistence::Database,
+    owner: &RuntimeOwner,
+    binding_digest: &str,
+    harness_version: &str,
+) -> Result<(), CodexSessionError> {
+    let updated = database
+        .connection()
+        .execute(
+            "UPDATE agent_sessions SET binding_digest=?4,harness_version=?5
+             WHERE project_id=?1 AND chat_id=?2 AND id=?3 AND binding_id=?6
+               AND state IN ('created','ready') AND residency='cold'",
+            params![
+                owner.project_id.as_str(),
+                owner.chat_id.as_str(),
+                owner.session_id.as_str(),
+                binding_digest,
+                harness_version,
+                crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID,
+            ],
+        )
+        .map_err(|_| CodexSessionError::Intent)?;
+    (updated == 1)
+        .then_some(())
         .ok_or(CodexSessionError::Intent)
 }
 
@@ -252,55 +352,29 @@ fn validate_session_identity(
     binding_digest: &str,
     harness_version: &str,
 ) -> Result<(), CodexSessionError> {
-    if session.binding_id == "codex-app-server"
-        && binding_id == "codex-app-server"
-        && session.harness_version.as_deref() == Some("0.145.0")
-        && harness_version == "0.146.0"
-        && session.state == "ready"
-        && session.external_session_id.is_some()
+    // Claude Code keeps its own sessions across updates, and admission
+    // already pins the protocol line, so a resumable chat follows the CLI.
+    if binding_id == crate::acp::bindings::claude::sdk::CLAUDE_SDK_BINDING_ID
+        && session.binding_id == binding_id
     {
-        return Err(CodexSessionError::EarlierCodexVersion);
+        return Ok(());
     }
     if session.binding_id != binding_id
         || session.binding_digest != binding_digest
-        || session.harness_version.as_deref() != Some(harness_version)
+        || session.harness_version.as_deref().unwrap_or_default() != harness_version
     {
         return Err(CodexSessionError::Intent);
     }
     Ok(())
 }
 
-#[cfg(test)]
-mod version_tests {
-    use super::*;
+mod head_continuation;
+pub(super) use head_continuation::{next_runtime_epoch, store_error};
 
-    #[test]
-    fn earlier_codex_thread_has_a_distinct_resume_refusal() {
-        let session = DurableSession {
-            binding_id: "codex-app-server".into(),
-            binding_digest: "f8c2b995be263fe4bf00974043312673378081734ca8c98155d2a33887444b9e"
-                .into(),
-            harness_version: Some("0.145.0".into()),
-            model_id: None,
-            external_session_id: Some("thread-before-upgrade".into()),
-            state: "ready".into(),
-            residency: "cold".into(),
-        };
-        assert!(matches!(
-            validate_session_identity(
-                &session,
-                "codex-app-server",
-                "3bba7d86d2357d8fccd81bdba3d7f3f4278c80014d7e65e085b9a874330d7df4",
-                "0.146.0",
-            ),
-            Err(CodexSessionError::EarlierCodexVersion)
-        ));
-        assert!(matches!(
-            validate_session_identity(&session, "codex-app-server", "foreign-digest", "0.147.0",),
-            Err(CodexSessionError::Intent)
-        ));
-    }
-}
+#[cfg(test)]
+mod undo_tests;
+#[cfg(test)]
+mod version_tests;
 
 #[cfg(all(test, windows))]
 mod browser_mcp_tests;

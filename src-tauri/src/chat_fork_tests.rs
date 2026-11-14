@@ -11,7 +11,13 @@ use crate::{
     persistence::Database,
 };
 
-const FORKABLE: &str = r#"{"schemaVersion":1,"protocolVersion":"codex-app-server-0.146.0-d3992fec","newSession":true,"resumeSession":true,"loadSession":false,"closeSession":true,"prompt":true,"cancel":true,"nativeSessionFork":true,"activeTurnSteer":true,"childConversationProjection":false,"childTranscriptRead":true,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}"#;
+/// A capability snapshot of the pinned Codex binding that can fork.
+fn forkable() -> String {
+    format!(
+        r#"{{"schemaVersion":1,"protocolVersion":"{identity}","newSession":true,"resumeSession":true,"loadSession":false,"closeSession":true,"prompt":true,"cancel":true,"nativeSessionFork":true,"activeTurnSteer":true,"childConversationProjection":false,"childTranscriptRead":true,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}}"#,
+        identity = crate::acp::bindings::codex::CODEX_PROTOCOL_IDENTITY
+    )
+}
 
 struct Fixture {
     root: std::path::PathBuf,
@@ -45,12 +51,13 @@ impl Fixture {
                    harness_version,model_id,external_session_id,capabilities_json,state,residency,
                    legacy,revision,projection_revision,created_at,updated_at,terminal_at)
                  VALUES('session-parent','{project}','{parent}',0,'codex-app-server','{digest}',
-                   '0.146.0',NULL,'thread-parent','{capabilities}','active','hot',0,1,1,1,1,NULL);
+                   '{version}',NULL,'thread-parent','{capabilities}','active','hot',0,1,1,1,1,NULL);
                  INSERT INTO acp_session_usage VALUES('{project}','{parent}','session-parent',1,0,0,0,0,0,0);
                  INSERT INTO chat_session_heads VALUES('{project}','{parent}','session-parent',1,1);
                  INSERT INTO session_runtime_epochs VALUES('{project}','{parent}','session-parent',1,
                    'running',NULL,1,NULL,NULL);",
                 digest = "a".repeat(64),
+                version = crate::acp::bindings::codex::CODEX_PINNED_VERSION,
             ))
             .unwrap();
         let fixture = Self {
@@ -136,8 +143,36 @@ fn the_fork_title_is_the_parent_title_with_the_next_free_number() {
 }
 
 #[test]
+fn a_fork_keeps_its_derived_title_when_its_harness_names_the_thread() {
+    let fixture = Fixture::new(&forkable());
+    let fork = fixture.fork("thread-fork").expect("fork chat");
+    let mut connection = fixture.database.connection();
+    let transaction = connection.transaction().unwrap();
+    crate::chat_lifecycle::apply_harness_title_in(
+        &transaction,
+        &fixture.project,
+        &fork,
+        "Inspect repo files",
+        9,
+    )
+    .unwrap();
+    transaction.commit().unwrap();
+    let (title, source): (String, String) = connection
+        .query_row(
+            "SELECT title,title_source FROM chats WHERE id=?1",
+            [&fork],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        (title.as_str(), source.as_str()),
+        ("Chat: Inspect repo files (2)", "fork")
+    );
+}
+
+#[test]
 fn a_fork_is_a_persistent_chat_above_its_parent_with_rust_owned_lineage() {
-    let fixture = Fixture::new(FORKABLE);
+    let fixture = Fixture::new(&forkable());
     let parent_position: i64 = fixture
         .database
         .connection()
@@ -216,7 +251,7 @@ fn a_fork_is_a_persistent_chat_above_its_parent_with_rust_owned_lineage() {
             "ready".into(),
             "cold".into(),
             "thread-fork".into(),
-            FORKABLE.into(),
+            forkable(),
             "codex-app-server".into()
         )
     );
@@ -263,13 +298,13 @@ fn a_fork_is_a_persistent_chat_above_its_parent_with_rust_owned_lineage() {
 
 #[test]
 fn fork_fails_closed_without_the_capability_or_an_idle_completed_anchor() {
-    let unforkable = Fixture::new(&FORKABLE.replace(
+    let unforkable = Fixture::new(&forkable().replace(
         r#""nativeSessionFork":true"#,
         r#""nativeSessionFork":false"#,
     ));
     assert!(unforkable.source("turn-1").is_err());
 
-    let fixture = Fixture::new(FORKABLE);
+    let fixture = Fixture::new(&forkable());
     assert!(fixture.source("turn-1").is_ok());
     assert!(fixture.source("turn-missing").is_err());
     fixture.turn("turn-2", 1, "running");
@@ -282,7 +317,7 @@ fn fork_fails_closed_without_the_capability_or_an_idle_completed_anchor() {
         "the anchor is not completed"
     );
 
-    let cold = Fixture::new(FORKABLE);
+    let cold = Fixture::new(&forkable());
     cold.database
         .connection()
         .execute_batch(
@@ -309,7 +344,7 @@ fn fork_fails_closed_without_the_capability_or_an_idle_completed_anchor() {
 
 #[test]
 fn a_turn_started_during_the_native_fork_refuses_the_fork_chat() {
-    let fixture = Fixture::new(FORKABLE);
+    let fixture = Fixture::new(&forkable());
     let source = fixture.source("turn-1").unwrap();
     fixture.turn("turn-2", 1, "running");
     let external = ExternalId::new("externalSessionId", "thread-fork".to_owned()).unwrap();
@@ -329,7 +364,7 @@ fn a_turn_started_during_the_native_fork_refuses_the_fork_chat() {
 
 #[test]
 fn layout_and_tab_limit_refusals_happen_before_the_commit() {
-    let fixture = Fixture::new(FORKABLE);
+    let fixture = Fixture::new(&forkable());
     let source = fixture.source("turn-1").unwrap();
     let external = ExternalId::new("externalSessionId", "thread-fork".to_owned()).unwrap();
     let mut foreign = fixture.layout();
@@ -344,7 +379,7 @@ fn layout_and_tab_limit_refusals_happen_before_the_commit() {
 
 #[test]
 fn a_failed_commit_is_commit_unknown_and_never_a_refusal() {
-    let fixture = Fixture::new(FORKABLE);
+    let fixture = Fixture::new(&forkable());
     let source = fixture.source("turn-1").unwrap();
     let external = ExternalId::new("externalSessionId", "thread-fork".to_owned()).unwrap();
     // The COMMIT itself fails after every pre-commit check has passed.
@@ -377,4 +412,238 @@ fn only_a_refusal_before_the_commit_deletes_the_native_fork() {
     );
     // A failed COMMIT or a lost join may have landed: release nothing.
     assert_eq!(release_after(&ForkCommit::Unknown), None);
+}
+
+#[test]
+fn a_fork_starts_with_the_config_choices_of_its_parent() {
+    use crate::acp::{
+        contract::SageAgentSessionId,
+        session_config::{ConfigId, ConfigMutation, ConfigValue, choices},
+    };
+    let fixture = Fixture::new(&forkable());
+    let parent = SageAgentSessionId::parse("session-parent").unwrap();
+    let mode = ConfigMutation::Mode(ConfigId::new("modeId", "plan").unwrap());
+    let effort = ConfigMutation::Option {
+        config_id: ConfigId::new("configId", "effort").unwrap(),
+        value: ConfigValue::Select {
+            value: ConfigId::new("value", "high").unwrap(),
+        },
+    };
+    {
+        let connection = fixture.database.connection();
+        assert!(choices::record(&connection, &parent, &mode, 1).unwrap());
+        assert!(choices::record(&connection, &parent, &effort, 2).unwrap());
+    }
+    let fork = fixture.fork("thread-fork").expect("fork chat");
+    let connection = fixture.database.connection();
+    let session: String = connection
+        .query_row(
+            "SELECT session_id FROM chat_session_heads WHERE chat_id=?1",
+            [&fork],
+            |row| row.get(0),
+        )
+        .unwrap();
+    let session = SageAgentSessionId::parse(session).unwrap();
+    assert_ne!(session, parent);
+    assert_eq!(
+        choices::load(&connection, &session).unwrap(),
+        [mode, effort]
+    );
+}
+
+#[test]
+fn an_imported_session_becomes_a_resumable_chat_once_per_thread() {
+    use crate::acp::store::native_import::{import_lister, imported_session, imported_threads};
+    let fixture = Fixture::new(&forkable());
+    let (project, _) = fixture.ids();
+    assert!(
+        import_lister(&fixture.database.connection(), &project, None)
+            .unwrap()
+            .is_none(),
+        "a runtime without the capability does not list sessions"
+    );
+    let importable = forkable().replace(
+        r#""nativeSessionFork":true"#,
+        r#""nativeSessionFork":true,"nativeSessionImport":true"#,
+    );
+    let fixture = Fixture::new(&importable);
+    let (project, parent) = fixture.ids();
+    let lister = import_lister(&fixture.database.connection(), &project, None)
+        .unwrap()
+        .expect("the hot Codex chat lists sessions");
+    assert_eq!(lister.chat_id, parent);
+    let history = r#"{"turns":[],"retentionLimited":false}"#;
+    let import = |thread: &str| {
+        let thread = ExternalId::new("externalSessionId", thread.to_owned()).unwrap();
+        fixture.database.create_import_chat(
+            &fixture.layout(),
+            &lister,
+            &thread,
+            "  Fix the\n build ",
+            history,
+        )
+    };
+    let chat = import("thread-cli").expect("import");
+    let connection = fixture.database.connection();
+    let row: (String, String, String, String, String, String) = connection
+        .query_row(
+            "SELECT c.title,c.title_source,s.state,s.residency,s.external_session_id,
+                    s.capabilities_json
+             FROM chats c JOIN agent_sessions s ON s.chat_id=c.id WHERE c.id=?1",
+            [&chat],
+            |row| {
+                Ok((
+                    row.get(0)?,
+                    row.get(1)?,
+                    row.get(2)?,
+                    row.get(3)?,
+                    row.get(4)?,
+                    row.get(5)?,
+                ))
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        row,
+        (
+            "Chat: Fix the build".into(),
+            "harness".into(),
+            "ready".into(),
+            "cold".into(),
+            "thread-cli".into(),
+            importable.clone()
+        )
+    );
+    let chat_id = SageChatId::parse(chat).unwrap();
+    let page = load_chat_page(&connection, project.clone(), chat_id.clone(), None).unwrap();
+    assert!(page.imported_history && page.turns.as_slice().is_empty());
+    assert_eq!(
+        serde_json::to_value(&page).unwrap()["importedHistory"],
+        true
+    );
+    assert!(
+        !load_chat_page(&connection, project.clone(), parent, None)
+            .unwrap()
+            .imported_history
+    );
+    let imported = imported_session(&connection, &project, &chat_id, true)
+        .unwrap()
+        .unwrap();
+    assert_eq!(imported.history_json.as_deref(), Some(history));
+    assert_eq!(imported.runtime_epoch, 1, "shown under its first runtime");
+    assert_eq!(
+        imported_threads(&connection, &project).unwrap(),
+        ["thread-cli"]
+    );
+    drop(connection);
+    for held in ["thread-cli", "thread-parent"] {
+        assert!(
+            import(held).is_err(),
+            "{held} is already held by a Sage session"
+        );
+    }
+}
+
+#[test]
+fn a_listing_leaves_out_every_thread_the_project_holds() {
+    use crate::acp::store::native_import::{
+        HELD_THREADS, held_threads, import_lister, imported_threads,
+    };
+    let importable = forkable().replace(
+        r#""nativeSessionFork":true"#,
+        r#""nativeSessionFork":true,"nativeSessionImport":true"#,
+    );
+    let fixture = Fixture::new(&importable);
+    let (project, _) = fixture.ids();
+    let lister = import_lister(&fixture.database.connection(), &project, None)
+        .unwrap()
+        .expect("the hot Codex chat lists sessions");
+    let thread = ExternalId::new("externalSessionId", "thread-cli".to_owned()).unwrap();
+    fixture
+        .database
+        .create_import_chat(
+            &fixture.layout(),
+            &lister,
+            &thread,
+            "Session",
+            r#"{"turns":[],"retentionLimited":false}"#,
+        )
+        .expect("import");
+    let connection = fixture.database.connection();
+    // The harness is asked to leave out only imported threads, but an
+    // import refuses every thread a Project session holds, so a page is
+    // filtered against all of them.
+    assert_eq!(
+        imported_threads(&connection, &project).unwrap(),
+        ["thread-cli"]
+    );
+    let held = held_threads(
+        &connection,
+        &project,
+        &["thread-cli", "thread-parent", "thread-new"],
+    )
+    .unwrap();
+    assert_eq!(
+        held,
+        ["thread-cli", "thread-parent"]
+            .map(String::from)
+            .into_iter()
+            .collect()
+    );
+    // Each listed thread is an indexed lookup, never a scan of the Project.
+    let plan = connection
+        .prepare(&format!("EXPLAIN QUERY PLAN {HELD_THREADS}"))
+        .unwrap()
+        .query_map(rusqlite::params![project.as_str(), "[]"], |row| {
+            row.get::<_, String>(3)
+        })
+        .unwrap()
+        .collect::<Result<Vec<_>, _>>()
+        .unwrap()
+        .join("\n");
+    assert!(
+        plan.contains("idx_agent_sessions_external_session"),
+        "{plan}"
+    );
+}
+
+#[test]
+fn an_import_reads_only_on_the_runtime_that_listed_it() {
+    use crate::acp::{
+        contract::{RuntimeEpoch, SageAgentSessionId},
+        store::native_import::import_lister,
+    };
+    let importable = forkable().replace(
+        r#""nativeSessionFork":true"#,
+        r#""nativeSessionFork":true,"nativeSessionImport":true"#,
+    );
+    let fixture = Fixture::new(&importable);
+    let (project, parent) = fixture.ids();
+    // A second hot runtime, more recently active than the parent's.
+    let other = fixture.fork("thread-other").expect("fork chat");
+    fixture
+        .database
+        .connection()
+        .execute_batch(&format!(
+            "UPDATE agent_sessions SET residency='hot',updated_at=9 WHERE chat_id='{other}';
+             INSERT INTO session_runtime_epochs SELECT project_id,chat_id,id,1,'running',
+               NULL,1,NULL,NULL FROM agent_sessions WHERE chat_id='{other}';"
+        ))
+        .unwrap();
+    let connection = fixture.database.connection();
+    let newest = import_lister(&connection, &project, None).unwrap().unwrap();
+    assert_eq!(newest.chat_id.as_str(), other);
+    let session = SageAgentSessionId::parse("session-parent").unwrap();
+    let epoch = RuntimeEpoch::new(1).unwrap();
+    let pinned = import_lister(&connection, &project, Some((&session, epoch)))
+        .unwrap()
+        .expect("the listing runtime still reads");
+    assert_eq!(pinned.chat_id, parent);
+    let restarted = RuntimeEpoch::new(2).unwrap();
+    assert!(
+        import_lister(&connection, &project, Some((&session, restarted)))
+            .unwrap()
+            .is_none(),
+        "a restarted runtime never listed the session"
+    );
 }

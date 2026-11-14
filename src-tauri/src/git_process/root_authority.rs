@@ -9,8 +9,11 @@ use crate::{
 
 pub(crate) struct GitRootAuthority {
     directory: fs::File,
+    /// An open file inside `.git`, which stops Windows renaming the root.
+    /// `None` when the root holds no `.git`: admission then classifies it
+    /// (nested or not a repository) and no admitted call spawns unanchored.
     #[cfg(windows)]
-    _anchor: fs::File,
+    anchor: Option<fs::File>,
 }
 
 impl GitRootAuthority {
@@ -24,11 +27,45 @@ impl GitRootAuthority {
         let authority = Self {
             directory,
             #[cfg(windows)]
-            _anchor: open_anchor(workspace.root())?,
+            anchor: open_anchor(workspace.root())?,
         };
         #[cfg(windows)]
         workspace.ensure_root_identity()?;
         Ok(authority)
+    }
+
+    /// Duplicates the retained root handle so a second Git process can bind to
+    /// the same identity-checked directory.
+    pub(super) fn try_clone(&self) -> AppResult<Self> {
+        Ok(Self {
+            directory: self.directory.try_clone()?,
+            #[cfg(windows)]
+            anchor: self.anchor.as_ref().map(fs::File::try_clone).transpose()?,
+        })
+    }
+
+    /// Whether the root is held against rename for an admitted repository.
+    pub(super) fn anchors_repository(&self) -> bool {
+        #[cfg(windows)]
+        {
+            self.anchor.is_some()
+        }
+        #[cfg(not(windows))]
+        {
+            true
+        }
+    }
+
+    /// Fails when `root` no longer names the retained directory, so a root
+    /// that was moved or replaced after admission is refused before the spawn.
+    pub(super) fn ensure_names(&self, root: &Path) -> AppResult<()> {
+        if crate::workspace::root_identity_path(root)? == directory_identity(&self.directory)? {
+            Ok(())
+        } else {
+            Err(AppError::InvalidRequest(
+                "workspace root identity changed before Git access".into(),
+            ))
+        }
     }
 
     pub(super) fn bind_child(&self, command: &mut Command, root: &Path) {
@@ -83,7 +120,7 @@ fn open_directory(root: &Path) -> AppResult<fs::File> {
 }
 
 #[cfg(windows)]
-fn open_anchor(root: &Path) -> AppResult<fs::File> {
+fn open_anchor(root: &Path) -> AppResult<Option<fs::File>> {
     use std::{fs::OpenOptions, os::windows::fs::OpenOptionsExt};
     use windows_sys::Win32::Storage::FileSystem::{
         FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
@@ -95,10 +132,15 @@ fn open_anchor(root: &Path) -> AppResult<fs::File> {
     } else {
         dot_git.join("HEAD")
     };
-    Ok(OpenOptions::new()
+    match OpenOptions::new()
         .access_mode(FILE_READ_ATTRIBUTES)
         .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
-        .open(anchor)?)
+        .open(anchor)
+    {
+        Ok(file) => Ok(Some(file)),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+        Err(error) => Err(error.into()),
+    }
 }
 
 #[cfg(windows)]

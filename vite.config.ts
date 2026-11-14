@@ -17,6 +17,7 @@ const desktopWorkbenchRuntime = path.join(
 );
 const devWatchIgnoredRoots = new Set([
   "src-tauri",
+  "target",
   "work",
   "output",
   "local-evidence",
@@ -51,6 +52,16 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     test: /src[\\/]ui[\\/]ModalDialog\.tsx$/,
   },
   {
+    name: "menu-popover",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // The shared menu loads with an Editor's own menus and with an Agent
+    // menu's first open, never with the Agent UI behind that menu. A
+    // searchable picker's open list and its rows join it: they load only
+    // where a MenuPopover opens, so one chunk saves a request.
+    test: /src[\\/]ui[\\/](?:(?:MenuPopover|SearchablePickerPopover|PickerOption)\.tsx|menuPopover(?:Position|DialogFocus)\.ts)$/,
+  },
+  {
     name: "file-kind-icons",
     priority: 2,
     includeDependenciesRecursively: false,
@@ -60,7 +71,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
   {
     name: "agent-workbench",
     priority: 1,
-    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|chatEditSummary))[^\\/]+\.(?:tsx|ts)$)/,
+    test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:ChatMarkdown|MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|UserInputPrompt|UserInputField|SessionNoticeStrip|approvalCard|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|BackgroundTerminal|chatEditSummary|useGoalMutation|SessionSurfacePanel|useSessionControl))[^\\/]+\.(?:tsx|ts)$)/,
   },
   {
     name: "codemirror-deps",
@@ -71,7 +82,7 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     name: "markdown-rendering",
     priority: 2,
     includeDependenciesRecursively: false,
-    test: /(?:src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownList|markdownLimits)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
+    test: /(?:node_modules[\\/](?:markdown-it|argparse|entities|linkify-it|mdurl|punycode.js|uc.micro)[\\/]|src[\\/]features[\\/]files[\\/](?:MarkdownBlocks|markdownPreview|markdownTokens|markdownStream|markdownLimits|markdownContainers|markdownTextLocations)\.tsx?$|src[\\/]features[\\/]chat[\\/]acp[\\/]MermaidFigureBoundary\.tsx$)/,
   },
   {
     name: "diff-rendering",

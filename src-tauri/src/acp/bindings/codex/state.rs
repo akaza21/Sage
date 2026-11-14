@@ -1,5 +1,7 @@
+mod action_handoff;
+mod approval_reviews;
+mod background_terminals;
 pub(crate) mod capabilities;
-mod child_read;
 mod fork;
 #[cfg(test)]
 pub(crate) use fork::MAX_FORK_RELEASE_ATTEMPTS;
@@ -7,13 +9,28 @@ pub(crate) use fork::{MAX_UNRELEASED_FORKS, fork_reply};
 pub(crate) mod command_explore;
 pub(crate) mod command_output_stream;
 mod command_snapshots;
+mod compactions;
 mod construction;
 mod errors;
 mod goal;
+mod hook_runs;
+mod mcp;
+mod mcp_tools;
+mod native_read;
+#[cfg(test)]
+pub(crate) use mcp_tools::RUNNING_MCP_TOOLS_MAX;
 mod permission_resolution;
 mod permissions;
+pub(in crate::acp::bindings::codex) use permissions::USER_INPUT_METHOD;
 mod provisional;
+mod rate_limits;
+mod revert;
+
+/// The id a Turn Codex refused to start is recorded under; Codex never ran it.
+const REJECTED_TURN: &str = "rejected-";
 mod session;
+mod skills;
+mod turn_end;
 mod turn_errors;
 mod turn_prompt;
 mod turn_starts;
@@ -24,12 +41,14 @@ pub(crate) use errors::{AdapterError, TurnStartedRejection};
 
 use command_snapshots::CommandItemSnapshots;
 pub(crate) use command_snapshots::MaterializedCommandItem;
+pub(crate) use turn_end::PlanEntries;
+pub(crate) use turn_starts::WarningKind;
 use turn_starts::{CorrelationMatch, TurnStartCorrelations};
 pub(in crate::acp::bindings::codex) use turns::SubagentLabels;
 
 use crate::acp::{
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
-    intent::{CapabilitySnapshotV1, ExternalId},
+    intent::{CapabilitySnapshotV1, ExternalId, session_event::SessionScopedEvent},
     lifecycle::{ItemLifecycle, ServerRequestState, TurnState},
     limits::LIMITS,
 };
@@ -67,7 +86,7 @@ struct ItemTerminal {
     state: ItemLifecycle,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct TurnTombstone {
     id: ExternalId,
     client_message_id: RequiredText<512>,
@@ -75,15 +94,16 @@ struct TurnTombstone {
     item_terminals: Vec<ItemTerminal>,
     terminal_id_bytes: usize,
     unretried_error_fingerprints: Vec<[u8; 32]>,
+    approval_reviews: Vec<String>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 struct NegotiatedMethods {
     snapshot: CapabilitySnapshotV1,
     models: bool,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct PermissionRequestEntry {
     id: String,
     fingerprint: u64,
@@ -93,6 +113,8 @@ struct PermissionRequestEntry {
     item_id: String,
     response: Vec<u8>,
     state: ServerRequestState,
+    /// The form an MCP elicitation asked; its answers are typed against it.
+    form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
 }
 
 pub(crate) struct PermissionRequestParams<'a> {
@@ -103,6 +125,7 @@ pub(crate) struct PermissionRequestParams<'a> {
     pub(crate) turn_id: &'a str,
     pub(crate) item_id: &'a str,
     pub(crate) response: &'a [u8],
+    pub(crate) form: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -113,7 +136,7 @@ pub(crate) enum TurnBinding {
     Provisional,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug, PartialEq)]
 struct ProvisionalTurn {
     response_id: ExternalId,
     started_id: Option<ExternalId>,
@@ -134,6 +157,9 @@ pub(crate) enum PermissionRegistration {
     DuplicateCommitted(Vec<u8>),
 }
 
+/// Cloned and compared only to probe how ingestion would read frames without
+/// applying them.
+#[derive(Clone, PartialEq)]
 pub(crate) struct CodexAdapter {
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,
@@ -153,15 +179,31 @@ pub(crate) struct CodexAdapter {
     external_thread_id: Option<ExternalId>,
     browser_mcp_failure_reported: bool,
     pending_browser_mcp_failure_threads: Vec<String>,
+    /// Thread-less notices that arrived before a thread was bound; at most
+    /// `PENDING_NOTICES_MAX`, oldest dropped first.
+    pending_session_notices: Vec<SessionScopedEvent>,
+    /// The latest configuration-warning texts (summary and details) and
+    /// generic warning messages, at most `REPEATED_WARNINGS_MAX`, so one
+    /// problem Codex reports both ways is shown once.
+    recent_warnings: Vec<(WarningKind, String)>,
     turn_start_correlations: TurnStartCorrelations,
     active_turn_id: Option<ExternalId>,
     provisional_turn: Option<ProvisionalTurn>,
+    action_handoff: Option<action_handoff::ActionHandoff>,
+    deferred_interrupt: bool,
     active_turn_client_message_id: Option<RequiredText<512>>,
     active_item_terminals: Vec<ItemTerminal>,
     active_terminal_id_bytes: usize,
     active_unretried_error_fingerprints: Vec<[u8; 32]>,
+    active_approval_reviews: Vec<String>,
+    /// Sage wrote `turn/interrupt` for the active Turn.
+    active_turn_user_stop: bool,
+    active_turn_plan: Option<turn_end::PlanEntries>,
     previous_turn: Option<TurnTombstone>,
     command_item_snapshots: CommandItemSnapshots,
+    running_mcp_tools: mcp_tools::RunningMcpTools,
+    running_hooks: hook_runs::RunningHooks,
+    compactions: compactions::Compactions,
     subagent_labels: SubagentLabels,
     child_threads: Vec<SafeText<512>>,
     bound_child_threads: Vec<SafeText<512>>,
@@ -171,15 +213,44 @@ pub(crate) struct CodexAdapter {
     goal_notification_generation: u64,
     goal_get_fence: Option<(u64, u64)>,
     goal_mutation_fence: Option<(u64, u64)>,
-    pending_child_read: Option<(u64, String, String)>,
+    pending_read: Option<(u64, crate::acp::goal::NativeRead)>,
     child_read_tombstone: Option<u64>,
+    /// Import reads whose caller gave up; their late answers are dropped.
+    abandoned_reads: Vec<u64>,
+    /// The project root the bound thread was started or resumed in.
+    native_root: Option<super::request::NativeProjectRoot>,
+    listed_sessions: Vec<String>,
+    rate_limits_abandoned: rate_limits::AbandonedReads,
+    /// Background-terminal listings whose caller gave up; late answers are dropped.
+    terminals_tombstones: Vec<u64>,
+    /// An `/mcp` read whose caller gave up; its late answer is dropped.
+    mcp_read_tombstones: Vec<u64>,
+    skills: skills::Skills,
     pending_fork: Option<u64>,
     forks: fork::ForkLedger,
+    /// The Codex Turn an Undo in flight removes, then the one it removed.
+    revert_target: Option<String>,
+    reverted_turn: Option<String>,
 }
 
 impl CodexAdapter {
     pub(crate) fn has_active_turn(&self) -> bool {
         self.active_turn_id.is_some()
+    }
+
+    /// A nested turn's root names the active Turn, or, before any Turn is
+    /// named, the review whose `review/start` answer has not arrived yet.
+    pub(crate) fn root_names_turn(&self, root: &str) -> bool {
+        match &self.active_turn_id {
+            Some(active) => active.as_str() == root,
+            None => {
+                let mut starts = self.pending.iter().filter(|(_, kind)| kind.starts_turn());
+                matches!(
+                    (starts.next(), starts.next()),
+                    (Some((_, RequestKind::Review)), None)
+                )
+            }
+        }
     }
 
     pub(crate) fn mark_browser_mcp_failure_reported(&mut self) -> bool {
@@ -211,8 +282,9 @@ impl CodexAdapter {
 
     pub(crate) fn reject_before_write(&mut self, id: u64) -> Result<(), AdapterError> {
         let kind = self.pending_kind(id).ok_or(AdapterError::ForeignRequest)?;
-        if kind == RequestKind::TurnStart {
+        if kind.starts_turn() {
             self.turn_start_correlations.discard_pending(id)?;
+            self.deferred_interrupt = false;
         }
         if kind == RequestKind::GoalGet {
             self.goal_get_failed(id);
@@ -220,8 +292,17 @@ impl CodexAdapter {
         if matches!(kind, RequestKind::GoalPause | RequestKind::GoalClear) {
             self.goal_mutation_fence = None;
         }
-        if kind == RequestKind::ChildRead {
-            self.pending_child_read = None;
+        if kind.is_native_read() {
+            self.pending_read = None;
+        }
+        if kind == RequestKind::SkillsList {
+            self.skills_unsent();
+        }
+        if kind == RequestKind::Interrupt {
+            self.active_turn_user_stop = self
+                .pending
+                .iter()
+                .any(|&(other, pending)| other != id && pending == RequestKind::Interrupt);
         }
         if kind == RequestKind::Fork {
             self.pending_fork = None;
@@ -238,6 +319,11 @@ impl CodexAdapter {
         self.pending
             .iter()
             .find_map(|(pending, kind)| (*pending == id).then_some(*kind))
+    }
+
+    /// Whether a request of `kind` is still waiting for its answer.
+    pub(crate) fn awaits(&self, kind: RequestKind) -> bool {
+        self.pending.iter().any(|(_, pending)| *pending == kind)
     }
 
     pub(crate) fn ingest<M: ResourceMapper>(
@@ -263,15 +349,22 @@ impl CodexAdapter {
     }
 
     pub(super) fn fail_turn_start(&mut self, id: u64) -> Result<TurnStartFailure, AdapterError> {
-        if self.pending_kind(id) != Some(RequestKind::TurnStart) {
+        if !self.pending_kind(id).is_some_and(RequestKind::starts_turn) {
             return Err(AdapterError::TurnIntentConflict);
         }
-        let correlation = self.turn_start_correlations.failure(id)?;
-        let result = match correlation {
+        let result = self.fail_correlation(id)?;
+        self.finish_turn_start_response(id)?;
+        Ok(result)
+    }
+
+    fn fail_correlation(&mut self, id: u64) -> Result<TurnStartFailure, AdapterError> {
+        Ok(match self.turn_start_correlations.failure(id)? {
             CorrelationMatch::Pending(client) => {
                 self.active_turn_client_message_id = Some(client);
-                self.active_turn_id =
-                    Some(ExternalId::new("externalTurnId", format!("rejected-{id}"))?);
+                self.active_turn_id = Some(ExternalId::new(
+                    "externalTurnId",
+                    format!("{REJECTED_TURN}{id}"),
+                )?);
                 self.accept_active_failure().map(TurnStartFailure::Failed)?
             }
             CorrelationMatch::Active { turn_id, .. }
@@ -281,21 +374,19 @@ impl CodexAdapter {
             }
             CorrelationMatch::Terminal { .. } => TurnStartFailure::Late,
             CorrelationMatch::Active { .. } => return Err(AdapterError::TurnIntentConflict),
-        };
-        self.finish_turn_start_response(id)?;
-        Ok(result)
+        })
     }
 
     pub(super) fn fail_pending_turn_start(&mut self) -> Result<TurnStartFailure, AdapterError> {
         let mut turn_starts = self
             .pending
             .iter()
-            .filter_map(|(id, kind)| (*kind == RequestKind::TurnStart).then_some(*id));
-        let id = turn_starts.next().ok_or(AdapterError::TurnIntentConflict)?;
-        if turn_starts.next().is_some() {
-            return Err(AdapterError::TurnIntentConflict);
+            .filter_map(|(id, kind)| kind.starts_turn().then_some(*id));
+        match (turn_starts.next(), turn_starts.next()) {
+            (Some(id), None) => self.fail_turn_start(id),
+            (None, None) if self.action_handoff.is_some() => self.fail_action_handoff(),
+            _ => Err(AdapterError::TurnIntentConflict),
         }
-        self.fail_turn_start(id)
     }
 
     pub(super) fn fail_interrupt(&mut self) -> Result<ScopedExternalId, AdapterError> {
@@ -309,7 +400,7 @@ impl CodexAdapter {
             .ok_or(AdapterError::TurnUnavailable)?
             .as_str()
             .to_owned();
-        let scoped = self.scoped_in_turn(ExternalKind::Turn, &id, &id)?;
+        let scoped = self.scoped_turn(&id)?;
         self.accept_turn_terminal(&id, TurnState::Failed)?;
         Ok(scoped)
     }
@@ -323,12 +414,11 @@ impl CodexAdapter {
     }
 
     pub(super) fn finish_turn_start_response(&mut self, id: u64) -> Result<(), AdapterError> {
-        if self.pending_kind(id) != Some(RequestKind::TurnStart) {
+        if !self.pending_kind(id).is_some_and(RequestKind::starts_turn) {
             return Err(AdapterError::TurnIntentConflict);
         }
         self.turn_start_correlations.consume(id)?;
-        let removed = self.remove_pending(id);
-        debug_assert_eq!(removed, Some(RequestKind::TurnStart));
+        self.remove_pending(id);
         Ok(())
     }
 

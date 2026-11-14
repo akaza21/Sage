@@ -94,6 +94,11 @@ pub(super) fn prepare_turn_in(
     transaction: &Transaction<'_>,
     command: PrepareTurnCommand,
 ) -> Result<PreparedTurn, StoreError> {
+    super::turn_undo::intent::ensure_settled(
+        transaction,
+        command.project_id.as_str(),
+        command.chat_id.as_str(),
+    )?;
     let user_payload = command.prompt.user_payload();
     let item_payload = user_item_payload(&user_payload)?;
     let item_bytes = i64::try_from(item_payload.len()).map_err(|_| StoreError::PayloadTooLarge)?;
@@ -121,13 +126,16 @@ pub(super) fn prepare_turn_in(
         command.project_id.as_str(),
         command.chat_id.as_str(),
     )?;
-    crate::chat_lifecycle::auto_title_first_prompt_in(
-        transaction,
-        command.project_id.as_str(),
-        command.chat_id.as_str(),
-        user_payload["text"].as_str().unwrap_or_default(),
-        command.now_millis,
-    )?;
+    // A session action's `/` text names no topic, so it never titles a chat.
+    if command.prompt.action.is_none() {
+        crate::chat_lifecycle::auto_title_first_prompt_in(
+            transaction,
+            command.project_id.as_str(),
+            command.chat_id.as_str(),
+            user_payload["text"].as_str().unwrap_or_default(),
+            command.now_millis,
+        )?;
+    }
     transaction.execute(
         "INSERT INTO turns (id,project_id,chat_id,session_id,runtime_epoch,ordinal,
          client_intent_id,state,delivery_state,revision,created_at,updated_at)
@@ -150,6 +158,7 @@ pub(super) fn prepare_turn_in(
          VALUES (?1,?2,?3,?4,?5,?6,0,'primary',NULL,'text','completed',NULL,NULL,?7,?8,?9,0,?10,?10,?10)",
         params![item_id.as_str(),command.project_id.as_str(),command.chat_id.as_str(),command.session_id.as_str(),turn_id.as_str(),command.runtime_epoch.get() as i64,item_payload,item_bytes,item_digest,command.now_millis],
     )?;
+    super::prompt_images::insert_user_images(transaction, &command, &turn_id)?;
     ensure_one(transaction.execute(
         "UPDATE acp_session_usage SET turn_count=turn_count+1,item_count=item_count+1,
          item_bytes=item_bytes+?2,payload_bytes=payload_bytes+?2,revision=revision+1 WHERE session_id=?1",
@@ -224,19 +233,12 @@ fn validate_prepare_owner(
     transaction: &Transaction<'_>,
     command: &PrepareTurnCommand,
 ) -> Result<(), StoreError> {
-    let revision: i64 = transaction
-        .query_row(
-            "SELECT projection_revision FROM chats WHERE project_id=?1 AND id=?2",
-            params![command.project_id.as_str(), command.chat_id.as_str()],
-            |row| row.get(0),
-        )
-        .optional()?
-        .ok_or(StoreError::Conflict { resource: "chat" })?;
-    if projection_from_i64(revision)? != command.expected_projection_revision {
-        return Err(StoreError::Conflict {
-            resource: "projectionRevision",
-        });
-    }
+    super::sessions::validate_chat_revision(
+        transaction,
+        &command.project_id,
+        &command.chat_id,
+        command.expected_projection_revision,
+    )?;
     let owner: Option<(String, String)> = transaction
         .query_row(
             "SELECT s.state,s.residency FROM agent_sessions s
@@ -252,15 +254,22 @@ fn validate_prepare_owner(
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
+    let stale = StoreError::Conflict {
+        resource: "sessionEpoch",
+    };
     match owner {
         Some((state, residency))
-            if matches!(state.as_str(), "ready" | "active") && residency == "hot" =>
-        {
-            Ok(())
-        }
-        _ => Err(StoreError::Conflict {
-            resource: "sessionEpoch",
-        }),
+            if matches!(state.as_str(), "ready" | "active") && residency == "hot" => {}
+        _ => return Err(stale),
+    }
+    // A runtime still holding a Turn the user undid is as stale as an
+    // earlier epoch: its prompt would answer with the undone Turn in context.
+    // The undo's record and this check commit in SQLite's write order, so a
+    // prompt is either prepared before the undo is recorded (which then
+    // refuses it) or refused here.
+    match super::turn_undo::pending_thread_rewind(transaction, command.session_id.as_str())? {
+        Some(rewind) if rewind.held_by(command.runtime_epoch) => Err(stale),
+        _ => Ok(()),
     }
 }
 

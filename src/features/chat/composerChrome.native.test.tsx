@@ -21,7 +21,8 @@ beforeEach(() => {
   vi.stubGlobal("SpeechRecognition", undefined);
   vi.stubGlobal("webkitSpeechRecognition", undefined);
   vi.spyOn(navigator, "platform", "get").mockReturnValue("Win32");
-  native.invoke.mockClear();
+  native.invoke.mockReset();
+  native.invoke.mockResolvedValue(undefined);
   native.listen.mockImplementation(async (_name, callback) => {
     native.emit = (payload: unknown) => callback({ payload });
     return () => {
@@ -99,6 +100,42 @@ describe("native composer dictation", () => {
     });
     act(() => emitLate?.({ id, kind: "final", text: "late" }));
     expect(change).not.toHaveBeenCalled();
+  });
+
+  it("keeps a newer recording alive when stopping the previous recording fails late", async () => {
+    let rejectStop!: (reason: Error) => void;
+    native.invoke.mockImplementation(async (command) => {
+      if (command === "stop_voice_input")
+        await new Promise<void>((_resolve, reject) => {
+          rejectStop = reject;
+        });
+    });
+    const input = document.createElement("textarea");
+    input.value = "Draft";
+    const ref = createRef<HTMLTextAreaElement>();
+    Object.defineProperty(ref, "current", { value: input });
+    const { result } = renderHook(() =>
+      useComposerDictation(
+        "Draft",
+        (value) => {
+          input.value = value;
+        },
+        "chat-a",
+        false,
+        ref,
+      ),
+    );
+    await act(async () => result.current.start());
+    act(() => result.current.stop());
+    await act(async () => result.current.start());
+    const calls = native.invoke.mock.calls.filter(
+      ([command]) => command === "start_voice_input",
+    );
+    const id = (calls.at(-1)?.[1] as { id: string }).id;
+    await act(async () => rejectStop(new Error("Late stop failure")));
+    expect(result.current.listening).toBe(true);
+    act(() => native.emit?.({ id, kind: "final", text: "still recording" }));
+    expect(input.value).toBe("Draft still recording");
   });
 
   it("surfaces a native microphone failure without inserting text", async () => {

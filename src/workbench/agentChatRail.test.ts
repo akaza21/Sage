@@ -6,7 +6,6 @@ import {
   MAX_AGENT_RAIL_PIN_IDS,
   MAX_AGENT_RAIL_RECENT_CHATS,
   agentChatMoveDestinations,
-  collectAgentRailPinIds,
   compareAgentRailChats,
   deriveAgentRailSections,
   groupAgentRailProjects,
@@ -258,6 +257,27 @@ describe("agent chat rail", () => {
     ).toEqual([]);
   });
 
+  it("keeps a folder-named project's whole name past the typed-name limit", () => {
+    // A project added from a folder is named after it, with no 64-character
+    // cap; the rail shortens it with a CSS ellipsis, so the name stays whole.
+    const name =
+      "cross-platform-desktop-shell-with-an-extraordinarily-long-project-name-for-tests";
+    const projects = [
+      { id: "project:long", name, rootCount: 1, lastOpenedAt: 1 },
+      { id: "project:other", name: "Other", rootCount: 1, lastOpenedAt: 2 },
+    ];
+    expect(
+      groupAgentRailProjects({
+        projects,
+        currentProjectId: "project:other",
+        currentChats: [],
+      })[0]?.name,
+    ).toBe(name);
+    expect(agentChatMoveDestinations(projects, "project:other")).toEqual([
+      { id: "project:long", name, kind: "folder" },
+    ]);
+  });
+
   it("keeps the last native-admitted project in the bounded window", () => {
     const projects = Array.from({ length: 65 }, (_, index) => ({
       id: `project:${index}`,
@@ -329,7 +349,7 @@ describe("agent chat rail", () => {
     ]);
   });
 
-  it("caps foreign project chats and pins the current project first", () => {
+  it("caps foreign project chats and keeps the current project first", () => {
     const overflow = Array.from(
       { length: MAX_AGENT_RAIL_CHATS_PER_PROJECT + 2 },
       (_, index) => ({
@@ -363,12 +383,6 @@ describe("agent chat rail", () => {
     });
     expect(groups[0]?.chats).toHaveLength(MAX_AGENT_RAIL_CHATS_PER_PROJECT);
     expect(groups[0]?.truncated).toBe(true);
-    expect(collectAgentRailPinIds(groups, "local")).toEqual([
-      "chat:local",
-      ...overflow
-        .slice(0, MAX_AGENT_RAIL_CHATS_PER_PROJECT)
-        .map((chat) => chat.id),
-    ]);
   });
 
   it("previews a foreign project's first chats in either order from what Rust sends", () => {

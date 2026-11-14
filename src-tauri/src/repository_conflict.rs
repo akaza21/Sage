@@ -321,7 +321,7 @@ pub(crate) async fn admin_marker_exists(workspace: &Workspace, marker: &str) -> 
 
 #[cfg(test)]
 mod tests {
-    use std::{fs, path::Path, process::Command};
+    use std::{fs, path::Path};
 
     use uuid::Uuid;
 
@@ -332,7 +332,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            Command::new("git")
+            crate::git_process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -371,7 +371,7 @@ mod tests {
         git(&root, &["checkout", "-q", "-"]);
         fs::write(root.join("conflict.txt"), "ours\n").unwrap();
         git(&root, &["commit", "-q", "-am", "ours"]);
-        let merge = Command::new("git")
+        let merge = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["merge", "other"])
@@ -421,7 +421,7 @@ mod tests {
             fs::read_to_string(root.join("conflict.txt")).unwrap(),
             "ours\n"
         );
-        let unmerged = Command::new("git")
+        let unmerged = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["ls-files", "--unmerged", "-z"])
@@ -477,7 +477,7 @@ mod tests {
     }
 
     fn current_branch(root: &Path) -> String {
-        let output = Command::new("git")
+        let output = crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(["rev-parse", "--abbrev-ref", "HEAD"])
@@ -492,7 +492,7 @@ mod tests {
         git(&root, &["merge", "--abort"]);
         let onto = current_branch(&root);
         git(&root, &["checkout", "-q", "other"]);
-        let rebase = Command::new("git")
+        let rebase = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["rebase", &onto])
@@ -557,15 +557,10 @@ mod tests {
 
     #[test]
     fn continue_rebase_preserves_the_commit_message_without_opening_an_editor() {
+        // Repository editor keys are refused before Git runs, so no editor is
+        // configured here: without Sage's no-op override Git would fall back
+        // to its default editor.
         let (root, workspace, resource) = rebase_conflict_fixture();
-        git(
-            &root,
-            &["config", "core.editor", "sage-editor-must-not-run"],
-        );
-        git(
-            &root,
-            &["config", "sequence.editor", "sage-editor-must-not-run"],
-        );
         let runtime = tokio::runtime::Runtime::new().unwrap();
         runtime
             .block_on(resolve_conflicted_file(
@@ -612,7 +607,7 @@ mod tests {
         git(&root, &["checkout", "-q", "-"]);
         fs::write(root.join("conflict.txt"), "ours\n").unwrap();
         git(&root, &["commit", "-q", "-am", "ours"]);
-        let cherry = Command::new("git")
+        let cherry = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)
             .args(["cherry-pick", "other"])

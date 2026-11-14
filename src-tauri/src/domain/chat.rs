@@ -15,6 +15,11 @@ pub struct WorkbenchTab {
     pub status: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub updated_at: Option<i64>,
+    /// When the chat's latest Turn finished, in Unix milliseconds. Read marks
+    /// compare against it: parking a session or other runtime bookkeeping
+    /// moves `updated_at` but not this.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub finished_at: Option<i64>,
     pub resource: Option<ResourceRef>,
     #[serde(default)]
     pub repository: Option<RepositoryRef>,
@@ -47,6 +52,14 @@ pub struct ChatLifecycleRequest {
     pub project_id: String,
     pub chat_id: String,
     pub current_layout: ProjectLayoutRequest,
+}
+
+/// Permanently deletes an archived Chat; no attached layout changes.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChatDeleteRequest {
+    pub project_id: String,
+    pub chat_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

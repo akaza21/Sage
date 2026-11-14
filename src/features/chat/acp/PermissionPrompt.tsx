@@ -3,13 +3,14 @@ import { ChevronDown } from "../../../ui/leanIcons";
 
 import type { AcpItem, PermissionDecision } from "../../../domain/acp";
 import { MenuPopover } from "../../../ui/MenuPopover";
+import { approvalHold, resolveApproval } from "../useApprovalSlot";
 import {
-  approvalFocusInReach,
-  approvalHold,
-  resolveApproval,
-} from "../useApprovalSlot";
+  arrivalFocusAllowed,
+  logCardArrival,
+  parkFocus,
+  useCardKeyGuard,
+} from "./approvalCard";
 import { ToolKindIcon } from "./ToolItem";
-import "./permission-prompt.css";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
@@ -19,9 +20,6 @@ const nouns: Record<string, string> = {
   edit: "Edit",
   mcp: "MCP",
 };
-
-/** A follow-up request this soon after a decision never takes focus. */
-const QUEUED_FOCUS_HOLD_MS = 300;
 
 /**
  * The pending approval, shown in the composer slot. The oldest request comes
@@ -49,35 +47,32 @@ export function PermissionPrompt({
   const firstRef = useRef<HTMLButtonElement>(null);
   const chevronRef = useRef<HTMLButtonElement>(null);
   const menuId = useId();
-  const pressed = useRef(new Set<string>());
+  const keyGuard = useCardKeyGuard();
   const sectionRef = useRef<HTMLElement>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [focusState, setFocusState] = useState<[string, boolean] | null>(null);
   /** The request in flight, or the one whose decision failed (negated). */
   const [sent, setSent] = useState<[string, boolean] | null>(null);
   const execute = item?.payload.category === "execute";
-  const question = execute ? "Allow this command?" : "Allow this action?";
+  /** A developer-mode card (ADR-0009b): CDP for this tab and site. */
+  const developer = item?.payload.source === "browserDeveloper";
+  const question = developer
+    ? "Allow developer mode on this site?"
+    : execute
+      ? "Allow this command?"
+      : "Allow this action?";
   useEffect(() => {
     if (!item) return;
     // A Deny pressed on the loading fallback carries into the card.
     const denied = approvalHold.denies.get(item.id);
     denied?.catch(() => setSent([item.id, false]));
-    const held = denied || Date.now() - approvalHold.at < QUEUED_FOCUS_HOLD_MS;
     const card = sectionRef.current;
-    const pane = card?.closest(".chat-surface") ?? null;
-    const inCard = card?.contains(document.activeElement);
-    if (
-      focused &&
-      !held &&
-      canTakeFocus() &&
-      (inCard || approvalFocusInReach(pane))
-    ) {
+    logCardArrival(item, card);
+    if (arrivalFocusAllowed(item.id, card, focused, canTakeFocus)) {
       (primaryRef.current ?? firstRef.current)?.focus();
       setFocusState([item.id, document.activeElement === primaryRef.current]);
     } else {
-      // A focused button of the previous request must not answer this one:
-      // park focus on the card itself, where Enter does nothing.
-      if (inCard) card?.focus();
+      parkFocus(card);
       setFocusState([item.id, false]);
     }
     // Focus is decided once per request; later renders never steal it.
@@ -85,12 +80,16 @@ export function PermissionPrompt({
   if (!item) return null;
   const initialFocus = focusState?.[0] === item.id ? focusState[1] : null;
   const { payload } = item;
-  const browser = payload.source === "browser";
+  const browser = payload.source === "browser" || developer;
   const choices: [PermissionDecision, string][] = [];
-  for (const kind of browser
-    ? ["allow_once", "origin"]
-    : new Set(payload.offeredOptionKinds))
-    if (kind === "allow_once") choices.push(["allowOnce", "Allow once"]);
+  for (const kind of developer
+    ? ["developer"]
+    : browser
+      ? ["allow_once", "origin"]
+      : new Set(payload.offeredOptionKinds))
+    if (kind === "developer")
+      choices.push(["allowDeveloperMode", "Allow developer mode"]);
+    else if (kind === "allow_once") choices.push(["allowOnce", "Allow once"]);
     else if (kind === "origin")
       choices.push(["allowForOriginSession", "Allow for this tab and origin"]);
     else if (kind === "allow_always")
@@ -125,22 +124,7 @@ export function PermissionPrompt({
       role="group"
       aria-label={browser ? "Browser permission" : "Permission request"}
       data-acp-item-id={item.id}
-      onKeyDownCapture={(event) => {
-        // Auto-repeat belongs to a key that went down before this card.
-        if (event.repeat) {
-          event.preventDefault();
-          event.stopPropagation();
-          return;
-        }
-        pressed.current.add(event.key);
-      }}
-      onKeyUpCapture={(event) => {
-        // A keyup without its keydown here (Space from the composer) is inert.
-        if (!pressed.current.delete(event.key)) {
-          event.preventDefault();
-          event.stopPropagation();
-        }
-      }}
+      {...keyGuard}
       onKeyDown={(event) => {
         if (event.key !== "Escape" || menuOpen || !canDeny) return;
         event.preventDefault();
@@ -152,6 +136,9 @@ export function PermissionPrompt({
           kind={browser ? "fetch" : (payload.category ?? "other")}
         />
         {browser ? "Browser" : (nouns[payload.category ?? ""] ?? "Permission")}
+        {developer ? (
+          <b className="acp-permission-prompt__elevated">Elevated</b>
+        ) : null}
         {items.length > 1 ? <span>1 of {items.length}</span> : null}
         {onCancelTurn ? (
           // Always offered so the pane is never stranded, but quiet: the
@@ -176,9 +163,17 @@ export function PermissionPrompt({
       <Detail className="acp-permission-prompt__detail">
         {payload.summary}
       </Detail>
+      {developer ? (
+        <p className="acp-permission-prompt__risk">
+          The agent gets allowlisted Chrome DevTools Protocol access to this
+          tab. Scripts run as the signed-in user and can read data available to
+          the page until you stop it, take over or leave the site. Only allow
+          this for sites you trust.
+        </p>
+      ) : null}
       {sent?.[0] === item.id && !sent[1] ? (
         <p className="acp-permission__error" role="alert">
-          This decision could not be sent. Try again, or cancel the Turn.
+          This decision could not be sent. Try again, or cancel the turn.
         </p>
       ) : null}
       <p className="sr-only" role="status">
@@ -199,7 +194,7 @@ export function PermissionPrompt({
         {primary ? (
           <span className="acp-permission-prompt__split">
             <button
-              ref={primaryRef}
+              ref={developer ? undefined : primaryRef}
               className="button--compact"
               type="button"
               data-initial-focus={initialFocus || undefined}
@@ -207,7 +202,13 @@ export function PermissionPrompt({
               disabled={pending}
               onClick={() => resolve(primary[0])}
             >
-              {primary[1]} <kbd aria-label="Enter">⏎</kbd>
+              {primary[1]}
+              {developer ? null : (
+                <>
+                  {" "}
+                  <kbd aria-label="Enter">⏎</kbd>
+                </>
+              )}
             </button>
             {choices[1] ? (
               <button

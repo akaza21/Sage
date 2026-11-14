@@ -15,4 +15,6 @@ export const WORKSPACE_SEARCH_LIMITS = Object.freeze({
   filterPatterns: 16,
   filterBytes: 2 * 1024,
   continuationPages: 4,
+  /** UTF-8 bytes in a Replace's replacement text. */
+  replacementBytes: 2048,
 });

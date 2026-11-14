@@ -1,14 +1,18 @@
 mod backup;
 mod build_intent;
+mod config_choices;
 mod file_artifact;
 mod fingerprint;
 mod identity;
 mod image_files;
+mod imported_history;
 mod legacy;
 mod legacy_events;
 mod legacy_project;
 mod limits;
 mod manifest;
+mod notifications;
+mod operation_terminal_index;
 mod paths;
 mod platform;
 mod platform_anchor;
@@ -17,16 +21,23 @@ mod portable_coverage_tests;
 mod probe;
 mod publish;
 mod schema_upgrade;
+mod session_facts_turn_index;
+mod session_resume_link;
+mod session_scope;
 mod stage_owner;
 #[cfg(test)]
 mod test_failpoint;
 mod title_provenance;
+mod title_source;
 mod tool_result_fold;
 #[cfg(test)]
 mod tool_result_fold_tests;
+mod turn_undo_intent_indexes;
 mod v18_backup;
 mod workspace_changes;
 
+#[cfg(test)]
+pub(crate) use fingerprint::CURRENT_SCHEMA_VERSION;
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use identity::legacy_binding_digest;
 pub(crate) use image_files::{read_image_file, remove_image_file};
@@ -130,6 +141,15 @@ pub(crate) fn open_or_migrate(path: &Path) -> AppResult<OpenedDatabase> {
         .transpose()?;
     workspace_changes::apply(&mut opened.connection)?;
     title_provenance::apply(&mut opened.connection)?;
+    session_scope::apply(&mut opened.connection)?;
+    notifications::apply(&mut opened.connection)?;
+    config_choices::apply(&mut opened.connection)?;
+    session_resume_link::apply(&mut opened.connection)?;
+    title_source::apply(&mut opened.connection)?;
+    session_facts_turn_index::apply(&mut opened.connection)?;
+    operation_terminal_index::apply(&mut opened.connection)?;
+    turn_undo_intent_indexes::apply(&mut opened.connection)?;
+    imported_history::apply(&mut opened.connection)?;
     Ok(opened)
 }
 
@@ -146,8 +166,13 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
     fs::create_dir_all(paths.parent())?;
     let _lock = MigrationLock::acquire(paths.parent())?;
     paths.validate_containment()?;
+    let mut admitted_snapshot = fingerprint::reject_newer_live(&paths)?;
     v18_backup::admit_recovery(&paths)?;
 
+    if admitted_snapshot.is_some() && paths.has_replacement_artifact() {
+        // Publication can replace the source admitted by preflight.
+        admitted_snapshot = None;
+    }
     if paths.replacement_manifest.exists() {
         if paths.replacement_build_intent.exists() {
             build_intent::finalize_published_manifest(&paths)?;
@@ -160,7 +185,13 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
         recover_unmanifested_stage(&paths)?;
     }
 
-    let source_schema = probe::classify_live(&paths)?;
+    let source_schema = match &admitted_snapshot {
+        Some(snapshot) => snapshot.classify()?,
+        None => probe::classify_live(&paths)?,
+    };
+    if !source_schema.is_v18_or_later() {
+        admitted_snapshot = None;
+    }
     v18_backup::admit_source(&paths, source_schema)?;
     match source_schema {
         SchemaClass::Fresh => {
@@ -180,10 +211,12 @@ fn open_through_v18(path: &Path) -> AppResult<OpenedDatabase> {
             anchor.verify_path(path)?;
             Ok(opened_database(connection, anchor))
         }
-        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 | SchemaClass::CurrentV20 => {
+        class if class.is_v18_or_later() => {
             let _ = reject_partial_backup_publication(&paths)?;
             let anchor = platform::anchor_existing_sqlite(path, true)?;
-            if probe::classify_live(&paths)? != source_schema {
+            if let Some(snapshot) = admitted_snapshot.take() {
+                snapshot.verify_source()?;
+            } else if probe::classify_live(&paths)? != source_schema {
                 return invalid("current SQLite path changed before its anchored open");
             }
             let connection = Connection::open(path)?;
@@ -336,10 +369,7 @@ fn checkpoint_source(
 }
 
 fn verify_current(connection: &Connection) -> AppResult<()> {
-    if !matches!(
-        fingerprint::classify_connection(connection)?,
-        SchemaClass::CurrentV18 | SchemaClass::CurrentV19 | SchemaClass::CurrentV20
-    ) {
+    if !fingerprint::classify_connection(connection)?.is_v18_or_later() {
         return invalid("database did not reach an exact current schema");
     }
     verify_sqlite(connection)?;

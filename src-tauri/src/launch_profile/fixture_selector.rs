@@ -72,9 +72,12 @@ pub(crate) struct FixtureSelection {
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 impl FixtureSelection {
+    /// The replay child's identity, artifact and arguments: the case and
+    /// seed, then `harness_args`, the arguments the real harness would take.
     pub(crate) fn launch_metadata(
         &self,
         binding_digest: [u8; 32],
+        harness_args: Vec<std::ffi::OsString>,
     ) -> Result<
         (
             uuid::Uuid,
@@ -99,13 +102,15 @@ impl FixtureSelection {
             self.artifact_bytes,
         )
         .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
-        let fixed_args = BoundedOsArgs::new(vec![
+        let mut args = vec![
             "--case".into(),
             self.case.clone().into(),
             "--seed".into(),
             "0".into(),
-        ])
-        .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
+        ];
+        args.extend(harness_args);
+        let fixed_args =
+            BoundedOsArgs::new(args).map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         Ok((identity(binding_digest), artifact, fixed_args))
     }
 
@@ -141,18 +146,50 @@ impl FixtureSelection {
         )
     }
 
+    /// Claims this profile's launch of the fixture case. A case that resumes
+    /// its session after an app restart gets one more launch for that run.
     pub(crate) fn consume_one_shot(&self) -> io::Result<()> {
-        use std::io::Write;
-
         self.revalidate()?;
-        let receipt = self.durable_dir.join("codex-fixture-launch-once-v1");
-        let mut file = fs::OpenOptions::new()
+        claim_launch(
+            &self.durable_dir,
+            crate::acp::fixture::native_case_spans_restart(&self.case),
+        )
+    }
+}
+
+#[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
+const LAUNCH_RECEIPTS: [(&str, &[u8]); 2] = [
+    (
+        "codex-fixture-launch-once-v1",
+        b"sage:cp14:codex-fixture-launch-once:v1\n",
+    ),
+    (
+        "fixture-relaunch-once-v1",
+        b"sage:fixture-relaunch-once:v1\n",
+    ),
+];
+
+/// Writes the first launch receipt not yet in `durable_dir`, so each launch
+/// a profile allows is claimed once and survives the process that took it.
+#[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
+pub(super) fn claim_launch(durable_dir: &Path, spans_restart: bool) -> io::Result<()> {
+    use std::io::Write;
+
+    let allowed = if spans_restart { 2 } else { 1 };
+    for (name, body) in &LAUNCH_RECEIPTS[..allowed] {
+        let mut file = match fs::OpenOptions::new()
             .write(true)
             .create_new(true)
-            .open(receipt)?;
-        file.write_all(b"sage:cp14:codex-fixture-launch-once:v1\n")?;
-        file.sync_all()
+            .open(durable_dir.join(name))
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        };
+        file.write_all(body)?;
+        return file.sync_all();
     }
+    Err(io::ErrorKind::AlreadyExists.into())
 }
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]

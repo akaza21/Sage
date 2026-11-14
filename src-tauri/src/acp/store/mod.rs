@@ -15,13 +15,16 @@ mod history;
 mod history_activities;
 mod history_cursor;
 mod history_items;
+mod history_sessions;
 mod item_ingress;
 mod item_usage;
 mod mutations;
+pub(crate) mod native_import;
 mod paging;
 mod permission_item;
 mod projection_decode;
-pub(crate) use projection_decode::parse_legacy_text;
+mod prompt_images;
+pub(crate) use projection_decode::decode_payload;
 mod request_identity;
 mod request_terminal;
 mod requests;
@@ -29,12 +32,18 @@ mod residency;
 mod send;
 mod session_close;
 mod session_duplicates;
+mod session_head;
+mod session_restart;
+mod session_resume;
+pub(crate) mod session_surface;
 mod sessions;
 mod snapshots;
 mod state;
 mod terminal;
 mod terminal_reason;
 mod terminalize;
+mod turn_activity_facts;
+pub(crate) mod turn_undo;
 
 use serde::{Deserialize, Serialize};
 
@@ -74,12 +83,23 @@ pub(crate) use adapter_batch::{
     AdapterInboundEvent, AdapterStoreOwner, AdapterTurnCursor, ChildLiveItemCommand,
     TurnTerminalReasonCommand, TurnUsageSnapshotCommand,
 };
-pub(crate) use cancel::begin_cancel;
+pub(crate) use cancel::{begin_cancel, turn_is_terminal};
 #[cfg(test)]
 pub(crate) use commands::prepare_turn;
 pub(crate) use commands::{lookup_active_turn, lookup_prepared_turn};
+#[cfg(test)]
+pub(crate) use facts::hex_digest;
 pub(crate) use facts::next_projection_revision;
-pub(crate) use history::load_chat_page;
+pub(crate) use history::load_chat_page_reserving;
+
+pub(crate) fn load_chat_page(
+    connection: &rusqlite::Connection,
+    project_id: crate::acp::contract::SageProjectId,
+    chat_id: crate::acp::contract::SageChatId,
+    cursor: Option<crate::acp::intent::PageCursor>,
+) -> Result<crate::acp::projection::AcpChatPage, StoreError> {
+    load_chat_page_reserving(connection, project_id, chat_id, cursor, 0)
+}
 pub(crate) use item_ingress::{ItemIngressCommand, ItemIngressMutation, apply_item_ingress};
 pub(crate) use mutations::{StoreMutation, StoreMutationResult};
 pub(crate) use paging::{RecoveryCandidate, load_recovery_candidates};
@@ -94,6 +114,11 @@ pub(crate) use send::{begin_send, record_send_observation};
 pub(crate) use session_close::{
     FinalizeCloseCommand, close_session, finalize_close_after_zero_process,
 };
+pub(crate) use session_restart::{RestartSessionCommand, restart_undone_session};
+pub(crate) use session_resume::{
+    ResumeEarlierSessionCommand, link_resumed_session, unstarted_continuation,
+};
+pub(crate) use session_surface::SessionEventCommand;
 pub(crate) use sessions::{
     ActivateSessionCommand, CloseSessionCommand, SessionMutation, StartSessionCommand,
     activate_session, start_session,
@@ -102,7 +127,10 @@ pub(crate) use snapshots::{FilePairCommand, read_snapshot};
 #[cfg(test)]
 pub(crate) use terminal::apply_session_terminal;
 pub(crate) use terminal::apply_turn_terminal;
-pub(crate) use terminalize::terminalize_recovery_epoch;
+pub(crate) use terminalize::{terminalize_epoch, terminalize_recovery_epoch};
+pub(crate) use turn_undo::{
+    TurnUndoneCommand, UndoneThread, pending_thread_rewind, record_turn_undone,
+};
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum StoreError {

@@ -1,7 +1,7 @@
 import { Fragment, memo, useMemo, useRef } from "react";
 import { createPortal } from "react-dom";
 
-import type { AcpChatPage, TurnProjection } from "../../../domain/acp";
+import type { AcpChatPage, AcpItem, TurnProjection } from "../../../domain/acp";
 import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import type { ResourceRef } from "../../../domain/workbench";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
@@ -10,6 +10,7 @@ import { isSideChatId } from "../../../workbench/sideChatState";
 import { AnswerActions } from "../AnswerActions";
 import type { TurnListHost } from "../chatScroll";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
+import { turnHasActivities } from "../transcriptSummary";
 import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
 import { TurnDaySeparator } from "./AcpTurnDates";
 import {
@@ -30,6 +31,8 @@ import { ToolRunningIndicator } from "./ToolRunningIndicator";
 import { ItemView } from "./TurnActivityItem";
 import { TurnFailure } from "./TurnFailure";
 import { TurnHeader } from "./TurnHeader";
+import { TurnPrompts } from "./TurnPrompts";
+import { TurnSessionActivities } from "./TurnSessionActivities";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { useTurnDayTimestamps } from "./useTurnDayTimestamps";
@@ -49,6 +52,7 @@ const Turn = memo(
     onRetry,
     inherited = false,
     answerActions = inherited,
+    fileSummaryInDock = false,
   }: {
     page: AcpChatPage;
     turn: TurnProjection;
@@ -56,6 +60,7 @@ const Turn = memo(
     inherited?: boolean;
     /** Earlier/inherited answers retain Copy. */
     answerActions?: boolean;
+    fileSummaryInDock?: boolean;
     rootLabels?: Readonly<Record<string, string>>;
     workspaceChanges?: readonly TurnWorkspaceChange[];
     workspaceIncomplete?: boolean;
@@ -128,6 +133,16 @@ const Turn = memo(
           page={page}
         />
       ) : null;
+    const renderWorkingItem = (item: AcpItem) => (
+      <ItemView
+        key={item.id}
+        item={item}
+        workingItems={turn.items}
+        interactive={interactive}
+        fileReferenceOwner={fileReferenceOwner}
+        onOpenResource={openForTurn}
+      />
+    );
     // An inherited Turn is inert, all but its answer's own row.
     const content = (
       <>
@@ -164,17 +179,18 @@ const Turn = memo(
                 ))}
               </div>
             ) : null}
-            {promptItems.map((item) => (
-              <ItemView key={item.id} item={item} interactive={interactive} />
-            ))}
+            <TurnPrompts
+              items={promptItems}
+              turn={turn}
+              interactive={interactive}
+            />
             <ChatTranscriptTurnSummary
               turn={turn}
               thinkingPlaceholder={isSideChatId(page.chatId)}
-              hasActivities={
-                workingItems.length > 0 ||
-                (turn.browserOperations?.length ?? 0) > 0 ||
-                (turn.browserOperationsCollapsed ?? 0) > 0
-              }
+              steered={workingItems
+                .filter((item) => item.kind === "userPrompt")
+                .map(renderWorkingItem)}
+              hasActivities={turnHasActivities(turn, workingItems.length)}
             >
               {workingItems.length > 0 ? (
                 <PrimaryActivities
@@ -184,18 +200,12 @@ const Turn = memo(
                   }
                   interactive={interactive}
                   onOpenResource={openForTurn}
-                  renderItem={(item) => (
-                    <ItemView
-                      key={item.id}
-                      item={item}
-                      workingItems={turn.items}
-                      interactive={interactive}
-                      fileReferenceOwner={fileReferenceOwner}
-                      onOpenResource={openForTurn}
-                    />
-                  )}
+                  renderItem={renderWorkingItem}
                 />
               ) : null}
+              <TurnSessionActivities
+                activities={turn.sessionActivities ?? []}
+              />
               <BrowserOperations
                 operations={turn.browserOperations ?? []}
                 collapsed={turn.browserOperationsCollapsed ?? 0}
@@ -211,7 +221,6 @@ const Turn = memo(
                 fileReferenceOwner={fileReferenceOwner}
               />
             ) : null}
-            {!inherited && actions}
             {rootActivities(turn).map((activity) => (
               <HarnessActivity
                 key={activity.id}
@@ -242,7 +251,11 @@ const Turn = memo(
                 <span className="acp-live-shimmer">Editing files</span>
               </div>
             ) : null}
-            {terminal ? (
+            {terminal && fileSummaryInDock ? (
+              workspaceIncomplete ? (
+                <NavigationPart part="WorkspaceTrackingNotice" />
+              ) : null
+            ) : terminal ? (
               <TurnFileActivity
                 page={page}
                 turn={turn}
@@ -254,11 +267,17 @@ const Turn = memo(
             ) : null}
             {stopped ? <TurnHeader turn={turn} /> : null}
             {stopped && !finalAnswer && onRetry ? (
-              <button type="button" onClick={onRetry}>
+              <button
+                className="acp-turn__retry"
+                type="button"
+                onClick={onRetry}
+              >
                 Retry
               </button>
             ) : null}
             <TurnFailure turn={turn} onRetry={onRetry} />
+            {/* The row closes the Turn, as the footer closes the latest one. */}
+            {!inherited && actions}
           </div>
         </section>
         {inherited && actions}
@@ -285,6 +304,7 @@ const Turn = memo(
     left.workspaceChanges === right.workspaceChanges &&
     left.workspaceIncomplete === right.workspaceIncomplete &&
     left.answerActions === right.answerActions &&
+    left.fileSummaryInDock === right.fileSummaryInDock &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,
 );
@@ -299,6 +319,7 @@ export function AcpChatPresentation({
   projectRoots,
   retentionIncomplete,
   onRetry,
+  onReviewChanges,
   editSummaryContainer,
 }: AcpChatPresentationProps) {
   const { changes: workspaceChanges, incompleteTurnIds } =
@@ -320,6 +341,7 @@ export function AcpChatPresentation({
       workspaceChanges={workspaceChanges}
       workspaceIncomplete={incompleteTurnIds.size > 0}
       onRecordDisposition={acpDesktop.recordAgentEditDisposition}
+      onReview={onReviewChanges}
     />
   );
   const renderTurn = (turn: TurnProjection, index: number) => (
@@ -334,6 +356,7 @@ export function AcpChatPresentation({
         onOpenResource={onOpenResource}
         onRetry={index === page.turns.length - 1 ? onRetry : undefined}
         answerActions={index < page.turns.length - 1}
+        fileSummaryInDock={editSummaryContainer !== undefined}
       />
     </Fragment>
   );

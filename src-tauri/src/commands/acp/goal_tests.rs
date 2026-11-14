@@ -10,6 +10,7 @@ use std::{
 
 use crate::{
     acp::{
+        background_terminals::{BackgroundTerminal, TerminalAction},
         contract::{RequiredText, SageTurnId, SchemaVersionV1},
         goal::{GoalSnapshot, GoalState, GoalStatus, NativeRpcIntent, NativeRpcReply},
         intent::{BindingId, CapabilitySnapshotV1, ExternalId},
@@ -57,9 +58,26 @@ impl RuntimeEngine for GoalEngine {
                 crate::acp::goal::NativeRpcRequest::Goal(GoalAction::ClearExisting) => {
                     GoalState::NoGoal
                 }
-                crate::acp::goal::NativeRpcRequest::ChildThreadRead { .. }
+                crate::acp::goal::NativeRpcRequest::BackgroundTerminals(action) => {
+                    completion.complete(Ok(match action {
+                        TerminalAction::List => {
+                            NativeRpcReply::BackgroundTerminals(vec![BackgroundTerminal {
+                                handle: "7".into(),
+                                command: "npm run dev".into(),
+                                cwd: None,
+                            }])
+                        }
+                        TerminalAction::Stop(_) | TerminalAction::StopAll => {
+                            NativeRpcReply::TerminalsStopped
+                        }
+                    }));
+                    return Ok(());
+                }
+                crate::acp::goal::NativeRpcRequest::Read(_)
+                | crate::acp::goal::NativeRpcRequest::Control(_)
                 | crate::acp::goal::NativeRpcRequest::ForkSession
-                | crate::acp::goal::NativeRpcRequest::ReleaseFork { .. } => {
+                | crate::acp::goal::NativeRpcRequest::ReleaseFork { .. }
+                | crate::acp::goal::NativeRpcRequest::UsageRead => {
                     return Err(HostError::Intent);
                 }
             };
@@ -121,7 +139,9 @@ impl RuntimeEngine for GoalEngine {
     }
 }
 
-fn fixture(result: Result<(), HostError>) -> (AppState, ExistingGoalRequest, Arc<AtomicUsize>) {
+pub(in crate::commands::acp) fn fixture(
+    result: Result<(), HostError>,
+) -> (AppState, ExistingGoalRequest, Arc<AtomicUsize>) {
     let root = std::env::temp_dir().join(format!("sage-goal-ipc-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     let database = Database::open(Path::new(":memory:")).unwrap();
@@ -193,7 +213,7 @@ fn fixture(result: Result<(), HostError>) -> (AppState, ExistingGoalRequest, Arc
                     schema_version: SchemaVersionV1,
                     protocol_version: RequiredText::new(
                         "protocol",
-                        "codex-app-server-observed-0.146.0",
+                        crate::acp::bindings::codex::CODEX_OBSERVED_PROTOCOL_IDENTITY,
                     )
                     .unwrap(),
                     new_session: true,
@@ -203,12 +223,18 @@ fn fixture(result: Result<(), HostError>) -> (AppState, ExistingGoalRequest, Arc
                     prompt: true,
                     cancel: true,
                     native_session_fork: false,
+                    native_session_compact: false,
+                    native_session_import: false,
+                    native_review: false,
+                    native_background_terminals: false,
                     active_turn_steer: false,
                     child_conversation_projection: false,
                     child_transcript_read: false,
                     collaboration_event_projection: false,
                     multi_root_extension_schema_id: None,
                     model_count: 1,
+                    prompt_resources: false,
+                    prompt_images: false,
                     config_count: 0,
                 })
                 .unwrap(),

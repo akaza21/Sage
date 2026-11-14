@@ -22,7 +22,7 @@ import {
 import { orderedTabs } from "../app/tabState";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
 import { AgentPreviewSurface } from "../features/preview/AgentPreviewSurface";
-import { RetainedActivity } from "../ui/LazyModuleBoundary";
+import { RetainedActivity } from "../ui/RetainedActivity";
 import { useRetainedElement } from "../ui/useRetainedElement";
 import {
   agentArtifactAdmitted,
@@ -31,7 +31,6 @@ import {
 import { AgentArtifactCollapsedPane } from "./AgentArtifactCollapsedPane";
 import { AgentArtifactFocusGuard } from "./AgentArtifactFocusGuard";
 import {
-  AgentArtifactEmptyState,
   AgentBrowserPaneControls,
   AgentBrowserPaneStatus,
 } from "./AgentArtifactPaneControls";
@@ -52,7 +51,7 @@ import {
   useSelectOpenedBrowserTab,
 } from "./useAgentArtifactFollowLifecycle";
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
-import { useAgentChangesPane } from "./useAgentChangesPane";
+import { useAgentChangesPane, useChangesOnExpand } from "./useAgentChangesPane";
 import { useSubagentPaneExpansion } from "./useSubagentPaneExpansion";
 
 const SubagentSurface = lazy(() =>
@@ -66,6 +65,9 @@ const AgentArtifactHeader = lazy(() =>
     default: module.AgentArtifactHeader,
   })),
 );
+
+// The pane's header names the resource, so canvases leave out their own.
+const PANE_CANVAS = { readOnly: true, hostHeader: true };
 
 export function AgentArtifactPane({
   expanded = true,
@@ -164,6 +166,7 @@ export function AgentArtifactPane({
     onExpandedChange,
     projectTransitioning ? null : (project?.id ?? null),
     focusedChatId,
+    focusedPageValid && focusedPage?.currentSessionId === null,
   );
   const subagentSelected =
     !changes.selected && selectedSubagent !== null && subagentSelectedState;
@@ -277,6 +280,7 @@ export function AgentArtifactPane({
 
   const hasResources =
     changes.open || artifacts.length > 0 || previewOpen || subagentAvailable;
+  useChangesOnExpand(expanded, !hasResources, changes.owner, projectGeneration);
   useExpandOnNewArtifact({
     artifacts,
     previewOpen,
@@ -386,13 +390,13 @@ export function AgentArtifactPane({
             {!previewSelected && activeArtifact
               ? activeArtifact.kind === "browser"
                 ? renderRegisteredCanvas("browser", activeArtifact)
-                : renderFileOrDiffCanvas(activeArtifact, { readOnly: true })
+                : renderFileOrDiffCanvas(activeArtifact, PANE_CANVAS)
               : null}
             {!changes.selected &&
             !subagentSelected &&
             !previewSelected &&
             !activeArtifact ? (
-              <AgentArtifactEmptyState titleId={emptyTitleId} />
+              <TabsPart part="AgentArtifactEmptyState" titleId={emptyTitleId} />
             ) : null}
           </div>
           <AgentArtifactFocusGuard active={focusOnExpand} paneRef={paneRef} />

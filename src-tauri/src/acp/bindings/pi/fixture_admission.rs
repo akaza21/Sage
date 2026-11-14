@@ -53,6 +53,11 @@ impl PiFixtureBinding {
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)
     }
 
+    /// The selected case replays tool calls through the bundled bridge extension.
+    pub(crate) fn bridge_installed(&self) -> bool {
+        crate::acp::fixture::native_case_uses_pi_bridge(&self.selection.case)
+    }
+
     pub(crate) fn binding_digest(&self) -> [u8; 32] {
         self.digest
     }
@@ -75,7 +80,8 @@ impl PiFixtureBinding {
         root.revalidate()
             .map_err(|_| AdapterRuntimeError::LaunchUnavailable)?;
         self.revalidate()?;
-        let (binding_id, artifact, fixed_args) = self.selection.launch_metadata(self.digest)?;
+        let (binding_id, artifact, fixed_args) =
+            self.selection.launch_metadata(self.digest, Vec::new())?;
         let environment = BoundedEnvironment::new(
             [
                 ("USERPROFILE", &self.selection.profile_root),

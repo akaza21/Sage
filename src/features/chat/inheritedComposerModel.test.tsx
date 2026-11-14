@@ -13,7 +13,11 @@ import {
 const noop = () => Promise.resolve();
 const initialWorkbenchState = useWorkbenchStore.getState();
 
-function parentConfig(model = "Synthetic replay", effort = "medium") {
+function parentConfig(
+  model = "Synthetic replay",
+  effort = "medium",
+  selectable = false,
+) {
   return decodeSessionConfig({
     sageAgentSessionId: "parent-session",
     runtimeEpoch: "1",
@@ -26,7 +30,12 @@ function parentConfig(model = "Synthetic replay", effort = "medium") {
         category: "model",
         type: "select",
         currentValue: "fixture-model",
-        options: [{ value: "fixture-model", name: model }],
+        options: [
+          { value: "fixture-model", name: model },
+          ...(selectable
+            ? [{ value: "alternative", name: "Alternative model" }]
+            : []),
+        ],
       },
       {
         id: "pi.thinking",
@@ -132,14 +141,14 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
   it("labels a new fork's composer with the parent's model and effort", () => {
     inheritComposerModel("side-1", parentConfig());
     renderControls();
-    const model = screen.getByRole("button", { name: "Model" });
+    const model = screen.getByLabelText("Model", { exact: true });
     expect(model).toHaveTextContent("Synthetic replay");
-    expect(model).toHaveTextContent("medium");
+    expect(model).toHaveTextContent("Medium");
     expect(model).not.toHaveTextContent(/^Model$/);
     expect(model).toHaveAttribute("data-readonly-label", "true");
   });
 
-  it.each(["pending", "no choices", "transition", "locked"])(
+  it.each(["pending", "transition", "locked"])(
     "dims a known model for %s unless it is an inherited or locked label",
     (state) => {
       useWorkbenchStore.setState({
@@ -149,23 +158,11 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
         inheritScope: "no-inheritance",
         sessionHarnessId: "fixture",
         sessionModelId: "fixture-model",
-        sessionConfig: parentConfig(),
+        sessionConfig: parentConfig("Synthetic replay", "medium", true),
         modePending: state === "pending",
         turnBusy: state === "locked",
-        ...(state === "no choices"
-          ? {
-              sessionConfig: {
-                ...parentConfig(),
-                configOptions: [],
-                confirmedModel: {
-                  id: "fixture-model",
-                  name: "Synthetic replay",
-                },
-              },
-            }
-          : {}),
       });
-      const model = screen.getByRole("button", { name: "Model" });
+      const model = screen.getByLabelText("Model", { exact: true });
       expect(model).toBeDisabled();
       expect(model.getAttribute("title")).toMatch(/^Synthetic replay/);
       if (state === "locked")
@@ -173,6 +170,23 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
       else expect(model).not.toHaveAttribute("data-readonly-label", "true");
     },
   );
+
+  it("keeps a known model openable as the sole choice when the session advertises no choices", () => {
+    renderControls({
+      inheritScope: "no-inheritance",
+      sessionHarnessId: "fixture",
+      sessionModelId: "fixture-model",
+      sessionConfig: {
+        ...parentConfig(),
+        configOptions: [],
+        confirmedModel: { id: "fixture-model", name: "Synthetic replay" },
+      },
+    });
+    const model = screen.getByLabelText("Model", { exact: true });
+    expect(model).toBeEnabled();
+    expect(model.getAttribute("title")).toMatch(/^Synthetic replay/);
+    expect(model).not.toHaveAttribute("data-readonly-label", "true");
+  });
 
   it.each(["pending", "transition"])(
     "dims even an inherited label during %s",
@@ -182,7 +196,7 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
         projectTransitioning: state === "transition",
       });
       renderControls({ modePending: state === "pending" });
-      const model = screen.getByRole("button", { name: "Model" });
+      const model = screen.getByLabelText("Model", { exact: true });
       expect(model).toBeDisabled();
       expect(model).toHaveTextContent("Synthetic replay");
       expect(model).not.toHaveAttribute("data-readonly-label", "true");
@@ -195,11 +209,10 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
       models: [{ id: "fixture-model", name: "Catalog alias" }],
     });
     renderControls({ inheritScope: "fork-catalog" });
-    const model = screen.getByRole("button", { name: "Model" });
+    const model = screen.getByLabelText("Model", { exact: true });
     expect(model).toHaveTextContent("Synthetic replay");
-    expect(model).toHaveTextContent("medium");
+    expect(model).toHaveTextContent("Medium");
     expect(model).not.toHaveTextContent("Catalog alias");
-    expect(model).toHaveAttribute("data-readonly-label", "true");
   });
 
   it("labels a side chat with the parent's model only, never its effort", () => {
@@ -207,9 +220,9 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
       startsOnModelId: "fixture-model",
     });
     renderControls();
-    const model = screen.getByRole("button", { name: "Model" });
+    const model = screen.getByLabelText("Model", { exact: true });
     expect(model).toHaveTextContent("Synthetic replay");
-    expect(model).not.toHaveTextContent("medium");
+    expect(model).not.toHaveTextContent("Medium");
     expect(model).toHaveAttribute("data-readonly-label", "true");
   });
 
@@ -227,10 +240,10 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
         confirmedEffort: "high",
       },
     });
-    const model = screen.getByRole("button", { name: "Model" });
+    const model = screen.getByLabelText("Model", { exact: true });
     expect(model).toHaveTextContent("Synthetic replay");
     expect(model).toHaveTextContent("High");
-    expect(model).not.toHaveTextContent("medium");
+    expect(model).not.toHaveTextContent("Medium");
     expect(model).toHaveAttribute("data-readonly-label", "true");
   });
 
@@ -252,7 +265,7 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
       sessionModelId: "fixture-model",
       sessionConfig: parentConfig("Own model", "high"),
     });
-    const model = screen.getByRole("button", { name: "Model" });
+    const model = screen.getByLabelText("Model", { exact: true });
     expect(model).toHaveTextContent("Own model");
     expect(model).not.toHaveTextContent("Synthetic replay");
   });
@@ -262,14 +275,14 @@ describe("inherited composer model (Codex s2/f0244, s2/f0066)", () => {
       startsOnModelId: "fixture-model",
     });
     renderControls({ selectedModelId: "other-model" });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Model$/,
     );
   });
 
   it("shows the plain placeholder when nothing was inherited", () => {
     renderControls({ inheritScope: "side-unknown" });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Model$/,
     );
   });

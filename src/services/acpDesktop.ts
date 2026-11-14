@@ -1,6 +1,5 @@
 import type {
   AcpChatPage,
-  AcpCommandFailure,
   AcpMutationResult,
   AcpProjectionChangedEvent,
   AcpSessionMutationIntent,
@@ -8,12 +7,10 @@ import type {
   AgentEditDisposition,
   CancelAcpTurnRequest,
   CloseAcpSessionRequest,
-  CodexAuthResponse,
-  CodexAuthScope,
-  CodexDiscoveryResponse,
   EndAcpSessionRequest,
   GetAcpChatPageRequest,
-  GetCodexDiscoveryRequest,
+  AnswerUserInputRequest,
+  RunAcpSessionActionRequest,
   ResolvePermissionDecisionRequest,
   SendAcpTurnRequest,
   StartAcpSessionRequest,
@@ -31,160 +28,14 @@ import { invokeNative } from "../ports/nativeInvoke";
 import { resolvePermissionDecision } from "./acpDesktopPermission";
 import { subscribePreviewProjectionChanges } from "./acpDesktopPreview";
 import { getChatStatus, safeProjectionChanged } from "./acpDesktopProjection";
-import {
-  isOneOf,
-  isRecord,
-  safeAcpMutationResponse,
-  safeCodexDiscovery,
-  safeCounter,
-  safeIdentifier,
-  safeMessage,
-} from "./acpDesktopResponses";
+import { isRecord, safeIdentifier } from "./acpDesktopGuards";
+import { safeAcpMutationResponse } from "./acpDesktopResponses";
+
+import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
+import { sessionConfigDesktop } from "./acpSessionConfigDesktop";
+export { AcpDesktopError, safeFailure } from "./acpDesktopCommand";
 
 export const ACP_PROJECTION_CHANGED_EVENT = "acp-projection-changed-v1";
-
-function safeCodexAuth(value: unknown): CodexAuthResponse | null {
-  if (!isRecord(value)) return null;
-  const projectId = safeIdentifier(value.projectId);
-  const projectGeneration = safeCounter(value.projectGeneration, true);
-  const bindingId = safeIdentifier(value.bindingId);
-  const revision = safeCounter(value.revision, false);
-  if (
-    !projectId ||
-    !projectGeneration ||
-    !bindingId ||
-    !revision ||
-    !isOneOf(value.phase, [
-      "signedOut",
-      "waiting",
-      "recovery",
-      "signedIn",
-    ] as const)
-  ) {
-    return null;
-  }
-  return {
-    projectId,
-    projectGeneration,
-    bindingId,
-    phase: value.phase,
-    revision,
-  } as CodexAuthResponse;
-}
-
-export function safeFailure(value: unknown): AcpCommandFailure {
-  if (
-    isRecord(value) &&
-    isOneOf(value.promptDispatch, ["notStarted", "unknown"] as const)
-  ) {
-    const { promptDispatch, ...detail } = value;
-    const failure = safeFailure(
-      isRecord(value.failure) ? value.failure : detail,
-    );
-    return { ...failure, promptDispatch };
-  }
-  if (isRecord(value)) {
-    const kind = value.kind;
-    const message = safeMessage(value.message);
-    if (
-      kind === "unavailable" &&
-      message &&
-      isOneOf(value.reason, [
-        "desktopRuntimeUnavailable",
-        "bindingUnavailable",
-        "capabilityUnavailable",
-        "platformUnsupported",
-        "sessionUnavailable",
-        "imageInputUnsupported",
-      ])
-    ) {
-      return { kind, reason: value.reason, message };
-    }
-    if (
-      kind === "conflict" &&
-      message &&
-      isOneOf(value.resource, [
-        "projectGeneration",
-        "configRevision",
-        "projectionRevision",
-        "session",
-        "runtimeEpoch",
-        "turnState",
-        "turnRevision",
-        "clientIntent",
-        "steerOutcomeUnknown",
-      ])
-    ) {
-      return { kind, resource: value.resource, message };
-    }
-    if (
-      kind === "capacity" &&
-      message &&
-      isOneOf(value.resource, [
-        "activeTurn",
-        "liveTree",
-        "history",
-        "pageRead",
-        "storage",
-        "queue",
-      ]) &&
-      Number.isSafeInteger(value.limit) &&
-      (value.limit as number) >= 0
-    ) {
-      return {
-        kind,
-        resource: value.resource,
-        limit: value.limit as number,
-        message,
-      };
-    }
-    if (kind === "signInRequired" && message) {
-      return { kind, message };
-    }
-    if (
-      (kind === "invalidRequest" ||
-        kind === "rejected" ||
-        kind === "recoveryRequired" ||
-        kind === "internal") &&
-      message
-    ) {
-      return { kind, message };
-    }
-  }
-  return { kind: "internal", message: "The ACP request failed safely." };
-}
-
-export class AcpDesktopError extends Error {
-  readonly failure: AcpCommandFailure;
-
-  constructor(failure: AcpCommandFailure) {
-    super(failure.message);
-    this.name = "AcpDesktopError";
-    this.failure = failure;
-  }
-}
-
-async function invokeAcp<T, Request extends object>(
-  command: string,
-  request: Request,
-): Promise<T> {
-  if (!isTauriRuntime()) {
-    throw new AcpDesktopError({
-      kind: "unavailable",
-      reason: "desktopRuntimeUnavailable",
-      message: "ACP is available only in the Sage desktop runtime.",
-    });
-  }
-
-  try {
-    return await invokeNative<T>(command, { request });
-  } catch (error: unknown) {
-    if (error instanceof AcpDesktopError) {
-      throw error;
-    }
-    throw new AcpDesktopError(safeFailure(error));
-  }
-}
 
 async function invokeAcpMutation<Request extends object>(
   command: string,
@@ -202,10 +53,14 @@ async function invokeAcpMutation<Request extends object>(
   return safe;
 }
 
-import { sessionConfigDesktop } from "./acpSessionConfigDesktop";
 export const acpDesktop = {
   getChatStatus,
   ...sessionConfigDesktop(invokeAcpMutation, isTauriRuntime),
+  runSessionAction(
+    request: RunAcpSessionActionRequest,
+  ): Promise<AcpMutationResult> {
+    return invokeAcpMutation("run_session_action", request);
+  },
   pauseExistingGoal(
     request: AcpSessionMutationIntent,
   ): Promise<AcpMutationResult> {
@@ -255,30 +110,8 @@ export const acpDesktop = {
     );
   },
 
-  async startCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
-    return invokeCodexAuth("start_codex_auth", { ...request, consent: true });
-  },
-
-  async cancelCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
-    return invokeCodexAuth("cancel_codex_auth", request);
-  },
-
-  async logoutCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
-    return invokeCodexAuth("logout_codex_auth", request);
-  },
-
   async startClaudeAuthLogin(): Promise<void> {
     await invokeNative("start_claude_auth_login");
-  },
-
-  /** a terminal turn's workspace (Git) changes; decoded by caller. */
-  getTurnWorkspaceChanges(request: {
-    projectId: string;
-    projectGeneration: string;
-    chatId: string;
-    turnId: string;
-  }): Promise<unknown> {
-    return invokeNative("get_acp_turn_workspace_changes", { request });
   },
 
   async getClaudeAuthStatus(): Promise<{ loggedIn: boolean }> {
@@ -287,23 +120,6 @@ export const acpDesktop = {
       throw new Error("Claude Code sign-in status was invalid.");
     }
     return { loggedIn: value.loggedIn };
-  },
-
-  async discoverCodex(
-    request: GetCodexDiscoveryRequest,
-  ): Promise<CodexDiscoveryResponse> {
-    const response = await invokeAcp<unknown, GetCodexDiscoveryRequest>(
-      "get_codex_discovery",
-      request,
-    );
-    const safe = safeCodexDiscovery(response);
-    if (!safe) {
-      throw new AcpDesktopError({
-        kind: "internal",
-        message: "Codex discovery returned an invalid bounded response.",
-      });
-    }
-    return safe;
   },
 
   async getChatPage(
@@ -361,6 +177,19 @@ export const acpDesktop = {
         }),
     ),
 
+  async answerUserInput(request: AnswerUserInputRequest) {
+    const { answerUserInput } = await import("./acpDesktopUserInputAnswer");
+    return answerUserInput(
+      request,
+      invokeAcp,
+      () =>
+        new AcpDesktopError({
+          kind: "internal",
+          message: "Question answer returned an invalid bounded response.",
+        }),
+    );
+  },
+
   async recordAgentEditDisposition(
     request: AgentEditDisposition,
   ): Promise<AcpMutationResult> {
@@ -384,17 +213,13 @@ export const acpDesktop = {
     return subscribePreviewProjectionChanges(onChange);
   },
 };
-async function invokeCodexAuth(
-  command: string,
-  request: CodexAuthScope | (CodexAuthScope & { consent: true }),
-): Promise<CodexAuthResponse> {
-  const response = await invokeAcp<unknown, typeof request>(command, request);
-  const safe = safeCodexAuth(response);
-  if (!safe) {
-    throw new AcpDesktopError({
-      kind: "internal",
-      message: "Codex authentication returned an invalid bounded response.",
-    });
-  }
-  return safe;
+
+/** Native Git ledger request, independent of the full Chat adapter object. */
+export function getTurnWorkspaceChanges(request: {
+  projectId: string;
+  projectGeneration: string;
+  chatId: string;
+  turnId: string;
+}): Promise<unknown> {
+  return invokeNative("get_acp_turn_workspace_changes", { request });
 }

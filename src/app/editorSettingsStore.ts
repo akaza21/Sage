@@ -11,7 +11,7 @@ import type {
   EditorEditing,
 } from "../features/files/editorAppearance";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
-import { bindEditorSettingsClose } from "./workspaceNotifyLifecycle";
+import { bindEditorSettingsClose } from "./workbenchClose";
 
 /** The settings the CodeMirror runtime draws with. */
 export function editorAppearanceFrom(

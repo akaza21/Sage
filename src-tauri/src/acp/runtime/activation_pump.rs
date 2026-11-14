@@ -3,14 +3,17 @@ use std::{future::Future, pin::Pin};
 use crate::acp::scheduler::RuntimeOwner;
 use crate::acp::{
     bindings::adapter::{
-        AdapterCommand, AdapterEgress, AdapterEvent, AdapterModel, AdapterRuntimeError,
-        EgressResolution, HarnessAdapter, ResourceMapper,
+        AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity, AdapterModel,
+        AdapterRuntimeError, EgressResolution, HarnessAdapter, ResourceMapper,
     },
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
         SageProjectId,
     },
-    intent::{CapabilitySnapshotV1, ExternalId, ModelId, PageCursor},
+    intent::{
+        CapabilitySnapshotV1, ExternalId, PageCursor,
+        session_event::{PendingSessionEvents, SessionScopedEvent},
+    },
     limits::LIMITS,
     store::CompleteActivationCommand,
     transport::{FrameWriteOutcome, IncrementalFrameDecoder, ReservedQueue, validate_structure},
@@ -20,6 +23,7 @@ mod capabilities;
 mod coordinator_journal;
 mod ingress;
 mod intent;
+mod mode;
 mod parts;
 
 use intent::{digest, validate_intent};
@@ -28,25 +32,11 @@ pub(crate) use coordinator_journal::{
     CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
 };
 pub(crate) use ingress::is_available_commands_update;
+pub(crate) use mode::ActivationMode;
 pub(crate) use parts::{IdleActivationParts, RecoveryActivationParts, TeardownActivationParts};
 
 #[cfg(test)]
 mod tests;
-
-#[derive(Clone)]
-pub(crate) enum ActivationMode {
-    New {
-        native_root: String,
-        model: Option<ModelId>,
-    },
-    Resume {
-        external_session_id: ExternalId,
-        native_root: String,
-        model: Option<ModelId>,
-    },
-    #[allow(dead_code, reason = "only tests construct this variant so far")]
-    Load { external_session_id: ExternalId },
-}
 
 #[derive(Clone)]
 pub(crate) struct ActivationIntent {
@@ -129,6 +119,15 @@ enum Phase {
     Teardown,
 }
 
+impl Phase {
+    /// Adapter requests that join the bounded initialization budget: the
+    /// handshake itself, and ACP sign-in while the session is not yet ready
+    /// (`authenticate`, then `session/new` again).
+    fn admits_initialization_request(self, session_ready: bool) -> bool {
+        self == Self::AwaitingInitialized || (self == Self::AwaitingSession && !session_ready)
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum ActivationPumpError {
     #[error("activation intent or adapter completion is stale or foreign")]
@@ -179,6 +178,8 @@ pub(crate) struct ActivationPump<A, J, R> {
     models: Vec<AdapterModel>,
     next_model_cursor: Option<PageCursor>,
     ready: Option<ActivatedSession>,
+    /// Session events seen before the harness session identity is known.
+    pending_session: PendingSessionEvents<(AdapterIdentity, SessionScopedEvent)>,
 }
 
 type ActivationHandoff<T, A, J, R> = Result<T, Box<(ActivationPump<A, J, R>, ActivationPumpError)>>;
@@ -237,6 +238,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             models: Vec::new(),
             next_model_cursor: None,
             ready: None,
+            pending_session: PendingSessionEvents::default(),
         })
     }
 
@@ -299,12 +301,21 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             return Err(Box::new((self, ActivationPumpError::NotQuiescent)));
         }
         let session = self.ready.take().expect("completion readiness checked");
-        Ok(IdleActivationParts::new(
-            self.adapter,
-            self.journal,
-            self.resources,
-            session,
-        ))
+        let mut pending = PendingSessionEvents::default();
+        for (id, event) in self.pending_session.take() {
+            if id.is_exact_session(
+                &session.binding_digest,
+                session.runtime_epoch,
+                &session.session_id,
+                &session.external_session_id,
+            ) {
+                pending.push(event);
+            }
+        }
+        Ok(
+            IdleActivationParts::new(self.adapter, self.journal, self.resources, session)
+                .with_pending_session_events(pending),
+        )
     }
 
     pub(crate) fn try_into_recovery_parts(
@@ -366,6 +377,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                 external_session_id,
                 native_root,
                 model,
+                ..
             } => AdapterCommand::ResumeSession {
                 external_session_id: external_session_id.clone(),
                 native_root: native_root.clone(),

@@ -2,7 +2,10 @@ use crate::acp::contract::{ProjectGeneration, SageChatId, SageProjectId};
 use rusqlite::OptionalExtension;
 use std::{
     collections::HashMap,
-    sync::{Arc, Mutex, atomic::AtomicBool},
+    sync::{
+        Arc, Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+    },
 };
 
 pub(crate) mod ipc;
@@ -104,6 +107,9 @@ trait TerminalFactory: Send + Sync {
 pub struct TerminalSessionPort {
     factory: Box<dyn TerminalFactory>,
     sessions: Mutex<HashMap<TerminalSessionId, Session>>,
+    /// Bumped by every `shutdown`, so a create whose shell was still
+    /// spawning (with `sessions` unlocked) learns it was missed.
+    shutdowns: AtomicU64,
 }
 
 impl std::fmt::Debug for TerminalSessionPort {
@@ -184,10 +190,24 @@ impl TerminalSessionPort {
         Ok(session.process.shell_path().to_owned())
     }
 
+    /// Whether another terminal fits the global, project and chat limits.
+    fn admits(&self, scope: &TerminalScope) -> Result<bool, TerminalError> {
+        let sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        let (project, chat) = sessions.values().fold((0, 0), |(project, chat), session| {
+            let same_project = session.scope.project == scope.project;
+            (
+                project + usize::from(same_project),
+                chat + usize::from(same_project && session.scope == *scope),
+            )
+        });
+        Ok(sessions.len() < MAX_GLOBAL && project < MAX_PER_PROJECT && chat < MAX_PER_CHAT)
+    }
+
     fn new(factory: Box<dyn TerminalFactory>) -> Self {
         Self {
             factory,
             sessions: Mutex::new(HashMap::new()),
+            shutdowns: AtomicU64::new(0),
         }
     }
 
@@ -222,28 +242,23 @@ impl TerminalSessionPort {
         if !chat_tab_exists(&state.database, scope).await? {
             return Err(TerminalError::InvalidScope);
         }
-        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
-        let project_count = sessions
-            .values()
-            .filter(|session| session.scope.project == scope.project)
-            .count();
-        let chat_count = sessions
-            .values()
-            .filter(|session| session.scope == *scope)
-            .count();
-        if sessions.len() >= MAX_GLOBAL
-            || project_count >= MAX_PER_PROJECT
-            || chat_count >= MAX_PER_CHAT
-        {
+        if !self.admits(scope)? {
             return Err(TerminalError::Capacity);
         }
+        // Spawning a shell can take a while (ConPTY on Windows), so the
+        // session table stays unlocked for reads, writes and resizes of the
+        // other terminals meanwhile. `context` holds the project transition
+        // lock, so no other create can take the slot admitted above. Shutdown
+        // does not take that lock, so a shutdown during the spawn is caught
+        // below by its counter.
+        let shutdowns = self.shutdowns.load(Ordering::SeqCst);
         let root = state
             .database
             .selected_project_root_authority(&context)
             .map_err(|_| TerminalError::InvalidScope)?;
         root.revalidate().map_err(|_| TerminalError::InvalidScope)?;
         let output = TerminalOutputSink::new();
-        let (process, cleanup_unknown) =
+        let (mut process, mut cleanup_unknown) =
             match self.factory.spawn(&root, columns, rows, output.clone()) {
                 Ok(process) => (process, false),
                 Err(TerminalSpawnFailure::Clean(error)) => return Err(error),
@@ -251,6 +266,15 @@ impl TerminalSessionPort {
             };
         let id = TerminalSessionId(uuid::Uuid::new_v4());
         let revision = TerminalRevision(1);
+        let mut sessions = self.sessions.lock().map_err(|_| TerminalError::Backend)?;
+        if self.shutdowns.load(Ordering::SeqCst) != shutdowns {
+            if process.terminate().is_ok() {
+                return Err(TerminalError::Ended);
+            }
+            // Kept, like a session `terminate_matching` could not end, so the
+            // next shutdown retries it.
+            cleanup_unknown = true;
+        }
         sessions.insert(
             id,
             Session {
@@ -379,6 +403,9 @@ impl TerminalSessionPort {
     }
 
     pub fn shutdown(&self) -> Result<(), TerminalError> {
+        // Before the table is locked: a create that inserts after this sees
+        // the new count and ends its own shell.
+        self.shutdowns.fetch_add(1, Ordering::SeqCst);
         self.terminate_matching(|_| true)
     }
 

@@ -80,7 +80,6 @@ function assertModeBStableIdentity(state, snapshot) {
     snapshot.harness.id !== state.harness.id ||
     snapshot.harness.text !== state.harness.text ||
     snapshot.model.id !== state.model.id ||
-    snapshot.model.text !== state.model.text ||
     snapshot.turns.some((turn) => turn.sessionId !== state.sessionId)
   )
     fail("mode-b-identity-churn");

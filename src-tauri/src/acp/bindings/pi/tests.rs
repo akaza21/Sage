@@ -66,6 +66,7 @@ fn accept_prompt(translator: &mut PiTranslator, turn: &str) -> String {
         .begin(Operation::Prompt {
             turn_key: turn.into(),
             message: "Inspect without writing.".into(),
+            images: Vec::new(),
         })
         .unwrap()
         .remove(0);
@@ -211,6 +212,47 @@ fn prompt_acceptance_does_not_complete_turn_and_fixture_orders_items() {
         .ingest(br#"{"type":"message_update","delta":"late"}"#)
         .unwrap();
     assert_eq!(late, vec![AdapterOutput::LateIgnored]);
+}
+
+#[test]
+fn captured_pi_1_5_turn_projects_thinking_text_and_tool_without_unknown_events() {
+    let mut translator = admitted_translator(9);
+    accept_prompt(&mut translator, "turn-capture");
+    let capture = include_str!("../../../../testdata/acp/pi/captured_session_150.jsonl");
+    let mut outputs = Vec::new();
+    for line in capture
+        .lines()
+        .skip_while(|line| !line.contains(r#""type":"agent_start""#))
+    {
+        outputs.extend(translator.ingest(line.as_bytes()).unwrap());
+        if line.contains(r#""type":"agent_settled""#) {
+            break;
+        }
+    }
+    let unknown = |output: &AdapterOutput| matches!(output, AdapterOutput::Unsupported { .. });
+    assert!(!outputs.iter().any(unknown), "{outputs:?}");
+    assert!(outputs.contains(&AdapterOutput::ThoughtDelta {
+        text: "Thinking about it.".into(),
+        redacted_tail: false,
+    }));
+    assert!(outputs.contains(&AdapterOutput::TextDelta {
+        text: "I will inspect.".into(),
+        redacted_tail: false,
+    }));
+    assert!(outputs.iter().any(|output| matches!(
+        output,
+        AdapterOutput::ToolTerminal {
+            outcome: ToolOutcome::Completed,
+            ..
+        }
+    )));
+    assert!(matches!(
+        outputs.last(),
+        Some(AdapterOutput::TurnTerminal {
+            outcome: TerminalOutcome::Completed,
+            ..
+        })
+    ));
 }
 
 #[test]
@@ -417,6 +459,7 @@ fn id_less_events_require_the_exact_prompt_start_terminal_grammar() {
         .begin(Operation::Prompt {
             turn_key: "turn-old".into(),
             message: "read only".into(),
+            images: Vec::new(),
         })
         .unwrap()
         .remove(0);
@@ -496,6 +539,7 @@ fn correlated_failures_are_bounded_and_never_expose_provider_payloads() {
         .begin(Operation::Prompt {
             turn_key: "turn-failed".into(),
             message: "Read only".into(),
+            images: Vec::new(),
         })
         .unwrap()
         .remove(0);
@@ -759,7 +803,6 @@ fn malformed_unknown_foreign_and_unsupported_inputs_are_deterministic() {
         Ok(vec![AdapterOutput::LateIgnored])
     );
     for operation in [
-        Operation::Resume,
         Operation::Load,
         Operation::Close,
         Operation::MultiRoot,
@@ -773,7 +816,8 @@ fn malformed_unknown_foreign_and_unsupported_inputs_are_deterministic() {
     assert!(matches!(
         translator.begin(Operation::Prompt {
             turn_key: "turn".into(),
-            message: "hello".into()
+            message: "hello".into(),
+            images: Vec::new(),
         }),
         Err(AdapterError::LaunchNotAdmitted)
     ));

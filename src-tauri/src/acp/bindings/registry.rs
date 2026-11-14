@@ -9,18 +9,24 @@ use crate::acp::bindings::{
         CodexBindingRegistration, startup_codex_binding_registration,
     },
     standard_acp::{
-        OPENCODE_BINDING_ID, OpenCodeAdmissionUnavailable, OpenCodeBindingRegistration,
+        CustomAcpRegistration, CustomAcpUnavailable, OPENCODE_BINDING_ID,
+        OpenCodeAdmissionUnavailable, OpenCodeBindingRegistration,
     },
 };
+use crate::settings_store::MAX_CUSTOM_ACP_AGENTS;
 
 mod claude;
+mod claude_sdk;
 mod codex;
-mod opencode;
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+mod fixtures;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 mod pi;
 mod pi_native;
 mod record;
+mod record_reason;
 mod record_root;
+mod standard_acp;
 use record::{Admission, AdmittedBinding, RootPolicy};
 pub(crate) use record::{AdmittedBindingRecord, BindingProjectRoot, BindingRecord};
 #[cfg(all(test, windows))]
@@ -59,6 +65,8 @@ pub(crate) enum RegistryAdmissionUnavailable {
     Claude(ClaudeAdmissionUnavailable),
     #[error(transparent)]
     OpenCode(OpenCodeAdmissionUnavailable),
+    #[error("the user-defined ACP agent is not admitted: {0:?}")]
+    CustomAcp(CustomAcpUnavailable),
     #[error("binding wire identity drifted after admission")]
     Drift,
 }
@@ -69,6 +77,7 @@ impl From<RegistryAdmissionUnavailable> for CodexAdmissionUnavailable {
             RegistryAdmissionUnavailable::Codex(reason) => reason,
             RegistryAdmissionUnavailable::Claude(_)
             | RegistryAdmissionUnavailable::OpenCode(_)
+            | RegistryAdmissionUnavailable::CustomAcp(_)
             | RegistryAdmissionUnavailable::Drift => CodexAdmissionUnavailable::Drift,
         }
     }
@@ -83,8 +92,11 @@ pub(crate) enum RegistryUnavailable {
 pub(crate) struct BindingRegistry {
     codex: BindingRecord,
     claude: BindingRecord,
+    claude_sdk: BindingRecord,
     opencode: BindingRecord,
     pi_native: BindingRecord,
+    /// One fixed record per live user-defined agent.
+    custom: Vec<BindingRecord>,
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pi: Option<BindingRecord>,
     #[cfg(test)]
@@ -101,61 +113,6 @@ impl Default for BindingRegistry {
 }
 
 impl BindingRegistry {
-    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    pub(crate) fn desktop_pi_fixture(
-        selection: crate::launch_profile::FixtureSelection,
-    ) -> Result<Self, crate::acp::bindings::adapter::AdapterRuntimeError> {
-        let binding =
-            crate::acp::bindings::pi::fixture_admission::PiFixtureBinding::admit(selection)?;
-        let mut registry = Self::new(
-            CodexBindingRegistration::fixture_disabled(),
-            ClaudeBindingRegistration::fixture_disabled(),
-        );
-        registry.isolate_fixture_records("pi");
-        registry.pi = Some(pi::record(binding));
-        Ok(registry)
-    }
-
-    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    pub(crate) fn desktop_codex_fixture(
-        selection: crate::launch_profile::CodexFixtureSelection,
-    ) -> Result<Self, CodexAdmissionUnavailable> {
-        let codex = CodexBindingRegistration::desktop_fixture(selection)?;
-        let mut registry = Self::new(codex, ClaudeBindingRegistration::fixture_disabled());
-        registry.codex.model_provider = ModelProvider::NoAccountModels;
-        registry.codex.auth_provider = AuthProvider::None;
-        registry.isolate_fixture_records(registry.codex.harness_id);
-        Ok(registry)
-    }
-
-    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    pub(crate) fn desktop_claude_fixture(
-        selection: crate::launch_profile::FixtureSelection,
-    ) -> Result<Self, ClaudeAdmissionUnavailable> {
-        let claude = ClaudeBindingRegistration::desktop_fixture(selection)?;
-        let mut registry = Self::new(CodexBindingRegistration::fixture_disabled(), claude);
-        registry.claude.model_provider = ModelProvider::NoAccountModels;
-        registry.claude.auth_provider = AuthProvider::None;
-        registry.isolate_fixture_records(registry.claude.harness_id);
-        Ok(registry)
-    }
-
-    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-    fn isolate_fixture_records(&mut self, active_harness: &str) {
-        for record in [
-            &mut self.codex,
-            &mut self.claude,
-            &mut self.opencode,
-            &mut self.pi_native,
-        ] {
-            if record.harness_id != active_harness {
-                record.session_operations_enabled = false;
-                record.model_provider = ModelProvider::NoAccountModels;
-                record.auth_provider = AuthProvider::None;
-            }
-        }
-    }
-
     pub(crate) fn new(codex: CodexBindingRegistration, claude: ClaudeBindingRegistration) -> Self {
         Self::new_with_opencode(codex, claude, OpenCodeBindingRegistration::startup())
     }
@@ -199,15 +156,18 @@ impl BindingRegistry {
                 model_provider: ModelProvider::ClaudeAdapter,
                 auth_provider: AuthProvider::Claude,
             },
+            claude_sdk: claude_sdk::record(Arc::new(
+                crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration::startup(),
+            )),
             opencode: BindingRecord {
                 harness_id: "opencode",
                 binding_id: OPENCODE_BINDING_ID,
                 wire: None,
-                root_policy: RootPolicy::OpenCode,
+                root_policy: RootPolicy::StandardAcp,
                 session_operations_enabled: true,
                 admission: Admission::OpenCode(Arc::new(opencode)),
-                launch_factory: opencode::launch_factory,
-                supported_capabilities: opencode::capabilities,
+                launch_factory: standard_acp::launch_factory,
+                supported_capabilities: standard_acp::capabilities,
                 turn_dispatch: crate::acp::service::AcpService::send_session_turn,
                 cancel_dispatch: crate::acp::service::AcpService::cancel_session_turn,
                 close_dispatch: crate::acp::service::AcpService::close_session,
@@ -217,6 +177,10 @@ impl BindingRegistry {
             pi_native: pi_native::record(Arc::new(
                 crate::acp::bindings::pi::native_admission::PiBindingRegistration::startup(),
             )),
+            custom: (1..=MAX_CUSTOM_ACP_AGENTS)
+                .filter_map(CustomAcpRegistration::startup)
+                .map(|registration| standard_acp::custom_record(Arc::new(registration)))
+                .collect(),
             #[cfg(test)]
             test_binding: None,
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
@@ -251,6 +215,15 @@ impl BindingRegistry {
         &self.claude
     }
 
+    pub(crate) fn claude_sdk_admission(
+        &self,
+    ) -> &Arc<crate::acp::bindings::claude::sdk::ClaudeSdkBindingRegistration> {
+        let Admission::ClaudeSdk(admission) = &self.claude_sdk.admission else {
+            unreachable!()
+        };
+        admission
+    }
+
     pub(crate) fn opencode(&self) -> &BindingRecord {
         &self.opencode
     }
@@ -271,31 +244,49 @@ impl BindingRegistry {
         admission
     }
 
+    /// The harness a Claude binding serves until discovery has settled
+    /// which of the two Claude Code runs on, so a Chat restored at
+    /// startup on either keeps its harness.
+    pub(crate) fn pending_claude_harness(&self, binding_id: &str) -> Option<&'static str> {
+        // Either still pending counts: discovery settles the two one after
+        // the other, and a restore between them must not miss.
+        let pending = self.claude_sdk_admission().discovery_pending()
+            || matches!(
+                self.claude_admission().unavailable(),
+                Some(ClaudeAdmissionUnavailable::DiscoveryPending)
+            );
+        (pending && [self.claude.binding_id(), self.claude_sdk.binding_id()].contains(&binding_id))
+            .then_some("claude-code")
+    }
+
     pub(crate) fn for_harness(&self, id: &str) -> Option<&BindingRecord> {
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if let Some(record) = self.pi.as_ref().filter(|record| record.harness_id() == id) {
             return Some(record);
         }
-        [
-            self.codex(),
-            self.claude(),
-            self.opencode(),
-            &self.pi_native,
-        ]
-        .into_iter()
-        .find(|record| record.harness_id() == id)
-        .or({
-            #[cfg(test)]
-            {
-                self.test_binding
-                    .as_ref()
-                    .filter(|record| record.harness_id() == id)
-            }
-            #[cfg(not(test))]
-            {
-                None
-            }
-        })
+        // Claude Code runs over its SDK protocol once that binding is
+        // admitted; the ACP adapter serves only installs it cannot admit.
+        let claude = if self.claude_sdk.admission_available() {
+            &self.claude_sdk
+        } else {
+            self.claude()
+        };
+        [self.codex(), claude, self.opencode(), &self.pi_native]
+            .into_iter()
+            .chain(self.custom.iter())
+            .find(|record| record.serves_harness(id))
+            .or({
+                #[cfg(test)]
+                {
+                    self.test_binding
+                        .as_ref()
+                        .filter(|record| record.harness_id() == id)
+                }
+                #[cfg(not(test))]
+                {
+                    None
+                }
+            })
     }
 
     pub(crate) fn resolve(
@@ -316,22 +307,29 @@ impl BindingRegistry {
         {
             return Ok(record);
         }
-        [&self.codex, &self.claude, &self.opencode, &self.pi_native]
-            .into_iter()
-            .find(|record| record.binding_id() == binding_id)
-            .or({
-                #[cfg(test)]
-                {
-                    self.test_binding
-                        .as_ref()
-                        .filter(|record| record.binding_id() == binding_id)
-                }
-                #[cfg(not(test))]
-                {
-                    None
-                }
-            })
-            .ok_or(RegistryUnavailable::UnknownBinding)
+        [
+            &self.codex,
+            &self.claude,
+            &self.claude_sdk,
+            &self.opencode,
+            &self.pi_native,
+        ]
+        .into_iter()
+        .chain(self.custom.iter())
+        .find(|record| record.serves_binding(binding_id))
+        .or({
+            #[cfg(test)]
+            {
+                self.test_binding
+                    .as_ref()
+                    .filter(|record| record.binding_id() == binding_id)
+            }
+            #[cfg(not(test))]
+            {
+                None
+            }
+        })
+        .ok_or(RegistryUnavailable::UnknownBinding)
     }
 }
 
@@ -387,9 +385,7 @@ impl BindingRegistry {
     pub(crate) fn test_registration(&self) -> Option<CodexBindingRegistration> {
         match self.test_binding.as_ref()?.admission {
             Admission::Codex(ref admission) => Some(admission.clone()),
-            Admission::Claude(_) | Admission::OpenCode(_) | Admission::PiNative(_) => None,
-            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-            Admission::Pi(_) => None,
+            _ => None,
         }
     }
 }

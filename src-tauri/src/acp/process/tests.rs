@@ -380,6 +380,116 @@ fn windows_batch_launcher_rejects_npm_shim_drift_before_cmd_executes_it() {
 
 #[cfg(windows)]
 #[test]
+fn windows_npm_codex_launcher_hands_node_ordinary_script_and_working_directory_paths() {
+    use sha2::{Digest, Sha256};
+
+    // Node 22.23 cannot load a main script named by a verbatim `\\?\` path,
+    // and the launcher's canonical path is verbatim; the project root is too.
+    let directory = std::env::temp_dir().join(format!("sage-npm-codex-{}", Uuid::new_v4()));
+    let script_directory = directory
+        .join("node_modules")
+        .join("@openai")
+        .join("codex")
+        .join("bin");
+    std::fs::create_dir_all(&script_directory).unwrap();
+    std::fs::write(
+        script_directory.join("codex.js"),
+        b"process.stdout.write([process.argv[1], process.argv[2], process.cwd()].join('|'));\n",
+    )
+    .unwrap();
+    std::fs::write(
+        script_directory.parent().unwrap().join("package.json"),
+        br#"{"name":"@openai/codex","bin":{"codex":"bin/codex.js"}}"#,
+    )
+    .unwrap();
+    let launcher = directory.join("codex.cmd");
+    let contents = concat!(
+        "@ECHO off\r\nGOTO start\r\n:find_dp0\r\nSET dp0=%~dp0\r\nEXIT /b\r\n",
+        ":start\r\nSETLOCAL\r\nCALL :find_dp0\r\n\r\nIF EXIST \"%dp0%\\node.exe\" (\r\n",
+        "  SET \"_prog=%dp0%\\node.exe\"\r\n) ELSE (\r\n  SET \"_prog=node\"\r\n",
+        "  SET PATHEXT=%PATHEXT:;.JS;=;%\r\n)\r\n\r\n",
+        "endLocal & goto #_undefined_# 2>NUL || title %COMSPEC% & \"%_prog%\"  ",
+        "\"%dp0%\\node_modules\\@openai\\codex\\bin\\codex.js\" %*\r\n"
+    )
+    .as_bytes();
+    std::fs::write(&launcher, contents).unwrap();
+    let canonical = launcher.canonicalize().unwrap();
+    let spec = LaunchSpec {
+        binding_id: Uuid::nil(),
+        runtime_epoch: 73,
+        artifact: ArtifactExpectation::windows_batch_launcher(
+            Uuid::nil(),
+            canonical.clone(),
+            Sha256::digest(contents).into(),
+            u64::try_from(contents.len()).unwrap(),
+        )
+        .unwrap()
+        .with_manifest(Some(
+            ManifestExpectation::record(
+                script_directory
+                    .parent()
+                    .unwrap()
+                    .join("package.json")
+                    .canonicalize()
+                    .unwrap(),
+            )
+            .unwrap(),
+        )),
+        fixed_args: BoundedOsArgs::new(vec![OsString::from("app-server")]).unwrap(),
+        environment: BoundedEnvironment::new(
+            ["PATH", "SystemRoot", "TEMP", "TMP", "WINDIR"]
+                .into_iter()
+                .filter_map(|key| std::env::var_os(key).map(|value| (OsString::from(key), value)))
+                .collect(),
+        )
+        .unwrap(),
+        project_root: test_project_root(),
+        required_guarantee: RequiredContainment::EnforcedTree,
+        limits: TreeLimits::ade_0006a(),
+        deadlines: ProcessDeadlines::ade_0006a(),
+        absolute_cleanup_deadline: None,
+        test_after_artifact_verified: None,
+    };
+    let pool = TreeCapacityPool::isolated_ade_0006a();
+    let tree =
+        PlatformSupervisor::launch(&spec, pool.try_acquire(spec.limits.descendants).unwrap())
+            .expect("the npm Codex launcher starts node");
+    let (mut stdin, mut stdout, control) = tree.into_parts();
+    stdin.close();
+    let mut output = Vec::new();
+    let mut chunk = [0_u8; 256];
+    loop {
+        let read = stdout.read(&mut chunk).unwrap();
+        if read == 0 {
+            break;
+        }
+        output.extend_from_slice(&chunk[..read]);
+        assert!(output.len() <= 4096);
+    }
+    assert!(matches!(
+        control.wait(),
+        Ok(TreeExit::Exited { code: Some(0) })
+    ));
+    let script = crate::win32_path::simplified(
+        &canonical
+            .parent()
+            .unwrap()
+            .join(r"node_modules\@openai\codex\bin\codex.js"),
+    );
+    // Pi names its session folder after the working directory, and a
+    // verbatim prefix there produced an illegal file name.
+    let cwd = crate::win32_path::simplified(spec.project_root.as_path());
+    assert!(!cwd.to_string_lossy().starts_with(r"\\?\"));
+    assert_eq!(
+        String::from_utf8(output).unwrap(),
+        format!("{}|app-server|{}", script.display(), cwd.display())
+    );
+    assert_eq!(pool.usage(), (0, 0));
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
 #[ignore = "requires a separately built, path-bound acp-adversarial-fixture"]
 fn windows_verified_fixture_streams_and_exits_cleanly() {
     let spec = verified_fixture_spec("frame-lf-split-every-byte", 42);

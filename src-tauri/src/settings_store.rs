@@ -8,17 +8,35 @@ use serde::{Deserialize, Serialize};
 
 use crate::error::{AppError, AppResult};
 mod access;
+mod chat_access;
+mod notifications;
+pub use notifications::NotificationPreference;
 mod agent_rail_view;
+mod browser_developer;
+mod browser_download_folder;
 mod browser_preferences;
 mod browser_site_permissions;
+mod chat_read_marks;
+mod custom_acp_agents;
 mod editor_settings;
+mod new_chat_defaults;
 mod side_chat;
 mod terminal_dock;
 pub use access::SessionAccessModes;
 pub use agent_rail_view::AgentRailView;
+pub use browser_download_folder::DownloadFolderRecord;
 pub use browser_preferences::BrowserPreferences;
 pub use browser_site_permissions::{MAX_SITE_ORIGIN_BYTES, MAX_SITE_PERMISSIONS};
+pub use chat_access::{ACCESS_CONFIRMATION_MILLIS, forget_removed_chat_access};
+#[cfg(test)]
+pub(crate) use chat_read_marks::MAX_CHAT_READ_MARKS;
+pub use chat_read_marks::{ChatReadMark, ChatReadMarkWrite, ChatReadMarks};
+pub use custom_acp_agents::{
+    CustomAcpAgent, CustomAcpAgentDraft, MAX_CUSTOM_ACP_AGENTS, custom_acp_number,
+    validate_custom_acp_agent,
+};
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
+pub use new_chat_defaults::NewChatDefaults;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -26,6 +44,30 @@ pub enum SessionAccessMode {
     ReadOnly,
     Ask,
     WorkspaceWrite,
+    /// File edits are approved without asking; other tools still ask.
+    AcceptEdits,
+    /// The harness plans and does not change files.
+    Plan,
+    /// The harness approves actions it judges safe and asks about the rest.
+    Auto,
+    /// Every action runs without asking. Granted per chat session after an
+    /// explicit confirmation; never a stored default.
+    FullAccess,
+}
+
+impl SessionAccessMode {
+    /// Whether this mode can be a binding's stored default for new chats.
+    /// A mode that needs a confirmation never can: it would reach every
+    /// chat without one.
+    pub(crate) fn is_default_eligible(self) -> bool {
+        !self.needs_confirmation()
+    }
+
+    /// Whether choosing this mode for a chat takes a confirmed token: the
+    /// modes that run actions without asking beyond file edits.
+    pub(crate) fn needs_confirmation(self) -> bool {
+        matches!(self, Self::FullAccess | Self::Auto)
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,7 +128,8 @@ impl SettingsStore {
                    mode TEXT NOT NULL CHECK (mode IN ('readOnly', 'ask', 'workspaceWrite'))
                  ) STRICT;",
             )?;
-            migration.execute_batch("CREATE TABLE IF NOT EXISTS binding_access_modes (binding_id TEXT PRIMARY KEY CHECK(length(binding_id) BETWEEN 1 AND 128), mode TEXT NOT NULL CHECK(mode IN ('readOnly','ask','workspaceWrite'))) STRICT;")?;
+            access::migrate(&migration)?;
+            chat_access::migrate(&migration)?;
             migration.execute_batch(
                 "CREATE TABLE IF NOT EXISTS ui_appearance (
                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -112,9 +155,14 @@ impl SettingsStore {
             // in the catalogue's rows, copied from it once.
             editor_settings::migrate(&migration)?;
             browser_preferences::migrate(&migration)?;
+            browser_developer::migrate(&migration)?;
             agent_rail_view::migrate(&migration)?;
+            chat_read_marks::migrate(&migration)?;
+            browser_download_folder::migrate(&migration)?;
             browser_site_permissions::migrate(&migration)?;
             terminal_dock::migrate(&migration)?;
+            new_chat_defaults::migrate(&migration)?;
+            custom_acp_agents::migrate(&migration)?;
             migration.commit()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))

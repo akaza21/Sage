@@ -11,6 +11,7 @@ afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 const fileTab = (index: number): WorkbenchTab => ({
@@ -33,7 +34,10 @@ function installTabs(count: number, activeIndex: number) {
 
 // jsdom has no layout: tabs are 120 px wide in a 360 px strip.
 function layOut(strip: HTMLElement) {
-  Object.defineProperty(strip, "clientWidth", { value: 360 });
+  Object.defineProperty(strip, "clientWidth", {
+    value: 360,
+    configurable: true,
+  });
   Object.defineProperty(strip, "scrollWidth", { value: 120 * 12 });
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
@@ -70,6 +74,34 @@ describe("TabStrip overflow", () => {
     expect(strip.scrollLeft).toBe(120);
   });
 
+  it("keeps manual scrolling when a background tab resizes", () => {
+    let notify: ResizeObserverCallback = () => undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          notify = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    installTabs(12, 0);
+    const { container } = render(<TabStrip />);
+    const strip = container.querySelector<HTMLElement>(".tab-strip__scroll")!;
+    layOut(strip);
+    fireEvent.wheel(strip, { deltaY: 600 });
+    const resized = (target: Element) =>
+      notify([{ target } as ResizeObserverEntry], {} as ResizeObserver);
+    // A Git mark or status dot widens a tab the reader is not on.
+    resized(strip.children[8]);
+    expect(strip.scrollLeft).toBe(600);
+    // The active tab's own row resizing brings it back into view.
+    resized(strip.children[0]);
+    expect(strip.scrollLeft).toBe(0);
+  });
+
   it("scrolls the strip sideways with a vertical wheel", () => {
     installTabs(12, 0);
     const { container } = render(<TabStrip />);
@@ -82,5 +114,48 @@ describe("TabStrip overflow", () => {
     // A trackpad pinch arrives as a wheel with Ctrl held.
     fireEvent.wheel(strip, { deltaY: 50, ctrlKey: true });
     expect(strip.scrollLeft).toBe(100);
+  });
+
+  it("marks the edges that hide tabs so the strip can fade them", () => {
+    installTabs(12, 0);
+    const { container } = render(<TabStrip />);
+    const strip = container.querySelector<HTMLElement>(".tab-strip__scroll")!;
+    layOut(strip);
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("end");
+    strip.scrollLeft = 600;
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("start end");
+    strip.scrollLeft = 120 * 12 - 360;
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("start");
+  });
+
+  it("clears the edge marks once a widened strip fits every tab", () => {
+    let resized: ResizeObserverCallback | undefined;
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        constructor(callback: ResizeObserverCallback) {
+          resized = callback;
+        }
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    installTabs(12, 0);
+    const { container } = render(<TabStrip />);
+    const strip = container.querySelector<HTMLElement>(".tab-strip__scroll")!;
+    layOut(strip);
+    fireEvent.scroll(strip);
+    expect(strip.dataset.overflow).toBe("end");
+    // The pane widens until all twelve 120 px tabs fit.
+    Object.defineProperty(strip, "clientWidth", { value: 120 * 12 });
+    resized!(
+      [{ target: strip } as unknown as ResizeObserverEntry],
+      {} as ResizeObserver,
+    );
+    expect(strip).not.toHaveAttribute("data-overflow");
   });
 });

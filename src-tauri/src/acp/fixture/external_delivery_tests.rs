@@ -104,7 +104,10 @@ async fn observe_zero_bytes(prepared: ExternalPrepared, deadline: FixtureDeadlin
     .unwrap();
     let mut host_thread = BoundedThread::spawn("zero-byte-fixture-host", move || {
         assert_eq!(host.activate(owner), Ok(HostOutcome::Activated));
-        assert_eq!(host.send(prompt_intent), Err(HostError::RetryExhausted));
+        assert_eq!(
+            host.send(prompt_intent).map_err(|failure| failure.error),
+            Err(HostError::RetryExhausted)
+        );
         assert_eq!(host.state(), Ok(HostState::Recovery));
         host.shutdown(RuntimeHost::close_deadline()).unwrap();
     })

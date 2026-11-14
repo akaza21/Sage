@@ -4,14 +4,20 @@
   height: 100%;
   --control-target: var(--control-height-compact);
   --control-gap: var(--space-1);
-  grid-template-rows: var(--chrome-row-height) minmax(0, 1fr) 24px;
+  --title-bar-fill: var(--agent-shell-rail);
+  --status-bar-height: var(--space-6);
+  --status-bar-fill: #1f1f1f;
+  --agent-pane-deletions: #fa423e;
+  grid-template-rows:
+    var(--chrome-row-height) minmax(0, 1fr)
+    var(--status-bar-height);
   background: var(--color-canvas);
 }
 .workbench--agent {
-  --title-bar-fill: #111111;
   --workbench-card-radius: var(--radius-xl);
   --workbench-card-fill: var(--agent-shell-center);
   --workbench-card-margin: var(--space-2);
+  font-family: var(--font-family-agent);
 }
 .title-bar {
   display: grid;
@@ -19,7 +25,7 @@
   grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
   align-items: center;
   padding: 0 var(--space-3);
-  border-bottom: 1px solid var(--agent-shell-title-divider);
+  border-bottom: var(--border-width) solid var(--agent-shell-title-divider);
   background: var(--title-bar-fill);
   user-select: none;
 }
@@ -42,7 +48,7 @@
   min-width: 0;
   grid-area: start;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 
 .title-bar__center {
@@ -52,14 +58,11 @@
   justify-content: center;
 }
 
-.title-bar__session {
-  overflow: hidden;
-  margin: 0;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-  font-weight: 600;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* Back and Forward sit together, as in Codex's title bar. */
+.title-bar__history {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
 }
 
 .title-bar__search {
@@ -69,8 +72,8 @@
   max-width: 280px;
   align-items: center;
   justify-content: center;
-  gap: 4px;
-  padding: 4px 12px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
   border: 1px solid var(--color-border-strong);
   border-radius: var(--radius-title-bar-search);
   color: var(--color-text-primary);
@@ -134,54 +137,10 @@
 .title-bar__chat-search--pill:hover:not(:disabled) {
   background: var(--title-bar-control-hover);
 }
-.workbench--agent .agent-task-header {
-  min-height: 44px;
-  border-bottom-color: var(--agent-shell-divider);
-  background: var(--agent-shell-center);
-}
 .workbench--agent .agent-artifact-pane__header {
-  height: 44px;
-  border-bottom: 1px solid var(--agent-shell-divider);
-}
-.workbench--agent .agent-artifact-pane .tab-strip {
-  align-items: center;
-  background: var(--agent-shell-center);
-}
-.workbench--agent .agent-artifact-pane .tab {
-  overflow: clip;
-  height: 28px;
-  min-width: 96px;
-  max-width: 208px;
-  /* Size each tab to its own title so a filename gets room before the strip
-     shrinks; when space runs out, tabs shrink in proportion to that width. */
-  flex: 0 1 auto;
-  border: 1px solid transparent;
-  border-radius: var(--radius-sm);
-  background: transparent;
-}
-.workbench--agent .agent-artifact-pane .tab__activate {
-  gap: 4px;
-  padding: 0 4px 0 8px;
-}
-.workbench--agent .agent-artifact-pane .tab button:focus-visible {
-  outline-offset: calc(-1 * var(--focus-ring-offset));
-}
-.workbench--agent .agent-artifact-pane .tab__close {
-  display: none;
-  width: 20px;
-  min-width: 20px;
-}
-.workbench--agent
-  .agent-artifact-pane
-  .tab:is(:hover, :focus-within, .tab--active)
-  .tab__close {
-  display: grid;
-}
-.workbench--agent .agent-artifact-pane .tab--active {
-  min-width: 112px;
-  background: var(--color-plane-raised);
-  border: 1px solid var(--agent-shell-tab-border);
-  box-shadow: none;
+  height: var(--agent-pane-header-height);
+  padding-inline: var(--agent-pane-summary-inset);
+  border-bottom: var(--border-width) solid var(--agent-shell-divider);
 }
 /* Window modes recolour tabs through --tab-strip-fill, --tab-fill and
    --tab-active-fill, and opt into motion through --tab-motion-duration. */
@@ -191,12 +150,12 @@
   background: var(--tab-strip-fill, transparent);
 }
 
-/* No empty strip above the Editor welcome; retain the canvas's grid row. */
-.center-region:has(.tab-strip__scroll:empty) {
+/* The shell knows tab presence before the lazy tab strip loads. */
+.center-region--empty-tabs {
   grid-template-rows: 0 minmax(0, 1fr);
 }
 
-.workbench__tabs:has(.tab-strip__scroll:empty) {
+.center-region--empty-tabs .workbench__tabs {
   visibility: hidden;
   border: 0;
 }
@@ -209,16 +168,39 @@
   background: var(--tab-strip-fill, var(--color-canvas));
 }
 
+/* Overflowing tabs scroll without a scrollbar; a fade marks each edge that
+   hides tabs (useResourceTabStrip sets data-overflow), and scroll padding
+   keeps a revealed tab clear of the fade. */
 .tab-strip__scroll {
+  --tab-strip-fade-size: var(--space-6);
   display: flex;
   min-width: 0;
   flex: 1;
   overflow-x: auto;
+  scroll-padding-inline: var(--tab-strip-fade-size);
   scrollbar-width: none;
 }
 
 .tab-strip__scroll::-webkit-scrollbar {
   display: none;
+}
+
+.tab-strip__scroll[data-overflow] {
+  mask-image: linear-gradient(
+    to right,
+    var(--tab-strip-fade-start, black),
+    black var(--tab-strip-fade-size),
+    black calc(100% - var(--tab-strip-fade-size)),
+    var(--tab-strip-fade-end, black)
+  );
+}
+
+.tab-strip__scroll[data-overflow~="start"] {
+  --tab-strip-fade-start: transparent;
+}
+
+.tab-strip__scroll[data-overflow~="end"] {
+  --tab-strip-fade-end: transparent;
 }
 
 .tab {
@@ -251,8 +233,8 @@
   min-width: 0;
   flex: 1;
   align-items: center;
-  gap: 8px;
-  padding: 0 8px 0 12px;
+  gap: var(--space-2);
+  padding: 0 var(--space-2) 0 var(--space-3);
   border: 0;
   color: inherit;
   background: transparent;
@@ -279,7 +261,7 @@
 }
 
 /*
- * A File tab's Git mark (EP-13) has a fixed width, and the tab holds that room
+ * A File tab's Git mark has a fixed width, and the tab holds that room
  * while the decoration chunk loads, so the mark never shifts the strip.
  */
 .tab__activate .git-badge,
@@ -398,31 +380,32 @@
     background: var(--color-panel);
     box-shadow: var(--elevation-floating);
   }
+}
 
-  /* The leading (Editor) tool sidebar floats as an inset card beside the
-     activity rail. */
-  .right-region--leading .sidebar {
-    top: var(--space-1);
-    right: auto;
-    bottom: var(--space-1);
-    left: var(--editor-activity-width);
-    width: min(
-      272px,
-      calc(100vw - var(--editor-activity-width) - 3 * var(--space-1))
-    );
-    height: auto;
-    margin: 0 var(--space-1);
-    border: 1px solid var(--color-border-subtle);
-    border-radius: var(--radius-md);
-    box-shadow: var(--elevation-floating);
-  }
+/* Overlay geometry and center sleep share the Workbench layout decision. */
+.workbench__body[data-editor-tools="overlay"] {
+  position: relative;
+  grid-template-columns: var(--editor-activity-width) minmax(0, 1fr);
+}
+
+.workbench__body[data-editor-tools="overlay"] .right-region--leading {
+  position: static;
+}
+
+.workbench__body[data-editor-tools="overlay"] .right-region--leading .sidebar {
+  position: absolute;
+  z-index: var(--z-sidebar-overlay);
+  inset: 0 0 0 var(--editor-activity-width);
+  width: auto;
+  height: auto;
+  margin: var(--space-1);
 }
 
 @media (max-width: 640px) {
   .title-bar {
     grid-template-columns: auto minmax(0, 1fr) auto;
-    column-gap: 8px;
-    padding-inline: 8px;
+    column-gap: var(--space-2);
+    padding-inline: var(--space-2);
   }
 
   .title-bar__center {
@@ -441,7 +424,7 @@
   }
 
   .title-bar__start {
-    gap: 8px;
+    gap: var(--space-2);
   }
 
   .title-bar__chat-search-label,

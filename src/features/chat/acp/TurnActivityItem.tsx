@@ -8,12 +8,13 @@ import {
 } from "../../../ui/leanIcons";
 
 import type { AcpItem, TurnState } from "../../../domain/acp";
+import type { AcpTurnCommand } from "../../../domain/acpCommand";
 import type {
   AgentArtifactOpenHandler,
   AgentArtifactOwner,
 } from "../../../domain/agentArtifact";
 import { chatTimestamp } from "../chatTimestamp";
-import { ChatMarkdown } from "./ChatMarkdown";
+import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 import { CollaborationItem } from "./CollaborationItem";
 import { ImageItem } from "./ImageItem";
 import { PermissionItem } from "./PermissionItem";
@@ -21,6 +22,30 @@ import { ToolItem } from "./ToolItem";
 import { UnknownItem } from "./UnknownItem";
 import { terminalItemLifecycles } from "./statusSemantics";
 import { isWorkingTool, workingToolStatus } from "./workingTool";
+
+const loadMarkdown = () =>
+  import("./ChatMarkdown").then(({ ChatMarkdown }) => ({
+    default: ChatMarkdown,
+  }));
+
+/** What a command chip names beside the command, by source. */
+const commandSourceLabels: Partial<Record<AcpTurnCommand["source"], string>> = {
+  builtin: "Built-in",
+  skill: "Skill",
+  prompt: "Prompt",
+  extension: "Extension",
+  mcp: "MCP",
+  plugin: "Plugin",
+};
+
+/** What a prompt that ran `/name` typed after the name, or null. */
+function commandInput(text: string, name?: string): string | null {
+  const rest =
+    name && text.startsWith(`/${name}`) ? text.slice(name.length + 1) : null;
+  return rest !== null && (rest === "" || /^\s/u.test(rest))
+    ? rest.trim()
+    : null;
+}
 
 type TurnActivityProjectionItem = Extract<
   AcpItem,
@@ -37,6 +62,7 @@ export const ItemView = memo(
     fileReferenceOwner,
     onOpenResource,
     selectableTurnId,
+    command,
   }: {
     item: AcpItem;
     workingItems?: readonly AcpItem[];
@@ -46,29 +72,38 @@ export const ItemView = memo(
     fileReferenceOwner?: AgentArtifactOwner;
     onOpenResource?: AgentArtifactOpenHandler;
     selectableTurnId?: string;
+    /** The listed command a user prompt ran, shown as a chip. */
+    command?: AcpTurnCommand;
   }) {
     switch (item.kind) {
+      // A steered message is the user's own bubble, at its place in the Turn.
+      case "userPrompt":
       case "text": {
+        const role = item.kind === "text" ? item.payload.role : "user";
         const timestamp = chatTimestamp(item.createdAt);
         // Final assistant prose is quotable (and focusable for the menu key).
-        const answerTurn =
-          item.payload.role === "assistant" && selectableTurnId;
+        const answerTurn = role === "assistant" && selectableTurnId;
+        const input =
+          role === "user"
+            ? commandInput(item.payload.text, command?.name)
+            : null;
+        const sourceLabel = command && commandSourceLabels[command.source];
         const partial =
-          item.payload.role === "assistant" &&
+          role === "assistant" &&
           (turnState === "interrupted" || turnState === "cancelled") &&
           item.lifecycle !== "completed" &&
           item.payload.text.trim().length > 0;
         return (
           <article
-            className={`acp-message acp-message--${item.payload.role}`}
+            className={`acp-message acp-message--${role}`}
             data-item-id={item.id}
             data-selectable-answer={answerTurn || undefined}
             tabIndex={answerTurn ? 0 : undefined}
-            data-message-role={item.payload.role}
+            data-message-role={role}
             data-answer-state={partial ? "partial" : undefined}
           >
             <header className="acp-message__meta">
-              {item.payload.role === "assistant" ? (
+              {role === "assistant" ? (
                 <span className="acp-message__avatar" aria-hidden="true">
                   S
                 </span>
@@ -76,9 +111,9 @@ export const ItemView = memo(
               <span className="acp-message__role">
                 {neutralTextRole
                   ? "Unattributed"
-                  : item.payload.role === "assistant"
+                  : role === "assistant"
                     ? "Agent"
-                    : item.payload.role === "user"
+                    : role === "user"
                       ? "You"
                       : "System"}
               </span>
@@ -88,17 +123,38 @@ export const ItemView = memo(
                 </time>
               ) : null}
             </header>
-            <ChatMarkdown
-              text={item.payload.text}
-              streaming={
-                item.lifecycle === "started" || item.lifecycle === "streaming"
-              }
-              fileReferenceOwner={
-                item.payload.role === "assistant"
-                  ? fileReferenceOwner
-                  : undefined
-              }
-            />
+            {input !== null ? (
+              <p className="acp-message__command">
+                <span className="acp-message__command-name">
+                  /{command?.name}
+                </span>
+                {sourceLabel ? (
+                  <span className="acp-message__command-source">
+                    {/* Read and copied as "/name, Source", not one word. */}
+                    <span className="sr-only">, </span>
+                    {sourceLabel}
+                  </span>
+                ) : null}
+              </p>
+            ) : null}
+            {input === "" ? null : (
+              <LazyModuleBoundary
+                label="Markdown renderer"
+                load={loadMarkdown}
+                render={(ChatMarkdown) => (
+                  <ChatMarkdown
+                    text={input ?? item.payload.text}
+                    streaming={
+                      item.lifecycle === "started" ||
+                      item.lifecycle === "streaming"
+                    }
+                    fileReferenceOwner={
+                      role === "assistant" ? fileReferenceOwner : undefined
+                    }
+                  />
+                )}
+              />
+            )}
           </article>
         );
       }
@@ -119,7 +175,7 @@ export const ItemView = memo(
       case "fileChangeDiff":
         return interactive ? (
           <p className="acp-activity__edit-reference">
-            Edit included in the Turn changed-file summary
+            Edit included in the turn changed-file summary
           </p>
         ) : (
           <article
@@ -150,6 +206,7 @@ export const ItemView = memo(
     left.interactive === right.interactive &&
     left.neutralTextRole === right.neutralTextRole &&
     left.turnState === right.turnState &&
+    left.command === right.command &&
     left.fileReferenceOwner === right.fileReferenceOwner &&
     left.onOpenResource === right.onOpenResource,
 );
@@ -278,14 +335,20 @@ function ErrorActivity({
     >
       <header>
         <strong>
-          {item.payload.code === "browserMcpUnavailable"
-            ? "Browser tools unavailable"
-            : item.payload.code === "clientFileWriteRefused"
-              ? "File write unavailable"
-              : "Agent notice"}
+          {item.payload.kind === "attempt"
+            ? item.payload.code
+            : item.payload.code === "browserMcpUnavailable"
+              ? "Browser tools unavailable"
+              : item.payload.code === "clientFileWriteRefused"
+                ? "File write unavailable"
+                : "Agent notice"}
         </strong>
         <span className="acp-state">
-          {item.payload.recoverable ? "Retry available" : "Needs attention"}
+          {item.payload.kind === "attempt"
+            ? "Automatic retry"
+            : item.payload.recoverable
+              ? "Retry available"
+              : "Needs attention"}
         </span>
       </header>
       <p>{item.payload.message}</p>

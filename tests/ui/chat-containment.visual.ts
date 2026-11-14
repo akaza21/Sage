@@ -1,5 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -42,7 +43,10 @@ async function prepare(
     `,
   });
   await expect(
-    page.locator("form.composer").first().getByRole("textbox"),
+    page
+      .locator("form.composer")
+      .first()
+      .getByRole("combobox", { name: "Message agent" }),
   ).toHaveValue("Draft survives resizing");
   // The queued rows are a lazy chunk that loads with the first queued
   // message (lazyParts.tsx), so geometry waits for the live queue to mount.
@@ -60,46 +64,75 @@ async function expectControls(
   // A queue that scrolls as one block keeps its controls' local offsets.
   checkOverlap = !scrollControls,
 ) {
-  const boxes = [];
-  for (const control of await controls.all()) {
-    if (!(await control.isVisible())) continue;
-    if (scrollControls) await control.scrollIntoViewIfNeeded();
-    const boundary = await owner.boundingBox();
-    expect(boundary).not.toBeNull();
-    const box = await control.boundingBox();
-    expect(box).not.toBeNull();
-    if (
-      await control.evaluate((element) =>
-        element.classList.contains("composer__plus"),
-      )
-    )
-      // The plus is an exact 24px target at every composer width.
-      expect(box!.width).toBe(24);
-    else expect(box!.width).toBeGreaterThanOrEqual(24);
-    expect(box!.height).toBeGreaterThanOrEqual(24);
-    expect(box!.x).toBeGreaterThanOrEqual(Math.max(0, boundary!.x));
-    expect(box!.y).toBeGreaterThanOrEqual(Math.max(0, boundary!.y));
-    expect(box!.x + box!.width).toBeLessThanOrEqual(
-      Math.min(viewport.width, boundary!.x + boundary!.width) + 0.5,
-    );
-    expect(box!.y + box!.height).toBeLessThanOrEqual(
-      Math.min(viewport.height, boundary!.y + boundary!.height) + 0.5,
-    );
-    expect(
-      await control.evaluate((element) => {
+  // One page round trip measures every control; a round trip per control and
+  // property made these loops slow enough to time out under CPU load.
+  const ownerHandle = await owner.elementHandle();
+  const measured = await controls.evaluateAll(
+    (elements, { root, scroll }) =>
+      elements.flatMap((element) => {
+        const visible = () => {
+          const rect = element.getBoundingClientRect();
+          return (
+            rect.width > 0 &&
+            rect.height > 0 &&
+            getComputedStyle(element).visibility !== "hidden"
+          );
+        };
+        if (!visible()) return [];
+        if (scroll)
+          (
+            element as Element & {
+              scrollIntoViewIfNeeded(center: boolean): void;
+            }
+          ).scrollIntoViewIfNeeded(true);
+        const boundary = root!.getBoundingClientRect();
         const rect = element.getBoundingClientRect();
-        return element.contains(
-          document.elementFromPoint(
-            rect.x + rect.width / 2,
-            rect.y + rect.height / 2,
-          ),
-        );
+        return [
+          {
+            plus: element.classList.contains("composer__plus"),
+            boundary: {
+              x: boundary.x,
+              y: boundary.y,
+              width: boundary.width,
+              height: boundary.height,
+            },
+            box: {
+              x: rect.x,
+              y: rect.y,
+              width: rect.width,
+              height: rect.height,
+            },
+            hit: element.contains(
+              document.elementFromPoint(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+              ),
+            ),
+          },
+        ];
       }),
-    ).toBe(true);
+    { root: ownerHandle, scroll: scrollControls },
+  );
+  await ownerHandle?.dispose();
+  const boxes: { x: number; y: number; width: number; height: number }[] = [];
+  for (const { plus, boundary, box, hit } of measured) {
+    // The plus is an exact 24px target at every composer width.
+    if (plus) expect(box.width).toBe(24);
+    else expect(box.width).toBeGreaterThanOrEqual(24);
+    expect(box.height).toBeGreaterThanOrEqual(24);
+    expect(box.x).toBeGreaterThanOrEqual(Math.max(0, boundary.x));
+    expect(box.y).toBeGreaterThanOrEqual(Math.max(0, boundary.y));
+    expect(box.x + box.width).toBeLessThanOrEqual(
+      Math.min(viewport.width, boundary.x + boundary.width) + 0.5,
+    );
+    expect(box.y + box.height).toBeLessThanOrEqual(
+      Math.min(viewport.height, boundary.y + boundary.height) + 0.5,
+    );
+    expect(hit).toBe(true);
     const localBox = {
-      ...box!,
-      x: box!.x - boundary!.x,
-      y: box!.y - boundary!.y,
+      ...box,
+      x: box.x - boundary.x,
+      y: box.y - boundary.y,
     };
     if (checkOverlap) {
       for (const sibling of boxes) {
@@ -205,38 +238,46 @@ async function expectOverlay(
   viewport: { width: number; height: number },
 ) {
   await expect(panel).toBeVisible();
+  await waitForAnimations(panel, { subtree: false });
   await expect
-    .poll(async () => {
-      const box = await panel.boundingBox();
-      return Boolean(
-        box &&
-        box.x >= 8 &&
-        box.y >= 8 &&
-        box.x + box.width <= viewport.width - 7.5 &&
-        box.y + box.height <= viewport.height - 7.5,
-      );
-    })
-    .toBe(true);
-  const actionable = panel
-    .locator('button:enabled, input:not(:disabled), [tabindex="0"]')
-    .first();
-  if (await actionable.count()) {
-    await actionable.scrollIntoViewIfNeeded();
-    expect(
-      await actionable.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        return element.contains(
+    .poll(() =>
+      panel.evaluate((element, { width, height }) => {
+        const box = element.getBoundingClientRect();
+        if (
+          box.width === 0 ||
+          box.height === 0 ||
+          box.x < 8 ||
+          box.y < 8 ||
+          box.right > width - 7.5 ||
+          box.bottom > height - 7.5
+        )
+          return "outside the viewport";
+        const actionable = element.querySelector(
+          'button:enabled, input:not(:disabled), [tabindex="0"]',
+        );
+        if (!actionable) return "contained";
+        (
+          actionable as Element & {
+            scrollIntoViewIfNeeded(center: boolean): void;
+          }
+        ).scrollIntoViewIfNeeded(true);
+        const rect = actionable.getBoundingClientRect();
+        return actionable.contains(
           document.elementFromPoint(
             rect.x + rect.width / 2,
             rect.y + rect.height / 2,
           ),
-        );
-      }),
-    ).toBe(true);
-  }
+        )
+          ? "contained"
+          : "covered";
+      }, viewport),
+    )
+    .toBe("contained");
 }
 
 async function expectNestedPlacement(picker: Locator, parent: Locator) {
+  await waitForAnimations(parent, { subtree: false });
+  await waitForAnimations(picker);
   const child = await picker.boundingBox();
   const owner = await parent.boundingBox();
   expect(
@@ -331,6 +372,7 @@ test("expanded narrow file changes keep names and totals on one row", async ({
   const disclosure = summary.locator(".acp-file-changes__header");
   if ((await disclosure.getAttribute("aria-expanded")) === "false")
     await disclosure.click();
+  await waitForAnimations(summary);
   const rows = summary.locator(".chat-file-chip");
   expect(await rows.count()).toBeGreaterThan(0);
   for (const row of await rows.all()) {
@@ -441,13 +483,25 @@ for (const profile of profiles) {
                   exact: true,
                 }),
               ).toBeVisible();
-              // Like Codex refs 36/37, the narrowest composer drops the context meter.
-              const contentWidth = await composer.evaluate(
-                (element) => element.clientWidth,
+              // Like Codex refs 36/37, the context meter is the first thing a
+              // tight composer drops: it never outlasts a control label.
+              // (The width sweep in composer-compaction checks it returns.)
+              const labelsCompacted = await composer.evaluate((element) =>
+                [
+                  ".composer__access-text",
+                  ".composer__harness .searchable-picker__trigger-label",
+                  ".composer__model-label",
+                  ".composer__effort-picker[aria-controls] .composer__effort-label",
+                  ".project-scope .searchable-picker__trigger-label",
+                ].some((selector) => {
+                  const label = element.querySelector(selector);
+                  return (
+                    label !== null && label.getBoundingClientRect().width === 0
+                  );
+                }),
               );
-              await expect(composer.getByRole("progressbar")).toHaveCount(
-                profile.context && contentWidth > 280 ? 1 : 0,
-              );
+              if (!profile.context || labelsCompacted)
+                await expect(composer.getByRole("progressbar")).toHaveCount(0);
               await expect(composer.locator(".chat-goal-strip")).toHaveCount(
                 profile.goal ? 1 : 0,
               );
@@ -581,6 +635,7 @@ for (const forcedColors of ["none", "active"] as const) {
     await expect(trigger).toBeFocused();
     await trigger.click();
     await expect(panel).toBeVisible();
+    await waitForAnimations(panel);
     const initialAnchor = await trigger.boundingBox();
     // The leading options trigger sits at the composer's left edge, so the
     // shared placement clamps the panel to the composer instead of
@@ -613,138 +668,404 @@ for (const forcedColors of ["none", "active"] as const) {
   });
 }
 
+// One test per picker keeps each resize sweep short under CPU load.
+const emptyChatPickers = (profile: ChatContainmentProfile) => [
+  "Harness",
+  "Model",
+  ...(profile.effort ? ["Thinking level: High"] : []),
+  // Add stays disabled here (no capability-backed action); its menu
+  // keyboard and resize behaviour is covered with installModeActions.
+  "Access options",
+  "Project",
+];
+
 for (const profile of profiles) {
-  for (const forcedColors of ["none", "active"] as const) {
-    test(`${profile.name} empty chat pickers remain hit-testable and viewport-contained through resizing (${forcedColors})`, async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: 1888, height: 1096 });
-      await page.emulateMedia({ forcedColors, reducedMotion: "no-preference" });
-      await prepare(page, profile, true, false);
-      const composer = page.locator("form.composer").first();
-      const harness = composer.getByRole("button", {
-        name: "Harness",
-        exact: true,
-      });
-      const model = composer.getByRole("button", {
-        name: "Model",
-        exact: true,
-      });
-      const harnessBox = await harness.boundingBox();
-      const modelBox = await model.boundingBox();
-      expect(harnessBox!.x + harnessBox!.width).toBeLessThanOrEqual(
-        modelBox!.x,
-      );
-      for (const name of [
-        "Harness",
-        "Model",
-        ...(profile.effort ? ["Thinking level: High"] : []),
-        // Add stays disabled here (no capability-backed action); its menu
-        // keyboard and resize behaviour is covered with installModeActions.
-        "Access options",
-      ]) {
-        const trigger = composer.getByRole("button", { name, exact: true });
-        await trigger.focus();
-        await page.keyboard.press("Enter");
-        const panel = page.locator(".menu-popover").filter({ visible: true });
-        await expect(panel).toHaveCount(1);
-        if (name === "Access options") {
-          const first = panel.getByRole("menuitemradio").first();
-          const last = panel.getByRole("menuitemradio").last();
-          await expect(first).toBeFocused();
-          await page.keyboard.press("End");
-          await expect(last).toBeFocused();
-          await page.keyboard.press("Home");
-          await expect(first).toBeFocused();
-        }
-        for (const viewport of [
-          viewports[2],
-          viewports[1],
-          viewports[0],
-          viewports[3],
-          viewports[2],
-        ]) {
-          await page.setViewportSize(viewport);
-          await expectOverlay(panel, viewport);
-          await expect(composer.getByRole("textbox")).toHaveValue(
-            "Draft survives resizing",
+  for (const target of emptyChatPickers(profile)) {
+    for (const forcedColors of ["none", "active"] as const) {
+      test(`${profile.name} empty chat ${target} picker remains hit-testable and viewport-contained through resizing (${forcedColors})`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: 1888, height: 1096 });
+        await page.emulateMedia({
+          forcedColors,
+          reducedMotion: "no-preference",
+        });
+        await prepare(page, profile, true, false);
+        const composer = page.locator("form.composer").first();
+        if (target === "Harness") {
+          const harness = composer.getByRole("button", {
+            name: "Harness",
+            exact: true,
+          });
+          const model = composer.getByRole("button", {
+            name: "Model",
+            exact: true,
+          });
+          const harnessBox = await harness.boundingBox();
+          const modelBox = await model.boundingBox();
+          expect(harnessBox!.x + harnessBox!.width).toBeLessThanOrEqual(
+            modelBox!.x,
           );
         }
-        await page.keyboard.press("Escape");
+        if (target !== "Project") {
+          const name = target;
+          const trigger = composer.getByRole("button", { name, exact: true });
+          await trigger.focus();
+          await page.keyboard.press("Enter");
+          const panel = page.locator(".menu-popover").filter({ visible: true });
+          await expect(panel).toHaveCount(1);
+          if (name === "Access options") {
+            const first = panel.getByRole("menuitemradio").first();
+            const last = panel.getByRole("menuitemradio").last();
+            await expect(first).toBeFocused();
+            await page.keyboard.press("End");
+            await expect(last).toBeFocused();
+            await page.keyboard.press("Home");
+            await expect(first).toBeFocused();
+          }
+          for (const viewport of [
+            viewports[2],
+            viewports[1],
+            viewports[0],
+            viewports[3],
+            viewports[2],
+          ]) {
+            await page.setViewportSize(viewport);
+            await expectOverlay(panel, viewport);
+          }
+          await expect(
+            composer.getByRole("combobox", { name: "Message agent" }),
+          ).toHaveValue("Draft survives resizing");
+          await page.keyboard.press("Escape");
+          await expect(
+            composer.getByRole("button", {
+              name,
+              exact: true,
+            }),
+          ).toBeFocused();
+          return;
+        }
         await expect(
           composer.getByRole("button", {
-            name,
+            name: "Composer options",
             exact: true,
           }),
+        ).toBeDisabled();
+        const options = page.getByRole("menu", {
+          name: "Composer options menu",
+        });
+        // The fixture renames the project, so match the picker by its prefix.
+        // This exercises the new-chat heading's picker; the composer's own
+        // chip is covered by the project-chip geometry tests.
+        const project = page
+          .getByRole("region", { name: "New chat", exact: true })
+          .first()
+          .getByRole("button", { name: /^Project: / });
+        await project.click();
+        await expect(options).toHaveCount(0);
+        const picker = page.locator(".searchable-picker__popover");
+        await expectOverlay(picker, viewports[2]);
+        await page.setViewportSize(viewports[1]);
+        await expectOverlay(picker, viewports[1]);
+        await expectNestedPlacement(picker, project);
+        expect(
+          await project.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            return element.contains(
+              document.elementFromPoint(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+              ),
+            );
+          }),
+        ).toBe(true);
+        const selected = picker.getByRole("option").last();
+        await selected.scrollIntoViewIfNeeded();
+        expect(
+          await selected.evaluate((element) => {
+            const rect = element.getBoundingClientRect();
+            return element.contains(
+              document.elementFromPoint(
+                rect.x + rect.width / 2,
+                rect.y + rect.height / 2,
+              ),
+            );
+          }),
+        ).toBe(true);
+        await selected.click();
+        await expect(picker).toHaveCount(0);
+        await project.focus();
+        await page.keyboard.press("Enter");
+        await expect(
+          picker.getByRole("combobox", { name: /^Project: / }),
         ).toBeFocused();
-      }
-      await expect(
-        composer.getByRole("button", { name: "Composer options", exact: true }),
-      ).toHaveCount(0);
-      const options = page.getByRole("menu", {
-        name: "Composer options menu",
+        await page.keyboard.press("Escape");
+        await expect(project).toBeFocused();
+        await expect(options).toHaveCount(0);
+        // The new-chat caption picker does not fold at 480 (only the composer
+        // chip does); its open picker stays contained across the resize.
+        await page.keyboard.press("Enter");
+        await expect(picker).toHaveCount(1);
+        await page.setViewportSize(viewports[3]);
+        await expect(project).toBeVisible();
+        await expectOverlay(picker, viewports[3]);
+        await page.keyboard.press("Escape");
+        await expect(picker).toHaveCount(0);
+        await page.setViewportSize(viewports[2]);
+        await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
+        for (const field of await page
+          .locator("form.composer textarea")
+          .all()) {
+          await expect(field).toHaveValue("Draft survives resizing");
+        }
       });
-      // The fixture renames the project, so match the picker by its prefix.
-      // A new chat scopes its project from the heading caption, not the composer.
-      const project = page
-        .getByRole("region", { name: "New chat", exact: true })
-        .first()
-        .getByRole("button", { name: /^Project: / });
-      await project.click();
-      await expect(options).toHaveCount(0);
-      const picker = page.locator(".searchable-picker__popover");
-      await expectOverlay(picker, viewports[2]);
-      await page.setViewportSize(viewports[1]);
-      await expectOverlay(picker, viewports[1]);
-      await expectNestedPlacement(picker, project);
-      expect(
-        await project.evaluate((element) => {
-          const rect = element.getBoundingClientRect();
-          return element.contains(
-            document.elementFromPoint(
-              rect.x + rect.width / 2,
-              rect.y + rect.height / 2,
-            ),
-          );
-        }),
-      ).toBe(true);
-      const selected = picker.getByRole("option").last();
-      await selected.scrollIntoViewIfNeeded();
-      expect(
-        await selected.evaluate((element) => {
-          const rect = element.getBoundingClientRect();
-          return element.contains(
-            document.elementFromPoint(
-              rect.x + rect.width / 2,
-              rect.y + rect.height / 2,
-            ),
-          );
-        }),
-      ).toBe(true);
-      await selected.click();
-      await expect(picker).toHaveCount(0);
-      await project.focus();
-      await page.keyboard.press("Enter");
-      await expect(
-        picker.getByRole("combobox", { name: /^Project: / }),
-      ).toBeFocused();
-      await page.keyboard.press("Escape");
-      await expect(project).toBeFocused();
-      await expect(options).toHaveCount(0);
-      // The new-chat caption picker does not fold at 480 (only the composer
-      // chip does); its open picker stays contained across the resize.
-      await page.keyboard.press("Enter");
-      await expect(picker).toHaveCount(1);
-      await page.setViewportSize(viewports[3]);
-      await expect(project).toBeVisible();
-      await expectOverlay(picker, viewports[3]);
-      await page.keyboard.press("Escape");
-      await expect(picker).toHaveCount(0);
-      await page.setViewportSize(viewports[2]);
-      await expect(page.locator(".agent-chat-pane")).toHaveCount(1);
-      for (const field of await page.locator("form.composer textarea").all()) {
-        await expect(field).toHaveValue("Draft survives resizing");
-      }
-    });
+    }
   }
 }
+
+async function setComposerContentWidth(composer: Locator, width: number) {
+  await composer.evaluate((element, width) => {
+    const computed = getComputedStyle(element);
+    element.style.width = `${width + Number.parseFloat(computed.borderLeftWidth) + Number.parseFloat(computed.borderRightWidth)}px`;
+  }, width);
+  expect(await composer.evaluate((element) => element.clientWidth)).toBe(width);
+}
+
+async function queuePrompts(page: Page, count: number) {
+  await page.evaluate(async (count) => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    const template = {
+      text: "Review " + "long-resource-and-project-name-".repeat(12),
+      attachedContext: [],
+      bindingId: state.harnesses[0].bindingId!,
+      modelId: state.selectedModelId,
+      status: "outcomeUnknown" as const,
+    };
+    useWorkbenchStore.setState({
+      chatUiById: Object.fromEntries(
+        Object.entries(state.chatUiById).map(([id, ui]) => [
+          id,
+          {
+            ...ui,
+            queuedPrompts: Array.from({ length: count }, (_, index) => ({
+              ...template,
+              id: `geometry-queue-${index}`,
+            })),
+          },
+        ]),
+      ),
+    });
+  }, count);
+  await expect(
+    page.locator("form.composer").first().locator(".composer__queued-row"),
+  ).toHaveCount(count);
+}
+
+// Whether a flex row's visible children sit on one line or several.
+async function rowLines(row: Locator) {
+  return row.evaluate((element) => {
+    const boxes = [...element.children]
+      .map((child) => child.getBoundingClientRect())
+      .filter((box) => box.width > 0);
+    return boxes.some((box) =>
+      boxes.some((other) => other.top >= box.bottom - 0.5),
+    )
+      ? "wrapped"
+      : "single";
+  });
+}
+
+test("the queue scrolls inside the composer flow and wraps its rows when narrow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await prepare(page, profiles[0], false, true);
+  await queuePrompts(page, 12);
+  const composer = page.locator("form.composer").first();
+  const queue = composer.locator(".composer__queued");
+  const row = composer.locator(".composer__queued-row").first();
+  for (const width of [521, 520, 300]) {
+    await setComposerContentWidth(composer, width);
+    const at = `at ${width}px`;
+    const tray = (await queue.boundingBox())!;
+    const form = (await composer.boundingBox())!;
+    expect(tray.y, at).toBeGreaterThanOrEqual(form.y);
+    expect(tray.x, at).toBeGreaterThanOrEqual(form.x);
+    expect(tray.x + tray.width, at).toBeLessThanOrEqual(form.x + form.width);
+    expect(tray.height, at).toBeLessThanOrEqual(320);
+    // Twelve long rows never grow the composer; the tray scrolls instead.
+    expect(
+      await queue.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+      at,
+    ).toBe(true);
+    // Rows sit on the composer fill rather than painting their own.
+    expect(
+      await row.evaluate(
+        (element) => getComputedStyle(element).backgroundColor,
+      ),
+      at,
+    ).toBe("rgba(0, 0, 0, 0)");
+    await expectSiblings(row);
+  }
+  // Narrow, the row wraps its state and actions onto a second line instead
+  // of squeezing or overlapping them.
+  expect(await rowLines(row)).toBe("wrapped");
+});
+
+test("queued rows stay in the composer below an edit summary that scrolls on its own", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await prepare(page, profiles[0], false, true);
+  const composer = page.locator("form.composer").first();
+  const transcript = page.locator(".message-list").first();
+  const edits = page.locator(".chat-edit-summary-zone").first();
+  await expect(edits).toBeVisible();
+  await queuePrompts(page, 3);
+  const queue = composer.locator(".composer__queued");
+  await expect(queue).toBeVisible();
+  await waitForAnimations(composer);
+  const tray = (await queue.boundingBox())!;
+  const form = (await composer.boundingBox())!;
+  const summary = (await edits.boundingBox())!;
+  const transcriptBox = (await transcript.boundingBox())!;
+  // The queue is part of the composer, never floated over the transcript or
+  // the edit summary.
+  expect(tray.y).toBeGreaterThanOrEqual(form.y);
+  expect(tray.y + tray.height).toBeLessThanOrEqual(form.y + form.height + 0.5);
+  expect(summary.y + summary.height).toBeLessThanOrEqual(tray.y + 0.5);
+  expect(transcriptBox.y + transcriptBox.height).toBeLessThanOrEqual(
+    summary.y + 0.5,
+  );
+  const slot = await edits.evaluate((element) => {
+    const style = getComputedStyle(element);
+    return [style.overflowY, style.backgroundColor];
+  });
+  expect(slot).toEqual(["auto", "rgba(0, 0, 0, 0)"]);
+});
+
+test("a short pane caps the composer row at 60% and scrolls its upper content above a fixed toolbar", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 480, height: 560 });
+  await prepare(page, profiles[0], false, true);
+  const surface = (await page.locator(".chat-surface").boundingBox())!;
+  const composer = page.locator("form.composer").first();
+  const form = (await composer.boundingBox())!;
+  expect(form.height).toBeLessThanOrEqual(surface.height * 0.6 + 0.5);
+  expect(
+    (await page.locator(".message-list").boundingBox())!.height,
+  ).toBeGreaterThanOrEqual(120);
+  const body = composer.locator(".composer__body");
+  expect(
+    await body.evaluate(
+      (element) => element.scrollHeight > element.clientHeight,
+    ),
+  ).toBe(true);
+  const toolbarLocator = composer.locator(".composer__toolbar");
+  const toolbar = (await toolbarLocator.boundingBox())!;
+  const scroller = (await body.boundingBox())!;
+  expect(scroller.y + scroller.height).toBeLessThanOrEqual(toolbar.y + 0.5);
+  expect(toolbar.y + toolbar.height).toBeLessThanOrEqual(
+    form.y + form.height + 0.5,
+  );
+  // The toolbar keeps its natural height instead of shrinking with the body.
+  expect(toolbar.height).toBe(
+    await toolbarLocator.evaluate((element) => element.scrollHeight),
+  );
+});
+
+test("a harness notice takes its own row above the transcript and composer", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await prepare(page, profiles[0], false, false);
+  const surface = page.locator(".chat-surface");
+  const transcript = surface.locator(".message-list");
+  const composer = surface.locator("form.composer");
+  const before = (await transcript.boundingBox())!;
+  const composerBefore = (await composer.boundingBox())!;
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      harnesses: state.harnesses.map((harness) => ({
+        ...harness,
+        characterisation: "uncharacterised" as const,
+      })),
+    });
+  });
+  const notice = surface.locator(":scope > .build-notice");
+  await expect(notice).toBeVisible();
+  const noticeBox = (await notice.boundingBox())!;
+  const transcriptBox = (await transcript.boundingBox())!;
+  const composerBox = (await composer.boundingBox())!;
+  expect(noticeBox.y + noticeBox.height).toBeLessThanOrEqual(
+    transcriptBox.y + 0.5,
+  );
+  expect(transcriptBox.y + transcriptBox.height).toBeLessThanOrEqual(
+    composerBox.y + 0.5,
+  );
+  expect(transcriptBox.height).toBeGreaterThanOrEqual(120);
+  // The notice row comes out of the transcript, never the composer.
+  expect(transcriptBox.height).toBeLessThan(before.height);
+  expect(composerBox).toEqual(composerBefore);
+});
+
+test("the goal strip reflows with its composer container at 280px, not the window", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await prepare(page, profiles[0], false, true);
+  const composer = page.locator("form.composer").first();
+  const row = composer.locator(".chat-goal-strip__row");
+  await setComposerContentWidth(composer, 281);
+  await expect(row).toBeVisible();
+  expect(await rowLines(row)).toBe("single");
+  expect((await row.boundingBox())!.height).toBe(32);
+  await setComposerContentWidth(composer, 280);
+  expect(await rowLines(row)).toBe("wrapped");
+  const wrapped = (await row.boundingBox())!;
+  expect(wrapped.height).toBeGreaterThan(32);
+  await expectSiblings(row);
+});
+
+test("attached chips stay on a centred row in a 360px-tall viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 480, height: 360 });
+  await prepare(page, profiles[0], false, false);
+  const row = page.locator("form.composer .composer__attachment-row").first();
+  await row.scrollIntoViewIfNeeded();
+  await expect(row).toBeVisible();
+  const geometry = await row.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    // Centre of the content box: the row has a top border only.
+    const top = box.top + Number.parseFloat(style.borderTopWidth);
+    const centre = (top + box.bottom) / 2;
+    return {
+      chips: [...element.querySelectorAll(".composer__attachment")].map(
+        (chip) => {
+          const chipBox = chip.getBoundingClientRect();
+          return chipBox.width > 0 &&
+            chipBox.height > 0 &&
+            chipBox.top >= box.top &&
+            chipBox.bottom <= box.bottom
+            ? "visible"
+            : "clipped";
+        },
+      ),
+      offCentre: [...element.children].map((child) => {
+        const childBox = child.getBoundingClientRect();
+        return Math.abs(childBox.top + childBox.height / 2 - centre);
+      }),
+    };
+  });
+  expect(geometry.chips).toEqual(["visible", "visible"]);
+  for (const offset of geometry.offCentre)
+    expect(offset).toBeLessThanOrEqual(1);
+});

@@ -1,7 +1,7 @@
-use std::{fs, path::Path, process::Command};
+use std::{fs, path::Path};
 
 use super::{GitDiffScope, scoped_file_diff};
-use crate::{domain::FileDiff, workspace::Workspace};
+use crate::{domain::FileDiff, error::AppError, workspace::Workspace};
 
 struct Repository(std::path::PathBuf);
 
@@ -13,7 +13,7 @@ impl Drop for Repository {
 
 fn git(root: &Path, args: &[&str]) {
     assert!(
-        Command::new("git")
+        crate::git_process::fixture_git()
             .arg("-C")
             .arg(root)
             .args(args)
@@ -44,7 +44,7 @@ fn text(diff: &FileDiff) -> String {
 }
 
 #[tokio::test]
-async fn scoped_diffs_show_raw_content_without_running_repository_textconv() {
+async fn scoped_diffs_refuse_repository_textconv_and_show_raw_content() {
     let (repo, workspace) = fixture();
     fs::write(repo.0.join(".gitattributes"), "*.txt diff=sentinel\n").unwrap();
     fs::write(repo.0.join("tracked.txt"), "base\n").unwrap();
@@ -58,6 +58,23 @@ async fn scoped_diffs_show_raw_content_without_running_repository_textconv() {
     git(&repo.0, &["add", "tracked.txt"]);
     fs::write(repo.0.join("tracked.txt"), "working\n").unwrap();
     let resource = workspace.resource("tracked.txt").unwrap();
+    for scope in [
+        None,
+        Some(GitDiffScope::Staged),
+        Some(GitDiffScope::Unstaged),
+    ] {
+        let error = scoped_file_diff(&workspace, &resource, scope)
+            .await
+            .unwrap_err();
+        assert!(
+            matches!(&error, AppError::UnsafeRepositoryConfig(message)
+                if message.contains("diff.sentinel.textconv")),
+            "{error}"
+        );
+    }
+
+    // With the driver removed, every scope shows the raw content.
+    git(&repo.0, &["config", "--unset", "diff.sentinel.textconv"]);
     for (scope, removed, added) in [
         (None, "base", "working"),
         (Some(GitDiffScope::Staged), "base", "indexed"),

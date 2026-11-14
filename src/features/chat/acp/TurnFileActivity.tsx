@@ -8,6 +8,7 @@ import { FileChangeTotals } from "./FileChangeTotals";
 import { rootDisplayName } from "./rootDisplayName";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { editDiffAction } from "./chatEditSummary";
+import { WorkspaceTrackingNotice } from "../AcpHistoryNotices";
 
 export function TurnFileActivity({
   page,
@@ -37,14 +38,10 @@ export function TurnFileActivity({
     [page, turn, workspaceChanges, workspaceIncomplete],
   );
   if (!changes.length && !workspaceIncomplete) return null;
+  const notice = workspaceIncomplete ? <WorkspaceTrackingNotice /> : null;
   // With no known file, an incomplete ledger is reported on its own rather
   // than as an "Edited at least 0 files" card with dead actions.
-  if (!changes.length)
-    return (
-      <p role="status">
-        Workspace change tracking is incomplete for this turn.
-      </p>
-    );
+  if (!changes.length) return notice;
   const incomplete = sourceTruncated || rejectedUnsafeOrStale;
   const count = changeKeys.size;
   const open =
@@ -54,7 +51,7 @@ export function TurnFileActivity({
     changes.find((change) => editDiffAction(change).resource);
   const visible = expanded ? changes : changes.slice(0, 3);
   const unavailable = !open
-    ? "Changes cannot be opened from this Chat session."
+    ? "Changes cannot be opened from this chat session."
     : "No file baseline is available.";
   function view(change: (typeof changes)[number]) {
     const { resource } = editDiffAction(change);
@@ -72,11 +69,7 @@ export function TurnFileActivity({
   }
   return (
     <section className="acp-edited-files" aria-label="Edited files">
-      {workspaceIncomplete ? (
-        <p role="status">
-          Workspace change tracking is incomplete for this turn.
-        </p>
-      ) : null}
+      {notice}
       <header className="acp-edited-files__header">
         <FilePenLine size={16} aria-hidden="true" />
         <div className="acp-edited-files__heading">

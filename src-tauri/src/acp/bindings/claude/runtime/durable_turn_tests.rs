@@ -169,7 +169,7 @@ async fn drive_turn<J: crate::acp::runtime::AdapterBatchJournal>(
     pump.queue_prompt(
         Prompt::new("prompt", "Reply with the single word ok.").expect("prompt"),
         &RequiredText::new("clientMessageId", turn_id.to_owned()).expect("client message id"),
-        crate::settings_store::SessionAccessMode::ReadOnly,
+        crate::settings_store::SessionAccessMode::Ask,
     )
     .expect("prompt queued");
     let mut sink = Sink::default();
@@ -222,7 +222,7 @@ fn ready(runtime: &mut ClaudeRuntime) {
         .expect("written");
     runtime
         .ingest(
-            &frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":SESSION}})),
+            &frame(json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":SESSION,"modes":{"currentModeId":"default","availableModes":[{"id":"default","name":"Default"}]}}})),
             &Mapper,
         )
         .expect("session response");

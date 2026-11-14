@@ -9,10 +9,10 @@ use crate::{
 #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 use crate::workspace::root_identity_path;
 
-pub(super) struct ParentAuthority<'a> {
-    pub(super) root: &'a Path,
-    pub(super) expected_root: RootIdentity,
-    pub(super) relative_path: &'a str,
+pub(in crate::workspace) struct ParentAuthority<'a> {
+    pub(in crate::workspace) root: &'a Path,
+    pub(in crate::workspace) expected_root: RootIdentity,
+    pub(in crate::workspace) relative_path: &'a str,
 }
 
 pub(super) struct RenameObservation {
@@ -93,6 +93,8 @@ where
 
 #[cfg(windows)]
 mod windows;
+#[cfg(windows)]
+pub(in crate::workspace) use windows::open_parent;
 #[cfg(windows)]
 pub(super) use windows::{observe_recovery, rename_file_noreplace};
 #[cfg(any(target_os = "linux", target_os = "macos"))]

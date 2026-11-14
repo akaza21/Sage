@@ -1,11 +1,12 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use crate::acp::bindings::codex::{CodexRuntime, Platform};
 use serde_json::{Value, json};
 
 use super::*;
 
 fn initialize_result() -> Value {
-    json!({"userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-        "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+    json!({"userAgent":user_agent("sage", "unknown"),
+        "codexHome":MANAGED_CODEX_HOME,
         "platformFamily":"windows","platformOs":"windows"})
 }
 
@@ -217,6 +218,7 @@ fn invalid_optional_thread_model_and_effort_do_not_fail_start_or_resume_activati
                             external_session_id: ExternalId::new("thread", "thread-catalog")
                                 .unwrap(),
                             model: Some(ModelId::new("model", "selected").unwrap()),
+                            rewind_at: None,
                         }
                     } else {
                         ActivationMode::New {
@@ -276,6 +278,101 @@ fn invalid_optional_thread_model_and_effort_do_not_fail_start_or_resume_activati
                     assert_eq!(commands.lock().unwrap().len(), 1);
                 }
             }
+        }
+    });
+}
+
+#[test]
+fn settings_in_the_session_response_chunk_defer_catalog_hydration_until_handoff() {
+    struct Writes(Vec<Value>);
+
+    impl crate::acp::runtime::EgressTransport for Writes {
+        fn write(&mut self, frame: &crate::acp::transport::OutboundFrame) -> FrameWriteOutcome {
+            self.0
+                .push(serde_json::from_slice(frame.payload()).unwrap());
+            FrameWriteOutcome::Complete
+        }
+    }
+
+    runtime().block_on(async {
+        for resume in [false, true] {
+            let mut seed = CodexRuntime::fixture(Platform::WindowsX86_64);
+            let initialize = seed.command(AdapterCommand::Initialize).unwrap();
+            seed.ingest(
+                &frame(json!({"id":request_id(&initialize),"result":initialize_result()})),
+                &NoResources(17),
+            )
+            .unwrap();
+            let capabilities = seed.capabilities().unwrap();
+            let mode = if resume {
+                ActivationMode::Resume {
+                    native_root: r"C:\repo".into(),
+                    external_session_id: ExternalId::new("thread", "thread-catalog").unwrap(),
+                    model: None,
+                    rewind_at: None,
+                }
+            } else {
+                ActivationMode::New {
+                    native_root: r"C:\repo".into(),
+                    model: None,
+                }
+            };
+            let mut activation_intent = intent_with_epoch(mode, 1);
+            activation_intent.curated_ceiling = capabilities.clone();
+            activation_intent.sage_policy = capabilities;
+            let adapter =
+                CodexRuntime::fixture_with_identity(Platform::WindowsX86_64, [7; 32], session_id());
+            let (journal, commands) = journal(Ok(ActivationReceipt {
+                projection_revision: ProjectionRevision::new(1).unwrap(),
+            }));
+            let mut pump =
+                ActivationPump::new(adapter, journal, NoResources(17), activation_intent).unwrap();
+            let mut transport = Transport(VecDeque::new());
+            pump.begin().unwrap();
+            pump.flush_one(&mut transport).unwrap();
+            pump.push_stdout_chunk(&line(json!({"id":1,"result":initialize_result()})), 1)
+                .await
+                .unwrap();
+            pump.flush_one(&mut transport).unwrap();
+            pump.flush_one(&mut transport).unwrap();
+
+            let mut chunk = line(json!({"id":2,"result":{
+                "thread":{"id":"thread-catalog"},"model":"old-model","reasoningEffort":"low"
+            }}));
+            chunk.extend(line(json!({"method":"thread/settings/updated","params":{
+                "threadId":"thread-catalog","threadSettings":{"model":"updated-model","effort":"high"}
+            }})));
+            assert!(pump.push_stdout_chunk(&chunk, 2).await.unwrap());
+            assert!(
+                !pump.completion_ready(),
+                "the settings frame still needs draining"
+            );
+            assert!(pump.drain_stdout(2).await.unwrap());
+            assert!(pump.completion_ready());
+            let mut idle = pump.try_into_idle_parts().ok().expect("activated session");
+            assert_eq!(commands.lock().unwrap().len(), 1);
+            assert_eq!(idle.session().external_session_id.as_str(), "thread-catalog");
+
+            let mut writes = Writes(Vec::new());
+            idle.hydrate_model_config(&mut writes);
+            let requests = writes
+                .0
+                .iter()
+                .filter(|request| request["method"] == "model/list")
+                .collect::<Vec<_>>();
+            assert_eq!(requests.len(), 1);
+            let response = frame(json!({"id":requests[0]["id"],"result":{
+                "data":[{"id":"updated-model","displayName":"Updated model","isDefault":false,
+                    "supportedReasoningEfforts":[{"reasoningEffort":"high","description":"Deep"}]}],
+                "nextCursor":null
+            }}));
+            let batch = idle.ingest_idle_frame(&response).unwrap();
+            idle.accept_idle_batch(batch, &mut writes).unwrap();
+            let config = serde_json::to_value(idle.adapter.session_config().unwrap()).unwrap();
+            assert_eq!(config["confirmedModel"]["id"], "updated-model");
+            assert_eq!(config["confirmedModel"]["name"], "Updated model");
+            assert_eq!(config["confirmedEffort"], "high");
+            assert_eq!(config["configOptions"][0]["currentValue"], "high");
         }
     });
 }

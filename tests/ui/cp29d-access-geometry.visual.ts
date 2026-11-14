@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 import type { SessionAccessModeCapability } from "../../src/domain/sessionAccessMode";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -93,7 +94,7 @@ for (const width of [1888, 720, 480]) {
       await expect(accessReason).toHaveCount(0);
       if (profile.name === "Claude") {
         await composer
-          .getByRole("textbox", { name: "Message agent", exact: true })
+          .getByRole("combobox", { name: "Message agent", exact: true })
           .fill("Default access sends");
         await expect(send).toBeEnabled();
       }
@@ -141,9 +142,7 @@ for (const width of [1888, 720, 480]) {
         menu.getByText("Approve for me", { exact: true }),
       ).toHaveCount(0);
       // Measure the settled panel, not a frame of its enter animation.
-      await menu.evaluate((element) =>
-        Promise.all(element.getAnimations().map((motion) => motion.finished)),
-      );
+      await waitForAnimations(menu);
       const anchor = await trigger.boundingBox();
       const panel = await menu.boundingBox();
       expect(anchor).not.toBeNull();
@@ -152,6 +151,8 @@ for (const width of [1888, 720, 480]) {
       expect(panel!.x + panel!.width).toBeLessThanOrEqual(width - 8);
       expect(panel!.y).toBeGreaterThanOrEqual(8);
       expect(panel!.y + panel!.height).toBeLessThanOrEqual(1088);
+      for (const summary of await page.locator(".acp-file-changes").all())
+        await waitForAnimations(summary);
       const edits = await page
         .locator(".chat-edit-summary-zone:not(:empty)")
         .boundingBox();

@@ -15,10 +15,20 @@ import { useWorkbenchStore } from "../../app/store";
 import type { EditorDocument, WorkbenchTab } from "../../domain/workbench";
 import { FIND_BAR_BINDINGS } from "../../domain/settingsNavigation";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { settleLazyModules } from "../../test/settleLazyModules";
 import { contentText } from "./editorContent";
 import { FileSurface } from "./FileSurface";
 import { findMatches, type FindRequest } from "./inFileFind";
 import { MAX_EDITABLE_CONTENT_BYTES } from "./editorContent";
+// The editor, the find and Go-to Line bars, and F12's symbol navigation with
+// its parser load lazily. Load them with the file, so a first open does not
+// race its cold import against a one-second query.
+import "./CodeMirrorEditorRuntime";
+import "./FileFindBar";
+import "./FileGoToLineBar";
+import "./fileSymbolNavigation";
+import "../outline/syntaxOutline";
+import "./editorLanguageJavaScript";
 
 const path = "debounce.txt";
 const resource = { rootId: "root-a", relativePath: path };
@@ -183,7 +193,7 @@ describe("FileSurface durability cadence", () => {
       revision: 1,
     });
     expect(activeEditorText()).toBe("edited\n");
-    expect(screen.getByRole("alert")).toHaveTextContent(
+    expect(await screen.findByRole("alert")).toHaveTextContent(
       "External change detected. Disk content changed",
     );
 
@@ -213,9 +223,13 @@ describe("FileSurface durability cadence", () => {
         })),
       );
     setSaving(true);
-    // A browser drops focus from content that stops being editable.
-    act(() => view.contentDOM.blur());
+    // The save locks the document but leaves the content editable, so the
+    // browser keeps focus on it.
+    expect(editor).toHaveAttribute("aria-readonly", "true");
+    expect(editor).toHaveAttribute("contenteditable", "true");
+    expect(view.hasFocus).toBe(true);
     setSaving(false);
+    expect(editor).toHaveAttribute("aria-readonly", "false");
     expect(view.hasFocus).toBe(true);
   });
 
@@ -236,7 +250,7 @@ describe("FileSurface durability cadence", () => {
     });
     expect(view.state.doc.toString()).toBe("base\n");
     expect(await screen.findByRole("status")).toHaveTextContent(
-      "That edit was not applied: it would make this File larger than 1 MiB",
+      "That edit was not applied: it would make this file larger than 1 MiB",
     );
     act(() => {
       view.dispatch({ changes: { from: 0, insert: "y" } });
@@ -291,7 +305,12 @@ describe("FileSurface durability cadence", () => {
     vi.useFakeTimers();
     const snapshot = vi
       .spyOn(editorPort, "snapshotEditorBuffer")
-      .mockResolvedValue({ revision: 1, persistedAt: 1, dirty: true });
+      .mockResolvedValue({
+        revision: 1,
+        applied: true,
+        persistedAt: 1,
+        dirty: true,
+      });
     useWorkbenchStore.setState({
       tabs: [tab],
       activeTabId: tab.id,
@@ -811,14 +830,16 @@ async function openFindBar(
   },
 ) {
   fireEvent.keyDown(editor, chord);
-  const query = await screen.findByRole("textbox", { name: "Find text" });
+  // By label: a role query works out every control's name and visibility
+  // through jsdom's style cascade. The Replace test checks their roles.
+  const query = await screen.findByLabelText("Find text");
   fireEvent.change(query, { target: { value: "" } });
   for (const name of [
     "Match case",
     "Match whole word",
     "Use regular expression",
   ]) {
-    const toggle = screen.getByRole("button", { name });
+    const toggle = screen.getByLabelText(name);
     if (toggle.getAttribute("aria-pressed") === "true") fireEvent.click(toggle);
   }
   return query;
@@ -875,6 +896,10 @@ describe("FileSurface Find and Replace", () => {
     });
     expect(activeEditorText()).toBe("dog dog dog!");
     expect(screen.getByRole("status")).toHaveTextContent("No matches");
+    const marks = () => editor.querySelectorAll(".cm-findMatch").length;
+    expect(marks()).toBe(0);
+    // Undo searches again after the typing pause; step over it.
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
     // Typing right after it does not join the Replace all step either.
     act(() => {
       view.dispatch({
@@ -891,6 +916,9 @@ describe("FileSurface Find and Replace", () => {
       undo(view);
     });
     expect(activeEditorText()).toBe("dog cat cat!");
+    await act(() => vi.runOnlyPendingTimersAsync());
+    expect(screen.getByRole("status")).toHaveTextContent("1 of 2 matches");
+    expect(marks()).toBe(2);
   });
 
   it("only selects the next match when Replace finds no match selected, as VS Code does", async () => {
@@ -917,43 +945,47 @@ describe("FileSurface Find and Replace", () => {
     expect(activeEditorText()).toBe("cat dog");
   });
 
-  it("selects the next match after a longer replacement and replaces past the match cap", async () => {
+  it("selects the next match after a longer replacement", async () => {
     setReadyEditor(tab, "foo foo foo");
-    const { unmount } = render(<FileSurface tab={tab} />);
-    let editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
-    let query = await openFindBar(editor);
+    render(<FileSurface tab={tab} />);
+    const editor = await screen.findByLabelText(`Edit ${path}`);
+    const query = await openFindBar(editor);
     fireEvent.change(query, { target: { value: "foo" } });
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Replace" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Replace text" }), {
+    fireEvent.click(screen.getByLabelText("Toggle Replace"));
+    fireEvent.change(screen.getByLabelText("Replace text"), {
       target: { value: "barbaz" },
     });
     const replaceOne = async () =>
       act(async () => {
-        fireEvent.keyDown(
-          screen.getByRole("textbox", { name: "Replace text" }),
-          { key: "Enter" },
-        );
+        fireEvent.keyDown(screen.getByLabelText("Replace text"), {
+          key: "Enter",
+        });
       });
     await replaceOne();
     expect(activeEditorText()).toBe("barbaz foo foo");
     expect(editorSelection(editor)).toEqual({ start: 7, end: 10 });
     await replaceOne();
     expect(activeEditorText()).toBe("barbaz barbaz foo");
-    unmount();
+  });
 
+  it("replaces past the match cap", async () => {
     // Replace all changes every match, not only the 10,000 Find shows.
     setReadyEditor(tab, "a ".repeat(12_000));
     render(<FileSurface tab={tab} />);
-    editor = await screen.findByRole("textbox", { name: `Edit ${path}` });
-    query = await openFindBar(editor);
+    const editor = await screen.findByLabelText(`Edit ${path}`);
+    const query = await openFindBar(editor);
     fireEvent.change(query, { target: { value: "a" } });
     expect(screen.getByRole("status")).toHaveTextContent("1 of 10000+ matches");
-    fireEvent.click(screen.getByRole("button", { name: "Toggle Replace" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Replace text" }), {
+    // The count is of every match; only the visible ones are drawn.
+    const drawn = editor.querySelectorAll(".cm-findMatch").length;
+    expect(drawn).toBeGreaterThan(0);
+    expect(drawn).toBeLessThan(10_000);
+    fireEvent.click(screen.getByLabelText("Toggle Replace"));
+    fireEvent.change(screen.getByLabelText("Replace text"), {
       target: { value: "b" },
     });
     await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Replace all" }));
+      fireEvent.click(screen.getByLabelText("Replace all"));
     });
     expect(activeEditorText()).toBe("b ".repeat(12_000));
   });
@@ -1276,15 +1308,17 @@ describe("FileSurface local symbol navigation", () => {
 
     fireEvent.keyDown(editor, { key: "F12" });
     const declaration = content.indexOf("example() {}");
+    // The caret moves before the status is set, a render later: wait for the
+    // status, then check the caret.
     await waitFor(() =>
-      expect(editorSelection(editor)).toEqual({
-        start: declaration,
-        end: declaration,
-      }),
+      expect(screen.getByRole("status")).toHaveTextContent(
+        "Moved to local symbol.",
+      ),
     );
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Moved to local symbol.",
-    );
+    expect(editorSelection(editor)).toEqual({
+      start: declaration,
+      end: declaration,
+    });
   });
 
   it("keeps F12's command-time identifier when the caret moves during loading", async () => {
@@ -1319,7 +1353,7 @@ describe("FileSurface local symbol navigation", () => {
     fireEvent.keyDown(editor, { key: "F12" });
     await waitFor(() =>
       expect(screen.getByRole("status")).toHaveTextContent(
-        "No declaration in this File for that name.",
+        "No declaration in this file for that name.",
       ),
     );
     expect(editorSelection(editor)).toEqual({ start: 2, end: 2 });
@@ -1340,6 +1374,8 @@ describe("FileSurface Markdown Preview", () => {
       project: { id: "project-a", name: "Sage", roots: [] },
     });
     render(<FileSurface tab={markdownTab} readOnly />);
+    // The preview loads lazily; do not rely on an earlier test's load.
+    await settleLazyModules();
 
     expect(
       screen.getByRole("navigation", { name: "File path" }),

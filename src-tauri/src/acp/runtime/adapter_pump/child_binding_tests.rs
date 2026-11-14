@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use crate::acp::{
     bindings::codex::{CodexRuntime, Platform},
     runtime::{JournalHandle, ProjectionMailbox, SqliteAdapterBatchJournal},
@@ -65,15 +66,16 @@ fn generated_child_opened_journey_admits_owner_and_reads_after_parent_completion
         crate::acp::store::child_transcript::verify_current_binding(&database.connection(), &scope).unwrap();
         let mut idle = pump.try_into_completed_parts().ok().expect("completed parent handoff");
         let mut output = CaptureTransport(Vec::new());
-        idle.write_child(&mut output, "fixture-child-1", parent).unwrap();
+        idle.write_child(&mut output, &child_turns_read("fixture-child-1", parent)).unwrap();
         let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
-        assert_eq!(request["method"], "thread/read");
-        assert_eq!(request["params"]["includeTurns"], true);
+        assert_eq!(request["method"], "thread/turns/list");
+        assert_eq!(request["params"]["itemsView"], "full");
         let replies = crate::acp::fixture::child_opened_wire_for_test(request["id"].as_u64().unwrap());
-        let reply = replies.iter().find(|frame| frame.pointer("/result/thread/id")
-            == Some(&serde_json::json!("fixture-child-1"))).unwrap();
+        let reply = replies.iter().find(|frame| frame.get("id") == Some(&request["id"])
+            && frame.pointer("/result/data").is_some()).unwrap();
         idle.accept_idle_stdout_chunk(&codex_line(reply.clone()), 10, &mut output).await.unwrap();
-        let Some(crate::acp::goal::NativeRpcReply::ChildTranscript(snapshot)) = idle.take_native_rpc_reply() else { panic!("child read did not settle") };
+        let Some(crate::acp::goal::NativeRpcReply::TurnsPage(page)) = idle.take_native_rpc_reply() else { panic!("child read did not settle") };
+        let snapshot = crate::acp::bindings::codex::test_transcript::child_snapshot(page, "fixture-child-1", parent);
         crate::acp::store::child_transcript::persist_snapshot(&mut database.connection(), &scope, &snapshot, 10).unwrap();
         assert_eq!(crate::acp::store::child_transcript::load_snapshot(&database.connection(), &scope).unwrap(), Some(snapshot));
         drop(idle);
@@ -206,12 +208,12 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         assert!(matches!(snapshot.turns[0].items[0].payload,
             crate::acp::intent::NormalizedPayload::ToolCall { .. }));
         let mut read_wire: serde_json::Value = serde_json::from_str(include_str!(
-            "fixtures/cp18d_child_read_0146.json"
+            "fixtures/cp18d_child_read.json"
         )).unwrap();
         read_wire["id"] = 41.into();
         read_wire["result"]["thread"]["id"] = "child-native".into();
         read_wire["result"]["thread"]["parentThreadId"] = "external-session".into();
-        let mut read = crate::acp::bindings::codex::normalize_read_response(
+        let mut read = crate::acp::bindings::codex::test_transcript::child_read(
             &serde_json::to_vec(&read_wire).unwrap(), 41, "child-native", "external-session", &Mapper
         ).unwrap();
         assert_eq!(read.turns[0].items.len(), 1);
@@ -236,7 +238,7 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
             serde_json::json!({"id":"command-one","type":"commandExecution",
                 "status":"inProgress","command":"rg TODO src"})
         );
-        let overlapping_read = crate::acp::bindings::codex::normalize_read_response(
+        let overlapping_read = crate::acp::bindings::codex::test_transcript::child_read(
             &serde_json::to_vec(&read_wire).unwrap(), 41, "child-native", "external-session", &Mapper
         ).unwrap();
         crate::acp::store::child_transcript::persist_snapshot(&mut reopened, &scope, &overlapping_read, 12).unwrap();
@@ -377,8 +379,8 @@ fn ready_codex_parent_for_thread(parent: &str) -> CodexRuntime {
         .ingest(
             &codex_frame(serde_json::json!({
                 "id":initialize_id,"result":{
-                    "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                    "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                    "userAgent":user_agent("sage", "unknown"),
+                    "codexHome":MANAGED_CODEX_HOME,
                     "platformFamily":"windows","platformOs":"windows"
                 }
             })),

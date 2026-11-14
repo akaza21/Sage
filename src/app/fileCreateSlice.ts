@@ -11,6 +11,7 @@ import {
   validateNewFilePath,
 } from "../features/files/newFileContract";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { editorNavigationUpdate } from "./editorNavigation";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import { resourceTabUpdate } from "./resourceTabs";
 import {
@@ -215,7 +216,7 @@ export const createFileCreateSlice: StateCreator<
         creationError(
           kind,
           validationError ??
-            `Select one available Project root to create a ${kind}.`,
+            `Select one available project root to create a ${kind}.`,
         ),
       );
       return false;
@@ -281,6 +282,8 @@ export const createFileCreateSlice: StateCreator<
         ...creationComplete(kind, result.warning),
       }));
       if (kind === "file" && resourceConfirmed) {
+        const navigation = editorNavigationUpdate();
+        if (navigation) set(navigation);
         await get().loadEditor(result.resource);
       } else {
         await get().loadDirectory(resourceConfirmed ? result.resource : parent);

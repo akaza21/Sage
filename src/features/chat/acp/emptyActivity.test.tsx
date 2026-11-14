@@ -83,7 +83,7 @@ describe("empty turn activity", () => {
       ).toBeNull();
     },
   );
-  it("does not disclose blank progress as completed activity", () => {
+  it("does not disclose blank progress as completed activity", async () => {
     const progress = {
       ...textItem(),
       id: "blank-progress",
@@ -92,7 +92,7 @@ describe("empty turn activity", () => {
     } as AcpItem;
     const answer = { ...textItem(), ordinal: 2 };
     const { container } = renderTurn("completed", [progress, answer]);
-    expect(screen.getByText("Normalized answer")).toBeVisible();
+    expect(await screen.findByText("Normalized answer")).toBeVisible();
     expect(container.querySelector("details.chat-transcript-work")).toBeNull();
     expect(screen.getByText("Worked for 0s")).toBeVisible();
   });
@@ -109,12 +109,12 @@ describe("empty turn activity", () => {
     expect(screen.queryByText("Worked for 0s")).toBeNull();
   });
 
-  it("keeps a real zero-duration answer without an empty disclosure", () => {
+  it("keeps a real zero-duration answer without an empty disclosure", async () => {
     const answer = textItem();
     answer.payload.text =
       "This project is ready. Choose a harness and begin a persistent chat.";
     const { container } = renderTurn("completed", [answer]);
-    expect(screen.getByText(answer.payload.text)).toBeVisible();
+    expect(await screen.findByText(answer.payload.text)).toBeVisible();
     expect(container.querySelector("details.chat-transcript-work")).toBeNull();
     expect(screen.getByText("Worked for 0s")).toBeVisible();
   });

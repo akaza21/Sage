@@ -1,0 +1,32 @@
+/* The picked command's input hint, drawn where a placeholder would be.
+   Loads with the composer's `/` command controller. */
+.composer__command-hint {
+  position: absolute;
+  inset: 0 0 auto;
+  max-height: 100%;
+  padding: var(--space-3) var(--space-3) var(--space-1);
+  overflow: hidden;
+  color: var(--color-text-muted);
+  font-family: inherit;
+  font-size: var(--font-size-md);
+  line-height: var(--line-height-normal);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  pointer-events: none;
+}
+
+.composer__command-hint-typed {
+  visibility: hidden;
+}
+
+@media (max-height: 360px) {
+  .composer__command-hint {
+    padding-top: var(--space-2);
+  }
+}
+
+@media (forced-colors: active) {
+  .composer__command-hint {
+    color: GrayText;
+  }
+}

@@ -1,9 +1,10 @@
-import { useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useAgentArtifactPaneFocus } from "./useAgentArtifactPaneFocus";
 import { BrowserNavigationControls } from "../features/browser/BrowserNavigationControls";
+import { createCodeMirrorEditorRuntime } from "../features/files/CodeMirrorEditorRuntime";
 
 afterEach(cleanup);
 
@@ -240,3 +241,60 @@ it.each([false, true])(
     expect(onExpandedChange).not.toHaveBeenCalled();
   },
 );
+
+function FileResourceFixture({ readOnly }: { readOnly: boolean }) {
+  const paneRef = useRef<HTMLElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const [expanded, setExpanded] = useState(true);
+  const onKeyDown = useAgentArtifactPaneFocus({
+    expanded,
+    overlay: true,
+    paneRef,
+    triggerRef,
+    onExpandedChange: setExpanded,
+  });
+  useLayoutEffect(() => {
+    if (!expanded) return;
+    const runtime = createCodeMirrorEditorRuntime({
+      parent: editorRef.current!,
+      ariaLabel: "Edit notes.md",
+      path: "notes.md",
+      content: "hello",
+      disabled: readOnly,
+      maxContentLength: 1024,
+      onChange: () => undefined,
+    });
+    return runtime.destroy;
+  }, [expanded, readOnly]);
+  return (
+    <div>
+      <button ref={triggerRef}>Show files and preview</button>
+      {expanded ? (
+        <aside ref={paneRef} tabIndex={-1} onKeyDown={onKeyDown}>
+          <div ref={editorRef} />
+        </aside>
+      ) : null}
+    </div>
+  );
+}
+
+it("closes the overlay on Escape from a read-only File, not an editable one", () => {
+  const view = render(<FileResourceFixture readOnly />);
+  let editor = screen.getByRole("textbox", { name: "Edit notes.md" });
+  editor.focus();
+  expect(editor).toHaveFocus();
+  fireEvent.keyDown(editor, { key: "Escape" });
+  expect(screen.queryByRole("complementary")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Show files and preview" }),
+  ).toHaveFocus();
+  view.unmount();
+
+  render(<FileResourceFixture readOnly={false} />);
+  editor = screen.getByRole("textbox", { name: "Edit notes.md" });
+  editor.focus();
+  fireEvent.keyDown(editor, { key: "Escape" });
+  expect(screen.getByRole("complementary")).toBeVisible();
+  expect(editor).toHaveFocus();
+});

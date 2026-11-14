@@ -112,6 +112,22 @@ async fn mark_before_prompt_with<
     }
 }
 
+/// Reacquires project authority after the capture, which ran without it. A
+/// project switch or a Chat archive during the capture advanced the
+/// transition epoch, so the send fails here as stale, undispatched, and its
+/// workspace mark is forgotten.
+pub(super) async fn relock_after_capture<'a>(
+    state: &'a AppState,
+    project_id: &SageProjectId,
+    generation: ProjectGeneration,
+    session_id: &SageAgentSessionId,
+    client_intent_id: &ClientIntentId,
+) -> Result<crate::state::ActiveProjectContext<'a>, AcpIpcError> {
+    lock_acp_context(state, project_id, generation)
+        .await
+        .inspect_err(|_| forget_unprepared(state, session_id, client_intent_id))
+}
+
 #[tauri::command]
 pub async fn get_acp_turn_workspace_changes(
     state: State<'_, AppState>,
@@ -135,7 +151,12 @@ pub async fn get_acp_turn_workspace_changes(
         .database
         .connection()
         .query_row(
-            "SELECT client_intent_id,session_id FROM turns WHERE project_id=?1 AND chat_id=?2 AND id=?3 AND terminal_at IS NOT NULL",
+            // An undone Turn's changes are no longer the chat's to show.
+            concat!(
+                "SELECT t.client_intent_id,t.session_id FROM turns t
+                 WHERE t.project_id=?1 AND t.chat_id=?2 AND t.id=?3 AND t.terminal_at IS NOT NULL AND ",
+                crate::acp::store::turn_undo::visible_turn!("t.session_id", "t.id")
+            ),
             rusqlite::params![
                 request.project_id.as_str(),
                 request.chat_id.as_str(),

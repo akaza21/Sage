@@ -1,11 +1,15 @@
 use super::super::super::state::ExternalKind;
+use super::super::items::{file_change_edit_tool, normalize_file_change};
 use super::super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ItemUpdateMode, ResourceMapper,
     normalize_item, normalize_materialized_command,
     support::{expect_thread_and_turn, identity, text},
 };
 use super::{child_thread, provisional};
-use crate::acp::lifecycle::{ItemLifecycle, TerminalUpdate};
+use crate::acp::{
+    intent::NormalizedPayload,
+    lifecycle::{ItemLifecycle, TerminalUpdate, ToolState},
+};
 use serde_json::{Map, Value};
 
 pub(super) fn item_event<M: ResourceMapper>(
@@ -39,10 +43,34 @@ pub(super) fn item_event<M: ResourceMapper>(
             )
         })
         .transpose()?;
-    let normalized = match command.as_ref() {
-        Some(command) => Some(normalize_materialized_command(command)?),
-        None => normalize_item(item, requested, mapper)?,
+    let file_change =
+        item.get("type").and_then(Value::as_str) == Some("fileChange") && requested.is_terminal();
+    let (normalized, pair) = match command.as_ref() {
+        Some(command) => (Some(normalize_materialized_command(command)?), None),
+        None if file_change => {
+            let (normalized, pair) = normalize_file_change(item, mapper, true)?;
+            (Some(normalized), pair)
+        }
+        None => (normalize_item(item, requested, mapper)?, None),
     };
+    // A settled file change is also an Edit tool row, ordered before its diff;
+    // the row is skipped when its id would not fit an `ExternalId`.
+    let edit = file_change
+        .then(|| file_change_edit_tool(item, mapper))
+        .transpose()?
+        .flatten()
+        .and_then(|(payload, tool_state, terminal)| {
+            let id = adapter
+                .scoped_in_turn(ExternalKind::Item, turn, &format!("{external}:edit"))
+                .ok()?;
+            Some(IncomingEvent::Item {
+                id,
+                lifecycle: terminal.unwrap_or(requested),
+                tool_state,
+                payload,
+                update_mode: ItemUpdateMode::Replace,
+            })
+        });
     let Some((mut payload, tool_state, terminal)) = normalized else {
         return Ok(IngressDisposition::Events(vec![]));
     };
@@ -57,6 +85,11 @@ pub(super) fn item_event<M: ResourceMapper>(
             TerminalUpdate::Apply => {}
         }
     }
+    if matches!(payload, NormalizedPayload::CompactionNotice)
+        && adapter.record_compaction(turn, false).is_none()
+    {
+        return Ok(IngressDisposition::IgnoredLate);
+    }
     if let Some(command) = command {
         if lifecycle.is_terminal() {
             adapter.remove_command_item(external);
@@ -70,24 +103,40 @@ pub(super) fn item_event<M: ResourceMapper>(
     }
     adapter.enrich_subagent_payload(&mut payload);
     adapter.learn_child_threads(&payload);
+    if item.get("type").and_then(Value::as_str) == Some("mcpToolCall") {
+        // A later progress report restates this call, so remember it while
+        // it runs and forget it once it is terminal.
+        if lifecycle.is_terminal() || tool_state != Some(ToolState::InProgress) {
+            adapter.forget_running_mcp_tool(external);
+        } else if child_thread_id.is_none() {
+            adapter.track_running_mcp_tool(turn, external, &payload);
+        }
+    }
     let id = adapter
         .scoped_in_turn(ExternalKind::Item, turn, external)
         .map_err(identity)?;
-    Ok(match child_thread_id {
+    let pair_event = pair.map(|pair| IncomingEvent::FilePair {
+        id: id.clone(),
+        old_text: pair.old_text,
+        new_text: pair.new_text,
+    });
+    let event = match child_thread_id {
         Some(child_thread_id) => IncomingEvent::ChildThreadItem {
             id,
             lifecycle,
             payload,
             child_thread_id,
-        }
-        .into(),
+        },
         None => IncomingEvent::Item {
             id,
             lifecycle,
             tool_state,
             payload,
             update_mode: ItemUpdateMode::Replace,
-        }
-        .into(),
-    })
+        },
+    };
+    let mut events: Vec<_> = edit.into_iter().collect();
+    events.push(event);
+    events.extend(pair_event);
+    Ok(IngressDisposition::Events(events))
 }

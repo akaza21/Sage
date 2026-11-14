@@ -11,8 +11,10 @@ use uuid::Uuid;
 
 use super::{
     acp::{
-        await_codex_discovery, get_acp_chat_page_inner, get_codex_discovery_inner,
-        get_codex_discovery_with_deadline, start_acp_session_inner,
+        codex_discovery::{
+            await_codex_discovery, get_codex_discovery_inner, get_codex_discovery_with_deadline,
+        },
+        get_acp_chat_page_inner, start_acp_session_inner,
     },
     *,
 };
@@ -60,6 +62,12 @@ use std::sync::Mutex;
 #[cfg(windows)]
 mod attached_context;
 
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+mod slash_command_journey;
+
+#[cfg(feature = "acp-fixture")]
+mod embedded_resource_journey;
+
 pub(super) fn state_with_project() -> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-acp-command-{}", Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
@@ -97,6 +105,7 @@ fn state_with_unavailable_codex_project() -> (AppState, String, String, std::pat
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
         terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+        archive_releases: Default::default(),
     };
     (state, project.id, chat_id, root)
 }
@@ -152,6 +161,7 @@ fn state_with_internal_opencode_registry() -> (AppState, String, String, std::pa
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
         terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+        archive_releases: Default::default(),
     };
     (state, project.id, chat_id, root)
 }
@@ -224,6 +234,7 @@ fn state_with_admitted_codex_project() -> (AppState, String, String, std::path::
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
         terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+        archive_releases: Default::default(),
     };
     (state, project.id, chat_id, root)
 }
@@ -259,6 +270,7 @@ fn state_with_registry_test_binding_project() -> (AppState, String, String, std:
         project_transitions: tokio::sync::Mutex::new(0),
         startup_recovery_notice: None,
         terminals: crate::user_terminal::TerminalSessionPort::desktop(),
+        archive_releases: Default::default(),
     };
     (state, project.id, chat_id, root)
 }
@@ -620,6 +632,7 @@ async fn start_admitted_command_session(
             client_intent_id: ClientIntentId::new(),
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
             model_id: None,
+            effort: None,
         },
     )
     .await
@@ -678,6 +691,7 @@ async fn start_registry_test_command_session(
             )
             .unwrap(),
             model_id: None,
+            effort: None,
         },
     )
     .await
@@ -1118,6 +1132,7 @@ fn start_preserves_project_root_failure_classification() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await;
@@ -1237,6 +1252,7 @@ fn unknown_requested_binding_is_rejected_before_any_durable_mutation() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "not-admitted").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await;
@@ -1296,6 +1312,7 @@ fn an_admitted_opencode_binding_starts_a_durable_session() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "opencode-acp").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await
@@ -1437,6 +1454,7 @@ fn unavailable_registration_rejects_the_codex_name_without_routing_by_name() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await;
@@ -1479,6 +1497,7 @@ fn admitted_registration_rejects_a_foreign_binding_name() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "foreign-app-server").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await;
@@ -1548,6 +1567,7 @@ fn test_binding_routes_through_registry_resolution_before_durable_start() {
                 )
                 .unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await
@@ -1605,6 +1625,7 @@ fn admitted_codex_start_command_routes_to_the_durable_service() {
                 client_intent_id: ClientIntentId::new(),
                 binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await
@@ -1678,6 +1699,7 @@ fn test_binding_activation_uses_the_registry_factory_path() {
                 )
                 .unwrap(),
                 model_id: None,
+                effort: None,
             },
         )
         .await
@@ -1817,6 +1839,7 @@ fn test_binding_session_operations_dispatch_by_durable_binding_id() {
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "dispatch by durable binding").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await;
@@ -1973,6 +1996,7 @@ fn admitted_codex_send_command_routes_only_to_the_exact_owned_host() {
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "route this prompt").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await
@@ -1999,6 +2023,7 @@ fn admitted_codex_send_command_routes_only_to_the_exact_owned_host() {
                 runtime_epoch: RuntimeEpoch::new(2).unwrap(),
                 prompt: Prompt::new("prompt", "must reject").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await;
@@ -2103,6 +2128,104 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
             CommandHostMode::Idle,
             false,
         );
+        // Claude reports its permission modes as session modes.
+        state.acp.report_session_config_for_test(
+            &owner,
+            crate::acp::session_config::SessionConfig::from_wire(
+                &serde_json::json!({
+                    "modes": {"currentModeId": "default", "availableModes": [
+                        {"id": "default", "name": "Manual"},
+                        {"id": "plan", "name": "Plan"},
+                        {"id": "bypassPermissions", "name": "Bypass permissions"}
+                    ]},
+                    "configOptions": []
+                }),
+                true,
+            )
+            .unwrap(),
+        );
+        // A direct mode change is refused: only the access path sets it.
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let direct = super::acp::session_config::configure(
+            &state,
+            ActivateAcpSessionRequest {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+            },
+            state
+                .acp
+                .live_session_config(&owner)
+                .unwrap()
+                .config_revision,
+            crate::acp::session_config::ConfigMutation::Mode(
+                crate::acp::session_config::ConfigId::new("modeId", "bypassPermissions").unwrap(),
+            ),
+        )
+        .await;
+        assert!(
+            matches!(direct, Err(AcpIpcError::InvalidRequest { .. })),
+            "{direct:?}"
+        );
+        // The chat's own mode is selected before its prompt is prepared; a
+        // select the session refuses stops the prompt.
+        state
+            .settings
+            .set_chat_access(
+                session_id.as_str(),
+                crate::settings_store::SessionAccessMode::Plan,
+                1,
+            )
+            .unwrap();
+        let page = state
+            .acp
+            .load_chat_page(project_id.clone(), chat_id.clone(), None)
+            .unwrap();
+        let refused = send_acp_turn_inner(
+            &state,
+            SendAcpTurnRequest::Session {
+                project_id: project_id.clone(),
+                project_generation: ProjectGeneration::ZERO,
+                chat_id: chat_id.clone(),
+                expected_projection_revision: page.projection_revision,
+                client_intent_id: ClientIntentId::new(),
+                session_id: session_id.clone(),
+                runtime_epoch: owner.runtime_epoch,
+                prompt: Prompt::new("prompt", "must not run in plan").unwrap(),
+                attached_context: Default::default(),
+                staged: None,
+            },
+        )
+        .await;
+        // The fake runtime cannot change modes, so the select itself fails
+        // and the prompt is never prepared.
+        assert!(
+            matches!(
+                &refused,
+                Err(SendAcpTurnFailure {
+                    failure: AcpIpcError::RecoveryRequired { .. },
+                    prompt_dispatch: PromptDispatch::NotStarted,
+                })
+            ),
+            "{refused:?}"
+        );
+        assert!(calls.lock().unwrap().is_empty());
+        // The session is already in the chat's mode: nothing to select.
+        state
+            .settings
+            .set_chat_access(
+                session_id.as_str(),
+                crate::settings_store::SessionAccessMode::Ask,
+                2,
+            )
+            .unwrap();
         let page = state
             .acp
             .load_chat_page(project_id.clone(), chat_id.clone(), None)
@@ -2119,6 +2242,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "must not run").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await;
@@ -2253,6 +2377,7 @@ fn admitted_codex_cancel_command_accepts_a_turn_advanced_by_ingress() {
                 runtime_epoch: owner.runtime_epoch,
                 prompt: Prompt::new("prompt", "cancel after ingress").unwrap(),
                 attached_context: Default::default(),
+                staged: None,
             },
         )
         .await

@@ -9,17 +9,21 @@ import type {
   ProjectGeneration,
   SageTurnId,
   SendAcpTurnRequest,
+  StagedSelection,
 } from "../../../domain/acp";
 import type {
   AcpProjectionScope,
   ProjectionCommitDisposition,
 } from "../../../app/acpProjectionStore";
+import { chatAccessDraftPort } from "../../../app/chatAccessDraftPort";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { createAcpSessionActions, typedError } from "./acpSessionActions";
 import { currentSession } from "./acpTurnState";
 import { createActionProjectionCommit, sameScope } from "./acpActionProjection";
 import { createClientIntentFactory } from "./clientIntent";
 import { currentNonterminalTurn } from "./currentNonterminalTurn";
+import type { SlashCommandPort } from "../slashCommandTurn";
+import { createSessionActionRunner } from "./sessionAction";
 
 export { cancellableTurnId } from "./acpTurnState";
 
@@ -55,10 +59,14 @@ export interface AcpActionCommands {
   endSession: typeof acpDesktop.endSession;
   setSessionMode?: typeof acpDesktop.setSessionMode;
   setSessionConfigOption?: typeof acpDesktop.setSessionConfigOption;
+  queueSessionConfigChoice?: typeof acpDesktop.queueSessionConfigChoice;
+  runSessionAction?: typeof acpDesktop.runSessionAction;
 }
 
 interface AcpActionDependencies {
   commands?: AcpActionCommands;
+  /** The typed slash-command route; loaded on demand when omitted. */
+  slashCommands?: SlashCommandPort;
   getContext: () => AcpActionContext | null;
   onUnscopedRefusal?: (message: string) => void;
   settleAccessMode?: () => Promise<boolean>;
@@ -112,11 +120,9 @@ function scopeKey(context: AcpActionContext): string {
   ]);
 }
 
-function sessionById(
-  page: AcpChatPage,
-  sessionId: AgentSessionProjection["id"],
-): AgentSessionProjection {
-  const session = page.sessions.find((candidate) => candidate.id === sessionId);
+/** The page's head session, which activation may have replaced. */
+function headSession(page: AcpChatPage): AgentSessionProjection {
+  const session = currentSession(page);
   if (!session) throw localFailure("The authoritative session is unavailable.");
   return session;
 }
@@ -180,8 +186,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         resource: "queue",
         limit: scopeBusy ? 1 : MAX_CONCURRENT_CHAT_ACTIONS,
         message: scopeBusy
-          ? "Another action is already in progress for this Chat."
-          : "Too many Chat actions are already in progress.",
+          ? "Another action is already in progress for this chat."
+          : "Too many chat actions are already in progress.",
       });
       emitState(captured, origin, {
         busy: false,
@@ -218,6 +224,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     attachedContext: readonly AttachedContext[],
     bindingId: CuratedBindingId,
     modelId: CuratedModelId | null,
+    /** Staged prompt files that go with this send; none unless named. */
+    staged?: StagedSelection,
   ): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const normalizedPrompt = prompt.trim();
@@ -240,11 +248,11 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
     }
     if (!captured) {
       dependencies.onUnscopedRefusal?.(
-        "This Chat is not ready to send. Reload it and try again.",
+        "This chat is not ready to send. Reload it and try again.",
       );
       return Promise.resolve("rejected");
     }
-    if (!normalizedPrompt && !boundedContext.length) {
+    if (!normalizedPrompt && !boundedContext.length && !staged) {
       emitState(captured, "chat", {
         busy: false,
         cancellingTurnId: null,
@@ -257,7 +265,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
         busy: false,
         cancellingTurnId: null,
         error: localFailure(
-          "Wait for the current Turn to finish before sending a follow-up.",
+          "Wait for the current turn to finish before sending a follow-up.",
         ),
       });
       return Promise.resolve("rejected");
@@ -289,6 +297,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             clientIntentId: nextIntentId(),
             bindingId,
             modelId,
+            ...chatAccessDraftPort.effort?.(captured.scope, bindingId, modelId),
           });
           const applied = apply(captured, started);
           if (!applied) return "ignoredStale";
@@ -297,6 +306,8 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           if (!session)
             throw localFailure("Session start returned no session.");
           session = requireSelectedSession(session, bindingId, modelId);
+          // Access chosen before the session existed is given to it first.
+          await chatAccessDraftPort.spend?.(captured.scope.chatId, session);
         }
 
         if (session.residency === "cold") {
@@ -317,7 +328,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           if (!applied) return "ignoredStale";
           page = applied;
           session = requireSelectedSession(
-            sessionById(page, session.id),
+            headSession(page),
             bindingId,
             modelId,
           );
@@ -344,14 +355,25 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
           ...(boundedContext.length > 0
             ? { attachedContext: boundedContext }
             : {}),
+          ...(staged ? { staged } : {}),
         };
+        // `/name …` may be an advertised command; its route loads on demand.
+        const runCommand = normalizedPrompt.startsWith("/")
+          ? await (
+              await import("../slashCommandTurn")
+            ).slashCommandTurn(
+              request,
+              nextIntentId,
+              dependencies.slashCommands,
+            )
+          : null;
         dependencies.clearComposer?.(
           captured,
           normalizedPrompt,
           boundedContext,
         );
         promptCallStarted = true;
-        const sent = await commands.sendTurn(request);
+        const sent = await (runCommand?.() ?? commands.sendTurn(request));
         return apply(captured, sent) ? "applied" : "ignoredStale";
       } catch (value) {
         const error = typedError(value);
@@ -381,10 +403,20 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
       endSession: commands.endSession,
       setSessionMode: commands.setSessionMode,
       setSessionConfigOption: commands.setSessionConfigOption,
+      queueSessionConfigChoice: commands.queueSessionConfigChoice,
     });
+
+  const runSessionAction = createSessionActionRunner({
+    getContext: dependencies.getContext,
+    enqueue,
+    apply,
+    nextIntentId,
+    run: commands.runSessionAction ?? acpDesktop.runSessionAction,
+  });
 
   return {
     submit,
+    runSessionAction,
     steer,
     cancel,
     close,

@@ -293,7 +293,7 @@ test.describe("CP-47 chat motion", () => {
     await openJourney(page);
     const alpha = pane(page, "Alpha");
     await alpha
-      .getByRole("textbox", { name: "Message agent" })
+      .getByRole("combobox", { name: "Message agent" })
       .fill("Stream a short answer");
     await alpha.getByRole("button", { name: "Send message" }).click();
     await runEvent(page, {
@@ -358,7 +358,7 @@ test.describe("CP-47 chat motion", () => {
     await runEvent(page, { type: "seedHistory", chat: "alpha", turns: 8 });
     await settleTranscriptAtEnd(page);
     const alpha = pane(page, "Alpha");
-    const composer = alpha.getByRole("textbox", { name: "Message agent" });
+    const composer = alpha.getByRole("combobox", { name: "Message agent" });
     await composer.fill("Stream while I read");
     await alpha.getByRole("button", { name: "Send message" }).click();
     await runEvent(page, {
@@ -436,12 +436,12 @@ test.describe("CP-47 chat motion", () => {
           getComputedStyle(node, "::before").getPropertyValue(name),
         property,
       );
-    await alpha.getByRole("textbox", { name: "Message agent" }).fill("");
+    await alpha.getByRole("combobox", { name: "Message agent" }).fill("");
     await expect(send).toBeDisabled();
     await expect.poll(() => layer("opacity")).toBe("1");
     expect(await layer("transition-duration")).toBe("0.15s");
     expect(await layer("transition-property")).toBe("opacity");
-    await alpha.getByRole("textbox", { name: "Message agent" }).fill("Hi");
+    await alpha.getByRole("combobox", { name: "Message agent" }).fill("Hi");
     await expect(send).toBeEnabled();
     await expect.poll(() => layer("opacity")).toBe("0");
 

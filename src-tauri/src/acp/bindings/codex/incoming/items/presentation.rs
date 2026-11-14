@@ -64,6 +64,15 @@ pub(super) fn bounded_summary(value: &str) -> Option<String> {
         .filter(|value| !value.is_empty() && value.len() <= ITEM_SUMMARY_BYTES)
 }
 
+/// Command lines are already sanitized; clip only their display summary.
+pub(super) fn bounded_command_summary(value: &str) -> String {
+    let mut end = value.len().min(ITEM_SUMMARY_BYTES);
+    while !value.is_char_boundary(end) {
+        end -= 1;
+    }
+    value[..end].to_owned()
+}
+
 pub(super) fn parse_tool_state(status: &str) -> Option<ToolState> {
     match status {
         "inProgress" => Some(ToolState::InProgress),
@@ -122,6 +131,16 @@ pub(super) fn tool_with_summary(
     })
 }
 
+/// The item lifecycle a settled tool state ends in; `None` while it runs.
+pub(super) fn terminal_lifecycle(tool_state: ToolState) -> Option<ItemLifecycle> {
+    match tool_state {
+        ToolState::Completed => Some(ItemLifecycle::Completed),
+        ToolState::Failed => Some(ItemLifecycle::Failed),
+        ToolState::Declined => Some(ItemLifecycle::Cancelled),
+        _ => None,
+    }
+}
+
 pub(super) fn tool_with_summary_status(
     input: ToolPresentationInput<'_>,
 ) -> Result<ItemNormalization, IngressError> {
@@ -135,12 +154,7 @@ pub(super) fn tool_with_summary_status(
         command_activity,
         execution,
     } = input;
-    let terminal = match tool_state {
-        ToolState::Completed => Some(ItemLifecycle::Completed),
-        ToolState::Failed => Some(ItemLifecycle::Failed),
-        ToolState::Declined => Some(ItemLifecycle::Cancelled),
-        _ => None,
-    };
+    let terminal = terminal_lifecycle(tool_state);
     let label = SafeText::new("toolLabel", label).map_err(content)?;
     let input_summary = input_summary
         .map(|value| SafeText::new("toolInput", value))
@@ -177,6 +191,10 @@ pub(super) fn collaboration(item: &Map<String, Value>) -> Result<ItemNormalizati
                 | "resumeAgent"
                 | "wait"
                 | "closeAgent"
+                | "sendMessage"
+                | "followupTask"
+                | "interruptAgent"
+                | "listAgents"
                 | "started"
                 | "interacted"
                 | "interrupted"

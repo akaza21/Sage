@@ -1,6 +1,4 @@
 import type { AcpChatPage } from "../../domain/acp";
-import { isSideChatId } from "../../workbench/sideChatState";
-import { composerWorkspaceName } from "./composerChrome";
 
 export function isNewProjectChat({
   useNativeAcp,
@@ -26,6 +24,7 @@ export function isNewProjectChat({
     project &&
     page?.projectId === project.id &&
     page.turns.length === 0 &&
+    !page.importedHistory &&
     !projectTransitioning &&
     !loadingEarlier &&
     !historyError &&
@@ -33,14 +32,4 @@ export function isNewProjectChat({
     page.nextCursor === null &&
     !retentionIncomplete,
   );
-}
-
-export function newProjectScopeName(
-  newProject: boolean,
-  page: AcpChatPage | null,
-  project: { name: string } | null,
-) {
-  return newProject && !page?.forkedFrom && !isSideChatId(page?.chatId)
-    ? composerWorkspaceName(project, 1024)
-    : null;
 }

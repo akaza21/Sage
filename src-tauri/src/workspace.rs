@@ -9,6 +9,8 @@ use crate::{
     error::{AppError, AppResult},
 };
 
+#[cfg(windows)]
+pub(crate) mod atomic_write_windows;
 pub(crate) mod directory_skip;
 pub(crate) mod file_create;
 pub(crate) mod file_rename;
@@ -37,6 +39,29 @@ pub(crate) use identity::root_identity_file;
 #[cfg(unix)]
 pub(crate) use identity::root_identity_metadata;
 pub(crate) use identity::{leaf_identity, root_identity_path};
+
+/// Opens a canonical root-relative directory through held, no-follow handles
+/// from the verified root, for operations that must stay inside that
+/// directory after the walk.
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub(crate) use file_create::platform::open_parent as open_held_parent;
+
+/// Windows uses the rename walk: each handle denies delete sharing, so no
+/// component can be renamed or removed, but shares write, so a file inside
+/// the held directory can still be replaced. Returns the root first and the
+/// parent last.
+#[cfg(windows)]
+pub(crate) fn open_held_parent(
+    root: &Path,
+    expected_root: RootIdentity,
+    relative_path: &str,
+) -> AppResult<Vec<fs::File>> {
+    file_rename::platform::open_parent(file_rename::platform::ParentAuthority {
+        root,
+        expected_root,
+        relative_path,
+    })
+}
 
 pub(crate) const MAX_DIRECTORY_ENTRIES: usize = 500;
 
@@ -305,21 +330,6 @@ impl Workspace {
 
     pub(crate) fn resolve_existing_file(&self, relative_path: &str) -> AppResult<PathBuf> {
         self.resolve_existing(relative_path, false)
-    }
-
-    pub(crate) fn resolve_for_write(&self, relative_path: &str) -> AppResult<PathBuf> {
-        validate_relative_path(relative_path, false)?;
-        let candidate = self.root.join(relative_path);
-        let parent = candidate
-            .parent()
-            .ok_or_else(|| AppError::InvalidRequest("file has no parent directory".into()))?
-            .canonicalize()?;
-        if !parent.starts_with(&self.root) {
-            return Err(AppError::InvalidRequest(
-                "write path escapes the workspace".into(),
-            ));
-        }
-        Ok(candidate)
     }
 
     fn resolve_existing(&self, relative_path: &str, allow_root: bool) -> AppResult<PathBuf> {

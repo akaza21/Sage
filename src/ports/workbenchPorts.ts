@@ -1,8 +1,10 @@
 import type { QueuedChatPrompt } from "../domain/chatOwnership";
 import type {
   BootstrapSnapshot,
+  BufferRebaseRequest,
   BufferSnapshotAck,
   BufferSnapshotRequest,
+  ChatDeleteRequest,
   ChatLifecycleRequest,
   MoveChatRequest,
   PinChatRequest,
@@ -61,6 +63,10 @@ import type {
   TrashProjectResourceResult,
 } from "../domain/workbench";
 import type { HarnessDefinition } from "../domain/harness";
+import type {
+  NewChatDefaults,
+  NewChatDefaultsState,
+} from "../domain/newChatDefaults";
 import type { EditorSettings } from "../domain/editorSettingsCatalogue";
 import type { SessionAccessModes } from "../domain/sessionAccessMode";
 import type { UiAppearance } from "../domain/uiAppearance";
@@ -141,7 +147,15 @@ export interface EditorPort {
     request: BufferSnapshotRequest,
   ): Promise<BufferSnapshotAck>;
   saveEditorDocument(resource: ResourceRef): Promise<EditorSaveResult>;
-  discardEditorBuffer(resource: ResourceRef): Promise<EditorDocument>;
+  /**
+   * Drops the buffer for the File on disk. With `keepIfAbsent` (Reload), a
+   * File that is gone keeps its buffer and comes back deleted.
+   */
+  discardEditorBuffer(
+    resource: ResourceRef,
+    keepIfAbsent?: boolean,
+  ): Promise<EditorDocument>;
+  rebaseEditorBuffer(request: BufferRebaseRequest): Promise<EditorSaveResult>;
   watchEditorDocument(resource: ResourceRef): Promise<EditorWatchSubscription>;
 }
 
@@ -246,6 +260,11 @@ export interface ChatPort {
     request: ChatLifecycleRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult>;
+  /** Permanently deletes an archived Chat and its history. */
+  deleteChat(
+    request: ChatDeleteRequest,
+    expectedTransitionEpoch: number,
+  ): Promise<ProjectTransitionResult>;
   moveChat(
     request: MoveChatRequest,
     expectedTransitionEpoch: number,
@@ -267,6 +286,8 @@ export interface ForkChatRequest {
 
 export interface AgentPort {
   listHarnesses(): Promise<HarnessDefinition[]>;
+  /** Discovers the installed harnesses again, picking up updates. */
+  refreshHarnesses(): Promise<HarnessDefinition[]>;
   listHarnessModels(harnessId: string): Promise<ModelOption[]>;
   sendPrompt(request: SendPromptRequest): Promise<SimulatorTurnResult>;
 }
@@ -274,11 +295,13 @@ export interface AgentPort {
 export interface SettingsPort {
   /** Every stored Editor setting, still to be admitted against the catalogue. */
   getEditorSettings(): Promise<Record<string, unknown>>;
+  getNewChatDefaults(): Promise<NewChatDefaultsState>;
   getSessionAccessModes(): Promise<SessionAccessModes>;
   getUiAppearance(): Promise<UiAppearance>;
   setEditorSettings(
     changes: Partial<EditorSettings>,
   ): Promise<Record<string, unknown>>;
+  setNewChatDefaults(defaults: NewChatDefaults): Promise<NewChatDefaultsState>;
   setSessionAccessModes(modes: SessionAccessModes): Promise<SessionAccessModes>;
   setUiAppearance(appearance: UiAppearance): Promise<UiAppearance>;
 }
@@ -315,6 +338,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "discardEditorBuffer",
     "openEditorDocument",
     "readTextFile",
+    "rebaseEditorBuffer",
     "saveEditorDocument",
     "snapshotEditorBuffer",
     "watchEditorDocument",
@@ -346,17 +370,25 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "activateChat",
     "archiveChat",
     "createChat",
+    "deleteChat",
     "moveChat",
     "pinChat",
     "renameChat",
     "restoreChat",
   ],
-  agent: ["listHarnesses", "listHarnessModels", "sendPrompt"],
+  agent: [
+    "listHarnesses",
+    "listHarnessModels",
+    "refreshHarnesses",
+    "sendPrompt",
+  ],
   settings: [
     "getEditorSettings",
+    "getNewChatDefaults",
     "getSessionAccessModes",
     "getUiAppearance",
     "setEditorSettings",
+    "setNewChatDefaults",
     "setSessionAccessModes",
     "setUiAppearance",
   ],

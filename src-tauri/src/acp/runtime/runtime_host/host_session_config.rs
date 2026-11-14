@@ -30,18 +30,29 @@ pub(super) fn yield_to_background_read<T>(
     }
 }
 
+/// The callers that predate `NotDispatched` keep seeing `Deadline`.
+fn dispatched_or_deadline(error: HostError) -> HostError {
+    match error {
+        HostError::NotDispatched => HostError::Deadline,
+        error => error,
+    }
+}
+
 impl RuntimeHost {
     pub(crate) fn native_rpc(
         &self,
         intent: crate::acp::goal::NativeRpcIntent,
     ) -> Result<crate::acp::goal::NativeRpcReply, HostError> {
-        let background = matches!(
-            intent.request,
-            crate::acp::goal::NativeRpcRequest::ChildThreadRead { .. }
-        );
-        let send = || match self.submit(HostCommand::NativeRpc(intent.clone()))? {
-            HostReply::NativeRpc(reply) => Ok(reply),
-            _ => Err(HostError::State),
+        let background = matches!(intent.request, crate::acp::goal::NativeRpcRequest::Read(_));
+        let send = || {
+            let _hold = self.hold_control()?;
+            match self
+                .submit(HostCommand::NativeRpc(intent.clone()))
+                .map_err(dispatched_or_deadline)?
+            {
+                HostReply::NativeRpc(reply) => Ok(reply),
+                _ => Err(HostError::State),
+            }
         };
         if background {
             return send();
@@ -53,7 +64,27 @@ impl RuntimeHost {
         intent: crate::acp::session_config::ConfigIntent,
     ) -> Result<HostOutcome, HostError> {
         yield_to_background_read(
-            || self.outcome(HostCommand::ConfigureSession(intent.clone())),
+            || {
+                let _hold = self.hold_control()?;
+                self.outcome(HostCommand::ConfigureSession(intent.clone()))
+                    .map_err(dispatched_or_deadline)
+            },
+            || std::thread::sleep(USER_COMMAND_RETRY),
+        )
+    }
+    /// The same change, answered by `deadline` at the latest. Unlike
+    /// `configure_session`, a deadline that passes before the change is sent
+    /// is reported as `NotDispatched`.
+    pub(crate) fn configure_session_until(
+        &self,
+        intent: crate::acp::session_config::ConfigIntent,
+        deadline: std::time::Instant,
+    ) -> Result<HostOutcome, HostError> {
+        yield_to_background_read(
+            || {
+                let _hold = self.hold_control()?;
+                self.outcome_until(HostCommand::ConfigureSession(intent.clone()), deadline)
+            },
             || std::thread::sleep(USER_COMMAND_RETRY),
         )
     }

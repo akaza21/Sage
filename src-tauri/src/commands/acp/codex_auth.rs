@@ -2,7 +2,7 @@ use tauri::State;
 
 use crate::{
     acp::{
-        bindings::codex::{CodexAuthDeadline, CodexDiscoveryRunError},
+        bindings::codex::{CodexAuthDeadline, CodexDiscoveryRunError, NativeApiKey},
         intent::{AcpIpcError, AcpUnavailableReason, CodexAuthResponse, CodexAuthScope},
         service::CodexAuthAction,
     },
@@ -37,6 +37,29 @@ pub async fn start_codex_auth(
         request.scope,
         CodexAuthAction::Login,
         request.consent,
+    )
+    .await
+}
+
+/// The key goes straight to Codex, which stores it in its own home.
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CodexApiKeyRequest {
+    #[serde(flatten)]
+    scope: CodexAuthScope,
+    api_key: NativeApiKey,
+}
+
+#[tauri::command]
+pub async fn login_codex_api_key(
+    state: State<'_, AppState>,
+    request: CodexApiKeyRequest,
+) -> Result<CodexAuthResponse, AcpIpcError> {
+    run_codex_auth(
+        &state,
+        request.scope,
+        CodexAuthAction::ApiKey(request.api_key),
+        true,
     )
     .await
 }
@@ -83,10 +106,11 @@ async fn run_codex_auth(
             message: safe_message("Codex beta requires one unchanged Project root."),
         })?;
     let manager = state.acp.codex_auth_manager();
+    let changes_account = action.changes_account();
     let prepared = manager
         .prepare(scope, root, action, consent, deadline)
         .map_err(codex_discovery_error)?;
-    if requires_pre_worker_invalidation(action) {
+    if changes_account {
         state.acp.codex_discovery_manager().forget_snapshot();
     }
     drop(transition);
@@ -96,10 +120,6 @@ async fn run_codex_auth(
         .map_err(codex_discovery_error)?;
     state.acp.codex_discovery_manager().invalidate();
     Ok(result)
-}
-
-fn requires_pre_worker_invalidation(action: CodexAuthAction) -> bool {
-    matches!(action, CodexAuthAction::Login | CodexAuthAction::Logout)
 }
 
 async fn validate_auth_scope(state: &AppState, scope: &CodexAuthScope) -> Result<(), AcpIpcError> {
@@ -113,8 +133,29 @@ mod tests {
 
     #[test]
     fn effectful_auth_actions_require_pre_worker_cache_invalidation() {
-        assert!(!requires_pre_worker_invalidation(CodexAuthAction::Observe));
-        assert!(requires_pre_worker_invalidation(CodexAuthAction::Login));
-        assert!(requires_pre_worker_invalidation(CodexAuthAction::Logout));
+        assert!(!CodexAuthAction::Observe.changes_account());
+        assert!(CodexAuthAction::Login.changes_account());
+        assert!(CodexAuthAction::Logout.changes_account());
+    }
+
+    #[test]
+    fn api_key_request_admits_a_bounded_key_and_never_prints_it() {
+        let request: CodexApiKeyRequest = serde_json::from_value(serde_json::json!({
+            "projectId":"project-auth","projectGeneration":"9",
+            "bindingId":"codex-app-server","apiKey":" sk-test-secret "
+        }))
+        .unwrap();
+        let action = CodexAuthAction::ApiKey(request.api_key);
+        assert!(action.changes_account());
+        assert!(!format!("{action:?}").contains("sk-test-secret"));
+        for key in ["", "sk with space", &"k".repeat(4_097)] {
+            assert!(
+                serde_json::from_value::<CodexApiKeyRequest>(serde_json::json!({
+                    "projectId":"project-auth","projectGeneration":"9",
+                    "bindingId":"codex-app-server","apiKey":key
+                }))
+                .is_err()
+            );
+        }
     }
 }

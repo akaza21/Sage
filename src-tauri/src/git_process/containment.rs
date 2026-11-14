@@ -1,7 +1,7 @@
 use std::{
     sync::{
         Arc, Mutex, OnceLock,
-        atomic::{AtomicUsize, Ordering},
+        atomic::{AtomicBool, AtomicUsize, Ordering},
     },
     time::Duration,
 };
@@ -16,7 +16,16 @@ use crate::error::{AppError, AppResult, GitContainmentState};
 
 #[cfg(test)]
 use super::test_support::{ForegroundObservation, ReaperTestControl, ReaperWaitMode};
-use super::{GitOutput, GitProcessPolicy, GitRootAuthority, PostSpawnFailure, ReaderTasks};
+use super::{
+    GitChild, GitOutput, GitProcessPolicy, GitRootAuthority, PostSpawnFailure, ProcessTree,
+    ReaderTasks, process_tree::wait_until_empty,
+};
+
+mod reaper;
+
+use reaper::handoff_reaper;
+#[cfg(test)]
+pub(super) use reaper::reap_quarantine;
 
 const GIT_REAPER_CAPACITY: usize = 8;
 const GIT_REAPER_ATTEMPTS: usize = 40;
@@ -26,6 +35,7 @@ const REAPER_RETRY_DELAY: Duration = Duration::from_millis(25);
 const TEST_RELEASE_GATE_TIMEOUT: Duration = crate::test_wait::HANG_GUARD;
 
 pub(super) struct ContainmentRegistry {
+    abandoning: AtomicBool,
     reaper_capacity: Arc<Semaphore>,
     unconfirmed_exits: AtomicUsize,
     uncertain_terminations: AtomicUsize,
@@ -35,6 +45,7 @@ pub(super) struct ContainmentRegistry {
 
 struct QuarantinedGitProcess {
     _child: Child,
+    _tree: ProcessTree,
     _readers: ReaderTasks,
     _reaper_lease: OwnedSemaphorePermit,
     _exit_charge: ExitCharge,
@@ -53,6 +64,7 @@ struct ActiveReaper {
 impl ContainmentRegistry {
     fn new() -> Arc<Self> {
         Arc::new(Self {
+            abandoning: AtomicBool::new(false),
             reaper_capacity: Arc::new(Semaphore::new(GIT_REAPER_CAPACITY)),
             unconfirmed_exits: AtomicUsize::new(0),
             uncertain_terminations: AtomicUsize::new(0),
@@ -124,7 +136,7 @@ impl Drop for ActiveReaper {
 }
 
 pub(super) async fn cleanup_failure(
-    mut child: Child,
+    git: GitChild,
     mut readers: ReaderTasks,
     reaper_lease: OwnedSemaphorePermit,
     failure: PostSpawnFailure,
@@ -132,8 +144,14 @@ pub(super) async fn cleanup_failure(
     registry: Arc<ContainmentRegistry>,
     root_authority: Option<GitRootAuthority>,
 ) -> AppResult<GitOutput> {
+    let GitChild {
+        root: mut child,
+        tree,
+    } = git;
     let cleanup_started = Instant::now();
-    let actual_kill_succeeded = !failure.reaped && child.start_kill().is_ok();
+    // Terminating the tree also ends the root, and whatever the root started.
+    let tree_terminated = tree.terminate();
+    let actual_kill_succeeded = tree_terminated || (!failure.reaped && child.start_kill().is_ok());
     #[cfg(test)]
     let foreground = policy
         .reaper_control
@@ -154,13 +172,24 @@ pub(super) async fn cleanup_failure(
     let already_reaped =
         foreground_is_actual && !kill_succeeded && matches!(child.try_wait(), Ok(Some(_)));
     let termination_proven = failure.reaped || kill_succeeded || already_reaped;
-    let reaped = failure.reaped
+    let root_reaped = failure.reaped
         || already_reaped
         || (foreground_is_actual
             && match policy.reap_timeout {
                 Some(deadline) => matches!(timeout(deadline, child.wait()).await, Ok(Ok(_))),
                 None => false,
             });
+    // The root's exit proves nothing about what it started: the tree must be
+    // empty as well.
+    let reaped = root_reaped
+        && wait_until_empty(
+            &tree,
+            policy
+                .reap_timeout
+                .unwrap_or(Duration::ZERO)
+                .saturating_sub(cleanup_started.elapsed()),
+        )
+        .await;
     let settled = reaped
         && readers
             .wait_for_eof(
@@ -182,7 +211,8 @@ pub(super) async fn cleanup_failure(
 
     // A reaped proxy with open inherited streams still has an unconfirmed
     // backend. Keep both its reader ownership and mutation admission charged.
-    let termination_proven = termination_proven && !reaped;
+    // A terminated tree has no such backend: its termination stays proven.
+    let termination_proven = termination_proven && (!reaped || tree_terminated);
     let state = if termination_proven {
         GitContainmentState::TerminatedUnreaped
     } else {
@@ -190,7 +220,7 @@ pub(super) async fn cleanup_failure(
     };
     let exit_charge = registry.charge(termination_proven);
     handoff_reaper(
-        child,
+        GitChild { root: child, tree },
         readers,
         reaper_lease,
         exit_charge,
@@ -247,6 +277,29 @@ pub(super) fn git_containment() -> Arc<ContainmentRegistry> {
         .clone()
 }
 
+/// Final host teardown only: retain no quarantined owners after making one
+/// last kill attempt. Live owners keep their Jobs until host handle closure;
+/// reapers that finish concurrently see `abandoning` instead of quarantining.
+pub(crate) fn abandon_cleanup_on_exit() {
+    abandon(&git_containment());
+}
+
+fn abandon(registry: &ContainmentRegistry) {
+    registry.abandoning.store(true, Ordering::Release);
+    registry.reaper_capacity.close();
+    let mut owners = registry
+        .quarantined
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    for mut owner in owners.drain(..) {
+        let _ = owner._tree.terminate();
+        let _ = owner._child.start_kill();
+        let _ = owner._child.try_wait();
+        // Dropping the tree closes its owned kill-on-close Job on Windows;
+        // dropping readers aborts only this process's bounded pipe tasks.
+    }
+}
+
 pub(super) async fn await_mutation_admission(
     registry: &ContainmentRegistry,
     admission_timeout: Duration,
@@ -272,111 +325,6 @@ fn containment(state: GitContainmentState, message: impl Into<String>) -> AppErr
     }
 }
 
-fn handoff_reaper(
-    mut child: Child,
-    mut readers: ReaderTasks,
-    reaper_lease: OwnedSemaphorePermit,
-    exit_charge: ExitCharge,
-    #[cfg(test)] control: Option<Arc<ReaperTestControl>>,
-    root_authority: Option<GitRootAuthority>,
-) {
-    let registry = Arc::clone(&exit_charge.registry);
-    let active_reaper = ActiveReaper::new(&registry);
-    tokio::spawn(async move {
-        #[cfg(test)]
-        if let Some(control) = &control
-            && control.wait_mode == ReaperWaitMode::ReleaseGate
-        {
-            let _ = timeout(TEST_RELEASE_GATE_TIMEOUT, control.release_wait.notified()).await;
-        }
-        for _ in 0..GIT_REAPER_ATTEMPTS {
-            let _ = child.start_kill();
-            if wait_for_exit(
-                &mut child,
-                #[cfg(test)]
-                control.as_deref(),
-            )
-            .await
-                && readers.wait_for_eof(REAPER_WAIT_TIMEOUT).await
-            {
-                exit_charge.confirm();
-                drop(active_reaper);
-                #[cfg(test)]
-                if let Some(control) = &control {
-                    control.completed.notify_one();
-                }
-                return;
-            }
-            reaper_pause(
-                #[cfg(test)]
-                control.as_deref(),
-            )
-            .await;
-        }
-        quarantine(
-            &registry,
-            child,
-            readers,
-            reaper_lease,
-            exit_charge,
-            root_authority,
-        );
-        drop(active_reaper);
-        #[cfg(test)]
-        if let Some(control) = &control {
-            control.completed.notify_one();
-        }
-    });
-}
-
-async fn wait_for_exit(
-    child: &mut Child,
-    #[cfg(test)] control: Option<&ReaperTestControl>,
-) -> bool {
-    #[cfg(test)]
-    if let Some(control) = control
-        && control.wait_mode == ReaperWaitMode::Exhaust
-    {
-        control.wait_attempts.fetch_add(1, Ordering::SeqCst);
-        tokio::task::yield_now().await;
-        return false;
-    }
-    matches!(timeout(REAPER_WAIT_TIMEOUT, child.wait()).await, Ok(Ok(_)))
-}
-
-async fn reaper_pause(#[cfg(test)] control: Option<&ReaperTestControl>) {
-    #[cfg(test)]
-    if let Some(control) = control
-        && control.wait_mode == ReaperWaitMode::Exhaust
-    {
-        tokio::task::yield_now().await;
-        return;
-    }
-    sleep(REAPER_RETRY_DELAY).await;
-}
-
-fn quarantine(
-    registry: &Arc<ContainmentRegistry>,
-    child: Child,
-    readers: ReaderTasks,
-    reaper_lease: OwnedSemaphorePermit,
-    exit_charge: ExitCharge,
-    root_authority: Option<GitRootAuthority>,
-) {
-    let mut owners = registry
-        .quarantined
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner());
-    debug_assert!(owners.len() < GIT_REAPER_CAPACITY);
-    owners.push(QuarantinedGitProcess {
-        _child: child,
-        _readers: readers,
-        _reaper_lease: reaper_lease,
-        _exit_charge: exit_charge,
-        _root_authority: root_authority,
-    });
-}
-
 fn decrement(counter: &AtomicUsize) {
     counter
         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |value| {
@@ -386,50 +334,45 @@ fn decrement(counter: &AtomicUsize) {
 }
 
 #[cfg(test)]
-pub(super) async fn reap_quarantine(
-    registry: &Arc<ContainmentRegistry>,
-    deadline: Duration,
-) -> AppResult<()> {
-    let mut owners = {
-        let mut quarantine = registry
-            .quarantined
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner());
-        std::mem::take(&mut *quarantine)
-    };
-    let expires = Instant::now() + deadline;
-    let mut retained = Vec::new();
-    for mut owner in owners.drain(..) {
-        let remaining = expires.saturating_duration_since(Instant::now());
-        if matches!(timeout(remaining, owner._child.wait()).await, Ok(Ok(_)))
-            && owner
-                ._readers
-                .wait_for_eof(expires.saturating_duration_since(Instant::now()))
-                .await
-        {
-            owner._exit_charge.confirm();
-        } else {
-            retained.push(owner);
-        }
-    }
-    let retained_count = retained.len();
-    registry
-        .quarantined
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-        .extend(retained);
-    if retained_count == 0 {
-        Ok(())
-    } else {
-        Err(AppError::Git(format!(
-            "{retained_count} quarantined Git process exits remain unconfirmed"
-        )))
-    }
-}
-
-#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn final_teardown_releases_owned_quarantine_and_refuses_further_git() {
+        crate::test_wait::guarded("final Git teardown", async {
+            let harness = crate::git_process::GitProcessTestHarness::new();
+            let (policy, reaper) = harness.exhausting_reaper_policy(crate::git_budget::READ);
+            let registry = policy.containment_registry.clone().unwrap();
+            let root = crate::test_paths::temp_dir();
+            let result = crate::git_process::run(&root, &["--version"], 1024, policy).await;
+            assert!(matches!(result, Err(AppError::GitContainment { .. })));
+            reaper
+                .wait_for_quarantine(crate::test_wait::HANG_GUARD)
+                .await
+                .unwrap();
+            assert_eq!(harness.observation().quarantined_owners, 1);
+
+            // A process outside this registry must remain untouched.
+            let mut unrelated = crate::git_process::fixture_git()
+                .args(["hash-object", "--stdin"])
+                .stdin(std::process::Stdio::piped())
+                .stdout(std::process::Stdio::null())
+                .spawn()
+                .unwrap();
+            abandon(&registry);
+            let unrelated_alive = unrelated.try_wait().unwrap().is_none();
+            let _ = unrelated.kill();
+            unrelated.wait().unwrap();
+            assert!(unrelated_alive);
+            assert_eq!(harness.observation().quarantined_owners, 0);
+            assert!(
+                harness
+                    .probe_reaper_owner(Duration::from_millis(10))
+                    .await
+                    .is_err()
+            );
+        });
+    }
 
     #[test]
     fn reaper_owner_capacity_accepts_exact_eight_rejects_plus_one_and_resets() {

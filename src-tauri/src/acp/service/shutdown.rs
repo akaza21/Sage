@@ -4,6 +4,12 @@ use super::*;
 
 impl AcpService {
     pub(crate) fn shutdown_blocking(&self) -> Result<(), crate::acp::runtime::HostError> {
+        // An idle release parking a runtime finishes before the lanes close.
+        self.idle_release.stop();
+        self.file_stages
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .clear();
         let started = Instant::now();
         let budget = Duration::from_millis(crate::acp::limits::LIMITS.deadlines_ms.explicit_close);
         self.close_agent_tabs_for_shutdown(started + budget);
@@ -129,6 +135,7 @@ impl AcpService {
 
 impl Drop for AcpService {
     fn drop(&mut self) {
+        self.browser_attachments.retire_all();
         self.clear_lane_channels();
         let started = Instant::now();
         let settlement = self.read_text_files.terminalize_all();

@@ -45,7 +45,7 @@ export async function runLoadAgentDiff(
         {
           phase: "error",
           message:
-            "This saved edit is unavailable for the current Chat session.",
+            "This saved edit is unavailable for the current chat session.",
         },
         32,
       ),
@@ -91,7 +91,7 @@ export async function runLoadAgentDiff(
     if (!canPublish()) return;
     if (snapshotProjectionRevision(get(), ref) !== revision)
       throw new Error(
-        "The Chat changed while loading this edit. Reopen the diff to retry.",
+        "The chat changed while loading this edit. Reopen the diff to retry.",
       );
     // Bridge validates digest/bytes; retain only the bounded presentation, not raw sides.
     const diff = snapshotFileDiff(resource, snapshot.oldText, snapshot.newText);

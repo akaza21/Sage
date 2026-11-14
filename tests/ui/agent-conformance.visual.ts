@@ -87,7 +87,7 @@ async function anchorScenario(page: Page, scenario: PendingScenario) {
   ).toBeVisible();
   await expect(composer(page)).toHaveCount(1);
   await expect(
-    page.getByRole("textbox", { name: "Message agent" }),
+    page.getByRole("combobox", { name: "Message agent" }),
   ).toBeVisible();
   await expect(
     composer(page).getByRole("button", { name: "Send message" }),
@@ -359,7 +359,11 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
       titleBar.getByRole("button", { name: "Search chats" }),
     ).toHaveCount(1);
     await expect(
-      titleBar.getByRole("searchbox").or(titleBar.getByRole("textbox")),
+      // The chat search field is a combobox (#339), so absence covers it too.
+      titleBar
+        .getByRole("searchbox")
+        .or(titleBar.getByRole("textbox"))
+        .or(titleBar.getByRole("combobox")),
       "T3: the titlebar still has no search field",
     ).toHaveCount(0);
   });
@@ -382,7 +386,7 @@ test.describe("Agent Panel V1 conformance — shell, titlebar, left rail", () =>
     });
     await expect(filter).toBeVisible();
     await filter.click();
-    const search = page.getByRole("searchbox", { name: "Search Chats" });
+    const search = page.getByRole("combobox", { name: "Search chats" });
     await expect(search).toBeVisible();
     await expect(search).toBeFocused();
     await expect(
@@ -534,17 +538,21 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     // `Project /` segment; the project name lives in the header "…" menu.
     const location = header.locator('[aria-label="Chat location"]');
     await expect(location).toHaveCount(1);
-    await expect(location.locator("svg.lucide-folder")).toHaveCount(1);
+    const folder = location.locator(".agent-task-header__folder");
+    await expect(folder).toBeVisible();
+    await expect(folder).toHaveCSS("width", "16px");
+    await expect(folder).toHaveCSS("height", "16px");
+    await expect(folder).not.toHaveCSS("mask-image", "none");
     await expect(header.locator(".agent-task-header__separator")).toHaveCount(
       0,
     );
     await expect(header.locator(".agent-task-header__title")).toBeVisible();
 
-    // C2 — different. The status is announced, but renders as bare coloured
-    // text rather than the target's pill with a leading icon.
+    // Chat surface: status is announced without adding visible header chrome.
     const status = header.getByRole("status");
     await expect(status).toHaveCount(1);
     await expect(status).toHaveAccessibleName(/^Chat status: /);
+    await expect(status).toHaveClass("sr-only");
     await expect(
       status.locator("svg"),
       "C2: the status still has no leading icon",
@@ -926,7 +934,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   test("frames the composer and pins its placeholder", async ({ page }) => {
     await openScenario(page, "agent-single", "agent");
     await expect(composer(page)).toHaveCount(1);
-    const input = page.getByRole("textbox", { name: "Message agent" });
+    const input = page.getByRole("combobox", { name: "Message agent" });
     await expect(input).toHaveAttribute("placeholder", "Do anything");
     await expect(input).toHaveAccessibleDescription(/Ctrl\+L|⌘L/);
   });
@@ -943,8 +951,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       exact: true,
     });
     // This binding advertises no image input, Goal or session modes, so the
-    // Add menu has nothing truthful to offer and no image chooser exists.
-    await expect(options).toHaveCount(0);
+    // Add menu has nothing truthful to offer: "+" keeps its place disabled
+    // and no image chooser exists.
+    await expect(options).toBeDisabled();
+    await expect(options).toHaveAttribute(
+      "title",
+      "No options for this harness",
+    );
     await expect(
       toolbar.getByRole("button", { name: "Add images", exact: true }),
     ).toHaveCount(0);
@@ -961,9 +974,13 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       "title",
       "Speech may be processed by an online service",
     );
-    await expect(toolbar.getByRole("button")).toHaveCount(6);
+    // Any usable binding takes attached files.
+    await expect(
+      toolbar.getByRole("button", { name: "Attach files", exact: true }),
+    ).toBeEnabled();
+    await expect(toolbar.getByRole("button")).toHaveCount(8);
     const [inputBox, toolbarBox] = await Promise.all([
-      boundsOf(form.getByRole("textbox", { name: "Message agent" })),
+      boundsOf(form.getByRole("combobox", { name: "Message agent" })),
       boundsOf(toolbar),
     ]);
     expect(toolbarBox.y).toBeGreaterThanOrEqual(
@@ -995,6 +1012,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     expect(inventory).toEqual([
       "2 files changed+44-18",
       "Message agent",
+      "Composer options",
+      "Attach files",
       "Access options",
       "Harness",
       "Model",
@@ -1009,7 +1028,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toHaveCount(0);
+    // "+" keeps its place even when this harness offers no options.
+    await expect(options).toBeDisabled();
     await expect(
       page.getByRole("menu", { name: "Composer options menu" }),
     ).toHaveCount(0);
@@ -1023,6 +1043,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       composer(page).getByRole("button", { name: "Send message" }),
     ).toBeVisible();
     expect(await composerControlOrder(page)).toEqual([
+      "Composer options",
+      "Attach files",
       "Access options",
       "Harness",
       "Model",
@@ -1058,7 +1080,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
           return bounds.top + bounds.height / 2;
         }),
       );
-    expect(centres).toHaveLength(6);
+    expect(centres).toHaveLength(8);
     expect(Math.max(...centres) - Math.min(...centres)).toBeLessThanOrEqual(1);
   });
 
@@ -1070,7 +1092,8 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       name: "Composer options",
       exact: true,
     });
-    await expect(options).toHaveCount(0);
+    // "+" keeps its place even when this harness offers no options.
+    await expect(options).toBeDisabled();
     const project = composer(page).getByRole("button", {
       name: "Project: Sage",
       exact: true,
@@ -1085,6 +1108,25 @@ test.describe("Agent Panel V1 conformance — composer", () => {
     });
     await expect(permission).toBeVisible();
     await expect(permission).toHaveText("Read-only");
+  });
+
+  test("drops the context meter from a narrow composer before any control label (Codex ref 37)", async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 480, height: 900 });
+    await openScenario(page, "agent-composer-context-known", "agent");
+    await settleChatProjections(page);
+    await expect(
+      composer(page).getByLabel("Composer context", { exact: true }),
+    ).toHaveCount(0);
+    await expect(composer(page).locator(".composer__controls")).toHaveAttribute(
+      "data-fit",
+      /(^| )context( |$)/,
+    );
+    await page.setViewportSize({ width: 1888, height: 900 });
+    await expect(
+      composer(page).getByLabel("Composer context", { exact: true }),
+    ).toBeVisible();
   });
 
   test("keeps reported context in the toolbar without overlapping the prompt", async ({
@@ -1114,7 +1156,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
       ),
     ).toBe(true);
     const [inputBox, contextBox, micBox, sendBox] = await Promise.all([
-      boundsOf(composer(page).getByRole("textbox", { name: "Message agent" })),
+      boundsOf(composer(page).getByRole("combobox", { name: "Message agent" })),
       boundsOf(context),
       boundsOf(
         composer(page).getByRole("button", {
@@ -1141,7 +1183,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   }) => {
     await openScenario(page, "agent-composer-context-unknown", "agent");
     await expect(
-      composer(page).getByRole("textbox", { name: "Message agent" }),
+      composer(page).getByRole("combobox", { name: "Message agent" }),
     ).toBeVisible();
     await expect(
       composer(page).getByLabel("Composer context", { exact: true }),
@@ -1291,7 +1333,7 @@ test.describe("Agent Panel V1 conformance — right tab region", () => {
     ).toBe(true);
     const [chipBox, inputBox, toolbarBox, formBox] = await Promise.all([
       boundsOf(attachments),
-      boundsOf(page.getByRole("textbox", { name: "Message agent" })),
+      boundsOf(page.getByRole("combobox", { name: "Message agent" })),
       boundsOf(composer(page).locator(".composer__toolbar")),
       boundsOf(composer(page)),
     ]);

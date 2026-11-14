@@ -1,26 +1,26 @@
 .file-markdown-preview {
   min-height: 0;
   overflow: auto;
-  padding: 16px 16px;
+  padding: var(--space-4) var(--space-4);
   color: var(--text);
 }
 
 .file-markdown-preview h1,
 .file-markdown-preview h2,
 .file-markdown-preview h3 {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
 }
 
 .file-markdown-preview p,
 .file-markdown-preview ul,
 .file-markdown-preview blockquote,
 .file-markdown-preview pre {
-  margin: 0 0 12px;
+  margin: 0 0 var(--space-3);
 }
 
 .file-markdown-preview pre {
   overflow: auto;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
   background: var(--surface);
 }

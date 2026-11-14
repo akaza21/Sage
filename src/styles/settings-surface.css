@@ -135,7 +135,7 @@
 }
 
 .settings-surface__group-note {
-  padding: 0 var(--settings-row-inset) 4px;
+  padding: 0 var(--settings-row-inset, 0px) 4px;
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
 }
@@ -155,7 +155,7 @@
 /* Inset like the setting rows, so every page lines up with its headings. */
 .settings-surface__keymap th,
 .settings-surface__keymap td {
-  padding: 8px var(--settings-row-inset);
+  padding: 8px var(--settings-row-inset, 0px);
   border-bottom: 1px solid var(--color-border-subtle);
   font-weight: 400;
   vertical-align: baseline;
@@ -215,7 +215,12 @@
 .settings-surface__section-header {
   display: grid;
   gap: 4px;
-  padding: 16px var(--settings-row-inset) 12px;
+  padding: 16px var(--settings-row-inset, 0px) 12px;
+}
+
+/* The rows of a group; Agent settings draws them as one card. */
+.settings-surface__rows {
+  display: grid;
 }
 
 .settings-surface__row {
@@ -252,16 +257,6 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-sm);
-}
-
-.settings-surface__toggle input {
-  width: 16px;
-  height: 16px;
-  margin: 0;
-  accent-color: var(--color-accent);
 }
 
 /* A list setting: the control column widens to hold the patterns. */
@@ -479,10 +474,6 @@
     border-color: ButtonText;
   }
 
-  .settings-surface__toggle input {
-    accent-color: Highlight;
-  }
-
   .settings-surface__error {
     border-color: CanvasText;
   }
@@ -495,4 +486,11 @@
   .settings-surface__nav-item[data-matches="false"] {
     opacity: 1;
   }
+}
+
+/* Codex ref 65: an elevated-risk setting names its risk above its label. */
+.settings-surface__risk {
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
+  font-weight: 600;
 }

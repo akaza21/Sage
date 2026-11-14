@@ -111,6 +111,12 @@ pub(crate) async fn browser_hide(
     app.clone()
         .run_on_main_thread(move || {
             visibility.hide();
+            if cover != Some(true) {
+                visibility.sleep();
+                app.state::<crate::state::AppState>()
+                    .acp
+                    .suspend_browser_tab(&tab_id);
+            }
             let state = app.state::<BrowserState>();
             if let Some(exit) = state.annotate.hiding(&tab_id, cover == Some(true)) {
                 super::annotate::leave(&app, &tab_id, exit);
@@ -187,6 +193,13 @@ pub(crate) async fn browser_open_external(
         .map_err(|error| error.to_string())?
         .openable_url(&tab_id)?;
     let url = admit_url(&url).map_err(str::to_owned)?;
+    open_external(url.as_str())
+}
+
+/// Opens a link an agent asked the user to open (a sign-in), in the system
+/// browser, after the same admission as a browser tab's URL.
+pub(crate) fn open_external_link(url: &str) -> Result<(), String> {
+    let url = admit_url(url).map_err(str::to_owned)?;
     open_external(url.as_str())
 }
 

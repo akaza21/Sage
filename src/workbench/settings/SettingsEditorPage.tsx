@@ -91,10 +91,11 @@ function ToggleSetting({
         defaultLabel={spec.default ? "On" : "Off"}
       />
       <div className="settings-surface__toggle">
-        <span>{checked ? "On" : "Off"}</span>
         <input
           id={id}
+          className="switch"
           type="checkbox"
+          role="switch"
           checked={checked}
           disabled={disabled}
           aria-describedby={`${id}-description ${id}-default`}

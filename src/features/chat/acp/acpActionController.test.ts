@@ -148,6 +148,7 @@ function harness(
     endSession: vi.fn(),
     setSessionMode: vi.fn(),
     setSessionConfigOption: vi.fn(),
+    queueSessionConfigChoice: vi.fn(),
   } as unknown as AcpActionCommands;
   const controller = createAcpActionController({
     commands,
@@ -210,6 +211,44 @@ describe("ACP action controller", () => {
       }),
     );
     expect(test.cleared).toEqual([{ prompt: "", attachedContext: [quote] }]);
+  });
+  it("sends staged pasted text alone without writing a prompt into the draft", async () => {
+    const test = harness(page("10", session("hot", "2", null)));
+    vi.mocked(test.commands.sendTurn).mockRejectedValue(
+      new AcpDesktopError({
+        kind: "invalidRequest",
+        message: "Prompt text and file attachments exceed the budget.",
+      }),
+    );
+    await expect(
+      test.controller.submit("", [], bindingId, modelId, { revision: "r1" }),
+    ).resolves.toBe("rejected");
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        prompt: "Please respond to the attached context.",
+        staged: { revision: "r1" },
+      }),
+    );
+    expect(test.cleared).toEqual([{ prompt: "", attachedContext: [] }]);
+    // A refused send restores the empty draft, not the stand-in prompt.
+    expect(test.restored).toEqual([{ prompt: "", attachedContext: [] }]);
+  });
+  it("names no staged files unless the send asks for them", async () => {
+    const test = harness(page("10", session("hot", "2", null)));
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({
+      projection: page("11", session("hot", "2", null)),
+    });
+    // A queued message: the batch staged for the next message stays staged.
+    await test.controller.submit("Queued", [], bindingId, modelId);
+    expect(
+      vi.mocked(test.commands.sendTurn).mock.calls[0][0],
+    ).not.toHaveProperty("staged");
+    // Retry: the files that turn carried go again.
+    const retryOf = "turn-1" as SageTurnId;
+    await test.controller.submit("Again", [], bindingId, modelId, { retryOf });
+    expect(test.commands.sendTurn).toHaveBeenLastCalledWith(
+      expect.objectContaining({ prompt: "Again", staged: { retryOf } }),
+    );
   });
   it("sends attachment-only context and still refuses an empty send", async () => {
     const test = harness(page("10", session("hot", "2", null)));
@@ -420,7 +459,7 @@ describe("ACP action controller", () => {
       origin: "mode",
       busy: false,
       error: {
-        message: "Another action is already in progress for this Chat.",
+        message: "Another action is already in progress for this chat.",
       },
     });
 
@@ -650,6 +689,34 @@ describe("ACP action controller", () => {
     );
   });
 
+  it("sends to the head session that activation linked in", async () => {
+    const test = harness(page("5", session("cold", null, "4")));
+    const linked = {
+      ...session("hot", "1", null),
+      id: "session-b" as SageAgentSessionId,
+    };
+    const earlier = {
+      ...session("cold", null, null),
+      state: "closed" as const,
+    };
+    const active = { ...page("6", linked), sessions: [earlier, linked] };
+    vi.mocked(test.commands.activateSession).mockResolvedValue({
+      projection: active,
+    });
+    vi.mocked(test.commands.sendTurn).mockResolvedValue({ projection: active });
+
+    await expect(
+      test.controller.submit("continue", [], bindingId, modelId),
+    ).resolves.toBe("applied");
+
+    expect(test.commands.activateSession).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-a", runtimeEpoch: "4" }),
+    );
+    expect(test.commands.sendTurn).toHaveBeenCalledWith(
+      expect.objectContaining({ sessionId: "session-b", runtimeEpoch: "1" }),
+    );
+  });
+
   it("holds the prompt until the pending permission mode has settled", async () => {
     const settling = deferred<boolean>();
     const test = harness(
@@ -866,7 +933,7 @@ describe("ACP action controller", () => {
     expect(test.states.at(-1)?.error?.failure).toMatchObject({
       kind: "invalidRequest",
       message:
-        "Wait for the current Turn to finish before sending a follow-up.",
+        "Wait for the current turn to finish before sending a follow-up.",
     });
 
     test.setContext({
@@ -1308,4 +1375,80 @@ describe("ACP action controller", () => {
     expect(first.length).toBeLessThan(512);
     expect(second.length).toBeLessThan(512);
   });
+});
+
+it("stores a choice made on a parked session's restored config instead of sending it", async () => {
+  const cold = {
+    ...page("10", session("cold", null, "2")),
+    restoredSessionConfig: {
+      sageAgentSessionId: "session-a",
+      awaiting: "resume" as const,
+      modes: null,
+      configOptions: [
+        {
+          id: "effort",
+          name: "Effort",
+          type: "select" as const,
+          currentValue: "medium",
+          options: [
+            { value: "medium", name: "Medium" },
+            { value: "high", name: "High" },
+          ],
+        },
+      ],
+    },
+  };
+  const test = harness(cold);
+  vi.mocked(test.commands.queueSessionConfigChoice!).mockResolvedValue({
+    projection: page("11", session("cold", null, "2")),
+  });
+  await expect(
+    test.controller.setSessionConfigOption("effort", { value: "high" }),
+  ).resolves.toBe("applied");
+  expect(test.commands.queueSessionConfigChoice).toHaveBeenCalledWith({
+    ...scope,
+    projectGeneration: commandProjectGeneration,
+    expectedProjectionRevision: "10",
+    sessionId: "session-a",
+    choice: { configId: "effort", value: { value: "high" } },
+  });
+  expect(test.commands.setSessionConfigOption).not.toHaveBeenCalled();
+});
+
+it("queues a choice made before a live runtime reports its config instead of dropping it", async () => {
+  const unreported = {
+    ...page("10", session("hot", "3", "2")),
+    sessionConfig: null,
+    restoredSessionConfig: {
+      sageAgentSessionId: "session-a",
+      awaiting: "report" as const,
+      modes: null,
+      configOptions: [
+        {
+          id: "effort",
+          name: "Effort",
+          type: "select" as const,
+          currentValue: "medium",
+          options: [
+            { value: "medium", name: "Medium" },
+            { value: "high", name: "High" },
+          ],
+        },
+      ],
+    },
+  };
+  const test = harness(unreported);
+  vi.mocked(test.commands.queueSessionConfigChoice!).mockResolvedValue({
+    projection: page("11", session("hot", "3", "2")),
+  });
+  await expect(
+    test.controller.setSessionConfigOption("effort", { value: "high" }),
+  ).resolves.toBe("applied");
+  expect(test.commands.queueSessionConfigChoice).toHaveBeenCalledWith(
+    expect.objectContaining({
+      sessionId: "session-a",
+      choice: { configId: "effort", value: { value: "high" } },
+    }),
+  );
+  expect(test.commands.setSessionConfigOption).not.toHaveBeenCalled();
 });

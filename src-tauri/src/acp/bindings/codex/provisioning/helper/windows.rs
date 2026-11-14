@@ -22,7 +22,7 @@ use crate::acp::bindings::codex::managed::{
     ManagedStagingPrerequisite, current_process_user_sid, inspect_provisioned_managed_staging,
     validate_provisioned_package_acl, validate_provisioned_state_root,
 };
-use crate::acp::bindings::codex::manifest::MetadataValidatedPacket;
+use crate::acp::bindings::codex::manifest::{MetadataValidatedPacket, pinned_codex_version};
 use crate::acp::bindings::codex::physical::{
     ConfiguredManagedPackageRoot, ExpectedPhysicalFile, InspectionClaims,
     PhysicallyInspectedPackage, decode_digest, inspect_claims, inspect_managed_package,
@@ -38,8 +38,9 @@ use security::{Principals, apply_acl, apply_acl_to_exact_node, well_known_sid};
 use transaction_lock::TransactionLock;
 
 const RECEIPT_BYTES_MAX: usize = 64 * 1024;
-const HELD_PACKAGE_NAME: &str = ".sage-codex-0.146.0-previous-package";
-const HELD_STATE_NAME: &str = ".sage-codex-0.146.0-previous-state";
+const HELD_PACKAGE_NAME: &str =
+    concat!(".sage-codex-", pinned_codex_version!(), "-previous-package");
+const HELD_STATE_NAME: &str = concat!(".sage-codex-", pinned_codex_version!(), "-previous-state");
 
 /// Capability reserved for the separately built and verified elevated helper
 /// process. Production construction requires the boundary's unforgeable

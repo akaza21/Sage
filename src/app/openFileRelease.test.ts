@@ -321,7 +321,7 @@ describe("renaming an open File (ED-16)", () => {
     await expect(state().renameProjectFile(source, "new.ts")).resolves.toBe(
       false,
     );
-    expect(state().fileRenameError).toContain("Close File and Diff tabs");
+    expect(state().fileRenameError).toContain("Close file and diff tabs");
     expect(rename).not.toHaveBeenCalled();
   });
 });

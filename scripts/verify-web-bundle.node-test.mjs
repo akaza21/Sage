@@ -489,6 +489,42 @@ test("web bundle verifier counts static closure but includes dynamic chunks in t
   }
 });
 
+test("startup closures ignore which content hashes they import but count code growth", async () => {
+  const code =
+    "const s=e.useMemo(()=>t.snapshot(n),[n]);export{s as ChangesSurface};";
+  const importing = (shared, deps, body = code) =>
+    `import{a as e}from"./${shared}.js";import{t}from"./${deps}.js";${body}`;
+  const measure = async (imported) => {
+    const root = await candidate({ imported });
+    try {
+      const result = verifyWebBundle(root);
+      return {
+        initial: result.initialStaticClosureGzipBytes,
+        paths: Object.fromEntries(
+          Object.entries(result.paths).map(([name, value]) => [
+            name,
+            value.gzipBytes,
+          ]),
+        ),
+      };
+    } finally {
+      await rm(root, { recursive: true, force: true });
+    }
+  };
+  const first = await measure(importing("DLlys00o", "CPZB2TWi"));
+  // As emitted, the two chunks compress to different sizes.
+  assert.notEqual(
+    gzipSync(importing("DLlys00o", "CPZB2TWi")).length,
+    gzipSync(importing("snapshot", "useMemo_")).length,
+  );
+  assert.deepEqual(await measure(importing("snapshot", "useMemo_")), first);
+  const grown = await measure(
+    importing("snapshot", "useMemo_", code.replace("[n]", "[+n]")),
+  );
+  assert.ok(grown.initial > first.initial);
+  assert.ok(grown.paths.agentOneChat > first.paths.agentOneChat);
+});
+
 test("a shrinking core total cannot hide an independently regressed user path", async () => {
   const root = await candidate();
   try {
@@ -927,7 +963,8 @@ test("only import specifiers lose their content hashes", () => {
     ["import './DLlys00o.js';", `import '${masked}';`],
     ["await import(`./DLlys00o.js`)", `await import(\`${masked}\`)`],
     ['import ( "./DLlys00o.js" )', `import ( "${masked}" )`],
-    ['import"./fObb2P8k2.js";', 'import"./xxxxxxxxx.js";'],
+    // A deduplication suffix is part of the emitted name, not the code.
+    ['import"./fObb2P8k2.js";', `import"${masked}";`],
     ['export{a}from"./DLlys00o.js";', `export{a}from"${masked}";`],
     ['export*from"./DLlys00o.js";', `export*from"${masked}";`],
   ]) {
@@ -1009,6 +1046,38 @@ test("a lazy feature rejects initial and eager imports", async () => {
     manifest["_dynamic.js"].imports = [featureKey];
     await write();
     assert.throws(() => verifyWebBundle(root), /statically imported/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("shared markdown chunk has its own exact cap and stays outside both startup closures", async () => {
+  const { root, manifest, budgets, write } = await lazyFeatureCandidate();
+  try {
+    budgets.bundle.lazyFeatureChunks = [];
+    budgets.bundle.webMarkdownLazyJsGzipBytes = 1000;
+    manifest[featureKey].name = "markdown-rendering";
+    await write();
+    const measured = verifyWebBundle(root);
+    assert.ok(measured.markdownLazyGzipBytes > 0);
+    assert.equal(
+      measured.coreTotalGzipBytes,
+      measured.totalGzipBytes - measured.markdownLazyGzipBytes,
+    );
+    budgets.bundle.webMarkdownLazyJsGzipBytes = measured.markdownLazyGzipBytes;
+    await write();
+    assert.doesNotThrow(() => verifyWebBundle(root));
+    budgets.bundle.webMarkdownLazyJsGzipBytes--;
+    await write();
+    assert.throws(() => verifyWebBundle(root), /markdown lazy gzip .* exceeds/);
+    budgets.bundle.webMarkdownLazyJsGzipBytes++;
+    manifest["index.html"].imports.push(featureKey);
+    await write();
+    assert.throws(() => verifyWebBundle(root), /markdown entered a startup/);
+    manifest["index.html"].imports.pop();
+    manifest["src/features/chat/ChatSurface.tsx"].imports.push(featureKey);
+    await write();
+    assert.throws(() => verifyWebBundle(root), /markdown entered a startup/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -1096,6 +1165,53 @@ test("lazy feature CSS never leaks into the initial CSS", async () => {
     manifest["_dynamic.js"].css = ["assets/feature.css"];
     await write();
     assert.throws(() => verifyWebBundle(root), /CSS is shared/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a stylesheet two lazy features share counts against both, never neither", async () => {
+  const { root, manifest, budgets, write } = await lazyFeatureWithCss();
+  const otherKey = "src/features/chat/Other.tsx";
+  try {
+    manifest["index.html"].dynamicImports.push(otherKey);
+    manifest[otherKey] = {
+      file: "assets/other.js",
+      src: otherKey,
+      isDynamicEntry: true,
+      imports: ["index.html"],
+      css: ["assets/feature.css"],
+    };
+    await writeFile(
+      path.join(root, "dist/assets/other.js"),
+      "other chunk ".repeat(40),
+    );
+    await write();
+    // The other entry has no budget, so the shared stylesheet is not covered.
+    assert.throws(
+      () => verifyWebBundle(root),
+      /lazy CSS is shared with an unbudgeted manifest entry/,
+    );
+    budgets.bundle.lazyFeatureChunks.push({
+      entry: otherKey,
+      maxGzipBytes: 1000,
+      maxCssGzipBytes: 1000,
+      reason: "Other test feature.",
+    });
+    await write();
+    const result = verifyWebBundle(root).lazyFeatureChunks;
+    const css = await readFile(path.join(root, "dist/assets/feature.css"));
+    for (const key of [featureKey, otherKey]) {
+      assert.deepEqual(result[key].cssFiles, ["assets/feature.css"]);
+      assert.equal(result[key].cssGzipBytes, gzipSync(css).length);
+    }
+    budgets.bundle.lazyFeatureChunks[1].maxCssGzipBytes =
+      gzipSync(css).length - 1;
+    await write();
+    assert.throws(
+      () => verifyWebBundle(root),
+      new RegExp(`${otherKey} lazy CSS gzip \\d+ exceeds`),
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

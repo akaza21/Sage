@@ -2,7 +2,12 @@ import { isShortId, safeOrdinal } from "../../domain/guards";
 import { parentResource } from "../../domain/resourceIdentity";
 import type { ResourceRef } from "../../domain/workbench";
 
-export const WORKSPACE_NOTIFY_EVENT = "workspace-notify-v1";
+export const WORKSPACE_NOTIFY_EVENT = "workspace-notify-v2";
+/**
+ * The native watcher sends at most this many notices in one event; equal to
+ * `MAX_BATCH_NOTICES` in `src-tauri/src/workspace/notify/batch.rs`.
+ */
+export const MAX_NOTIFY_BATCH_NOTICES = 256;
 export const MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS = 8;
 export const MAX_NOTIFY_LISTING_WAITERS = 64;
 export const MAX_NOTIFY_SEARCH_SUBSCRIBERS = 8;
@@ -10,6 +15,20 @@ export const MAX_NOTIFY_SEARCH_SUBSCRIBERS = 8;
 /** A `.gitignore` or `.ignore` file: a change re-dims every listing below. */
 export function isIgnoreRuleFile(relativePath: string): boolean {
   return /(?:^|\/)\.(?:git)?ignore$/i.test(relativePath);
+}
+
+/**
+ * The notices of one native event, `{ notices: [...] }`. Each is still checked
+ * against the live Project by `acceptWorkspaceNotifyNotice`; an event that is
+ * not a bounded batch yields nothing.
+ */
+export function workspaceNotifyBatchNotices(value: unknown): unknown[] {
+  const notices = (value as { notices?: unknown } | null)?.notices;
+  return Array.isArray(notices) &&
+    notices.length <= MAX_NOTIFY_BATCH_NOTICES &&
+    Object.keys(value as object).length === 1
+    ? notices
+    : [];
 }
 
 const NOTICE_KEYS = [
@@ -28,6 +47,8 @@ export interface WorkspaceNotifyNotice {
   rootId: string;
   relativePath: string;
   kind: string;
+  /** False for listing/search delivery; Git may be decided separately. */
+  gitRelevant?: boolean;
 }
 
 export interface LiveProjectNotifyStamp {
@@ -52,19 +73,30 @@ export interface WorkspaceNotifyHooks {
     notice: WorkspaceNotifyNotice,
     listing: ResourceRef,
   ): void | Promise<void>;
+  dispose?(): void;
 }
 
 interface BoundNotifySession {
   live: LiveProjectNotifyStamp;
   unlisten: () => void;
-  inflight: Set<string>;
 }
 
 const searchSubscribers = new Set<(notice: WorkspaceNotifyNotice) => void>();
+const repositorySubscribers = new Set<
+  (notice: WorkspaceNotifyNotice) => void
+>();
 let session: BoundNotifySession | null = null;
 let listingAdmission = 0;
 let listingAdmissionEpoch = 0;
 const listingAdmissionWaiters: Array<() => void> = [];
+
+/** A read-only snapshot of occupied slots and queued listing refreshes. */
+export function getNotifyListingAdmissionState() {
+  return {
+    inFlight: listingAdmission,
+    waiting: listingAdmissionWaiters.length,
+  };
+}
 
 export async function acquireNotifyListingSlot(): Promise<boolean> {
   const epoch = listingAdmissionEpoch;
@@ -103,7 +135,18 @@ export function resetNotifyListingAdmission(): void {
 }
 
 const MAX_NOTICE_PATH_BYTES = 16 * 1024;
-const NOTICE_KINDS = new Set(["created", "changed", "deleted", "resync"]);
+/**
+ * `ignored`: something changed inside the ignored folder the notice names
+ * (the topmost one; the watcher folds everything below it into this).
+ */
+const NOTICE_KINDS = new Set([
+  "created",
+  "changed",
+  "deleted",
+  "resync",
+  "ignored",
+  "repository",
+]);
 
 function boundedNotifyPath(value: unknown): value is string {
   if (typeof value !== "string" || value.length === 0 || value.includes("\0")) {
@@ -134,7 +177,7 @@ export function acceptWorkspaceNotifyNotice(
   const record = value as Record<string, unknown>;
   const keys = Object.keys(record);
   if (
-    keys.length !== NOTICE_KEYS.length ||
+    keys.length !== NOTICE_KEYS.length + ("gitRelevant" in record ? 1 : 0) ||
     NOTICE_KEYS.some((key) => !keys.includes(key))
   ) {
     return null;
@@ -147,7 +190,8 @@ export function acceptWorkspaceNotifyNotice(
     transitionEpoch === null ||
     !isShortId(record.rootId) ||
     !boundedNotifyPath(record.relativePath) ||
-    !boundedNotifyKind(record.kind)
+    !boundedNotifyKind(record.kind) ||
+    ("gitRelevant" in record && typeof record.gitRelevant !== "boolean")
   ) {
     return null;
   }
@@ -166,6 +210,9 @@ export function acceptWorkspaceNotifyNotice(
     rootId: record.rootId,
     relativePath: record.relativePath,
     kind: record.kind,
+    ...(typeof record.gitRelevant === "boolean"
+      ? { gitRelevant: record.gitRelevant }
+      : {}),
   };
 }
 
@@ -174,6 +221,9 @@ export function listingResourceForNotify(
 ): ResourceRef {
   if (notice.kind === "resync") {
     return { rootId: notice.rootId, relativePath: "" };
+  }
+  if (notice.kind === "ignored") {
+    return { rootId: notice.rootId, relativePath: notice.relativePath };
   }
   return parentResource({
     rootId: notice.rootId,
@@ -196,13 +246,31 @@ export function subscribeWorkspaceNotifySearch(
 export function publishWorkspaceNotifySearch(
   notice: WorkspaceNotifyNotice,
 ): void {
+  if (notice.gitRelevant !== false) {
+    for (const listener of repositorySubscribers) listener(notice);
+  }
+  if (notice.kind === "repository") return;
   for (const listener of searchSubscribers) {
     listener(notice);
   }
 }
 
+/** Native Git decisions bypass listing and ignored-folder throttles. */
+export function subscribeWorkspaceNotifyRepository(
+  listener: (notice: WorkspaceNotifyNotice) => void,
+): () => void {
+  if (repositorySubscribers.size >= MAX_NOTIFY_SEARCH_SUBSCRIBERS) {
+    return () => undefined;
+  }
+  repositorySubscribers.add(listener);
+  return () => {
+    repositorySubscribers.delete(listener);
+  };
+}
+
 export function resetWorkspaceNotifyComposeForTests(): void {
   searchSubscribers.clear();
+  repositorySubscribers.clear();
   resetNotifyListingAdmission();
   listingAdmission = 0;
 }
@@ -256,13 +324,31 @@ export async function syncLiveProjectWorkspaceNotify(
     session.unlisten();
     session = null;
   }
-  const inflight = new Set<string>();
+  let bound: BoundNotifySession | null = null;
+  // Loaded with the first bound Project, off the startup and first-Chat paths.
+  const { createNotifyRefreshes } = await import("./workspaceNotifyRefreshes");
+  const refreshes = createNotifyRefreshes(
+    hooks.invalidate,
+    () => bound !== null && session === bound,
+    MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS,
+    publishWorkspaceNotifySearch,
+  );
   const unlisten = await hooks.listen((value) => {
     if (!session) {
       return;
     }
     const accepted = acceptWorkspaceNotifyNotice(value, session.live);
     if (!accepted) {
+      return;
+    }
+    if (accepted.kind === "repository") {
+      publishWorkspaceNotifySearch(accepted);
+      return;
+    }
+    // Search includes ignored files when configured; Git uses native index
+    // membership. Both consume the same throttled stream.
+    if (accepted.kind === "ignored") {
+      refreshes.ignoredFolder(accepted);
       return;
     }
     publishWorkspaceNotifySearch(accepted);
@@ -273,19 +359,17 @@ export async function syncLiveProjectWorkspaceNotify(
       void Promise.resolve(hooks.invalidate(accepted, listing));
       return;
     }
-    const key = `${listing.rootId}\0${listing.relativePath}`;
-    if (inflight.has(key)) {
-      return;
-    }
-    if (inflight.size >= MAX_IN_FLIGHT_NOTIFY_INVALIDATIONS) {
-      return;
-    }
-    inflight.add(key);
-    void Promise.resolve(hooks.invalidate(accepted, listing)).finally(() => {
-      inflight.delete(key);
-    });
+    refreshes.folder({ notice: accepted, listing });
   });
-  session = { live, unlisten, inflight };
+  bound = {
+    live,
+    unlisten() {
+      unlisten();
+      refreshes.dispose();
+      hooks.dispose?.();
+    },
+  };
+  session = bound;
   try {
     await hooks.watch({
       stamp: {

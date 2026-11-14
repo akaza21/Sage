@@ -44,6 +44,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "beta0001-macos-shared-contract-ci.node-test.mjs",
   "beta0001-source-functional-profile.node-test.mjs",
   "browser-test-policy.node-test.mjs",
+  "bounded-cdp-evaluate.node-test.mjs",
   "budget-lanes.node-test.mjs",
   "capture-native-chat.node-test.mjs",
   "capture-native-chat-catalog.node-test.mjs",
@@ -55,6 +56,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "capture-native-chat-parity.node-test.mjs",
   "capture-native-chat-turn.node-test.mjs",
   "capture-native-editor-catalog.node-test.mjs",
+  "diagnostic-redaction.node-test.mjs",
   "capture-native-editor-dom.node-test.mjs",
   "capture-native-editor-drive.node-test.mjs",
   "capture-native-editor-capture.node-test.mjs",
@@ -95,6 +97,7 @@ export const NATIVE_WINDOWS_BUDGET_TESTS = Object.freeze([
   "beta0001-installed-smoke-settlement.node-test.mjs",
   "beta0001-installed-smoke.node-test.mjs",
   "beta0001-windows-locked-loader.node-test.mjs",
+  "capture-native-chat-ui.node-test.mjs",
   "check-lanes.native-windows.node-test.mjs",
   "hr6-live-run.node-test.mjs",
   "installed-smoke-identity.node-test.mjs",
@@ -514,6 +517,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
       "Portable browser no-bypass and reference-backed UI rule policy tests over in-memory sources; no native capability required.",
   },
   {
+    file: "bounded-cdp-evaluate.node-test.mjs",
+    reason:
+      "Portable CDP result budget regressions execute the shipped serializer through Node's V8 inspector; no native app or browser required.",
+  },
+  {
     file: "check-policy.node-test.mjs",
     reason:
       "Portable exact-main-WebView ACL permission regression for Sage app commands; no native capability required.",
@@ -527,6 +535,16 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "app-smoke-cli.node-test.mjs",
     reason:
       "Browser-dependent smoke CLI regression lane; drives the real app-smoke entrypoint with bundled Playwright Chromium and asserts exit status, dev-server PID death, and port release.",
+  },
+  {
+    file: "capture-native-chat-ui.node-test.mjs",
+    reason:
+      "Browser-dependent NC-4 capture conformance lane; drives the visual fixture Chats in an owned Vite server and bundled Playwright Chromium with the native capture CDP client, actions and named-state probe.",
+  },
+  {
+    file: "diagnostic-redaction.node-test.mjs",
+    reason:
+      "Portable input/output regressions for the path redaction that lane failure diagnostics pass through; string transforms only, with no process, browser or native capability.",
   },
   {
     file: "check-lanes.portable.node-test.mjs",
@@ -581,7 +599,7 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
   {
     file: "gate.node-test.mjs",
     reason:
-      "Portable gate environment contract proves the deterministic Vitest worker defaults and explicit operator overrides.",
+      "Portable gate plan contract proves the deterministic Vitest worker defaults, explicit operator overrides, and the steps the changed gate picks for a diff.",
   },
   {
     file: "hr6-chat-scope.node-test.mjs",

@@ -2,10 +2,29 @@ use super::*;
 use crate::acp::{contract::SageTurnId, runtime::*, store::AdapterTurnCursor};
 use std::time::Instant;
 
-pub(super) struct IdleEngine;
+/// An idle runtime. With `answering`, a native RPC waits there for the test
+/// to answer it, as a harness answering a session control does.
+#[derive(Default)]
+pub(super) struct IdleEngine {
+    pub(super) answering: Option<Arc<Mutex<Option<NativeRpcCompletionSink>>>>,
+}
 
 impl RuntimeEngine for IdleEngine {
     fn activate(&mut self, _: &RuntimeOwner) -> Result<(), HostError> {
+        Ok(())
+    }
+    fn begin_native_rpc(
+        &mut self,
+        _: &crate::acp::goal::NativeRpcIntent,
+        _: Instant,
+        completion: NativeRpcCompletionSink,
+    ) -> Result<(), HostError> {
+        match &self.answering {
+            Some(pending) => {
+                *pending.lock().unwrap() = Some(completion);
+            }
+            None => completion.complete(Err(HostError::State)),
+        }
         Ok(())
     }
     fn prepare_prompt(&mut self, _: &HostPromptIntent) -> Result<SageTurnId, HostError> {

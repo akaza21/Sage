@@ -2,12 +2,7 @@ import type {
   ResolvePermissionDecisionRequest,
   ResolvePermissionDecisionResponse,
 } from "../domain/acp";
-import {
-  isOneOf,
-  isRecord,
-  safeCounter,
-  safeIdentifier,
-} from "./acpDesktopResponses";
+import { isRecord, safeCounter, safeIdentifier } from "./acpDesktopGuards";
 
 function safePermissionDecision(
   value: unknown,
@@ -21,21 +16,24 @@ function safePermissionDecision(
   const runtimeEpoch = safeCounter(value.runtimeEpoch, false);
   const requestId = safeIdentifier(value.requestId);
   const browser = value.source === "browser";
-  const expectedState = browser
+  // One table per source: its keys are the decisions that source accepts,
+  // so a decision outside it has no expected state and is refused.
+  const states: Record<string, string> = browser
     ? {
-        ask: null,
         allowOnce: "resolvedAllowed",
-        allowAlways: null,
         allowForOriginSession: "resolvedAllowed",
+        allowDeveloperMode: "resolvedAllowed",
         deny: "resolvedDeclined",
-      }[request.decision]
+      }
     : {
         ask: "asked",
         allowOnce: "allowPending",
         allowAlways: "allowPending",
-        allowForOriginSession: null,
         deny: "declinePending",
-      }[request.decision];
+      };
+  const expectedState = Object.hasOwn(states, request.decision)
+    ? states[request.decision]
+    : null;
   if (
     !projectId ||
     !chatId ||
@@ -52,26 +50,7 @@ function safePermissionDecision(
     value.decision !== request.decision ||
     (value.source !== undefined && value.source !== "browser") ||
     !expectedState ||
-    value.state !== expectedState ||
-    !isOneOf(value.decision, [
-      "ask",
-      "allowOnce",
-      "allowAlways",
-      "allowForOriginSession",
-      "deny",
-    ] as const) ||
-    !isOneOf(value.state, [
-      "received",
-      "asked",
-      "allowPending",
-      "allowCommitted",
-      "declinePending",
-      "declineCommitted",
-      "responseQueued",
-      "resolvedAllowed",
-      "resolvedDeclined",
-      "cancelled",
-    ] as const)
+    value.state !== expectedState
   ) {
     return null;
   }
@@ -82,8 +61,9 @@ function safePermissionDecision(
     turnId,
     runtimeEpoch,
     requestId,
-    decision: value.decision,
-    state: value.state,
+    // Equal to the checked response values; the table holds only known states.
+    decision: request.decision,
+    state: expectedState,
     ...(browser ? { source: "browser" as const } : {}),
   } as ResolvePermissionDecisionResponse;
 }

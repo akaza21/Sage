@@ -5,6 +5,7 @@
 //! present-but-unreadable rather than becoming absent or acquiring a guess.
 
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     fs,
     path::{Path, PathBuf},
@@ -14,8 +15,14 @@ use std::{
 
 mod candidates;
 mod claude;
+#[cfg(unix)]
+mod native_claude;
+#[cfg(all(test, unix))]
+mod native_claude_tests;
+mod npm_package;
 mod parsing;
 mod pi;
+mod updates;
 mod validation;
 mod version_probe;
 
@@ -24,14 +31,20 @@ mod hash_tests;
 #[cfg(test)]
 mod tests;
 
+use crate::domain::HarnessBrand;
 pub(crate) use claude::cached_sha256_file;
 pub(crate) use claude::{
     ClaudeLaunchDiscovery, DiscoveredClaudeLaunch, discover_claude_launch, sha256_file,
 };
+#[cfg(all(test, windows))]
+pub(crate) use npm_package::npm_package_bin;
+#[cfg(windows)]
+pub(crate) use npm_package::npm_package_bin_from_manifest;
 use parsing::parse_harness_display_version;
 #[cfg(test)]
 use parsing::parse_harness_version;
 pub(crate) use pi::{DiscoveredPiLaunch, PiLaunchDiscovery, discover_pi_launch};
+pub(crate) use updates::{PublishedRelease, published_releases, update_sources};
 use validation::authentic_harness_file as validate_harness_file;
 use version_probe::run_version_command;
 
@@ -40,7 +53,10 @@ use version_probe::run_version_command;
 pub(crate) const PATH_BYTES_MAX: usize = 32 * 1024;
 pub(super) const KNOWN_INSTALL_ROOT_CAP: usize = 4;
 pub(super) const VERSION_OUTPUT_BYTES_MAX: usize = 16 * 1024;
-pub(super) const VERSION_TIMEOUT: Duration = Duration::from_secs(2);
+/// Long enough for a first run after an update, when the OS scans the new
+/// binary or Node compiles its cache; a probe that answers sooner returns
+/// sooner.
+pub(super) const VERSION_TIMEOUT: Duration = Duration::from_secs(10);
 pub(super) const VERSION_REAP_TIMEOUT: Duration = Duration::from_millis(250);
 pub(super) const VERSION_POLL_INTERVAL: Duration = Duration::from_millis(5);
 
@@ -67,6 +83,7 @@ pub(crate) struct KnownHarnessSpec {
     pub(crate) executable: HarnessExecutable,
     pub(crate) install_layout: InstallLayout,
     pub(crate) sign_in: Option<KnownHarnessSignIn>,
+    pub(crate) brand: Option<HarnessBrand>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -84,6 +101,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "codex login",
             hint: "Sign in to your Codex account.",
         }),
+        brand: Some(HarnessBrand::Codex),
     },
     KnownHarnessSpec {
         id: "claude-code",
@@ -93,6 +111,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "claude auth login",
             hint: "Complete sign-in in the terminal.",
         }),
+        brand: Some(HarnessBrand::Claude),
     },
     KnownHarnessSpec {
         id: "pi",
@@ -102,6 +121,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "pi",
             hint: "Then run /login.",
         }),
+        brand: Some(HarnessBrand::Pi),
     },
     KnownHarnessSpec {
         id: "gemini-cli",
@@ -111,6 +131,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "gemini",
             hint: "Follow the sign-in prompts.",
         }),
+        brand: None,
     },
     KnownHarnessSpec {
         id: "opencode",
@@ -120,6 +141,7 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "opencode auth login",
             hint: "Choose the provider to sign in.",
         }),
+        brand: Some(HarnessBrand::OpenCode),
     },
     KnownHarnessSpec {
         id: "cursor-agent",
@@ -129,12 +151,14 @@ pub(crate) const KNOWN_HARNESS_SPECS: &[KnownHarnessSpec] = &[
             command: "cursor-agent login",
             hint: "Sign in to Cursor Agent.",
         }),
+        brand: None,
     },
     KnownHarnessSpec {
         id: "oh-my-pi",
         executable: HarnessExecutable::OhMyPi,
         install_layout: InstallLayout::NpmGlobal,
         sign_in: None,
+        brand: None,
     },
 ];
 
@@ -207,6 +231,18 @@ pub(crate) fn authentic_harness_file(path: &Path, expected_basename: &str) -> bo
     validate_harness_file(path, expected_basename)
 }
 
+/// Resolve the native executable once. The SDK retains the launcher separately
+/// to detect updates, but executes and pins the resolved artifact.
+pub(crate) fn claude_sdk_executable(launcher: &Path) -> Option<PathBuf> {
+    #[cfg(unix)]
+    if let Some(target) = native_claude::target(launcher) {
+        return Some(target);
+    }
+    validation::authentic_regular_file(launcher)
+        .then(|| launcher.canonicalize().ok())
+        .flatten()
+}
+
 pub(crate) fn authentic_regular_file(path: &Path) -> bool {
     validation::authentic_regular_file(path)
 }
@@ -236,7 +272,9 @@ fn discover_from_candidates(
         return HarnessDiscovery::Absent;
     };
 
-    let Some(output) = run_version_command(&candidate.executable, limits) else {
+    let output = probe_target(harness, &candidate.executable)
+        .and_then(|target| run_version_command(&target, limits));
+    let Some(output) = output else {
         return HarnessDiscovery::PresentVersionUnreadable {
             executable: candidate.executable,
             source: candidate.source,
@@ -288,11 +326,11 @@ struct DisplayFileIdentity {
 
 #[derive(Debug, Default)]
 pub(crate) struct DisplayVersionCache {
-    entries: Mutex<HashMap<DisplayFileIdentity, Option<String>>>,
+    entries: Mutex<HashMap<DisplayFileIdentity, String>>,
 }
 
 impl DisplayVersionCache {
-    fn version(&self, identity: &DisplayFileIdentity) -> Option<Option<String>> {
+    fn version(&self, identity: &DisplayFileIdentity) -> Option<String> {
         self.entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -300,7 +338,7 @@ impl DisplayVersionCache {
             .cloned()
     }
 
-    fn insert(&self, identity: DisplayFileIdentity, version: Option<String>) {
+    fn insert(&self, identity: DisplayFileIdentity, version: String) {
         self.entries
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
@@ -350,28 +388,29 @@ pub(crate) fn enrich_installed_harness_versions(
             .cloned()
             .map(|harness| {
                 scope.spawn(move || {
-                    let identity = display_file_identity(&harness.executable);
+                    let spec = known_harness_spec(harness.id);
+                    let target =
+                        spec.and_then(|spec| probe_target(spec.executable, &harness.executable));
+                    let identity = target.as_deref().and_then(display_file_identity);
                     let version = identity
                         .as_ref()
                         .and_then(|identity| cache.version(identity))
-                        .unwrap_or_else(|| {
-                            let version = known_harness_spec(harness.id).and_then(|spec| {
-                                run_version_command(&harness.executable, ProbeLimits::PRODUCTION)
-                                    .and_then(|output| {
+                        .or_else(|| {
+                            let version = spec.zip(target.as_deref()).and_then(|(spec, target)| {
+                                let output = run_version_command(target, ProbeLimits::PRODUCTION)?;
+                                parse_harness_display_version(spec.executable, &output.stdout)
+                                    .or_else(|| {
                                         parse_harness_display_version(
                                             spec.executable,
-                                            &output.stdout,
+                                            &output.stderr,
                                         )
-                                        .or_else(|| {
-                                            parse_harness_display_version(
-                                                spec.executable,
-                                                &output.stderr,
-                                            )
-                                        })
-                                        .map(|version| version.to_string())
                                     })
+                                    .map(|version| version.to_string())
                             });
-                            if let Some(identity) = identity {
+                            // A failed probe is not remembered: the first run of
+                            // a just-updated CLI can miss the deadline, and a
+                            // refresh must try it again.
+                            if let (Some(identity), Some(version)) = (identity, &version) {
                                 cache.insert(identity, version.clone());
                             }
                             version
@@ -387,13 +426,24 @@ pub(crate) fn enrich_installed_harness_versions(
     })
 }
 
+fn probe_target(harness: HarnessExecutable, executable: &Path) -> Option<Cow<'_, Path>> {
+    #[cfg(unix)]
+    if harness == HarnessExecutable::Claude
+        && let Some(target) = native_claude::target(executable)
+    {
+        return Some(Cow::Owned(target));
+    }
+    let expected = validation::expected_basenames(harness)
+        .iter()
+        .any(|basename| executable.file_name() == Some(std::ffi::OsStr::new(basename)));
+    (expected && validation::authentic_regular_file(executable))
+        .then_some(Cow::Borrowed(executable))
+}
+
 pub(crate) fn revalidate_harness_version(id: &str, executable: &Path) -> Option<String> {
     let spec = known_harness_spec(id)?;
-    validation::expected_basenames(spec.executable)
-        .iter()
-        .any(|basename| validate_harness_file(executable, basename))
-        .then_some(())?;
-    let output = run_version_command(executable, ProbeLimits::PRODUCTION)?;
+    let target = probe_target(spec.executable, executable)?;
+    let output = run_version_command(&target, ProbeLimits::PRODUCTION)?;
     parse_harness_display_version(spec.executable, &output.stdout)
         .or_else(|| parse_harness_display_version(spec.executable, &output.stderr))
 }

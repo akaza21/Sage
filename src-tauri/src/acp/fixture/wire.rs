@@ -26,13 +26,36 @@ mod child_opened_tests;
 mod parity_tests;
 #[cfg(test)]
 pub(crate) use child_opened_tests::child_opened_wire_for_test;
+#[cfg(test)]
+#[path = "wire_claude_sdk_replay.rs"]
+mod claude_sdk_replay;
+#[cfg(test)]
+pub(crate) use claude_sdk_replay::claude_sdk_wire_for_test;
+#[cfg(test)]
+pub(crate) use pi_bridge::{pi_journey_steps_for_test, run_pi_step_for_test};
+#[cfg(test)]
+pub(crate) use user_input::codex_user_input_wire_for_test;
 
 #[path = "wire_acp.rs"]
 mod acp;
+#[path = "wire_codex_background.rs"]
+mod background;
+#[path = "wire_claude_sdk.rs"]
+mod claude_sdk;
+#[path = "wire_claude_sdk_transcript.rs"]
+mod claude_transcript;
 #[path = "wire_codex.rs"]
 mod codex;
+#[path = "wire_codex_catalog.rs"]
+mod codex_catalog;
 #[path = "wire_pi.rs"]
 mod pi;
+#[path = "wire_pi_bridge.rs"]
+mod pi_bridge;
+#[path = "wire_prompt_echo.rs"]
+mod prompt_echo;
+#[path = "wire_codex_user_input.rs"]
+mod user_input;
 
 pub(super) struct WireState {
     stdin_open: bool,
@@ -42,7 +65,25 @@ pub(super) struct WireState {
     prompt_request_id: Option<u64>,
     current_turn_id: Option<String>,
     turn_count: u64,
+    /// Server requests the fixture has sent. Codex numbers its own requests
+    /// from one counter per connection, so an id is never reused.
+    server_requests_sent: u64,
+    /// The question request still waiting for the client's answer.
+    pending_user_input: Option<u64>,
+    user_input_echo: Option<String>,
     pi: pi::PiWireState,
+    acp_config: Option<acp::AcpConfig>,
+    /// What prompts carry, once `initialize` advertised embedded context.
+    embedded_context: Option<acp::EmbeddedContext>,
+    /// The model the client opened or resumed the Codex thread with.
+    codex_thread_model: Option<String>,
+    /// The model and effort the client's last Codex `turn/start` named, as
+    /// a frame quotes them (`$CODEX_TURN_CONFIG`).
+    codex_turn_config: Option<String>,
+    /// The client's last prompt, as a frame quotes it (`$PROMPT_ECHO`).
+    prompt_echo: Option<String>,
+    claude_sdk: claude_sdk::SdkWireState,
+    codex_skills: background::Skills,
 }
 
 impl WireState {
@@ -55,8 +96,26 @@ impl WireState {
             prompt_request_id: None,
             current_turn_id: None,
             turn_count: 0,
+            server_requests_sent: 0,
+            pending_user_input: None,
+            user_input_echo: None,
             pi: pi::PiWireState::new(),
+            acp_config: None,
+            embedded_context: None,
+            codex_thread_model: None,
+            codex_turn_config: None,
+            prompt_echo: None,
+            claude_sdk: claude_sdk::SdkWireState::default(),
+            codex_skills: background::Skills::default(),
         }
+    }
+
+    /// A launch's starting state: a Claude Code SDK case opens the session
+    /// its `harness_args` name.
+    pub(super) fn launched(harness_args: &[String]) -> Result<Self, FixtureError> {
+        let mut state = Self::new();
+        state.claude_sdk = claude_sdk::SdkWireState::launched(harness_args)?;
+        Ok(state)
     }
 
     fn charge(&mut self, bytes: u64) -> Result<(), FixtureError> {
@@ -125,11 +184,21 @@ fn await_client_kind(
     state: &mut WireState,
 ) -> Result<(), FixtureError> {
     let kind = field_str(step, "kind")?;
+    if kind == "piBridgeTool" {
+        return pi_bridge::tool(step, input, output, state);
+    }
+    if kind.starts_with("claudeSdk") {
+        return claude_sdk::await_request(input, output, state, step);
+    }
     if kind.starts_with("pi") {
-        return pi::await_request(input, output, state, kind);
+        return pi::await_request(input, output, state, step);
     }
     if kind.starts_with("acp") {
-        return acp::await_request(input, output, state, kind);
+        let prompt_text = step.get("promptText").and_then(Value::as_str);
+        return acp::await_request(input, output, state, kind, prompt_text);
+    }
+    if kind == "codexUserInputAnswer" {
+        return user_input::await_answer(input, state);
     }
     if kind == "codexGoalGetWithOptionalModelList" {
         return codex::await_goal_with_optional_models(input, output, state);
@@ -137,6 +206,9 @@ fn await_client_kind(
     let expected_method = match kind {
         "codexInitialize" => Some("initialize"),
         "codexStart" => Some("thread/start"),
+        // A journey that runs across an app restart: a new thread first,
+        // the same thread resumed after.
+        "codexStartOrResume" => Some("thread/start|thread/resume"),
         "codexResume" => Some("thread/resume"),
         "codexModelList" => Some("model/list"),
         "codexGoalGet" => Some("thread/goal/get"),
@@ -182,6 +254,17 @@ fn await_client(
     }
 }
 
+/// The frame a Codex journey step named `shape` answers request `id` with,
+/// outside a running journey.
+#[cfg(any(test, all(windows, debug_assertions)))]
+pub(super) fn codex_reply(shape: &str, id: u64) -> Option<Value> {
+    let mut state = WireState::new();
+    state.last_request_id = Some(id);
+    let mut output = Vec::new();
+    codex::emit_known(shape, &Value::Null, &mut state, &mut output).ok()?;
+    serde_json::from_slice(&output).ok()
+}
+
 fn emit_known(
     step: &Value,
     state: &mut WireState,
@@ -191,46 +274,14 @@ fn emit_known(
     if shape == "piNative" {
         return pi::emit(step, state, output);
     }
+    if matches!(shape, "claudeSdkNative" | "claudeSdkLifecycle") {
+        return claude_sdk::emit(step, state, output);
+    }
     if shape.starts_with("acp") {
         return acp::emit(step, state, output);
     }
-    if shape == "codexNative" {
-        let mut params = acp::substitute(step["params"].clone(), state, 0)?;
-        params["threadId"] = serde_json::json!(acp::SESSION);
-        params["turnId"] = serde_json::json!(
-            state
-                .current_turn_id
-                .as_deref()
-                .ok_or(FixtureError::InvalidArguments)?
-        );
-        return codex::emit_json(
-            output,
-            state,
-            &serde_json::json!({"jsonrpc":"2.0","method":field_str(step,"method")?,"params":params}),
-        );
-    }
-    match shape {
-        "codexError" => return codex::emit_notification("error", state, output),
-        "codexInitializeResult" => return codex::emit_response("initialize", state, output),
-        "codexInitializeResult0146" => {
-            return codex::emit_response("initialize0146", state, output);
-        }
-        "codexThreadResult" => return codex::emit_response("thread", state, output),
-        "codexThreadEffortResult" => return codex::emit_response("effortThread", state, output),
-        "codexModelListResult" => return codex::emit_response("models", state, output),
-        "codexModelListEffortResult" => return codex::emit_response("effortModels", state, output),
-        "codexGoalMethodNotFound" => {
-            return codex::emit_response("goalMethodNotFound", state, output);
-        }
-        "codexTurnResult" => return codex::emit_response("turn", state, output),
-        "codexForkResult" => return codex::emit_response("fork", state, output),
-        "codexStarted" => return codex::emit_notification("started", state, output),
-        "codexAck" => return codex::emit_response("ack", state, output),
-        "codexDelta" => return codex::emit_notification("delta", state, output),
-        "codexItemCompleted" => return codex::emit_notification("itemCompleted", state, output),
-        "codexCompleted" => return codex::emit_notification("completed", state, output),
-        "codexInterrupted" => return codex::emit_notification("interrupted", state, output),
-        _ => {}
+    if shape.starts_with("codex") {
+        return codex::emit_known(shape, step, state, output);
     }
     match shape {
         "childActivityDepth4"
@@ -356,53 +407,18 @@ fn emit_sized_frame(
     write_stdout(output, state, b"}\n", false)
 }
 
-fn emit_stderr_line(
-    bytes: u64,
-    state: &mut WireState,
-    error: &mut impl Write,
-) -> Result<(), FixtureError> {
-    emit_repeated(error, state, b'x', bytes)?;
-    write_stderr(error, state, b"\n")
-}
-
-fn fill_stderr(
-    step: &Value,
-    state: &mut WireState,
-    error: &mut impl Write,
-) -> Result<(), FixtureError> {
-    if let Some(chunks) = step.get("rawChunks").and_then(Value::as_array) {
-        for chunk in chunks {
-            let bytes = field_u64(chunk, "bytes")?;
-            for _ in 0..field_u64(chunk, "count")? {
-                emit_repeated(error, state, b'x', bytes)?;
-            }
-        }
-        if let Some(final_bytes) = step.get("finalRawChunkBytes").and_then(Value::as_u64) {
-            emit_repeated(error, state, b'x', final_bytes)?;
-        }
-        return Ok(());
-    }
-    let repeated = step
-        .get("repeatedLineBytes")
-        .ok_or(FixtureError::InvalidArguments)?;
-    let bytes = field_u64(repeated, "bytes")?;
-    let count = field_u64(repeated, "count")?;
-    for _ in 0..count {
-        emit_stderr_line(bytes, state, error)?;
-    }
-    if let Some(final_bytes) = step.get("finalLineBytes").and_then(Value::as_u64) {
-        emit_stderr_line(final_bytes, state, error)?;
-    }
-    Ok(())
-}
-
 #[path = "wire_output.rs"]
 mod output;
-use output::write_stderr;
 pub(super) use output::{emit_repeated, write_stdout};
+use output::{emit_stderr_line, fill_stderr};
 
 #[cfg(test)]
 #[path = "wire_capture_steps.rs"]
 mod capture;
 #[cfg(test)]
 pub(super) use capture::capture_steps;
+#[cfg(test)]
+pub(crate) use capture::replay_native;
+#[cfg(test)]
+#[path = "wire_echo_journey_tests.rs"]
+mod echo_journey_tests;

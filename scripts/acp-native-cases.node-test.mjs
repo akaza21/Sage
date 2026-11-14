@@ -418,17 +418,22 @@ test("Codex context meter carries the full pinned token usage shape", () => {
   const evidence = JSON.parse(
     readFileSync(
       new URL(
-        "../src-tauri/testdata/acp/codex/native-capture-wire-0146.json",
+        "../src-tauri/testdata/acp/codex/native-capture-wire.json",
         import.meta.url,
       ),
       "utf8",
     ),
   );
-  assert.equal(evidence.runtimeVersion, "0.146.0");
-  assert.equal(
-    evidence.appServerSchemaSha256,
-    "d3992fec1398afdbec658da2c720c6993fbf3c1ce4900785694d2196679eddfc",
+  const manifest = readFileSync(
+    new URL("../src-tauri/src/acp/bindings/codex/manifest.rs", import.meta.url),
+    "utf8",
   );
+  const pinned = (name) =>
+    manifest.match(
+      new RegExp(`macro_rules! ${name} \\{\\s*\\(\\) => \\{\\s*"([^"]+)"`, "u"),
+    )?.[1];
+  assert.equal(evidence.runtimeVersion, pinned("pinned_codex_version"));
+  assert.equal(evidence.appServerSchemaSha256, pinned("pinned_schema_sha256"));
   for (const field of evidence.threadTokenUsageRequired)
     assert.ok(field in usage.params.tokenUsage);
   for (const field of evidence.usageBreakdownRequired) {

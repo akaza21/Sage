@@ -88,8 +88,12 @@ struct Executable(PathBuf);
 #[cfg(windows)]
 impl Executable {
     fn new() -> Self {
-        let path =
-            std::env::temp_dir().join(format!("sage-admission-{}.cmd", uuid::Uuid::new_v4()));
+        let directory =
+            std::env::temp_dir().join(format!("sage-admission-{}", uuid::Uuid::new_v4()));
+        let package = directory.join("node_modules/@openai/codex");
+        std::fs::create_dir_all(&package).unwrap();
+        std::fs::write(package.join("package.json"), br#"{"name":"@openai/codex"}"#).unwrap();
+        let path = directory.join("codex.cmd");
         std::fs::write(&path, b"@echo off\r\n").unwrap();
         Self(path)
     }
@@ -100,7 +104,7 @@ impl Executable {
     ) -> Result<AdmittedCodexBinding, CodexAdmissionUnavailable> {
         AdmittedCodexBinding::admit_observed_with_inputs(
             self.0.clone(),
-            "codex 0.146.0".into(),
+            crate::acp::bindings::codex::test_identity::version_line("codex"),
             inputs,
         )
     }
@@ -109,7 +113,7 @@ impl Executable {
 #[cfg(windows)]
 impl Drop for Executable {
     fn drop(&mut self) {
-        std::fs::remove_file(&self.0).unwrap();
+        std::fs::remove_dir_all(self.0.parent().unwrap()).unwrap();
     }
 }
 

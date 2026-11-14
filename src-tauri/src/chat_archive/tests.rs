@@ -222,7 +222,7 @@ fn active_archive_selects_the_next_chat_then_previous_and_rejects_the_last() {
     let error = database
         .archive_chat(&request(&project.id, &first_chat_id, &before_rejection))
         .unwrap_err();
-    assert!(error.to_string().contains("last attached Chat"));
+    assert!(error.to_string().contains("last attached chat"));
     let after_rejection = database.bootstrap_snapshot().unwrap();
     assert_eq!(
         after_rejection
@@ -310,6 +310,7 @@ fn restore_rejects_the_plus_one_tab_without_mutation() {
             dirty: false,
             status: Some("idle".into()),
             updated_at: None,
+            finished_at: None,
             resource: None,
             repository: None,
             diff_ref: None,

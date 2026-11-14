@@ -19,6 +19,9 @@ import { BrowserFavicon } from "../features/browser/browserFavicon";
 import { artifactChipStatsForTab } from "./artifactChipStats";
 import { artifactTabParts } from "./agentArtifactTabPresentation";
 import { useAgentChangesState } from "./agentChangesState";
+import "./AgentArtifactPaneTabs.css";
+
+export { AgentArtifactEmptyState } from "./AgentArtifactPaneEmptyState";
 
 type AgentArtifactTabStripProps = {
   artifacts: readonly WorkbenchTab[];
@@ -69,7 +72,7 @@ export function AgentArtifactTabStrip({
     `agent-artifact-pending-${index}`;
   const modeLabel = following ? "Following latest" : "Pinned";
   const followTitle = following
-    ? "Following the newest resource from this Chat"
+    ? "Following the newest resource from this chat"
     : latestPendingTarget
       ? "A newer resource arrived. Select to follow it."
       : "Pinned to this resource. Select to follow the newest resource.";
@@ -284,11 +287,11 @@ export function AgentArtifactTabStrip({
             following
               ? "Following latest resource"
               : previewPending && fileOrDiffPending
-                ? "Pinned resource, new File, Diff, and Preview available"
+                ? "Pinned resource, new file, diff, and preview available"
                 : previewPending
                   ? "Pinned resource, new Preview available"
                   : fileOrDiffPending
-                    ? "Pinned resource, new File or Diff available"
+                    ? "Pinned resource, new file or diff available"
                     : "Pinned resource"
           }
           aria-pressed={following}

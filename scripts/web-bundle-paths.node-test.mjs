@@ -323,15 +323,9 @@ test("manifest traversal accepts bounded deep graphs and rejects the next record
   }
 });
 
-test("committed path caps tighten startup and Agent within the original 0.5 percent ceilings", async () => {
-  const baseline = {
-    initial: 103957,
-    agentOneChat: 210654,
-    editorShell: 187184,
-    editorDiff: 190343,
-    editorSearch: 192978,
-    editorFile: 289551,
-  };
+test("committed path caps keep their headroom over hash-masked measurements", async () => {
+  // Caps were rebased from emitted to hash-masked bytes by subtracting each
+  // path's masking difference on main, so headroom is unchanged.
   const budgets = JSON.parse(
     await readFile(
       new URL("../docs/performance/budgets.json", import.meta.url),
@@ -339,20 +333,28 @@ test("committed path caps tighten startup and Agent within the original 0.5 perc
     ),
   );
   assert.deepEqual(budgets.bundle.webPathJsGzipBytes, {
-    ...Object.fromEntries(
-      Object.entries(baseline).map(([name, bytes]) => [
-        name,
-        Math.floor(bytes * 1.005),
-      ]),
-    ),
-    initial: 104423,
-    agentOneChat: 208434,
+    initial: 97452,
+    agentOneChat: 207088,
+    editorShell: 187377,
+    editorDiff: 190521,
+    editorSearch: 193112,
+    editorFile: 289989,
   });
   assert.equal(
     budgets.measurement.webBundlePaths.integrationAdjustment,
     undefined,
   );
-  assert.equal(budgets.bundle.webTotalJsGzipBytes, 461000);
+  const browserSurface = budgets.bundle.lazyFeatureChunks.find(
+    (feature) => feature.entry === "src/features/browser/BrowserSurface.tsx",
+  );
+  // The combined History/overflow host receives 150 B from core; the
+  // approved aggregate allowance stays fixed.
+  assert.equal(budgets.bundle.webTotalJsGzipBytes, 460850);
+  assert.equal(browserSurface.maxGzipBytes, 8785);
+  assert.equal(
+    budgets.bundle.webTotalJsGzipBytes + browserSurface.maxGzipBytes,
+    469635,
+  );
   // Codex §7 Subagents (w8sub): measured 5,101 B + 10%, less the 32 B that
   // hashed import names added to the emitted chunk.
   assert.equal(budgets.bundle.webSubagentLazyJsGzipBytes, 5580);

@@ -8,7 +8,7 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../app/store";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import { resetChatReadMarks } from "../features/chat/acp/chatReadMarks";
 import { LeftSidebar } from "./LeftSidebar";
 import { resetAgentRailInteractions } from "./agentRailInteractions";
 import {
@@ -22,7 +22,7 @@ afterEach(() => {
   cleanup();
   resetAgentRailInteractions();
   resetAgentRailViewPrefs();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   useWorkbenchStore.setState(initial, true);
   vi.restoreAllMocks();
 });
@@ -116,7 +116,7 @@ it("only offers Undo after a committed archive, and restores the exact project/c
   );
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
   fireEvent.click(await screen.findByRole("button", { name: "Undo archive" }));
-  expect(archiveChat).toHaveBeenCalledWith("Beta", "project-a");
+  expect(archiveChat).toHaveBeenCalledWith("Beta", "project-a", "row");
   expect(restoreChat).toHaveBeenCalledWith("Beta", "project-a");
   await act(async () => undefined);
 });
@@ -153,7 +153,7 @@ it("previews five chats per project and Show more expands the list in place", ()
     within(screen.getByRole("region", { name: "Projects" }));
   fireEvent.click(projects().getByRole("button", { name: "Show more" }));
   expect(rows()).toHaveLength(12);
-  expect(screen.queryByRole("searchbox", { name: "Search Chats" })).toBeNull();
+  expect(screen.queryByRole("combobox", { name: "Search chats" })).toBeNull();
   fireEvent.click(projects().getByRole("button", { name: "Show less" }));
   expect(rows()).toHaveLength(5);
 });

@@ -41,11 +41,24 @@ pub async fn activate_chat(
 
 #[tauri::command]
 pub async fn rename_chat(
+    app: tauri::AppHandle,
     state: State<'_, AppState>,
     request: RenameChatRequest,
     expected_transition_epoch: u64,
 ) -> Result<ProjectTransitionResult, String> {
-    Ok(rename_chat_inner(&state, request, expected_transition_epoch).await)
+    let (project_id, chat_id) = (request.project_id.clone(), request.chat_id.clone());
+    let result = rename_chat_inner(&state, request, expected_transition_epoch).await;
+    // The harness learns the name once Sage has kept it, off the rename's
+    // own path, so a rename never waits on a running session.
+    if result.committed {
+        tauri::async_runtime::spawn_blocking(move || {
+            use tauri::Manager;
+            app.state::<AppState>()
+                .acp
+                .retitle_live_session(&project_id, &chat_id);
+        });
+    }
+    Ok(result)
 }
 
 #[tauri::command]
@@ -156,10 +169,13 @@ pub(crate) async fn execute_chat_transition(
     let database = state.database.clone();
     let mutation = tauri::async_runtime::spawn_blocking(move || operation(database))
         .await
-        .map_err(|error| AppError::InvalidRequest(error.to_string()))
+        .map_err(|error| AppError::TaskInterrupted(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
-        return failed_transition(*transition_epoch, error);
+        if error.hides_detail() {
+            tracing::warn!(%error, "Chat transition failed");
+        }
+        return failed_transition(*transition_epoch, error.public_message());
     }
     *transition_epoch += 1;
     on_committed_project_transition_epoch(*transition_epoch);
@@ -179,7 +195,10 @@ pub(crate) async fn execute_chat_transition(
     }
 }
 
-fn failed_transition(transition_epoch: u64, error: impl ToString) -> ProjectTransitionResult {
+pub(crate) fn failed_transition(
+    transition_epoch: u64,
+    error: impl ToString,
+) -> ProjectTransitionResult {
     ProjectTransitionResult {
         committed: false,
         transition_epoch,
@@ -276,6 +295,7 @@ mod tests {
                 dirty: true,
                 status: None,
                 updated_at: None,
+                finished_at: None,
                 resource: Some(selected_resource.clone()),
                 repository: None,
                 diff_ref: None,
@@ -389,6 +409,39 @@ mod tests {
                 Some("Chat: Inactive renamed")
             );
             drop(reopened);
+            fs::remove_dir_all(root).unwrap();
+        });
+    }
+
+    #[test]
+    fn committed_chat_transition_stops_the_previous_epoch_preview_but_a_stale_one_does_not() {
+        tokio::runtime::Runtime::new().unwrap().block_on(async {
+            let root = std::env::temp_dir().join(format!("sage-chat-preview-{}", Uuid::new_v4()));
+            fs::create_dir_all(&root).unwrap();
+            let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let initial = database.bootstrap_snapshot().unwrap();
+            let layout = ProjectLayoutRequest {
+                project_id: project.id,
+                tabs: initial.tabs,
+                active_tab_id: initial.active_tab_id,
+                selected_root_id: initial.selected_root_id,
+                selected_resource: initial.selected_resource,
+            };
+            let state = AppState::new(database);
+            let preview = crate::app_preview_commands::ServingPreview::start(0);
+
+            let stale = create_chat_inner(&state, layout.clone(), 1, None).await;
+            assert!(!stale.committed);
+            assert!(
+                preview.is_serving(),
+                "a rejected transition must not stop the current Preview"
+            );
+
+            let created = create_chat_inner(&state, layout, 0, None).await;
+            assert!(created.committed);
+            assert_eq!(created.transition_epoch, 1);
+            assert!(!preview.is_serving());
             fs::remove_dir_all(root).unwrap();
         });
     }

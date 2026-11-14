@@ -45,6 +45,7 @@ impl CodexAdapter {
         self.provisional_turn
             .as_ref()
             .is_some_and(|pending| std::time::Instant::now() >= pending.deadline)
+            || self.action_handoff_expired()
     }
 
     pub(crate) fn has_provisional_turn(&self) -> bool {
@@ -71,6 +72,6 @@ impl CodexAdapter {
         let pending = self.provisional_turn.take().expect("provisional turn");
         self.active_turn_client_message_id = Some(pending.client_message_id);
         self.active_turn_id = pending.started_id;
-        self.scoped_in_turn(ExternalKind::Turn, turn_id, turn_id)
+        self.scoped_turn(turn_id)
     }
 }

@@ -50,12 +50,81 @@ beforeEach(() => {
   useSessionAccessModeStore.setState({ ready: true, modes: {}, error: null });
 });
 
-it("shows installation and sign-in evidence without treating an installed adapter as signed in", () => {
+it("shows installation and sign-in evidence without treating an installed adapter as signed in", async () => {
   render(<AgentSettingsSurface />);
   fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
+  // The Harnesses page loads on demand.
+  await screen.findByRole("button", { name: "Refresh discovery" });
   expect(screen.getByText("Test harness")).toBeVisible();
   expect(screen.getByText(/Sign-in status is not exposed/)).toBeVisible();
   expect(screen.queryByText("Signed in")).toBeNull();
+});
+
+it("states each harness's install state once and puts the sign-in command before its follow-up step", async () => {
+  const harness = useWorkbenchStore.getState().harnesses[0];
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        ...harness,
+        id: "pi",
+        name: "Pi",
+        version: "0.9.0",
+        signIn: { command: "pi", hint: "Then run /login." },
+      },
+      {
+        ...harness,
+        id: "missing",
+        name: "Missing",
+        installState: "notInstalled",
+        signIn: { command: "missing login", hint: "Follow the prompts." },
+      },
+    ],
+  });
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
+  expect(
+    await screen.findByText(
+      "Available · 0.9.0. Sign-in status is not exposed by this harness.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      (_, node) =>
+        node?.textContent === "Run pi in a terminal. Then run /login.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      "Not installed. Install it, then choose Refresh discovery.",
+    ),
+  ).toBeVisible();
+  expect(screen.queryByText(/missing login/)).toBeNull();
+});
+
+it("shows a published update with the command that installs it", async () => {
+  const harness = useWorkbenchStore.getState().harnesses[0];
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        ...harness,
+        id: "pi",
+        name: "Pi",
+        version: "0.74.2",
+        update: {
+          latestVersion: "0.75.0",
+          command: "npm install -g @earendil-works/pi-coding-agent@latest",
+        },
+      },
+      { ...harness, id: "current", name: "Current", version: "1.0.0" },
+    ],
+  });
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
+  const line = await screen.findByText(/Update available/);
+  expect(line).toHaveTextContent(
+    "Update available: 0.74.2 → 0.75.0. Run npm install -g @earendil-works/pi-coding-agent@latest in a terminal, then choose Refresh discovery.",
+  );
+  expect(screen.getAllByText(/Update available/)).toHaveLength(1);
 });
 
 it("restores an archived chat through the existing project-scoped action", async () => {
@@ -101,7 +170,7 @@ it("uses persisted appearance settings and leaves Editor appearance separate", (
     fontSize: 14,
     density: "compact",
   });
-  expect(screen.queryByRole("checkbox", { name: "Code folding" })).toBeNull();
+  expect(screen.queryByRole("switch", { name: "Code folding" })).toBeNull();
 });
 
 it("lists app-wide and Agent shortcuts and leaves Editor shortcuts to Editor settings", async () => {
@@ -180,7 +249,7 @@ it("labels transient harness/model selection honestly and exposes only real acce
   expect(screen.queryByRole("option", { name: "High" })).toBeNull();
 });
 
-it("shows only the sections T3 Code's settings also have, in its order", () => {
+it("shows T3 Code's settings sections in its order, plus Sage's Passwords next to Browser", () => {
   render(<AgentSettingsSurface />);
   const nav = screen.getByRole("navigation", {
     name: "Agent settings sections",
@@ -193,9 +262,26 @@ it("shows only the sections T3 Code's settings also have, in its order", () => {
     "Harnesses",
     "Chats",
     "Browser",
+    "Passwords",
     "Archived chats",
   ]);
   expect(screen.getByRole("heading", { name: "Agents" })).toBeVisible();
+});
+
+it("opens the saved passwords page that Editor Settings shows", async () => {
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Passwords" }));
+  expect(useAgentSettingsState.getState().page).toBe("Passwords");
+  expect(
+    await screen.findByText(
+      "Saved passwords are available in the Sage desktop app.",
+    ),
+  ).toBeVisible();
+  expect(
+    screen.getByText(
+      "Passwords you've saved for websites. Each use requires your confirmation.",
+    ),
+  ).toBeVisible();
 });
 
 it("does not offer reserved shortcuts", async () => {
@@ -220,6 +306,67 @@ it("closes from its close button and Escape, and Ctrl+, keeps its section", () =
     page: "Browser",
     browserTabId: "tab-a",
   });
+});
+
+it("returns focus to what opened it when Escape closes it (B-16)", () => {
+  const opener = document.createElement("button");
+  document.body.append(opener);
+  useAgentSettingsState.getState().close();
+  opener.focus();
+  // Opening hides the Agent workspace, and focus with it, before Settings
+  // mounts; only the open call still sees the opener.
+  useAgentSettingsState.getState().open("Chats");
+  opener.blur();
+  try {
+    const { rerender } = render(<AgentSettingsSurface />);
+    expect(screen.getByRole("searchbox")).toHaveFocus();
+    fireEvent.keyDown(screen.getByRole("button", { name: "Chats" }), {
+      key: "Escape",
+    });
+    // The workbench unmounts Settings once no page is open.
+    rerender(<></>);
+    expect(opener).toHaveFocus();
+  } finally {
+    opener.remove();
+  }
+});
+
+it("moves between sections with the arrow keys, wrapping at either end", () => {
+  render(<AgentSettingsSurface />);
+  const appearance = screen.getByRole("button", { name: "Appearance" });
+  appearance.focus();
+  fireEvent.keyDown(appearance, { key: "ArrowDown" });
+  expect(screen.getByRole("button", { name: "Keybindings" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Keybindings" }), {
+    key: "ArrowUp",
+  });
+  expect(appearance).toHaveFocus();
+  fireEvent.keyDown(appearance, { key: "ArrowUp" });
+  expect(screen.getByRole("button", { name: "Archived chats" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Archived chats" }), {
+    key: "ArrowDown",
+  });
+  expect(appearance).toHaveFocus();
+  fireEvent.keyDown(appearance, { key: "End" });
+  expect(screen.getByRole("button", { name: "Archived chats" })).toHaveFocus();
+  fireEvent.keyDown(screen.getByRole("button", { name: "Archived chats" }), {
+    key: "Home",
+  });
+  expect(appearance).toHaveFocus();
+  // Modified arrows belong to someone else.
+  expect(
+    fireEvent.keyDown(appearance, { key: "ArrowDown", altKey: true }),
+  ).toBe(true);
+  expect(appearance).toHaveFocus();
+});
+
+it("leaves the search field's keys to the field", () => {
+  render(<AgentSettingsSurface />);
+  const search = screen.getByRole("searchbox");
+  search.focus();
+  for (const key of ["Home", "End", "ArrowDown", "ArrowUp"])
+    expect(fireEvent.keyDown(search, { key })).toBe(true);
+  expect(search).toHaveFocus();
 });
 
 it("restores the real per-harness access default from its persistence boundary after renderer state is discarded", async () => {
@@ -356,7 +503,7 @@ it("does not apply an obsolete discovery result after leaving and reopening Harn
   const oldInventory = useWorkbenchStore.getState().harnesses;
   const newerInventory = [{ ...oldInventory[0], name: "New discovery" }];
   let finishOld!: (value: typeof oldInventory) => void;
-  vi.spyOn(getWorkbenchPorts().agent, "listHarnesses")
+  vi.spyOn(getWorkbenchPorts().agent, "refreshHarnesses")
     .mockImplementationOnce(
       () =>
         new Promise((resolve) => {
@@ -386,7 +533,10 @@ it("keeps native discovery updates that supersede a pending refresh", async () =
   const oldInventory = useWorkbenchStore.getState().harnesses;
   const nativeInventory = [{ ...oldInventory[0], name: "Native discovery" }];
   let finishRefresh!: (value: typeof oldInventory) => void;
-  vi.spyOn(getWorkbenchPorts().agent, "listHarnesses").mockImplementationOnce(
+  vi.spyOn(
+    getWorkbenchPorts().agent,
+    "refreshHarnesses",
+  ).mockImplementationOnce(
     () =>
       new Promise((resolve) => {
         finishRefresh = resolve;
@@ -404,6 +554,48 @@ it("keeps native discovery updates that supersede a pending refresh", async () =
   });
   expect(apply).not.toHaveBeenCalled();
   expect(screen.getByText("Native discovery")).toBeVisible();
+  expect(
+    screen.getByRole("button", { name: "Refresh discovery" }),
+  ).toBeEnabled();
+});
+
+it("records a discovery refresh that finishes while the window is minimized", async () => {
+  const oldInventory = useWorkbenchStore.getState().harnesses;
+  const freshInventory = [{ ...oldInventory[0], name: "Fresh discovery" }];
+  let finishRefresh!: (value: typeof oldInventory) => void;
+  vi.spyOn(
+    getWorkbenchPorts().agent,
+    "refreshHarnesses",
+  ).mockImplementationOnce(
+    () =>
+      new Promise((resolve) => {
+        finishRefresh = resolve;
+      }),
+  );
+  useWorkbenchStore.setState({
+    applyHarnessDiscovery: async (harnesses) => {
+      useWorkbenchStore.setState({ harnesses });
+    },
+  });
+  let visibility: DocumentVisibilityState = "visible";
+  vi.spyOn(document, "visibilityState", "get").mockImplementation(
+    () => visibility,
+  );
+  const setVisibility = (next: DocumentVisibilityState) => {
+    visibility = next;
+    document.dispatchEvent(new Event("visibilitychange"));
+  };
+  const { act } = await import("@testing-library/react");
+  render(<AgentSettingsSurface />);
+  fireEvent.click(screen.getByRole("button", { name: "Harnesses" }));
+  fireEvent.click(screen.getByRole("button", { name: "Refresh discovery" }));
+  expect(
+    screen.getByRole("button", { name: "Checking harnesses..." }),
+  ).toBeDisabled();
+  await act(async () => setVisibility("hidden"));
+  await act(async () => finishRefresh(freshInventory));
+  await act(async () => setVisibility("visible"));
+  expect(screen.getByText("Fresh discovery")).toBeVisible();
   expect(
     screen.getByRole("button", { name: "Refresh discovery" }),
   ).toBeEnabled();

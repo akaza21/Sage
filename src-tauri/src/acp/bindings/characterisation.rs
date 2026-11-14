@@ -1,16 +1,18 @@
 pub(crate) use crate::domain::HarnessCharacterisation as Characterisation;
 
-const CODEX_CHARACTERISED_VERSIONS: [&str; 1] = ["0.146.0"];
+use super::release_version::characterise_against;
 
-const CLAUDE_ADAPTER_CHARACTERISED_VERSIONS: [&str; 1] = ["0.76.0"];
+/// The releases each harness was tested with. Later releases keep the tested
+/// features (see [`characterise_against`]).
+const CODEX_TESTED_VERSION: &str = crate::acp::bindings::codex::CODEX_PINNED_VERSION;
 
-const CLAUDE_ACP_SDK_CHARACTERISED_VERSIONS: [&str; 1] = ["1.4.0"];
+const CLAUDE_ADAPTER_TESTED_VERSION: &str = "0.76.0";
 
-const OPENCODE_CHARACTERISED_VERSIONS: [&str; 1] = ["1.18.21"];
+const CLAUDE_ACP_SDK_TESTED_VERSION: &str = "1.4.0";
+
+const OPENCODE_TESTED_VERSION: &str = "1.18.21";
 
 pub(crate) const NODE_ENGINE_FLOOR_MAJOR: u32 = 22;
-
-const ENGINE_RANGE_BYTES_MAX: usize = 64;
 
 pub(crate) fn valid_numeric_version(
     value: &str,
@@ -26,111 +28,97 @@ pub(crate) fn valid_numeric_version(
     }) && (minimum_components..=maximum_components).contains(&component_count)
 }
 
-fn normalized_version(reported: &str) -> Option<&str> {
-    let candidate = reported.split_ascii_whitespace().next_back()?;
-    valid_numeric_version(candidate, 3, 3).then_some(candidate)
-}
-
 pub(crate) fn codex_characterisation(reported_version: &str) -> Characterisation {
-    match normalized_version(reported_version) {
-        Some(version) if CODEX_CHARACTERISED_VERSIONS.contains(&version) => {
-            Characterisation::Characterised
-        }
-        _ => Characterisation::Uncharacterised,
-    }
+    characterise_against(reported_version, CODEX_TESTED_VERSION)
 }
 
 pub(crate) fn opencode_characterisation(reported_version: &str) -> Characterisation {
-    match normalized_version(reported_version) {
-        Some(version) if OPENCODE_CHARACTERISED_VERSIONS.contains(&version) => {
-            Characterisation::Characterised
-        }
-        _ => Characterisation::Uncharacterised,
-    }
+    characterise_against(reported_version, OPENCODE_TESTED_VERSION)
 }
 
+/// The Claude ACP adapter and the ACP SDK it bundles each move on their own;
+/// the pair is as old as its older half.
 pub(crate) fn claude_characterisation(
     adapter_version: &str,
     acp_sdk_version: &str,
 ) -> Characterisation {
-    let known = |value: &str, table: &[&str]| {
-        normalized_version(value).is_some_and(|version| table.contains(&version))
-    };
-    if known(adapter_version, &CLAUDE_ADAPTER_CHARACTERISED_VERSIONS)
-        && known(acp_sdk_version, &CLAUDE_ACP_SDK_CHARACTERISED_VERSIONS)
-    {
-        Characterisation::Characterised
-    } else {
-        Characterisation::Uncharacterised
+    match (
+        characterise_against(adapter_version, CLAUDE_ADAPTER_TESTED_VERSION),
+        characterise_against(acp_sdk_version, CLAUDE_ACP_SDK_TESTED_VERSION),
+    ) {
+        (Characterisation::Characterised, Characterisation::Characterised) => {
+            Characterisation::Characterised
+        }
+        (adapter, sdk) if adapter.runs_tested_features() && sdk.runs_tested_features() => {
+            Characterisation::NewerThanTested
+        }
+        _ => Characterisation::Uncharacterised,
     }
 }
 
-pub(crate) fn node_engine_minimum_major(declared_range: &str) -> Option<u32> {
-    if declared_range.len() > ENGINE_RANGE_BYTES_MAX {
-        return None;
-    }
-    let rest = declared_range.trim().strip_prefix(">=")?.trim_start();
-    let major = rest.split('.').next()?;
-    if major.is_empty() || major.len() > 10 || !major.bytes().all(|byte| byte.is_ascii_digit()) {
-        return None;
-    }
-    let valid_tail = rest
-        .split('.')
-        .skip(1)
-        .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()));
-    valid_tail.then(|| major.parse().ok()).flatten()
-}
-
-pub(crate) fn node_satisfies_declared_engine(node_major: u32, declared_range: &str) -> bool {
-    node_engine_minimum_major(declared_range)
-        .is_some_and(|declared| node_major >= declared.max(NODE_ENGINE_FLOOR_MAJOR))
+/// Whether a Node release meets both Sage's own floor and the range a
+/// package declares in `engines.node`.
+pub(crate) fn node_satisfies_declared_engine(node_version: &str, declared_range: &str) -> bool {
+    super::node_engine::parse_node_version(node_version).is_some_and(|node| {
+        node.0 >= u64::from(NODE_ENGINE_FLOOR_MAJOR)
+            && super::node_engine::satisfies(declared_range, node) == Some(true)
+    })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
+    use crate::acp::bindings::codex::CODEX_PINNED_VERSION;
+
     #[test]
     fn a_codex_version_is_read_from_either_the_bare_or_prefixed_form() {
         assert_eq!(
-            codex_characterisation("codex-cli 0.146.0"),
+            codex_characterisation(&format!("codex-cli {CODEX_PINNED_VERSION}")),
             Characterisation::Characterised
         );
         assert_eq!(
-            codex_characterisation("0.146.0"),
+            codex_characterisation(CODEX_PINNED_VERSION),
             Characterisation::Characterised
         );
     }
 
     #[test]
-    fn characterisation_is_never_inferred_across_a_range() {
-        for version in ["0.145.0", "0.145.1", "0.146.1", "0.147.0", "0.144.9"] {
+    fn a_later_codex_release_keeps_the_tested_features_and_an_earlier_one_does_not() {
+        let [major, minor, patch] = CODEX_PINNED_VERSION
+            .split('.')
+            .map(|part| part.parse::<u32>().unwrap())
+            .collect::<Vec<_>>()[..]
+        else {
+            panic!("the pinned version has three components");
+        };
+        let previous_minor = minor
+            .checked_sub(1)
+            .expect("the pinned version has an earlier minor release");
+        for version in [
+            format!("{major}.{minor}.{}", patch + 1),
+            format!("{major}.{}.0", minor + 1),
+            format!("{major}.{}.0-alpha.1", minor + 1),
+            format!("{}.0.0", major + 1),
+        ] {
             assert_eq!(
-                codex_characterisation(version),
-                Characterisation::Uncharacterised,
-                "{version} must not inherit a neighbouring characterisation"
+                codex_characterisation(&version),
+                Characterisation::NewerThanTested,
+                "{version}"
             );
         }
-    }
-
-    #[test]
-    fn a_prerelease_never_matches_a_released_characterisation() {
-        assert_eq!(
-            codex_characterisation("0.146.0-rc.1"),
-            Characterisation::Uncharacterised
-        );
-        assert_eq!(
-            codex_characterisation("0.146.0+build.5"),
-            Characterisation::Uncharacterised
-        );
-    }
-
-    #[test]
-    fn an_unreadable_or_empty_version_is_uncharacterised_rather_than_a_match() {
-        for reported in ["", "   ", "codex-cli", "0.146", "0.146.0.1", "latest"] {
+        for version in [
+            format!("{major}.{previous_minor}.0"),
+            format!("{CODEX_PINNED_VERSION}-rc.1"),
+            "0.146.0".to_owned(),
+            String::new(),
+            "codex-cli".to_owned(),
+            "latest".to_owned(),
+        ] {
             assert_eq!(
-                codex_characterisation(reported),
-                Characterisation::Uncharacterised
+                codex_characterisation(&version),
+                Characterisation::Uncharacterised,
+                "{version}"
             );
         }
     }
@@ -156,61 +144,78 @@ mod tests {
     }
 
     #[test]
-    fn an_opencode_characterisation_is_never_inferred_across_a_range() {
-        for version in [
-            "1.18.20",
-            "1.18.22",
-            "1.19.0",
-            "1.17.21",
-            "1.18.21-rc.1",
-            "1.18",
-            "",
-            "latest",
-        ] {
+    fn a_later_opencode_release_is_newer_than_tested_and_an_earlier_one_is_uncharacterised() {
+        for version in ["1.18.22", "1.19.0", "2.0.0"] {
+            assert_eq!(
+                opencode_characterisation(version),
+                Characterisation::NewerThanTested,
+                "{version}"
+            );
+        }
+        for version in ["1.18.20", "1.17.21", "1.18.21-rc.1", "1.18", "", "latest"] {
             assert_eq!(
                 opencode_characterisation(version),
                 Characterisation::Uncharacterised,
-                "{version} must not inherit a neighbouring characterisation"
+                "{version}"
             );
         }
     }
 
     #[test]
-    fn an_sdk_bump_downgrades_claude_instead_of_refusing_it() {
-        assert_eq!(
-            claude_characterisation("0.76.0", "1.5.0"),
-            Characterisation::Uncharacterised
-        );
-        assert_eq!(
-            claude_characterisation("0.77.0", "1.4.0"),
-            Characterisation::Uncharacterised
-        );
+    fn a_claude_adapter_pair_is_as_old_as_its_older_half() {
+        for (adapter, sdk, expected) in [
+            ("0.76.0", "1.5.0", Characterisation::NewerThanTested),
+            ("0.77.0", "1.4.0", Characterisation::NewerThanTested),
+            ("0.77.0", "1.3.9", Characterisation::Uncharacterised),
+            ("0.75.0", "1.5.0", Characterisation::Uncharacterised),
+        ] {
+            assert_eq!(
+                claude_characterisation(adapter, sdk),
+                expected,
+                "{adapter} {sdk}"
+            );
+        }
     }
 
     #[test]
-    fn the_engine_range_this_adapter_actually_declares_parses_to_its_major() {
-        assert_eq!(node_engine_minimum_major(">=22"), Some(22));
-        assert_eq!(node_engine_minimum_major(">=22.0.0"), Some(22));
-        assert_eq!(node_engine_minimum_major(">= 24.1"), Some(24));
+    fn the_engine_ranges_adapters_declare_are_honoured() {
+        assert!(node_satisfies_declared_engine("22.0.0", ">=22"));
+        assert!(node_satisfies_declared_engine("24.1.0", ">= 24.1"));
+        assert!(node_satisfies_declared_engine("22.23.5", "^22"));
+        assert!(node_satisfies_declared_engine(
+            "22.23.5",
+            "^20.19.0 || >=22.12.0"
+        ));
+        assert!(!node_satisfies_declared_engine(
+            "22.11.0",
+            "^20.19.0 || >=22.12.0"
+        ));
     }
 
     #[test]
     fn an_engine_range_sage_cannot_evaluate_is_not_treated_as_a_pass() {
-        for declared in ["^22", "~22.1", "22.x", ">=22 || >=20", "*", "", ">=", ">=a"] {
-            assert_eq!(
-                node_engine_minimum_major(declared),
-                None,
+        for declared in ["", ">=", ">=a", "^22.0.0-rc.1"] {
+            assert!(
+                !node_satisfies_declared_engine("24.0.0", declared),
                 "{declared} must not be silently accepted"
             );
-            assert!(!node_satisfies_declared_engine(24, declared));
         }
+        assert!(!node_satisfies_declared_engine("garbage", ">=22"));
     }
 
     #[test]
     fn sages_own_node_floor_outranks_a_lower_declared_engine() {
-        assert!(!node_satisfies_declared_engine(20, ">=18"));
-        assert!(node_satisfies_declared_engine(22, ">=18"));
-        assert!(!node_satisfies_declared_engine(22, ">=24"));
-        assert!(node_satisfies_declared_engine(24, ">=24"));
+        assert!(!node_satisfies_declared_engine("20.19.0", ">=18"));
+        assert!(node_satisfies_declared_engine("22.0.0", ">=18"));
+        assert!(!node_satisfies_declared_engine("22.0.0", ">=24"));
+        assert!(node_satisfies_declared_engine("24.0.0", ">=24"));
+    }
+
+    #[test]
+    fn npm_wildcards_still_respect_sages_node_floor() {
+        for declared in ["*", ">=22 ||"] {
+            assert!(node_satisfies_declared_engine("22.1.7", declared));
+            assert!(!node_satisfies_declared_engine("20.19.0", declared));
+        }
     }
 }

@@ -610,6 +610,23 @@ describe("ToolItem", async () => {
     expect(container.querySelectorAll(".acp-details")).toHaveLength(0);
   });
 
+  it("shows a running MCP call's latest status line and drops it once the call ends", () => {
+    const mcp = {
+      kind: "mcp" as const,
+      argumentsSummary: null,
+      resultSummary: null,
+      label: "search",
+      serverLabel: "docs",
+      toolLabel: "search",
+      progress: "Indexed 2 of 3 pages",
+    };
+    const { rerender } = render(<ToolItem item={tool(mcp)} />);
+    expect(screen.getByText("Indexed 2 of 3 pages")).toBeInTheDocument();
+
+    rerender(<ToolItem item={tool(mcp, "completed", 2)} />);
+    expect(screen.queryByText("Indexed 2 of 3 pages")).not.toBeInTheDocument();
+  });
+
   it("keeps a terminal tool state accessible without replaying it", async () => {
     render(
       <ToolItem

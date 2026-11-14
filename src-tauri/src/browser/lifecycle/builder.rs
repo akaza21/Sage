@@ -96,6 +96,8 @@ pub(in crate::browser) async fn register_tab_hooks(
         popups::register_native(app.clone(), webview.clone())
             .await
             .map_err(|error| format!("browser popup setup failed: {error}"))?;
+        passwords::disable_engine_password_manager(webview)
+            .map_err(|error| format!("browser password setup failed: {error}"))?;
     }
     Ok(())
 }

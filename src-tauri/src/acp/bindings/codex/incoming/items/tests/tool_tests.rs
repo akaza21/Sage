@@ -184,6 +184,29 @@ fn codex_spawn_preserves_the_verified_operation_and_receivers() {
 }
 
 #[test]
+fn codex_message_and_roster_tools_keep_their_operation_label() {
+    for tool in [
+        "sendMessage",
+        "followupTask",
+        "interruptAgent",
+        "listAgents",
+    ] {
+        let call = item(json!({
+            "type": "collabAgentToolCall", "id": tool, "tool": tool, "status": "completed",
+            "senderThreadId": "parent", "receiverThreadIds": [], "agentsStates": {}
+        }));
+        let (payload, _, _) = normalize_item(&call, ItemLifecycle::Completed, &UnusedMapper)
+            .unwrap()
+            .unwrap();
+        assert!(
+            matches!(payload, NormalizedPayload::Collaboration { label, operation: Some(operation), .. }
+                if label.as_str() == tool && operation.as_str() == tool),
+            "{tool}"
+        );
+    }
+}
+
+#[test]
 fn completed_child_activity_preserves_its_emitted_operation() {
     let activity = item(json!({"type": "subAgentActivity", "id": "done-1",
         "agentThreadId": "child-1", "agentPath": "Reviewer", "kind": "completed"}));
@@ -265,12 +288,11 @@ fn command_execution_uses_only_typed_output_and_a_single_read_action() {
         NormalizedPayload::ToolCall {
             category: ToolCategory::Read,
             label,
-            input_summary: Some(command_line),
+            input_summary: None,
             output_summary: Some(output),
             ..
         } if output.as_str() == "Bearer [redacted]\nsecond\n"
-            && command_line.as_str() == "cat [path]"
-            && label.as_str() == "Read read package"
+            && label.as_str() == "Read package.json"
     ));
 
     let (payload, state, lifecycle) =
@@ -296,6 +318,16 @@ fn command_execution_uses_only_typed_output_and_a_single_read_action() {
     assert!(
         matches!(locations.as_slice(), [crate::acp::intent::SafeResourceLocation::Resource { resource }]
             if resource.relative_path.as_str() == "package.json")
+    );
+
+    let (unresolved, _, _) = normalize_item(&command, ItemLifecycle::Completed, &UnusedMapper)
+        .expect("typed command")
+        .expect("item");
+    assert!(
+        matches!(unresolved, NormalizedPayload::ToolCall {
+            category: ToolCategory::Read, label, input_summary: Some(command_line), ..
+        } if label.as_str() == "Read read package" && command_line.as_str() == "cat [path]"),
+        "a read with no workspace path keeps its command line"
     );
 }
 
@@ -324,6 +356,73 @@ fn command_execution_never_derives_a_location_from_nonread_or_multiple_actions()
                 if locations.as_slice().is_empty())
         );
     }
+}
+
+#[test]
+fn unresolved_read_completion_bounds_its_sanitized_command_summary() {
+    for (padding, suffix, retained_suffix) in [
+        (65_524, "", ""),
+        (65_525, "", ""),
+        (65_526, "", ""),
+        (65_523, "é", "é"),
+        (65_524, "é", ""),
+    ] {
+        let command = item(json!({
+            "type": "commandExecution", "status": "completed",
+            "command": format!("cat C:\\foreign\\file {}{suffix}", "x".repeat(padding)),
+            "commandActions": [{"type": "read", "name": "file", "path": "C:\\foreign\\file"}]
+        }));
+        let (payload, state, terminal) =
+            normalize_item(&command, ItemLifecycle::Completed, &UnusedMapper)
+                .expect("an oversized display summary must not reject completion")
+                .expect("read item");
+        let NormalizedPayload::ToolCall {
+            category: ToolCategory::Read,
+            input_summary: Some(summary),
+            ..
+        } = payload
+        else {
+            panic!("expected an unresolved read with its command summary");
+        };
+        assert_eq!(
+            summary.as_str(),
+            format!(
+                "cat [path] {}{retained_suffix}",
+                "x".repeat(padding.min(65_525))
+            )
+        );
+        assert_eq!(state, Some(ToolState::Completed));
+        assert_eq!(terminal, Some(ItemLifecycle::Completed));
+    }
+}
+
+#[test]
+fn command_execution_maps_its_cwd_to_a_workspace_resource() {
+    struct CwdMapper;
+    impl ResourceMapper for CwdMapper {
+        fn map_existing(&self, path: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
+            assert_eq!(path, "C:\\fixture\\src");
+            SafeResourceRef::new(
+                crate::acp::contract::SageRootId::parse("fixture-root").expect("root"),
+                "src",
+            )
+            .map_err(|_| UnavailableResourceReason::Unsupported)
+        }
+    }
+    let command = item(json!({
+        "type": "commandExecution", "status": "completed",
+        "command": "cargo test", "cwd": "C:\\fixture\\src"
+    }));
+    let (payload, _, _) = normalize_item(&command, ItemLifecycle::Completed, &CwdMapper)
+        .expect("command")
+        .expect("item");
+    let NormalizedPayload::ToolCall { execution, .. } = payload else {
+        panic!("expected command row");
+    };
+    assert_eq!(
+        serde_json::to_value(&execution.cwd).unwrap(),
+        json!({"kind": "resource", "resource": {"rootId": "fixture-root", "relativePath": "src"}})
+    );
 }
 
 #[test]

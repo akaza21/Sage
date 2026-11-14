@@ -1,5 +1,19 @@
 import { nativeCases } from "./acp-native-cases.mjs";
-import { piIdleConfigJourney } from "./acp-native-pi-cases.mjs";
+import { emit, events, wait } from "./acp-native-case-events.mjs";
+import {
+  piBridgeJourneys,
+  piCommandsJourney,
+  piFullTurnJourney,
+  piIdleConfigJourney,
+  piLargeRunJourney,
+} from "./acp-native-pi-cases.mjs";
+import { codexUserInputJourneys } from "./acp-native-codex-user-input-cases.mjs";
+import { codexNoticeJourneys } from "./acp-native-codex-notice-cases.mjs";
+import { codexSteerJourneys } from "./acp-native-codex-steer-cases.mjs";
+import { codexSkillsJourneys } from "./acp-native-codex-skills-cases.mjs";
+import { customAcpJourneys } from "./acp-native-custom-acp-cases.mjs";
+import { claudeSdkJourneys } from "./acp-native-claude-sdk-cases.mjs";
+import { codexMcpHookJourneys } from "./acp-native-codex-mcp-hook-cases.mjs";
 import { privacyFailuresForRecords } from "./check-harness-trace-privacy.mjs";
 import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
@@ -127,12 +141,90 @@ const rows = document.cases.map((fixtureCase) => {
   return `    FrozenCase { id: ${JSON.stringify(fixtureCase.id)}, steps_json: r#"${steps}"#, owner: FrozenOwner::${owner}, phase: FrozenPhase::${phase}, #[cfg(test)] oracle_json: r#"${oracle}"# },`;
 });
 
+/**
+ * Opens on a long transcript, then streams slowly, so a manual check can
+ * scroll back for earlier history while a reply is still arriving. The first
+ * prompt writes the transcript at once (more than one history page); the
+ * second streams a word every 0.6 s for about half a minute, which keeps the
+ * pauses inside the fixture's 30 s delay budget.
+ */
+function longTranscriptJourney() {
+  const words = Array.from(
+    { length: 50 },
+    (_, index) => `word ${index + 1} of the streamed reply. `,
+  );
+  return {
+    id: "codex-long-transcript-stream",
+    steps: [
+      { op: "awaitClient", kind: "codexInitialize" },
+      { op: "emitKnownFrame", shape: "codexInitializeResultObserved" },
+      { op: "awaitClient", kind: "codexStart" },
+      { op: "emitKnownFrame", shape: "codexThreadResult" },
+      { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },
+      { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
+      { op: "awaitClient", kind: "codexTurnStart" },
+      { op: "emitKnownFrame", shape: "codexTurnResult" },
+      { op: "emitKnownFrame", shape: "codexStarted" },
+      { op: "emitKnownFrame", shape: "codexTranscript", count: 400 },
+      { op: "emitKnownFrame", shape: "codexCompleted" },
+      { op: "awaitClient", kind: "codexTurnStart" },
+      { op: "emitKnownFrame", shape: "codexTurnResult" },
+      { op: "emitKnownFrame", shape: "codexStarted" },
+      ...words.flatMap((delta, index) => [
+        ...(index === 0 ? [] : [{ op: "pauseMs", ms: 600 }]),
+        {
+          op: "emitKnownFrame",
+          shape: "codexNative",
+          method: "item/agentMessage/delta",
+          params: { itemId: "fixture-streamed-reply", delta },
+        },
+      ]),
+      { op: "emitKnownFrame", shape: "codexCompleted" },
+      { op: "awaitClient", kind: "codexUnsubscribe" },
+      { op: "emitKnownFrame", shape: "codexAck" },
+    ],
+  };
+}
+
 const journeyCases = [
+  {
+    id: "codex-browse-preview",
+    steps: [
+      { op: "awaitClient", kind: "codexInitialize" },
+      { op: "emitKnownFrame", shape: "codexInitializeResultObserved" },
+      { op: "awaitClient", kind: "codexStart" },
+      { op: "emitKnownFrame", shape: "codexThreadResult" },
+      { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },
+      { op: "emitKnownFrame", shape: "codexGoalMethodNotFound" },
+      { op: "awaitClient", kind: "codexTurnStart" },
+      { op: "emitKnownFrame", shape: "codexTurnResult" },
+      { op: "emitKnownFrame", shape: "codexStarted" },
+      // Replay the native browse item lifecycle. The regular adapter and
+      // dispatchBrowse path open Preview; Start still runs the project's dev script.
+      ...["inProgress", "completed"].map((status) => ({
+        op: "emitKnownFrame",
+        shape: "codexNative",
+        method: status === "inProgress" ? "item/started" : "item/completed",
+        params: {
+          item: {
+            type: "dynamicToolCall",
+            id: "fixture-browse-preview",
+            tool: "sage_browse",
+            arguments: { url: "http://127.0.0.1:5173/" },
+            status,
+          },
+        },
+      })),
+      { op: "emitKnownFrame", shape: "codexCompleted" },
+      { op: "awaitClient", kind: "codexUnsubscribe" },
+      { op: "emitKnownFrame", shape: "codexAck" },
+    ],
+  },
   {
     id: "codex-steer-lost-result",
     steps: [
       { op: "awaitClient", kind: "codexInitialize" },
-      { op: "emitKnownFrame", shape: "codexInitializeResult0146" },
+      { op: "emitKnownFrame", shape: "codexInitializeResultObserved" },
       { op: "awaitClient", kind: "codexStart" },
       { op: "emitKnownFrame", shape: "codexThreadResult" },
       { op: "awaitClient", kind: "codexGoalGetWithOptionalModelList" },
@@ -144,9 +236,152 @@ const journeyCases = [
       { op: "exit", code: 17 },
     ],
   },
+  {
+    // The / menu on a Claude session: the fixture advertises three commands,
+    // then checks the exact text of each prompt, so a command picked in the
+    // composer must reach the wire as `/name input` through run_acp_command.
+    id: "claude-slash-commands",
+    steps: [
+      { op: "awaitClient", kind: "acpInitialize" },
+      { op: "emitKnownFrame", shape: "acpInitialize" },
+      { op: "awaitClient", kind: "acpNew" },
+      { op: "emitKnownFrame", shape: "acpSession" },
+      {
+        op: "emitKnownFrame",
+        shape: "acpUpdate",
+        update: {
+          sessionUpdate: "available_commands_update",
+          availableCommands: [
+            {
+              name: "compact",
+              description: "Summarize the conversation to free context",
+            },
+            {
+              name: "review",
+              description: "Review a pull request",
+              input: { hint: "PR number" },
+            },
+            { name: "init", description: "Set up project instructions" },
+          ],
+        },
+      },
+      ...[
+        ["/review 42", "Synthetic review of pull request 42 completed."],
+        ["/compact", "Synthetic compaction completed."],
+        ["Summarize the example", "The synthetic example is unchanged."],
+      ].flatMap(([promptText, reply]) => [
+        { op: "awaitClient", kind: "acpPrompt", promptText },
+        {
+          op: "emitKnownFrame",
+          shape: "acpUpdate",
+          update: {
+            sessionUpdate: "agent_message_chunk",
+            content: { type: "text", text: reply },
+          },
+        },
+        { op: "emitKnownFrame", shape: "acpCompleted" },
+      ]),
+      { op: "awaitClient", kind: "acpClose" },
+      { op: "emitKnownFrame", shape: "acpAck" },
+    ],
+  },
 ];
+// Session config across an app restart. Each launch of the fixture opens the
+// session (new the first time, resumed after a restart) in the adapter's
+// default model, effort and mode, and answers every model, effort and mode
+// change, so a restart shows whether Sage reapplies the chosen ones. One
+// prompt per launch; the Claude one asks permission for its tool call.
+journeyCases.push(
+  {
+    id: "claude-config-resume",
+    steps: [
+      wait("acpInitialize"),
+      emit("acpInitializeConfig"),
+      wait("acpOpen"),
+      emit("acpSession"),
+      wait("acpPrompt"),
+      ...events("claude", "approval-approved"),
+      emit("acpCompleted"),
+      wait("acpClose"),
+      emit("acpAck"),
+    ],
+  },
+  {
+    id: "codex-config-resume",
+    steps: [
+      wait("codexInitialize"),
+      emit("codexInitializeResultObserved"),
+      wait("codexStartOrResume"),
+      // The thread runs the model it was opened or resumed with, at the
+      // Medium default effort; naming them makes Sage read the catalogue
+      // next, which offers a second model and Low, Medium and High.
+      emit("codexThreadConfigResult"),
+      wait("codexModelList"),
+      emit("codexModelListConfigResult"),
+      wait("codexGoalGet"),
+      emit("codexGoalMethodNotFound"),
+      wait("codexTurnStart"),
+      emit("codexTurnResult"),
+      emit("codexStarted"),
+      emit("codexDelta"),
+      emit("codexCompleted"),
+      wait("codexUnsubscribe"),
+      emit("codexAck"),
+    ],
+  },
+  {
+    // The restart journey above, answering with the model and effort its
+    // turn/start named, so the first send after a restart shows whether
+    // Sage sent the model and effort the user picked.
+    id: "codex-config-echo",
+    steps: [
+      wait("codexInitialize"),
+      emit("codexInitializeResultObserved"),
+      wait("codexStartOrResume"),
+      emit("codexThreadConfigResult"),
+      wait("codexModelList"),
+      emit("codexModelListConfigResult"),
+      wait("codexGoalGet"),
+      emit("codexGoalMethodNotFound"),
+      wait("codexTurnStart"),
+      emit("codexTurnResult"),
+      emit("codexStarted"),
+      emit("codexNative", {
+        method: "item/agentMessage/delta",
+        params: { itemId: "fixture-config-echo", delta: "$CODEX_TURN_CONFIG" },
+      }),
+      emit("codexNative", {
+        method: "item/completed",
+        params: {
+          item: {
+            type: "agentMessage",
+            id: "fixture-config-echo",
+            text: "$CODEX_TURN_CONFIG",
+          },
+        },
+      }),
+      emit("codexCompleted"),
+      wait("codexUnsubscribe"),
+      emit("codexAck"),
+    ],
+  },
+);
+journeyCases.push(longTranscriptJourney());
 journeyCases.push(...nativeCases());
-journeyCases.push(piIdleConfigJourney());
+journeyCases.push(
+  piIdleConfigJourney(),
+  piFullTurnJourney(),
+  piLargeRunJourney(),
+  piCommandsJourney(),
+  ...piBridgeJourneys(),
+);
+journeyCases.push(...codexUserInputJourneys());
+journeyCases.push(...codexNoticeJourneys());
+journeyCases.push(...codexSteerJourneys());
+journeyCases.push(...codexSkillsJourneys());
+journeyCases.push(...customAcpJourneys());
+journeyCases.push(...claudeSdkJourneys());
+journeyCases.push(...codexMcpHookJourneys());
 if (privacyFailuresForRecords(journeyCases, false).length)
   throw new Error("native fixture privacy violation");
 const journeyIds = new Set();

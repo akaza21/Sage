@@ -743,12 +743,18 @@ fn capabilities() -> CapabilitySnapshotV1 {
         prompt: true,
         cancel: true,
         native_session_fork: false,
+        native_session_compact: false,
+        native_session_import: false,
+        native_review: false,
+        native_background_terminals: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 0,
+        prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     }
 }

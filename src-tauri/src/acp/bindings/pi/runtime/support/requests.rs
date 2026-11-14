@@ -47,13 +47,26 @@ impl PiRuntime {
         outbound: Outbound,
         kind: RequestKind,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
+        // Until a fork moves Pi back, its open session is the copy: only the
+        // fork's own steps may reach it.
+        if self.fork.is_some() && kind != RequestKind::Native {
+            self.translator
+                .reject_before_write(&outbound.command_id)
+                .map_err(super::map_pi)?;
+            return Err(AdapterRuntimeError::Operation);
+        }
         if self.reservations.len() >= LIMITS.queues.outstanding_rpc_per_session as usize {
             self.translator
                 .reject_before_write(&outbound.command_id)
                 .map_err(super::map_pi)?;
             return Err(AdapterRuntimeError::BatchCount);
         }
-        let frame = match OutboundFrame::new(outbound.line.into_bytes()) {
+        let bytes = outbound.line.into_bytes();
+        let frame = match if kind == RequestKind::Prompt {
+            OutboundFrame::new_prompt(bytes)
+        } else {
+            OutboundFrame::new(bytes)
+        } {
             Ok(frame) => frame,
             Err(_) => {
                 self.translator
@@ -86,6 +99,8 @@ impl PiRuntime {
         );
         let token = if kind == RequestKind::Cancel {
             EgressToken::cancel_request(self.next_egress)
+        } else if kind == RequestKind::Native && self.fork.is_some() {
+            EgressToken::native_rpc_continuation(self.next_egress)
         } else {
             EgressToken::request(self.next_egress)
         };

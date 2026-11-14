@@ -25,6 +25,7 @@ import { Workbench } from "./Workbench";
 import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
 import { settleLazyModules } from "../test/settleLazyModules";
 import { useSideChatState } from "./sideChatState";
+import { useAgentChangesState } from "./agentChangesState";
 
 vi.mock("../features/chat/ChatSurface", () => ({
   ChatSurface: () =>
@@ -66,7 +67,8 @@ async function openChatActions(title: string) {
   fireEvent.click(
     screen.getByRole("button", { name: `Chat actions for ${title}` }),
   );
-  await screen.findByRole("menu", { name: `Actions for ${title}` });
+  await settleLazyModules();
+  screen.getByRole("menu", { name: `Actions for ${title}` });
 }
 
 const initialState = useWorkbenchStore.getState();
@@ -79,6 +81,8 @@ beforeEach(() => {
     value: vi.fn(),
   });
   localStorage.clear();
+  // The Changes tab outlives a render, as it does across app remounts.
+  useAgentChangesState.getState().close();
   compactViewport = true;
   const listeners = new Set<() => void>();
   setCompactViewport = (compact) => {
@@ -197,8 +201,8 @@ describe("compact Workbench project tools", () => {
     ).toBeVisible();
   });
 
-  it("opens narrow Agent resources from the header without shrinking Chat", async () => {
-    vi.stubGlobal("innerWidth", 720);
+  it("folds navigation and opens narrow Agent resources over the whole Chat column", async () => {
+    vi.stubGlobal("innerWidth", 680);
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
       projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
@@ -223,7 +227,7 @@ describe("compact Workbench project tools", () => {
     expect(trigger.closest(".agent-chat-center__header")).not.toBeNull();
     expect(trigger).toHaveAttribute("aria-haspopup", "dialog");
     const body = container.querySelector(".workbench__body") as HTMLElement;
-    expect(body.style.gridTemplateColumns).toBe("326px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("320px minmax(0, 1fr)");
     fireEvent.click(
       screen.getByRole("button", {
         name: "Show files and preview · Waiting",
@@ -235,7 +239,10 @@ describe("compact Workbench project tools", () => {
     expect(container.querySelector(".project-sidebar")).not.toHaveAttribute(
       "inert",
     );
-    expect(body.style.gridTemplateColumns).toBe("326px minmax(0, 1fr)");
+    expect(body.style.gridTemplateColumns).toBe("46px minmax(0, 1fr)");
+    expect(body.style.getPropertyValue("--agent-artifact-overlay-width")).toBe(
+      "634px",
+    );
     expect(container.querySelector(".center-region")).toHaveAttribute("inert");
 
     fireEvent.keyDown(resources, { key: "Escape" });
@@ -247,10 +254,37 @@ describe("compact Workbench project tools", () => {
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
       "inert",
     );
+    expect(body.style.gridTemplateColumns).toBe("320px minmax(0, 1fr)");
+  });
+
+  it("folds navigation to its icon rail so Files sit beside Chat at 800px", async () => {
+    compactViewport = false;
+    vi.stubGlobal("innerWidth", 800);
+    seedResourceChat();
+    const { container } = render(<Workbench />);
+    await selectWindowMode("Agent");
+    const body = container.querySelector(".workbench__body") as HTMLElement;
+    expect(body.style.gridTemplateColumns).toBe("326px 8px minmax(0, 1fr)");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show files and preview · Waiting" }),
+    );
+    expect(body.style.gridTemplateColumns).toBe(
+      "46px minmax(0, 1fr) 8px 360px",
+    );
+    expect(container.querySelector(".center-region")).not.toHaveAttribute(
+      "inert",
+    );
+    expect(screen.getByLabelText("Agent artifacts")).toBeVisible();
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Collapse files, changes, and preview",
+      }),
+    );
+    expect(body.style.gridTemplateColumns).toBe("326px 8px minmax(0, 1fr)");
   });
 
   it("makes resources fully modal below the chat-column floor and dismisses outside", async () => {
-    vi.stubGlobal("innerWidth", 480);
+    vi.stubGlobal("innerWidth", 360);
     useWorkbenchStore.setState({
       tabs: [
         {
@@ -302,7 +336,7 @@ describe("compact Workbench project tools", () => {
     );
     const composer = screen.getByRole("textbox", { name: "Composer" });
     composer.focus();
-    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerWidth", 680);
     fireEvent(window, new Event("resize"));
     expect(composer).toHaveFocus();
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
@@ -311,9 +345,32 @@ describe("compact Workbench project tools", () => {
     expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
   });
 
-  it("keeps navigation focused when resizing capped resources into full modality", async () => {
+  it("keeps navigation focused when narrowing an open overlay dismisses it", async () => {
     seedResourceChat();
-    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerWidth", 680);
+    const { container } = render(<Workbench />);
+    await selectWindowMode("Agent");
+    fireEvent.click(
+      screen.getByRole("button", { name: /Show files and preview/ }),
+    );
+    const rail = () =>
+      screen.getByRole("complementary", { name: "Projects and chats" });
+    within(rail()).getByRole("button", { name: "Home" }).focus();
+    // Below the modal threshold the overlay is dismissed, which unfolds the
+    // rail; focus follows Home into the full rail instead of dropping.
+    vi.stubGlobal("innerWidth", 360);
+    fireEvent(window, new Event("resize"));
+    expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
+    expect(within(rail()).getByRole("button", { name: "Home" })).toHaveFocus();
+    expect(rail()).not.toHaveAttribute("inert");
+    expect(container.querySelector(".center-region")).not.toHaveAttribute(
+      "inert",
+    );
+  });
+
+  it("keeps the folded navigation focused when a resource overlay widens into a docked pane", async () => {
+    seedResourceChat();
+    vi.stubGlobal("innerWidth", 680);
     const { container } = render(<Workbench />);
     await selectWindowMode("Agent");
     fireEvent.click(
@@ -322,23 +379,21 @@ describe("compact Workbench project tools", () => {
     const navigation = screen.getByRole("complementary", {
       name: "Projects and chats",
     });
-    const newChat = within(navigation).getByRole("button", {
-      name: "New chat",
-    });
-    newChat.focus();
-    vi.stubGlobal("innerWidth", 480);
+    const home = within(navigation).getByRole("button", { name: "Home" });
+    home.focus();
+    vi.stubGlobal("innerWidth", 900);
     fireEvent(window, new Event("resize"));
-    expect(newChat).toHaveFocus();
+    expect(home).toHaveFocus();
     expect(navigation).not.toHaveAttribute("inert");
     expect(container.querySelector(".center-region")).not.toHaveAttribute(
       "inert",
     );
-    expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
+    expect(screen.getByLabelText("Agent artifacts")).toBeVisible();
   });
 
   it("does not leave a focusless modal open when navigation narrows", async () => {
     seedResourceChat();
-    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerWidth", 680);
     render(<Workbench />);
     await selectWindowMode("Agent");
     fireEvent.click(
@@ -346,14 +401,14 @@ describe("compact Workbench project tools", () => {
     );
     (document.activeElement as HTMLElement).blur();
     expect(document.body).toHaveFocus();
-    vi.stubGlobal("innerWidth", 480);
+    vi.stubGlobal("innerWidth", 360);
     fireEvent(window, new Event("resize"));
     expect(screen.getByLabelText("Agent artifacts")).not.toBeVisible();
     expect(document.body).toHaveFocus();
   });
 
   it("renders only the focused Chat when compact instead of squeezing a pair", async () => {
-    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerWidth", 680);
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "A", roots: [] },
       projects: [{ id: "project-a", name: "A", rootCount: 1, lastOpenedAt: 1 }],
@@ -392,7 +447,7 @@ describe("compact Workbench project tools", () => {
 
   it("lets forward Tab enter an opened resource overlay instead of dismissing it", async () => {
     seedResourceChat();
-    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerWidth", 680);
     render(<Workbench />);
     await selectWindowMode("Agent");
     fireEvent.click(
@@ -415,7 +470,7 @@ describe("compact Workbench project tools", () => {
 
   it("traps reverse overlay Tab until Escape returns focus and sleeps the canvas", async () => {
     seedResourceChat();
-    vi.stubGlobal("innerWidth", 720);
+    vi.stubGlobal("innerWidth", 680);
     const { container } = render(<Workbench />);
     await selectWindowMode("Agent");
     fireEvent.click(
@@ -655,28 +710,30 @@ describe("compact Workbench project tools", () => {
 
     await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Cancel chat rename" }),
-    );
-    let trigger: HTMLElement;
-    await vi.waitFor(() => {
-      trigger = screen.getByRole("button", { name: "Chat actions for B" });
-      expect(trigger).toHaveFocus();
+    // Rename is a demand-loaded part. Flush its import and React effects
+    // before driving Cancel, rather than spending the polling budget on I/O.
+    await settleLazyModules();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("button", { name: "Cancel chat rename" }),
+      );
     });
+    expect(
+      screen.getByRole("button", { name: "Chat actions for B" }),
+    ).toHaveFocus();
 
     await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Rename chat" }));
-    fireEvent.keyDown(
-      await screen.findByRole("textbox", { name: "New name for B" }),
-      {
-        key: "Escape",
-      },
-    );
-    await vi.waitFor(() => {
-      expect(
-        screen.getByRole("button", { name: "Chat actions for B" }),
-      ).toHaveFocus();
+    await settleLazyModules();
+    await act(async () => {
+      fireEvent.keyDown(
+        screen.getByRole("textbox", { name: "New name for B" }),
+        { key: "Escape" },
+      );
     });
+    expect(
+      screen.getByRole("button", { name: "Chat actions for B" }),
+    ).toHaveFocus();
   });
 
   it("exposes bounded archive and restore actions in the Chat navigation", async () => {
@@ -713,7 +770,7 @@ describe("compact Workbench project tools", () => {
 
     await openChatActions("B");
     fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
-    expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a");
+    expect(archiveChat).toHaveBeenCalledWith("chat:b", "project-a", "row");
     const disclosure = screen.getByRole("button", {
       name: "Archived chats: 1",
     });
@@ -724,7 +781,7 @@ describe("compact Workbench project tools", () => {
     fireEvent.click(
       within(region).getByRole("button", { name: "Restore chat Old" }),
     );
-    expect(restoreChat).toHaveBeenCalledWith("chat:old", "project-a");
+    expect(restoreChat).toHaveBeenCalledWith("chat:old", "project-a", "row");
 
     act(() => {
       useWorkbenchStore.setState({
@@ -924,6 +981,8 @@ describe("compact Workbench project tools", () => {
     "restores the same chat pair and focus after settings with %s active",
     async (resourceKind) => {
       compactViewport = false;
+      // Wide enough for the full rail beside an open browser resource.
+      vi.stubGlobal("innerWidth", 1600);
       vi.spyOn(nativeBrowser, "closeBrowser").mockResolvedValue(undefined);
       vi.stubGlobal(
         "ResizeObserver",
@@ -1043,7 +1102,7 @@ describe("compact Workbench project tools", () => {
     fireEvent.click(globalSearch);
     await settleLazyModules();
     expect(
-      await screen.findByRole("dialog", { name: "Search Chats" }),
+      await screen.findByRole("dialog", { name: "Search chats" }),
     ).toBeInTheDocument();
   });
 
@@ -1188,7 +1247,7 @@ describe("compact Workbench project tools", () => {
 
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
-      value: 900,
+      value: 680,
     });
     fireEvent(window, new Event("resize"));
     expect(artifact).not.toBeInTheDocument();
@@ -1236,7 +1295,7 @@ describe("compact Workbench project tools", () => {
   it("restores only persisted single-splitter widths on load", async () => {
     seedResourceChat();
     compactViewport = false;
-    // Narrow enough that resources open over Chat, without a splitter.
+    // Narrow enough that opening resources folds the rail to its icons.
     const originalWidth = window.innerWidth;
     Object.defineProperty(window, "innerWidth", {
       configurable: true,
@@ -1271,9 +1330,10 @@ describe("compact Workbench project tools", () => {
         name: "Show files and preview · Waiting",
       }),
     );
+    // Unpersisted, the Files open at their 45% share of the window.
     expect(
-      screen.queryByRole("separator", { name: "Resize files and preview" }),
-    ).toBeNull();
+      screen.getByRole("separator", { name: "Resize files and preview" }),
+    ).toHaveAttribute("aria-valuenow", "432");
     expect(screen.getByLabelText("Agent artifacts")).toBeVisible();
   });
 

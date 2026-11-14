@@ -127,6 +127,12 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             })?
         } else {
             if self.is_ready_handoff_available_commands_update(&frame) {
+                self.adapter
+                    .receive_command_update(&frame)
+                    .map_err(|error| {
+                        self.fail_closed();
+                        ActivationPumpError::Adapter(error)
+                    })?;
                 return Ok(true);
             }
             self.adapter
@@ -204,6 +210,13 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
                     }
                     ready = Some(self.validate_session_ready(id, loaded)?);
                 }
+                // Admitted in every phase, buffered and bounded. The harness
+                // session identity is checked once SessionReady names it.
+                AdapterEvent::Session { id, event } => {
+                    self.pending_session.push_with((id, event), |old, new| {
+                        old.0 == new.0 && old.1.superseded_by(&new.1)
+                    });
+                }
                 AdapterEvent::IgnoredLate
                 | AdapterEvent::IgnoredDuplicate
                 | AdapterEvent::Absorbed => {}
@@ -225,7 +238,7 @@ impl<A: HarnessAdapter, J: ActivationJournal, R: ResourceMapper> ActivationPump<
             }
         }
         for value in egress {
-            if self.phase == Phase::AwaitingInitialized {
+            if self.phase.admits_initialization_request(ready.is_some()) {
                 self.enqueue_initialization(value)?;
             } else if self.phase == Phase::Initialized && value.token().is_notification() {
                 self.enqueue(value)?;

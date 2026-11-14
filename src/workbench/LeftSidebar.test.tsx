@@ -10,7 +10,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import { resetChatReadMarks } from "../features/chat/acp/chatReadMarks";
 import {
   clearChatSearchFolderRequest,
   hasChatSearchFolderRequest,
@@ -68,7 +68,7 @@ it("dismisses the live palette without hiding persistent Agent navigation", asyn
   render(<LeftSidebar />);
 
   fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-  const search = await screen.findByRole("searchbox", { name: "Search Chats" });
+  const search = await screen.findByRole("combobox", { name: "Search chats" });
   fireEvent.change(search, { target: { value: "example" } });
   fireEvent.keyDown(search, { key: "Escape" });
 
@@ -84,7 +84,7 @@ it("dismisses the live palette without hiding persistent Agent navigation", asyn
   );
 
   fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
-  expect(screen.getByRole("searchbox", { name: "Search Chats" })).toHaveValue(
+  expect(screen.getByRole("combobox", { name: "Search chats" })).toHaveValue(
     "",
   );
 });
@@ -199,7 +199,7 @@ afterEach(() => {
   resetAgentRailInteractions();
   useAgentSettingsState.getState().close();
   clearChatSearchFolderRequest();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   resetAgentRailViewPrefs();
   vi.restoreAllMocks();
   useWorkbenchStore.setState(initialState, true);
@@ -350,7 +350,7 @@ it("pins and moves a foreign-folder chat without switching first", async () => {
   expect(switchProject).not.toHaveBeenCalled();
 });
 
-it("restores a foreign-folder archived chat without switching first", () => {
+it("restores a foreign-folder archived chat without switching first", async () => {
   const restoreChat = vi.fn(async () => true);
   const switchProject = vi.fn(async () => undefined);
   useWorkbenchStore.setState({
@@ -384,11 +384,13 @@ it("restores a foreign-folder archived chat without switching first", () => {
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
   render(<LeftSidebar />);
-  fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /^Archived chats:/ }),
+  );
   fireEvent.click(
     screen.getByRole("button", { name: "Restore chat Research" }),
   );
-  expect(restoreChat).toHaveBeenCalledWith("chat:old", "cross");
+  expect(restoreChat).toHaveBeenCalledWith("chat:old", "cross", "row");
   expect(switchProject).not.toHaveBeenCalled();
 });
 
@@ -532,18 +534,20 @@ it("mounts the lazy Chat search dialog only for a folder request, including one 
   });
   const { unmount } = render(<LeftSidebar />);
   await Promise.resolve();
-  expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+  expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
   unmount();
 
   requestChatSearchInFolder("sage");
   render(<LeftSidebar />);
-  const dialog = await screen.findByRole("dialog", { name: "Search Chats" });
-  expect(within(dialog).getByRole("searchbox")).toHaveFocus();
+  const dialog = await screen.findByRole("dialog", { name: "Search chats" });
+  expect(
+    within(dialog).getByRole("combobox", { name: "Search chats" }),
+  ).toHaveFocus();
   expect(hasChatSearchFolderRequest()).toBe(false);
-  fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-  expect(screen.queryByRole("dialog", { name: "Search Chats" })).toBeNull();
+  fireEvent.click(within(dialog).getByRole("button", { name: "Close" }));
+  expect(screen.queryByRole("dialog", { name: "Search chats" })).toBeNull();
   act(() => requestChatSearchInFolder("sage"));
-  expect(screen.getByRole("dialog", { name: "Search Chats" })).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "Search chats" })).toBeTruthy();
 });
 
 it("organizes the sidebar by project or in one list, in either sort order", async () => {

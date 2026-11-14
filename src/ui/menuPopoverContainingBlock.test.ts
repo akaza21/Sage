@@ -26,7 +26,8 @@ it("opens a composer popover above the changed-files summary instead of covering
     },
   );
   const result = menuPopoverPosition(trigger, menu, trigger, 4, false);
-  expect(Number(result.top) + 100).toBeLessThanOrEqual(611);
+  expect(result.top).toBe(511);
+  expect(Number(result.top) + 100 + 4).toBe(615);
 });
 
 function mount(style: Partial<CSSStyleDeclaration>) {

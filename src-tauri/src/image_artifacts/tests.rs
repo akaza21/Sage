@@ -214,7 +214,7 @@ fn pending_image_can_be_removed_only_by_its_chat_owner() {
 }
 
 #[test]
-fn exact_four_mib_png_is_admitted_and_plus_one_is_rejected() {
+fn exact_four_mib_png_is_kept_as_uploaded_and_larger_ones_are_normalised() {
     let directory = std::env::temp_dir().join(format!("sage-image-limit-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
     let database = Database::open(&directory.join("sage.db")).unwrap();
@@ -254,6 +254,19 @@ fn exact_four_mib_png_is_admitted_and_plus_one_is_rejected() {
         bytes
     );
     bytes.push(0);
+    let normalized = ingest_image(
+        &connection,
+        root,
+        "p",
+        "c",
+        ImageMediaType::Png,
+        &bytes,
+        "large.png",
+    )
+    .unwrap();
+    assert_eq!((normalized.width, normalized.height), (1, 1));
+    assert!(normalized.byte_length < 1024);
+    bytes.resize(crate::acp::limits::IMAGE_UPLOAD_BYTES + 1, 0);
     assert!(
         ingest_image(
             &connection,
@@ -269,4 +282,101 @@ fn exact_four_mib_png_is_admitted_and_plus_one_is_rejected() {
     drop(connection);
     drop(database);
     std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn a_4k_screenshot_is_normalised_at_upload_and_retired_once_sent() {
+    let directory = std::env::temp_dir().join(format!("sage-image-sent-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    let root = database.image_artifact_root().unwrap();
+
+    // Past the 2048 px store bound: once refused, now stored at that bound for
+    // every harness. An image prompt narrows it to 1568 px when it is sent.
+    let screenshot = super::screenshot_png(3840, 2160);
+    let image = super::ingest_test_image(&connection, root, "p", "c", &screenshot).unwrap();
+    assert_eq!((image.width, image.height), (2048, 1152));
+    assert_eq!(image.media_type, ImageMediaType::Png);
+    let stored = verify_image_reference(&connection, root, "p", "c", &image).unwrap();
+    assert_eq!(super::png_dimensions(&stored), (2048, 1152));
+
+    // Even noise is stored for any harness, as the smaller JPEG within 4 MiB;
+    // only an image prompt applies the tighter 1 MiB bound.
+    let noise = super::noise_png(2100, 1600);
+    let noise = super::ingest_test_image(&connection, root, "p", "c", &noise).unwrap();
+    assert_eq!(
+        (noise.width, noise.height, noise.media_type),
+        (2048, 1561, ImageMediaType::Jpeg)
+    );
+    assert!(noise.byte_length as usize <= crate::acp::limits::STORED_IMAGE_BYTES);
+
+    super::retire_sent_images(&connection, root, "p", "c", &[&image.artifact_id]).unwrap();
+    assert!(verify_image_reference(&connection, root, "p", "c", &image).is_err());
+    assert!(!root.join(format!("{}.full", image.artifact_id)).exists());
+    drop(connection);
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}
+
+#[test]
+fn uploads_queue_for_one_image_work_permit_without_holding_the_project_lock() {
+    use std::{sync::Arc, time::Duration};
+    assert_eq!(crate::acp::limits::IMAGE_WORK_PERMITS, 1);
+    tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .unwrap()
+        .block_on(async {
+            let root =
+                std::env::temp_dir().join(format!("sage-image-work-{}", uuid::Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let database = Database::open(&root.join("sage.db")).unwrap();
+            let project = database.create_project_from_root(&root).unwrap();
+            let chat_id = database
+                .bootstrap_snapshot()
+                .unwrap()
+                .active_tab_id
+                .unwrap();
+            let state = Arc::new(crate::state::AppState::new(database));
+            let generation = *state.project_transitions.lock().await;
+            let upload = |state: Arc<crate::state::AppState>| {
+                let request = UploadChatImageRequest {
+                    project_id: project.id.clone(),
+                    project_generation: generation,
+                    chat_id: chat_id.clone(),
+                    media_type: ImageMediaType::Png,
+                    data_base64: STANDARD.encode(super::screenshot_png(3000, 1000)),
+                    label: "wide.png".into(),
+                };
+                tokio::spawn(async move {
+                    super::commands::upload_chat_image_inner(&state, request).await
+                })
+            };
+
+            // A decode in flight holds the only permit; both uploads wait.
+            let held = super::image_work_permit().await;
+            let first = upload(state.clone());
+            let second = upload(state.clone());
+            tokio::time::sleep(Duration::from_millis(200)).await;
+            assert!(!first.is_finished() && !second.is_finished());
+            assert_eq!(super::work::image_work_available(), 0);
+            // A project switch is not blocked behind the waiting decodes.
+            let switch =
+                tokio::time::timeout(Duration::from_millis(200), state.project_transitions.lock())
+                    .await;
+            assert!(switch.is_ok());
+            drop(switch);
+
+            drop(held);
+            let first = first.await.unwrap().unwrap();
+            let second = second.await.unwrap().unwrap();
+            assert_ne!(first.artifact_id, second.artifact_id);
+            assert_eq!((first.width, first.height), (2048, 683));
+            assert_eq!(super::work::image_work_available(), 1);
+            drop(state);
+            let _ = std::fs::remove_dir_all(root);
+        });
 }

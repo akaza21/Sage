@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Browser developer mode fixture</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import React from "react";
+      import { createRoot } from "react-dom/client";
+      import { BrowserDeveloperModeSetting } from "/src/features/browser/BrowserDeveloperModeSetting.tsx";
+      import "/src/styles/global.css";
+      import "/src/styles/settings-surface.css";
+
+      const allowedMethods = new URLSearchParams(location.search).has(
+        "extended",
+      )
+        ? ["Runtime.evaluate", "Page.reload", "Page.getLayoutMetrics"]
+        : ["Runtime.evaluate", "Page.reload"];
+      let enabled = false;
+      window.__TAURI_INTERNALS__ = {
+        invoke: async (command, args) => {
+          if (command === "browser_set_developer_mode") enabled = args.enabled;
+          return { available: true, enabled, allowedMethods };
+        },
+      };
+      createRoot(document.getElementById("root")).render(
+        React.createElement(BrowserDeveloperModeSetting),
+      );
+    </script>
+  </body>
+</html>

@@ -1,4 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 
 import { browserSiteSettingReset } from "../../ports/nativeBrowserPort";
 import {
@@ -21,6 +27,35 @@ const RELOAD_FAILURE = "The tabs could not be reloaded.";
 
 const rowKey = (row: Pick<BrowserSiteSetting, "origin" | "kind">) =>
   `${row.origin} ${row.kind}`;
+
+const DESCRIPTION_ID = "browser-site-permissions-description";
+
+/**
+ * Settings > Browser > Site permissions: the one section both Settings
+ * surfaces show. A surface adds its own tab-scoped controls as children.
+ */
+export function BrowserSitePermissionsGroup({
+  children,
+}: {
+  children?: ReactNode;
+}) {
+  return (
+    <section
+      className="settings-surface__group"
+      role="group"
+      aria-labelledby="browser-site-permissions-heading"
+    >
+      <h3 id="browser-site-permissions-heading">Site permissions</h3>
+      <p className="settings-surface__group-note" id={DESCRIPTION_ID}>
+        Your answers to sites that asked for your camera, microphone, location,
+        notifications, or clipboard. They apply to every browser tab and stay
+        after Clear browsing data. Reset one to have the site ask again.
+      </p>
+      <BrowserSiteSettings describedBy={DESCRIPTION_ID} />
+      {children}
+    </section>
+  );
+}
 
 /**
  * Settings > Browser > Site permissions: every answer the user saved for a
@@ -60,11 +95,10 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
 
   useEffect(() => {
     let mounted = true;
-    let sawEvent = false;
     let unlisten: (() => void) | undefined;
     // Subscribe before the first read, so a change made in a browser tab
-    // between the two is not lost; an event that lands before the read
-    // returns is newer than it.
+    // between the two is not lost. Only events after the read starts
+    // invalidate its reply.
     void (async () => {
       try {
         const { listen } = await import("@tauri-apps/api/event");
@@ -72,7 +106,6 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
           "browser:site-settings",
           (event) => {
             if (!mounted) return;
-            sawEvent = true;
             events.current += 1;
             show(event.payload);
             setError(null);
@@ -85,12 +118,13 @@ export function BrowserSiteSettings({ describedBy }: { describedBy: string }) {
         // its own changes.
       }
       if (!mounted) return;
+      const seen = events.current;
       try {
         const loaded = await browserSiteSettings();
-        if (!mounted || sawEvent) return;
+        if (!mounted || seen !== events.current) return;
         show(loaded);
       } catch {
-        if (mounted && !sawEvent) setError(LOAD_FAILURE);
+        if (mounted && seen === events.current) setError(LOAD_FAILURE);
       }
     })();
     return () => {

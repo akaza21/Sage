@@ -1,0 +1,44 @@
+/* Loaded with the conflict and Save All notices, not at startup. */
+
+/* With actions, the text takes the line and the buttons wrap under it when
+   the File is too narrow for both. */
+.editor-notice:has(.editor-notice__actions) {
+  flex-wrap: wrap;
+}
+
+.editor-notice__text {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.editor-notice__actions {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-left: auto;
+}
+
+/* Compare takes the editor's place while it is on; the editor stays
+   mounted underneath, so it keeps its caret and history. */
+.file-surface:has(.file-conflict-compare) .file-editor-stage {
+  display: none;
+}
+
+/* A deleted File has no size on disk. */
+.file-surface:has(.editor-notice--deleted) .file-header__disk {
+  display: none;
+}
+
+.editor-notice__list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+/* A pressed toggle, as in the editor's other toggles: an underline, not the
+   accent border that marks the primary action next to it. */
+.editor-notice__toggle[aria-pressed="true"] {
+  color: var(--color-text-primary);
+  background: var(--color-surface-active);
+  box-shadow: inset 0 -1px 0 var(--color-accent);
+}

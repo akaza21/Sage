@@ -19,6 +19,7 @@ import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 import { currentChatUsage } from "./acp/chatUsage";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
 import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
+import { composerImageAvailability } from "./useComposerImageInput";
 
 type SurfaceHarness = Pick<
   HarnessDefinition,
@@ -40,7 +41,6 @@ export function useChatSurfaceModel({
   discoveryPhase,
   composerText = "",
   attachedContext = [],
-  imageInputAvailable = false,
   imageUploading = false,
   sending = false,
   chatError = null,
@@ -60,7 +60,6 @@ export function useChatSurfaceModel({
   discoveryPhase: HarnessDiscoveryPhase;
   composerText: string;
   attachedContext: readonly AttachedContext[];
-  imageInputAvailable?: boolean;
   imageUploading?: boolean;
   sending: boolean;
   chatError: string | null;
@@ -79,6 +78,7 @@ export function useChatSurfaceModel({
       attachedContext: readonly AttachedContext[],
       bindingId: CuratedBindingId,
       modelId: CuratedModelId | null,
+      staged?: { revision: string },
     ) => Promise<unknown>;
     cancel: (turnId: TurnProjection["id"]) => Promise<unknown>;
     close: () => Promise<unknown>;
@@ -155,6 +155,7 @@ export function useChatSurfaceModel({
       harnessAvailable,
       availableBinding,
       harnessStatus,
+      imageInput: composerImageAvailability(!!useNativeAcp, selectedSession),
     };
   }, [discoveryPhase, harnesses, page, selectedHarnessId, selectedModelId]);
   const accessBindingId = model.selectedSession?.bindingId ?? model.bindingId;
@@ -239,7 +240,7 @@ export function useChatSurfaceModel({
     sizeReason(composerText, attachedContext) !== null ||
     imageUploading ||
     (attachedContext.some((context) => context.kind === "image") &&
-      !imageInputAvailable);
+      !model.imageInput.available);
   const queueAvailable = Boolean(
     model.useNativeAcp &&
     activeAcpTurn?.state === "running" &&
@@ -280,7 +281,8 @@ export function useChatSurfaceModel({
                 useNativeAcp: model.useNativeAcp,
               }));
   const submit = useCallback(
-    (event: FormEvent) => {
+    // The composer names the batch it staged; a queued message never does.
+    (event: FormEvent, stagedRevision?: string | null) => {
       event.preventDefault();
       if (sendBlocked) return;
       if (activeAcpTurn) {
@@ -301,6 +303,7 @@ export function useChatSurfaceModel({
           attachedContext,
           model.bindingId,
           model.selectedModelId,
+          ...(stagedRevision ? [{ revision: stagedRevision }] : []),
         );
         return;
       }
@@ -356,11 +359,17 @@ export function useChatSurfaceModel({
   );
   return {
     ...model,
-    accessBindingId,
-    foregroundError:
-      acpActions.errorKind === "signInRequired" && model.selectedHarness
-        ? signInRequiredMessage(model.selectedHarness)
-        : (acpActions.error ?? chatError),
+    // A chat with no session at all drafts its access for its first one.
+    accessTarget: {
+      bindingId: accessBindingId,
+      draftChatId: page?.sessions.length === 0 ? page.chatId : undefined,
+    },
+    foregroundError: acpActions.error ?? chatError,
+    // The sign-in sentence renders lazily in the composer, off the chat path.
+    signInHarness:
+      acpActions.errorKind === "signInRequired"
+        ? (model.selectedHarness ?? null)
+        : null,
     modeError: model.useNativeAcp ? (acpActions.modeError ?? null) : null,
     modeChanging: model.useNativeAcp && (acpActions.modeChanging ?? false),
     actionBusy,
@@ -392,11 +401,4 @@ export function useChatSurfaceModel({
     ),
     openResource,
   };
-}
-
-function signInRequiredMessage(harness: SurfaceHarness): string {
-  if (harness.signIn) {
-    return `${harness.name} requires sign-in before it can continue. Run ${harness.signIn.command}. ${harness.signIn.hint} Then try again.`;
-  }
-  return `${harness.name} requires sign-in before it can continue. Sign in with its CLI, then try again.`;
 }

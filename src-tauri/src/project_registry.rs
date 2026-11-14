@@ -2,6 +2,11 @@ mod create;
 mod launch_root;
 mod local;
 mod rail;
+#[cfg(test)]
+pub(crate) use rail::MAX_AGENT_RAIL_CHATS_PER_PROJECT;
+pub(crate) use rail::{
+    CHAT_FINISHED_AT, CHAT_LATEST_TURN_ID, MAX_RAIL_CHATS, rail_chat_ids, rail_chat_set,
+};
 mod seed;
 
 use std::path::{Path, PathBuf};
@@ -318,7 +323,8 @@ fn canonical_folder(root: &Path) -> AppResult<PathBuf> {
     Ok(canonical)
 }
 
-fn folder_name(root: &Path) -> String {
+/// A root's display name, as the project's root list shows it.
+pub(crate) fn folder_name(root: &Path) -> String {
     root.file_name()
         .and_then(|name| name.to_str())
         .filter(|name| !name.is_empty())

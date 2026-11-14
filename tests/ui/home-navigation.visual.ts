@@ -16,29 +16,31 @@ async function savedChats(page: Page) {
 }
 
 for (const collapsed of [false, true]) {
-  test(`Home dismisses nonmodal resources before focusing Chat; collapsed=${collapsed}`, async ({
+  test(`Home focuses Chat beside inline resources; collapsed=${collapsed}`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 720, height: 1000 });
     await page.goto("/");
-    const composer = page.getByRole("textbox", { name: "Message agent" });
+    const composer = page.getByRole("combobox", { name: "Message agent" });
     await expect(composer).toBeVisible();
     const before = await savedChats(page);
     if (collapsed)
       await page
         .getByRole("button", { name: "Hide projects and chats" })
         .click();
-    await composer.fill("Overlay Home draft");
+    await composer.fill("Inline Home draft");
     await page.getByRole("button", { name: /Show files and preview/ }).click();
-    const resources = page.getByRole("dialog", { name: "Agent artifacts" });
+    // At 720px the resources dock beside Chat instead of covering it.
+    const resources = page.getByLabel("Agent artifacts", { exact: true });
     await expect(resources).toBeVisible();
-    await expect(resources).not.toHaveAttribute("aria-modal");
-    await expect(page.locator(".center-region")).toHaveAttribute("inert");
-    await page.getByRole("button", { name: "Home", exact: true }).click();
-    await expect(resources).toHaveCount(0);
+    await expect(
+      page.getByRole("dialog", { name: "Agent artifacts" }),
+    ).toHaveCount(0);
     await expect(page.locator(".center-region")).not.toHaveAttribute("inert");
+    await page.getByRole("button", { name: "Home", exact: true }).click();
     await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue("Overlay Home draft");
+    await expect(composer).toHaveValue("Inline Home draft");
+    await expect(resources).toBeVisible();
     expect(await savedChats(page)).toEqual(before);
   });
 
@@ -47,7 +49,7 @@ for (const collapsed of [false, true]) {
   }) => {
     await page.setViewportSize({ width: 1800, height: 1000 });
     await page.goto("/");
-    const composer = page.getByRole("textbox", { name: "Message agent" });
+    const composer = page.getByRole("combobox", { name: "Message agent" });
     await expect(composer).toBeVisible();
     const before = await savedChats(page);
     expect(before.chats).toHaveLength(1);
@@ -99,7 +101,7 @@ for (const owner of ["single", "parent", "side"] as const) {
     await page.setViewportSize({ width: 2400, height: 1000 });
     await page.goto("/");
     await expect(
-      page.getByRole("textbox", { name: "Message agent" }),
+      page.getByRole("combobox", { name: "Message agent" }),
     ).toBeVisible();
     const focusedId = await page.evaluate(async (owner) => {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
@@ -162,13 +164,13 @@ for (const owner of ["single", "parent", "side"] as const) {
     await expect(panes).toHaveCount(owner === "single" ? 1 : 2);
     const focused = page.locator(".agent-chat-pane--focused");
     await expect(
-      focused.getByRole("textbox", { name: "Message agent" }),
+      focused.getByRole("combobox", { name: "Message agent" }),
     ).toBeDisabled();
     if (owner !== "single")
       await expect(
         page
           .locator(".agent-chat-pane:not(.agent-chat-pane--focused)")
-          .getByRole("textbox"),
+          .getByRole("combobox", { name: "Message agent" }),
       ).toBeEnabled();
     const home = page.getByRole("button", { name: "Home", exact: true });
     if (owner === "single") {
@@ -180,7 +182,9 @@ for (const owner of ["single", "parent", "side"] as const) {
       await expect(focused).toHaveCSS("outline-style", "solid");
     await expect(focused).toHaveAttribute("data-chat-id", focusedId);
     await expect(focused).toHaveAccessibleName(/^Chat pane /);
-    await expect(focused.getByRole("textbox")).toHaveValue("Focused draft");
+    await expect(
+      focused.getByRole("combobox", { name: "Message agent" }),
+    ).toHaveValue("Focused draft");
     expect(await savedChats(page)).toEqual(before);
   });
 }

@@ -4,6 +4,55 @@ use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SagePro
 #[path = "live_lanes_test_engine.rs"]
 mod engine;
 
+impl AcpService {
+    /// Holds the activation claim on the lane serving `owner`, as an
+    /// activation or a chat release does while it works.
+    pub(in crate::acp::service) fn claim_lane_activation_for_test(
+        &self,
+        owner: &RuntimeOwner,
+    ) -> ActivationClaim<'_> {
+        let lane = self
+            .lanes
+            .iter()
+            .find(|lane| lane.holds(owner))
+            .expect("a lane serves the owner");
+        assert!(
+            lane.activating
+                .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
+                .is_ok()
+        );
+        ActivationClaim { lane }
+    }
+
+    /// How many chat releases found their lane held by another claim.
+    pub(in crate::acp::service) fn lane_busy_refusals_for_test(&self) -> usize {
+        self.lane_busy_refusals.load(Ordering::Acquire)
+    }
+
+    /// Holds the claim on the lane serving `owner` until a release is first
+    /// refused for it, then lets go, as a holder finishing would.
+    pub(in crate::acp::service) fn hold_lane_until_busy_for_test(&self, owner: &RuntimeOwner) {
+        std::mem::forget(self.claim_lane_activation_for_test(owner));
+        self.yield_lane_on_busy.store(true, Ordering::Release);
+    }
+
+    /// How many chat releases found the harness answering a control.
+    pub(in crate::acp::service) fn control_running_refusals_for_test(&self) -> usize {
+        self.control_running_refusals.load(Ordering::Acquire)
+    }
+
+    pub(super) fn observe_control_running_for_test(&self) {
+        self.control_running_refusals.fetch_add(1, Ordering::AcqRel);
+    }
+
+    pub(super) fn observe_lane_busy_for_test(&self, lane: &LiveLane) {
+        self.lane_busy_refusals.fetch_add(1, Ordering::AcqRel);
+        if self.yield_lane_on_busy.swap(false, Ordering::AcqRel) {
+            lane.activating.store(false, Ordering::Release);
+        }
+    }
+}
+
 fn activation_deadline() -> Instant {
     Instant::now() + Duration::from_secs(5)
 }
@@ -216,6 +265,22 @@ fn occupied_lane(
     resumable: bool,
     completed: bool,
 ) -> crate::acp::scheduler::TreeLease {
+    occupied_lane_with(
+        service,
+        index,
+        resumable,
+        completed,
+        engine::IdleEngine::default(),
+    )
+}
+
+fn occupied_lane_with(
+    service: &AcpService,
+    index: usize,
+    resumable: bool,
+    completed: bool,
+    engine: engine::IdleEngine,
+) -> crate::acp::scheduler::TreeLease {
     let owner = owner(&format!("idle-{index}"), 1);
     let capabilities = serde_json::json!({
         "schemaVersion":1,"protocolVersion":"test","newSession":true,
@@ -237,7 +302,7 @@ fn occupied_lane(
     drop(connection);
     let host = Arc::new(
         crate::acp::runtime::RuntimeHost::start_with_shutdown_recovery(
-            engine::IdleEngine,
+            engine,
             Arc::new(engine::Shutdown),
         )
         .unwrap(),
@@ -308,6 +373,147 @@ fn a_reserved_turn_is_never_an_idle_eviction_candidate() {
         .claim_activation_lane(&owner("new", 1), activation_deadline())
         .unwrap();
     assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[1].runtime));
+}
+
+#[test]
+fn releasing_a_chat_with_a_reserved_turn_is_refused_and_keeps_its_runtime() {
+    let service = service();
+    let lease = idle_lane(&service, 0, true);
+    let _turn = lease.reserve_turn().unwrap();
+    let owner = owner("idle-0", 1);
+    assert_eq!(
+        service.release_chat_runtime(
+            &owner.project_id,
+            &owner.chat_id,
+            explicit_close_deadline(),
+            || true
+        ),
+        Err(ChatRuntimeRelease::TurnRunning)
+    );
+    assert!(service.lanes[0].scheduler.active().is_some());
+    assert!(!service.lanes[0].activating.load(Ordering::Acquire));
+}
+
+/// Starts a native RPC on lane `index`'s runtime that waits for an answer.
+fn answering_control(
+    service: &AcpService,
+    index: usize,
+    pending: &Arc<Mutex<Option<crate::acp::runtime::NativeRpcCompletionSink>>>,
+) -> std::thread::JoinHandle<Result<crate::acp::goal::NativeRpcReply, crate::acp::runtime::HostError>>
+{
+    let owner = owner(&format!("idle-{index}"), 1);
+    let host = service.lanes[index].runtime.for_owner(&owner).unwrap();
+    let control = std::thread::spawn(move || {
+        host.native_rpc(crate::acp::goal::NativeRpcIntent {
+            owner,
+            request: crate::acp::goal::NativeRpcRequest::UsageRead,
+        })
+    });
+    let started = Instant::now();
+    while pending.lock().unwrap().is_none() {
+        assert!(started.elapsed() < Duration::from_secs(1));
+        std::thread::yield_now();
+    }
+    control
+}
+
+#[test]
+fn an_idle_runtime_answering_a_control_is_passed_over_for_eviction() {
+    let service = service();
+    let pending = Arc::new(Mutex::new(None));
+    let answering = engine::IdleEngine {
+        answering: Some(Arc::clone(&pending)),
+    };
+    // Lane 0 is the oldest idle runtime, first in line to be evicted.
+    let mut leases = vec![occupied_lane_with(&service, 0, true, true, answering)];
+    leases.extend((1..LIVE_RUNTIME_LANES).map(|index| idle_lane(&service, index, true)));
+    let control = answering_control(&service, 0, &pending);
+    let (lane, _claim) = service
+        .claim_activation_lane(&owner("new", 1), activation_deadline())
+        .unwrap();
+    assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[1].runtime));
+    // The lane chosen for eviction takes no new control until it is parked.
+    let evicted = service.lanes[1]
+        .runtime
+        .for_owner(&owner("idle-1", 1))
+        .unwrap();
+    assert!(evicted.claim_idle_park().is_none());
+    pending
+        .lock()
+        .unwrap()
+        .take()
+        .unwrap()
+        .complete(Ok(crate::acp::goal::NativeRpcReply::UsageRead));
+    assert_eq!(
+        control.join().unwrap(),
+        Ok(crate::acp::goal::NativeRpcReply::UsageRead),
+        "the passed-over runtime answered its control"
+    );
+    drop(lane);
+    assert!(
+        evicted.claim_idle_park().is_some(),
+        "an unused eviction lets go"
+    );
+}
+
+#[test]
+fn a_full_house_of_runtimes_answering_controls_says_so() {
+    let service = service();
+    let mut leases = Vec::new();
+    let mut answers = Vec::new();
+    for index in 0..LIVE_RUNTIME_LANES {
+        let pending = Arc::new(Mutex::new(None));
+        let answering = engine::IdleEngine {
+            answering: Some(Arc::clone(&pending)),
+        };
+        leases.push(occupied_lane_with(&service, index, true, true, answering));
+        answers.push((answering_control(&service, index, &pending), pending));
+    }
+    assert!(matches!(
+        service.claim_activation_lane(&owner("new", 1), activation_deadline()),
+        Err(CodexSessionError::CapacityAnswering)
+    ));
+    for (control, pending) in answers {
+        let answer = pending.lock().unwrap().take().unwrap();
+        answer.complete(Ok(crate::acp::goal::NativeRpcReply::UsageRead));
+        assert!(control.join().unwrap().is_ok());
+    }
+    // Once they have answered, the oldest idle runtime makes room again.
+    let (lane, _claim) = service
+        .claim_activation_lane(&owner("new", 1), activation_deadline())
+        .unwrap();
+    assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[0].runtime));
+}
+
+#[test]
+fn archiving_a_chat_whose_harness_is_answering_a_control_says_so() {
+    let service = service();
+    let pending = Arc::new(Mutex::new(None));
+    let answering = engine::IdleEngine {
+        answering: Some(Arc::clone(&pending)),
+    };
+    let _lease = occupied_lane_with(&service, 0, true, true, answering);
+    let control = answering_control(&service, 0, &pending);
+    let owner = owner("idle-0", 1);
+    let refusal = service.release_chat_runtime(
+        &owner.project_id,
+        &owner.chat_id,
+        explicit_close_deadline(),
+        || true,
+    );
+    assert_eq!(refusal, Err(ChatRuntimeRelease::ControlRunning));
+    assert_eq!(
+        ChatRuntimeRelease::ControlRunning.message("archiving"),
+        "This Chat's agent is still answering a request; try archiving it again"
+    );
+    assert!(service.lanes[0].scheduler.active().is_some());
+    pending
+        .lock()
+        .unwrap()
+        .take()
+        .unwrap()
+        .complete(Ok(crate::acp::goal::NativeRpcReply::UsageRead));
+    assert!(control.join().unwrap().is_ok());
 }
 
 #[test]

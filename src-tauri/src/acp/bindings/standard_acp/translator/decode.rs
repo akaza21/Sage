@@ -314,14 +314,6 @@ pub(super) fn string<'a>(
         .ok_or(TranslationError::MalformedFrame)
 }
 
-pub(super) fn line_count(value: &str) -> u64 {
-    if value.is_empty() {
-        0
-    } else {
-        value.lines().count() as u64
-    }
-}
-
 #[cfg(test)]
 mod permission_option_tests {
     use super::*;

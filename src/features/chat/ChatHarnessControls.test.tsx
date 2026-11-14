@@ -7,12 +7,24 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readFile } from "node:fs/promises";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
+import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 
 import {
   harnessModelIdentity,
   rememberHarnessModels,
 } from "../../app/harnessModelCache";
+import { useChatEffortDraft } from "../../app/chatEffortDraft";
+import { useChatAccessStore } from "../../app/sessionAccessActions";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useWorkbenchStore } from "../../app/store";
 import { decodeSessionConfig } from "../../domain/acpSessionConfig";
@@ -21,9 +33,31 @@ import {
   getWorkbenchPorts,
   resetWorkbenchPortsForTests,
 } from "../../ports/workbenchRuntime";
+import { PickerOption } from "../../ui/PickerOption";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 
+// The picker list loads when the window first idles.
+beforeAll(() => preloadSearchablePicker());
+const chatAccess = vi.hoisted(() => ({
+  get: vi.fn(() => Promise.resolve(null)),
+  set: vi.fn(),
+  prepare: vi.fn(),
+  grant: vi.fn(),
+}));
+vi.mock("../../ports/chatAccessChanges", () => ({
+  chatAccessChanges: () => chatAccess,
+}));
+const liveSession = decodeSessionConfig({
+  sageAgentSessionId: "session-1",
+  runtimeEpoch: "1",
+  configRevision: "1",
+  modes: null,
+  configOptions: [],
+});
+
 const noop = () => Promise.resolve();
+// The toolbar's compaction stylesheet decides which controls are laid out.
+const toolbarStyle = document.createElement("style");
 const initialWorkbenchState = useWorkbenchStore.getState();
 const nativeAccessModes = [
   {
@@ -75,6 +109,11 @@ function renderControls(overrides: Record<string, unknown> = {}) {
 
 beforeEach(async () => {
   vi.restoreAllMocks();
+  toolbarStyle.textContent ||= await readFile(
+    "src/styles/chat-container-controls.css",
+    "utf8",
+  );
+  document.head.append(toolbarStyle);
   resetWorkbenchPortsForTests();
   useWorkbenchStore.setState({
     harnesses: [
@@ -99,10 +138,12 @@ beforeEach(async () => {
     ready: true,
     error: null,
   });
+  useChatAccessStore.setState({ modes: {}, error: null });
 });
 
 afterEach(() => {
   cleanup();
+  toolbarStyle.remove();
   vi.unstubAllGlobals();
   useWorkbenchStore.setState(initialWorkbenchState, true);
 });
@@ -123,9 +164,12 @@ it("keeps Harness and Access mutually exclusive without pointer events", async (
   expect(access).toHaveFocus();
 });
 
-function openOptions() {
+async function openOptions() {
   const options = screen.queryByRole("button", { name: "Composer options" });
-  if (options) fireEvent.click(options);
+  if (options && !options.hasAttribute("disabled")) {
+    fireEvent.click(options);
+    await screen.findByRole("menu", { name: "Composer options menu" });
+  }
 }
 
 it("waits for session confirmation before labeling the active model", () => {
@@ -134,14 +178,16 @@ it("waits for session confirmation before labeling the active model", () => {
     models: [{ id: "gpt-5", name: "GPT-5" }],
   });
   renderControls({ selectedModelId: "gpt-5", sessionModelId: "gpt-5" });
-  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+  expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
     "Model",
   );
 });
 
-it("hides the add button when there are no composer actions", () => {
+it("disables the add button when there are no composer actions", () => {
   renderControls();
-  expect(screen.queryByRole("button", { name: "Composer options" })).toBeNull();
+  expect(
+    screen.queryByRole("button", { name: "Composer options" }),
+  ).toBeDisabled();
 });
 
 it("shows harness, unconfirmed model, effort availability and access before a first turn", async () => {
@@ -156,7 +202,7 @@ it("shows harness, unconfirmed model, effort availability and access before a fi
     selectedModelId: "claude-sonnet-4-5-20250929",
   });
   expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
-  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+  expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
     "Model",
   );
   expect(screen.getByRole("button", { name: "Access options" })).toBeVisible();
@@ -173,6 +219,55 @@ it("shows harness, unconfirmed model, effort availability and access before a fi
     screen.getByRole("button", { name: "Thinking level: High" }),
   ).toBeEnabled();
   expect(screen.queryByRole("button", { name: "Thinking level" })).toBeNull();
+});
+
+it("holds a thinking level chosen before the first session for the listed model", async () => {
+  useWorkbenchStore.setState({
+    selectedHarnessId: "access-test",
+    models: [
+      {
+        id: "default",
+        name: "Default",
+        isDefault: true,
+        effortLevels: ["low", "high"],
+      },
+      { id: "haiku", name: "Haiku" },
+    ],
+  });
+  const onSetSessionConfigOption = vi.fn(noop);
+  const { rerenderControls } = renderControls({
+    sessionHarnessId: null,
+    selectedModelId: "default",
+    accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
+    onSetSessionConfigOption,
+  });
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Thinking level: Default" }),
+  );
+  const slider = await screen.findByRole("slider");
+  fireEvent.pointerDown(slider, { pointerId: 1 });
+  fireEvent.change(slider, { target: { value: "2" } });
+  fireEvent.pointerUp(slider, { pointerId: 1 });
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Thinking level: High" }),
+    ).toBeEnabled(),
+  );
+  expect(useChatEffortDraft.getState().draft).toEqual({
+    chatId: "chat-draft",
+    bindingId: "fixture",
+    modelId: "default",
+    effort: "high",
+  });
+  expect(onSetSessionConfigOption).not.toHaveBeenCalled();
+  // A model without listed levels keeps effort waiting for its session.
+  rerenderControls({
+    sessionHarnessId: null,
+    selectedModelId: "haiku",
+    accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
+  });
+  expect(screen.getByRole("button", { name: "Thinking level" })).toBeDisabled();
+  useChatEffortDraft.setState({ draft: null });
 });
 
 it("keeps advertised model groups and exact IDs when changing session models", async () => {
@@ -212,10 +307,10 @@ it("keeps advertised model groups and exact IDs when changing session models", a
       ],
     }),
   });
-  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+  expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
     "Claude Sonnet 4.5",
   );
-  fireEvent.click(screen.getByRole("button", { name: "Model" }));
+  fireEvent.click(screen.getByLabelText("Model", { exact: true }));
   const group = await screen.findByRole("group", { name: "Other choices" });
   fireEvent.click(within(group).getByRole("option", { name: "Private model" }));
   expect(onSetSessionConfigOption).toHaveBeenCalledExactlyOnceWith("model", {
@@ -249,10 +344,89 @@ function confirmedModelConfig() {
 }
 
 describe("last confirmed model label", () => {
+  it("returns focus to the composer when the last open options action disappears", async () => {
+    const composer = document.createElement("textarea");
+    document.body.append(composer);
+    try {
+      const config = confirmedModelConfig()!;
+      config.configOptions = [];
+      config.modes = {
+        currentModeId: "default",
+        availableModes: [
+          { id: "default", name: "Default" },
+          { id: "plan", name: "Plan" },
+        ],
+      };
+      const props = {
+        sessionConfig: config,
+        focused: true,
+        onModeRemoved: () => composer.focus(),
+      };
+      const view = renderControls(props);
+      fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+      const plan = await screen.findByRole("menuitemradio", {
+        name: "Plan mode",
+      });
+      plan.focus();
+      view.rerenderControls({
+        ...props,
+        sessionConfig: {
+          ...config,
+          removed: true,
+          configOptions: [],
+          modes: null,
+        },
+      });
+      expect(screen.queryByRole("menu")).toBeNull();
+      expect(
+        screen.queryByRole("button", { name: "Composer options" }),
+      ).toBeDisabled();
+      expect(composer).toHaveFocus();
+    } finally {
+      composer.remove();
+    }
+  });
+  it.each([1, 2])(
+    "keeps advertised effort editable after a completed turn with %i models and late catalog loading",
+    async (count) => {
+      const config = confirmedModelConfig()!;
+      const model = config.configOptions[0];
+      if (model.type !== "select") throw new Error("Expected model choices");
+      model.options = Array.from({ length: count }, (_, index) => ({
+        value: index ? "other" : "session-model",
+        name: index ? "Other model" : "Confirmed session model",
+      }));
+      const props = { sessionConfig: config, canPrompt: false };
+      const view = renderControls({ ...props, turnBusy: true });
+      expect(
+        screen.getByRole("button", { name: "Thinking level: High" }),
+      ).toBeDisabled();
+      act(() =>
+        useWorkbenchStore.setState({
+          models: Array.from({ length: count }, (_, index) => ({
+            id: index ? "other" : "session-model",
+            name: "Catalog model",
+          })),
+        }),
+      );
+      view.rerenderControls({ ...props, turnBusy: false });
+      const effort = screen.getByRole("button", {
+        name: "Thinking level: High",
+      });
+      expect(effort).toBeEnabled();
+      fireEvent.click(effort);
+      expect(await screen.findByRole("slider")).toBeEnabled();
+      fireEvent.keyDown(
+        screen.getByRole("dialog", { name: "Thinking level" }),
+        { key: "Escape" },
+      );
+      expect(effort).toHaveFocus();
+    },
+  );
   it("shows Pi's wire-confirmed model and effort after interrupt without inventing a reset default", async () => {
     const onSetSessionConfigOption = vi.fn();
     const view = renderControls({ onSetSessionConfigOption });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Model$/,
     );
     expect(
@@ -296,11 +470,11 @@ describe("last confirmed model label", () => {
       turnBusy: true,
       onSetSessionConfigOption,
     });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Synthetic replay$/,
     );
     expect(
-      screen.getByRole("button", { name: "Thinking level: medium" }),
+      screen.getByRole("button", { name: "Thinking level: Medium" }),
     ).toBeDisabled();
     view.rerenderControls({
       sessionConfig,
@@ -308,13 +482,13 @@ describe("last confirmed model label", () => {
       onSetSessionConfigOption,
     });
     const effort = screen.getByRole("button", {
-      name: "Thinking level: medium",
+      name: "Thinking level: Medium",
     });
     expect(effort).toBeEnabled();
     fireEvent.click(effort);
     expect(await screen.findByRole("slider")).toHaveAttribute(
       "aria-valuetext",
-      "medium",
+      "Medium",
     );
     expect(screen.queryByRole("button", { name: "Reset effort" })).toBeNull();
     expect(onSetSessionConfigOption).not.toHaveBeenCalled();
@@ -341,7 +515,7 @@ describe("last confirmed model label", () => {
     });
     const view = renderControls({ sessionConfig, turnBusy: true });
     view.rerenderControls({ sessionConfig, turnBusy: false });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Synthetic replay$/,
     );
     expect(
@@ -381,7 +555,7 @@ describe("last confirmed model label", () => {
         ],
       };
       const view = renderControls({ sessionConfig: config });
-      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
         /^Confirmed session model$/,
       );
       fireEvent.click(screen.getByRole("button", { name: "Harness" }));
@@ -412,7 +586,7 @@ describe("last confirmed model label", () => {
 
   it("shows effort once when a separate effort control is available", async () => {
     renderControls({ sessionConfig: confirmedModelConfig() });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Confirmed session model$/,
     );
     expect(screen.getAllByText("High", { exact: true })).toHaveLength(1);
@@ -421,22 +595,17 @@ describe("last confirmed model label", () => {
     ).toHaveTextContent("High");
   });
 
-  it("keeps effort reachable through Add when its compact toolbar control yields", async () => {
+  it("keeps effort and the project reachable through Add when the toolbar cannot fit them", async () => {
     useWorkbenchStore.setState({
       project: { id: "a", name: "A", roots: [] },
       projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
     });
-    const observer = vi.fn();
-    vi.stubGlobal(
-      "ResizeObserver",
-      class {
-        constructor(callback: (entries: unknown[]) => void) {
-          observer.mockImplementation(callback);
-        }
-        observe() {
-          observer([{ contentRect: { width: 280 } }]);
-        }
-        disconnect() {}
+    // A row too narrow for any of its controls takes every compaction step.
+    vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+      function (this: Element) {
+        return DOMRect.fromRect({
+          width: this.classList.contains("composer__controls") ? 0 : 28,
+        });
       },
     );
     const host = document.createElement("form");
@@ -467,10 +636,8 @@ describe("last confirmed model label", () => {
       { container: host },
     );
     fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
-    const project = screen.getByRole("menuitem", { name: "Project: A" });
-    expect(
-      host.querySelector(".composer__controls > .project-scope"),
-    ).toBeNull();
+    const project = await screen.findByRole("menuitem", { name: "Project: A" });
+    expect(screen.queryByRole("button", { name: "Project: A" })).toBeNull();
     fireEvent.click(project);
     const projects = screen.getByRole("combobox", { name: "Project: A" });
     const candidate = screen.getByRole("option", { name: /^A$/ });
@@ -495,8 +662,48 @@ describe("last confirmed model label", () => {
     ).toHaveFocus();
     view.unmount();
     host.remove();
-    vi.unstubAllGlobals();
   });
+
+  it.each([false, true])(
+    "keeps keyboard focus when an overflow control returns beside a disabled=%s fixed action",
+    async (disabled) => {
+      let width = 0;
+      vi.spyOn(Element.prototype, "getClientRects").mockImplementation(
+        function (this: Element) {
+          return [this.getBoundingClientRect()] as unknown as DOMRectList;
+        },
+      );
+      vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
+        function (this: Element) {
+          return DOMRect.fromRect({
+            width: this.classList.contains("composer__controls") ? width : 28,
+          });
+        },
+      );
+      const props = {
+        sessionConfig: confirmedModelConfig(),
+        addActions: { imageAction: { disabled, onChoose: () => {} } },
+      };
+      const view = renderControls(props);
+      fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+      const thinking = await screen.findByRole("menuitem", {
+        name: "Thinking level",
+      });
+      thinking.focus();
+      width = 1000;
+      view.rerenderControls({ ...props, modeError: "Updated session status" });
+      await waitFor(() =>
+        expect(
+          screen.queryByRole("menuitem", { name: "Thinking level" }),
+        ).toBeNull(),
+      );
+      expect(
+        screen.getByRole("button", { name: "Thinking level: High" }),
+      ).toHaveFocus();
+      fireEvent.keyDown(document.activeElement!, { key: "Escape" });
+      expect(screen.queryByRole("menu")).toBeNull();
+    },
+  );
 
   it("does not subtitle a draft catalog selection as a confirmed model", async () => {
     useWorkbenchStore.setState({
@@ -521,7 +728,7 @@ describe("last confirmed model label", () => {
         sessionHarnessId,
         selectedModelId: "chosen",
       });
-      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
         /^Model$/,
       );
     },
@@ -531,7 +738,7 @@ describe("last confirmed model label", () => {
     renderControls({ sessionConfig: confirmedModelConfig(), canPrompt: false });
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
   });
 
   it("shows only the selected harness's confirmed model and effort in its picker row", async () => {
@@ -630,10 +837,11 @@ describe("last confirmed model label", () => {
       sessionHarnessId: "codex",
       sessionConfig,
     });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     expect(trigger).toHaveTextContent(/^actual High$/);
     expect(trigger).toHaveAccessibleDescription("actual High");
-    expect(trigger).toBeDisabled();
+    // The confirmed model is the sole choice, so the picker stays openable.
+    expect(trigger).toBeEnabled();
     expect(
       screen.queryByRole("button", { description: "Select effort" }),
     ).toBeNull();
@@ -654,7 +862,7 @@ describe("last confirmed model label", () => {
       sessionModelId: "requested",
     };
     const view = renderControls(selection);
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     expect(trigger).toHaveTextContent(/^Model$/);
     fireEvent.click(trigger);
     expect(
@@ -681,7 +889,10 @@ describe("last confirmed model label", () => {
   it("retains the matching catalog name while id-only session identity survives catalog removal", async () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
-      models: [{ id: "actual", name: "Actual model" }],
+      models: [
+        { id: "actual", name: "Actual model" },
+        { id: "alternative", name: "Alternative model" },
+      ],
     });
     renderControls({
       selectedHarnessId: "codex",
@@ -695,11 +906,16 @@ describe("last confirmed model label", () => {
         confirmedModel: { id: "actual" },
       }),
     });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     expect(trigger).toHaveTextContent(/^Actual model$/);
     act(() => useWorkbenchStore.setState({ models: [] }));
     expect(trigger).toHaveTextContent(/^Actual model$/);
-    expect(trigger).toBeDisabled();
+    expect(trigger).toBeEnabled();
+    fireEvent.click(trigger);
+    expect(
+      await screen.findByRole("option", { name: "Actual model" }),
+    ).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByRole("option")).toHaveLength(1);
   });
 
   it("uses the confirmed model identifier when its advertised display name is empty", async () => {
@@ -710,10 +926,13 @@ describe("last confirmed model label", () => {
       name: "Model",
       type: "select",
       currentValue: "session-model",
-      options: [{ value: "session-model", name: "" }],
+      options: [
+        { value: "session-model", name: "" },
+        { value: "other", name: "Other model" },
+      ],
     };
     renderControls({ sessionConfig });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     expect(trigger).toHaveTextContent(/^session-model$/);
     expect(trigger).toHaveAccessibleDescription("session-model High");
     fireEvent.click(trigger);
@@ -724,7 +943,7 @@ describe("last confirmed model label", () => {
 
   it("announces the full confirmed model and effort from the model control", async () => {
     renderControls({ sessionConfig: confirmedModelConfig() });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     expect(trigger).toHaveAccessibleDescription("Confirmed session model High");
     expect(trigger).toHaveAttribute("title", "Confirmed session model High");
   });
@@ -738,10 +957,10 @@ describe("last confirmed model label", () => {
       ],
     });
     renderControls({ selectedHarnessId: "codex", selectedModelId: "unknown" });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Model$/,
     );
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
     await screen.findByRole("listbox", { name: "Select model" });
     expect(
       screen
@@ -763,7 +982,7 @@ describe("last confirmed model label", () => {
     });
     if (!config) throw new Error("Config did not decode");
     const view = renderControls({ ...selection, sessionConfig: config });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^actual$/,
     );
     view.rerenderControls({
@@ -773,11 +992,11 @@ describe("last confirmed model label", () => {
         confirmedModel: { id: "actual", name: "Actual model" },
       },
     });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Actual model$/,
     );
     view.rerenderControls({ ...selection, sessionConfig: null });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Actual model$/,
     );
     view.rerenderControls({
@@ -785,13 +1004,16 @@ describe("last confirmed model label", () => {
       selectedHarnessId: "other",
       sessionConfig: config,
     });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Model$/,
     );
   });
 
-  it("shows confirmed non-selectable session identity and effort without a catalog", async () => {
-    useWorkbenchStore.setState({ selectedHarnessId: "codex", models: [] });
+  it("lists a sole confirmed model as selected without a catalog and keeps effort and its model link", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "access-test",
+      models: [],
+    });
     const sessionConfig = decodeSessionConfig({
       sageAgentSessionId: "session-1",
       runtimeEpoch: "1",
@@ -802,23 +1024,158 @@ describe("last confirmed model label", () => {
         {
           id: "effort",
           name: "Effort",
+          category: "effort",
           type: "select",
           currentValue: "high",
-          options: [{ value: "high", name: "High" }],
+          options: [
+            { value: "low", name: "Low" },
+            { value: "high", name: "High" },
+          ],
         },
       ],
     });
-    renderControls({
-      selectedHarnessId: "codex",
-      sessionHarnessId: "codex",
-      sessionConfig,
-    });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const onSelectModel = vi.fn();
+    const onSetSessionConfigOption = vi.fn();
+    renderControls({ sessionConfig, onSelectModel, onSetSessionConfigOption });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
-    expect(trigger).toBeDisabled();
+    expect(trigger).toBeEnabled();
     fireEvent.click(trigger);
+    const listbox = await screen.findByRole("listbox", {
+      name: "Select model",
+    });
+    const option = within(listbox).getByRole("option");
+    expect(option).toHaveAccessibleName("GPT-6 Astra");
+    expect(option).toHaveAttribute("aria-selected", "true");
+    // With no requested model, choosing the confirmed one only closes the menu.
+    fireEvent.click(option);
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
+    expect(trigger).toHaveFocus();
+    expect(trigger).toHaveTextContent(/^GPT-6 Astra$/);
+    const effort = screen.getByRole("button", {
+      name: "Thinking level: High",
+    });
+    expect(effort).toBeEnabled();
+    fireEvent.click(effort);
+    expect(await screen.findByRole("slider")).toBeEnabled();
+    expect(
+      screen.getByRole("button", { name: "Select model: GPT-6 Astra" }),
+    ).toBeVisible();
+    expect(onSelectModel).not.toHaveBeenCalled();
+    expect(onSetSessionConfigOption).not.toHaveBeenCalled();
   });
+
+  it("requests a substituted confirmed model when the user explicitly chooses it", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "access-test",
+      models: [
+        { id: "requested", name: "Requested model" },
+        { id: "actual", name: "Actual model" },
+      ],
+    });
+    const onSelectModel = vi.fn();
+    renderControls({
+      selectedModelId: "requested",
+      sessionModelId: "requested",
+      onSelectModel,
+      sessionConfig: decodeSessionConfig({
+        sageAgentSessionId: "session-1",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: null,
+        configOptions: [],
+        confirmedModel: { id: "actual" },
+      }),
+    });
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
+    const actual = await screen.findByRole("option", { name: "Actual model" });
+    expect(actual).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(actual);
+    expect(onSelectModel).toHaveBeenCalledExactlyOnceWith("actual");
+  });
+
+  it("only closes the menu when a substituted sole model is chosen without a catalog", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "access-test",
+      models: [],
+    });
+    const onSelectModel = vi.fn();
+    const onSetSessionConfigOption = vi.fn();
+    renderControls({
+      selectedModelId: "requested",
+      sessionModelId: "requested",
+      onSelectModel,
+      onSetSessionConfigOption,
+      sessionConfig: decodeSessionConfig({
+        sageAgentSessionId: "session-1",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: null,
+        confirmedModel: { id: "actual", name: "Actual model" },
+        configOptions: [
+          {
+            id: "effort",
+            name: "Effort",
+            category: "effort",
+            type: "select",
+            currentValue: "high",
+            options: [{ value: "high", name: "High" }],
+          },
+        ],
+      }),
+    });
+    const trigger = screen.getByLabelText("Model", { exact: true });
+    fireEvent.click(trigger);
+    const option = await screen.findByRole("option", { name: "Actual model" });
+    expect(option).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(option);
+    expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
+    expect(onSelectModel).not.toHaveBeenCalled();
+    expect(onSetSessionConfigOption).not.toHaveBeenCalled();
+    expect(trigger).toBeEnabled();
+    expect(trigger).toHaveTextContent(/^Actual model$/);
+    expect(
+      screen.getByRole("button", { name: "Thinking level: High" }),
+    ).toBeEnabled();
+  });
+  it.each(["before a first turn", "after choosing another catalog model"])(
+    "shows effort as unavailable until the selected model's session advertises levels, %s",
+    (order) => {
+      useWorkbenchStore.setState({
+        selectedHarnessId: "access-test",
+        models: [
+          { id: "old", name: "Old model" },
+          { id: "new", name: "New model" },
+        ],
+      });
+      const firstTurn = order === "before a first turn";
+      const view = renderControls({
+        selectedModelId: "new",
+        sessionHarnessId: firstTurn ? null : "access-test",
+        sessionModelId: firstTurn ? null : "old",
+        sessionConfig: firstTurn ? null : confirmedModelConfig(),
+      });
+      const unavailable = screen.getByRole("button", {
+        name: "Thinking level",
+      });
+      expect(unavailable).toBeDisabled();
+      expect(unavailable).toHaveAccessibleDescription(
+        "Available when the harness advertises effort controls for this session.",
+      );
+      view.rerenderControls({
+        selectedModelId: "new",
+        sessionHarnessId: "access-test",
+        sessionModelId: "new",
+        sessionConfig: confirmedModelConfig(),
+      });
+      expect(
+        screen.getByRole("button", { name: "Thinking level: High" }),
+      ).toBeEnabled();
+      expect(
+        screen.queryByRole("button", { name: "Thinking level" }),
+      ).toBeNull();
+    },
+  );
 
   const selection = {
     selectedHarnessId: "harness-a",
@@ -842,7 +1199,7 @@ describe("last confirmed model label", () => {
         turnBusy: true,
         sessionConfig,
       });
-      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
         "Confirmed session model",
       );
       expect(
@@ -857,7 +1214,7 @@ describe("last confirmed model label", () => {
             ? null
             : { ...sessionConfig, removed: true, configOptions: [] },
       });
-      const chip = screen.getByRole("button", { name: "Model" });
+      const chip = screen.getByLabelText("Model", { exact: true });
       expect(chip).toHaveTextContent("Confirmed session model");
       expect(chip).toBeDisabled();
       fireEvent.click(chip);
@@ -888,15 +1245,15 @@ describe("last confirmed model label", () => {
         ...selection,
         sessionConfig: confirmedModelConfig(),
       });
-      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
         "Confirmed session model",
       );
       view.rerenderControls({ ...selection, ...change, sessionConfig: null });
-      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
         /^Model$/,
       );
       view.rerenderControls({ ...selection, sessionConfig: null });
-      expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+      expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
         /^Model$/,
       );
     },
@@ -911,14 +1268,14 @@ describe("last confirmed model label", () => {
     if (!sessionConfig) throw new Error("Config did not decode");
     const view = renderControls({ ...selection, sessionConfig });
     view.rerenderControls({ ...selection, sessionConfig: null });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       "Confirmed session model",
     );
     useWorkbenchStore.setState({
       models: [{ id: "session-model", name: "Updated catalog label" }],
     });
     view.rerenderControls({ ...selection, sessionConfig: null });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       "Updated catalog label",
     );
     view.rerenderControls({
@@ -935,7 +1292,7 @@ describe("last confirmed model label", () => {
         ],
       },
     });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       "New confirmed model",
     );
   });
@@ -954,7 +1311,7 @@ describe("last confirmed model label", () => {
       project: { id: "project-two", name: "Two", roots: [] },
     });
     view.rerenderControls({ ...selection, sessionConfig: null });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Model$/,
     );
   });
@@ -984,7 +1341,7 @@ describe("last confirmed model label", () => {
     first.rerenderControls({ ...selection, sessionConfig: null });
     expect(
       screen
-        .getAllByRole("button", { name: "Model" })
+        .getAllByLabelText("Model", { exact: true })
         .map((chip) => chip.textContent),
     ).toEqual(["Confirmed session model", "Other pane model"]);
     second.rerenderControls({
@@ -994,7 +1351,7 @@ describe("last confirmed model label", () => {
     });
     expect(
       screen
-        .getAllByRole("button", { name: "Model" })
+        .getAllByLabelText("Model", { exact: true })
         .map((chip) => chip.textContent),
     ).toEqual(["Confirmed session model", "Model"]);
   });
@@ -1004,17 +1361,23 @@ describe("composer permission mode picker", () => {
   it("keeps keyboard selection reachable when an open model catalog is replaced", async () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
-      models: [{ id: "old", name: "Old model" }],
+      models: [
+        { id: "old", name: "Old model" },
+        { id: "alternative", name: "Alternative model" },
+      ],
     });
     const onSelectModel = vi.fn();
     renderControls({ selectedHarnessId: "codex", onSelectModel });
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
     expect(
       await screen.findByRole("option", { name: "Old model" }),
     ).toHaveFocus();
     act(() =>
       useWorkbenchStore.setState({
-        models: [{ id: "new", name: "New model" }],
+        models: [
+          { id: "new", name: "New model" },
+          { id: "alternative", name: "Alternative model" },
+        ],
       }),
     );
     expect(screen.queryByRole("option", { name: "Old model" })).toBeNull();
@@ -1037,37 +1400,100 @@ describe("composer permission mode picker", () => {
     });
     const onSelectModel = vi.fn();
     renderControls({ selectedHarnessId: "codex", onSelectModel });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
+    // Each role query re-checks the visibility of all 200 options, so list
+    // them once and find a named option by its label within the list.
+    const option = (listbox: HTMLElement, name: string) => {
+      const found = within(listbox).getByText(name).closest('[role="option"]');
+      expect(found).toHaveAccessibleName(name);
+      expect(found).toBeVisible();
+      return found as HTMLElement;
+    };
     fireEvent.click(trigger);
-    await screen.findByRole("listbox", { name: "Select model" });
-    expect(screen.getAllByRole("option")).toHaveLength(200);
-    fireEvent.click(screen.getByRole("option", { name: "Default" }));
+    const listbox = await screen.findByRole("listbox", {
+      name: "Select model",
+    });
+    expect(within(listbox).getAllByRole("option")).toHaveLength(200);
+    fireEvent.click(option(listbox, "Default"));
     expect(onSelectModel).toHaveBeenCalledExactlyOnceWith("actual-default");
     fireEvent.click(trigger);
-    fireEvent.keyDown(screen.getByRole("option", { name: "Default" }), {
-      key: "End",
+    const reopened = screen.getByRole("listbox", { name: "Select model" });
+    fireEvent.keyDown(option(reopened, "Default"), { key: "End" });
+    expect(option(reopened, "Advertised model 199")).toHaveFocus();
+    expect(within(reopened).queryByText("Advertised model 200")).toBeNull();
+    const status = screen.getByRole("status");
+    expect(status).toHaveTextContent("Showing first 200 models");
+    expect(reopened).not.toContainElement(status);
+  });
+
+  it("moves to the last model on End without re-rendering any model option", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "codex",
+      models: Array.from({ length: 40 }, (_, index) => ({
+        id: `model-${index + 1}`,
+        name: `Advertised model ${index + 1}`,
+      })),
     });
-    expect(
-      screen.getByRole("option", { name: "Advertised model 199" }),
-    ).toHaveFocus();
-    expect(
-      screen.queryByRole("option", { name: "Advertised model 200" }),
-    ).toBeNull();
-    expect(screen.getByRole("status")).toHaveTextContent(
-      "Showing first 200 models",
-    );
-    expect(
-      screen.getByRole("listbox", { name: "Select model" }),
-    ).not.toContainElement(screen.getByRole("status"));
+    // Count renders of the production option through its memoised render
+    // function, so React's own memo bail-out decides what is counted.
+    const memoised = PickerOption as unknown as {
+      type: (props: object) => unknown;
+    };
+    const renders = vi.spyOn(memoised, "type");
+    try {
+      renderControls({ selectedHarnessId: "codex", onSelectModel: vi.fn() });
+      fireEvent.click(screen.getByLabelText("Model", { exact: true }));
+      const listbox = await screen.findByRole("listbox", {
+        name: "Select model",
+      });
+      expect(renders).toHaveBeenCalledTimes(40);
+      renders.mockClear();
+      const first = within(listbox).getByText("Advertised model 1");
+      fireEvent.keyDown(first, { key: "End" });
+      expect(
+        within(listbox).getByText("Advertised model 40").closest("button"),
+      ).toHaveFocus();
+      expect(renders).not.toHaveBeenCalled();
+    } finally {
+      renders.mockRestore();
+    }
+  });
+
+  it("sends a model chosen from an open menu to the latest selection callback", async () => {
+    useWorkbenchStore.setState({
+      selectedHarnessId: "codex",
+      models: [
+        { id: "actual", name: "Actual model" },
+        { id: "alternative", name: "Alternative model" },
+      ],
+    });
+    const stale = vi.fn();
+    const latest = vi.fn();
+    const view = renderControls({
+      selectedHarnessId: "codex",
+      onSelectModel: stale,
+    });
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
+    await screen.findByRole("listbox", { name: "Select model" });
+    view.rerenderControls({
+      selectedHarnessId: "codex",
+      onSelectModel: latest,
+    });
+    fireEvent.click(screen.getByRole("option", { name: "Alternative model" }));
+    expect(stale).not.toHaveBeenCalled();
+    expect(latest).toHaveBeenCalledExactlyOnceWith("alternative");
   });
 
   it("dismisses the model list on Tab and preserves its restored trigger focus", async () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
-      models: [{ id: "actual", name: "Actual model" }],
+      models: [
+        { id: "actual", name: "Actual model" },
+        { id: "alternative", name: "Alternative model" },
+      ],
     });
     renderControls({ selectedHarnessId: "codex", selectedModelId: "actual" });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     fireEvent.click(trigger);
     const option = await screen.findByRole("option", { name: "Actual model" });
     expect(option).toHaveFocus();
@@ -1077,10 +1503,13 @@ describe("composer permission mode picker", () => {
   });
 
   it("closes a model list when its catalog disappears and does not reopen it on recovery", async () => {
-    const models = [{ id: "actual", name: "Actual model" }];
+    const models = [
+      { id: "actual", name: "Actual model" },
+      { id: "alternative", name: "Alternative model" },
+    ];
     useWorkbenchStore.setState({ selectedHarnessId: "codex", models });
     renderControls({ selectedHarnessId: "codex", selectedModelId: "actual" });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     fireEvent.click(trigger);
     expect(
       await screen.findByRole("listbox", { name: "Select model" }),
@@ -1102,7 +1531,7 @@ describe("composer permission mode picker", () => {
       switchProject,
     });
     renderControls({ projectName: "Alpha" });
-    openOptions();
+    await openOptions();
     const project = screen.getByRole("button", { name: "Project: Alpha" });
     expect(project).toHaveAttribute("title", "Project: Alpha");
     expect(project.querySelector(".project-scope__icon")).toHaveAttribute(
@@ -1125,7 +1554,7 @@ describe("composer permission mode picker", () => {
     renderControls({ projectName: "Alpha", turnBusy: true });
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     expect(
       screen.getByRole("button", { name: "Project: Alpha" }),
     ).toBeDisabled();
@@ -1135,7 +1564,9 @@ describe("composer permission mode picker", () => {
     useWorkbenchStore.setState({
       projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
     });
-    renderControls({ imageAction: { disabled: false, onChoose: vi.fn() } });
+    renderControls({
+      addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+    });
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
     expect(
@@ -1156,7 +1587,7 @@ describe("composer permission mode picker", () => {
     async (name) => {
       renderControls({
         projectName: "Alpha",
-        imageAction: { disabled: false, onChoose: vi.fn() },
+        addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
       });
       const opener = screen.getByRole("button", { name });
       const other = screen.getByRole("button", {
@@ -1193,7 +1624,9 @@ describe("composer permission mode picker", () => {
           { id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 },
         ],
       });
-      renderControls({ imageAction: { disabled: false, onChoose: vi.fn() } });
+      renderControls({
+        addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+      });
       const trigger = screen.getByRole("button", { name: "Composer options" });
       fireEvent.click(trigger);
       const control = screen.getByRole("menuitem", { name: "Add images" });
@@ -1215,7 +1648,7 @@ describe("composer permission mode picker", () => {
       ],
     });
     renderControls({ selectedHarnessId: "codex", selectedModelId: "luna" });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     trigger.focus();
     fireEvent.click(trigger, { detail: 0 });
     const selected = await screen.findByRole("option", { name: "Luna" });
@@ -1236,10 +1669,13 @@ describe("composer permission mode picker", () => {
   it("dismisses the model list on outside pointer without stealing focus", async () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
-      models: [{ id: "astra", name: "Astra" }],
+      models: [
+        { id: "astra", name: "Astra" },
+        { id: "luna", name: "Luna" },
+      ],
     });
     renderControls({ selectedHarnessId: "codex" });
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     fireEvent.click(trigger);
     expect(
       await screen.findByRole("listbox", { name: "Select model" }),
@@ -1256,7 +1692,7 @@ describe("composer permission mode picker", () => {
     renderControls({ projectName: "Alpha" });
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Project: Alpha" }));
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
@@ -1294,7 +1730,10 @@ describe("composer permission mode picker", () => {
           name: "Model",
           type: "select",
           currentValue: "opus",
-          options: [{ value: "opus", name: "Claude Opus 5.5" }],
+          options: [
+            { value: "opus", name: "Claude Opus 5.5" },
+            { value: "sonnet", name: "Claude Sonnet" },
+          ],
         },
         {
           id: "effort",
@@ -1310,7 +1749,7 @@ describe("composer permission mode picker", () => {
       modes: { fixture: "workspaceWrite" },
     });
     renderControls({ sessionConfig });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       "Claude Opus 5.5",
     );
     expect(
@@ -1322,7 +1761,7 @@ describe("composer permission mode picker", () => {
     expect(screen.getByRole("button", { name: "Access options" })).toHaveClass(
       "composer__access-label--write",
     );
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
     expect(
       await screen.findByRole("listbox", { name: "Select model" }),
     ).toBeVisible();
@@ -1369,7 +1808,7 @@ describe("composer permission mode picker", () => {
       onSetSessionConfigOption,
       onSelectModel,
     });
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
     fireEvent.click(await screen.findByRole("option", { name: /Sonnet/ }));
     expect(onSetSessionConfigOption).toHaveBeenCalledWith("model", {
       value: "sonnet",
@@ -1393,15 +1832,15 @@ describe("composer permission mode picker", () => {
     renderControls();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Model" })).toBeVisible();
+    expect(screen.getByLabelText("Model", { exact: true })).toBeVisible();
     expect(
       screen
         .getByRole("button", { name: "Harness" })
         .closest(".composer__control-trigger"),
     ).not.toBeNull();
-    expect(screen.getByRole("button", { name: "Model" })).toHaveClass(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveClass(
       "composer__control-trigger",
     );
 
@@ -1421,7 +1860,7 @@ describe("composer permission mode picker", () => {
   it("gives harness and model triggers the same control treatment", async () => {
     renderControls();
     const harness = screen.getByRole("button", { name: "Harness" });
-    const model = screen.getByRole("button", { name: "Model" });
+    const model = screen.getByLabelText("Model", { exact: true });
     expect(harness).toHaveClass("composer__picker-trigger");
     expect(model).toHaveClass("composer__picker-trigger");
     expect(harness.querySelector("svg")).not.toBeNull();
@@ -1431,14 +1870,14 @@ describe("composer permission mode picker", () => {
   it("does not offer harness changes during an active turn", async () => {
     renderControls({ turnBusy: true });
     expect(screen.getByRole("button", { name: "Harness" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Model" })).toBeDisabled();
+    expect(screen.getByLabelText("Model", { exact: true })).toBeDisabled();
   });
 
   it("closes an already open menu when a turn starts", async () => {
     const { rerenderControls } = renderControls({
-      imageAction: { disabled: false, onChoose: vi.fn() },
+      addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
     });
-    openOptions();
+    await openOptions();
     expect(
       screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeVisible();
@@ -1448,7 +1887,7 @@ describe("composer permission mode picker", () => {
     ).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
   });
 
   it("shows the selected harness even when a previous session belongs to another", async () => {
@@ -1486,7 +1925,8 @@ describe("composer permission mode picker", () => {
     useWorkbenchStore.setState({
       harnesses: [
         {
-          id: "claude",
+          id: "claude-code",
+          brand: "claude",
           name: "Claude Code",
           description: "",
           installState: "available",
@@ -1496,7 +1936,29 @@ describe("composer permission mode picker", () => {
           bindingId: "claude-agent-acp",
         },
         {
+          id: "pi",
+          brand: "pi",
+          name: "Pi",
+          description: "",
+          installState: "available",
+          source: "builtIn",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "pi-acp",
+        },
+        {
+          id: "pi-helper",
+          name: "Pi helper",
+          description: "",
+          installState: "available",
+          source: "custom",
+          accountModelDiscovery: false,
+          transport: "acp",
+          bindingId: "pi-helper-acp",
+        },
+        {
           id: "codex",
+          brand: "codex",
           name: "Codex",
           description: "",
           installState: "available",
@@ -1507,6 +1969,7 @@ describe("composer permission mode picker", () => {
         },
         {
           id: "opencode",
+          brand: "opencode",
           name: "OpenCode",
           description: "",
           installState: "available",
@@ -1517,7 +1980,7 @@ describe("composer permission mode picker", () => {
         },
       ],
     });
-    renderControls({ selectedHarnessId: "claude" });
+    renderControls({ selectedHarnessId: "claude-code" });
     fireEvent.click(screen.getByRole("button", { name: "Harness" }));
     expect(
       screen
@@ -1540,11 +2003,23 @@ describe("composer permission mode picker", () => {
         .getByRole("option", { name: /OpenCode/ })
         .querySelector('[data-harness-icon="opencode"]'),
     ).not.toBeNull();
+    expect(
+      screen
+        .getByRole("option", { name: /^Pi —/ })
+        .querySelector('[data-harness-icon="pi"]'),
+    ).not.toBeNull();
+    // A custom harness never borrows a built-in brand by its name.
+    expect(
+      screen
+        .getByRole("option", { name: /Pi helper/ })
+        .querySelector('[data-harness-icon="generic"]'),
+    ).not.toBeNull();
   });
 
   it("shows confirmed model subtitles without installation details and keeps reasons accessible", async () => {
     const claude = {
-      id: "claude",
+      id: "claude-code",
+      brand: "claude" as const,
       name: "Claude Code",
       description: "",
       installState: "available" as const,
@@ -1556,19 +2031,22 @@ describe("composer permission mode picker", () => {
     const codex = {
       ...claude,
       id: "codex",
+      brand: "codex" as const,
       name: "Codex",
-      version: "0.146.0",
+      version: "0.167.0",
       bindingId: "codex-app-server",
     };
     const opencode = {
       ...claude,
       id: "opencode",
+      brand: "opencode" as const,
       name: "OpenCode",
       bindingId: "opencode-acp",
     };
     const unavailable = {
       ...claude,
       id: "missing",
+      brand: null,
       name: "Missing",
       installState: "notInstalled" as const,
       bindingId: null,
@@ -1633,7 +2111,7 @@ describe("composer permission mode picker", () => {
     ).toHaveTextContent(/^Codex$/);
     expect(
       codexRow.querySelector(".searchable-picker__option-copy"),
-    ).not.toHaveTextContent("0.146.0");
+    ).not.toHaveTextContent("0.167.0");
     expect(codexRow).not.toHaveAccessibleName(/0\.146\.0/);
     expect(
       codexRow.querySelector('use[href="/harness-codex.svg#mark"]'),
@@ -1642,14 +2120,20 @@ describe("composer permission mode picker", () => {
       /^OpenCode$/,
     );
     expect(screen.getByRole("option", { name: /Missing/ })).toBeDisabled();
-    expect(
-      screen
-        .getByRole("option", { name: /Missing/ })
-        .querySelector(".searchable-picker__option-copy"),
-    ).toHaveTextContent(/^Missing$/);
+    // The unavailable reason is a visible line under the name, not only
+    // the option's accessible description.
+    const missingCopy = screen
+      .getByRole("option", { name: /Missing/ })
+      .querySelector(".searchable-picker__option-copy")!;
+    expect(missingCopy.firstElementChild).toHaveTextContent(/^Missing$/);
+    expect(missingCopy.lastElementChild).toHaveTextContent(
+      /^Install it, then refresh harness discovery in Settings\.$/,
+    );
     expect(
       screen.getByRole("option", { name: /Missing/ }),
-    ).toHaveAccessibleDescription("Harness is not installed.");
+    ).toHaveAccessibleDescription(
+      "Install it, then refresh harness discovery in Settings.",
+    );
     expect(screen.getAllByRole("option").at(-1)).toHaveTextContent("Missing");
     expect(screen.queryByRole("combobox", { name: "Harness" })).toBeNull();
     expect(claudeRow).toHaveFocus();
@@ -1675,7 +2159,7 @@ describe("composer permission mode picker", () => {
       onSelectModel,
     });
     expect(screen.getByText("1M context")).toBeVisible();
-    const trigger = screen.getByRole("button", { name: "Model" });
+    const trigger = screen.getByLabelText("Model", { exact: true });
     fireEvent.click(trigger);
     const list = await screen.findByRole("listbox", { name: "Select model" });
     expect(trigger).toHaveAttribute("aria-haspopup", "listbox");
@@ -1713,7 +2197,10 @@ describe("composer permission mode picker", () => {
   it("uses the same popover surface for harness and model choices", async () => {
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
-      models: [{ id: "astra", name: "Astra" }],
+      models: [
+        { id: "astra", name: "Astra" },
+        { id: "luna", name: "Luna" },
+      ],
       harnesses: [
         {
           id: "codex",
@@ -1733,7 +2220,7 @@ describe("composer permission mode picker", () => {
       "composer__popover",
     );
     fireEvent.keyDown(document, { key: "Escape" });
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
     expect(
       (await screen.findByRole("listbox", { name: "Select model" })).closest(
         ".menu-popover",
@@ -1760,7 +2247,10 @@ describe("composer permission mode picker", () => {
     if (!sessionConfig) throw new Error("session config did not decode");
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
-      models: [{ id: "codex-model", name: "Codex 6" }],
+      models: [
+        { id: "codex-model", name: "Codex 6" },
+        { id: "alternative", name: "Alternative model" },
+      ],
       harnesses: [
         {
           id: "codex",
@@ -1780,13 +2270,13 @@ describe("composer permission mode picker", () => {
       sessionHarnessId: "claude",
       sessionConfig,
     });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Model$/,
     );
-    expect(screen.getByRole("button", { name: "Model" })).not.toHaveTextContent(
-      "Claude Opus",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    expect(
+      screen.getByLabelText("Model", { exact: true }),
+    ).not.toHaveTextContent("Claude Opus");
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
     expect(
       await screen.findByRole("option", { name: /Codex 6/ }),
     ).toBeVisible();
@@ -1819,7 +2309,10 @@ describe("composer permission mode picker", () => {
     if (!sessionConfig) throw new Error("session config did not decode");
     useWorkbenchStore.setState({
       selectedHarnessId: "codex",
-      models: [{ id: "new", name: "New Model" }],
+      models: [
+        { id: "new", name: "New Model" },
+        { id: "alternative", name: "Alternative model" },
+      ],
       harnesses: [
         {
           id: "codex",
@@ -1840,16 +2333,16 @@ describe("composer permission mode picker", () => {
       sessionModelId: "old",
       sessionConfig,
     });
-    expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    expect(screen.getByLabelText("Model", { exact: true })).toHaveTextContent(
       /^Model$/,
     );
-    expect(screen.getByRole("button", { name: "Model" })).not.toHaveTextContent(
-      "Old Model",
-    );
-    expect(screen.getByRole("button", { name: "Model" })).not.toHaveTextContent(
-      "High",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "Model" }));
+    expect(
+      screen.getByLabelText("Model", { exact: true }),
+    ).not.toHaveTextContent("Old Model");
+    expect(
+      screen.getByLabelText("Model", { exact: true }),
+    ).not.toHaveTextContent("High");
+    fireEvent.click(screen.getByLabelText("Model", { exact: true }));
     expect(
       await screen.findByRole("option", { name: /New Model/ }),
     ).toBeVisible();
@@ -1862,7 +2355,7 @@ describe("composer permission mode picker", () => {
 
   it("replaces the hard-coded chip with the live persisted mode", async () => {
     renderControls();
-    openOptions();
+    await openOptions();
     expect(screen.queryByText("Read-only policy")).toBeNull();
     expect(
       screen.getByRole("button", { name: "Access options" }),
@@ -1874,38 +2367,48 @@ describe("composer permission mode picker", () => {
       modes: { fixture: "workspaceWrite" },
     });
     renderControls();
-    openOptions();
+    await openOptions();
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).toHaveTextContent("Workspace edits");
   });
 
-  it("persists a chosen mode through the settings port", async () => {
+  it("applies a chosen mode to this chat, leaving the harness default", async () => {
+    chatAccess.set.mockResolvedValue(undefined);
     const save = vi.spyOn(
       getWorkbenchPorts().settings,
       "setSessionAccessModes",
     );
-    renderControls();
-    openOptions();
+    renderControls({ sessionConfig: liveSession });
+    await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
       await screen.findByRole("menuitemradio", { name: "Workspace edits" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Switch access" }));
-    expect(save).toHaveBeenCalledWith({ fixture: "workspaceWrite" });
     await waitFor(() =>
-      expect(useSessionAccessModeStore.getState().modes["fixture"]).toBe(
+      expect(chatAccess.set).toHaveBeenCalledWith(
+        "session-1",
         "workspaceWrite",
       ),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Access options" }),
+      ).toHaveTextContent("Workspace edits"),
+    );
+    expect(save).not.toHaveBeenCalled();
+    expect(useSessionAccessModeStore.getState().modes["fixture"]).toBe(
+      DEFAULT_SESSION_ACCESS_MODE,
     );
   });
 
   it("states when the chosen mode takes effect", async () => {
-    renderControls();
-    openOptions();
+    renderControls({ sessionConfig: liveSession });
+    await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     expect(
-      screen.getByText(/Applies from your next message with this harness./),
+      screen.getByText(/Applies to this chat from your next message./),
     ).toBeInTheDocument();
   });
 
@@ -1947,26 +2450,23 @@ describe("composer permission mode picker", () => {
 
   it("hides the picker without an available binding", async () => {
     renderControls({ availableBinding: false });
-    openOptions();
+    await openOptions();
     expect(screen.queryByRole("button", { name: "Access options" })).toBeNull();
   });
 
   it("is not actionable before the persisted mode has been restored", async () => {
     useSessionAccessModeStore.setState({ ready: false });
     renderControls();
-    openOptions();
+    await openOptions();
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).toBeDisabled();
   });
 
   it("surfaces a save failure instead of silently reverting", async () => {
-    vi.spyOn(
-      getWorkbenchPorts().settings,
-      "setSessionAccessModes",
-    ).mockRejectedValue(new Error("nope"));
-    renderControls();
-    openOptions();
+    chatAccess.set.mockRejectedValue(new Error("nope"));
+    renderControls({ sessionConfig: liveSession });
+    await openOptions();
     fireEvent.click(screen.getByRole("button", { name: "Access options" }));
     fireEvent.click(
       await screen.findByRole("menuitemradio", { name: "Workspace edits" }),
@@ -1975,9 +2475,12 @@ describe("composer permission mode picker", () => {
 
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(
-        "Permission mode could not be saved.",
+        "This chat's access could not be changed. Try again.",
       ),
     );
+    expect(
+      screen.getByRole("button", { name: "Access options" }),
+    ).toHaveTextContent("Read-only");
   });
 });
 
@@ -2008,8 +2511,8 @@ it("keeps the send binding's access modes when switching between Access and Add"
   const onChoose = vi.fn();
   renderControls({
     selectedHarnessId: "other",
-    accessBindingId: "fixture",
-    imageAction: { disabled: false, onChoose },
+    accessTarget: { bindingId: "fixture" },
+    addActions: { imageAction: { disabled: false, onChoose } },
   });
   const access = screen.getByRole("button", { name: "Access options" });
   const add = screen.getByRole("button", { name: "Composer options" });

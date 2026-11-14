@@ -1,9 +1,5 @@
 use std::{
-    sync::{
-        Arc,
-        atomic::{AtomicBool, Ordering},
-        mpsc,
-    },
+    sync::{Arc, mpsc},
     time::{Duration, Instant},
 };
 
@@ -29,13 +25,12 @@ use super::{
 };
 
 mod reader;
-#[cfg(test)]
-use reader::{ReaderCompletion, enqueue_reader_event};
+#[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+mod replay;
 use reader::{ReaderEvent, ReaderThread};
 
-// Codex may emit initialized and capability notifications immediately after
-// the initialize response. Keep a bounded burst buffer so that valid output
-// cannot race the synchronous discovery protocol into a false transport error.
+// The reader applies deadline-aware backpressure when this bounded buffer is
+// full; burst admission is governed by the protocol, not the buffer capacity.
 const DISCOVERY_READER_SLOTS: usize = 4;
 
 pub(crate) struct ProcessLaunchPolicy {
@@ -74,6 +69,10 @@ pub(crate) fn discover_admitted(
     deadline: CodexDiscoveryDeadline,
     on_launch: impl FnOnce(TreeControl) -> Result<(), CodexDiscoveryRunError>,
 ) -> Result<AdmittedDiscovery, CodexDiscoveryRunError> {
+    #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
+    if binding.is_desktop_fixture() {
+        return replay::discover(binding, project_root, runtime_epoch, deadline);
+    }
     let mut protocol = CodexDiscoveryProtocol::from_admitted_binding(&binding, runtime_epoch);
     let spawn_timeout = deadline.operation_remaining(Duration::from_millis(
         crate::acp::limits::LIMITS.deadlines_ms.spawn,
@@ -168,7 +167,12 @@ impl CodexProcessTransport {
                 _ => Err(CodexDiscoveryRunError::Cleanup),
             };
         }
-        let reader = match ReaderThread::spawn(stdout, policy.reader_slots, policy.session_kind) {
+        let reader = match ReaderThread::spawn(
+            stdout,
+            policy.reader_slots,
+            policy.session_kind,
+            policy.cleanup_end,
+        ) {
             Ok(reader) => reader,
             Err(error) => {
                 stdin.close();
@@ -216,7 +220,7 @@ impl CodexProcessTransport {
         if self.reader.overflowed() {
             return Err(CodexDiscoveryRunError::Overflow);
         }
-        match self.reader.events.recv_timeout(timeout) {
+        match self.reader.recv_timeout(timeout) {
             Ok(ReaderEvent::Frame(frame)) => Ok(Some(frame)),
             Ok(ReaderEvent::Eof) => {
                 tracing::warn!("Codex discovery transport classified stdout EOF");
@@ -342,47 +346,5 @@ fn map_launch(error: LaunchError) -> CodexDiscoveryRunError {
             "Codex discovery transport classified process launch failure"
         );
         CodexDiscoveryRunError::Launch
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use crate::acp::transport::IncrementalFrameDecoder;
-
-    #[test]
-    fn full_reader_channel_is_an_explicit_overflow_not_clean_eof() {
-        let (sender, _receiver) = mpsc::sync_channel(1);
-        let overflowed = AtomicBool::new(false);
-        assert_eq!(
-            enqueue_reader_event(&sender, ReaderEvent::Frame(frame()), &overflowed),
-            None
-        );
-        assert_eq!(
-            enqueue_reader_event(&sender, ReaderEvent::Frame(frame()), &overflowed),
-            Some(ReaderCompletion::Overflow)
-        );
-        assert!(overflowed.load(Ordering::Acquire));
-    }
-
-    #[test]
-    fn discovery_reader_keeps_the_initialize_response_and_follow_up_notifications() {
-        let (sender, _receiver) = mpsc::sync_channel(DISCOVERY_READER_SLOTS);
-        let overflowed = AtomicBool::new(false);
-
-        for _ in 0..DISCOVERY_READER_SLOTS {
-            assert_eq!(
-                enqueue_reader_event(&sender, ReaderEvent::Frame(frame()), &overflowed),
-                None
-            );
-        }
-
-        assert!(!overflowed.load(Ordering::Acquire));
-        assert_eq!(DISCOVERY_READER_SLOTS, 4);
-    }
-
-    fn frame() -> Frame {
-        let mut decoder = IncrementalFrameDecoder::new();
-        decoder.push_chunk(b"{}\n").unwrap().unwrap()
     }
 }

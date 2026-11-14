@@ -1,6 +1,5 @@
 use super::{
-    BrowserCapability, BrowserFailure, BrowserRequest, BrowserResponse, BrowserScope,
-    admit_request_json, dispatch,
+    BrowserCapability, BrowserFailure, BrowserRequest, BrowserResponse, BrowserScope, dispatch,
 };
 use crate::acp::limits::BROWSER_LIMITS;
 use serde::Deserialize;
@@ -9,6 +8,7 @@ use sha2::{Digest, Sha256};
 use std::io::{BufRead, Write};
 
 mod auth;
+mod developer;
 mod schema;
 use schema::tools;
 
@@ -24,6 +24,8 @@ pub struct BrowserMcpServer<P: BrowserCapability> {
     connected: bool,
     accepted_connections: u8,
     operation_observer: Option<Box<dyn BrowserOperationObserver + Send>>,
+    /// Lists the developer-mode `cdp` tool while this answers true.
+    developer_tools: Option<Box<dyn Fn() -> bool + Send>>,
 }
 
 pub trait BrowserOperationObserver {
@@ -110,6 +112,7 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
                 connected: false,
                 accepted_connections: 0,
                 operation_observer: None,
+                developer_tools: None,
             },
             token,
         )
@@ -117,6 +120,12 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
 
     pub fn set_operation_observer(&mut self, observer: Box<dyn BrowserOperationObserver + Send>) {
         self.operation_observer = Some(observer);
+    }
+
+    /// Offers the `cdp` tool whenever `enabled` holds when tools are listed.
+    /// A call is still admitted only by the permission gate.
+    pub fn set_developer_tools(&mut self, enabled: Box<dyn Fn() -> bool + Send>) {
+        self.developer_tools = Some(enabled);
     }
 
     pub fn handle(&mut self, frame: &[u8]) -> Result<Vec<u8>, BrowserMcpError> {
@@ -156,7 +165,11 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
                 if !valid_tools_list_params(&envelope.params) {
                     return json_rpc_error(&envelope.id, -32602, "Invalid params");
                 }
-                json!({"tools":tools()})
+                let developer = self
+                    .developer_tools
+                    .as_ref()
+                    .is_some_and(|enabled| enabled());
+                json!({"tools":tools(developer)})
             }
             "tools/call" => match self.call(envelope.params) {
                 Ok(result) => result,
@@ -200,11 +213,37 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
     }
 
     fn call(&mut self, params: Value) -> Result<Value, BrowserMcpError> {
+        let refusal = developer::preflight_request(
+            &params,
+            &self.session_id,
+            self.fixed_scope
+                .as_ref()
+                .map(|scope| scope.tab_id)
+                .or_else(|| self.port.attached_tab_id()),
+        );
+        let mut dispatched = false;
+        let result = self.call_inner(params, &mut dispatched);
+        if !dispatched && let Some(request) = refusal {
+            let failed = result
+                .as_ref()
+                .map_or(true, |response| response["isError"] == true);
+            if failed {
+                self.port.refused(&request, BrowserFailure::Denied);
+            }
+        }
+        result
+    }
+
+    fn call_inner(
+        &mut self,
+        params: Value,
+        dispatched: &mut bool,
+    ) -> Result<Value, BrowserMcpError> {
         let call: CallParams =
             serde_json::from_value(params).map_err(|_| BrowserMcpError::InvalidRequest)?;
         let kind = match call.name.as_str() {
             "openTab" | "navigate" | "snapshotPage" | "act" | "waitFor" | "screenshot"
-            | "readConsole" | "readNetwork" => call.name,
+            | "readConsole" | "readNetwork" | "cdp" => call.name,
             _ => return Err(BrowserMcpError::InvalidRequest),
         };
         let mut arguments = call
@@ -264,13 +303,23 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
         arguments.insert("kind".into(), Value::String(kind));
         let bytes = serde_json::to_vec(&json!({"scope":scope,"command":arguments}))
             .map_err(|_| BrowserMcpError::InvalidRequest)?;
-        let request = admit_request_json(&bytes).map_err(|failure| match failure {
-            BrowserFailure::Capacity => BrowserMcpError::Capacity,
-            _ => BrowserMcpError::InvalidRequest,
-        })?;
+        if bytes.len() > BROWSER_LIMITS.request_bytes {
+            return Err(BrowserMcpError::Capacity);
+        }
+        let request: BrowserRequest =
+            serde_json::from_slice(&bytes).map_err(|_| BrowserMcpError::InvalidRequest)?;
+        if let Err(failure) = super::validate_request(&request) {
+            *dispatched = true;
+            self.port.refused(&request, failure);
+            return Err(match failure {
+                BrowserFailure::Capacity => BrowserMcpError::Capacity,
+                _ => BrowserMcpError::InvalidRequest,
+            });
+        }
         if let Some(observer) = self.operation_observer.as_mut() {
             observer.started(&request)?;
         }
+        *dispatched = true;
         let outcome = dispatch(&mut self.port, request.clone());
         if let Some(observer) = self.operation_observer.as_mut() {
             observer.finished(&request, &outcome)?;

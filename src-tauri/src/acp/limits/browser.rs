@@ -22,6 +22,8 @@ pub struct BrowserLimits {
     pub screenshot_bytes: usize,
     pub wait_timeout_ms: u32,
     pub scroll_delta: i32,
+    pub cdp_params_bytes: usize,
+    pub cdp_result_bytes: usize,
 }
 
 pub const BROWSER_LIMITS: BrowserLimits = BrowserLimits {
@@ -47,4 +49,6 @@ pub const BROWSER_LIMITS: BrowserLimits = BrowserLimits {
     screenshot_bytes: 2_000_000,
     wait_timeout_ms: 30_000,
     scroll_delta: 10_000,
+    cdp_params_bytes: 12_288,
+    cdp_result_bytes: 262_144,
 };

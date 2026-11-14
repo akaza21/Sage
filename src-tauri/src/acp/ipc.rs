@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use super::{
     attached_context::AttachedContexts,
     contract::*,
-    intent::{BindingId, ModelId, PageCursor, Prompt},
+    intent::{BindingId, EffortId, ModelId, PageCursor, Prompt},
 };
 
 mod intent_validation;
@@ -96,6 +96,7 @@ pub struct GetCodexDiscoveryRequest {
 #[serde(rename_all = "camelCase")]
 pub enum CodexDiscoveryAccount {
     ManagedChatgpt,
+    ApiKey,
     ProviderManaged,
     SignedOut,
 }
@@ -158,6 +159,10 @@ pub struct StartAcpSessionRequest {
     pub client_intent_id: ClientIntentId,
     pub binding_id: BindingId,
     pub model_id: Option<ModelId>,
+    /// The thinking level chosen before the session existed, given to the
+    /// session before its first prompt.
+    #[serde(default)]
+    pub effort: Option<EffortId>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -170,6 +175,17 @@ pub struct ActivateAcpSessionRequest {
     pub client_intent_id: ClientIntentId,
     pub session_id: SageAgentSessionId,
     pub runtime_epoch: RuntimeEpoch,
+}
+
+/// Which staged prompt files a send carries.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub enum StagedSelection {
+    /// The chat's staged batch, only while it is still at this revision.
+    Revision(String),
+    /// Retry of this turn: the files its prompt carried, only while they
+    /// are still held for it.
+    RetryOf(SageTurnId),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -191,6 +207,10 @@ pub enum SendAcpTurnRequest {
         prompt: Prompt,
         #[serde(default)]
         attached_context: AttachedContexts,
+        /// The staged prompt files this send carries. A send that names none
+        /// leaves the chat's staged batch for the send that does.
+        #[serde(default)]
+        staged: Option<StagedSelection>,
     },
     NewSession {
         project_id: SageProjectId,

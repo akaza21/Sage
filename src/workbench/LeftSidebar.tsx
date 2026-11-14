@@ -1,9 +1,15 @@
 import { Search, Settings, SquarePen } from "../ui/leanIcons";
 
-import { useEffect, useMemo, useRef, useState, type RefObject } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type RefObject,
+} from "react";
 
 import { useWorkbenchStore } from "../app/store";
-import { pinSessionRailIds } from "../features/chat/acp/sessionRail";
 import { ChatSearchPart, lazyParts } from "../features/chat/lazyParts";
 import {
   hasChatSearchFolderRequest,
@@ -13,7 +19,6 @@ import {
 import { useAgentSettingsState } from "../features/settings/agentSettingsState";
 import { usesMetaModifier } from "../ui/shortcutLabel";
 import {
-  collectAgentRailPinIds,
   deriveAgentRailSections,
   groupAgentRailProjects,
 } from "./agentChatRail";
@@ -66,8 +71,11 @@ export function ChatSearchGate({
 
 export function LeftSidebar({
   inert = false,
+  railRef,
 }: {
   inert?: boolean;
+  /** Reports the mounted rail, so focus can follow a fold or unfold. */
+  railRef?: (node: HTMLElement | null) => void;
 } = {}) {
   const projects = useWorkbenchStore((state) => state.projects);
   const project = useWorkbenchStore((state) => state.project);
@@ -91,6 +99,13 @@ export function LeftSidebar({
   const activeTabId = useWorkbenchStore((state) => state.activeTabId);
   const railChatId = useRailChatId(activeTabId);
   const sidebarRef = useRef<HTMLElement>(null);
+  const attachSidebar = useCallback(
+    (node: HTMLElement | null) => {
+      sidebarRef.current = node;
+      railRef?.(node);
+    },
+    [railRef],
+  );
   const previousChatId = useRef(railChatId);
   const [creatingProject, setCreatingProject] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
@@ -104,7 +119,6 @@ export function LeftSidebar({
     [project?.id, projects, tabs],
   );
   const prefs = useAgentRailViewPrefs();
-  pinSessionRailIds(collectAgentRailPinIds(groups, project?.id ?? null));
   useEffect(() => {
     if (projectTransitioning) return;
     const scroll = () =>
@@ -226,7 +240,7 @@ export function LeftSidebar({
   return (
     <aside
       className="project-sidebar"
-      ref={sidebarRef}
+      ref={attachSidebar}
       aria-label="Projects and chats"
       inert={inert}
       aria-hidden={inert || undefined}

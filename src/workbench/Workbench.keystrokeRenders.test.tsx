@@ -4,7 +4,11 @@ import { Profiler, type ComponentType, type ReactNode } from "react";
 import { beforeEach, afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import type { EditorDocument, WorkbenchTab } from "../domain/workbench";
+import type {
+  BufferSnapshotRequest,
+  EditorDocument,
+  WorkbenchTab,
+} from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { settleLazyModules } from "../test/settleLazyModules";
 import type * as DirtyTabDialogModule from "./DirtyTabDialog";
@@ -14,6 +18,17 @@ import type * as TabStripModule from "./TabStrip";
 import type * as TitleBarModule from "./TitleBar";
 import { Workbench } from "./Workbench";
 import { writeWorkbenchLayout } from "./workbenchLayoutStorage";
+import { EDITOR_SNAPSHOT_DELAY_MS } from "../features/files/fileEditorController";
+// The Workbench loads these lazily. Evaluate them with the file: the mocks of
+// lazily loaded regions resolve their originals through a module runner call
+// vi.dynamicImportSettled does not track, and a cold load is not the subject.
+import "./ActiveEditorCanvas";
+import "./TabStrip";
+import "../features/files/CodeMirrorEditorRuntime";
+import "../features/files/editorEditing";
+import "../features/files/editorLanguageJavaScript";
+import "../features/files/FileSurface";
+import "../features/quickOpen/QuickOpenHost";
 
 // Each region outside the File surface commits under its own Profiler, so a
 // re-render caused by its own store subscription is counted too.
@@ -40,7 +55,7 @@ function ProfiledRegion({ id, children }: { id: string; children: ReactNode }) {
 
 vi.mock("./TabStrip", async (original) => {
   const module = await original<typeof TabStripModule>();
-  return { TabStrip: profiled("TabStrip", module.TabStrip) };
+  return { default: profiled("TabStrip", module.default) };
 });
 vi.mock("./TitleBar", async (original) => {
   const module = await original<typeof TitleBarModule>();
@@ -101,17 +116,24 @@ afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
-it("re-renders nothing outside the File surface for keystrokes after the first", async () => {
+it("re-renders nothing outside the File surface for keystrokes after the first, and loses no edit", async () => {
+  // The desktop's buffer store: it keeps each snapshot it is sent.
+  const persisted: BufferSnapshotRequest[] = [];
   vi.spyOn(
     getWorkbenchPorts().editor,
     "snapshotEditorBuffer",
-  ).mockImplementation(async (request) => ({
-    revision: request.revision,
-    persistedAt: 1,
-    dirty: true,
-  }));
+  ).mockImplementation(async (request) => {
+    persisted.push(request);
+    return {
+      revision: request.revision,
+      applied: true,
+      persistedAt: 1,
+      dirty: true,
+    };
+  });
   useWorkbenchStore.setState({
     tabs,
     activeTabId: "file:current",
@@ -137,6 +159,8 @@ it("re-renders nothing outside the File surface for keystrokes after the first",
   });
   const view = EditorView.findFromDOM(editor);
   if (!view) throw new Error("Expected a mounted CodeMirror editor");
+  // The buffer snapshot waits for a typing pause; step over it.
+  vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
   const type = (text: string) =>
     act(() => {
       view.dispatch(view.state.replaceSelection(text));
@@ -161,4 +185,23 @@ it("re-renders nothing outside the File surface for keystrokes after the first",
     Object.fromEntries(commits);
   expect(others).toEqual({});
   expect(statusCommits).toBeLessThanOrEqual(4);
+
+  // Skipping those renders lost nothing: the edit, its caret and the dirty
+  // tab all show, and the buffer persisted is the text that was typed.
+  const typed = "abcdeconst current = 1;";
+  expect(view.state.doc.toString()).toBe(typed);
+  expect(editor).toHaveTextContent(typed);
+  expect(screen.getByTitle("Caret position")).toHaveTextContent("Ln 1, Col 6");
+  expect(screen.getByTitle("Unsaved changes")).toBeInTheDocument();
+  await act(() => vi.advanceTimersByTimeAsync(EDITOR_SNAPSHOT_DELAY_MS));
+  expect(persisted.at(-1)).toMatchObject({
+    resource,
+    content: typed,
+    revision: 5,
+  });
+  const active = useWorkbenchStore.getState().activeEditor;
+  if (active?.phase !== "ready") throw new Error("Expected a ready editor");
+  // The store keeps the editor's own document, not a string copy.
+  expect(String(active.content)).toBe(typed);
+  expect(active.persistedRevision).toBe(5);
 });

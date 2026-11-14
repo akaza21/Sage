@@ -1,7 +1,11 @@
+import { waitForAnimations } from "./shared/visualBrowserPrimitives";
 import { expect, test, type Page } from "@playwright/test";
 import { build } from "vite";
 import type { ParityState } from "./fixtures/composerParityHarness";
-import { expectCompactComposerTargets } from "./shared/composerGeometry";
+import {
+  expectCompactComposerTargets,
+  settledComposerFit,
+} from "./shared/composerGeometry";
 
 let script: string;
 let styles: string;
@@ -50,6 +54,28 @@ async function render(page: Page, name: string, state: ParityState) {
   );
   await expect(page.locator("form.composer")).toBeVisible();
 }
+/** Opens Thinking level from the toolbar, or from the options menu when the
+ * toolbar has moved it there to keep the model name readable. */
+async function openEffort(page: Page, level: string) {
+  const composer = page.locator("form.composer");
+  const effort = composer.getByRole("button", {
+    name: `Thinking level: ${level}`,
+  });
+  await expect(
+    composer.locator(".composer__effort-picker[data-overflow-control]"),
+  ).toHaveCount(1);
+  if (!(await settledComposerFit(composer)).includes("effort-menu")) {
+    await expect(effort.locator(".lucide-brain")).toHaveCount(1);
+    return effort.click();
+  }
+  await composer
+    .getByRole("button", { name: "Composer options", exact: true })
+    .click();
+  await page
+    .getByRole("menu", { name: "Composer options menu" })
+    .getByRole("menuitem", { name: "Thinking level", exact: true })
+    .click();
+}
 async function noClip(page: Page, selector: string) {
   for (const element of await page.locator(selector).all()) {
     const geometry = await element.evaluate((element) => ({
@@ -77,18 +103,11 @@ for (const width of [1888, 720, 480]) {
         const composer = page.locator("form.composer");
         await expectCompactComposerTargets(composer);
         await render(page, name, "stopped");
-        const model = composer.getByRole("button", {
-          name: "Model",
-          exact: true,
-        });
-        const effort = composer.getByRole("button", {
-          name: "Thinking level: High",
-        });
+        const model = composer.getByLabel("Model", { exact: true });
         await expect(model).toHaveText("Confirmed session model");
         await expect(model.locator(".lucide-sparkles")).toHaveCount(1);
-        await expect(effort.locator(".lucide-brain")).toHaveCount(1);
         await expectCompactComposerTargets(composer);
-        await effort.click();
+        await openEffort(page, "High");
         const reset = page.getByRole("button", { name: "Reset effort" });
         await expect(reset).toBeVisible();
         await reset.click();
@@ -98,7 +117,7 @@ for (const width of [1888, 720, 480]) {
         );
       });
     }
-    test("new-chat caption reflows and project scope attaches above the composer input", async ({
+    test("new-chat caption reflows and the project chip keeps its toolbar place", async ({
       page,
     }) => {
       await render(page, "Pi", "home");
@@ -109,16 +128,13 @@ for (const width of [1888, 720, 480]) {
         }),
       ).toBeVisible();
       await noClip(page, ".chat-home .searchable-picker__trigger-label");
-      const row = await page
-        .getByRole("group", { name: "Project scope" })
-        .boundingBox();
       const composer = page.locator("form.composer");
-      const box = await composer.locator(".composer__body").boundingBox();
-      expect(row!.y + row!.height).toBe(box!.y);
+      // The same toolbar chip as after the first turn; no separate row
+      // above the input that would move when the chat starts.
       await expect(
-        composer.getByRole("group", { name: "Project scope" }),
+        composer.locator(".composer__controls > .project-scope"),
       ).toHaveCount(1);
-      await expect(composer.locator(".project-scope")).toHaveCount(0);
+      await expect(composer.locator(".composer__slots")).toHaveText("");
       await expectCompactComposerTargets(composer);
     });
     test("Add descriptions are secondary lines and advertised modes are exclusive", async ({
@@ -141,11 +157,19 @@ for (const width of [1888, 720, 480]) {
       });
       await expect(advertisedDefault).toHaveAttribute("aria-checked", "true");
       const plan = menu.getByRole("menuitemradio", { name: "Plan mode" });
+      await waitForAnimations(menu);
       const label = await plan.locator("span").first().boundingBox();
       const description = await plan
         .getByText("Plan mode is off")
         .boundingBox();
       expect(description!.y).toBeGreaterThanOrEqual(label!.y + label!.height);
+      // Labels share the first row; descriptions wrap inside the item.
+      const item = (await plan.boundingBox())!;
+      expect(description!.x).toBe(label!.x);
+      expect(description!.x + description!.width).toBeLessThanOrEqual(
+        item.x + item.width,
+      );
+      await noClip(page, ".composer__action-description");
       await plan.click();
       await trigger.click();
       await expect(plan).toHaveAttribute("aria-checked", "true");
@@ -170,6 +194,7 @@ for (const width of [1888, 720, 480]) {
       });
       const subtitle = selected.locator(".searchable-picker__subtitle");
       await expect(subtitle).toBeVisible();
+      await waitForAnimations(page.locator(".composer__harness-menu"));
       const label = await selected
         .locator(".searchable-picker__option-copy > span")
         .first()
@@ -198,9 +223,18 @@ for (const width of [1888, 720, 480]) {
           .click();
         await expect(harness).toBeFocused();
         await expect(harness).toHaveCSS("outline-style", "none");
-        await page.getByRole("textbox", { name: "Message agent" }).click();
-        await page.keyboard.press("Tab");
-        await page.keyboard.press("Tab");
+        await page.getByRole("combobox", { name: "Message agent" }).click();
+        // The toolbar's tab order leads to the harness picker.
+        for (const name of [
+          "Composer options",
+          "Attach files",
+          "Access options",
+        ]) {
+          await page.keyboard.press("Tab");
+          await expect(
+            page.getByRole("button", { name, exact: true }),
+          ).toBeFocused();
+        }
         await page.keyboard.press("Tab");
         await expect(harness).toBeFocused();
         expect(
@@ -218,6 +252,18 @@ for (const width of [1888, 720, 480]) {
           exact: true,
         });
         await expect(access.locator(".lucide-eye")).toHaveCount(1);
+        // Access reads as a plain label, not a bordered or filled chip.
+        expect(
+          await access.evaluate((element) => {
+            const style = getComputedStyle(element);
+            return [
+              style.borderTopWidth,
+              style.borderLeftWidth,
+              style.paddingLeft,
+              style.backgroundColor,
+            ];
+          }),
+        ).toEqual(["0px", "0px", "0px", "rgba(0, 0, 0, 0)"]);
         await access.click();
         await expect(
           page
@@ -226,13 +272,57 @@ for (const width of [1888, 720, 480]) {
         ).toHaveCount(1);
       });
     }
+    for (const forcedColors of ["none", "active"] as const) {
+      test(`a focused composer shows only the caret, with a system outline in forced colors (${forcedColors})`, async ({
+        page,
+      }) => {
+        await page.emulateMedia({ forcedColors });
+        await render(page, "Pi", "home");
+        // The dock is the visible card that owns the composer's edge.
+        const dock = page.locator(".chat-dock").first();
+        const paint = () =>
+          dock.evaluate((card) => {
+            const style = getComputedStyle(card);
+            return {
+              border: style.borderTopColor,
+              outline: [style.outlineStyle, style.outlineWidth],
+              offset: style.outlineOffset,
+              outlineColor: style.outlineColor,
+              shadow: style.boxShadow,
+            };
+          });
+        const resting = await paint();
+        await page.getByRole("combobox", { name: "Message agent" }).click();
+        const focused = await paint();
+        if (forcedColors === "none") {
+          expect(focused).toEqual(resting);
+          expect(focused.outline[0]).toBe("none");
+        } else {
+          const highlight = await page.evaluate(() => {
+            const system = document.createElement("span");
+            system.style.color = "Highlight";
+            document.body.append(system);
+            const color = getComputedStyle(system).color;
+            system.remove();
+            return color;
+          });
+          expect(focused.outline).toEqual(["solid", "2px"]);
+          expect(focused.offset).toBe("-2px");
+          expect(focused.outlineColor).toBe(highlight);
+          expect(focused.border).toBe(highlight);
+          expect(focused.shadow).toBe("none");
+          expect(resting.outline[0]).toBe("none");
+        }
+      });
+    }
     test("files-pill counts and table cells never gain an inner horizontal scrollbar", async ({
       page,
     }) => {
       await render(page, "Codex", "files");
       const pill = page.locator(".acp-file-changes__header");
       await expect(pill).toBeVisible();
-      // Read both children in one frame while their shared pill animates in.
+      await waitForAnimations(page.locator(".acp-file-changes"));
+      // Read both children in one frame after the shared pill settles.
       const alignment = await pill.evaluate((element) => {
         const label = element.querySelector("strong")!.getBoundingClientRect();
         const counts = element
@@ -258,9 +348,9 @@ for (const width of [1888, 720, 480]) {
     }) => {
       await render(page, "Claude Code", "pre-turn");
       const composer = page.locator("form.composer");
-      await expect(
-        composer.getByRole("button", { name: "Model", exact: true }),
-      ).toHaveText("Model");
+      await expect(composer.getByLabel("Model", { exact: true })).toHaveText(
+        "Model",
+      );
       const effort = composer.getByRole("button", {
         name: "Thinking level",
         exact: true,
@@ -270,7 +360,9 @@ for (const width of [1888, 720, 480]) {
         "title",
         "Available when the harness advertises effort controls for this session.",
       );
-      await expectCompactComposerTargets(composer);
+      // A 480px window leaves the composer 200px: with the attach button
+      // and the disabled effort placeholder, even the compacted row wraps.
+      await expectCompactComposerTargets(composer, { wraps: width === 480 });
       await expect(
         composer.getByRole("button", { name: "Send message" }),
       ).toBeDisabled();
@@ -279,7 +371,7 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await render(page, "Pi", "models");
-      await page.getByRole("button", { name: "Model", exact: true }).click();
+      await page.getByLabel("Model", { exact: true }).click();
       const recommended = page.getByRole("group", {
         name: "Recommended by harness",
       });
@@ -294,13 +386,46 @@ for (const width of [1888, 720, 480]) {
         .getByRole("option", { name: "GPT-5.4 Mini", exact: true });
       await expect(other).toHaveAttribute("data-option-id", "gpt-5.4-mini");
       await other.click();
-      await expect(
-        page.getByRole("button", { name: "Model", exact: true }),
-      ).toHaveText("GPT-5.4 Mini");
+      await expect(page.getByLabel("Model", { exact: true })).toHaveText(
+        "GPT-5.4 Mini",
+      );
     });
     test("supported workspace-write escalation requires confirmation, with safe cancel focus", async ({
       page,
     }) => {
+      // A live chat's access is the desktop's to change: stand in for its
+      // chat access commands and record each change the composer asks for.
+      await page.evaluate(() => {
+        const modes = new Map<string, string>();
+        const changes: unknown[] = [];
+        Object.defineProperty(window, "__TAURI_INTERNALS__", {
+          configurable: true,
+          value: {
+            transformCallback: () => 0,
+            invoke: async (
+              command: string,
+              args: { request: { sessionId: string; mode?: string } },
+            ) => {
+              const { sessionId, mode } = args.request;
+              if (command === "get_chat_access")
+                return modes.get(sessionId) ?? null;
+              if (command === "set_chat_access" && mode) {
+                changes.push(args.request);
+                modes.set(sessionId, mode);
+                return null;
+              }
+              throw new Error(`Unexpected command ${command}`);
+            },
+          },
+        });
+        Object.assign(window, { chatAccessChanges: changes });
+      });
+      const changes = () =>
+        page.evaluate(
+          () =>
+            (window as typeof window & { chatAccessChanges: unknown[] })
+              .chatAccessChanges,
+        );
       await render(page, "Codex", "access");
       const access = page.getByRole("button", {
         name: "Access options",
@@ -324,6 +449,7 @@ for (const width of [1888, 720, 480]) {
       await page.keyboard.press("Escape");
       await expect(dialog).toHaveCount(0);
       await expect(access).toBeFocused();
+      expect(await changes()).toEqual([]);
       await access.click();
       await page
         .getByRole("menuitemradio", { name: "Workspace edits", exact: true })
@@ -335,6 +461,9 @@ for (const width of [1888, 720, 480]) {
         "data-selected-id",
         "workspaceWrite",
       );
+      expect(await changes()).toEqual([
+        { sessionId: "session-a", mode: "workspaceWrite" },
+      ]);
       await expect(access).toBeFocused();
     });
     for (const forcedColors of ["none", "active"] as const) {
@@ -344,10 +473,7 @@ for (const width of [1888, 720, 480]) {
         await page.emulateMedia({ forcedColors });
         expect(await page.evaluate(() => window.devicePixelRatio)).toBe(1);
         await render(page, "Claude Code", "model-collisions");
-        const trigger = page.getByRole("button", {
-          name: "Model",
-          exact: true,
-        });
+        const trigger = page.getByLabel("Model", { exact: true });
         await trigger.focus();
         await page.keyboard.press("Enter");
         const menu = page.locator(".composer__model-menu");
@@ -402,16 +528,16 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await render(page, "Pi", "no-default");
-      await page.getByRole("button", { name: "Thinking level: High" }).click();
+      await openEffort(page, "High");
       await expect(
         page.getByRole("button", { name: "Reset effort" }),
       ).toHaveCount(0);
       await render(page, "OpenCode", "no-effort");
       await expect(page.locator(".composer__effort-picker")).toHaveCount(0);
       await render(page, "Pi", "unknown");
-      await expect(
-        page.getByRole("button", { name: "Model", exact: true }),
-      ).toHaveText("Model");
+      await expect(page.getByLabel("Model", { exact: true })).toHaveText(
+        "Model",
+      );
       await page.getByRole("button", { name: "Harness", exact: true }).click();
       await expect(page.locator(".searchable-picker__subtitle")).toHaveCount(0);
     });

@@ -2,22 +2,29 @@ use std::{future::Future, pin::Pin};
 
 use super::*;
 use crate::acp::{
-    bindings::{adapter::ResourceMapper, pi::PiRuntime},
+    bindings::{
+        adapter::{
+            AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, EgressResolution,
+            HarnessAdapter, ResourceMapper,
+        },
+        pi::PiRuntime,
+    },
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
         SageProjectId, SchemaVersionV1,
     },
-    intent::{CapabilitySnapshotV1, SafeResourceRef, UnavailableResourceReason},
+    intent::{CapabilitySnapshotV1, Prompt, SafeResourceRef, UnavailableResourceReason},
+    lifecycle::TurnState,
     runtime::{
         ActivationFlush, ActivationIntent, ActivationJournal, ActivationJournalError,
         ActivationMode, ActivationPump, ActivationReceipt, ActivationTransport,
     },
     store::CompleteActivationCommand,
-    transport::{FrameWriteOutcome, OutboundFrame},
+    transport::{FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame},
 };
 
 #[test]
-fn pi_fixture_wire_initialization_reaches_ready_through_shared_activation_pump() {
+fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt() {
     tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()
@@ -53,7 +60,7 @@ fn pi_fixture_wire_initialization_reaches_ready_through_shared_activation_pump()
             for (index, (kind, command)) in [
                 ("piInitialize", "get_state"),
                 ("piModels", "get_available_models"),
-                ("piNew", "new_session"),
+                ("piNew", "get_state"),
             ]
             .into_iter()
             .enumerate()
@@ -91,7 +98,7 @@ fn pi_fixture_wire_initialization_reaches_ready_through_shared_activation_pump()
             let parts = pump.try_into_idle_parts().ok().unwrap();
             assert_eq!(
                 parts.session().external_session_id.as_str(),
-                "pi-session-7-1"
+                "2026-01-01T00-00-00-000Z_fixture-pi-session"
             );
             assert_eq!(parts.session().models.len(), 2);
             assert_eq!(
@@ -109,7 +116,74 @@ fn pi_fixture_wire_initialization_reaches_ready_through_shared_activation_pump()
                 committed.external_session_id,
                 parts.session().external_session_id
             );
+
+            let (mut adapter, _, _, _) = parts.into_parts();
+            let query = adapter.discover_commands().unwrap().unwrap();
+            wire_reply(&mut adapter, &mut wire, query, "piCommandsUnsupported");
+            let catalog = adapter.available_commands().snapshot();
+            assert_eq!(catalog.revision, 1);
+            // Only Pi's built-in commands remain.
+            let names: Vec<_> = catalog.commands.iter().map(|c| c.name.as_str()).collect();
+            assert_eq!(names, ["session", "compact"]);
+
+            let prompt = adapter
+                .command(AdapterCommand::Prompt {
+                    prompt: Prompt::new("prompt", "Inspect the synthetic example").unwrap(),
+                    client_message_id: RequiredText::new("client", "after-discovery").unwrap(),
+                    access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
+                })
+                .unwrap();
+            wire_reply(&mut adapter, &mut wire, prompt, "piPrompt");
+            let mut events = Vec::new();
+            for event in [
+                json!({"type":"agent_start"}),
+                json!({"type":"agent_end","messages":[]}),
+                json!({"type":"agent_settled"}),
+            ] {
+                events.extend(
+                    ingest_wire(&mut adapter, format!("{event}\n").as_bytes())
+                        .into_parts()
+                        .0,
+                );
+            }
+            assert!(events.iter().any(|event| matches!(
+                event,
+                AdapterEvent::Turn {
+                    state: TurnState::Completed,
+                    ..
+                }
+            )));
         });
+}
+
+fn wire_reply(adapter: &mut PiRuntime, wire: &mut WireState, request: AdapterEgress, kind: &str) {
+    let mut bytes = request.frame().payload().to_vec();
+    bytes.push(b'\n');
+    let token = request.into_token();
+    adapter
+        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .unwrap();
+    adapter
+        .resolve_egress(token, EgressResolution::Written)
+        .unwrap();
+    let mut response = Vec::new();
+    execute_with_io(
+        &json!({"op":"awaitClient","kind":kind}),
+        wire,
+        &mut Cursor::new(bytes),
+        &mut response,
+        &mut Vec::new(),
+    )
+    .unwrap();
+    ingest_wire(adapter, &response);
+}
+
+fn ingest_wire(adapter: &mut PiRuntime, bytes: &[u8]) -> AdapterBatch {
+    let frame = IncrementalFrameDecoder::new()
+        .push_chunk(bytes)
+        .unwrap()
+        .unwrap();
+    adapter.ingest(&frame, &NoResources).unwrap()
 }
 
 struct NoResources;
@@ -153,7 +227,11 @@ impl ActivationJournal for Journal {
 fn capabilities() -> CapabilitySnapshotV1 {
     CapabilitySnapshotV1 {
         schema_version: SchemaVersionV1,
-        protocol_version: RequiredText::new("protocolVersion", "pi-rpc-0.83.0").unwrap(),
+        protocol_version: RequiredText::new(
+            "protocolVersion",
+            format!("pi-rpc-{}", crate::acp::bindings::pi::PI_VERSION),
+        )
+        .unwrap(),
         new_session: true,
         resume_session: false,
         load_session: false,
@@ -161,12 +239,18 @@ fn capabilities() -> CapabilitySnapshotV1 {
         prompt: true,
         cancel: true,
         native_session_fork: false,
+        native_session_compact: false,
+        native_session_import: false,
+        native_review: false,
+        native_background_terminals: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 2,
+        prompt_resources: false,
+        prompt_images: false,
         config_count: 2,
     }
 }

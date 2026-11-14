@@ -32,7 +32,7 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     await expect(changes.getByText("No changes in this scope.")).toBeVisible();
     await scope.selectOption("unstaged");
     await expect(
-      changes.getByText("Project Git changes · not attributed to this Chat"),
+      changes.getByText("Project Git changes · not attributed to this chat"),
     ).toBeVisible();
     await expect(
       changes.getByText("src/workbench/AgentChatPanes.tsx", { exact: true }),
@@ -110,12 +110,12 @@ test.describe("AP-F right pane (Codex references 26, 67 and 68)", () => {
     await expect(
       resources.getByRole("button", { name: "Changes", exact: true }),
     ).toBeEnabled();
-    await expect(resources.getByText(/recent files?/)).toBeVisible();
+    await expect(resources.getByText(/recently changed files?/)).toBeVisible();
     await expect(
       resources.getByText("Background processes", { exact: true }),
     ).toBeVisible();
     await expect(
-      resources.getByText("Process tracking is not exposed by this session.", {
+      resources.getByText("No background processes reported.", {
         exact: true,
       }),
     ).toBeVisible();

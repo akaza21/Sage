@@ -1,0 +1,25 @@
+.settings-surface__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.settings-surface__path {
+  display: block;
+  overflow: hidden;
+  font-family: var(--font-family-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.settings-surface__row-error {
+  display: block;
+  color: var(--color-danger);
+}
+
+@media (max-width: 760px) {
+  .settings-surface__actions {
+    justify-content: flex-start;
+  }
+}

@@ -50,8 +50,10 @@ fn pi_idless_optional_error_rejects_ambiguous_requests_for_the_method() {
 fn pi_idless_errors_outside_pending_optional_discovery_remain_fatal() {
     for (command, success) in [
         ("get_available_thinking_levels", false),
+        ("get_commands", false),
         ("get_state", false),
         ("get_available_thinking_levels", true),
+        ("get_commands", true),
     ] {
         let mut runtime = fixture_runtime(75);
         ready(&mut runtime);
@@ -317,7 +319,7 @@ fn pi_interruption_cancels_the_live_thought_before_the_turn() {
                 ..
             },
             AdapterEvent::Turn {
-                state: TurnState::Interrupted,
+                state: TurnState::Cancelled,
                 ..
             }
         ]
@@ -352,10 +354,8 @@ fn pi_aborted_assistant_message_end_cancels_its_thought() {
                 payload: NormalizedPayload::ThoughtSummary { .. },
                 ..
             },
-            AdapterEvent::Item {
-                payload: NormalizedPayload::Text { .. },
-                ..
-            }
+            // The message never streamed text, so no empty answer appears.
+            AdapterEvent::Absorbed
         ]
     ));
 }
@@ -393,6 +393,33 @@ fn pi_observed_write_is_declined_and_aborted_without_offering_approval() {
         }),
         Err(AdapterRuntimeError::LaterPermissionMiss)
     ));
+    // Sage's policy stopped the Turn, not the user, so it ends Interrupted.
+    let abort = batch.into_parts().1.remove(0);
+    runtime.commit_mandatory_egress(abort.token()).unwrap();
+    let abort = deliver(&mut runtime, abort);
+    runtime
+        .ingest(&response(&abort, Value::Null), &Mapper)
+        .unwrap();
+    runtime
+        .ingest(
+            &frame(json!({"type":"agent_end","messages":[{"role":"assistant","content":[],"stopReason":"aborted"}]})),
+            &Mapper,
+        )
+        .unwrap();
+    let settled = runtime
+        .ingest(&frame(json!({"type":"agent_settled"})), &Mapper)
+        .unwrap();
+    assert!(
+        settled.events().iter().any(|event| matches!(
+            event,
+            AdapterEvent::Turn {
+                state: TurnState::Interrupted,
+                ..
+            }
+        )),
+        "{:?}",
+        settled.events()
+    );
 }
 
 #[test]
@@ -401,7 +428,7 @@ fn pi_nonblocking_extension_notifications_never_offer_approval() {
     ready(&mut runtime);
     running(&mut runtime);
     let batch = runtime.ingest(&frame(json!({"type":"extension_ui_request","id":"notify-1","method":"notify","message":"Working","notifyType":"info"})), &Mapper).unwrap();
-    assert!(matches!(batch.events(), [AdapterEvent::Absorbed]));
+    assert!(matches!(batch.events(), [AdapterEvent::Session { .. }]));
     assert!(batch.egress().is_empty());
     let batch = runtime
         .ingest(

@@ -20,7 +20,7 @@ pub(super) fn execute(invocation: FixtureInvocation) -> Result<i32, FixtureError
     }
     let mut exit_code = 0_i32;
     let mut process_state = process_ops::ProcessState::new();
-    let mut wire_state = wire::WireState::new();
+    let mut wire_state = wire::WireState::launched(&invocation.harness_args)?;
     for step in &steps {
         let op = field_str(step, "op")?;
         match classify(op)? {

@@ -1,6 +1,9 @@
 import { expect, test } from "@playwright/test";
 
-import { openScenario } from "./shared/visualBrowserPrimitives";
+import {
+  waitForAnimations,
+  openScenario,
+} from "./shared/visualBrowserPrimitives";
 
 // Editor parity ticket 5: Quick Open placement and density, and the Editor
 // menus' density, measured in Chromium against the browser runtime.
@@ -17,6 +20,7 @@ test.describe("Editor popups", () => {
 
     await search.click();
     await expect(dialog).toBeVisible();
+    await waitForAnimations(dialog);
     const wide = (await dialog.boundingBox())!;
     expect(wide.width).toBeCloseTo(600, 0);
     expect(Math.abs(wide.y - searchBox.y)).toBeLessThanOrEqual(1);
@@ -43,6 +47,7 @@ test.describe("Editor popups", () => {
     await box.fill(">go to line");
     const option = dialog.getByRole("option", { name: /Go to Line/ });
     await expect(option).toBeVisible();
+    await waitForAnimations(dialog);
     expect((await option.boundingBox())!.height).toBeCloseTo(22, 0);
     const shortcut = option.locator(".quick-open__shortcut");
     await expect(shortcut).toHaveAttribute("aria-label", "Ctrl+G");
@@ -65,6 +70,7 @@ test.describe("Editor popups", () => {
 
     await row.click({ button: "right" });
     await expect(menu).toBeVisible();
+    await waitForAnimations(menu);
     const item = menu.getByRole("menuitem", { name: "Rename File" });
     expect((await item.boundingBox())!.height).toBeCloseTo(24, 0);
     await page.keyboard.press("Escape");
@@ -79,6 +85,7 @@ test.describe("Editor popups", () => {
     });
     await row.click({ button: "right" });
     await expect(menu).toBeVisible();
+    await waitForAnimations(menu);
     const menuBox = (await menu.boundingBox())!;
     const viewport = page.viewportSize()!;
     expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(viewport.height);

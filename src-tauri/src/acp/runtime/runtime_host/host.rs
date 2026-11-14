@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{scheduler::RuntimeOwner, store::AdapterTurnCursor};
+use crate::acp::{intent::PromptSendError, scheduler::RuntimeOwner, store::AdapterTurnCursor};
 
 use super::super::bounded_thread::{BoundedThread, ThreadWaitError};
 pub(crate) use super::types::TerminalNotification;
@@ -27,6 +27,7 @@ pub(crate) struct RuntimeHost {
     thread: Mutex<Option<BoundedThread>>,
     pub(crate) lifecycle: AtomicU8,
     shutdown_recovery: Option<Arc<dyn RuntimeShutdownRecovery>>,
+    controls: host_control_gate::ControlGate,
     #[cfg(any(test, all(windows, feature = "acp-fixture")))]
     timeout_override: Option<TimeoutOverride>,
     #[cfg(test)]
@@ -52,6 +53,10 @@ enum TimeoutOverride {
 
 #[path = "host_session_config.rs"]
 mod host_session_config;
+
+#[path = "host_control_gate.rs"]
+mod host_control_gate;
+pub(crate) use host_control_gate::IdleParkClaim;
 
 #[path = "host_dispatch.rs"]
 mod host_dispatch;
@@ -153,6 +158,7 @@ impl RuntimeHost {
             thread: Mutex::new(Some(thread)),
             lifecycle: AtomicU8::new(HOST_RUNNING),
             shutdown_recovery,
+            controls: host_control_gate::ControlGate::default(),
             #[cfg(any(test, all(windows, feature = "acp-fixture")))]
             timeout_override,
             #[cfg(test)]
@@ -209,31 +215,43 @@ impl RuntimeHost {
         self.outcome(HostCommand::DispatchPrompt { owner, turn_id })
     }
 
-    pub(crate) fn send(&self, intent: HostPromptIntent) -> Result<HostOutcome, HostError> {
+    /// Prepares and dispatches a prompt. A prompt the mailbox or the idle
+    /// actor refused before preparing it is known not to have started, so
+    /// its draft can be offered again; any later failure is unknown.
+    pub(crate) fn send(
+        &self,
+        intent: HostPromptIntent,
+    ) -> Result<HostOutcome, PromptSendError<HostError>> {
         let started = Instant::now();
         let owner = intent.owner();
-        let turn_id = self.prepare_prompt(intent).inspect_err(|error| {
+        let turn_id = self.prepare_prompt(intent).map_err(|error| {
             crate::acp::runtime::prompt_diagnostics::failed(
                 "host.prepare",
                 started,
-                error,
+                &error,
                 self.lifecycle.load(Ordering::Acquire),
             );
+            match error {
+                HostError::Capacity | HostError::Intent => PromptSendError::not_started(error),
+                _ => PromptSendError::unknown(error),
+            }
         })?;
         let prepared_ms = started.elapsed().as_millis();
-        self.dispatch_prepared(owner, turn_id).inspect_err(|error| {
-            crate::acp::runtime::prompt_diagnostics::failed(
-                "host.dispatch",
-                started,
-                error,
-                (
-                    "prepared_ms",
-                    prepared_ms,
-                    "lifecycle",
-                    self.lifecycle.load(Ordering::Acquire),
-                ),
-            );
-        })
+        self.dispatch_prepared(owner, turn_id)
+            .inspect_err(|error| {
+                crate::acp::runtime::prompt_diagnostics::failed(
+                    "host.dispatch",
+                    started,
+                    error,
+                    (
+                        "prepared_ms",
+                        prepared_ms,
+                        "lifecycle",
+                        self.lifecycle.load(Ordering::Acquire),
+                    ),
+                );
+            })
+            .map_err(PromptSendError::unknown)
     }
 
     pub(crate) fn cancel(&self, intent: HostCancelIntent) -> Result<HostOutcome, HostError> {

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  waitForAnimations,
   openScenario,
   settleChatProjections,
 } from "./shared/visualBrowserPrimitives";
@@ -61,6 +62,8 @@ test("transcript owns one responsive reading column with nonnegative rhythm", as
           ),
         measure,
       );
+    for (const actions of await page.locator(".chat-transcript-actions").all())
+      await waitForAnimations(actions);
     const geometry = await page
       .locator(".message-list__content")
       .evaluate((column) => {
@@ -109,6 +112,14 @@ test("settings loading and persistence errors stay in the content flow", async (
   });
   for (const width of [1280, 480]) {
     await page.setViewportSize({ width, height: 800 });
+    const workbench = page.locator("main.workbench");
+    if (width === 480)
+      await expect(workbench).toHaveClass(/workbench--compact/);
+    else await expect(workbench).not.toHaveClass(/workbench--compact/);
+    const drawer = page.locator('.workbench--editor .sidebar[role="dialog"]');
+    if (await drawer.isVisible())
+      await page.getByRole("button", { name: "Hide left sidebar" }).click();
+    await expect(page.locator(".settings-surface")).toBeVisible();
     const headerGap = await page
       .locator(".settings-surface__nav")
       .evaluate((nav) => ({
@@ -237,7 +248,7 @@ test("queued messages and the edit disclosure share the dock and never overlap i
   await disclosure.click();
   await expect(disclosure).toHaveAttribute("aria-expanded", "true");
   await page
-    .getByRole("textbox", { name: "Message agent" })
+    .getByRole("combobox", { name: "Message agent" })
     .fill("Keep this draft");
   for (const viewport of [
     { width: 1280, height: 800 },
@@ -289,7 +300,7 @@ test("queued messages and the edit disclosure share the dock and never overlap i
       expect.soft(geometry.queueScroll).toBeGreaterThan(0);
     }
     await expect(
-      page.getByRole("textbox", { name: "Message agent" }),
+      page.getByRole("combobox", { name: "Message agent" }),
     ).toHaveValue("Keep this draft");
     expect.soft(geometry.queuePosition).toBe("static");
     expect.soft(geometry.queueFill).toBe("rgba(0, 0, 0, 0)");

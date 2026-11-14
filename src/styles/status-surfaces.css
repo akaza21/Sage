@@ -137,16 +137,19 @@
   align-items: center;
   justify-content: space-between;
   overflow-x: auto;
-  padding: 0 8px 0 8px;
+  padding: 0 var(--space-2);
+  border-top: var(--border-width) solid var(--agent-shell-title-divider);
   color: var(--color-text-muted);
-  background: var(--color-canvas);
+  background: var(--status-bar-fill);
   font-size: var(--font-size-xs);
   user-select: none;
 }
 
+/* Groups keep their natural width so an overflowing bar scrolls instead of
+   painting one group over the next. */
 .status-bar__group {
   display: flex;
-  min-width: 0;
+  flex: none;
   height: 100%;
   align-items: center;
   gap: 12px;

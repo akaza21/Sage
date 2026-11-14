@@ -18,6 +18,7 @@ import {
   executeCommand,
   runCommandGroups,
 } from "./lib/check-process.mjs";
+import { processAlive } from "./lib/process-liveness.mjs";
 import {
   consumeWindowsCargoJobFrames,
   MAX_PROTOCOL_LINE_BYTES,
@@ -348,8 +349,7 @@ test("developer plan keeps Cargo filters sequential and overlaps only language l
         "cargo",
         [
           "test",
-          "--manifest-path",
-          "src-tauri/Cargo.toml",
+          "--workspace",
           "--features",
           "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
           "module::first_test",
@@ -359,8 +359,7 @@ test("developer plan keeps Cargo filters sequential and overlaps only language l
         "cargo",
         [
           "test",
-          "--manifest-path",
-          "src-tauri/Cargo.toml",
+          "--workspace",
           "--features",
           "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
           "module::second_test",
@@ -467,11 +466,10 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
   assert.deepEqual(
     plan.groups[1].commands.map(({ args }) => args),
     [
-      ["fmt", "--manifest-path", "src-tauri/Cargo.toml", "--", "--check"],
+      ["fmt", "--all", "--", "--check"],
       [
         "clippy",
-        "--manifest-path",
-        "src-tauri/Cargo.toml",
+        "--workspace",
         "--all-targets",
         "--features",
         "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics,native-lane",
@@ -481,8 +479,7 @@ test("integration plan preserves every frontend phase and serializes Rust tools"
       ],
       [
         "test",
-        "--manifest-path",
-        "src-tauri/Cargo.toml",
+        "--workspace",
         "--features",
         "acp-fixture,acp-schema,codex-provisioning-helper,custom-protocol,diagnostics",
         "--",
@@ -1299,14 +1296,9 @@ function fixtureReadiness() {
   return { promise, output };
 }
 
+// A zombie the container never reaps has exited, so it does not count.
 async function processExists(pid) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (error) {
-    if (error.code === "ESRCH") return false;
-    throw error;
-  }
+  return processAlive(pid);
 }
 
 async function waitForProcessExit(pid, timeoutMs = 2_000) {

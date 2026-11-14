@@ -236,7 +236,10 @@ fn assert_native_activation(
                 "get_available_models",
                 serde_json::json!({"models":[model, alternative]}),
             ),
-            ("new_session", serde_json::json!({"cancelled":false})),
+            (
+                "get_state",
+                serde_json::json!({"sessionId":"fixture-pi-session","sessionFile":"/s/1_fixture-pi-session.jsonl"}),
+            ),
         ]
         .into_iter()
         .enumerate()
@@ -267,7 +270,7 @@ fn assert_native_activation(
     assert!(parts.journal().0.is_some());
     assert_eq!(
         parts.session().external_session_id.as_str(),
-        "pi-session-1-1"
+        "1_fixture-pi-session"
     );
     assert_eq!(parts.session().models.len(), 2);
     assert_eq!(parts.session().capabilities.model_count, 2);

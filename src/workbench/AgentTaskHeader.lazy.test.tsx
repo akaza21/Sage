@@ -5,7 +5,11 @@ import {
   render,
   screen,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
+import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
+
+// The header menu body loads when the window first idles.
+beforeAll(() => preloadAgentHeaderMenu());
 import { useWorkbenchStore } from "../app/store";
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import type { WorkbenchTab } from "../domain/workbench";
@@ -120,12 +124,18 @@ it("prewarms on pointer intent and keeps inline rename focused and authoritative
   useWorkbenchStore.setState({ renameChat, error: "Rename refused" });
   const preload = vi.spyOn(AgentTaskResourcesPart, "preload");
   mountHeader();
-  const trigger = screen.getByRole("button", { name: "Rename chat" });
+  const trigger = screen.getByRole("button", {
+    name: "Chat actions for Lazy header task",
+  });
   await act(async () => {
     fireEvent.pointerEnter(trigger);
     await preload.mock.results[0]!.value;
   });
   fireEvent.click(trigger);
+  fireEvent.click(
+    screen.getByRole("menuitem", { name: "More chat actions in Sage" }),
+  );
+  fireEvent.click(await screen.findByRole("menuitem", { name: "Rename chat" }));
   const input = screen.getByRole("textbox", { name: "New chat name" });
   expect(input).toHaveFocus();
   fireEvent.change(input, { target: { value: "Renamed" } });
@@ -174,5 +184,5 @@ it("keeps header mutations scoped and refreshes the open move destinations", asy
   expect(moveChat).toHaveBeenCalledWith(tab.id, "destination", "project-lazy");
   await openActions();
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
-  expect(archiveChat).toHaveBeenCalledWith(tab.id, "project-lazy");
+  expect(archiveChat).toHaveBeenCalledWith(tab.id, "project-lazy", "row");
 });

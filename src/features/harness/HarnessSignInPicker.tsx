@@ -11,15 +11,23 @@ type Props = ComponentProps<typeof SearchablePicker> & {
 export function HarnessSignInPicker({
   harnesses,
   candidates,
+  open: controlledOpen,
+  onOpenChange,
   ...props
 }: Props) {
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen ?? internalOpen;
+  const expanded = open && !props.disabled;
   const [signIn, setSignIn] = useState<
     ReadonlyMap<string, HarnessSignInDecoration>
   >(() => new Map());
+  if (!expanded && signIn.size) setSignIn(new Map());
   return (
     <>
       <SearchablePicker
         {...props}
+        open={open}
+        onOpenChange={onOpenChange ?? setInternalOpen}
         candidates={candidates.map((row) => {
           const decoration = signIn.get(row.id);
           return decoration
@@ -39,11 +47,13 @@ export function HarnessSignInPicker({
             : row;
         })}
       />
-      <HarnessSignInPart
-        part="HarnessSignInStatus"
-        harnesses={harnesses}
-        onChange={setSignIn}
-      />
+      {expanded ? (
+        <HarnessSignInPart
+          part="HarnessSignInStatus"
+          harnesses={harnesses}
+          onChange={setSignIn}
+        />
+      ) : null}
     </>
   );
 }

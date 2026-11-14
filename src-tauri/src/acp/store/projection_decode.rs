@@ -39,6 +39,19 @@ pub(super) struct ItemRow {
     pub terminal_at: Option<i64>,
 }
 
+/// Decodes a stored item payload the one way every reader must: the
+/// normalized form, or a text row written before payloads were normalized,
+/// which also carries its role. Normalized text has no role and is
+/// assistant prose by definition.
+pub(crate) fn decode_payload(
+    payload_json: &str,
+) -> Result<(NormalizedPayload, Option<TextRole>), serde_json::Error> {
+    match serde_json::from_str::<NormalizedPayload>(payload_json) {
+        Ok(value) => Ok((value, None)),
+        Err(_) => parse_legacy_text(payload_json),
+    }
+}
+
 pub(super) fn decode_item(
     row: ItemRow,
     permission: Option<(
@@ -54,12 +67,8 @@ pub(super) fn decode_item(
     {
         return Err(StoreError::Corrupt("item payload integrity"));
     }
-    let (normalized, legacy_role) =
-        match serde_json::from_str::<NormalizedPayload>(&row.payload_json) {
-            Ok(value) => (value, None),
-            Err(_) => parse_legacy_text(&row.payload_json)
-                .map_err(|_| StoreError::Corrupt("normalized item payload"))?,
-        };
+    let (mut normalized, legacy_role) = decode_payload(&row.payload_json)
+        .map_err(|_| StoreError::Corrupt("normalized item payload"))?;
     if kind_text(normalized.kind()) != row.kind {
         return Err(StoreError::Corrupt("item kind mismatch"));
     }
@@ -86,6 +95,7 @@ pub(super) fn decode_item(
         .as_deref()
         .map(super::state::parse_tool_state)
         .transpose()?;
+    retain_live_progress(&mut normalized, lifecycle, tool_state);
     let content = content(
         normalized,
         lifecycle,
@@ -136,6 +146,7 @@ fn content(
             role: legacy_role.unwrap_or(TextRole::Assistant),
             text,
         },
+        NormalizedPayload::UserPrompt { text } => ItemContent::UserPrompt { text },
         NormalizedPayload::ThoughtSummary { summary } => ItemContent::ThoughtSummary { summary },
         NormalizedPayload::Plan { summary } => ItemContent::Plan {
             entries: BoundedVec::new(
@@ -262,25 +273,20 @@ fn content(
             summary,
             offered_option_kinds,
             reason,
+            user_input,
         } => {
             let (request_id, state, source) =
                 permission.ok_or(StoreError::Corrupt("permission request projection"))?;
             ItemContent::PermissionRequest {
                 request_id,
                 state,
-                label: SafeText::new(
-                    "permissionLabel",
-                    match source {
-                        PermissionRequestSource::Browser => "Browser permission",
-                        PermissionRequestSource::Harness => "Permission request",
-                    },
-                )
-                .map_err(contract)?,
+                label: SafeText::new("permissionLabel", source.label()).map_err(contract)?,
                 summary,
                 source,
                 offered_option_kinds,
                 category,
                 reason,
+                user_input,
             }
         }
         NormalizedPayload::Error {
@@ -333,45 +339,11 @@ fn projected_line_count(value: Option<u64>) -> Option<u32> {
 /// Legacy summary-only rows (no pair metadata) decode as unavailable, never
 /// as fabricated empty text. Malformed admitted metadata fails closed.
 mod file_pair;
+mod legacy_text;
 mod tool_presentation;
 use file_pair::admitted_pair_view;
-use tool_presentation::presentation;
-
-pub(crate) fn parse_legacy_text(
-    value: &str,
-) -> Result<(NormalizedPayload, Option<TextRole>), serde_json::Error> {
-    #[derive(Debug, serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct Wire {
-        role: String,
-        text: SafeText<262144>,
-        #[serde(default, rename = "attachedContext")]
-        _attached_context: crate::acp::attached_context::AttachedContexts,
-    }
-    #[derive(Debug, serde::Deserialize)]
-    #[serde(deny_unknown_fields)]
-    struct TaggedWire {
-        kind: String,
-        payload: Wire,
-    }
-    let wire = match serde_json::from_str::<Wire>(value) {
-        Ok(wire) => wire,
-        Err(_) => {
-            let tagged: TaggedWire = serde_json::from_str(value)?;
-            if tagged.kind != "text" {
-                return Err(serde_json::from_str::<Wire>("null").unwrap_err());
-            }
-            tagged.payload
-        }
-    };
-    let role = match wire.role.as_str() {
-        "user" => TextRole::User,
-        "assistant" => TextRole::Assistant,
-        "system" => TextRole::System,
-        _ => return Err(serde_json::from_str::<Wire>("null").unwrap_err()),
-    };
-    Ok((NormalizedPayload::Text { text: wire.text }, Some(role)))
-}
+use legacy_text::parse_legacy_text;
+use tool_presentation::{presentation, retain_live_progress};
 
 fn summary_label(value: &str) -> Result<SafeText<512>, StoreError> {
     let mut end = value.len().min(512);

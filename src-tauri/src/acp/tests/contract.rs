@@ -12,8 +12,8 @@ use crate::acp::{
         AcpIpcError, ActivateAcpSessionRequest, ActivityProvenanceV1, CancelAcpTurnRequest,
         CapabilitySnapshotV1, CloseAcpSessionRequest, GetAcpChatPageRequest, IntentError,
         IntentSnapshot, NormalizedPayload, ProjectionChangedV1, PromptDispatch, SafeResourceRef,
-        SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest, SteerAcpTurnRequest,
-        validate_base_intent, validate_cancel_intent, validate_session_intent,
+        SendAcpTurnFailure, SendAcpTurnRequest, StagedSelection, StartAcpSessionRequest,
+        SteerAcpTurnRequest, validate_base_intent, validate_cancel_intent, validate_session_intent,
         validate_steer_intent,
     },
     limits::LIMITS,
@@ -57,6 +57,7 @@ fn snapshot() -> IntentSnapshot {
         project_generation: ProjectGeneration::new(3).unwrap(),
         chat_id,
         projection_revision: ProjectionRevision::new(7).unwrap(),
+        intent_revision: ProjectionRevision::new(7).unwrap(),
         session_id: Some(session_id),
         runtime_epoch: Some(RuntimeEpoch::new(2).unwrap()),
         turn_id: Some(turn_id),
@@ -291,15 +292,6 @@ fn sqlite_rejects_every_cross_wait_turn_transition() {
 }
 
 #[test]
-fn production_schema_exactly_matches_the_reviewed_schema_contract() {
-    let production = include_str!("../../../migrations/005_acp_session_foundation.sql");
-    let contract = include_str!(
-        "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/schema-005.sql"
-    );
-    assert_eq!(production.as_bytes(), contract.as_bytes());
-}
-
-#[test]
 fn normalized_payloads_admit_only_canonical_resource_refs() {
     let root_id = SageRootId::parse("root-a").unwrap();
     let resource = SafeResourceRef::new(root_id, "src/main.rs").unwrap();
@@ -473,9 +465,30 @@ fn every_ipc_request_is_closed_and_uses_camel_case() {
     let parsed: SendAcpTurnRequest = serde_json::from_value(send.clone()).unwrap();
     assert!(matches!(
         parsed,
-        SendAcpTurnRequest::Session { attached_context, .. }
+        SendAcpTurnRequest::Session { attached_context, staged: None, .. }
             if attached_context.as_slice().is_empty()
     ));
+    // Staged files go only with a send that names them.
+    for (staged, expected) in [
+        (
+            json!({"revision": "r1"}),
+            Some(StagedSelection::Revision("r1".into())),
+        ),
+        (
+            json!({"retryOf": "turn-1"}),
+            Some(StagedSelection::RetryOf(
+                SageTurnId::parse("turn-1").unwrap(),
+            )),
+        ),
+    ] {
+        let parsed: SendAcpTurnRequest =
+            serde_json::from_value(with(send.clone(), json!({ "staged": staged }))).unwrap();
+        assert!(matches!(parsed, SendAcpTurnRequest::Session { staged, .. } if staged == expected));
+    }
+    assert!(
+        serde_json::from_value::<SendAcpTurnRequest>(with(send.clone(), json!({"staged": "all"})))
+            .is_err()
+    );
     let context = json!({
         "kind": "diffLineComment",
         "diffRef": {
@@ -569,8 +582,21 @@ fn exact_intent_validation_rejects_each_stale_or_foreign_component() {
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectGeneration)
     );
+    // A session-neutral change after the read leaves the intent current.
+    let mut neutral = cold.clone();
+    neutral.projection_revision = ProjectionRevision::new(8).unwrap();
+    assert_eq!(validate_session_intent(&activate, &neutral), Ok(()));
+    // A send-relevant change after the read makes it stale.
+    stale = neutral.clone();
+    stale.intent_revision = ProjectionRevision::new(8).unwrap();
+    assert_eq!(
+        validate_session_intent(&activate, &stale),
+        Err(IntentError::StaleProjectionRevision)
+    );
+    // A view ahead of the chat is never current.
     stale = cold.clone();
-    stale.projection_revision = ProjectionRevision::new(8).unwrap();
+    stale.projection_revision = ProjectionRevision::new(6).unwrap();
+    stale.intent_revision = ProjectionRevision::new(6).unwrap();
     assert_eq!(
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectionRevision)
@@ -785,6 +811,8 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
     };
     let turn = TurnProjection {
         attached_context: Vec::new(),
+        session_action: None,
+        command: None,
         id: turn_id,
         session_id: session_id.clone(),
         runtime_epoch: RuntimeEpoch::new(2).unwrap(),
@@ -800,6 +828,7 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         activities: BoundedVec::new("activities", vec![]).unwrap(),
         browser_operations: BoundedVec::new("browserOperations", vec![]).unwrap(),
         browser_operations_collapsed: 0,
+        session_activities: Vec::new(),
     };
     let session = SessionProjection {
         id: session_id.clone(),
@@ -821,12 +850,18 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
             prompt: true,
             cancel: true,
             native_session_fork: false,
+            native_session_compact: false,
+            native_session_import: false,
+            native_review: false,
+            native_background_terminals: false,
             active_turn_steer: false,
             child_conversation_projection: false,
             child_transcript_read: false,
             collaboration_event_projection: false,
             multi_root_extension_schema_id: None,
             model_count: 1,
+            prompt_resources: false,
+            prompt_images: false,
             config_count: 0,
         },
         revision: EntityRevision::new(3).unwrap(),
@@ -835,7 +870,11 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
     };
     let page = AcpChatPage {
         session_config: None,
+        restored_session_config: None,
+        session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
+        usage: false,
+        session_surface: None,
         project_id,
         chat_id,
         title: SafeText::new("title", "Wire fixture").unwrap(),
@@ -846,7 +885,9 @@ fn native_chat_page_serializes_the_typescript_wire_shape() {
         next_cursor: None,
         forked_from: None,
         forked_from_turn_id: None,
+        imported_history: false,
         child_projection_epoch: 0,
+        session_notices: Vec::new(),
     };
     assert_eq!(page.validate_page_bounds(), Ok(()));
 

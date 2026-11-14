@@ -1,4 +1,5 @@
 import { MAX_AGENT_RAIL_PROJECTS } from "../domain/agentRailLimits";
+import { projectLabel } from "../domain/project";
 import type {
   AgentRailChat,
   ArchivedChatSummary,
@@ -59,6 +60,11 @@ export function admitAgentRailChat(
     ...(typeof value.updatedAt === "number" && Number.isFinite(value.updatedAt)
       ? { updatedAt: value.updatedAt }
       : {}),
+    ...(typeof value.finishedAt === "number" &&
+    Number.isSafeInteger(value.finishedAt) &&
+    value.finishedAt > 0
+      ? { finishedAt: value.finishedAt }
+      : {}),
   };
 }
 
@@ -118,10 +124,7 @@ export function groupAgentRailProjects(input: {
     const source = current
       ? admitRailChats(input.currentChats, MAX_AGENT_RAIL_CURRENT_CHATS)
       : admitRailChats(project.railChats, MAX_AGENT_RAIL_CHATS_PER_PROJECT);
-    const name =
-      typeof project.name === "string" && project.name.length > 0
-        ? project.name.slice(0, 64)
-        : "Project";
+    const name = projectLabel(project.name);
     groups.push({
       id,
       name,
@@ -278,28 +281,6 @@ export function deriveAgentRailSections(
   };
 }
 
-export function collectAgentRailPinIds(
-  groups: ReadonlyArray<AgentRailProjectGroup>,
-  currentProjectId: string | null,
-): string[] {
-  const ids: string[] = [];
-  const current = groups.find((group) => group.id === currentProjectId);
-  if (current) {
-    for (const chat of current.chats) {
-      if (ids.length >= MAX_AGENT_RAIL_PIN_IDS) return ids;
-      ids.push(chat.id);
-    }
-  }
-  for (const group of groups) {
-    if (group.id === currentProjectId) continue;
-    for (const chat of group.chats) {
-      if (ids.length >= MAX_AGENT_RAIL_PIN_IDS) return ids;
-      ids.push(chat.id);
-    }
-  }
-  return ids;
-}
-
 export type AgentChatMoveKind = "folder" | "local";
 
 export interface AgentChatMoveDestination {
@@ -329,10 +310,7 @@ export function agentChatMoveDestinations(
     ) {
       continue;
     }
-    const name =
-      typeof project.name === "string" && project.name.length > 0
-        ? project.name.slice(0, 64)
-        : "Project";
+    const name = projectLabel(project.name);
     next.push({
       id: project.id,
       name,

@@ -1,4 +1,5 @@
 use super::*;
+use crate::chat_purge::HISTORY_GUARDS;
 
 struct Fixture {
     root: std::path::PathBuf,
@@ -121,7 +122,7 @@ fn a_failed_purge_warns_and_never_blocks_startup_or_the_other_purges() {
 }
 
 #[test]
-fn image_cleanup_runs_in_bounded_batches_instead_of_failing_at_a_cap() {
+fn image_rows_leave_in_bounded_batches_and_files_only_after_commit() {
     let Fixture {
         root,
         database,
@@ -141,17 +142,31 @@ fn image_cleanup_runs_in_bounded_batches_instead_of_failing_at_a_cap() {
             .artifact_id
         })
         .collect::<Vec<_>>();
-    assert_eq!(
-        database
-            .remove_side_chat_images(&project, &side, 2)
-            .unwrap(),
-        5
-    );
+    {
+        // Batches run inside the caller's transaction; a rollback keeps every
+        // row and file.
+        let mut connection = database.write_connection().unwrap();
+        let transaction = connection.transaction().unwrap();
+        let taken = crate::chat_purge::take_chat_images(&transaction, &project, &side, 2).unwrap();
+        assert_eq!(taken.len(), 5);
+    }
+    let rows: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM chat_image_artifacts WHERE chat_id=?1",
+            [&side],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(rows, 5);
+    for id in &images {
+        assert!(artifact_root.join(format!("{id}.full")).is_file());
+    }
+    database.remove_side_chat(&project, &side).unwrap();
     for id in &images {
         assert!(!artifact_root.join(format!("{id}.full")).exists());
         assert!(!artifact_root.join(format!("{id}.thumb")).exists());
     }
-    database.remove_side_chat(&project, &side).unwrap();
     assert_eq!(side_chats(&database), 0);
     drop(database);
     std::fs::remove_dir_all(root).unwrap();

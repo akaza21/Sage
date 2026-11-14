@@ -6,7 +6,7 @@
 .workbench--editor,
 .new-file-dialog--editor,
 .dirty-dialog--editor,
-.menu-popover--editor {
+.menu-popover--editor:not(.composer__popover) {
   --radius-sm: 4px;
   --radius-md: 6px;
   --workbench-card-radius: var(--radius-md);
@@ -31,13 +31,34 @@
   --radius-title-bar-search: var(--radius-sm);
   --placeholder-title-gap: var(--space-2);
   --placeholder-body-font-size: var(--font-size-sm);
+  /* A canvas-coloured activity rail whose buttons fill its width. */
+  --activity-rail-gap: calc(var(--space-1) / 2);
+  --activity-rail-width: var(--editor-activity-width);
+  --activity-rail-fill: var(--color-canvas);
+  --activity-button-width: 100%;
+  --radius-activity-button: var(--radius-sm);
+  --activity-button-active-fill: var(
+    --editor-active-fill,
+    var(--color-surface-hover)
+  );
+  --activity-button-active-hover-fill: var(--activity-button-active-fill);
+  /* A hairline tool-rail splitter that lights with the highlight roles,
+     which global.css also defines for forced colours. Hover and drag take
+     the focus-ring width: a hairline normally, 2px in forced colours. */
+  --sidebar-splitter-width: var(--border-width);
+  --sidebar-splitter-state-width: var(--focus-ring-width);
+  --sidebar-splitter-fill: transparent;
+  --sidebar-splitter-hover-fill: var(--highlight-selection-edge);
+  --sidebar-splitter-hover-shadow: 0 0 4px var(--highlight-focus-halo);
+  --sidebar-splitter-active-fill: var(--highlight-focus-edge);
+  --sidebar-splitter-active-shadow: var(--highlight-focus-halo-shadow);
 }
 
 @media (forced-colors: none) {
   .workbench--editor,
   .new-file-dialog--editor,
   .dirty-dialog--editor,
-  .menu-popover--editor {
+  .menu-popover--editor:not(.composer__popover) {
     --color-canvas: var(--doc-canvas);
     --color-panel: var(--doc-panel);
     --color-surface: var(--doc-surface);
@@ -124,18 +145,25 @@
       var(--highlight-focus-edge);
     --menu-focus-edge: var(--editor-focus-edge);
     --menu-selected-fill: var(--editor-selection-fill);
+    /* Role tokens the Editor's components read. Persistent selection is a
+       quiet fill with a hairline edge; a focused region gets a contained
+       hairline instead of a full ring; search matches stay amber; count
+       badges read as quantity, not selection. */
+    --row-selected-fill: var(--editor-selection-fill);
+    --row-selected-shadow: inset var(--border-width) 0 0
+      var(--editor-selection-edge);
+    --region-focus-shadow: inset 0 0 0 var(--border-width)
+      var(--editor-focus-edge);
+    --search-match-fill: var(--editor-find-match-fill);
+    --search-match-shadow: inset 0 calc(-1 * var(--border-width)) 0
+      var(--editor-find-match-edge);
+    --count-badge-fill: var(--color-surface-hover);
   }
 }
 
 @media (max-width: 760px) {
   .workbench--editor {
     --workbench-card-margin: var(--space-1);
-  }
-
-  /* While the floating tool sidebar covers it, the center steps aside. */
-  .workbench--editor .center-region[aria-hidden="true"] {
-    --workbench-card-margin: var(--space-1) var(--space-1) var(--space-1)
-      min(280px, calc(100% - 160px));
   }
 }
 

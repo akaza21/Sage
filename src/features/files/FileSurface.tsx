@@ -24,6 +24,7 @@ import {
   subscribeEditorFocusRequest,
   takeEditorFocusRequest,
 } from "./editorFocusRequest";
+import { registerReplaceEditor } from "./editorTextReplace";
 import {
   registerFileSurfaceCommands,
   type FileSurfaceCommands,
@@ -33,7 +34,7 @@ import {
   FileSurfaceContent,
   FileSurfaceResourceState,
 } from "./FileSurfaceContent";
-import { canPreviewMarkdown } from "./markdownPreview";
+import { canPreviewMarkdown } from "./filePreviewKind";
 import { useFileSurfaceModel } from "./useFileSurfaceModel";
 import { useGitGutter, type GitGutterEditor } from "./useGitGutter";
 
@@ -44,7 +45,7 @@ const MixedEolFileView = lazy(() =>
 );
 
 const LIMIT_EXCEEDED_STATUS =
-  "That edit was not applied: it would make this File larger than 1 MiB, the editor's limit.";
+  "That edit was not applied: it would make this file larger than 1 MiB, the editor's limit.";
 
 export function FileSurface({
   tab,
@@ -139,6 +140,14 @@ export function FileSurface({
     resource ?? null,
     editorShown,
   );
+  // A workspace Replace changes this File's unsaved text here, as one edit
+  // the user can undo.
+  const replaceView =
+    !readOnly && gutterEditor?.key === activeResourceKey ? gutterEditor : null;
+  useEffect(() => {
+    if (replaceView)
+      return registerReplaceEditor(replaceView.key, replaceView.view);
+  }, [replaceView]);
   const [focusRequests, setFocusRequests] = useState(0);
   useEffect(
     () => subscribeEditorFocusRequest(() => setFocusRequests((n) => n + 1)),
@@ -328,3 +337,5 @@ export function FileSurface({
     />
   );
 }
+
+export default FileSurface;

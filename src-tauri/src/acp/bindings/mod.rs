@@ -12,6 +12,7 @@ pub(crate) mod claude;
 )]
 pub(crate) mod codex;
 pub(crate) mod command_summary;
+pub(crate) mod node_engine;
 #[allow(
     dead_code,
     unused_imports,
@@ -25,5 +26,7 @@ pub(crate) mod omp;
 )]
 pub(crate) mod pi;
 pub(crate) mod registry;
+pub(crate) mod release_version;
 pub(crate) mod runtime;
+pub(crate) mod session_title;
 pub(crate) mod standard_acp;

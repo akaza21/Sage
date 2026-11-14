@@ -1,3 +1,4 @@
+use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use crate::acp::{contract::SageAgentSessionId, runtime::AdapterPumpError};
 use serde_json::{Value, json};
 
@@ -10,12 +11,35 @@ struct CatalogTransport {
     writes: Arc<Mutex<Vec<Value>>>,
     mailbox: Arc<DriverMailbox>,
     shutdown_after: Option<usize>,
+    skills_reads: Arc<AtomicUsize>,
+}
+
+impl CatalogTransport {
+    fn new(
+        writes: &Arc<Mutex<Vec<Value>>>,
+        mailbox: Arc<DriverMailbox>,
+        shutdown_after: Option<usize>,
+    ) -> Self {
+        Self {
+            writes: Arc::clone(writes),
+            mailbox,
+            shutdown_after,
+            skills_reads: Default::default(),
+        }
+    }
 }
 
 impl crate::acp::runtime::EgressTransport for CatalogTransport {
     fn write(&mut self, frame: &OutboundFrame) -> FrameWriteOutcome {
+        let request: Value = serde_json::from_slice(frame.payload()).unwrap();
+        // The idle skills read is its own traffic; these tests follow the
+        // model catalog, and `skill_command_tests` follow the skills.
+        if request["method"] == "skills/list" {
+            self.skills_reads.fetch_add(1, Ordering::Relaxed);
+            return FrameWriteOutcome::Complete;
+        }
         let mut writes = self.writes.lock().unwrap();
-        writes.push(serde_json::from_slice(frame.payload()).unwrap());
+        writes.push(request);
         if self.shutdown_after == Some(writes.len()) {
             drop(self.mailbox.submit_worker(WorkerCommand::Shutdown).unwrap());
         }
@@ -50,7 +74,7 @@ fn ready_runtime(external_session: &ExternalId) -> CodexRuntime {
     )
 }
 
-fn ready_adapter<Adapter: HarnessAdapter>(
+pub(super) fn ready_adapter<Adapter: HarnessAdapter>(
     mut adapter: Adapter,
     external_session: &ExternalId,
     confirmed_config: bool,
@@ -59,8 +83,8 @@ fn ready_adapter<Adapter: HarnessAdapter>(
     adapter
         .ingest(
             &frame(json!({"id":request_id(&initialize),"result":{
-                "userAgent":"sage/0.146.0 (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)",
-                "codexHome":"C:\\SageHarnesses\\CodexState\\codex-app-server-0.146.0-d3992fec",
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
                 "platformFamily":"windows","platformOs":"windows"
             }})),
             &Mapper,
@@ -93,6 +117,7 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
             let fixture = prepare_first_turn_fixture().await;
             let adapter = ready_runtime(&fixture.external_session);
             let writes = Arc::new(Mutex::new(Vec::new()));
+            let skills_reads = Arc::new(AtomicUsize::new(0));
             let mailbox = Arc::new(DriverMailbox::new().unwrap());
             let mut completed = CompletedActivationDriverParts {
                 parts: IdleActivationParts::new(
@@ -113,9 +138,8 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
                 ),
                 idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
                 transport: CatalogTransport {
-                    writes: Arc::clone(&writes),
-                    mailbox: Arc::clone(&mailbox),
-                    shutdown_after: Some(4),
+                    skills_reads: Arc::clone(&skills_reads),
+                    ..CatalogTransport::new(&writes, Arc::clone(&mailbox), Some(4))
                 },
                 control: NoChildProcessControl {
                     zero_checks: Arc::new(AtomicUsize::new(0)),
@@ -132,6 +156,7 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
                 project_generation: ProjectGeneration::ZERO,
                 chat_id: fixture.chat_id,
                 projection_revision: fixture.ready_projection_revision,
+                intent_revision: fixture.ready_projection_revision,
                 session_id: Some(fixture.started.session_id),
                 runtime_epoch: Some(fixture.epoch),
                 turn_id: None,
@@ -172,12 +197,14 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
             }
             mailbox.try_push_chunk(chunk).unwrap();
             let (state, reason) = super::super::live_runner::drive_for_test(
-                FirstTurnWorkerState::Idle(completed),
+                FirstTurnWorkerState::Idle(Box::new(completed)),
                 &context,
             )
             .await;
             assert_eq!(reason, TreeExit::ParentShutdown);
             assert_eq!(writes.lock().unwrap().len(), 4);
+            // The skills are read once while idle, beside the catalog.
+            assert_eq!(skills_reads.load(Ordering::Relaxed), 1);
             for (page, request) in writes.lock().unwrap().iter().enumerate().skip(1) {
                 assert_eq!(request["method"], "model/list");
                 assert_eq!(request["params"]["cursor"], format!("page-{page}"));
@@ -196,7 +223,25 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
                 );
             } else {
                 let config = serde_json::to_value(adapter.session_config().unwrap()).unwrap();
-                assert_eq!(config["configOptions"], json!([]));
+                // No page lists the thread's model: it is still offered,
+                // named by its id, beside the listed ones, with no thinking
+                // level since none is known for it.
+                let [model] = config["configOptions"].as_array().unwrap().as_slice() else {
+                    panic!("only the model is offered: {config}");
+                };
+                assert_eq!(model["category"], "model");
+                assert_eq!(model["currentValue"], "selected");
+                let values: Vec<_> = model["options"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|option| option["value"].as_str().unwrap())
+                    .collect();
+                assert_eq!(
+                    values,
+                    ["selected", "other-0", "other-1", "other-2", "other-3"]
+                );
+                assert_eq!(model["options"][0]["name"], "selected");
                 assert_eq!(config["confirmedModel"], json!({"id":"selected"}));
             }
             drop(context);
@@ -251,11 +296,11 @@ fn idle_catalog_keeps_exact_aggregate_limits_and_ignores_one_more_model_without_
                 },
             ),
             idle_decoder: crate::acp::transport::IncrementalFrameDecoder::new(),
-            transport: CatalogTransport {
-                writes: Arc::clone(&writes),
-                mailbox: Arc::new(DriverMailbox::new().unwrap()),
-                shutdown_after: None,
-            },
+            transport: CatalogTransport::new(
+                &writes,
+                Arc::new(DriverMailbox::new().unwrap()),
+                None,
+            ),
             control: NoChildProcessControl {
                 zero_checks: Arc::new(AtomicUsize::new(0)),
             },

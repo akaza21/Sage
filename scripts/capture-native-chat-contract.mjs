@@ -64,6 +64,15 @@ export function assertPrivacy(value) {
   )
     fail("privacy");
 }
+/**
+ * Base states take every capture width. The context meter is the first thing
+ * the composer toolbar fit drops (useComposerToolbarFit), so whether a width
+ * shows it is not fixed here: the context-meter state witnesses the rendered
+ * fit, the meter shown or dropped where the measured row needs its column.
+ */
+export function captureWidths(state) {
+  return parityWidths(state);
+}
 export function parseArgs(args) {
   const values = {};
   if (args.length !== 6) fail("arguments");
@@ -91,7 +100,7 @@ export function parseArgs(args) {
   if (responsiveWidth && responsiveWidth !== width)
     fail("responsive-width-mismatch");
   // A surface the product hides below a pane width is not captured there.
-  if (!parityWidths(state).includes(width)) fail("state-width-unsupported");
+  if (!captureWidths(state).includes(width)) fail("state-width-unsupported");
   return {
     harness,
     state,
@@ -175,9 +184,9 @@ function validateChatIdentity(probe) {
       probe.bindingId,
     ) ||
     !IDENTIFIER.test(probe.turnId) ||
-    !["standard-acp-1", "codex-app-server-0.146.0", "pi-rpc-0.83.0"].includes(
-      probe.protocol,
-    )
+    !Object.values(HARNESS)
+      .map(({ protocol }) => protocol)
+      .includes(probe.protocol)
   )
     fail("probe-identity");
   const harness = HARNESS[probe.caseId.split("-")[0]];
@@ -350,7 +359,20 @@ export function validatePng(bytes, viewport) {
 }
 export async function waitForState(predicate, deadline) {
   while (Date.now() < deadline) {
-    if (await predicate()) return;
+    try {
+      if (await predicate()) return;
+    } catch (error) {
+      // CDP reports a deadline only to the operation that enforced it; later
+      // requests on that connection reject as terminated, with that cause.
+      // Classify by the enforced bound, not by when its failure arrived.
+      if (
+        error?.message === "journey-cdp-deadline" &&
+        Number.isSafeInteger(error.deadline) &&
+        error.deadline <= deadline
+      )
+        throw new Error("state-timeout", { cause: error });
+      throw error;
+    }
     await new Promise((resolve) =>
       setTimeout(resolve, Math.min(50, Math.max(0, deadline - Date.now()))),
     );

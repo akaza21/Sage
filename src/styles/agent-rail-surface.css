@@ -7,6 +7,12 @@
   border-right-color: var(--agent-shell-divider);
 }
 
+/* The rail's own border is the edge; the splitter beside it lights only on
+   hover, drag and focus, so the edge never draws twice. */
+.workbench--agent .workbench-sidebar-splitter--leading {
+  --sidebar-splitter-fill: transparent;
+}
+
 .workbench--agent .project-sidebar__icon-rail {
   display: flex;
   grid-column: 1;
@@ -311,19 +317,11 @@
 
 .agent-rail-options__menu.menu-popover {
   width: 200px;
-  padding: var(--space-1);
   gap: 0;
-  border-color: var(--color-panel-raised-hover);
-  border-radius: var(--radius-lg);
-  background: var(--color-panel-raised);
 }
 
 .agent-rail-options__submenu.menu-popover {
   width: 164px;
-}
-
-.agent-rail-options__choices {
-  display: grid;
 }
 
 .agent-rail-options__menu .menu-item {

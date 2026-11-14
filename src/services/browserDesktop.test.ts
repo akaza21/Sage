@@ -576,7 +576,7 @@ describe("browser simulator history bounds", () => {
         },
         archivedLast.transitionEpoch,
       ),
-    ).rejects.toThrow("last attached Chat");
+    ).rejects.toThrow("last attached chat");
     await expect(
       browserDesktop.restoreChat(
         {

@@ -21,6 +21,7 @@ import { rootDisplayName } from "./rootDisplayName";
 import { useTurnWorkspaceChanges } from "./turnWorkspaceBridge";
 import type { TurnWorkspaceChange } from "./turnWorkspaceChanges";
 import { editDiffAction } from "./chatEditSummary";
+import { BackgroundTerminalSlot } from "./BackgroundTerminalSlot";
 
 interface TurnEditSummaryProps {
   page: AcpChatPage;
@@ -32,9 +33,24 @@ interface TurnEditSummaryProps {
   onRecordDisposition?: (
     disposition: AgentEditDisposition,
   ) => Promise<AcpMutationResult>;
+  /** Present only while the session can review its uncommitted changes. */
+  onReview?: () => void;
 }
 
-export const TurnEditSummary = memo(function TurnEditSummary({
+/** The dock above the composer: the commands the session left running,
+ * then the chat's edited files. */
+export const TurnEditSummary = memo(function TurnEditSummary(
+  props: TurnEditSummaryProps,
+) {
+  return (
+    <>
+      <BackgroundTerminalSlot page={props.page} rootLabels={props.rootLabels} />
+      <EditSummary {...props} />
+    </>
+  );
+});
+
+function EditSummary({
   page,
   rootLabels,
   countIncomplete,
@@ -42,6 +58,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
   workspaceIncomplete = false,
   onOpenResource,
   onRecordDisposition,
+  onReview,
 }: TurnEditSummaryProps) {
   const fetchedWorkspaceChanges = useTurnWorkspaceChanges(
     page,
@@ -61,6 +78,9 @@ export const TurnEditSummary = memo(function TurnEditSummary({
   const [dispositionError, setDispositionError] = useState(false);
   const [previewKey, setPreviewKey] = useState<string | null>(null);
   if (summary.changes.length === 0) return null;
+  // A single-root project names its root nowhere else in the row, so only
+  // a multi-root project repeats it on each changed file.
+  const multiRoot = Object.keys(rootLabels).length > 1;
   const summaryIncomplete =
     countIncomplete ||
     summary.omittedCount > 0 ||
@@ -193,7 +213,7 @@ export const TurnEditSummary = memo(function TurnEditSummary({
             const chip = admitted ? (
               <ChatFileChip
                 path={resource.relativePath}
-                rootLabel={rootName}
+                rootLabel={multiRoot ? rootName : null}
                 additions={change.additions}
                 deletions={change.deletions}
               />
@@ -288,6 +308,14 @@ export const TurnEditSummary = memo(function TurnEditSummary({
             </div>
           ))
         : null}
+      {expanded && onReview ? (
+        <div className="acp-file-changes__review">
+          <button type="button" onClick={onReview}>
+            Review changes
+          </button>
+          <span>Ask the agent to review the uncommitted changes.</span>
+        </div>
+      ) : null}
       {expanded && dispositionError ? (
         <p className="acp-file-changes__disclosure" role="alert">
           The edit disposition was not recorded. No workspace files were
@@ -312,4 +340,4 @@ export const TurnEditSummary = memo(function TurnEditSummary({
       ) : null}
     </section>
   );
-});
+}

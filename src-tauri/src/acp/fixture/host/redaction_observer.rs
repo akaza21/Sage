@@ -1,15 +1,12 @@
 use std::{
     fs::OpenOptions,
-    io::{Read, Write},
+    io::Write,
     path::{Path, PathBuf},
-    process::{Child, Command, ExitStatus, Stdio},
-    sync::{Arc, Mutex, mpsc},
-    thread,
+    process::{Command, Stdio},
     time::{Duration, Instant},
 };
 
 use serde_json::{Value, json};
-use tracing_subscriber::{Layer, fmt::MakeWriter, layer::SubscriberExt};
 use uuid::Uuid;
 
 use crate::acp::{
@@ -23,6 +20,10 @@ use crate::acp::{
 };
 
 use super::store_bounds::{digest, item_fixture};
+
+#[path = "redaction_observer_process.rs"]
+mod process;
+use process::ChildGuard;
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &["redaction-canaries-all-sinks"];
 
@@ -201,57 +202,19 @@ fn read_sqlite(connection: &rusqlite::Connection) -> Value {
 }
 
 fn capture_structured_logs(diagnostics: &[SafeDiagnostic]) -> String {
-    let bytes = Arc::new(Mutex::new(Vec::new()));
-    let sage_targets = tracing_subscriber::filter::filter_fn(crate::is_sage_target);
-    let formatter = tracing_subscriber::fmt::layer()
-        .without_time()
-        .with_ansi(false)
-        .with_target(false)
-        .with_writer(Capture(Arc::clone(&bytes)))
-        .with_filter(sage_targets);
-    let subscriber = tracing_subscriber::registry().with(formatter);
-    tracing::subscriber::with_default(subscriber, || {
+    let ((), captured) = crate::test_diagnostics::capture_matching(crate::is_sage_target, || {
         for diagnostic in diagnostics {
             tracing::info!(?diagnostic, "ACP sensitive input redacted");
         }
         tracing::info!(target: "unrelated_dependency", "must be filtered");
     });
-    let captured = bytes.lock().unwrap().clone();
-    let captured = String::from_utf8(captured).unwrap();
+    assert!(captured.len() <= STRUCTURED_LOG_BYTES);
     assert!(!captured.contains("must be filtered"));
     assert_eq!(
         captured.matches("ACP sensitive input redacted").count(),
         diagnostics.len()
     );
     captured
-}
-
-#[derive(Clone)]
-struct Capture(Arc<Mutex<Vec<u8>>>);
-
-struct CaptureWriter(Arc<Mutex<Vec<u8>>>);
-
-impl<'a> MakeWriter<'a> for Capture {
-    type Writer = CaptureWriter;
-
-    fn make_writer(&'a self) -> Self::Writer {
-        CaptureWriter(Arc::clone(&self.0))
-    }
-}
-
-impl Write for CaptureWriter {
-    fn write(&mut self, input: &[u8]) -> std::io::Result<usize> {
-        let mut bytes = self.0.lock().unwrap();
-        if bytes.len().saturating_add(input.len()) > STRUCTURED_LOG_BYTES {
-            return Err(std::io::Error::other("structured log capture limit"));
-        }
-        bytes.extend_from_slice(input);
-        Ok(input.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
 }
 
 fn observe_curated_evidence(observation: &Value) -> Value {
@@ -272,18 +235,12 @@ fn observe_curated_evidence(observation: &Value) -> Value {
         .spawn()
         .unwrap();
     let spawned = Instant::now();
-    let mut child = ChildGuard {
-        child,
-        completed: false,
-        started,
-        spawned,
-    };
-    let stdout = read_node_stream(child.child.stdout.take().unwrap());
-    let stderr = read_node_stream(child.child.stderr.take().unwrap());
+    let mut child = ChildGuard::new(child, started, spawned);
+    let (stdout, stderr) = child.read_streams();
     let deadline = spawned + NODE_TIMEOUT;
     let status = child.wait_until(deadline);
-    let output = receive_node_stream(stdout, deadline, "stdout", &child);
-    let stderr = receive_node_stream(stderr, deadline, "stderr", &child);
+    let output = child.receive_stream(stdout, deadline);
+    let stderr = child.receive_stream(stderr, deadline);
     let stderr_overflow = stderr.len() as u64 > NODE_OUTPUT_BYTES;
     let stderr = SensitiveBytes::new(stderr).redact(DiagnosticCode::ProtocolFailure);
     assert!(
@@ -303,94 +260,6 @@ fn observe_curated_evidence(observation: &Value) -> Value {
     // tests too. Log durations only, never child output or evidence paths.
     let _ = writeln!(std::io::stderr(), "curated observer: {}", child.timing());
     observation
-}
-
-fn read_node_stream<R>(reader: R) -> mpsc::Receiver<std::io::Result<Vec<u8>>>
-where
-    R: Read + Send + 'static,
-{
-    let (sender, receiver) = mpsc::sync_channel(1);
-    thread::spawn(move || {
-        let mut output = Vec::new();
-        let result = reader
-            .take(NODE_OUTPUT_BYTES + 1)
-            .read_to_end(&mut output)
-            .map(|_| output);
-        let _ = sender.send(result);
-    });
-    receiver
-}
-
-fn receive_node_stream(
-    receiver: mpsc::Receiver<std::io::Result<Vec<u8>>>,
-    deadline: Instant,
-    stream: &str,
-    child: &ChildGuard,
-) -> Vec<u8> {
-    receiver
-        .recv_timeout(deadline.saturating_duration_since(Instant::now()))
-        .unwrap_or_else(|_| {
-            panic!(
-                "curated observer {stream} did not close; {}",
-                child.timing()
-            )
-        })
-        .unwrap_or_else(|_| panic!("curated observer {stream} could not be read"))
-}
-
-struct ChildGuard {
-    child: Child,
-    completed: bool,
-    started: Instant,
-    spawned: Instant,
-}
-
-impl ChildGuard {
-    fn timing(&self) -> String {
-        let now = Instant::now();
-        format!(
-            "elapsed={:.3?}, spawn={:.3?}, post_spawn={:.3?}, limit={:.3?}",
-            now.duration_since(self.started),
-            self.spawned.duration_since(self.started),
-            now.duration_since(self.spawned),
-            NODE_TIMEOUT,
-        )
-    }
-
-    fn wait_until(&mut self, deadline: Instant) -> ExitStatus {
-        loop {
-            match self.child.try_wait() {
-                Ok(Some(status)) => {
-                    self.completed = true;
-                    return status;
-                }
-                Ok(None) => {}
-                Err(_) => panic!("curated observer status unavailable"),
-            }
-            assert!(
-                Instant::now() < deadline,
-                "curated observer exceeded its time limit; {}",
-                self.timing()
-            );
-            thread::sleep(Duration::from_millis(10));
-        }
-    }
-}
-
-impl Drop for ChildGuard {
-    fn drop(&mut self) {
-        if !self.completed {
-            let _ = self.child.kill();
-            let deadline =
-                Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.tree_termination);
-            while Instant::now() < deadline {
-                match self.child.try_wait() {
-                    Ok(Some(_)) | Err(_) => break,
-                    Ok(None) => thread::sleep(Duration::from_millis(10)),
-                }
-            }
-        }
-    }
 }
 
 struct TemporaryEvidence(PathBuf);

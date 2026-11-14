@@ -2,6 +2,7 @@ use super::*;
 
 mod permission;
 mod read_text_file;
+mod session_info;
 
 const MAX_CANCELLED_PROMPT_ERRORS: usize = 16;
 
@@ -9,7 +10,7 @@ impl ClaudeRuntime {
     fn binding_is_characterised(&self) -> bool {
         self.launch_binding
             .as_ref()
-            .is_none_or(|binding| binding.characterisation().is_characterised())
+            .is_none_or(|binding| binding.characterisation().runs_tested_features())
     }
 
     fn ingest_response(&mut self, value: Value) -> Result<AdapterBatch, AdapterRuntimeError> {
@@ -98,6 +99,7 @@ impl ClaudeRuntime {
         // `session/load` requires cwd/MCP context that the frozen shared command
         // does not carry. Intersect the source offer with Sage's safe surface.
         capabilities.load_session = false;
+        capabilities.child_transcript_read = self.stores_children;
         let default_model = models.first().map(|model| model.id.clone());
         let mut batch = AdapterBatchBuilder::new();
         batch.push_event(SharedEvent::Initialized {
@@ -136,6 +138,7 @@ impl ClaudeRuntime {
             config: crate::acp::session_config::SessionConfig::from_wire(&value["result"], true)
                 .map_err(|_| AdapterRuntimeError::Frame)?,
             cancelled_prompt_errors: Default::default(),
+            commands: Arc::default(),
         });
         AdapterBatch::new(
             vec![SharedEvent::SessionReady {
@@ -227,8 +230,14 @@ impl ClaudeRuntime {
         if self.absorbs_fork_update(&value) {
             return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
         }
-        if self.config_notification(&value)? {
-            return AdapterBatch::new(vec![SharedEvent::IgnoredDuplicate], Vec::new());
+        if self.commands_notification(&value)? {
+            return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
+        }
+        if let Some(batch) = self.config_notification(&value)? {
+            return Ok(batch);
+        }
+        if let Some(batch) = self.session_info_notification(&value)? {
+            return Ok(batch);
         }
         let active = self.active.as_mut().ok_or(AdapterRuntimeError::Frame)?;
         let events = active
@@ -312,7 +321,19 @@ impl ClaudeRuntime {
         Ok(batch.finish())
     }
 
-    fn session_identity(
+    /// A session-scoped fact for the open session; none before it opens.
+    pub(crate) fn session_event(
+        &self,
+        event: crate::acp::intent::session_event::SessionScopedEvent,
+    ) -> Option<SharedEvent> {
+        let active = self.active.as_ref()?;
+        Some(SharedEvent::Session {
+            id: self.session_identity(active.external_id.clone()),
+            event,
+        })
+    }
+
+    pub(super) fn session_identity(
         &self,
         external_id: ExternalId,
     ) -> crate::acp::bindings::adapter::AdapterIdentity {
@@ -363,9 +384,20 @@ impl ClaudeRuntime {
         resources: &dyn SharedResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let value = decode_frame(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
+        let request_digest =
+            request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
+        self.ingest_value(value, request_digest, resources)
+    }
+
+    /// One decoded ACP frame; `request_digest` identifies it when it is a
+    /// request.
+    pub(crate) fn ingest_value(
+        &mut self,
+        value: Value,
+        request_digest: [u8; 32],
+        resources: &dyn SharedResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
         if value.get("method").is_some() {
-            let request_digest =
-                request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
             self.ingest_notification(value, resources, request_digest)
         } else {
             self.ingest_response(value)

@@ -20,24 +20,26 @@ fn reply() -> AdapterEgress {
 
 #[test]
 fn allow_once_replaces_the_adapter_token_without_a_mandatory_deny() {
-    let result = resolve_later_permission(&request(), PermissionDecision::AllowOnce, Some(reply()))
-        .expect("pending request")
-        .expect("allow has wire reply");
+    let result =
+        resolve_later_permission(&request(), &PermissionDecision::AllowOnce, Some(reply()))
+            .expect("pending request")
+            .expect("allow has wire reply");
     assert!(result.token().deny_request().is_none());
 }
 
 #[test]
 fn allow_once_uses_the_permission_allow_token() {
-    let result = resolve_later_permission(&request(), PermissionDecision::AllowOnce, Some(reply()))
-        .expect("pending request")
-        .expect("allow has wire reply");
+    let result =
+        resolve_later_permission(&request(), &PermissionDecision::AllowOnce, Some(reply()))
+            .expect("pending request")
+            .expect("allow has wire reply");
     assert!(!result.token().is_mandatory());
 }
 
 #[test]
 fn request_id_is_the_permission_allow_token_identity() {
     let request = crate::acp::contract::SageServerRequestId::parse("approval-1").unwrap();
-    let egress = resolve_later_permission(&request, PermissionDecision::AllowOnce, Some(reply()))
+    let egress = resolve_later_permission(&request, &PermissionDecision::AllowOnce, Some(reply()))
         .unwrap()
         .unwrap();
     assert_eq!(egress.token().allow_request(), Some("approval-1"));
@@ -46,7 +48,7 @@ fn request_id_is_the_permission_allow_token_identity() {
 #[test]
 fn request_id_is_the_permission_deny_token_identity() {
     let request = crate::acp::contract::SageServerRequestId::parse("pi-request-1").unwrap();
-    let egress = resolve_later_permission(&request, PermissionDecision::Deny, Some(reply()))
+    let egress = resolve_later_permission(&request, &PermissionDecision::Deny, Some(reply()))
         .unwrap()
         .unwrap();
     assert_eq!(egress.token().deny_request(), Some(("pi-request-1", false)));
@@ -55,7 +57,7 @@ fn request_id_is_the_permission_deny_token_identity() {
 #[test]
 fn missing_pending_request_is_a_typed_later_decision_miss() {
     assert!(matches!(
-        resolve_later_permission(&request(), PermissionDecision::Deny, None),
+        resolve_later_permission(&request(), &PermissionDecision::Deny, None),
         Err(LaterPermissionError::PendingRequestMiss)
     ));
 }

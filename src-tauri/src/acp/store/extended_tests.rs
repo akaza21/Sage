@@ -21,6 +21,7 @@ pub(super) fn setup() -> Connection {
          CREATE TABLE chats(id TEXT PRIMARY KEY,project_id TEXT,ordinal INTEGER,title TEXT,projection_revision INTEGER,created_at INTEGER,updated_at INTEGER);
          CREATE TABLE chat_lineage(child_project_id TEXT,child_chat_id TEXT PRIMARY KEY,parent_project_id TEXT,parent_chat_id TEXT,source_turn_id TEXT,relation TEXT);
          CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY,project_id TEXT,chat_id TEXT,updated_at INTEGER);
+         CREATE TABLE acp_imported_histories(session_id TEXT PRIMARY KEY,history_json TEXT,created_at INTEGER);
          CREATE TABLE agent_sessions(id TEXT PRIMARY KEY,project_id TEXT,chat_id TEXT,ordinal INTEGER,binding_id TEXT,binding_digest TEXT,harness_version TEXT,model_id TEXT,external_session_id TEXT,capabilities_json TEXT,state TEXT,residency TEXT,legacy INTEGER,revision INTEGER,projection_revision INTEGER,created_at INTEGER,updated_at INTEGER,terminal_at INTEGER);
          CREATE TABLE chat_session_heads(project_id TEXT,chat_id TEXT PRIMARY KEY,session_id TEXT UNIQUE,installed_revision INTEGER,installed_at INTEGER);
          CREATE TABLE session_runtime_epochs(project_id TEXT,chat_id TEXT,session_id TEXT,runtime_epoch INTEGER,state TEXT,artifact_digest TEXT,started_at INTEGER,terminal_at INTEGER,exit_kind TEXT,PRIMARY KEY(session_id,runtime_epoch));
@@ -48,6 +49,17 @@ pub(super) fn setup() -> Connection {
             "../../../migrations/010_acp_file_change_snapshots.sql"
         ))
         .unwrap();
+    // The handmade sessions table lacks the owner key v21 references.
+    connection
+        .execute_batch(
+            "CREATE UNIQUE INDEX fixture_session_owner ON agent_sessions(project_id,chat_id,id);",
+        )
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/021_acp_session_scope.sql"
+        ))
+        .unwrap();
     connection
         .execute_batch(
             "CREATE TABLE acp_turn_usage_snapshots(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,input_tokens INTEGER,output_tokens INTEGER,context_window INTEGER,revision INTEGER,created_at INTEGER,updated_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
@@ -69,6 +81,21 @@ pub(super) fn setup() -> Connection {
         ))
         .unwrap();
     connection
+        .execute_batch(include_str!(
+            "../../../migrations/025_chat_title_source.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/026_session_facts_turn_index.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/027_browser_operation_terminal_index.sql"
+        ))
+        .unwrap();
+    connection
 }
 
 pub(super) fn capabilities() -> String {
@@ -82,12 +109,18 @@ pub(super) fn capabilities() -> String {
         prompt: true,
         cancel: true,
         native_session_fork: false,
+        native_session_compact: false,
+        native_session_import: false,
+        native_review: false,
+        native_background_terminals: false,
         active_turn_steer: false,
         child_conversation_projection: false,
         child_transcript_read: false,
         collaboration_event_projection: false,
         multi_root_extension_schema_id: None,
         model_count: 1,
+        prompt_resources: false,
+        prompt_images: false,
         config_count: 0,
     })
     .unwrap()
@@ -693,6 +726,7 @@ fn chat_page_projects_more_than_the_live_permission_window_from_history() {
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'exited',NULL,0,1,'fixture')",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-permissions','project-one','chat-one',?1,1,0,'turn-intent','completed','correlated',0,1,1,1)",[started.session_id.as_str()]).unwrap();
     let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
@@ -730,6 +764,7 @@ fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'failed',NULL,0,2,'protocolFailure')",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-permission','project-one','chat-one',?1,1,0,'turn-intent','failed','correlated',0,1,2,2)",[started.session_id.as_str()]).unwrap();
     let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
@@ -764,6 +799,7 @@ fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
 
 pub(super) fn permission(session: &SageAgentSessionId) -> PermissionIntent {
     let normalized_payload_json = serde_json::to_string(&NormalizedPayload::PermissionRequest {
+        user_input: None,
         category: ToolCategory::Execute,
         summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
@@ -845,6 +881,7 @@ fn permission_receive_and_decline_are_durable_idempotent_and_write_ordered() {
     let mut changed = intent.clone();
     changed.normalized_payload_json =
         serde_json::to_string(&NormalizedPayload::PermissionRequest {
+            user_input: None,
             category: ToolCategory::Execute,
             summary: crate::acp::contract::SafeText::new("summary", "Different command").unwrap(),
             offered_option_kinds: None,

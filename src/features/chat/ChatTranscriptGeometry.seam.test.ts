@@ -74,12 +74,12 @@ describe("CP-28 transcript style contracts", () => {
     );
     expect(compact(composer.width)).toBe(
       compact(
-        "min(var(--reading-measure), calc(100% - var(--chat-column-gutter) - var(--chat-column-gutter) - var(--chat-column-trailing)))",
+        "min(var(--chat-column-measure), calc(100% - var(--chat-column-gutter) - var(--chat-column-gutter) - var(--chat-column-trailing)))",
       ),
     );
     expect(compact(composer.marginInlineStart)).toBe(
       compact(
-        "max(var(--chat-column-gutter), calc((100% - var(--chat-column-trailing) - var(--reading-measure)) / 2))",
+        "max(var(--chat-column-gutter), calc((100% - var(--chat-column-trailing) - var(--chat-column-measure)) / 2))",
       ),
     );
     const source = readFileSync("src/styles/composer-surface.css", "utf8");
@@ -95,7 +95,7 @@ describe("CP-28 transcript style contracts", () => {
         "src/features/chat/chat-transcript-polish.css",
         ".message-list__content",
       ).width,
-    ).toBe("min(100%, var(--reading-measure))");
+    ).toBe("min(100%, var(--chat-column-measure))");
   });
 
   it("configures one native-marker gutter and hanging text inset for Chat lists", () => {
@@ -128,7 +128,7 @@ describe("CP-28 transcript style contracts", () => {
       "src/features/chat/acp/chat-markdown.css",
       ".acp-markdown .markdown-table :is(th, td)",
     );
-    expect(cells.fontSize).toBe("var(--font-size-sm)");
+    expect(cells.fontSize).toBe("var(--chat-table-font-size)");
     expect(cells.lineHeight).toBe("var(--line-height-relaxed)");
     const headers = declaration(
       "src/features/chat/acp/chat-markdown.css",

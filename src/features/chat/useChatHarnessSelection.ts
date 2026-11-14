@@ -11,21 +11,17 @@ import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
 import type { HarnessDefinition } from "../../domain/harness";
-import { harnessIconKind } from "../../domain/harness";
 import type { SearchablePickerOption } from "../../ui/SearchablePicker";
 import { useAcpChatProjection } from "./acp";
 import { harnessAvailability } from "./harnessAvailability";
 
 export function harnessPickerCandidates(
   harnesses: readonly HarnessDefinition[],
+  selectedId?: string | null,
+  selectedSubtitle?: string,
 ): SearchablePickerOption[] {
-  return [...harnesses]
-    .sort(
-      (left, right) =>
-        Number(Boolean(harnessAvailability(left).disabledReason)) -
-        Number(Boolean(harnessAvailability(right).disabledReason)),
-    )
-    .map((harness) => {
+  return harnesses
+    .map<SearchablePickerOption>((harness) => {
       const availability = harnessAvailability(harness);
       const status = harness.versionChecking
         ? "version checking…"
@@ -34,13 +30,18 @@ export function harnessPickerCandidates(
           : availability.label;
       return {
         id: harness.id,
-        icon: harnessIconKind(harness.name) ?? "generic",
+        icon: harness.brand ?? "generic",
         label: harness.name,
-        triggerLabel: harness.name,
+        subtitle: harness.id === selectedId ? selectedSubtitle : undefined,
         accessibleLabel: `${harness.name} — ${status}${availability.disabledReason ? `. ${availability.disabledReason}` : ""}`,
         disabledReason: availability.disabledReason,
       };
-    });
+    })
+    .sort(
+      (left, right) =>
+        Number(Boolean(left.disabledReason)) -
+        Number(Boolean(right.disabledReason)),
+    );
 }
 
 export function useComposerPopovers(disabled = false) {

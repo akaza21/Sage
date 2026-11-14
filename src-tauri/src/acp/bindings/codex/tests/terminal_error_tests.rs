@@ -1,5 +1,7 @@
 use super::*;
 
+mod plan_store_tests;
+
 fn running_adapter() -> CodexAdapter {
     let mut adapter = adapter();
     ready(&mut adapter);
@@ -252,4 +254,29 @@ fn absent_or_null_terminal_error_does_not_invent_an_error_item() {
             );
         }
     }
+}
+
+fn interrupted() -> Vec<u8> {
+    serde_json::to_vec(&json!({"method":"turn/completed","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"interrupted"}
+    }}))
+    .unwrap()
+}
+
+#[test]
+fn an_interrupt_sage_never_wrote_leaves_the_codex_stop_interrupted() {
+    let mut adapter = running_adapter();
+    adapter.cancel(3).unwrap();
+    adapter.reject_before_write(3).unwrap();
+    let IngressDisposition::Events(events) = adapter.ingest(&interrupted(), &Mapper).unwrap()
+    else {
+        panic!()
+    };
+    assert!(matches!(
+        events.as_slice(),
+        [IncomingEvent::Turn {
+            state: TurnState::Interrupted,
+            ..
+        }]
+    ));
 }

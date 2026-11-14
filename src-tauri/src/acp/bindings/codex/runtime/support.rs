@@ -1,4 +1,7 @@
-use super::super::{request::OutgoingRequest, state::CodexAdapter};
+use super::super::{
+    request::{OutgoingRequest, RequestKind},
+    state::CodexAdapter,
+};
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterEgress, AdapterEvent, AdapterIdentity, AdapterModel,
@@ -33,7 +36,12 @@ impl super::CodexRuntime {
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let id = self.next_id()?;
         let request = build(&mut self.inner, id).map_err(map_adapter)?;
-        match OutboundFrame::new(request.bytes) {
+        let frame = if request.kind == RequestKind::TurnStart {
+            OutboundFrame::new_prompt(request.bytes)
+        } else {
+            OutboundFrame::new(request.bytes)
+        };
+        match frame {
             Ok(frame) => Ok(AdapterEgress::new(
                 frame,
                 if control {
@@ -72,6 +80,10 @@ impl super::super::ResourceMapper for MapperBridge<'_> {
     ) -> Option<crate::acp::intent::SafeResourceRef> {
         self.0.map_missing_display(absolute_path)
     }
+
+    fn read_diff_context(&self, resource: &crate::acp::intent::SafeResourceRef) -> Option<String> {
+        self.0.read_diff_context(resource)
+    }
 }
 
 pub(super) fn identity(value: ScopedExternalId) -> AdapterIdentity {
@@ -101,7 +113,7 @@ pub(super) fn one(event: AdapterEvent) -> Result<AdapterBatch, AdapterRuntimeErr
 }
 
 pub(super) fn model_values(
-    models: Vec<ModelDescriptor>,
+    models: &[ModelDescriptor],
 ) -> Result<Vec<AdapterModel>, AdapterRuntimeError> {
     if models.len() > LIMITS.wire.models_or_config_entries as usize {
         return Err(AdapterRuntimeError::BatchCount);
@@ -121,18 +133,16 @@ pub(super) fn model_values(
     output
         .try_reserve_exact(models.len())
         .map_err(|_| AdapterRuntimeError::BatchBytes)?;
-    output.extend(models.into_iter().map(|model| AdapterModel {
-        id: model.id,
-        name: model.name,
+    output.extend(models.iter().map(|model| AdapterModel {
+        id: model.id.clone(),
+        name: model.name.clone(),
         is_default: model.is_default,
     }));
     Ok(output)
 }
 
-pub(super) fn config_for_model(
-    model: &ModelDescriptor,
-    current: &str,
-) -> Option<crate::acp::session_config::SessionConfig> {
+/// The thinking level `model` takes, at `current`, when it advertises any.
+pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<serde_json::Value> {
     if model.supported_efforts.is_empty() {
         return None;
     }
@@ -166,14 +176,59 @@ pub(super) fn config_for_model(
     if let Some(default) = default {
         option["defaultValue"] = serde_json::json!(default);
     }
-    let config: crate::acp::session_config::SessionConfig =
-        serde_json::from_value(serde_json::json!({
-            "modes":null,
-            "configOptions":[option]
-        }))
-        .ok()?;
-    config.validate().ok()?;
-    Some(config)
+    Some(option)
+}
+
+/// The thread's model, `current`, as a choice among the listed models. A
+/// model Codex did not list (one its picker hides) is still the thread's, so
+/// it is offered first, named by its id: the composer then shows what the
+/// thread runs and can move it to a listed model.
+pub(super) fn model_option(
+    catalog: &[ModelDescriptor],
+    current: &crate::acp::intent::ModelId,
+) -> serde_json::Value {
+    let choice = |id: &str, name: &str| serde_json::json!({"value":id,"name":name});
+    let unlisted = (!catalog.iter().any(|model| model.id == *current))
+        .then(|| choice(current.as_str(), current.as_str()));
+    let options: Vec<_> = unlisted
+        .into_iter()
+        .chain(
+            catalog
+                .iter()
+                .map(|model| choice(model.id.as_str(), model.name.as_str())),
+        )
+        .collect();
+    serde_json::json!({
+        "id":"model", "name":"Model", "category":"model", "type":"select",
+        "currentValue":current.as_str(), "options":options
+    })
+}
+
+/// `base` with each of `options`, in order, that still fits beside the ones
+/// before it, so an option over the config's bounds drops only itself.
+pub(super) fn thread_config(
+    base: crate::acp::session_config::SessionConfig,
+    options: impl IntoIterator<Item = serde_json::Value>,
+) -> crate::acp::session_config::SessionConfig {
+    let Ok(mut wire) = serde_json::to_value(&base) else {
+        return base;
+    };
+    let mut config = base;
+    let mut kept = Vec::new();
+    for option in options {
+        kept.push(option);
+        wire["configOptions"] = serde_json::Value::from(kept.clone());
+        match serde_json::from_value::<crate::acp::session_config::SessionConfig>(wire.clone())
+            .ok()
+            .filter(|candidate| candidate.validate().is_ok())
+        {
+            Some(candidate) => config = candidate,
+            None => {
+                kept.pop();
+            }
+        }
+    }
+    config
 }
 
 pub(super) fn map_adapter(error: AdapterError) -> AdapterRuntimeError {

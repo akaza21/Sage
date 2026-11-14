@@ -8,7 +8,6 @@
 
 import { validPathGlob } from "./pathGlob";
 
-/** Each setting's owning ticket is recorded in the Rust registry only. */
 interface EntryShape {
   key: `${"editor" | "explorer" | "files" | "git" | "search"}.${string}`;
 }

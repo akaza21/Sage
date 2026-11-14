@@ -5,7 +5,8 @@
 //! mode, within a bounded version range whose wire behaviour the pinned
 //! translator covers. Launch is read-only by construction: Pi is started with
 //! only its `read` tool, no extensions, skills, prompt templates, themes or
-//! session files, and the translator still rejects any other tool.
+//! session files. An exact Sage-bundled bridge may explicitly register managed
+//! tools on the pinned release; missing or stale resources leave only read.
 
 use std::{
     ffi::OsString,
@@ -17,7 +18,10 @@ use sha2::{Digest, Sha256};
 
 use crate::{
     acp::{
-        bindings::adapter::AdapterRuntimeError,
+        bindings::{
+            adapter::AdapterRuntimeError,
+            release_version::{ReleaseVersion, characterise_against},
+        },
         process::{
             ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
             RequiredContainment, TreeLimits,
@@ -27,24 +31,40 @@ use crate::{
     harness_discovery::{DiscoveredPiLaunch, PiLaunchDiscovery},
 };
 
-use super::manifest::parse_version;
-
 pub(crate) const PI_BINDING_ID: &str = "pi-rpc";
-/// Oldest Pi release whose RPC commands and events the translator covers.
-pub(crate) const PI_SUPPORTED_MINIMUM: (u64, u64, u64) = (0, 74, 0);
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:pi-rpc:native:v1:";
-/// Read-only launch arguments after the entrypoint.
-pub(crate) const PI_READ_ONLY_ARGS: [&str; 9] = [
+/// Read-only launch arguments after the entrypoint. Prompt templates, skills
+/// and saved sessions load as they do in Pi's own CLI; user extensions stay
+/// off, because their tools would act outside Sage's approvals.
+pub(crate) const PI_READ_ONLY_ARGS: [&str; 6] = [
     "--mode",
     "rpc",
     "--tools",
     "read",
     "--no-extensions",
-    "--no-skills",
-    "--no-prompt-templates",
     "--no-themes",
-    "--no-session",
 ];
+/// Launch arguments with the pinned bridge. Pi's `--tools` allowlist also
+/// filters extension tools, so the bridge's managed write, edit and bash would
+/// never register under `--tools read`. Built-in tools instead start disabled;
+/// the bridge then activates only built-in `read` beside its own tools, and a
+/// bridge that fails to load leaves Pi with no tools at all.
+const PI_BRIDGE_ARGS: [&str; 5] = [
+    "--mode",
+    "rpc",
+    "--no-builtin-tools",
+    "--no-extensions",
+    "--no-themes",
+];
+
+pub(crate) fn pi_launch_args(bridge: Option<PathBuf>) -> Vec<OsString> {
+    let Some(bridge) = bridge else {
+        return PI_READ_ONLY_ARGS.map(OsString::from).into();
+    };
+    let mut args: Vec<OsString> = PI_BRIDGE_ARGS.map(OsString::from).into();
+    args.extend([OsString::from("--extension"), bridge.into_os_string()]);
+    args
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum PiAdmissionUnavailable {
@@ -60,7 +80,9 @@ pub(crate) enum PiAdmissionUnavailable {
     NodeVersionUnreadable,
     #[error("the discovered Node.js does not satisfy Pi's engine")]
     NodeEngineMismatch,
-    #[error("the installed Pi version is outside the curated range")]
+    #[error("the installed Pi version could not be read")]
+    VersionUnreadable,
+    #[error("the installed Pi version is older than Sage supports")]
     VersionUnsupported,
     #[error("the discovered Pi package or Node runtime changed after admission")]
     Drift,
@@ -79,22 +101,28 @@ fn hex(bytes: &[u8]) -> String {
 }
 
 fn engine_satisfied(engine: &str, node_version: &str) -> Option<bool> {
-    let minimum = parse_version(engine.trim().strip_prefix(">=")?.trim())?;
-    Some(parse_version(node_version)? >= minimum)
+    let node = crate::acp::bindings::node_engine::parse_node_version(node_version)?;
+    crate::acp::bindings::node_engine::satisfies(engine, node)
 }
 
-/// Curated version range: at least [`PI_SUPPORTED_MINIMUM`], and no newer
-/// minor than the pinned [`super::PI_VERSION`].
+/// The first release of the Pi package Sage launches. It already honours
+/// every launch flag Sage relies on for read-only mode (`--tools`,
+/// `--no-builtin-tools`, `--no-extensions`, `--no-themes`) and answers every
+/// RPC command Sage sends, so nothing older can exist under this package.
+const PI_READ_ONLY_MINIMUM: &str = "0.74.0";
+
+/// Pi releases from [`PI_READ_ONLY_MINIMUM`] on are admitted. The tested
+/// release and later ones keep the tested features; an earlier one runs
+/// read-only (see [`AdmittedPiBinding::characterisation`]).
 pub(crate) fn version_admitted(version: &str) -> bool {
-    let (Some(found), Some(pinned)) = (parse_version(version), parse_version(super::PI_VERSION))
-    else {
-        return false;
-    };
-    found >= PI_SUPPORTED_MINIMUM && (found.0, found.1) <= (pinned.0, pinned.1)
+    characterise_against(version, PI_READ_ONLY_MINIMUM).runs_tested_features()
 }
 
 impl AdmittedPiBinding {
     fn admit(launch: DiscoveredPiLaunch) -> Result<Self, PiAdmissionUnavailable> {
+        if ReleaseVersion::parse(&launch.package_version).is_none() {
+            return Err(PiAdmissionUnavailable::VersionUnreadable);
+        }
         if !version_admitted(&launch.package_version) {
             return Err(PiAdmissionUnavailable::VersionUnsupported);
         }
@@ -108,6 +136,7 @@ impl AdmittedPiBinding {
             .len();
         let binding_digest: [u8; 32] = Sha256::new()
             .chain_update(BINDING_DIGEST_DOMAIN)
+            .chain_update(super::bridge::install::SOURCE)
             .chain_update(launch.package_version.as_bytes())
             .chain_update(launch.entrypoint_sha256.as_bytes())
             .chain_update(launch.node_sha256.as_bytes())
@@ -134,11 +163,7 @@ impl AdmittedPiBinding {
         &self.launch.package_version
     }
     pub(crate) fn characterisation(&self) -> HarnessCharacterisation {
-        if self.launch.package_version == super::PI_VERSION {
-            HarnessCharacterisation::Characterised
-        } else {
-            HarnessCharacterisation::Uncharacterised
-        }
+        characterise_against(&self.launch.package_version, super::PI_VERSION)
     }
 
     /// Revalidates both launch fingerprints through the shared metadata-keyed hash cache.
@@ -179,7 +204,9 @@ impl AdmittedPiBinding {
         identity.copy_from_slice(&self.binding_digest[..16]);
         let identity = uuid::Uuid::from_bytes(identity);
         let mut fixed_args = vec![self.launch.entrypoint_path.clone().into_os_string()];
-        fixed_args.extend(PI_READ_ONLY_ARGS.map(OsString::from));
+        fixed_args.extend(pi_launch_args(
+            super::bridge::install::installed(self.harness_version()).ok(),
+        ));
         Ok(LaunchSpec {
             binding_id: identity,
             runtime_epoch: epoch,

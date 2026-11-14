@@ -9,7 +9,12 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 
 import { useWorkbenchStore } from "../app/store";
-import { clearSessionRailAcks } from "../features/chat/acp/sessionRail";
+import {
+  chatReadThrough,
+  markChatRead,
+  markChatUnread,
+  resetChatReadMarks,
+} from "../features/chat/acp/chatReadMarks";
 import { setChatAwaitingApproval } from "../features/chat/acp/awaitingApproval";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 import { useSideChatState } from "./sideChatState";
@@ -19,7 +24,7 @@ const initialState = useWorkbenchStore.getState();
 
 afterEach(() => {
   cleanup();
-  clearSessionRailAcks();
+  resetChatReadMarks();
   resetAgentRailViewPrefs();
   useSideChatState.setState({ sides: [] });
   vi.restoreAllMocks();
@@ -404,15 +409,17 @@ it("pins and moves a chat that belongs to another project folder", async () => {
   expect(renameChat).toHaveBeenCalledWith("chat:a", "Research", "project-a");
   await openChatActions("Extra");
   fireEvent.click(screen.getByRole("menuitem", { name: "Archive chat" }));
-  expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a");
+  expect(archiveChat).toHaveBeenCalledWith("chat:extra", "project-a", "row");
 });
 
-it("labels the archived count separately and preserves disclosure semantics", () => {
+it("labels the archived count separately and preserves disclosure semantics", async () => {
   useWorkbenchStore.setState({
     archivedChats: [{ id: "chat:old", title: "Research" }],
   });
   render(<ProjectChatNavigation projectId="project-a" chats={[]} selected />);
-  const disclosure = screen.getByRole("button", { name: /^Archived chats:/ });
+  const disclosure = await screen.findByRole("button", {
+    name: /^Archived chats:/,
+  });
   expect(disclosure).toHaveTextContent("Archived 1");
   expect(disclosure).toHaveAttribute("aria-expanded", "false");
   fireEvent.click(disclosure);
@@ -422,7 +429,7 @@ it("labels the archived count separately and preserves disclosure semantics", ()
   ).toHaveAttribute("id", disclosure.getAttribute("aria-controls"));
 });
 
-it("restores an archived chat that belongs to another project folder", () => {
+it("restores an archived chat that belongs to another project folder", async () => {
   const restoreChat = vi.fn(async () => true);
   useWorkbenchStore.setState({
     project: { id: "project-sage", name: "Sage", roots: [] },
@@ -445,9 +452,11 @@ it("restores an archived chat that belongs to another project folder", () => {
     />,
   );
 
-  fireEvent.click(screen.getByRole("button", { name: /^Archived chats:/ }));
+  fireEvent.click(
+    await screen.findByRole("button", { name: /^Archived chats:/ }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Restore chat Extra" }));
-  expect(restoreChat).toHaveBeenCalledWith("chat:extra", "project-a");
+  expect(restoreChat).toHaveBeenCalledWith("chat:extra", "project-a", "row");
   expect(
     screen.queryByRole("button", { name: "Restore chat Local old" }),
   ).toBeNull();
@@ -489,6 +498,31 @@ it("clears the rail unread dot after an unseen Done session is opened", () => {
       .closest(".project-chat-row")
       ?.querySelector("[aria-label='Unread updates']"),
   ).not.toBeInTheDocument();
+});
+
+it("records the read again when the chat on screen is reopened after Mark unread", () => {
+  seedChats();
+  const finishedAt = Date.UTC(2026, 7, 26, 11, 0, 0);
+  useWorkbenchStore.setState({
+    activeTabId: "chat:b",
+    tabs: useWorkbenchStore
+      .getState()
+      .tabs.map((tab) => (tab.id === "chat:b" ? { ...tab, finishedAt } : tab)),
+  });
+  markChatRead("chat:b", finishedAt);
+  markChatUnread("chat:b");
+  render(
+    <ProjectChatNavigation
+      projectId="project-a"
+      chats={currentChats()}
+      selected
+    />,
+  );
+  // The chat stays on screen, so nothing else records the read.
+  fireEvent.click(
+    screen.getByRole("button", { name: /^Open chat Beta(?:,|$)/ }),
+  );
+  expect(chatReadThrough("chat:b")).toBe(finishedAt);
 });
 
 it("ages a rail chat for its hover card the way Codex does", () => {

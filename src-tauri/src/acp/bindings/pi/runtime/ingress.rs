@@ -9,16 +9,28 @@ impl PiRuntime {
         if self.poisoned {
             return Err(AdapterRuntimeError::Operation);
         }
-        let optional_id = self
-            .thinking_request_command
-            .as_deref()
-            .filter(|id| self.translator.sole_thinking_levels_request_id() == Some(*id));
-        let record = crate::acp::bindings::pi::decode::decode_record_with_thinking_request(
+        let record = crate::acp::bindings::pi::decode::decode_record_with_optional_request(
             frame.as_bytes(),
-            optional_id,
+            |command| {
+                let id = self
+                    .translator
+                    .sole_optional_discovery_request_id(command)?;
+                (command != "get_available_thinking_levels"
+                    || self.thinking_request_command.as_deref() == Some(id))
+                .then_some(id)
+            },
         );
         let thinking_reply = matches!(&record, Ok(crate::acp::bindings::pi::decode::Record::Response(response))
             if Some(&response.id) == self.thinking_request_command.as_ref() && response.command == "get_available_thinking_levels");
+        if let Ok(crate::acp::bindings::pi::decode::Record::Event { kind, value }) = &record
+            && kind == "extension_ui_request"
+            && value
+                .get("title")
+                .and_then(serde_json::Value::as_str)
+                .is_some_and(|title| title.starts_with("sage.pi."))
+        {
+            return self.ingest_bridge(value, frame, resources);
+        }
         let outputs = match record.and_then(|record| self.ingest_record(record)) {
             Ok(outputs) => outputs,
             Err(error) => {

@@ -1,7 +1,11 @@
 import { fireEvent, render, screen } from "@testing-library/react";
-import { expect, it, vi } from "vitest";
+import { beforeAll, expect, it, vi } from "vitest";
 
 import { SearchablePicker } from "./SearchablePicker";
+
+import { preloadSearchablePicker } from "./searchablePickerLoad";
+
+beforeAll(() => preloadSearchablePicker());
 
 it("renders a row action beside its option without selecting the option", () => {
   const onSelect = vi.fn();

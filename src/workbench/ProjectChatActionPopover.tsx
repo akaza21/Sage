@@ -14,7 +14,7 @@ import { MenuPopover } from "../ui/MenuPopover";
 import { AgentHeaderMenuContext } from "./AgentToolsProvider";
 import { useWorkbenchStore } from "../app/store";
 import { agentChatMoveDestinations } from "./agentChatRail";
-import { ChatHandoffControl } from "../features/chat/ChatHandoffControl";
+import { ChatHandoffControl } from "../features/chat/lazyParts";
 import type { ProjectChatMenuProps } from "./ProjectChatActionMenu";
 export function ProjectChatActionPopover({
   chatId,
@@ -230,9 +230,11 @@ export function ProjectChatActionPopover({
               completeAction(
                 onArchive ??
                   (() => {
+                    // A refusal shows on the Chat's rail row, not in the
+                    // composer of whichever Chat is open.
                     void useWorkbenchStore
                       .getState()
-                      .archiveChat(chatId, projectId);
+                      .archiveChat(chatId, projectId, "row");
                   }),
               )
             }

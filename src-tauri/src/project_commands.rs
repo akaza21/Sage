@@ -146,7 +146,11 @@ pub(crate) async fn persist_project_layout_inner(
     let database = state.database.clone();
     tauri::async_runtime::spawn_blocking(move || database.persist_project_layout(&request))
         .await
-        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))?
+        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))??;
+    // A layout without a chat tab ends that tab's staged attachments now,
+    // rather than at the next attachment command.
+    crate::acp::attached_context::files::release_detached(&state.acp.file_stages, &state.database);
+    Ok(())
 }
 
 #[tauri::command]
@@ -207,15 +211,15 @@ pub(crate) async fn execute_committed_transition_checked<T: Send + 'static>(
         return failed_transition(*transition_epoch, "project transition epoch exhausted");
     }
     if let Err(error) = preflight() {
-        return failed_transition(*transition_epoch, error);
+        return failed_transition(*transition_epoch, logged_public_message(&error));
     }
     let committed_epoch = *transition_epoch + 1;
     let mutation = tauri::async_runtime::spawn_blocking(operation)
         .await
-        .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))
+        .map_err(|error| crate::error::AppError::TaskInterrupted(error.to_string()))
         .and_then(std::convert::identity);
     if let Err(error) = mutation {
-        return failed_transition(*transition_epoch, error);
+        return failed_transition(*transition_epoch, logged_public_message(&error));
     }
     *transition_epoch = committed_epoch;
     on_committed_project_transition_epoch(*transition_epoch);
@@ -271,6 +275,14 @@ pub(crate) async fn cancelled_transition(state: &AppState) -> ProjectTransitionR
         snapshot: None,
         recovery_error: None,
     }
+}
+
+/// The failure's public text; detail it leaves out goes to the log.
+fn logged_public_message(error: &crate::error::AppError) -> String {
+    if error.hides_detail() {
+        tracing::warn!(%error, "project transition failed");
+    }
+    error.public_message()
 }
 
 fn failed_transition(transition_epoch: u64, error: impl ToString) -> ProjectTransitionResult {
@@ -564,6 +576,39 @@ mod tests {
             assert!(!result.committed);
             assert_eq!(result.transition_epoch, 0);
             assert!(result.recovery_error.unwrap().contains("overlaps"));
+            std::fs::remove_dir_all(root).unwrap();
+        });
+    }
+
+    #[test]
+    fn committed_project_transition_stops_the_previous_epoch_preview_but_a_failed_one_does_not() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let state = AppState::new(Database::open(Path::new(":memory:")).unwrap());
+            let root =
+                std::env::temp_dir().join(format!("sage-transition-preview-{}", Uuid::new_v4()));
+            std::fs::create_dir_all(&root).unwrap();
+            let preview = crate::app_preview_commands::ServingPreview::start(0);
+
+            let failed = execute_committed_transition(&state, 0, || -> AppResult<()> {
+                Err(AppError::InvalidRequest("injected mutation failure".into()))
+            })
+            .await;
+            assert!(!failed.committed);
+            assert!(
+                preview.is_serving(),
+                "a transition that did not commit must not stop the current Preview"
+            );
+
+            let database = state.database.clone();
+            let operation_root = root.clone();
+            let committed = execute_committed_transition(&state, 0, move || {
+                database.create_project_from_root(&operation_root)
+            })
+            .await;
+            assert!(committed.committed);
+            assert_eq!(committed.transition_epoch, 1);
+            assert!(!preview.is_serving());
             std::fs::remove_dir_all(root).unwrap();
         });
     }

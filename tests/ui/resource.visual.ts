@@ -9,7 +9,9 @@ import { snapshotFileDiff } from "../../src/features/diff/snapshotDiff";
 import { RESOURCE_VISUAL_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { PREVIEW_PROJECTION_FIXTURE_SCENARIOS } from "./fixtures/visualScenarioTypes";
 import { VISUAL_SCENARIOS } from "./fixtures/visualScenarioCatalog";
+import { VISUAL_PREVIEW_URL } from "./fixtures/visualPreviewFixture";
 import {
+  waitForAnimations,
   expectNoViewportOverflow,
   installFixedClock,
   installLayoutMode,
@@ -101,6 +103,14 @@ test.describe("AV-01 projection-fixture browser routes", () => {
         );
       }
       await expect(resources.getByTitle("Sage browser")).toHaveCount(0);
+      await expect(
+        page.getByRole("button", { name: "Toggle terminal", exact: true }),
+      ).toHaveAttribute("aria-pressed", "false");
+      await expect(
+        page.getByText("Terminal visibility could not be loaded.", {
+          exact: true,
+        }),
+      ).toHaveCount(0);
       // Projection-fixture proof only; native lifecycle proof is separate.
       await expectNoViewportOverflow(page);
       await settleTranscriptAtEnd(page);
@@ -147,7 +157,7 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await expect(diff).toHaveAccessibleDescription("New resource");
     await expect(
       resources.getByRole("button", {
-        name: "Pinned resource, new File or Diff available",
+        name: "Pinned resource, new file or diff available",
       }),
     ).toContainText("New");
   });
@@ -542,7 +552,6 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         const hunkHeader =
           surface.querySelector<HTMLElement>(".diff-hunk__header");
         if (
-          !header ||
           !toolbar ||
           !code ||
           !gutter ||
@@ -556,8 +565,9 @@ test.describe("Wave 2 accessibility and responsive states", () => {
         }
         return {
           canvas: getComputedStyle(surface).backgroundColor,
-          header: getComputedStyle(header).backgroundColor,
-          headerHeight: header.getBoundingClientRect().height,
+          // The Agent pane's own header names the diff instead.
+          header: header && getComputedStyle(header).backgroundColor,
+          headerHeight: header?.getBoundingClientRect().height ?? null,
           toolbar: getComputedStyle(toolbar).backgroundColor,
           toolbarHeight: toolbar.getBoundingClientRect().height,
           text: getComputedStyle(code).color,
@@ -616,7 +626,11 @@ test.describe("Wave 2 accessibility and responsive states", () => {
     await openAgentSnapshotDiff(agentDiffPage);
     const agentDiffAppearance = await readDiffAppearance(agentDiffPage);
 
-    expect(agentDiffAppearance).toEqual(editorDiffAppearance);
+    expect(agentDiffAppearance).toEqual({
+      ...editorDiffAppearance,
+      header: null,
+      headerHeight: null,
+    });
     expect(agentDiffAppearance.addForeground).not.toBe(
       agentDiffAppearance.text,
     );
@@ -856,23 +870,25 @@ test.describe("V6a Agent right-resource state shell", () => {
     expect(focusRing.style).toBe("solid");
     expect(focusRing.width).toBeGreaterThanOrEqual(1);
     await page.keyboard.press("Enter");
+    // With nothing else open, the pane opens on the Chat's changes.
     await expect(
-      page.getByRole("heading", { name: "Waiting for this Chat" }),
+      page.getByRole("region", { name: "Chat changes", exact: true }),
     ).toBeVisible();
     await expect(
-      page.getByText(/Open a file or change from the conversation/),
-    ).toBeVisible();
+      page.getByRole("heading", { name: "Waiting for this chat" }),
+    ).toHaveCount(0);
     // The pane change reflows the transcript; capture it settled at its end.
     await settleTranscriptAtEnd(page);
-    await expect(workbench).toHaveScreenshot("agent-resource-empty.png");
+    await expect(workbench).toHaveScreenshot("agent-resource-changes.png");
     const collapse = page.getByRole("button", {
       name: "Collapse files, changes, and preview",
     });
     await collapse.focus();
     await page.keyboard.press("Space");
+    // The opened Changes now count as the pane's one resource.
     await expect(
       page.getByRole("button", {
-        name: "Show files and preview · Waiting",
+        name: "Show files and preview · Ready · 1 resource",
       }),
     ).toBeFocused();
     await expectNoViewportOverflow(page);
@@ -957,9 +973,11 @@ test.describe("V6a Agent right-resource state shell", () => {
     await expect(
       page.getByRole("table", { name: "Unified file diff" }),
     ).toBeVisible();
+    // The pane header says VIEW ONLY once; the diff toolbar does not repeat it.
     await expect(
-      page.locator(".diff-toolbar").getByText("Read-only", { exact: true }),
+      page.locator(".agent-artifact-header").getByText("VIEW ONLY"),
     ).toBeVisible();
+    await expect(page.locator(".diff-toolbar__hint")).toHaveCount(0);
     await expect(page.getByText(/Explorer focused/i)).toHaveCount(0);
 
     await setResourceState(page, "diff-loading");
@@ -1012,11 +1030,13 @@ test.describe("V6a Agent right-resource state shell", () => {
     expect(collapsed.right).toBeLessThanOrEqual(720);
     await expect(page.locator(".agent-artifact-pane")).toHaveCount(0);
 
+    // Files dock beside the Chat once the rail folds to its icons, and an
+    // otherwise empty pane opens on the Chat's changes.
     await toggle.click();
     await expect(
-      page.getByRole("heading", { name: "Waiting for this Chat" }),
+      page.getByRole("region", { name: "Chat changes", exact: true }),
     ).toBeVisible();
-    await expect(page.locator(".center-region")).toHaveAttribute("inert");
+    await expect(page.locator(".center-region")).not.toHaveAttribute("inert");
     await expectNoViewportOverflow(page);
   });
 });
@@ -1027,7 +1047,7 @@ test.describe("V6a Agent resource shell at 200%", () => {
     deviceScaleFactor: 2,
   });
 
-  test("keeps the single edge toggle and empty state usable", async ({
+  test("keeps the single edge toggle and the opened Changes usable", async ({
     page,
   }) => {
     const workbench = await openAgentScenario(page, "agent-single");
@@ -1038,7 +1058,7 @@ test.describe("V6a Agent resource shell at 200%", () => {
     await expect(toggle.locator("small")).toHaveCount(0);
     await toggle.click();
     await expect(
-      page.getByRole("heading", { name: "Waiting for this Chat" }),
+      page.getByRole("region", { name: "Chat changes", exact: true }),
     ).toBeVisible();
     await expectNoViewportOverflow(page);
   });
@@ -1068,11 +1088,11 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
       0,
     );
     await expect(
-      resources.getByRole("heading", { name: "Waiting for this Chat" }),
+      resources.getByRole("heading", { name: "Waiting for this chat" }),
     ).toBeVisible();
     await expect(
       resources.getByText(
-        "Open a file or change from the conversation. Preview will appear when this Chat starts a loopback server.",
+        "Open a file or change from the conversation. Preview will appear when this chat starts a loopback server.",
         { exact: true },
       ),
     ).toBeVisible();
@@ -1082,7 +1102,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     ).toHaveCount(0);
     await expect(page.getByTitle("Sage browser")).toHaveCount(0);
     const waiting = resources.getByRole("region", {
-      name: "Waiting for this Chat",
+      name: "Waiting for this chat",
     });
     expect(
       await waiting.evaluate((node) => {
@@ -1103,6 +1123,11 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
 
   test("agent-preview-active stays visually stable", async ({ page }) => {
     const workbench = await openAgentScenario(page, "preview");
+    await expect(
+      page
+        .frameLocator('iframe[title="Sage browser"]')
+        .getByRole("heading", { name: "Product coherence review" }),
+    ).toBeVisible();
     const resources = page.getByLabel("Agent artifacts", { exact: true });
     await expect(
       resources.getByRole("tab", { name: "Preview" }),
@@ -1154,6 +1179,7 @@ test.describe("AV-01 right pane Preview chrome shell", () => {
     const activeAddress = resources.getByRole("textbox", {
       name: "Preview address",
     });
+    await expect(activeAddress).toHaveValue(VISUAL_PREVIEW_URL);
     const activeHref = await activeAddress.inputValue();
     await activeAddress.fill("https://example.com/");
     await activeAddress.press("Enter");
@@ -1298,6 +1324,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
     await expect(
       menu.getByRole("menuitem", { name: "Reload preview" }),
     ).toBeEnabled();
+    await waitForAnimations(menu);
     expect(
       await menu.evaluate((node) => {
         const bounds = node.getBoundingClientRect();
@@ -1340,6 +1367,7 @@ test.describe("AV-02 Preview pane sizing, keyboard, narrow and zoom", () => {
       geometry.canvas.bottom - 1,
     );
     await expectNoViewportOverflow(page);
+    await settleTranscriptAtEnd(page);
     await expect(workbench).toHaveScreenshot(
       "agent-preview-narrow-720x560.png",
     );

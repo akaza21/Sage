@@ -1,0 +1,194 @@
+use crate::{acp::bindings::characterisation::Characterisation, settings_store::SessionAccessMode};
+
+use super::{manifest::PINNED_CODEX_VERSION, request::RequestError};
+
+/// The thread settings a `turn/start` changes. Codex applies each one given to
+/// that Turn and the Turns after it; one left out keeps the thread's own.
+#[derive(Debug, Clone, Copy, Default)]
+pub(crate) struct TurnSettings<'a> {
+    pub(crate) model: Option<&'a crate::acp::intent::ModelId>,
+    pub(crate) effort: Option<&'a crate::acp::contract::RequiredText<512>>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum TurnPolicySurface {
+    Unsupported,
+    Supported,
+}
+
+impl TurnPolicySurface {
+    /// An observed build that runs the tested features takes the tested turn
+    /// policy, including later releases; the curated package must be the
+    /// pinned one.
+    pub(super) fn from_identity(observed: Option<Characterisation>, runtime_version: &str) -> Self {
+        let supported = match observed {
+            Some(characterisation) => characterisation.runs_tested_features(),
+            None => runtime_version == PINNED_CODEX_VERSION,
+        };
+        if supported {
+            Self::Supported
+        } else {
+            Self::Unsupported
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) struct TurnRequestPolicy {
+    pub(super) approval: &'static str,
+    pub(super) sandbox: &'static str,
+    pub(super) network_access: bool,
+}
+
+const READ_ONLY: TurnRequestPolicy = TurnRequestPolicy {
+    approval: "never",
+    sandbox: "readOnly",
+    network_access: false,
+};
+const ASK: TurnRequestPolicy = TurnRequestPolicy {
+    approval: "on-request",
+    sandbox: "readOnly",
+    network_access: false,
+};
+const WORKSPACE_WRITE: TurnRequestPolicy = TurnRequestPolicy {
+    approval: "never",
+    sandbox: "workspaceWrite",
+    network_access: false,
+};
+
+pub(super) fn turn_policy(
+    surface: TurnPolicySurface,
+    mode: SessionAccessMode,
+) -> Result<TurnRequestPolicy, RequestError> {
+    let policy = match (surface, mode) {
+        (_, SessionAccessMode::ReadOnly) => READ_ONLY,
+        (TurnPolicySurface::Supported, SessionAccessMode::Ask) => ASK,
+        (TurnPolicySurface::Supported, SessionAccessMode::WorkspaceWrite) => WORKSPACE_WRITE,
+        _ => return Err(RequestError::UnsupportedAccessMode),
+    };
+    Ok(policy)
+}
+
+pub(super) fn validate_turn_policy(
+    surface: TurnPolicySurface,
+    mode: SessionAccessMode,
+    candidate: TurnRequestPolicy,
+) -> Result<(), RequestError> {
+    if turn_policy(surface, mode)? == candidate {
+        Ok(())
+    } else {
+        Err(RequestError::UnsupportedAccessMode)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::acp::{contract::RequiredText, intent::Prompt};
+    use serde_json::Value;
+
+    #[test]
+    fn the_turn_policy_follows_the_tested_release_or_a_later_one() {
+        use Characterisation::{Characterised, NewerThanTested, Uncharacterised};
+        for (observed, runtime_version, expected) in [
+            (
+                Some(Characterised),
+                PINNED_CODEX_VERSION,
+                TurnPolicySurface::Supported,
+            ),
+            (
+                Some(NewerThanTested),
+                "99.0.0",
+                TurnPolicySurface::Supported,
+            ),
+            (
+                Some(Uncharacterised),
+                PINNED_CODEX_VERSION,
+                TurnPolicySurface::Unsupported,
+            ),
+            (None, PINNED_CODEX_VERSION, TurnPolicySurface::Supported),
+            // The curated package must be the pinned build.
+            (None, "99.0.0", TurnPolicySurface::Unsupported),
+        ] {
+            assert_eq!(
+                TurnPolicySurface::from_identity(observed, runtime_version),
+                expected,
+                "{observed:?} {runtime_version}"
+            );
+        }
+    }
+
+    #[test]
+    fn advertised_codex_policies_emit_the_enforced_sandbox() {
+        for capability in crate::acp::bindings::access_policy::access_modes(
+            "codex-app-server",
+            PINNED_CODEX_VERSION,
+            true,
+        ) {
+            let request = super::super::request::OutgoingRequest::turn_start_with_access_mode(
+                2,
+                &RequiredText::new("thread", "thread-1").unwrap(),
+                &Prompt::new("prompt", "inspect").unwrap(),
+                &RequiredText::new("client", "client-policy").unwrap(),
+                capability.id,
+                TurnPolicySurface::Supported,
+                TurnSettings::default(),
+            )
+            .unwrap();
+            let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
+            let sandbox = if capability.id == SessionAccessMode::WorkspaceWrite {
+                "workspaceWrite"
+            } else {
+                "readOnly"
+            };
+            assert_eq!(wire["params"]["approvalPolicy"], "never");
+            assert_eq!(wire["params"]["sandboxPolicy"]["type"], sandbox);
+            assert_eq!(wire["params"]["sandboxPolicy"]["networkAccess"], false);
+            if capability.id == SessionAccessMode::WorkspaceWrite {
+                assert_eq!(
+                    wire["params"]["sandboxPolicy"],
+                    serde_json::json!({"type":"workspaceWrite","networkAccess":false})
+                );
+                assert_eq!(
+                    capability.description,
+                    "Edits and commands run without asking inside the workspace and temp folders; no network access."
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn pinned_ask_turn_uses_read_only_sandbox() {
+        let request = super::super::request::OutgoingRequest::turn_start_with_access_mode(
+            2,
+            &RequiredText::new("thread", "thread-1").unwrap(),
+            &Prompt::new("prompt", "inspect").unwrap(),
+            &RequiredText::new("client", "client-ask").unwrap(),
+            SessionAccessMode::Ask,
+            TurnPolicySurface::Supported,
+            TurnSettings::default(),
+        )
+        .unwrap();
+        let wire: Value = serde_json::from_slice(&request.bytes).unwrap();
+        assert_eq!(wire["params"]["approvalPolicy"], "on-request");
+        assert_eq!(wire["params"]["sandboxPolicy"]["type"], "readOnly");
+        assert_eq!(wire["params"]["sandboxPolicy"]["networkAccess"], false);
+        assert!(wire["params"].get("collaborationMode").is_none());
+    }
+
+    #[test]
+    fn pinned_policy_rejects_mixed_approval_and_write_sandbox() {
+        assert_eq!(
+            validate_turn_policy(
+                TurnPolicySurface::Supported,
+                SessionAccessMode::Ask,
+                TurnRequestPolicy {
+                    approval: "on-request",
+                    sandbox: "workspaceWrite",
+                    network_access: false,
+                },
+            ),
+            Err(RequestError::UnsupportedAccessMode)
+        );
+    }
+}

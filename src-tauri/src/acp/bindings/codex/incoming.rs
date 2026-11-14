@@ -38,6 +38,10 @@ use notifications::notification;
 mod response;
 use response::{browser_mcp_unavailable, response};
 
+pub(super) mod rate_limits;
+
+mod background_terminals;
+
 mod model_catalog;
 use model_catalog::parse_models;
 pub(in crate::acp::bindings::codex) use model_catalog::parse_reasoning_efforts;
@@ -51,13 +55,42 @@ pub(crate) trait ResourceMapper {
     fn map_missing_display(&self, _absolute_path: &str) -> Option<SafeResourceRef> {
         None
     }
+
+    fn read_diff_context(&self, _resource: &SafeResourceRef) -> Option<String> {
+        None
+    }
 }
 
 pub(in crate::acp::bindings::codex) const UNPROJECTED_DIAGNOSTIC: &str =
     "Codex emitted a message Sage does not project";
 
 pub(in crate::acp::bindings::codex) fn record_unprojected(method: &str) {
-    tracing::warn!(codex_method = %sanitize(method), "{UNPROJECTED_DIAGNOSTIC}");
+    if reports_diagnostics() {
+        tracing::warn!(codex_method = %sanitize(method), "{UNPROJECTED_DIAGNOSTIC}");
+    }
+}
+
+thread_local! {
+    static TRIAL_READ: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+/// Runs `read` as a trial read of native frames: the diagnostics ingestion
+/// would report stay unreported, because only the real read reports them.
+pub(in crate::acp::bindings::codex) fn trial_read<T>(read: impl FnOnce() -> T) -> T {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            TRIAL_READ.with(|trial| trial.set(self.0));
+        }
+    }
+    let _restore = Restore(TRIAL_READ.with(|trial| trial.replace(true)));
+    read()
+}
+
+/// False inside `trial_read`; every diagnostic on the ingestion path checks
+/// it before it reports.
+pub(in crate::acp::bindings::codex) fn reports_diagnostics() -> bool {
+    !TRIAL_READ.with(std::cell::Cell::get)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -111,6 +144,11 @@ pub(crate) enum IncomingEvent {
         payload: NormalizedPayload,
         update_mode: ItemUpdateMode,
     },
+    FilePair {
+        id: ScopedExternalId,
+        old_text: String,
+        new_text: String,
+    },
     ChildThreadItem {
         id: ScopedExternalId,
         lifecycle: ItemLifecycle,
@@ -141,6 +179,11 @@ pub(crate) enum IncomingEvent {
         turn_id: ScopedExternalId,
         payload: NormalizedPayload,
     },
+    /// A fact about the session rather than one Turn, such as a hook run.
+    Session {
+        id: ScopedExternalId,
+        event: crate::acp::intent::session_event::SessionScopedEvent,
+    },
     HostToolReply {
         bytes: Vec<u8>,
     },
@@ -169,6 +212,24 @@ pub(crate) enum IngressDisposition {
     DroppedRawReasoning,
     GoalMutationRejected,
     GoalMutationApplied,
+    /// Codex's answer to a session control, such as undoing a Turn.
+    Controlled(crate::acp::goal::NativeRpcReply),
+    /// A limit bucket Codex pushed.
+    UsageUpdated(rate_limits::RateLimitBucket),
+    /// The answer to a usage read; `None` when nothing usable was reported.
+    UsageRead(Option<rate_limits::RateLimits>),
+    /// Codex refused to report usage for this account.
+    UsageRefused,
+    /// The account signed in to ChatGPT, so usage may be reported again.
+    UsageReset,
+    /// The answer to a background-terminal request; `None` when Codex
+    /// refused it or answered outside the pinned shape.
+    Terminals(Option<crate::acp::goal::NativeRpcReply>),
+    /// Codex changed the thread's model or effort.
+    SettingsUpdated {
+        model: crate::acp::intent::ModelId,
+        effort: Option<RequiredText<512>>,
+    },
     DuplicateTerminal,
     DuplicateServerRequest {
         denial: Option<Vec<u8>>,
@@ -237,7 +298,7 @@ fn ingest_inner<M: ResourceMapper>(
     }
     let object = value.as_object().ok_or(IngressError::Malformed)?;
     if object.contains_key("result") || object.contains_key("error") {
-        return response(adapter, object);
+        return response(adapter, object, mapper);
     }
     let method = text(object, "method", LIMITS.wire.method_bytes as usize)?;
     let params = object

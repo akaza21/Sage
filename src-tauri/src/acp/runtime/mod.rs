@@ -28,15 +28,18 @@ pub(crate) use activation_pump::{
     ActivatedSession, ActivationFlush, ActivationIntent, ActivationJournal, ActivationMode,
     ActivationPump, ActivationPumpError, ActivationTransport, CoordinatorActivationHandoff,
     CoordinatorActivationJournal, CoordinatorShutdownHandoff, IdleActivationParts,
-    RecoveryActivationParts, TeardownActivationParts, is_available_commands_update,
+    RecoveryActivationParts, TeardownActivationParts,
 };
 #[cfg(test)]
 pub(crate) use activation_pump::{ActivationJournalError, ActivationReceipt};
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use adapter_pump::normalized_payload_bytes;
+#[cfg(test)]
+pub(crate) use adapter_pump::steer::steered_prompt_item;
 pub(crate) use adapter_pump::{
     ActiveTurnIntent, AdapterBatchJournal, AdapterPump, AdapterPumpError, CompletedPumpParts,
-    EgressTransport, FlushDisposition, NonfatalRefusal, PumpJournalError, SessionPumpIntent,
+    EgressTransport, FlushDisposition, NonfatalRefusal, PumpJournalError, QueueDisposition,
+    SessionPumpIntent,
 };
 #[cfg(test)]
 pub(crate) use adapter_pump::{DurableAdapterEvent, JournalReceipt, PumpIntent, TurnScope};
@@ -94,12 +97,12 @@ pub(crate) use process_driver::{
 pub(crate) use process_driver::{ProcessAdapterDriver, TreeLeaseOwner};
 #[cfg(test)]
 pub(crate) use projection_publisher::ProjectionPublishError;
-pub(crate) use projection_publisher::{ProjectionPublishStatus, ProjectionPublisher};
+pub(crate) use projection_publisher::{ProjectionPublishStatus, ProjectionPublisher, TurnNotice};
 pub(crate) use runtime_host::HostState;
 pub(crate) use runtime_host::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,
-    HostPromptIntent, HostSteerIntent, NativeRpcCompletionSink, PromptWrite, RuntimeEngine,
-    RuntimeHost, RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
+    HostPromptIntent, HostSteerIntent, IdleParkClaim, NativeRpcCompletionSink, PromptWrite,
+    RuntimeEngine, RuntimeHost, RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
 };
 pub(crate) use session_coordinator::{
     ActivationRecovery, SessionCoordinator, SessionCoordinatorError, SessionTreeLease,

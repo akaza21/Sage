@@ -86,18 +86,14 @@ pub(crate) async fn capture_after(root: &Path, before: &WorkspaceMark) -> Option
                 }
                 // Git can still report a baseline path after a symlink substitution.
                 // Validate it before dirty or committed membership skips presence capture.
-                let metadata = anchor.metadata(Path::new(path))?;
-                if metadata
-                    .as_ref()
-                    .is_some_and(|metadata| !metadata.is_file())
-                {
+                let entry = anchor.entry_status(Path::new(path))?;
+                if entry.is_some_and(|entry| !entry.regular_file) {
                     return None;
                 }
                 if mark.entries.contains_key(path) || mark.committed.contains_key(path) {
                     continue;
                 }
-                mark.terminal_presence
-                    .insert(path.clone(), metadata.is_some());
+                mark.terminal_presence.insert(path.clone(), entry.is_some());
             }
         }
         (Instant::now() < deadline && Directory::root(root)?.identity()? == identity)
@@ -126,27 +122,34 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
     if root.canonicalize().ok()?.as_path() != root {
         return None;
     }
-    let head = history::read_head(root).await?;
-    let index = run_git(
-        root,
-        &[
-            "--no-literal-pathspecs",
-            "ls-files",
-            "--cached",
-            "--others",
-            "--exclude-standard",
-            "-z",
-            "--",
-            ".",
-            ":(exclude,icase)node_modules/**",
-            ":(exclude,icase)**/node_modules/**",
-            ":(exclude,icase).git/**",
-            ":(exclude,icase)**/.git/**",
-        ],
-        MAX_INDEX_BYTES,
-    )
-    .await
-    .ok()?;
+    // HEAD and the size check are independent reads of the same repository,
+    // so they run side by side. The status walk waits for the size check, so a
+    // repository too large to mark never pays for it, and a capture never holds
+    // more than two of the git pool's processes. At the capture limit that can
+    // briefly fill the pool, but only for the length of a `rev-parse`.
+    let (head, index) = tokio::join!(
+        history::read_head(root),
+        run_git(
+            root,
+            &[
+                "--no-literal-pathspecs",
+                "ls-files",
+                "--cached",
+                "--others",
+                "--exclude-standard",
+                "-z",
+                "--",
+                ".",
+                ":(exclude,icase)node_modules/**",
+                ":(exclude,icase)**/node_modules/**",
+                ":(exclude,icase).git/**",
+                ":(exclude,icase)**/.git/**",
+            ],
+            MAX_INDEX_BYTES,
+        ),
+    );
+    let head = head?;
+    let index = index.ok()?;
     if !index.succeeded() || index.stdout_truncated {
         return None;
     }
@@ -161,7 +164,6 @@ async fn capture_known_repository(root: &Path, limit: u64) -> Option<WorkspaceMa
         }
         std::str::from_utf8(path).ok()?;
     }
-
     let status = run_git(
         root,
         &[

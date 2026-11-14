@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::lifecycle::ItemLifecycle;
 
 #[cfg(windows)]
 struct TempRoot(std::path::PathBuf);
@@ -93,9 +94,94 @@ fn completed_file_change_notification_has_journal_compatible_shape() {
     };
     assert!(matches!(
         events.as_slice(),
+        [
+            IncomingEvent::Item {
+                payload: NormalizedPayload::ToolCall {
+                    category: crate::acp::intent::ToolCategory::Edit,
+                    label,
+                    ..
+                },
+                tool_state: Some(crate::acp::lifecycle::ToolState::Completed),
+                lifecycle: ItemLifecycle::Completed,
+                ..
+            },
+            IncomingEvent::Item {
+                payload: NormalizedPayload::FileChangeDiff { .. },
+                tool_state: None,
+                ..
+            },
+        ] if label.as_str() == "Edited src/lib.rs"
+    ));
+}
+
+#[test]
+fn a_declined_or_failed_file_change_settles_its_diff_without_an_edit_row() {
+    for (status, settled) in [
+        ("declined", ItemLifecycle::Cancelled),
+        ("failed", ItemLifecycle::Failed),
+    ] {
+        let mut adapter = adapter();
+        ready(&mut adapter);
+        arm_turn(&mut adapter, 2, "client-file-change");
+        let turn = json!({"method":"turn/started","params":{
+            "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+        }});
+        adapter
+            .ingest(&serde_json::to_vec(&turn).unwrap(), &Mapper)
+            .unwrap();
+        let file = json!({"method":"item/completed","params":{
+            "threadId":"thread-1","turnId":"turn-1","item":{
+                "type":"fileChange","id":"file-1","status":status,
+                "changes":[{"path":"C:\\repo\\src\\lib.rs","kind":{"type":"update"},"diff":"opaque"}]
+            }
+        }});
+        let IngressDisposition::Events(events) = adapter
+            .ingest(&serde_json::to_vec(&file).unwrap(), &Mapper)
+            .unwrap()
+        else {
+            panic!("expected file change event");
+        };
+        assert!(
+            matches!(
+                events.as_slice(),
+                [IncomingEvent::Item {
+                    lifecycle,
+                    payload: NormalizedPayload::FileChangeDiff { .. },
+                    ..
+                }] if *lifecycle == settled
+            ),
+            "{status}: {events:?}"
+        );
+    }
+}
+
+#[test]
+fn a_file_change_id_too_long_for_the_edit_row_still_settles_its_diff() {
+    let mut adapter = adapter();
+    ready(&mut adapter);
+    arm_turn(&mut adapter, 2, "client-file-change");
+    let turn = json!({"method":"turn/started","params":{
+        "threadId":"thread-1","turn":{"id":"turn-1","status":"inProgress"}
+    }});
+    adapter
+        .ingest(&serde_json::to_vec(&turn).unwrap(), &Mapper)
+        .unwrap();
+    let file = json!({"method":"item/completed","params":{
+        "threadId":"thread-1","turnId":"turn-1","item":{
+            "type":"fileChange","id":"f".repeat(510),"status":"completed",
+            "changes":[{"path":"C:\\repo\\src\\lib.rs","kind":{"type":"update"},"diff":"opaque"}]
+        }
+    }});
+    let IngressDisposition::Events(events) = adapter
+        .ingest(&serde_json::to_vec(&file).unwrap(), &Mapper)
+        .unwrap()
+    else {
+        panic!("expected file change event");
+    };
+    assert!(matches!(
+        events.as_slice(),
         [IncomingEvent::Item {
             payload: NormalizedPayload::FileChangeDiff { .. },
-            tool_state: None,
             ..
         }]
     ));
@@ -114,7 +200,7 @@ fn created_file_becomes_openable_when_completed_after_disk_write() {
         json!({"method":method,"params":{
             "threadId":"thread-1","turnId":"turn-1","item":{
                 "type":"fileChange","id":"file-created","status":status,
-                "changes":[{"path":absolute,"kind":{"type":"add"},"diff":"opaque"}]
+                "changes":[{"path":absolute,"kind":{"type":"add"},"diff":"probe\n"}]
             }
         }})
     };
@@ -140,17 +226,23 @@ fn created_file_becomes_openable_when_completed_after_disk_write() {
         panic!("expected completed file change");
     };
     assert!(matches!(completed.as_slice(), [IncomingEvent::Item {
-        lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+        payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
+        ..
+    }, IncomingEvent::Item {
+        lifecycle: ItemLifecycle::Completed,
         tool_state: None,
         payload: NormalizedPayload::FileChangeDiff {
             resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
             operation: crate::acp::intent::FileChangeOperation::Created,
-            pair_available: false,
+            pair_available: true,
+            additions: Some(1),
+            deletions: Some(0),
             ..
         },
         ..
-    }] if resource.root_id.as_str() == "root-created"
-        && resource.relative_path.as_str() == "cp8-pane-probe.md"));
+    }, IncomingEvent::FilePair { old_text, new_text, .. }] if resource.root_id.as_str() == "root-created"
+        && resource.relative_path.as_str() == "cp8-pane-probe.md"
+        && old_text.is_empty() && new_text == "probe\n"));
 }
 
 #[cfg(windows)]
@@ -191,7 +283,10 @@ fn modified_file_binds_only_its_final_existing_location() {
         panic!("completed notification");
     };
     assert!(matches!(completed.as_slice(), [IncomingEvent::Item {
-        lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+        payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
+        ..
+    }, IncomingEvent::Item {
+        lifecycle: ItemLifecycle::Completed,
         payload: NormalizedPayload::FileChangeDiff {
             resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
             operation: crate::acp::intent::FileChangeOperation::Updated,
@@ -245,7 +340,10 @@ fn deleted_file_settles_without_an_openable_location() {
     assert!(matches!(
         completed.as_slice(),
         [IncomingEvent::Item {
-            lifecycle: crate::acp::lifecycle::ItemLifecycle::Completed,
+            payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
+            ..
+        }, IncomingEvent::Item {
+            lifecycle: ItemLifecycle::Completed,
             payload: NormalizedPayload::FileChangeDiff {
                 resource: crate::acp::intent::SafeResourceLocation::Unavailable {
                     reason: crate::acp::intent::UnavailableResourceReason::Missing,

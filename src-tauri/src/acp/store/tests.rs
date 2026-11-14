@@ -22,6 +22,7 @@ pub(super) fn setup() -> Connection {
         "CREATE TABLE chats(id TEXT PRIMARY KEY, project_id TEXT, projection_revision INTEGER, updated_at INTEGER, title TEXT NOT NULL DEFAULT 'Chat: Fixture');
          CREATE TABLE chat_lineage(child_project_id TEXT, child_chat_id TEXT PRIMARY KEY, parent_project_id TEXT, parent_chat_id TEXT, source_turn_id TEXT, relation TEXT);
          CREATE TABLE acp_child_thread_transcripts(native_child_thread_id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, updated_at INTEGER);
+         CREATE TABLE acp_imported_histories(session_id TEXT PRIMARY KEY,history_json TEXT,created_at INTEGER);
          CREATE TABLE agent_sessions(id TEXT PRIMARY KEY, project_id TEXT, chat_id TEXT, state TEXT, residency TEXT, revision INTEGER, projection_revision INTEGER, updated_at INTEGER, terminal_at INTEGER);
          CREATE TABLE chat_session_heads(session_id TEXT PRIMARY KEY);
          CREATE TABLE session_runtime_epochs(session_id TEXT, runtime_epoch INTEGER, state TEXT, terminal_at INTEGER, exit_kind TEXT, started_at INTEGER, PRIMARY KEY(session_id,runtime_epoch));
@@ -52,6 +53,17 @@ pub(super) fn setup() -> Connection {
             "../../../migrations/010_acp_file_change_snapshots.sql"
         ))
         .unwrap();
+    // The handmade sessions table lacks the owner key v21 references.
+    connection
+        .execute_batch(
+            "CREATE UNIQUE INDEX fixture_session_owner ON agent_sessions(project_id,chat_id,id);",
+        )
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/021_acp_session_scope.sql"
+        ))
+        .unwrap();
     connection
         .execute_batch(
             "CREATE TABLE acp_turn_usage_snapshots(project_id TEXT,chat_id TEXT,session_id TEXT,turn_id TEXT,runtime_epoch INTEGER,input_tokens INTEGER,output_tokens INTEGER,context_window INTEGER,revision INTEGER,created_at INTEGER,updated_at INTEGER,PRIMARY KEY(session_id,runtime_epoch,turn_id));",
@@ -70,6 +82,21 @@ pub(super) fn setup() -> Connection {
     connection
         .execute_batch(include_str!(
             "../../../migrations/020_chat_title_provenance.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/025_chat_title_source.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/026_session_facts_turn_index.sql"
+        ))
+        .unwrap();
+    connection
+        .execute_batch(include_str!(
+            "../../../migrations/027_browser_operation_terminal_index.sql"
         ))
         .unwrap();
     connection
@@ -742,4 +769,28 @@ fn every_durable_terminal_family_is_idempotent_and_conflict_safe() {
     )
     .unwrap();
     assert_eq!(duplicate.disposition, MutationDisposition::Duplicate);
+}
+
+#[test]
+fn turn_is_terminal_reads_the_scoped_turn_row() {
+    let mut connection = setup();
+    let prepared = prepare_turn(&mut connection, command("terminal")).unwrap();
+    let project = SageProjectId::parse("project-one").unwrap();
+    let chat = SageChatId::parse("chat-one").unwrap();
+    let session = SageAgentSessionId::parse("session-one").unwrap();
+    let probe = |connection: &Connection, session: &SageAgentSessionId, turn: &SageTurnId| {
+        turn_is_terminal(connection, &project, &chat, session, turn).unwrap()
+    };
+    assert!(!probe(&connection, &session, &prepared.turn_id));
+    connection
+        .execute(
+            "UPDATE turns SET state='completed', terminal_at=13 WHERE id=?1",
+            [prepared.turn_id.as_str()],
+        )
+        .unwrap();
+    assert!(probe(&connection, &session, &prepared.turn_id));
+    let other_session = SageAgentSessionId::parse("session-two").unwrap();
+    assert!(!probe(&connection, &other_session, &prepared.turn_id));
+    let missing = SageTurnId::parse("turn-missing").unwrap();
+    assert!(!probe(&connection, &session, &missing));
 }

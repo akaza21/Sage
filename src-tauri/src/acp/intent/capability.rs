@@ -12,8 +12,24 @@ pub struct CapabilitySnapshotV1 {
     pub load_session: bool,
     pub close_session: bool,
     pub prompt: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub prompt_resources: bool,
+    /// ACP `promptCapabilities.image`: the prompt may carry image blocks.
+    #[serde(skip_serializing_if = "is_false")]
+    pub prompt_images: bool,
     pub cancel: bool,
     pub native_session_fork: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub native_session_compact: bool,
+    /// The harness lists sessions of the project started outside Sage and
+    /// resumes one of them in a new Chat.
+    #[serde(skip_serializing_if = "is_false")]
+    pub native_session_import: bool,
+    #[serde(skip_serializing_if = "is_false")]
+    pub native_review: bool,
+    /// The harness lists and stops the commands it left running.
+    #[serde(skip_serializing_if = "is_false")]
+    pub native_background_terminals: bool,
     pub active_turn_steer: bool,
     pub child_conversation_projection: bool,
     pub child_transcript_read: bool,
@@ -33,8 +49,20 @@ struct CapabilitySnapshotWire {
     load_session: bool,
     close_session: bool,
     prompt: bool,
+    #[serde(default)]
+    prompt_resources: bool,
+    #[serde(default)]
+    prompt_images: bool,
     cancel: bool,
     native_session_fork: bool,
+    #[serde(default)]
+    native_session_compact: bool,
+    #[serde(default)]
+    native_session_import: bool,
+    #[serde(default)]
+    native_review: bool,
+    #[serde(default)]
+    native_background_terminals: bool,
     active_turn_steer: bool,
     child_conversation_projection: bool,
     child_transcript_read: bool,
@@ -63,8 +91,14 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
             load_session: wire.load_session,
             close_session: wire.close_session,
             prompt: wire.prompt,
+            prompt_resources: wire.prompt_resources,
+            prompt_images: wire.prompt_images,
             cancel: wire.cancel,
             native_session_fork: wire.native_session_fork,
+            native_session_compact: wire.native_session_compact,
+            native_session_import: wire.native_session_import,
+            native_review: wire.native_review,
+            native_background_terminals: wire.native_background_terminals,
             active_turn_steer: wire.active_turn_steer,
             child_conversation_projection: wire.child_conversation_projection,
             child_transcript_read: wire.child_transcript_read,
@@ -74,4 +108,21 @@ impl<'de> Deserialize<'de> for CapabilitySnapshotV1 {
             config_count: wire.config_count,
         })
     }
+}
+
+fn is_false(value: &bool) -> bool {
+    !value
+}
+
+/// One standard ACP `agentCapabilities.promptCapabilities` flag from an
+/// `initialize` response. Only an explicit boolean `true` admits it, so an
+/// absent, malformed or downgraded offer fails closed.
+pub(crate) fn offers_prompt_capability(initialize: &serde_json::Value, name: &str) -> bool {
+    initialize
+        .get("result")
+        .and_then(|result| result.get("agentCapabilities"))
+        .and_then(|capabilities| capabilities.get("promptCapabilities"))
+        .and_then(|prompt| prompt.get(name))
+        .and_then(serde_json::Value::as_bool)
+        == Some(true)
 }

@@ -83,6 +83,16 @@ fn rename_preserves_chat_activity_in_the_recent_rail() {
 }
 
 #[test]
+fn the_display_title_is_the_name_the_user_gave_without_the_stored_prefix() {
+    let stored = canonical_chat_title("  Fix login  ").unwrap();
+    assert_eq!(super::chat_display_title(&stored), "Fix login");
+    // A title the user chose to start with the prefix keeps it.
+    let doubled = canonical_chat_title("Chat: notes").unwrap();
+    assert_eq!(super::chat_display_title(&doubled), "Chat: notes");
+    assert_eq!(super::chat_display_title("Untitled"), "Untitled");
+}
+
+#[test]
 fn chat_title_contract_trims_and_bounds_utf8_bytes() {
     let two_byte = "\u{00e9}";
     assert_eq!(canonical_chat_title("  Focus  ").unwrap(), "Chat: Focus");

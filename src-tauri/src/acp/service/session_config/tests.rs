@@ -151,7 +151,11 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
     .unwrap();
     let mut page = AcpChatPage {
         session_config: None,
+        restored_session_config: None,
+        session_config_notice: None,
         goal: crate::acp::goal::GoalState::Unsupported,
+        usage: false,
+        session_surface: None,
         project_id: owner.project_id.clone(),
         chat_id: owner.chat_id.clone(),
         title: SafeText::new("title", "Config").unwrap(),
@@ -180,7 +184,9 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
         next_cursor: None,
         forked_from: None,
         forked_from_turn_id: None,
+        imported_history: false,
         child_projection_epoch: 0,
+        session_notices: Vec::new(),
     };
     service.compose_session_config(&mut page).unwrap();
     assert!(page.session_config.is_some());

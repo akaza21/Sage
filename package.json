@@ -2,6 +2,7 @@
   "name": "sage-ade",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "vite --host 127.0.0.1",
@@ -18,7 +19,7 @@
     "test:budgets:posix:darwin": "node scripts/budget-lanes.mjs --lane posix-darwin",
     "test:budgets:inventory": "node --test --test-concurrency=1 scripts/budget-lanes.node-test.mjs",
     "test:native-lane": "node scripts/native-lane.mjs",
-    "test:cdp-lane": "cargo test --manifest-path src-tauri/Cargo.toml --features cdp-lane --lib browser::devtools",
+    "test:cdp-lane": "cargo test -p sage --features cdp-lane --lib browser::devtools",
     "test:watch": "vitest",
     "lint": "eslint .",
     "format": "prettier --write .",
@@ -33,6 +34,7 @@
     "gate:fast": "node scripts/gate.mjs fast",
     "gate:rust": "node scripts/gate.mjs rust",
     "gate:full": "node scripts/gate.mjs full",
+    "gate:changed": "node scripts/gate.mjs changed",
     "lane": "node scripts/lane.mjs",
     "smoke": "node scripts/app-smoke.mjs",
     "tauri": "tauri"
@@ -55,6 +57,7 @@
     "@tauri-apps/api": "2.11.1",
     "@xterm/xterm": "6.0.0",
     "lucide-react": "1.27.0",
+    "markdown-it": "15.0.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "style-mod": "4.1.3",

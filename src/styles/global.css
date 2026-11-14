@@ -31,6 +31,9 @@
   --radius-annotation-checkbox: 3px;
   color-scheme: dark;
 
+  /* Brand */
+  --color-sage: #7fa877;
+
   /* Color roles */
   --color-canvas: #141414;
   --color-panel: #141414;
@@ -136,7 +139,13 @@
   --agent-shell-center: #181818;
   --agent-shell-title-divider: #262626;
   --agent-shell-tab-border: #4c4c4c;
-  --agent-shell-user-bubble: #2f2f2f;
+  /* The future light palette should use the same chat-background token with
+     color-mix(in srgb, var(--color-sage) 26%, var(--agent-shell-center)). */
+  --agent-shell-user-bubble: color-mix(
+    in srgb,
+    var(--color-sage) 22%,
+    var(--agent-shell-center)
+  );
   --agent-shell-resource-border: #363636;
   --agent-shell-resource-shadow: 0 12px 24px rgb(0 0 0 / 0.24);
   --agent-shell-spinner-track: #666;
@@ -224,11 +233,11 @@
   --doc-caret: #e1e7df;
   --doc-selection-background: #264f78;
   --doc-selection-foreground: #f4f7fb;
-  /* EP-03 editing marks, after VS Code's dark defaults. */
+  /* Editing marks, after VS Code's dark defaults. */
   --doc-bracket-match-border: #888888;
   --doc-bracket-match-background: rgb(0 100 0 / 0.1);
   --doc-occurrence-background: rgb(173 214 255 / 0.15);
-  /* EP-04 find matches, amber like Search results. */
+  /* Find matches, amber like Search results. */
   --doc-find-match-background: rgb(226 182 107 / 0.32);
   --doc-find-match-border: rgb(226 182 107 / 0.72);
   --doc-fold-placeholder-background: rgb(255 255 255 / 0.08);
@@ -260,6 +269,9 @@
   --font-family-ui:
     Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
+  --font-family-agent:
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI Variable Text",
+    "Segoe UI", sans-serif;
   /* Windows: Cascadia, then Consolas (Chromium skips ui-monospace there).
      macOS: ui-monospace (SF Mono), then Menlo, because WebKit maps a bare
      monospace to Courier. Linux: Liberation Mono. */
@@ -313,6 +325,10 @@
   --row-height-emphasis: 34px;
   --tab-height: 36px;
   --chrome-row-height: 40px;
+  --browser-address-min-width: 120px;
+  --browser-address-preferred-width: 280px;
+  --browser-chat-picker-max-width: 160px;
+  --picker-harness-menu-width: 232px;
   --icon-size-sm: 14px;
   --icon-size-md: 16px;
   --icon-size-lg: 20px;
@@ -342,9 +358,9 @@
   --radius-md: 8px;
   --radius-lg: 12px;
   --radius-xl: 16px;
+  --radius-menu-row: var(--radius-sm);
   --border-width: 1px;
   --card-border: var(--border-width) solid var(--color-border-subtle);
-  --radius-composer-menu: 12px;
   --radius-chat-find: 14px;
   --radius-turn-preview: 10px;
   --radius-pill: 999px;
@@ -352,17 +368,18 @@
   /* Part radii that window modes re-project. */
   --radius-center-region: var(--radius-none);
   --radius-title-bar-search: var(--radius-pill);
+  --radius-activity-button: var(--radius-md);
+  --radius-activity-indicator: var(--radius-pill);
   --radius-circle: 50%;
   --composer-fill: #363636;
   --composer-border: #383838;
   --composer-shadow: 0 2px 12px rgb(0 0 0 / 12%);
-  --composer-menu-border: #484848;
-  --composer-menu-shadow: 0 10px 28px rgb(0 0 0 / 28%);
   --composer-control-text: #e3e3e3;
   --composer-control-hover: #444;
   --composer-muted-text: #a8a8a8;
   --composer-access-text: #c7c7c7;
   --composer-access-write: #f27c27;
+  --composer-access-full: var(--color-danger);
   --composer-send-text: #171717;
   --composer-send-hover: #e8e8e8;
   --composer-send-disabled-text: #606060;
@@ -452,7 +469,9 @@
   --type-size-editor-ui: var(--font-size-sm);
 
   font-family: var(--font-family-ui);
-  font-synthesis: none;
+  /* Keep real weights; allow emphasis in families without an italic face,
+     such as Segoe UI Variable. */
+  font-synthesis: style;
   text-rendering: optimizeLegibility;
   color: var(--color-text-primary);
   background: var(--color-canvas);
@@ -553,6 +572,15 @@ textarea {
 
 button {
   -webkit-tap-highlight-color: transparent;
+}
+
+/* The user agent gives these a bare monospace, which WebKit on macOS maps
+   to Courier. 1em keeps the surrounding size. Code shows the characters as
+   typed: Cascadia Code would otherwise join -> and --> into arrows. */
+:where(code, kbd, samp, pre) {
+  font-family: var(--font-family-mono);
+  font-size: 1em;
+  font-variant-ligatures: none;
 }
 
 :where(

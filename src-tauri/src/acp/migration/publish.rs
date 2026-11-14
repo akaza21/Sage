@@ -75,7 +75,16 @@ pub(super) fn recover_or_publish(paths: &MigrationPaths) -> AppResult<bool> {
         | SchemaClass::CurrentV17
         | SchemaClass::CurrentV18
         | SchemaClass::CurrentV19
-        | SchemaClass::CurrentV20 => {
+        | SchemaClass::CurrentV20
+        | SchemaClass::CurrentV21
+        | SchemaClass::CurrentV22
+        | SchemaClass::CurrentV23
+        | SchemaClass::CurrentResumeLink
+        | SchemaClass::CurrentTitleSource
+        | SchemaClass::CurrentSessionFactsTurnIndex
+        | SchemaClass::CurrentOperationTerminalIndex
+        | SchemaClass::CurrentTurnUndoIntentIndexes
+        | SchemaClass::CurrentImportedHistory => {
             verify_replacement(&paths.live, &manifest)?;
             if paths.replacement_stage.exists() {
                 return invalid("published current schema coexists with a replacement stage");
@@ -356,25 +365,17 @@ fn verify_restored_optional(
 }
 
 fn verify_replacement(path: &Path, manifest: &ReplacementManifest) -> AppResult<()> {
-    let expected_schema = match manifest.replacement_database.schema {
-        SchemaClass::CurrentV5 => SchemaClass::CurrentV5,
-        SchemaClass::CurrentV6 => SchemaClass::CurrentV6,
-        SchemaClass::CurrentV7 => SchemaClass::CurrentV7,
-        SchemaClass::CurrentV8 => SchemaClass::CurrentV8,
-        SchemaClass::CurrentV9 => SchemaClass::CurrentV9,
-        SchemaClass::CurrentV10 => SchemaClass::CurrentV10,
-        SchemaClass::CurrentV11 => SchemaClass::CurrentV11,
-        SchemaClass::CurrentV12 => SchemaClass::CurrentV12,
-        SchemaClass::CurrentV13 => SchemaClass::CurrentV13,
-        SchemaClass::CurrentV14 => SchemaClass::CurrentV14,
-        SchemaClass::CurrentV15 => SchemaClass::CurrentV15,
-        SchemaClass::CurrentV16 => SchemaClass::CurrentV16,
-        SchemaClass::CurrentV17 => SchemaClass::CurrentV17,
-        SchemaClass::CurrentV18 => SchemaClass::CurrentV18,
-        SchemaClass::CurrentV19 => SchemaClass::CurrentV19,
-        SchemaClass::CurrentV20 => SchemaClass::CurrentV20,
-        _ => return invalid("replacement manifest does not name a current schema"),
-    };
+    // A replacement is always a whole current schema: never fresh, legacy or
+    // the v10 shape that still carries the legacy session events table.
+    let expected_schema = manifest.replacement_database.schema;
+    if expected_schema.is_legacy()
+        || matches!(
+            expected_schema,
+            SchemaClass::Fresh | SchemaClass::CurrentV10LegacySessionEvents
+        )
+    {
+        return invalid("replacement manifest does not name a current schema");
+    }
     verify_replacement_for(path, manifest, expected_schema)
 }
 

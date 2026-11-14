@@ -4,6 +4,7 @@ import type {
   ToolPresentation,
 } from "../domain/acp";
 import type { ResourceRef } from "../domain/workbench";
+import { TOOL_PROGRESS_BYTES } from "../domain/acpProjection";
 import type { FilePairMetadata } from "../domain/agentDiff";
 import { utf8ByteLength } from "../domain/text";
 import {
@@ -18,7 +19,7 @@ import {
   safeNullableText,
   safeText,
   safeCounter,
-} from "./acpDesktopResponses";
+} from "./acpDesktopGuards";
 
 export const MAX_FILE_CHANGES = MAX_AGENT_DIFFS_PER_TURN;
 export const MAX_TOOL_RESOURCES = 64;
@@ -335,10 +336,17 @@ export function safeToolPresentation(value: unknown): ToolPresentation | null {
       const toolLabel = safeText(value.toolLabel, 512);
       const argumentsSummary = safeOptionalText(value.argumentsSummary, 16_384);
       const resultSummary = safeOptionalText(value.resultSummary, 16_384);
+      const progress =
+        value.progress === undefined
+          ? null
+          : typeof value.progress === "string" && value.progress !== ""
+            ? (safeText(value.progress, TOOL_PROGRESS_BYTES) ?? undefined)
+            : undefined;
       return serverLabel === null ||
         toolLabel === null ||
         argumentsSummary === undefined ||
-        resultSummary === undefined
+        resultSummary === undefined ||
+        progress === undefined
         ? null
         : {
             kind: "mcp",
@@ -347,6 +355,7 @@ export function safeToolPresentation(value: unknown): ToolPresentation | null {
             toolLabel,
             argumentsSummary,
             resultSummary,
+            ...(progress === null ? {} : { progress }),
           };
     }
     case "subagent": {

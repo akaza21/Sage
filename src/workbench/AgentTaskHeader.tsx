@@ -1,5 +1,3 @@
-import { ListChecks, Folder, Pencil } from "../ui/leanIcons";
-
 import {
   useId,
   useLayoutEffect,
@@ -22,11 +20,15 @@ import {
 } from "./ProjectChatActionMenu";
 import "./agent-subagent-summary.css";
 
+import { useDismissLayer } from "../ui/dismissLayer";
 import { AgentTaskStatus } from "./AgentTaskStatus";
 import { isSideChatId } from "./sideChatState";
 import { AgentTaskResourcesPart } from "./agentTaskHeaderLazy";
 import { AgentToolsContext } from "./AgentToolsProvider";
 import { AgentNavigationPart } from "./agentNavigationLazy";
+
+/** Delay after mount before preloading the resources panel, off the first frame. */
+const RESOURCES_PRELOAD_DELAY_MS = 1000;
 
 function preloadResources() {
   void AgentTaskResourcesPart.preload().catch(() => undefined);
@@ -45,17 +47,6 @@ export function AgentTaskHeader({
   sessionChrome?: AgentSessionChrome | null;
   showNewChat?: boolean;
 }) {
-  const harnessName = useWorkbenchStore((state) => {
-    const page = sessionChrome?.acpPage;
-    const binding = page?.sessions.find(
-      (session) => session.id === page.currentSessionId,
-    )?.bindingId;
-    const id =
-      state.chatUiById[tab?.id ?? ""]?.harnessId ?? state.selectedHarnessId;
-    return state.harnesses.find((harness) =>
-      binding ? harness.bindingId === binding : harness.id === id,
-    )?.name;
-  });
   const project = useWorkbenchStore((state) => state.project);
   const { launch } = useContext(AgentToolsContext);
   const projectTransitioning = useWorkbenchStore(
@@ -68,7 +59,7 @@ export function AgentTaskHeader({
   const [showAllSources, setShowAllSources] = useState(false);
   const resourcesSession = useRef("");
   useEffect(() => {
-    const timer = setTimeout(preloadResources, 1000);
+    const timer = setTimeout(preloadResources, RESOURCES_PRELOAD_DELAY_MS);
     return () => clearTimeout(timer);
   }, []);
   const resourcesTriggerRef = useRef<HTMLButtonElement | null>(null);
@@ -78,20 +69,12 @@ export function AgentTaskHeader({
     if (!document.getElementById(resourcesId)) setResourcesOpen(false);
     if (!document.getElementById(renameId)) setRenaming(false);
   }, [resourcesId, renameId]);
-  useEffect(() => {
-    if (!resourcesOpen && !renaming) return;
-    const dismissOutside = (event: Event) => {
-      if (
-        event.target instanceof Node &&
-        resourcesTriggerRef.current?.contains(event.target)
-      )
-        return;
-      dismissPending();
-    };
-    document.addEventListener("pointerdown", dismissOutside, true);
-    return () =>
-      document.removeEventListener("pointerdown", dismissOutside, true);
-  }, [resourcesOpen, renaming, dismissPending]);
+  // Until their lazy parts load, the trigger stands in for the popover and
+  // the rename form.
+  useDismissLayer(resourcesOpen || renaming, {
+    inside: [resourcesTriggerRef],
+    onOutside: dismissPending,
+  });
   const resourcesScope = [
     project?.id,
     generation,
@@ -137,22 +120,9 @@ export function AgentTaskHeader({
         dismissPending();
       }}
     >
-      {showNewChat ? (
-        <AgentNavigationPart part="AgentNewChatButton" />
-      ) : (
-        <button
-          className="agent-task-header__pencil"
-          type="button"
-          aria-label="Rename chat"
-          title="Rename chat"
-          disabled={projectTransitioning || renaming}
-          onClick={() => setRenaming(true)}
-        >
-          <Pencil size={15} aria-hidden="true" />
-        </button>
-      )}
+      {showNewChat ? <AgentNavigationPart part="AgentNewChatButton" /> : null}
       <div className="agent-task-header__breadcrumb" aria-label="Chat location">
-        <Folder size={15} aria-hidden="true" />
+        <span className="agent-task-header__folder" aria-hidden="true" />
         {renaming ? (
           <AgentTaskResourcesPart
             part="AgentTaskRenameForm"
@@ -169,9 +139,10 @@ export function AgentTaskHeader({
         )}
       </div>
       <AgentTaskStatus
+        chatId={tab.id}
         snapshot={snapshot}
+        status={tab.status}
         harnessStatus={sessionChrome?.harnessStatus}
-        harnessName={harnessName}
       />
       {isSideChatId(tab?.id) ? null : (
         <AgentHeaderMore
@@ -191,7 +162,11 @@ export function AgentTaskHeader({
             archiveDisabled={projectTransitioning || chatCount <= 1}
             projectId={currentProject.id}
             onOpenChange={setMenuOpen}
-            onRename={() => setRenaming(true)}
+            onRename={() => {
+              setRenaming(true);
+              // Keep keyboard dismissal available while the rename form loads.
+              resourcesTriggerRef.current?.focus();
+            }}
             sessionChrome={sessionChrome}
             triggerLabel={`More chat actions in ${currentProject.name}`}
             triggerRole="menuitem"
@@ -221,9 +196,7 @@ export function AgentTaskHeader({
             resourcesSession.current = scope;
             setResourcesOpen((open) => !open);
           }}
-        >
-          <ListChecks size={16} aria-hidden="true" />
-        </button>
+        ></button>
         {resourcesOpen ? (
           <AgentTaskResourcesPart
             part="AgentTaskResources"

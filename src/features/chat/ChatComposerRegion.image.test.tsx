@@ -1,8 +1,15 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
 
 import { ChatComposerRegion } from "./ChatComposerRegion";
+import { settleLazyModules } from "../../test/settleLazyModules";
 import { useWorkbenchStore } from "../../app/store";
 import {
   acpProjectionStoreFor,
@@ -77,9 +84,37 @@ function renderComposer(
 }
 
 describe("composer image input", () => {
+  it("unmounts hidden toolbar controls while preserving the draft", () => {
+    const { container, rerenderComposer } = renderComposer();
+    expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
+    rerenderComposer({
+      hidden: true,
+      usage: {
+        inputTokens: 1000,
+        outputTokens: 0,
+        totalTokens: 1000,
+        contextWindow: 272000,
+      },
+    });
+    expect(container.querySelector(".composer__context")).toBeNull();
+    expect(container.querySelector(".composer__controls")).toBeNull();
+    rerenderComposer({ hidden: false });
+    expect(screen.getByRole("button", { name: "Harness" })).toBeVisible();
+    expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
+      "A prompt",
+    );
+  });
+  it("leaves prompt paths and code uncorrected", () => {
+    renderComposer({ text: "src/loong_file.ts npm --flag" });
+    const prompt = screen.getByRole("combobox", { name: "Message agent" });
+    expect(prompt).toHaveAttribute("spellcheck", "false");
+    expect(prompt).toHaveAttribute("autocorrect", "off");
+    expect(prompt).toHaveAttribute("autocapitalize", "off");
+    expect(prompt).toHaveValue("src/loong_file.ts npm --flag");
+  });
   it("keeps the draft focused while sending and saving a queued message", () => {
     const { rerenderComposer } = renderComposer();
-    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    const prompt = screen.getByRole("combobox", { name: "Message agent" });
     prompt.focus();
     rerenderComposer({ actionBusy: true });
     expect(prompt).toBeEnabled();
@@ -92,7 +127,7 @@ describe("composer image input", () => {
 
   it.each(["Claude", "Codex", "Pi", "OpenCode", "OMP"])(
     "omits Goal actions for %s without admitted mutation capabilities",
-    (name) => {
+    async (name) => {
       useWorkbenchStore.setState({
         harnesses: [
           {
@@ -115,7 +150,10 @@ describe("composer image input", () => {
       const options = screen.queryByRole("button", {
         name: "Composer options",
       });
-      if (options) fireEvent.click(options);
+      if (options && !options.hasAttribute("disabled")) {
+        fireEvent.click(options);
+        await screen.findByRole("menu", { name: "Composer options menu" });
+      }
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
       expect(screen.queryByRole("menuitem", { name: "Add images" })).toBeNull();
     },
@@ -123,7 +161,7 @@ describe("composer image input", () => {
 
   it("keeps the running prompt plain while describing queue behavior accessibly", () => {
     renderComposer({ activeTurn: true, queueAvailable: true });
-    const prompt = screen.getByRole("textbox", { name: "Message agent" });
+    const prompt = screen.getByRole("combobox", { name: "Message agent" });
     expect(prompt).toHaveAttribute("placeholder", "Do anything");
     expect(prompt).toHaveAttribute(
       "aria-description",
@@ -132,7 +170,7 @@ describe("composer image input", () => {
     expect(prompt).toHaveAccessibleDescription(/Enter queues a message/);
   });
 
-  it("gates only Add Goal by binding and picker identity, preserving native details actions", () => {
+  it("gates only Add Goal by binding and picker identity, preserving native details actions", async () => {
     const goal = {
       kind: "goal" as const,
       snapshot: {
@@ -181,7 +219,7 @@ describe("composer image input", () => {
             id: "session-a" as never,
             runtimeEpoch: "1" as never,
             capabilities: capabilitySetFixture({
-              protocolVersion: "codex-app-server-observed-0.146.0",
+              protocolVersion: "codex-app-server-observed-0.167.0",
             }),
           }),
         ],
@@ -191,8 +229,14 @@ describe("composer image input", () => {
       goal,
       imageInputAvailable: true,
     });
+    // The Goal control loads with the first chat that shows one.
+    await settleLazyModules();
+    screen.getByLabelText("Goal details");
     const options = screen.queryByRole("button", { name: "Composer options" });
-    if (options) fireEvent.click(options);
+    if (options) {
+      fireEvent.click(options);
+      await screen.findByRole("menu", { name: "Composer options menu" });
+    }
     fireEvent.click(screen.getByRole("menuitem", { name: "Goal" }));
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.getByText("Ship safely", { selector: "p" })).toBeVisible();
@@ -207,14 +251,17 @@ describe("composer image input", () => {
       const options = screen.queryByRole("button", {
         name: "Composer options",
       });
-      if (options) fireEvent.click(options);
+      if (options && !options.hasAttribute("disabled")) {
+        fireEvent.click(options);
+        await screen.findByRole("menu", { name: "Composer options menu" });
+      }
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
       fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       expect(screen.getByRole("button", { name: "Pause goal" })).toBeEnabled();
       expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
     }
   });
-  it("keeps an existing goal visible with an unavailable explanation while reloading", () => {
+  it("keeps an existing goal visible with an unavailable explanation while reloading", async () => {
     renderComposer({
       availableBinding: false,
       goal: {
@@ -230,6 +277,7 @@ describe("composer image input", () => {
         },
       },
     });
+    await settleLazyModules();
     expect(screen.getByLabelText("Goal details")).toBeVisible();
     fireEvent.click(screen.getByLabelText("Goal details"));
     expect(
@@ -243,7 +291,9 @@ describe("composer image input", () => {
     const form = screen.getByRole("form");
     const body = form.querySelector(".composer__body");
     expect(body).not.toBeNull();
-    expect(body).toContainElement(screen.getByRole("textbox"));
+    expect(body).toContainElement(
+      screen.getByRole("combobox", { name: "Message agent" }),
+    );
     expect(body).toContainElement(screen.getByRole("alert"));
     expect(body).not.toContainElement(form.querySelector(".composer__toolbar"));
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
@@ -253,7 +303,7 @@ describe("composer image input", () => {
     const { onAddImages } = renderComposer();
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeNull();
+    ).toBeDisabled();
     expect(screen.queryByText("Add images", { exact: true })).toBeNull();
     expect(screen.queryByLabelText("Choose images")).toBeNull();
     fireEvent.drop(screen.getByRole("form"), {
@@ -267,7 +317,7 @@ describe("composer image input", () => {
 
   it("accepts image paste and chooser only with capability", () => {
     const { onAddImages } = renderComposer({ imageInputAvailable: true });
-    fireEvent.paste(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
       clipboardData: { files: [png()] },
     });
     expect(onAddImages).toHaveBeenCalledWith([
@@ -278,20 +328,76 @@ describe("composer image input", () => {
     expect(onAddImages).toHaveBeenCalledTimes(2);
   });
 
-  it("opens the persistent chooser from Add and closes the only menu", () => {
+  it("refuses a pasted image with the session's reason when it lacks the capability", () => {
+    const { onAddImages } = renderComposer({
+      imageInputAvailable: false,
+      imageInputDisabledReason: "This harness does not advertise image input.",
+    });
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
+      clipboardData: { files: [png()] },
+    });
+    expect(onAddImages).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "This harness does not advertise image input.",
+    );
+  });
+
+  it("clears the unavailable warning once the session takes images", () => {
+    const { rerenderComposer } = renderComposer({
+      imageInputAvailable: false,
+      imageInputDisabledReason:
+        "Images become available once the session starts.",
+    });
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
+      clipboardData: { files: [png()] },
+    });
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "once the session starts",
+    );
+    rerenderComposer({
+      imageInputAvailable: true,
+      imageInputDisabledReason: null,
+    });
+    expect(screen.queryByText(/once the session starts/)).toBeNull();
+  });
+
+  it("passes large screenshots on for native resizing and refuses files over 10 MiB", () => {
+    const { onAddImages } = renderComposer({ imageInputAvailable: true });
+    const screenshot = new File([new Uint8Array(6 * 1024 * 1024)], "4k.png", {
+      type: "image/png",
+    });
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
+      clipboardData: { files: [screenshot, screenshot] },
+    });
+    expect(onAddImages).toHaveBeenCalledWith([screenshot, screenshot]);
+    const huge = new File([new Uint8Array(10 * 1024 * 1024 + 1)], "huge.png", {
+      type: "image/png",
+    });
+    fireEvent.paste(screen.getByRole("combobox", { name: "Message agent" }), {
+      clipboardData: { files: [huge] },
+    });
+    expect(onAddImages).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Choose PNG or JPEG images no larger than 10 MiB each.",
+    );
+  });
+
+  it("opens the persistent chooser from Add and closes the only menu", async () => {
     renderComposer({ imageInputAvailable: true });
     const chooser = screen.getByLabelText("Choose images");
     const choose = vi.spyOn(chooser, "click");
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
-    fireEvent.click(screen.getByRole("menuitem", { name: "Add images" }));
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: "Add images" }),
+    );
     expect(choose).toHaveBeenCalledOnce();
     expect(chooser.isConnected).toBe(true);
     expect(screen.queryByRole("menu")).toBeNull();
     expect(trigger).toHaveFocus();
   });
 
-  it("refuses a fifth image before upload", () => {
+  it("refuses a fifth image before upload", async () => {
     const { onAddImages } = renderComposer({
       imageInputAvailable: true,
       attachedContext: [0, 1, 2, 3].map((index) => ({
@@ -309,13 +415,16 @@ describe("composer image input", () => {
       dataTransfer: { files: [png()], types: ["Files"] },
     });
     expect(onAddImages).not.toHaveBeenCalled();
-    expect(screen.getByRole("alert")).toHaveTextContent("four images");
+    expect(screen.getByRole("alert")).toHaveTextContent("at most 4 images");
     const options = screen.queryByRole("button", { name: "Composer options" });
-    if (options) fireEvent.click(options);
+    if (options) {
+      fireEvent.click(options);
+      await screen.findByRole("menu", { name: "Composer options menu" });
+    }
     expect(screen.getByRole("menuitem", { name: "Add images" })).toBeDisabled();
   });
 
-  it("shows an uploaded image thumbnail and removes its context", () => {
+  it("shows an uploaded image thumbnail and removes its context", async () => {
     const onRemoveContext = vi.fn();
     const image = {
       kind: "image" as const,
@@ -333,6 +442,9 @@ describe("composer image input", () => {
       imagePreviews: { [image.artifactId]: "blob:preview" },
       onRemoveContext,
     });
+    // The chips load with the first context attached to the draft.
+    await settleLazyModules();
+    screen.getByLabelText("Attached context");
     expect(document.querySelector(".composer__image-preview")).toHaveAttribute(
       "src",
       "blob:preview",
@@ -348,7 +460,7 @@ describe("composer image input", () => {
     expect(onRemoveContext).toHaveBeenCalledWith(image);
   });
 
-  it("enables Send with only an attachment and no text (Codex s2/f0095)", () => {
+  it("enables Send with only an attachment and no text (Codex s2/f0095)", async () => {
     const image = {
       kind: "image" as const,
       artifactId: "00000000-0000-4000-8000-000000000000",
@@ -371,10 +483,11 @@ describe("composer image input", () => {
       imageInputAvailable: true,
       attachedContext: [image],
     });
-    expect(send).toBeEnabled();
+    // A native chat's send waits for its staged batch to be read back.
+    await waitFor(() => expect(send).toBeEnabled(), { timeout: 5_000 });
   });
 
-  it("keeps attachment-only Send paired with a visible page chip, then disables it on removal", () => {
+  it("keeps attachment-only Send paired with a visible page chip, then disables it on removal", async () => {
     const page = {
       kind: "browserPage" as const,
       tabId: "browser-1",
@@ -386,8 +499,14 @@ describe("composer image input", () => {
       text: "  ",
       attachedContext: [page],
     });
-    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
-    expect(screen.getByText("Page · Example page")).toBeVisible();
+    await waitFor(
+      () =>
+        expect(
+          screen.getByRole("button", { name: "Send message" }),
+        ).toBeEnabled(),
+      { timeout: 5_000 },
+    );
+    expect(await screen.findByText("Page · Example page")).toBeVisible();
     rerenderComposer({ text: "  ", attachedContext: [] });
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   });
@@ -407,7 +526,7 @@ describe("composer image input", () => {
     const { unmount } = renderComposer({ attachedContext: [image], onSubmit });
     const form = screen.getByRole("form") as HTMLFormElement;
     form.requestSubmit = vi.fn(() => fireEvent.submit(form));
-    fireEvent.keyDown(screen.getByRole("textbox", { name: "Message agent" }), {
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Message agent" }), {
       key: "Enter",
     });
     expect(form.requestSubmit).toHaveBeenCalled();

@@ -19,7 +19,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         for pending in self
             .pending_permissions
             .iter()
-            .filter(|pending| pending.decision.is_none())
+            .filter(|pending| pending.settles_as.is_none())
         {
             if intents.len() >= limit {
                 self.teardown = true;
@@ -53,7 +53,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             self.enqueue(value)?;
         }
         self.pending_permissions
-            .retain(|pending| pending.decision.is_some());
+            .retain(|pending| pending.settles_as.is_some());
         Ok(intents.len())
     }
 
@@ -65,6 +65,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         client_message_id: &RequiredText<512>,
     ) -> Result<QueueDisposition, AdapterPumpError> {
         self.validate_cancel_owner(session_id, epoch, turn_id, client_message_id)?;
+        if self.adapter.defer_cancel() {
+            return Ok(QueueDisposition::Deferred);
+        }
         let egress = self.adapter.command(AdapterCommand::Cancel)?;
         self.enqueue(egress)
     }

@@ -63,6 +63,7 @@ fn committed_cancellation_is_an_intentional_shutdown_before_terminal_acknowledge
             project_generation: ProjectGeneration::ZERO,
             chat_id: chat_id.clone(),
             projection_revision: ready_projection_revision,
+            intent_revision: ready_projection_revision,
             session_id: Some(started.session_id.clone()),
             runtime_epoch: Some(epoch),
             turn_id: None,
@@ -80,7 +81,7 @@ fn committed_cancellation_is_an_intentional_shutdown_before_terminal_acknowledge
             session_recovery: None,
             zero_sequence: std::sync::atomic::AtomicU64::new(0),
         };
-        let mut state = FirstTurnWorkerState::Idle(completed);
+        let mut state = FirstTurnWorkerState::Idle(Box::new(completed));
         macro_rules! step {
             ($command:expr) => {{
                 let response = mailbox.submit_worker($command).unwrap();

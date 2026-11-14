@@ -11,7 +11,7 @@ vi.mock(import("../services/userTerminalDesktop"), async (importOriginal) => ({
   resizeUserTerminal: native.resize,
 }));
 
-import { TerminalDock } from "./TerminalDock";
+import TerminalDock from "./TerminalDock";
 
 const FORCED_COLORS = "(forced-colors: active)";
 const OUTPUT = "sage terminal output";
@@ -122,6 +122,7 @@ function viewportBackground(container: HTMLElement): string {
 function renderDock() {
   return render(
     <TerminalDock
+      visible
       scope={scope}
       session={handle}
       ended={false}

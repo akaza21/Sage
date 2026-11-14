@@ -2,6 +2,7 @@ import type {
   AcpMutationResult,
   SetAcpSessionModeRequest,
   SetAcpSessionConfigOptionRequest,
+  QueueAcpSessionConfigChoiceRequest,
 } from "../domain/acp";
 import {
   decodeSessionConfigNotice,
@@ -25,6 +26,11 @@ export function sessionConfigDesktop(
       request: SetAcpSessionConfigOptionRequest,
     ): Promise<AcpMutationResult> {
       return invokeMutation("set_acp_session_config_option", request);
+    },
+    queueSessionConfigChoice(
+      request: QueueAcpSessionConfigChoiceRequest,
+    ): Promise<AcpMutationResult> {
+      return invokeMutation("queue_acp_session_config_choice", request);
     },
     async subscribeSessionConfigChanges(
       onChange: (event: AcpSessionConfigChangedV1) => void,

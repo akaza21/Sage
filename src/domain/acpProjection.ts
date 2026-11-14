@@ -1,9 +1,16 @@
 import type { AttachedContext } from "./attachedContext";
+import type { AcpSessionAction } from "./acpSessionAction";
+import type { AcpTurnCommand } from "./acpCommand";
 import type { AcpImagePayload } from "./acpImage";
 import type { AcpGoalState } from "./acpGoal";
-import type { AcpSessionConfig } from "./acpSessionConfig";
+import type {
+  AcpRestoredSessionConfig,
+  AcpSessionConfig,
+  AcpSessionConfigNotice,
+} from "./acpSessionConfig";
 import type { BrowserOperationProjection } from "./browserOperation";
 import type { FilePairMetadata } from "./agentDiff";
+import type { UserInputRequest } from "./acpPermission";
 import type {
   ActivityState,
   AgentSessionState,
@@ -43,6 +50,9 @@ export type SafeResourceLocation =
       label: string;
       displayResource?: ResourceRef | null;
     };
+
+/** Byte cap of a running tool's status line; native `TOOL_PROGRESS_BYTES`. */
+export const TOOL_PROGRESS_BYTES = 512;
 
 export type ToolPresentation =
   | {
@@ -97,6 +107,8 @@ export type ToolPresentation =
       toolLabel: string;
       argumentsSummary: string | null;
       resultSummary: string | null;
+      /** Latest status line of a running call; absent once it is terminal. */
+      progress?: string;
     }
   | {
       kind: "subagent";
@@ -145,6 +157,8 @@ type ToolItem<Kind extends string, Payload> = AcpItemIdentity & {
 
 export type AcpItem =
   | PlainItem<"text", { role: "user" | "assistant" | "system"; text: string }>
+  /** A message the user steered into the running Turn, at its place. */
+  | PlainItem<"userPrompt", { text: string }>
   | PlainItem<"thoughtSummary", { summary: string }>
   | PlainItem<"compactionNotice", Record<string, never>>
   | PlainItem<
@@ -176,7 +190,8 @@ export type AcpItem =
         state: PermissionState;
         label: string;
         summary: string;
-        source?: "harness" | "browser";
+        /** `browserDeveloper` is a developer-mode card (ADR-0009b). */
+        source?: "harness" | "browser" | "browserDeveloper";
         offeredOptionKinds?: Array<
           "allow_once" | "allow_always" | "reject_once" | "reject_always"
         > | null;
@@ -184,6 +199,8 @@ export type AcpItem =
         category?: ToolPresentation["kind"];
         /** The harness's own explanation; absent when it gave none. */
         reason?: string | null;
+        /** The harness's questions when it asks the user, not for approval. */
+        userInput?: UserInputRequest | null;
       }
     >
   | PlainItem<
@@ -226,8 +243,28 @@ export interface HarnessActivityProjection {
   revision: EntityRevision;
 }
 
+/**
+ * A session activity row (a hook run, say) in the work list of the Turn
+ * that owns it; native `TurnSessionActivityProjection`. A Turn
+ * holds at most `SESSION_ACTIVITIES_MAX` of them.
+ */
+export interface TurnSessionActivity {
+  kind: string;
+  label: string;
+  state: "running" | "completed" | "failed" | "cancelled";
+  progress?: string;
+}
+
+export const SESSION_ACTIVITIES_MAX = 16;
+
 export interface TurnProjection {
   attachedContext?: readonly AttachedContext[];
+  /** The session action this Turn ran. */
+  sessionAction?: AcpSessionAction;
+  /** The Turn ran a session action this build cannot run again. */
+  unrecognizedAction?: true;
+  /** The listed command this Turn's prompt ran. */
+  command?: AcpTurnCommand;
   id: SageTurnId;
   sessionId: SageAgentSessionId;
   runtimeEpoch: RuntimeEpoch;
@@ -252,6 +289,7 @@ export interface TurnProjection {
   activities: readonly HarnessActivityProjection[];
   browserOperations: readonly BrowserOperationProjection[];
   browserOperationsCollapsed: number;
+  sessionActivities?: readonly TurnSessionActivity[];
 }
 
 export interface AgentSessionProjection {
@@ -270,9 +308,29 @@ export interface AgentSessionProjection {
   legacy: boolean;
 }
 
+/** Most notices one session keeps (Rust `SESSION_NOTICES_MAX`). */
+export const SESSION_NOTICES_MAX = 16;
+
+/** A harness notice about the session rather than one Turn. */
+export interface SessionNotice {
+  level: "info" | "warning" | "error";
+  text: string;
+  /** Who raised it, such as "codex config". */
+  source: string | null;
+}
+
 export interface AcpChatPage {
   sessionConfig?: AcpSessionConfig | null;
+  /** The current session's restored config while it has no live one. */
+  restoredSessionConfig?: AcpRestoredSessionConfig | null;
+  /** A stored choice the current session could not take back. */
+  sessionConfigNotice?: AcpSessionConfigNotice | null;
   goal?: AcpGoalState;
+  /** The current session's live runtime reports usage limits. */
+  usage?: true;
+  /** The session's activities and Undo, still undecoded: the panel that
+   * shows them decodes them (`decodeSessionSurface`). */
+  sessionSurface?: unknown;
   projectId: SageProjectId;
   chatId: SageChatId;
   title: string;
@@ -285,9 +343,13 @@ export interface AcpChatPage {
   forkedFrom?: SageChatId;
   /** The parent Turn the fork carries history through, inclusive. */
   forkedFromTurnId?: SageTurnId;
+  /** The Chat continues a session imported from outside Sage. */
+  importedHistory?: true;
   /**
    * Child-transcript invalidation epoch (opaque). It moves without the
    * projection revision, so child activity never stales a user action.
    */
   childProjectionEpoch?: number;
+  /** The current session's newest notices, oldest first (at most 16). */
+  sessionNotices?: readonly SessionNotice[];
 }

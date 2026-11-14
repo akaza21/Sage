@@ -12,5 +12,7 @@ export type AcpChatPresentationProps = {
   projectRoots: readonly Pick<ProjectRootSummary, "id" | "name" | "ordinal">[];
   retentionIncomplete: boolean;
   onRetry?: () => void;
+  onReviewChanges?: () => void;
+  /** Omit for inline files; null reserves a dock that is sleeping or mounting. */
   editSummaryContainer?: HTMLElement | null;
 };

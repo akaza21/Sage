@@ -16,6 +16,7 @@ import { settleLazyModules } from "../../test/settleLazyModules";
 import { page } from "./acp/acpProjection.fixture";
 import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
 import { ForkChatDialog, ForkDivider, forkChat } from "./ForkChat";
+import { ForkChatDialogHost } from "./ForkChatDialogHost";
 
 const getGoalChatPage = vi.hoisted(() => vi.fn());
 const fakeCommit = vi.hoisted(() => ({
@@ -42,8 +43,10 @@ vi.mock("../../services/acpGoalDesktop", async (importOriginal) => ({
   ...((await importOriginal()) as object),
   getGoalChatPage,
 }));
-vi.mock("./acp/AcpChatPresentation", async (importOriginal) => ({
-  ...((await importOriginal()) as object),
+// Only InheritedTurns is loaded from this module here. Spreading the real
+// module in would resolve it through an RPC that vi.dynamicImportSettled does
+// not track, so settleLazyModules could return before the history renders.
+vi.mock("./acp/AcpChatPresentation", () => ({
   InheritedTurns: ({ page }: { page: AcpChatPage }) => (
     <ol>
       {page.turns.map((turn) => (
@@ -84,7 +87,11 @@ function forkablePage(
 }
 
 async function renderFooter(acpPage: AcpChatPage) {
-  render(<ChatTranscriptFooter useNativeAcp page={acpPage} messages={[]} />);
+  render(
+    <ForkChatDialogHost focusRoot={{ current: null }}>
+      <ChatTranscriptFooter useNativeAcp page={acpPage} messages={[]} />
+    </ForkChatDialogHost>,
+  );
   await settleLazyModules();
 }
 
@@ -109,7 +116,7 @@ describe("answer More actions", () => {
     const dialog = await screen.findByRole("dialog", {
       name: "Fork chat from here",
     });
-    const options = within(dialog).getAllByRole("menuitem");
+    const options = within(dialog).getAllByRole("button");
     expect(options).toHaveLength(1);
     expect(options[0]).toHaveTextContent(
       "Fork in this workspaceFork from this message in the current workspace",
@@ -139,10 +146,11 @@ describe("answer More actions", () => {
         .mockReturnValue(true);
       if (byKey) fireEvent.keyDown(item, { key: "Enter" });
       fireEvent.click(item);
-      const option = await screen.findByRole("menuitem", {
+      // Role queries consult Element.matches, so restore it before looking.
+      matches.mockRestore();
+      const option = await screen.findByRole("button", {
         name: /Fork in this workspace/,
       });
-      matches.mockRestore();
       expect(option.getAttribute("data-fresh")).toBe(fresh);
     },
   );
@@ -198,13 +206,15 @@ describe("Fork chat from here", () => {
         fork={fork}
       />,
     );
-    const option = screen.getByRole("menuitem", {
+    const option = screen.getByRole("button", {
       name: /Fork in this workspace/,
     });
     expect(option).toHaveFocus();
     fireEvent.click(option);
     expect(fork).toHaveBeenCalledWith({ chatId: "chat-1", turnId: "turn-1" });
-    expect(screen.getByRole("menu")).toHaveAttribute("aria-busy", "true");
+    expect(
+      screen.getByRole("group", { name: "Fork chat from here" }),
+    ).toHaveAttribute("aria-busy", "true");
     expect(option).toBeDisabled();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     expect(onClose).not.toHaveBeenCalled();
@@ -223,7 +233,7 @@ describe("Fork chat from here", () => {
     );
     const dialog = screen.getByRole("dialog");
     expect(dialog).toHaveClass("dialog--scrim");
-    const option = screen.getByRole("menuitem", {
+    const option = screen.getByRole("button", {
       name: /Fork in this workspace/,
     });
     expect(option).toHaveFocus();
@@ -267,7 +277,7 @@ describe("Fork chat from here", () => {
     );
     await act(async () => {
       fireEvent.click(
-        screen.getByRole("menuitem", { name: /Fork in this workspace/ }),
+        screen.getByRole("button", { name: /Fork in this workspace/ }),
       );
     });
     expect(screen.getByRole("alert")).toHaveTextContent(
@@ -275,7 +285,7 @@ describe("Fork chat from here", () => {
     );
     expect(onClose).not.toHaveBeenCalled();
     expect(
-      screen.getByRole("menuitem", { name: /Fork in this workspace/ }),
+      screen.getByRole("button", { name: /Fork in this workspace/ }),
     ).toBeEnabled();
   });
 
@@ -333,6 +343,7 @@ describe("Continued from chat", () => {
     const history = await screen.findByRole("group", {
       name: "History from the parent chat",
     });
+    await settleLazyModules();
     // Each inherited Turn is inert itself, so its answer row stays usable.
     expect(history).not.toHaveAttribute("inert");
     expect(
