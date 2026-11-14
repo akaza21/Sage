@@ -1,6 +1,6 @@
 use super::tests::{Mapper, frame, initialize, request_id};
 use super::*;
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{SageChatId, SageProjectId},
     scheduler::RuntimeOwner,
     session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},

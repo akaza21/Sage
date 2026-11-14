@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{RepositoryRef, ResourceRef};
-use crate::acp_protocol::file_diff::DiffRef;
+use sage_acp_protocol::file_diff::DiffRef;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

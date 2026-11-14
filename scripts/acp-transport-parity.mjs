@@ -71,10 +71,10 @@ const RUST_IGNORED_FIELDS = Object.freeze({
 export async function acpTransportParityErrors(root) {
   const rustSource = [
     await readFile(
-      path.join(root, "src-tauri/src/acp/intent.rs"),
+      path.join(root, "crates/sage-acp-protocol/src/intent.rs"),
       "utf8",
     ).catch(() => ""),
-    await readSources(root, "src-tauri/src/acp/intent", [".rs"]),
+    await readSources(root, "crates/sage-acp-protocol/src/intent", [".rs"]),
     await readFile(
       path.join(root, "src-tauri/src/acp/projection.rs"),
       "utf8",

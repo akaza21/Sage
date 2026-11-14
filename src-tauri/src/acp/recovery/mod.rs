@@ -1,14 +1,14 @@
 use rusqlite::{OptionalExtension, params};
 
+use crate::acp::store::{
+    RecoverRuntimeCommand, RecoveryCandidate, StoreError, load_recovery_candidates,
+    next_projection_revision, terminalize_recovery_epoch,
+};
 #[cfg(test)]
-use crate::acp::lifecycle::DeliveryState;
-use crate::acp::{
+use sage_acp_protocol::lifecycle::DeliveryState;
+use sage_acp_protocol::{
     contract::{ProjectionRevision, SageTurnId},
     lifecycle::{SessionState, TurnState},
-    store::{
-        RecoverRuntimeCommand, RecoveryCandidate, StoreError, load_recovery_candidates,
-        next_projection_revision, terminalize_recovery_epoch,
-    },
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]

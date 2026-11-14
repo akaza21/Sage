@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::session_event::{
         SESSION_ACTIVITY_KIND_BYTES, SESSION_ACTIVITY_LABEL_BYTES, SESSION_ACTIVITY_PROGRESS_BYTES,

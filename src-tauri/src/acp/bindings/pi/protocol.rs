@@ -246,7 +246,7 @@ pub enum AdapterOutput {
     Retry {
         attempt: u64,
         max_attempts: Option<u64>,
-        state: crate::acp::intent::session_event::SessionActivityState,
+        state: sage_acp_protocol::intent::session_event::SessionActivityState,
     },
     TextStarted {
         external_id: Option<String>,
@@ -301,7 +301,7 @@ pub enum AdapterOutput {
         accepted: bool,
     },
     Notice {
-        level: crate::acp::intent::session_event::SessionNoticeLevel,
+        level: sage_acp_protocol::intent::session_event::SessionNoticeLevel,
         source: &'static str,
         text: String,
     },

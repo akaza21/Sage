@@ -1,9 +1,9 @@
 use super::{FilePairCommand, ItemIngressCommand, StoreError};
-use crate::acp::{
+use rusqlite::{OptionalExtension, Transaction, params};
+use sage_acp_protocol::{
     contract::SageItemId,
     intent::{NormalizedPayload, SafeResourceLocation},
 };
-use rusqlite::{OptionalExtension, Transaction, params};
 use sage_core::limits::LIMITS;
 
 pub(super) struct Existing {
@@ -17,7 +17,7 @@ pub(super) fn lookup(
     command: &ItemIngressCommand,
 ) -> Result<Option<Existing>, StoreError> {
     if let NormalizedPayload::FileChangeDiff {
-        resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
+        resource: sage_acp_protocol::intent::SafeResourceLocation::Resource { resource },
         ..
     } = &command.payload
     {
@@ -184,7 +184,7 @@ pub(super) fn insert(
     pair: &FilePairCommand,
 ) -> Result<(), StoreError> {
     let NormalizedPayload::FileChangeDiff {
-        resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
+        resource: sage_acp_protocol::intent::SafeResourceLocation::Resource { resource },
         snapshot_revision,
         old_bytes,
         new_bytes,

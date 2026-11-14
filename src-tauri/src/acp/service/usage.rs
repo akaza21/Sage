@@ -3,6 +3,8 @@ use crate::acp::{
     goal::{NativeRpcIntent, NativeRpcRequest},
     projection::AcpChatPage,
     runtime::HostError,
+};
+use sage_acp_protocol::{
     scheduler::RuntimeOwner,
     usage::{UsageCell, UsageState},
 };

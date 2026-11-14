@@ -1,7 +1,7 @@
 use super::*;
-use crate::{
-    acp::page_admission::PageReadLease,
-    acp_protocol::file_diff::{DiffRef, SnapshotData, SnapshotReadError},
+use sage_acp_protocol::{
+    file_diff::{DiffRef, SnapshotData, SnapshotReadError},
+    page_admission::PageReadLease,
 };
 
 impl AcpService {
@@ -9,7 +9,7 @@ impl AcpService {
     pub(crate) async fn read_file_snapshot(
         &self,
         project_id: &SageProjectId,
-        expected_revision: crate::acp::contract::ProjectionRevision,
+        expected_revision: sage_acp_protocol::contract::ProjectionRevision,
         diff_ref: DiffRef,
         lease: PageReadLease,
     ) -> Result<SnapshotData, SnapshotReadError> {
@@ -43,7 +43,7 @@ async fn read_off_thread(
 fn read_snapshot(
     database: &Database,
     project_id: &SageProjectId,
-    expected_revision: crate::acp::contract::ProjectionRevision,
+    expected_revision: sage_acp_protocol::contract::ProjectionRevision,
     diff_ref: &DiffRef,
 ) -> Result<SnapshotData, SnapshotReadError> {
     let connection = database.connection();
@@ -53,7 +53,7 @@ fn read_snapshot(
 
 pub(crate) fn verify_current_owner(
     connection: &rusqlite::Connection,
-    expected_revision: crate::acp::contract::ProjectionRevision,
+    expected_revision: sage_acp_protocol::contract::ProjectionRevision,
     diff_ref: &DiffRef,
 ) -> Result<(), SnapshotReadError> {
     // Head ownership and the projection selected by the caller are checked
@@ -98,7 +98,8 @@ fn read_owned(
     let roots = roots
         .into_iter()
         .map(|root| {
-            crate::acp::contract::SageRootId::parse(root).map_err(|_| SnapshotReadError::Corrupt)
+            sage_acp_protocol::contract::SageRootId::parse(root)
+                .map_err(|_| SnapshotReadError::Corrupt)
         })
         .collect::<Result<Vec<_>, _>>()?;
     crate::acp::store::read_snapshot(connection, diff_ref, &roots)
@@ -109,7 +110,7 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
-    use crate::acp::page_admission::PageReadAdmission;
+    use sage_acp_protocol::page_admission::PageReadAdmission;
 
     #[test]
     fn snapshot_database_work_does_not_run_on_the_async_executor_thread() {
@@ -171,7 +172,7 @@ mod tests {
                 assert!(caller.await.unwrap_err().is_cancelled());
                 assert_eq!(
                     admission.try_acquire(&project, &chat).unwrap_err(),
-                    crate::acp::page_admission::PageAdmissionError::Owner
+                    sage_acp_protocol::page_admission::PageAdmissionError::Owner
                 );
                 drop(release);
                 tokio::time::timeout(Duration::from_secs(2), async {
@@ -211,7 +212,7 @@ mod tests {
             relative_path: "src/a.ts".into(),
             content_digest: "a".repeat(64),
         };
-        let revision = crate::acp::contract::ProjectionRevision::new(7).unwrap();
+        let revision = sage_acp_protocol::contract::ProjectionRevision::new(7).unwrap();
         assert!(verify_current_owner(&connection, revision, &reference).is_ok());
         for field in ["project", "chat", "session"] {
             let mut forged = reference.clone();
@@ -228,7 +229,7 @@ mod tests {
         assert_eq!(
             verify_current_owner(
                 &connection,
-                crate::acp::contract::ProjectionRevision::new(6).unwrap(),
+                sage_acp_protocol::contract::ProjectionRevision::new(6).unwrap(),
                 &reference
             ),
             Err(SnapshotReadError::Stale)

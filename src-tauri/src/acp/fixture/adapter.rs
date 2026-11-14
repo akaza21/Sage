@@ -8,10 +8,12 @@ use crate::acp::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
         AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
+    transport::{Frame, OutboundFrame},
+};
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
-    transport::{Frame, OutboundFrame},
 };
 use sage_core::limits::LIMITS;
 
@@ -152,7 +154,7 @@ impl FixtureAdapter {
             },
             tool_state: Some(state),
             payload: NormalizedPayload::ToolCall {
-                category: crate::acp::intent::ToolCategory::Other,
+                category: sage_acp_protocol::intent::ToolCategory::Other,
                 label: SafeText::new("toolLabel", "Fixture tool")
                     .map_err(|_| AdapterRuntimeError::Frame)?,
                 input_summary: None,

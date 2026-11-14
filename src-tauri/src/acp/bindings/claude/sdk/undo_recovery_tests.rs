@@ -235,7 +235,7 @@ fn undo_interrupted_after_persisting_the_intent_recovers_on_restart() {
         let fixture = Fixture::on(crate::acp::bindings::codex::CODEX_BINDING_ID);
         fixture.run();
         fixture.turn(FIRST, 0);
-        let owner = crate::acp::scheduler::RuntimeOwner {
+        let owner = sage_acp_protocol::scheduler::RuntimeOwner {
             project_id: fixture.project.clone(),
             chat_id: fixture.chat.clone(),
             session_id: SageAgentSessionId::parse("session-a").unwrap(),

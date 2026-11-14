@@ -6,9 +6,11 @@ use crate::acp::{
         AdapterEgress, AdapterIdentity, AdapterRuntimeError, EgressToken,
         ResourceMapper as SharedResourceMapper,
     },
+    transport::OutboundFrame,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{ExternalId, NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
-    transport::OutboundFrame,
 };
 
 use super::super::{
@@ -90,7 +92,7 @@ pub(super) fn denial(
 }
 
 pub(super) fn cancelled_permission(
-    request_id: &crate::acp::contract::SageServerRequestId,
+    request_id: &sage_acp_protocol::contract::SageServerRequestId,
     wire_id: &Value,
 ) -> Result<AdapterEgress, AdapterRuntimeError> {
     let bytes = serde_json::to_vec(&serde_json::json!({

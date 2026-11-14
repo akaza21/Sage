@@ -14,10 +14,8 @@ pub(super) fn seed_chat(service: &AcpService) {
         .unwrap();
 }
 use super::*;
-use crate::{
-    acp::session_config::{ConfigId, ConfigMutation, ConfigValue},
-    persistence::Database,
-};
+use crate::persistence::Database;
+use sage_acp_protocol::session_config::{ConfigId, ConfigMutation, ConfigValue};
 
 fn restored_page(service: &AcpService) -> Value {
     let first = owner(1);

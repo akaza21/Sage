@@ -7,7 +7,7 @@ fn permission(id: &str) -> AdapterEvent {
         external_request_id: ExternalId::new("permissionRequest", id).expect("request"),
         payload: NormalizedPayload::PermissionRequest {
             user_input: None,
-            category: crate::acp::intent::ToolCategory::Other,
+            category: sage_acp_protocol::intent::ToolCategory::Other,
             summary: SafeText::new("summary", "permission").expect("summary"),
             offered_option_kinds: None,
             reason: None,

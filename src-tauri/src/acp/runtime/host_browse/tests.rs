@@ -5,7 +5,7 @@ use crate::acp::bindings::standard_acp::{
     PROFILES, StandardAcpProfile,
     translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator},
 };
-use crate::acp::intent::{SafeResourceRef, ToolCategory, UnavailableResourceReason};
+use sage_acp_protocol::intent::{SafeResourceRef, ToolCategory, UnavailableResourceReason};
 
 #[test]
 fn curated_host_tools_advertise_browse_without_harness_names() {

@@ -9,18 +9,21 @@ use crate::acp::{
         },
         pi::PiRuntime,
     },
-    contract::{
-        ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
-        SageProjectId, SchemaVersionV1,
-    },
-    intent::{CapabilitySnapshotV1, Prompt, SafeResourceRef, UnavailableResourceReason},
-    lifecycle::TurnState,
     runtime::{
         ActivationFlush, ActivationIntent, ActivationJournal, ActivationJournalError,
         ActivationMode, ActivationPump, ActivationReceipt, ActivationTransport,
     },
     store::CompleteActivationCommand,
+    transcript_quote::Prompt,
     transport::{FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame},
+};
+use sage_acp_protocol::{
+    contract::{
+        ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
+        SageProjectId, SchemaVersionV1,
+    },
+    intent::{CapabilitySnapshotV1, SafeResourceRef, UnavailableResourceReason},
+    lifecycle::TurnState,
 };
 
 #[test]
@@ -129,7 +132,7 @@ fn pi_fixture_wire_activation_and_idless_idle_discovery_preserve_the_next_prompt
                 .command(AdapterCommand::Prompt {
                     prompt: Prompt::new("prompt", "Inspect the synthetic example").unwrap(),
                     client_message_id: RequiredText::new("client", "after-discovery").unwrap(),
-                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                    access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 })
                 .unwrap();
             wire_reply(&mut adapter, &mut wire, prompt, "piPrompt");

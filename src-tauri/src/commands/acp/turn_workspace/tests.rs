@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::store::{StartSessionCommand, start_session};
-use crate::acp::{contract::ProjectionRevision, intent::BindingId};
+use sage_acp_protocol::{contract::ProjectionRevision, intent::BindingId};
 
 #[tokio::test]
 async fn optional_baseline_releases_transition_before_waiting_and_never_blocks_send_on_capacity() {
@@ -191,7 +191,7 @@ async fn an_archive_during_the_unlocked_capture_fails_the_send_as_stale() {
         matches!(
             relocked,
             Some(AcpIpcError::Conflict {
-                resource: crate::acp::intent::AcpConflictResource::ProjectGeneration,
+                resource: crate::acp::ipc::AcpConflictResource::ProjectGeneration,
                 ..
             })
         ),

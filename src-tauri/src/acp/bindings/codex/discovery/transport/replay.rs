@@ -7,9 +7,9 @@ use serde_json::Value;
 
 use crate::acp::{
     bindings::codex::{AdmittedCodexBinding, CodexProjectRootAuthority},
-    contract::RuntimeEpoch,
     transport::{Frame, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame},
 };
+use sage_acp_protocol::contract::RuntimeEpoch;
 
 use super::{
     super::{

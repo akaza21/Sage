@@ -61,7 +61,7 @@ fn codex_terminal_only_error_survives_the_shared_pump_history_and_database_reope
         codex.ingest(&codex_frame(serde_json::json!({"id":codex_request_id(&start),"result":{"thread":{"id":"external-session"}}})), &Mapper).unwrap();
         codex.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(), client_message_id: message(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         codex.ingest(&codex_frame(serde_json::json!({"method":"turn/started","params":{
             "threadId":"external-session","turn":{"id":"external-turn","status":"inProgress"}

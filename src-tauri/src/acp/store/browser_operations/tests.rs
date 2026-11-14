@@ -1,6 +1,6 @@
-use crate::acp::{
-    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
-    projection::BrowserOperationProjection,
+use crate::acp::projection::BrowserOperationProjection;
+use sage_acp_protocol::contract::{
+    RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
 };
 
 use super::{

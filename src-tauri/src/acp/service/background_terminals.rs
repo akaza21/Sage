@@ -3,8 +3,8 @@ use crate::acp::{
     background_terminals::{BackgroundTerminal, TerminalAction},
     goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
     runtime::HostError,
-    scheduler::RuntimeOwner,
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TerminalsError {

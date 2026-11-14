@@ -7,9 +7,7 @@ use std::sync::{
 use crate::{
     acp::{
         bindings::registry::{AdmittedBindingRecord, BindingRegistry, RegistryUnavailable},
-        contract::{ProjectGeneration, SageChatId, SageProjectId},
-        intent::{AcpChatPage, BindingId, IntentSnapshot, PageCursor},
-        page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
+        ipc::{AcpChatPage, IntentSnapshot},
         runtime::{
             BoundedThread, JournalHandle, ProjectionNotifier, ProjectionPublisher,
             SessionCoordinator, ThreadWaitError,
@@ -18,19 +16,23 @@ use crate::{
     },
     persistence::Database,
 };
+use sage_acp_protocol::{
+    contract::{ProjectGeneration, SageChatId, SageProjectId},
+    intent::{BindingId, PageCursor},
+    page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
+};
 
 #[cfg(test)]
 use crate::acp::bindings::codex::CodexBindingRegistration;
 use crate::acp::{errors::SessionControlError, read_text_file::ReadTextFileService};
 
 #[cfg(all(test, windows))]
-use crate::acp::{
-    bindings::{
-        adapter::AdapterRuntimeError,
-        codex::{CodexProjectRootAuthority, CodexRuntime},
-    },
-    contract::{RuntimeEpoch, SageAgentSessionId},
+use crate::acp::bindings::{
+    adapter::AdapterRuntimeError,
+    codex::{CodexProjectRootAuthority, CodexRuntime},
 };
+#[cfg(all(test, windows))]
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 pub(crate) mod background_terminals;
 mod bootstrap;
@@ -110,8 +112,6 @@ use page_bytes::PageBytes;
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
 
-pub(crate) use crate::acp::intent::PromptSendError;
-
 pub(crate) struct AcpService {
     pub(crate) file_stages: Arc<Mutex<crate::acp::attached_context::files::FileStages>>,
     pub(crate) file_stage_reader: Arc<tokio::sync::Mutex<()>>,
@@ -127,7 +127,7 @@ pub(crate) struct AcpService {
     pub(super) read_text_files: ReadTextFileService,
     browser_permissions: Mutex<
         std::collections::HashMap<
-            crate::acp::contract::SageServerRequestId,
+            sage_acp_protocol::contract::SageServerRequestId,
             browser_permission::PendingBrowserPermission,
         >,
     >,
@@ -319,9 +319,14 @@ impl AcpService {
         &self,
         binding_id: &BindingId,
         intent: crate::acp::runtime::HostPromptIntent,
-    ) -> Result<crate::acp::runtime::HostOutcome, PromptSendError<SessionDispatchError>> {
+    ) -> Result<
+        crate::acp::runtime::HostOutcome,
+        crate::acp::prompt_send::PromptSendError<SessionDispatchError>,
+    > {
         self.resolve_session_binding(binding_id)
-            .map_err(|_| PromptSendError::not_started(SessionDispatchError::Binding))?
+            .map_err(|_| {
+                crate::acp::prompt_send::PromptSendError::not_started(SessionDispatchError::Binding)
+            })?
             .dispatch_turn(self, intent)
             .map_err(|failure| failure.map(SessionDispatchError::Operation))
     }
@@ -400,7 +405,7 @@ impl AcpService {
     #[cfg(test)]
     pub(crate) fn install_runtime_for_test(
         &self,
-        owner: crate::acp::scheduler::RuntimeOwner,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
         runtime: Arc<crate::acp::runtime::RuntimeHost>,
     ) {
         self.lane_at(0)

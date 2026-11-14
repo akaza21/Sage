@@ -2,7 +2,7 @@ use super::{
     paths::{PathContext, PathMode},
     secrets::{REDACTED, SecretContext, append},
 };
-use crate::acp::contract::ContractError;
+use sage_acp_protocol::contract::ContractError;
 
 pub(crate) fn redact_prose(
     field: &'static str,

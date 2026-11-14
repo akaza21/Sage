@@ -11,9 +11,9 @@ use crate::acp::bindings::pi::{
     decode::{bounded_string, external_id, redact_structured_text},
     protocol::{AdapterError, AdapterOutput, TerminalOutcome, ToolOutcome},
 };
-use crate::acp::{
-    intent::session_event::{SESSION_NOTICE_TEXT_BYTES, SESSION_TITLE_BYTES, SessionNoticeLevel},
-    redaction::text::{clip_display, neutralized},
+use crate::acp::redaction::text::{clip_display, neutralized};
+use sage_acp_protocol::intent::session_event::{
+    SESSION_NOTICE_TEXT_BYTES, SESSION_TITLE_BYTES, SessionNoticeLevel,
 };
 
 impl PiTranslator {
@@ -220,7 +220,7 @@ impl PiTranslator {
                     events.push(AdapterOutput::Retry {
                         attempt,
                         max_attempts: None,
-                        state: crate::acp::intent::session_event::SessionActivityState::Cancelled,
+                        state: sage_acp_protocol::intent::session_event::SessionActivityState::Cancelled,
                     });
                 }
                 events.push(AdapterOutput::TurnTerminal {

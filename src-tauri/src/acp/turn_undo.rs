@@ -1,4 +1,5 @@
-use crate::acp::{contract::SageTurnId, errors::SessionControlError, scheduler::RuntimeOwner};
+use crate::acp::errors::SessionControlError;
+use sage_acp_protocol::{contract::SageTurnId, scheduler::RuntimeOwner};
 
 /// Preparation boundary shared by native bindings: resolve first, then commit
 /// the intent. No native effect is admitted until this returns successfully.
@@ -14,7 +15,8 @@ pub(crate) fn stage_turn_undo<E: std::fmt::Display>(
     } else {
         resolve_cut().map_err(|error| {
             SessionControlError::Refused(
-                crate::acp::contract::SafeText::new("controlSummary", error.to_string()).ok(),
+                sage_acp_protocol::contract::SafeText::new("controlSummary", error.to_string())
+                    .ok(),
             )
         })?
     };

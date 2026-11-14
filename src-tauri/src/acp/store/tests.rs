@@ -1,9 +1,9 @@
 use rusqlite::{Connection, params};
 
 use super::*;
-use crate::acp::{
+use crate::acp::transcript_quote::Prompt;
+use sage_acp_protocol::{
     contract::ProjectGeneration,
-    intent::Prompt,
     lifecycle::{DeliveryState, ServerRequestState, SessionState, TurnState},
 };
 use sage_core::limits::LIMITS;

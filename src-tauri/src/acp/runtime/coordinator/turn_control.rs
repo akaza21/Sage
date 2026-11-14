@@ -1,9 +1,8 @@
 use crate::acp::{
-    contract::ClientIntentId,
-    lifecycle::TurnTerminalOutcome,
     runtime::TurnNotice,
     store::{AdapterTurnCursor, BeginCancelCommand, MutationDisposition},
 };
+use sage_acp_protocol::{contract::ClientIntentId, lifecycle::TurnTerminalOutcome};
 
 use super::*;
 
@@ -76,7 +75,7 @@ impl ActiveDispatch {
 }
 
 impl ActiveDispatch {
-    pub(crate) fn turn_id(&self) -> &crate::acp::contract::SageTurnId {
+    pub(crate) fn turn_id(&self) -> &sage_acp_protocol::contract::SageTurnId {
         &self.command.turn_id
     }
 
@@ -84,7 +83,7 @@ impl ActiveDispatch {
         self.accepted_state.is_terminal()
     }
 
-    pub(crate) fn state(&self) -> crate::acp::lifecycle::TurnState {
+    pub(crate) fn state(&self) -> sage_acp_protocol::lifecycle::TurnState {
         self.accepted_state
     }
 

@@ -1,14 +1,16 @@
 use super::super::{extended_tests::*, *};
 use crate::acp::{
     bindings::{codex, standard_acp},
+    projection::ItemContent,
+};
+use rusqlite::Connection;
+use sage_acp_protocol::{
     contract::{ClientIntentId, SafeText},
     intent::{
         ImageMediaType, ImageSource, NormalizedPayload, SafeResourceRef, UnavailableResourceReason,
     },
     lifecycle::ItemLifecycle,
-    projection::ItemContent,
 };
-use rusqlite::Connection;
 use serde_json::json;
 
 const PNG: &str =
@@ -178,7 +180,8 @@ fn image_command(session_id: SageAgentSessionId, payload: NormalizedPayload) -> 
         session_id,
         turn_id: SageTurnId::parse("turn-image").unwrap(),
         runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-        external_item_id: crate::acp::intent::ExternalId::new("external", "image-one").unwrap(),
+        external_item_id: sage_acp_protocol::intent::ExternalId::new("external", "image-one")
+            .unwrap(),
         activity_id: None,
         payload,
         payload_digest: super::super::facts::hex_digest(payload_json.as_bytes()),
@@ -220,8 +223,11 @@ fn setup_image_turn(connection: &mut Connection) -> SageAgentSessionId {
             runtime_epoch: RuntimeEpoch::new(1).unwrap(),
             binding_digest: "a".repeat(64),
             artifact_digest: "d".repeat(64),
-            external_session_id: crate::acp::intent::ExternalId::new("external", "image-session")
-                .unwrap(),
+            external_session_id: sage_acp_protocol::intent::ExternalId::new(
+                "external",
+                "image-session",
+            )
+            .unwrap(),
             capabilities_json: capabilities(),
             now_millis: 3,
         },

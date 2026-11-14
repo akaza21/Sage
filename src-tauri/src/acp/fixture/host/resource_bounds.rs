@@ -1,11 +1,10 @@
 use serde_json::{Value, json};
 
 use crate::acp::{
-    contract::SageRootId,
     fixture::generated_cases::FrozenCase,
-    intent::SafeResourceRef,
     resource_mapper::{ResourceMapError, validate_native_path_bytes},
 };
+use sage_acp_protocol::{contract::SageRootId, intent::SafeResourceRef};
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "absolute-path-bytes-32768",

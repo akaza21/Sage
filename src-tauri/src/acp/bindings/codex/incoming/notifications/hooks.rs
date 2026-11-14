@@ -11,8 +11,8 @@
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
-use crate::acp::{
-    bindings::codex::state::ExternalKind,
+use crate::acp::bindings::codex::state::ExternalKind;
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{
         ExternalId,

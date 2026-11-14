@@ -136,9 +136,9 @@ fn terminalize_permission_item(
     normalized_payload_json: &str,
 ) -> Result<(), StoreError> {
     let tool_state = match command.state {
-        crate::acp::lifecycle::ServerRequestState::ResolvedAllowed => "completed",
-        crate::acp::lifecycle::ServerRequestState::ResolvedDeclined => "declined",
-        crate::acp::lifecycle::ServerRequestState::Cancelled => "cancelled",
+        sage_acp_protocol::lifecycle::ServerRequestState::ResolvedAllowed => "completed",
+        sage_acp_protocol::lifecycle::ServerRequestState::ResolvedDeclined => "declined",
+        sage_acp_protocol::lifecycle::ServerRequestState::Cancelled => "cancelled",
         _ => {
             return Err(StoreError::InvalidTransition {
                 resource: "request",
@@ -175,9 +175,9 @@ fn verify_terminal_item(
     normalized_payload_json: &str,
 ) -> Result<(), StoreError> {
     let tool_state = match command.state {
-        crate::acp::lifecycle::ServerRequestState::ResolvedAllowed => "completed",
-        crate::acp::lifecycle::ServerRequestState::ResolvedDeclined => "declined",
-        crate::acp::lifecycle::ServerRequestState::Cancelled => "cancelled",
+        sage_acp_protocol::lifecycle::ServerRequestState::ResolvedAllowed => "completed",
+        sage_acp_protocol::lifecycle::ServerRequestState::ResolvedDeclined => "declined",
+        sage_acp_protocol::lifecycle::ServerRequestState::Cancelled => "cancelled",
         _ => {
             return Err(StoreError::InvalidTransition {
                 resource: "request",

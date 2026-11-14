@@ -1,20 +1,18 @@
 use std::sync::Arc;
 
-use crate::settings_store::MAX_CUSTOM_ACP_AGENTS;
-use crate::{
-    acp::bindings::{
-        claude::{CLAUDE_BINDING_ID, ClaudeAdmissionUnavailable, ClaudeBindingRegistration},
-        codex::{
-            CODEX_BINDING_ID, CODEX_SCHEMA_SHA256, CodexAdmissionUnavailable,
-            CodexBindingRegistration, startup_codex_binding_registration,
-        },
-        standard_acp::{
-            CustomAcpRegistration, CustomAcpUnavailable, OPENCODE_BINDING_ID,
-            OpenCodeAdmissionUnavailable, OpenCodeBindingRegistration,
-        },
+use crate::acp::bindings::{
+    claude::{CLAUDE_BINDING_ID, ClaudeAdmissionUnavailable, ClaudeBindingRegistration},
+    codex::{
+        CODEX_BINDING_ID, CODEX_SCHEMA_SHA256, CodexAdmissionUnavailable, CodexBindingRegistration,
+        startup_codex_binding_registration,
     },
-    acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY,
+    standard_acp::{
+        CustomAcpRegistration, CustomAcpUnavailable, OPENCODE_BINDING_ID,
+        OpenCodeAdmissionUnavailable, OpenCodeBindingRegistration,
+    },
 };
+use crate::settings_store::MAX_CUSTOM_ACP_AGENTS;
+use sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY;
 
 mod claude;
 mod claude_sdk;

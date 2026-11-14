@@ -5,8 +5,8 @@ use crate::{
     workspace::{RootIdentity, leaf_identity, open_workspace_text_file},
 };
 
-use super::{
-    bindings::adapter::ResourceMapper,
+use super::bindings::adapter::ResourceMapper;
+use sage_acp_protocol::{
     contract::SageRootId,
     intent::{SafeResourceRef, UnavailableResourceReason},
 };

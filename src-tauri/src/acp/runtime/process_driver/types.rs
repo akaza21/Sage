@@ -3,9 +3,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use crate::acp::{
     process::{StdinEndpoint, TreeControl, TreeExit, ZeroProcessToken},
     runtime::{EgressTransport, NonfatalRefusal, SessionTreeLease},
-    scheduler::RuntimeOwner,
     transport::{FrameWriteOutcome, OutboundFrame},
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 use sage_process::error::LaunchError;
 
 use super::MailboxError;
@@ -33,7 +33,7 @@ pub(crate) enum TeardownCause {
     MandatoryDenyFailure,
     DeliveryUnknown,
     RefusedVersion {
-        observed: crate::acp::contract::RequiredText<64>,
+        observed: sage_acp_protocol::contract::RequiredText<64>,
     },
     HostTermination,
 }
@@ -51,7 +51,7 @@ pub(crate) struct PendingExit {
     pub(crate) termination_requested: bool,
 }
 
-impl From<TeardownCause> for crate::acp::lifecycle::TurnTerminalReason {
+impl From<TeardownCause> for sage_acp_protocol::lifecycle::TurnTerminalReason {
     fn from(value: TeardownCause) -> Self {
         match value {
             TeardownCause::ProtocolFailure => Self::ProtocolError,

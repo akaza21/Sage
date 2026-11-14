@@ -2,18 +2,19 @@ use std::collections::BTreeMap;
 
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    bindings::codex::{
-        incoming::{
-            ResourceMapper,
-            support::{command_cwd, command_exit_code, sanitized_command_line},
-        },
-        state::command_output_stream::CommandOutputStream,
+use crate::acp::bindings::codex::{
+    incoming::{
+        ResourceMapper,
+        support::{command_cwd, command_exit_code, sanitized_command_line},
     },
+    state::command_output_stream::CommandOutputStream,
+};
+use sage_acp_protocol::{
     contract::BoundedVec,
     declared_test::{CommandActivity, DeclaredTestCommands},
-    intent::{COMMAND_RESOURCE_LIMIT, SafeResourceLocation},
+    intent::SafeResourceLocation,
 };
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
 use super::{
@@ -389,9 +390,9 @@ fn location_bytes(location: Option<&SafeResourceLocation>) -> usize {
 mod tests {
     use serde_json::json;
 
-    use crate::acp::{
+    use crate::acp::package_manifest::declared_test_commands_for_project;
+    use sage_acp_protocol::{
         contract::SageRootId,
-        declared_test::declared_test_commands_for_project,
         intent::{SafeResourceRef, UnavailableResourceReason},
     };
 

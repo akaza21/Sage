@@ -4,9 +4,6 @@ use std::{
 };
 
 use crate::acp::{
-    contract::{ClientIntentId, RequiredText},
-    intent::Prompt,
-    lifecycle::{ItemLifecycle, TurnState},
     process::{StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit},
     projection::ItemContent,
     runtime::{
@@ -14,8 +11,13 @@ use crate::acp::{
         DriverMailbox, JournalHandle, LiveWrite, ProcessAdapterDriver, ProjectionMailbox,
         SqliteAdapterBatchJournal, TeardownCause, TreeLeaseOwner,
     },
-    scheduler::{RuntimeOwner, Scheduler, TreeLease},
     store::{CloseSessionCommand, SendObservation, load_chat_page},
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, RequiredText},
+    lifecycle::{ItemLifecycle, TurnState},
+    scheduler::{RuntimeOwner, Scheduler, TreeLease},
 };
 
 use super::child::runtime_fixture::{FixtureClock, FixtureMapper, owner, pump_intent};

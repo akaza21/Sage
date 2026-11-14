@@ -1,8 +1,8 @@
-use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
-        EgressResolution,
-    },
+use crate::acp::bindings::adapter::{
+    AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
+    EgressResolution,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SafeText, SchemaVersionV1},
     intent::{CapabilitySnapshotV1, NormalizedPayload},
 };

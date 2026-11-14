@@ -1,5 +1,5 @@
-use crate::acp::{
-    bindings::adapter::AdapterRuntimeError,
+use crate::acp::bindings::adapter::AdapterRuntimeError;
+use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     scheduler::RuntimeOwner,
 };

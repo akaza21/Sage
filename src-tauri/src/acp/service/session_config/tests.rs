@@ -1,15 +1,17 @@
 use super::*;
 use crate::acp::{
-    contract::{EntityRevision, ProjectionRevision, RuntimeEpoch, SafeText, SageAgentSessionId},
-    intent::CapabilitySnapshotV1,
     projection::SessionProjection,
     runtime::{
         HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, HostState, PromptWrite,
         RuntimeEngine, RuntimeHost,
     },
     service::runtime_slot::RuntimeSlotError,
-    session_config::{ConfigId, ConfigMutation, ConfigValue, SessionConfig},
     store::AdapterTurnCursor,
+};
+use sage_acp_protocol::{
+    contract::{EntityRevision, ProjectionRevision, RuntimeEpoch, SafeText, SageAgentSessionId},
+    intent::CapabilitySnapshotV1,
+    session_config::{ConfigId, ConfigMutation, ConfigValue, SessionConfig},
 };
 use serde_json::json;
 
@@ -31,34 +33,34 @@ impl RuntimeEngine for ConfigErrorEngine {
     fn prepare_prompt(
         &mut self,
         _: &HostPromptIntent,
-    ) -> Result<crate::acp::contract::SageTurnId, HostError> {
+    ) -> Result<sage_acp_protocol::contract::SageTurnId, HostError> {
         Err(HostError::State)
     }
     fn dispatch_prompt(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<PromptWrite, HostError> {
         Err(HostError::State)
     }
     fn retry_prompt(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<PromptWrite, HostError> {
         Err(HostError::State)
     }
     fn record_delivery_unknown(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), HostError> {
         Ok(())
     }
     fn record_retry_exhausted(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), HostError> {
         Ok(())
     }
@@ -168,8 +170,8 @@ fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
                 ordinal: 0,
                 binding_id: BindingId::new("bindingId", "binding-config").unwrap(),
                 model_id: None,
-                state: crate::acp::contract::SessionState::Ready,
-                residency: crate::acp::contract::Residency::Hot,
+                state: sage_acp_protocol::lifecycle::SessionState::Ready,
+                residency: sage_acp_protocol::lifecycle::Residency::Hot,
                 runtime_epoch: Some(owner.runtime_epoch),
                 next_runtime_epoch: None,
                 permission_requests: false,

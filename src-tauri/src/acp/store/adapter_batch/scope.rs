@@ -1,8 +1,8 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::{
-    acp::contract::{ProjectionRevision, RuntimeEpoch},
-    acp_protocol::permissions::PermissionIntent,
+use sage_acp_protocol::{
+    contract::{ProjectionRevision, RuntimeEpoch},
+    permissions::PermissionIntent,
 };
 use sage_core::limits::LIMITS;
 

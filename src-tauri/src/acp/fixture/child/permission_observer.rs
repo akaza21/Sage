@@ -2,20 +2,17 @@ use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
 
-use crate::{
-    acp::{
-        fixture::{generated_cases::FrozenCase, wire},
-        process::TreeExit,
-        runtime::{
-            AdapterPump, DriverError, DriverMailbox, EgressTransport, JournalHandle,
-            ProcessAdapterDriver, ProcessTreeControl, ProjectionMailbox, SqliteAdapterBatchJournal,
-            StdinTransport, TeardownCause, TreeLeaseOwner,
-        },
-        scheduler::RuntimeOwner,
-        transport::{FrameWriteOutcome, OutboundFrame},
+use crate::acp::{
+    fixture::{generated_cases::FrozenCase, wire},
+    process::TreeExit,
+    runtime::{
+        AdapterPump, DriverError, DriverMailbox, EgressTransport, JournalHandle,
+        ProcessAdapterDriver, ProcessTreeControl, ProjectionMailbox, SqliteAdapterBatchJournal,
+        StdinTransport, TeardownCause, TreeLeaseOwner,
     },
-    acp_protocol::permissions::PermissionDecision,
+    transport::{FrameWriteOutcome, OutboundFrame},
 };
+use sage_acp_protocol::{permissions::PermissionDecision, scheduler::RuntimeOwner};
 use sage_process::error::LaunchError;
 
 use super::{

@@ -1,9 +1,8 @@
 use serde_json::{Map, Value};
 
 use super::StandardAcpTranslator;
-use crate::acp::{
-    bindings::command_summary::sanitize_command_summary, contract::SafeText, intent::ToolCategory,
-};
+use crate::acp::bindings::command_summary::sanitize_command_summary;
+use sage_acp_protocol::{contract::SafeText, intent::ToolCategory};
 
 /// ACP leaves `rawInput` free-form; an execute tool's `command` string is the
 /// one shape agents share for the command line, so it is read for every

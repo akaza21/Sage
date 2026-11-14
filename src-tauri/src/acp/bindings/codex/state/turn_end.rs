@@ -1,4 +1,4 @@
-use crate::acp::{contract::BoundedVec, intent::NormalizedPlanEntry, lifecycle::TurnState};
+use sage_acp_protocol::{contract::BoundedVec, intent::NormalizedPlanEntry, lifecycle::TurnState};
 
 use super::CodexAdapter;
 

@@ -19,15 +19,13 @@ use windows_sys::Win32::{
 };
 
 use crate::{
-    acp::{
-        contract::{ProjectGeneration, SageProjectId, SageRootId},
-        process::{
-            ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, PlatformSupervisor,
-            ProcessDeadlines, RequiredContainment, TreeCapacityPool, TreeExit, TreeLimits,
-        },
+    acp::process::{
+        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, PlatformSupervisor,
+        ProcessDeadlines, RequiredContainment, TreeCapacityPool, TreeExit, TreeLimits,
     },
     project_registry::ProjectRootAuthority,
 };
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 use sage_process::handle::NativeHandle;
 
 const HELPER: &str = "acp::process::windows::descendant_settlement_tests::non_app_server_child";

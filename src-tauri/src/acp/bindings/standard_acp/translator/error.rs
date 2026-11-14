@@ -1,5 +1,5 @@
 use super::super::wire::WireError;
-use crate::acp::contract::ContractError;
+use sage_acp_protocol::contract::ContractError;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum TranslationError {

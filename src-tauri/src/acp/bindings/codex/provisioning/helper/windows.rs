@@ -22,21 +22,19 @@ use crate::acp::bindings::codex::managed::{
     ManagedStagingPrerequisite, current_process_user_sid, inspect_provisioned_managed_staging,
     validate_provisioned_package_acl, validate_provisioned_state_root,
 };
+use crate::acp::bindings::codex::manifest::MetadataValidatedPacket;
 use crate::acp::bindings::codex::physical::{
     ConfiguredManagedPackageRoot, ExpectedPhysicalFile, InspectionClaims,
     PhysicallyInspectedPackage, decode_digest, inspect_claims, inspect_managed_package,
     same_native_path,
 };
 use crate::acp::bindings::codex::provisioning::{AclPlan, SealedHandoff, hex};
-use crate::{
-    acp::bindings::codex::manifest::MetadataValidatedPacket,
-    acp_protocol::codex_protocol::pinned_codex_version,
-};
 use native::{
     bounded_names, cleanup_completed_stage, create_initial_journal, handle_path, node_identity,
     open_destination_root, open_mutation_directory, open_rename_directory,
     remove_exact_directory_tree, rename_exact, replace_journal,
 };
+use sage_acp_protocol::pinned_codex_version;
 use security::{Principals, apply_acl, apply_acl_to_exact_node, well_known_sid};
 use transaction_lock::TransactionLock;
 

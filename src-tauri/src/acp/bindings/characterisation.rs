@@ -2,7 +2,7 @@ pub(crate) use crate::domain::HarnessCharacterisation as Characterisation;
 
 use super::release_version::characterise_against;
 
-const CODEX_TESTED_VERSION: &str = crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+const CODEX_TESTED_VERSION: &str = sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 const CLAUDE_ADAPTER_TESTED_VERSION: &str = "0.76.0";
 
@@ -65,7 +65,7 @@ pub(crate) fn node_satisfies_declared_engine(node_version: &str, declared_range:
 mod tests {
     use super::*;
 
-    use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+    use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
     #[test]
     fn a_codex_version_is_read_from_either_the_bare_or_prefixed_form() {

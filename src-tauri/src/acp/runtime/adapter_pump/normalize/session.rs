@@ -4,7 +4,7 @@ use super::{AdapterPumpError, DurableAdapterEvent, NormalizedFact, SessionScope}
 /// and the idle paths so every entry point applies the same byte measure.
 pub(in crate::acp::runtime::adapter_pump) fn session_fact(
     scope: SessionScope,
-    event: crate::acp::intent::session_event::SessionScopedEvent,
+    event: sage_acp_protocol::intent::session_event::SessionScopedEvent,
     now_millis: i64,
 ) -> Result<NormalizedFact, AdapterPumpError> {
     let bytes = serde_json::to_vec(&event)
@@ -33,7 +33,7 @@ where
     /// journal transaction; a refused push drops the events and is logged.
     pub(crate) fn seed_session_events(
         &mut self,
-        mut events: crate::acp::intent::session_event::PendingSessionEvents,
+        mut events: sage_acp_protocol::intent::session_event::PendingSessionEvents,
         now_millis: i64,
     ) {
         let facts = events

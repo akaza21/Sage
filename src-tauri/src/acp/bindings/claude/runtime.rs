@@ -5,25 +5,25 @@ use std::{
 
 use serde_json::{Value, json};
 
-use crate::{
-    acp::{
-        bindings::{
-            adapter::{
-                AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress,
-                AdapterEvent as SharedEvent, AdapterModel, AdapterOptionalEgress,
-                AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, RefusalDetail,
-                ResourceMapper as SharedResourceMapper,
-            },
-            standard_acp::{profile_for, surface::auth_refusal_detail},
+use crate::acp::{
+    bindings::{
+        adapter::{
+            AdapterBatch, AdapterBatchBuilder, AdapterCommand, AdapterEgress,
+            AdapterEvent as SharedEvent, AdapterModel, AdapterOptionalEgress, AdapterRuntimeError,
+            EgressResolution, EgressToken, HarnessAdapter, RefusalDetail,
+            ResourceMapper as SharedResourceMapper,
         },
-        contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
-        intent::{CapabilitySnapshotV1, ExternalId},
-        lifecycle::TurnState,
-        mcp::{McpAdmission, McpCapabilities},
-        runtime::later_permission::resolve_later_permission,
-        transport::{Frame, OutboundFrame, request_payload_digest},
+        standard_acp::{profile_for, surface::auth_refusal_detail},
     },
-    acp_protocol::permissions::PermissionDecision,
+    mcp::{McpAdmission, McpCapabilities},
+    runtime::later_permission::resolve_later_permission,
+    transport::{Frame, OutboundFrame, request_payload_digest},
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+    intent::{CapabilitySnapshotV1, ExternalId},
+    lifecycle::TurnState,
+    permissions::PermissionDecision,
 };
 use sage_core::limits::LIMITS;
 
@@ -60,7 +60,7 @@ pub(crate) struct ClaudeRuntime {
     capabilities: Option<CapabilitySnapshotV1>,
     mcp: McpAdmission,
     mcp_capabilities: McpCapabilities,
-    default_model: Option<crate::acp::intent::ModelId>,
+    default_model: Option<sage_acp_protocol::intent::ModelId>,
     pending: BTreeMap<u64, PendingRequest>,
     active: Option<ActiveSession>,
     auth: ClaudeAuthState,
@@ -69,7 +69,7 @@ pub(crate) struct ClaudeRuntime {
     delivery_unknown: Option<DeliveryUnknown>,
     refusal_detail: Option<RefusalDetail>,
     deferred: Vec<AdapterEvent>,
-    next_user_input: Option<Box<crate::acp::intent::user_input::UserInputRequest>>,
+    next_user_input: Option<Box<sage_acp_protocol::intent::user_input::UserInputRequest>>,
     session_root: Option<String>,
     native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
     forks: Vec<fork::TrackedFork>,
@@ -83,7 +83,7 @@ struct ActiveSession {
     external_id: ExternalId,
     translator: ClaudeTranslator,
     turn: Option<TurnIntent>,
-    config: crate::acp::session_config::SessionConfig,
+    config: sage_acp_protocol::session_config::SessionConfig,
     commands: Arc<crate::acp::slash_commands::CommandState>,
     /// Request-scoped cancellation interpretation for bounded late-response replay.
     cancelled_prompt_errors: BTreeSet<u64>,
@@ -228,7 +228,7 @@ impl ClaudeRuntime {
             .ok_or(AdapterRuntimeError::UnsupportedCommand)
     }
 
-    fn accepts_default_model(&self, model: Option<&crate::acp::intent::ModelId>) -> bool {
+    fn accepts_default_model(&self, model: Option<&sage_acp_protocol::intent::ModelId>) -> bool {
         model.is_none_or(|model| {
             self.default_model
                 .as_ref()
@@ -248,7 +248,7 @@ impl HarnessAdapter for ClaudeRuntime {
             .as_ref()
             .map_or_else(Arc::default, |a| Arc::clone(&a.commands))
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.active.as_ref().map(|a| a.config.clone())
     }
     fn refusal_detail(&self) -> Option<RefusalDetail> {
@@ -261,7 +261,7 @@ impl HarnessAdapter for ClaudeRuntime {
     }
     fn configure(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.configure_session(intent).map(Some)
     }
@@ -293,7 +293,7 @@ impl HarnessAdapter for ClaudeRuntime {
 
     fn cancel_permission(
         &mut self,
-        request_id: &crate::acp::contract::SageServerRequestId,
+        request_id: &sage_acp_protocol::contract::SageServerRequestId,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let record = self
             .denials

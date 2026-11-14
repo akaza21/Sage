@@ -2,10 +2,10 @@ use std::hash::{Hash, Hasher};
 
 use serde_json::{Map, Value, json};
 
-use crate::acp::{
+use crate::acp::runtime::host_browse::admit_browse_url;
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{NormalizedPayload, ToolCategory, user_input::UserInputRequest},
-    runtime::host_browse::admit_browse_url,
 };
 use sage_core::limits::LIMITS;
 
@@ -66,12 +66,13 @@ pub(super) fn server_request(
         _ => SafeText::new("permissionSummary", "Request additional permissions")
             .expect("fixed summary"),
     };
-    let allow_always = offered.contains(&crate::acp::intent::PermissionOptionKind::AllowAlways);
+    let allow_always =
+        offered.contains(&sage_acp_protocol::intent::PermissionOptionKind::AllowAlways);
     let payload = NormalizedPayload::PermissionRequest {
         category,
         summary: operation,
         offered_option_kinds: Some(
-            crate::acp::contract::BoundedVec::new("permissionOptionKinds", offered)
+            sage_acp_protocol::contract::BoundedVec::new("permissionOptionKinds", offered)
                 .expect("fixed permission choices"),
         ),
         reason: approval_reason(params),
@@ -164,8 +165,8 @@ mod user_input;
 fn offered_approval_kinds(
     method: &str,
     params: &Map<String, Value>,
-) -> Vec<crate::acp::intent::PermissionOptionKind> {
-    use crate::acp::intent::PermissionOptionKind::{AllowAlways, AllowOnce, RejectOnce};
+) -> Vec<sage_acp_protocol::intent::PermissionOptionKind> {
+    use sage_acp_protocol::intent::PermissionOptionKind::{AllowAlways, AllowOnce, RejectOnce};
     if method == "item/permissions/requestApproval" {
         return vec![AllowOnce, RejectOnce];
     }

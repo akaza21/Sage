@@ -1,8 +1,6 @@
 use super::*;
-use crate::acp::{
-    contract::{SageChatId, SageProjectId},
-    store::load_chat_page,
-};
+use crate::acp::store::load_chat_page;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 #[test]
 fn hidden_welcome_does_not_skip_real_turns_or_create_a_trailing_page() {

@@ -1,16 +1,17 @@
 use super::*;
-use crate::{
-    acp::{
-        attached_context::{AttachedContexts, DiffLineCommentContext},
-        contract::{ItemLifecycle, SafeText, SageRootId, SessionState},
-        intent::{ExternalId, NormalizedPayload, SafeResourceLocation, SafeResourceRef},
-        store::{
-            AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, FilePairCommand,
-            ItemIngressCommand, SessionTerminalCommand, apply_adapter_inbound_batch,
-            apply_session_terminal,
-        },
+use crate::acp::{
+    attached_context::{AttachedContexts, DiffLineCommentContext},
+    store::{
+        AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, FilePairCommand,
+        ItemIngressCommand, SessionTerminalCommand, apply_adapter_inbound_batch,
+        apply_session_terminal,
     },
-    acp_protocol::file_diff::pair_digest,
+};
+use sage_acp_protocol::{
+    contract::{SafeText, SageRootId},
+    file_diff::pair_digest,
+    intent::{ExternalId, NormalizedPayload, SafeResourceLocation, SafeResourceRef},
+    lifecycle::{ItemLifecycle, SessionState},
 };
 use sha2::{Digest, Sha256};
 
@@ -40,7 +41,7 @@ impl Fixture {
     }
 
     async fn with_capabilities(
-        adjust: impl FnOnce(&mut crate::acp::intent::CapabilitySnapshotV1),
+        adjust: impl FnOnce(&mut sage_acp_protocol::intent::CapabilitySnapshotV1),
     ) -> Self {
         let (state, project, chat, root) = state_with_admitted_codex_project();
         let project_id = SageProjectId::parse(project).unwrap();
@@ -147,7 +148,7 @@ impl Fixture {
                 external_session_id: ExternalId::new("external", "thread-command-route").unwrap(),
             };
             let payload = NormalizedPayload::file_admitted(
-                crate::acp::intent::FileChangeFacts {
+                sage_acp_protocol::intent::FileChangeFacts {
                     resource: SafeResourceLocation::Resource {
                         resource: SafeResourceRef::new(
                             SageRootId::parse(root_id.clone()).unwrap(),
@@ -158,7 +159,7 @@ impl Fixture {
                     summary: SafeText::new("summary", "Saved change").unwrap(),
                     additions: Some(1),
                     deletions: Some(1),
-                    operation: crate::acp::intent::FileChangeOperation::Updated,
+                    operation: sage_acp_protocol::intent::FileChangeOperation::Updated,
                 },
                 0,
                 (OLD.len() as u64, NEW.len() as u64),
@@ -615,7 +616,7 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
             // The send names the staged batch; a send that names none carries none.
             let mut request = fixture.request(new_session);
             if let SendAcpTurnRequest::Session { staged, .. } = &mut request {
-                *staged = Some(crate::acp::intent::StagedSelection::Revision(revision));
+                *staged = Some(crate::acp::ipc::StagedSelection::Revision(revision));
             }
             let error = acp::send_acp_turn_inner(&fixture.state, request)
                 .await
@@ -649,7 +650,7 @@ fn staged_files_are_refused_without_dispatch_and_retained_for_retry() {
 /// Names the staged files a session send carries.
 fn with_staged(
     mut request: SendAcpTurnRequest,
-    selection: crate::acp::intent::StagedSelection,
+    selection: crate::acp::ipc::StagedSelection,
 ) -> SendAcpTurnRequest {
     if let SendAcpTurnRequest::Session { staged, .. } = &mut request {
         *staged = Some(selection);
@@ -698,7 +699,7 @@ fn a_named_revision_is_consumed_after_admitted_dispatch_and_only_its_count_is_du
             .unwrap()
             .revision;
         // A send that names no batch leaves it for the one that does.
-        let selection = crate::acp::intent::StagedSelection::Revision(revision.clone());
+        let selection = crate::acp::ipc::StagedSelection::Revision(revision.clone());
         acp::send_acp_turn_inner(&fixture.state, with_staged(fixture.request(false), selection))
             .await
             .unwrap();
@@ -716,7 +717,7 @@ fn a_named_revision_is_consumed_after_admitted_dispatch_and_only_its_count_is_du
         assert!(payload.contains("\"attachments\":1"), "{payload}");
         assert!(!payload.contains("test.txt"), "{payload}");
         // The same revision is never sent twice.
-        let again = crate::acp::intent::StagedSelection::Revision(revision);
+        let again = crate::acp::ipc::StagedSelection::Revision(revision);
         let refused = acp::send_acp_turn_inner(&fixture.state, with_staged(fixture.request(false), again))
             .await
             .unwrap_err();

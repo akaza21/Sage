@@ -1,6 +1,7 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-use crate::{acp::intent::ImageMediaType, persistence::Database};
+use crate::persistence::Database;
+use sage_acp_protocol::intent::ImageMediaType;
 
 use super::{
     commands::{UploadChatImageRequest, upload_image_payload},

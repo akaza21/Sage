@@ -4,8 +4,7 @@ use tauri::{AppHandle, Emitter, State};
 
 use crate::{
     acp::{
-        contract::{EntityRevision, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
-        intent::{
+        ipc::{
             ACP_PROJECTION_CHANGED_EVENT, AcpIpcError, AcpMutationResponse, ProjectionChangedV1,
         },
         store::edit_disposition::{
@@ -13,6 +12,9 @@ use crate::{
         },
     },
     state::AppState,
+};
+use sage_acp_protocol::contract::{
+    EntityRevision, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
 };
 
 use super::{
@@ -99,16 +101,19 @@ mod tests {
     use super::*;
     use crate::{
         acp::{
-            contract::{
-                ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SchemaVersionV1,
-            },
-            intent::{BindingId, CapabilitySnapshotV1, ExternalId, Prompt},
             store::{
                 ActivateSessionCommand, CompleteActivationCommand, PrepareTurnCommand,
                 StartSessionCommand, activate_session, complete_activation, start_session,
             },
+            transcript_quote::Prompt,
         },
         persistence::Database,
+    };
+    use sage_acp_protocol::{
+        contract::{
+            ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SchemaVersionV1,
+        },
+        intent::{BindingId, CapabilitySnapshotV1, ExternalId},
     };
 
     #[test]

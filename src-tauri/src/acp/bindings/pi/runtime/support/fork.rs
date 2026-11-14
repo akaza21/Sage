@@ -10,8 +10,8 @@ use crate::acp::{
         pi::{NativeCommand, NativeRequest, Operation, session_file_key},
     },
     goal::NativeRpcReply,
-    intent::ExternalId,
 };
+use sage_acp_protocol::intent::ExternalId;
 
 use super::super::{PiRuntime, RequestKind};
 use super::session::{SESSION_DIR_SCAN_LIMIT, session_path};

@@ -10,10 +10,12 @@ use std::{
 use super::live_recovery::{LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 use crate::acp::{
-    contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId},
-    intent::BindingId,
     runtime::{DriverMailbox, LiveRunnerHandle},
     store::{ActivateSessionCommand, StartSessionCommand},
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId},
+    intent::BindingId,
 };
 
 #[test]
@@ -186,7 +188,8 @@ fn cancel_after_runner_failure_recovers_durable_runtime_then_releases_slot() {
         assert!(matches!(
             service.cancel_codex_turn(crate::acp::runtime::HostCancelIntent {
                 owner: owner.clone(),
-                turn_id: crate::acp::contract::SageTurnId::parse("turn-runner-recovery").unwrap(),
+                turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-runner-recovery")
+                    .unwrap(),
                 client_intent_id: ClientIntentId::new(),
                 now_millis: sage_core::time::now_millis(),
             }),
@@ -206,8 +209,14 @@ fn cancel_after_runner_failure_recovers_durable_runtime_then_releases_slot() {
             .iter()
             .find(|session| session.id == owner.session_id)
             .unwrap();
-        assert_eq!(session.state, crate::acp::lifecycle::SessionState::Failed);
-        assert_eq!(session.residency, crate::acp::lifecycle::Residency::Cold);
+        assert_eq!(
+            session.state,
+            sage_acp_protocol::lifecycle::SessionState::Failed
+        );
+        assert_eq!(
+            session.residency,
+            sage_acp_protocol::lifecycle::Residency::Cold
+        );
         service.shutdown_blocking().unwrap();
     });
 }
@@ -291,7 +300,7 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
 
 async fn ready_runtime_fixture_with(
     label: &str,
-    capabilities: crate::acp::intent::CapabilitySnapshotV1,
+    capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1,
 ) -> (AcpService, RuntimeOwner) {
     let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
@@ -336,7 +345,7 @@ async fn seat_ready_session_with(
     project_id: SageProjectId,
     chat_id: SageChatId,
     label: &str,
-    capabilities: crate::acp::intent::CapabilitySnapshotV1,
+    capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1,
 ) -> RuntimeOwner {
     let revision = service
         .load_chat_page(project_id.clone(), chat_id.clone(), None)
@@ -387,7 +396,7 @@ async fn seat_ready_session_with(
             runtime_epoch: owner.runtime_epoch,
             binding_digest: "31".repeat(32),
             artifact_digest: "32".repeat(32),
-            external_session_id: crate::acp::intent::ExternalId::new(
+            external_session_id: sage_acp_protocol::intent::ExternalId::new(
                 "session",
                 format!("{label}-external"),
             )
@@ -416,14 +425,14 @@ fn drop_attempts_persistent_recovery_at_most_twice_before_forced_cleanup() {
             owner: RuntimeOwner {
                 project_id: SageProjectId::parse("project-drop").unwrap(),
                 chat_id: SageChatId::parse("chat-drop").unwrap(),
-                session_id: crate::acp::contract::SageAgentSessionId::parse("session-drop")
+                session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-drop")
                     .unwrap(),
                 runtime_epoch: RuntimeEpoch::new(1).unwrap(),
             },
             proof: ZeroProcessProof::confirmed_for_test(RuntimeOwner {
                 project_id: SageProjectId::parse("project-drop").unwrap(),
                 chat_id: SageChatId::parse("chat-drop").unwrap(),
-                session_id: crate::acp::contract::SageAgentSessionId::parse("session-drop")
+                session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-drop")
                     .unwrap(),
                 runtime_epoch: RuntimeEpoch::new(1).unwrap(),
             }),
@@ -530,7 +539,8 @@ fn temporary_disposal_retries_supervisor_shutdown_without_protocol_close() {
     assert_eq!(page.turns.as_slice().len(), 1);
     assert!(matches!(
         page.turns.as_slice()[0].state,
-        crate::acp::lifecycle::TurnState::Interrupted | crate::acp::lifecycle::TurnState::Cancelled
+        sage_acp_protocol::lifecycle::TurnState::Interrupted
+            | sage_acp_protocol::lifecycle::TurnState::Cancelled
     ));
     service
         .database
@@ -908,7 +918,7 @@ fn replacement_park_after_host_timeout_uses_zero_token_recovery() {
         let host = Arc::clone(&host);
         let intent = crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         };
         std::thread::spawn(move || host.prepare_prompt(intent))
     };
@@ -968,7 +978,8 @@ fn unsettled_replacement_park_preserves_its_owner_and_other_admission_capacity()
         .projection_revision;
     let newcomer = RuntimeOwner {
         chat_id: SageChatId::parse("chat-newcomer").unwrap(),
-        session_id: crate::acp::contract::SageAgentSessionId::parse("session-newcomer").unwrap(),
+        session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-newcomer")
+            .unwrap(),
         ..owner.clone()
     };
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -1011,7 +1022,7 @@ fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
         host.activate(owner.clone())?;
         host.send(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .map_err(|failure| failure.error)?;
         Ok::<(), crate::acp::runtime::HostError>(())
@@ -1020,10 +1031,13 @@ fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
     service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
     let intent = crate::acp::runtime::HostSteerIntent {
         owner: owner.clone(),
-        turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
-        prompt: crate::acp::intent::Prompt::new("prompt", "Please steer").unwrap(),
-        client_message_id: crate::acp::contract::RequiredText::new("clientMessageId", "queued-one")
-            .unwrap(),
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
+        prompt: crate::acp::transcript_quote::Prompt::new("prompt", "Please steer").unwrap(),
+        client_message_id: sage_acp_protocol::contract::RequiredText::new(
+            "clientMessageId",
+            "queued-one",
+        )
+        .unwrap(),
     };
 
     let error = host.steer(intent.clone()).unwrap_err();
@@ -1187,7 +1201,7 @@ fn effect_unknown_cancel_retains_its_exact_host_without_redispatch() {
     assert!(service.send_codex_turn(prepare_turn(&owner)).is_ok());
     let intent = crate::acp::runtime::HostCancelIntent {
         owner: owner.clone(),
-        turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
         client_intent_id: ClientIntentId::new(),
         now_millis: sage_core::time::now_millis(),
     };
@@ -1346,7 +1360,7 @@ fn close_session(owner: &RuntimeOwner) -> crate::acp::store::CloseSessionCommand
     crate::acp::store::CloseSessionCommand {
         project_id: owner.project_id.clone(),
         chat_id: owner.chat_id.clone(),
-        expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
+        expected_projection_revision: sage_acp_protocol::contract::ProjectionRevision::ZERO,
         client_intent_id: ClientIntentId::new(),
         session_id: owner.session_id.clone(),
         runtime_epoch: owner.runtime_epoch,
@@ -1534,7 +1548,7 @@ fn archiving_a_chat_after_its_turn_parks_its_runtime_and_it_then_deletes() {
         .unwrap()
         .projection_revision;
     let generation =
-        crate::acp::contract::ProjectGeneration::new(archived.transition_epoch).unwrap();
+        sage_acp_protocol::contract::ProjectGeneration::new(archived.transition_epoch).unwrap();
     let started = runtime.block_on(crate::commands::acp::start_acp_session_inner(
         &state,
         crate::acp::ipc::StartAcpSessionRequest {
@@ -1714,13 +1728,13 @@ fn archive_refuses_a_running_turn_and_an_archived_chat_takes_no_prompt() {
         &state,
         crate::acp::ipc::SendAcpTurnRequest::Session {
             project_id: owner.project_id.clone(),
-            project_generation: crate::acp::contract::ProjectGeneration::ZERO,
+            project_generation: sage_acp_protocol::contract::ProjectGeneration::ZERO,
             chat_id: owner.chat_id.clone(),
             expected_projection_revision: page.projection_revision,
             client_intent_id: ClientIntentId::new(),
             session_id: owner.session_id.clone(),
             runtime_epoch: owner.runtime_epoch,
-            prompt: crate::acp::intent::Prompt::new("prompt", "archived").unwrap(),
+            prompt: crate::acp::transcript_quote::Prompt::new("prompt", "archived").unwrap(),
             attached_context: Default::default(),
             staged: None,
         },
@@ -1872,20 +1886,26 @@ fn assert_recovered_runtime_is_cold(service: &AcpService, owner: &RuntimeOwner) 
         .iter()
         .find(|session| session.id == owner.session_id)
         .unwrap();
-    assert_eq!(session.state, crate::acp::lifecycle::SessionState::Failed);
-    assert_eq!(session.residency, crate::acp::lifecycle::Residency::Cold);
+    assert_eq!(
+        session.state,
+        sage_acp_protocol::lifecycle::SessionState::Failed
+    );
+    assert_eq!(
+        session.residency,
+        sage_acp_protocol::lifecycle::Residency::Cold
+    );
 }
 
 fn prepare_turn(owner: &RuntimeOwner) -> crate::acp::store::PrepareTurnCommand {
     crate::acp::store::PrepareTurnCommand {
         project_id: owner.project_id.clone(),
-        project_generation: crate::acp::contract::ProjectGeneration::new(1).unwrap(),
+        project_generation: sage_acp_protocol::contract::ProjectGeneration::new(1).unwrap(),
         chat_id: owner.chat_id.clone(),
         session_id: owner.session_id.clone(),
         runtime_epoch: owner.runtime_epoch,
-        expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
+        expected_projection_revision: sage_acp_protocol::contract::ProjectionRevision::ZERO,
         client_intent_id: ClientIntentId::new(),
-        prompt: crate::acp::intent::Prompt::new("prompt", "no replay").unwrap(),
+        prompt: crate::acp::transcript_quote::Prompt::new("prompt", "no replay").unwrap(),
         now_millis: sage_core::time::now_millis(),
     }
 }
@@ -1957,10 +1977,10 @@ impl TestRuntime {
     }
 }
 
-fn test_capabilities() -> crate::acp::intent::CapabilitySnapshotV1 {
-    crate::acp::intent::CapabilitySnapshotV1 {
-        schema_version: crate::acp::contract::SchemaVersionV1,
-        protocol_version: crate::acp::contract::RequiredText::new("protocol", "1").unwrap(),
+fn test_capabilities() -> sage_acp_protocol::intent::CapabilitySnapshotV1 {
+    sage_acp_protocol::intent::CapabilitySnapshotV1 {
+        schema_version: sage_acp_protocol::contract::SchemaVersionV1,
+        protocol_version: sage_acp_protocol::contract::RequiredText::new("protocol", "1").unwrap(),
         new_session: true,
         resume_session: false,
         load_session: false,
@@ -2022,7 +2042,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     fn prepare_prompt(
         &mut self,
         _: &crate::acp::runtime::HostPromptIntent,
-    ) -> Result<crate::acp::contract::SageTurnId, crate::acp::runtime::HostError> {
+    ) -> Result<sage_acp_protocol::contract::SageTurnId, crate::acp::runtime::HostError> {
         if let Some(recovery) = &self.blocking_prepare {
             recovery
                 .entered
@@ -2034,7 +2054,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
                 .unwrap()
                 .recv_timeout(Duration::from_secs(1))
                 .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
-            return crate::acp::contract::SageTurnId::parse("turn-timeout-recovery")
+            return sage_acp_protocol::contract::SageTurnId::parse("turn-timeout-recovery")
                 .map_err(|_| crate::acp::runtime::HostError::Intent);
         }
         let Some((failure, trace)) = &self.script else {
@@ -2044,14 +2064,14 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
         if matches!(failure, OperationFailure::Send) {
             return Err(crate::acp::runtime::HostError::RecoveryRequired);
         }
-        crate::acp::contract::SageTurnId::parse("turn-operation-recovery")
+        sage_acp_protocol::contract::SageTurnId::parse("turn-operation-recovery")
             .map_err(|_| crate::acp::runtime::HostError::Intent)
     }
 
     fn dispatch_prompt(
         &mut self,
         _: &RuntimeOwner,
-        turn: &crate::acp::contract::SageTurnId,
+        turn: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<crate::acp::runtime::PromptWrite, crate::acp::runtime::HostError> {
         if matches!(self.script, Some((OperationFailure::SignIn, _))) {
             return Err(crate::acp::runtime::HostError::SignInRequired);
@@ -2065,7 +2085,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     fn retry_prompt(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<crate::acp::runtime::PromptWrite, crate::acp::runtime::HostError> {
         Err(crate::acp::runtime::HostError::Unavailable)
     }
@@ -2073,7 +2093,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     fn record_delivery_unknown(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), crate::acp::runtime::HostError> {
         Ok(())
     }
@@ -2081,7 +2101,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     fn record_retry_exhausted(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), crate::acp::runtime::HostError> {
         Ok(())
     }
@@ -2199,7 +2219,10 @@ fn insert_sending_turn(service: &AcpService, owner: &RuntimeOwner) {
         .unwrap();
 }
 
-fn turn_state(service: &AcpService, owner: &RuntimeOwner) -> crate::acp::lifecycle::TurnState {
+fn turn_state(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+) -> sage_acp_protocol::lifecycle::TurnState {
     service
         .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
         .unwrap()
@@ -2218,7 +2241,7 @@ fn a_refused_sign_in_prompt_settles_its_turn_and_frees_the_lane() {
     let failure = service
         .send_session_turn(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap_err();
     assert!(matches!(failure.error, CodexSessionError::SignInRequired));
@@ -2242,9 +2265,9 @@ fn cancel_settles_a_turn_whose_host_failed_closed() {
     assert_eq!(
         host.send(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
-        Err(crate::acp::intent::PromptSendError::unknown(
+        Err(crate::acp::prompt_send::PromptSendError::unknown(
             crate::acp::runtime::HostError::SignInRequired
         ))
     );
@@ -2264,7 +2287,7 @@ fn cancel_settles_a_turn_whose_host_failed_closed() {
 fn cancel_intent(owner: &RuntimeOwner) -> crate::acp::runtime::HostCancelIntent {
     crate::acp::runtime::HostCancelIntent {
         owner: owner.clone(),
-        turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
         client_intent_id: ClientIntentId::new(),
         now_millis: sage_core::time::now_millis(),
     }
@@ -2302,7 +2325,7 @@ async fn refused_prompt_recovery_allows_other_async_work_to_progress() {
     let failure = service
         .send_session_turn(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap_err();
     progress.await.unwrap();
@@ -2361,7 +2384,7 @@ fn idle_runtime_fixture_with(
     completed_turn: bool,
     runtime: TestRuntime,
 ) -> (AcpService, RuntimeOwner) {
-    let capabilities = crate::acp::intent::CapabilitySnapshotV1 {
+    let capabilities = sage_acp_protocol::intent::CapabilitySnapshotV1 {
         resume_session: resumable,
         ..test_capabilities()
     };

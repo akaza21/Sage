@@ -7,10 +7,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{
-    runtime::{JournalHandle, ProjectionPublisher, RuntimeHost, SessionCoordinator},
-    scheduler::{RuntimeOwner, Scheduler},
-};
+use crate::acp::runtime::{JournalHandle, ProjectionPublisher, RuntimeHost, SessionCoordinator};
+use sage_acp_protocol::scheduler::{RuntimeOwner, Scheduler};
 use sage_core::limits::LIMITS;
 
 use super::{
@@ -276,8 +274,8 @@ impl AcpService {
     /// restored meanwhile keeps its runtime; `deadline` bounds the whole release.
     pub(crate) fn release_chat_runtime(
         &self,
-        project: &crate::acp::contract::SageProjectId,
-        chat: &crate::acp::contract::SageChatId,
+        project: &sage_acp_protocol::contract::SageProjectId,
+        chat: &sage_acp_protocol::contract::SageChatId,
         deadline: Instant,
         still_wanted: impl Fn() -> bool,
     ) -> Result<(), ChatRuntimeRelease> {
@@ -417,7 +415,7 @@ impl AcpService {
             "SELECT capabilities_json FROM agent_sessions WHERE project_id=?1 AND chat_id=?2 AND id=?3 AND external_session_id IS NOT NULL",
             rusqlite::params![owner.project_id.as_str(), owner.chat_id.as_str(), owner.session_id.as_str()],
             |row| row.get::<_, String>(0),
-        ).ok().and_then(|json| serde_json::from_str::<crate::acp::intent::CapabilitySnapshotV1>(&json).ok())
+        ).ok().and_then(|json| serde_json::from_str::<sage_acp_protocol::intent::CapabilitySnapshotV1>(&json).ok())
             .is_some_and(|capabilities| capabilities.resume_session)
     }
 }

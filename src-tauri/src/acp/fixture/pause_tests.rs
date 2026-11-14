@@ -5,7 +5,7 @@ use serde_json::json;
 use super::super::FixtureError;
 use super::super::interpreter::{StepOwner, classify};
 use super::{PAUSE_STEP_MAXIMUM_MS, ProcessState, execute};
-use crate::acp_protocol::native_cases::JOURNEY_CASES;
+use sage_acp_protocol::native_cases::JOURNEY_CASES;
 use sage_core::limits::LIMITS;
 
 fn run(step: serde_json::Value, state: &mut ProcessState) -> Result<(), FixtureError> {

@@ -3,7 +3,7 @@ use super::{
     AdapterError, CodexAdapter, ExternalId, ExternalKind, OutgoingRequest, RequestKind,
     ScopedExternalId,
 };
-use crate::acp::{contract::RequiredText, intent::ModelId};
+use sage_acp_protocol::{contract::RequiredText, intent::ModelId};
 
 impl CodexAdapter {
     pub(crate) fn thread_session_id(&self, value: &str) -> Result<ScopedExternalId, AdapterError> {

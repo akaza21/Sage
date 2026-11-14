@@ -1,9 +1,9 @@
 use serde_json::{Value, json};
 
-use crate::acp::{
-    bindings::adapter::{AdapterBatch, AdapterEvent as SharedEvent, AdapterRuntimeError},
-    intent::{ExternalId, NormalizedPayload},
+use crate::acp::bindings::adapter::{
+    AdapterBatch, AdapterEvent as SharedEvent, AdapterRuntimeError,
 };
+use sage_acp_protocol::intent::{ExternalId, NormalizedPayload};
 
 use super::super::super::translator::AdapterEvent as StandardEvent;
 use super::super::{
@@ -68,18 +68,18 @@ impl StandardAcpRuntime {
         let approved_path = workspace_edit_path(&value, &self.workspace_root);
         let created_file_content = created_file_content(&value, approved_path.as_deref());
         let reply = match access_mode {
-            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly
-            | crate::acp_protocol::access_mode::SessionAccessMode::AcceptEdits
-            | crate::acp_protocol::access_mode::SessionAccessMode::Plan
-            | crate::acp_protocol::access_mode::SessionAccessMode::Auto
-            | crate::acp_protocol::access_mode::SessionAccessMode::FullAccess => {
+            sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly
+            | sage_acp_protocol::access_mode::SessionAccessMode::AcceptEdits
+            | sage_acp_protocol::access_mode::SessionAccessMode::Plan
+            | sage_acp_protocol::access_mode::SessionAccessMode::Auto
+            | sage_acp_protocol::access_mode::SessionAccessMode::FullAccess => {
                 active
                     .translator
                     .translate_permission_request_value(value.clone())
                     .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)?;
                 PermissionReply::Deny
             }
-            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite => {
+            sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite => {
                 if allow_once_option_id.is_some()
                     && workspace_edit_target(&value, &self.workspace_root)
                 {
@@ -88,7 +88,7 @@ impl StandardAcpRuntime {
                     PermissionReply::AwaitUser
                 }
             }
-            crate::acp_protocol::access_mode::SessionAccessMode::Ask => PermissionReply::AwaitUser,
+            sage_acp_protocol::access_mode::SessionAccessMode::Ask => PermissionReply::AwaitUser,
         };
         if self.permissions.len() >= 8 {
             let retired = self

@@ -1,8 +1,8 @@
 use super::*;
-use crate::acp_protocol::access_mode::SessionAccessMode;
-use crate::{
-    acp::intent::session_event::{SessionNoticeLevel, SessionScopedEvent},
-    acp_protocol::permissions::PermissionDecision,
+use sage_acp_protocol::access_mode::SessionAccessMode;
+use sage_acp_protocol::{
+    intent::session_event::{SessionNoticeLevel, SessionScopedEvent},
+    permissions::PermissionDecision,
 };
 
 const MODES: &str = r#"{"currentModeId":"plan","availableModes":[
@@ -114,7 +114,7 @@ fn answer(
     serde_json::from_slice(reply.frame().payload()).unwrap()
 }
 
-fn offered(batch: &AdapterBatch) -> Vec<crate::acp::intent::PermissionOptionKind> {
+fn offered(batch: &AdapterBatch) -> Vec<sage_acp_protocol::intent::PermissionOptionKind> {
     batch
         .events()
         .iter()
@@ -136,7 +136,7 @@ fn offered(batch: &AdapterBatch) -> Vec<crate::acp::intent::PermissionOptionKind
 
 #[test]
 fn a_plan_exit_never_picks_an_option_that_widens_the_mode() {
-    use crate::acp::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
+    use sage_acp_protocol::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
     let mut runtime = ClaudeRuntime::fixture();
     planning(&mut runtime, SessionAccessMode::Plan);
     // With auto available the adapter offers only auto as the "always"
@@ -231,7 +231,7 @@ fn a_prompt_is_written_only_while_the_session_is_in_the_turns_mode() {
 
 #[test]
 fn a_running_turn_refuses_a_mode_change() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::{SageChatId, SageProjectId},
         scheduler::RuntimeOwner,
         session_config::{ConfigId, ConfigIntent, ConfigMutation},
@@ -272,7 +272,7 @@ fn a_set_option_reply_that_widens_a_running_turn_cancels_it() {
 
 #[test]
 fn a_mode_switch_offered_under_unknown_ids_is_never_allowed() {
-    use crate::acp::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
+    use sage_acp_protocol::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
     let mut runtime = ClaudeRuntime::fixture();
     planning(&mut runtime, SessionAccessMode::Plan);
     let batch = runtime
@@ -301,7 +301,7 @@ fn a_mode_switch_offered_under_unknown_ids_is_never_allowed() {
 /// from Auto.
 #[test]
 fn a_set_mode_is_followed_by_the_adapters_option_report() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::{SageChatId, SageProjectId},
         scheduler::RuntimeOwner,
         session_config::{ConfigId, ConfigIntent, ConfigMutation},

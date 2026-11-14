@@ -1,9 +1,7 @@
 use serde_json::json;
 
-use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterRuntimeError},
-    contract::RequiredText,
-};
+use crate::acp::bindings::adapter::{AdapterEgress, AdapterRuntimeError};
+use sage_acp_protocol::contract::RequiredText;
 
 use super::{
     DeferredPrompt, PendingRequest, StandardAcpRuntime, TurnIntent, map_translation, outbound,
@@ -12,9 +10,9 @@ use super::{
 impl StandardAcpRuntime {
     pub(super) fn prompt(
         &mut self,
-        prompt: crate::acp::intent::Prompt,
+        prompt: crate::acp::transcript_quote::Prompt,
         client_message_id: RequiredText<512>,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         if let Some(revision) = prompt.command_revision {
             self.active
@@ -86,17 +84,17 @@ impl StandardAcpRuntime {
     /// prompts in whatever mode the agent chose.
     pub(super) fn prompt_with_mode(
         &mut self,
-        prompt: crate::acp::intent::Prompt,
+        prompt: crate::acp::transcript_quote::Prompt,
         client_message_id: RequiredText<512>,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         // The standard ACP access policy never admits these.
         if matches!(
             access_mode,
-            crate::acp_protocol::access_mode::SessionAccessMode::AcceptEdits
-                | crate::acp_protocol::access_mode::SessionAccessMode::Plan
-                | crate::acp_protocol::access_mode::SessionAccessMode::Auto
-                | crate::acp_protocol::access_mode::SessionAccessMode::FullAccess
+            sage_acp_protocol::access_mode::SessionAccessMode::AcceptEdits
+                | sage_acp_protocol::access_mode::SessionAccessMode::Plan
+                | sage_acp_protocol::access_mode::SessionAccessMode::Auto
+                | sage_acp_protocol::access_mode::SessionAccessMode::FullAccess
         ) {
             return Err(AdapterRuntimeError::UnsupportedCommand);
         }

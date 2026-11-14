@@ -4,16 +4,18 @@ use crate::acp::{
     bindings::adapter::{
         AdapterEvent, AdapterModel, AdapterRuntimeError, HarnessAdapter, ResourceMapper,
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     fixture::adapter::FixtureAdapter,
-    intent::{
-        CapabilitySnapshotV1, ExternalId, ModelId, SafeResourceRef, UnavailableResourceReason,
-    },
     semantic_ingress::{
         SemanticIngressError, decode_capability_token, validate_metadata, validate_models,
     },
     store::{CompleteActivationCommand, complete_activation},
     transport::{Frame, IncrementalFrameDecoder, validate_structure},
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
+    intent::{
+        CapabilitySnapshotV1, ExternalId, ModelId, SafeResourceRef, UnavailableResourceReason,
+    },
 };
 use sage_core::limits::LIMITS;
 
@@ -163,7 +165,7 @@ fn observe_models(frame: Frame) -> Value {
                 is_default: false,
             })
         })
-        .collect::<Result<Vec<_>, crate::acp::contract::ContractError>>();
+        .collect::<Result<Vec<_>, sage_acp_protocol::contract::ContractError>>();
     let accepted = models
         .as_deref()
         .map_err(|_| SemanticIngressError::Invalid)
@@ -218,7 +220,7 @@ fn envelope_value(frame: &Frame) -> String {
 }
 
 fn canonical_legacy_deny_all(value: &CapabilitySnapshotV1) -> bool {
-    value.schema_version == crate::acp::contract::SchemaVersionV1
+    value.schema_version == sage_acp_protocol::contract::SchemaVersionV1
         && value.protocol_version.as_str() == "legacy"
         && !value.new_session
         && !value.resume_session

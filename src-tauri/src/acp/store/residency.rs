@@ -1,6 +1,6 @@
 use rusqlite::{OptionalExtension, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     lifecycle::SessionState,
 };
@@ -66,7 +66,7 @@ pub(crate) fn park_session_after_zero_process(
             runtime_epoch: Some(command.runtime_epoch),
             state: SessionState::Ready,
             revision: entity_revision_from_i64(row.2)?,
-            projection_revision: crate::acp::contract::ProjectionRevision::new(
+            projection_revision: sage_acp_protocol::contract::ProjectionRevision::new(
                 u64::try_from(row.3).map_err(|_| StoreError::Corrupt("projection revision"))?,
             )
             .map_err(|_| StoreError::Corrupt("projection revision"))?,

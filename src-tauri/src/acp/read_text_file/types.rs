@@ -5,11 +5,9 @@ use serde::{
     de::{Error, Visitor},
 };
 
-use crate::{
-    acp::contract::{
-        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
-    },
-    domain::ResourceRef,
+use crate::domain::ResourceRef;
+use sage_acp_protocol::contract::{
+    ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]

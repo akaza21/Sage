@@ -1,4 +1,4 @@
-use crate::acp::lifecycle::ServerRequestState;
+use sage_acp_protocol::lifecycle::ServerRequestState;
 
 use super::{AdapterError, CodexAdapter, ExternalKind, ScopedExternalId};
 

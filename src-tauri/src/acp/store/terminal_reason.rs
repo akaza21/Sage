@@ -1,6 +1,7 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::{lifecycle::TurnTerminalReason, projection::TurnTerminalReasonProjection};
+use crate::acp::projection::TurnTerminalReasonProjection;
+use sage_acp_protocol::lifecycle::TurnTerminalReason;
 
 use super::{AdapterStoreOwner, StoreError, TurnMutationCommand, history::TurnRow};
 

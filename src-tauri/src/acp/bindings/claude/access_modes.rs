@@ -2,7 +2,7 @@
 //! modes and its `mode` config option).
 
 use crate::acp::bindings::access_policy::NativeAccessMode;
-use crate::acp_protocol::access_mode::SessionAccessMode;
+use sage_acp_protocol::access_mode::SessionAccessMode;
 
 const ASK: NativeAccessMode = NativeAccessMode {
     id: SessionAccessMode::Ask,

@@ -3,8 +3,8 @@ use crate::acp::{
     bindings::registry::{BindingProjectRoot, BindingRegistry},
     projection::TextRole,
     runtime::{HostOutcome, HostPromptIntent},
-    session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
 };
+use sage_acp_protocol::session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue};
 use std::fs;
 
 #[test]
@@ -263,7 +263,10 @@ fn native_pi_subprocess_real_binding_pump_sqlite_settlement_and_idle_configurati
                 .find(|session| session.id == owner.session_id)
                 .unwrap();
             assert_eq!(session.binding_id.as_str(), "pi-rpc");
-            assert_eq!(session.residency, crate::acp::lifecycle::Residency::Cold);
+            assert_eq!(
+                session.residency,
+                sage_acp_protocol::lifecycle::Residency::Cold
+            );
             let external: String = reopened
                 .database
                 .connection()
@@ -289,7 +292,7 @@ fn send(setup: &FixtureSetup, owner: &RuntimeOwner, id: &str) {
             .service
             .send_session_turn(HostPromptIntent {
                 command,
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .unwrap(),
         HostOutcome::PromptAccepted

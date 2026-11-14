@@ -1,8 +1,6 @@
 use super::neutralized;
-use crate::acp::{
-    contract::ContractError,
-    redaction::text::{self, Mode},
-};
+use crate::acp::redaction::text::{self, Mode};
+use sage_acp_protocol::contract::ContractError;
 use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
 pub(crate) fn sanitized_content_output(input: &str) -> Result<String, ContractError> {

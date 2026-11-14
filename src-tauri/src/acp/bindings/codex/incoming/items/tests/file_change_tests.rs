@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX;
+use sage_core::limits::DIFF_SIDE_BYTES_MAX;
 
 fn project(
     diff: &str,

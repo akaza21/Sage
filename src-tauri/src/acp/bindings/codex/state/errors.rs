@@ -28,7 +28,7 @@ pub(crate) enum AdapterError {
     #[error(transparent)]
     Request(#[from] RequestError),
     #[error(transparent)]
-    Contract(#[from] crate::acp::contract::ContractError),
+    Contract(#[from] sage_acp_protocol::contract::ContractError),
     #[error(transparent)]
     Ingress(#[from] crate::acp::bindings::codex::incoming::IngressError),
     #[error("outstanding request ledger is full")]

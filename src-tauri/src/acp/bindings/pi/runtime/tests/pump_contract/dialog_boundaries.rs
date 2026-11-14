@@ -2,11 +2,11 @@ use super::dialogs::dialog;
 use super::*;
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterEgress, EgressToken},
-    lifecycle::TurnState,
     runtime::AdapterPumpError,
     store::load_chat_page,
     transport::OutboundFrame,
 };
+use sage_acp_protocol::lifecycle::TurnState;
 
 #[tokio::test]
 async fn ninth_unflushed_dialog_fails_closed_at_the_control_queue_cap() {

@@ -95,7 +95,7 @@ fn claude_selector_rejects_wrong_protocol_hash_drift_and_reuse() {
 #[test]
 fn desktop_codex_model_listing_is_enabled_only_for_model_and_effort_cases() {
     use crate::acp::bindings::codex::{AdmittedCodexBinding, CodexAdapter};
-    use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId};
+    use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
     use sha2::{Digest, Sha256};
     let proof = sage_test_support::test_paths::temp_dir()
         .join(format!("sage-nc1-models-{}", uuid::Uuid::new_v4()));

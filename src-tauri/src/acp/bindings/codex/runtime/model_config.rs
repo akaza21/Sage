@@ -2,8 +2,8 @@ use super::{
     CodexRuntime,
     support::{effort_option, model_option, thread_config},
 };
-use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
+use crate::acp::bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError};
+use sage_acp_protocol::{
     intent::{ModelId, PageCursor},
     session_config::{ConfigIntent, ConfigMutation, ConfigValue},
 };
@@ -86,7 +86,7 @@ impl CodexRuntime {
     pub(super) fn adopt_reported_settings(
         &mut self,
         model: Option<ModelId>,
-        effort: Option<crate::acp::contract::RequiredText<512>>,
+        effort: Option<sage_acp_protocol::contract::RequiredText<512>>,
     ) {
         if let Some(model) = &model {
             if self.selected_model_id.as_ref() != Some(model) {
@@ -97,7 +97,7 @@ impl CodexRuntime {
             self.selected_model_id = Some(model.clone());
         }
         self.reported_model_id = model;
-        let runs = |effort: &crate::acp::contract::RequiredText<512>| {
+        let runs = |effort: &sage_acp_protocol::contract::RequiredText<512>| {
             self.selected_model.as_ref().is_none_or(|model| {
                 model
                     .supported_efforts
@@ -129,16 +129,15 @@ impl CodexRuntime {
                     .filter(|_| catalogue_read)
                     .map(|id| model_option(&self.model_catalog.models, id)),
             );
-        let confirmed_model =
-            self.reported_model_id
-                .as_ref()
-                .map(|id| crate::acp::session_config::ConfirmedModel {
-                    id: id.clone(),
-                    name: model.map(|model| model.name.clone()),
-                });
+        let confirmed_model = self.reported_model_id.as_ref().map(|id| {
+            sage_acp_protocol::session_config::ConfirmedModel {
+                id: id.clone(),
+                name: model.map(|model| model.name.clone()),
+            }
+        });
         let known = confirmed_model.is_some() || effort.is_some();
         let mut config = thread_config(
-            crate::acp::session_config::SessionConfig {
+            sage_acp_protocol::session_config::SessionConfig {
                 confirmed_model,
                 confirmed_effort: effort.cloned(),
                 ..Default::default()
@@ -160,16 +159,16 @@ impl CodexRuntime {
         ]
         .into_iter()
         .filter(|(_, unreported)| *unreported)
-        .map(|(id, _)| crate::acp::session_config::ConfigId::new("configId", id))
+        .map(|(id, _)| sage_acp_protocol::session_config::ConfigId::new("configId", id))
         .collect::<Result<Vec<_>, _>>()
         .expect("fixed option ids");
-        config.unreported = crate::acp::contract::BoundedVec::new("unreported", unreported)
+        config.unreported = sage_acp_protocol::contract::BoundedVec::new("unreported", unreported)
             .expect("two options at most");
         self.session_config =
             (known || !config.config_options.as_slice().is_empty()).then_some(config);
     }
 
-    pub(super) fn apply_effort(&mut self, effort: crate::acp::contract::RequiredText<512>) {
+    pub(super) fn apply_effort(&mut self, effort: sage_acp_protocol::contract::RequiredText<512>) {
         self.selected_effort = Some(effort);
         self.refresh_model_config();
     }
@@ -228,7 +227,7 @@ impl CodexRuntime {
                 Err(AdapterRuntimeError::Operation)
             };
         };
-        let offered = |effort: &&crate::acp::contract::RequiredText<512>| {
+        let offered = |effort: &&sage_acp_protocol::contract::RequiredText<512>| {
             model
                 .supported_efforts
                 .iter()
@@ -251,9 +250,9 @@ impl CodexRuntime {
 
     pub(super) fn prompt_request(
         &mut self,
-        prompt: &crate::acp::intent::Prompt,
-        client_message_id: &crate::acp::contract::RequiredText<512>,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        prompt: &crate::acp::transcript_quote::Prompt,
+        client_message_id: &sage_acp_protocol::contract::RequiredText<512>,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let model = self.model_catalog.choice.clone();
         let effort = self.selected_effort.clone();

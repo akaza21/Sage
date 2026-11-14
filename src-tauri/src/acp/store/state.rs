@@ -1,4 +1,4 @@
-use crate::acp::lifecycle::{
+use sage_acp_protocol::lifecycle::{
     ActivityLifecycle, ItemLifecycle, ServerRequestState, SessionState, ToolState,
 };
 

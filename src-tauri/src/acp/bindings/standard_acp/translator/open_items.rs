@@ -4,7 +4,7 @@
 //! output. A cancelled or errored prompt leaves them open for the store's turn
 //! sweep, which marks unfinished output as cancelled.
 
-use crate::acp::{intent::NormalizedPayload, lifecycle::ItemLifecycle};
+use sage_acp_protocol::{intent::NormalizedPayload, lifecycle::ItemLifecycle};
 use sage_core::limits::LIMITS;
 
 use super::decode::turn_scoped_key;
@@ -80,7 +80,7 @@ impl StandardAcpTranslator {
 }
 
 fn completed(
-    external_key: crate::acp::intent::ExternalId,
+    external_key: sage_acp_protocol::intent::ExternalId,
     payload: NormalizedPayload,
 ) -> AdapterEvent {
     AdapterEvent::Item {

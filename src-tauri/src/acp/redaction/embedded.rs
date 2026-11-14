@@ -4,7 +4,7 @@ use super::{
     paths::absolute_path,
     secrets::append,
 };
-use crate::acp::contract::ContractError;
+use sage_acp_protocol::contract::ContractError;
 use std::borrow::Cow;
 
 pub(super) fn redact<'a>(

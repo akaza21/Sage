@@ -27,7 +27,7 @@ pub(super) fn dispatch<A, R, T, C>(
         || active.ready_for_write()
         || active.has_durable_terminal()
         || active.cancel_intent().is_some()
-        || active.durable_turn_state() == crate::acp::lifecycle::TurnState::Cancelling
+        || active.durable_turn_state() == sage_acp_protocol::lifecycle::TurnState::Cancelling
         || active.steer_pending()
     {
         responder.respond(Err(HostError::Intent));

@@ -110,10 +110,8 @@ fn failed_enable_is_not_reused_and_retry_replaces_it() {
 
 #[test]
 fn a_stale_sleep_registration_cannot_reuse_or_remove_a_woken_ring() {
-    use crate::acp::{
-        browser::attachment::BrowserAttachments,
-        contract::{SageChatId, SageProjectId},
-    };
+    use crate::acp::browser::attachment::BrowserAttachments;
+    use sage_acp_protocol::contract::{SageChatId, SageProjectId};
     let registry = BrowserAttachments::default();
     let project = SageProjectId::parse("project-one").unwrap();
     let chat = SageChatId::parse("chat-one").unwrap();

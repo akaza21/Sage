@@ -5,13 +5,10 @@ use crate::workspace::atomic_write_windows::atomic_write;
 
 use serde_json::{Value, json};
 
-use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressToken,
-    },
-    contract::SafeText,
-    intent::NormalizedPayload,
+use crate::acp::bindings::adapter::{
+    AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressToken,
 };
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload};
 
 use super::super::{PermissionReply, PermissionState, StandardAcpRuntime, outbound};
 use super::created_file::target_absent;
@@ -92,7 +89,7 @@ impl StandardAcpRuntime {
         let active = self.active.as_ref().ok_or(-32000)?;
         let turn = active.turn.as_ref().ok_or(-32000)?;
         if active.external_id.as_str() != session
-            || turn.access_mode == crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly
+            || turn.access_mode == sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly
             || self.close_pending
             || self.safety_alerted
         {

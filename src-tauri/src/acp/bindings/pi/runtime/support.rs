@@ -1,7 +1,7 @@
-use crate::acp::{
-    bindings::adapter::{
-        AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
-    },
+use crate::acp::bindings::adapter::{
+    AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SafeText},
     intent::{
         ExternalId, NormalizedPayload,

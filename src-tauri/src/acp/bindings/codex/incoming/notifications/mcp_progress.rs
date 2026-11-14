@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    bindings::codex::state::ExternalKind,
+use crate::acp::bindings::codex::state::ExternalKind;
+use sage_acp_protocol::{
     contract::SafeText,
     intent::TOOL_PROGRESS_BYTES,
     lifecycle::{ItemLifecycle, ToolState},

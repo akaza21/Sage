@@ -4,11 +4,8 @@ mod main_window;
 pub(crate) use lifecycle::RendererRecreationReloadLifecycle;
 pub(crate) use main_window::MainWindowRendererReload;
 
-use crate::acp::{
-    contract::{SageChatId, SageProjectId},
-    projection::AcpChatPage,
-    store::StoreError,
-};
+use crate::acp::{projection::AcpChatPage, store::StoreError};
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 use super::{
     AcpService,

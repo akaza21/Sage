@@ -1,7 +1,7 @@
 use std::sync::Mutex;
 
-use crate::acp::contract::ProjectionRevision;
-use crate::acp::intent::ProjectionChangedV1;
+use crate::acp::ipc::ProjectionChangedV1;
+use sage_acp_protocol::contract::ProjectionRevision;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum MailboxError {

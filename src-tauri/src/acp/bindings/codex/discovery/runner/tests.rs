@@ -8,9 +8,9 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::acp::{
-    bindings::codex::manifest::parse_packet_metadata, contract::RuntimeEpoch,
-    transport::IncrementalFrameDecoder,
+    bindings::codex::manifest::parse_packet_metadata, transport::IncrementalFrameDecoder,
 };
+use sage_acp_protocol::contract::RuntimeEpoch;
 
 struct ScriptTransport {
     reads: VecDeque<Result<Option<Frame>, CodexDiscoveryRunError>>,

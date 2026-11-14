@@ -7,7 +7,7 @@ use std::fmt::Write as _;
 
 use serde_json::{Map, Value};
 
-use crate::acp::intent::session_event::SessionNoticeLevel;
+use sage_acp_protocol::intent::session_event::SessionNoticeLevel;
 
 use super::super::{CodexAdapter, IngressDisposition, IngressError, support::text};
 use super::notices::{human, informational_session, notice, single};

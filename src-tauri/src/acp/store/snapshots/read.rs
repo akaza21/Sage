@@ -1,10 +1,9 @@
-use crate::{
-    acp::contract::SageRootId,
-    acp_protocol::file_diff::{
-        DIFF_SIDE_BYTES_MAX, DiffRef, SnapshotData, SnapshotReadError, pair_digest,
-    },
-};
 use rusqlite::{Connection, OptionalExtension, Row, params};
+use sage_acp_protocol::{
+    contract::SageRootId,
+    file_diff::{DiffRef, SnapshotData, SnapshotReadError, pair_digest},
+};
+use sage_core::limits::DIFF_SIDE_BYTES_MAX;
 
 /// Check owners and lengths before copying either BLOB; SQLite's bounded
 /// projection also rejects oversized stored values before decoding them.

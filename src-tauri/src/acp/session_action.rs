@@ -1,7 +1,7 @@
 //! Each action runs as an ordinary Turn on an idle session whose negotiated capabilities admit it.
 use serde::{Deserialize, Serialize};
 
-use super::{contract::RequiredText, intent::CapabilitySnapshotV1};
+use sage_acp_protocol::{contract::RequiredText, intent::CapabilitySnapshotV1};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(
@@ -273,7 +273,8 @@ mod tests {
         let action: SessionAction =
             serde_json::from_value(json!({"kind":"review","target":{"kind":"uncommittedChanges"}}))
                 .unwrap();
-        let mut prompt = crate::acp::intent::Prompt::new("prompt", action.prompt_text()).unwrap();
+        let mut prompt =
+            crate::acp::transcript_quote::Prompt::new("prompt", action.prompt_text()).unwrap();
         prompt.action = Some(action.clone());
         let connection = rusqlite::Connection::open_in_memory().unwrap();
         connection
@@ -293,7 +294,7 @@ mod tests {
             Some(serde_json::to_value(&action).unwrap())
         );
         assert!(crate::acp::store::decode_payload(&payload).is_ok());
-        let plain = crate::acp::intent::Prompt::new("prompt", "/review").unwrap();
+        let plain = crate::acp::transcript_quote::Prompt::new("prompt", "/review").unwrap();
         assert!(plain.user_payload().get("sessionAction").is_none());
     }
 

@@ -1,10 +1,7 @@
 use super::*;
 use crate::acp::bindings::runtime::NativeRuntime;
-use crate::acp::{
-    scheduler::RuntimeOwner,
-    session_config::{ConfigChannel, ConfigIntent},
-    transport::IncrementalFrameDecoder,
-};
+use crate::acp::{session_config::ConfigChannel, transport::IncrementalFrameDecoder};
+use sage_acp_protocol::{scheduler::RuntimeOwner, session_config::ConfigIntent};
 
 pub(crate) struct InMemoryClaude(NativeRuntime);
 

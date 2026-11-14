@@ -1,7 +1,7 @@
 use super::credentials::sensitive_header;
 use super::paths::{PathContext, PathMode, absolute_path};
 use super::secrets::{REDACTED, SecretContext, append};
-use crate::acp::contract::ContractError;
+use sage_acp_protocol::contract::ContractError;
 
 pub(crate) fn redact(
     field: &'static str,

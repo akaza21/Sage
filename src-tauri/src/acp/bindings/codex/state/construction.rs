@@ -5,7 +5,7 @@ use super::{
 use crate::acp::bindings::codex::{
     admission::AdmittedCodexBinding, manifest::MetadataValidatedPacket,
 };
-use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId};
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 impl CodexAdapter {
     #[cfg(test)]
@@ -13,7 +13,7 @@ impl CodexAdapter {
         self.observe_build_for_test(
             &format!(
                 "codex-cli {}",
-                crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION
+                sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION
             ),
             crate::acp::bindings::characterisation::Characterisation::Characterised,
         );
@@ -125,7 +125,7 @@ impl CodexAdapter {
             adapter.desktop_fixture = binding.is_desktop_fixture();
             adapter.desktop_fixture_lists_models = binding
                 .desktop_fixture_case()
-                .is_some_and(crate::acp_protocol::native_cases::native_case_lists_models);
+                .is_some_and(sage_acp_protocol::native_cases::native_case_lists_models);
         }
         adapter
     }

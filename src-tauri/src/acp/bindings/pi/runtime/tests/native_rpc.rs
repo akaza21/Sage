@@ -1,5 +1,6 @@
 use super::*;
-use crate::acp::{goal::NativeRpcReply, session_control::SessionControl, usage::UsageState};
+use crate::acp::goal::NativeRpcReply;
+use sage_acp_protocol::{session_control::SessionControl, usage::UsageState};
 
 fn stats() -> Value {
     json!({
@@ -11,7 +12,7 @@ fn stats() -> Value {
     })
 }
 
-fn spend(runtime: &PiRuntime) -> Option<crate::acp::usage::SessionSpend> {
+fn spend(runtime: &PiRuntime) -> Option<sage_acp_protocol::usage::SessionSpend> {
     match runtime.usage().unwrap().state() {
         UsageState::Usage { snapshot } => snapshot.session,
         _ => None,

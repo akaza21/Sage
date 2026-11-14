@@ -6,7 +6,7 @@ use super::super::{
     support::{expect_thread_and_turn, identity, text},
 };
 use super::{child_thread, provisional};
-use crate::acp::{
+use sage_acp_protocol::{
     intent::NormalizedPayload,
     lifecycle::{ItemLifecycle, TerminalUpdate, ToolState},
 };
@@ -17,7 +17,7 @@ pub(super) fn item_event<M: ResourceMapper>(
     params: &Map<String, Value>,
     requested: ItemLifecycle,
     mapper: &M,
-    declarations: &crate::acp::declared_test::DeclaredTestCommands,
+    declarations: &sage_acp_protocol::declared_test::DeclaredTestCommands,
 ) -> Result<IngressDisposition, IngressError> {
     if adapter.has_provisional_turn() {
         return provisional::verify_first_user_message(adapter, params, requested);

@@ -3,16 +3,18 @@ use tauri::State;
 
 use crate::{
     acp::{
-        contract::{
-            ProjectGeneration, RuntimeEpoch, SafeText, SageAgentSessionId, SageChatId,
-            SageProjectId, SageTurnId,
-        },
         errors::SessionControlError,
-        intent::{AcpIpcError, AcpUnavailableReason, IntentError, validate_base_intent},
-        scheduler::RuntimeOwner,
-        session_control::SessionControl,
+        ipc::{AcpIpcError, AcpUnavailableReason, IntentError, validate_base_intent},
     },
     state::AppState,
+};
+use sage_acp_protocol::{
+    contract::{
+        ProjectGeneration, RuntimeEpoch, SafeText, SageAgentSessionId, SageChatId, SageProjectId,
+        SageTurnId,
+    },
+    scheduler::RuntimeOwner,
+    session_control::SessionControl,
 };
 
 use super::{intent_error, safe_message, snapshot_for};

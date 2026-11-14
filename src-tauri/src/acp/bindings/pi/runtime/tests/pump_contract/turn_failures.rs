@@ -1,9 +1,6 @@
 use super::*;
-use crate::acp::{
-    lifecycle::{ItemLifecycle, TurnState, TurnTerminalReason},
-    projection::ItemContent,
-    store::load_chat_page,
-};
+use crate::acp::{projection::ItemContent, store::load_chat_page};
+use sage_acp_protocol::lifecycle::{ItemLifecycle, TurnState, TurnTerminalReason};
 
 struct TempRoot(std::path::PathBuf);
 impl Drop for TempRoot {
@@ -182,7 +179,7 @@ async fn retained_retry(
                         expected_revision: page.turns.as_slice()[0].revision,
                         now_millis: 5,
                     },
-                    client_intent_id: crate::acp::contract::ClientIntentId::parse(
+                    client_intent_id: sage_acp_protocol::contract::ClientIntentId::parse(
                         "cancel-pi-retry",
                     )
                     .unwrap(),

@@ -2,12 +2,10 @@ use rusqlite::params;
 
 use super::*;
 use crate::{
-    acp::{
-        contract::ProjectionRevision,
-        store::{load_chat_page, session_surface::is_undoable_turn},
-    },
+    acp::store::{load_chat_page, session_surface::is_undoable_turn},
     persistence::Database,
 };
+use sage_acp_protocol::contract::ProjectionRevision;
 
 pub(crate) const CAPABILITIES: &str = super::super::sessions::PENDING_CAPABILITIES_JSON;
 

@@ -1,10 +1,11 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
+use sage_acp_protocol::{
     command_output::{join_command_output_blocks, retain_command_output},
     contract::{BoundedVec, SafeText},
-    intent::{COMMAND_RESOURCE_LIMIT, SafeResourceLocation, ToolCategory},
+    intent::{SafeResourceLocation, ToolCategory},
 };
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
 use super::{OmpTranslator, ResourceMapper, TranslationError};

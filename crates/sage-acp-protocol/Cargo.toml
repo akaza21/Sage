@@ -1,0 +1,31 @@
+[package]
+name = "sage-acp-protocol"
+description = "Types and pure functions for Sage's ACP conversation."
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+agent-client-protocol-schema = { workspace = true, optional = true }
+sage-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+
+[features]
+default = []
+# Pulls in the pinned ACP schema crate; nothing in Sage links it yet.
+acp-schema = ["dep:agent-client-protocol-schema"]
+# The native replay catalogue (B22) for the adversarial ACP fixture.
+fixture = []
+# Test-only lookups the app's tests read. Enabled only from
+# `[dev-dependencies]`, never from `[dependencies]`.
+test-support = []

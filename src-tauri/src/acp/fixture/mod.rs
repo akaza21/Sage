@@ -60,7 +60,7 @@ pub enum FixtureError {
 }
 
 pub fn is_native_replay_case(case: &str) -> bool {
-    crate::acp_protocol::native_cases::JOURNEY_CASES
+    sage_acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .any(|entry| entry.id == case)
 }

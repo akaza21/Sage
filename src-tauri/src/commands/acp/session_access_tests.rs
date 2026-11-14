@@ -1,6 +1,6 @@
 use super::*;
-use crate::acp::contract::RuntimeEpoch;
-use crate::acp::session_config::{
+use sage_acp_protocol::contract::RuntimeEpoch;
+use sage_acp_protocol::session_config::{
     ConfigId, ConfigMutation, ConfigRevision, ConfigValue, SessionConfig,
 };
 use serde_json::json;

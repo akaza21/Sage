@@ -1,8 +1,8 @@
 use super::*;
-use crate::acp::{
+use crate::acp::store::{StartSessionCommand, load_chat_page, start_session};
+use sage_acp_protocol::{
     contract::{ClientIntentId, ProjectionRevision, SageChatId, SageProjectId},
     intent::BindingId,
-    store::{StartSessionCommand, load_chat_page, start_session},
 };
 
 #[test]

@@ -1,20 +1,18 @@
 //! Production slot admission and permission gates with a native session-ID fixture.
 use super::*;
 use crate::{
-    acp::{
-        browser::{
-            BrowserCapability, BrowserCommand, BrowserRequest, BrowserResult, BrowserScope,
-            attachment::{AttachmentLease, BrowserAttachments},
-            permission::{
-                BrowserCapabilityDispatch, BrowserPermissionChoice, BrowserPermissionGate,
-                BrowserPermissionPrompt, PendingBrowserResult,
-            },
-            session_capability::LeaseDeveloperPolicy,
+    acp::browser::{
+        BrowserCapability, BrowserCommand, BrowserRequest, BrowserResult, BrowserScope,
+        attachment::{AttachmentLease, BrowserAttachments},
+        permission::{
+            BrowserCapabilityDispatch, BrowserPermissionChoice, BrowserPermissionGate,
+            BrowserPermissionPrompt, PendingBrowserResult,
         },
-        contract::{SageChatId, SageProjectId},
+        session_capability::LeaseDeveloperPolicy,
     },
     settings_store::SettingsStore,
 };
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 const TAB: &str = "browser-7";

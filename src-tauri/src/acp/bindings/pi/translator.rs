@@ -10,7 +10,7 @@ use std::collections::{BTreeMap, BTreeSet, VecDeque};
 
 use serde_json::{Map, Value};
 
-use crate::acp::intent::{PermissionOptionKind, user_input::UserInputRequest};
+use sage_acp_protocol::intent::{PermissionOptionKind, user_input::UserInputRequest};
 
 use self::fingerprint::response_fingerprint;
 use self::initialization::InitializationIntent;
@@ -30,7 +30,7 @@ const COMPLETED_COMMANDS: usize = 32;
 const TOOLS_PER_TURN: usize = 512;
 const UNKNOWN_KINDS_PER_TURN: usize = 32;
 /// Sage sends at most a chat title, whose cap this mirrors.
-const SESSION_NAME_BYTES: usize = crate::acp::intent::session_event::SESSION_TITLE_BYTES;
+const SESSION_NAME_BYTES: usize = sage_acp_protocol::intent::session_event::SESSION_TITLE_BYTES;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PendingKind {

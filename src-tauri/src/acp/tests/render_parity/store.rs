@@ -1,17 +1,17 @@
 use serde_json::{Map, Value, json};
 
 use super::Fact;
-use crate::acp::{
+use crate::acp::store::{
+    AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, BeginCancelCommand,
+    FilePairCommand, ItemIngressCommand, StoreError, TurnMutationCommand,
+    apply_adapter_inbound_batch, begin_cancel, hex_digest, load_chat_page,
+};
+use sage_acp_protocol::{
     contract::{
         ClientIntentId, EntityRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
         SageProjectId, SageTurnId, SchemaVersionV1,
     },
     intent::{CapabilitySnapshotV1, ExternalId},
-    store::{
-        AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, BeginCancelCommand,
-        FilePairCommand, ItemIngressCommand, StoreError, TurnMutationCommand,
-        apply_adapter_inbound_batch, begin_cancel, hex_digest, load_chat_page,
-    },
 };
 
 const SETUP: &str = "

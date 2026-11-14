@@ -6,9 +6,9 @@ use std::time::{Duration, Instant};
 
 use crate::acp::{
     bindings::codex::CodexDiscoveryRunError,
-    contract::RuntimeEpoch,
     process::{TreeControl, TreeExit},
 };
+use sage_acp_protocol::contract::RuntimeEpoch;
 
 const LIVE_OPERATIONS: usize = super::LIVE_RUNTIME_LANES;
 

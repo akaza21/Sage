@@ -1,9 +1,10 @@
 use sage_test_support::test_diagnostics::capture_diagnostics;
 use serde_json::{Map, Value, json};
 
-use crate::acp::{
+use crate::acp::transcript_quote::Prompt;
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId},
-    intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
+    intent::{ExternalId, NormalizedPayload, SafeResourceRef},
     lifecycle::{ServerRequestState, TurnState},
 };
 
@@ -14,7 +15,7 @@ use super::{
     manifest::PINNED_ARTIFACT_COUNT,
     test_identity::{MANAGED_CODEX_HOME, user_agent, version_line},
 };
-use crate::acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY};
+use sage_acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY};
 
 mod command_summary_tests;
 mod file_change_sequence_tests;
@@ -38,17 +39,14 @@ const REPRODUCTION_FIXTURE: &[u8] =
     include_bytes!("../../../../testdata/acp/codex/package-reproduction-v1.json");
 const PACKAGE_ROOT: &str = concat!(
     r"C:\SageHarnesses\Codex\",
-    crate::acp_protocol::codex_protocol::pinned_codex_version!(),
+    sage_acp_protocol::pinned_codex_version!(),
     r"\package"
 );
 const ISOLATED_CODEX_HOME: &str = MANAGED_CODEX_HOME;
 
 #[test]
 fn the_protocol_identity_names_the_pinned_version_and_schema_prefix() {
-    assert!(
-        CODEX_SCHEMA_SHA256
-            .starts_with(crate::acp_protocol::codex_protocol::pinned_schema_prefix!())
-    );
+    assert!(CODEX_SCHEMA_SHA256.starts_with(sage_acp_protocol::pinned_schema_prefix!()));
     assert_eq!(
         PINNED_PROTOCOL_IDENTITY,
         format!(
@@ -60,11 +58,11 @@ fn the_protocol_identity_names_the_pinned_version_and_schema_prefix() {
 
 #[test]
 fn native_service_gates_admit_only_exact_managed_or_observed_identity() {
-    assert!(crate::acp_protocol::codex_protocol::speaks_pinned_protocol(
+    assert!(sage_acp_protocol::codex_protocol::speaks_pinned_protocol(
         PINNED_PROTOCOL_IDENTITY
     ));
-    assert!(crate::acp_protocol::codex_protocol::speaks_pinned_protocol(
-        crate::acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY
+    assert!(sage_acp_protocol::codex_protocol::speaks_pinned_protocol(
+        sage_acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY
     ));
     let (major, rest) = PINNED_CODEX_VERSION.split_once('.').unwrap();
     let minor: u64 = rest.split_once('.').unwrap().0.parse().unwrap();
@@ -76,7 +74,7 @@ fn native_service_gates_admit_only_exact_managed_or_observed_identity() {
         format!("codex-app-server-{PINNED_CODEX_VERSION}-unknown"),
     ] {
         assert!(
-            !crate::acp_protocol::codex_protocol::speaks_pinned_protocol(&unknown),
+            !sage_acp_protocol::codex_protocol::speaks_pinned_protocol(&unknown),
             "{unknown}"
         );
     }
@@ -86,12 +84,12 @@ impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         absolute_path: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
         (absolute_path == r"C:\repo\src\lib.rs")
             .then(|| {
                 SafeResourceRef::new(SageRootId::parse("root-one").unwrap(), "src/lib.rs").unwrap()
             })
-            .ok_or(crate::acp::intent::UnavailableResourceReason::Foreign)
+            .ok_or(sage_acp_protocol::intent::UnavailableResourceReason::Foreign)
     }
 }
 
@@ -1238,8 +1236,8 @@ fn pinned_codex_uses_captured_read_only_spellings_per_request_shape() {
 #[test]
 fn pinned_codex_admits_ask_and_workspace_write_before_turn_start() {
     for mode in [
-        crate::acp_protocol::access_mode::SessionAccessMode::Ask,
-        crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+        sage_acp_protocol::access_mode::SessionAccessMode::Ask,
+        sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
     ] {
         let mut candidate = adapter();
         negotiate(&mut candidate);
@@ -1263,7 +1261,7 @@ fn pinned_codex_admits_ask_and_workspace_write_before_turn_start() {
         assert_eq!(wire["params"]["sandboxPolicy"]["networkAccess"], false);
         assert_eq!(
             wire["params"]["approvalPolicy"],
-            if mode == crate::acp_protocol::access_mode::SessionAccessMode::Ask {
+            if mode == sage_acp_protocol::access_mode::SessionAccessMode::Ask {
                 "on-request"
             } else {
                 "never"
@@ -1274,7 +1272,7 @@ fn pinned_codex_admits_ask_and_workspace_write_before_turn_start() {
 
 #[test]
 fn pinned_codex_dispatches_saved_ask_as_read_only() {
-    use crate::acp_protocol::access_mode::SessionAccessMode;
+    use sage_acp_protocol::access_mode::SessionAccessMode;
 
     let mut candidate = adapter();
     ready(&mut candidate);
@@ -1533,8 +1531,8 @@ fn structured_turn_plan_preserves_step_states_without_a_tool_row() {
     assert!(matches!(events.as_slice(), [IncomingEvent::Item {
         payload: NormalizedPayload::PlanEntries { entries }, tool_state: None, ..
     }] if entries.as_slice().len() == 2
-        && entries.as_slice()[0].state == crate::acp::intent::NormalizedPlanState::Completed
-        && entries.as_slice()[1].state == crate::acp::intent::NormalizedPlanState::InProgress));
+        && entries.as_slice()[0].state == sage_acp_protocol::intent::NormalizedPlanState::Completed
+        && entries.as_slice()[1].state == sage_acp_protocol::intent::NormalizedPlanState::InProgress));
 }
 
 #[test]
@@ -2198,7 +2196,7 @@ fn command_approval_carries_codex_reason_sanitized_and_only_when_given() {
             panic!("permission")
         };
         assert_eq!(summary.as_str(), "Run a command");
-        assert_eq!(*category, crate::acp::intent::ToolCategory::Execute);
+        assert_eq!(*category, sage_acp_protocol::intent::ToolCategory::Execute);
         assert_eq!(projected.as_ref().map(|value| value.as_str()), expected);
     }
 }
@@ -2310,8 +2308,8 @@ fn paths_and_secrets_are_redacted_and_file_paths_require_native_mapping() {
             ..
         } if label.as_str() == "Edited file" && matches!(
             locations.as_slice(),
-            [crate::acp::intent::SafeResourceLocation::Unavailable {
-                reason: crate::acp::intent::UnavailableResourceReason::Foreign,
+            [sage_acp_protocol::intent::SafeResourceLocation::Unavailable {
+                reason: sage_acp_protocol::intent::UnavailableResourceReason::Foreign,
                 ..
             }]
         )
@@ -2320,8 +2318,8 @@ fn paths_and_secrets_are_redacted_and_file_paths_require_native_mapping() {
         &events[1],
         IncomingEvent::Item {
             payload: NormalizedPayload::FileChangeDiff {
-                resource: crate::acp::intent::SafeResourceLocation::Unavailable {
-                    reason: crate::acp::intent::UnavailableResourceReason::Foreign,
+                resource: sage_acp_protocol::intent::SafeResourceLocation::Unavailable {
+                    reason: sage_acp_protocol::intent::UnavailableResourceReason::Foreign,
                     ..
                 },
                 summary,
@@ -2567,15 +2565,15 @@ fn all_outgoing_lifecycle_methods_are_exact_and_bounded() {
 fn codex_turns_and_steers_carry_attached_files_in_their_text_input() {
     use super::request::OutgoingRequest;
     use crate::acp::service::prompt_files::{Resource, Resources};
-    let mut prompt = crate::acp::intent::Prompt::new("prompt", "Review").unwrap();
+    let mut prompt = crate::acp::transcript_quote::Prompt::new("prompt", "Review").unwrap();
     prompt.resources = Resources(std::sync::Arc::new(vec![Resource {
         id: "res-1".into(),
         name: "notes.md".into(),
         bytes: b"# Notes".to_vec(),
     }]));
-    let thread = crate::acp::contract::RequiredText::new("threadId", "thread-1").unwrap();
-    let client = crate::acp::contract::RequiredText::new("client", "client-1").unwrap();
-    let turn = crate::acp::contract::RequiredText::new("turnId", "turn-1").unwrap();
+    let thread = sage_acp_protocol::contract::RequiredText::new("threadId", "thread-1").unwrap();
+    let client = sage_acp_protocol::contract::RequiredText::new("client", "client-1").unwrap();
+    let turn = sage_acp_protocol::contract::RequiredText::new("turnId", "turn-1").unwrap();
     let expected = "Review\n\n<context name=\"notes.md\">\n# Notes\n</context>";
     for request in [
         OutgoingRequest::turn_start(1, &thread, &prompt, &client).unwrap(),

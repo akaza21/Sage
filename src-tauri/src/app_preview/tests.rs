@@ -16,10 +16,10 @@ use super::{
     health, lifecycle,
     projection::{PreviewFailure, PreviewPhase, PreviewProjection, PreviewProjectionOwner},
 };
-use crate::acp::contract::{
+use sage_acp_protocol::contract::{
     ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
 };
-use crate::acp::scheduler::RuntimeOwner;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 #[test]
 fn stopping_an_unstarted_target_does_not_cancel_the_next_epoch_start() {
@@ -102,7 +102,7 @@ server.listen(0, "127.0.0.1", () => {
         thread::sleep(Duration::from_millis(20));
     };
     let rediscovered_target = PreviewTargetRef {
-        root_id: crate::acp::contract::SageRootId::parse("new-root-preview").unwrap(),
+        root_id: sage_acp_protocol::contract::SageRootId::parse("new-root-preview").unwrap(),
         ..target.clone()
     };
     lifecycle::replace_discovered(&request, vec![(rediscovered_target, root.clone())]);
@@ -422,7 +422,8 @@ server.listen(0, "127.0.0.1", () => console.log(`http://127.0.0.1:${server.addre
     );
     let target = preview_target(&format!("project-preview-{}", uuid::Uuid::new_v4()), 4, 4);
     let replacement = PreviewTargetRef {
-        root_id: crate::acp::contract::SageRootId::parse("replacement-root-preview").unwrap(),
+        root_id: sage_acp_protocol::contract::SageRootId::parse("replacement-root-preview")
+            .unwrap(),
         ..target.clone()
     };
     let foreign = PreviewTargetRef {
@@ -477,7 +478,8 @@ fn cleanup_failure_retains_its_exact_child_and_capacity_until_reconciled() {
     let root = preview_package("cleanup-failure", "setInterval(() => {}, 1000);");
     let target = preview_target(&format!("project-preview-{}", uuid::Uuid::new_v4()), 4, 4);
     let replacement = PreviewTargetRef {
-        root_id: crate::acp::contract::SageRootId::parse("failure-replacement-root").unwrap(),
+        root_id: sage_acp_protocol::contract::SageRootId::parse("failure-replacement-root")
+            .unwrap(),
         ..target.clone()
     };
     let request = request_for(&target);
@@ -548,7 +550,7 @@ fn preview_target(project: &str, generation: u64, transition: u64) -> PreviewTar
         chat_id: request.chat_id,
         session_id: request.session_id,
         runtime_epoch: request.runtime_epoch,
-        root_id: crate::acp::contract::SageRootId::parse("root-preview").unwrap(),
+        root_id: sage_acp_protocol::contract::SageRootId::parse("root-preview").unwrap(),
         script_name: PreviewScriptName::Dev,
     }
 }

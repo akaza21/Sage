@@ -1,15 +1,13 @@
 use serde_json::{Value, json};
 
-use crate::{
-    acp::{
-        intent::{
-            NormalizedPayload,
-            session_event::SessionScopedEvent,
-            user_input::{UserInputAnswers, UserInputKind},
-        },
-        lifecycle::ServerRequestState,
+use sage_acp_protocol::{
+    intent::{
+        NormalizedPayload,
+        session_event::SessionScopedEvent,
+        user_input::{UserInputAnswers, UserInputKind},
     },
-    acp_protocol::permissions::PermissionDecision,
+    lifecycle::ServerRequestState,
+    permissions::PermissionDecision,
 };
 
 use super::IncomingEvent;

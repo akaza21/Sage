@@ -2,16 +2,16 @@ use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    acp::{
-        bindings::codex::NativeSessionsPage,
-        contract::{RuntimeEpoch, SageAgentSessionId, SageProjectId},
-        goal::{NativeRead, NativeRpcReply},
-        runtime::RuntimeHost,
-        scheduler::RuntimeOwner,
-        store::native_import::{held_threads, import_lister, imported_threads},
-    },
-    acp_protocol::codex_protocol::{ChildTurn, MAX_SNAPSHOT_BYTES},
+use crate::acp::{
+    bindings::codex::NativeSessionsPage,
+    goal::{NativeRead, NativeRpcReply},
+    runtime::RuntimeHost,
+    store::native_import::{held_threads, import_lister, imported_threads},
+};
+use sage_acp_protocol::{
+    codex_protocol::{ChildTurn, MAX_SNAPSHOT_BYTES},
+    contract::{RuntimeEpoch, SageAgentSessionId, SageProjectId},
+    scheduler::RuntimeOwner,
 };
 
 use super::{AcpService, native_read::NativeReadError};
@@ -151,7 +151,7 @@ impl AcpService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{acp::lifecycle::ItemLifecycle, acp_protocol::codex_protocol::ChildItem};
+    use sage_acp_protocol::{codex_protocol::ChildItem, lifecycle::ItemLifecycle};
 
     fn turn(id: &str, text_bytes: usize) -> ChildTurn {
         ChildTurn {
@@ -163,9 +163,12 @@ mod tests {
                 observed_sequence: None,
                 lifecycle: ItemLifecycle::Completed,
                 tool_state: None,
-                payload: crate::acp::intent::NormalizedPayload::Text {
-                    text: crate::acp::contract::SafeText::new("text", "x".repeat(text_bytes))
-                        .unwrap(),
+                payload: sage_acp_protocol::intent::NormalizedPayload::Text {
+                    text: sage_acp_protocol::contract::SafeText::new(
+                        "text",
+                        "x".repeat(text_bytes),
+                    )
+                    .unwrap(),
                 },
             }],
         }

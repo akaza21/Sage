@@ -3,14 +3,17 @@ use std::{collections::VecDeque, future::Future, pin::Pin, sync::Mutex};
 
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterIdentity, EgressToken},
-    contract::{EntityRevision, SafeText, SchemaVersionV1},
-    intent::{
-        ActivityProvenanceV1, ActivitySourceKind, CapabilitySnapshotV1, Prompt,
-        SafeResourceLocation, SafeResourceRef, ToolCategory, UnavailableResourceReason,
-    },
-    lifecycle::{ActivityLifecycle, DeliveryState, ServerRequestState},
     projection::ActivityRole,
     runtime::{ProjectionPublishError, TurnNotice},
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::{
+    contract::{EntityRevision, SafeText, SchemaVersionV1},
+    intent::{
+        ActivityProvenanceV1, ActivitySourceKind, CapabilitySnapshotV1, SafeResourceLocation,
+        SafeResourceRef, ToolCategory, UnavailableResourceReason,
+    },
+    lifecycle::{ActivityLifecycle, DeliveryState, ServerRequestState},
 };
 
 use super::coalescer::{NormalizedFact, PendingIngress};
@@ -109,7 +112,7 @@ fn goal_active_codex_pump() -> (AdapterPump<CodexRuntime, FakeJournal, Mapper>, 
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let prompt_id = codex_request_id(&prompt);
@@ -583,15 +586,15 @@ impl HarnessAdapter for FakeAdapter {
             let request_id = ExternalId::new("request", "external-request")
                 .map_err(|_| AdapterRuntimeError::Frame)?;
             let token = match decision {
-                crate::acp_protocol::permissions::PermissionDecision::Ask => {
+                sage_acp_protocol::permissions::PermissionDecision::Ask => {
                     EgressToken::protocol_notification()
                 }
-                crate::acp_protocol::permissions::PermissionDecision::AllowOnce
-                | crate::acp_protocol::permissions::PermissionDecision::AllowAlways
-                | crate::acp_protocol::permissions::PermissionDecision::Answer(_) => {
+                sage_acp_protocol::permissions::PermissionDecision::AllowOnce
+                | sage_acp_protocol::permissions::PermissionDecision::AllowAlways
+                | sage_acp_protocol::permissions::PermissionDecision::Answer(_) => {
                     EgressToken::permission_allow(request_id)
                 }
-                crate::acp_protocol::permissions::PermissionDecision::Deny => {
+                sage_acp_protocol::permissions::PermissionDecision::Deny => {
                     EgressToken::mandatory_deny(request_id, false)
                 }
             };
@@ -771,14 +774,14 @@ struct FakePublisher {
 impl ProjectionPublisher for FakePublisher {
     fn publish_committed(
         &self,
-        event: crate::acp::intent::ProjectionChangedV1,
+        event: crate::acp::ipc::ProjectionChangedV1,
     ) -> Result<ProjectionPublishStatus, ProjectionPublishError> {
         self.publish_committed_with(event, TurnNotice::None)
     }
 
     fn publish_committed_with(
         &self,
-        _: crate::acp::intent::ProjectionChangedV1,
+        _: crate::acp::ipc::ProjectionChangedV1,
         turn_notice: TurnNotice,
     ) -> Result<ProjectionPublishStatus, ProjectionPublishError> {
         let mut state = self.shared.0.lock().unwrap();
@@ -799,8 +802,8 @@ impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         _: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
-        Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 
@@ -1255,7 +1258,7 @@ fn ask_does_not_invoke_the_adapter_or_write_a_harness_byte() {
 
         pump.resolve_permission(
             &request_id,
-            crate::acp_protocol::permissions::PermissionDecision::Ask,
+            sage_acp_protocol::permissions::PermissionDecision::Ask,
             21,
         )
         .await
@@ -1282,7 +1285,7 @@ fn later_deny_resolves_only_after_complete_write() {
         };
         pump.resolve_permission(
             &request_id,
-            crate::acp_protocol::permissions::PermissionDecision::Deny,
+            sage_acp_protocol::permissions::PermissionDecision::Deny,
             21,
         )
         .await
@@ -1321,7 +1324,7 @@ fn mandatory_deny_state_failures_block_or_tear_down_at_the_exact_boundary() {
             queue_failure
                 .resolve_permission(
                     &request_id,
-                    crate::acp_protocol::permissions::PermissionDecision::Deny,
+                    sage_acp_protocol::permissions::PermissionDecision::Deny,
                     21,
                 )
                 .await,
@@ -1347,7 +1350,7 @@ fn mandatory_deny_state_failures_block_or_tear_down_at_the_exact_boundary() {
         resolution_failure
             .resolve_permission(
                 &request_id,
-                crate::acp_protocol::permissions::PermissionDecision::Deny,
+                sage_acp_protocol::permissions::PermissionDecision::Deny,
                 21,
             )
             .await
@@ -2340,12 +2343,12 @@ fn file_pair_fact(external: &str) -> NormalizedFact {
 
 fn admitted_diff() -> NormalizedPayload {
     NormalizedPayload::file_admitted(
-        crate::acp::intent::FileChangeFacts {
+        sage_acp_protocol::intent::FileChangeFacts {
             resource: SafeResourceLocation::unavailable(UnavailableResourceReason::Missing),
             summary: SafeText::new("summary", "lib.rs").unwrap(),
             additions: Some(1),
             deletions: Some(1),
-            operation: crate::acp::intent::FileChangeOperation::Updated,
+            operation: sage_acp_protocol::intent::FileChangeOperation::Updated,
         },
         1,
         (3, 3),
@@ -2552,7 +2555,7 @@ fn a_question_the_user_answered_first_keeps_the_answer_when_its_window_passes() 
         .unwrap();
         pump.resolve_permission(
             &request_id,
-            crate::acp_protocol::permissions::PermissionDecision::Answer(answers),
+            sage_acp_protocol::permissions::PermissionDecision::Answer(answers),
             1_021,
         )
         .await

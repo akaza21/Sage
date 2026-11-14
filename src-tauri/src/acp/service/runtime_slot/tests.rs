@@ -1,12 +1,12 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 
 use crate::acp::{
-    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     runtime::{
         HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, PromptWrite, RuntimeEngine,
     },
     store::AdapterTurnCursor,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId};
 
 use super::*;
 
@@ -21,14 +21,14 @@ impl RuntimeEngine for Engine {
     fn prepare_prompt(
         &mut self,
         _: &HostPromptIntent,
-    ) -> Result<crate::acp::contract::SageTurnId, HostError> {
+    ) -> Result<sage_acp_protocol::contract::SageTurnId, HostError> {
         Err(HostError::Unavailable)
     }
 
     fn dispatch_prompt(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<PromptWrite, HostError> {
         Err(HostError::Unavailable)
     }
@@ -36,7 +36,7 @@ impl RuntimeEngine for Engine {
     fn retry_prompt(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<PromptWrite, HostError> {
         Err(HostError::Unavailable)
     }
@@ -44,7 +44,7 @@ impl RuntimeEngine for Engine {
     fn record_delivery_unknown(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), HostError> {
         Ok(())
     }
@@ -52,7 +52,7 @@ impl RuntimeEngine for Engine {
     fn record_retry_exhausted(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), HostError> {
         Ok(())
     }
@@ -119,7 +119,10 @@ fn config_overlay_is_cleared_by_exact_slot_lifecycle() {
     let first_host = host(&first);
     slot.reserve_start(first.clone()).unwrap();
     slot.config
-        .update(&first, crate::acp::session_config::SessionConfig::default())
+        .update(
+            &first,
+            sage_acp_protocol::session_config::SessionConfig::default(),
+        )
         .unwrap();
     slot.finish_start(&first, Arc::clone(&first_host)).unwrap();
     assert!(slot.config.snapshot(&first).is_none());
@@ -140,7 +143,7 @@ fn config_overlay_is_cleared_by_exact_slot_lifecycle() {
     slot.config
         .update(
             &second,
-            crate::acp::session_config::SessionConfig::default(),
+            sage_acp_protocol::session_config::SessionConfig::default(),
         )
         .unwrap();
     slot.finish_start(&second, Arc::clone(&second_host))

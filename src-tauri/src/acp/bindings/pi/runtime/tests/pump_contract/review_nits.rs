@@ -24,7 +24,7 @@ async fn pi_pump_unsupported_dialogs_cancel_and_settle() {
         );
         let events = fixture.observed.lock().unwrap().clone();
         assert!(matches!(events.as_slice(), [AdapterEvent::Item {
-            lifecycle: crate::acp::lifecycle::ItemLifecycle::Cancelled,
+            lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Cancelled,
             payload: NormalizedPayload::Unsupported { external_kind, summary }, ..
         }] if external_kind.as_str() == "pi_dialog_cancelled"
             && summary.as_str() == "Pi extension dialog was cancelled: this dialog is not supported"));
@@ -192,7 +192,7 @@ async fn pi_pump_invalid_image_fallback_reports_shared_admission_reason() {
     .unwrap();
     let events = fixture.observed.lock().unwrap().clone();
     assert!(events.iter().any(|event| matches!(event, AdapterEvent::Item {
-        lifecycle: crate::acp::lifecycle::ItemLifecycle::Unsupported,
+        lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Unsupported,
         payload: NormalizedPayload::Unsupported { external_kind, summary }, ..
     } if external_kind.as_str() == "pi_image" && summary.as_str() == "Image payload is not valid base64")));
     assert!(

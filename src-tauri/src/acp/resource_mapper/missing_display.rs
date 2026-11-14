@@ -3,7 +3,7 @@ use std::path::Path;
 use super::{
     NativeResourceMapper, ResourceMapError, has_noncanonical_components, validate_path_bytes,
 };
-use crate::acp::intent::SafeResourceRef;
+use sage_acp_protocol::intent::SafeResourceRef;
 
 impl NativeResourceMapper {
     pub(crate) fn try_map_missing_display(

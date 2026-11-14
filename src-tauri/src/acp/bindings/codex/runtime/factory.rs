@@ -6,9 +6,9 @@ use crate::acp::{
         codex::{AdmittedCodexBinding, CodexProjectRootAuthority},
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
     process::LaunchSpec,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 use super::CodexRuntime;
 

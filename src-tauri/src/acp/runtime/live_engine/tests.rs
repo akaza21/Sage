@@ -3,14 +3,13 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use crate::acp::{
+use crate::acp::{store::AdapterTurnCursor, transcript_quote::Prompt};
+use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageAgentSessionId,
         SageChatId, SageProjectId, SageTurnId,
     },
-    intent::Prompt,
     lifecycle::{DeliveryState, TurnState},
-    store::AdapterTurnCursor,
 };
 
 use super::*;
@@ -145,7 +144,7 @@ fn prompt(owner: &RuntimeOwner) -> HostPromptIntent {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             now_millis: 10,
         },
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 
@@ -245,7 +244,7 @@ fn possible_bytes_commit_delivery_unknown_without_retry() {
     host.activate(owner.clone()).unwrap();
     assert_eq!(
         host.send(prompt(&owner)),
-        Err(crate::acp::intent::PromptSendError::unknown(
+        Err(crate::acp::prompt_send::PromptSendError::unknown(
             HostError::DeliveryUnknown
         ))
     );
@@ -324,7 +323,7 @@ fn terminal_cursor_is_forwarded_to_the_same_worker_owner() {
             SageTurnId::parse("turn-live").unwrap(),
             TurnState::Completed,
             DeliveryState::Correlated,
-            crate::acp::contract::EntityRevision::new(3).unwrap(),
+            sage_acp_protocol::contract::EntityRevision::new(3).unwrap(),
             ProjectionRevision::new(4).unwrap(),
         ),
     )

@@ -1,7 +1,7 @@
 use super::*;
-use crate::acp::{
-    bindings::session_title::harness_title_cleared,
-    intent::session_event::{SessionScopedEvent, SessionSurface, fixtures::title},
+use crate::acp::bindings::session_title::harness_title_cleared;
+use sage_acp_protocol::intent::session_event::{
+    SessionScopedEvent, SessionSurface, fixtures::title,
 };
 
 fn session(event: SessionScopedEvent, now_millis: i64) -> AdapterInboundEvent {
