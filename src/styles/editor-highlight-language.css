@@ -86,7 +86,7 @@
     box-shadow: inset 0 0 0 1px var(--editor-focus-edge);
   }
 
-  /* Bordered actions keep one blue edge instead of stacking border + ring. */
+  /* Bordered actions keep one accent edge instead of stacking border + ring. */
   .workbench--editor .source-root__primary:focus-visible,
   .workbench--editor .source-change__resolve:focus-visible {
     border-color: var(--color-border-strong);

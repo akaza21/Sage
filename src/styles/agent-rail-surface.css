@@ -390,7 +390,7 @@
   height: 7px;
   flex: 0 0 auto;
   border-radius: var(--radius-circle);
-  background: var(--chat-annotation-accent);
+  background: var(--color-accent);
   content: "";
 }
 

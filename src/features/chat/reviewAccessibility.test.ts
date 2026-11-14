@@ -75,7 +75,10 @@ it("keeps fork keyboard focus visible and maps forced-colour hover to Highlight"
   const background = channels(
     global.match(/--color-plane-raised:\s*#([\da-f]{6});/)![1],
   );
-  const accent = channels(global.match(/--color-accent:\s*#([\da-f]{6});/)![1]);
+  const accentStep = global.match(/--color-accent:\s*var\((--[\w-]+)\);/)![1];
+  const accent = channels(
+    global.match(new RegExp(`${accentStep}:\\s*#([\\da-f]{6});`))![1],
+  );
   const opacity =
     Number(
       global.match(
