@@ -15,6 +15,7 @@ import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
 import { useChatAccessDrafts } from "../../app/chatAccessDrafts";
 import { useChatEffortDraft } from "../../app/chatEffortDraft";
+import { useChatAccessStore } from "../../app/sessionAccessActions";
 import type {
   AcpChatPage,
   StartAcpSessionRequest,
@@ -39,6 +40,16 @@ import { resetHarnessModelCache } from "../../app/harnessModelCache";
 import { LeftSidebar } from "../../workbench/LeftSidebar";
 import { openSideChat } from "../../workbench/sideChatActions";
 import { useSideChatState } from "../../workbench/sideChatState";
+
+// The browser runtime has no native chat access; this stands in for it.
+vi.mock("../../ports/chatAccessChanges", () => ({
+  chatAccessChanges: () => ({
+    get: async () => null,
+    set: async () => null,
+    prepare: () => Promise.reject(new Error("Not confirmed in tests.")),
+    grant: () => Promise.reject(new Error("Not confirmed in tests.")),
+  }),
+}));
 
 const initialState = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
@@ -129,6 +140,7 @@ beforeEach(async () => {
   useSessionAccessModeStore.setState({ ready: true, modes: {}, error: null });
   useChatAccessDrafts.setState({ drafts: {} });
   useChatEffortDraft.setState({ draft: null });
+  useChatAccessStore.setState({ modes: {}, error: null });
   starts = [];
   prompts = [];
   pages = new Map();
@@ -1215,9 +1227,8 @@ it("hands a retried draft's model, access and effort to the chat it created", as
     harnessId: harness.id,
     modelId: "model-a",
   });
-  expect(Object.values(useSessionAccessModeStore.getState().modes)).toContain(
-    "ask",
-  );
+  const sessionId = pages.get(chatId)!.currentSessionId!;
+  expect(useChatAccessStore.getState().modes[sessionId]).toBe("ask");
 });
 
 it("does not auto-send a handed-off prompt the user edits before the chat's page loads", async () => {
