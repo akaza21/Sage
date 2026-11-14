@@ -1,6 +1,3 @@
-//! Why a registered binding is not admitted, projected into the catalog's
-//! redacted reason.
-
 use crate::domain::HarnessUnavailableReason;
 
 use super::{Admission, BindingRecord};

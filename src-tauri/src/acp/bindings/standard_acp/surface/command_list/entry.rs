@@ -1,5 +1,3 @@
-//! One advertised command: its name, wording, source and native route,
-//! with the bounds every entry shares.
 use super::MAX_COMMANDS;
 use crate::acp::bindings::adapter::AdapterRuntimeError;
 use serde::Serialize;
@@ -8,15 +6,11 @@ use serde_json::Value;
 const NAME_BYTES: usize = 128;
 const DESCRIPTION_BYTES: usize = 1024;
 const HINT_BYTES: usize = 256;
-/// Other names a harness runs a command by; more are left out.
 const MAX_ALIASES: usize = 8;
 
-/// Where a command comes from, as its harness reports it. The `/` menu
-/// groups and labels commands by it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum CommandSource {
-    /// The harness's own command.
     Builtin,
     Skill,
     /// A user or project prompt template.
@@ -30,8 +24,6 @@ pub(crate) enum CommandSource {
 }
 
 impl CommandSource {
-    /// A source as harnesses name it on the wire; anything else is the
-    /// harness's own, unclassified.
     pub(crate) fn from_wire(value: Option<&str>) -> Self {
         match value {
             Some("builtin") => Self::Builtin,
@@ -45,16 +37,13 @@ impl CommandSource {
     }
 }
 
-/// The listed command a Turn ran, kept beside its prompt so the chat shows
-/// it as a command after a reload. The list itself is never stored.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub(crate) struct CommandMark {
     pub(crate) name: String,
     pub(crate) source: CommandSource,
 }
 
-/// How the binding that advertised a command runs it. Native only: the
-/// WebView names a command and the binding looks its dispatch up in the
+/// Native only: the WebView names a command and the binding looks its dispatch up in the
 /// live list, so a prompt can never choose its own route.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum CommandDispatch {
@@ -76,13 +65,10 @@ pub(crate) enum CommandDispatch {
     Panel(CommandPanel),
 }
 
-/// A panel a command opens in the chat, named on the list it came with.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum CommandPanel {
-    /// The session's model, effort, access and usage.
     Status,
-    /// The session's MCP servers.
     Mcp,
 }
 
@@ -99,9 +85,7 @@ pub(crate) struct AvailableCommand {
         skip_serializing_if = "opens_no_panel"
     )]
     pub(crate) dispatch: CommandDispatch,
-    /// Other names the harness runs this command by, which the menu matches
-    /// too. They give no route of their own: a prompt still names the
-    /// listed command to run as one.
+    /// Aliases give no route of their own: a prompt still names the listed command to run as one.
     #[serde(skip_serializing_if = "Vec::is_empty")]
     pub(crate) aliases: Vec<String>,
 }
@@ -122,7 +106,6 @@ fn serialize_panel<S: serde::Serializer>(
 }
 
 impl AvailableCommand {
-    /// One advertised command, with the bounds every list shares.
     pub(crate) fn new(
         name: &str,
         description: &str,
@@ -145,9 +128,6 @@ impl AvailableCommand {
         })
     }
 
-    /// The command with the other names its harness runs it by. An alias
-    /// that is not a command name, repeats one, or is past the bound is left
-    /// out, since aliases only help the menu find the command.
     pub(crate) fn with_aliases<'a>(mut self, aliases: impl IntoIterator<Item = &'a str>) -> Self {
         for alias in aliases {
             if self.aliases.len() == MAX_ALIASES {
@@ -164,8 +144,6 @@ impl AvailableCommand {
         self
     }
 
-    /// What this command counts toward a list's `MAX_COMMAND_BYTES`,
-    /// including the native route it keeps, such as a skill's path.
     pub(crate) fn listed_bytes(&self) -> usize {
         let route = match &self.dispatch {
             CommandDispatch::Skill { path } => path.len(),
@@ -178,9 +156,8 @@ impl AvailableCommand {
             + route
     }
 
-    /// An ACP `AvailableCommand`. ACP has no source or alias fields, so an
-    /// adapter may name them in `_meta.source` and `_meta.aliases`; a
-    /// command with no source is the harness's own.
+    /// ACP has no source or alias fields, so an adapter may name them in `_meta.source` and
+    /// `_meta.aliases`.
     pub(crate) fn from_acp(value: &Value) -> Result<Self, AdapterRuntimeError> {
         let source = CommandSource::from_wire(value["_meta"]["source"].as_str());
         let input_hint = match value.get("input").filter(|v| !v.is_null()) {
@@ -203,9 +180,7 @@ impl AvailableCommand {
     }
 }
 
-/// A name a prompt can run as `/name`: no whitespace, controls or slash.
-/// The byte order mark counts as whitespace, as it does in the WebView's
-/// check of the same list.
+/// The byte order mark counts as whitespace, as it does in the WebView's check of the same list.
 fn is_command_name(name: &str) -> bool {
     !name.is_empty()
         && !name
@@ -213,7 +188,6 @@ fn is_command_name(name: &str) -> bool {
             .any(|c| c.is_whitespace() || c.is_control() || c == '/' || c == '\u{feff}')
 }
 
-/// A required string field of an advertisement.
 pub(crate) fn wire_text(value: &Value) -> Result<&str, AdapterRuntimeError> {
     value.as_str().ok_or(AdapterRuntimeError::Frame)
 }
@@ -225,8 +199,6 @@ fn bounded(text: &str, cap: usize) -> Result<String, AdapterRuntimeError> {
     Ok(text.to_owned())
 }
 
-/// Display text: a long description is cut at a character boundary rather
-/// than costing the whole list.
 fn clipped(text: &str, cap: usize) -> Result<String, AdapterRuntimeError> {
     let end = (0..=cap.min(text.len()))
         .rev()

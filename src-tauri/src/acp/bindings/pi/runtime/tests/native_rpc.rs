@@ -27,7 +27,6 @@ fn a_usage_read_asks_pi_for_session_stats_and_keeps_its_totals_and_cost() {
     let query = deliver(&mut runtime, read);
     assert_eq!(query, json!({"type":"get_session_stats","id":query["id"]}));
     assert!(runtime.native_rpc_pending());
-    // One native request at a time.
     assert!(runtime.read_usage().is_err());
     let batch = runtime.ingest(&response(&query, stats()), &Mapper).unwrap();
     assert!(matches!(batch.events(), [AdapterEvent::Absorbed]));
@@ -64,7 +63,6 @@ fn a_usage_read_works_while_a_turn_runs_and_leaves_the_turn_alone() {
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::UsageRead)
     );
-    // The turn still streams its answer.
     runtime
         .ingest(&frame(json!({"type":"message_start"})), &Mapper)
         .unwrap();
@@ -132,7 +130,6 @@ fn a_reply_to_an_abandoned_read_never_answers_the_next_caller() {
     };
     let rename = runtime.session_control(&control).unwrap();
     let rename = deliver(&mut runtime, rename);
-    // The old stats reply arrives while the rename waits.
     let late = runtime.ingest(&response(&first, stats()), &Mapper).unwrap();
     assert!(matches!(late.events(), [AdapterEvent::IgnoredLate]));
     assert!(runtime.native_rpc_pending());
@@ -180,7 +177,6 @@ fn renaming_the_chat_names_pis_session() {
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Controlled(None))
     );
-    // Pi's own echo of the name is the chat title it already has.
     let echo = runtime
         .ingest(
             &frame(json!({"type":"session_info_changed","name":"Fix the login flow"})),

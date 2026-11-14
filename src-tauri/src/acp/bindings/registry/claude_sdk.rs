@@ -1,5 +1,3 @@
-//! Curated registry record for Claude Code over its Agent SDK protocol.
-
 use std::sync::Arc;
 
 use crate::acp::{
@@ -36,8 +34,6 @@ pub(super) fn record(registration: Arc<ClaudeSdkBindingRegistration>) -> Binding
     }
 }
 
-/// A desktop fixture record: the replay case stands in for Claude Code and
-/// no Claude sign-in is consulted.
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 pub(super) fn fixture_record(
     selection: crate::launch_profile::FixtureSelection,
@@ -62,9 +58,6 @@ fn launch_factory(
     Box::new(ClaudeSdkRuntimeFactory { binding, root })
 }
 
-/// What the SDK protocol carries today: new and resumed sessions, prompts
-/// with attachments, cancel, and subagent transcripts. Closing ends the
-/// process; fork arrives with its own stage.
 fn capabilities(
     binding: &AdmittedBinding,
 ) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
@@ -105,8 +98,6 @@ fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
     })
 }
 
-/// Whether a binding without model discovery can start a session with
-/// `model`: Claude Code takes a model its build listed before the session.
 pub(super) fn accepts_launch_model(binding: &AdmittedBinding, model: &str) -> bool {
     match binding {
         AdmittedBinding::ClaudeSdk(binding) => {
@@ -116,9 +107,6 @@ pub(super) fn accepts_launch_model(binding: &AdmittedBinding, model: &str) -> bo
     }
 }
 
-/// The config choice a new session of this binding starts with for a
-/// thinking level chosen before it existed, when the binding lists that
-/// level for `model` (Claude Code's own default when none is named).
 pub(super) fn launch_effort_choice(
     binding: &AdmittedBinding,
     model: Option<&str>,

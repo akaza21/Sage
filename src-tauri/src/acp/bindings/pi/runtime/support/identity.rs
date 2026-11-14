@@ -364,8 +364,6 @@ pub(super) fn tool_start_payload(
     })
 }
 
-/// Pi's built-in tools read as verb plus workspace path, like every harness;
-/// extension tools keep the name their author gave them.
 fn tool_label(name: &str, path: Option<&str>) -> String {
     let (verb, target) = match name {
         "read" => ("Read", "a file"),

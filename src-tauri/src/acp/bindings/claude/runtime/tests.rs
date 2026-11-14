@@ -101,7 +101,6 @@ pub(super) fn open_session(runtime: &mut ClaudeRuntime) {
         .expect("written");
     let batch = runtime
         .ingest(
-            // Claude reports its permission modes, starting in "default".
             &frame(
                 json!({"jsonrpc":"2.0","id":id,"result":{"sessionId":"claude-session-1",
                 "modes":{"currentModeId":"default","availableModes":[

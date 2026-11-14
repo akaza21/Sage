@@ -9,12 +9,8 @@ const PI_READ_ONLY: &[(SessionAccessMode, &str, &str)] = &[(
     "Read-only tools only; workspace editing is not admitted.",
 )];
 
-/// An access mode a harness enforces itself, through one of its own session
-/// (permission) modes. A binding whose access works this way lists its rows
-/// in its own module; everything else here, and the settings, grants,
-/// diagnostics and composer, stay harness-neutral. Before each prompt Sage
-/// selects `session_mode` through the binding's session-config path, and a
-/// mode the live session does not advertise is refused, never approximated.
+/// Before each prompt Sage selects `session_mode` through the binding's session-config path,
+/// and a mode the live session does not advertise is refused, never approximated.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct NativeAccessMode {
     pub(crate) id: SessionAccessMode,
@@ -32,8 +28,6 @@ fn native_access_modes(binding: &str) -> &'static [NativeAccessMode] {
     }
 }
 
-/// The harness session mode that carries `mode` for `binding`, when the
-/// binding enforces access through session modes.
 pub(crate) fn session_mode(binding: &str, mode: SessionAccessMode) -> Option<&'static str> {
     native_access_modes(binding)
         .iter()
@@ -53,8 +47,6 @@ pub(crate) fn access_modes(
     admitted_modes(binding, characterised, pi_bridge)
 }
 
-/// The modes Sage enforces for a binding, given whether the Pi bridge that
-/// carries Pi's workspace edits is available.
 pub(crate) fn admitted_modes(
     binding: &str,
     characterised: bool,
@@ -186,9 +178,7 @@ pub(crate) fn effective_mode(
         .map(|mode| mode.id)
 }
 
-/// The mode a prompt runs under: the chat's own choice while the binding
-/// still offers exactly that mode, else the binding's stored default. A
-/// choice the binding cannot carry never lowers or raises the default.
+/// A choice the binding cannot carry never lowers or raises the default.
 pub(crate) fn turn_mode(
     binding: &str,
     version: &str,
@@ -221,7 +211,6 @@ pub(crate) fn turn_mode_for_binding(
     )
 }
 
-/// Whether the routed binding offers `mode` to a chat.
 pub(crate) fn offers_mode(
     registry: &super::registry::BindingRegistry,
     binding: &str,
@@ -230,9 +219,8 @@ pub(crate) fn offers_mode(
     turn_mode_for_binding(registry, binding, Some(mode), None) == Some(mode)
 }
 
-/// Whether `mode` is in the routed binding's own table of access modes,
-/// whatever build is bound or whether one is: a chat may always step down to
-/// such a mode, even while its harness is unavailable, and to no other.
+/// A chat may step down only to a mode in the routed binding's own table, even while its harness
+/// is unavailable.
 pub(crate) fn lists_mode(
     registry: &super::registry::BindingRegistry,
     binding: &str,
@@ -258,10 +246,9 @@ pub(crate) fn lists_mode(
     }
 }
 
-/// Whether the routed binding's access is enforced through its harness
-/// session modes. Only the access path may then change the session mode.
-/// None when the binding cannot be routed, so the caller decides how to
-/// fail closed.
+/// When access is enforced through harness session modes, only the access path may change the
+/// session mode. None when the binding cannot be routed, so the caller decides how to fail
+/// closed.
 pub(crate) fn governs_session_modes(
     registry: &super::registry::BindingRegistry,
     binding: &str,
@@ -272,7 +259,6 @@ pub(crate) fn governs_session_modes(
         .map(|record| !native_access_modes(record.access_policy_binding_id()).is_empty())
 }
 
-/// The harness session mode that carries `mode` for a routed binding.
 pub(crate) fn session_mode_for_binding(
     registry: &super::registry::BindingRegistry,
     binding: &str,
@@ -404,8 +390,6 @@ mod tests {
                 assert!(!mode["description"].as_str().unwrap().is_empty());
                 assert_ne!(mode["label"], "Approve for me");
                 assert_eq!(mode["fallback"], mode["id"] == modes[0]);
-                // Full access is offered only where a harness session mode
-                // carries it natively, and it is never the fallback.
                 if mode["id"] == "fullAccess" {
                     assert_eq!(mode["sessionModeId"], "bypassPermissions");
                     assert_eq!(mode["fallback"], false);
@@ -452,8 +436,6 @@ mod tests {
         ] {
             assert_eq!(session_mode("claude-agent-acp", mode), native, "{mode:?}");
         }
-        // Other harnesses keep their own enforcement; none maps to a
-        // session mode, and none offers the new modes.
         for binding in ["codex-app-server", "opencode-acp", "pi-rpc"] {
             assert_eq!(session_mode(binding, FullAccess), None);
             assert!(
@@ -464,7 +446,6 @@ mod tests {
                             && mode.session_mode_id.is_none()
                     )
             );
-            // A grant those harnesses cannot carry falls back to read-only.
             assert_eq!(
                 effective_mode(binding, PINNED_CODEX_VERSION, Some(FullAccess), true),
                 Some(ReadOnly)
@@ -502,13 +483,11 @@ mod tests {
                 (json!("auto"), json!("auto")),
             ]
         );
-        // Auto stays behind the access path's two-step confirmation.
         assert!(Auto.needs_confirmation());
         assert!(lists_mode(&registry, "claude-code-sdk", AcceptEdits));
         assert!(lists_mode(&registry, "claude-code-sdk", Plan));
         assert!(lists_mode(&registry, "claude-code-sdk", Ask));
         assert!(lists_mode(&registry, "claude-code-sdk", Auto));
-        // Nothing the SDK session cannot select is offered or falls back.
         assert!(!lists_mode(&registry, "claude-code-sdk", FullAccess));
         assert!(!lists_mode(&registry, "claude-code-sdk", ReadOnly));
         assert_eq!(session_mode("claude-code-sdk", FullAccess), None);
@@ -528,15 +507,10 @@ mod tests {
         assert_eq!(claude(Some(FullAccess), Some(Plan)), Some(FullAccess));
         assert_eq!(claude(Some(Auto), Some(AcceptEdits)), Some(Auto));
         assert_eq!(claude(Some(Plan), Some(AcceptEdits)), Some(Plan));
-        // Without a choice a chat runs under the binding default, which
-        // starts at Ask each time and can be any non-Full mode.
         assert_eq!(claude(None, None), Some(Ask));
         assert_eq!(claude(None, Some(AcceptEdits)), Some(AcceptEdits));
         assert_eq!(claude(None, Some(ReadOnly)), None);
-        // A choice Claude cannot carry leaves the default in charge.
         assert_eq!(claude(Some(WorkspaceWrite), Some(Plan)), Some(Plan));
-        // A choice a harness cannot carry keeps its own default rather than
-        // falling to some other mode.
         assert_eq!(
             turn_mode(
                 "codex-app-server",

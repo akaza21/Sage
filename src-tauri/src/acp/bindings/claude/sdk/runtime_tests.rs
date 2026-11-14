@@ -1,6 +1,3 @@
-//! A whole Claude Code turn over the SDK protocol, through the shared Claude
-//! session state machine, as the events the store and UI receive.
-
 use serde_json::{Value, json};
 
 use super::*;
@@ -66,7 +63,6 @@ fn runtime() -> ClaudeSdkRuntime {
     runtime
 }
 
-/// Sends a command, marks it written, and returns the SDK frame.
 fn send(runtime: &mut ClaudeSdkRuntime, command: AdapterCommand) -> Value {
     let egress = runtime.command(command).unwrap();
     let sdk = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -103,7 +99,6 @@ fn ready() -> ClaudeSdkRuntime {
         panic!("initialized: {events:?}");
     };
     let capabilities = runtime.capabilities().unwrap();
-    // The activation pump refuses a session whose two answers differ.
     assert_eq!(told, &capabilities);
     assert!(capabilities.resume_session && capabilities.prompt_resources);
     let session = send(
@@ -124,20 +119,15 @@ fn ready() -> ClaudeSdkRuntime {
             .as_ref()
             .map(|launch| launch.session_id.as_str())
     );
-    // Sage's panels come first, then Claude Code's own commands.
     let listed = runtime.available_commands().snapshot().commands;
     let names: Vec<_> = listed.iter().map(|command| command.name.as_str()).collect();
     assert_eq!(names, ["status", "mcp", "review"]);
-    // A panel that is also Claude Code's built-in keeps Claude Code's
-    // wording but takes no input, since the panel sends nothing.
     let mcp = &listed[1];
     assert_eq!(
         (mcp.description.as_str(), mcp.input_hint.as_deref()),
         ("Manage MCP servers", None)
     );
     assert_eq!(mcp.aliases, ["servers"]);
-    // A user's command of a panel's name is not the built-in, so the panel
-    // keeps its own wording.
     assert_eq!(
         listed[0].description,
         "Show the session's model, access, context and usage"
@@ -292,7 +282,6 @@ fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
         })
         .unwrap();
     let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
-    // Only the switch into accepting edits is passed on.
     assert_eq!(
         sdk["response"]["response"]["updatedPermissions"],
         json!([{"type":"setMode","mode":"acceptEdits","destination":"session"}])
@@ -303,7 +292,6 @@ fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
         .ingest(&frame(status), &Mapper)
         .unwrap()
         .into_parts();
-    // The user's own answer must not cancel the turn with a notice.
     assert!(egress.is_empty(), "the turn was cancelled");
     assert!(!format!("{events:?}").contains("Notice"), "{events:?}");
 }
@@ -923,8 +911,6 @@ fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
         .unwrap();
     assert!(runtime.native_rpc_pending());
     reply(&mut runtime, &sdk, json!({}));
-    // This session was never saved by a real Claude Code, so there is no
-    // reply to fork at.
     assert_eq!(
         runtime.take_native_rpc_reply(),
         Some(crate::acp::goal::NativeRpcReply::Rejected)
@@ -935,7 +921,6 @@ fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
         runtime.take_native_rpc_reply(),
         Some(crate::acp::goal::NativeRpcReply::Released)
     );
-    // Mid-turn, the release is answered at once too.
     assert!(runtime.defer_fork_release(&fork, true));
     assert_eq!(
         runtime.take_native_rpc_reply(),
@@ -962,7 +947,6 @@ fn mcp_servers_list_through_claude_code_and_an_abandoned_list_frees_the_session(
     assert!(runtime.native_rpc_pending());
     runtime.abandon_passive_read();
     assert!(!runtime.native_rpc_pending());
-    // The late reply is dropped, not read as a frame Sage never asked for.
     let late = reply(&mut runtime, &first, json!({"mcpServers": []}));
     assert!(matches!(late[..], [AdapterEvent::Absorbed]), "{late:?}");
     assert_eq!(runtime.take_native_rpc_reply(), None);

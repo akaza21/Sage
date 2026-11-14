@@ -27,18 +27,14 @@ impl PiTranslator {
         self.end_run(message)
     }
 
-    /// An oversized event of the running Turn was dropped unread.
     pub(crate) fn note_dropped_frame(&mut self) {
         if let Some(turn) = self.active.as_mut() {
             turn.dropped_frame = true;
         }
     }
 
-    /// Whether an oversized id-less frame may be read past. Only between
-    /// the items of a running model loop with no read outstanding, so the
-    /// frame can only repeat what the stream already delivered, such as the
-    /// run's `agent_end`. Inside a reply, tool call or compaction, or between
-    /// Turns, an oversized frame still ends the session.
+    /// Only between the items of a running model loop with no read outstanding, so the frame can
+    /// only repeat what the stream already delivered, such as the run's `agent_end`.
     pub(crate) fn skips_oversize_frames(&self) -> bool {
         !self.awaits_large_response()
             && self.active.as_ref().is_some_and(|turn| {
@@ -57,7 +53,6 @@ impl PiTranslator {
         turn.lifecycle.start_model()?;
         turn.settlement_message = None;
         turn.last_reply = None;
-        // The run Pi waited for has begun: the wait is over.
         if let Some(attempt) = turn.retry_waiting.take() {
             output.push(AdapterOutput::Retry {
                 attempt,
@@ -71,8 +66,6 @@ impl PiTranslator {
         Ok(output)
     }
 
-    /// Ends a run whose `agent_end` was too large to read from the last
-    /// reply the stream already delivered.
     fn end_dropped_run(&mut self) -> Result<Vec<AdapterOutput>, AdapterError> {
         let Some(turn) = self.active.as_mut() else {
             return Ok(Vec::new());
@@ -84,7 +77,6 @@ impl PiTranslator {
         self.end_run(reply.as_deref())
     }
 
-    /// Ends the model run from its last assistant reply.
     fn end_run(&mut self, message: Option<&Value>) -> Result<Vec<AdapterOutput>, AdapterError> {
         let turn = self.session_turn()?;
         turn.dropped_frame = false;
@@ -126,8 +118,6 @@ impl PiTranslator {
         if turn.lifecycle.terminal().is_some() {
             return Ok(vec![AdapterOutput::DuplicateIgnored]);
         }
-        // The run's `agent_end` was too large to read: end the run from the
-        // last reply the stream already delivered.
         let mut output = self.end_dropped_run()?;
         let turn = self.active.as_ref().ok_or(AdapterError::StaleIntent)?;
         if turn.lifecycle.phase != TurnPhase::ModelEnded {
@@ -200,8 +190,6 @@ impl PiTranslator {
             turn.retry_failed = true;
             turn.retry_final_error = failure_detail(value.get("finalError"));
         }
-        // A wait that ends without a new run recovered, or was stopped or
-        // given up.
         Ok(vec![waited.map_or(AdapterOutput::Absorbed, |attempt| {
             AdapterOutput::Retry {
                 attempt,
@@ -234,8 +222,6 @@ pub(super) fn failure_detail(value: Option<&Value>) -> Option<String> {
     crate::acp::runtime::terminal_detail::protocol_error(detail.trim())
 }
 
-/// Pi retrying a compaction or branch summary is shown as a notice; the
-/// compaction itself already has its own item.
 pub(super) fn summary_retry(value: &Value) -> AdapterOutput {
     let attempt = |key| value.get(key).and_then(Value::as_u64).unwrap_or(1);
     let reason = super::display_text(value.get("errorMessage"), 512)

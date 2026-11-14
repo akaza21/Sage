@@ -47,10 +47,8 @@ fn redacted_text<const MAX: usize>(
     SafeText::new(field, output)
 }
 
-/// Sanitizes one already frame-bounded command-output value before its display
-/// suffix is retained. This deliberately has a wider intermediate bound than
-/// `SafeText<65536>`: a valid oversized command output must be truncated, not
-/// rejected before redaction.
+/// This deliberately has a wider intermediate bound than `SafeText<65536>`: a valid oversized
+/// command output must be truncated, not rejected before redaction.
 pub(crate) fn sanitized_command_output(input: &str) -> Result<String, ContractError> {
     let maximum_input = LIMITS.wire.frame_bytes as usize;
     let maximum_output = maximum_input.saturating_mul(COMMAND_OUTPUT_REDACTION_BYTES);

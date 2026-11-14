@@ -1,5 +1,3 @@
-//! Branching a Pi chat: `clone`, read the copy's file, switch back.
-
 use super::*;
 use crate::acp::goal::NativeRpcReply;
 
@@ -23,7 +21,6 @@ impl<R: HarnessAdapter> Chat<R> {
     }
 }
 
-/// A chat whose Pi session has a saved file, as after its first reply.
 fn saved_chat() -> Chat {
     saved_chat_on(fixture_runtime(1))
 }
@@ -51,7 +48,6 @@ fn saved_chat_on<R: HarnessAdapter>(mut runtime: R) -> Chat<R> {
     Chat { runtime, dir }
 }
 
-/// Answers `request` and returns the next request the runtime wrote, if any.
 fn answer(chat: &mut Chat<impl HarnessAdapter>, request: &Value, data: Value) -> Option<Value> {
     let batch = chat
         .runtime
@@ -62,7 +58,6 @@ fn answer(chat: &mut Chat<impl HarnessAdapter>, request: &Value, data: Value) ->
     egress.pop().map(|next| deliver(&mut chat.runtime, next))
 }
 
-/// Pi clones the chat; returns its `get_state` request for the copy.
 fn cloned(chat: &mut Chat<impl HarnessAdapter>) -> Value {
     let fork = chat.runtime.fork_session().unwrap();
     let clone = deliver(&mut chat.runtime, fork);
@@ -72,7 +67,6 @@ fn cloned(chat: &mut Chat<impl HarnessAdapter>) -> Value {
     state
 }
 
-/// Pi reports the copy it moved onto; returns the switch back to the chat.
 fn read_copy(chat: &mut Chat<impl HarnessAdapter>, state: &Value) -> Value {
     read_copy_named(chat, state, COPY)
 }
@@ -107,18 +101,15 @@ fn a_fork_clones_reads_the_copy_and_moves_pi_back_to_the_chat() {
         panic!("fork reply expected");
     };
     assert_eq!(fork.as_str(), COPY);
-    // The fork chat now owns the copy; it stays on disk.
     chat.runtime.release_fork(&fork, true).unwrap();
     assert_eq!(
         chat.runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Released)
     );
     assert!(chat.file(COPY).is_file());
-    // The chat is usable again.
     running(&mut chat.runtime);
 }
 
-/// The runtime the shipped build's registry constructs for an installed Pi.
 fn shipped_runtime(install: &std::path::Path) -> crate::acp::bindings::runtime::NativeRuntime {
     use crate::acp::bindings::runtime::RuntimeFactory;
     use crate::harness_discovery::{DiscoveredPiLaunch, PiLaunchDiscovery};
@@ -176,7 +167,6 @@ fn the_shipped_pi_runtime_forks_and_releases_the_copy() {
         panic!("fork reply expected");
     };
     assert_eq!(fork.as_str(), COPY);
-    // A refused fork chat's copy is removed through the same runtime.
     chat.runtime.release_fork(&fork, false).unwrap();
     assert_eq!(
         chat.runtime.take_native_rpc_reply(),
@@ -203,7 +193,6 @@ fn a_refused_fork_removes_pis_copy() {
     );
     assert!(!chat.file(COPY).exists());
     assert!(chat.file(HOME).is_file());
-    // Only forks this runtime made can be released, and only once.
     assert!(chat.runtime.release_fork(&fork, false).is_err());
 }
 
@@ -275,8 +264,6 @@ fn recovery_retains_a_known_copy_when_its_cleanup_fails() {
             .is_err()
     );
     assert!(chat.file(COPY).is_file());
-    // Recovery kept the copy's identity. Teardown retries deletion even
-    // though this runtime can no longer run another turn or answer an RPC.
     chat.runtime.remove_file_for_test = |path| std::fs::remove_file(path);
     drop(std::mem::replace(&mut chat.runtime, fixture_runtime(2)));
     assert!(!chat.file(COPY).exists());
@@ -298,7 +285,6 @@ fn a_late_answer_to_an_abandoned_read_does_not_disturb_a_fork() {
     let stats = deliver(&mut chat.runtime, read);
     chat.runtime.abandon_passive_read();
     let state = cloned(&mut chat);
-    // The stats Pi answers late belong to no one; the fork carries on.
     let late = chat
         .runtime
         .ingest(
@@ -360,7 +346,6 @@ fn an_unwritten_step_after_the_clone_stops_the_runtime() {
             EgressResolution::QueueRejected,
         )
         .unwrap();
-    // Pi is on the copy and nothing will move it back.
     assert!(chat.runtime.read_usage().is_err());
     assert!(chat.runtime.fork_session().is_err());
 }
@@ -387,13 +372,10 @@ fn forks_waiting_on_their_chats_are_bounded() {
 
 #[test]
 fn unidentified_copies_still_count_toward_the_fork_bound() {
-    // Both a failed get_state and one omitting sessionFile leave a copy
-    // that cannot safely be identified or deleted.
     for success in [false, true] {
         let mut chat = saved_chat();
         for attempt in 0..10 {
             if attempt >= 8 {
-                // Refusal returns no egress, so no further clone reaches Pi.
                 assert!(matches!(
                     chat.runtime.fork_session(),
                     Err(AdapterRuntimeError::BatchCount)
@@ -458,7 +440,6 @@ fn failed_cleanup_keeps_backpressure_until_a_later_fork_can_remove_the_copies() 
         assert!(!chat.runtime.native_rpc_pending());
     }
     assert!(copies.iter().all(|copy| copy.is_file()));
-    // The next fork retries the bounded cleanup without another release RPC.
     chat.runtime.remove_file_for_test = |path| std::fs::remove_file(path);
     cloned(&mut chat);
     assert!(copies.iter().all(|copy| !copy.exists()));

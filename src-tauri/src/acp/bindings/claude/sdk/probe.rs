@@ -1,13 +1,5 @@
-//! The models the installed Claude Code offers, read before any session.
-//!
-//! Claude Code reports its models, with each model's effort levels, in its
-//! reply to the SDK `initialize` request, which needs no prompt and makes no
-//! model call. Sage starts the admitted CLI in SDK mode from the profile
-//! directory, sends only that request, reads the reply within a byte and time
-//! bound, and stops the process. The probe starts no MCP server and runs no
-//! hook. The list is kept per admitted build, so it is read again only after
-//! Claude Code changes; a failed probe is not retried for a while, and
-//! concurrent lookups wait for one probe.
+//! Claude Code reports its models, with each model's effort levels, in its reply to the SDK
+//! `initialize` request, which needs no prompt and makes no model call.
 
 use std::{
     ffi::OsString,
@@ -44,13 +36,11 @@ enum Probed {
     Failed(Instant),
 }
 
-/// The last probe's outcome, keyed by the build it was read from.
 static PROBED: Mutex<Option<([u8; 32], Probed)>> = Mutex::new(None);
 /// Held while a probe runs, so concurrent lookups share its outcome.
 static PROBING: Mutex<()> = Mutex::new(());
 
-/// The models the admitted build offers, probing it once per build. `None`
-/// when the build could not be read; a later lookup tries again once
+/// `None` when the build could not be read; a later lookup tries again once
 /// [`RETRY_AFTER`] has passed.
 pub(crate) fn models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOption>> {
     let digest = binding.binding_digest();
@@ -84,7 +74,6 @@ pub(crate) fn models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOpti
     models
 }
 
-/// The models a probe already read for this build, without probing.
 pub(crate) fn known_models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<ModelOption>> {
     match lock(&PROBED).as_ref() {
         Some((key, Probed::Models(models))) if *key == binding.binding_digest() => {
@@ -94,8 +83,6 @@ pub(crate) fn known_models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<Mod
     }
 }
 
-/// Whether a session of this build may start with `model`: only a model
-/// the build itself listed.
 pub(crate) fn offers(binding: &AdmittedClaudeSdkBinding, model: &str) -> bool {
     known_models(binding).is_some_and(|models| models.iter().any(|m| m.id == model))
 }
@@ -161,7 +148,6 @@ fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<Value>
     reply
 }
 
-/// The `initialize` reply among the CLI's output lines, if it succeeded.
 fn read_reply(reader: impl BufRead) -> Option<Value> {
     for line in reader.lines() {
         let Ok(value) = serde_json::from_str::<Value>(&line.ok()?) else {
@@ -175,8 +161,7 @@ fn read_reply(reader: impl BufRead) -> Option<Value> {
     None
 }
 
-/// The picker's models from an `initialize` reply. Claude Code's own
-/// `default` entry is the default, or else its first model.
+/// Claude Code's own `default` entry is the default, or else its first model.
 pub(crate) fn model_options(reply: &Value) -> Vec<ModelOption> {
     let entries = reply["models"]
         .as_array()
@@ -214,8 +199,7 @@ pub(crate) fn model_options(reply: &Value) -> Vec<ModelOption> {
         .collect()
 }
 
-/// The thinking levels a listed model takes, as the session's effort
-/// option will offer them; `None` for a model without effort control.
+/// `None` for a model without effort control.
 fn effort_levels(entry: &Value) -> Option<Vec<String>> {
     if entry["supportsEffort"].as_bool() != Some(true) {
         return None;
@@ -231,8 +215,6 @@ fn effort_levels(entry: &Value) -> Option<Vec<String>> {
     (!levels.is_empty()).then_some(levels)
 }
 
-/// Whether a session of this build that starts with `model` takes `effort`
-/// as its thinking level: `default`, or a level the probe listed for it.
 pub(crate) fn offers_effort(binding: &AdmittedClaudeSdkBinding, model: &str, effort: &str) -> bool {
     known_models(binding).is_some_and(|models| {
         models.iter().any(|entry| {

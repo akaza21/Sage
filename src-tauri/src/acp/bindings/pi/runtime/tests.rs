@@ -89,7 +89,6 @@ fn deliver(runtime: &mut impl HarnessAdapter, egress: AdapterEgress) -> Value {
     value
 }
 
-/// Pi's `get_state` answer naming the session it opened at launch.
 fn opened() -> Value {
     json!({"sessionId":"pi-session-1"})
 }
@@ -222,7 +221,6 @@ fn running(runtime: &mut PiRuntime) {
 
 #[test]
 fn advertised_pi_read_only_policy_emits_only_admitted_prompt() {
-    // Without its bridge Pi is read-only, whatever this build's resources hold.
     let capabilities = crate::acp::bindings::access_policy::admitted_modes(
         "pi-rpc",
         true,
@@ -1085,7 +1083,6 @@ fn lifecycle_models_text_tools_usage_cancel_and_unavailable_commands_are_normali
     assert!(capabilities.new_session && capabilities.prompt && capabilities.cancel);
     assert!(capabilities.resume_session);
     assert!(!capabilities.load_session && !capabilities.close_session);
-    // Pi reported no session file, so there is nothing to reopen.
     for command in [
         AdapterCommand::ResumeSession {
             external_session_id: ExternalId::new("id", "pi-session").expect("id"),
@@ -1287,7 +1284,6 @@ fn allow_once_on_pi_rejects_an_ambiguous_select_option() {
             request_id: SageServerRequestId::parse("disallow-1").expect("request"),
             decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
         }),
-        // Without an allow option the select is a question: only an answer resolves it.
         Err(AdapterRuntimeError::UnsupportedCommand)
     ));
 }

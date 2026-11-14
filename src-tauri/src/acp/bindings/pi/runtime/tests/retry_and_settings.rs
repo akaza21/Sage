@@ -61,7 +61,6 @@ fn auto_compact_shows_pis_setting_and_changes_it_through_pi() {
         json!({"type":"set_auto_compaction","id":request["id"],"enabled":false})
     );
     assert!(runtime.config_pending());
-    // Pi has not confirmed yet: the option still shows its setting.
     assert_eq!(auto_compaction(&runtime), Some(true));
     runtime
         .ingest(&response(&request, Value::Null), &Mapper)
@@ -111,7 +110,6 @@ fn retry_rows(batch: &crate::acp::bindings::adapter::AdapterBatch) -> Vec<Sessio
         .collect()
 }
 
-/// Pi ends the failed run, then announces the wait before running again.
 fn retry_started(runtime: &mut PiRuntime) -> SessionActivity {
     runtime
         .ingest(
@@ -169,7 +167,6 @@ fn a_retry_wait_is_a_stoppable_activity_that_stops_through_abort_retry() {
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Controlled(None))
     );
-    // Pi ends the wait itself; the row then shows it stopped.
     let ended = runtime
         .ingest(
             &frame(json!({"type":"auto_retry_end","success":false,"attempt":1,
@@ -198,7 +195,6 @@ fn the_retry_activity_completes_once_pi_starts_the_retried_run() {
     assert_eq!(done.id, waiting.id);
     assert_eq!(done.state, SessionActivityState::Completed);
     assert!(!done.stoppable);
-    // Pi's later success notice closes nothing more.
     let success = runtime
         .ingest(
             &frame(json!({"type":"auto_retry_end","success":true,"attempt":1})),
@@ -206,7 +202,6 @@ fn the_retry_activity_completes_once_pi_starts_the_retried_run() {
         )
         .unwrap();
     assert!(retry_rows(&success).is_empty());
-    // With no wait running, the activity is no longer stoppable.
     assert!(matches!(
         runtime.session_control(&SessionControl::StopActivity {
             activity_id: waiting.id

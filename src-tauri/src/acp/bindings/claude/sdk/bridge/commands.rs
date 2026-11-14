@@ -1,15 +1,11 @@
-//! Claude Code's slash commands as ACP `availableCommands`.
-
 use std::collections::HashSet;
 
 use serde_json::{Value, json};
 
 use crate::acp::slash_commands::MAX_COMMANDS;
 
-/// Claude Code's commands as ACP `availableCommands`, its own marked as
-/// built-in and each with the other names Claude Code runs it by. Rows can share a name; `/name` runs the first built-in row that
-/// carries it, else the first row, so only that row is listed. A catalog
-/// larger than Sage's list keeps its first commands.
+/// Rows can share a name; `/name` runs the first built-in row that carries it, else the first
+/// row, so only that row is listed.
 pub(super) fn commands(reply: &Value) -> Value {
     let rows = reply
         .get("commands")

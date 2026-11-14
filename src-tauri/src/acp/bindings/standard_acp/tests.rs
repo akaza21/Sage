@@ -641,9 +641,6 @@ fn launch_authority_rejects_malformed_or_non_ascii_digests_without_panicking() {
     }
 }
 
-/// On Windows only a native `.exe` may be a user-defined agent's direct
-/// launch: a `.cmd` would run through `cmd.exe`. Curated node launches with
-/// a script entrypoint stay admitted (see the Gemini launch test above).
 #[cfg(windows)]
 #[test]
 fn a_user_named_batch_file_is_refused_as_a_direct_launch() {

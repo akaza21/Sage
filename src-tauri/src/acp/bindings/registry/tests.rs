@@ -16,8 +16,6 @@ use crate::{
 
 #[test]
 fn registry_resolves_claude_record_only_when_injectable_admission_is_present() {
-    // This discriminates because the registry must route the Claude binding
-    // and invoke its real registration, rather than merely cataloguing an ID.
     let registry = BindingRegistry::default();
     assert!(
         matches!(registry.route(CLAUDE_BINDING_ID), Ok(record) if record.harness_id() == "claude-code")

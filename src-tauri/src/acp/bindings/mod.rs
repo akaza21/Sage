@@ -1,6 +1,3 @@
-// Adapter source packets compile against the shared contract before an exact
-// external artifact is admitted. The dormant surface becomes live only through
-// curated capability and artifact validation.
 pub(crate) mod access_policy;
 pub(crate) mod adapter;
 pub(crate) mod characterisation;

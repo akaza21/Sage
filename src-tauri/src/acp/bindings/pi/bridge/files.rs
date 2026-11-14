@@ -1,11 +1,9 @@
-//! One pending bounded edit; all path reads use the existing held-root walker.
 use super::Refusal;
 use crate::workspace::{Workspace, open_workspace_text_file};
 use serde::Deserialize;
 use std::{io::Read, path::Path};
 
 pub(crate) const MAX_BYTES: usize = 262_144;
-/// The longest shell command the bridge shows on an approval card.
 pub(crate) const MAX_COMMAND_BYTES: usize = 16_384;
 #[derive(Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -24,15 +22,13 @@ pub(crate) struct Edit {
     pub created: bool,
 }
 
-/// A shell command Pi runs itself once the user approves it. Sage holds no
-/// shell authority: approval is the only thing it grants.
+/// Sage holds no shell authority: approval is the only thing it grants.
 pub(crate) struct Shell {
     pub tool_id: String,
     /// The card's text: the command on one line with credentials redacted.
     pub shown: String,
 }
 
-/// What one approval request asks the user to allow.
 pub(crate) enum Prepared {
     Edit(Edit),
     Shell(Shell),

@@ -1,4 +1,3 @@
-//! Crash recovery preserves only confirmed undo effects.
 use super::*;
 
 #[test]
@@ -36,8 +35,6 @@ fn a_prompt_that_may_have_been_delivered_after_an_undo_relaunch_retires_the_sess
             )
             .unwrap();
         }
-        // No native correlation has cleared the rewind, even if the prompt
-        // reached Claude and executed effects before the process crashed.
         assert!(chat.fixture.pending().is_some());
         let reopened =
             crate::persistence::Database::open(&chat.fixture.root.join("sage.db")).unwrap();
@@ -87,7 +84,6 @@ fn a_crash_before_undo_dispatch_keeps_the_turns_files_and_transcript() {
         std::fs::write(&created, "created by the last turn\n").unwrap();
         let transcript = std::fs::read(&chat.transcript).unwrap();
         let command = chat.stage(LAST).unwrap();
-        // Crash before dispatch: no native restore or completion was observed.
         if parked {
             store::park_session_after_zero_process(
                 &mut chat.fixture.database.connection(),
@@ -142,7 +138,6 @@ fn undo_interrupted_after_persisting_the_intent_recovers_on_restart() {
         }
         let command = chat.stage(if earlier_cut { FIRST } else { LAST }).unwrap();
         if confirmed {
-            // Only a durably recorded native success may recover as undone.
             store::record_turn_undone(&mut chat.fixture.database.connection(), &command).unwrap();
         }
         let visible = if confirmed || earlier_cut {
@@ -175,7 +170,6 @@ fn undo_interrupted_after_persisting_the_intent_recovers_on_restart() {
             crate::persistence::Database::open(&chat.fixture.root.join("sage.db")).unwrap();
         crate::acp::recovery::recover_after_restart(&mut reopened.connection(), 70).unwrap();
         if !confirmed {
-            // Preparation alone never authorizes hiding the turn or cutting its context.
             assert_eq!(chat.fixture.page_turns(), visible);
             let pending = earlier_cut.then(|| (LAST.to_owned(), store::UndoneThread::Cut));
             assert_eq!(chat.fixture.pending(), pending);
@@ -231,15 +225,12 @@ fn undo_interrupted_after_persisting_the_intent_recovers_on_restart() {
         assert!(launch.session_args(Some(&chat.config)).is_ok());
         chat.activate(&session, 3, SESSION);
         chat.send(session, 3).unwrap();
-        // Preparing a prompt does not prove Claude saved its new branch.
         assert!(
             store::pending_thread_rewind(&reopened.connection(), "session-a")
                 .unwrap()
                 .is_some()
         );
     }
-    // A native-only undo with an unknown result retires its thread before
-    // rolling the intent back; that potentially divergent thread cannot send.
     for parked in [false, true] {
         let fixture = Fixture::on(crate::acp::bindings::codex::CODEX_BINDING_ID);
         fixture.run();

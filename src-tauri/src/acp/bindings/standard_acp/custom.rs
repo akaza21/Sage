@@ -1,10 +1,6 @@
-//! User-defined ACP agents. Sage holds four registrations, one per live
-//! agent; each owns a static profile whose ids are internal. The agent's
-//! own `custom-acp-<n>` id, which is never reused, is the harness and
-//! binding id sessions see. What the user configured (executable,
-//! arguments, passed-through variable names) is admitted as a launch
-//! extension of the profile. The executable is launched directly, never
-//! through a shell, and its digest is re-proved before every launch.
+//! The agent's own `custom-acp-<n>` id, which is never reused, is the harness and binding id
+//! sessions see. The executable is launched directly, never through a shell, and its digest is
+//! re-proved before every launch.
 
 use std::{
     path::PathBuf,
@@ -27,7 +23,6 @@ use super::{
     },
 };
 
-/// The access policy every user-defined agent shares.
 pub(crate) const CUSTOM_ACP_POLICY_ID: &str = "custom-acp";
 const NOTICE_CHARS: usize = 480;
 
@@ -39,7 +34,6 @@ const fn custom_profile(id: &'static str) -> StandardAcpProfile {
         fixed_args: &[],
         version_probe_args: &[],
         version_shape: StandardAcpVersionShape::Unprobed,
-        // What Sage implements: approved file writes; reads are refused.
         client_capabilities: StandardAcpClientCapabilities {
             read_text_file: false,
             write_text_file: true,
@@ -83,9 +77,7 @@ enum State {
     },
 }
 
-/// One live agent's admission. Interior state changes when the user saves
-/// or removes an agent; the registry record stays fixed and answers to
-/// whichever agent id the registration holds.
+/// The registry record stays fixed and answers to whichever agent id the registration holds.
 #[derive(Debug)]
 pub(crate) struct CustomAcpRegistration {
     profile: &'static StandardAcpProfile,
@@ -106,10 +98,8 @@ impl CustomAcpRegistration {
         self.profile
     }
 
-    /// Admits `agent` (or clears the registration), proving the executable
-    /// is a launchable regular file and recording its digest. The same
-    /// agent applied again keeps an admission it holds, and its sign-in
-    /// notice; one that was refused is admitted afresh.
+    /// The same agent applied again keeps an admission it holds, and its sign-in notice; one that
+    /// was refused is admitted afresh.
     pub(crate) fn apply(&self, agent: Option<&CustomAcpAgent>) {
         let mut state = self.lock();
         if let (
@@ -134,7 +124,6 @@ impl CustomAcpRegistration {
         self.clear_sign_in();
     }
 
-    /// The id of the agent this registration holds.
     pub(crate) fn agent_id(&self) -> Option<String> {
         match &*self.lock() {
             State::Configured { agent, .. } => Some(agent.id.clone()),
@@ -179,8 +168,8 @@ impl CustomAcpRegistration {
         }
     }
 
-    /// The admitted binding, re-proved now. The user chose a path, not a
-    /// build: an executable rebuilt in place is admitted again by digest.
+    /// The user chose a path, not a build: an executable rebuilt in place is admitted again by
+    /// digest.
     pub(crate) fn refresh(&self) -> Result<Arc<AdmittedStandardAcpBinding>, CustomAcpUnavailable> {
         let mut state = self.lock();
         let State::Configured { agent, binding } = &mut *state else {
