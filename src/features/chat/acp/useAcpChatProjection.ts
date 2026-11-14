@@ -23,6 +23,7 @@ import { coalescedRefresh } from "./coalescedRefresh";
 
 // The native side admits four page reads per Chat at once: these two, the live
 // snapshot's read and the history's earlier page.
+// Status and file-snapshot reads share that limit.
 const PAGE_LOADS_IN_FLIGHT = 2;
 
 export function useAcpRetentionIncomplete(boundChatId?: string | null) {

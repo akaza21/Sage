@@ -115,6 +115,8 @@ export default function ComposerAccessMenu({
             type="button"
             disabled={permissive !== null && !!sessionId && token === null}
             onClick={() => {
+              // A drafted permissive mode is confirmed natively once its
+              // session has started.
               if (!permissive || !sessionId) choose(confirmation.id);
               else if (token)
                 void grantChatAccess(sessionId, permissive, token);

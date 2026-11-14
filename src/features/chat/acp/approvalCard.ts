@@ -61,6 +61,7 @@ export function parkFocus(card: HTMLElement | null) {
 
 // Keys that began before the card arrived (a held Enter from the composer, a
 // stray keyup) must never answer a request.
+// Buttons swallow every repeat; `ownRepeats` repeats only keys begun inside.
 export function useCardKeyGuard({ ownRepeats = false } = {}) {
   const pressed = useRef(new Set<string>());
   return {

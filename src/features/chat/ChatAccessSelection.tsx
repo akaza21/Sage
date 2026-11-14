@@ -38,6 +38,7 @@ export interface AccessMenuAnchor {
   onDismiss: () => void;
 }
 
+// The trigger stays the composer's own, so this chunk's load never remounts it.
 function ReportView({
   view,
   onView,

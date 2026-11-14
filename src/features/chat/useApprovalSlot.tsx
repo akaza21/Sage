@@ -60,6 +60,7 @@ export function approvalFocusAllowed(composer: HTMLElement | null) {
   );
 }
 
+// Fallback Denies outlive the card swap so the loaded card never focuses Allow.
 export const approvalHold = {
   at: Number.NEGATIVE_INFINITY,
   denies: new Map<string, Promise<unknown>>(),
@@ -147,6 +148,7 @@ class ApprovalBoundary extends Component<
   }
 }
 
+// The composer stays mounted (hidden) to keep its draft and Stop reachable.
 export function useApprovalSlot(
   turn: TurnProjection | null | undefined,
   chatId: string | null,

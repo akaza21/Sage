@@ -46,6 +46,8 @@ export function confirmedComposerModel(
   return { model, effort, id };
 }
 
+// Forks keep the parent's effort; a side session drops it and takes the label
+// only if the parent confirmed its exact starting model.
 export function inheritComposerModel(
   chatId: string,
   parentConfig: AcpSessionConfig | null | undefined,

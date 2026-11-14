@@ -64,6 +64,7 @@ export function lazyParts<Chunk extends Components>(
   > = {};
   let loaded: Chunk | null = null;
   let pending: Promise<Chunk> | null = null;
+  // Mounts that fell back keep their fallback; the next mount loads again.
   let fellBack = false;
   const loadOnce = () =>
     (pending ??= load().then(

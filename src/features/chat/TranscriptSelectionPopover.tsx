@@ -85,6 +85,7 @@ export function TranscriptSelectionPopover({
     const pointerDown = (event: PointerEvent) => {
       if (!inside(event.target)) dismiss();
     };
+    // Keyboard-opened toolbars own focus; only mouse selections collapse them.
     const selectionChange = () => {
       if (!selected.keyboard && window.getSelection()?.isCollapsed) dismiss();
     };

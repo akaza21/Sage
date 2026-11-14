@@ -5,8 +5,8 @@ import type {
 } from "../../domain/acpSessionConfig";
 import type { ComposerModelChoice } from "./ChatModelPicker";
 
-// With a catalog the unchanged choice is the chat's own request, not the
-// confirmed model, so a harness substitution stays choosable.
+// With a catalog the unchanged choice is the chat's own request (the confirmed
+// model only if it requested none), so a harness substitution stays choosable.
 export function useComposerModelSelection(
   modelOption: AcpConfigOption | undefined,
   models: readonly ComposerModelChoice[],

@@ -29,6 +29,7 @@ export async function slashCommandTurn(
   if (request.target !== "session") return null;
   const { prompt, attachedContext } = request;
   const command = parseSlashCommand(prompt);
+  // The typed route carries no attached context; such a prompt stays text.
   if (!command || attachedContext?.length) return null;
   const intent: AcpSessionMutationIntent = {
     projectId: request.projectId,

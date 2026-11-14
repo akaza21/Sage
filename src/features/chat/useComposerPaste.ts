@@ -13,6 +13,7 @@ export function useComposerPaste(
 ) {
   const signal = useComposerPasteSignal();
   const [staged, setStaged] = useState<StagedSummary>();
+  // A batch staged before a reload is read back before any send, unfocused too.
   const armed = nativeAcp || signal.seq > 0;
   const noticeId = `${disabledReasonId}-paste`;
   return {
@@ -25,6 +26,7 @@ export function useComposerPaste(
     pickFiles: signal.holdPick,
     revision: staged?.revision,
     describedBy: armed && staged ? ` ${noticeId}` : "",
+    // Staged pasted text goes with a sent message, never a queued one.
     blocksSend: Boolean(
       staged?.busy ||
       (activeTurn && staged?.revision) ||

@@ -15,6 +15,8 @@ export interface CoalescedRefreshOptions {
   maxInFlight?: number;
 }
 
+// A request may overtake a hung load (the caller discards the older answer);
+// a rerun always follows the newest load.
 export function coalescedRefresh(
   load: () => Promise<unknown>,
   { onThrow, maxInFlight = 1 }: CoalescedRefreshOptions,

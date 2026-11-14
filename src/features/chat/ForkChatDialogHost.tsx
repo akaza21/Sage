@@ -6,6 +6,7 @@ import {
 } from "./forkChatRequest";
 import { ForkPart } from "./lazyParts";
 
+// A separate host: the source answer may disappear during a project switch.
 export function ForkChatDialogHost({
   children,
   focusRoot,

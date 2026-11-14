@@ -99,7 +99,6 @@ describe("composer paste sizing", () => {
         session: { capabilities: { promptResources: true } },
       }),
     ).toBeNull();
-    //
     expect(
       pasteAttachmentRefusal({
         nativeAcp: true,

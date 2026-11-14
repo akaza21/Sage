@@ -219,6 +219,7 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
   const read = useCallback(() => start("read", acpMcpDesktop.read), [start]);
   useEffect(() => {
     read();
+    // A sign-in finishes in the browser; coming back shows its result.
     window.addEventListener("focus", read);
     return () => window.removeEventListener("focus", read);
   }, [read]);

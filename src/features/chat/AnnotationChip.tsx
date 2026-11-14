@@ -75,6 +75,7 @@ export function AnnotationChip({
     cancelHide();
     timer.current = setTimeout(() => setOpen(false), HIDE_DELAY_MS);
   };
+  // Escape returns focus to the chip without reopening the card.
   const returning = useRef(false);
   const closeToTrigger = () => {
     returning.current = true;
