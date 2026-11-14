@@ -16,7 +16,7 @@ use tokio::{
     time::{sleep, timeout},
 };
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::{
     helper_protocol::{

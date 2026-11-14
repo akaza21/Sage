@@ -1,7 +1,7 @@
 use rusqlite::{OptionalExtension, Transaction, params};
+use sage_core::error::{AppError, AppResult};
 
 use crate::acp::limits::LIMITS;
-use crate::error::{AppError, AppResult};
 
 use super::super::{
     MAX_GLOBAL_EVENT_BYTES, MAX_GLOBAL_EVENTS, MAX_SESSION_EVENT_BYTES, MAX_SESSION_EVENTS,

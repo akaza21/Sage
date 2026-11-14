@@ -1,7 +1,8 @@
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     acp::file_diff::DiffRef,
     domain::{ResourceRef, WorkbenchTab},
-    error::{AppError, AppResult},
 };
 
 const FORBIDDEN_SNAPSHOT_KEYS: &[&str] = &[

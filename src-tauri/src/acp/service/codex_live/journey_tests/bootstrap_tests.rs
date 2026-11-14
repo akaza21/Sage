@@ -92,7 +92,7 @@ fn allow(
 
 #[test]
 fn first_chat_real_turn_two_bootstrap_authorizes_snapshot_fill_without_replay() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let mut setup =
             FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
@@ -403,7 +403,7 @@ fn first_chat_real_turn_two_bootstrap_authorizes_snapshot_fill_without_replay() 
                 owner: runtime_owner.clone(),
                 turn_id: second,
                 client_intent_id: ClientIntentId::new(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             })
             .unwrap();
         assert_job_zero();

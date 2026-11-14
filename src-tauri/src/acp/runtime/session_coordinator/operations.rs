@@ -48,7 +48,7 @@ impl SessionCoordinator {
                 chat_id: owner.chat_id.clone(),
                 session_id: owner.session_id.clone(),
                 runtime_epoch: owner.runtime_epoch,
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             }),
             deadline(JournalLane::Control),
         ) {

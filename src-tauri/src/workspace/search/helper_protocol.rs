@@ -4,12 +4,10 @@ use std::{
     path::PathBuf,
 };
 
+use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    error::{AppError, AppResult},
-    workspace::Workspace,
-};
+use crate::workspace::Workspace;
 
 use super::{
     engine::SearchEngine,

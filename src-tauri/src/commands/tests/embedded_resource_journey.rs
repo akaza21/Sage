@@ -202,7 +202,7 @@ async fn open_journey() -> Journey {
 
 #[test]
 fn a_staged_paste_reaches_the_agent_as_an_embedded_resource_and_retry_resends_it() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let journey = open_journey().await;
         let (project, chat) = (
@@ -232,7 +232,7 @@ fn a_staged_paste_reaches_the_agent_as_an_embedded_resource_and_retry_resends_it
         );
 
         journey.send(StagedSelection::Revision(revision)).await;
-        crate::test_wait::until("the sent turn", || journey.completed_turns() == 1);
+        sage_test_support::test_wait::until("the sent turn", || journey.completed_turns() == 1);
         let (sent, prompt, answer) = journey.exchange(0);
         assert_eq!(prompt, PROMPT);
         assert_eq!(answer, received);
@@ -249,7 +249,7 @@ fn a_staged_paste_reaches_the_agent_as_an_embedded_resource_and_retry_resends_it
         );
 
         journey.send(StagedSelection::RetryOf(sent)).await;
-        crate::test_wait::until("the retried turn", || journey.completed_turns() == 2);
+        sage_test_support::test_wait::until("the retried turn", || journey.completed_turns() == 2);
         let (_, prompt, answer) = journey.exchange(1);
         assert_eq!(prompt, PROMPT);
         assert_eq!(answer, received);
@@ -268,7 +268,7 @@ fn a_staged_paste_reaches_the_agent_as_an_embedded_resource_and_retry_resends_it
         )
         .await
         .unwrap();
-        crate::test_wait::until("the fixture process to exit", || {
+        sage_test_support::test_wait::until("the fixture process to exit", || {
             crate::acp::process::TreeCapacityPool::global()
                 .observation_usage()
                 .0

@@ -7,12 +7,12 @@ use std::{
 };
 
 use rusqlite::params;
+use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use crate::{
     acp::{intent::NormalizedPayload, store::decode_payload},
-    error::{AppError, AppResult},
     persistence::Database,
 };
 

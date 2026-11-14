@@ -398,7 +398,7 @@ fn prompt(owner: &RuntimeOwner) -> HostPromptIntent {
             expected_projection_revision: ProjectionRevision::ZERO,
             client_intent_id: ClientIntentId::parse("intent-prompt").unwrap(),
             prompt: Prompt::new("prompt", "hello").unwrap(),
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         },
         access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
     }
@@ -417,7 +417,7 @@ fn cancel(owner: &RuntimeOwner) -> HostCancelIntent {
         owner: owner.clone(),
         turn_id: SageTurnId::parse("turn-host").unwrap(),
         client_intent_id: ClientIntentId::parse("intent-cancel").unwrap(),
-        now_millis: crate::persistence::now_millis(),
+        now_millis: sage_core::time::now_millis(),
     }
 }
 
@@ -449,7 +449,7 @@ fn close(owner: &RuntimeOwner) -> HostCloseIntent {
             client_intent_id: ClientIntentId::parse("intent-close").unwrap(),
             session_id: owner.session_id.clone(),
             runtime_epoch: owner.runtime_epoch,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         },
     }
 }
@@ -1006,7 +1006,7 @@ fn configuration_deadline_wakes_actor_and_ignores_late_completion() {
                 Ok(HostState::Recovery) => break,
                 Ok(state) => {
                     assert!(
-                        settled.elapsed() < crate::test_wait::BUDGET,
+                        settled.elapsed() < sage_test_support::test_wait::BUDGET,
                         "configuration deadline left host in {state:?}"
                     );
                     std::thread::sleep(Duration::from_millis(5));

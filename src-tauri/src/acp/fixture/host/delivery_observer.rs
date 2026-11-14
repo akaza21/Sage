@@ -64,7 +64,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
         let project = database.create_project_from_root(&project_root).unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse("fixture-chat").unwrap();
-        let now = crate::persistence::now_millis();
+        let now = sage_core::time::now_millis();
         database
             .connection()
             .execute(

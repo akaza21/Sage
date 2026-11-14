@@ -2807,7 +2807,7 @@ fn identity_bound_sqlite_deletion_fails_closed_without_mutating_stage() {
         .expect_err("identity-bound deletion must remain unsupported off Windows");
 
     assert!(
-        matches!(error, crate::error::AppError::InvalidRequest(message) if message == "identity-bound SQLite deletion is not admitted on this platform")
+        matches!(error, sage_core::error::AppError::InvalidRequest(message) if message == "identity-bound SQLite deletion is not admitted on this platform")
     );
     assert_eq!(before, fs::read(&stage).unwrap());
 }

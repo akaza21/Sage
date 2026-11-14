@@ -7,12 +7,12 @@
 //! live session's configuration, so those values report `unknown` here and a
 //! new chat checks them against its session.
 
+use sage_core::error::{AppError, AppResult};
 use serde::Serialize;
 use tauri::State;
 
 use crate::{
     domain::HarnessInstallState,
-    error::{AppError, AppResult},
     harnesses::HarnessCatalog,
     settings_store::{NewChatDefaults, SettingsStore},
     state::AppState,

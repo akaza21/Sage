@@ -1,8 +1,9 @@
 use std::time::Instant;
 
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     domain::{FileChange, ProjectRepositoryStatus, ResourceRef, RootRepositoryStatus},
-    error::{AppError, AppResult},
     repository::{self, RepositoryBoundary},
     workspace::Workspace,
 };

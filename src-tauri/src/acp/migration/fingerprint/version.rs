@@ -1,7 +1,7 @@
 use rusqlite::Connection;
+use sage_core::error::{AppError, AppResult};
 
 use super::{MAX_COLUMNS, MAX_SCHEMA_OBJECTS, MAX_SCHEMA_VERSION, SchemaClass, invalid, limit};
-use crate::error::{AppError, AppResult};
 
 /// Admit Sage's INTEGER rowid alias before MAX or the classifier's ordered
 /// LIMIT. Other primary keys can have an ordering that does not match the

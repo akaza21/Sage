@@ -3,11 +3,9 @@
 //! same rows, files and usage charges.
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
+use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    error::{AppError, AppResult},
-    persistence::Database,
-};
+use crate::persistence::Database;
 
 /// The immutable-history guards a Chat purge lifts and restores.
 pub(crate) const HISTORY_GUARDS: [&str; 9] = [

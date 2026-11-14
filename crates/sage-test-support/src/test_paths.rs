@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 /// Resolve linked temp ancestors and 8.3 names before recording fixture paths.
 /// Keep the ordinary DOS spelling required by agent tool paths and Codex packets.
-pub(crate) fn temp_dir() -> PathBuf {
+pub fn temp_dir() -> PathBuf {
     let path = std::env::temp_dir()
         .canonicalize()
         .expect("canonical temporary directory");
@@ -30,7 +30,7 @@ pub(crate) fn temp_dir() -> PathBuf {
 }
 
 #[cfg(windows)]
-pub(crate) fn volume_flags(directory: &std::path::Path) -> u32 {
+pub fn volume_flags(directory: &std::path::Path) -> u32 {
     use std::fs::OpenOptions;
     use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};
     use windows_sys::Win32::Storage::FileSystem::{

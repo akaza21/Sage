@@ -1,7 +1,9 @@
 //! Sizes a chat page against its byte budget while only the fields around
 //! its transcript change.
 
-use crate::acp::{encoded_len::encoded_len, intent::AcpChatPage, store::StoreError};
+use sage_core::encoded_len::encoded_len;
+
+use crate::acp::{intent::AcpChatPage, store::StoreError};
 
 /// The encoding of the empty turn list a page shell is measured with.
 const EMPTY_TURNS: usize = "[]".len();

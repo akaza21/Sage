@@ -1,4 +1,4 @@
-use crate::error::AppError;
+use sage_core::error::AppError;
 
 pub(crate) const MAX_PUBLIC_REPOSITORY_ERROR_BYTES: usize = 512;
 

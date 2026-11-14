@@ -1,6 +1,6 @@
 use std::path::{Path, PathBuf};
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 #[derive(Debug, Clone)]
 pub(super) struct MigrationPaths {

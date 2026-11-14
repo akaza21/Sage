@@ -1,7 +1,6 @@
 use memchr::memmem::Finder;
 use regex::{Regex, RegexBuilder};
-
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 /// Compiled-program and lazy-DFA caps for a regular-expression query. The
 /// regex crate matches in time linear in the text, so these bound memory.

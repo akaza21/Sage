@@ -1,5 +1,6 @@
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
-    error::{AppError, AppResult},
     git_budget, repository,
     repository_branches::{
         LocalBranchList, MAX_BRANCH_NAME_BYTES, list_local_branches, named_branch,

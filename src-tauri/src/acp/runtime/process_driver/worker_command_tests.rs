@@ -136,7 +136,7 @@ fn a_prompt_with_the_largest_admitted_images_queues_while_harness_output_fills_t
             expected_projection_revision: ProjectionRevision::ZERO,
             client_intent_id: ClientIntentId::parse("intent-images").unwrap(),
             prompt,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         },
         access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
     };

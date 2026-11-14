@@ -1,10 +1,10 @@
+use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::{
     domain::{
         GitFileMutationCommandError, GitRepositoryBranchRenameRequest, GitRepositoryCheckoutResult,
     },
-    error::{AppError, AppResult, GitContainmentState},
     repository_branch_rename,
     state::AppState,
     workspace::Workspace,

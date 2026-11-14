@@ -1,12 +1,10 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use sage_core::error::{AppError, AppResult};
 use serde::Deserialize;
 use tauri::State;
 
 use crate::{
-    acp::intent::ImageMediaType,
-    error::{AppError, AppResult},
-    image_attachment::ImageAttachedContext,
-    persistence::Database,
+    acp::intent::ImageMediaType, image_attachment::ImageAttachedContext, persistence::Database,
     state::AppState,
 };
 

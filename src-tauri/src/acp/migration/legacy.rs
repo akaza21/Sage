@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use rusqlite::{Transaction, params};
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::{
     identity::legacy_binding_digest,

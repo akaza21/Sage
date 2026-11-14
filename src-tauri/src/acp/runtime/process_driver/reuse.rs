@@ -295,7 +295,7 @@ where
                     session_id: self.owner.session_id.clone(),
                     runtime_epoch: self.owner.runtime_epoch,
                     exit_kind,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 proof,
             )

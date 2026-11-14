@@ -15,7 +15,7 @@ fn live_trees() -> u32 {
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
 fn two_chats_run_concurrently_each_on_its_own_runtime() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         let setup =
             FixtureSetup::in_memory(CodexBindingRegistration::admitted_for_journey_test(&[
@@ -67,7 +67,7 @@ fn two_chats_run_concurrently_each_on_its_own_runtime() {
     ignore = "requires acp-fixture; run cargo test --all-features"
 )]
 fn full_lanes_park_the_least_recent_idle_runtime_and_a_failed_park_retains_recovery() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tauri::async_runtime::block_on(async {
         const CASES: [&str; LIVE_RUNTIME_LANES + 1] =
             ["characterization-two-turn-success"; LIVE_RUNTIME_LANES + 1];

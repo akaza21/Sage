@@ -51,7 +51,7 @@ pub(super) async fn prepare_fixture_environment(
     let project = database.create_project_from_root(&project_root).unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse(chat_id).unwrap();
-    let now_millis = crate::persistence::now_millis();
+    let now_millis = sage_core::time::now_millis();
     database
         .connection()
         .execute(

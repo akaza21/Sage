@@ -2,10 +2,10 @@
 //! closed and validated here, so the WebView never stores browser settings.
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::AppResult;
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
-use crate::error::AppResult;
 
 /// The Browser settings page's stored choices. Unknown fields are refused, so
 /// a renderer cannot persist anything beyond this record.

@@ -32,7 +32,9 @@ pub fn set_terminal_dock_visible(
         .map_err(|error| error.to_string())
 }
 
-pub(crate) fn access_preferences(state: &AppState) -> crate::error::AppResult<SessionAccessModes> {
+pub(crate) fn access_preferences(
+    state: &AppState,
+) -> sage_core::error::AppResult<SessionAccessModes> {
     if !state.settings.pending_access_migration()? {
         return state.settings.session_access_modes();
     }

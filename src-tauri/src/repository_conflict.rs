@@ -1,8 +1,9 @@
 use std::path::PathBuf;
 
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     domain::{FileChange, GitFileMutationAction, ResourceRef},
-    error::{AppError, AppResult},
     repository,
     workspace::Workspace,
 };

@@ -10,7 +10,7 @@ impl AppState {
     ) -> AppResult<Self> {
         let registry =
             std::sync::Arc::new(BindingRegistry::desktop_pi_fixture(selection).map_err(|_| {
-                crate::error::AppError::InvalidRequest("Pi fixture admission failed".into())
+                sage_core::error::AppError::InvalidRequest("Pi fixture admission failed".into())
             })?);
         Self::try_new_desktop_with_registry(database, settings, app, registry, true)
     }
@@ -24,7 +24,7 @@ impl AppState {
     ) -> AppResult<Self> {
         let registry = std::sync::Arc::new(
             BindingRegistry::desktop_codex_fixture(selection).map_err(|_| {
-                crate::error::AppError::InvalidRequest(
+                sage_core::error::AppError::InvalidRequest(
                     "Codex fixture admission failed; durable history was preserved".into(),
                 )
             })?,
@@ -41,7 +41,7 @@ impl AppState {
     ) -> AppResult<Self> {
         let registry = std::sync::Arc::new(
             BindingRegistry::desktop_claude_fixture(selection).map_err(|_| {
-                crate::error::AppError::InvalidRequest("Claude fixture admission failed".into())
+                sage_core::error::AppError::InvalidRequest("Claude fixture admission failed".into())
             })?,
         );
         Self::try_new_desktop_with_registry(database, settings, app, registry, true)

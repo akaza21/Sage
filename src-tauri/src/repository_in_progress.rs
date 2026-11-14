@@ -6,11 +6,9 @@
 
 use std::path::Path;
 
-use crate::{
-    error::{AppError, AppResult},
-    repository,
-    workspace::Workspace,
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::{repository, workspace::Workspace};
 
 const MAX_GIT_ADMIN_PATHS_BYTES: usize = MARKERS.len() * 32 * 1024;
 const MARKERS: [&str; 6] = [

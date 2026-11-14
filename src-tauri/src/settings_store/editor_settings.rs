@@ -10,11 +10,11 @@ use std::{
 };
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 use serde::Serialize;
 use serde_json::Value;
 
 use super::SettingsStore;
-use crate::error::{AppError, AppResult};
 use crate::workspace::path_glob::valid_path_glob;
 
 /// The row format version. A later format bumps it and converts older rows.

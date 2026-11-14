@@ -1,8 +1,9 @@
 use std::path::Path;
 
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     domain::{FileDiff, ResourceRef},
-    error::{AppError, AppResult},
     repository::{RepositoryBoundary, ensure_success, repository_boundary, run_git},
     repository_parse::{MAX_DIFF_LINES, added_file_diff, parse_unified_diff},
     workspace::Workspace,

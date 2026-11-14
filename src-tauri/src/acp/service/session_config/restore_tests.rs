@@ -721,7 +721,7 @@ fn a_change_that_needs_recovery_is_reported_instead_of_the_prompt_being_sent() {
                 expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
                 client_intent_id: crate::acp::contract::ClientIntentId::new(),
                 prompt: crate::acp::intent::Prompt::new("prompt", "hello").unwrap(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
             access_mode: crate::settings_store::SessionAccessMode::ReadOnly,
         })

@@ -1,13 +1,13 @@
 //! The recovery record a workspace Replace keeps while it swaps a File.
 
 use rusqlite::params;
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 
 use super::{PersistedEditorBuffer, limits::preflight_dirty_recovery, set_matching_tab_dirty};
-use crate::{
-    domain::ResourceRef,
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
-};
+use crate::{domain::ResourceRef, persistence::Database};
 
 /// Names one Replace's recovery record: its File, the temporary file it
 /// names and the replaced text's fingerprint. Each change below touches the

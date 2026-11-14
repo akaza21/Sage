@@ -60,7 +60,7 @@ fn stopping_an_unstarted_target_does_not_cancel_the_next_epoch_start() {
 
 #[test]
 fn same_epoch_rediscovery_stops_a_starting_child_that_cannot_be_promoted() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     let root = std::env::temp_dir().join(format!("sage-preview-start-{}", uuid::Uuid::new_v4()));
     fs::create_dir_all(&root).unwrap();
     fs::write(
@@ -88,7 +88,7 @@ server.listen(0, "127.0.0.1", () => {
     let start = lifecycle::reserve_start(target.clone()).unwrap();
     lifecycle::mark_waiting_for_origin(&target, &|_| Ok(())).unwrap();
     let port_file = root.join("preview-port");
-    let deadline = Instant::now() + crate::test_wait::BUDGET;
+    let deadline = Instant::now() + sage_test_support::test_wait::BUDGET;
     let port = loop {
         if let Ok(value) = fs::read_to_string(&port_file)
             && let Ok(port) = value.parse()
@@ -113,7 +113,7 @@ server.listen(0, "127.0.0.1", () => {
             ..
         })
     ));
-    let deadline = Instant::now() + crate::test_wait::BUDGET;
+    let deadline = Instant::now() + sage_test_support::test_wait::BUDGET;
     loop {
         match TcpListener::bind(("127.0.0.1", port)) {
             Ok(listener) => {
@@ -134,8 +134,8 @@ fn https_health_is_fail_closed() {
 
 #[test]
 fn child_owning_failures_reap_before_terminal_projection() {
-    let _serial = crate::test_wait::serial_process_guard();
-    let generous = crate::test_wait::BUDGET.as_millis() as u64;
+    let _serial = sage_test_support::test_wait::serial_process_guard();
+    let generous = sage_test_support::test_wait::BUDGET.as_millis() as u64;
     let cases = [
         (
             "console.log('http://example.com:3000'); setInterval(() => {}, 1000);",
@@ -201,7 +201,7 @@ fn child_owning_failures_reap_before_terminal_projection() {
 
 #[test]
 fn https_origin_fails_as_unsupported_before_the_health_deadline() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     let root = preview_package(
         "https-origin",
         "console.log('https://127.0.0.1:3443'); setInterval(() => {}, 1000);",

@@ -5,6 +5,7 @@
 
 use std::path::{Path, PathBuf};
 
+use sage_core::error::AppResult;
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_dialog::DialogExt;
@@ -14,7 +15,6 @@ use crate::{
         folder::admit_folder_before,
         io::{self, Deadline, Executor},
     },
-    error::AppResult,
     settings_store::{DownloadFolderRecord, SettingsStore},
     state::AppState,
 };

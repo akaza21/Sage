@@ -8,10 +8,10 @@
 use std::path::Path;
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
-use crate::error::{AppError, AppResult};
 
 pub const MAX_CUSTOM_ACP_AGENTS: usize = 4;
 const NAME_CHARS: usize = 64;
@@ -309,8 +309,8 @@ mod tests {
 
     #[test]
     fn at_most_four_agents_live_and_survive_reopening() {
-        let directory =
-            crate::test_paths::temp_dir().join(format!("sage-custom-acp-{}", uuid::Uuid::new_v4()));
+        let directory = sage_test_support::test_paths::temp_dir()
+            .join(format!("sage-custom-acp-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("settings.db");
         let store = SettingsStore::open(&path).unwrap();
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn slot_era_agents_keep_their_ids_and_the_counter_starts_past_them() {
-        let directory = crate::test_paths::temp_dir()
+        let directory = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-custom-acp-legacy-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("settings.db");

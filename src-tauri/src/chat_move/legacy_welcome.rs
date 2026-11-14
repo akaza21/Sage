@@ -1,10 +1,7 @@
 use rusqlite::{Transaction, params};
+use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    acp::limits::LIMITS,
-    domain::MoveChatRequest,
-    error::{AppError, AppResult},
-};
+use crate::{acp::limits::LIMITS, domain::MoveChatRequest};
 
 pub(super) fn move_in(
     transaction: &Transaction<'_>,

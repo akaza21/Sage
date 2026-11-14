@@ -263,7 +263,7 @@ mod tests {
         let generation = clipboard.copy(&pending, b"secret");
         clipboard.busy = usize::MAX;
         let mut warning = String::new();
-        let ((), log) = crate::test_diagnostics::capture_diagnostics(|| {
+        let ((), log) = sage_test_support::test_diagnostics::capture_diagnostics(|| {
             expire(
                 || clipboard.clear_due(&pending, Some(generation)),
                 |message| warning = message.to_owned(),

@@ -12,7 +12,8 @@ impl Drop for TestDir {
 fn interrupted_scratch_is_reused_for_current_wal_data_and_source_changes_are_rejected() {
     for prefix in ["complete", "partial-main", "empty"] {
         let directory = TestDir(
-            crate::test_paths::temp_dir().join(format!("sage-snapshot-{}", uuid::Uuid::new_v4())),
+            sage_test_support::test_paths::temp_dir()
+                .join(format!("sage-snapshot-{}", uuid::Uuid::new_v4())),
         );
         fs::create_dir_all(&directory.0).unwrap();
         let paths = MigrationPaths::new(&directory.0.join("sage.db")).unwrap();

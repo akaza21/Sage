@@ -17,9 +17,10 @@ use std::{
     sync::Arc,
 };
 
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     domain::{DirectoryListing, TrashResourceKind},
-    error::{AppError, AppResult},
     workspace::{
         RootIdentity, resource_trash::TRASH_NAME, root_identity_metadata, root_identity_path,
     },

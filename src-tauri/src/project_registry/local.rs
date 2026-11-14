@@ -1,11 +1,11 @@
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 use uuid::Uuid;
 
-use crate::{
-    domain::ProjectSummary,
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
-};
+use crate::{domain::ProjectSummary, persistence::Database};
 
 use super::seed::seed_project;
 use super::{MAX_PROJECTS, project_summary_in};

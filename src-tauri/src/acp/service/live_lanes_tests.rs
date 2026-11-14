@@ -205,7 +205,7 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
                     binding_digest: "11".repeat(32),
                     harness_version: None,
                     model_id: None,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 })
                 .await
                 .unwrap();
@@ -217,7 +217,7 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
                 session_id: started.session_id,
                 runtime_epoch: RuntimeEpoch::new(1).unwrap(),
                 artifact_digest: "22".repeat(32),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             };
             if index < LIVE_RUNTIME_LANES {
                 leases.push(

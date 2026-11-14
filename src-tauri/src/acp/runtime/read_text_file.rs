@@ -6,6 +6,7 @@
 
 use std::path::Path;
 
+use sage_core::error::AppResult;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value};
 
@@ -17,7 +18,6 @@ use crate::{
         transport::{FrameWriteError, OutboundFrame},
     },
     domain::ResourceRef,
-    error::AppResult,
     workspace::{Workspace, select_text_lines},
 };
 

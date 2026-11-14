@@ -3,14 +3,15 @@ use std::path::Path;
 use std::sync::Arc;
 
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
-use super::TRASH_NAME;
+use sage_core::error::AppError;
+use sage_core::error::AppResult;
+
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
-use crate::error::AppError;
+use super::TRASH_NAME;
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 use crate::workspace::root_identity_path;
 use crate::{
     domain::{DirectoryListing, TrashResourceKind},
-    error::AppResult,
     workspace::RootIdentity,
 };
 

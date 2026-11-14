@@ -1,7 +1,6 @@
-use crate::{
-    domain::ResourceRef,
-    error::{AppError, AppResult},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::domain::ResourceRef;
 
 use super::{FileRenameCommit, Workspace};
 

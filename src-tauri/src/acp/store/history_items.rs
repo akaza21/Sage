@@ -1,7 +1,7 @@
 use std::collections::BTreeMap;
 
-use crate::acp::encoded_len::encoded_len;
 use rusqlite::{OptionalExtension, params};
+use sage_core::encoded_len::encoded_len;
 
 use crate::acp::{
     contract::{

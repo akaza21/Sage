@@ -8,7 +8,8 @@ const FILE_NAMED_STREAMS: u32 = 0x0004_0000;
 pub(super) const FILE_SUPPORTS_HARD_LINKS: u32 = 0x0040_0000;
 
 pub(super) fn assert_named_stream_policy(root: &TestCodexStateRoot, target: &Path) {
-    let supported = crate::test_paths::volume_flags(&root.home) & FILE_NAMED_STREAMS != 0;
+    let supported =
+        sage_test_support::test_paths::volume_flags(&root.home) & FILE_NAMED_STREAMS != 0;
     let mut stream = target.as_os_str().to_os_string();
     stream.push(":secret");
     let write = fs::write(stream, b"hidden");

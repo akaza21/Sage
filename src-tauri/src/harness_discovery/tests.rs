@@ -73,11 +73,11 @@ fn test_basename(harness: HarnessExecutable) -> &'static str {
 pub(super) fn write_script(directory: &Path, basename: &str, body: &str) -> PathBuf {
     let executable = directory.join(basename);
     #[cfg(windows)]
-    crate::test_executable::write(&executable, format!("@echo off\r\n{body}\r\n"))
+    sage_test_support::test_executable::write(&executable, format!("@echo off\r\n{body}\r\n"))
         .expect("write command script");
     #[cfg(not(windows))]
     {
-        crate::test_executable::write(&executable, format!("#!/bin/sh\n{body}\n"))
+        sage_test_support::test_executable::write(&executable, format!("#!/bin/sh\n{body}\n"))
             .expect("write shell script");
         use std::os::unix::fs::PermissionsExt;
         let mut permissions = fs::metadata(&executable)

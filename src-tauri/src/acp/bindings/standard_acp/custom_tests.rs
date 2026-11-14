@@ -21,7 +21,7 @@ impl Drop for TempRoot {
 }
 
 fn temp(label: &str) -> TempRoot {
-    let root = crate::test_paths::temp_dir()
+    let root = sage_test_support::test_paths::temp_dir()
         .join(format!("sage-custom-acp-{label}-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).expect("temp root");
     TempRoot(root.canonicalize().expect("canonical root"))

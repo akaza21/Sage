@@ -1,12 +1,15 @@
 use std::path::PathBuf;
 
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 use sha2::{Digest, Sha256};
 
 use crate::{
     domain::{ResourceRef, TrashProjectResourceRequest, TrashResourceKind},
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
+    persistence::Database,
     project_registry::RootRecord,
     workspace::{
         MAX_DIRECTORY_ENTRIES,

@@ -5,19 +5,19 @@ use std::{
     time::Duration,
 };
 
-pub(crate) const HANG_GUARD: Duration = Duration::from_secs(120);
-pub(crate) const BUDGET: Duration = Duration::from_secs(60);
+pub const HANG_GUARD: Duration = Duration::from_secs(120);
+pub const BUDGET: Duration = Duration::from_secs(60);
 
 static SERIAL_PROCESS_TESTS: Mutex<()> = Mutex::new(());
 
-pub(crate) fn serial_process_guard() -> MutexGuard<'static, ()> {
+pub fn serial_process_guard() -> MutexGuard<'static, ()> {
     SERIAL_PROCESS_TESTS
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
 }
 
 #[track_caller]
-pub(crate) fn guarded<F>(label: &str, future: F) -> F::Output
+pub fn guarded<F>(label: &str, future: F) -> F::Output
 where
     F: Future,
 {
@@ -34,7 +34,7 @@ where
 }
 
 #[track_caller]
-pub(crate) fn until(label: &str, mut condition: impl FnMut() -> bool) {
+pub fn until(label: &str, mut condition: impl FnMut() -> bool) {
     let deadline = Instant::now() + HANG_GUARD;
     while !condition() {
         assert!(

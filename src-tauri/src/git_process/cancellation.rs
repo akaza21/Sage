@@ -19,7 +19,7 @@ pub(super) async fn cancelled() {
     }
 }
 
-pub(super) fn ensure_active() -> crate::error::AppResult<()> {
+pub(super) fn ensure_active() -> sage_core::error::AppResult<()> {
     if CANCELLED
         .try_with(|flag| flag.load(Ordering::Acquire))
         .unwrap_or(false)
@@ -30,11 +30,11 @@ pub(super) fn ensure_active() -> crate::error::AppResult<()> {
     }
 }
 
-pub(super) fn error() -> crate::error::AppError {
-    crate::error::AppError::Git("Git watch window cancelled".into())
+pub(super) fn error() -> sage_core::error::AppError {
+    sage_core::error::AppError::Git("Git watch window cancelled".into())
 }
 
-pub(crate) async fn wait_for_cleanup() -> crate::error::AppResult<()> {
+pub(crate) async fn wait_for_cleanup() -> sage_core::error::AppResult<()> {
     super::containment::await_mutation_admission(
         &super::containment::git_containment(),
         crate::git_budget::REAP,

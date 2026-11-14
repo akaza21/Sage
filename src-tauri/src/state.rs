@@ -1,3 +1,5 @@
+use sage_core::error::AppResult;
+
 use crate::{
     acp::{
         bindings::registry::BindingRegistry,
@@ -7,7 +9,6 @@ use crate::{
         service::AcpService,
     },
     editor_coordination::EditorOperationCoordinator,
-    error::AppResult,
     harnesses::HarnessCatalog,
     persistence::Database,
     settings_store::SettingsStore,
@@ -184,7 +185,7 @@ impl AppState {
         let registry = std::sync::Arc::new(BindingRegistry::default());
         let acp = AcpService::new_with_registry_for_test(database.clone(), registry.clone())
             .map_err(|_| {
-                crate::error::AppError::InvalidRequest(
+                sage_core::error::AppError::InvalidRequest(
                     "bounded ACP restart recovery failed; durable history was preserved".into(),
                 )
             })?;
@@ -233,7 +234,7 @@ impl AppState {
             registry.clone(),
         )
         .map_err(|_| {
-            crate::error::AppError::InvalidRequest(
+            sage_core::error::AppError::InvalidRequest(
                 "bounded ACP restart recovery failed; durable history was preserved".into(),
             )
         })?;
@@ -295,7 +296,7 @@ impl AppState {
             registry.clone(),
         )
         .map_err(|_| {
-            crate::error::AppError::InvalidRequest(
+            sage_core::error::AppError::InvalidRequest(
                 "bounded ACP restart recovery failed; durable history was preserved".into(),
             )
         })?;
@@ -329,7 +330,7 @@ impl AppState {
         let acp =
             AcpService::new_characterization_for_test(database.clone(), binding, registry.clone())
                 .map_err(|_| {
-                    crate::error::AppError::InvalidRequest(
+                    sage_core::error::AppError::InvalidRequest(
                         "bounded ACP restart recovery failed; durable history was preserved".into(),
                     )
                 })?;

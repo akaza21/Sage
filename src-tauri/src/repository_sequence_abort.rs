@@ -1,8 +1,6 @@
-use crate::{
-    error::{AppError, AppResult},
-    git_budget, repository,
-    workspace::Workspace,
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::{git_budget, repository, workspace::Workspace};
 
 const MAX_GIT_ABORT_OUTPUT_BYTES: usize = 64 * 1024;
 

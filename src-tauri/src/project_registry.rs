@@ -12,13 +12,16 @@ mod seed;
 use std::path::{Path, PathBuf};
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 use uuid::Uuid;
 
 use crate::{
     acp::contract::SageRootId,
     domain::{ProjectListItem, ProjectRootSummary, ProjectSummary, ResourceRef},
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
+    persistence::Database,
     state::ActiveProjectContext,
     workspace::Workspace,
 };

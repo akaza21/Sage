@@ -3,7 +3,7 @@ use std::{
     path::Path,
 };
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

@@ -75,7 +75,7 @@ fn git_path(root: &Path, marker: &str) -> std::path::PathBuf {
 }
 
 fn write_executable(path: &Path, body: &str) {
-    crate::test_executable::write(path, body).unwrap();
+    sage_test_support::test_executable::write(path, body).unwrap();
     #[cfg(unix)]
     {
         use std::os::unix::fs::PermissionsExt;
@@ -771,7 +771,7 @@ fn unconfirmed_exit_returns_containment_and_keeps_mutation_admission_charged() {
         assert!(matches!(
             error,
             AppError::GitContainment {
-                state: crate::error::GitContainmentState::TerminatedUnreaped,
+                state: sage_core::error::GitContainmentState::TerminatedUnreaped,
                 ..
             }
         ));

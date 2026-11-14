@@ -84,6 +84,7 @@ pub fn run(root: &Path, lane: impl FnOnce(&Lane) -> i32 + Send + 'static) -> Res
     std::fs::write(root.join(PROFILE_MARKER_NAME), PROFILE_MARKER_BYTES)
         .map_err(|error| format!("profile marker: {error}"))?;
     diagnostics::install_logger();
+    crate::share_async_runtime();
     let root = root.to_owned();
     let app = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

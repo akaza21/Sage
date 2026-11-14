@@ -1,7 +1,9 @@
 use std::{fs, path::Path};
 
+use sage_core::error::AppError;
+
 use super::{GitDiffScope, scoped_file_diff};
-use crate::{domain::FileDiff, error::AppError, workspace::Workspace};
+use crate::{domain::FileDiff, workspace::Workspace};
 
 struct Repository(std::path::PathBuf);
 

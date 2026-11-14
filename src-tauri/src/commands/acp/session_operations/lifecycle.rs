@@ -46,7 +46,7 @@ pub(crate) async fn close_acp_session_inner(
                 client_intent_id: request.client_intent_id,
                 session_id: request.session_id,
                 runtime_epoch: request.runtime_epoch,
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             },
         )
         .map_err(dispatch_error)?;

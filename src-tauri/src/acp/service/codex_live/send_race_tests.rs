@@ -88,7 +88,7 @@ fn apply(database: &Database, owner: &AdapterStoreOwner, events: Vec<AdapterInbo
 fn commit(database: &Database, owner: &AdapterStoreOwner, event: SessionScopedEvent) {
     let command = SessionEventCommand {
         event,
-        now_millis: crate::persistence::now_millis(),
+        now_millis: sage_core::time::now_millis(),
     };
     apply(database, owner, vec![AdapterInboundEvent::Session(command)]);
 }
@@ -218,7 +218,7 @@ fn send(owner: &AdapterStoreOwner, seen: ProjectionRevision, intent: &str) -> Pr
         expected_projection_revision: seen,
         client_intent_id: ClientIntentId::parse(intent).unwrap(),
         prompt: Prompt::new("prompt", "next").unwrap(),
-        now_millis: crate::persistence::now_millis(),
+        now_millis: sage_core::time::now_millis(),
     }
 }
 

@@ -2,13 +2,13 @@
 //! live document against (EP-14, AD-7). As in VS Code, the gutter shows what
 //! is not yet staged, so staging a hunk removes its marker.
 
+use sage_core::error::AppResult;
 use serde::Serialize;
 use tauri::State;
 
 use crate::{
     domain::ResourceRef,
     editor_content::MAX_EDITABLE_BYTES,
-    error::AppResult,
     repository::{RepositoryBoundary, ensure_success, repository_boundary},
     repository_workspace::run_git,
     state::AppState,

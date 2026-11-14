@@ -1,9 +1,9 @@
 use std::collections::BTreeMap;
 
 use rusqlite::{OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 
 use super::{SessionAccessMode, SettingsStore};
-use crate::error::{AppError, AppResult};
 
 pub type SessionAccessModes = BTreeMap<String, SessionAccessMode>;
 

@@ -24,7 +24,7 @@ const fn capture_budget_millis() -> u64 {
 // production budget, so they use the shared test budget, as Git processes do.
 #[cfg(test)]
 const fn capture_budget_millis() -> u64 {
-    crate::test_wait::BUDGET.as_millis() as u64
+    sage_test_support::test_wait::BUDGET.as_millis() as u64
 }
 // One capture per admitted live runtime, with no waiting queue.
 pub(crate) const MAX_CONCURRENT_CAPTURES: usize =

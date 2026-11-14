@@ -4,6 +4,10 @@ use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 
 use rusqlite::params;
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 use uuid::Uuid;
 
 use super::seed::{active_project_in, insert_root, seed_project};
@@ -11,11 +15,7 @@ use super::{
     MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_comparison_key, canonical_folder, folder_name,
     project_summary_in,
 };
-use crate::{
-    domain::ProjectSummary,
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
-};
+use crate::{domain::ProjectSummary, persistence::Database};
 
 /// The longest project name, in characters.
 pub const MAX_PROJECT_NAME_CHARS: usize = 64;

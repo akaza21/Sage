@@ -5,10 +5,10 @@ use std::{
     sync::{Arc, LazyLock, Mutex, PoisonError},
 };
 
+use sage_core::error::RepositoryLayout;
 use uuid::Uuid;
 
 use super::*;
-use crate::error::RepositoryLayout;
 
 mod remote_helpers;
 
@@ -98,7 +98,7 @@ fn refusal(result: AppResult<GitOutput>) -> String {
 fn sentinel_filter(root: &Path) -> (PathBuf, String) {
     let sentinel = root.join("filter-ran");
     let script = root.join("sentinel-filter");
-    crate::test_executable::write(
+    sage_test_support::test_executable::write(
         &script,
         format!(
             "#!/bin/sh\necho ran > \"{}\"\ncat\n",

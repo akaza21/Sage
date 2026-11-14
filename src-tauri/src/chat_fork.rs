@@ -4,6 +4,10 @@
 //! the Chat, its resumable head session and the immutable lineage row.
 
 use rusqlite::params;
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 use tauri::{Manager, State};
 
 use crate::{
@@ -17,8 +21,7 @@ use crate::{
         validate_chat_identifier,
     },
     domain::{ProjectLayoutRequest, ProjectTransitionResult},
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
+    persistence::Database,
     state::AppState,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
 };

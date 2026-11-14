@@ -1,13 +1,13 @@
 use std::sync::Arc;
 
 use rusqlite::{OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 use tauri::State;
 
 use crate::{
     domain::{
         ResourceRef, ResourceTrashOutcome, TrashProjectResourceRequest, TrashProjectResourceResult,
     },
-    error::{AppError, AppResult},
     persistence::Database,
     preview_lifecycle::on_committed_project_transition_epoch,
     project_registry::RootRecord,

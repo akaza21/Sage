@@ -324,7 +324,7 @@ mod tests {
     use std::path::PathBuf;
 
     fn temp_root() -> PathBuf {
-        crate::test_paths::temp_dir()
+        sage_test_support::test_paths::temp_dir()
     }
 
     struct TempRoot(PathBuf);

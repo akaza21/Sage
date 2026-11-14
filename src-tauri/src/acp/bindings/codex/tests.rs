@@ -1,3 +1,4 @@
+use sage_test_support::test_diagnostics::capture_diagnostics;
 use serde_json::{Map, Value, json};
 
 use crate::acp::{
@@ -13,7 +14,6 @@ use super::{
     manifest::{PINNED_ARTIFACT_COUNT, PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY},
     test_identity::{MANAGED_CODEX_HOME, user_agent, version_line},
 };
-use crate::test_diagnostics::capture_diagnostics;
 
 mod command_summary_tests;
 mod file_change_sequence_tests;
@@ -851,7 +851,7 @@ struct TestCodexStateRoot {
 #[cfg(windows)]
 impl TestCodexStateRoot {
     fn new() -> Self {
-        let parent = crate::test_paths::temp_dir()
+        let parent = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-codex-authority-{}", uuid::Uuid::new_v4()));
         let home = parent.join("CodexState").join(PINNED_PROTOCOL_IDENTITY);
         std::fs::create_dir_all(home.join("sessions")).unwrap();
@@ -929,7 +929,7 @@ fn physical_state_authority_rejects_hardlinks_alternate_streams_and_sparse_exces
     let first = hardlinks.home.join("sessions").join("first.jsonl");
     std::fs::write(&first, b"session").unwrap();
     let second = hardlinks.home.join("sessions").join("second.jsonl");
-    let supported = crate::test_paths::volume_flags(&hardlinks.home)
+    let supported = sage_test_support::test_paths::volume_flags(&hardlinks.home)
         & state_volume::FILE_SUPPORTS_HARD_LINKS
         != 0;
     let linked = std::fs::hard_link(&first, &second);

@@ -283,7 +283,7 @@ impl AcpService {
                     .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(park);
             }
             lane.last_activation.store(
-                crate::persistence::now_millis().max(0) as u64,
+                sage_core::time::now_millis().max(0) as u64,
                 Ordering::Release,
             );
             return Ok((view, claim));

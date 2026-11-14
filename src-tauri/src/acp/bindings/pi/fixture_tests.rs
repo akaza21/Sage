@@ -225,7 +225,7 @@ fn assert_native_activation(
     let model =
         serde_json::json!({"provider":"openai","id":"fixture-model","name":"Synthetic replay"});
     let alternative = serde_json::json!({"provider":"openai","id":"fixture-model-two","name":"Synthetic alternative"});
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         pump.begin().unwrap();
         for (index, (command, data)) in [
             (

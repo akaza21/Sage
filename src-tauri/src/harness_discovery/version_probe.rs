@@ -360,7 +360,8 @@ mod tests {
     fn version_probe_still_reads_cmd_shim_output() {
         let fixture = Fixture::new();
         let shim = fixture.path("claude.cmd");
-        crate::test_executable::write(&shim, "@echo off\r\necho %~n0 %1 4.5.6\r\n").unwrap();
+        sage_test_support::test_executable::write(&shim, "@echo off\r\necho %~n0 %1 4.5.6\r\n")
+            .unwrap();
 
         let output = run_version_command(&shim, ProbeLimits::PRODUCTION)
             .expect("the .cmd shim's version output is captured");

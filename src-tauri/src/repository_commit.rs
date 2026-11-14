@@ -1,5 +1,6 @@
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
-    error::{AppError, AppResult},
     git_budget,
     repository::{self, RepositoryBoundary},
     workspace::Workspace,

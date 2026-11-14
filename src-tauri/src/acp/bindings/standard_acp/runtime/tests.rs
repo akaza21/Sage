@@ -78,7 +78,7 @@ fn written(runtime: &mut NativeRuntime, egress: AdapterEgress) -> Value {
 }
 
 fn custom_runtime(label: &str) -> Fixture {
-    let root = crate::test_paths::temp_dir().join(format!(
+    let root = sage_test_support::test_paths::temp_dir().join(format!(
         "sage-custom-runtime-{label}-{}",
         uuid::Uuid::new_v4()
     ));
