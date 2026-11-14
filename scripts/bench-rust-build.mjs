@@ -18,7 +18,7 @@ import { testFeatures } from "./cargo-features.mjs";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 
 const defaultEdits = [
-  "src-tauri/src/repository_parse.rs",
+  "crates/sage-git/src/parse.rs",
   "src-tauri/src/acp/bindings/codex/degrade.rs",
   "src-tauri/src/image_attachment.rs",
   "src-tauri/src/ipc_commands.rs",

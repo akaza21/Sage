@@ -301,6 +301,9 @@ jobs:
         run: >-
           node -e "require('node:fs').mkdirSync('dist', { recursive: true })"
       - run: cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings
+      # Library targets only: no dev-dependency enables a test-support
+      # feature, so the production configuration is linted as well.
+      - run: cargo clippy --workspace --lib --features "${{ matrix.lint-features }}" -- -D warnings
       # The parallel phase includes the shared-contract suites
       # (workspace_notify, editor_watch) on every platform it runs on.
       - name: Test Rust parallel phase

@@ -1,6 +1,6 @@
 import type { Text } from "@codemirror/state";
 
-// Mirrors editor_content::MAX_EDITABLE_BYTES.
+// Mirrors sage_workspace::MAX_EDITABLE_BYTES.
 export const MAX_EDITABLE_CONTENT_BYTES = 1024 * 1024;
 export const MAX_FIND_QUERY_LENGTH = 256;
 

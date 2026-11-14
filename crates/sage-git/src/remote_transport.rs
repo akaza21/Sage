@@ -1,0 +1,302 @@
+use sage_core::error::{AppError, AppResult};
+
+use crate::{branches, budget, conflict, remotes};
+use sage_workspace::Workspace;
+
+const MAX_GIT_MUTATION_OUTPUT_BYTES: usize = 64 * 1024;
+
+pub async fn fetch_listed_remote(workspace: &Workspace, requested: &str) -> AppResult<()> {
+    fetch_listed_remote_with_policy(
+        workspace,
+        requested,
+        crate::GitProcessPolicy::mutation(budget::REMOTE),
+    )
+    .await
+}
+
+pub async fn push_listed_remote(workspace: &Workspace, requested: &str) -> AppResult<()> {
+    push_listed_remote_with_policy(
+        workspace,
+        requested,
+        crate::GitProcessPolicy::mutation(budget::REMOTE),
+    )
+    .await
+}
+
+pub(crate) async fn fetch_listed_remote_with_policy(
+    workspace: &Workspace,
+    requested: &str,
+    process_policy: crate::GitProcessPolicy,
+) -> AppResult<()> {
+    let admitted = admit_idle_listed_remote(workspace, requested, "Git fetch").await?;
+    let output = crate::run_git_with_policy(
+        workspace.root(),
+        &["fetch", "-q", "--no-tags", "--", &admitted],
+        MAX_GIT_MUTATION_OUTPUT_BYTES,
+        process_policy,
+    )
+    .await?;
+    crate::ensure_success(&output)
+}
+
+pub(crate) async fn push_listed_remote_with_policy(
+    workspace: &Workspace,
+    requested: &str,
+    process_policy: crate::GitProcessPolicy,
+) -> AppResult<()> {
+    let admitted = admit_idle_listed_remote(workspace, requested, "Git push").await?;
+    let branch = current_listed_named_branch(workspace, "Git push").await?;
+    let refspec = exact_branch_refspec(&branch);
+    let output = crate::run_git_with_policy(
+        workspace.root(),
+        &["push", "-q", "--", &admitted, &refspec],
+        MAX_GIT_MUTATION_OUTPUT_BYTES,
+        process_policy,
+    )
+    .await?;
+    crate::ensure_success(&output)
+}
+
+/// Spells the push refspec in full so that a branch name git accepts but
+/// refspec syntax reads specially, such as `+main` (force), is never
+/// reinterpreted: only a leading `+` on the whole refspec forces a push.
+fn exact_branch_refspec(branch: &str) -> String {
+    format!("refs/heads/{branch}:refs/heads/{branch}")
+}
+
+async fn admit_idle_listed_remote(
+    workspace: &Workspace,
+    requested: &str,
+    action: &str,
+) -> AppResult<String> {
+    if !matches!(
+        crate::workspace::repository_boundary(workspace).await?,
+        crate::RepositoryBoundary::Exact
+    ) {
+        return Err(AppError::InvalidRequest(format!(
+            "{action} requires a Project root that equals the repository top level"
+        )));
+    }
+    if conflict::merge_in_progress(workspace).await?
+        || conflict::rebase_in_progress(workspace).await?
+        || conflict::cherry_pick_in_progress(workspace).await?
+        || conflict::revert_in_progress(workspace).await?
+    {
+        return Err(AppError::InvalidRequest(format!(
+            "{action} cannot run during an in-progress merge, rebase, cherry-pick, or revert"
+        )));
+    }
+    let unmerged =
+        crate::workspace::run_git(workspace, &["ls-files", "--unmerged", "-z"], 1).await?;
+    crate::ensure_success(&unmerged)?;
+    if !unmerged.stdout.is_empty() || unmerged.stdout_truncated {
+        return Err(AppError::InvalidRequest(format!(
+            "{action} requires resolved conflicts"
+        )));
+    }
+    let listed = remotes::list_remotes(workspace).await?;
+    Ok(remotes::admit_listed_remote(&listed, requested)?.to_owned())
+}
+
+async fn current_listed_named_branch(workspace: &Workspace, action: &str) -> AppResult<String> {
+    let status = crate::status(workspace).await?;
+    let current = branches::named_branch(status.branch.as_deref()).ok_or_else(|| {
+        AppError::InvalidRequest(format!("{action} requires a current named branch"))
+    })?;
+    let listed = branches::list_local_branches(workspace).await?;
+    listed
+        .names
+        .iter()
+        .find(|name| name.as_str() == current)
+        .cloned()
+        .ok_or_else(|| {
+            AppError::InvalidRequest(format!("{action} requires a current listed local branch"))
+        })
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{fs, path::Path};
+
+    use uuid::Uuid;
+
+    use super::*;
+    use sage_workspace::Workspace;
+
+    fn git(root: &Path, args: &[&str]) {
+        assert!(
+            crate::process::fixture_git()
+                .arg("-C")
+                .arg(root)
+                .args(args)
+                .status()
+                .unwrap()
+                .success()
+        );
+    }
+
+    fn git_stdout(root: &Path, args: &[&str]) -> String {
+        let output = crate::process::fixture_git()
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(output.status.success());
+        String::from_utf8(output.stdout).unwrap()
+    }
+
+    fn remote_path(path: &Path) -> String {
+        path.to_string_lossy().replace('\\', "/")
+    }
+
+    fn local_remote_pair() -> (std::path::PathBuf, std::path::PathBuf, Workspace) {
+        let stamp = Uuid::new_v4();
+        let bare = std::env::temp_dir().join(format!("sage-git-bare-{stamp}"));
+        let work = std::env::temp_dir().join(format!("sage-git-work-{stamp}"));
+        fs::create_dir_all(&bare).unwrap();
+        fs::create_dir_all(&work).unwrap();
+        git(&bare, &["init", "--bare", "-q", "-b", "main"]);
+        git(&work, &["init", "-q", "-b", "main"]);
+        git(&work, &["config", "user.email", "sage@example.invalid"]);
+        git(&work, &["config", "user.name", "Sage Test"]);
+        fs::write(work.join("ok.txt"), "ok\n").unwrap();
+        git(&work, &["add", "--", "ok.txt"]);
+        git(&work, &["commit", "-q", "-m", "ok"]);
+        git(&work, &["remote", "add", "origin", &remote_path(&bare)]);
+        let workspace = Workspace::open("project-a", "root-a", &work).unwrap();
+        (bare, work, workspace)
+    }
+
+    #[test]
+    fn push_listed_remote_updates_the_bare_named_branch() {
+        let (bare, work, workspace) = local_remote_pair();
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(push_listed_remote(&workspace, "origin"))
+            .unwrap();
+        assert_eq!(
+            git_stdout(&work, &["rev-parse", "HEAD"]).trim(),
+            git_stdout(&bare, &["rev-parse", "refs/heads/main"]).trim()
+        );
+        fs::remove_dir_all(bare).unwrap();
+        fs::remove_dir_all(work).unwrap();
+    }
+
+    #[test]
+    fn fetch_listed_remote_updates_remote_tracking_without_urls() {
+        let (bare, source, source_workspace) = local_remote_pair();
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(push_listed_remote(&source_workspace, "origin"))
+            .unwrap();
+        let dest = std::env::temp_dir().join(format!("sage-git-fetch-{}", Uuid::new_v4()));
+        fs::create_dir_all(&dest).unwrap();
+        git(&dest, &["init", "-q", "-b", "main"]);
+        git(&dest, &["remote", "add", "origin", &remote_path(&bare)]);
+        let dest_workspace = Workspace::open("project-a", "root-a", &dest).unwrap();
+        tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(fetch_listed_remote(&dest_workspace, "origin"))
+            .unwrap();
+        assert_eq!(
+            git_stdout(&bare, &["rev-parse", "refs/heads/main"]).trim(),
+            git_stdout(&dest, &["rev-parse", "refs/remotes/origin/main"]).trim()
+        );
+        fs::remove_dir_all(bare).unwrap();
+        fs::remove_dir_all(source).unwrap();
+        fs::remove_dir_all(dest).unwrap();
+    }
+
+    #[test]
+    fn fetch_rejects_unlisted_remotes_and_urls() {
+        let (bare, work, workspace) = local_remote_pair();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let missing = runtime
+            .block_on(fetch_listed_remote(&workspace, "upstream"))
+            .unwrap_err();
+        assert!(missing.to_string().contains("exact listed remote name"));
+        assert!(!missing.to_string().contains("http"));
+        let url = runtime
+            .block_on(fetch_listed_remote(
+                &workspace,
+                "https://example.invalid/repo.git",
+            ))
+            .unwrap_err();
+        assert!(url.to_string().contains("exact listed remote name"));
+        assert!(!url.to_string().contains("example.invalid"));
+        fs::remove_dir_all(bare).unwrap();
+        fs::remove_dir_all(work).unwrap();
+    }
+
+    #[test]
+    fn fetch_rejects_an_in_progress_merge() {
+        let (bare, work, workspace) = local_remote_pair();
+        let oid = git_stdout(&work, &["rev-parse", "HEAD"]);
+        fs::write(work.join(".git").join("MERGE_HEAD"), oid).unwrap();
+        let error = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(fetch_listed_remote(&workspace, "origin"))
+            .unwrap_err();
+        assert!(error.to_string().contains("in-progress merge"));
+        fs::remove_dir_all(bare).unwrap();
+        fs::remove_dir_all(work).unwrap();
+    }
+
+    #[test]
+    fn push_of_a_plus_prefixed_branch_never_forces_the_remote() {
+        let (bare, work, workspace) = local_remote_pair();
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime
+            .block_on(push_listed_remote(&workspace, "origin"))
+            .unwrap();
+        let published = git_stdout(&bare, &["rev-parse", "refs/heads/main"]);
+        git(&work, &["checkout", "-q", "--orphan", "+main"]);
+        fs::write(work.join("ok.txt"), "unrelated\n").unwrap();
+        git(&work, &["add", "--", "ok.txt"]);
+        git(&work, &["commit", "-q", "-m", "unrelated history"]);
+
+        runtime
+            .block_on(push_listed_remote(&workspace, "origin"))
+            .unwrap();
+
+        assert_eq!(
+            git_stdout(&bare, &["rev-parse", "refs/heads/main"]),
+            published
+        );
+        assert_eq!(
+            git_stdout(&bare, &["rev-parse", "refs/heads/+main"]).trim(),
+            git_stdout(&work, &["rev-parse", "HEAD"]).trim()
+        );
+        fs::remove_dir_all(bare).unwrap();
+        fs::remove_dir_all(work).unwrap();
+    }
+
+    #[test]
+    fn push_refspec_branch_names_cannot_carry_refspec_or_revision_syntax() {
+        for name in ["topic:main", "topic^", "topic~1", "topic@{1}", "-main"] {
+            assert!(
+                !branches::valid_branch_name(name),
+                "{name} must not be admitted as a pushable branch"
+            );
+        }
+        assert!(branches::valid_branch_name("+main"));
+        assert_eq!(
+            exact_branch_refspec("+main"),
+            "refs/heads/+main:refs/heads/+main"
+        );
+    }
+
+    #[test]
+    fn push_rejects_detached_head() {
+        let (bare, work, workspace) = local_remote_pair();
+        git(&work, &["checkout", "--detach", "-q"]);
+        let error = tokio::runtime::Runtime::new()
+            .unwrap()
+            .block_on(push_listed_remote(&workspace, "origin"))
+            .unwrap_err();
+        assert!(error.to_string().contains("named branch"));
+        fs::remove_dir_all(bare).unwrap();
+        fs::remove_dir_all(work).unwrap();
+    }
+}

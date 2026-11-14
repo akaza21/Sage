@@ -35,6 +35,7 @@ sage-acp-protocol.workspace = true
 sage-core.workspace = true
 sage-db.workspace = true
 sage-domain.workspace = true
+sage-git.workspace = true
 sage-process.workspace = true
 sage-workspace.workspace = true
 serde.workspace = true
@@ -55,6 +56,7 @@ zeroize.workspace = true
 [dev-dependencies]
 sage-acp-protocol = { workspace = true, features = ["test-support"] }
 sage-db = { workspace = true, features = ["test-support"] }
+sage-git = { workspace = true, features = ["test-support"] }
 sage-test-support.workspace = true
 sage-workspace = { workspace = true, features = ["test-support"] }
 

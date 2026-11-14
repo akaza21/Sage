@@ -9,12 +9,12 @@ use tauri::State;
 use crate::project_registry::ProjectRegistryStore;
 use crate::{
     editor::{DiskReplace, read_for_replace, replace_on_disk, replaced_file_text},
-    editor_content::MAX_EDITABLE_BYTES,
     editor_coordination::EditorOperationKind,
     state::AppState,
 };
 use sage_db::database::Database;
 use sage_domain::resource::ResourceRef;
+use sage_workspace::MAX_EDITABLE_BYTES;
 use sage_workspace::search::{
     replace::{
         MAX_PREVIEW_LINES, MAX_PREVIEW_LINES_PER_FILE, MatchPosition, ReplaceLinePreview,

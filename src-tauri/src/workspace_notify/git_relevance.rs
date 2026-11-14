@@ -11,7 +11,6 @@ use std::{
 };
 
 use super::{MAX_ROOTS, MAX_WATCHES, batch::WorkspaceNotifyBatch, tracked};
-use crate::git_process;
 use sage_core::error::AppError;
 
 pub(super) const MAX_GIT_PATHS: usize = super::batch::MAX_BATCH_NOTICES;
@@ -124,7 +123,7 @@ impl GitWindow {
             .keys()
             .flat_map(|path| path.bytes().chain(std::iter::once(0)))
             .collect();
-        let output = git_process::run_cancellable(
+        let output = sage_git::process::run_cancellable(
             root,
             &["check-ignore", "--stdin", "-z", "--no-index"],
             input.len(),
@@ -176,12 +175,12 @@ pub(super) fn wait_for_queries() -> bool {
         .collect();
     sage_core::rt::block_on(async {
         tokio::time::timeout(
-            crate::git_budget::REAP + std::time::Duration::from_secs(1),
+            sage_git::budget::REAP + std::time::Duration::from_secs(1),
             async {
                 for gate in gates {
                     let _settled = gate.lock().await;
                 }
-                git_process::wait_for_cleanup().await
+                sage_git::process::wait_for_cleanup().await
             },
         )
         .await
@@ -223,7 +222,7 @@ async fn read_explorer_excludes(
     if !*safe || cancelled.load(Ordering::Acquire) {
         return None;
     }
-    let output = match git_process::run_cancellable(
+    let output = match sage_git::process::run_cancellable(
         root,
         &["config", "--path", "-z", "--get", "core.excludesFile"],
         64 * 1024,
@@ -284,7 +283,7 @@ impl GitRefresh {
             emit,
             // Listing/search delivery is already independent. Allow the same
             // load headroom as other Git reads before falling back to refresh.
-            crate::git_budget::READ,
+            sage_git::budget::READ,
             |window, path, stop| async move { window.irrelevant(&path, stop).await },
         );
     }

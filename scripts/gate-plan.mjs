@@ -33,6 +33,19 @@ export const steps = {
     "-D",
     "warnings",
   ],
+  // The library targets alone, so no dev-dependency turns on a crate's
+  // `test-support` feature and the production configuration is linted too.
+  "clippy-lib": [
+    "cargo",
+    "clippy",
+    "--workspace",
+    "--lib",
+    "--features",
+    lintFeatures().join(","),
+    "--",
+    "-D",
+    "warnings",
+  ],
   "rust-fixture": [
     "cargo",
     "build",
@@ -82,6 +95,7 @@ export const plans = {
     "rustfmt",
     "vitest",
     "clippy",
+    "clippy-lib",
   ],
   rust: ["rust-fixture", "rust-parallel", "rust-git-proc", "rust-preview"],
   full: [
@@ -93,6 +107,7 @@ export const plans = {
     "rustfmt",
     "vitest",
     "clippy",
+    "clippy-lib",
     "rust-fixture",
     "rust-parallel",
     "rust-git-proc",
@@ -112,7 +127,7 @@ export function stepConfiguration(name) {
 }
 
 const staticSteps = ["policy", "policy-modules"];
-const rustSteps = ["rustfmt", "clippy", ...plans.rust];
+const rustSteps = ["rustfmt", "clippy", "clippy-lib", ...plans.rust];
 
 // Steps that take file names start each tool's Node entry point directly, so
 // no shell reinterprets a name and Windows' 32,767-character command line

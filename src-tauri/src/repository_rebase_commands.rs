@@ -2,7 +2,7 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{repository_conflict, state::AppState};
+use crate::state::AppState;
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryRebaseContinueRequest,
     GitRepositoryRebaseContinueResult,
@@ -34,10 +34,10 @@ fn rebase_command_error(error: AppError) -> GitFileMutationCommandError {
                     sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
-            message: crate::repository_public_error::containment().into(),
+            message: sage_git::public_error::containment().into(),
         },
         error => GitFileMutationCommandError::Failed {
-            message: crate::repository_public_error::rebase(&error),
+            message: sage_git::public_error::rebase(&error),
         },
     }
 }
@@ -93,7 +93,7 @@ async fn continue_git_rebase_inner(
             (root.id.clone(), workspace)
         })
         .collect();
-    let rebase_result = repository_conflict::continue_rebase(&workspace).await;
+    let rebase_result = sage_git::conflict::continue_rebase(&workspace).await;
     let error = match rebase_result {
         Ok(()) => None,
         Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
@@ -107,7 +107,7 @@ async fn continue_git_rebase_inner(
         project_id: request.project_id,
         root_id: request.root_id,
         transition_epoch: *transition_epoch,
-        repositories: crate::repository_index_status::project_status(repository_roots).await,
+        repositories: sage_git::index_status::index_project_status(repository_roots).await,
         error,
     })
 }

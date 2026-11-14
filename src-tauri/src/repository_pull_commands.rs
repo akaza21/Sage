@@ -2,7 +2,7 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{repository_pull, state::AppState};
+use crate::state::AppState;
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryPullRequest, GitRepositoryPullResult,
 };
@@ -33,10 +33,10 @@ fn pull_command_error(error: AppError) -> GitFileMutationCommandError {
                     sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
-            message: crate::repository_public_error::containment().into(),
+            message: sage_git::public_error::containment().into(),
         },
         error => GitFileMutationCommandError::Failed {
-            message: crate::repository_public_error::pull(&error),
+            message: sage_git::public_error::pull(&error),
         },
     }
 }
@@ -90,7 +90,7 @@ async fn pull_git_repository_inner(
             (root.id.clone(), workspace)
         })
         .collect();
-    let pull_result = repository_pull::pull_fast_forward(&workspace).await;
+    let pull_result = sage_git::pull::pull_fast_forward(&workspace).await;
     let error = match pull_result {
         Ok(()) => None,
         Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
@@ -104,7 +104,7 @@ async fn pull_git_repository_inner(
         project_id: request.project_id,
         root_id: request.root_id,
         transition_epoch: *transition_epoch,
-        repositories: crate::repository_index_status::project_status(repository_roots).await,
+        repositories: sage_git::index_status::index_project_status(repository_roots).await,
         error,
     })
 }

@@ -16,7 +16,7 @@ import { q02SharedHelperPolicyErrors } from "./q02-shared-helpers-policy.mjs";
 import { packageResourcePolicyErrors } from "./package-resource-policy.mjs";
 
 const reviewedSpawnModules = new Map([
-  ["src-tauri/src/git_process.rs", "Git CLI execution boundary"],
+  ["crates/sage-git/src/process.rs", "Git CLI execution boundary"],
   [
     "src-tauri/src/acp/process/unix/spawn.rs",
     "Contained ACP harness launch on Unix",

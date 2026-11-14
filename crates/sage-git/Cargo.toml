@@ -1,0 +1,40 @@
+[package]
+name = "sage-git"
+description = "Sage's Git: the contained Git CLI runner, repository config admission, and Source Control reads and mutations."
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+sage-core.workspace = true
+sage-domain.workspace = true
+sage-process.workspace = true
+sage-workspace.workspace = true
+serde.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+
+[dev-dependencies]
+sage-test-support.workspace = true
+sage-workspace = { workspace = true, features = ["test-support"] }
+url.workspace = true
+uuid.workspace = true
+
+[target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
+libc.workspace = true
+
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
+[features]
+default = []
+# Test-only hooks the app's tests use: the Git process test harness, its
+# injected failures and the shared test budgets. Enabled only from
+# `[dev-dependencies]`, never from `[dependencies]`.
+test-support = []

@@ -5,15 +5,12 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{
-    repository,
-    repository_mutation::{mutate_file, mutate_file_with_process_policy},
-    state::AppState,
-};
+use crate::state::AppState;
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitFileMutationError, GitFileMutationErrorKind,
     GitFileMutationRequest, GitFileMutationResult, GitProcessState,
 };
+use sage_git::mutation::{mutate_file, mutate_file_with_process_policy};
 use sage_workspace::Workspace;
 
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
@@ -58,7 +55,7 @@ async fn mutate_git_file_inner_with_process_policy(
     state: &AppState,
     request: GitFileMutationRequest,
     expected_transition_epoch: u64,
-    process_policy: repository::GitProcessPolicy,
+    process_policy: sage_git::process::GitProcessPolicy,
 ) -> AppResult<GitFileMutationResult> {
     mutate_git_file_inner_with_policy_override(
         state,
@@ -73,7 +70,7 @@ async fn mutate_git_file_inner_with_policy_override(
     state: &AppState,
     request: GitFileMutationRequest,
     expected_transition_epoch: u64,
-    process_policy: Option<repository::GitProcessPolicy>,
+    process_policy: Option<sage_git::process::GitProcessPolicy>,
 ) -> AppResult<GitFileMutationResult> {
     if request.project_id.is_empty() || request.project_id.len() > MAX_GIT_PROJECT_ID_BYTES {
         return Err(AppError::InvalidRequest(
@@ -141,7 +138,7 @@ async fn mutate_git_file_inner_with_policy_override(
     Ok(GitFileMutationResult {
         project_id: request.project_id,
         transition_epoch: *transition_epoch,
-        repositories: repository::project_status(repository_roots).await,
+        repositories: sage_git::project_status(repository_roots).await,
         error,
     })
 }
@@ -160,7 +157,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            crate::git_process::fixture_git()
+            sage_git::process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)
@@ -180,7 +177,7 @@ mod tests {
     /// A slow clean filter keeps `git add` running past the deadline. Sage
     /// refuses repository filters, so the fixture root is trusted explicitly.
     fn hold_staging_of_new_file(root: &Path) {
-        crate::git_process::trust_repository_config_for_test(root);
+        sage_git::process::trust_repository_config_for_test(root);
         git(
             root,
             &["config", "filter.sage-slow.clean", "cd / && sleep 2 && cat"],
@@ -328,7 +325,7 @@ mod tests {
             .unwrap_err();
 
             assert!(error.to_string().contains("Project changed"));
-            let output = crate::git_process::fixture_git()
+            let output = sage_git::process::fixture_git()
                 .arg("-C")
                 .arg(&root)
                 .args(["status", "--porcelain=v2", "--", "new.txt"])
@@ -408,7 +405,9 @@ mod tests {
             let state = Arc::new(AppState::new(database));
 
             let (policy, mut deadline_gate) =
-                repository::GitProcessPolicy::with_deadline_wait_gate(Duration::from_millis(50));
+                sage_git::process::GitProcessPolicy::with_deadline_wait_gate(
+                    Duration::from_millis(50),
+                );
             let request = GitFileMutationRequest {
                 project_id: project.id,
                 resource: sage_domain::resource::ResourceRef {
@@ -433,7 +432,7 @@ mod tests {
             let authoritative_changes =
                 serde_json::to_value(&result.repositories.roots[0].changes).unwrap();
             let workspace = Workspace::open("project-a", &root_id, &root).unwrap();
-            let later = repository::status(&workspace).await.unwrap();
+            let later = sage_git::status(&workspace).await.unwrap();
             assert_eq!(
                 serde_json::to_value(later.changes).unwrap(),
                 authoritative_changes
@@ -463,7 +462,9 @@ mod tests {
             let state = Arc::new(AppState::new(database));
 
             let (policy, mut deadline_gate) =
-                repository::GitProcessPolicy::with_deadline_wait_gate(Duration::from_millis(50));
+                sage_git::process::GitProcessPolicy::with_deadline_wait_gate(
+                    Duration::from_millis(50),
+                );
             let request = GitFileMutationRequest {
                 project_id: project.id,
                 resource: sage_domain::resource::ResourceRef {
@@ -488,7 +489,7 @@ mod tests {
             let authoritative_changes =
                 serde_json::to_value(&result.repositories.roots[0].changes).unwrap();
             let workspace = Workspace::open("project-a", &root_id, &root).unwrap();
-            let later = repository::status(&workspace).await.unwrap();
+            let later = sage_git::status(&workspace).await.unwrap();
             assert_eq!(
                 serde_json::to_value(later.changes).unwrap(),
                 authoritative_changes
@@ -516,7 +517,7 @@ mod tests {
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
             let state = AppState::new(database);
-            let harness = repository::GitProcessTestHarness::new();
+            let harness = sage_git::process::GitProcessTestHarness::new();
 
             let error = mutate_git_file_inner_with_process_policy(
                 &state,
@@ -552,7 +553,7 @@ mod tests {
                 || harness.observation().unconfirmed_exits == 0,
             );
             let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
-            let later = repository::status(&workspace).await.unwrap();
+            let later = sage_git::status(&workspace).await.unwrap();
             assert_eq!(later.changes[0].index_status, "unchanged");
             assert_eq!(later.changes[0].worktree_status, "untracked");
             drop(state);
@@ -600,7 +601,7 @@ mod tests {
                     discard_confirmed: false,
                 },
                 0,
-                repository::GitProcessPolicy::post_reap_failure(
+                sage_git::process::GitProcessPolicy::post_reap_failure(
                     sage_test_support::test_wait::BUDGET,
                 ),
             )
@@ -621,7 +622,7 @@ mod tests {
             );
             std::thread::sleep(Duration::from_millis(200));
             let workspace = Workspace::open("project-a", "root-a", &root).unwrap();
-            let later = repository::status(&workspace).await.unwrap();
+            let later = sage_git::status(&workspace).await.unwrap();
             assert_eq!(later.changes[0].index_status, "added");
             assert_eq!(later.changes[0].worktree_status, "unchanged");
             drop(state);
@@ -655,7 +656,7 @@ mod tests {
                     discard_confirmed: false,
                 },
                 0,
-                repository::GitProcessPolicy::stdout_reader_failure(
+                sage_git::process::GitProcessPolicy::stdout_reader_failure(
                     sage_test_support::test_wait::BUDGET,
                 ),
             )
@@ -703,7 +704,7 @@ mod tests {
             };
             let state = AppState::new(database);
             let (cleanup_policy, reaper) =
-                repository::GitProcessPolicy::potentially_running(Duration::ZERO);
+                sage_git::process::GitProcessPolicy::potentially_running(Duration::ZERO);
 
             let first = mutate_git_file_inner_with_process_policy(
                 &state,
@@ -794,12 +795,14 @@ mod tests {
             };
             let state = AppState::new(database);
             let (cleanup_policy, reaper) =
-                repository::GitProcessPolicy::terminated_unreaped_withheld_wait(Duration::ZERO);
+                sage_git::process::GitProcessPolicy::terminated_unreaped_withheld_wait(
+                    Duration::ZERO,
+                );
 
             // Reserve mutation admission with a read-only command so
             // interruption has no staging side effect. The blocked and
             // recovered commands below exercise real staging.
-            let Err(first) = repository::run_git_with_policy(
+            let Err(first) = sage_git::run_git_with_policy(
                 &root,
                 &["rev-parse", "--is-inside-work-tree"],
                 1_024,
@@ -891,14 +894,14 @@ mod tests {
                 discard_confirmed: false,
             };
             let state = AppState::new(database);
-            let harness = repository::GitProcessTestHarness::new();
+            let harness = sage_git::process::GitProcessTestHarness::new();
 
             for _ in 0..8 {
                 let (policy, reaper) = harness.exhausting_reaper_policy(Duration::ZERO);
                 // Fill read-only reaper slots without racing staging effects or
                 // leaving an index lock from an interrupted writer. The real
                 // mutation below still proves admission stays blocked.
-                let error = repository::run_git_with_policy(
+                let error = sage_git::run_git_with_policy(
                     &root,
                     &["rev-parse", "--is-inside-work-tree"],
                     1_024,

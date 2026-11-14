@@ -3,16 +3,13 @@ use serde::Deserialize;
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{
-    repository,
-    repository_discovery::{self, MAX_REPOSITORIES_PER_PROJECT},
-    state::AppState,
-};
+use crate::state::AppState;
 use sage_domain::{
     editor::FileDiff,
     repository::{RepositoryRef, RootRepositoryStatus},
     resource::ResourceRef,
 };
+use sage_git::discovery::{self, MAX_REPOSITORIES_PER_PROJECT};
 use sage_workspace::Workspace;
 
 #[derive(Debug, Deserialize)]
@@ -163,8 +160,7 @@ async fn discover_inner(
             truncated = true;
             break;
         }
-        let discovery =
-            repository_discovery::discover_root(&root.id, &root.absolute_path, remaining);
+        let discovery = discovery::discover_root(&root.id, &root.absolute_path, remaining);
         truncated |= discovery.truncated;
         refs.extend(discovery.refs);
     }
@@ -192,7 +188,7 @@ async fn status_inner(
     )
     .await?;
     let workspace = nested_workspace(state, &request.project_id, &request.r#ref)?;
-    let mut status = repository::status(&workspace).await?;
+    let mut status = sage_git::status(&workspace).await?;
     prefix_status_paths(&request.r#ref, &mut status);
     Ok(NestedRepositoryStatusResult {
         project_id: request.project_id,
@@ -228,7 +224,7 @@ async fn diff_inner(
         root_id: request.r#ref.root_id.clone(),
         relative_path: git_relative,
     };
-    let mut diff = repository::file_diff(&workspace, &remapped).await?;
+    let mut diff = sage_git::diff::file_diff(&workspace, &remapped).await?;
     diff.resource = resource;
     Ok(NestedRepositoryFileDiffResult {
         project_id: request.project_id,
@@ -359,7 +355,7 @@ mod tests {
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
-            crate::git_process::fixture_git()
+            sage_git::process::fixture_git()
                 .arg("-C")
                 .arg(root)
                 .args(args)

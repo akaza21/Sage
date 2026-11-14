@@ -55,7 +55,7 @@ impl GitExitCleanup {
                 .await
                 .unwrap_or(false)
             },
-            crate::git_process::abandon_cleanup_on_exit,
+            sage_git::process::abandon_cleanup_on_exit,
             move || app.exit(code),
         ));
     }
