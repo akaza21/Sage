@@ -27,13 +27,15 @@ export async function runNewChatDraftSend(
       draft?.submission !== attempt.submission
     )
       throw new Error("Project changed during submission. Retry to continue.");
-    const choice = effectiveDraftChoice(draft, state);
-    if (!choice)
-      throw new Error("Choose an available harness and model before sending.");
-    return { state, draft, choice };
+    return { state, draft };
   };
   try {
-    const { state: initial } = current();
+    const { state: initial, draft: sent } = current();
+    // Creating and opening the chat can reselect the harness, so the choice is
+    // fixed against the catalog the user sent from.
+    const choice = effectiveDraftChoice(sent, initial);
+    if (!choice)
+      throw new Error("Choose an available harness and model before sending.");
     if (initial.pendingFirstSend !== submission)
       throw new Error("Chat submission cancelled. Retry to continue.");
 
@@ -77,7 +79,7 @@ export async function runNewChatDraftSend(
     }
     if (get().activeTabId !== chatId)
       await get().activateTab(chatId, submission);
-    const { state, draft, choice } = current();
+    const { state, draft } = current();
     const owner = state.captureChatOwnership(chatId);
     if (!owner || state.activeTabId !== chatId)
       throw new Error("Could not open the created chat. Retry to continue.");
