@@ -13,12 +13,13 @@ use crate::{
     acp::{
         contract::{ProjectGeneration, SageProjectId, SageRootId},
         process::{
-            ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchError, LaunchSpec,
-            ProcessDeadlines, RequiredContainment, TreeCapacityPool, TreeExit, TreeLimits,
+            ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
+            RequiredContainment, TreeCapacityPool, TreeExit, TreeLimits,
         },
     },
     project_registry::ProjectRootAuthority,
 };
+use sage_process::error::LaunchError;
 
 fn shell_spec(script: &str) -> LaunchSpec {
     let path = std::fs::canonicalize("/bin/sh").unwrap();

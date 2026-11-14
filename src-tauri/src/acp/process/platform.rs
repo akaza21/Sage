@@ -1,5 +1,6 @@
 use super::TreeCapacityLease;
-use super::supervisor::{LaunchError, LaunchSpec, ZeroProcessToken};
+use super::supervisor::{LaunchSpec, ZeroProcessToken};
+use sage_process::error::LaunchError;
 
 #[cfg(not(windows))]
 use super::unix;

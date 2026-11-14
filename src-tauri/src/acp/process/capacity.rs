@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex, OnceLock};
 
 use sage_core::limits::LIMITS;
 
-use super::supervisor::LaunchError;
+use sage_process::error::LaunchError;
 
 struct CapacityState {
     live_trees: u32,

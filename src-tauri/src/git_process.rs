@@ -18,13 +18,14 @@ use crate::git_budget;
 mod cancellation;
 mod containment;
 mod parallel_limits;
-mod process_tree;
+#[cfg(all(test, windows))]
+mod process_tree_tests;
 mod readers;
 mod repository_config;
 mod root_authority;
 mod submodule_isolation;
-use process_tree::{GitChild, ProcessTree};
 use readers::{ReaderTask, ReaderTasks};
+use sage_process::process_tree::{GitChild, ProcessTree};
 #[cfg(test)]
 mod test_support;
 
@@ -572,7 +573,7 @@ fn configured_command(
             .env("GIT_WORK_TREE", repository.work_tree());
     }
     #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW | process_tree::CREATION_FLAGS);
+    command.creation_flags(CREATE_NO_WINDOW | sage_process::process_tree::CREATION_FLAGS);
     command
 }
 

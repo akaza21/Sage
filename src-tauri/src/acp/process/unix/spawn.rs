@@ -7,6 +7,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+use sage_process::error::LaunchError;
 use sha2::{Digest, Sha256};
 
 use crate::acp::{process::TreeCapacityLease, redaction::StderrRing};
@@ -14,7 +15,7 @@ use crate::acp::{process::TreeCapacityLease, redaction::StderrRing};
 use super::{
     super::{
         platform::LaunchFailure,
-        supervisor::{LaunchError, LaunchSpec, RequiredContainment},
+        supervisor::{LaunchSpec, RequiredContainment},
     },
     RunningTree,
     containment::{TreeAuthority, TreeControl},

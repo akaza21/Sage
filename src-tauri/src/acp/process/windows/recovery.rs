@@ -10,13 +10,12 @@ use super::artifact::VerifiedArtifact;
 use super::authority::CharacterizationObservationState;
 use super::authority::{RunningTree, TreeAuthority};
 use super::io::{StderrDrain, StdinEndpoint, StdoutEndpoint};
-use super::job::JobBoundary;
-use super::native::NativeHandle;
 use super::suspended::terminate_and_reap_exact;
 use super::{LaunchError, LaunchSpec, TreeCapacityLease};
 use crate::acp::process::SpawnTimingReceipt;
 use crate::acp::process::platform::LaunchFailure;
 use crate::acp::process::supervisor::{LaunchFailureTracker, ZeroProcessToken};
+use sage_process::{handle::NativeHandle, job::JobBoundary};
 
 #[must_use = "dropping unresolved launch recovery keeps capacity fail-closed"]
 pub(crate) struct LaunchRecovery {
@@ -104,13 +103,13 @@ impl LaunchRecovery {
         let RecoveryState::Started(started) = &mut self.state else {
             return Err(LaunchError::ContainmentFailure);
         };
-        started.job.assign(
-            started
-                .process
-                .as_ref()
-                .ok_or(LaunchError::ContainmentFailure)?
-                .raw(),
-        )?;
+        let process = started
+            .process
+            .as_ref()
+            .ok_or(LaunchError::ContainmentFailure)?
+            .raw();
+        // SAFETY: `process` is borrowed from the live handle `started` owns.
+        unsafe { started.job.assign(process) }?;
         started.assigned_to_job = true;
         Ok(())
     }

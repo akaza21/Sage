@@ -2943,6 +2943,7 @@ dependencies = [
  "rusqlite",
  "rustls",
  "sage-core",
+ "sage-process",
  "sage-test-support",
  "serde",
  "serde_json",
@@ -2976,6 +2977,14 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.19",
  "tokio",
+]
+
+[[package]]
+name = "sage-process"
+version = "0.0.0"
+dependencies = [
+ "tokio",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
