@@ -1,24 +1,12 @@
-//! Gitignore rules for workspace walks (EDIT-0005 AD-3). Sage keeps its own
-//! walkers, which own containment, caps, sort order and continuation, and asks
-//! these rules whether an entry is ignored.
-//!
 //! Precedence follows ripgrep, which VS Code search runs: a `.ignore` match
 //! beats a `.gitignore` match, and within each kind the deepest folder wins.
 //! `.gitignore` files apply up to the nearest repository, then that
-//! repository's `.git/info/exclude`, then the user's global excludes file,
-//! whose patterns match paths relative to the root. A
-//! negated pattern (`!keep.log`) that matches first re-includes the entry. An
-//! entry inside an ignored folder is ignored too, as in Git, which walkers get
-//! by not entering ignored folders.
+//! repository's `.git/info/exclude`, then the user's global excludes file.
 //!
-//! Only rule files inside the root count, as with VS Code's default
-//! (`search.useParentIgnoreFiles` off), so a repository around the root, such
-//! as a home-folder dotfiles repository ignoring `*`, cannot hide a Project.
-//! Rule files are opened without following links, as Git 2.32 and later do,
-//! and each is read up to a size cap. Only patterns are read from them; nothing
-//! is listed. A rule source that exists but cannot be honoured is skipped and
-//! logged, which listings tolerate; [`IgnoreRules::every_source_honoured`]
-//! lets callers that must fail closed refuse the walk instead.
+//! Only rule files inside the root count (VS Code's `search.useParentIgnoreFiles`
+//! off), so a repository around the root, such as a home-folder dotfiles
+//! repository ignoring `*`, cannot hide a Project. Rule files are opened
+//! without following links, as Git 2.32 and later do.
 
 use std::{
     ffi::OsStr,
@@ -48,7 +36,6 @@ const MAX_RULES_FILE_BYTES: u64 = 256 * 1024;
 /// `core.ignoreCase` does.
 const CASE_INSENSITIVE: bool = cfg!(any(windows, target_os = "macos"));
 
-/// The rule-bearing names a folder listing holds.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct RuleFiles {
     ignore: bool,
@@ -57,7 +44,6 @@ pub(crate) struct RuleFiles {
 }
 
 impl RuleFiles {
-    /// Records `name` if it is `.ignore`, `.gitignore` or `.git`.
     pub(crate) fn note(&mut self, name: &OsStr) {
         let Some(name) = name.to_str() else { return };
         let is = |expected: &str| {
@@ -72,8 +58,6 @@ impl RuleFiles {
         self.repository |= is(".git");
     }
 
-    /// These names without `.ignore`, which only ripgrep-style tools read:
-    /// what Git itself ignores.
     pub(crate) fn git_only(self) -> Self {
         Self {
             ignore: false,
@@ -81,7 +65,6 @@ impl RuleFiles {
         }
     }
 
-    /// The rule-bearing names in `directory`, found without listing it.
     /// Only a missing name is absent: a name that cannot be inspected (access
     /// denied, say) counts as present, so reading it fails as a skipped source
     /// instead of being treated as no rules at all.
@@ -100,10 +83,7 @@ impl RuleFiles {
     }
 }
 
-/// One folder's own rules, linked to its parent folder's.
 struct FolderRules {
-    /// The folder relative to the root with a trailing `/`, or empty for the
-    /// root itself.
     prefix: String,
     ignore: Option<Gitignore>,
     gitignore: Option<Gitignore>,
@@ -113,8 +93,6 @@ struct FolderRules {
     parent: Option<Arc<FolderRules>>,
 }
 
-/// The rules in force inside one folder. Folders without rule files share
-/// their parent's chain, so a clone is one reference count.
 #[derive(Clone, Default)]
 pub(crate) struct FolderChain(Option<Arc<FolderRules>>);
 
@@ -124,25 +102,16 @@ impl FolderChain {
     }
 }
 
-/// The rules for one walk of one root.
 pub(crate) struct IgnoreRules {
     root: PathBuf,
     enabled: bool,
     global: Option<Gitignore>,
-    /// Set once any resolved rule source was skipped.
     skipped: AtomicBool,
 }
 
-/// A rule source that exists but was skipped (already logged): over the cap,
-/// a link where links are refused, not a regular file, unreadable, or a Git
-/// directory reference that does not resolve to an admitted location.
 struct Skipped;
 
 impl IgnoreRules {
-    /// Rules for walks of `root`. When `enabled` is false nothing is read and
-    /// nothing is ignored. `global_excludes` is Git's `core.excludesFile`,
-    /// resolved by the caller (see [`global_excludes_path`]); its patterns
-    /// match paths relative to the root.
     pub(crate) fn load(root: &Path, enabled: bool, global_excludes: Option<&Path>) -> Self {
         let mut rules = Self {
             root: root.to_path_buf(),
@@ -158,10 +127,8 @@ impl IgnoreRules {
         rules
     }
 
-    /// Whether every rule source resolved so far (the global excludes file
-    /// and the sources of every folder entered) was applied in full. Walkers
-    /// that must not admit an entry a skipped source might have ignored, such
-    /// as prompt attachments, check this after building each chain.
+    /// Walkers that must not admit an entry a skipped source might have ignored,
+    /// such as prompt attachments, check this after building each chain.
     pub(crate) fn every_source_honoured(&self) -> bool {
         !self.skipped.load(Ordering::Relaxed)
     }
@@ -173,8 +140,6 @@ impl IgnoreRules {
         })
     }
 
-    /// The chain for the folder at `relative` (empty for the root), whose
-    /// listing held `files`, given its parent's chain.
     pub(crate) fn enter(
         &self,
         parent: &FolderChain,
@@ -212,8 +177,7 @@ impl IgnoreRules {
         })))
     }
 
-    /// Whether the entry at `relative` is ignored by the rules in force in
-    /// its folder, whose chain is `chain`. Its parent folders are not checked.
+    /// Parent folders of `relative` are not checked.
     pub(crate) fn is_ignored(&self, chain: &FolderChain, relative: &str, is_dir: bool) -> bool {
         if !self.enabled {
             return false;
@@ -250,10 +214,6 @@ impl IgnoreRules {
         false
     }
 
-    /// The chain inside the folder at `relative` (empty for the root), whose
-    /// listing held `files`, and whether that folder or any folder above it
-    /// is ignored. For listings of one folder, such as the Explorer's;
-    /// walkers build chains as they go.
     pub(crate) fn chain_for(&self, relative: &str, files: RuleFiles) -> (FolderChain, bool) {
         if !self.enabled {
             return (FolderChain::default(), false);
@@ -285,11 +245,9 @@ impl IgnoreRules {
     }
 }
 
-/// Git's `core.excludesFile`, from the user's Git configuration. The search
-/// helper runs with an empty environment, so the app resolves this for it.
-///
-/// Read once per launch, so Explorer listings do not reread Git's
-/// configuration files; a changed `core.excludesFile` applies after a restart.
+/// The search helper runs with an empty environment, so the app resolves this
+/// for it. Read once per launch; a changed `core.excludesFile` applies after a
+/// restart.
 pub(crate) fn global_excludes_path() -> Option<PathBuf> {
     static PATH: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
     PATH.get_or_init(|| {
@@ -340,9 +298,6 @@ fn unresolved(path: &Path) -> Skipped {
     Skipped
 }
 
-/// Reads a rule file up to the cap. A missing file is `Ok(None)`; a link when
-/// `follow` is false, a non-file, an unreadable file or one over the cap is
-/// logged and [`Skipped`].
 fn read_rules(path: &Path, follow: bool) -> Result<Option<Vec<u8>>, Skipped> {
     let mut options = OpenOptions::new();
     options.read(true);
@@ -390,8 +345,6 @@ fn skipped(path: &Path, reason: &str) -> Skipped {
     Skipped
 }
 
-/// A matcher for one rule file's lines. Patterns that do not parse are
-/// skipped, as Git skips them. `None` when no pattern remains.
 fn matcher(bytes: &[u8]) -> Option<Gitignore> {
     let text = String::from_utf8_lossy(bytes);
     // The root `.` makes the matcher take paths as given, relative to the
@@ -404,8 +357,6 @@ fn matcher(bytes: &[u8]) -> Option<Gitignore> {
     builder.build().ok().filter(|matcher| !matcher.is_empty())
 }
 
-/// `Some(true)` for an ignore match, `Some(false)` for a negated pattern and
-/// `None` when nothing matched.
 fn decided<T>(matched: Match<T>) -> Option<bool> {
     match matched {
         Match::None => None,

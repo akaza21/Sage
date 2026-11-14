@@ -1,7 +1,3 @@
-//! A buffer that outlives its File: the File was deleted outside Sage, and
-//! the buffer is kept ("Keep mine") until a save creates the File again. Also
-//! "Keep mine" over a File that changed on disk, which rebases the buffer.
-
 use std::{
     collections::HashMap,
     sync::{LazyLock, Mutex},
@@ -32,12 +28,9 @@ use crate::{
     workspace::{Workspace, file_create::admit_created_path},
 };
 
-/// Files this process opened in the editor, by project and canonical path,
-/// with the fingerprint of the version opened. Only such a File, or one with
-/// a durable buffer, may take an absent base: otherwise the WebView could
-/// create any file by naming a missing path.
+/// Only a File opened here, or one with a durable buffer, may take an absent
+/// base: otherwise the WebView could create any file by naming a missing path.
 static OPENED: LazyLock<Mutex<HashMap<OpenedKey, String>>> = LazyLock::new(Mutex::default);
-/// Project, root and canonical path.
 type OpenedKey = (String, String, String);
 /// Bounds the map; past it, the map starts again, and a File opened before
 /// that and deleted before any edit was persisted cannot be kept.
@@ -51,8 +44,6 @@ fn opened_key(workspace: &Workspace, resource: &ResourceRef) -> OpenedKey {
     )
 }
 
-/// Records that the editor opened `resource` at the version `fingerprint`
-/// (the File on disk, or a durable buffer's base).
 pub(super) fn note_opened(workspace: &Workspace, resource: &ResourceRef, fingerprint: &str) {
     let mut opened = OPENED
         .lock()
@@ -63,7 +54,6 @@ pub(super) fn note_opened(workspace: &Workspace, resource: &ResourceRef, fingerp
     opened.insert(opened_key(workspace, resource), fingerprint.into());
 }
 
-/// The fingerprint `resource` was last opened at, if this process opened it.
 fn opened_at(workspace: &Workspace, resource: &ResourceRef) -> Option<String> {
     OPENED
         .lock()
@@ -72,9 +62,6 @@ fn opened_at(workspace: &Workspace, resource: &ResourceRef) -> Option<String> {
         .cloned()
 }
 
-/// Whether a snapshot with no durable buffer behind it may start one. The
-/// base must be the File on disk, or, for a File this process opened and
-/// that was deleted since, the version it was opened at; never absent.
 pub(super) fn admits_unbuffered_snapshot(
     workspace: &Workspace,
     resource: &ResourceRef,
@@ -90,9 +77,7 @@ pub(super) fn admits_unbuffered_snapshot(
     }
 }
 
-/// The base of a buffer whose File does not exist on disk: kept over a
-/// deletion, its save creates the File. Real fingerprints are hex digests, so
-/// this never matches one.
+/// Real fingerprints are hex digests, so this never matches one.
 pub const ABSENT_FINGERPRINT: &str = "absent";
 
 pub(super) fn absent_version() -> DocumentVersion {
@@ -107,11 +92,10 @@ pub(super) fn disk_version(disk: Option<&DiskDocument>) -> DocumentVersion {
     disk.map_or_else(absent_version, |disk| disk.version.clone())
 }
 
-/// The resource's canonical path. For a path that no longer exists, its
-/// nearest existing folder must be spelled canonically; the missing names
-/// are only checked for form. Two spellings of one missing name cannot both
-/// hold a buffer: a buffer starts only from an opened File or a File on disk,
-/// whose path is canonical.
+/// For a path that no longer exists, its nearest existing folder must be
+/// spelled canonically; the missing names are only checked for form. Two
+/// spellings of one missing name cannot both hold a buffer: a buffer starts
+/// only from an opened File or a File on disk, whose path is canonical.
 pub(super) fn validated_path(workspace: &Workspace, resource: &ResourceRef) -> AppResult<String> {
     match workspace.validate_resource(resource, false) {
         Err(error) if is_not_found(&error) => {}
@@ -133,9 +117,6 @@ pub(super) fn validated_path(workspace: &Workspace, resource: &ResourceRef) -> A
     }
 }
 
-/// "Keep mine": puts `content` on top of the File as it is on disk, if that is
-/// still the version the user saw (`expected_disk`). Otherwise nothing changes
-/// and the outcome is a conflict with the File as it is now.
 pub fn rebase_buffer(
     database: &Database,
     workspace: &Workspace,
@@ -158,8 +139,6 @@ pub fn rebase_buffer(
     let mut disk = read_disk_document_if_present(workspace, &resource.relative_path)?;
     let base = disk_version(disk.as_ref());
     if base.fingerprint != request.expected_disk.fingerprint {
-        // Disk moved on, and now holds exactly the editor's text: nothing is
-        // left to keep, and the recovery copy goes.
         if let Some(disk) = disk.take_if(|disk| disk.version.fingerprint == buffer_fingerprint) {
             if let Some(buffer) = &durable_buffer {
                 cleanup_recorded_temp(workspace, buffer)?;
@@ -191,7 +170,6 @@ pub fn rebase_buffer(
         });
     }
     if disk.is_none() {
-        // Keeping a deleted File means creating it on save.
         if durable_buffer.is_none() && opened_at(workspace, &resource).is_none() {
             return Err(AppError::InvalidRequest(
                 "only a File opened in the editor can be kept after it was deleted".into(),
@@ -228,9 +206,6 @@ pub fn rebase_buffer(
     })
 }
 
-/// Saves a buffer kept over a deletion by creating its File, which must
-/// still not exist; if it does, the outcome is a conflict. Folders deleted
-/// with it are created again, under the same rules as a new File.
 pub(super) fn create_document(
     database: &Database,
     workspace: &Workspace,
@@ -276,7 +251,6 @@ fn create_in_folder(
     database.set_editor_pending_temp(workspace.project_id(), &resource, &temp_path)?;
     let created =
         parent.create_document(file_name, temp_name, materialized.as_bytes(), before_rename);
-    // The temporary file is gone either way; forget it.
     cleanup_failed_save(
         database,
         workspace.project_id(),
@@ -304,11 +278,8 @@ fn create_in_folder(
     })
 }
 
-/// Creates each missing folder of `parent_path`, top down, each inside its
-/// parent as held by the no-follow walk, and returns the ones it created,
-/// outermost first. A name on the path that is a link, or anything but a
-/// folder, is refused rather than followed. Nothing here lists a folder, so
-/// how many entries one holds does not matter.
+/// A name on the path that is a link, or anything but a folder, is refused
+/// rather than followed.
 fn ensure_folders(workspace: &Workspace, parent_path: &str) -> AppResult<Vec<String>> {
     let mut created = Vec::new();
     if parent_path.is_empty() {
@@ -353,8 +324,6 @@ fn ensure_folders(workspace: &Workspace, parent_path: &str) -> AppResult<Vec<Str
     Ok(created)
 }
 
-/// Removes folders `ensure_folders` created, innermost first, through the
-/// held walk. A folder something else has put a file in since stays.
 fn remove_folders(workspace: &Workspace, created: &[String]) {
     for folder in created.iter().rev() {
         let (parent, name) = split_contract_path(folder);
@@ -364,7 +333,6 @@ fn remove_folders(workspace: &Workspace, created: &[String]) {
     }
 }
 
-/// A File with no buffer that is not on disk, as a discard leaves it.
 pub(super) fn deleted_document(resource: ResourceRef) -> EditorDocument {
     EditorDocument {
         resource,

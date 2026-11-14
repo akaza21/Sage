@@ -5,8 +5,6 @@ use crate::acp::{
 };
 use usage::{AcpUsageRequest, current_owner};
 
-/// The commands the current runtime's harness left running. A runtime that
-/// is no longer current runs none.
 #[tauri::command]
 pub(crate) async fn get_background_terminals(
     app: tauri::AppHandle,
@@ -16,7 +14,6 @@ pub(crate) async fn get_background_terminals(
     run(app, &state, request, TerminalAction::List).await
 }
 
-/// One listed terminal by its handle, or all of them without one.
 #[derive(serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct StopTerminalsRequest {
@@ -24,7 +21,6 @@ pub(crate) struct StopTerminalsRequest {
     handle: Option<String>,
 }
 
-/// Stops the named terminals; the caller lists again for what still runs.
 #[tauri::command]
 pub(crate) async fn stop_background_terminals(
     app: tauri::AppHandle,
@@ -116,7 +112,6 @@ mod tests {
                 .unwrap(),
             Vec::new()
         );
-        // A stop aimed at a runtime that is gone reached nothing.
         assert_eq!(
             state
                 .acp

@@ -12,29 +12,23 @@ use super::{
 /// A NUL byte this early marks a File as binary, as in VS Code and Git.
 pub(super) const BINARY_SNIFF_BYTES: u64 = 8_192;
 
-/// What one Search query asks of every File.
 #[derive(Clone, Copy)]
 pub(super) struct ScanQuery<'a> {
     pub(super) literal: &'a LiteralQuery,
     pub(super) whole_word: bool,
 }
 
-/// Reading and matching one File, which depends on nothing but the File, so
-/// it can run ahead on another thread. `apply_scan` then charges it to the
-/// budget in walk order, exactly as if it had just run.
+/// Depends on nothing but the File, so it can run ahead on another thread;
+/// `apply_scan` then charges it to the budget in walk order.
 pub(super) enum FileScan {
     Unopened,
     Opened { byte_len: u64, body: FileBody },
 }
 
 pub(super) enum FileBody {
-    /// Over the per-file bound or the bytes still left, so never read.
     NotRead,
     Unreadable,
-    Read {
-        len: u64,
-        text: TextScan,
-    },
+    Read { len: u64, text: TextScan },
 }
 
 pub(super) enum TextScan {
@@ -171,7 +165,6 @@ impl SearchEngine {
         }
     }
 
-    /// One File's matches, at most as many as a page holds.
     fn collect_matches(
         &self,
         resource: ResourceRef,
@@ -179,8 +172,6 @@ impl SearchEngine {
         query: ScanQuery<'_>,
     ) -> Vec<WorkspaceSearchMatch> {
         let mut matches = Vec::new();
-        // Most Files hold no match: one pass over the bytes settles that
-        // before any line is split out.
         if !query.literal.file_may_match(content) {
             return matches;
         }
@@ -201,9 +192,6 @@ impl SearchEngine {
     }
 }
 
-/// Builds the matches of one line. Columns are counted on from the last
-/// match and the preview is made once, so a long line with many matches
-/// costs one pass, not one per match.
 pub(super) struct LineMatches<'a> {
     line: &'a str,
     max_preview_chars: usize,
@@ -223,8 +211,7 @@ impl<'a> LineMatches<'a> {
         }
     }
 
-    /// The 1-based column of the match at byte `start`, which must not be
-    /// before the last one asked for.
+    /// `start` must not be before the last one asked for.
     pub(super) fn column(&mut self, start: usize) -> u32 {
         let characters = self.line[self.counted_to..start].chars().count();
         self.column = self

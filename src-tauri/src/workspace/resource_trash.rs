@@ -11,7 +11,6 @@ use super::Workspace;
 
 pub(crate) use platform::ResourceTrashIdentity;
 
-/// What the operating system calls its trash, in every message Explorer shows.
 pub(crate) const TRASH_NAME: &str = if cfg!(windows) {
     "Recycle Bin"
 } else {

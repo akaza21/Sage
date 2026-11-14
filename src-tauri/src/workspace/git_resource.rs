@@ -7,8 +7,8 @@ use crate::domain::{RepositoryRef, ResourceRef};
 use super::{Workspace, canonical_contract_relative, join_contract_path, validate_relative_path};
 
 impl Workspace {
-    /// Walk only this file's ancestors, including deleted paths. Discovery's
-    /// project-wide depth and repository caps must not choose a file's owner.
+    /// Discovery's project-wide depth and repository caps must not choose a
+    /// file's owner.
     pub(crate) fn resource_repository(
         &self,
         resource: &ResourceRef,

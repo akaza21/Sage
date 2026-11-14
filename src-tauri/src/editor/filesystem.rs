@@ -20,7 +20,6 @@ pub(super) use self::platform::HeldParent;
 /// One byte past the editor cap, so a read that fills it proves the file is
 /// too large whatever earlier metadata reported.
 const EDITABLE_READ_PROBE_BYTES: u64 = MAX_EDITABLE_BYTES + 1;
-/// Leading bytes inspected for a NUL before a file is treated as binary.
 const BINARY_SNIFF_BYTES: usize = 8_192;
 const BYTES_PER_MEBIBYTE: u64 = 1024 * 1024;
 
@@ -30,14 +29,11 @@ pub(super) struct DiskDocument {
     pub(super) line_ending: String,
 }
 
-/// Reads a document through one handle opened by the held-root walk.
 pub(super) fn read_disk_document(workspace: &Workspace, path: &str) -> AppResult<DiskDocument> {
     let file = open_workspace_text_file(workspace.root(), workspace.root_identity(), path, None)?;
     disk_document_from(&file)
 }
 
-/// Like `read_disk_document`, but a File (or folder) that does not exist is
-/// `None`: a buffer can outlive its File, which was deleted outside Sage.
 pub(super) fn read_disk_document_if_present(
     workspace: &Workspace,
     path: &str,
@@ -53,9 +49,8 @@ pub(super) fn is_not_found(error: &AppError) -> bool {
     matches!(error, AppError::Io(error) if error.kind() == std::io::ErrorKind::NotFound)
 }
 
-/// Builds the disk projection from an opened handle. The type check, the size
-/// check and the read all use this handle; the size check only rejects early,
-/// and the bounded read decides.
+/// The size check only rejects early; the bounded read through this same
+/// handle decides.
 fn disk_document_from(file: &File) -> AppResult<DiskDocument> {
     let metadata = file.metadata()?;
     if !metadata.is_file() {
@@ -93,7 +88,6 @@ fn disk_document_from(file: &File) -> AppResult<DiskDocument> {
     })
 }
 
-/// Reads at most one byte past the editor cap and rejects anything larger.
 pub(super) fn read_editable_bytes(reader: impl Read) -> AppResult<Vec<u8>> {
     let mut bytes = Vec::new();
     reader
@@ -112,7 +106,6 @@ fn oversize_error() -> AppError {
     ))
 }
 
-/// Splits a contract path into its parent directory and its final name.
 pub(super) fn split_contract_path(path: &str) -> (&str, &str) {
     path.rsplit_once('/').unwrap_or(("", path))
 }
@@ -147,7 +140,6 @@ pub(super) fn cleanup_recorded_temp(
     let (parent, temp_name) = split_contract_path(temp_path);
     let parent = match HeldParent::open(workspace, parent) {
         Ok(parent) => parent,
-        // The folder is gone, and the temporary file with it.
         Err(error) if is_not_found(&error) => return Ok(()),
         Err(error) => return Err(error),
     };
@@ -159,10 +151,8 @@ pub(super) fn cleanup_recorded_temp(
 }
 
 impl HeldParent {
-    /// Reads the document `name` and returns it with the identity of the file
-    /// read and the still open handle it was read through. On Windows that
-    /// handle denies delete sharing, so while it is open the file cannot be
-    /// deleted, replaced or renamed.
+    /// On Windows the returned handle denies delete sharing, so while it is open
+    /// the file cannot be deleted, replaced or renamed.
     pub(super) fn read_document_with_identity(
         &self,
         name: &str,
@@ -172,7 +162,6 @@ impl HeldParent {
         Ok((disk_document_from(&file)?, identity, file))
     }
 
-    /// Fails unless `name` is still the regular file with identity `expected`.
     pub(super) fn ensure_entry_is(&self, name: &str, expected: RootIdentity) -> AppResult<()> {
         let file = self.open_file(name)?;
         if leaf_identity(&file, &file.metadata()?)? != expected {
@@ -183,8 +172,6 @@ impl HeldParent {
         Ok(())
     }
 
-    /// Fails unless `parent`, walked again from the verified root, still
-    /// names this held directory.
     pub(super) fn ensure_named_by(&self, workspace: &Workspace, parent: &str) -> AppResult<()> {
         let still_named = HeldParent::open(workspace, parent)
             .and_then(|fresh| Ok(fresh.identity()? == self.identity()?));
@@ -196,10 +183,6 @@ impl HeldParent {
         Ok(())
     }
 
-    /// Creates the temporary file `temp_name` inside this directory with the
-    /// given permissions, makes its content durable and returns its identity.
-    /// `before_sync` runs once the content is written and can abandon the
-    /// write.
     pub(super) fn write_temporary_file(
         &self,
         temp_name: &str,
@@ -218,11 +201,9 @@ impl HeldParent {
 }
 
 impl HeldParent {
-    /// Creates `name` with `content`, only if nothing has that name yet:
-    /// `false` when something does. The content is written to `temp_name`
-    /// beside it and renamed in without replacing anything, so no reader sees
-    /// a partial File and a File that appears meanwhile is never touched.
-    /// The temporary file is removed whatever happens.
+    /// The content is renamed in from `temp_name` without replacing anything, so
+    /// no reader sees a partial File and a File that appears meanwhile is never
+    /// touched.
     pub(super) fn create_document(
         &self,
         name: &str,
@@ -243,8 +224,6 @@ impl HeldParent {
     }
 }
 
-/// Fails unless the canonical `path`, walked from the verified root, opens
-/// the file with identity `expected`.
 pub(super) fn ensure_path_names(
     workspace: &Workspace,
     path: &str,

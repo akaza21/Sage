@@ -1,6 +1,3 @@
-//! Git alone decides whether a window can skip its Git refresh. Keep original
-//! paths independently of Explorer's folded notices, compacting ignored groups
-//! to directory questions when the fixed count/byte caps would be exceeded.
 use std::{
     collections::{BTreeMap, HashMap},
     path::{Path, PathBuf},
@@ -52,7 +49,6 @@ impl GitWindow {
         {
             return;
         }
-        // Preserve directory-only rules for extant directories.
         let operand = if directory {
             format!("{path}/")
         } else {
@@ -189,8 +185,8 @@ pub(super) fn wait_for_queries() -> bool {
     })
 }
 
-/// Read Explorer's configured excludes off the delivery path. A full/busy
-/// root falls back to ordinary listing notices, never a queued Git query.
+/// A full/busy root falls back to ordinary listing notices, never a queued
+/// Git query.
 pub(super) fn start_explorer_excludes(
     root: &Path,
     cancelled: Arc<AtomicBool>,
@@ -338,7 +334,6 @@ impl GitRefresh {
             };
             for notice in &mut batch.notices {
                 if &notice.root_id == id {
-                    // Only the separate repository decision drives Git.
                     notice.git_relevant = Some(false);
                 }
             }

@@ -1,6 +1,3 @@
-//! Workspace Replace on disk: one File at a time, through the same held
-//! parent walk, limits and atomic replace as a save.
-
 use sage_core::error::{AppError, AppResult};
 
 use super::{
@@ -21,8 +18,6 @@ use crate::{
     workspace::{Workspace, directory_skip::protected_workspace_name},
 };
 
-/// A File as a Replace reads it: its fingerprint and its text with `\n`
-/// line ends.
 pub struct ReplaceSource {
     pub resource: ResourceRef,
     pub fingerprint: String,
@@ -30,29 +25,14 @@ pub struct ReplaceSource {
     pub line_ending: String,
 }
 
-/// What a Replace did to one File.
 #[derive(Debug, PartialEq, Eq)]
 pub enum DiskReplace {
-    Written {
-        fingerprint: String,
-        count: u64,
-    },
-    /// The File is not as it was when the Replace was previewed; nothing was
-    /// written.
+    Written { fingerprint: String, count: u64 },
     Stale,
-    /// Nothing in the File matches now; nothing was written.
     NoMatches,
-    /// The File was replaced, but could not be proven durable or still in
-    /// place, so the replaced text is also kept as its unsaved edits.
-    KeptUnsaved {
-        count: u64,
-    },
+    KeptUnsaved { count: u64 },
 }
 
-/// `replaced`, the `\n`-ended text a Replace made of `original`, as the
-/// File would hold it with `line_ending`: refused when that would not read
-/// back with the File's line ends, or would hold a carriage return the
-/// File did not.
 pub fn replaced_file_text(original: &str, replaced: &str, line_ending: &str) -> AppResult<String> {
     reject_unsupported_content(replaced)?;
     let materialized = materialize_content(replaced, line_ending);
@@ -66,7 +46,6 @@ pub fn replaced_file_text(original: &str, replaced: &str, line_ending: &str) -> 
     Ok(materialized)
 }
 
-/// Reads `resource` for a Replace, refusing what a Replace may not write.
 pub fn read_for_replace(
     database: &Database,
     workspace: &Workspace,
@@ -82,10 +61,6 @@ pub fn read_for_replace(
     })
 }
 
-/// Writes what `edit` makes of the File's text, if the File still has
-/// `expected_fingerprint`, by replacing the whole File at once: a reader
-/// sees the old File or the new one, never a mix. `edit` returns the new
-/// text, with `\n` line ends, and how many matches it replaced.
 pub fn replace_on_disk(
     database: &Database,
     workspace: &Workspace,
@@ -103,26 +78,16 @@ pub fn replace_on_disk(
     )
 }
 
-/// The points in a Replace at which `replace_on_disk_with` calls its
-/// observer, as a save's stages do.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum ReplaceStage {
-    /// The recovery record names the temporary file; nothing is written.
     Recorded,
-    /// The temporary file holds the replaced text but is not yet durable.
     TempWritten,
-    /// The temporary file is durable; the second stale check is next.
     BeforeStaleCheck,
-    /// The stale check has passed and the swap is next.
     BeforeReplace,
-    /// The File is replaced and its folder's sync is next.
     BeforeSync,
-    /// The temporary file has replaced the File; nothing is verified yet.
     AfterReplace,
 }
 
-/// `replace_on_disk`, failing at a stage where `observe` returns an error,
-/// as the step there would.
 pub(super) fn replace_on_disk_with(
     database: &Database,
     workspace: &Workspace,
@@ -172,9 +137,8 @@ pub(super) fn replace_on_disk_with(
         temp_path: &temp_path,
         fingerprint: &replaced_fingerprint,
     };
-    // Removes the temporary file, and then the record. A temporary file
-    // that stays leaves the record for recovery, holding the File's own
-    // text, so recovery removes the file and keeps nothing.
+    // A temporary file that stays leaves the record for recovery, holding the
+    // File's own text, so recovery removes the file and keeps nothing.
     let abandon = || {
         let settled = match parent.remove(temp_name) {
             Ok(()) => database.delete_replace_record(project_id, &record),
@@ -192,8 +156,6 @@ pub(super) fn replace_on_disk_with(
             tracing::warn!(%error, "abandoned replace record could not be settled");
         }
     };
-    // Keeps the replaced text as unsaved edits once the File is replaced
-    // but not proven.
     let keep_unsaved = || -> AppResult<DiskReplace> {
         if let Err(error) = database.keep_replace_as_unsaved(project_id, &record) {
             tracing::warn!(%error, "unproven replace could not be kept as unsaved edits");
@@ -281,9 +243,6 @@ pub(super) fn replace_on_disk_with(
     })
 }
 
-/// The canonical resource, if a Replace may write it: not inside a
-/// protected folder such as `.git`, and with no unsaved editor buffer,
-/// which the editor changes instead.
 fn admitted(
     database: &Database,
     workspace: &Workspace,

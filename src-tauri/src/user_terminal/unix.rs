@@ -46,8 +46,6 @@ impl TerminalFactory for UnixPtyFactory {
     }
 }
 
-/// Starts `shell` as a login shell on a new PTY, in the directory `root`
-/// refers to.
 fn launch(
     root: &File,
     shell: &LoginShell,
@@ -140,7 +138,6 @@ struct UnixPtyProcess {
     input: Option<SyncSender<Vec<u8>>>,
     stop: Arc<AtomicBool>,
     threads: Vec<JoinHandle<()>>,
-    /// Consecutive scans that found the session empty.
     empty_scans: u8,
     /// The session was proven empty and the shell reaped. Its pid may now be
     /// reused, so nothing is signalled again.
@@ -152,9 +149,8 @@ struct UnixPtyProcess {
 }
 
 impl UnixPtyProcess {
-    /// Whether the shell exited. It is left unreaped until its session is
-    /// empty, so neither its pid nor its session id can be reused while close
-    /// may still signal them.
+    /// The shell is left unreaped until its session is empty, so neither its pid
+    /// nor its session id can be reused while close may still signal them.
     fn exited(&self) -> Result<bool, TerminalError> {
         if self.finished {
             return Ok(true);
@@ -181,8 +177,6 @@ impl UnixPtyProcess {
         }
     }
 
-    /// The shell exited and no other process remains in its session; the
-    /// shell is reaped only then.
     fn settled(&mut self) -> bool {
         if self.finished {
             return true;
@@ -211,9 +205,8 @@ impl UnixPtyProcess {
         self.finished
     }
 
-    /// Signals every member of the session, unless the shell's pid can no
-    /// longer be trusted. A member Sage may not signal, such as a root process
-    /// started with sudo, is an error: retrying cannot end it.
+    /// A member Sage may not signal, such as a root process started with sudo,
+    /// is an error: retrying cannot end it.
     fn sweep(&self, signal: libc::c_int) -> Result<(), TerminalError> {
         if self.lost {
             return Err(TerminalError::Backend);

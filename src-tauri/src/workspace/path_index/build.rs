@@ -1,9 +1,3 @@
-//! Walks a root for the path index. It keeps what Search would scan:
-//! excluded and ignored folders are not entered, symlinks are skipped, `.git`
-//! and `node_modules` are always left out, and folders deeper than Search
-//! goes are not entered. Like Search, it goes breadth first, so a
-//! truncated walk keeps the shallower Files.
-//!
 //! The walk runs on one thread. Four threads walked 200k Files in 0.08 s
 //! instead of 0.2 s, but glibc gives each thread its own memory pool and
 //! keeps what a walk freed there, so the process stayed 50 to 150 MiB larger
@@ -30,7 +24,6 @@ use super::arena::{MAX_INDEXED_PATH_BYTES, PathArena};
 /// tree of empty folders can't grow the stack without bound.
 const MAX_WALK_FOLDERS: usize = 100_000;
 
-/// A folder still to walk.
 struct Folder {
     path: PathBuf,
     relative: String,
@@ -38,7 +31,6 @@ struct Folder {
     depth: usize,
 }
 
-/// What one walk found.
 pub(super) struct Walked {
     pub(super) arena: PathArena,
     pub(super) truncated: bool,
@@ -47,15 +39,11 @@ pub(super) struct Walked {
 pub(super) struct Walk<'a> {
     pub(super) rules: &'a IgnoreRules,
     pub(super) excluded: &'a PathGlobs,
-    /// Checked before each folder; once raised, the walk ends.
     pub(super) stop: &'a AtomicBool,
-    /// Files this walk may add.
     pub(super) room: usize,
-    /// Paths and bytes the root held last time, to size the arena once.
     pub(super) expect: (usize, usize),
 }
 
-/// How far a walk has got, and buffers every folder reuses.
 #[derive(Default)]
 struct Progress {
     files: usize,
@@ -67,7 +55,6 @@ struct Progress {
 }
 
 impl Walk<'_> {
-    /// Walks `root` into a new arena.
     pub(super) fn run(&self, root: &Path) -> Walked {
         let (paths, bytes) = self.expect;
         let mut arena = PathArena::with_capacity(paths + paths / 16, bytes + bytes / 16);
@@ -96,8 +83,6 @@ impl Walk<'_> {
         }
     }
 
-    /// Lists one folder: its Files go into `found`, its admitted subfolders
-    /// onto the queue.
     fn visit(&self, folder: Folder, found: &mut PathArena, progress: &mut Progress) {
         let Ok(listing) = fs::read_dir(&folder.path) else {
             return;
@@ -122,8 +107,6 @@ impl Walk<'_> {
         progress.entries = entries;
     }
 
-    /// Adds one entry of `folder` if it is admitted. Returns false once the
-    /// walk is full.
     fn admit(
         &self,
         folder: &Folder,
@@ -139,7 +122,6 @@ impl Walk<'_> {
         if name.contains('/') || name.contains('\\') {
             return true;
         }
-        // Files are pushed from this one buffer; only folders get a String.
         let relative = &mut progress.relative;
         relative.clear();
         if !folder.relative.is_empty() {

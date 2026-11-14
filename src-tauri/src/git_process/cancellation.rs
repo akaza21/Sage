@@ -1,4 +1,3 @@
-//! Watch-window cancellation also reaches repository admission probes.
 use std::sync::{
     Arc,
     atomic::{AtomicBool, Ordering},

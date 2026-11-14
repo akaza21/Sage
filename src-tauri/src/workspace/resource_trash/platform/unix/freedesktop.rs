@@ -1,10 +1,3 @@
-//! The freedesktop.org Trash specification, which GNOME Files, KDE Dolphin
-//! and other Linux file managers read, so a trashed item can be restored from
-//! any of them. An item on the home volume goes to `$XDG_DATA_HOME/Trash`; an
-//! item on another volume goes to `$topdir/.Trash/$uid` when an administrator
-//! made that sticky directory, otherwise to `$topdir/.Trash-$uid`. The item is
-//! never copied: a volume with no usable Trash refuses before anything moves.
-//!
 //! The `.trashinfo` record is created exclusively and flushed before the item
 //! moves, so a trashed item always has the record that restores it. The move
 //! is a no-replace rename from the held parent into the held `files`
@@ -30,10 +23,7 @@ use sage_core::error::{AppError, AppResult};
 
 use super::{ResourceTrashAuthority, TRASH_NAME, open_directory, stat_at, stat_identity};
 
-/// Names tried after the first, as `name.2.ext` … `name.1000.ext`, before
-/// giving up.
 const MAX_NAME_ATTEMPTS: u32 = 1000;
-/// Ancestors walked to find the top of the source's volume.
 const MAX_VOLUME_DEPTH: usize = 4096;
 
 pub(super) struct TrashDirectory {
@@ -48,7 +38,6 @@ fn no_trash() -> AppError {
     )
 }
 
-/// `$XDG_DATA_HOME`, or `$HOME/.local/share`, when absolute.
 fn home_data_dir() -> Option<PathBuf> {
     #[cfg(test)]
     if let Some(home) = super::tests::home_override() {
@@ -67,8 +56,6 @@ fn home_data_dir() -> Option<PathBuf> {
         })
 }
 
-/// Opens `name` in `parent` as a directory owned by this user, creating it
-/// with mode 0700 when missing.
 fn owned_directory(parent: &File, name: &CStr) -> std::io::Result<File> {
     // SAFETY: mkdirat reads a NUL-terminated name relative to a held directory.
     if unsafe { libc::mkdirat(parent.as_raw_fd(), name.as_ptr(), 0o700) } < 0 {
@@ -111,8 +98,6 @@ fn home_trash(volume: u64) -> Option<TrashDirectory> {
     (trash.files.metadata().ok()?.dev() == volume).then_some(trash)
 }
 
-/// The topmost directory of `volume` above `parent`, walked by descriptor,
-/// and how many levels above `parent` it is.
 pub(super) fn volume_top(parent: &File, volume: u64) -> AppResult<(File, usize)> {
     let mut current = open_directory(Some(parent), c".", libc::O_PATH)?;
     if current.metadata()?.dev() != volume {
@@ -211,8 +196,7 @@ fn unlink(directory: &File, name: &CStr) {
     unsafe { libc::unlinkat(directory.as_raw_fd(), name.as_ptr(), 0) };
 }
 
-/// Creates the record exclusively and flushes it. `Ok(false)` means the name
-/// is taken.
+/// `Ok(false)` means the name is taken.
 fn write_info(info: &File, name: &CStr, contents: &str) -> std::io::Result<bool> {
     // SAFETY: openat reads a NUL-terminated name and returns a new descriptor.
     let fd = unsafe {
@@ -272,9 +256,7 @@ pub(super) fn numbered(source: &str, attempt: u32) -> String {
     }
 }
 
-/// Moves the source into `trash` under the first free name and returns that
-/// name and its record's name. Every failure leaves the source in place and
-/// no record behind.
+/// Every failure leaves the source in place and no record behind.
 fn move_into(
     authority: &ResourceTrashAuthority,
     trash: &TrashDirectory,
@@ -360,8 +342,6 @@ fn move_to_volume_trash(
     Ok((trash, moved))
 }
 
-/// What a backend reports when the item in the trash turned out not to be
-/// the held source; `put_back` says whether it was returned.
 fn changed_item_warning(put_back: bool) -> String {
     if put_back {
         format!(

@@ -113,7 +113,6 @@ mod tests {
             paths.sort();
             paths
         };
-        // The registry default leaves out `.DS_Store`.
         assert_eq!(
             found(None),
             ["web/app.tmp", "web/app.ts", "web/dist/app.js"]
@@ -290,7 +289,6 @@ mod tests {
             .filter(|found| found.resource.relative_path == "regex.txt")
             .map(|found| found.column_number)
             .collect::<Vec<_>>();
-        // Case folds unless Match case is on.
         assert_eq!(columns, vec![8, 21]);
 
         let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
@@ -404,7 +402,6 @@ mod tests {
         assert!(!complete.truncated);
         assert!(complete.limit_reasons.is_empty());
 
-        // A continued page that walks past the same files stays complete too.
         let limits = SearchLimits {
             max_results: 2,
             ..test_limits()
@@ -436,7 +433,6 @@ mod tests {
         );
         assert!(second.continuation_token.is_none());
 
-        // Text that is not UTF-8 was never searched, so the root says so.
         fs::write(path.join("latin1.txt"), b"needle caf\xe9\n").unwrap();
         let workspace = Workspace::open("project-test", "root-test", &path).unwrap();
         let partial = SearchEngine::new(test_limits())

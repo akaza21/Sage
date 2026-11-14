@@ -1,5 +1,3 @@
-//! Owner-landed fail-closed disposition command. AGENT-1 implements the store write.
-
 use tauri::{AppHandle, Emitter, State};
 
 use crate::{

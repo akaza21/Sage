@@ -120,7 +120,6 @@ fn ask_in(inputs: &IndexInputs, session: u64, text: &str, recent: &[ResourceRef]
     }
 }
 
-/// Asks until the background refresh has been swapped in.
 fn ask_refreshed(inputs: &IndexInputs, session: u64, text: &str) -> Answer {
     let deadline = Instant::now() + Duration::from_secs(10);
     loop {
@@ -192,7 +191,6 @@ fn ranks_basename_word_start_and_recent_matches_first() {
     assert_eq!(boosted.paths[0], "src/app/remain.ts");
     let empty = ask(&inputs, "  ", &recent);
     assert_eq!(empty.paths, ["src/app/remain.ts"]);
-    // Browsing lists the recent File first, then the rest, shortest first.
     let browsed = run(
         &inputs,
         &QuickOpenQuery {
@@ -227,12 +225,10 @@ fn a_new_session_sees_changes_made_since_the_last() {
     fixture.write("lib/deep/added.rs");
     fs::rename(fixture.root.join("src"), fixture.root.join("pkg")).unwrap();
     fs::write(fixture.root.join(".gitignore"), "tmp/\n").unwrap();
-    // The session that built the index keeps answering from it.
     let same = ask_in(&inputs, 1, "rs", &[]);
     assert!(!same.built && !same.refreshing);
     assert_eq!(same.paths.len(), 3);
 
-    // A new session answers at once from what it has, then sees the changes.
     let first = ask_in(&inputs, 2, "rs", &[]);
     assert!(!first.built);
     let fresh = ask_refreshed(&inputs, 2, "rs");
@@ -280,8 +276,6 @@ fn forgetting_the_project_frees_the_index_without_waiting_for_a_walk() {
     forget_project(&fixture.project_id);
     assert!(ask(&inputs, "a", &[]).built);
 
-    // A first build doesn't hold the index lock while it walks, so
-    // forgetting never waits for one.
     let building = lock(&BUILDING);
     let started = Instant::now();
     forget_project(&fixture.project_id);
@@ -318,8 +312,6 @@ fn a_query_checked_before_its_project_closed_keeps_nothing() {
     let _serial = SERIAL.lock().unwrap_or_else(|poison| poison.into_inner());
     let fixture = Fixture::new(&["a.rs"]);
     let inputs = fixture.inputs(&[]);
-    // The query passed the active-Project check, then the Project closed
-    // while it waited for another build.
     let ticket = super::ticket();
     forget_project(&fixture.project_id);
     let query = QuickOpenQuery {
@@ -332,7 +324,6 @@ fn a_query_checked_before_its_project_closed_keeps_nothing() {
     };
     assert!(matches!(run(&inputs, &query, ticket), Outcome::Superseded));
     assert!(lock(&INDEX).index.is_none());
-    // A query checked after the forget builds as usual.
     assert!(ask(&inputs, "a", &[]).built);
 }
 
@@ -349,8 +340,6 @@ fn a_first_build_stops_a_stale_refresh_and_outwaits_a_stuck_walker() {
         false
     })));
     assert!(ask_in(&inputs, 2, "rs", &[]).refreshing);
-    // New settings rebuild at once: on a fallback thread, since the walker
-    // doesn't take the build up in time.
     let excluding = fixture.inputs(&["b.rs"]);
     let started = Instant::now();
     let rebuilt = ask_in(&excluding, 3, "rs", &[]);
@@ -358,7 +347,6 @@ fn a_first_build_stops_a_stale_refresh_and_outwaits_a_stuck_walker() {
     assert_eq!(rebuilt.paths, ["a.rs"]);
     assert!(started.elapsed() >= WALKER_WAIT);
     release.send(()).unwrap();
-    // The stale refresh is stopped and leaves the new index in place.
     let deadline = Instant::now() + Duration::from_secs(10);
     while lock(&INDEX).refreshing {
         assert!(Instant::now() < deadline, "the refresh never finished");
@@ -376,7 +364,6 @@ fn watching_another_project_drops_this_ones_index() {
     assert!(ask(&inputs, "a", &[]).built);
     focus_project(&fixture.project_id);
     assert!(!ask(&inputs, "a", &[]).built, "its own Project keeps it");
-    // A query checked before the switch keeps nothing afterwards.
     let ticket = super::ticket();
     focus_project("the-next-project");
     assert!(lock(&INDEX).index.is_none());
@@ -416,7 +403,6 @@ fn a_query_waiting_for_a_build_gives_up_once_superseded() {
             std::thread::sleep(Duration::from_millis(1));
         }
         std::thread::sleep(Duration::from_millis(20));
-        // A newer query arrives; the older one stops waiting.
         LATEST_GENERATION.fetch_max(generation(), Ordering::AcqRel);
         waiter.join().unwrap()
     });

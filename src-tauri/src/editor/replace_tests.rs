@@ -50,7 +50,6 @@ impl Fixture {
             .unwrap()
     }
 
-    /// Opens a tab on `path`, clean.
     fn open_tab(&self, path: &str) {
         let metadata = serde_json::json!({
             "resource": { "rootId": self.workspace.root_id(), "relativePath": path }
@@ -230,7 +229,6 @@ fn an_unverified_swap_is_written_and_kept_as_unsaved_edits() {
     assert_eq!(result.unwrap(), DiskReplace::KeptUnsaved { count: 1 });
     let kept = fixture.record(path).unwrap();
     assert_eq!(kept.content, "new\n");
-    // The temporary file is gone, so the record no longer names it.
     assert!(kept.pending_temp_path.is_none());
     assert!(fixture.tab_dirty());
     assert_eq!(temp_entries(&fixture.root), 0);
@@ -281,8 +279,6 @@ fn a_temp_file_that_cannot_be_removed_leaves_recovery_nothing_to_keep() {
     assert!(result.is_err());
     let temp = temp.unwrap();
     let record = fixture.record(path).unwrap();
-    // The record holds the File's own text, not the replaced text, and
-    // still names the temporary file for recovery.
     assert_eq!(record.content, "old one\n");
     assert_eq!(record.buffer_fingerprint, fingerprint(b"old one\n"));
     assert_eq!(record.pending_temp_path.as_deref(), Some(temp.as_str()));
@@ -300,7 +296,6 @@ fn a_buffer_the_editor_wrote_over_the_record_is_left_alone() {
 
     let result = fixture.replace_with(path, |stage| {
         if stage == ReplaceStage::BeforeStaleCheck {
-            // The editor stores its own buffer, then the File changes.
             fixture
                 .database()
                 .connection()
@@ -326,13 +321,10 @@ fn a_buffer_the_editor_wrote_over_the_record_is_left_alone() {
 #[test]
 fn a_replace_that_would_add_a_carriage_return_is_refused() {
     let original = "a\rb\nc\n";
-    // A carriage return the File already had is kept.
     assert!(replaced_file_text(original, "A\rb\nc\n", "lf").is_ok());
-    // One more would be a stray one, or a CRLF in an LF File.
     assert!(replaced_file_text(original, "a\rb\r\nc\n", "lf").is_err());
     assert!(replaced_file_text("a\n", "a\r\n", "lf").is_err());
     assert!(replaced_file_text("a", "a\r", "none").is_err());
-    // CRLF Files keep their line ends.
     assert_eq!(replaced_file_text("a\n", "b\n", "crlf").unwrap(), "b\r\n");
 }
 

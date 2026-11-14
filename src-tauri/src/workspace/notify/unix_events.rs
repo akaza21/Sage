@@ -88,15 +88,9 @@ const IN_IGNORED: u32 = 0x0000_8000;
 #[cfg(any(target_os = "linux", test))]
 const IN_ISDIR: u32 = 0x4000_0000;
 
-/// Each inotify watch descriptor's folder, relative to the first watched
-/// folder with `/` separators (empty for that folder). A `None` folder has a
-/// path that is not UTF-8, or its descriptor is shared by two paths: its
-/// events are delivered as an overflow resync rather than under a wrong name.
-///
-/// With `subfolders`, the watch covers a folder tree whose shape can change:
-/// a folder created, deleted or moved, a watched folder removed, or a lost
-/// queue makes the batch ask for the tree to be watched again, and every
-/// later record in that batch is folded into one resync.
+/// A `None` folder has a path that is not UTF-8, or its descriptor is shared
+/// by two paths: its events are delivered as an overflow resync rather than
+/// under a wrong name.
 #[cfg(any(target_os = "linux", test))]
 #[derive(Debug)]
 pub(super) struct InotifyFolders {
@@ -129,7 +123,6 @@ impl InotifyFolders {
         self.subfolders
     }
 
-    /// The watch descriptors this map holds that `next` does not.
     #[cfg(target_os = "linux")]
     pub(super) fn dropped_from(&self, next: &Self) -> Vec<i32> {
         self.by_watch
@@ -171,12 +164,9 @@ impl InotifyFolders {
     }
 }
 
-/// Records that say a watched folder itself is gone or moved.
 #[cfg(any(target_os = "linux", test))]
 const IN_WATCH_GONE: u32 = IN_DELETE_SELF | IN_MOVE_SELF | IN_UNMOUNT | IN_IGNORED;
 
-/// The path of the folder `name` inside the folder at `parent`, relative to
-/// the root with `/` separators. `None` when either is not UTF-8.
 #[cfg(any(target_os = "linux", test))]
 pub(super) fn inotify_child_relative(parent: Option<&str>, name: &[u8]) -> Option<String> {
     let name = std::str::from_utf8(name).ok()?;
@@ -186,9 +176,9 @@ pub(super) fn inotify_child_relative(parent: Option<&str>, name: &[u8]) -> Optio
     })
 }
 
-/// What one read of inotify records delivers. When `rewatch` is set, the
-/// caller must watch the folder tree again before it delivers, since the
-/// trailing resync stands for every change from the tree change on.
+/// When `rewatch` is set, the caller must watch the folder tree again before
+/// it delivers, since the trailing resync stands for every change from the
+/// tree change on.
 #[cfg(any(target_os = "linux", test))]
 #[derive(Debug, PartialEq, Eq)]
 pub(super) struct InotifyBatch {
@@ -281,9 +271,6 @@ pub(super) fn unix_workspace_notify_supported() -> bool {
     cfg!(any(target_os = "macos", target_os = "linux"))
 }
 
-/// The most folder entries one walk of a watched tree examines, the same
-/// bound as a workspace file walk. Past it the walk stops as it does at the
-/// folder cap.
 pub(super) const MAX_UNIX_WATCH_ENTRIES: u64 = crate::workspace::file_walk::MAX_WORKSPACE_FILES;
 
 pub(super) fn bounded_watch_directories(

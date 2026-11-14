@@ -20,7 +20,6 @@ struct FixtureRecord {
     fail_terminate: bool,
     fail_spawn_retained: bool,
     outputs: Vec<TerminalOutputSink>,
-    /// Spawn reports its arrival on the sender, then waits on the receiver.
     spawn_hold: Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>,
 }
 

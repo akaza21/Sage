@@ -8,10 +8,9 @@ use std::io;
 /// than reporting a partial list.
 const MAX_SCANNED: usize = 65_536;
 
-/// Signals every process found in `session`. A process that leaves the session
-/// (by calling `setsid`, as daemons do) is outside it and is not signalled. A
-/// failed scan, or a member that may not be signalled, is an error once every
-/// other member has been signalled.
+/// A process that leaves the session (by calling `setsid`, as daemons do) is
+/// not signalled. A failed scan, or a member that may not be signalled, is an
+/// error once every other member has been signalled.
 pub(super) fn signal(session: libc::pid_t, signal: libc::c_int) -> io::Result<()> {
     let mut result = Ok(());
     for pid in members(session)? {
@@ -30,8 +29,8 @@ pub(super) fn signal(session: libc::pid_t, signal: libc::c_int) -> io::Result<()
     result
 }
 
-/// Live members of `session`. An exited process whose threads all ended is
-/// left out: it runs nothing, and its reaping belongs to its parent.
+/// An exited process whose threads all ended is left out: it runs nothing, and
+/// its reaping belongs to its parent.
 #[cfg(target_os = "linux")]
 pub(super) fn members(session: libc::pid_t) -> io::Result<Vec<libc::pid_t>> {
     let mut members = Vec::new();

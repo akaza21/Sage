@@ -4,11 +4,8 @@ use ignore::gitignore::Gitignore;
 
 use super::{IgnoreRules, Skipped, matcher, present, read_rules, unresolved};
 
-/// The `info/exclude` matcher of the repository in `directory`. A `.git` file
-/// (a worktree or submodule) names its Git directory, and a worktree's
-/// `commondir` names the shared one that holds `info/exclude`. Only the
-/// root's own `.git` file (a worktree opened as the Project) may lead outside
-/// the root.
+/// Only the root's own `.git` file (a worktree opened as the Project) may lead
+/// outside the root.
 pub(super) fn repository_exclude(
     rules: &IgnoreRules,
     directory: &Path,

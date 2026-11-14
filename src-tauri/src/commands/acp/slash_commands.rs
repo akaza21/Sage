@@ -112,17 +112,12 @@ pub(crate) async fn run(
             runtime_epoch: r.runtime_epoch,
             prompt,
             attached_context: AttachedContexts::default(),
-            // A command never carries the files staged for the next message.
             staged: None,
         },
     )
     .await
 }
 
-/// The Turn a listed command runs. A command its binding runs as a session
-/// action becomes that action, through the same capability gate as the
-/// chat's own buttons; any other is its `/name input` text. Either way the
-/// Turn keeps the command beside its prompt.
 fn command_prompt(
     listed: &AvailableCommand,
     input: Option<&str>,
@@ -130,7 +125,6 @@ fn command_prompt(
     revision: u64,
 ) -> Result<Prompt, AcpIpcError> {
     let mut prompt = match listed.dispatch {
-        // A panel opens in the chat; there is nothing to send.
         CommandDispatch::Panel(_) => {
             return Err(AcpIpcError::InvalidRequest {
                 message: safe_message("This command opens a panel and sends nothing."),
@@ -201,13 +195,10 @@ mod prompt_tests {
                 source: CommandSource::Builtin
             })
         );
-        // `/compact` takes no input; nothing is sent.
         let compact = listed("compact", CommandDispatch::Action);
         assert!(command_prompt(&compact, Some("now"), "/compact now".into(), 3).is_err());
-        // A panel command is never sent.
         let status = listed("status", CommandDispatch::Panel(CommandPanel::Status));
         assert!(command_prompt(&status, None, "/status".into(), 3).is_err());
-        // Any other route sends the text as typed, with no action.
         let plan = listed("plan", CommandDispatch::Prompt);
         let prompt = command_prompt(&plan, Some("it"), "/plan it".into(), 3).unwrap();
         assert_eq!(

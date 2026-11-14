@@ -23,21 +23,16 @@ use super::{
 
 pub struct SearchEngine {
     pub(super) limits: SearchLimits,
-    /// Git's global excludes file, which the helper cannot resolve itself.
     pub(super) global_excludes: Option<PathBuf>,
-    /// Threads a root's search may use, the walk's included.
     pub(super) threads: usize,
     /// Tests make time run out after this many checks, so a time limit
     /// lands at the same place on every run.
     #[cfg(test)]
     pub(super) time_checks_left: Option<std::sync::atomic::AtomicU64>,
-    /// Tests read time from this clock instead, so a time limit lands at the
-    /// same place on every run.
     #[cfg(test)]
     pub(super) test_clock: Option<TestClock>,
 }
 
-/// Time advanced by filesystem operations, without wall-clock waits.
 #[cfg(test)]
 pub(super) struct TestClock {
     started_at: Instant,
@@ -269,8 +264,6 @@ impl SearchEngine {
         }))
     }
 
-    /// The entry's file type, which costs a metadata read where the listing
-    /// left it out.
     pub(super) fn entry_file_type(&self, entry: &DirEntry) -> io::Result<FileType> {
         #[cfg(test)]
         if let Some(clock) = &self.test_clock {

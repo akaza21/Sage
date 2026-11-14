@@ -1,5 +1,3 @@
-//! What a watched path held when an admission verdict was reached.
-//!
 //! Paths are resolved by the operating system exactly as Git resolves them:
 //! symlinks, junctions and mount points are followed, and other reparse
 //! points (cloud placeholders, say) are ordinary files and directories.
@@ -24,20 +22,16 @@ pub(super) fn watch(path: PathBuf) -> (PathBuf, Fingerprint) {
     (path, fingerprint)
 }
 
-/// Like [`watch`], and also returns a regular file's bytes, read in the same
-/// pass that fingerprinted them, for a caller that parses the file now. The
-/// bytes are never retained in a verdict.
 pub(super) fn watch_reading(path: PathBuf) -> ((PathBuf, Fingerprint), Option<Vec<u8>>) {
     let (fingerprint, bytes) = Fingerprint::read(&path);
     ((path, fingerprint), bytes)
 }
 
-/// The identity of the object a path reaches.
 pub(super) type ObjectId = (u64, u64);
 
-/// What a watched path held when the verdict was reached. Regular files are
-/// compared by their length and SHA-256 digest, which no timestamp or size
-/// trick can forge, so a verdict keeps 40 bytes per file rather than a copy.
+/// Regular files are compared by their length and SHA-256 digest, which no
+/// timestamp or size trick can forge, so a verdict keeps 40 bytes per file
+/// rather than a copy.
 /// Directories are compared by identity: the files inside them that matter
 /// are watched on their own, and a directory's timestamps move on every index
 /// or ref update.
@@ -50,7 +44,6 @@ pub(super) enum Fingerprint {
         len: u64,
         digest: [u8; 32],
     },
-    /// Too large to re-read on every call; such a config is refused.
     Oversized,
     /// A FIFO, device or socket, which Git could block on; refused.
     Special,
@@ -106,8 +99,6 @@ fn directory_id(path: &Path) -> io::Result<ObjectId> {
     Ok((metadata.dev(), metadata.ino()))
 }
 
-/// The volume serial number and file ID of the directory `path` reaches,
-/// read from a handle opened through every link on the way.
 #[cfg(windows)]
 fn directory_id(path: &Path) -> io::Result<ObjectId> {
     use std::os::windows::{fs::OpenOptionsExt, io::AsRawHandle};

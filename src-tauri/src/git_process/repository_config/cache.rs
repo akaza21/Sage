@@ -1,6 +1,3 @@
-//! The per-root admission cache, bounded by root count and by the bytes the
-//! cached verdicts retain.
-//!
 //! A verdict keeps a path and a compact fingerprint per watched entry, never
 //! file contents. Idle slots (no call holding them) are dropped once the map
 //! holds [`MAX_CACHED_ROOTS`] roots or the verdicts retain more than
@@ -24,7 +21,6 @@ pub(super) const MAX_RETAINED_BYTES: usize = 4 * 1024 * 1024;
 pub(super) type AdmissionSlot = Arc<tokio::sync::Mutex<Option<Admission>>>;
 
 static ADMISSIONS: LazyLock<Mutex<HashMap<PathBuf, AdmissionSlot>>> = LazyLock::new(Mutex::default);
-/// The bytes every cached verdict reported when it was stored.
 static RETAINED: AtomicUsize = AtomicUsize::new(0);
 
 pub(super) fn admission_slot(root: &Path) -> AdmissionSlot {
@@ -35,9 +31,8 @@ fn admissions() -> std::sync::MutexGuard<'static, HashMap<PathBuf, AdmissionSlot
     ADMISSIONS.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// Returns the slot for `root`, first dropping every idle slot when the map is
-/// full or over its byte budget. When every slot is in use, `root` gets a
-/// private slot, so its admission is not cached.
+/// When every slot is in use, `root` gets a private slot, so its admission is
+/// not cached.
 pub(super) fn slot_in(
     admissions: &mut HashMap<PathBuf, AdmissionSlot>,
     root: &Path,
@@ -64,7 +59,6 @@ pub(super) fn slot_in(
     Arc::clone(admissions.entry(root.to_path_buf()).or_default())
 }
 
-/// Stores `admission` (or nothing) in `slot`, keeping the byte total exact.
 pub(super) fn store(slot: &mut Option<Admission>, admission: Option<Admission>) {
     if let Some(previous) = slot.take() {
         release(previous.accounted);
@@ -75,7 +69,6 @@ pub(super) fn store(slot: &mut Option<Admission>, admission: Option<Admission>) 
     });
 }
 
-/// Counts an admission's retained bytes into the budget.
 pub(super) fn account(admission: &mut Admission) {
     let retained = admission.retained_bytes();
     RETAINED.fetch_add(retained, Ordering::SeqCst);

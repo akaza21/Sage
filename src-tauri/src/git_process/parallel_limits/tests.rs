@@ -44,9 +44,7 @@ fn larger_and_per_cpu_values_are_capped_never_raised() {
             format!("submodule.fetchJobs={MAX_PARALLEL_JOBS}"),
         ]
     );
-    // Per CPU on a two-CPU machine stays at two.
     assert_eq!(limits(b"checkout.workers\n0\0", 2)[0], "checkout.workers=2");
-    // Git's multipliers count, and the last value wins.
     assert_eq!(
         limits(b"checkout.workers\n2\0Checkout.Workers\n1k\0", 64)[0],
         format!("checkout.workers={MAX_PARALLEL_JOBS}")

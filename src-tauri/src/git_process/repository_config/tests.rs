@@ -131,7 +131,6 @@ fn status_refuses_a_repository_filter_before_git_can_run_it() {
     assert!(message.contains("filter.sentinel.clean"), "{message}");
     assert!(!sentinel.exists());
 
-    // Control: the same fixture runs the filter when Git is allowed to start.
     git(&root, &["add", "--", "a.txt"]);
     assert!(sentinel.exists(), "fixture filter is not live");
 }
@@ -178,7 +177,6 @@ fn cached_verdict_spawns_no_probe_until_the_config_changes() {
     }
     assert_eq!(probes(&root), 1);
 
-    // Index and ref updates touch `.git` but not the config, so they hit.
     git(
         &root,
         &[
@@ -365,7 +363,6 @@ fn a_non_utf8_filter_subsection_is_refused() {
     assert!(message.contains("filter.*.clean"), "{message}");
     assert!(!sentinel.exists());
 
-    // Control: Git does run the non-UTF-8 driver when it is allowed to start.
     git(&root, &["add", "--", "a.txt"]);
     assert!(sentinel.exists(), "fixture filter is not live");
 }
@@ -420,7 +417,6 @@ fn an_admitted_repository_cannot_drift_to_a_hostile_ancestor() {
     );
     assert!(!sentinel.exists(), "the ancestor's filter ran");
 
-    // Control: unpinned discovery does reach the hostile ancestor.
     let _ = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&inner)
@@ -488,10 +484,6 @@ fn only_git_data_inside_the_root_is_admitted() {
     );
 }
 
-/// A separate git dir reached through a junctioned (or symlinked) ancestor is
-/// resolved the way Git resolves it, and the directory reached is inspected.
-/// Each directory on the way is stamped by identity, so retargeting the link
-/// at hostile Git data is checked again rather than served from the cache.
 #[test]
 fn a_separate_git_dir_reached_through_a_junctioned_ancestor_is_checked() {
     let scratch = Scratch::new();
@@ -508,7 +500,6 @@ fn a_separate_git_dir_reached_through_a_junctioned_ancestor_is_checked() {
     );
     assert_eq!(probes(&root), 1);
 
-    // The same layout, now through a link to Git data with a filter.
     let hostile = scratch.directory("hostile-metadata");
     copy_tree(&real.join("repo.git"), &hostile.join("repo.git"));
     git(
@@ -527,8 +518,6 @@ fn a_separate_git_dir_reached_through_a_junctioned_ancestor_is_checked() {
     assert!(message.contains("filter.sentinel.clean"), "{message}");
     assert_eq!(probes(&root), 2, "the retarget must invalidate the verdict");
 }
-/// `git init --separate-git-dir` keeps the git data outside the work tree.
-/// Status and diff work, and a filter in that git dir's config is refused.
 #[test]
 fn a_separate_git_dir_repository_is_admitted_and_its_config_checked() {
     let scratch = Scratch::new();
@@ -548,7 +537,6 @@ fn a_separate_git_dir_repository_is_admitted_and_its_config_checked() {
     let message = refusal(sage_git(&root, &["status", "--porcelain"]));
     assert!(message.contains("filter.sentinel.clean"), "{message}");
 }
-/// A `commondir` file redirects the shared config the same way.
 #[test]
 fn a_commondir_pointer_is_refused_even_when_it_points_inside_the_root() {
     let scratch = Scratch::new();
@@ -563,7 +551,6 @@ fn a_commondir_pointer_is_refused_even_when_it_points_inside_the_root() {
         "../metadata/common.git\n",
     )
     .unwrap();
-    // Control: Git itself reads the pointed-to common dir.
     git(&root, &["rev-parse", "--git-common-dir"]);
 
     assert!(matches!(
@@ -574,9 +561,6 @@ fn a_commondir_pointer_is_refused_even_when_it_points_inside_the_root() {
     ));
 }
 
-/// A `commondir` that aliases the root's own `.git` through a link passes a
-/// canonical-path check, and the link can later be repointed at hostile
-/// metadata without changing any watched bytes. Its presence is refused.
 #[cfg(unix)]
 #[test]
 fn a_commondir_alias_of_the_own_git_dir_is_refused() {
@@ -594,7 +578,6 @@ fn a_commondir_alias_of_the_own_git_dir_is_refused() {
         "../metadata/common.git\n",
     )
     .unwrap();
-    // Control: Git resolves the alias to the root's own git dir.
     let output = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&root)
@@ -614,7 +597,6 @@ fn a_commondir_alias_of_the_own_git_dir_is_refused() {
         ))
     ));
 
-    // Repoint the alias at external metadata carrying a filter.
     let hostile = scratch.repository("hostile");
     git(&hostile, &["config", "filter.sentinel.clean", &tool]);
     fs::remove_file(&alias).unwrap();
@@ -627,12 +609,10 @@ fn a_commondir_alias_of_the_own_git_dir_is_refused() {
     ));
     assert!(!sentinel.exists(), "the external filter ran");
 
-    // Control: plain Git now runs the external filter through the alias.
     git(&root, &["add", "--", "a.txt"]);
     assert!(sentinel.exists(), "the redirected filter is not live");
 }
 
-/// A pointer file created after admission invalidates the cached verdict.
 #[test]
 fn a_pointer_file_created_after_admission_is_refused() {
     for name in POINTER_FILES {
@@ -657,8 +637,6 @@ fn a_pointer_file_created_after_admission_is_refused() {
     }
 }
 
-/// A real `git worktree add` worktree is admitted: status and diff work, and
-/// a filter in the common config it shares with the main worktree is refused.
 #[test]
 fn a_linked_worktree_is_admitted_and_its_common_config_checked() {
     let scratch = Scratch::new();
@@ -686,17 +664,10 @@ fn a_linked_worktree_is_admitted_and_its_common_config_checked() {
         assert!(message.contains("filter.sentinel.clean"), "{message}");
     }
     assert!(!sentinel.exists());
-    // The main worktree reads the same config and is refused too.
     refusal(sage_git(&main, &["status", "--porcelain"]));
-    // Control: plain Git in the linked worktree runs the shared filter.
     git(&worktree, &["add", "--", "a.txt"]);
     assert!(sentinel.exists(), "the shared filter is not live");
 }
-/// A `.git` that is itself a link (a junction on Windows, which is also how a
-/// reparse point such as a cloud placeholder looks to the filesystem) is
-/// followed the way Git follows it, and admitted. Retargeting it at another
-/// directory changes its identity, so the new target is checked rather than
-/// served from the cache.
 #[test]
 fn a_git_dir_reached_through_a_link_is_admitted_and_checked_again_on_retarget() {
     let scratch = Scratch::new();
@@ -737,7 +708,6 @@ fn a_git_dir_reached_through_a_link_is_admitted_and_checked_again_on_retarget() 
     assert_eq!(probes(&root), 2, "the retarget must invalidate the verdict");
 }
 
-/// A linked config file is followed the way Git follows it and checked.
 #[cfg(unix)]
 #[test]
 fn a_linked_config_file_is_followed_and_checked() {
@@ -765,13 +735,11 @@ fn a_linked_config_file_is_followed_and_checked() {
     let message = refusal(sage_git(&root, &["status", "--porcelain"]));
     assert!(message.contains("filter.sentinel.clean"), "{message}");
 }
-/// Keeps `path` unreadable to every other opener until dropped.
 struct ReadDenied {
     #[cfg(windows)]
     _exclusive: fs::File,
     #[cfg(unix)]
     path: PathBuf,
-    /// Where the file waits while `path` is a link to itself.
     #[cfg(unix)]
     held: Option<PathBuf>,
 }
@@ -881,8 +849,6 @@ const IDENTITY: [&str; 4] = [
     "user.email=sage@example.invalid",
 ];
 
-/// A repository with an absorbed submodule `sub` whose `*.txt` files use the
-/// `sentinel` filter, which no config defines yet.
 fn submodule_fixture(scratch: &Scratch) -> PathBuf {
     let source = scratch.repository("source");
     fs::write(source.join(".gitattributes"), "*.txt filter=sentinel\n").unwrap();
@@ -920,7 +886,6 @@ fn touch_submodule_file(root: &Path) {
     fs::write(&file, checked_out).unwrap();
 }
 
-/// A directory symlink on Unix, a junction on Windows.
 fn directory_link(link: &Path, target: &Path) {
     #[cfg(unix)]
     std::os::unix::fs::symlink(target, link).unwrap();
@@ -940,7 +905,6 @@ fn directory_link(link: &Path, target: &Path) {
     }
 }
 
-/// Copies a directory tree, for Git data that must be byte-identical.
 fn copy_tree(from: &Path, to: &Path) {
     fs::create_dir_all(to).unwrap();
     for entry in fs::read_dir(from).unwrap() {
@@ -962,8 +926,6 @@ fn config_operand(git_dir: &Path) -> String {
     text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned()
 }
 
-/// Removes a directory link made by [`directory_link`] without touching its
-/// target.
 fn remove_link(link: &Path) {
     #[cfg(unix)]
     fs::remove_file(link).unwrap();
@@ -1044,10 +1006,6 @@ fn a_gitlink_win32_would_rename_cannot_reach_a_hostile_submodule() {
     assert!(sentinel.exists(), "the renamed gitlink is not live");
 }
 
-/// A repository with a populated submodule, an upstream to fetch from, and
-/// config that would make Git recurse into the submodule everywhere: in the
-/// parent, in `.gitmodules`, and in the submodule's own config, which also
-/// carries a live clean filter and a hostile `core.worktree`.
 fn isolation_fixture(scratch: &Scratch) -> (PathBuf, PathBuf) {
     let root = submodule_fixture(scratch);
     git(
@@ -1101,7 +1059,6 @@ fn isolation_fixture(scratch: &Scratch) -> (PathBuf, PathBuf) {
     (root, sentinel)
 }
 
-/// Runs Sage's Git with a trace2 target and returns its events.
 fn traced_git(root: &Path, args: &[&str], trace: &Path) -> (AppResult<GitOutput>, String) {
     let _ = fs::remove_file(trace);
     let result = tokio::runtime::Runtime::new()
@@ -1134,9 +1091,6 @@ fn plain(path: &Path) -> String {
     text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned()
 }
 
-/// Status, diff and fetch work in a repository whose submodule config would
-/// run a filter (through a hostile `core.worktree`) as soon as Git ran in
-/// the submodule, and no Git process ever opens the submodule.
 #[test]
 fn status_diff_and_fetch_never_run_git_in_a_submodule() {
     let scratch = Scratch::new();
@@ -1166,13 +1120,10 @@ fn status_diff_and_fetch_never_run_git_in_a_submodule() {
     assert!(!sentinel.exists(), "the submodule's filter ran");
     assert!(!root.join(".git/modules/sub/FETCH_HEAD").exists());
 
-    // Control: plain Git, honouring the same config, runs it in the submodule.
     git(&root, &["status", "--porcelain"]);
     assert!(sentinel.exists(), "the submodule's filter is not live");
 }
 
-/// With the checkout gone but its git dir retained under `.git/modules`, a
-/// recursive fetch would still open that git dir. Sage's never does.
 #[test]
 fn a_retained_submodule_git_dir_without_a_checkout_is_never_opened() {
     let scratch = Scratch::new();
@@ -1194,12 +1145,9 @@ fn a_retained_submodule_git_dir_without_a_checkout_is_never_opened() {
     assert!(!sentinel.exists());
 }
 
-/// A layout refusal is never served from the cache: once the cause is
-/// repaired, the next call probes again and is admitted.
 #[test]
 fn a_repaired_layout_refusal_is_admitted_on_the_next_call() {
     let scratch = Scratch::new();
-    // `core.worktree` pointing elsewhere makes the root no longer the top level.
     let root = scratch.repository("worktree-elsewhere");
     let elsewhere = scratch.directory("elsewhere");
     git(
@@ -1221,7 +1169,6 @@ fn a_repaired_layout_refusal_is_admitted_on_the_next_call() {
             .succeeded()
     );
 
-    // A stray `gitdir` pointer file in the root's own `.git` directory.
     let root = scratch.repository("stray-pointer");
     let pointer = root.join(".git").join("gitdir");
     fs::write(&pointer, ".\n").unwrap();

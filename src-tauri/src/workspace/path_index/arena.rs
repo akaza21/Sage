@@ -1,6 +1,3 @@
-//! One root's relative File paths, packed into a single string. Each entry
-//! is an offset, a length, where its basename starts and whether it is all
-//! ASCII, so 200k paths cost one allocation for the text plus 12 bytes each.
 //! An arena is filled by one walk and never changes after; a refresh builds
 //! a new one.
 
@@ -18,10 +15,8 @@ struct Entry {
     ascii: bool,
 }
 
-/// One stored path.
 pub(super) struct Stored<'a> {
     pub(super) path: &'a str,
-    /// Byte offset where the basename starts.
     pub(super) base: usize,
     pub(super) ascii: bool,
 }
@@ -33,8 +28,7 @@ pub(super) struct PathArena {
 }
 
 impl PathArena {
-    /// Adds `path`, a relative path with `/` separators. Returns false when
-    /// it is too long or the text would outgrow 32-bit offsets.
+    /// False when `path` is too long or the text would outgrow 32-bit offsets.
     pub(super) fn push(&mut self, path: &str) -> bool {
         if path.is_empty()
             || path.len() > MAX_INDEXED_PATH_BYTES
@@ -53,7 +47,6 @@ impl PathArena {
         true
     }
 
-    /// An empty arena with room for `paths` paths of `bytes` in total.
     pub(super) fn with_capacity(paths: usize, bytes: usize) -> Self {
         Self {
             text: String::with_capacity(bytes),
@@ -61,7 +54,6 @@ impl PathArena {
         }
     }
 
-    /// Gives back room beyond an eighth more than the paths need.
     pub(super) fn trim_slack(&mut self) {
         if self.text.capacity() > self.text.len() + self.text.len() / 8 {
             self.text.shrink_to_fit();
@@ -75,12 +67,10 @@ impl PathArena {
         self.entries.len()
     }
 
-    /// Bytes of path text held.
     pub(super) fn text_len(&self) -> usize {
         self.text.len()
     }
 
-    /// The paths in `slots`; ranking splits an arena into such shares.
     pub(super) fn range(&self, slots: Range<usize>) -> impl Iterator<Item = Stored<'_>> {
         self.entries[slots].iter().map(|entry| {
             let start = entry.start as usize;
@@ -92,7 +82,6 @@ impl PathArena {
         })
     }
 
-    /// Bytes held, for the memory budget.
     pub(super) fn heap_bytes(&self) -> usize {
         self.text.capacity() + self.entries.capacity() * std::mem::size_of::<Entry>()
     }

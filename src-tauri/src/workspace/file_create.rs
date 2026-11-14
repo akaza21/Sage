@@ -309,9 +309,6 @@ pub(crate) fn validate_new_file_basename(basename: &str) -> AppResult<()> {
     Ok(())
 }
 
-/// The rules for a path Sage creates on the user's behalf, folders and all:
-/// every name passes `validate_new_file_path`, and none names protected
-/// workspace metadata such as `.git` or `node_modules`.
 pub(crate) fn admit_created_path(relative_path: &str) -> AppResult<()> {
     let mut parent = String::new();
     for name in relative_path.split('/') {

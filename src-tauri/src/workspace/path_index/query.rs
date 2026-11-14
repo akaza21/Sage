@@ -1,5 +1,3 @@
-//! Ranks the index for one Quick Open query and keeps the best `limit`.
-
 use std::{
     cmp::Ordering,
     collections::{BinaryHeap, HashMap},
@@ -13,32 +11,23 @@ use super::{
     superseded,
 };
 
-/// A newer query is checked for after this many paths.
 const CANCEL_CHECK_EVERY: usize = 8192;
 /// Indexes smaller than this are ranked on the calling thread; larger ones
 /// are split across up to four. Ranking allocates almost nothing, so the
 /// extra threads leave no memory behind.
 const PARALLEL_FROM: usize = 20_000;
-/// The most recent File gets this much extra; each older one a step less.
 const RECENT_BONUS: i32 = 200;
 const RECENT_STEP: i32 = 4;
-/// Bits in the filter that spares most matches a recent-File lookup.
 const RECENT_FILTER_BITS: usize = 8192;
 
-/// The score of a File an empty browsing query lists without it being
-/// recent, below any recent File's.
 const BROWSED: i32 = i32::MAX / 2;
 
 pub(crate) struct QuickOpenQuery<'a> {
     pub(crate) text: &'a str,
     pub(crate) limit: usize,
     pub(crate) generation: u64,
-    /// Which Quick Open session asks; the first query of a new one refreshes
-    /// the index.
     pub(crate) session: u64,
-    /// Recently opened Files, most recent first.
     pub(crate) recent: &'a [ResourceRef],
-    /// An empty query also lists Files never opened, after the recent ones.
     pub(crate) browse: bool,
 }
 
@@ -58,8 +47,6 @@ pub(crate) enum Outcome {
         heap_bytes: usize,
         readied: Readied,
     },
-    /// A newer query arrived, or the Project closed; this one stopped
-    /// early.
     Superseded,
 }
 
@@ -93,7 +80,6 @@ struct Candidate<'a> {
 }
 
 impl Candidate<'_> {
-    /// Better first: higher score, then the shorter path, then path order.
     fn rank(&self, other: &Self) -> Ordering {
         other
             .score
@@ -125,8 +111,6 @@ impl PartialEq for Candidate<'_> {
 
 impl Eq for Candidate<'_> {}
 
-/// A cheap hash for the recent filter: the path's length, the first two
-/// bytes of its basename (which starts at `base`) and its last byte.
 fn filter_slot(path: &str, base: usize) -> usize {
     let bytes = path.as_bytes();
     let at = |index: usize| bytes.get(index).map_or(0, |byte| *byte as usize);
@@ -137,12 +121,9 @@ fn filter_slot(path: &str, base: usize) -> usize {
     (hash ^ (hash >> 13)) % RECENT_FILTER_BITS
 }
 
-/// What every share of a ranking reads.
 struct Ranking<'a> {
     parsed: Option<Query>,
     recent: HashMap<(&'a str, &'a str), usize>,
-    /// Set for every recent File's `filter_slot`; a match whose slot is
-    /// clear needs no lookup, which is most of them.
     recent_filter: Vec<u64>,
     limit: usize,
     generation: u64,
@@ -171,7 +152,6 @@ impl<'a> Ranking<'a> {
         }
     }
 
-    /// How recently `path` was opened, 0 for the most recent.
     fn recent_rank(&self, root_id: &str, path: &str, base: usize) -> Option<usize> {
         let slot = filter_slot(path, base);
         if self.recent_filter[slot / 64] & (1 << (slot % 64)) == 0 {
@@ -185,8 +165,6 @@ impl<'a> Ranking<'a> {
             .map_or(0, |rank| RECENT_BONUS - RECENT_STEP * rank as i32)
     }
 
-    /// The best `limit` candidates in share `share` of `shares` of every
-    /// root, or `None` when a newer query arrived meanwhile.
     fn scan<'i>(
         &self,
         index: &'i ProjectIndex,
@@ -211,11 +189,8 @@ impl<'a> Ranking<'a> {
                         }
                         None => continue,
                     },
-                    // An empty query lists recently opened Files only, as VS
-                    // Code does.
                     None => match self.recent_rank(&root.root_id, stored.path, stored.base) {
                         Some(rank) => -(rank as i32),
-                        // Browsing ranks the rest below every recent File.
                         None if self.browse => -BROWSED,
                         None => continue,
                     },
@@ -241,7 +216,6 @@ impl<'a> Ranking<'a> {
     }
 }
 
-/// The ranked results, or `None` when a newer query arrived meanwhile.
 fn rank(index: &ProjectIndex, query: &QuickOpenQuery<'_>) -> Option<Vec<Ranked>> {
     let shares = if index.files() >= PARALLEL_FROM {
         std::thread::available_parallelism().map_or(1, |cores| cores.get().min(4))
@@ -251,8 +225,6 @@ fn rank(index: &ProjectIndex, query: &QuickOpenQuery<'_>) -> Option<Vec<Ranked>>
     rank_in_shares(index, query, shares)
 }
 
-/// Ranks `index` split into `shares`, each on its own thread when more than
-/// one.
 pub(super) fn rank_in_shares(
     index: &ProjectIndex,
     query: &QuickOpenQuery<'_>,

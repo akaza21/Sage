@@ -15,7 +15,6 @@ use crate::workspace::{RootIdentity, Workspace, open_held_parent, root_identity_
 
 /// Owner read and write only until the target's permissions are copied.
 const TEMP_FILE_MODE: libc::c_uint = 0o600;
-/// A new File gets the usual mode, narrowed by the process umask.
 const NEW_FILE_MODE: libc::c_uint = 0o666;
 const READ_FLAGS: libc::c_int =
     libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK;
@@ -61,7 +60,6 @@ impl HeldParent {
         root_identity_metadata(&self.directory.metadata()?)
     }
 
-    /// Opens `name` for reading without following a final link.
     pub(in crate::editor) fn open_file(&self, name: &str) -> AppResult<File> {
         let name = entry_name(name)?;
         // SAFETY: the held descriptor and NUL-terminated name are valid for the call.
@@ -74,7 +72,6 @@ impl HeldParent {
         self.create_new_with_mode(name, TEMP_FILE_MODE)
     }
 
-    /// Like `create_new`, with the mode a new File gets (umask applies).
     pub(super) fn create_new_document(&self, name: &str) -> AppResult<File> {
         self.create_new_with_mode(name, NEW_FILE_MODE)
     }
@@ -93,7 +90,6 @@ impl HeldParent {
         Ok(adopt(descriptor)?)
     }
 
-    /// Atomically renames `temp` over `target`, both inside this directory.
     pub(in crate::editor) fn replace(&self, temp: &str, target: &str) -> AppResult<()> {
         let (temp, target) = (entry_name(temp)?, entry_name(target)?);
         let directory = self.directory.as_raw_fd();
@@ -104,10 +100,7 @@ impl HeldParent {
         Ok(())
     }
 
-    /// Renames `temp` to `target` only if nothing has that name: `false`
-    /// when something does. Where the file system cannot rename without
-    /// replacing, it links `temp` in, and failing that copies it into a
-    /// target it creates exclusively. `temp` stays for the caller to remove.
+    /// `temp` stays for the caller to remove.
     pub(in crate::editor) fn rename_new(&self, temp: &str, target: &str) -> AppResult<bool> {
         let (temp_c, target_c) = (entry_name(temp)?, entry_name(target)?);
         let directory = self.directory.as_raw_fd();
@@ -148,8 +141,6 @@ impl HeldParent {
         Err(error.into())
     }
 
-    /// Links `temp` in as `target` if nothing has that name, falling back to
-    /// `copy_new` where the file system has no hard links.
     pub(in crate::editor) fn link_new(&self, temp: &str, target: &str) -> AppResult<bool> {
         let (temp_c, target_c) = (entry_name(temp)?, entry_name(target)?);
         let directory = self.directory.as_raw_fd();
@@ -170,8 +161,6 @@ impl HeldParent {
         Err(error.into())
     }
 
-    /// Creates `target` exclusively and copies `temp` into it. A target this
-    /// call created and could not fill is removed, unless it was replaced.
     pub(in crate::editor) fn copy_new(&self, temp: &str, target: &str) -> AppResult<bool> {
         let mut source = self.open_file(temp)?;
         let mut file = match self.create_new_document(target) {
@@ -196,8 +185,6 @@ impl HeldParent {
         Ok(true)
     }
 
-    /// Creates the folder `name`; one that exists, or a link, fails with
-    /// `AlreadyExists` and is never followed.
     pub(in crate::editor) fn create_folder(&self, name: &str) -> std::io::Result<()> {
         let name = entry_name(name).map_err(std::io::Error::other)?;
         // SAFETY: the held descriptor and NUL-terminated name are valid for the call.
@@ -207,7 +194,6 @@ impl HeldParent {
         Ok(())
     }
 
-    /// Removes the empty folder `name`; one that is not empty stays.
     pub(in crate::editor) fn remove_folder(&self, name: &str) -> std::io::Result<()> {
         let name = entry_name(name).map_err(std::io::Error::other)?;
         // SAFETY: the held descriptor and NUL-terminated name are valid for the call.

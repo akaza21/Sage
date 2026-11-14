@@ -1,13 +1,9 @@
-//! Refusal policy for keys listed by Git, including bounded, redacted diagnostics.
-
 use std::{collections::BTreeSet, fmt::Write as _};
 
 const MAX_NAMED_KEYS: usize = 3;
 const MAX_SUBSECTION_CHARS: usize = 64;
 
-/// Builds the public refusal for a NUL-separated `git config --name-only`
-/// listing, or `None` when no listed key runs a command. Keys are classified
-/// as bytes: Git accepts subsections that are not UTF-8.
+/// Keys are classified as bytes: Git accepts subsections that are not UTF-8.
 pub(super) fn refusal_message(listing: &[u8]) -> Option<String> {
     let named = named_keys(listing)?;
     Some(format!(
@@ -21,8 +17,6 @@ pub(super) fn refusal_message(listing: &[u8]) -> Option<String> {
 /// or macOS (HFS+) would resolve to something else, by canonical key.
 const PATH_PROTECTIONS: [&str; 2] = ["core.protectntfs", "core.protecthfs"];
 
-/// The path-protection keys the listing sets, whatever their value; the
-/// caller reads each value and refuses anything but `true`.
 pub(super) fn path_protection_keys(listing: &[u8]) -> Vec<&'static str> {
     PATH_PROTECTIONS
         .into_iter()
@@ -46,7 +40,6 @@ pub(super) fn path_protection_refusal(key: &str) -> String {
     )
 }
 
-/// The bounded, redacted list of command-running keys, or `None`.
 fn named_keys(listing: &[u8]) -> Option<String> {
     let keys = listing
         .split(|byte| *byte == 0)
@@ -70,7 +63,6 @@ fn named_keys(listing: &[u8]) -> Option<String> {
     Some(named)
 }
 
-/// A `section[.subsection].name` key as `git config --name-only` prints it.
 #[derive(Debug, PartialEq, Eq)]
 struct ConfigKey<'a> {
     section: Vec<u8>,
@@ -135,9 +127,8 @@ impl<'a> ConfigKey<'a> {
                 .is_some_and(|prefix| prefix.eq_ignore_ascii_case(b"remote-"))
     }
 
-    /// The key as shown to the user. Subsections are user-controlled (and a
-    /// credential subsection can be a URL with a token), so only plain
-    /// identifiers are echoed.
+    /// Subsections are user-controlled (and a credential subsection can be a URL
+    /// with a token), so only plain identifiers are echoed.
     fn display_name(&self) -> String {
         // Alias names are repository-controlled command names, potentially
         // very long or split across a subsection. Never echo them or values.

@@ -17,7 +17,6 @@ use super::super::{OUTPUT_CHUNK_BYTES, TerminalOutputSink};
 
 const POLL_MS: libc::c_int = 100;
 
-/// Whether `file` became ready for `events` within one poll interval.
 fn ready(file: &File, events: libc::c_short) -> std::io::Result<bool> {
     let mut poll = libc::pollfd {
         fd: file.as_raw_fd(),
@@ -41,7 +40,6 @@ fn ready(file: &File, events: libc::c_short) -> std::io::Result<bool> {
     Ok(ready > 0)
 }
 
-/// Reads the PTY until the shell's session closes it or close is requested.
 pub(super) fn drain(master: OwnedFd, output: &TerminalOutputSink, stop: &AtomicBool) {
     let mut file = File::from(master);
     let mut chunk = [0_u8; OUTPUT_CHUNK_BYTES];

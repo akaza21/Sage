@@ -154,11 +154,10 @@ pub(super) fn durable_binding_id(
         .map_err(|_| crate::acp::store::StoreError::Corrupt("session binding identity"))
 }
 
-/// An archived Chat runs no agent. Prompt, session start and activation
-/// refuse it here with a typed message while holding the project transition
-/// lock, which archive also takes. Archive advances the transition epoch, so
-/// a send that releases the lock for its workspace capture fails its relock
-/// in `lock_active_project` as stale rather than dispatching.
+/// Runs while holding the project transition lock, which archive also takes.
+/// Archive advances the transition epoch, so a send that releases the lock
+/// for its workspace capture fails its relock in `lock_active_project` as
+/// stale rather than dispatching.
 pub(super) fn refuse_archived_chat(
     state: &AppState,
     project_id: &SageProjectId,
@@ -175,9 +174,6 @@ pub(super) fn refuse_archived_chat(
     }
 }
 
-/// A session's stored capabilities, read without loading a chat page. A
-/// session outside the chat answers `None`, as when it was absent from the
-/// chat's page.
 pub(super) fn session_capabilities(
     state: &AppState,
     project_id: &crate::acp::contract::SageProjectId,

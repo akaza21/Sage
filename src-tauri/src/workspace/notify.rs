@@ -32,10 +32,8 @@ const MAX_ROOTS: usize = 8;
 const MAX_WATCHES: usize = 8;
 pub(crate) const OVERFLOW_NOTIFY_ACTION: u32 = 8;
 pub(crate) const OVERFLOW_RELATIVE_PATH: &str = "lost-notices";
-/// Something changed inside the ignored folder the record names.
 pub(crate) const IGNORED_BELOW_NOTIFY_ACTION: u32 = 9;
 
-/// Each event carries a [`batch::WorkspaceNotifyBatch`].
 pub const WORKSPACE_NOTIFY_EVENT: &str = "workspace-notify-v2";
 
 #[derive(Debug)]
@@ -258,8 +256,6 @@ pub fn apply_unwatch_workspace_notify(value: &Value) -> Result<(), WorkspaceNoti
         .as_str()
         .filter(|item| bounded_identifier(item))
         .ok_or_else(|| reject("schema-invalid"))?;
-    // The Project is closing or being switched away from: free Quick Open's
-    // path index with it, even if it was never watched.
     crate::workspace::path_index::forget_project(project_id);
     let mut registry = registry();
     let Some(watch) = registry.watches.remove(project_id) else {
@@ -343,8 +339,6 @@ pub fn watch_workspace_notify(
         let _ = apply_unwatch_if_generation(&project_id, generation);
         return Err(error.code().to_string());
     }
-    // A newly watched Project is the active one: Quick Open's index for any
-    // other is no longer needed.
     crate::workspace::path_index::focus_project(&project_id);
     emit_queued_workspace_notices(&app, &value);
     Ok(WorkspaceNotifyWatchAck { generation })

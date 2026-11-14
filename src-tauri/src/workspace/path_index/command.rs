@@ -1,6 +1,3 @@
-//! The `quick_open_query` command: one bounded query against the active
-//! project's path index.
-
 use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -35,14 +32,9 @@ pub struct QuickOpenRequest {
     /// Increases with each query; a newer one stops older ones. It must keep
     /// increasing across webview reloads, so the UI derives it from a clock.
     pub generation: u64,
-    /// Identifies one opening of Quick Open. The first query of a new session
-    /// refreshes the index in the background.
     pub session: u64,
-    /// Recently opened Files, most recent first, ranked higher.
     #[serde(default)]
     pub recent: Vec<ResourceRef>,
-    /// An empty query lists other Files after the recent ones, shortest
-    /// paths first, for pickers that browse rather than reopen.
     #[serde(default)]
     pub browse: bool,
 }
@@ -68,11 +60,8 @@ pub struct QuickOpenResponse {
     pub state: QuickOpenState,
     pub results: Vec<QuickOpenMatch>,
     pub indexed_files: usize,
-    /// The index stopped at its File limit, so some Files can't be found.
     pub truncated: bool,
-    /// Whether this query had to walk the Project first.
     pub built: bool,
-    /// A fresh index is being built; asking again shortly sees it.
     pub refreshing: bool,
     pub index_bytes: usize,
     pub ready_ms: u64,
@@ -101,9 +90,8 @@ pub async fn quick_open_query(
     .map_err(|error| format!("Quick Open stopped unexpectedly: {error}"))
 }
 
-/// Checks the request and reads what the index is built from. The ticket is
-/// taken before the active-Project check, so a Project closed after that
-/// check keeps no index.
+/// The ticket is taken before the active-Project check, so a Project closed
+/// after that check keeps no index.
 async fn prepare(state: &AppState, request: &QuickOpenRequest) -> AppResult<(IndexInputs, Ticket)> {
     validate(request)?;
     let epoch = state.project_transitions.lock().await;
@@ -152,7 +140,6 @@ fn check_active(state: &AppState, request: &QuickOpenRequest, epoch: u64) -> App
     Ok(())
 }
 
-/// The roots and settings the index is built from, read on the trusted side.
 fn inputs(state: &AppState, project_id: &str) -> AppResult<IndexInputs> {
     let records = state.database.root_records(project_id)?;
     if records.is_empty() || records.len() > MAX_PROJECT_ROOTS {
@@ -162,7 +149,6 @@ fn inputs(state: &AppState, project_id: &str) -> AppResult<IndexInputs> {
     }
     let roots = records
         .iter()
-        // An unavailable root is left out rather than failing the query.
         .filter_map(|record| Workspace::open(project_id, &record.id, &record.absolute_path).ok())
         .map(|workspace| (workspace.root_id().to_owned(), workspace.root().to_owned()))
         .collect();

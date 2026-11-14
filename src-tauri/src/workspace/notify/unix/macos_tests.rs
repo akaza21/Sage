@@ -4,8 +4,6 @@ use std::sync::atomic::{AtomicU64, Ordering};
 struct Fixture(PathBuf);
 impl Fixture {
     fn new() -> Self {
-        // The sequence separates parallel tests even within one clock tick;
-        // the random suffix also separates runs and processes.
         static NEXT: AtomicU64 = AtomicU64::new(0);
         let path = std::env::temp_dir().join(format!(
             "sage-macos-review-{}-{}",

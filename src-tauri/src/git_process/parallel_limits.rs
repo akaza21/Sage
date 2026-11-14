@@ -1,23 +1,13 @@
-//! The effective, capped value of each Git setting that starts parallel
-//! children, passed on every admitted Git call.
-//!
 //! `checkout.workers`, `fetch.parallel` and `submodule.fetchJobs` let a
-//! repository's config start many Git children at once (a value of 0 or less
-//! means one per CPU). On Windows they all run inside the call's Job Object,
-//! whose process limit leaves room for [`MAX_PARALLEL_JOBS`] of them. Sage
-//! passes all three as `-c key=<value>` on every admitted call:
-//! - unset: Git's default of 1, so nothing is raised;
-//! - above the cap: the cap;
-//! - 0 or less: the CPU count, capped;
-//! - unreadable: 1.
+//! repository's config start many Git children at once. On Windows they all
+//! run inside the call's Job Object, whose process limit leaves room for
+//! [`MAX_PARALLEL_JOBS`] of them, so every admitted call pins all three with
+//! `-c`, which wins over every config file. Sage's Git never recurses into
+//! submodules (see `SUBMODULE_ISOLATION`), so no fetch fans out further.
 //!
-//! Command-line config wins over every config file. Sage's Git never recurses
-//! into submodules (see `SUBMODULE_ISOLATION`), so no fetch fans out further.
-//!
-//! The values come from repository admission: when the name-only listing it
-//! already reads shows one of these keys, it reads their values once with
-//! [`PROBE_ARGS`] and keeps them in its cached verdict, so a steady-state call
-//! starts no extra process and they go stale exactly when the config does.
+//! Repository admission reads the values and keeps them in its cached
+//! verdict, so a steady-state call starts no extra process and they go stale
+//! exactly when the config does.
 
 use std::collections::HashMap;
 
@@ -29,10 +19,8 @@ const KEYS: [(&str, &str); 3] = [
     ("fetch.parallel", "fetch.parallel"),
     ("submodule.fetchjobs", "submodule.fetchJobs"),
 ];
-/// Git's default for every key.
 const GIT_DEFAULT: u32 = 1;
 
-/// Lists only the capped keys, NUL-separated.
 pub(super) const PROBE_ARGS: [&str; 4] = [
     "config",
     "-z",
@@ -41,7 +29,6 @@ pub(super) const PROBE_ARGS: [&str; 4] = [
 ];
 pub(super) const MAX_PROBE_BYTES: usize = 64 * 1024;
 
-/// The effective value of each key in [`KEYS`] order.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) struct ParallelLimits([u32; 3]);
 
@@ -52,8 +39,7 @@ impl Default for ParallelLimits {
 }
 
 impl ParallelLimits {
-    /// The limits a probe's result calls for. A probe that did not run or
-    /// failed fails safe: every key is held to one.
+    /// A probe that did not run or failed fails safe: every key is held to one.
     pub(super) fn from_probe(probe: Option<&GitOutput>) -> Self {
         let Some(probe) = probe.filter(|probe| !probe.stdout_truncated) else {
             return Self::default();
@@ -65,15 +51,13 @@ impl ParallelLimits {
         Self::from_listing(&probe.stdout, cpu_count())
     }
 
-    /// The `-c` settings that pin every key to its effective value.
     pub(super) fn overrides(self) -> impl Iterator<Item = String> {
         KEYS.iter()
             .zip(self.0)
             .map(|((_, name), value)| format!("{name}={value}"))
     }
 
-    /// Limits for a `-z` listing of `key\nvalue` records; the last value of a
-    /// key wins, as in Git.
+    /// The last value of a key wins, as in Git.
     fn from_listing(listing: &[u8], cpus: u32) -> Self {
         let mut values = HashMap::new();
         for record in listing
@@ -102,8 +86,6 @@ impl ParallelLimits {
     }
 }
 
-/// Whether a `--name-only -z` listing sets any capped key, so their values
-/// need reading at all.
 pub(super) fn lists_any(listing: &[u8]) -> bool {
     listing.split(|byte| *byte == 0).any(|listed| {
         KEYS.iter()

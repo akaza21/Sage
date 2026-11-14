@@ -1,5 +1,3 @@
-//! Bounded index lookup for one window. Git reads a fresh index, so force-adds
-//! and index removals need no watcher-owned membership/fingerprint cache.
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::Path,

@@ -1,15 +1,11 @@
-//! A prompt sent to a runtime that still holds a turn the user undid. Such
-//! a runtime takes no prompt (the store refuses to prepare one), so the send
-//! relaunches the session without the turn first and goes to the new
-//! runtime: the user's send after an Undo just works, also when the undo
-//! left its runtime running, for instance to keep background tasks going.
+//! A runtime that still holds a turn the user undid takes no prompt (the
+//! store refuses to prepare one), so the send relaunches the session without
+//! the turn first and goes to the new runtime.
 
 use super::*;
 use crate::acp::{intent::AcpConflictResource, service::UndoneRelaunchError};
 
-/// Points `request` at a relaunch of its session when its runtime still
-/// holds an undone turn; any other request is left as it is. Runs under the
-/// project transition lock `transition`, as an activation does.
+/// Runs under the project transition lock `transition`, as an activation does.
 pub(super) async fn relaunch_undone(
     state: &AppState,
     transition: &crate::state::ActiveProjectContext<'_>,
