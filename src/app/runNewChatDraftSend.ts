@@ -26,7 +26,10 @@ export async function runNewChatDraftSend(
     get().chatOwnershipEpoch === epoch &&
     get().newChatDraft?.creating;
   if (initial.pendingFirstSend !== submission) {
-    if (owns()) set({ newChatDraft: { ...draft, creating: false } });
+    if (owns())
+      set({
+        newChatDraft: { ...draft, creating: !!draft.reconcileCreation },
+      });
     return;
   }
   const fail = (error: string) => {
@@ -36,26 +39,30 @@ export async function runNewChatDraftSend(
           ...draft,
           creating: false,
           error: boundedChatError(error),
+          reconcileCreation: undefined,
         },
         pendingFirstSend: null,
       });
   };
   if (
-    initial.project?.id !== draft.projectId ||
-    !harness?.bindingId ||
-    initial.harnessDiscoveryPhase !== "ready" ||
-    harness.installState !== "available" ||
-    !model ||
-    (draft.access &&
-      !sessionAccessModeCandidates(harness.accessModes, true).some(
-        (mode) => mode.id === draft.access,
-      )) ||
-    (draft.effort && !model.effortLevels?.includes(draft.effort))
+    !draft.reconcileCreation &&
+    (initial.project?.id !== draft.projectId ||
+      !harness?.bindingId ||
+      initial.harnessDiscoveryPhase !== "ready" ||
+      harness.installState !== "available" ||
+      !model ||
+      (draft.access &&
+        !sessionAccessModeCandidates(harness.accessModes, true).some(
+          (mode) => mode.id === draft.access,
+        )) ||
+      (draft.effort && !model.effortLevels?.includes(draft.effort)))
   ) {
     fail("Choose an available harness and model before sending.");
     return;
   }
-  const result = await initial.createChat();
+  const result = await (draft.reconcileCreation
+    ? draft.reconcileCreation()
+    : initial.createChat());
   if (!owns()) return;
   if (result.status === "not-created") {
     fail(get().error ?? "Could not create the chat. Try again.");
@@ -68,9 +75,9 @@ export async function runNewChatDraftSend(
         creating: true,
         error: boundedChatError(
           get().error ??
-            "Chat creation is unconfirmed. Reopen the project before retrying.",
+            "Chat creation is unconfirmed. Reload chats before trying again.",
         ),
-        unconfirmedAtProjectGeneration: get().projectGeneration,
+        reconcileCreation: result.reconcile,
       },
       pendingFirstSend: null,
     });
@@ -86,12 +93,12 @@ export async function runNewChatDraftSend(
     modelId: draft.modelId,
   });
   state.setChatComposer(owner, draft.text);
-  if (harness.bindingId && draft.access)
+  if (harness?.bindingId && draft.access)
     draftChatAccess(chatId, {
       bindingId: harness.bindingId,
       mode: draft.access,
     });
-  if (harness.bindingId && draft.modelId && draft.effort)
+  if (harness?.bindingId && draft.modelId && draft.effort)
     useChatEffortDraft.setState({
       draft: {
         chatId,
@@ -100,7 +107,8 @@ export async function runNewChatDraftSend(
         effort: draft.effort,
       },
     });
-  const dispatch = state.pendingFirstSend === submission;
+  const dispatch =
+    state.pendingFirstSend === submission && state.activeTabId === chatId;
   set({
     newChatDraft: null,
     agentCenter: "chat",
@@ -112,4 +120,5 @@ export async function runNewChatDraftSend(
         }
       : null,
   });
+  if (state.activeTabId !== chatId) await state.activateTab(chatId);
 }

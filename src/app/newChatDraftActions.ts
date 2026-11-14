@@ -4,7 +4,7 @@ import {
   validateChatComposerText,
 } from "../domain/chatOwnership";
 import { openNewChatDraft, selectDraftHarness } from "./newChatDraftNavigation";
-import type { NewChatDraftSlice } from "./newChatDraftSlice";
+import type { NewChatDraft, NewChatDraftSlice } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
 
 /** Loaded before the first draft opens; its mutations then run synchronously. */
@@ -18,7 +18,21 @@ export function createNewChatDraftActions(
   | "selectDraftHarness"
   | "selectDraftModel"
   | "sendNewChatDraft"
+  | "reloadNewChatDraft"
 > {
+  const submit = async (draft: NewChatDraft) => {
+    const submission = {
+      projectId: draft.projectId,
+      chatId: null,
+      ownershipEpoch: get().chatOwnershipEpoch,
+    };
+    set({
+      newChatDraft: { ...draft, creating: true, error: null },
+      pendingFirstSend: submission,
+    });
+    const { runNewChatDraftSend } = await import("./runNewChatDraftSend");
+    await runNewChatDraftSend(set, get, draft, submission);
+  };
   return {
     openNewChatDraft: async (projectId) =>
       openNewChatDraft(set, get, projectId),
@@ -66,17 +80,19 @@ export function createNewChatDraftActions(
         get().projectTransitioning
       )
         return;
-      const submission = {
-        projectId: draft.projectId,
-        chatId: null,
-        ownershipEpoch: get().chatOwnershipEpoch,
-      };
-      set({
-        newChatDraft: { ...draft, creating: true, error: null },
-        pendingFirstSend: submission,
-      });
-      const { runNewChatDraftSend } = await import("./runNewChatDraftSend");
-      await runNewChatDraftSend(set, get, draft, submission);
+      await submit(draft);
+    },
+    reloadNewChatDraft: async () => {
+      const state = get();
+      const draft = state.newChatDraft;
+      if (
+        !draft?.reconcileCreation ||
+        state.project?.id !== draft.projectId ||
+        state.projectTransitioning ||
+        state.pendingFirstSend
+      )
+        return;
+      await submit(draft);
     },
   };
 }

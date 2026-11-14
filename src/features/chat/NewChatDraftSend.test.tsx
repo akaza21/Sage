@@ -20,6 +20,7 @@ import type {
   SendAcpTurnRequest,
 } from "../../domain/acp";
 import { agentSessionFixture } from "../../domain/acpProjection.fixture";
+import type { ProjectTransitionResult } from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
 import { AcpDesktopError } from "../../services/acpDesktopCommand";
@@ -30,6 +31,7 @@ import { settleLazyModules } from "../../test/settleLazyModules";
 import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
 import { registerWorkbenchSurfaces } from "../../workbench/registeredSurfaces";
 import { AgentChatPanes } from "../../workbench/AgentChatPanes";
+import { LeftSidebar } from "../../workbench/LeftSidebar";
 
 const initialState = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
@@ -75,6 +77,16 @@ let starts: StartAcpSessionRequest[];
 let prompts: SendAcpTurnRequest[];
 let pages: Map<string, AcpChatPage>;
 
+function withHarnessCatalog(result: ProjectTransitionResult) {
+  if (result.snapshot)
+    Object.assign(result.snapshot, {
+      harnesses: [harness, otherHarness],
+      selectedHarnessId: harness.id,
+      selectedModelId: "model-a",
+    });
+  return result;
+}
+
 function emptyPage(projectId: string, chatId: string): AcpChatPage {
   return {
     projectId,
@@ -117,16 +129,13 @@ beforeEach(async () => {
     harnessDiscoveryPhase: "ready",
   });
   const create = ports.chat.createChat.bind(ports.chat);
-  vi.spyOn(ports.chat, "createChat").mockImplementation(async (...args) => {
-    const result = await create(...args);
-    if (result.snapshot)
-      Object.assign(result.snapshot, {
-        harnesses: [harness, otherHarness],
-        selectedHarnessId: harness.id,
-        selectedModelId: "model-a",
-      });
-    return result;
-  });
+  vi.spyOn(ports.chat, "createChat").mockImplementation(async (...args) =>
+    withHarnessCatalog(await create(...args)),
+  );
+  const activate = ports.chat.activateChat.bind(ports.chat);
+  vi.spyOn(ports.chat, "activateChat").mockImplementation(async (...args) =>
+    withHarnessCatalog(await activate(...args)),
+  );
   vi.spyOn(acpDesktop, "getChatPage").mockImplementation(
     async (request) =>
       pages.get(request.chatId) ?? emptyPage(request.projectId, request.chatId),
@@ -253,9 +262,14 @@ it("notCreated keeps the draft and allows a retry that creates exactly one chat"
   );
 });
 
-it.each(["created", "unchanged"] as const)(
-  "unconfirmed create stays locked until reopen with text intact and existing composers untouched (%s layout)",
-  async (layout) => {
+it.each([
+  { layout: "created", accessRefused: false, inactiveTarget: false },
+  { layout: "created", accessRefused: true, inactiveTarget: false },
+  { layout: "unchanged", accessRefused: true, inactiveTarget: false },
+  { layout: "created", accessRefused: false, inactiveTarget: true },
+])(
+  "Reload chats reconciles without losing text or creating twice ($layout layout, access refused: $accessRefused, inactive target: $inactiveTarget)",
+  async ({ layout, accessRefused, inactiveTarget }) => {
     const before = await ports.project.getBootstrapSnapshot();
     const state = useWorkbenchStore.getState();
     const priorId = state.activeTabId!;
@@ -276,18 +290,21 @@ it.each(["created", "unchanged"] as const)(
     const projection = vi
       .spyOn(ports.project, "getBootstrapSnapshot")
       .mockRejectedValue(new Error("Projection unavailable"));
-    const view = mount();
+    render(<LeftSidebar />);
+    let view = mount();
     await settleLazyModules();
     fireEvent.change(composer(), {
       target: { value: "Keep my unconfirmed request" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Access options" }));
-    fireEvent.click(
-      await screen.findByRole("menuitemradio", { name: "Ask each time" }),
-    );
+    if (accessRefused) {
+      fireEvent.click(screen.getByRole("button", { name: "Access options" }));
+      fireEvent.click(
+        await screen.findByRole("menuitemradio", { name: "Ask each time" }),
+      );
+    }
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     const message =
-      "Chat creation is unconfirmed. Reopen the project before retrying.";
+      "Chat creation is unconfirmed. Reload chats before trying again.";
     await waitFor(() =>
       expect(screen.getByRole("alert")).toHaveTextContent(message),
     );
@@ -301,41 +318,89 @@ it.each(["created", "unchanged"] as const)(
     );
     expect(prompts).toEqual([]);
     view.unmount();
-    mount();
+    view = mount();
     await settleLazyModules();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
-    await act(async () => useWorkbenchStore.getState().initialize());
+    fireEvent.click(screen.getByRole("button", { name: "Reload chats" }));
     await settleLazyModules();
     expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
     expect(screen.getByRole("alert")).toHaveTextContent(message);
-    projection.mockImplementation(async () => ({
-      ...(await bootstrap()),
-      harnesses: [harness, otherHarness],
-      selectedHarnessId: harness.id,
-      selectedModelId: "model-a",
-    }));
-    await act(async () => useWorkbenchStore.getState().initialize());
-    await settleLazyModules();
-    expect(
-      screen.getByRole("region", { name: "New chat draft" }),
-    ).toBeVisible();
     expect(composer()).toHaveValue("Keep my unconfirmed request");
-    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
-    expect(screen.queryByRole("alert")).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Access options" }),
-    ).toHaveTextContent("Ask each time");
-    expect(prompts).toEqual([]);
-    expect(starts).toEqual([]);
-    expect((await bootstrap()).tabs).toEqual(after.tabs);
-    expect(useWorkbenchStore.getState().chatUiById[priorId]).toEqual(priorChat);
-    for (const tab of after.tabs.filter(
-      (tab) => tab.kind === "chat" && tab.id !== priorId,
-    )) {
-      expect(useWorkbenchStore.getState().chatUiById[tab.id].composerText).toBe(
-        "",
-      );
+    expect(screen.getByRole("button", { name: "Reload chats" })).toBeEnabled();
+    projection.mockImplementation(async () => {
+      const snapshot = await bootstrap();
+      return {
+        ...snapshot,
+        activeTabId: inactiveTarget ? priorId : snapshot.activeTabId,
+        harnesses: [harness, otherHarness],
+        selectedHarnessId: harness.id,
+        selectedModelId: "model-a",
+      };
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Reload chats" }));
+    fireEvent.click(screen.getByRole("button", { name: "Reload chats" }));
+    await settleLazyModules();
+    if (layout === "unchanged") {
+      expect(
+        screen.getByRole("region", { name: "New chat draft" }),
+      ).toBeVisible();
+      expect(composer()).toHaveValue("Keep my unconfirmed request");
+      expect(composer()).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "Send message" }),
+      ).toBeEnabled();
+      expect(
+        screen.getByRole("button", { name: "Access options" }),
+      ).toHaveTextContent("Ask each time");
+      expect(prompts).toEqual([]);
+      expect((await bootstrap()).tabs).toEqual(before.tabs);
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     }
+    if (accessRefused) {
+      expect(
+        await screen.findByText(/The chosen access was not given to this chat/),
+      ).toBeVisible();
+      expect(composer()).toHaveValue("Keep my unconfirmed request");
+      expect(composer()).toBeEnabled();
+      expect(prompts).toEqual([]);
+      await waitFor(() =>
+        expect(
+          screen.getByRole("button", { name: "Send message" }),
+        ).toBeEnabled(),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    }
+    if (inactiveTarget) {
+      expect(
+        screen.queryByRole("region", { name: "New chat draft" }),
+      ).toBeNull();
+      expect(composer()).toHaveValue("Keep my unconfirmed request");
+      expect(composer()).toBeEnabled();
+      expect(prompts).toEqual([]);
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+    }
+    await waitFor(() => expect(prompts).toHaveLength(1));
+    await settleLazyModules();
+    const recovered = await bootstrap();
+    expect(recovered.tabs).toHaveLength(before.tabs.length + 1);
+    if (layout === "created") expect(recovered.tabs).toEqual(after.tabs);
+    expect(
+      screen.getAllByRole("button", { name: "Open chat Chat" }),
+    ).toHaveLength(1);
+    expect(screen.queryByRole("region", { name: "New chat draft" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reload chats" })).toBeNull();
+    expect(composer()).toBeEnabled();
+    expect(composer()).toHaveValue("");
+    expect(screen.queryByText(message)).toBeNull();
+    expect(prompts).toMatchObject([
+      { chatId: recovered.activeTabId, prompt: "Keep my unconfirmed request" },
+    ]);
+    expect(useWorkbenchStore.getState().chatUiById[priorId]).toEqual(priorChat);
+    view.unmount();
+    mount();
+    await settleLazyModules();
+    expect(prompts).toHaveLength(1);
+    expect((await bootstrap()).tabs).toEqual(recovered.tabs);
   },
 );
 
@@ -373,7 +438,7 @@ it("restoring an archived chat while creation is unconfirmed leaves its composer
   fireEvent.click(screen.getByRole("button", { name: "Send message" }));
   await waitFor(() =>
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Chat creation is unconfirmed. Reopen the project before retrying.",
+      "Chat creation is unconfirmed. Reload chats before trying again.",
     ),
   );
   projection.mockRestore();
@@ -390,6 +455,12 @@ it("restoring an archived chat while creation is unconfirmed leaves its composer
   expect(screen.getByRole("region", { name: "New chat draft" })).toBeVisible();
   expect(composer()).toHaveValue("Keep this unsaved draft");
   expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Reload chats" }));
+  await settleLazyModules();
+  expect(useWorkbenchStore.getState().chatUiById[archivedId]).toEqual(archived);
+  expect(composer()).toHaveValue("Keep this unsaved draft");
+  expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Reload chats" })).toBeEnabled();
   fireEvent.submit(screen.getByRole("form"));
   await settleLazyModules();
   expect(prompts).toEqual([]);

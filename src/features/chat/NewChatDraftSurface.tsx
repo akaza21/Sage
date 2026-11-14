@@ -29,6 +29,8 @@ export function NewChatDraftSurface({
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
+  const pendingFirstSend = useWorkbenchStore((state) => state.pendingFirstSend);
+  const reload = useWorkbenchStore((state) => state.reloadNewChatDraft);
   const update = useWorkbenchStore((state) => state.updateNewChatDraft);
   const chooseHarness = useWorkbenchStore((state) => state.selectDraftHarness);
   const chooseModel = useWorkbenchStore((state) => state.selectDraftModel);
@@ -121,7 +123,23 @@ export function NewChatDraftSurface({
           activeTurn={false}
           projectTransitioning={transitioning}
           workbenchError={null}
-          chatError={draft.error}
+          chatError={
+            draft.error || draft.reconcileCreation ? (
+              <>
+                {draft.error}
+                {draft.reconcileCreation ? (
+                  <button
+                    type="button"
+                    className="button button--compact"
+                    disabled={transitioning || !!pendingFirstSend}
+                    onClick={() => void reload()}
+                  >
+                    Reload chats
+                  </button>
+                ) : null}
+              </>
+            ) : null
+          }
           accessTarget={{ bindingId: harness?.bindingId }}
           draftPickers={{
             access: draft.access ?? access.effective,

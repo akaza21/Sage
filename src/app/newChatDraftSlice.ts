@@ -1,6 +1,7 @@
 import type { StateCreator } from "zustand";
 import type { SessionAccessMode } from "../domain/sessionAccessMode";
 import type { createNewChatDraftActions } from "./newChatDraftActions";
+import type { CreateChatResult } from "./runCreateChat";
 import type { WorkbenchState } from "./store";
 
 export interface NewChatDraft {
@@ -12,7 +13,7 @@ export interface NewChatDraft {
   effort: string | null;
   creating: boolean;
   error: string | null;
-  unconfirmedAtProjectGeneration?: number;
+  reconcileCreation?: () => Promise<CreateChatResult>;
 }
 
 export interface NewChatDraftSlice {
@@ -31,6 +32,7 @@ export interface NewChatDraftSlice {
   selectDraftHarness: (harnessId: string) => Promise<void>;
   selectDraftModel: (modelId: string) => void;
   sendNewChatDraft: () => Promise<void>;
+  reloadNewChatDraft: () => Promise<void>;
 }
 
 export const createNewChatDraftSlice: StateCreator<
@@ -60,6 +62,8 @@ export const createNewChatDraftSlice: StateCreator<
     },
     selectDraftModel: (modelId) => actions?.selectDraftModel(modelId),
     sendNewChatDraft: () => actions?.sendNewChatDraft() ?? Promise.resolve(),
+    reloadNewChatDraft: () =>
+      actions?.reloadNewChatDraft() ?? Promise.resolve(),
   };
 };
 
@@ -74,26 +78,4 @@ export function projectNewChatDraft(
         agentCenter: "chat" as const,
         pendingFirstSend: null,
       };
-}
-
-export function reopenedNewChatDraft(
-  state: Pick<WorkbenchState, "project" | "projectGeneration" | "newChatDraft">,
-  generation: number,
-) {
-  const draft = state.newChatDraft;
-  if (
-    draft?.unconfirmedAtProjectGeneration === undefined ||
-    generation <= draft.unconfirmedAtProjectGeneration ||
-    state.projectGeneration !== generation ||
-    state.project?.id !== draft.projectId
-  )
-    return {};
-  return {
-    newChatDraft: {
-      ...draft,
-      creating: false,
-      error: null,
-      unconfirmedAtProjectGeneration: undefined,
-    },
-  };
 }

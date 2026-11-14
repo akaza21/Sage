@@ -50,7 +50,7 @@ export interface ChatComposerRegionProps {
   steerAvailable?: boolean;
   projectTransitioning: boolean;
   workbenchError: string | null;
-  chatError: string | null;
+  chatError: ReactNode;
   /** The harness that refused for sign-in; its guidance replaces chatError. */
   signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
   claudeSignInRequired?: boolean;

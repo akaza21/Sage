@@ -20,7 +20,7 @@ export type CreateChatResult =
   | { status: "confirmed"; chatId: string }
   | { status: "confirmed-in-other-project" }
   | { status: "not-created" }
-  | { status: "unconfirmed" };
+  | { status: "unconfirmed"; reconcile?: () => Promise<CreateChatResult> };
 
 export async function runCreateChat(
   input: {
@@ -116,24 +116,24 @@ async function createOnActiveProject(input: {
   const { set, get, applyProjection, loadAuthoritativeProjection, chat } =
     input;
   const priorChatIds = new Set(
-    input.current.tabs
-      .filter((tab) => tab.kind === "chat")
-      .map((tab) => tab.id),
+    [
+      ...input.current.tabs.filter((tab) => tab.kind === "chat"),
+      ...get().archivedChats,
+    ].map((chat) => chat.id),
   );
   let confirmedId: string | null = null;
   let committed = false;
   let mutationInvoked = false;
   const classify = (snapshot: BootstrapSnapshot) => {
     if (snapshot.project?.id !== input.current.projectId) return null;
-    const active = snapshot.tabs.find(
-      (tab) => tab.id === snapshot.activeTabId && tab.kind === "chat",
+    const created = snapshot.tabs.filter(
+      (tab) => tab.kind === "chat" && !priorChatIds.has(tab.id),
     );
     if (
       snapshot.tabs.length === input.current.tabs.length + 1 &&
-      active &&
-      !priorChatIds.has(active.id)
+      created.length === 1
     ) {
-      confirmedId = active.id;
+      confirmedId = created[0]!.id;
       return "committed" as const;
     }
     if (
@@ -144,6 +144,31 @@ async function createOnActiveProject(input: {
       return "unchanged" as const;
     }
     return null;
+  };
+  const reconcile = async (): Promise<CreateChatResult> => {
+    const generation = nextProjectGeneration(get().projectGeneration);
+    set({
+      projectGeneration: generation,
+      projectTransitioning: true,
+      repositoryRefreshing: false,
+    });
+    try {
+      const outcome = await loadAuthoritativeProjection(generation, classify);
+      if (outcome === "committed")
+        return { status: "confirmed", chatId: confirmedId! };
+      if (outcome === "unchanged") {
+        set({ error: "Could not create the chat. Try again." });
+        return { status: "not-created" };
+      }
+    } catch {
+      set({
+        projectTransitioning: false,
+        repositoryRefreshing: false,
+        error:
+          "Chat creation is unconfirmed. Reload chats before trying again.",
+      });
+    }
+    return { status: "unconfirmed", reconcile };
   };
   try {
     const latest = currentProjectLayout(get());
@@ -182,25 +207,7 @@ async function createOnActiveProject(input: {
     return { status: "confirmed", chatId: confirmedId! };
   } catch {
     if (mutationInvoked) {
-      const generation = nextProjectGeneration(get().projectGeneration);
-      set({ projectGeneration: generation, repositoryRefreshing: false });
-      try {
-        const outcome = await loadAuthoritativeProjection(generation, classify);
-        if (outcome === "committed")
-          return { status: "confirmed", chatId: confirmedId! };
-        if (outcome === "unchanged") {
-          set({ error: "Could not create the chat. Try again." });
-          return { status: "not-created" };
-        }
-      } catch {
-        set({
-          projectTransitioning: false,
-          repositoryRefreshing: false,
-          error:
-            "Chat creation is unconfirmed. Reopen the project before retrying.",
-        });
-      }
-      return { status: "unconfirmed" };
+      return reconcile();
     } else {
       set({
         projectTransitioning: false,

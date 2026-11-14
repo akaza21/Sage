@@ -519,6 +519,7 @@ describe("workbench resource and project navigation", () => {
       );
       expect(await useWorkbenchStore.getState().createChat()).toEqual({
         status: "unconfirmed",
+        reconcile: expect.any(Function),
       });
       expect(useWorkbenchStore.getState()).toMatchObject({
         phase: "ready",

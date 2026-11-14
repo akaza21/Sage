@@ -15,7 +15,6 @@ import { runSwitchProject } from "./switchProject";
 import { errorMessage } from "../domain/errors";
 import { currentProjectLayout as layout } from "./projectProjection";
 import { loadProjectProjection } from "./projectProjectionLoader";
-import { reopenedNewChatDraft } from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
 import { closeLiveWorkbench } from "./workbenchClose";
 import { hasActiveAcpTurn } from "./acpProjectionRegistry";
@@ -212,10 +211,9 @@ export const createProjectSlice: StateCreator<
           get,
           snapshot,
           generation,
-          draft?.unconfirmedAtProjectGeneration !== undefined &&
+          draft?.reconcileCreation !== undefined &&
             draft.projectId === snapshot.project?.id,
         );
-        set(reopenedNewChatDraft(get(), generation));
       } catch (error) {
         set({
           phase: "error",
