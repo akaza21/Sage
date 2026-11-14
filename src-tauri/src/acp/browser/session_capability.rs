@@ -290,7 +290,6 @@ impl BrowserCapability for SessionBrowserCapability {
         developer::audit_refused(&self.app.state::<AppState>().settings, request, failure);
     }
 
-    /// Take over pauses the call and Hand back resumes it (`pause.rs`).
     fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
         let app = self.app.clone();
         let (project, chat, session) = (

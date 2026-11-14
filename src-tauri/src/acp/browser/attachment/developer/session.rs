@@ -1,4 +1,3 @@
-//! A tab's single native session follows its live grants, never one attachment.
 use super::*;
 use crate::acp::browser::BrowserFailure;
 use resources::DeveloperRelease;

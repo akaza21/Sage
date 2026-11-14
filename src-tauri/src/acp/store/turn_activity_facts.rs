@@ -1,7 +1,3 @@
-//! A Turn's session activity rows (hook runs) as append-only session facts
-//! owned by that Turn, so they outlive the live session surface: a new
-//! runtime epoch or a later Turn's rows never remove them.
-//!
 //! Each change of a row appends one fact; the projection folds the Turn's
 //! facts into its latest row per activity. Caps per Turn: at most
 //! [`ROWS_PER_TURN`] rows, and once [`FACTS_PER_TURN`] facts exist only a
@@ -40,8 +36,6 @@ const HEADROOM_PERCENT: u64 = 90;
 /// `idx_session_facts_turn`.
 pub(super) const TURN_FACTS_SQL: &str = "SELECT payload_json FROM session_facts
      WHERE session_id=?1 AND turn_id=?2 AND kind=?3 ORDER BY sequence LIMIT ?4";
-/// Sessions whose dropped rows were already logged; the oldest is
-/// forgotten beyond [`WARNED_MAX`].
 static WARNED: Mutex<VecDeque<String>> = Mutex::new(VecDeque::new());
 const WARNED_MAX: usize = 32;
 

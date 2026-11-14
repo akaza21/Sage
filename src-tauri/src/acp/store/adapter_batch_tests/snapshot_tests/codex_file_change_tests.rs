@@ -231,7 +231,6 @@ fn codex_fixture_file_change_retains_a_saved_diff_in_the_chat() {
     assert_eq!(change.pair_state, FilePairState::Available);
     assert_eq!(change.additions, Some(1));
     assert_eq!(change.deletions, Some(1));
-    // Subsequent disk edits cannot replace the immutable agent change.
     fs::write(path, "unrelated later edit\n").unwrap();
     let snapshot = saved_snapshot(&fixture, "src/example.ts");
     assert_eq!(snapshot.old_text, "export const example = 1;\n");

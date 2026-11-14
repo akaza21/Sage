@@ -11,7 +11,6 @@ use live::{merge_snapshots, validate_bounds};
 
 const MAX_SPAWN_SCAN: i64 = 256;
 
-/// The model a child's latest spawn requested, exactly as the wire named it.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SpawnModel {

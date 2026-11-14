@@ -52,8 +52,6 @@ pub(super) fn redact_result(result: &mut BrowserResult) {
     }
 }
 
-/// Redacts every string in a raw CDP result, and the whole value of any
-/// field whose name is a secret's. Best effort: ADR-0009b names the risk.
 pub(crate) fn redact_json(value: &mut serde_json::Value) {
     use serde_json::Value;
     match value {
@@ -102,8 +100,6 @@ fn sensitive(key: &str) -> bool {
     )
 }
 
-/// Whether a bare value looks like a credential: a known token prefix, a
-/// JWT, a hex run of 32 or more characters, or a random-looking token.
 fn secret_like(value: &str) -> bool {
     BARE_TOKENS.is_match(value) || SECRET_SHAPES.is_match(value) || random_token(value)
 }
@@ -166,7 +162,6 @@ fn secret_segment(segment: &str) -> bool {
     !hash && secret_like(segment)
 }
 
-/// Percent-decodes `input`, keeping malformed escapes as they are.
 fn percent_decoded(input: &str) -> String {
     let bytes = input.as_bytes();
     let mut decoded = Vec::with_capacity(bytes.len());
@@ -278,8 +273,6 @@ fn redact_parameters(input: &str) -> Option<String> {
     Some(safe.join("&"))
 }
 
-/// Drops control characters (keeping `\n` when `multiline`) and bidi
-/// overrides, then cuts the text to at most `limit` bytes.
 pub(crate) fn safe_page_text(value: &str, limit: usize, multiline: bool) -> String {
     let filtered: String = value
         .chars()

@@ -1,7 +1,3 @@
-//! Requests Sage sends a Codex replay outside the scripted steps: a child
-//! thread's read and the skills read while a session is idle, with the
-//! skills the replayed install holds.
-
 use std::io::Write;
 
 use serde_json::{Value, json};
@@ -24,7 +20,6 @@ pub(super) struct Skills {
     cached: Vec<Value>,
 }
 
-/// Answers `request` when it is a background read, and says whether it was.
 pub(super) fn answer(
     method: &str,
     request: &Value,

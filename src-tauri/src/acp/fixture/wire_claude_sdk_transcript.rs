@@ -1,5 +1,3 @@
-//! The saved conversation of a Claude Code SDK replay case.
-//!
 //! Claude Code keeps each session as a JSON Lines transcript in its profile,
 //! `<config>/projects/<project>/<session>.jsonl`, where `<project>` is the
 //! working directory with every character but ASCII letters and digits made
@@ -21,10 +19,8 @@ use serde_json::{Value, json};
 
 use super::super::FixtureError;
 
-/// The largest transcript a launch writes or reads, and the entries it keeps.
 const MAX_TRANSCRIPT_BYTES: u64 = 1024 * 1024;
 const MAX_ENTRIES: usize = 256;
-/// Messages an echo shows, the latest last, and the text shown of each.
 const ECHOED_MESSAGES: usize = 8;
 const ECHOED_TEXT_BYTES: usize = 160;
 
@@ -32,10 +28,8 @@ pub(super) struct Transcript {
     project: PathBuf,
     cwd: String,
     session: String,
-    /// How the launch found the session, as an echo says.
     opened: String,
     entries: Vec<Value>,
-    /// The bytes of the session's file, once saved.
     bytes: u64,
     /// Whether the session's file holds `entries`: not until a new session
     /// or a fork has its first message.
@@ -116,7 +110,6 @@ impl Transcript {
         &self.session
     }
 
-    /// What the session holds: how it was opened and its latest messages.
     pub(super) fn echo(&self) -> String {
         let messages: Vec<String> = self
             .entries
@@ -209,7 +202,6 @@ impl Transcript {
     }
 }
 
-/// Claude Code's directory name for a project's sessions.
 fn project_name(cwd: &str) -> String {
     cwd.chars()
         .map(|character| {
@@ -226,7 +218,6 @@ fn is_uuid(value: &str) -> bool {
     uuid::Uuid::parse_str(value).is_ok_and(|parsed| parsed.hyphenated().to_string() == value)
 }
 
-/// A saved session's entries and size; a missing session fails the launch.
 fn load(path: &Path) -> Result<(Vec<Value>, u64), FixtureError> {
     let file = fs::File::open(path).map_err(|_| FixtureError::InvalidArguments)?;
     let mut text = String::new();
@@ -247,7 +238,6 @@ fn load(path: &Path) -> Result<(Vec<Value>, u64), FixtureError> {
     Ok((entries, text.len() as u64))
 }
 
-/// One message as an echo shows it: who wrote it and its text, cut short.
 fn message_line(entry: &Value) -> Option<String> {
     let who = match entry["type"].as_str()? {
         "user" => "User",
@@ -287,7 +277,6 @@ mod tests {
         args.iter().map(|arg| (*arg).to_owned()).collect()
     }
 
-    /// A profile and project under a fresh directory, removed on drop.
     struct Profile(PathBuf);
 
     impl Drop for Profile {
@@ -330,7 +319,6 @@ mod tests {
         source.sent(&user("Second question")).unwrap();
         source.replayed(&mut assistant("Second answer")).unwrap();
         assert_eq!(fs::read_to_string(&file).unwrap().lines().count(), 4);
-        // The same id cannot start a second session.
         assert!(Transcript::launched(&args(&["--session-id", SOURCE]), &config, &cwd).is_err());
 
         let fork_args = args(&[
@@ -389,12 +377,8 @@ mod tests {
             ])
         };
         for refused in [
-            // A fork through a message the source does not hold, or through
-            // a prompt rather than a reply.
             fork_at(FORK),
             fork_at(&asked),
-            // A taken id, a missing session, and flags Claude Code is not
-            // launched with by Sage.
             args(&["--session-id", SOURCE]),
             args(&["--resume", FORK]),
             args(&["--session-id", "not-a-uuid"]),

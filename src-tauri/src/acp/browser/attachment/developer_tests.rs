@@ -134,7 +134,6 @@ fn scope(session: &str) -> BrowserScope {
     }
 }
 
-/// A user attachment on browser-7 whose authority `SESSION` holds.
 fn attached() -> (BrowserAttachments, AttachmentLease) {
     let registry = BrowserAttachments::default();
     let (project, chat) = ids();

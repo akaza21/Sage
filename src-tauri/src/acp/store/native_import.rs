@@ -1,8 +1,3 @@
-//! Durable import of a native session started outside Sage. Like a native
-//! fork, the import installs a resumable head session bound to the native
-//! thread in the transaction that creates its Chat, so the first send
-//! resumes it; the history read at import is kept beside that session.
-
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
 use crate::acp::{
@@ -20,8 +15,6 @@ use super::{
 
 const ADMITS_IMPORT: &str = "json_extract(s.capabilities_json,'$.nativeSessionImport')=1";
 
-/// The live runtime that lists and reads sessions to import for a Project:
-/// a hot head session whose own capabilities admit `nativeSessionImport`.
 /// `pinned` names the runtime that listed earlier pages, which alone may
 /// read a session it listed; without it, the most recently active one.
 pub(crate) fn import_lister(
@@ -61,9 +54,7 @@ pub(crate) fn import_lister(
     .transpose()
 }
 
-/// Installs the imported session as the head of `chat` (cold, `ready`,
-/// bound to `thread` with the lister's binding and capabilities) and keeps
-/// its `history_json`. The caller has just created `chat` in the same
+/// The caller has just created `chat` in the same
 /// transaction. A thread a Project session already holds is refused.
 pub(crate) fn install_import(
     transaction: &Transaction<'_>,
@@ -207,13 +198,9 @@ pub(crate) fn imported_threads(
     Ok(threads)
 }
 
-/// The held threads among a JSON array of thread ids: an indexed lookup
-/// per listed thread.
 pub(crate) const HELD_THREADS: &str = "SELECT external_session_id FROM agent_sessions
      WHERE project_id=?1 AND external_session_id IN (SELECT value FROM json_each(?2))";
 
-/// Which of `threads` (one listed page) a Project session already holds,
-/// so an import of them would be refused.
 pub(crate) fn held_threads(
     connection: &Connection,
     project_id: &SageProjectId,

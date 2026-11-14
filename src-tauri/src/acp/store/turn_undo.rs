@@ -35,7 +35,6 @@ pub(crate) mod recovery;
 
 const TURN_UNDONE: &str = "turnUndone";
 
-/// What an undone Turn still asks of its session's native thread.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum UndoneThread {
     /// The harness already dropped the Turn from its own thread.
@@ -239,7 +238,6 @@ pub(crate) struct ThreadRewind {
 }
 
 impl ThreadRewind {
-    /// Whether the runtime `epoch` still holds the undone Turn.
     pub(crate) fn held_by(&self, epoch: RuntimeEpoch) -> bool {
         epoch.get() <= self.runtime_epoch
     }

@@ -1,7 +1,4 @@
-//! Codex `item/tool/requestUserInput` for native replay journeys: the
-//! fixture asks the step's questions, waits for the client's answer, and
-//! completes the turn by echoing the option labels it received. Typed
-//! answers (Codex `user_note:` values, which carry secrets) are only
+//! Typed answers (Codex `user_note:` values, which carry secrets) are only
 //! counted, never echoed.
 
 use std::io::{Read, Write};
@@ -11,7 +8,6 @@ use serde_json::{Value, json};
 use super::super::FixtureError;
 use super::{WireState, acp, codex};
 
-/// The id of the fixture's first server request; later ones count up.
 const FIRST_REQUEST_ID: u64 = 900;
 const USER_NOTE: &str = "user_note:";
 
@@ -127,8 +123,6 @@ fn echo(answers: &serde_json::Map<String, Value>) -> Result<String, FixtureError
     ))
 }
 
-/// Every frame the `codex-user-input` journey sends, in order, when a
-/// client answers each question with `answer`.
 #[cfg(test)]
 pub(crate) fn codex_user_input_wire_for_test(answer: &Value) -> Vec<Value> {
     let case = crate::acp_protocol::native_cases::JOURNEY_CASES

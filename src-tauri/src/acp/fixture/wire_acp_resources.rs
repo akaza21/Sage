@@ -1,10 +1,3 @@
-//! The embedded resources (ACP `resource` content blocks) a `session/prompt`
-//! carried, for a journey whose agent advertises
-//! `promptCapabilities.embeddedContext`. The agent answers each prompt with
-//! what it received, as an agent that read the files would: each resource's
-//! name, type, size and SHA-256, never its content, so a transcript shows
-//! which file reached the agent and a test can match it to the staged bytes.
-
 use std::borrow::Cow;
 
 use base64::Engine;
@@ -24,9 +17,6 @@ pub(in crate::acp::fixture) struct EmbeddedContext {
 }
 
 impl EmbeddedContext {
-    /// Reads the resource blocks of one prompt's content. A resource block
-    /// without a URI, or without exactly one of `text` and `blob`, is
-    /// refused as malformed ACP.
     pub(super) fn receive(&mut self, prompt: &Value) -> Result<(), FixtureError> {
         let blocks = prompt.as_array().ok_or(FixtureError::InvalidArguments)?;
         let mut described = Vec::new();
@@ -57,7 +47,6 @@ impl EmbeddedContext {
         Ok(())
     }
 
-    /// What the latest prompt carried, once.
     pub(super) fn take_echo(&mut self) -> Option<String> {
         self.echo.take()
     }

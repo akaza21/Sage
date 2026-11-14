@@ -28,12 +28,10 @@ pub(crate) struct RestartSessionCommand {
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub expected_projection_revision: ProjectionRevision,
-    /// The Chat's parked head, whose pending rewind is a restart.
     pub session_id: SageAgentSessionId,
     pub now_millis: i64,
 }
 
-/// The identity a restarted head keeps from the parked one.
 struct ParkedHead {
     binding_id: String,
     binding_digest: String,
@@ -127,7 +125,6 @@ pub(crate) fn restart_undone_session(
         projection,
         command.now_millis,
     )?;
-    // The Chat goes on, so its confirmed config choices go on with it.
     crate::acp::session_config::choices::copy(&transaction, &command.session_id, &session_id)?;
     let payload = serde_json::json!({
         "kind": "sessionRestarted",

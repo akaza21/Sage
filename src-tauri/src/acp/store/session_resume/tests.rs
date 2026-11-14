@@ -32,8 +32,6 @@ impl Drop for Fixture {
 }
 
 impl Fixture {
-    /// A Chat whose parked head session was bound by an earlier release,
-    /// with one completed Turn on its native thread.
     fn new() -> Self {
         let root = std::env::temp_dir().join(format!("sage-resume-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
@@ -169,7 +167,6 @@ impl Fixture {
             .unwrap()
     }
 
-    /// The earlier session is closed with its identity and thread unchanged.
     fn earlier_keeps_its_identity(&self) {
         assert_eq!(
             self.session_row("session-earlier"),
@@ -183,7 +180,6 @@ impl Fixture {
     }
 }
 
-/// The canonical capability snapshot of a negotiated session.
 fn capabilities(protocol: &str) -> String {
     PENDING_CAPABILITIES_JSON.replace("\"pending\"", &format!("\"{protocol}\""))
 }
@@ -334,7 +330,6 @@ fn history_spans_the_earlier_and_the_linked_session() {
         .iter()
         .map(|turn| (turn.id.as_str(), turn.session_id.as_str()))
         .collect();
-    // The page lists the newest session's Turns first.
     assert_eq!(
         turns,
         [

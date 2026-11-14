@@ -1,10 +1,7 @@
-//! The model catalogue a Codex replay lists, the model its restart
-//! journey's thread runs, and the model and effort a Turn asked for.
 use serde_json::{Value, json};
 
 use super::WireState;
 
-/// The restart journey's catalogue: its default model, then a second one.
 const CONFIG_MODELS: [&str; 2] = ["fixture-model", "fixture-model-deep"];
 
 /// A restart journey's thread runs the model it was opened or resumed with,
@@ -18,9 +15,6 @@ pub(super) fn config_thread(state: &WireState, thread_id: &str) -> Value {
     })
 }
 
-/// The `model/list` result for `shape`: one model (`models`), a second one
-/// with efforts (`effortModels`), or the restart journey's full pinned Codex
-/// entries (`configModels`).
 pub(super) fn models(shape: &str) -> Value {
     let mut catalog = json!({"data":[{
         "id":"fixture-model","model":"fixture-model","displayName":"Synthetic replay",

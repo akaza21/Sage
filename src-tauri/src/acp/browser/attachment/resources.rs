@@ -1,5 +1,3 @@
-//! Native lane authority and disposable diagnostics have separate lifetimes.
-//! Sleeping drops listeners and history; revocation also cancels work and handles.
 use super::*;
 mod developer;
 pub(super) use developer::DeveloperRelease;

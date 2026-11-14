@@ -1,5 +1,3 @@
-//! A grant-scoped capability to use the tab-owned privileged native session.
-//! Ordinary handles and diagnostics have independent lifetimes.
 use super::*;
 
 pub(crate) type DeveloperRelease = Arc<dyn Fn(bool) + Send + Sync>;

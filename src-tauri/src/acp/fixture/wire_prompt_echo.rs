@@ -1,5 +1,3 @@
-//! What a client's prompt carried, as a replay agent quotes it back.
-//!
 //! A journey frame names `$PROMPT_ECHO` where the agent's reply should show
 //! the last prompt it received, `$CODEX_TURN_CONFIG` for the model and
 //! effort of the last Codex `turn/start`, or `$TRANSCRIPT_ECHO` for what a
@@ -13,15 +11,11 @@ use serde_json::Value;
 use super::super::FixtureError;
 use super::WireState;
 
-/// Blocks described one by one; any more are counted.
 const SHOWN_BLOCKS: usize = 16;
-/// Text shown per block; longer text is cut and its full size named.
 const SHOWN_TEXT_BYTES: usize = 512;
 
-/// Where the state keeps something the client sent.
 type Sent = fn(&WireState) -> Option<&str>;
 
-/// Placeholders for what the client sent, and where the state keeps it.
 const QUOTES: [(&str, Sent); 3] = [
     ("$CODEX_TURN_CONFIG", |state| {
         state.codex_turn_config.as_deref()
@@ -56,8 +50,6 @@ pub(super) fn quote(text: &str, state: &WireState) -> Result<String, FixtureErro
     Ok(quoted)
 }
 
-/// The echo of prompt blocks, in ACP's or the Messages API's shape, or of
-/// a Codex turn's input items.
 pub(super) fn blocks(blocks: &[Value]) -> String {
     let mut lines = vec![match blocks.len() {
         1 => "Synthetic replay received 1 prompt block:".to_owned(),
@@ -98,7 +90,6 @@ fn block(block: &Value) -> String {
             }
         }
         Some("resource_link") => format!("Linked file {}", field("uri").unwrap_or("no URI")),
-        // Codex runs a skill from its input item.
         Some("skill") => format!(
             "Skill {} at {}",
             field("name").unwrap_or("with no name"),
@@ -109,7 +100,6 @@ fn block(block: &Value) -> String {
     }
 }
 
-/// Text in a fence no backtick run inside it can close.
 fn shown_text(label: &str, text: &str) -> String {
     let mut cut = text.len().min(SHOWN_TEXT_BYTES);
     while !text.is_char_boundary(cut) {

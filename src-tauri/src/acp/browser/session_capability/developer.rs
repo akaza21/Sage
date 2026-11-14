@@ -1,7 +1,3 @@
-//! The developer-mode policy an attached tab's gate runs under (ADR-0009b):
-//! the Settings switch and the audit log live in the settings store; the
-//! tab grant registry holds attachment approvals and command leases in memory.
-
 use std::sync::{Arc, Mutex};
 
 use crate::{
@@ -15,8 +11,6 @@ use crate::{
 pub(crate) struct LeaseDeveloperPolicy {
     lease: AttachmentLease,
     settings: SettingsStore,
-    /// The switch generation when this call started; see
-    /// `developer::switch_generation`.
     generation: u64,
     resource_generation: u64,
     grant_generation: u64,
@@ -108,8 +102,6 @@ fn record(settings: &SettingsStore, entry: &CdpAuditEntry) -> bool {
 #[path = "developer_tests.rs"]
 mod tests;
 
-/// Audits a `cdp` call refused before it reached the gate: a malformed or
-/// oversized request, no attachment, Take over, a stale tab or owner.
 pub(crate) fn audit_refused(
     settings: &SettingsStore,
     request: &crate::acp::browser::BrowserRequest,
