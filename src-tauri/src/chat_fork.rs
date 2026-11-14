@@ -16,7 +16,6 @@ use crate::{
         CHAT_TITLE_PREFIX, MAX_CHAT_TITLE_BYTES, chat_display_title, insert_new_chat,
         validate_chat_identifier,
     },
-    domain::{ProjectLayoutRequest, ProjectTransitionResult},
     persistence::Database,
     state::AppState,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
@@ -25,6 +24,7 @@ use sage_acp_protocol::{
     contract::{SageChatId, SageProjectId, SageTurnId},
     intent::ExternalId,
 };
+use sage_domain::{chat::ProjectLayoutRequest, project::ProjectTransitionResult};
 
 /// Fork numbers are searched in a bounded window; a Project holds far fewer
 /// Chats than this, so a free number always exists.

@@ -8,10 +8,10 @@ use uuid::Uuid;
 use super::filesystem::{cleanup_failed_save_with, read_editable_bytes, temporary_contract_path};
 use super::*;
 use crate::{
-    domain::{BufferRebaseRequest, BufferSnapshotRequest, DocumentVersion},
     editor_content::MAX_EDITABLE_BYTES,
     editor_coordination::{EditorOperationCoordinator, EditorOperationKind},
 };
+use sage_domain::editor::{BufferRebaseRequest, BufferSnapshotRequest, DocumentVersion};
 
 struct Fixture {
     root: PathBuf,

@@ -19,12 +19,10 @@ use std::{
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    domain::{DirectoryListing, TrashResourceKind},
-    workspace::{
-        RootIdentity, resource_trash::TRASH_NAME, root_identity_metadata, root_identity_path,
-    },
+use crate::workspace::{
+    RootIdentity, resource_trash::TRASH_NAME, root_identity_metadata, root_identity_path,
 };
+use sage_domain::{file_operations::TrashResourceKind, project::DirectoryListing};
 
 use super::{ParentAuthority, ResourceTrashIdentity, TrashIdentityProof, TrashObservation};
 

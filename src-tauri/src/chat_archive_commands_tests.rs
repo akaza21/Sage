@@ -3,8 +3,9 @@ use std::fs;
 use uuid::Uuid;
 
 use super::*;
-use crate::{domain::ProjectLayoutRequest, persistence::Database};
+use crate::persistence::Database;
 use sage_acp_protocol::contract::{SageChatId, SageProjectId};
+use sage_domain::chat::ProjectLayoutRequest;
 
 /// A Project with two attached Chats; returns the state, the first Chat's
 /// archive request and the folder to remove.

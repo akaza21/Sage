@@ -5,10 +5,10 @@ use serde::{
     de::{Error, Visitor},
 };
 
-use crate::domain::ResourceRef;
 use sage_acp_protocol::contract::{
     ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
 };
+use sage_domain::resource::ResourceRef;
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Deserialize, serde::Serialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

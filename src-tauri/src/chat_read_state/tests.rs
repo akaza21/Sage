@@ -5,10 +5,10 @@ use uuid::Uuid;
 
 use super::*;
 use crate::{
-    domain::{ChatLifecycleRequest, ProjectLayoutRequest},
     project_registry::MAX_AGENT_RAIL_CHATS_PER_PROJECT,
     settings_store::{ChatReadMark, MAX_CHAT_READ_MARKS},
 };
+use sage_domain::chat::{ChatLifecycleRequest, ProjectLayoutRequest};
 
 struct Fixture {
     base: PathBuf,

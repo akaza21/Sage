@@ -312,7 +312,7 @@ async fn ready_runtime_fixture_with(
         database
             .create_chat_with_parent(
                 project_id.as_str(),
-                &crate::domain::ProjectLayoutRequest {
+                &sage_domain::chat::ProjectLayoutRequest {
                     project_id: project_id.as_str().to_owned(),
                     tabs: bootstrap.tabs,
                     active_tab_id: Some(parent.clone()),
@@ -1451,9 +1451,9 @@ fn delete_refuses_a_park_that_cannot_settle_at_once_without_retrying() {
 
 fn layout_of(
     project: &str,
-    snapshot: crate::domain::BootstrapSnapshot,
-) -> crate::domain::ProjectLayoutRequest {
-    crate::domain::ProjectLayoutRequest {
+    snapshot: sage_domain::project::BootstrapSnapshot,
+) -> sage_domain::chat::ProjectLayoutRequest {
+    sage_domain::chat::ProjectLayoutRequest {
         project_id: project.to_owned(),
         tabs: snapshot.tabs,
         active_tab_id: snapshot.active_tab_id,
@@ -1465,8 +1465,8 @@ fn layout_of(
 fn archive_request(
     state: &crate::state::AppState,
     owner: &RuntimeOwner,
-) -> crate::domain::ChatLifecycleRequest {
-    crate::domain::ChatLifecycleRequest {
+) -> sage_domain::chat::ChatLifecycleRequest {
+    sage_domain::chat::ChatLifecycleRequest {
         project_id: owner.project_id.as_str().to_owned(),
         chat_id: owner.chat_id.as_str().to_owned(),
         current_layout: layout_of(
@@ -1476,8 +1476,8 @@ fn archive_request(
     }
 }
 
-fn delete_request(owner: &RuntimeOwner) -> crate::domain::ChatDeleteRequest {
-    crate::domain::ChatDeleteRequest {
+fn delete_request(owner: &RuntimeOwner) -> sage_domain::chat::ChatDeleteRequest {
+    sage_domain::chat::ChatDeleteRequest {
         project_id: owner.project_id.as_str().to_owned(),
         chat_id: owner.chat_id.as_str().to_owned(),
     }
@@ -1791,12 +1791,14 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
     );
     assert!(service.lane_at(0).scheduler.active().is_some());
 
-    let layout = |snapshot: crate::domain::BootstrapSnapshot| crate::domain::ProjectLayoutRequest {
-        project_id: owner.project_id.as_str().to_owned(),
-        tabs: snapshot.tabs,
-        active_tab_id: snapshot.active_tab_id,
-        selected_root_id: snapshot.selected_root_id,
-        selected_resource: snapshot.selected_resource,
+    let layout = |snapshot: sage_domain::project::BootstrapSnapshot| {
+        sage_domain::chat::ProjectLayoutRequest {
+            project_id: owner.project_id.as_str().to_owned(),
+            tabs: snapshot.tabs,
+            active_tab_id: snapshot.active_tab_id,
+            selected_root_id: snapshot.selected_root_id,
+            selected_resource: snapshot.selected_resource,
+        }
     };
     service
         .database
@@ -1804,13 +1806,13 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
         .unwrap();
     service
         .database
-        .archive_chat(&crate::domain::ChatLifecycleRequest {
+        .archive_chat(&sage_domain::chat::ChatLifecycleRequest {
             project_id: owner.project_id.as_str().to_owned(),
             chat_id: owner.chat_id.as_str().to_owned(),
             current_layout: layout(service.database.bootstrap_snapshot().unwrap()),
         })
         .unwrap();
-    let delete = crate::domain::ChatDeleteRequest {
+    let delete = sage_domain::chat::ChatDeleteRequest {
         project_id: owner.project_id.as_str().to_owned(),
         chat_id: owner.chat_id.as_str().to_owned(),
     };

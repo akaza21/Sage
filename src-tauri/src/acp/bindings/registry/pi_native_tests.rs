@@ -12,7 +12,7 @@ fn the_registry_routes_pi_to_its_curated_read_only_binding() {
         .apply_discovery(crate::harness_discovery::PiLaunchDiscovery::Absent);
     assert_eq!(
         record.unavailable_reason(),
-        Some(crate::domain::HarnessUnavailableReason::CandidateInvalid)
+        Some(sage_domain::harness::HarnessUnavailableReason::CandidateInvalid)
     );
     assert!(registry.resolve("pi-rpc").is_err());
 }

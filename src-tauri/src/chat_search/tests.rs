@@ -4,7 +4,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{ProjectChatSearchRequest, SearchLimits, search_project_chats};
-use crate::{domain::ProjectLayoutRequest, persistence::Database};
+use crate::persistence::Database;
+use sage_domain::chat::ProjectLayoutRequest;
 
 fn database_with_project() -> (Database, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-chat-search-{}", Uuid::new_v4()));

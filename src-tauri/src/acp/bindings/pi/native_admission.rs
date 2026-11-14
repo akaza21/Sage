@@ -17,9 +17,9 @@ use crate::{
             RequiredContainment, TreeLimits,
         },
     },
-    domain::HarnessCharacterisation,
     harness_discovery::{DiscoveredPiLaunch, PiLaunchDiscovery},
 };
+use sage_domain::harness::HarnessCharacterisation;
 
 pub(crate) const PI_BINDING_ID: &str = "pi-rpc";
 const BINDING_DIGEST_DOMAIN: &[u8] = b"sage:pi-rpc:native:v1:";

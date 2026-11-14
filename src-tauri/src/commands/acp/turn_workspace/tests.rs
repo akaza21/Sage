@@ -118,12 +118,14 @@ async fn an_archive_during_the_unlocked_capture_fails_the_send_as_stale() {
     let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let initial = database.bootstrap_snapshot().unwrap();
-    let layout = |snapshot: crate::domain::BootstrapSnapshot| crate::domain::ProjectLayoutRequest {
-        project_id: project.id.clone(),
-        tabs: snapshot.tabs,
-        active_tab_id: snapshot.active_tab_id,
-        selected_root_id: snapshot.selected_root_id,
-        selected_resource: snapshot.selected_resource,
+    let layout = |snapshot: sage_domain::project::BootstrapSnapshot| {
+        sage_domain::chat::ProjectLayoutRequest {
+            project_id: project.id.clone(),
+            tabs: snapshot.tabs,
+            active_tab_id: snapshot.active_tab_id,
+            selected_root_id: snapshot.selected_root_id,
+            selected_resource: snapshot.selected_resource,
+        }
     };
     let chat = initial.active_tab_id.clone().unwrap();
     database.create_chat(&layout(initial)).unwrap();
@@ -144,7 +146,7 @@ async fn an_archive_during_the_unlocked_capture_fails_the_send_as_stale() {
         },
     )
     .unwrap();
-    let archive = crate::domain::ChatLifecycleRequest {
+    let archive = sage_domain::chat::ChatLifecycleRequest {
         project_id: project.id.clone(),
         chat_id: chat,
         current_layout: layout(database.bootstrap_snapshot().unwrap()),

@@ -97,7 +97,7 @@ impl AppState {
     /// due update check continues in the background.
     pub(crate) fn rediscover_harnesses(
         app: &tauri::AppHandle,
-    ) -> Vec<crate::domain::HarnessDefinition> {
+    ) -> Vec<sage_domain::harness::HarnessDefinition> {
         let harnesses = &app.state::<AppState>().harnesses;
         let installed = {
             let _discovering = harnesses.lock_rediscovery();

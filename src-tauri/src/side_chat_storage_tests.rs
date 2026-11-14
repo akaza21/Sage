@@ -16,7 +16,7 @@ fn fixture() -> Fixture {
     let snapshot = database.bootstrap_snapshot().unwrap();
     let project = snapshot.project.as_ref().unwrap().id.clone();
     let parent = snapshot.active_tab_id.clone().unwrap();
-    let layout = crate::domain::ProjectLayoutRequest {
+    let layout = sage_domain::chat::ProjectLayoutRequest {
         project_id: project.clone(),
         tabs: snapshot.tabs,
         active_tab_id: Some(parent.clone()),
@@ -91,7 +91,7 @@ fn a_failed_purge_warns_and_never_blocks_startup_or_the_other_purges() {
     let other = database.create_project_from_root(&other_root).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let parent = snapshot.active_tab_id.clone().unwrap();
-    let layout = crate::domain::ProjectLayoutRequest {
+    let layout = sage_domain::chat::ProjectLayoutRequest {
         project_id: other.id.clone(),
         tabs: snapshot.tabs,
         active_tab_id: Some(parent.clone()),

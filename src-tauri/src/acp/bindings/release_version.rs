@@ -4,7 +4,7 @@
 
 use std::cmp::Ordering;
 
-use crate::domain::HarnessCharacterisation;
+use sage_domain::harness::HarnessCharacterisation;
 
 const COMPONENT_DIGITS_MAX: usize = 10;
 const PRERELEASE_BYTES_MAX: usize = 64;

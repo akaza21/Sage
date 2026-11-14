@@ -1,8 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use super::{
-    ArchivedChatSummary, ChatMessage, FileChange, HarnessDefinition, ProjectLayoutRequest,
-    ProjectRepositoryStatus, RecoveredEditorBuffer, ResourceRef, WorkbenchTab,
+use crate::{
+    chat::{ArchivedChatSummary, ChatMessage, ProjectLayoutRequest, WorkbenchTab},
+    editor::RecoveredEditorBuffer,
+    harness::HarnessDefinition,
+    repository::{FileChange, ProjectRepositoryStatus},
+    resource::ResourceRef,
 };
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

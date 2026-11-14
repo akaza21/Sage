@@ -17,9 +17,9 @@ use crate::{
             RequiredContainment, TreeLimits,
         },
     },
-    domain::{HarnessCharacterisation, HarnessUnavailableReason},
     harness_discovery::InstalledHarness,
 };
+use sage_domain::harness::{HarnessCharacterisation, HarnessUnavailableReason};
 
 use super::launch::SessionLaunch;
 

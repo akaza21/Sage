@@ -5,9 +5,6 @@ use sage_core::error::{AppError, AppResult};
 use tauri::State;
 
 use crate::{
-    domain::{
-        ResourceRef, ResourceTrashOutcome, TrashProjectResourceRequest, TrashProjectResourceResult,
-    },
     persistence::Database,
     preview_lifecycle::on_committed_project_transition_epoch,
     project_registry::RootRecord,
@@ -21,6 +18,12 @@ use crate::{
             supported as resource_trash_supported,
         },
     },
+};
+use sage_domain::{
+    file_operations::{
+        ResourceTrashOutcome, TrashProjectResourceRequest, TrashProjectResourceResult,
+    },
+    resource::ResourceRef,
 };
 
 const MAX_JAVASCRIPT_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
@@ -385,7 +388,7 @@ fn result_from_commit(
     transition_epoch: u64,
     outcome: ResourceTrashOutcome,
     commit: ResourceTrashCommit,
-    snapshot: Option<crate::domain::BootstrapSnapshot>,
+    snapshot: Option<sage_domain::project::BootstrapSnapshot>,
 ) -> TrashProjectResourceResult {
     TrashProjectResourceResult {
         outcome,

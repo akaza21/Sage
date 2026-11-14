@@ -1,8 +1,5 @@
 use super::*;
-use crate::{
-    domain::{ProjectLayoutRequest, ResourceRef, WorkbenchTab},
-    persistence::Database,
-};
+use crate::persistence::Database;
 use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageChatId,
@@ -10,6 +7,10 @@ use sage_acp_protocol::{
     },
     file_diff::{SnapshotReadError, pair_digest},
     intent::{BindingId, SafeResourceLocation, SafeResourceRef},
+};
+use sage_domain::{
+    chat::{ProjectLayoutRequest, WorkbenchTab},
+    resource::ResourceRef,
 };
 use std::{fs, path::PathBuf};
 use uuid::Uuid;

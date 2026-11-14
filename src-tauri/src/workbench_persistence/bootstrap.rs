@@ -2,16 +2,16 @@ use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
 
 use crate::{
-    domain::{
-        BootstrapSnapshot, HarnessDefinition, ProjectListItem, ProjectRepositoryStatus,
-        WorkbenchTab,
-    },
-    harnesses::HarnessCatalog,
-    persistence::Database,
-    project_registry::MAX_PROJECTS,
+    harnesses::HarnessCatalog, persistence::Database, project_registry::MAX_PROJECTS,
     workbench_restore::MAX_RESTORED_TABS,
 };
 use sage_acp_protocol::intent::CapabilitySnapshotV1;
+use sage_domain::{
+    chat::WorkbenchTab,
+    harness::HarnessDefinition,
+    project::{BootstrapSnapshot, ProjectListItem},
+    repository::ProjectRepositoryStatus,
+};
 
 pub(super) fn restore_harnesses(
     connection: &rusqlite::Connection,

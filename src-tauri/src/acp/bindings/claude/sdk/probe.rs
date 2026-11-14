@@ -14,8 +14,8 @@ use std::{
 use serde_json::{Value, json};
 
 use super::admission::{AdmittedClaudeSdkBinding, SDK_ARGS, launch_environment};
-use crate::domain::ModelOption;
 use sage_core::limits::LIMITS;
+use sage_domain::harness::ModelOption;
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(20);
 /// Startup output before the reply is small; this bounds a misbehaving CLI.

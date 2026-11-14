@@ -4,12 +4,15 @@ use sage_core::error::AppError;
 use uuid::Uuid;
 
 use super::*;
-use crate::domain::{ProjectLayoutRequest, ProjectSwitchRequest, WorkbenchTab};
+use sage_domain::{
+    chat::{ProjectLayoutRequest, WorkbenchTab},
+    project::ProjectSwitchRequest,
+};
 
 fn request(
     project_id: &str,
     chat_id: &str,
-    snapshot: &crate::domain::BootstrapSnapshot,
+    snapshot: &sage_domain::project::BootstrapSnapshot,
 ) -> ChatLifecycleRequest {
     ChatLifecycleRequest {
         project_id: project_id.into(),
@@ -37,8 +40,8 @@ fn insert_detached_chat(database: &Database, project_id: &str, id: &str, ordinal
 }
 
 fn assert_lifecycle_state_unchanged(
-    before: &crate::domain::BootstrapSnapshot,
-    after: &crate::domain::BootstrapSnapshot,
+    before: &sage_domain::project::BootstrapSnapshot,
+    after: &sage_domain::project::BootstrapSnapshot,
 ) {
     assert_eq!(after.active_tab_id, before.active_tab_id);
     assert_eq!(after.selected_root_id, before.selected_root_id);
@@ -132,7 +135,7 @@ fn archive_and_restore_preserve_history_across_restart() {
     );
     assert_eq!(
         archived.archived_chats,
-        vec![crate::domain::ArchivedChatSummary {
+        vec![sage_domain::chat::ArchivedChatSummary {
             id: first_chat_id.clone(),
             // The first prompt auto-titles a default-titled chat.
             title: "Chat: remember me".into(),

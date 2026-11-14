@@ -3,9 +3,12 @@ pub(crate) mod acp;
 use tauri::State;
 
 use crate::{
-    domain::{HarnessDefinition, ModelOption, SimulatorTurnResult},
     harnesses::{HarnessCatalog, SIMULATOR_DEFAULT_MODEL_ID, SIMULATOR_ID},
     state::AppState,
+};
+use sage_domain::{
+    chat::SimulatorTurnResult,
+    harness::{HarnessDefinition, ModelOption},
 };
 
 const MAX_PROMPT_BYTES: usize = 100_000;

@@ -35,6 +35,7 @@ regex.workspace = true
 rusqlite.workspace = true
 sage-acp-protocol.workspace = true
 sage-core.workspace = true
+sage-domain.workspace = true
 sage-process.workspace = true
 serde.workspace = true
 serde_json.workspace = true

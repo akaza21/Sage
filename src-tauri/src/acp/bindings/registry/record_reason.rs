@@ -1,4 +1,4 @@
-use crate::domain::HarnessUnavailableReason;
+use sage_domain::harness::HarnessUnavailableReason;
 
 use super::{Admission, BindingRecord};
 

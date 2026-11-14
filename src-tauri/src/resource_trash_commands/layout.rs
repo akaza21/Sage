@@ -4,10 +4,8 @@ use sage_core::{
     time::now_millis,
 };
 
-use crate::{
-    domain::{ResourceRef, TrashProjectResourceRequest},
-    workspace::resource_trash::TRASH_NAME,
-};
+use crate::workspace::resource_trash::TRASH_NAME;
+use sage_domain::{file_operations::TrashProjectResourceRequest, resource::ResourceRef};
 
 pub(super) fn same_or_descendant(candidate: &ResourceRef, source: &ResourceRef) -> bool {
     candidate.root_id == source.root_id

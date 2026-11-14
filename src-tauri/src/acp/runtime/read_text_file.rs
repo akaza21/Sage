@@ -16,10 +16,10 @@ use crate::{
         resource_mapper::NativeResourceAdmission,
         transport::{FrameWriteError, OutboundFrame},
     },
-    domain::ResourceRef,
     workspace::{Workspace, select_text_lines},
 };
 use sage_core::limits::preview::P02_READ_TEXT_SOURCE_BYTES;
+use sage_domain::resource::ResourceRef;
 
 #[allow(
     dead_code,

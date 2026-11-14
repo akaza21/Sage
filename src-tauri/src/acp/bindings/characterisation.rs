@@ -1,4 +1,4 @@
-pub(crate) use crate::domain::HarnessCharacterisation as Characterisation;
+pub(crate) use sage_domain::harness::HarnessCharacterisation as Characterisation;
 
 use super::release_version::characterise_against;
 

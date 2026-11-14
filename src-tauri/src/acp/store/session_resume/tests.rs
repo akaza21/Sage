@@ -355,7 +355,7 @@ fn a_resume_link_names_an_earlier_native_session_of_the_same_chat_and_never_chan
     let snapshot = fixture.database.bootstrap_snapshot().unwrap();
     let other_chat = fixture
         .database
-        .create_chat(&crate::domain::ProjectLayoutRequest {
+        .create_chat(&sage_domain::chat::ProjectLayoutRequest {
             project_id: fixture.project.as_str().to_owned(),
             tabs: snapshot.tabs,
             active_tab_id: snapshot.active_tab_id,

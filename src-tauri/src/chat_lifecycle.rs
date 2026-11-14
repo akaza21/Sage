@@ -14,9 +14,10 @@ pub(crate) use title_source::{
 };
 
 use crate::{
-    domain::RenameChatRequest, persistence::Database, workbench_persistence::persist_layout_in,
+    persistence::Database, workbench_persistence::persist_layout_in,
     workbench_restore::validate_tab_projection,
 };
+use sage_domain::chat::RenameChatRequest;
 
 pub const MAX_CHAT_TITLE_BYTES: usize = 128;
 const MAX_CHAT_ID_BYTES: usize = 512;

@@ -36,7 +36,7 @@ pub struct HarnessUpdate {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum HarnessInstallState {
+pub enum HarnessInstallState {
     Detecting,
     Available,
     Unavailable,
@@ -44,7 +44,7 @@ pub(crate) enum HarnessInstallState {
 }
 
 impl HarnessInstallState {
-    pub(crate) const fn as_str(self) -> &'static str {
+    pub const fn as_str(self) -> &'static str {
         match self {
             Self::Detecting => "detecting",
             Self::Available => "available",
@@ -68,7 +68,7 @@ pub enum HarnessCharacterisation {
 
 impl HarnessCharacterisation {
     /// Whether the features Sage tested apply to this release.
-    pub(crate) fn runs_tested_features(self) -> bool {
+    pub fn runs_tested_features(self) -> bool {
         matches!(self, Self::Characterised | Self::NewerThanTested)
     }
 }

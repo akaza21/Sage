@@ -5,10 +5,12 @@ use sage_core::error::{AppError, AppResult};
 
 use crate::{
     chat_lifecycle::validate_chat_identifier,
-    domain::{ArchivedChatSummary, ChatLifecycleRequest, ProjectLayoutRequest, WorkbenchTab},
     persistence::Database,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
     workbench_restore::validate_tab_projection,
+};
+use sage_domain::chat::{
+    ArchivedChatSummary, ChatLifecycleRequest, ProjectLayoutRequest, WorkbenchTab,
 };
 
 pub(crate) const MAX_ARCHIVED_CHATS: usize = 64;

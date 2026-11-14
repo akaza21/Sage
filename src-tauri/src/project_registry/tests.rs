@@ -8,13 +8,9 @@ use uuid::Uuid;
 
 use super::create::MAX_PROJECT_NAME_CHARS;
 use super::*;
-use crate::{
-    domain::{ProjectLayoutRequest, ProjectSwitchRequest},
-    editor,
-    persistence::Database,
-    state::AppState,
-};
+use crate::{editor, persistence::Database, state::AppState};
 use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
+use sage_domain::{chat::ProjectLayoutRequest, project::ProjectSwitchRequest};
 
 fn runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().unwrap()
@@ -207,7 +203,7 @@ impl Drop for Folders {
     }
 }
 
-fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
+fn layout(snapshot: &sage_domain::project::BootstrapSnapshot) -> ProjectLayoutRequest {
     ProjectLayoutRequest {
         project_id: snapshot.project.as_ref().unwrap().id.clone(),
         tabs: snapshot.tabs.clone(),
@@ -355,7 +351,7 @@ fn same_relative_path_in_two_roots_has_independent_durable_buffers() {
         editor::snapshot_buffer(
             &database,
             &workspace,
-            crate::domain::BufferSnapshotRequest {
+            sage_domain::editor::BufferSnapshotRequest {
                 resource,
                 base: opened.base,
                 line_ending: opened.line_ending,
@@ -397,7 +393,7 @@ fn switching_projects_restores_layout_and_dirty_buffer_metadata() {
     editor::snapshot_buffer(
         &database,
         &workspace_a,
-        crate::domain::BufferSnapshotRequest {
+        sage_domain::editor::BufferSnapshotRequest {
             resource,
             base: opened.base,
             line_ending: opened.line_ending,
@@ -548,7 +544,7 @@ fn ensure_local_project_creates_a_zero_root_chat_home() {
     assert_eq!(again.id, first.id);
 }
 
-fn snapshot_layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
+fn snapshot_layout(snapshot: &sage_domain::project::BootstrapSnapshot) -> ProjectLayoutRequest {
     ProjectLayoutRequest {
         project_id: snapshot.project.as_ref().unwrap().id.clone(),
         tabs: snapshot.tabs.clone(),

@@ -6,10 +6,10 @@ use super::{
     validate_chat_identifier,
 };
 use crate::{
-    domain::ProjectLayoutRequest,
     persistence::Database,
     workbench_persistence::{MAX_RESTORED_TABS, persist_layout_in},
 };
+use sage_domain::chat::ProjectLayoutRequest;
 use sage_core::{
     error::{AppError, AppResult},
     limits::LIMITS,

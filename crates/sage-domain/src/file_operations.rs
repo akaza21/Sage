@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 
-use super::{
-    BootstrapSnapshot, DirectoryListing, ProjectLayoutRequest, ProjectRepositoryStatus, ResourceRef,
+use crate::{
+    chat::ProjectLayoutRequest,
+    project::{BootstrapSnapshot, DirectoryListing},
+    repository::ProjectRepositoryStatus,
+    resource::ResourceRef,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

@@ -2943,6 +2943,7 @@ dependencies = [
  "rustls",
  "sage-acp-protocol",
  "sage-core",
+ "sage-domain",
  "sage-process",
  "sage-test-support",
  "serde",
@@ -2990,6 +2991,14 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.19",
  "tokio",
+]
+
+[[package]]
+name = "sage-domain"
+version = "0.0.0"
+dependencies = [
+ "sage-acp-protocol",
+ "serde",
 ]
 
 [[package]]

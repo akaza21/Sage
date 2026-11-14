@@ -308,7 +308,7 @@ where
     C: FnOnce(Arc<FileRenameAuthority>),
     P: FnOnce() -> AppResult<()>,
     S: FnOnce(&File) -> std::io::Result<()>,
-    L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
+    L: FnOnce() -> AppResult<sage_domain::project::DirectoryListing>,
 {
     let root = authority.root;
     let expected_root = authority.expected_root;
@@ -379,7 +379,7 @@ pub(in crate::workspace::file_rename) fn observe_recovery<L>(
     list_after: L,
 ) -> AppResult<RenameObservation>
 where
-    L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
+    L: FnOnce() -> AppResult<sage_domain::project::DirectoryListing>,
 {
     verify_visible_authority(&authority, root, parent_relative)?;
     let target_identity_confirmed =
