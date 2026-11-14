@@ -27,6 +27,16 @@ export interface NativeSessionsPage {
 
 const PAGE_SIZE = 25;
 
+/** The sessions a runtime remembers from its listings (its own
+ * `LISTED_SESSIONS_MAX`); it imports only those. */
+const LISTED_SESSIONS_MAX = 256;
+
+/** Whether a list already showing `shown` sessions may load another page
+ * and still show only sessions its runtime remembers listing. */
+export function canListMoreSessions(shown: number): boolean {
+  return shown + PAGE_SIZE <= LISTED_SESSIONS_MAX;
+}
+
 function invalid(): never {
   throw new Error("Invalid native session response");
 }

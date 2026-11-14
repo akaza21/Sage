@@ -4,7 +4,9 @@ use super::{AdapterError, CodexAdapter};
 use crate::acp::bindings::codex::request::OutgoingRequest;
 
 /// Sessions a runtime remembers from its listings, so an import reads only
-/// a session of its own project that it listed.
+/// a session of its own project that it listed. The import dialog shows at
+/// most this many (`LISTED_SESSIONS_MAX` in `nativeSessionImport.ts`), so
+/// every session it shows stays importable.
 const LISTED_SESSIONS_MAX: usize = 256;
 
 /// Abandoned import reads whose late answers are still dropped; past these,
@@ -93,13 +95,14 @@ impl CodexAdapter {
         Ok(request)
     }
 
-    /// Remembers the sessions a listing returned, dropping the oldest past
-    /// the bound.
+    /// Remembers the sessions a listing returned as the most recently
+    /// listed, dropping the least recently listed past the bound: a session
+    /// listed again stays importable as long as one listed for the first
+    /// time.
     pub(crate) fn remember_listed(&mut self, threads: impl IntoIterator<Item = String>) {
         for thread in threads {
-            if !self.listed_sessions.contains(&thread) {
-                self.listed_sessions.push(thread);
-            }
+            self.listed_sessions.retain(|listed| *listed != thread);
+            self.listed_sessions.push(thread);
         }
         let excess = self
             .listed_sessions

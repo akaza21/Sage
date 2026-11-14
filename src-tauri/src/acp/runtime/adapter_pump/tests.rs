@@ -2768,3 +2768,73 @@ fn an_abandoned_import_read_drops_its_late_answer_and_the_chat_keeps_serving() {
         assert!(shared.0.lock().unwrap().durable_batches.is_empty());
     });
 }
+
+#[test]
+fn a_session_listed_again_stays_importable_past_the_retention_of_new_ones() {
+    use crate::acp::goal::{NativeRead, NativeRpcReply};
+    runtime().block_on(async {
+        let (mut pump, _, _) = goal_active_codex_pump();
+        let mut chunk = 10;
+        let page = |prefix: &str, page: usize| -> Vec<String> {
+            (0..25)
+                .map(|row| format!("{prefix}-{page}-{row}"))
+                .collect()
+        };
+        let mut list = async |pump: &mut AdapterPump<CodexRuntime, FakeJournal, Mapper>,
+                              threads: &[String]| {
+            let mut output = CaptureTransport(Vec::new());
+            let listing = NativeRead::ImportableSessions {
+                cursor: None,
+                excluded: Vec::new(),
+            };
+            pump.write_child(&mut output, &listing).unwrap();
+            let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+            let data: Vec<_> = threads
+                .iter()
+                .map(|id| serde_json::json!({"id":id,"preview":"Session","updatedAt":1700,"ephemeral":false}))
+                .collect();
+            let reply = codex_line(
+                serde_json::json!({"id":request["id"],"result":{"nextCursor":null,"data":data}}),
+            );
+            chunk += 1;
+            assert!(pump.push_stdout_chunk(&reply, chunk).await.unwrap());
+            assert!(matches!(
+                pump.take_native_rpc_reply(),
+                Some(NativeRpcReply::SessionsPage(_))
+            ));
+        };
+        let import = |thread: &str| NativeRead::ImportTurns {
+            thread_id: thread.into(),
+            cursor: None,
+        };
+        // One dialog lists ten pages; the next lists the first page again,
+        // then nine pages of sessions the runtime never listed before.
+        for index in 0..10 {
+            list(&mut pump, &page("old", index)).await;
+        }
+        let first = page("old", 0);
+        list(&mut pump, &first).await;
+        for index in 0..9 {
+            list(&mut pump, &page("new", index)).await;
+        }
+        // Every session the second dialog shows is still importable.
+        let mut output = CaptureTransport(Vec::new());
+        pump.write_child(&mut output, &import(&first[0])).unwrap();
+        let request: serde_json::Value = serde_json::from_slice(&output.0).unwrap();
+        let empty = codex_line(
+            serde_json::json!({"id":request["id"],"result":{"data":[],"nextCursor":null}}),
+        );
+        chunk += 1;
+        assert!(pump.push_stdout_chunk(&empty, chunk).await.unwrap());
+        assert!(matches!(
+            pump.take_native_rpc_reply(),
+            Some(NativeRpcReply::TurnsPage(_))
+        ));
+        // A session only the first dialog showed has aged out.
+        let mut output = CaptureTransport(Vec::new());
+        assert!(
+            pump.write_child(&mut output, &import(&page("old", 1)[0]))
+                .is_err()
+        );
+    });
+}

@@ -7,17 +7,26 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
-const { listNativeSessions } = vi.hoisted(() => ({
+const { listNativeSessions, importNativeSession } = vi.hoisted(() => ({
   listNativeSessions: vi.fn(),
-}));
-vi.mock("../services/nativeSessionImport", () => ({
-  listNativeSessions,
   importNativeSession: vi.fn(),
 }));
+vi.mock("../services/nativeSessionImport", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("../services/nativeSessionImport")>()),
+  listNativeSessions,
+  importNativeSession,
+}));
 
+import { useWorkbenchStore } from "../app/store";
+import type { WorkbenchState } from "../app/store";
 import { ImportSessionDialog } from "./ImportSessionDialog";
 
-afterEach(cleanup);
+const initialState = useWorkbenchStore.getState();
+
+afterEach(() => {
+  cleanup();
+  useWorkbenchStore.setState(initialState, true);
+});
 
 it("closes while the listing is still busy and ignores its late result", async () => {
   let answer: (page: unknown) => void = () => undefined;
@@ -39,4 +48,49 @@ it("closes while the listing is still busy and ignores its late result", async (
   );
   expect(screen.queryByText("Late")).toBeNull();
   expect(errors).not.toHaveBeenCalled();
+});
+
+it("lists only as many sessions as its runtime remembers, each still importable", async () => {
+  const lister = { sessionId: "session-1", runtimeEpoch: "1" };
+  let page = 0;
+  listNativeSessions.mockImplementation(async () => {
+    const index = page++;
+    return {
+      sessions: Array.from({ length: 25 }, (_, row) => ({
+        threadId: `thread-${index}-${row}`,
+        title: `Session ${index}-${row}`,
+        updatedAt: 1,
+      })),
+      nextCursor: `cursor-${index + 1}`,
+      lister,
+    };
+  });
+  importNativeSession.mockRejectedValue(new Error("Refused"));
+  useWorkbenchStore.setState({
+    project: { id: "project-1" } as WorkbenchState["project"],
+    projectTransitioning: false,
+  });
+  render(<ImportSessionDialog />);
+  await screen.findByText("Session 0-0");
+  for (;;) {
+    const more = screen.queryByText("Load more");
+    if (!more) break;
+    await act(async () => fireEvent.click(more));
+  }
+  // Ten pages fit within the 256 sessions the runtime remembers.
+  expect(listNativeSessions).toHaveBeenCalledTimes(10);
+  expect(
+    screen
+      .getByRole("dialog", { hidden: true })
+      .querySelectorAll(".chat-search-result"),
+  ).toHaveLength(250);
+  expect(
+    screen.getByText("Only the most recently active sessions are listed."),
+  ).not.toBeNull();
+  await act(async () =>
+    fireEvent.click(screen.getByText("Session 0-0").closest("button")!),
+  );
+  expect(importNativeSession).toHaveBeenCalledWith(
+    expect.objectContaining({ threadId: "thread-0-0", lister }),
+  );
 });

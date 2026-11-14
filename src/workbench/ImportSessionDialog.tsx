@@ -8,6 +8,7 @@ import { useWorkbenchStore } from "../app/store";
 import { errorMessage } from "../domain/errors";
 import { dayTimeLabel } from "../features/chat/chatTimestamp";
 import {
+  canListMoreSessions,
   importNativeSession,
   listNativeSessions,
   type ImportLister,
@@ -119,7 +120,7 @@ export function ImportSessionDialog() {
             <span>{dayTimeLabel(session.updatedAt * 1000)}</span>
           </button>
         ))}
-        {cursor ? (
+        {cursor && canListMoreSessions(sessions.length) ? (
           <button
             type="button"
             className="chat-search-dialog__more"
@@ -131,6 +132,8 @@ export function ImportSessionDialog() {
           >
             Load more
           </button>
+        ) : cursor ? (
+          <p>Only the most recently active sessions are listed.</p>
         ) : null}
       </div>
       {!busy && !error && sessions.length === 0 ? (
