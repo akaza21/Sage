@@ -167,7 +167,7 @@ where
     C: ProcessTreeControl,
     C::ZeroProof: CoordinatorZeroToken,
 {
-    pub(crate) fn owner(&self) -> &crate::acp::scheduler::RuntimeOwner {
+    pub(crate) fn owner(&self) -> &sage_acp_protocol::scheduler::RuntimeOwner {
         self.candidate.lease.owner()
     }
 

@@ -1,8 +1,10 @@
 use super::*;
 use crate::acp::{
-    contract::{RequiredText, SafeText},
     goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
     runtime::HostError,
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText},
     scheduler::RuntimeOwner,
     session_control::SessionControl,
 };
@@ -127,7 +129,8 @@ impl AcpService {
         &self,
         project_id: &str,
         chat_id: &str,
-    ) -> Option<RequiredText<{ crate::acp::intent::session_event::SESSION_TITLE_BYTES }>> {
+    ) -> Option<RequiredText<{ sage_acp_protocol::intent::session_event::SESSION_TITLE_BYTES }>>
+    {
         let stored: String = self
             .database
             .connection()

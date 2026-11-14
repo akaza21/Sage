@@ -2,7 +2,7 @@ use std::{fs, path::PathBuf};
 
 use serde_json::Value;
 
-use crate::acp::fixture_protocol::validate_limit_fixture_coverage;
+use sage_acp_protocol::fixture_protocol::validate_limit_fixture_coverage;
 
 use super::generated_cases::{FROZEN_CASES, FrozenCase, FrozenPhase};
 use super::{child, host, oracle};

@@ -5,7 +5,7 @@
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     intent::ExternalId,
     scheduler::RuntimeOwner,

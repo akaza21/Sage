@@ -2,8 +2,8 @@ use super::{ProcessAdapterDriver, ProcessTreeControl, StdinTransport, TreeLeaseO
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     runtime::{AdapterBatchJournal, HostError},
-    session_config::ConfigIntent,
 };
+use sage_acp_protocol::session_config::ConfigIntent;
 
 impl<A, J, R, T, C, L> ProcessAdapterDriver<A, J, R, T, C, L>
 where

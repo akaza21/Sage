@@ -12,7 +12,7 @@ pub struct HarnessDefinition {
     pub binding_id: Option<String>,
     pub account_model_discovery: bool,
     #[serde(default)]
-    pub access_modes: Vec<crate::acp_protocol::access_mode::AccessModeCapability>,
+    pub access_modes: Vec<sage_acp_protocol::access_mode::AccessModeCapability>,
     pub version: Option<String>,
     pub version_checking: bool,
     pub bound_version: Option<String>,

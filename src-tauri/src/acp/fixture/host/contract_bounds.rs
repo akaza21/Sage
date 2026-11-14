@@ -2,9 +2,10 @@ use serde_json::{Value, json};
 
 use crate::acp::{
     fixture::generated_cases::FrozenCase,
-    intent::{NormalizedPayload, PageCursor, Prompt, ToolCategory},
     runtime::{NormalizerInput, normalize, normalized_payload_bytes},
+    transcript_quote::Prompt,
 };
+use sage_acp_protocol::intent::{NormalizedPayload, PageCursor, ToolCategory};
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "page-cursor-bytes-512",
@@ -121,12 +122,13 @@ fn unsupported(step: &Value) -> Value {
 
 fn payload_with_serialized_bytes(bytes: usize) -> NormalizedPayload {
     let empty = NormalizedPayload::Text {
-        text: crate::acp::contract::SafeText::new("text", "").unwrap(),
+        text: sage_acp_protocol::contract::SafeText::new("text", "").unwrap(),
     };
     let overhead = serde_json::to_string(&empty).unwrap().len();
     assert!(bytes >= overhead);
     NormalizedPayload::Text {
-        text: crate::acp::contract::SafeText::new("text", "x".repeat(bytes - overhead)).unwrap(),
+        text: sage_acp_protocol::contract::SafeText::new("text", "x".repeat(bytes - overhead))
+            .unwrap(),
     }
 }
 

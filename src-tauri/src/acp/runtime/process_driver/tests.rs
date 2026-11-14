@@ -10,30 +10,29 @@ use std::{
     thread,
 };
 
-use crate::{
-    acp::{
-        bindings::adapter::{
-            AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
-            AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
-        },
-        contract::{
-            ProjectionRevision, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId,
-            SageChatId, SageProjectId, SageServerRequestId, SageTurnId,
-        },
-        intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, SafeResourceRef},
-        lifecycle::{DeliveryState, ItemLifecycle, ServerRequestState, TurnState},
-        process::TreeExit,
-        runtime::{
-            ActiveTurnIntent, AdapterBatchJournal, AdapterPump, DurableAdapterEvent,
-            EgressTransport, JournalReceipt, NonfatalRefusal, ProjectionPublishError,
-            ProjectionPublishStatus, ProjectionPublisher, PumpIntent, PumpJournalError,
-            SessionPumpIntent,
-        },
-        scheduler::RuntimeOwner,
-        store::SendObservation,
-        transport::{Frame, FrameWriteOutcome, OutboundFrame},
+use crate::acp::{
+    bindings::adapter::{
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
+        AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
-    acp_protocol::permissions::PermissionDecision,
+    process::TreeExit,
+    runtime::{
+        ActiveTurnIntent, AdapterBatchJournal, AdapterPump, DurableAdapterEvent, EgressTransport,
+        JournalReceipt, NonfatalRefusal, ProjectionPublishError, ProjectionPublishStatus,
+        ProjectionPublisher, PumpIntent, PumpJournalError, SessionPumpIntent,
+    },
+    store::SendObservation,
+    transport::{Frame, FrameWriteOutcome, OutboundFrame},
+};
+use sage_acp_protocol::{
+    contract::{
+        ProjectionRevision, RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageChatId,
+        SageProjectId, SageServerRequestId, SageTurnId,
+    },
+    intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, SafeResourceRef},
+    lifecycle::{DeliveryState, ItemLifecycle, ServerRequestState, TurnState},
+    permissions::PermissionDecision,
+    scheduler::RuntimeOwner,
 };
 use sage_core::limits::LIMITS;
 use sage_process::error::LaunchError;
@@ -242,7 +241,8 @@ impl AdapterBatchJournal for FakeJournal {
             self.turn_id.clone(),
             self.turn_state,
             DeliveryState::Correlated,
-            crate::acp::contract::EntityRevision::new(self.turn_revision).expect("turn revision"),
+            sage_acp_protocol::contract::EntityRevision::new(self.turn_revision)
+                .expect("turn revision"),
             ProjectionRevision::new(self.next_revision).expect("projection revision"),
         );
         self.shared.0.lock().expect("shared").durable.push(events);
@@ -265,7 +265,7 @@ impl AdapterBatchJournal for FakeJournal {
 
     fn transition_permission<'a>(
         &'a mut self,
-        _: &'a crate::acp_protocol::permissions::PermissionIntent,
+        _: &'a sage_acp_protocol::permissions::PermissionIntent,
         state: ServerRequestState,
         _: i64,
     ) -> Pin<Box<dyn Future<Output = Result<ProjectionRevision, PumpJournalError>> + Send + 'a>>
@@ -287,7 +287,7 @@ struct FakePublisher;
 impl ProjectionPublisher for FakePublisher {
     fn publish_committed(
         &self,
-        _: crate::acp::intent::ProjectionChangedV1,
+        _: crate::acp::ipc::ProjectionChangedV1,
     ) -> Result<ProjectionPublishStatus, ProjectionPublishError> {
         Ok(ProjectionPublishStatus::Published)
     }
@@ -299,8 +299,8 @@ impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         _: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
-        Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 
@@ -807,7 +807,7 @@ fn driver_data_byte_limit_accepts_exact_and_rejects_plus_one_without_mutation() 
     let before = plus_one.retained_usage();
     assert!(matches!(
         plus_one.submit_prompt(
-            crate::acp::intent::Prompt::new("prompt", "p".repeat(8_192)).unwrap(),
+            crate::acp::transcript_quote::Prompt::new("prompt", "p".repeat(8_192)).unwrap(),
             RequiredText::new("message", "m").unwrap(),
         ),
         Err(MailboxError::Full)
@@ -869,7 +869,7 @@ fn prompt_dispatch_validates_turn_intent_and_reports_exact_write_outcome() {
         build_driver(Vec::new(), VecDeque::from([FrameWriteOutcome::Complete]));
     let progress = complete
         .dispatch_prompt(
-            crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
+            crate::acp::transcript_quote::Prompt::new("prompt", "hello").expect("prompt"),
             RequiredText::new("message", "message-one").expect("message"),
         )
         .expect("written prompt");
@@ -879,7 +879,7 @@ fn prompt_dispatch_validates_turn_intent_and_reports_exact_write_outcome() {
     let (mut foreign, shared, _, _) = build_driver(Vec::new(), VecDeque::new());
     assert_eq!(
         foreign.dispatch_prompt(
-            crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
+            crate::acp::transcript_quote::Prompt::new("prompt", "hello").expect("prompt"),
             RequiredText::new("message", "foreign-message").expect("message"),
         ),
         Err(DriverError::RejectedIntent)
@@ -892,7 +892,7 @@ fn prompt_dispatch_validates_turn_intent_and_reports_exact_write_outcome() {
     );
     assert_eq!(
         unknown.dispatch_prompt(
-            crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
+            crate::acp::transcript_quote::Prompt::new("prompt", "hello").expect("prompt"),
             RequiredText::new("message", "message-one").expect("message"),
         ),
         Err(DriverError::TeardownRequired(
@@ -915,7 +915,7 @@ fn signed_out_prompt_refusal_does_not_teardown_the_driver() {
 
     assert_eq!(
         driver.dispatch_prompt(
-            crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
+            crate::acp::transcript_quote::Prompt::new("prompt", "hello").expect("prompt"),
             RequiredText::new("message", "message-one").expect("message"),
         ),
         Err(DriverError::Refused(NonfatalRefusal::SignIn))
@@ -933,7 +933,7 @@ fn prompt_crosses_the_bounded_driver_mailbox_and_returns_exact_write_evidence() 
         let mailbox = DriverMailbox::new().expect("mailbox");
         let response = mailbox
             .submit_prompt(
-                crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
+                crate::acp::transcript_quote::Prompt::new("prompt", "hello").expect("prompt"),
                 RequiredText::new("message", "message-one").expect("message"),
             )
             .expect("bounded prompt");
@@ -956,7 +956,7 @@ fn permission_write_settles_the_durable_decision() {
                 .expect("request"),
             payload: NormalizedPayload::PermissionRequest {
                 user_input: None,
-                category: crate::acp::intent::ToolCategory::Other,
+                category: sage_acp_protocol::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
                 offered_option_kinds: None,
                 reason: None,
@@ -1019,7 +1019,7 @@ fn raw_external_permission_id_tears_down_without_writing_a_decision() {
                 .expect("request"),
             payload: NormalizedPayload::PermissionRequest {
                 user_input: None,
-                category: crate::acp::intent::ToolCategory::Other,
+                category: sage_acp_protocol::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
                 offered_option_kinds: None,
                 reason: None,
@@ -1112,8 +1112,8 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
         );
         assert_eq!(
             malformed.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::ProtocolError,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::ProtocolError,
                 message: Some("harness sent a malformed protocol frame".to_owned()),
                 remediation: None,
             })
@@ -1136,8 +1136,8 @@ fn malformed_pump_input_process_exit_and_mandatory_failure_all_request_teardown(
         );
         assert_eq!(
             exited.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                 message: Some("harness process exited with code 17".to_owned()),
                 remediation: None,
             })
@@ -1170,8 +1170,8 @@ fn refused_protocol_version_reports_the_exact_observed_value() {
 
     assert_eq!(
         driver.terminal_outcome(),
-        Some(crate::acp::lifecycle::TurnTerminalOutcome {
-            reason: crate::acp::lifecycle::TurnTerminalReason::RefusedVersion,
+        Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+            reason: sage_acp_protocol::lifecycle::TurnTerminalReason::RefusedVersion,
             message: Some(
                 "harness reported protocol version acp-9, which Sage has not characterised"
                     .to_owned(),
@@ -1239,8 +1239,8 @@ fn process_exit_admits_stdout_the_reader_has_not_delivered_yet() {
         );
         assert_eq!(
             driver.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                 message: Some("harness process exited with code 17".to_owned()),
                 remediation: None,
             })
@@ -1272,8 +1272,8 @@ fn reader_eof_processed_before_watcher_exit_preserves_the_observed_exit_code() {
         );
         assert_eq!(
             driver.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                 message: Some("harness process exited with code 17".to_owned()),
                 remediation: None,
             })
@@ -1361,8 +1361,8 @@ fn cancel_after_process_exit_never_writes_to_dead_stdin() {
         assert_eq!(driver.first_delivery_unknown(), None);
         assert_eq!(
             driver.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                 message: Some("harness process exited with code 17".to_owned()),
                 remediation: None,
             })
@@ -1447,7 +1447,7 @@ fn prepared_write_prompt_is_refused_after_process_exit() {
 
         assert_eq!(
             driver.dispatch_prompt(
-                crate::acp::intent::Prompt::new("prompt", "hello").expect("prompt"),
+                crate::acp::transcript_quote::Prompt::new("prompt", "hello").expect("prompt"),
                 RequiredText::new("message", "message-one").expect("message"),
             ),
             Err(DriverError::TeardownRequired(TeardownCause::ProcessExit))
@@ -1533,8 +1533,8 @@ fn final_drain_failure_cannot_replace_the_known_process_exit() {
         );
         assert_eq!(
             driver.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                 message: Some("harness process exited with code 17".to_owned()),
                 remediation: None,
             })
@@ -1570,8 +1570,8 @@ fn delivery_unknown_after_process_exit_keeps_the_durable_harness_exited_reason()
         );
         assert_eq!(
             driver.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                 message: Some("harness process exited with code 17".to_owned()),
                 remediation: None,
             })
@@ -1601,8 +1601,8 @@ fn failed_immediate_termination_retries_and_reports_the_failure_with_the_exit_de
         );
         assert_eq!(
             driver.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                 message: Some("harness process exited with code 17".to_owned()),
                 remediation: None,
             })
@@ -1633,8 +1633,8 @@ fn close_session_after_process_exit_never_writes_to_dead_stdin() {
         assert!(shared.0.lock().expect("shared").commands.is_empty());
         assert_eq!(
             driver.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                 message: Some("harness process exited with code 17".to_owned()),
                 remediation: None,
             })
@@ -1652,7 +1652,7 @@ fn permission_resolution_after_process_exit_never_writes_to_dead_stdin() {
                 .expect("request"),
             payload: NormalizedPayload::PermissionRequest {
                 user_input: None,
-                category: crate::acp::intent::ToolCategory::Other,
+                category: sage_acp_protocol::intent::ToolCategory::Other,
                 summary: SafeText::new("summary", "permission").expect("summary"),
                 offered_option_kinds: None,
                 reason: None,
@@ -1690,8 +1690,8 @@ fn permission_resolution_after_process_exit_never_writes_to_dead_stdin() {
         assert_eq!(driver.first_delivery_unknown(), None);
         assert_eq!(
             driver.terminal_outcome(),
-            Some(crate::acp::lifecycle::TurnTerminalOutcome {
-                reason: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+            Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
+                reason: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                 message: Some("harness process exited with code 17".to_owned()),
                 remediation: None,
             })
@@ -2051,7 +2051,7 @@ mod cancel_permission_tests;
 
 #[test]
 fn every_teardown_cause_maps_to_a_truthful_terminal_reason() {
-    use crate::acp::lifecycle::TurnTerminalReason;
+    use sage_acp_protocol::lifecycle::TurnTerminalReason;
 
     let mapped = [
         TeardownCause::ReaderEof,

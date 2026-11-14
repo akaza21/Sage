@@ -47,14 +47,14 @@ pub(crate) mod turn_undo;
 
 use serde::{Deserialize, Serialize};
 
+use crate::acp::transcript_quote::Prompt;
 #[cfg(test)]
-use crate::acp::lifecycle::SessionState;
-use crate::acp::{
+use sage_acp_protocol::lifecycle::SessionState;
+use sage_acp_protocol::{
     contract::{
         ClientIntentId, EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
         SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageServerRequestId, SageTurnId,
     },
-    intent::Prompt,
     lifecycle::{DeliveryState, ServerRequestState, TurnState},
 };
 
@@ -94,9 +94,9 @@ pub(crate) use history::load_chat_page_reserving;
 
 pub(crate) fn load_chat_page(
     connection: &rusqlite::Connection,
-    project_id: crate::acp::contract::SageProjectId,
-    chat_id: crate::acp::contract::SageChatId,
-    cursor: Option<crate::acp::intent::PageCursor>,
+    project_id: sage_acp_protocol::contract::SageProjectId,
+    chat_id: sage_acp_protocol::contract::SageChatId,
+    cursor: Option<sage_acp_protocol::intent::PageCursor>,
 ) -> Result<crate::acp::projection::AcpChatPage, StoreError> {
     load_chat_page_reserving(connection, project_id, chat_id, cursor, 0)
 }

@@ -5,7 +5,7 @@ use rusqlite::Connection;
 
 use super::extended_tests::start;
 use super::*;
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{ClientIntentId, RequiredText},
     intent::{CapabilitySnapshotV1, ExternalId},
     lifecycle::SessionState,
@@ -229,7 +229,7 @@ fn duplicate_commits_match_only_the_running_epochs_snapshot() {
 
 #[test]
 fn fork_admission_follows_the_latest_negotiation_in_both_directions() {
-    use crate::acp::contract::SageTurnId;
+    use sage_acp_protocol::contract::SageTurnId;
 
     let (mut connection, session) = parked_and_reactivated(OLD_CODEX.into());
     complete(&mut connection, &session, 2, NEW_CODEX.into()).unwrap();

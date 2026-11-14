@@ -91,7 +91,8 @@ fn upgrading_a_populated_ledger_seeks_undo_intents_and_recovers_only_the_unsettl
                 chat_id: fixture.chat.clone(),
                 session_id: command.session_id.clone(),
                 runtime_epoch: command.runtime_epoch,
-                exit_kind: crate::acp::contract::RequiredText::new("exitKind", "shutdown").unwrap(),
+                exit_kind: sage_acp_protocol::contract::RequiredText::new("exitKind", "shutdown")
+                    .unwrap(),
                 now_millis: 60,
             },
         )

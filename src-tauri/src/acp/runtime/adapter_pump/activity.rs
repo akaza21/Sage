@@ -1,8 +1,8 @@
-use crate::acp::{
+use crate::acp::projection::ActivityRole;
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{ActivityProvenanceV1, ExternalId, NormalizedPayload},
     lifecycle::{ActivityLifecycle, ItemLifecycle, ToolState},
-    projection::ActivityRole,
 };
 
 use super::TurnScope;

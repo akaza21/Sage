@@ -72,7 +72,7 @@ fn steered_message_journey_accepts_the_steer_and_drops_the_codex_echo() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Work on the example").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     answer(&mut runtime, prompt, &frames, 4);

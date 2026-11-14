@@ -1,6 +1,8 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::lifecycle::{DeliveryState, TurnState, TurnTerminalOutcome, TurnTerminalReason};
+use sage_acp_protocol::lifecycle::{
+    DeliveryState, TurnState, TurnTerminalOutcome, TurnTerminalReason,
+};
 
 use super::{
     MutationDisposition, SendObservation, StoreError, TurnMutation, TurnMutationCommand,

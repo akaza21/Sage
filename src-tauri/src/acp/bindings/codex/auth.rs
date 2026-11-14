@@ -7,9 +7,9 @@ use crate::acp::{
         manifest::MetadataValidatedPacket,
         state::CodexAdapter,
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
     transport::{Frame, OutboundFrame},
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 use sage_core::limits::LIMITS;
 
 const AUTH_URL_BYTES: usize = 16_384;
@@ -341,9 +341,11 @@ impl crate::acp::bindings::codex::incoming::ResourceMapper for NoResources {
     fn map_existing(
         &self,
         _: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
-        Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 

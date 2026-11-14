@@ -3,10 +3,10 @@ use std::sync::Arc;
 use serde_json::{Value, json};
 
 use crate::acp::{
-    contract::SageAgentSessionId,
     fixture::generated_cases::FrozenCase,
     runtime::{CapacityScope, LiveCapacityError, LiveCapacityLease, LiveCapacityPool},
 };
+use sage_acp_protocol::contract::SageAgentSessionId;
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "rpc-session-16-global-32",

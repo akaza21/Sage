@@ -85,9 +85,9 @@ describe("permission decision seam", () => {
           "..",
           "..",
           "..",
-          "src-tauri",
+          "crates",
+          "sage-acp-protocol",
           "src",
-          "acp_protocol",
           "permissions.rs",
         ),
         path.join(

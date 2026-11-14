@@ -6,9 +6,9 @@ use crate::acp::{
         manifest::{MetadataValidatedPacket, Platform},
         state::CodexAdapter,
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     transport::{Frame, OutboundFrame},
 };
+use sage_acp_protocol::contract::{RequiredText, RuntimeEpoch, SageAgentSessionId};
 
 use super::schema::{
     NoResources, api_key_account, json_request, managed_chatgpt, parse_cursor, parse_model,

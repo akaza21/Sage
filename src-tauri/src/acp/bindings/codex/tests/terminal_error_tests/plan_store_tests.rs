@@ -1,12 +1,14 @@
 use super::*;
 use crate::acp::{
-    contract::{SageChatId, SageProjectId, SageTurnId},
-    lifecycle::ItemLifecycle,
     projection::{ItemContent, PlanEntryState},
     store::{
         AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, ItemIngressCommand,
         apply_adapter_inbound_batch, hex_digest, load_chat_page,
     },
+};
+use sage_acp_protocol::{
+    contract::{SageChatId, SageProjectId, SageTurnId},
+    lifecycle::ItemLifecycle,
 };
 
 #[test]

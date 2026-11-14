@@ -32,7 +32,7 @@ impl SessionTreeLease {
     #[cfg(test)]
     pub(crate) fn reserve_turn_for_test(
         &self,
-    ) -> Result<crate::acp::scheduler::TurnReservation, SessionCoordinatorError> {
+    ) -> Result<sage_acp_protocol::scheduler::TurnReservation, SessionCoordinatorError> {
         self.tree
             .as_ref()
             .ok_or(SessionCoordinatorError::Converged)?

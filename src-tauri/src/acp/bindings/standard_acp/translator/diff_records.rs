@@ -1,14 +1,13 @@
-use crate::{
-    acp::{
-        contract::{RequiredText, SafeText},
-        intent::{
-            ExternalId, FileChangeFacts, FileChangeOperation, NormalizedPayload,
-            SafeResourceLocation, SafeResourceRef, UnavailableResourceReason,
-        },
-        lifecycle::{ItemLifecycle, ToolState},
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText},
+    file_diff::{PairAdmission, admit_pair},
+    intent::{
+        ExternalId, FileChangeFacts, FileChangeOperation, NormalizedPayload, SafeResourceLocation,
+        SafeResourceRef, UnavailableResourceReason,
     },
-    acp_protocol::file_diff::{DIFF_SIDE_BYTES_MAX, DIFFS_PER_TURN, PairAdmission, admit_pair},
+    lifecycle::{ItemLifecycle, ToolState},
 };
+use sage_core::limits::{DIFF_SIDE_BYTES_MAX, DIFFS_PER_TURN};
 
 use super::decode::unsupported_event;
 use super::{

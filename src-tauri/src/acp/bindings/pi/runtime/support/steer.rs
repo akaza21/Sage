@@ -1,6 +1,6 @@
 use crate::acp::{
     bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
-    intent::Prompt,
+    transcript_quote::Prompt,
 };
 
 use super::super::{PiRuntime, RequestKind};

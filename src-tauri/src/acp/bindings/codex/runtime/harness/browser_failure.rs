@@ -38,7 +38,7 @@ impl CodexRuntime {
             ));
         }
         let projected = matches!(disposition, IngressDisposition::Events(events) if events.iter().any(|event| {
-            matches!(event, IncomingEvent::Error(crate::acp::intent::NormalizedPayload::Error { code, .. }) if code.as_str() == "browserMcpUnavailable")
+            matches!(event, IncomingEvent::Error(sage_acp_protocol::intent::NormalizedPayload::Error { code, .. }) if code.as_str() == "browserMcpUnavailable")
         }));
         if !projected {
             return;

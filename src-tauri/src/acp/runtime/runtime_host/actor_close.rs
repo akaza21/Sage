@@ -1,4 +1,5 @@
-use crate::acp::{runtime::HostError, scheduler::RuntimeOwner};
+use crate::acp::runtime::HostError;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::super::types::{
     ClosePhase, HostCloseIntent, HostOutcome, HostReply, HostState, PendingClose, RuntimeEngine,

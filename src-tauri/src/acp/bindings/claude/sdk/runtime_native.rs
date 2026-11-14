@@ -7,8 +7,8 @@ use crate::acp::{
         claude::sdk::bridge::UsageReply,
     },
     goal::NativeRpcReply,
-    intent::CapabilitySnapshotV1,
 };
+use sage_acp_protocol::intent::CapabilitySnapshotV1;
 
 impl ClaudeSdkRuntime {
     /// Only one native control request runs at a time, so its delivery token identifies it.
@@ -33,7 +33,7 @@ impl ClaudeSdkRuntime {
 
     pub(super) fn control_request(
         &mut self,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let sdk = self
             .bridge()?

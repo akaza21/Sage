@@ -1,11 +1,10 @@
 //! Factories provide adapter/launch authority only; they do not own a scheduler, operation
 //! gate, process lease, or supervisor.
 
-use crate::acp::{
+use crate::acp::{process::LaunchSpec, transport::Frame};
+use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
     intent::CapabilitySnapshotV1,
-    process::LaunchSpec,
-    transport::Frame,
 };
 
 use super::adapter::{
@@ -33,20 +32,20 @@ pub(crate) trait LaunchableRuntime: HarnessAdapter + Send {
 pub(crate) struct NativeRuntime(
     Box<dyn LaunchableRuntime>,
     Option<(
-        crate::acp::scheduler::RuntimeOwner,
+        sage_acp_protocol::scheduler::RuntimeOwner,
         std::sync::Arc<crate::acp::session_config::ConfigChannel>,
     )>,
     Option<(
-        crate::acp::scheduler::RuntimeOwner,
+        sage_acp_protocol::scheduler::RuntimeOwner,
         std::sync::Arc<crate::acp::goal::GoalChannel>,
     )>,
     Option<(
-        crate::acp::scheduler::RuntimeOwner,
+        sage_acp_protocol::scheduler::RuntimeOwner,
         std::sync::Arc<crate::acp::slash_commands::CommandChannel>,
     )>,
     Option<(
-        crate::acp::scheduler::RuntimeOwner,
-        std::sync::Arc<crate::acp::usage::UsageChannel>,
+        sage_acp_protocol::scheduler::RuntimeOwner,
+        std::sync::Arc<sage_acp_protocol::usage::UsageChannel>,
     )>,
 );
 
@@ -57,7 +56,7 @@ impl NativeRuntime {
 
     pub(crate) fn attach_commands(
         &mut self,
-        owner: crate::acp::scheduler::RuntimeOwner,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
         channel: std::sync::Arc<crate::acp::slash_commands::CommandChannel>,
     ) {
         self.3 = Some((owner, channel));
@@ -66,8 +65,8 @@ impl NativeRuntime {
     /// one leaves the lane empty, which reads as unsupported.
     pub(crate) fn attach_usage(
         &mut self,
-        owner: crate::acp::scheduler::RuntimeOwner,
-        channel: std::sync::Arc<crate::acp::usage::UsageChannel>,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
+        channel: std::sync::Arc<sage_acp_protocol::usage::UsageChannel>,
     ) {
         if let Some(cell) = self.0.usage() {
             channel.attach(owner.clone(), cell);
@@ -76,7 +75,7 @@ impl NativeRuntime {
     }
     pub(crate) fn attach_config(
         &mut self,
-        owner: crate::acp::scheduler::RuntimeOwner,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
         channel: std::sync::Arc<crate::acp::session_config::ConfigChannel>,
     ) {
         self.1 = Some((owner, channel));
@@ -84,7 +83,7 @@ impl NativeRuntime {
 
     pub(crate) fn attach_goal(
         &mut self,
-        owner: crate::acp::scheduler::RuntimeOwner,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
         channel: std::sync::Arc<crate::acp::goal::GoalChannel>,
     ) {
         self.2 = Some((owner, channel));
@@ -164,12 +163,16 @@ impl HarnessAdapter for NativeRuntime {
     }
     fn release_fork(
         &mut self,
-        fork: &crate::acp::intent::ExternalId,
+        fork: &sage_acp_protocol::intent::ExternalId,
         committed: bool,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.0.release_fork(fork, committed)
     }
-    fn defer_fork_release(&mut self, fork: &crate::acp::intent::ExternalId, done: bool) -> bool {
+    fn defer_fork_release(
+        &mut self,
+        fork: &sage_acp_protocol::intent::ExternalId,
+        done: bool,
+    ) -> bool {
         self.0.defer_fork_release(fork, done)
     }
     fn deferred_fork_release(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
@@ -191,7 +194,7 @@ impl HarnessAdapter for NativeRuntime {
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         self.0.take_native_rpc_reply()
     }
-    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+    fn usage(&self) -> Option<std::sync::Arc<sage_acp_protocol::usage::UsageCell>> {
         self.0.usage()
     }
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -206,12 +209,15 @@ impl HarnessAdapter for NativeRuntime {
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.0.background_terminals(action)
     }
-    fn answered_control(&mut self, control: &crate::acp::session_control::SessionControl) -> bool {
+    fn answered_control(
+        &mut self,
+        control: &sage_acp_protocol::session_control::SessionControl,
+    ) -> bool {
         self.0.answered_control(control)
     }
     fn session_control(
         &mut self,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.0.session_control(control)
     }
@@ -223,7 +229,7 @@ impl HarnessAdapter for NativeRuntime {
         self.publish_goal();
         Ok(egress)
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.0.session_config()
     }
     fn refusal_detail(&self) -> Option<RefusalDetail> {
@@ -237,7 +243,7 @@ impl HarnessAdapter for NativeRuntime {
     }
     fn configure(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let (owner, channel) = self.1.as_ref().ok_or(AdapterRuntimeError::Operation)?;
         if owner != &intent.owner {

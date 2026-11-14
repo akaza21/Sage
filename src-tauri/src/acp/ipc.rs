@@ -1,9 +1,11 @@
 use serde::{Deserialize, Serialize};
 
-use super::{
-    attached_context::AttachedContexts,
+use super::attached_context::AttachedContexts;
+use crate::acp::transcript_quote::Prompt;
+use sage_acp_protocol::{
     contract::*,
-    intent::{BindingId, EffortId, ModelId, PageCursor, Prompt},
+    intent::{BindingId, EffortId, ModelId, PageCursor},
+    lifecycle::TurnState,
 };
 
 mod intent_validation;
@@ -55,7 +57,7 @@ pub struct GetAcpFileSnapshotRequest {
     pub turn_id: SageTurnId,
     pub item_id: SageItemId,
     pub diff_ordinal: u64,
-    #[serde(with = "crate::acp_protocol::file_diff::wire_counter")]
+    #[serde(with = "sage_acp_protocol::file_diff::wire_counter")]
     pub snapshot_revision: u64,
     pub root_id: SageRootId,
     pub relative_path: String,
@@ -75,7 +77,7 @@ pub struct AcpFileSnapshotResponse {
     pub diff_ordinal: u64,
     pub root_id: SageRootId,
     pub relative_path: String,
-    #[serde(with = "crate::acp_protocol::file_diff::wire_counter")]
+    #[serde(with = "sage_acp_protocol::file_diff::wire_counter")]
     pub snapshot_revision: u64,
     pub old_text: String,
     pub new_text: String,
@@ -292,6 +294,7 @@ fn is_zero_epoch(epoch: &u64) -> bool {
     *epoch == 0
 }
 
+#[cfg(test)]
 impl ProjectionChangedV1 {
     pub fn validate(&self) -> Result<(), IntentError> {
         (self.projection_revision.get() > 0)

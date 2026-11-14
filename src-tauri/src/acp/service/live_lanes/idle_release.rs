@@ -7,7 +7,7 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{contract::SageChatId, scheduler::RuntimeOwner};
+use sage_acp_protocol::{contract::SageChatId, scheduler::RuntimeOwner};
 
 use super::{AcpService, ActivationClaim, explicit_close_deadline};
 

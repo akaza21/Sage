@@ -12,7 +12,7 @@ impl HarnessAdapter for SaturatedRefresh {
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.runtime.capabilities()
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.runtime.session_config()
     }
     fn config_pending(&self) -> bool {
@@ -20,7 +20,7 @@ impl HarnessAdapter for SaturatedRefresh {
     }
     fn configure(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.runtime.configure(intent)
     }

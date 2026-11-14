@@ -1,11 +1,11 @@
 use serde_json::{Value, json};
 
 use super::*;
-use crate::acp::{
+use crate::acp::{transcript_quote::Prompt, transport::FrameReader};
+use sage_acp_protocol::{
     contract::RequiredText,
-    intent::{NormalizedPayload, Prompt, SafeResourceRef, UnavailableResourceReason},
+    intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
     lifecycle::TurnState,
-    transport::FrameReader,
 };
 
 struct Mapper;
@@ -19,7 +19,7 @@ impl ResourceMapper for Mapper {
             .strip_prefix("/w/")
             .map(|relative| {
                 SafeResourceRef::new(
-                    crate::acp::contract::SageRootId::parse("root-claude-sdk").unwrap(),
+                    sage_acp_protocol::contract::SageRootId::parse("root-claude-sdk").unwrap(),
                     relative,
                 )
                 .unwrap()
@@ -150,7 +150,7 @@ fn a_claude_code_turn_reaches_the_store_as_shared_events() {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Fix the bug").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     assert_eq!(user["type"], "user");
@@ -204,7 +204,7 @@ fn a_tool_approval_round_trips_to_claude_code() {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Run tests").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     feed(
@@ -230,7 +230,7 @@ fn a_tool_approval_round_trips_to_claude_code() {
     let egress = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
-            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+            decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .unwrap();
     let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -248,7 +248,7 @@ fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Write notes").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     let input = json!({"file_path":"/w/notes.txt","content":"x\n"});
@@ -278,7 +278,7 @@ fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
     let egress = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
-            decision: crate::acp_protocol::permissions::PermissionDecision::AllowAlways,
+            decision: sage_acp_protocol::permissions::PermissionDecision::AllowAlways,
         })
         .unwrap();
     let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -298,7 +298,7 @@ fn always_allowing_an_edit_keeps_the_turn_running_in_accept_edits() {
 
 #[test]
 fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
-    use crate::acp_protocol::permissions::PermissionDecision;
+    use sage_acp_protocol::permissions::PermissionDecision;
     for (decision, mode) in [
         (PermissionDecision::AllowOnce, "default"),
         (PermissionDecision::AllowAlways, "acceptEdits"),
@@ -310,7 +310,7 @@ fn approving_a_plan_leaves_plan_mode_for_the_mode_the_user_picked() {
             AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "Plan the fix").unwrap(),
                 client_message_id: RequiredText::new("client", "client-1").unwrap(),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
             },
         );
         let input = json!({"plan":"1. Fix the bug"});
@@ -359,10 +359,10 @@ fn a_new_launch_names_its_session_and_a_resume_names_the_stored_one() {
     assert!(uuid::Uuid::parse_str(&launch.session_id).is_ok());
     let mut resumed = super::tests::runtime();
     resumed.bind_activation(&ActivationMode::Resume {
-        external_session_id: crate::acp::intent::ExternalId::new("externalSessionId", "s-9")
+        external_session_id: sage_acp_protocol::intent::ExternalId::new("externalSessionId", "s-9")
             .unwrap(),
         native_root: "/w".into(),
-        model: Some(crate::acp::intent::ModelId::new("modelId", "opus").unwrap()),
+        model: Some(sage_acp_protocol::intent::ModelId::new("modelId", "opus").unwrap()),
         rewind_at: None,
     });
     let launch = resumed.launch.as_ref().unwrap();
@@ -382,7 +382,7 @@ fn a_prompt_claude_code_never_received_frees_the_next_prompt() {
     let prompt = |text: &str| AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", text).unwrap(),
         client_message_id: RequiredText::new("client", text).unwrap(),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
     };
     let egress = runtime.command(prompt("first")).unwrap();
     runtime
@@ -401,7 +401,7 @@ fn an_edit_result_with_a_long_patch_finishes_its_row_instead_of_failing_the_sess
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Rewrite it").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     feed(
@@ -443,7 +443,7 @@ fn prompted() -> ClaudeSdkRuntime {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Fetch them all").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     runtime
@@ -493,7 +493,7 @@ fn subagent_and_parallel_approvals_past_the_card_limit_keep_the_session() {
     let answer = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(cards[1].as_str()).unwrap(),
-            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+            decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .unwrap();
     let token = answer.into_token();
@@ -550,7 +550,7 @@ fn a_turn_ends_cleanly_after_claude_code_withdraws_an_approval() {
     assert!(withdrawn.iter().any(|event| matches!(
         event,
         AdapterEvent::PermissionResolved {
-            state: crate::acp::lifecycle::ServerRequestState::Cancelled,
+            state: sage_acp_protocol::lifecycle::ServerRequestState::Cancelled,
             ..
         }
     )));
@@ -603,7 +603,7 @@ fn a_compaction_reaches_the_store_as_a_session_activity() {
     assert!(matches!(
         events[..],
         [AdapterEvent::Session {
-            event: crate::acp::intent::session_event::SessionScopedEvent::Activity(_),
+            event: sage_acp_protocol::intent::session_event::SessionScopedEvent::Activity(_),
             ..
         }]
     ));
@@ -611,7 +611,7 @@ fn a_compaction_reaches_the_store_as_a_session_activity() {
 
 #[test]
 fn claudes_questions_become_a_question_card_and_the_answers_return_as_its_input() {
-    use crate::acp::intent::user_input::UserInputAnswers;
+    use sage_acp_protocol::intent::user_input::UserInputAnswers;
     let mut runtime = prompted();
     feed(
         &mut runtime,
@@ -651,7 +651,7 @@ fn claudes_questions_become_a_question_card_and_the_answers_return_as_its_input(
     let egress = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
-            decision: crate::acp_protocol::permissions::PermissionDecision::Answer(answers),
+            decision: sage_acp_protocol::permissions::PermissionDecision::Answer(answers),
         })
         .unwrap();
     let sdk: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -700,7 +700,7 @@ fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
         ))
     );
     assert!(spawned.iter().any(|event| matches!(event,
-        AdapterEvent::ChildLiveItem { item_id, role: Some(crate::acp_protocol::codex_protocol::ChildTextRole::User), .. }
+        AdapterEvent::ChildLiveItem { item_id, role: Some(sage_acp_protocol::codex_protocol::ChildTextRole::User), .. }
             if item_id.as_str() == "prompt")));
     let inner = feed(
         &mut runtime,
@@ -738,7 +738,7 @@ fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
     assert!(ended.iter().any(|event| matches!(
         event,
         AdapterEvent::ChildTurnStatus {
-            status: crate::acp::lifecycle::TurnState::Completed,
+            status: sage_acp_protocol::lifecycle::TurnState::Completed,
             ..
         }
     )));
@@ -864,7 +864,7 @@ fn compact_runs_as_claude_codes_own_command_and_ends_its_turn() {
         AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         },
     );
     assert_eq!(user["message"]["content"][0]["text"], "/compact");
@@ -915,7 +915,7 @@ fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
         runtime.take_native_rpc_reply(),
         Some(crate::acp::goal::NativeRpcReply::Rejected)
     );
-    let fork = crate::acp::intent::ExternalId::new("externalSessionId", "f").unwrap();
+    let fork = sage_acp_protocol::intent::ExternalId::new("externalSessionId", "f").unwrap();
     assert!(matches!(runtime.release_fork(&fork, true), Ok(None)));
     assert_eq!(
         runtime.take_native_rpc_reply(),
@@ -930,7 +930,8 @@ fn a_session_forks_through_claude_code_and_holds_nothing_to_release() {
 
 #[test]
 fn mcp_servers_list_through_claude_code_and_an_abandoned_list_frees_the_session() {
-    use crate::acp::{goal::NativeRpcReply, session_control::SessionControl};
+    use crate::acp::goal::NativeRpcReply;
+    use sage_acp_protocol::session_control::SessionControl;
     let mut runtime = ready();
     let list = |runtime: &mut ClaudeSdkRuntime| {
         let egress = runtime
@@ -965,7 +966,8 @@ fn mcp_servers_list_through_claude_code_and_an_abandoned_list_frees_the_session(
 
 #[test]
 fn usage_limits_read_through_claude_code_and_an_api_key_account_reports_none() {
-    use crate::acp::{goal::NativeRpcReply, usage::UsageState};
+    use crate::acp::goal::NativeRpcReply;
+    use sage_acp_protocol::usage::UsageState;
     let mut runtime = ready();
     let usage = runtime.usage().expect("Claude Code reports usage");
     let read = |runtime: &mut ClaudeSdkRuntime| {

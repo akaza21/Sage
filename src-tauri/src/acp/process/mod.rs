@@ -175,11 +175,12 @@ fn try_launch_fixture_live_process_for_test(
         }
         digest.update(&chunk[..read]);
     }
-    let project_id = crate::acp::contract::SageProjectId::parse("project-process-fixture").unwrap();
+    let project_id =
+        sage_acp_protocol::contract::SageProjectId::parse("project-process-fixture").unwrap();
     let project_root = crate::project_registry::ProjectRootAuthority::for_test(
         project_id,
-        crate::acp::contract::ProjectGeneration::ZERO,
-        crate::acp::contract::SageRootId::parse("root-process-fixture").unwrap(),
+        sage_acp_protocol::contract::ProjectGeneration::ZERO,
+        sage_acp_protocol::contract::SageRootId::parse("root-process-fixture").unwrap(),
         &std::env::current_dir().unwrap(),
     )
     .unwrap();

@@ -1,5 +1,7 @@
 use super::*;
-use crate::acp::intent::session_event::{SessionNotice, SessionNoticeLevel, SessionScopedEvent};
+use sage_acp_protocol::intent::session_event::{
+    SessionNotice, SessionNoticeLevel, SessionScopedEvent,
+};
 
 const THREAD: &str = "fixture-persisted-session-1";
 
@@ -99,7 +101,7 @@ fn startup_notices_journey_delivers_the_early_config_warning_on_bind_then_the_re
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     answer(&mut runtime, prompt, take(&frames, "", 4));

@@ -17,11 +17,11 @@ use crate::{
             redact_console,
         },
         projection::BrowserOperationProjection,
-        scheduler::RuntimeOwner,
         store::browser_operations,
     },
     state::AppState,
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 use sage_core::limits::BROWSER_LIMITS;
 
 mod open_tab;

@@ -3,15 +3,12 @@
 
 use serde_json::{Value, json};
 
-use crate::{
-    acp::{
-        bindings::adapter::{
-            AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution,
-            EgressToken,
-        },
-        intent::{ExternalId, user_input::UserInputRequest},
-    },
-    acp_protocol::permissions::PermissionDecision,
+use crate::acp::bindings::adapter::{
+    AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution, EgressToken,
+};
+use sage_acp_protocol::{
+    intent::{ExternalId, user_input::UserInputRequest},
+    permissions::PermissionDecision,
 };
 
 use super::super::elicitation::{self as codec, Elicitation};

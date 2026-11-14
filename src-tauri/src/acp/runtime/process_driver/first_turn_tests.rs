@@ -14,17 +14,14 @@ use uuid::Uuid;
 
 use crate::{
     acp::{
-        bindings::adapter::{
-            AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
-            AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+        bindings::{
+            adapter::{
+                AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
+                AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+            },
+            codex::{CodexRuntime, Platform},
         },
-        bindings::codex::{CodexRuntime, Platform},
-        contract::{
-            ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
-            SageChatId, SageProjectId, SchemaVersionV1,
-        },
-        intent::{CapabilitySnapshotV1, ExternalId, IntentSnapshot, Prompt, SafeResourceRef},
-        lifecycle::{DeliveryState, TurnState},
+        ipc::IntentSnapshot,
         process::TreeExit,
         runtime::{
             ActivatedSession, ActivationJournal, BoundedThread, CoordinatorActivationJournal,
@@ -32,15 +29,24 @@ use crate::{
             LiveRuntimePort, LiveWrite, ProjectIntentAuthority, ProjectionMailbox, SendCoordinator,
             SessionCoordinator,
         },
-        scheduler::{RuntimeOwner, Scheduler},
         store::{
             AcpStore, ActivateSessionCommand, CompleteActivationCommand, DatabaseAcpStore,
             PrepareTurnCommand, SessionMutation, StartSessionCommand, StoreCommit, StoreError,
             StoreMutation,
         },
+        transcript_quote::Prompt,
         transport::{Frame, FrameWriteOutcome, OutboundFrame},
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
+        SageChatId, SageProjectId, SchemaVersionV1,
+    },
+    intent::{CapabilitySnapshotV1, ExternalId, SafeResourceRef},
+    lifecycle::{DeliveryState, TurnState},
+    scheduler::{RuntimeOwner, Scheduler},
 };
 use sage_process::error::LaunchError;
 
@@ -80,7 +86,7 @@ struct ConfigThenLateAdapter {
 struct SequencedAdapter {
     binding_digest: [u8; 32],
     runtime_epoch: RuntimeEpoch,
-    session_id: crate::acp::contract::SageAgentSessionId,
+    session_id: sage_acp_protocol::contract::SageAgentSessionId,
     external_session_id: ExternalId,
     pending_message: Option<RequiredText<512>>,
     prompt_ids: Arc<Mutex<Vec<String>>>,
@@ -137,11 +143,11 @@ impl HarnessAdapter for Adapter {
             Some("turn/started") => {
                 return AdapterBatch::new(
                     vec![AdapterEvent::Error(
-                        crate::acp::intent::NormalizedPayload::Error {
+                        sage_acp_protocol::intent::NormalizedPayload::Error {
                             kind: None,
-                            code: crate::acp::contract::SafeText::new("code", "unexpected")
+                            code: sage_acp_protocol::contract::SafeText::new("code", "unexpected")
                                 .unwrap(),
-                            message: crate::acp::contract::SafeText::new(
+                            message: sage_acp_protocol::contract::SafeText::new(
                                 "message",
                                 "unexpected before dispatch",
                             )
@@ -194,7 +200,7 @@ impl HarnessAdapter for Adapter {
 
     fn configure(
         &mut self,
-        _: &crate::acp::session_config::ConfigIntent,
+        _: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.config_pending = true;
         Ok(Some(AdapterEgress::new(
@@ -340,8 +346,8 @@ impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         _: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
-        Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 
@@ -589,11 +595,12 @@ fn configured_runner_reaches_reader_eof_deadline(
     let observed_completion = Arc::clone(&completion_observation);
     let response = mailbox
         .submit_worker(WorkerCommand::ConfigureSession {
-            intent: crate::acp::session_config::ConfigIntent {
+            intent: sage_acp_protocol::session_config::ConfigIntent {
                 owner,
-                expected_config_revision: crate::acp::session_config::ConfigRevision::first(),
-                mutation: crate::acp::session_config::ConfigMutation::Mode(
-                    crate::acp::session_config::ConfigId::new("mode", "code").unwrap(),
+                expected_config_revision: sage_acp_protocol::session_config::ConfigRevision::first(
+                ),
+                mutation: sage_acp_protocol::session_config::ConfigMutation::Mode(
+                    sage_acp_protocol::session_config::ConfigId::new("mode", "code").unwrap(),
                 ),
             },
             completion: crate::acp::runtime::ConfigCompletionSink::new(move |result| {
@@ -941,7 +948,7 @@ struct CancelSnapshot {
 #[cfg(feature = "acp-fixture")]
 fn cancel_snapshot(
     database: &Database,
-    turn_id: &crate::acp::contract::SageTurnId,
+    turn_id: &sage_acp_protocol::contract::SageTurnId,
 ) -> CancelSnapshot {
     database
         .connection()
@@ -1080,7 +1087,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                             prompt: Prompt::new("prompt", "saturated cancel").unwrap(),
                             now_millis: now_millis + 3,
                         },
-                        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                     })
                     .unwrap();
                 assert_eq!(
@@ -1391,7 +1398,7 @@ async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline
                         prompt: Prompt::new("prompt", "hello").unwrap(),
                         now_millis: now + 3,
                     },
-                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                    access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 })
                 .unwrap();
             assert_eq!(
@@ -1509,7 +1516,7 @@ async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline
         if matches!(command_index, 0 | 4 | 6 | 9 | 11 | 13) {
             while publisher.take().is_some() {}
             publisher
-                .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+                .publish_committed(crate::acp::ipc::ProjectionChangedV1 {
                     project_id: project_id.clone(),
                     chat_id: SageChatId::parse("chat-foreign").unwrap(),
                     session_id: started.session_id.clone(),
@@ -1783,7 +1790,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
                     prompt: Prompt::new("prompt", format!("prompt-{intent}")).unwrap(),
                     now_millis: at,
                 },
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
         };
 
@@ -2401,7 +2408,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                         prompt: Prompt::new("prompt", "must-not-write-after-eof").unwrap(),
                         now_millis: now + 3,
                     },
-                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                    access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 }))
                 .unwrap();
             let command = mailbox
@@ -2576,12 +2583,12 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
             let observed_completion = Arc::clone(&completion_observation);
             let response = mailbox
                 .submit_worker(WorkerCommand::ConfigureSession {
-                    intent: crate::acp::session_config::ConfigIntent {
+                    intent: sage_acp_protocol::session_config::ConfigIntent {
                         owner: owner.clone(),
                         expected_config_revision:
-                            crate::acp::session_config::ConfigRevision::first(),
-                        mutation: crate::acp::session_config::ConfigMutation::Mode(
-                            crate::acp::session_config::ConfigId::new("mode", "code").unwrap(),
+                            sage_acp_protocol::session_config::ConfigRevision::first(),
+                        mutation: sage_acp_protocol::session_config::ConfigMutation::Mode(
+                            sage_acp_protocol::session_config::ConfigId::new("mode", "code").unwrap(),
                         ),
                     },
                     completion: crate::acp::runtime::ConfigCompletionSink::new(move |result| {
@@ -2646,7 +2653,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                         prompt: Prompt::new("prompt", "must-not-write").unwrap(),
                         now_millis: now + 3,
                     },
-                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                    access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 }))
                 .unwrap();
             let command = mailbox
@@ -3020,7 +3027,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
             };
             assert_eq!(
                 active.turn.driver.terminal_outcome().unwrap().reason,
-                crate::acp::lifecycle::TurnTerminalReason::HarnessExited
+                sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited
             );
             let persisted: (String, Option<String>) = database
                 .connection()
@@ -3125,7 +3132,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
             };
             assert_eq!(
                 active.turn.driver.terminal_outcome().unwrap().reason,
-                crate::acp::lifecycle::TurnTerminalReason::HarnessExited
+                sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited
             );
             assert!(!active.durable_mutation_unknown());
             assert_eq!(active_turn_lookups.load(Ordering::SeqCst), 1);
@@ -3169,7 +3176,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                 assert_eq!(
                     page.turns.as_slice()[0].terminal_reason,
                     Some(crate::acp::projection::TurnTerminalReasonProjection {
-                        kind: crate::acp::lifecycle::TurnTerminalReason::HarnessExited,
+                        kind: sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited,
                         message: Some("harness process exited with code 17".to_owned()),
                         remediation: None,
                     })

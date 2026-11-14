@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::{
-        adapter::AdapterRuntimeError,
-        pi::{
-            PI_VERSION,
-            fixture_admission::{PI_FIXTURE_BINDING_ID, PiFixtureBinding},
-            fixture_runtime::PiFixtureRuntimeFactory,
-        },
-        runtime::RuntimeFactory,
+use crate::acp::bindings::{
+    adapter::AdapterRuntimeError,
+    pi::{
+        PI_VERSION,
+        fixture_admission::{PI_FIXTURE_BINDING_ID, PiFixtureBinding},
+        fixture_runtime::PiFixtureRuntimeFactory,
     },
+    runtime::RuntimeFactory,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };

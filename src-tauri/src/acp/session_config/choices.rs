@@ -3,8 +3,10 @@
 //! reapply it.
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::{ConfigId, ConfigKind, ConfigMutation, ConfigValue, SessionConfig};
-use crate::acp::contract::{BoundedVec, SageAgentSessionId};
+use sage_acp_protocol::contract::{BoundedVec, SageAgentSessionId};
+use sage_acp_protocol::session_config::{
+    ConfigId, ConfigKind, ConfigMutation, ConfigValue, SessionConfig,
+};
 use sage_core::limits::{LIMITS, SESSION_CONFIG_CHOICE_BYTES, SESSION_CONFIG_CHOICES_PER_SESSION};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
@@ -281,15 +283,19 @@ fn apply(config: &mut SessionConfig, choice: &ConfigMutation) {
                     let ConfigValue::Select { value } = value else {
                         return;
                     };
-                    let Ok(name) = super::Label::new("name", config_id.as_str()) else {
+                    let Ok(name) =
+                        sage_acp_protocol::session_config::Label::new("name", config_id.as_str())
+                    else {
                         return;
                     };
-                    let Ok(choice_name) = super::Label::new("name", value.as_str()) else {
+                    let Ok(choice_name) =
+                        sage_acp_protocol::session_config::Label::new("name", value.as_str())
+                    else {
                         return;
                     };
                     let Ok(choices) = BoundedVec::new(
                         "options",
-                        vec![super::Choice {
+                        vec![sage_acp_protocol::session_config::Choice {
                             value: value.clone(),
                             name: choice_name,
                             description: None,
@@ -297,7 +303,7 @@ fn apply(config: &mut SessionConfig, choice: &ConfigMutation) {
                     ) else {
                         return;
                     };
-                    options.push(super::ConfigOption {
+                    options.push(sage_acp_protocol::session_config::ConfigOption {
                         id: config_id.clone(),
                         name,
                         description: None,
@@ -305,13 +311,15 @@ fn apply(config: &mut SessionConfig, choice: &ConfigMutation) {
                         default_value: None,
                         kind: ConfigKind::Select {
                             current_value: value.clone(),
-                            options: super::Choices::Flat(choices),
+                            options: sage_acp_protocol::session_config::Choices::Flat(choices),
                         },
                     });
                 }
             }
             let mut candidate = config.clone();
-            let Ok(options) = super::ConfigOptions::new("configOptions", options) else {
+            let Ok(options) =
+                sage_acp_protocol::session_config::ConfigOptions::new("configOptions", options)
+            else {
                 return;
             };
             candidate.config_options = options;

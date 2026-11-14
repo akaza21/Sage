@@ -1,16 +1,14 @@
 use rusqlite::{Connection, params};
 
 use super::*;
-use crate::{
-    acp::{
-        contract::{ClientIntentId, RequiredText, SchemaVersionV1},
-        intent::{
-            BindingId, CapabilitySnapshotV1, ExternalId, ModelId, NormalizedPayload, PageCursor,
-            ToolCategory,
-        },
-        lifecycle::SessionState,
+use sage_acp_protocol::{
+    contract::{ClientIntentId, RequiredText, SchemaVersionV1},
+    intent::{
+        BindingId, CapabilitySnapshotV1, ExternalId, ModelId, NormalizedPayload, PageCursor,
+        ToolCategory,
     },
-    acp_protocol::permissions::{
+    lifecycle::SessionState,
+    permissions::{
         DeclineTransport, PermissionDisposition, PermissionError, PermissionIntent,
         decline_permission, decline_written,
     },
@@ -136,7 +134,9 @@ pub(super) fn start(expected: u64, intent: &str) -> StartSessionCommand {
         client_intent_id: ClientIntentId::parse(intent).unwrap(),
         binding_id: BindingId::new("binding", "fixture").unwrap(),
         binding_digest: "a".repeat(64),
-        harness_version: Some(crate::acp::contract::SafeText::new("version", "1.0.0").unwrap()),
+        harness_version: Some(
+            sage_acp_protocol::contract::SafeText::new("version", "1.0.0").unwrap(),
+        ),
         model_id: Some(ModelId::new("model", "fixture-model").unwrap()),
         now_millis: 10,
     }
@@ -495,18 +495,18 @@ fn chat_page_rejects_a_persisted_resource_from_a_foreign_root() {
     connection.execute("INSERT INTO session_runtime_epochs VALUES('project-one','chat-one',?1,1,'exited',NULL,0,1,'fixture')",[started.session_id.as_str()]).unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-resource','project-one','chat-one',?1,1,0,'turn-intent','completed','correlated',0,1,1,1)",[started.session_id.as_str()]).unwrap();
     let body = serde_json::to_string(&NormalizedPayload::file_summary_only(
-        crate::acp::intent::FileChangeFacts {
-            resource: crate::acp::intent::SafeResourceLocation::Resource {
-                resource: crate::acp::intent::SafeResourceRef::new(
-                    crate::acp::contract::SageRootId::parse("root-foreign").unwrap(),
+        sage_acp_protocol::intent::FileChangeFacts {
+            resource: sage_acp_protocol::intent::SafeResourceLocation::Resource {
+                resource: sage_acp_protocol::intent::SafeResourceRef::new(
+                    sage_acp_protocol::contract::SageRootId::parse("root-foreign").unwrap(),
                     "src/lib.rs",
                 )
                 .unwrap(),
             },
-            summary: crate::acp::contract::SafeText::new("summary", "changed").unwrap(),
+            summary: sage_acp_protocol::contract::SafeText::new("summary", "changed").unwrap(),
             additions: Some(1),
             deletions: None,
-            operation: crate::acp::intent::FileChangeOperation::Updated,
+            operation: sage_acp_protocol::intent::FileChangeOperation::Updated,
         },
         false,
     ))
@@ -631,7 +631,7 @@ fn chat_page_projects_legacy_and_current_command_tool_rows_and_rejects_foreign_t
             ..
         } if matches!(
             resources.as_slice(),
-            [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+            [sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }]
                 if resource.relative_path.as_str() == "src/main.rs"
         )
     ));
@@ -730,7 +730,7 @@ fn chat_page_projects_more_than_the_live_permission_window_from_history() {
     let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
         user_input: None,
         category: ToolCategory::Execute,
-        summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
+        summary: sage_acp_protocol::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
         reason: None,
     })
@@ -753,7 +753,7 @@ fn chat_page_projects_more_than_the_live_permission_window_from_history() {
     assert!(items.iter().all(|item| matches!(
         item.content,
         crate::acp::projection::ItemContent::PermissionRequest {
-            state: crate::acp::lifecycle::ServerRequestState::ResolvedDeclined,
+            state: sage_acp_protocol::lifecycle::ServerRequestState::ResolvedDeclined,
             ..
         }
     )));
@@ -768,7 +768,7 @@ fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
     let body = serde_json::to_string(&NormalizedPayload::PermissionRequest {
         user_input: None,
         category: ToolCategory::Execute,
-        summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
+        summary: sage_acp_protocol::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
         reason: None,
     })
@@ -785,15 +785,18 @@ fn chat_page_preserves_a_durable_failed_closed_permission_terminal() {
     )
     .unwrap();
     let item = &page.turns.as_slice()[0].items.as_slice()[0];
-    assert_eq!(item.lifecycle, crate::acp::lifecycle::ItemLifecycle::Failed);
+    assert_eq!(
+        item.lifecycle,
+        sage_acp_protocol::lifecycle::ItemLifecycle::Failed
+    );
     assert_eq!(
         item.tool_state,
-        Some(crate::acp::lifecycle::ToolState::Failed)
+        Some(sage_acp_protocol::lifecycle::ToolState::Failed)
     );
     assert!(matches!(
         item.content,
         crate::acp::projection::ItemContent::PermissionRequest {
-            state: crate::acp::lifecycle::ServerRequestState::ResolvedDeclined,
+            state: sage_acp_protocol::lifecycle::ServerRequestState::ResolvedDeclined,
             ..
         }
     ));
@@ -803,7 +806,7 @@ pub(super) fn permission(session: &SageAgentSessionId) -> PermissionIntent {
     let normalized_payload_json = serde_json::to_string(&NormalizedPayload::PermissionRequest {
         user_input: None,
         category: ToolCategory::Execute,
-        summary: crate::acp::contract::SafeText::new("summary", "Run command").unwrap(),
+        summary: sage_acp_protocol::contract::SafeText::new("summary", "Run command").unwrap(),
         offered_option_kinds: None,
         reason: None,
     })
@@ -885,7 +888,8 @@ fn permission_receive_and_decline_are_durable_idempotent_and_write_ordered() {
         serde_json::to_string(&NormalizedPayload::PermissionRequest {
             user_input: None,
             category: ToolCategory::Execute,
-            summary: crate::acp::contract::SafeText::new("summary", "Different command").unwrap(),
+            summary: sage_acp_protocol::contract::SafeText::new("summary", "Different command")
+                .unwrap(),
             offered_option_kinds: None,
             reason: None,
         })

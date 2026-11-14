@@ -1,6 +1,6 @@
 use super::{NativeTurnsPage, child_transcript::ChildTranscriptError, normalize_turns_page};
 use crate::acp::bindings::adapter::ResourceMapper;
-use crate::acp_protocol::codex_protocol::ChildTranscriptSnapshot;
+use sage_acp_protocol::codex_protocol::ChildTranscriptSnapshot;
 
 pub(crate) fn child_snapshot(
     page: NativeTurnsPage,

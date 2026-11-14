@@ -1,7 +1,7 @@
 use super::*;
-use crate::{
-    acp::lifecycle::{ItemLifecycle, ToolState, TurnState},
-    acp_protocol::permissions::PermissionDecision,
+use sage_acp_protocol::{
+    lifecycle::{ItemLifecycle, ToolState, TurnState},
+    permissions::PermissionDecision,
 };
 
 #[test]
@@ -191,7 +191,7 @@ fn assert_continuation(fixture: &str) {
                 runtime.command(AdapterCommand::Prompt {
                     prompt: Prompt::new("prompt", "Must not steal ownership").unwrap(),
                     client_message_id: RequiredText::new("client", "next").unwrap(),
-                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                    access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
                 }),
                 Err(AdapterRuntimeError::Operation)
             ));

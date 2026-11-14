@@ -6,7 +6,7 @@ use tauri::State;
 
 use crate::{
     acp::{
-        intent::{AcpIpcError, AcpUnavailableReason},
+        ipc::{AcpIpcError, AcpUnavailableReason},
         read_text_file::{ReadTextFlushAck, ReadTextNextAction},
     },
     state::AppState,

@@ -2,17 +2,20 @@ use std::sync::{Arc, Mutex};
 
 use super::*;
 use crate::acp::{
-    contract::{
-        ClientIntentId, EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
-        SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageTurnId,
-    },
-    intent::{IntentSnapshot, Prompt},
-    scheduler::{RuntimeOwner, Scheduler},
+    ipc::IntentSnapshot,
     store::{
         AcpStore, AdapterTurnCursor, MutationDisposition, PrepareTurnCommand, PreparedTurn,
         SendObservation, StoreCommit, StoreError, StoreMutation, StoreMutationResult, TurnMutation,
         TurnMutationCommand,
     },
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
+        SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageTurnId,
+    },
+    scheduler::{RuntimeOwner, Scheduler},
 };
 
 #[derive(Clone)]
@@ -66,8 +69,8 @@ impl AcpStore for FakeStore {
                     .unwrap()
                     .push(command.turn_id.as_str().into());
                 let turn = TurnMutation {
-                    state: crate::acp::lifecycle::TurnState::Sending,
-                    delivery_state: crate::acp::lifecycle::DeliveryState::Writing,
+                    state: sage_acp_protocol::lifecycle::TurnState::Sending,
+                    delivery_state: sage_acp_protocol::lifecycle::DeliveryState::Writing,
                     revision: command.expected_revision.next().unwrap(),
                     projection_revision: ProjectionRevision::new(2).unwrap(),
                     disposition: MutationDisposition::Applied,
@@ -88,14 +91,14 @@ impl AcpStore for FakeStore {
                 );
                 let turn = TurnMutation {
                     state: if terminal {
-                        crate::acp::lifecycle::TurnState::DeliveryUnknown
+                        sage_acp_protocol::lifecycle::TurnState::DeliveryUnknown
                     } else {
-                        crate::acp::lifecycle::TurnState::Running
+                        sage_acp_protocol::lifecycle::TurnState::Running
                     },
                     delivery_state: if terminal {
-                        crate::acp::lifecycle::DeliveryState::PossibleBytes
+                        sage_acp_protocol::lifecycle::DeliveryState::PossibleBytes
                     } else {
-                        crate::acp::lifecycle::DeliveryState::Correlated
+                        sage_acp_protocol::lifecycle::DeliveryState::Correlated
                     },
                     revision: command.expected_revision.next().unwrap(),
                     projection_revision: ProjectionRevision::new(3).unwrap(),
@@ -125,8 +128,8 @@ impl AcpStore for FakeStore {
                     });
                 }
                 let mutation = TurnMutation {
-                    state: crate::acp::lifecycle::TurnState::Cancelling,
-                    delivery_state: crate::acp::lifecycle::DeliveryState::Correlated,
+                    state: sage_acp_protocol::lifecycle::TurnState::Cancelling,
+                    delivery_state: sage_acp_protocol::lifecycle::DeliveryState::Correlated,
                     revision: command.turn.expected_revision.next().unwrap(),
                     projection_revision: ProjectionRevision::new(4).unwrap(),
                     disposition: MutationDisposition::Applied,
@@ -500,7 +503,7 @@ fn prepare_commit_unknown_retains_the_exact_turn_reservation_until_lookup_resolu
         );
         assert!(matches!(
             tree.reserve_turn(),
-            Err(crate::acp::scheduler::SchedulerError::TurnCapacity)
+            Err(sage_acp_protocol::scheduler::SchedulerError::TurnCapacity)
         ));
         handle.close_when_drained();
         runner.await.unwrap();
@@ -524,7 +527,7 @@ fn post_commit_bootstrap_failure_retains_dispatch_and_terminal_release() {
         let (handle, runner, _) = fake(None, false);
         let mailbox = Arc::new(ProjectionMailbox::default());
         mailbox
-            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+            .publish_committed(crate::acp::ipc::ProjectionChangedV1 {
                 project_id: SageProjectId::parse("project-foreign").unwrap(),
                 chat_id: SageChatId::parse("chat-foreign").unwrap(),
                 session_id: SageAgentSessionId::parse("session-foreign").unwrap(),
@@ -557,7 +560,7 @@ fn post_commit_bootstrap_failure_retains_dispatch_and_terminal_release() {
         assert_eq!(dispatch.turn_id(), &SageTurnId::parse("turn-one").unwrap());
         assert!(matches!(
             tree.reserve_turn(),
-            Err(crate::acp::scheduler::SchedulerError::TurnCapacity)
+            Err(sage_acp_protocol::scheduler::SchedulerError::TurnCapacity)
         ));
         assert!(matches!(
             dispatch
@@ -681,14 +684,14 @@ fn known_atomic_store_rejection_releases_only_the_turn_reservation() {
 #[test]
 fn mailbox_contention_requests_bootstrap_without_undoing_commits() {
     let mailbox = ProjectionMailbox::default();
-    let first = crate::acp::intent::ProjectionChangedV1 {
+    let first = crate::acp::ipc::ProjectionChangedV1 {
         project_id: SageProjectId::parse("one").unwrap(),
         chat_id: SageChatId::parse("chat-one").unwrap(),
         session_id: SageAgentSessionId::parse("session-one").unwrap(),
         projection_revision: ProjectionRevision::new(1).unwrap(),
         child_projection_epoch: 0,
     };
-    let other = crate::acp::intent::ProjectionChangedV1 {
+    let other = crate::acp::ipc::ProjectionChangedV1 {
         project_id: SageProjectId::parse("two").unwrap(),
         chat_id: SageChatId::parse("chat-two").unwrap(),
         session_id: SageAgentSessionId::parse("session-two").unwrap(),
@@ -738,7 +741,7 @@ fn adapter_cursor_progression_releases_capacity_only_after_exact_durable_termina
 
         let waiting = cursor(
             "turn-one",
-            crate::acp::lifecycle::TurnState::WaitingModel,
+            sage_acp_protocol::lifecycle::TurnState::WaitingModel,
             3,
             4,
         );
@@ -748,12 +751,12 @@ fn adapter_cursor_progression_releases_capacity_only_after_exact_durable_termina
         );
         assert!(matches!(
             tree.reserve_turn(),
-            Err(crate::acp::scheduler::SchedulerError::TurnCapacity)
+            Err(sage_acp_protocol::scheduler::SchedulerError::TurnCapacity)
         ));
 
         let foreign = cursor(
             "turn-foreign",
-            crate::acp::lifecycle::TurnState::Completed,
+            sage_acp_protocol::lifecycle::TurnState::Completed,
             4,
             5,
         );
@@ -763,12 +766,12 @@ fn adapter_cursor_progression_releases_capacity_only_after_exact_durable_termina
         ));
         assert!(matches!(
             tree.reserve_turn(),
-            Err(crate::acp::scheduler::SchedulerError::TurnCapacity)
+            Err(sage_acp_protocol::scheduler::SchedulerError::TurnCapacity)
         ));
 
         let completed = cursor(
             "turn-one",
-            crate::acp::lifecycle::TurnState::Completed,
+            sage_acp_protocol::lifecycle::TurnState::Completed,
             4,
             5,
         );
@@ -861,7 +864,7 @@ fn cancel_intent_commits_on_control_lane_before_adapter_queue_and_replays_once()
         ));
         assert!(matches!(
             tree.reserve_turn(),
-            Err(crate::acp::scheduler::SchedulerError::TurnCapacity)
+            Err(sage_acp_protocol::scheduler::SchedulerError::TurnCapacity)
         ));
         handle.close_when_drained();
         runner_task.await.unwrap();
@@ -870,14 +873,14 @@ fn cancel_intent_commits_on_control_lane_before_adapter_queue_and_replays_once()
 
 fn cursor(
     turn_id: &str,
-    state: crate::acp::lifecycle::TurnState,
+    state: sage_acp_protocol::lifecycle::TurnState,
     revision: u64,
     projection: u64,
 ) -> AdapterTurnCursor {
     AdapterTurnCursor::test_only(
         SageTurnId::parse(turn_id).unwrap(),
         state,
-        crate::acp::lifecycle::DeliveryState::Correlated,
+        sage_acp_protocol::lifecycle::DeliveryState::Correlated,
         EntityRevision::new(revision).unwrap(),
         ProjectionRevision::new(projection).unwrap(),
     )

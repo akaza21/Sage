@@ -2,8 +2,8 @@ use super::*;
 use crate::acp::{
     background_terminals::{BackgroundTerminal, TerminalAction},
     goal::NativeRpcReply,
-    intent::SafeResourceLocation,
 };
+use sage_acp_protocol::intent::SafeResourceLocation;
 
 fn send(runtime: &mut CodexRuntime, action: TerminalAction) -> (u64, Value) {
     let egress = runtime

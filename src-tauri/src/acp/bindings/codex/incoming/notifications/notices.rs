@@ -9,11 +9,13 @@ use serde_json::{Map, Value};
 
 use crate::acp::{
     bindings::codex::state::{ScopedExternalId, WarningKind},
+    redaction::text::{clip_display as clip, neutralized},
+};
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::session_event::{
         SESSION_NOTICE_TEXT_BYTES, SessionNotice, SessionNoticeLevel, SessionScopedEvent,
     },
-    redaction::text::{clip_display as clip, neutralized},
 };
 
 use super::super::{

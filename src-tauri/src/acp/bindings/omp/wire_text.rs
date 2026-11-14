@@ -1,8 +1,6 @@
 use super::WireError;
-use crate::acp::{
-    contract::SafeText,
-    redaction::text::{self, Mode},
-};
+use crate::acp::redaction::text::{self, Mode};
+use sage_acp_protocol::contract::SafeText;
 use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
 pub(crate) fn normalized_text<const MAX: usize>(

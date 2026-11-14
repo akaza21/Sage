@@ -1,8 +1,9 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    contract::{ItemLifecycle, RequiredText, ToolState},
+use sage_acp_protocol::{
+    contract::RequiredText,
     intent::{ExternalId, ToolCategory},
+    lifecycle::{ItemLifecycle, ToolState},
 };
 
 use super::super::TranslationError;

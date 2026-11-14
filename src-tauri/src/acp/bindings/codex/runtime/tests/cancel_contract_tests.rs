@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::contract::SageServerRequestId;
+use sage_acp_protocol::contract::SageServerRequestId;
 
 fn pending(runtime: &mut CodexRuntime, method: &str, request_id: &str) -> SageServerRequestId {
     ready(runtime);
@@ -90,7 +90,7 @@ fn a_cancel_held_for_an_unnamed_turn_goes_out_with_the_frame_that_names_it() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "client-compact").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("compaction request");
     let id = request_id(&compact);

@@ -1,14 +1,12 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::{
-    acp::{
-        intent::ExternalId,
-        lifecycle::TurnState,
-        store::{AdapterStoreOwner, ChildLiveItemCommand, StoreError},
-    },
-    acp_protocol::codex_protocol::{
+use crate::acp::store::{AdapterStoreOwner, ChildLiveItemCommand, StoreError};
+use sage_acp_protocol::{
+    codex_protocol::{
         ChildItem, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES, MAX_TURNS,
     },
+    intent::ExternalId,
+    lifecycle::TurnState,
 };
 
 use super::{
@@ -75,7 +73,7 @@ fn store_live_item_in(
         });
     };
     let scope = ChildTranscriptScope {
-        owner: crate::acp::scheduler::RuntimeOwner {
+        owner: sage_acp_protocol::scheduler::RuntimeOwner {
             project_id: owner.project_id.clone(),
             chat_id: owner.chat_id.clone(),
             session_id: owner.session_id.clone(),
@@ -228,7 +226,7 @@ fn store_turn_status_in(
             resource: "childTranscriptOwner",
         })?;
     let scope = ChildTranscriptScope {
-        owner: crate::acp::scheduler::RuntimeOwner {
+        owner: sage_acp_protocol::scheduler::RuntimeOwner {
             project_id: owner.project_id.clone(),
             chat_id: owner.chat_id.clone(),
             session_id: owner.session_id.clone(),

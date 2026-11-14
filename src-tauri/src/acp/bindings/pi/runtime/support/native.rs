@@ -6,6 +6,8 @@ use crate::acp::{
         pi::{NativeCommand, NativeRequest, Operation},
     },
     goal::NativeRpcReply,
+};
+use sage_acp_protocol::{
     session_control::SessionControl,
     usage::{SessionSpend, UsageSnapshot},
 };

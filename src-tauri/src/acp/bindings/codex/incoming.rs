@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
@@ -117,7 +117,7 @@ pub(crate) use crate::acp::bindings::adapter::ItemUpdateMode;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum IncomingEvent {
     Initialized {
-        capabilities: crate::acp::intent::CapabilitySnapshotV1,
+        capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1,
     },
     SessionReady {
         id: ScopedExternalId,
@@ -151,20 +151,20 @@ pub(crate) enum IncomingEvent {
         id: ScopedExternalId,
         lifecycle: ItemLifecycle,
         payload: NormalizedPayload,
-        child_thread_id: crate::acp::intent::ExternalId,
+        child_thread_id: sage_acp_protocol::intent::ExternalId,
     },
     ChildLiveItem {
-        child_thread_id: crate::acp::intent::ExternalId,
-        child_turn_id: crate::acp::intent::ExternalId,
-        item_id: crate::acp::intent::ExternalId,
-        role: Option<crate::acp_protocol::codex_protocol::ChildTextRole>,
+        child_thread_id: sage_acp_protocol::intent::ExternalId,
+        child_turn_id: sage_acp_protocol::intent::ExternalId,
+        item_id: sage_acp_protocol::intent::ExternalId,
+        role: Option<sage_acp_protocol::codex_protocol::ChildTextRole>,
         lifecycle: ItemLifecycle,
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
     },
     ChildTurnStatus {
-        child_thread_id: crate::acp::intent::ExternalId,
-        child_turn_id: crate::acp::intent::ExternalId,
+        child_thread_id: sage_acp_protocol::intent::ExternalId,
+        child_turn_id: sage_acp_protocol::intent::ExternalId,
         status: TurnState,
     },
     Permission {
@@ -179,7 +179,7 @@ pub(crate) enum IncomingEvent {
     },
     Session {
         id: ScopedExternalId,
-        event: crate::acp::intent::session_event::SessionScopedEvent,
+        event: sage_acp_protocol::intent::session_event::SessionScopedEvent,
     },
     HostToolReply {
         bytes: Vec<u8>,
@@ -187,7 +187,7 @@ pub(crate) enum IncomingEvent {
     PermissionResolved {
         turn_id: ScopedExternalId,
         external_request: ScopedExternalId,
-        state: crate::acp::lifecycle::ServerRequestState,
+        state: sage_acp_protocol::lifecycle::ServerRequestState,
     },
     Acknowledged {
         closes_session: bool,
@@ -220,7 +220,7 @@ pub(crate) enum IngressDisposition {
     /// refused it or answered outside the pinned shape.
     Terminals(Option<crate::acp::goal::NativeRpcReply>),
     SettingsUpdated {
-        model: crate::acp::intent::ModelId,
+        model: sage_acp_protocol::intent::ModelId,
         effort: Option<RequiredText<512>>,
     },
     DuplicateTerminal,
@@ -262,7 +262,7 @@ pub(crate) fn ingest<M: ResourceMapper>(
         adapter,
         bytes,
         mapper,
-        &crate::acp::declared_test::DeclaredTestCommands::default(),
+        &sage_acp_protocol::declared_test::DeclaredTestCommands::default(),
     )
 }
 
@@ -270,7 +270,7 @@ pub(crate) fn ingest_with_declarations<M: ResourceMapper>(
     adapter: &mut CodexAdapter,
     bytes: &[u8],
     mapper: &M,
-    declarations: &crate::acp::declared_test::DeclaredTestCommands,
+    declarations: &sage_acp_protocol::declared_test::DeclaredTestCommands,
 ) -> Result<IngressDisposition, IngressError> {
     ingest_inner(adapter, bytes, mapper, declarations)
 }
@@ -279,7 +279,7 @@ fn ingest_inner<M: ResourceMapper>(
     adapter: &mut CodexAdapter,
     bytes: &[u8],
     mapper: &M,
-    declarations: &crate::acp::declared_test::DeclaredTestCommands,
+    declarations: &sage_acp_protocol::declared_test::DeclaredTestCommands,
 ) -> Result<IngressDisposition, IngressError> {
     if bytes.len() > LIMITS.wire.frame_bytes as usize {
         return Err(IngressError::FrameBytes);

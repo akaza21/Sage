@@ -124,9 +124,10 @@ fn real_opencode_global_npm_shim_resolves_to_the_admitted_native_executable() {
     .expect("launch authority")
     .into_launch_spec(
         crate::project_registry::ProjectRootAuthority::for_test(
-            crate::acp::contract::SageProjectId::parse("project-opencode-real").expect("project"),
-            crate::acp::contract::ProjectGeneration::ZERO,
-            crate::acp::contract::SageRootId::parse("root-opencode-real").expect("root"),
+            sage_acp_protocol::contract::SageProjectId::parse("project-opencode-real")
+                .expect("project"),
+            sage_acp_protocol::contract::ProjectGeneration::ZERO,
+            sage_acp_protocol::contract::SageRootId::parse("root-opencode-real").expect("root"),
             &spec_root,
         )
         .expect("project root"),
@@ -174,9 +175,10 @@ fn real_opencode_survives_its_production_launch_spec_environment() {
         .expect("OpenCode shim version");
     let root = scratch_root("opencode-production-launch");
     let project_root = crate::project_registry::ProjectRootAuthority::for_test(
-        crate::acp::contract::SageProjectId::parse("project-opencode-launch").expect("project"),
-        crate::acp::contract::ProjectGeneration::ZERO,
-        crate::acp::contract::SageRootId::parse("root-opencode-launch").expect("root"),
+        sage_acp_protocol::contract::SageProjectId::parse("project-opencode-launch")
+            .expect("project"),
+        sage_acp_protocol::contract::ProjectGeneration::ZERO,
+        sage_acp_protocol::contract::SageRootId::parse("root-opencode-launch").expect("root"),
         &root,
     )
     .expect("project root");
@@ -190,8 +192,8 @@ fn real_opencode_survives_its_production_launch_spec_environment() {
         project_root,
     ))
     .construct(
-        crate::acp::contract::RuntimeEpoch::new(23).expect("epoch"),
-        crate::acp::contract::SageAgentSessionId::parse("session-opencode-launch")
+        sage_acp_protocol::contract::RuntimeEpoch::new(23).expect("epoch"),
+        sage_acp_protocol::contract::SageAgentSessionId::parse("session-opencode-launch")
             .expect("session"),
     )
     .expect("construct runtime");

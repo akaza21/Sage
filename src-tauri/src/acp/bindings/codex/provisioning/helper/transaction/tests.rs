@@ -1,13 +1,11 @@
 use std::panic::{AssertUnwindSafe, catch_unwind};
 
 use super::*;
+use crate::acp::bindings::codex::manifest::PINNED_PACKAGE_UNPACKED_BYTES;
 use crate::acp::bindings::codex::provisioning::{
     AclPlan, HandoffPayload, STAGE_NAME, SealedHandoff,
 };
-use crate::{
-    acp::bindings::codex::manifest::PINNED_PACKAGE_UNPACKED_BYTES,
-    acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY},
-};
+use sage_acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum CrashPoint {

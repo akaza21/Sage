@@ -2,15 +2,13 @@ pub(crate) mod support;
 
 use std::sync::{Arc, Mutex};
 
-use crate::{
-    acp::{
-        bindings::adapter::AdapterCommand,
-        contract::{
-            RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
-            SageTurnId,
-        },
+use crate::acp::bindings::adapter::AdapterCommand;
+use sage_acp_protocol::{
+    contract::{
+        RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
+        SageTurnId,
     },
-    acp_protocol::permissions::PermissionDecision,
+    permissions::PermissionDecision,
 };
 
 use super::PermissionDecisionIntent;
@@ -220,7 +218,7 @@ fn every_forged_decision_identity_field_has_zero_durable_or_runtime_side_effects
 
 #[test]
 fn only_matching_answers_resolve_a_question_and_approvals_never_take_answers() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::{BoundedVec, SafeText},
         intent::{NormalizedPayload, PermissionOptionKind, ToolCategory},
     };

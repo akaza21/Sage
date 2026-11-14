@@ -1,9 +1,9 @@
-use crate::acp::contract::{SageChatId, SageProjectId};
 use crate::{
     domain::{ProjectLayoutRequest, ProjectTransitionResult},
     persistence::Database,
     state::AppState,
 };
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 use tauri::{Manager, State};
 
 #[tauri::command]
@@ -345,7 +345,7 @@ mod tests {
 
     #[test]
     fn closing_a_side_chat_drops_its_sessions_access_grants() {
-        use crate::acp_protocol::access_mode::SessionAccessMode::FullAccess;
+        use sage_acp_protocol::access_mode::SessionAccessMode::FullAccess;
         let root = std::env::temp_dir().join(format!("sage-side-grant-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let database = crate::persistence::Database::open(&root.join("sage.db")).unwrap();

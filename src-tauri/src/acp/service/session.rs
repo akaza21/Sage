@@ -2,11 +2,13 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
     bindings::runtime::NativeRuntime,
+    runtime::{ActivationIntent, ActivationMode},
+    store::{ActivateSessionCommand, SessionMutation, StartSessionCommand},
+};
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{ExternalId, ModelId},
-    runtime::{ActivationIntent, ActivationMode},
     scheduler::RuntimeOwner,
-    store::{ActivateSessionCommand, SessionMutation, StartSessionCommand},
 };
 
 use super::{AcpService, CodexSessionError};
@@ -233,9 +235,9 @@ impl AcpService {
 
 fn load_durable_session(
     database: &crate::persistence::Database,
-    project_id: &crate::acp::contract::SageProjectId,
-    chat_id: &crate::acp::contract::SageChatId,
-    session_id: &crate::acp::contract::SageAgentSessionId,
+    project_id: &sage_acp_protocol::contract::SageProjectId,
+    chat_id: &sage_acp_protocol::contract::SageChatId,
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
 ) -> Result<DurableSession, CodexSessionError> {
     database
         .connection()

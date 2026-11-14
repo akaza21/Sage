@@ -41,7 +41,7 @@ impl Lane<'_> {
     fn finish_cancelled_shutdown(
         &self,
         owner: RuntimeOwner,
-        turn_id: crate::acp::contract::SageTurnId,
+        turn_id: sage_acp_protocol::contract::SageTurnId,
         host: Arc<RuntimeHost>,
         outcome: crate::acp::runtime::HostOutcome,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {

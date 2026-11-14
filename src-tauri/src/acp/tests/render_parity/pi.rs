@@ -1,19 +1,17 @@
 use serde_json::{Value, json};
 
 use super::{FILE, Fact, Mapper, NEW_TEXT, OLD_TEXT, ROOT, Scenario, frame};
-use crate::acp_protocol::access_mode::SessionAccessMode;
-use crate::{
-    acp::{
-        bindings::{
-            adapter::{
-                AdapterBatch, AdapterCommand, AdapterEgress, EgressResolution, HarnessAdapter,
-            },
-            pi::PiRuntime,
-        },
-        contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
-        intent::Prompt,
+use crate::acp::{
+    bindings::{
+        adapter::{AdapterBatch, AdapterCommand, AdapterEgress, EgressResolution, HarnessAdapter},
+        pi::PiRuntime,
     },
-    acp_protocol::permissions::PermissionDecision,
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::access_mode::SessionAccessMode;
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
+    permissions::PermissionDecision,
 };
 
 struct Turn {

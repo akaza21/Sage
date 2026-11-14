@@ -5,7 +5,7 @@ use super::super::{
     url::parse_allowed_preview_url,
 };
 use super::discovery_request;
-use crate::acp::contract::{
+use sage_acp_protocol::contract::{
     EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
 };
 use sage_core::limits::PREVIEW_LIMITS;
@@ -73,7 +73,7 @@ fn preview_projection_is_discriminated_and_revision_is_lossless() {
     assert_eq!(value["kind"], "preview");
     assert_eq!(value["preview"]["previewRevision"], "1");
     assert!(value.get("projectionRevision").is_none());
-    assert!(serde_json::from_value::<crate::acp::intent::ProjectionChangedV1>(value).is_err());
+    assert!(serde_json::from_value::<crate::acp::ipc::ProjectionChangedV1>(value).is_err());
 }
 
 #[test]

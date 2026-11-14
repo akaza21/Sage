@@ -1,9 +1,7 @@
 use serde_json::json;
 
-use crate::acp::{
-    contract::RequiredText,
-    session_action::{ReviewTarget, SessionAction},
-};
+use crate::acp::session_action::{ReviewTarget, SessionAction};
+use sage_acp_protocol::contract::RequiredText;
 
 use super::{OutgoingRequest, RequestError, RequestKind};
 

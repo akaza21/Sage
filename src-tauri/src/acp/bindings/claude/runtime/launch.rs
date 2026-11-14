@@ -7,10 +7,10 @@ use crate::acp::{
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
         standard_acp::{AcpLaunchAuthority, ClaudeLaunch},
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
     mcp::McpAdmission,
     process::LaunchSpec,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 use super::ClaudeRuntime;
 

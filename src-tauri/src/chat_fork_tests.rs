@@ -2,20 +2,20 @@ use rusqlite::params;
 
 use super::*;
 use crate::{
-    acp::{
-        contract::{SageChatId, SageProjectId, SageTurnId},
-        intent::ExternalId,
-        store::{chat_fork::fork_source, load_chat_page},
-    },
+    acp::store::{chat_fork::fork_source, load_chat_page},
     domain::ProjectLayoutRequest,
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{SageChatId, SageProjectId, SageTurnId},
+    intent::ExternalId,
 };
 
 /// A capability snapshot of the pinned Codex binding that can fork.
 fn forkable() -> String {
     format!(
         r#"{{"schemaVersion":1,"protocolVersion":"{identity}","newSession":true,"resumeSession":true,"loadSession":false,"closeSession":true,"prompt":true,"cancel":true,"nativeSessionFork":true,"activeTurnSteer":true,"childConversationProjection":false,"childTranscriptRead":true,"collaborationEventProjection":false,"multiRootExtensionSchemaId":null,"modelCount":0,"configCount":0}}"#,
-        identity = crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
+        identity = sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
     )
 }
 
@@ -57,7 +57,7 @@ impl Fixture {
                  INSERT INTO session_runtime_epochs VALUES('{project}','{parent}','session-parent',1,
                    'running',NULL,1,NULL,NULL);",
                 digest = "a".repeat(64),
-                version = crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
+                version = sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
             ))
             .unwrap();
         let fixture = Self {
@@ -416,9 +416,10 @@ fn only_a_refusal_before_the_commit_deletes_the_native_fork() {
 
 #[test]
 fn a_fork_starts_with_the_config_choices_of_its_parent() {
-    use crate::acp::{
+    use crate::acp::session_config::choices;
+    use sage_acp_protocol::{
         contract::SageAgentSessionId,
-        session_config::{ConfigId, ConfigMutation, ConfigValue, choices},
+        session_config::{ConfigId, ConfigMutation, ConfigValue},
     };
     let fixture = Fixture::new(&forkable());
     let parent = SageAgentSessionId::parse("session-parent").unwrap();
@@ -609,10 +610,8 @@ fn a_listing_leaves_out_every_thread_the_project_holds() {
 
 #[test]
 fn an_import_reads_only_on_the_runtime_that_listed_it() {
-    use crate::acp::{
-        contract::{RuntimeEpoch, SageAgentSessionId},
-        store::native_import::import_lister,
-    };
+    use crate::acp::store::native_import::import_lister;
+    use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
     let importable = forkable().replace(
         r#""nativeSessionFork":true"#,
         r#""nativeSessionFork":true,"nativeSessionImport":true"#,

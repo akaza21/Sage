@@ -21,17 +21,17 @@ pub(crate) async fn get_acp_file_snapshot_inner(
         .map_err(page_admission_error)?;
     let _transition =
         lock_acp_context(state, &request.project_id, request.project_generation).await?;
-    if request.diff_ordinal != crate::acp_protocol::file_diff::DIFF_ORDINAL
+    if request.diff_ordinal != sage_acp_protocol::file_diff::DIFF_ORDINAL
         || request.snapshot_revision == 0
         || request.relative_path.is_empty()
         || request.relative_path.len() > 16_384
         || request.content_digest.len() != 64
     {
         return Err(snapshot_error(
-            crate::acp_protocol::file_diff::SnapshotReadError::Forbidden,
+            sage_acp_protocol::file_diff::SnapshotReadError::Forbidden,
         ));
     }
-    let diff_ref = crate::acp_protocol::file_diff::DiffRef {
+    let diff_ref = sage_acp_protocol::file_diff::DiffRef {
         project_id: request.project_id.as_str().to_owned(),
         chat_id: request.chat_id.as_str().to_owned(),
         session_id: request.session_id.as_str().to_owned(),
@@ -56,7 +56,7 @@ pub(crate) async fn get_acp_file_snapshot_inner(
         .map_err(snapshot_error)?;
     if data.old_text.len() != data.old_bytes || data.new_text.len() != data.new_bytes {
         return Err(snapshot_error(
-            crate::acp_protocol::file_diff::SnapshotReadError::Corrupt,
+            sage_acp_protocol::file_diff::SnapshotReadError::Corrupt,
         ));
     }
     Ok(AcpFileSnapshotResponse {
@@ -79,15 +79,15 @@ pub(crate) async fn get_acp_file_snapshot_inner(
     })
 }
 
-fn snapshot_error(error: crate::acp_protocol::file_diff::SnapshotReadError) -> AcpIpcError {
-    use crate::acp_protocol::file_diff::SnapshotReadError;
+fn snapshot_error(error: sage_acp_protocol::file_diff::SnapshotReadError) -> AcpIpcError {
+    use sage_acp_protocol::file_diff::SnapshotReadError;
     match error {
         SnapshotReadError::Unavailable => AcpIpcError::Unavailable {
-            reason: crate::acp::intent::AcpUnavailableReason::SessionUnavailable,
+            reason: crate::acp::ipc::AcpUnavailableReason::SessionUnavailable,
             message: safe_message(error.message()),
         },
         SnapshotReadError::Stale => AcpIpcError::Conflict {
-            resource: crate::acp::intent::AcpConflictResource::Session,
+            resource: crate::acp::ipc::AcpConflictResource::Session,
             message: safe_message(error.message()),
         },
         SnapshotReadError::Corrupt => AcpIpcError::RecoveryRequired {

@@ -20,9 +20,11 @@ impl ResourceMapper for NoResources {
     fn map_existing(
         &self,
         _absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
-        Err(crate::acp::intent::UnavailableResourceReason::Foreign)
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Foreign)
     }
 }
 

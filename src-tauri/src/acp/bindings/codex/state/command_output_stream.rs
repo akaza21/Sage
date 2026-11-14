@@ -3,10 +3,8 @@
 
 use std::{collections::VecDeque, fmt, mem::size_of};
 
-use crate::acp::{
-    bindings::codex::incoming::command_output_token,
-    command_output::{RetainedCommandOutput, retain_command_output},
-};
+use crate::acp::bindings::codex::incoming::command_output_token;
+use sage_acp_protocol::command_output::{RetainedCommandOutput, retain_command_output};
 use sage_core::limits::{LIMITS, RETAINED_TOOL_OUTPUT_LINES};
 
 const REDACTED: &str = "[redacted]";

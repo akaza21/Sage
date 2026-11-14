@@ -38,14 +38,18 @@ pub(super) fn single_root_authority(
     let [root] = roots.as_slice() else {
         return Err(());
     };
-    let root_id = crate::acp::contract::SageRootId::parse(root.id.clone()).map_err(|_| ())?;
+    let root_id =
+        sage_acp_protocol::contract::SageRootId::parse(root.id.clone()).map_err(|_| ())?;
     database
         .project_root_authority(context, &root_id)
         .map_err(|_| ())
 }
 
 impl BindingProjectRoot {
-    pub(crate) fn project_matches(&self, project_id: &crate::acp::contract::SageProjectId) -> bool {
+    pub(crate) fn project_matches(
+        &self,
+        project_id: &sage_acp_protocol::contract::SageProjectId,
+    ) -> bool {
         match self {
             Self::Codex(root) => root.project_id() == project_id,
             Self::Claude(root) => root.scope().0 == project_id,

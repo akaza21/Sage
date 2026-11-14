@@ -9,23 +9,26 @@ use crate::{
         bindings::codex::{
             CodexAdmissionUnavailable, CodexBindingRegistration, CodexProjectRootAuthority,
         },
-        contract::{
-            ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageChatId,
-            SageProjectId, SageRootId, SageTurnId,
-        },
-        intent::{BindingId, Prompt},
-        lifecycle::{ItemLifecycle, SessionState, ToolState, TurnState},
         projection::{ItemContent, ToolPresentation},
         runtime::{
             HostCancelIntent, ProjectionPublishError, ProjectionPublishStatus, ProjectionPublisher,
         },
-        scheduler::RuntimeOwner,
         store::{
             ActivateSessionCommand, CloseSessionCommand, PrepareTurnCommand, StartSessionCommand,
         },
+        transcript_quote::Prompt,
     },
     domain::ProjectLayoutRequest,
     project_registry::ProjectRootAuthority,
+};
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageChatId,
+        SageProjectId, SageRootId, SageTurnId,
+    },
+    intent::BindingId,
+    lifecycle::{ItemLifecycle, SessionState, ToolState, TurnState},
+    scheduler::RuntimeOwner,
 };
 
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
@@ -56,19 +59,17 @@ fn unavailable_binding_cannot_start_a_live_codex_session() {
             Err(CodexSessionError::Binding(_))
         ));
         assert!(matches!(
-            setup
-                .service
-                .send_codex_turn(
-                    setup.turn_command(&RuntimeOwner {
-                        project_id: setup.project_id.clone(),
-                        chat_id: setup.chat_id.clone(),
-                        session_id: crate::acp::contract::SageAgentSessionId::parse(
-                            "session-unavailable"
-                        )
-                        .unwrap(),
-                        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
-                    })
-                ),
+            setup.service.send_codex_turn(
+                setup.turn_command(&RuntimeOwner {
+                    project_id: setup.project_id.clone(),
+                    chat_id: setup.chat_id.clone(),
+                    session_id: sage_acp_protocol::contract::SageAgentSessionId::parse(
+                        "session-unavailable"
+                    )
+                    .unwrap(),
+                    runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+                })
+            ),
             Err(CodexSessionError::Intent)
         ));
         assert_job_zero();
@@ -546,7 +547,7 @@ async fn assert_lost_steer_result_after_reopen(
             owner: owner.clone(),
             turn_id,
             prompt: Prompt::new("prompt", &queued.text).unwrap(),
-            client_message_id: crate::acp::contract::RequiredText::new(
+            client_message_id: sage_acp_protocol::contract::RequiredText::new(
                 "clientMessageId",
                 &queued.id,
             )
@@ -1042,7 +1043,7 @@ struct JourneyPublisher;
 impl ProjectionPublisher for JourneyPublisher {
     fn publish_committed(
         &self,
-        event: crate::acp::intent::ProjectionChangedV1,
+        event: crate::acp::ipc::ProjectionChangedV1,
     ) -> Result<ProjectionPublishStatus, ProjectionPublishError> {
         if event.projection_revision == ProjectionRevision::ZERO {
             return Err(ProjectionPublishError::InvalidRevision);

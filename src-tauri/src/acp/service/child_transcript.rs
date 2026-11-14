@@ -1,15 +1,13 @@
 use rusqlite::{OptionalExtension, params};
 
-use crate::{
-    acp::{
-        goal::NativeRead,
-        store::child_transcript::{
-            ChildTranscriptScope, ChildTranscriptStoreError, load_earlier_snapshot, load_snapshot,
-            persist_snapshot, verify_current_binding,
-        },
+use crate::acp::{
+    goal::NativeRead,
+    store::child_transcript::{
+        ChildTranscriptScope, ChildTranscriptStoreError, load_earlier_snapshot, load_snapshot,
+        persist_snapshot, verify_current_binding,
     },
-    acp_protocol::codex_protocol::ChildTranscriptSnapshot,
 };
+use sage_acp_protocol::codex_protocol::ChildTranscriptSnapshot;
 
 use super::{AcpService, native_read::NativeReadError};
 
@@ -151,7 +149,7 @@ fn observed_protocol(
         .get("protocolVersion")
         .and_then(serde_json::Value::as_str)
         .is_some_and(|identity| {
-            crate::acp_protocol::codex_protocol::speaks_pinned_protocol(identity)
+            sage_acp_protocol::codex_protocol::speaks_pinned_protocol(identity)
                 || crate::acp::bindings::codex::is_desktop_fixture_protocol(identity)
         }))
 }

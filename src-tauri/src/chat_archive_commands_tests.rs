@@ -3,11 +3,8 @@ use std::fs;
 use uuid::Uuid;
 
 use super::*;
-use crate::{
-    acp::contract::{SageChatId, SageProjectId},
-    domain::ProjectLayoutRequest,
-    persistence::Database,
-};
+use crate::{domain::ProjectLayoutRequest, persistence::Database};
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 /// A Project with two attached Chats; returns the state, the first Chat's
 /// archive request and the folder to remove.
@@ -260,7 +257,7 @@ fn a_failed_archived_lookup_refuses_delete_with_a_retry_message() {
 
 #[test]
 fn deleting_an_archived_chat_forgets_its_sessions_access_choices() {
-    use crate::acp_protocol::access_mode::SessionAccessMode::{AcceptEdits, FullAccess};
+    use sage_acp_protocol::access_mode::SessionAccessMode::{AcceptEdits, FullAccess};
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, request, root) = two_chat_state("delete-access");
         let kept_chat = request

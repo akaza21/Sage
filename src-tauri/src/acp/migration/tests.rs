@@ -9,12 +9,10 @@ use uuid::Uuid;
 
 use super::limits::WAL_HARD_BYTES;
 use super::*;
-use crate::acp::{
-    contract::{SageChatId, SageProjectId},
-    store::load_chat_page,
-};
+use crate::acp::store::load_chat_page;
 #[cfg(windows)]
 use crate::persistence::Database;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 struct TestDir(
     PathBuf,
@@ -409,11 +407,11 @@ fn recovering_to_ready_cannot_change_activation_identity() {
 
 #[test]
 fn schema_029_recovering_session_resumes_after_forward_upgrade() {
-    use crate::acp::{
+    use crate::acp::store::{CompleteActivationCommand, complete_activation};
+    use sage_acp_protocol::{
         contract::{RuntimeEpoch, SageAgentSessionId},
         intent::ExternalId,
         lifecycle::SessionState,
-        store::{CompleteActivationCommand, complete_activation},
     };
 
     let directory = TestDir::new();

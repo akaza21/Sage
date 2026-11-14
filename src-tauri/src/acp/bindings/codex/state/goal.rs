@@ -19,9 +19,9 @@ impl CodexAdapter {
                 Some(characterisation) => characterisation.runs_tested_features(),
                 None => {
                     self.capability_ceiling.protocol_identity
-                        == crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
+                        == sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
                         && self.runtime_version.split_ascii_whitespace().next_back()
-                            == Some(crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION)
+                            == Some(sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION)
                 }
             }
     }
@@ -71,7 +71,7 @@ impl CodexAdapter {
         id: u64,
         build: fn(
             u64,
-            &crate::acp::contract::RequiredText<512>,
+            &sage_acp_protocol::contract::RequiredText<512>,
         ) -> Result<OutgoingRequest, super::super::request::RequestError>,
     ) -> Result<OutgoingRequest, AdapterError> {
         if !self.goal_supported() || !matches!(self.goal_state, GoalState::Goal { .. }) {

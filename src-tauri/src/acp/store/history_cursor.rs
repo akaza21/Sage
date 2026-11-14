@@ -1,7 +1,7 @@
 use rusqlite::{OptionalExtension, params};
 use sha2::{Digest, Sha256};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{SageChatId, SageProjectId},
     intent::PageCursor,
 };

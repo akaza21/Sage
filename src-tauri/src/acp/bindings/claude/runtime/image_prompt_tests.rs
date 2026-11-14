@@ -4,10 +4,8 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 
 use super::*;
-use crate::acp::{
-    attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
-    intent::ImageMediaType,
-};
+use crate::acp::attached_context::files::images::{ImagePreview, PromptImage, PromptImages};
+use sage_acp_protocol::intent::ImageMediaType;
 use sage_core::limits::PROMPT_IMAGE_TOTAL_BYTES;
 
 const PNG_1X1: &str =
@@ -42,7 +40,7 @@ fn prompt_with(images: Vec<PromptImage>) -> AdapterCommand {
         prompt,
         client_message_id: RequiredText::new("client", "image-prompt").unwrap(),
         // Ask is the access mode that selects the session's "default" mode.
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
     }
 }
 

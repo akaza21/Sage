@@ -1,6 +1,6 @@
 use super::super::{ActiveTurn, PiTranslator, TurnPhase};
 use crate::acp::bindings::pi::{AdapterError, AdapterOutput, TerminalOutcome};
-use crate::acp::intent::session_event::SessionActivityState;
+use sage_acp_protocol::intent::session_event::SessionActivityState;
 use serde_json::Value;
 
 impl PiTranslator {

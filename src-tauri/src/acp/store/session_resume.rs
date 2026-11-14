@@ -6,7 +6,7 @@
 
 use rusqlite::{OptionalExtension, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{
         EntityRevision, ProjectionRevision, SafeText, SageAgentSessionId, SageChatId, SageProjectId,
     },

@@ -15,8 +15,8 @@ use super::{FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerStat
 
 pub(super) fn handle_begin_send<A, R, T, C>(
     active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
-    owner: crate::acp::scheduler::RuntimeOwner,
-    turn_id: crate::acp::contract::SageTurnId,
+    owner: sage_acp_protocol::scheduler::RuntimeOwner,
+    turn_id: sage_acp_protocol::contract::SageTurnId,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
 where
@@ -61,8 +61,8 @@ where
 
 pub(super) async fn handle_begin_send_retry<A, R, T, C, Auth>(
     active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
-    owner: crate::acp::scheduler::RuntimeOwner,
-    turn_id: crate::acp::contract::SageTurnId,
+    owner: sage_acp_protocol::scheduler::RuntimeOwner,
+    turn_id: sage_acp_protocol::contract::SageTurnId,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
@@ -101,7 +101,7 @@ where
 
 pub(super) fn handle_terminal<A, R, T, C, Auth>(
     active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
-    owner: crate::acp::scheduler::RuntimeOwner,
+    owner: sage_acp_protocol::scheduler::RuntimeOwner,
     cursor: crate::acp::store::AdapterTurnCursor,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
@@ -135,7 +135,7 @@ where
 
 pub(super) fn accept_terminal_once<A, R, T, C, Auth>(
     active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
-    owner: crate::acp::scheduler::RuntimeOwner,
+    owner: sage_acp_protocol::scheduler::RuntimeOwner,
     cursor: crate::acp::store::AdapterTurnCursor,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
@@ -190,8 +190,8 @@ where
 
 pub(super) fn handle_observe<A, R, T, C>(
     active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
-    owner: crate::acp::scheduler::RuntimeOwner,
-    turn_id: crate::acp::contract::SageTurnId,
+    owner: sage_acp_protocol::scheduler::RuntimeOwner,
+    turn_id: sage_acp_protocol::contract::SageTurnId,
     observation: crate::acp::store::SendObservation,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
@@ -242,8 +242,8 @@ where
 
 pub(super) async fn handle_observe_retry<A, R, T, C, Auth>(
     active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
-    owner: crate::acp::scheduler::RuntimeOwner,
-    turn_id: crate::acp::contract::SageTurnId,
+    owner: sage_acp_protocol::scheduler::RuntimeOwner,
+    turn_id: sage_acp_protocol::contract::SageTurnId,
     observation: crate::acp::store::SendObservation,
     context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,

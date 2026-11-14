@@ -1,5 +1,6 @@
 use super::*;
-use crate::acp::{bindings::adapter::HarnessAdapter, lifecycle::TurnState};
+use crate::acp::bindings::adapter::HarnessAdapter;
+use sage_acp_protocol::lifecycle::TurnState;
 
 fn reply(runtime: &mut PiRuntime, message: Value) {
     runtime

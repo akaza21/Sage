@@ -1,17 +1,15 @@
-use crate::acp::{
+use crate::acp::projection::ToolPresentation;
+use sage_acp_protocol::{
     contract::{BoundedVec, SafeText},
     declared_test::CommandActivity,
-    intent::{
-        COMMAND_RESOURCE_LIMIT, NormalizedPayload, SafeResourceLocation, ToolCategory,
-        ToolExecution,
-    },
+    intent::{NormalizedPayload, SafeResourceLocation, ToolCategory, ToolExecution},
     lifecycle::{ItemLifecycle, ToolState},
-    projection::ToolPresentation,
 };
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 
 use super::super::StoreError;
 
-fn contract(_: crate::acp::contract::ContractError) -> StoreError {
+fn contract(_: sage_acp_protocol::contract::ContractError) -> StoreError {
     StoreError::Corrupt("projection contract")
 }
 

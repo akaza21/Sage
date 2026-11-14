@@ -3,10 +3,8 @@ use serde_json::Value;
 use sha2::{Digest, Sha256};
 
 use super::*;
-use crate::acp::{
-    contract::{SageChatId, SageProjectId},
-    store::load_chat_page,
-};
+use crate::acp::store::load_chat_page;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 const CAPABILITIES: &str = "{\"schemaVersion\":1,\"protocolVersion\":\"acp-1\",\"newSession\":true,\"resumeSession\":false,\"loadSession\":false,\"closeSession\":true,\"prompt\":true,\"cancel\":true,\"nativeSessionFork\":false,\"activeTurnSteer\":false,\"childConversationProjection\":false,\"childTranscriptRead\":false,\"collaborationEventProjection\":false,\"multiRootExtensionSchemaId\":null,\"modelCount\":1,\"configCount\":0}";
 

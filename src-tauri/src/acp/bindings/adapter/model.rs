@@ -134,7 +134,7 @@ pub(crate) trait HarnessAdapter {
     /// `Ok(None)` means the harness holds nothing to release, and the reply is already available.
     fn release_fork(
         &mut self,
-        _fork: &crate::acp::intent::ExternalId,
+        _fork: &sage_acp_protocol::intent::ExternalId,
         _committed: bool,
     ) -> AdapterOptionalEgress {
         Err(AdapterRuntimeError::UnsupportedCommand)
@@ -143,7 +143,7 @@ pub(crate) trait HarnessAdapter {
     /// answer the RPC now. False when the harness cannot defer it.
     fn defer_fork_release(
         &mut self,
-        _fork: &crate::acp::intent::ExternalId,
+        _fork: &sage_acp_protocol::intent::ExternalId,
         _committed: bool,
     ) -> bool {
         false
@@ -173,19 +173,22 @@ pub(crate) trait HarnessAdapter {
     /// without writing a frame: the answer waits in the native RPC reply.
     /// A control done once, such as an undo whose outcome Sage could not
     /// record, may then be confirmed again.
-    fn answered_control(&mut self, _control: &crate::acp::session_control::SessionControl) -> bool {
+    fn answered_control(
+        &mut self,
+        _control: &sage_acp_protocol::session_control::SessionControl,
+    ) -> bool {
         false
     }
     fn session_control(
         &mut self,
-        _control: &crate::acp::session_control::SessionControl,
+        _control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None
     }
-    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+    fn usage(&self) -> Option<std::sync::Arc<sage_acp_protocol::usage::UsageCell>> {
         None
     }
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -204,7 +207,7 @@ pub(crate) trait HarnessAdapter {
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         None
     }
     fn refusal_detail(&self) -> Option<RefusalDetail> {
@@ -215,7 +218,7 @@ pub(crate) trait HarnessAdapter {
     }
     fn configure(
         &mut self,
-        _intent: &crate::acp::session_config::ConfigIntent,
+        _intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }

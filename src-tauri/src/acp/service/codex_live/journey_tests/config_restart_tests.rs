@@ -1,9 +1,11 @@
 use super::*;
 use crate::acp::bindings::registry::{BindingProjectRoot, BindingRegistry};
-use crate::acp::lifecycle::Residency;
 use crate::acp::runtime::HostPromptIntent;
-use crate::acp::session_config::{ConfigId, ConfigIntent, ConfigKind, ConfigMutation, ConfigValue};
 use crate::launch_profile::FixtureSelection;
+use sage_acp_protocol::lifecycle::Residency;
+use sage_acp_protocol::session_config::{
+    ConfigId, ConfigIntent, ConfigKind, ConfigMutation, ConfigValue,
+};
 use std::fs;
 use std::sync::Arc;
 
@@ -195,8 +197,8 @@ fn approve_permission(setup: &FixtureSetup, owner: &RuntimeOwner) {
             session_id: owner.session_id.clone(),
             runtime_epoch: owner.runtime_epoch,
             turn_id: SageTurnId::parse(turn).unwrap(),
-            request_id: crate::acp::contract::SageServerRequestId::parse(request).unwrap(),
-            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+            request_id: sage_acp_protocol::contract::SageServerRequestId::parse(request).unwrap(),
+            decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .unwrap();
 }
@@ -236,7 +238,7 @@ fn claude_turn_with_approval(setup: &FixtureSetup, owner: &RuntimeOwner) {
         .service
         .send_session_turn(HostPromptIntent {
             command: setup.turn_command(owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         })
         .unwrap();
     approve_permission(setup, owner);
@@ -336,8 +338,11 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
         let request = crate::acp::ipc::GetCodexDiscoveryRequest {
             project_id: root.project_id().clone(),
             project_generation: root.project_generation(),
-            binding_id: crate::acp::intent::BindingId::new("bindingId", binding.binding_id())
-                .unwrap(),
+            binding_id: sage_acp_protocol::intent::BindingId::new(
+                "bindingId",
+                binding.binding_id(),
+            )
+            .unwrap(),
         };
         let discovery = setup.service.codex_discovery_manager();
         let prepared = discovery
@@ -350,7 +355,8 @@ fn codex_model_and_effort_survive_a_graceful_restart() {
         let menu = discovery.discover(prepared).unwrap();
         let listed: Vec<_> = menu.models.iter().map(|model| model.id.as_str()).collect();
         assert_eq!(listed, ["fixture-model", "fixture-model-deep"]);
-        let deep = crate::acp::intent::ModelId::new("modelId", "fixture-model-deep").unwrap();
+        let deep =
+            sage_acp_protocol::intent::ModelId::new("modelId", "fixture-model-deep").unwrap();
         let revision = setup
             .service
             .load_chat_page(setup.project_id.clone(), setup.chat_id.clone(), None)

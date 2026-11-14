@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::intent::session_event::{SESSION_NOTICES_MAX, SessionSurface};
+use sage_acp_protocol::intent::session_event::{SESSION_NOTICES_MAX, SessionSurface};
 
 fn completion(turn: &str, review: &str) -> Value {
     json!({"threadId":"thread-1","turnId":turn,"reviewId":review,
@@ -79,7 +79,7 @@ fn review_capacity_suppresses_new_notices_without_evicting_completed_ids() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Continue").unwrap(),
             client_message_id: RequiredText::new("client", "client-2").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     runtime

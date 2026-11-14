@@ -3,7 +3,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::acp::{bindings::standard_acp::elicitation::refused, intent::user_input::form};
+use crate::acp::{bindings::standard_acp::elicitation::refused, elicitation_form};
 
 use super::super::{
     IncomingEvent, IngressDisposition, IngressError, record_unprojected,
@@ -49,12 +49,12 @@ pub(super) fn request(
         Some("form") => params.get("requestedSchema").and_then(|schema| {
             let mut schema = schema.clone();
             strip_nulls(&mut schema);
-            form::form_request(&schema)
+            elicitation_form::form_request(&schema)
         }),
         Some("url") => params
             .get("url")
             .and_then(Value::as_str)
-            .and_then(form::url_request),
+            .and_then(elicitation_form::url_request),
         _ => None,
     };
     let message = params
@@ -67,7 +67,8 @@ pub(super) fn request(
         } else {
             "Answer an MCP server's questions"
         };
-        let payload = form::question_payload(summary, message.as_deref(), request.clone())?;
+        let payload =
+            elicitation_form::question_payload(summary, message.as_deref(), request.clone())?;
         Some((payload, request))
     });
     // A form or link Sage cannot show exactly is declined, not guessed at.

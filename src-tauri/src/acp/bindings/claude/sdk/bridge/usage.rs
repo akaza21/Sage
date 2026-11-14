@@ -2,7 +2,8 @@ use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::Inbound;
-use crate::acp::{goal::NativeRpcReply, usage::UsageSnapshot};
+use crate::acp::goal::NativeRpcReply;
+use sage_acp_protocol::usage::UsageSnapshot;
 
 const FIVE_HOURS: i64 = 5 * 60;
 const SEVEN_DAYS: i64 = 7 * 24 * 60;
@@ -95,7 +96,7 @@ fn limits(reply: &Value) -> Option<UsageSnapshot> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::usage::UsageWindow;
+    use sage_acp_protocol::usage::UsageWindow;
 
     fn window(label: Option<&str>, used: u8, minutes: u32, at: Option<i64>) -> UsageWindow {
         UsageWindow {

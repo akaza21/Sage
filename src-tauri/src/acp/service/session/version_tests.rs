@@ -1,7 +1,6 @@
 use super::{head_continuation::continues_on_later_release, *};
-use crate::{
-    acp::bindings::codex::CODEX_BINDING_ID, acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
-};
+use crate::acp::bindings::codex::CODEX_BINDING_ID;
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 fn session_at(version: &str) -> DurableSession {
     DurableSession {

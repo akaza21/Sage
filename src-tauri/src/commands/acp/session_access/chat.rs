@@ -6,7 +6,8 @@
 
 use super::native_confirm::{self, ConfirmDialog, ConfirmGate, Refusal, Timing};
 use super::*;
-use crate::acp::{bindings::access_policy::lists_mode, contract::ClientIntentId};
+use crate::acp::bindings::access_policy::lists_mode;
+use sage_acp_protocol::contract::ClientIntentId;
 use tauri::Manager;
 
 #[derive(Debug, Default, PartialEq, Eq, Serialize)]
@@ -253,7 +254,7 @@ pub(crate) async fn grant_chat_access(
 
 fn confirmation_missing() -> AcpIpcError {
     AcpIpcError::Conflict {
-        resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
+        resource: crate::acp::ipc::AcpConflictResource::ConfigRevision,
         message: safe_message("This confirmation is missing, used or expired. Confirm again."),
     }
 }

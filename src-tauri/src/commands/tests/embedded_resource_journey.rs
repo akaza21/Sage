@@ -14,15 +14,18 @@ use crate::{
     acp::{
         attached_context::files::{PASTED_TEXT_NAME, attachment},
         bindings::{codex::CodexBindingRegistration, registry::BindingRegistry},
-        contract::{RuntimeEpoch, SageTurnId, TurnState},
-        intent::{
-            ActivateAcpSessionRequest, CloseAcpSessionRequest, Prompt, SendAcpTurnRequest,
-            StagedSelection,
+        ipc::{
+            ActivateAcpSessionRequest, CloseAcpSessionRequest, SendAcpTurnRequest, StagedSelection,
         },
-        scheduler::RuntimeOwner,
+        transcript_quote::Prompt,
     },
     commands::acp::{activate_acp_session_inner, close_acp_session_inner, send_acp_turn_inner},
     settings_store::CustomAcpAgent,
+};
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageTurnId},
+    lifecycle::TurnState,
+    scheduler::RuntimeOwner,
 };
 
 const CASE: &str = "custom-acp-embedded-resources";

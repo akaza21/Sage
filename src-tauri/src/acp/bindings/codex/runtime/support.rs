@@ -7,9 +7,9 @@ use crate::acp::{
         AdapterBatch, AdapterEgress, AdapterEvent, AdapterIdentity, AdapterModel,
         AdapterRuntimeError, EgressToken, ResourceMapper,
     },
-    intent::ExternalId,
     transport::OutboundFrame,
 };
+use sage_acp_protocol::intent::ExternalId;
 use sage_core::limits::LIMITS;
 
 impl super::CodexRuntime {
@@ -69,19 +69,24 @@ impl super::super::ResourceMapper for MapperBridge<'_> {
     fn map_existing(
         &self,
         absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
         self.0.map_existing(absolute_path)
     }
 
     fn map_missing_display(
         &self,
         absolute_path: &str,
-    ) -> Option<crate::acp::intent::SafeResourceRef> {
+    ) -> Option<sage_acp_protocol::intent::SafeResourceRef> {
         self.0.map_missing_display(absolute_path)
     }
 
-    fn read_diff_context(&self, resource: &crate::acp::intent::SafeResourceRef) -> Option<String> {
+    fn read_diff_context(
+        &self,
+        resource: &sage_acp_protocol::intent::SafeResourceRef,
+    ) -> Option<String> {
         self.0.read_diff_context(resource)
     }
 }
@@ -182,7 +187,7 @@ pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<se
 /// so it is offered first, named by its id.
 pub(super) fn model_option(
     catalog: &[ModelDescriptor],
-    current: &crate::acp::intent::ModelId,
+    current: &sage_acp_protocol::intent::ModelId,
 ) -> serde_json::Value {
     let choice = |id: &str, name: &str| serde_json::json!({"value":id,"name":name});
     let unlisted = (!catalog.iter().any(|model| model.id == *current))
@@ -204,9 +209,9 @@ pub(super) fn model_option(
 /// `base` with each of `options`, in order, that still fits beside the ones
 /// before it, so an option over the config's bounds drops only itself.
 pub(super) fn thread_config(
-    base: crate::acp::session_config::SessionConfig,
+    base: sage_acp_protocol::session_config::SessionConfig,
     options: impl IntoIterator<Item = serde_json::Value>,
-) -> crate::acp::session_config::SessionConfig {
+) -> sage_acp_protocol::session_config::SessionConfig {
     let Ok(mut wire) = serde_json::to_value(&base) else {
         return base;
     };
@@ -215,9 +220,11 @@ pub(super) fn thread_config(
     for option in options {
         kept.push(option);
         wire["configOptions"] = serde_json::Value::from(kept.clone());
-        match serde_json::from_value::<crate::acp::session_config::SessionConfig>(wire.clone())
-            .ok()
-            .filter(|candidate| candidate.validate().is_ok())
+        match serde_json::from_value::<sage_acp_protocol::session_config::SessionConfig>(
+            wire.clone(),
+        )
+        .ok()
+        .filter(|candidate| candidate.validate().is_ok())
         {
             Some(candidate) => config = candidate,
             None => {

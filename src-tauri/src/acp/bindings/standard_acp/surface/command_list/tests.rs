@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 fn owner(epoch: u64) -> RuntimeOwner {
-    use crate::acp::contract::*;
+    use sage_acp_protocol::contract::*;
     RuntimeOwner {
         project_id: SageProjectId::parse("project").unwrap(),
         chat_id: SageChatId::parse("chat").unwrap(),
@@ -84,12 +84,12 @@ fn channel_retains_only_latest_exact_owner_and_clears_after_release() {
 }
 #[test]
 fn command_marker_is_native_only_and_survives_host_prompt_clones() {
-    let mut prompt = crate::acp::intent::Prompt::new("prompt", "/plan task").unwrap();
+    let mut prompt = crate::acp::transcript_quote::Prompt::new("prompt", "/plan task").unwrap();
     prompt.command_revision = Some(7);
     assert_eq!(prompt.clone().command_revision, Some(7));
     let wire = serde_json::to_value(&prompt).unwrap();
     assert_eq!(wire, json!("/plan task"));
-    let decoded: crate::acp::intent::Prompt = serde_json::from_value(wire).unwrap();
+    let decoded: crate::acp::transcript_quote::Prompt = serde_json::from_value(wire).unwrap();
     assert_eq!(decoded.command_revision, None);
 }
 #[test]

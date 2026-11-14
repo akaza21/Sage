@@ -5,18 +5,20 @@ use serde_json::{Value, json};
 use super::*;
 use crate::acp::{
     bindings::{adapter::AdapterRuntimeError, claude::InMemoryClaude},
-    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     runtime::{
         ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
         PromptWrite, RuntimeEngine, RuntimeHost,
     },
-    session_config::{
-        ConfigChannel, ConfigId, ConfigKind, ConfigMutation, ConfigRevision, ConfigValue,
-        SessionConfig, choices,
-    },
+    session_config::{ConfigChannel, choices},
     store::AdapterTurnCursor,
 };
 use crate::persistence::Database;
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
+    session_config::{
+        ConfigId, ConfigKind, ConfigMutation, ConfigRevision, ConfigValue, SessionConfig,
+    },
+};
 
 pub(super) struct Agent {
     options: Value,
@@ -118,34 +120,34 @@ impl RuntimeEngine for HarnessEngine {
     fn prepare_prompt(
         &mut self,
         _: &HostPromptIntent,
-    ) -> Result<crate::acp::contract::SageTurnId, HostError> {
+    ) -> Result<sage_acp_protocol::contract::SageTurnId, HostError> {
         Err(HostError::State)
     }
     fn dispatch_prompt(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<PromptWrite, HostError> {
         Err(HostError::State)
     }
     fn retry_prompt(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<PromptWrite, HostError> {
         Err(HostError::State)
     }
     fn record_delivery_unknown(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), HostError> {
         Ok(())
     }
     fn record_retry_exhausted(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), HostError> {
         Ok(())
     }
@@ -193,9 +195,9 @@ fn seed_binding(service: &AcpService, binding: &str) {
 }
 
 fn capabilities() -> String {
-    serde_json::to_string(&crate::acp::intent::CapabilitySnapshotV1 {
-        schema_version: crate::acp::contract::SchemaVersionV1,
-        protocol_version: crate::acp::contract::RequiredText::new("protocol", "1").unwrap(),
+    serde_json::to_string(&sage_acp_protocol::intent::CapabilitySnapshotV1 {
+        schema_version: sage_acp_protocol::contract::SchemaVersionV1,
+        protocol_version: sage_acp_protocol::contract::RequiredText::new("protocol", "1").unwrap(),
         new_session: true,
         resume_session: true,
         load_session: false,
@@ -684,16 +686,16 @@ fn a_change_that_needs_recovery_is_reported_instead_of_the_prompt_being_sent() {
         .send_session_turn(HostPromptIntent {
             command: crate::acp::store::PrepareTurnCommand {
                 project_id: resumed.project_id.clone(),
-                project_generation: crate::acp::contract::ProjectGeneration::new(1).unwrap(),
+                project_generation: sage_acp_protocol::contract::ProjectGeneration::new(1).unwrap(),
                 chat_id: resumed.chat_id.clone(),
                 session_id: resumed.session_id.clone(),
                 runtime_epoch: resumed.runtime_epoch,
-                expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
-                client_intent_id: crate::acp::contract::ClientIntentId::new(),
-                prompt: crate::acp::intent::Prompt::new("prompt", "hello").unwrap(),
+                expected_projection_revision: sage_acp_protocol::contract::ProjectionRevision::ZERO,
+                client_intent_id: sage_acp_protocol::contract::ClientIntentId::new(),
+                prompt: crate::acp::transcript_quote::Prompt::new("prompt", "hello").unwrap(),
                 now_millis: sage_core::time::now_millis(),
             },
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap_err();
     assert!(matches!(

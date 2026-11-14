@@ -1,9 +1,6 @@
 use super::*;
-use crate::acp::{
-    lifecycle::{ItemLifecycle, TurnState},
-    projection::ItemContent,
-    store::load_chat_page,
-};
+use crate::acp::{projection::ItemContent, store::load_chat_page};
+use sage_acp_protocol::lifecycle::{ItemLifecycle, TurnState};
 
 struct TempRoot(std::path::PathBuf);
 impl TempRoot {

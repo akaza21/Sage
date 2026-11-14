@@ -21,14 +21,17 @@ use super::{
 use crate::{
     acp::{
         bindings::codex::CodexDiscoveryDeadline,
-        contract::{ClientIntentId, ProjectGeneration, SageChatId, SageProjectId},
-        intent::{
-            AcpConflictResource, AcpIpcError, AcpUnavailableReason, BindingId,
-            GetAcpChatPageRequest, GetCodexDiscoveryRequest, StartAcpSessionRequest,
+        ipc::{
+            AcpConflictResource, AcpIpcError, AcpUnavailableReason, GetAcpChatPageRequest,
+            GetCodexDiscoveryRequest, StartAcpSessionRequest,
         },
         projection::{ItemContent, TextRole},
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, ProjectGeneration, SageChatId, SageProjectId},
+    intent::BindingId,
 };
 
 #[cfg(windows)]
@@ -38,16 +41,14 @@ use super::acp::{
 };
 #[cfg(windows)]
 use crate::acp::{
-    contract::{EntityRevision, RuntimeEpoch, SageAgentSessionId, SageTurnId, TurnState},
-    intent::{
-        ActivateAcpSessionRequest, CancelAcpTurnRequest, CloseAcpSessionRequest, Prompt,
-        PromptDispatch, SendAcpTurnFailure, SendAcpTurnRequest,
+    ipc::{
+        ActivateAcpSessionRequest, CancelAcpTurnRequest, CloseAcpSessionRequest, PromptDispatch,
+        SendAcpTurnFailure, SendAcpTurnRequest,
     },
     runtime::{
         HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, PromptWrite, RuntimeEngine,
         RuntimeHost, RuntimeShutdownRecovery,
     },
-    scheduler::RuntimeOwner,
     store::{
         ActivateSessionCommand, AdapterTurnCursor, BeginCancelCommand, CompleteActivationCommand,
         FinalizeCloseCommand, PrepareTurnCommand, SendObservation, StartSessionCommand,
@@ -55,6 +56,13 @@ use crate::acp::{
         complete_activation, finalize_close_after_zero_process, prepare_turn,
         record_send_observation,
     },
+    transcript_quote::Prompt,
+};
+#[cfg(windows)]
+use sage_acp_protocol::{
+    contract::{EntityRevision, RuntimeEpoch, SageAgentSessionId, SageTurnId},
+    lifecycle::TurnState,
+    scheduler::RuntimeOwner,
 };
 #[cfg(windows)]
 use std::sync::Mutex;
@@ -543,7 +551,7 @@ fn install_command_host(
                 runtime_epoch: owner.runtime_epoch,
                 binding_digest: binding.binding_digest_hex.to_owned(),
                 artifact_digest: binding.artifact_digest.to_owned(),
-                external_session_id: crate::acp::intent::ExternalId::new(
+                external_session_id: sage_acp_protocol::intent::ExternalId::new(
                     "externalSessionId",
                     "thread-command-route",
                 )
@@ -588,7 +596,7 @@ fn install_command_host(
                 prompt: Prompt::new("prompt", "seed turn").unwrap(),
                 now_millis: sage_core::time::now_millis(),
             },
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
         calls.lock().unwrap().clear();
@@ -805,7 +813,7 @@ fn legacy_access_migration_requires_a_restored_session_not_a_catalog_default() {
         assert_eq!(modes.len(), 1);
         assert_eq!(
             modes["codex-app-server"],
-            crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite
+            sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite
         );
         assert!(!state.settings.pending_access_migration().unwrap());
         drop(state);
@@ -892,7 +900,7 @@ fn codex_discovery_reports_admission_state_while_a_live_session_holds_the_runtim
 async fn seed_codex_discovery_catalog(
     state: &AppState,
     project: &SageProjectId,
-    model: crate::acp::intent::ModelId,
+    model: sage_acp_protocol::intent::ModelId,
 ) {
     let context = state
         .lock_active_project(project, ProjectGeneration::ZERO)
@@ -916,7 +924,7 @@ fn codex_discovery_serves_the_admitted_catalog_while_a_live_session_holds_the_ru
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let (state, project, _chat, root) = state_with_admitted_codex_project();
         let project = SageProjectId::parse(project).unwrap();
-        let model = crate::acp::intent::ModelId::new("modelId", "gpt-5-codex").unwrap();
+        let model = sage_acp_protocol::intent::ModelId::new("modelId", "gpt-5-codex").unwrap();
         seed_codex_discovery_catalog(&state, &project, model.clone()).await;
         let live = state.acp.hold_live_operation_for_test();
         let request = GetCodexDiscoveryRequest {
@@ -940,7 +948,7 @@ fn codex_discovery_serves_the_admitted_catalog_while_a_live_session_holds_the_ru
         );
         assert!(matches!(
             response.account,
-            crate::acp::intent::CodexDiscoveryAccount::ManagedChatgpt
+            crate::acp::ipc::CodexDiscoveryAccount::ManagedChatgpt
         ));
         drop(live);
         drop(state);
@@ -964,7 +972,7 @@ fn codex_discovery_refuses_an_uncached_catalog_only_when_live_sessions_fill_ever
             matches!(
                 result,
                 Err(AcpIpcError::Capacity {
-                    resource: crate::acp::intent::AcpCapacityResource::Queue,
+                    resource: crate::acp::ipc::AcpCapacityResource::Queue,
                     limit: 1,
                     ..
                 })
@@ -1385,12 +1393,12 @@ fn an_admitted_opencode_session_routes_the_mandatory_core_through_its_own_bindin
                     prompt: Prompt::new("prompt", "must not dispatch").unwrap(),
                     now_millis: sage_core::time::now_millis(),
                 },
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             },
         );
         assert!(matches!(
             turn,
-            Err(crate::acp::service::PromptSendError { error, .. })
+            Err(crate::acp::prompt_send::PromptSendError { error, .. })
                 if !matches!(error, crate::acp::service::SessionDispatchError::Binding)
         ));
 
@@ -1741,7 +1749,7 @@ fn test_binding_activation_uses_the_registry_factory_path() {
                     prompt: Prompt::new("prompt", "test dispatch").unwrap(),
                     now_millis: sage_core::time::now_millis(),
                 },
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             },
         );
         assert!(dispatch.is_err(), "test dispatch must fail closed");
@@ -2053,7 +2061,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
             .settings
             .set_session_access_modes(&std::collections::BTreeMap::from([(
                 "codex-app-server".into(),
-                crate::acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
+                sage_acp_protocol::access_mode::SessionAccessMode::WorkspaceWrite,
             )]))
             .unwrap();
         let adapter = root.join("adapter.js");
@@ -2131,7 +2139,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
         // Claude reports its permission modes as session modes.
         state.acp.report_session_config_for_test(
             &owner,
-            crate::acp::session_config::SessionConfig::from_wire(
+            sage_acp_protocol::session_config::SessionConfig::from_wire(
                 &serde_json::json!({
                     "modes": {"currentModeId": "default", "availableModes": [
                         {"id": "default", "name": "Manual"},
@@ -2165,8 +2173,9 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
                 .live_session_config(&owner)
                 .unwrap()
                 .config_revision,
-            crate::acp::session_config::ConfigMutation::Mode(
-                crate::acp::session_config::ConfigId::new("modeId", "bypassPermissions").unwrap(),
+            sage_acp_protocol::session_config::ConfigMutation::Mode(
+                sage_acp_protocol::session_config::ConfigId::new("modeId", "bypassPermissions")
+                    .unwrap(),
             ),
         )
         .await;
@@ -2180,7 +2189,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
             .settings
             .set_chat_access(
                 session_id.as_str(),
-                crate::acp_protocol::access_mode::SessionAccessMode::Plan,
+                sage_acp_protocol::access_mode::SessionAccessMode::Plan,
                 1,
             )
             .unwrap();
@@ -2222,7 +2231,7 @@ fn admitted_claude_default_access_sends_without_requiring_a_preference_change() 
             .settings
             .set_chat_access(
                 session_id.as_str(),
-                crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+                sage_acp_protocol::access_mode::SessionAccessMode::Ask,
                 2,
             )
             .unwrap();

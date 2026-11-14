@@ -8,7 +8,8 @@ use std::{
 use tokio::{sync::Notify, task::JoinHandle};
 
 use super::TurnNotice;
-use crate::acp::{contract::ProjectionRevision, intent::ProjectionChangedV1};
+use crate::acp::ipc::ProjectionChangedV1;
+use sage_acp_protocol::contract::ProjectionRevision;
 
 pub(crate) type NotificationSinkFuture<'a> =
     Pin<Box<dyn Future<Output = Result<(), NotificationError>> + Send + 'a>>;
@@ -51,9 +52,9 @@ pub(crate) enum PublishError {
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct ProjectionKey {
-    project_id: crate::acp::contract::SageProjectId,
-    chat_id: crate::acp::contract::SageChatId,
-    session_id: crate::acp::contract::SageAgentSessionId,
+    project_id: sage_acp_protocol::contract::SageProjectId,
+    chat_id: sage_acp_protocol::contract::SageChatId,
+    session_id: sage_acp_protocol::contract::SageAgentSessionId,
 }
 
 impl ProjectionKey {
@@ -76,7 +77,7 @@ enum Lifecycle {
 #[derive(Debug)]
 struct State {
     lifecycle: Lifecycle,
-    active_project: Option<crate::acp::contract::SageProjectId>,
+    active_project: Option<sage_acp_protocol::contract::SageProjectId>,
     active_key: Option<ProjectionKey>,
     greatest_revision: Option<(ProjectionRevision, u64)>,
     pending: Option<ProjectionChangedV1>,
@@ -228,7 +229,10 @@ impl ProjectionNotifier {
     /// Changes only disposable projection routing. Durable background Turns
     /// continue to commit, but their old-project notices cannot contend with
     /// or repopulate the newly active WebView projection.
-    pub(crate) fn set_active_project(&self, project_id: crate::acp::contract::SageProjectId) {
+    pub(crate) fn set_active_project(
+        &self,
+        project_id: sage_acp_protocol::contract::SageProjectId,
+    ) {
         let mut state = lock(&self.inner.state);
         state.active_project = Some(project_id.clone());
         if state

@@ -98,10 +98,8 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        acp::bindings::codex::test_identity::version_line,
-        acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
-    };
+    use crate::acp::bindings::codex::test_identity::version_line;
+    use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
     #[cfg(windows)]
     fn write_package_manifest(directory: &std::path::Path) {

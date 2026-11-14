@@ -14,9 +14,9 @@ use crate::acp::{
         CharacterizationObservationSink,
     },
     process::{ProcessIdentityReceipt, SpawnTimingReceipt},
-    scheduler::RuntimeOwner,
 };
 use crate::persistence::WalConvergenceReceipt;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::types::{CharacterizationCase, hex};
 use ledger::{ObservationLedger, validate_safe_clock};

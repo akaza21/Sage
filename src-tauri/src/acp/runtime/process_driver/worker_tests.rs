@@ -1,12 +1,14 @@
 use crate::acp::{
+    runtime::{HostCancelIntent, HostError, HostPromptIntent, LiveRuntimePort, LiveWrite},
+    store::SendObservation,
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageAgentSessionId,
         SageChatId, SageProjectId, SageTurnId,
     },
-    intent::Prompt,
-    runtime::{HostCancelIntent, HostError, HostPromptIntent, LiveRuntimePort, LiveWrite},
     scheduler::RuntimeOwner,
-    store::SendObservation,
 };
 
 use super::write_fence::WriteFence;
@@ -42,7 +44,7 @@ fn prompt(owner: &RuntimeOwner) -> HostPromptIntent {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             now_millis: 10,
         },
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 
@@ -210,7 +212,7 @@ fn closing_the_driver_mailbox_rejects_queued_callers_and_wakes_both_wait_modes()
     let prompt_response = mailbox
         .submit_prompt(
             Prompt::new("prompt", "queued").unwrap(),
-            crate::acp::contract::RequiredText::new("message", "queued-message").unwrap(),
+            sage_acp_protocol::contract::RequiredText::new("message", "queued-message").unwrap(),
         )
         .unwrap();
     let worker_response = mailbox

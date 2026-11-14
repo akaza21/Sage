@@ -3,7 +3,7 @@ use super::credentials::{
 };
 use super::paths::PathMode;
 use super::secrets::{REDACTED, append};
-use crate::acp::contract::ContractError;
+use sage_acp_protocol::contract::ContractError;
 use std::borrow::Cow;
 
 use super::spans::{MAX_VALUE_BYTES as MAX_QUOTED_BYTES, MAX_VALUE_NEWLINES as MAX_QUOTED_LINES};

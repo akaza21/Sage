@@ -1,4 +1,4 @@
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{BoundedVec, SafeText},
     intent::{ExternalId, NormalizedPayload},
     lifecycle::{ItemLifecycle, TerminalUpdate, TurnState, classify_terminal},
@@ -396,7 +396,7 @@ impl CodexAdapter {
     fn scoped_correlated_turn(
         &self,
         turn_id: &ExternalId,
-        client_message_id: &crate::acp::contract::RequiredText<512>,
+        client_message_id: &sage_acp_protocol::contract::RequiredText<512>,
     ) -> Result<ScopedExternalId, AdapterError> {
         let mut scoped = self.scoped(ExternalKind::Turn, turn_id.clone());
         scoped.turn_id = Some(turn_id.clone());

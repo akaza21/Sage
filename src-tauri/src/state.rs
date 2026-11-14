@@ -3,8 +3,7 @@ use sage_core::error::AppResult;
 use crate::{
     acp::{
         bindings::registry::BindingRegistry,
-        contract::{ProjectGeneration, SageProjectId},
-        intent::{ACP_PROJECTION_CHANGED_EVENT, ProjectionChangedV1},
+        ipc::{ACP_PROJECTION_CHANGED_EVENT, ProjectionChangedV1},
         runtime::{NotificationError, NotificationSink, NotificationSinkFuture},
         service::AcpService,
     },
@@ -13,6 +12,7 @@ use crate::{
     persistence::Database,
     settings_store::SettingsStore,
 };
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId};
 use tauri::Manager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -358,7 +358,7 @@ impl AppState {
 /// (project, chat, session) through a bounded LRU of last revisions.
 struct DesktopProjectionSink(
     tauri::AppHandle,
-    std::sync::Mutex<crate::acp::intent::ProjectionNoticeRoutes>,
+    std::sync::Mutex<crate::acp::ipc::ProjectionNoticeRoutes>,
 );
 
 impl NotificationSink for DesktopProjectionSink {
@@ -369,12 +369,11 @@ impl NotificationSink for DesktopProjectionSink {
         Box::pin(async move {
             use tauri::Emitter;
             let mut routes = self.1.lock().unwrap_or_else(|error| error.into_inner());
-            match crate::acp::intent::route_projection_notice(&mut routes, event) {
+            match crate::acp::ipc::route_projection_notice(&mut routes, event) {
                 Ok(event) => self.0.emit(ACP_PROJECTION_CHANGED_EVENT, event),
-                Err(child) => self.0.emit(
-                    crate::acp::intent::ACP_CHILD_PROJECTION_CHANGED_EVENT,
-                    child,
-                ),
+                Err(child) => self
+                    .0
+                    .emit(crate::acp::ipc::ACP_CHILD_PROJECTION_CHANGED_EVENT, child),
             }
             .map_err(|_| NotificationError::SinkUnavailable)
         })
@@ -384,7 +383,7 @@ impl NotificationSink for DesktopProjectionSink {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::contract::{ProjectGeneration, SageProjectId};
+    use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId};
 
     #[test]
     fn app_state_shares_one_codex_registration_with_service_and_catalog() {
@@ -403,10 +402,10 @@ mod tests {
 
     #[test]
     fn shared_registry_rejects_unknown_dormant_and_unavailable_launch_authority() {
-        use crate::acp::{
-            bindings::{codex::CodexAdmissionUnavailable, registry::RegistryUnavailable},
-            intent::BindingId,
+        use crate::acp::bindings::{
+            codex::CodexAdmissionUnavailable, registry::RegistryUnavailable,
         };
+        use sage_acp_protocol::intent::BindingId;
 
         let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
         let registry = state.acp.binding_registry();

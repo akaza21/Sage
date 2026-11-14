@@ -1,7 +1,7 @@
-use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterRuntimeError, EgressResolution, EgressToken},
-    intent::ExternalId,
+use crate::acp::bindings::adapter::{
+    AdapterEgress, AdapterRuntimeError, EgressResolution, EgressToken,
 };
+use sage_acp_protocol::intent::ExternalId;
 use sage_core::limits::LIMITS;
 
 use super::super::{DenyIntent, DenyStage, OmpRuntime, RequestKind};
@@ -150,7 +150,7 @@ impl OmpRuntime {
 
     pub(in crate::acp::bindings::omp::runtime) fn prepare_permission_cancel(
         &mut self,
-        request_id: &crate::acp::contract::SageServerRequestId,
+        request_id: &sage_acp_protocol::contract::SageServerRequestId,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let external = ExternalId::new("permissionRequest", request_id.as_str())
             .map_err(|_| AdapterRuntimeError::PermissionIntent)?;

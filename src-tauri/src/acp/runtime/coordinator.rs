@@ -1,13 +1,15 @@
 use std::sync::Arc;
 
 use crate::acp::{
-    contract::ProjectionRevision,
-    intent::{IntentSnapshot, ProjectionChangedV1, validate_base_intent},
-    scheduler::{RunningTurnLease, SchedulerError, TreeLease, TurnReservation},
+    ipc::{IntentSnapshot, ProjectionChangedV1, validate_base_intent},
     store::{
         MutationDisposition, PrepareTurnCommand, PreparedTurn, SendObservation, StoreCommit,
         StoreMutation, StoreMutationResult, TurnMutation, TurnMutationCommand,
     },
+};
+use sage_acp_protocol::{
+    contract::ProjectionRevision,
+    scheduler::{RunningTurnLease, SchedulerError, TreeLease, TurnReservation},
 };
 
 mod prepare;
@@ -67,8 +69,8 @@ pub(crate) struct ActiveDispatch {
     publisher: Arc<dyn ProjectionPublisher>,
     lease: Option<RunningTurnLease>,
     command: TurnMutationCommand,
-    accepted_state: crate::acp::lifecycle::TurnState,
-    accepted_delivery: crate::acp::lifecycle::DeliveryState,
+    accepted_state: sage_acp_protocol::lifecycle::TurnState,
+    accepted_delivery: sage_acp_protocol::lifecycle::DeliveryState,
     accepted_projection_revision: ProjectionRevision,
     projection_retry_pending: bool,
     attempts: u8,

@@ -1,10 +1,9 @@
 use crate::acp::{
-    lifecycle::SessionState,
     process::LaunchFailure,
     runtime::{SessionTreeLease, ZeroProcessProof},
-    scheduler::RuntimeOwner,
     store::FailActivationCommand,
 };
+use sage_acp_protocol::{lifecycle::SessionState, scheduler::RuntimeOwner};
 
 use super::{AcpService, BINDING_DIGEST_HEX, CharacterizationError, support::map_slot};
 
@@ -44,7 +43,7 @@ impl AcpService {
             binding_digest: BINDING_DIGEST_HEX.to_owned(),
             artifact_digest,
             terminal: SessionState::Failed,
-            exit_kind: crate::acp::contract::RequiredText::new(
+            exit_kind: sage_acp_protocol::contract::RequiredText::new(
                 "exitKind",
                 "characterizationLaunchFailed",
             )

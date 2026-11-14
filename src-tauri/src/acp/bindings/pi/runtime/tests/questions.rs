@@ -1,13 +1,11 @@
 use super::*;
-use crate::{
-    acp::{
-        intent::{
-            PermissionOptionKind,
-            user_input::{UserInputAnswers, UserInputKind, UserInputRequest},
-        },
-        lifecycle::ServerRequestState,
+use sage_acp_protocol::{
+    intent::{
+        PermissionOptionKind,
+        user_input::{UserInputAnswers, UserInputKind, UserInputRequest},
     },
-    acp_protocol::permissions::PermissionDecision,
+    lifecycle::ServerRequestState,
+    permissions::PermissionDecision,
 };
 
 fn ask(runtime: &mut PiRuntime, dialog: Value) -> UserInputRequest {

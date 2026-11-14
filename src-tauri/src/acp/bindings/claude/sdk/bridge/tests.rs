@@ -475,7 +475,7 @@ fn a_cli_that_starts_outside_the_picker_modes_fails_initialize() {
 
 #[test]
 fn claude_codes_status_messages_become_notices_and_activities() {
-    use crate::acp::intent::session_event::{SessionActivityState, SessionScopedEvent};
+    use sage_acp_protocol::intent::session_event::{SessionActivityState, SessionScopedEvent};
     let mut bridge = initialized();
     prompt(&mut bridge, 3);
     let state = |inbound: &Inbound| match &inbound.session[..] {
@@ -579,7 +579,8 @@ fn commands_sharing_a_name_list_the_row_that_runs() {
 
 #[test]
 fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
-    use crate::acp::{goal::NativeRpcReply, session_control::SessionControl};
+    use crate::acp::goal::NativeRpcReply;
+    use sage_acp_protocol::session_control::SessionControl;
     let mut bridge = initialized();
     const TURN: &str = "turn-6f9619ff-8b86-4011-b42d-00cf4fc964ff";
     let user = bridge
@@ -590,7 +591,7 @@ fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
         .unwrap();
     assert_eq!(user["uuid"], "6f9619ff-8b86-4011-b42d-00cf4fc964ff");
     let undo = SessionControl::UndoTurn {
-        turn_id: crate::acp::contract::SageTurnId::parse(TURN).unwrap(),
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse(TURN).unwrap(),
     };
     let rewind = bridge.session_control(&undo).unwrap();
     assert_eq!(rewind["request"]["subtype"], "rewind_files");
@@ -623,7 +624,8 @@ fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
     );
     let stop = bridge
         .session_control(&SessionControl::StopActivity {
-            activity_id: crate::acp::intent::ExternalId::new("activityId", "task:task-7").unwrap(),
+            activity_id: sage_acp_protocol::intent::ExternalId::new("activityId", "task:task-7")
+                .unwrap(),
         })
         .unwrap();
     assert_eq!(
@@ -639,7 +641,7 @@ fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
     );
     assert_eq!(
         bridge.session_control(&SessionControl::UndoTurn {
-            turn_id: crate::acp::contract::SageTurnId::parse("turn-legacy").unwrap(),
+            turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-legacy").unwrap(),
         }),
         Err(BridgeError::Unsupported)
     );
@@ -647,10 +649,8 @@ fn a_turn_is_undone_by_rewinding_to_its_message_and_a_task_is_stopped_by_id() {
 
 #[test]
 fn mcp_servers_are_listed_and_reconnected_one_control_at_a_time() {
-    use crate::acp::{
-        contract::RequiredText, goal::NativeRpcReply, mcp::inventory::McpConnection,
-        session_control::SessionControl,
-    };
+    use crate::acp::{goal::NativeRpcReply, mcp::inventory::McpConnection};
+    use sage_acp_protocol::{contract::RequiredText, session_control::SessionControl};
     let mut bridge = initialized();
     let list = bridge
         .session_control(&SessionControl::ReadMcpServers)
@@ -715,7 +715,7 @@ fn mcp_servers_are_listed_and_reconnected_one_control_at_a_time() {
 
 #[test]
 fn an_abandoned_mcp_list_frees_the_session_and_its_late_reply_is_dropped() {
-    use crate::acp::session_control::SessionControl;
+    use sage_acp_protocol::session_control::SessionControl;
     let mut bridge = initialized();
     let mut abandoned = Vec::new();
     for _ in 0..4 {
@@ -750,7 +750,7 @@ fn an_abandoned_mcp_list_frees_the_session_and_its_late_reply_is_dropped() {
 
 #[test]
 fn an_abandoned_reconnect_frees_the_session_and_counts_toward_the_bound() {
-    use crate::acp::{contract::RequiredText, session_control::SessionControl};
+    use sage_acp_protocol::{contract::RequiredText, session_control::SessionControl};
     let mut bridge = initialized();
     let reconnect = SessionControl::ReconnectMcpServer {
         name: RequiredText::new("serverName", "linear").unwrap(),

@@ -1,10 +1,10 @@
 use super::*;
 use crate::acp::{
-    contract::SafeText,
     goal::NativeRpcReply,
     mcp::inventory::{McpAuthUrl, McpInventory},
-    scheduler::RuntimeOwner,
-    session_control::SessionControl,
+};
+use sage_acp_protocol::{
+    contract::SafeText, scheduler::RuntimeOwner, session_control::SessionControl,
 };
 
 impl AcpService {
@@ -39,7 +39,7 @@ impl AcpService {
     pub(crate) fn reconnect_mcp_server(
         &self,
         owner: RuntimeOwner,
-        name: crate::acp::contract::RequiredText<128>,
+        name: sage_acp_protocol::contract::RequiredText<128>,
     ) -> Result<McpInventory, SessionControlError> {
         self.change_then_read(
             owner,
@@ -74,7 +74,7 @@ impl AcpService {
     pub(crate) fn sign_in_mcp_server(
         &self,
         owner: RuntimeOwner,
-        name: crate::acp::contract::RequiredText<128>,
+        name: sage_acp_protocol::contract::RequiredText<128>,
     ) -> Result<McpAuthUrl, SessionControlError> {
         match self.session_control_reply(owner, SessionControl::SignInMcpServer { name })? {
             NativeRpcReply::McpSignIn(url) => Ok(url),

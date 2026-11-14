@@ -23,7 +23,6 @@ tauri-build.workspace = true
 [dependencies]
 aes.workspace = true
 aes-gcm.workspace = true
-agent-client-protocol-schema = { workspace = true, optional = true }
 base64.workspace = true
 csv-core.workspace = true
 getrandom.workspace = true
@@ -34,6 +33,7 @@ memchr.workspace = true
 png.workspace = true
 regex.workspace = true
 rusqlite.workspace = true
+sage-acp-protocol.workspace = true
 sage-core.workspace = true
 sage-process.workspace = true
 serde.workspace = true
@@ -52,6 +52,7 @@ uuid.workspace = true
 zeroize.workspace = true
 
 [dev-dependencies]
+sage-acp-protocol = { workspace = true, features = ["test-support"] }
 sage-test-support.workspace = true
 
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
@@ -104,8 +105,8 @@ required-features = ["native-lane"]
 
 [features]
 default = []
-acp-fixture = []
-acp-schema = ["dep:agent-client-protocol-schema"]
+acp-fixture = ["sage-acp-protocol/fixture"]
+acp-schema = ["sage-acp-protocol/acp-schema"]
 # Runs browser::devtools tests against a real headless Chromium (unix only).
 cdp-lane = []
 codex-provisioning-helper = []

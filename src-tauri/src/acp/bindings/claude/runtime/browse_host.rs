@@ -2,13 +2,15 @@ use serde_json::{Value, json};
 
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterEgress, AdapterEvent as SharedEvent, EgressToken},
-    contract::RequiredText,
-    lifecycle::{ItemLifecycle, ToolState},
     runtime::host_browse::{
         CURATED_BROWSE_TOOL_NAME, admit_browse_url, browse_tool_payload,
         host_browse_session_matches, parse_host_browse_request,
     },
     transport::OutboundFrame,
+};
+use sage_acp_protocol::{
+    contract::RequiredText,
+    lifecycle::{ItemLifecycle, ToolState},
 };
 
 use super::*;

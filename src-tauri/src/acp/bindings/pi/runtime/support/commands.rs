@@ -7,8 +7,8 @@ use crate::acp::{
             AvailableCommand, CommandDispatch, CommandPanel, CommandSource, MAX_COMMANDS, wire_text,
         },
     },
-    intent::Prompt,
     session_action::SessionAction,
+    transcript_quote::Prompt,
 };
 
 use super::super::{PiRuntime, RequestKind};

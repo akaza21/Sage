@@ -16,7 +16,7 @@ const ANSWER: &str = "A note written on the question card.";
 
 struct Card {
     service: AcpService,
-    owner: crate::acp::scheduler::RuntimeOwner,
+    owner: sage_acp_protocol::scheduler::RuntimeOwner,
     forwarded: Arc<Mutex<Vec<AdapterCommand>>>,
 }
 
@@ -43,7 +43,7 @@ impl Card {
                 project_id: self.owner.project_id.clone(),
                 chat_id: self.owner.chat_id.clone(),
                 session_id: self.owner.session_id.clone(),
-                turn_id: crate::acp::contract::SageTurnId::parse("turn-permission").unwrap(),
+                turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-permission").unwrap(),
                 runtime_epoch: self.owner.runtime_epoch,
                 request_id: SageServerRequestId::parse(request_id).unwrap(),
                 decision: decision.clone(),
@@ -301,7 +301,7 @@ fn pi_fixture_admits_the_bridge_only_for_cases_that_replay_it() {
         "pi-150-full-turn",
     ] {
         assert!(
-            crate::acp_protocol::native_cases::native_case_uses_pi_bridge(case),
+            sage_acp_protocol::native_cases::native_case_uses_pi_bridge(case),
             "{case}"
         );
     }
@@ -311,7 +311,7 @@ fn pi_fixture_admits_the_bridge_only_for_cases_that_replay_it() {
         "pi-bridge-unknown",
     ] {
         assert!(
-            !crate::acp_protocol::native_cases::native_case_uses_pi_bridge(case),
+            !sage_acp_protocol::native_cases::native_case_uses_pi_bridge(case),
             "{case}"
         );
     }
@@ -319,7 +319,7 @@ fn pi_fixture_admits_the_bridge_only_for_cases_that_replay_it() {
 
 #[test]
 fn pi_full_turn_fixture_projects_every_surface_and_clears_the_steer_queue() {
-    use crate::acp::{intent::session_event::SessionScopedEvent, lifecycle::TurnState};
+    use sage_acp_protocol::{intent::session_event::SessionScopedEvent, lifecycle::TurnState};
     let outcome = replay("pi-150-full-turn", PermissionDecision::AllowOnce);
     assert_eq!(
         (outcome.cards, ended(&outcome)),
@@ -345,7 +345,7 @@ fn pi_full_turn_fixture_projects_every_surface_and_clears_the_steer_queue() {
         ),
         (
             "Describe the note",
-            crate::acp::intent::user_input::UserInputKind::Multiline,
+            sage_acp_protocol::intent::user_input::UserInputKind::Multiline,
             Some("A short note")
         )
     );

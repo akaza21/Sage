@@ -4,9 +4,9 @@ use serde_json::{Value, json};
 use super::{CodexAccountSnapshot, CodexDiscoveryError, CodexDiscoveryProtocol, ProtocolProgress};
 use crate::acp::{
     bindings::codex::{Platform, parse_packet_metadata},
-    contract::{RequiredText, RuntimeEpoch},
     transport::{Frame, IncrementalFrameDecoder},
 };
+use sage_acp_protocol::contract::{RequiredText, RuntimeEpoch};
 
 mod account_read_tests;
 
@@ -451,15 +451,13 @@ fn unknown_response_server_request_rpc_error_and_wrong_id_fail_closed() {
 #[ignore = "requires an installed, signed-in Codex CLI"]
 fn exact_pinned_binary_discovery_hook_proves_bounded_zero_process_cleanup() {
     use crate::{
-        acp::{
-            bindings::codex::{
-                CodexBindingRegistration, CodexDiscoveryDeadline, CodexProjectRootAuthority,
-                discover_admitted,
-            },
-            contract::{ProjectGeneration, RuntimeEpoch, SageProjectId, SageRootId},
+        acp::bindings::codex::{
+            CodexBindingRegistration, CodexDiscoveryDeadline, CodexProjectRootAuthority,
+            discover_admitted,
         },
         project_registry::ProjectRootAuthority,
     };
+    use sage_acp_protocol::contract::{ProjectGeneration, RuntimeEpoch, SageProjectId, SageRootId};
 
     let registration = CodexBindingRegistration::admitted_for_test();
     let binding = registration.refresh().expect("exact pinned test admission");

@@ -11,35 +11,40 @@ use crate::{
             codex::CodexBindingRegistration,
             registry::{BindingProjectRoot, BindingRegistry},
         },
-        contract::{
-            ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
-            SageAgentSessionId, SageChatId, SageProjectId, SageRootId, SageTurnId,
-        },
-        intent::{CapabilitySnapshotV1, ExternalId, IntentSnapshot, ProjectionChangedV1, Prompt},
-        lifecycle::TurnState,
-        runtime::ActivationMode,
+        ipc::{IntentSnapshot, ProjectionChangedV1},
         runtime::{
-            ActiveTurnIntent, AdapterBatchJournal, DurableAdapterEvent, HostCancelIntent,
-            HostCloseIntent, HostError, HostPromptIntent, HostState, JournalLane,
+            ActivationMode, ActiveTurnIntent, AdapterBatchJournal, DurableAdapterEvent,
+            HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent, HostState, JournalLane,
             NotificationError, NotificationSink, NotificationSinkFuture, PrepareDispatch,
             ProjectIntentAuthority, PromptWrite, PublishOutcome, RuntimeEngine, RuntimeHost,
             SendCoordinator, SessionPumpIntent, SqliteAdapterBatchJournal, TurnScope,
             ZeroProcessProof,
         },
-        scheduler::RuntimeOwner,
         store::{
             AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory,
             AdapterTurnCursor, CompleteActivationCommand, ParkSessionCommand, PrepareTurnCommand,
             StartSessionCommand,
         },
+        transcript_quote::Prompt,
     },
     domain::{ProjectLayoutRequest, ProjectSwitchRequest},
     persistence::Database,
     project_registry::ProjectRootAuthority,
 };
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
+        SageAgentSessionId, SageChatId, SageProjectId, SageRootId, SageTurnId,
+    },
+    intent::{CapabilitySnapshotV1, ExternalId},
+    lifecycle::TurnState,
+    scheduler::RuntimeOwner,
+};
 
 #[cfg(windows)]
-use crate::acp::{bindings::codex::CodexProjectRootAuthority, contract::SafeText};
+use crate::acp::bindings::codex::CodexProjectRootAuthority;
+#[cfg(windows)]
+use sage_acp_protocol::contract::SafeText;
 
 use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
 
@@ -104,8 +109,11 @@ fn admitted_claude_session_starts_and_prepares_activation_without_codex_admissio
                     chat_id: chat_id.clone(),
                     expected_projection_revision: revision,
                     client_intent_id: ClientIntentId::new(),
-                    binding_id: crate::acp::intent::BindingId::new("bindingId", "claude-agent-acp")
-                        .unwrap(),
+                    binding_id: sage_acp_protocol::intent::BindingId::new(
+                        "bindingId",
+                        "claude-agent-acp",
+                    )
+                    .unwrap(),
                     binding_digest: "forged".into(),
                     harness_version: None,
                     model_id: None,
@@ -237,8 +245,11 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
                     chat_id: chat_id.clone(),
                     expected_projection_revision: revision,
                     client_intent_id: client_intent_id.clone(),
-                    binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server")
-                        .unwrap(),
+                    binding_id: sage_acp_protocol::intent::BindingId::new(
+                        "bindingId",
+                        "codex-app-server",
+                    )
+                    .unwrap(),
                     binding_digest: "forged-digest".into(),
                     harness_version: Some(SafeText::new("version", "forged-version").unwrap()),
                     model_id: None,
@@ -255,8 +266,11 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
                     chat_id: chat_id.clone(),
                     expected_projection_revision: revision,
                     client_intent_id,
-                    binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server")
-                        .unwrap(),
+                    binding_id: sage_acp_protocol::intent::BindingId::new(
+                        "bindingId",
+                        "codex-app-server",
+                    )
+                    .unwrap(),
                     binding_digest: "different-forged-digest".into(),
                     harness_version: None,
                     model_id: None,
@@ -283,7 +297,7 @@ fn admitted_codex_session_start_persists_the_exact_curated_identity() {
         );
         assert_eq!(
             identity.2.as_deref(),
-            Some(crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION)
+            Some(sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION)
         );
         service.shutdown_blocking().unwrap();
     });
@@ -317,12 +331,15 @@ fn codex_start_rejects_a_model_without_current_scoped_discovery() {
                     chat_id,
                     expected_projection_revision: revision,
                     client_intent_id: ClientIntentId::new(),
-                    binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server")
-                        .unwrap(),
+                    binding_id: sage_acp_protocol::intent::BindingId::new(
+                        "bindingId",
+                        "codex-app-server",
+                    )
+                    .unwrap(),
                     binding_digest: "forged".into(),
                     harness_version: None,
                     model_id: Some(
-                        crate::acp::intent::ModelId::new("modelId", "forged-model").unwrap(),
+                        sage_acp_protocol::intent::ModelId::new("modelId", "forged-model").unwrap(),
                     ),
                     now_millis: sage_core::time::now_millis(),
                 },
@@ -374,7 +391,7 @@ fn uncharacterised_observed_codex_starts_without_a_model_catalogue() {
             .projection_revision;
         let mut selected_model = codex_start_command(&project_id, &chat_id, revision);
         selected_model.model_id =
-            Some(crate::acp::intent::ModelId::new("modelId", "unverified-model").unwrap());
+            Some(sage_acp_protocol::intent::ModelId::new("modelId", "unverified-model").unwrap());
         assert!(matches!(
             service
                 .start_codex_session(&project_root, selected_model)
@@ -434,8 +451,11 @@ fn codex_start_rejects_drift_before_any_durable_write() {
                     chat_id,
                     expected_projection_revision: revision,
                     client_intent_id: ClientIntentId::new(),
-                    binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server")
-                        .unwrap(),
+                    binding_id: sage_acp_protocol::intent::BindingId::new(
+                        "bindingId",
+                        "codex-app-server",
+                    )
+                    .unwrap(),
                     binding_digest: "forged".into(),
                     harness_version: Some(SafeText::new("version", "forged").unwrap()),
                     model_id: None,
@@ -832,7 +852,8 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
                 chat_id: chat_id.clone(),
                 expected_projection_revision: revision,
                 client_intent_id: ClientIntentId::new(),
-                binding_id: crate::acp::intent::BindingId::new("bindingId", "test-abort").unwrap(),
+                binding_id: sage_acp_protocol::intent::BindingId::new("bindingId", "test-abort")
+                    .unwrap(),
                 binding_digest: "11".repeat(32),
                 harness_version: None,
                 model_id: None,
@@ -888,7 +909,10 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
             )
             .await
             .unwrap();
-        assert_eq!(mutation.state, crate::acp::lifecycle::SessionState::Created);
+        assert_eq!(
+            mutation.state,
+            sage_acp_protocol::lifecycle::SessionState::Created
+        );
         let row: (String, String, String) = database
             .connection()
             .query_row(
@@ -938,7 +962,10 @@ fn abort_activation_after_zero_restores_created_cold_and_is_idempotent() {
             current,
             ("starting".into(), "hot".into(), "starting".into())
         );
-        assert_eq!(second.state, crate::acp::lifecycle::SessionState::Starting);
+        assert_eq!(
+            second.state,
+            sage_acp_protocol::lifecycle::SessionState::Starting
+        );
         service.shutdown_blocking().unwrap();
     });
 }
@@ -974,8 +1001,11 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
                     .unwrap()
                     .projection_revision,
                 client_intent_id: ClientIntentId::new(),
-                binding_id: crate::acp::intent::BindingId::new("bindingId", "test-resume-abort")
-                    .unwrap(),
+                binding_id: sage_acp_protocol::intent::BindingId::new(
+                    "bindingId",
+                    "test-resume-abort",
+                )
+                .unwrap(),
                 binding_digest: "33".repeat(32),
                 harness_version: None,
                 model_id: None,
@@ -1092,7 +1122,7 @@ fn abort_resume_restores_ready_cold_and_retains_external_identity() {
 pub(super) fn seed_codex_discovery(
     service: &AcpService,
     project_root: &CodexProjectRootAuthority,
-    model: Option<crate::acp::intent::ModelId>,
+    model: Option<sage_acp_protocol::intent::ModelId>,
 ) {
     let binding = service.codex_registration().refresh().unwrap();
     service
@@ -1148,7 +1178,8 @@ pub(super) fn codex_start_command(
         chat_id: chat_id.clone(),
         expected_projection_revision: revision,
         client_intent_id: ClientIntentId::new(),
-        binding_id: crate::acp::intent::BindingId::new("bindingId", "codex-app-server").unwrap(),
+        binding_id: sage_acp_protocol::intent::BindingId::new("bindingId", "codex-app-server")
+            .unwrap(),
         binding_digest: "forged".into(),
         harness_version: None,
         model_id: None,
@@ -1293,14 +1324,14 @@ impl RuntimeEngine for Engine {
     fn record_delivery_unknown(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), HostError> {
         Ok(())
     }
     fn record_retry_exhausted(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), HostError> {
         Ok(())
     }
@@ -1415,7 +1446,7 @@ fn service_keeps_background_turn_live_and_stops_runtime_before_journal_drop() {
                 prompt: Prompt::new("prompt", "hello").unwrap(),
                 now_millis: sage_core::time::now_millis(),
             },
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     service.install_runtime_for_test(owner, Arc::clone(&runtime));
@@ -1710,7 +1741,7 @@ fn layout(snapshot: &crate::domain::BootstrapSnapshot) -> ProjectLayoutRequest {
 
 fn capabilities() -> CapabilitySnapshotV1 {
     CapabilitySnapshotV1 {
-        schema_version: crate::acp::contract::SchemaVersionV1,
+        schema_version: sage_acp_protocol::contract::SchemaVersionV1,
         protocol_version: RequiredText::new("protocol", "1").unwrap(),
         new_session: true,
         resume_session: false,

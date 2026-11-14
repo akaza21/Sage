@@ -1,13 +1,15 @@
 use serde_json::{Map, Value};
 
 use crate::acp::{
+    image_admit::{ImageAdmitError, admit_image_data_url},
+    runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url},
+};
+use sage_acp_protocol::{
     command_output::retain_command_output,
     contract::{BoundedVec, SafeText},
     declared_test::CommandActivity,
-    image_admit::{ImageAdmitError, admit_image_data_url},
     intent::{NormalizedPayload, ToolCategory, ToolExecution},
     lifecycle::{ItemLifecycle, ToolState},
-    runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url},
 };
 use sage_core::limits::LIMITS;
 
@@ -287,10 +289,10 @@ fn is_well_formed_read_path(path: &str) -> bool {
 fn mapped_location<M: ResourceMapper>(
     absolute: &str,
     mapper: &M,
-) -> crate::acp::intent::SafeResourceLocation {
+) -> sage_acp_protocol::intent::SafeResourceLocation {
     match mapper.map_existing(absolute) {
-        Ok(resource) => crate::acp::intent::SafeResourceLocation::Resource { resource },
-        Err(reason) => crate::acp::intent::SafeResourceLocation::unavailable(reason),
+        Ok(resource) => sage_acp_protocol::intent::SafeResourceLocation::Resource { resource },
+        Err(reason) => sage_acp_protocol::intent::SafeResourceLocation::unavailable(reason),
     }
 }
 

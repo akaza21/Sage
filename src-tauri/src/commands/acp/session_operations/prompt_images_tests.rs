@@ -49,7 +49,10 @@ fn an_attached_image_is_read_from_its_owner_bound_artifact_with_a_full_preview()
     let read = read(&store.database, "p", "c", &[&image]).unwrap();
 
     assert_eq!(read.len(), 1);
-    assert_eq!(read[0].media_type, crate::acp::intent::ImageMediaType::Png);
+    assert_eq!(
+        read[0].media_type,
+        sage_acp_protocol::intent::ImageMediaType::Png
+    );
     assert_eq!(read[0].bytes.len(), image.byte_length as usize);
     assert!(read[0].bytes.starts_with(b"\x89PNG\r\n\x1a\n"));
     assert_eq!(read[0].preview, ImagePreview::Full);
@@ -106,7 +109,10 @@ fn a_4k_screenshot_is_accepted_and_sent_at_most_1568_px_wide() {
     let read = read(&store.database, "p", "c", &[&uhd, &wide]).unwrap();
 
     for (image, expected) in read.iter().zip([(1568, 882), (1568, 784)]) {
-        assert_eq!(image.media_type, crate::acp::intent::ImageMediaType::Png);
+        assert_eq!(
+            image.media_type,
+            sage_acp_protocol::intent::ImageMediaType::Png
+        );
         assert_eq!(
             crate::image_artifacts::png_dimensions(&image.bytes),
             expected

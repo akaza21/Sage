@@ -8,7 +8,6 @@ use std::{
 
 use crate::{
     acp::{
-        contract::SageRootId,
         resource_mapper::{ConfiguredResourceRoot, NativeResourceAdmission, NativeResourceMapper},
         runtime::read_text_file::ReadTextRange,
     },
@@ -16,6 +15,7 @@ use crate::{
     persistence::Database,
     workspace::{Workspace, select_text_lines},
 };
+use sage_acp_protocol::contract::SageRootId;
 use sage_core::limits::LIMITS;
 
 const MAX_EDITABLE_BUFFER_BYTES: usize = 1024 * 1024;

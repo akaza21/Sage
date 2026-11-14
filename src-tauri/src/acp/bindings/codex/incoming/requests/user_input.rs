@@ -1,6 +1,6 @@
 use serde_json::{Map, Value, json};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
         NormalizedPayload, PermissionOptionKind, ToolCategory,

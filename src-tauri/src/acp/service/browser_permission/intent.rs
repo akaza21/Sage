@@ -1,11 +1,9 @@
 use super::BrowserPermissionOwner;
-use crate::{
-    acp::{
-        browser::permission::{BrowserPermissionChoice, BrowserPermissionPrompt},
-        contract::{RequiredText, SafeText, SageServerRequestId},
-        intent::{ExternalId, NormalizedPayload, ToolCategory},
-    },
-    acp_protocol::permissions::PermissionIntent,
+use crate::acp::browser::permission::{BrowserPermissionChoice, BrowserPermissionPrompt};
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText, SageServerRequestId},
+    intent::{ExternalId, NormalizedPayload, ToolCategory},
+    permissions::PermissionIntent,
 };
 use sha2::{Digest, Sha256};
 

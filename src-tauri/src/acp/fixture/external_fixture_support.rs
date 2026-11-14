@@ -6,13 +6,15 @@ use std::{
 
 use crate::{
     acp::{
-        contract::{ClientIntentId, RequiredText, SafeText, SageChatId, SageProjectId},
         process::{TreeControl, TreeExit},
         runtime::{BoundedThread, JournalHandle, SessionCoordinator, ThreadWaitError},
-        scheduler::Scheduler,
         store::{DatabaseAcpStore, SessionMutation, StartSessionCommand, load_chat_page},
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, RequiredText, SafeText, SageChatId, SageProjectId},
+    scheduler::Scheduler,
 };
 
 use super::external_fixture_adapters::{CommitCheckingPublisher, hex};

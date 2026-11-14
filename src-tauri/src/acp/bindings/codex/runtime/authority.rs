@@ -3,14 +3,12 @@ use std::sync::Arc;
 use sage_core::error::{AppError, AppResult};
 
 use crate::{
-    acp::{
-        bindings::{adapter::AdapterRuntimeError, codex::admission::AdmittedCodexBinding},
-        contract::{SageProjectId, SageRootId},
-    },
+    acp::bindings::{adapter::AdapterRuntimeError, codex::admission::AdmittedCodexBinding},
     persistence::Database,
     project_registry::ProjectRootAuthority,
     state::ActiveProjectContext,
 };
+use sage_acp_protocol::contract::{SageProjectId, SageRootId};
 
 /// Codex beta is frozen to exactly one registered Project root. This wrapper
 /// cannot be created by the generic characterization selected-root path.
@@ -21,7 +19,7 @@ impl CodexProjectRootAuthority {
         self.0.scope().0
     }
 
-    pub(crate) fn project_generation(&self) -> crate::acp::contract::ProjectGeneration {
+    pub(crate) fn project_generation(&self) -> sage_acp_protocol::contract::ProjectGeneration {
         self.0.scope().1
     }
 

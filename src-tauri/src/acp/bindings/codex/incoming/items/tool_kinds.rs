@@ -2,8 +2,8 @@
 
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    bindings::codex::state::command_explore::CommandExplore,
+use crate::acp::bindings::codex::state::command_explore::CommandExplore;
+use sage_acp_protocol::{
     contract::{BoundedVec, SafeText},
     declared_test::CommandActivity,
     intent::{SafeResourceLocation, ToolCategory, ToolExecution},

@@ -2,7 +2,7 @@ use super::credentials::{
     assigned_auth_marker, auth_marker, is_sensitive_prose_flag, is_sensitive_prose_token,
     sensitive_assignment, sensitive_header, sensitive_key,
 };
-use crate::acp::contract::ContractError;
+use sage_acp_protocol::contract::ContractError;
 
 pub(crate) const REDACTED: &str = "[redacted]";
 

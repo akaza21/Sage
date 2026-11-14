@@ -7,7 +7,7 @@ impl Lane<'_> {
         intent: crate::acp::runtime::HostPromptIntent,
     ) -> Result<
         crate::acp::runtime::HostOutcome,
-        crate::acp::service::PromptSendError<CodexSessionError>,
+        crate::acp::prompt_send::PromptSendError<CodexSessionError>,
     > {
         let started = Instant::now();
         let owner = RuntimeOwner {
@@ -28,13 +28,13 @@ impl Lane<'_> {
                 );
             })
             .map_err(map_slot_error)
-            .map_err(crate::acp::service::PromptSendError::not_started)?;
+            .map_err(crate::acp::prompt_send::PromptSendError::not_started)?;
         match host.send(intent) {
             Ok(outcome) => Ok(outcome),
             Err(failure) if failure.error == crate::acp::runtime::HostError::SignInRequired => {
                 // Refusal happened before the prompt was written.
                 self.settle_refused_prompt(owner, host);
-                Err(crate::acp::service::PromptSendError::unknown(
+                Err(crate::acp::prompt_send::PromptSendError::unknown(
                     CodexSessionError::SignInRequired,
                 ))
             }

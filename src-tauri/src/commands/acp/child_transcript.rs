@@ -4,19 +4,19 @@ use tauri::State;
 
 use crate::{
     acp::{
-        contract::{
-            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageItemId,
-            SageProjectId,
-        },
-        intent::{
-            AcpIpcError, AcpUnavailableReason, ExternalId, IntentError, validate_base_intent,
-        },
-        scheduler::RuntimeOwner,
+        ipc::{AcpIpcError, AcpUnavailableReason, IntentError, validate_base_intent},
         service::{ChildTranscriptRead, ChildTranscriptReadError},
         store::child_transcript::{ChildTranscriptScope, SpawnModel, load_spawn_model},
     },
-    acp_protocol::codex_protocol::ChildTranscriptSnapshot,
     state::AppState,
+};
+use sage_acp_protocol::{
+    codex_protocol::ChildTranscriptSnapshot,
+    contract::{
+        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageItemId, SageProjectId,
+    },
+    intent::ExternalId,
+    scheduler::RuntimeOwner,
 };
 
 use super::{intent_error, safe_message, snapshot_for};

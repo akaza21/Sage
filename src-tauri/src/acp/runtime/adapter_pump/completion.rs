@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::intent::session_event::PendingSessionEvents;
+use sage_acp_protocol::intent::session_event::PendingSessionEvents;
 
 pub(crate) struct CompletedPumpParts<A, J, R> {
     pub(super) adapter: A,
@@ -17,7 +17,7 @@ type PumpHandoff<T, P> = Result<T, Box<(P, AdapterPumpError)>>;
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPumpParts<A, J, R> {
     pub(crate) fn validate_command_prompt(
         &self,
-        prompt: &crate::acp::intent::Prompt,
+        prompt: &crate::acp::transcript_quote::Prompt,
     ) -> Result<(), crate::acp::runtime::HostError> {
         if let Some(revision) = prompt.command_revision {
             self.adapter
@@ -209,7 +209,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         }
         let _ = self
             .publisher
-            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+            .publish_committed(crate::acp::ipc::ProjectionChangedV1 {
                 project_id: self.session_intent.project_id.clone(),
                 chat_id: self.session_intent.chat_id.clone(),
                 session_id: self.session_intent.session_id.clone(),
@@ -229,7 +229,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         };
         let _ = self
             .publisher
-            .publish_committed(crate::acp::intent::ProjectionChangedV1 {
+            .publish_committed(crate::acp::ipc::ProjectionChangedV1 {
                 project_id: self.session_intent.project_id.clone(),
                 chat_id: self.session_intent.chat_id.clone(),
                 session_id: self.session_intent.session_id.clone(),

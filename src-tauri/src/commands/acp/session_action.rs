@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::{intent::Prompt, session_action::SessionAction};
+use crate::acp::{session_action::SessionAction, transcript_quote::Prompt};
 use serde::Deserialize;
 
 #[derive(Deserialize)]

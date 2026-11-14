@@ -1,6 +1,6 @@
 use std::sync::{Arc, Mutex};
 
-use crate::acp::contract::SageAgentSessionId;
+use sage_acp_protocol::contract::SageAgentSessionId;
 use sage_core::limits::LIMITS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

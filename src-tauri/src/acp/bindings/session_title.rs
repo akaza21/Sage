@@ -1,4 +1,4 @@
-use crate::acp::{
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::session_event::{SESSION_TITLE_BYTES, SessionScopedEvent},
 };

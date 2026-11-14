@@ -4,9 +4,10 @@
 
 use serde_json::{Value, json};
 
-use crate::acp::intent::{
+use crate::acp::elicitation_form;
+use sage_acp_protocol::intent::{
     NormalizedPayload,
-    user_input::{UserInputAnswers, UserInputRequest, form},
+    user_input::{UserInputAnswers, UserInputRequest},
 };
 
 pub(crate) const ELICITATION_CREATE: &str = "elicitation/create";
@@ -32,11 +33,13 @@ pub(crate) fn admit(params: &Value, session_id: &str, turn_running: bool) -> Eli
         return Elicitation::Reply(refused(false));
     }
     let request = match params.get("mode").and_then(Value::as_str) {
-        Some("form") => params.get("requestedSchema").and_then(form::form_request),
+        Some("form") => params
+            .get("requestedSchema")
+            .and_then(elicitation_form::form_request),
         Some("url") => params
             .get("url")
             .and_then(Value::as_str)
-            .and_then(form::url_request),
+            .and_then(elicitation_form::url_request),
         _ => None,
     };
     let message = params.get("message").and_then(Value::as_str);
@@ -46,7 +49,7 @@ pub(crate) fn admit(params: &Value, session_id: &str, turn_running: bool) -> Eli
         } else {
             "Answer the agent's questions"
         };
-        let payload = form::question_payload(summary, message, request.clone())?;
+        let payload = elicitation_form::question_payload(summary, message, request.clone())?;
         Some(Elicitation::Ask {
             payload: Box::new(payload),
             form: Box::new(request),

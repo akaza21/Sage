@@ -1,10 +1,11 @@
-use crate::acp::{
+use crate::acp::session_config::{
+    SnapshotRecorder, choices,
+    notices::{self, SessionConfigNotice},
+};
+use sage_acp_protocol::{
     contract::SageAgentSessionId,
     scheduler::RuntimeOwner,
-    session_config::{
-        ConfigMutation, SessionConfig, SnapshotRecorder, choices,
-        notices::{self, SessionConfigNotice},
-    },
+    session_config::{ConfigMutation, SessionConfig},
 };
 
 use super::AcpService;

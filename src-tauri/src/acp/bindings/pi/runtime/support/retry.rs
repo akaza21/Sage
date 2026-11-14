@@ -1,5 +1,5 @@
-use crate::acp::{
-    bindings::adapter::{AdapterEvent, AdapterRuntimeError},
+use crate::acp::bindings::adapter::{AdapterEvent, AdapterRuntimeError};
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{
         ExternalId,

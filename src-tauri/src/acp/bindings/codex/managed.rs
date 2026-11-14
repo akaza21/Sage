@@ -290,7 +290,7 @@ pub(super) fn validate_provisioned_package_acl(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY};
+    use sage_acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY};
 
     fn package_node(index: usize) -> NodeSecurityClaims {
         NodeSecurityClaims {

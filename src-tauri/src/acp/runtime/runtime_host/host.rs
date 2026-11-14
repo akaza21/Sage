@@ -7,7 +7,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{intent::PromptSendError, scheduler::RuntimeOwner, store::AdapterTurnCursor};
+use crate::acp::{prompt_send::PromptSendError, store::AdapterTurnCursor};
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::super::bounded_thread::{BoundedThread, ThreadWaitError};
 pub(crate) use super::types::TerminalNotification;
@@ -185,8 +186,8 @@ impl RuntimeHost {
     pub(crate) fn resolve_permission(
         &self,
         owner: RuntimeOwner,
-        request_id: crate::acp::contract::SageServerRequestId,
-        decision: crate::acp_protocol::permissions::PermissionDecision,
+        request_id: sage_acp_protocol::contract::SageServerRequestId,
+        decision: sage_acp_protocol::permissions::PermissionDecision,
     ) -> Result<HostOutcome, HostError> {
         self.outcome(HostCommand::ResolvePermission {
             owner,
@@ -198,7 +199,7 @@ impl RuntimeHost {
     pub(crate) fn prepare_prompt(
         &self,
         intent: HostPromptIntent,
-    ) -> Result<crate::acp::contract::SageTurnId, HostError> {
+    ) -> Result<sage_acp_protocol::contract::SageTurnId, HostError> {
         match self.submit(HostCommand::PreparePrompt(intent))? {
             HostReply::Prepared(turn_id) => Ok(turn_id),
             HostReply::Outcome(_) | HostReply::NativeRpc(_) | HostReply::State(_) => {
@@ -210,7 +211,7 @@ impl RuntimeHost {
     pub(crate) fn dispatch_prepared(
         &self,
         owner: RuntimeOwner,
-        turn_id: crate::acp::contract::SageTurnId,
+        turn_id: sage_acp_protocol::contract::SageTurnId,
     ) -> Result<HostOutcome, HostError> {
         self.outcome(HostCommand::DispatchPrompt { owner, turn_id })
     }
@@ -277,7 +278,7 @@ impl RuntimeHost {
     #[cfg(test)]
     pub(crate) fn project_switched(
         &self,
-        project: crate::acp::contract::SageProjectId,
+        project: sage_acp_protocol::contract::SageProjectId,
     ) -> Result<HostOutcome, HostError> {
         self.outcome(HostCommand::ProjectSwitched(project))
     }
@@ -287,7 +288,7 @@ impl RuntimeHost {
     /// RPC budget after discovery or P-02 settlement consumed time.
     pub(crate) fn project_switched_until(
         &self,
-        project: crate::acp::contract::SageProjectId,
+        project: sage_acp_protocol::contract::SageProjectId,
         deadline: Instant,
     ) -> Result<HostOutcome, HostError> {
         self.outcome_until(HostCommand::ProjectSwitched(project), deadline)

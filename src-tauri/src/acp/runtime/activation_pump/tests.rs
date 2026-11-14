@@ -5,9 +5,11 @@ use std::{
 
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterIdentity, EgressToken},
+    transport::Frame,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SafeText, SchemaVersionV1},
     intent::{ModelId, NormalizedPayload, SafeResourceRef},
-    transport::Frame,
 };
 
 use super::*;
@@ -80,8 +82,8 @@ impl ResourceMapper for NoResources {
     fn map_existing(
         &self,
         _absolute_path: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
-        Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 

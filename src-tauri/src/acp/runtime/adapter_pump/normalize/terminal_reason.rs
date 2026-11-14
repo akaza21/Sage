@@ -1,5 +1,5 @@
 use super::{DurableAdapterEvent, NormalizedFact, TurnScope, TurnTerminalReason};
-use crate::acp::contract::SafeText;
+use sage_acp_protocol::contract::SafeText;
 
 pub(super) fn normalize(
     scope: TurnScope,

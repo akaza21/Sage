@@ -1,15 +1,13 @@
 use serde_json::{Map, Value};
 
-use crate::{
-    acp::{
-        contract::{BoundedVec, SafeText},
-        declared_test::CommandActivity,
-        intent::{
-            FileChangeFacts, NormalizedPayload, SafeResourceLocation, ToolCategory, ToolExecution,
-        },
-        lifecycle::{ItemLifecycle, ToolState},
+use sage_acp_protocol::{
+    contract::{BoundedVec, SafeText},
+    declared_test::CommandActivity,
+    file_diff::{PairAdmission, admit_pair},
+    intent::{
+        FileChangeFacts, NormalizedPayload, SafeResourceLocation, ToolCategory, ToolExecution,
     },
-    acp_protocol::file_diff::{PairAdmission, admit_pair},
+    lifecycle::{ItemLifecycle, ToolState},
 };
 use sage_core::limits::LIMITS;
 
@@ -73,9 +71,13 @@ pub(in crate::acp::bindings::codex::incoming) fn normalize<M: ResourceMapper>(
         .get("diff")
         .and_then(Value::as_str)
         .map(|diff| match facts.operation {
-            crate::acp::intent::FileChangeOperation::Created => patch::raw_content(diff, true),
-            crate::acp::intent::FileChangeOperation::Deleted => patch::raw_content(diff, false),
-            crate::acp::intent::FileChangeOperation::Updated => patch::decode(diff),
+            sage_acp_protocol::intent::FileChangeOperation::Created => {
+                patch::raw_content(diff, true)
+            }
+            sage_acp_protocol::intent::FileChangeOperation::Deleted => {
+                patch::raw_content(diff, false)
+            }
+            sage_acp_protocol::intent::FileChangeOperation::Updated => patch::decode(diff),
         });
     let mut pair = None;
     let mut admitted = None;
@@ -150,36 +152,36 @@ fn describe<'a, M: ResourceMapper>(
         .and_then(|kind| kind.get("type"))
         .and_then(Value::as_str)
     {
-        Some("add") => crate::acp::intent::FileChangeOperation::Created,
-        Some("delete") => crate::acp::intent::FileChangeOperation::Deleted,
-        _ => crate::acp::intent::FileChangeOperation::Updated,
+        Some("add") => sage_acp_protocol::intent::FileChangeOperation::Created,
+        Some("delete") => sage_acp_protocol::intent::FileChangeOperation::Deleted,
+        _ => sage_acp_protocol::intent::FileChangeOperation::Updated,
     };
     let resource = match mapper.map_existing(absolute) {
-        Ok(resource) => crate::acp::intent::SafeResourceLocation::Resource { resource },
-        Err(crate::acp::intent::UnavailableResourceReason::Missing)
-            if operation == crate::acp::intent::FileChangeOperation::Deleted =>
+        Ok(resource) => sage_acp_protocol::intent::SafeResourceLocation::Resource { resource },
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Missing)
+            if operation == sage_acp_protocol::intent::FileChangeOperation::Deleted =>
         {
             match mapper.map_missing_display(absolute) {
                 Some(display) => {
-                    crate::acp::intent::SafeResourceLocation::unavailable_with_display(
-                        crate::acp::intent::UnavailableResourceReason::Missing,
+                    sage_acp_protocol::intent::SafeResourceLocation::unavailable_with_display(
+                        sage_acp_protocol::intent::UnavailableResourceReason::Missing,
                         display,
                     )
                 }
-                None => crate::acp::intent::SafeResourceLocation::unavailable(
-                    crate::acp::intent::UnavailableResourceReason::Missing,
+                None => sage_acp_protocol::intent::SafeResourceLocation::unavailable(
+                    sage_acp_protocol::intent::UnavailableResourceReason::Missing,
                 ),
             }
         }
-        Err(reason) => crate::acp::intent::SafeResourceLocation::unavailable(reason),
+        Err(reason) => sage_acp_protocol::intent::SafeResourceLocation::unavailable(reason),
     };
     let verb = match operation {
-        crate::acp::intent::FileChangeOperation::Created => "Created",
-        crate::acp::intent::FileChangeOperation::Updated => "Edited",
-        crate::acp::intent::FileChangeOperation::Deleted => "Deleted",
+        sage_acp_protocol::intent::FileChangeOperation::Created => "Created",
+        sage_acp_protocol::intent::FileChangeOperation::Updated => "Edited",
+        sage_acp_protocol::intent::FileChangeOperation::Deleted => "Deleted",
     };
     let display = match &resource {
-        crate::acp::intent::SafeResourceLocation::Resource { resource }
+        sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }
             if resource.relative_path.as_str().len() <= 480
                 && !resource
                     .relative_path

@@ -608,9 +608,9 @@ fn a_process_on_the_conpty_receives_exactly_the_allowlisted_environment() {
     let project = temp.join("project");
     std::fs::create_dir(&project).unwrap();
     let root = ProjectRootAuthority::for_test(
-        crate::acp::contract::SageProjectId::parse("project-terminal-environment").unwrap(),
-        crate::acp::contract::ProjectGeneration::ZERO,
-        crate::acp::contract::SageRootId::parse("root-terminal-environment").unwrap(),
+        sage_acp_protocol::contract::SageProjectId::parse("project-terminal-environment").unwrap(),
+        sage_acp_protocol::contract::ProjectGeneration::ZERO,
+        sage_acp_protocol::contract::SageRootId::parse("root-terminal-environment").unwrap(),
         &project.canonicalize().unwrap(),
     )
     .unwrap();

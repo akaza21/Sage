@@ -7,7 +7,7 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::*;
-use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 const FIXTURE_FILES: [(&str, &[u8], &str); 8] = [
     (

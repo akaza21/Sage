@@ -1,11 +1,15 @@
 use std::{future::Future, pin::Pin};
 
-use crate::acp::scheduler::RuntimeOwner;
 use crate::acp::{
     bindings::adapter::{
         AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity, AdapterModel,
         AdapterRuntimeError, EgressResolution, HarnessAdapter, ResourceMapper,
     },
+    store::CompleteActivationCommand,
+    transport::{FrameWriteOutcome, IncrementalFrameDecoder, ReservedQueue, validate_structure},
+};
+use sage_acp_protocol::scheduler::RuntimeOwner;
+use sage_acp_protocol::{
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
         SageProjectId,
@@ -14,8 +18,6 @@ use crate::acp::{
         CapabilitySnapshotV1, ExternalId, PageCursor,
         session_event::{PendingSessionEvents, SessionScopedEvent},
     },
-    store::CompleteActivationCommand,
-    transport::{FrameWriteOutcome, IncrementalFrameDecoder, ReservedQueue, validate_structure},
 };
 use sage_core::limits::LIMITS;
 

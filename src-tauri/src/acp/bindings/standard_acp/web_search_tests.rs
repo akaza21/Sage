@@ -4,7 +4,7 @@ use super::{
     profile::profile_for,
     translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator},
 };
-use crate::acp::intent::{
+use sage_acp_protocol::intent::{
     NormalizedPayload, SafeResourceRef, ToolCategory, UnavailableResourceReason,
 };
 

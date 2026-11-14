@@ -1,13 +1,11 @@
 use super::*;
-use crate::{
-    acp::{
-        contract::{
-            RequiredText, RuntimeEpoch, SafeText, SageChatId, SageProjectId, SageServerRequestId,
-            SageTurnId,
-        },
-        intent::{ExternalId, NormalizedPayload, ToolCategory},
+use sage_acp_protocol::{
+    contract::{
+        RequiredText, RuntimeEpoch, SafeText, SageChatId, SageProjectId, SageServerRequestId,
+        SageTurnId,
     },
-    acp_protocol::permissions::PermissionIntent,
+    intent::{ExternalId, NormalizedPayload, ToolCategory},
+    permissions::PermissionIntent,
 };
 
 #[test]

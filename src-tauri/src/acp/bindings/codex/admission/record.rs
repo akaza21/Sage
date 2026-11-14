@@ -157,7 +157,7 @@ impl AdmittedCodexBinding {
             binding_digest,
             binding_digest_hex: sha256_hex(binding_digest),
             artifact_digest,
-            harness_version: crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION.into(),
+            harness_version: sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION.into(),
             characterisation:
                 crate::acp::bindings::characterisation::Characterisation::Characterised,
             #[cfg(all(test, windows))]

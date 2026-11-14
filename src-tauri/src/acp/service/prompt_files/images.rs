@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
-use crate::acp::intent::{CapabilitySnapshotV1, ImageMediaType};
+use sage_acp_protocol::intent::{CapabilitySnapshotV1, ImageMediaType};
 use sage_core::limits::{PROMPT_IMAGE_COUNT, PROMPT_IMAGE_EDGE_PX, PROMPT_IMAGE_TOTAL_BYTES};
 
 #[derive(Debug, Clone, PartialEq, Eq)]

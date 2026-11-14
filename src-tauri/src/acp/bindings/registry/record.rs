@@ -4,19 +4,17 @@ use std::sync::Arc;
 mod browser_mcp;
 mod undo;
 
-use crate::acp::{
-    bindings::{
-        claude::{AdmittedClaudeBinding, ClaudeBindingRegistration},
-        codex::{AdmittedCodexBinding, CodexBindingRegistration},
-        runtime::RuntimeFactory,
-        standard_acp::{
-            AdmittedStandardAcpBinding, CUSTOM_ACP_POLICY_ID, CustomAcpRegistration,
-            OpenCodeBindingRegistration, StandardAcpBindingSource,
-        },
+use crate::acp::bindings::{
+    claude::{AdmittedClaudeBinding, ClaudeBindingRegistration},
+    codex::{AdmittedCodexBinding, CodexBindingRegistration},
+    runtime::RuntimeFactory,
+    standard_acp::{
+        AdmittedStandardAcpBinding, CUSTOM_ACP_POLICY_ID, CustomAcpRegistration,
+        OpenCodeBindingRegistration, StandardAcpBindingSource,
     },
-    intent::CapabilitySnapshotV1,
 };
 use crate::domain::HarnessCharacterisation;
+use sage_acp_protocol::intent::CapabilitySnapshotV1;
 
 use super::{AuthProvider, ModelProvider, RegistryAdmissionUnavailable, WireIdentity};
 
@@ -35,7 +33,7 @@ type TurnDispatch = fn(
     crate::acp::runtime::HostPromptIntent,
 ) -> Result<
     crate::acp::runtime::HostOutcome,
-    crate::acp::service::PromptSendError<crate::acp::service::CodexSessionError>,
+    crate::acp::prompt_send::PromptSendError<crate::acp::service::CodexSessionError>,
 >;
 type CancelDispatch =
     fn(
@@ -339,7 +337,7 @@ impl AdmittedBindingRecord<'_> {
         &self,
         model: Option<&str>,
         effort: &str,
-    ) -> Option<crate::acp::session_config::ConfigMutation> {
+    ) -> Option<sage_acp_protocol::session_config::ConfigMutation> {
         super::claude_sdk::launch_effort_choice(&self.binding, model, effort)
     }
 
@@ -419,7 +417,7 @@ impl AdmittedBindingRecord<'_> {
         intent: crate::acp::runtime::HostPromptIntent,
     ) -> Result<
         crate::acp::runtime::HostOutcome,
-        crate::acp::service::PromptSendError<crate::acp::service::CodexSessionError>,
+        crate::acp::prompt_send::PromptSendError<crate::acp::service::CodexSessionError>,
     > {
         (self.record.turn_dispatch)(service, intent)
     }

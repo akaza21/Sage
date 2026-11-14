@@ -1,15 +1,14 @@
 use super::*;
-use crate::{
-    acp::{
-        contract::SageRootId,
-        intent::{
-            FileChangeFacts, FileChangeOperation, SafeResourceLocation, SafeResourceRef,
-            UnavailableResourceReason,
-        },
-        projection::{FileOperation, FilePairState},
+use crate::acp::projection::{FileOperation, FilePairState};
+use sage_acp_protocol::{
+    contract::SageRootId,
+    file_diff::pair_digest,
+    intent::{
+        FileChangeFacts, FileChangeOperation, SafeResourceLocation, SafeResourceRef,
+        UnavailableResourceReason,
     },
-    acp_protocol::file_diff::{DIFF_SIDE_BYTES_MAX, pair_digest},
 };
+use sage_core::limits::DIFF_SIDE_BYTES_MAX;
 
 mod codex_file_change_tests;
 mod creation_promotion_tests;
@@ -31,7 +30,7 @@ fn pair_batch(
 ) -> AdapterInboundBatchCommand {
     let mut metadata = item(owner, key);
     metadata.payload = NormalizedPayload::file_admitted(
-        crate::acp::intent::FileChangeFacts {
+        sage_acp_protocol::intent::FileChangeFacts {
             resource: SafeResourceLocation::Resource {
                 resource: SafeResourceRef::new(
                     SageRootId::parse("root-one").unwrap(),
@@ -42,7 +41,7 @@ fn pair_batch(
             summary: SafeText::new("summary", "File changed").unwrap(),
             additions: Some(1),
             deletions: Some(1),
-            operation: crate::acp::intent::FileChangeOperation::Updated,
+            operation: sage_acp_protocol::intent::FileChangeOperation::Updated,
         },
         0,
         (old.len() as u64, new.len() as u64),
@@ -381,7 +380,7 @@ fn compacting_a_snapshot_releases_only_its_bytes_and_rollback_restores_it() {
             &reference(&fixture, 1, "old", "new"),
             &[SageRootId::parse("root-one").unwrap()]
         ),
-        Err(crate::acp_protocol::file_diff::SnapshotReadError::Unavailable)
+        Err(sage_acp_protocol::file_diff::SnapshotReadError::Unavailable)
     );
 }
 
@@ -648,8 +647,8 @@ fn reference(
     revision: u64,
     old: &str,
     new: &str,
-) -> crate::acp_protocol::file_diff::DiffRef {
-    crate::acp_protocol::file_diff::DiffRef {
+) -> sage_acp_protocol::file_diff::DiffRef {
+    sage_acp_protocol::file_diff::DiffRef {
         project_id: fixture.owner.project_id.as_str().into(),
         chat_id: fixture.owner.chat_id.as_str().into(),
         session_id: fixture.owner.session_id.as_str().into(),
@@ -673,7 +672,7 @@ fn reference(
 
 #[test]
 fn old_refs_resolve_old_bytes_while_wrong_owner_and_corrupt_bytes_fail_closed() {
-    use crate::acp_protocol::file_diff::SnapshotReadError;
+    use sage_acp_protocol::file_diff::SnapshotReadError;
     let mut fixture = snapshot_fixture();
     let roots = [SageRootId::parse("root-one").unwrap()];
     apply_adapter_inbound_batch(

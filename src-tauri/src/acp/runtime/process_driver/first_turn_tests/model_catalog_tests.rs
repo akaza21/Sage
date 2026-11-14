@@ -1,5 +1,6 @@
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
-use crate::acp::{contract::SageAgentSessionId, runtime::AdapterPumpError};
+use crate::acp::runtime::AdapterPumpError;
+use sage_acp_protocol::contract::SageAgentSessionId;
 use serde_json::{Value, json};
 
 use super::*;

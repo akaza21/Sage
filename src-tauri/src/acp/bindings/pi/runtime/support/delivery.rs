@@ -109,7 +109,7 @@ impl PiRuntime {
 
     pub(in crate::acp::bindings::pi::runtime) fn snapshot(
         &self,
-    ) -> crate::acp::intent::CapabilitySnapshotV1 {
+    ) -> sage_acp_protocol::intent::CapabilitySnapshotV1 {
         super::capabilities(
             self.model_count,
             self.model_session_config()
