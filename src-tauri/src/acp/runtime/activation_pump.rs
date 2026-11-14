@@ -118,7 +118,6 @@ enum Phase {
     AwaitingSession,
     Ready,
     RecoveryRequired,
-    /// Failed closed at the given startup step.
     Teardown(ActivationStartupStep),
 }
 

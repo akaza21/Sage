@@ -1,11 +1,9 @@
-/// The activation step a startup is at, or failed closed at.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ActivationStartupStep {
     Initialize,
     SessionNew,
     SessionResume,
     SessionLoad,
-    /// Recording the ready session in the store.
     ActivationCommit,
     ReadyHandoff,
 }

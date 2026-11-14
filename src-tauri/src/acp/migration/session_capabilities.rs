@@ -1,6 +1,5 @@
 use super::*;
 
-/// The schema version that admits a fresh capability negotiation on resume.
 pub(super) const VERSION: u32 = 30;
 pub(super) const SQL: &str = include_str!("../../../migrations/030_session_capabilities.sql");
 

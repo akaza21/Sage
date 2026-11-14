@@ -1,7 +1,6 @@
 use super::*;
 
-/// Applies every schema upgrade after v18 in version order. Each step is a
-/// no-op on a database already past it.
+/// Each step is a no-op on a database already past it.
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     workspace_changes::apply(connection)?;
     title_provenance::apply(connection)?;
