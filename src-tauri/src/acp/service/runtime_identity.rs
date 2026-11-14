@@ -6,10 +6,8 @@ use std::sync::Mutex;
 
 use serde::Serialize;
 
-use crate::acp::{
-    process::{EntryPointKind, ProcessIdentityReceipt, TreeControl},
-    scheduler::RuntimeOwner,
-};
+use crate::acp::process::{EntryPointKind, ProcessIdentityReceipt, TreeControl};
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 const MAX_PATH_BYTES: usize = 4096;
 const MAX_VERSION_BYTES: usize = 256;
@@ -211,9 +209,9 @@ fn hex(bytes: [u8; 32]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{
-        contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
-        process::ProcessIdentityReceipt,
+    use crate::acp::process::ProcessIdentityReceipt;
+    use sage_acp_protocol::contract::{
+        RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
     };
 
     fn owner(epoch: u64) -> RuntimeOwner {

@@ -62,7 +62,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     pub(crate) async fn resolve_permission(
         &mut self,
         request_id: &SageServerRequestId,
-        decision: crate::acp_protocol::permissions::PermissionDecision,
+        decision: sage_acp_protocol::permissions::PermissionDecision,
         now_millis: i64,
     ) -> Result<(), AdapterPumpError> {
         self.ensure_live()?;
@@ -87,10 +87,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         if pending.settles_as.is_some() {
             return Err(AdapterPumpError::Intent);
         }
-        if decision == crate::acp_protocol::permissions::PermissionDecision::Ask {
+        if decision == sage_acp_protocol::permissions::PermissionDecision::Ask {
             let None = crate::acp::runtime::later_permission::resolve_later_permission(
                 request_id,
-                &crate::acp_protocol::permissions::PermissionDecision::Ask,
+                &sage_acp_protocol::permissions::PermissionDecision::Ask,
                 None,
             )
             .map_err(|_| AdapterPumpError::Intent)?
@@ -172,9 +172,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     pub(crate) fn queue_prompt(
         &mut self,
-        prompt: crate::acp::intent::Prompt,
+        prompt: crate::acp::transcript_quote::Prompt,
         client_message_id: &RequiredText<512>,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<QueueDisposition, AdapterPumpError> {
         self.ensure_live()?;
         let active = &self.intent.active_turn;
@@ -191,7 +191,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     pub(crate) fn queue_steer(
         &mut self,
-        prompt: crate::acp::intent::Prompt,
+        prompt: crate::acp::transcript_quote::Prompt,
         client_message_id: RequiredText<512>,
     ) -> Result<(QueueDisposition, u64), AdapterPumpError> {
         self.ensure_live()?;

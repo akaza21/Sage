@@ -28,7 +28,7 @@ impl Lane<'_> {
     pub(super) fn settle_cancel_on_failed_host(
         &self,
         owner: RuntimeOwner,
-        turn_id: crate::acp::contract::SageTurnId,
+        turn_id: sage_acp_protocol::contract::SageTurnId,
         host: Arc<RuntimeHost>,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         self.retain_live_failure_recovery(owner.clone(), host, LiveHostRecoveryPhase::CancelEffect);
@@ -39,7 +39,7 @@ impl Lane<'_> {
     pub(super) fn settled_cancel_outcome(
         &self,
         owner: &RuntimeOwner,
-        turn_id: &crate::acp::contract::SageTurnId,
+        turn_id: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<crate::acp::runtime::HostOutcome, CodexSessionError> {
         if self.turn_is_terminal(owner, turn_id) {
             Ok(crate::acp::runtime::HostOutcome::CancelQueued)

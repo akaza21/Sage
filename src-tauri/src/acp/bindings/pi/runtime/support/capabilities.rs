@@ -1,4 +1,4 @@
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };

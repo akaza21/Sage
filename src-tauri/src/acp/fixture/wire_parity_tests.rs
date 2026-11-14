@@ -4,6 +4,8 @@ use crate::acp::{
         translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator},
     },
     fixture::wire::capture::replay_native,
+};
+use sage_acp_protocol::{
     intent::{NormalizedPayload, SafeResourceRef, ToolCategory, UnavailableResourceReason},
     lifecycle::{ItemLifecycle, ToolState},
 };

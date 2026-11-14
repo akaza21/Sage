@@ -9,10 +9,10 @@ use crate::acp::{
         ProjectionPublisher, RecoveryActivationParts, SendCoordinator, SessionPumpIntent,
         SessionTreeLease, SqliteAdapterBatchJournal, TeardownActivationParts,
     },
-    scheduler::RuntimeOwner,
     store::PrepareTurnCommand,
     transport::{IncrementalFrameDecoder, validate_structure},
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::{
     ActivationDriverError, DriverClock, DriverError, FirstDeliveryUnknown, PreparedDriverTurn,

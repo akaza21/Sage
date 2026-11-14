@@ -12,9 +12,9 @@ use crate::acp::{
             reproduction::ReproducedPackagePrerequisite,
         },
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
-    declared_test::declared_test_commands_for_project,
+    package_manifest::declared_test_commands_for_project,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 impl CodexRuntime {
     pub(crate) fn from_metadata_packet(

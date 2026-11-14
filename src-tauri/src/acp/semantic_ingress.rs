@@ -3,7 +3,7 @@ use serde_json::{Map, Value};
 
 use crate::acp::bindings::adapter::AdapterModel;
 #[cfg(all(test, feature = "acp-fixture"))]
-use crate::acp::intent::CapabilitySnapshotV1;
+use sage_acp_protocol::intent::CapabilitySnapshotV1;
 use sage_core::limits::LIMITS;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

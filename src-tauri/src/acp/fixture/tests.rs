@@ -433,11 +433,14 @@ fn fixture_adapter_requires_written_prompt_and_emits_one_bounded_text_lifecycle(
         bindings::adapter::{
             AdapterCommand, AdapterEvent, EgressResolution, HarnessAdapter, ResourceMapper,
         },
-        contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
         fixture::adapter::FixtureAdapter,
-        intent::{ExternalId, Prompt, SafeResourceRef, UnavailableResourceReason},
-        lifecycle::{ItemLifecycle, TurnState},
+        transcript_quote::Prompt,
         transport::IncrementalFrameDecoder,
+    };
+    use sage_acp_protocol::{
+        contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+        intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
+        lifecycle::{ItemLifecycle, TurnState},
     };
 
     struct Mapper;
@@ -470,7 +473,7 @@ fn fixture_adapter_requires_written_prompt_and_emits_one_bounded_text_lifecycle(
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "read only").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     assert!(matches!(

@@ -1,17 +1,16 @@
 use serde_json::json;
 
 use super::{AdapterEvent, ClaudeTranslator, ResourceMapper, TranslationError, claude_profile};
-use crate::{
-    acp::{
-        contract::SageRootId,
-        intent::{
-            FileChangeOperation, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
-            UnavailableResourceReason,
-        },
-        lifecycle::ItemLifecycle,
+use sage_acp_protocol::{
+    contract::SageRootId,
+    file_diff::{admit_pair, pair_digest},
+    intent::{
+        FileChangeOperation, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
+        UnavailableResourceReason,
     },
-    acp_protocol::file_diff::{DIFF_SIDE_BYTES_MAX, admit_pair, pair_digest},
+    lifecycle::ItemLifecycle,
 };
+use sage_core::limits::DIFF_SIDE_BYTES_MAX;
 
 struct FixtureResources;
 
@@ -188,7 +187,7 @@ fn claude_multi_entry_pair_maps_to_shared_typed_shape() {
         let admitted = admit_pair(old, new);
         assert!(matches!(
             admitted,
-            crate::acp_protocol::file_diff::PairAdmission::Admitted { .. }
+            sage_acp_protocol::file_diff::PairAdmission::Admitted { .. }
         ));
     }
     let items: Vec<_> = events

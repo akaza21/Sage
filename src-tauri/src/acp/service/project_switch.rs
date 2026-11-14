@@ -1,6 +1,7 @@
 use std::time::{Duration, Instant};
 
-use crate::acp::{contract::SageProjectId, runtime::HostError};
+use crate::acp::runtime::HostError;
+use sage_acp_protocol::contract::SageProjectId;
 
 use super::{AcpService, shutdown::map_discovery_shutdown};
 

@@ -10,15 +10,13 @@ use uuid::Uuid;
 
 use super::*;
 use crate::{
-    acp::{
-        contract::{ProjectGeneration, SageProjectId, SageRootId},
-        process::{
-            ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
-            RequiredContainment, TreeCapacityPool, TreeExit, TreeLimits,
-        },
+    acp::process::{
+        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
+        RequiredContainment, TreeCapacityPool, TreeExit, TreeLimits,
     },
     project_registry::ProjectRootAuthority,
 };
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 use sage_process::error::LaunchError;
 
 fn shell_spec(script: &str) -> LaunchSpec {

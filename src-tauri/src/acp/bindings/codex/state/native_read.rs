@@ -1,4 +1,5 @@
-use crate::acp::{contract::RequiredText, goal::NativeRead};
+use crate::acp::goal::NativeRead;
+use sage_acp_protocol::contract::RequiredText;
 
 use super::{AdapterError, CodexAdapter};
 use crate::acp::bindings::codex::request::OutgoingRequest;
@@ -17,7 +18,7 @@ impl CodexAdapter {
     #[cfg(test)]
     pub(crate) fn learn_child_for_test(&mut self, child: &str) {
         self.child_threads
-            .push(crate::acp::contract::SafeText::new("child", child).unwrap());
+            .push(sage_acp_protocol::contract::SafeText::new("child", child).unwrap());
     }
     pub(crate) fn child_read_pending(&self) -> bool {
         self.pending_read.is_some()

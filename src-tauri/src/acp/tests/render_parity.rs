@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::SageRootId,
     intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
@@ -114,8 +114,8 @@ pub(super) fn adapter_fact(event: crate::acp::bindings::adapter::AdapterEvent) -
 /// (`runtime/adapter_pump/steer.rs`). No binding emits the steered message.
 pub(super) fn steered_message() -> Fact {
     let (id, payload) = crate::acp::runtime::steered_prompt_item(
-        &crate::acp::intent::Prompt::new("prompt", STEER).unwrap(),
-        &crate::acp::contract::RequiredText::new("client", STEER_CLIENT_ID).unwrap(),
+        &crate::acp::transcript_quote::Prompt::new("prompt", STEER).unwrap(),
+        &sage_acp_protocol::contract::RequiredText::new("client", STEER_CLIENT_ID).unwrap(),
     )
     .unwrap();
     Fact::Item {
@@ -308,7 +308,8 @@ fn parity_fixture_lists_only_known_scenarios_harnesses_and_owners() {
 
 #[test]
 fn the_store_refuses_sequences_no_binding_may_emit() {
-    use crate::acp::{contract::SafeText, store::StoreError};
+    use crate::acp::store::StoreError;
+    use sage_acp_protocol::contract::SafeText;
     let text = |lifecycle| Fact::Item {
         key: "message-1".into(),
         lifecycle,

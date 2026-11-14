@@ -1,11 +1,12 @@
-use crate::acp::{
-    bindings::{characterisation::Characterisation, release_version::ReleaseVersion},
+use crate::acp::bindings::{characterisation::Characterisation, release_version::ReleaseVersion};
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };
 
 use super::manifest::CuratedCapabilityCeiling;
-use crate::acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, pinned_codex_version};
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+use sage_acp_protocol::pinned_codex_version;
 
 const VERSION_TOKEN_BYTES_MAX: usize = 32;
 /// The desktop fixture replays the observed pinned wire, so its sessions carry
@@ -112,7 +113,7 @@ fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilitie
 
 fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCapabilities {
     let pinned =
-        ceiling.protocol_identity == crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY;
+        ceiling.protocol_identity == sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY;
     OptionalCapabilities {
         resume_session: ceiling.resume_session,
         load_session: ceiling.load_session,
@@ -205,7 +206,7 @@ pub(crate) enum ProjectionUnavailable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY;
+    use sage_acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY;
 
     fn observed_pinned_version() -> String {
         format!("codex-cli {PINNED_CODEX_VERSION}")
@@ -213,7 +214,7 @@ mod tests {
 
     fn pinned() -> CuratedCapabilityCeiling {
         CuratedCapabilityCeiling {
-            protocol_identity: crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY.into(),
+            protocol_identity: sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY.into(),
             new_session: true,
             resume_session: true,
             load_session: true,
@@ -242,7 +243,7 @@ mod tests {
         );
         assert_ne!(
             snapshot.protocol_version.as_str(),
-            crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
+            sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
         );
     }
 
@@ -251,7 +252,7 @@ mod tests {
         let (snapshot, models) = projected_capabilities(&pinned(), None).unwrap();
         assert_eq!(
             snapshot.protocol_version.as_str(),
-            crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
+            sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
         );
         assert!(models);
         assert!(snapshot.resume_session && snapshot.collaboration_event_projection);

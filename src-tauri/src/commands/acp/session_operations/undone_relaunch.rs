@@ -5,7 +5,7 @@
 //! left its runtime running, for instance to keep background tasks going.
 
 use super::*;
-use crate::acp::{intent::AcpConflictResource, service::UndoneRelaunchError};
+use crate::acp::{ipc::AcpConflictResource, service::UndoneRelaunchError};
 
 /// Points `request` at a relaunch of its session when its runtime still
 /// holds an undone turn; any other request is left as it is. Runs under the

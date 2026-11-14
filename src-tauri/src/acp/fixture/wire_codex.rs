@@ -14,7 +14,7 @@ pub(super) const THREAD_ID: &str = "fixture-persisted-session-1";
 pub(super) const FORK_THREAD_ID: &str = "fixture-fork-session-1";
 const USER_AGENT: &str = concat!(
     "sage/",
-    crate::acp_protocol::codex_protocol::pinned_codex_version!(),
+    sage_acp_protocol::pinned_codex_version!(),
     " (Windows 10.0.26200; x86_64) unknown (sage; 0.1.0)"
 );
 

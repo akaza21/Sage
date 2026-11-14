@@ -4,25 +4,22 @@ use crate::acp::bindings::pi::{
     bridge::{Bridge, Pending, Refusal, files, write},
     translator::{BRIDGE_WRITE_METHOD, PendingUiRequest},
 };
-use crate::{
-    acp::{
-        bindings::adapter::{
-            AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution,
-            EgressToken, ResourceMapper,
-        },
-        contract::{SafeText, SageServerRequestId},
-        intent::{
-            ExternalId, FileChangeFacts, FileChangeOperation, NormalizedPayload,
-            SafeResourceLocation,
-        },
-        lifecycle::{ItemLifecycle, ServerRequestState},
-        transport::{Frame, OutboundFrame, request_payload_digest},
+use crate::acp::{
+    bindings::adapter::{
+        AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution,
+        EgressToken, ResourceMapper,
     },
-    acp_protocol::{
-        access_mode::SessionAccessMode,
-        file_diff::{PairAdmission, admit_pair},
-        permissions::PermissionDecision,
+    transport::{Frame, OutboundFrame, request_payload_digest},
+};
+use sage_acp_protocol::{
+    access_mode::SessionAccessMode,
+    contract::{SafeText, SageServerRequestId},
+    file_diff::{PairAdmission, admit_pair},
+    intent::{
+        ExternalId, FileChangeFacts, FileChangeOperation, NormalizedPayload, SafeResourceLocation,
     },
+    lifecycle::{ItemLifecycle, ServerRequestState},
+    permissions::PermissionDecision,
 };
 use serde_json::{Value, json};
 
@@ -187,10 +184,11 @@ impl PiRuntime {
         {
             return refused(Refusal::Inactive);
         }
-        let root_id = crate::acp::contract::SageRootId::parse(bridge.workspace.root_id())
+        let root_id = sage_acp_protocol::contract::SageRootId::parse(bridge.workspace.root_id())
             .map_err(|_| AdapterRuntimeError::Frame)?;
-        let resource = crate::acp::intent::SafeResourceRef::new(root_id, edit.relative.clone())
-            .map_err(|_| AdapterRuntimeError::Frame)?;
+        let resource =
+            sage_acp_protocol::intent::SafeResourceRef::new(root_id, edit.relative.clone())
+                .map_err(|_| AdapterRuntimeError::Frame)?;
         if let Err(refusal) = write::commit(&bridge.workspace, &edit) {
             return refused(refusal);
         }
@@ -205,7 +203,7 @@ impl PiRuntime {
         };
         let external = ExternalId::new("piFileId", format!("file-{}", edit.tool_id))
             .map_err(|_| AdapterRuntimeError::Frame)?;
-        let (additions, deletions) = crate::acp::intent::line_delta(&edit.old, &edit.new);
+        let (additions, deletions) = sage_acp_protocol::intent::line_delta(&edit.old, &edit.new);
         let verb = if edit.created { "Created" } else { "Edited" };
         let facts = FileChangeFacts {
             resource: SafeResourceLocation::Resource { resource },

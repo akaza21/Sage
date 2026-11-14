@@ -1,13 +1,10 @@
 use rusqlite::params;
 
 use super::*;
-use crate::{
-    acp::{
-        contract::{ClientIntentId, SchemaVersionV1},
-        lifecycle::{TurnState, TurnTerminalOutcome, TurnTerminalReason},
-        projection::TurnTerminalReasonProjection,
-    },
-    persistence::Database,
+use crate::{acp::projection::TurnTerminalReasonProjection, persistence::Database};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, SchemaVersionV1},
+    lifecycle::{TurnState, TurnTerminalOutcome, TurnTerminalReason},
 };
 
 fn seeded() -> Database {
@@ -27,9 +24,9 @@ fn seeded() -> Database {
              UPDATE acp_store_usage SET chat_count=1,session_count=1,turn_count=1 WHERE singleton=1;",
             digest = "07".repeat(32),
             artifact = "d".repeat(64),
-            capabilities = serde_json::to_string(&crate::acp::intent::CapabilitySnapshotV1 {
+            capabilities = serde_json::to_string(&sage_acp_protocol::intent::CapabilitySnapshotV1 {
                 schema_version: SchemaVersionV1,
-                protocol_version: crate::acp::contract::RequiredText::new("protocol", "1").unwrap(),
+                protocol_version: sage_acp_protocol::contract::RequiredText::new("protocol", "1").unwrap(),
                 new_session: true,
                 resume_session: false,
                 load_session: false,

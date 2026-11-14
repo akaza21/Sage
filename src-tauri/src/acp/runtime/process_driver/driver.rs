@@ -7,13 +7,12 @@ mod teardown;
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    contract::RuntimeEpoch,
     runtime::{
         AdapterBatchJournal, AdapterPump, AdapterPumpError, FlushDisposition, HostError,
         QueueDisposition,
     },
-    scheduler::RuntimeOwner,
 };
+use sage_acp_protocol::{contract::RuntimeEpoch, scheduler::RuntimeOwner};
 
 use super::worker_command::{WorkerCommand, WorkerReply, WorkerResponder};
 use super::{
@@ -182,21 +181,21 @@ where
 
     pub(crate) fn dispatch_prompt(
         &mut self,
-        prompt: crate::acp::intent::Prompt,
-        client_message_id: crate::acp::contract::RequiredText<512>,
+        prompt: crate::acp::transcript_quote::Prompt,
+        client_message_id: sage_acp_protocol::contract::RequiredText<512>,
     ) -> Result<DriverProgress, DriverError> {
         self.dispatch_prompt_with_access_mode(
             prompt,
             client_message_id,
-            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         )
     }
 
     pub(crate) fn dispatch_prompt_with_access_mode(
         &mut self,
-        prompt: crate::acp::intent::Prompt,
-        client_message_id: crate::acp::contract::RequiredText<512>,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        prompt: crate::acp::transcript_quote::Prompt,
+        client_message_id: sage_acp_protocol::contract::RequiredText<512>,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<DriverProgress, DriverError> {
         self.ensure_running()?;
         if let Some(error) = self.latch_pending_exit() {
@@ -230,8 +229,8 @@ where
 
     pub(crate) fn dispatch_steer(
         &mut self,
-        prompt: crate::acp::intent::Prompt,
-        client_message_id: crate::acp::contract::RequiredText<512>,
+        prompt: crate::acp::transcript_quote::Prompt,
+        client_message_id: sage_acp_protocol::contract::RequiredText<512>,
     ) -> Result<(DriverProgress, u64), DriverError> {
         self.ensure_running()?;
         if let Some(error) = self.latch_pending_exit() {
@@ -279,8 +278,8 @@ where
 
     pub(crate) async fn resolve_permission(
         &mut self,
-        request_id: &crate::acp::contract::SageServerRequestId,
-        decision: crate::acp_protocol::permissions::PermissionDecision,
+        request_id: &sage_acp_protocol::contract::SageServerRequestId,
+        decision: sage_acp_protocol::permissions::PermissionDecision,
     ) -> Result<(), DriverError> {
         self.ensure_running()?;
         if self.pending_exit.is_some() {

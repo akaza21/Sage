@@ -4,10 +4,8 @@ use super::{
     BridgeError, Inbound, Pending, SdkBridge,
     notices::{TASK_PREFIX, prose},
 };
-use crate::acp::{
-    contract::SafeText, goal::NativeRpcReply, mcp::inventory::McpInventory,
-    session_control::SessionControl,
-};
+use crate::acp::{goal::NativeRpcReply, mcp::inventory::McpInventory};
+use sage_acp_protocol::{contract::SafeText, session_control::SessionControl};
 
 /// Passive requests Claude Code has not answered after their callers gave
 /// up; at this many, further passive requests wait until one is answered.
@@ -134,7 +132,7 @@ impl SdkBridge {
             config
                 .and_then(|config| super::super::fork::Fork::of(&self.session_id, config))
                 .and_then(|fork| {
-                    crate::acp::intent::ExternalId::new("externalSessionId", fork.id()).ok()
+                    sage_acp_protocol::intent::ExternalId::new("externalSessionId", fork.id()).ok()
                 })
                 .map_or(NativeRpcReply::Rejected, NativeRpcReply::Forked),
         );

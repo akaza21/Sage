@@ -5,12 +5,10 @@ use super::restore_tests::{option, owner, start};
 use super::stored_tests::seed_chat;
 use super::*;
 use crate::{
-    acp::session_config::{
-        ConfigId,
-        notices::{self, NoticeReason, SessionConfigNotice},
-    },
+    acp::session_config::notices::{self, NoticeReason, SessionConfigNotice},
     persistence::Database,
 };
+use sage_acp_protocol::session_config::ConfigId;
 
 const ITEMS: usize = 9;
 const ITEM_TEXT: usize = 220_000;

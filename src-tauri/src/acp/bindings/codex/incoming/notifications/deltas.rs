@@ -1,9 +1,7 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    bindings::codex::state::ExternalKind, contract::SafeText, intent::NormalizedPayload,
-    lifecycle::ItemLifecycle,
-};
+use crate::acp::bindings::codex::state::ExternalKind;
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
 use sage_core::limits::LIMITS;
 
 use super::super::{

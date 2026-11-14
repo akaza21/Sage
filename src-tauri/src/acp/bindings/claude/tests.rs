@@ -14,14 +14,6 @@ use uuid::Uuid;
 use super::admission::{ClaudeAdmissionUnavailable, ClaudeBindingRegistration};
 use super::*;
 use crate::acp::{
-    contract::{
-        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
-    },
-    intent::{
-        IMAGE_BASE64_MAX, ImageMediaType, NormalizedPayload, SafeResourceRef, ToolCategory,
-        UnavailableResourceReason,
-    },
-    lifecycle::{ItemLifecycle, ToolState, TurnState},
     read_text_file::{
         DiskAllowedState, ReadTextClassification, ReadTextFileService, ReadTextFlushAck,
         ReadTextFlushState, ReadTextOwner,
@@ -30,6 +22,16 @@ use crate::acp::{
     transport::{DeadlineAsyncWriter, FrameReader},
 };
 use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
+use sage_acp_protocol::{
+    contract::{
+        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
+    },
+    intent::{
+        IMAGE_BASE64_MAX, ImageMediaType, NormalizedPayload, SafeResourceRef, ToolCategory,
+        UnavailableResourceReason,
+    },
+    lifecycle::{ItemLifecycle, ToolState, TurnState},
+};
 use sage_core::limits::LIMITS;
 
 struct P02Capture(Vec<u8>);
@@ -754,7 +756,7 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
             ..
         } => assert!(matches!(
             locations.as_slice(),
-            [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+            [sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }]
                 if resource.relative_path.as_str() == "src/lib.rs"
         )),
         other => panic!("unexpected event: {other:?}"),
@@ -777,7 +779,7 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
             ..
         } => assert!(matches!(
             locations.as_slice(),
-            [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+            [sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }]
                 if resource.relative_path.as_str() == "src/lib.rs"
         )),
         other => panic!("unexpected event: {other:?}"),
@@ -793,7 +795,8 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
                 },
             ..
         } => {
-            let crate::acp::intent::SafeResourceLocation::Resource { resource } = resource else {
+            let sage_acp_protocol::intent::SafeResourceLocation::Resource { resource } = resource
+            else {
                 panic!("expected mapped resource");
             };
             assert_eq!(resource.relative_path.as_str(), "src/lib.rs");
@@ -994,7 +997,8 @@ fn read_tool_sparse_completion_update_retains_locations() {
         panic!("unexpected events: {completed:?}");
     };
     assert_eq!(label.as_str(), "Read lib.rs");
-    let [crate::acp::intent::SafeResourceLocation::Resource { resource }] = locations.as_slice()
+    let [sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }] =
+        locations.as_slice()
     else {
         panic!("expected one retained resource: {locations:?}");
     };
@@ -1236,7 +1240,7 @@ fn file_tool_locations_reject_over_cap_and_malformed_entries() {
     }
 
     let over_cap = Value::Array(
-        (0..=crate::acp::intent::COMMAND_RESOURCE_LIMIT)
+        (0..=sage_core::limits::COMMAND_RESOURCE_LIMIT)
             .map(|_| json!({"path": r"C:\fixture\root\src\lib.rs"}))
             .collect(),
     );

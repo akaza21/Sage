@@ -1,13 +1,13 @@
 use rusqlite::{Transaction, params};
 
-use crate::acp::{
+use crate::acp::projection::ActivityRole;
+use sage_acp_protocol::{
     contract::{
         EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch, SageActivityId,
         SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageTurnId,
     },
     intent::{ActivityProvenanceV1, ExternalId},
     lifecycle::ActivityLifecycle,
-    projection::ActivityRole,
 };
 use sage_core::limits::LIMITS;
 

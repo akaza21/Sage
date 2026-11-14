@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::scheduler::RuntimeOwner;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 impl AcpService {
     /// Live activities and Undo are display decoration: a page they would push

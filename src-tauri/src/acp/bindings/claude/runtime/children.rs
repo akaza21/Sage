@@ -1,10 +1,8 @@
-use crate::{
-    acp::{
-        contract::{BoundedVec, SafeText},
-        intent::NormalizedPayload,
-        lifecycle::ItemLifecycle,
-    },
-    acp_protocol::codex_protocol::ChildTextRole,
+use sage_acp_protocol::{
+    codex_protocol::ChildTextRole,
+    contract::{BoundedVec, SafeText},
+    intent::NormalizedPayload,
+    lifecycle::ItemLifecycle,
 };
 
 use super::*;
@@ -204,7 +202,7 @@ fn live(
     item: &str,
     role: Option<ChildTextRole>,
     lifecycle: ItemLifecycle,
-    tool_state: Option<crate::acp::lifecycle::ToolState>,
+    tool_state: Option<sage_acp_protocol::lifecycle::ToolState>,
     payload: NormalizedPayload,
 ) -> Result<SharedEvent, AdapterRuntimeError> {
     let child = ExternalId::new("childThreadId", key).map_err(frame)?;

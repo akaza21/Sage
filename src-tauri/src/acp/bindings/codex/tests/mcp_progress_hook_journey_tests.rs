@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::{
+use sage_acp_protocol::{
     intent::{
         ToolCategory,
         session_event::{SessionActivityState, SessionScopedEvent},

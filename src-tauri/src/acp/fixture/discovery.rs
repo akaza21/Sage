@@ -6,7 +6,7 @@
 //! protocol, so the composer's model menu is the catalogue the session sees.
 use serde_json::{Value, json};
 
-use crate::acp_protocol::native_cases::reply_shape;
+use sage_acp_protocol::native_cases::reply_shape;
 
 /// The reply to one discovery request, or `None` for a request discovery
 /// does not make. Like the Codex app server, a reply carries only its `id`
@@ -31,7 +31,7 @@ pub(crate) fn native_case_discovery_reply(case: &str, request: &Value) -> Option
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp_protocol::native_cases::native_case_offers_models;
+    use sage_acp_protocol::native_cases::native_case_offers_models;
 
     #[test]
     fn the_restart_case_offers_both_models_its_session_lists() {

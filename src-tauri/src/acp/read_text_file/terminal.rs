@@ -8,14 +8,16 @@ use tokio::sync::oneshot;
 
 use crate::{
     acp::{
-        contract::{BoundedVec, SafeText},
-        intent::{NormalizedPayload, ToolCategory},
         resource_mapper::NativeResourceAdmission,
         runtime::read_text_file::{ReadTextRange, ReadTextRequestId},
         transport::P02Cancellation,
     },
     domain::ResourceRef,
     workspace::Workspace,
+};
+use sage_acp_protocol::{
+    contract::{BoundedVec, SafeText},
+    intent::{NormalizedPayload, ToolCategory},
 };
 
 use super::{

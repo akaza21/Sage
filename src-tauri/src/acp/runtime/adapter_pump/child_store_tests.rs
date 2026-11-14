@@ -1,11 +1,11 @@
 use super::*;
 use crate::acp::{
     goal::NativeRpcReply,
-    scheduler::RuntimeOwner,
     store::child_transcript::{
         ChildTranscriptScope, load_earlier_snapshot, load_snapshot, persist_snapshot,
     },
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 fn observed_child_wire(request_id: u64) -> Vec<u8> {
     let mut value: serde_json::Value =
@@ -112,12 +112,10 @@ fn observed_wire_pump_snapshot_survives_reopen_without_mutating_parent_turn() {
 
 #[test]
 fn synthetic_child_item_flood_marks_retention_limit_without_dropping_admitted_items() {
-    use crate::{
-        acp::{
-            lifecycle::ItemLifecycle,
-            store::{AdapterStoreOwner, ChildLiveItemCommand},
-        },
-        acp_protocol::codex_protocol::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
+    use crate::acp::store::{AdapterStoreOwner, ChildLiveItemCommand};
+    use sage_acp_protocol::{
+        codex_protocol::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
+        lifecycle::ItemLifecycle,
     };
 
     let directory = std::env::temp_dir().join(format!("sage-cp18e-cap-{}", uuid::Uuid::new_v4()));
@@ -207,11 +205,11 @@ fn synthetic_child_item_flood_marks_retention_limit_without_dropping_admitted_it
 
 #[test]
 fn live_command_before_read_message_keeps_witnessed_order() {
-    use crate::acp::{
+    use sage_acp_protocol::codex_protocol::{ChildItem, ChildTranscriptSnapshot, ChildTurn};
+    use sage_acp_protocol::{
         intent::{ToolCategory, ToolExecution},
         lifecycle::{ItemLifecycle, ToolState},
     };
-    use crate::acp_protocol::codex_protocol::{ChildItem, ChildTranscriptSnapshot, ChildTurn};
 
     let directory = std::env::temp_dir().join(format!("sage-cp18e-order-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&directory).unwrap();
@@ -298,10 +296,8 @@ fn live_command_before_read_message_keeps_witnessed_order() {
 
 #[test]
 fn terminal_parent_turn_does_not_stop_bound_child_retention() {
-    use crate::acp::{
-        lifecycle::ItemLifecycle,
-        store::{AdapterStoreOwner, ChildLiveItemCommand},
-    };
+    use crate::acp::store::{AdapterStoreOwner, ChildLiveItemCommand};
+    use sage_acp_protocol::lifecycle::ItemLifecycle;
     let directory = std::env::temp_dir().join(format!(
         "sage-cp18e-terminal-parent-{}",
         uuid::Uuid::new_v4()
@@ -353,12 +349,10 @@ fn terminal_parent_turn_does_not_stop_bound_child_retention() {
 
 #[test]
 fn byte_limit_keeps_admitted_prefix_when_later_item_is_small() {
-    use crate::{
-        acp::{
-            lifecycle::ItemLifecycle,
-            store::{AdapterStoreOwner, ChildLiveItemCommand},
-        },
-        acp_protocol::codex_protocol::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
+    use crate::acp::store::{AdapterStoreOwner, ChildLiveItemCommand};
+    use sage_acp_protocol::{
+        codex_protocol::{ChildItem, ChildTranscriptSnapshot, ChildTurn},
+        lifecycle::ItemLifecycle,
     };
     let directory =
         std::env::temp_dir().join(format!("sage-cp18e-byte-prefix-{}", uuid::Uuid::new_v4()));
@@ -404,7 +398,7 @@ fn byte_limit_keeps_admitted_prefix_when_later_item_is_small() {
             child_thread_id: ExternalId::new("child", "child-one").unwrap(),
             child_turn_id: ExternalId::new("turn", "child-turn-1").unwrap(),
             item_id: ExternalId::new("item", id).unwrap(),
-            role: Some(crate::acp_protocol::codex_protocol::ChildTextRole::Assistant),
+            role: Some(sage_acp_protocol::codex_protocol::ChildTextRole::Assistant),
             lifecycle: ItemLifecycle::Completed,
             tool_state: None,
             payload: NormalizedPayload::Text {
@@ -433,9 +427,10 @@ fn byte_limit_keeps_admitted_prefix_when_later_item_is_small() {
 
 #[test]
 fn child_turn_status_beyond_turn_cap_marks_retention_limited() {
-    use crate::{
-        acp::{lifecycle::TurnState, store::AdapterStoreOwner},
-        acp_protocol::codex_protocol::{ChildTranscriptSnapshot, ChildTurn},
+    use crate::acp::store::AdapterStoreOwner;
+    use sage_acp_protocol::{
+        codex_protocol::{ChildTranscriptSnapshot, ChildTurn},
+        lifecycle::TurnState,
     };
     let directory =
         std::env::temp_dir().join(format!("sage-cp18e-turn-cap-{}", uuid::Uuid::new_v4()));
@@ -519,7 +514,8 @@ fn projection_state(connection: &rusqlite::Connection) -> (i64, i64, i64, u64) {
 
 #[test]
 fn a_changed_live_child_item_advances_only_the_child_projection_epoch() {
-    use crate::acp::{lifecycle::ItemLifecycle, store::ChildLiveItemCommand};
+    use crate::acp::store::ChildLiveItemCommand;
+    use sage_acp_protocol::lifecycle::ItemLifecycle;
 
     let directory = std::env::temp_dir().join(format!("sage-w8sub-epoch-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&directory).unwrap();
@@ -610,7 +606,7 @@ fn the_latest_spawn_for_a_child_supplies_only_its_wire_model() {
             receiver_labels: Default::default(),
             operation: Some(SafeText::new("operation", "spawnAgent").unwrap()),
             agent_key: None,
-            agent_keys: crate::acp::contract::BoundedVec::new(
+            agent_keys: sage_acp_protocol::contract::BoundedVec::new(
                 "agentKeys",
                 vec![SafeText::new("agentKey", child).unwrap()],
             )

@@ -1,14 +1,12 @@
-use crate::{
-    acp::{
-        bindings::adapter::{AdapterEgress, EgressToken},
-        runtime::later_permission::{LaterPermissionError, resolve_later_permission},
-        transport::OutboundFrame,
-    },
-    acp_protocol::permissions::PermissionDecision,
+use crate::acp::{
+    bindings::adapter::{AdapterEgress, EgressToken},
+    runtime::later_permission::{LaterPermissionError, resolve_later_permission},
+    transport::OutboundFrame,
 };
+use sage_acp_protocol::permissions::PermissionDecision;
 
-fn request() -> crate::acp::contract::SageServerRequestId {
-    crate::acp::contract::SageServerRequestId::parse("permission-request-1").unwrap()
+fn request() -> sage_acp_protocol::contract::SageServerRequestId {
+    sage_acp_protocol::contract::SageServerRequestId::parse("permission-request-1").unwrap()
 }
 
 fn reply() -> AdapterEgress {
@@ -38,7 +36,7 @@ fn allow_once_uses_the_permission_allow_token() {
 
 #[test]
 fn request_id_is_the_permission_allow_token_identity() {
-    let request = crate::acp::contract::SageServerRequestId::parse("approval-1").unwrap();
+    let request = sage_acp_protocol::contract::SageServerRequestId::parse("approval-1").unwrap();
     let egress = resolve_later_permission(&request, &PermissionDecision::AllowOnce, Some(reply()))
         .unwrap()
         .unwrap();
@@ -47,7 +45,7 @@ fn request_id_is_the_permission_allow_token_identity() {
 
 #[test]
 fn request_id_is_the_permission_deny_token_identity() {
-    let request = crate::acp::contract::SageServerRequestId::parse("pi-request-1").unwrap();
+    let request = sage_acp_protocol::contract::SageServerRequestId::parse("pi-request-1").unwrap();
     let egress = resolve_later_permission(&request, &PermissionDecision::Deny, Some(reply()))
         .unwrap()
         .unwrap();

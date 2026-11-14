@@ -3,13 +3,16 @@ use super::{
     transcript::{self, TranscriptError},
 };
 use crate::acp::{
+    store::{self, StoreError, TurnUndoneCommand, turn_undo::fixture::Fixture},
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SageAgentSessionId,
         SageTurnId,
     },
-    intent::{ExternalId, Prompt},
+    intent::ExternalId,
     lifecycle::TurnState,
-    store::{self, StoreError, TurnUndoneCommand, turn_undo::fixture::Fixture},
 };
 use std::{io::Write, path::PathBuf};
 
@@ -55,7 +58,7 @@ impl Chat {
     /// Uses the same transcript resolver and durable admission as the service;
     /// completion below represents the harness's successful control response.
     fn stage(&self, turn: &str) -> Result<TurnUndoneCommand, String> {
-        let owner = crate::acp::scheduler::RuntimeOwner {
+        let owner = sage_acp_protocol::scheduler::RuntimeOwner {
             project_id: self.fixture.project.clone(),
             chat_id: self.fixture.chat.clone(),
             session_id: SageAgentSessionId::parse("session-a").unwrap(),

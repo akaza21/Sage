@@ -1,8 +1,8 @@
 use serde_json::Value;
 
 #[cfg(test)]
-use crate::acp::lifecycle::TurnState;
-use crate::acp::{
+use sage_acp_protocol::lifecycle::TurnState;
+use sage_acp_protocol::{
     contract::{RequiredText, SafeText},
     intent::NormalizedPayload,
     lifecycle::ItemLifecycle,

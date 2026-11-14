@@ -3,18 +3,16 @@ use std::{
     time::Duration,
 };
 
-use crate::acp::{
-    contract::{SageChatId, SageProjectId},
-    service::{
-        RendererRecreationUsage,
-        renderer_recreation::RendererRecreationNativeSnapshot,
-        renderer_recreation_orchestrator::{
-            MainWindowRendererReload, RendererRecreationPairError,
-            pair_renderer_recreation_after_observed_reload,
-        },
+use crate::acp::service::{
+    RendererRecreationUsage,
+    renderer_recreation::RendererRecreationNativeSnapshot,
+    renderer_recreation_orchestrator::{
+        MainWindowRendererReload, RendererRecreationPairError,
+        pair_renderer_recreation_after_observed_reload,
     },
 };
 use crate::state::AppState;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 /// How long a finished load waits for its start snapshot. The snapshot reads
 /// a bounded number of rows, so this only trips if the store is wedged.
@@ -236,13 +234,8 @@ fn admitted_codex_page(state: &AppState) -> Option<(SageProjectId, SageChatId)> 
 #[cfg(test)]
 mod tests {
     use super::RendererRecreationReloadLifecycle;
-    use crate::{
-        acp::{
-            contract::{SageChatId, SageProjectId},
-            service::AcpService,
-        },
-        persistence::Database,
-    };
+    use crate::{acp::service::AcpService, persistence::Database};
+    use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
     fn fixture_database() -> Database {
         let database = Database::open(std::path::Path::new(":memory:")).unwrap();

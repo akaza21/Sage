@@ -1,6 +1,6 @@
 use super::*;
-use crate::acp::{
-    bindings::access_policy::governs_session_modes,
+use crate::acp::bindings::access_policy::governs_session_modes;
+use sage_acp_protocol::{
     contract::*,
     session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision, ConfigValue},
 };
@@ -138,12 +138,12 @@ pub(crate) async fn configure(
 /// governed, so a routing failure never opens a direct mode change.
 pub(super) fn refuse_governed_mode_change(
     governed: Option<bool>,
-    live: Option<&crate::acp::session_config::SessionConfigOverlay>,
+    live: Option<&sage_acp_protocol::session_config::SessionConfigOverlay>,
     mutation: &ConfigMutation,
 ) -> Result<(), AcpIpcError> {
     let changes_mode = match live {
         Some(overlay) => overlay.config.changes_mode(mutation),
-        None => crate::acp::session_config::SessionConfig::may_change_mode(mutation),
+        None => sage_acp_protocol::session_config::SessionConfig::may_change_mode(mutation),
     };
     if governed.unwrap_or(true) && changes_mode {
         return Err(AcpIpcError::InvalidRequest {
@@ -205,14 +205,15 @@ pub(crate) async fn queue_acp_session_config_choice(
     }
     // A live runtime that has not reported its config yet takes the choice
     // once it has, as a parked session does on resume.
-    let runtime = snapshot
-        .runtime_epoch
-        .map(|runtime_epoch| crate::acp::scheduler::RuntimeOwner {
-            project_id: request.project_id.clone(),
-            chat_id: request.chat_id.clone(),
-            session_id: request.session_id.clone(),
-            runtime_epoch,
-        });
+    let runtime =
+        snapshot
+            .runtime_epoch
+            .map(|runtime_epoch| sage_acp_protocol::scheduler::RuntimeOwner {
+                project_id: request.project_id.clone(),
+                chat_id: request.chat_id.clone(),
+                session_id: request.session_id.clone(),
+                runtime_epoch,
+            });
     let choice = match request.choice {
         QueuedChoice::Mode { mode_id } => ConfigMutation::Mode(mode_id),
         QueuedChoice::Option { config_id, value } => ConfigMutation::Option { config_id, value },
@@ -229,7 +230,7 @@ pub(crate) async fn queue_acp_session_config_choice(
         .map_err(|error| match error {
             crate::acp::service::QueueError::NotOffered | crate::acp::service::QueueError::Live => {
                 AcpIpcError::Conflict {
-                    resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
+                    resource: crate::acp::ipc::AcpConflictResource::ConfigRevision,
                     message: safe_message("The session configuration changed; reload and retry."),
                 }
             }
@@ -243,7 +244,7 @@ pub(crate) async fn queue_acp_session_config_choice(
 pub(super) fn map_config_error(error: crate::acp::runtime::HostError) -> AcpIpcError {
     match error {
         crate::acp::runtime::HostError::Intent => AcpIpcError::Conflict {
-            resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
+            resource: crate::acp::ipc::AcpConflictResource::ConfigRevision,
             message: safe_message("The live session configuration changed; reload and retry."),
         },
         crate::acp::runtime::HostError::ConfigMutationRejected => AcpIpcError::Rejected {

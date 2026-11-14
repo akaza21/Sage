@@ -157,8 +157,8 @@ impl ExpectedOwnerScope {
     pub(crate) fn matches_runtime(
         &self,
         binding_digest: &[u8; 32],
-        session_id: &crate::acp::contract::SageAgentSessionId,
-        runtime_epoch: crate::acp::contract::RuntimeEpoch,
+        session_id: &sage_acp_protocol::contract::SageAgentSessionId,
+        runtime_epoch: sage_acp_protocol::contract::RuntimeEpoch,
     ) -> bool {
         self.binding_digest == *binding_digest
             && self.owner.session_id == *session_id

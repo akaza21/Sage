@@ -5,7 +5,8 @@ use super::{AdapterError, CodexAdapter, RequestKind};
 use serde_json::Value;
 
 use crate::acp::bindings::codex::request::OutgoingRequest;
-use crate::acp::{contract::SafeText, goal::NativeRpcReply};
+use crate::acp::goal::NativeRpcReply;
+use sage_acp_protocol::contract::SafeText;
 
 impl CodexAdapter {
     /// `thread/revert` for the Turn Sage sent as `client_message_id`, which

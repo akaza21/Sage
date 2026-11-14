@@ -7,9 +7,9 @@ mod handoff;
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     runtime::{ActivationFlush, ActivationJournal, ActivationPump, ActivationPumpError},
-    scheduler::RuntimeOwner,
 };
 use diagnostic::safe_frame_diagnostic;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::types::tree_exit;
 use super::{
@@ -107,7 +107,7 @@ where
         clock: Arc<dyn DriverClock>,
     ) -> RetainedActivationDriverConstruction<A, J, R, T, C> {
         if pump.runtime_owner() != owner
-            || owner.runtime_epoch == crate::acp::contract::RuntimeEpoch::ZERO
+            || owner.runtime_epoch == sage_acp_protocol::contract::RuntimeEpoch::ZERO
         {
             return Err(Box::new((
                 pump,

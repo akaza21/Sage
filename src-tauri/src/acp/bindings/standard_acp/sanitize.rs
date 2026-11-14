@@ -14,10 +14,8 @@ mod regression_tests;
 #[path = "sanitize/review_tests.rs"]
 mod review_tests;
 
-use crate::acp::{
-    contract::{ContractError, SafeText},
-    redaction::text::{Mode, neutralized, redact},
-};
+use crate::acp::redaction::text::{Mode, neutralized, redact};
+use sage_acp_protocol::contract::{ContractError, SafeText};
 use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
 pub(crate) fn normalized_text<const MAX: usize>(

@@ -2,7 +2,7 @@ use rusqlite::{OptionalExtension, params};
 
 use super::chat_fork::resumable_capabilities as resumable;
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
         SageProjectId,

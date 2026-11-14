@@ -1,6 +1,6 @@
 use sage_core::encoded_len::encoded_len;
 
-use crate::acp::{intent::AcpChatPage, store::StoreError};
+use crate::acp::{ipc::AcpChatPage, store::StoreError};
 
 const EMPTY_TURNS: usize = "[]".len();
 

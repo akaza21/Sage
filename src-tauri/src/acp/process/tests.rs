@@ -3,10 +3,8 @@ use std::path::PathBuf;
 
 use uuid::Uuid;
 
-use crate::{
-    acp::contract::{ProjectGeneration, SageProjectId, SageRootId},
-    project_registry::ProjectRootAuthority,
-};
+use crate::project_registry::ProjectRootAuthority;
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 use sage_core::limits::LIMITS;
 use sage_process::error::LaunchError;
 

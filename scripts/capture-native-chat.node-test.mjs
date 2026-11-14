@@ -593,7 +593,10 @@ test("Pi capture and probe protocols agree with the binding version constant", (
 });
 test("Codex capture protocol agrees with the pinned Codex version", () => {
   const manifest = readFileSync(
-    new URL("../src-tauri/src/acp_protocol/codex_protocol.rs", import.meta.url),
+    new URL(
+      "../crates/sage-acp-protocol/src/codex_protocol.rs",
+      import.meta.url,
+    ),
     "utf8",
   );
   const version = manifest.match(

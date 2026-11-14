@@ -4,10 +4,8 @@ use std::{collections::VecDeque, time::Duration};
 use serde_json::{Value, json};
 
 use super::*;
-use crate::acp::{
-    bindings::codex::parse_packet_metadata, contract::RuntimeEpoch,
-    transport::IncrementalFrameDecoder,
-};
+use crate::acp::{bindings::codex::parse_packet_metadata, transport::IncrementalFrameDecoder};
+use sage_acp_protocol::contract::RuntimeEpoch;
 
 const LOGIN: &str = "7be3f527-7a5a-41e5-9e5f-a1a74b42f86b";
 const FOREIGN: &str = "9a833e11-0fb0-46f8-a1b5-3cf48ffb2c89";

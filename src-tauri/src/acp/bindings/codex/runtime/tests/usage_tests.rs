@@ -1,5 +1,6 @@
 use super::*;
-use crate::acp::{goal::NativeRpcReply, usage::UsageState};
+use crate::acp::goal::NativeRpcReply;
+use sage_acp_protocol::usage::UsageState;
 
 fn update(limit: &str, used: i64) -> Frame {
     frame(

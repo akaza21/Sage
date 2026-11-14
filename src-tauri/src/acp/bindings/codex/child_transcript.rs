@@ -1,10 +1,6 @@
-use crate::acp::{
-    bindings::{adapter::ResourceMapper, codex::normalize_transcript_item},
-    contract::SafeText,
-    intent::NormalizedPayload,
-    lifecycle::ItemLifecycle,
-};
-use crate::acp_protocol::codex_protocol::{ChildItem, ChildTextRole, ChildTurn, MAX_ITEMS};
+use crate::acp::bindings::{adapter::ResourceMapper, codex::normalize_transcript_item};
+use sage_acp_protocol::codex_protocol::{ChildItem, ChildTextRole, ChildTurn, MAX_ITEMS};
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -16,15 +12,17 @@ impl<M: ResourceMapper + ?Sized> crate::acp::bindings::codex::ResourceMapper
     fn map_existing(
         &self,
         absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
         self.0.map_existing(absolute_path)
     }
 
     fn map_missing_display(
         &self,
         absolute_path: &str,
-    ) -> Option<crate::acp::intent::SafeResourceRef> {
+    ) -> Option<sage_acp_protocol::intent::SafeResourceRef> {
         self.0.map_missing_display(absolute_path)
     }
 }

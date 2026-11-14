@@ -3,9 +3,9 @@ use crate::acp::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
         EgressToken, HarnessAdapter, ResourceMapper as SharedResourceMapper,
     },
-    intent::CapabilitySnapshotV1,
     transport::{Frame, request_payload_digest},
 };
+use sage_acp_protocol::intent::CapabilitySnapshotV1;
 use sha2::{Digest, Sha256};
 
 use super::super::wire::decode_frame;
@@ -23,13 +23,13 @@ pub(super) fn response_id(value: &serde_json::Value) -> Result<u64, AdapterRunti
 }
 
 pub(crate) fn scoped_permission_id(
-    session: &crate::acp::contract::SageAgentSessionId,
-    epoch: crate::acp::contract::RuntimeEpoch,
+    session: &sage_acp_protocol::contract::SageAgentSessionId,
+    epoch: sage_acp_protocol::contract::RuntimeEpoch,
     wire: &str,
-) -> Result<crate::acp::intent::ExternalId, AdapterRuntimeError> {
+) -> Result<sage_acp_protocol::intent::ExternalId, AdapterRuntimeError> {
     let session_digest = Sha256::digest(session.as_str().as_bytes());
     let wire_digest = Sha256::digest(wire.as_bytes());
-    crate::acp::intent::ExternalId::new(
+    sage_acp_protocol::intent::ExternalId::new(
         "permissionIntentId",
         format!(
             "standard-acp:{session_digest:x}:{}:{wire_digest:x}",
@@ -68,7 +68,7 @@ impl HarnessAdapter for StandardAcpRuntime {
 
     fn cancel_permission(
         &mut self,
-        request_id: &crate::acp::contract::SageServerRequestId,
+        request_id: &sage_acp_protocol::contract::SageServerRequestId,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.cancel_elicitation(request_id.as_str())
             .unwrap_or(Err(AdapterRuntimeError::UnsupportedCommand))
@@ -105,31 +105,33 @@ impl HarnessAdapter for StandardAcpRuntime {
                     })
                     .ok_or(AdapterRuntimeError::LaterPermissionMiss)?;
                 let reply = match decision {
-                    crate::acp_protocol::permissions::PermissionDecision::AllowOnce => {
+                    sage_acp_protocol::permissions::PermissionDecision::AllowOnce => {
                         if record.allow_once_option_id.is_none() {
                             return Err(AdapterRuntimeError::UnsupportedCommand);
                         }
                         PermissionReply::AllowOnce
                     }
-                    crate::acp_protocol::permissions::PermissionDecision::AllowAlways => {
+                    sage_acp_protocol::permissions::PermissionDecision::AllowAlways => {
                         if record.allow_always_option_id.is_none() {
                             return Err(AdapterRuntimeError::UnsupportedCommand);
                         }
                         PermissionReply::AllowAlways
                     }
-                    crate::acp_protocol::permissions::PermissionDecision::Deny => {
+                    sage_acp_protocol::permissions::PermissionDecision::Deny => {
                         PermissionReply::Deny
                     }
-                    crate::acp_protocol::permissions::PermissionDecision::Ask => {
+                    sage_acp_protocol::permissions::PermissionDecision::Ask => {
                         return Err(AdapterRuntimeError::Operation);
                     }
-                    crate::acp_protocol::permissions::PermissionDecision::Answer(_) => {
+                    sage_acp_protocol::permissions::PermissionDecision::Answer(_) => {
                         return Err(AdapterRuntimeError::UnsupportedCommand);
                     }
                 };
-                let external =
-                    crate::acp::intent::ExternalId::new("permissionRequest", request_id.as_str())
-                        .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
+                let external = sage_acp_protocol::intent::ExternalId::new(
+                    "permissionRequest",
+                    request_id.as_str(),
+                )
+                .map_err(|_| AdapterRuntimeError::LaterPermissionMiss)?;
                 let egress = permission_egress(
                     &external,
                     &record.wire_id,

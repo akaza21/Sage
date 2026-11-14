@@ -1,5 +1,6 @@
 use super::*;
-use crate::acp::{contract::SageTurnId, runtime::*, store::AdapterTurnCursor};
+use crate::acp::{runtime::*, store::AdapterTurnCursor};
+use sage_acp_protocol::contract::SageTurnId;
 use std::time::Instant;
 
 /// With `answering`, a native RPC waits there for the test to answer it.

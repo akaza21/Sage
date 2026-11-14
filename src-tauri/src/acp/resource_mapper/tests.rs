@@ -42,7 +42,7 @@ fn diff_context_is_root_scoped_bounded_utf8_text() {
     let mapper = NativeResourceMapper::new([root("root-one", tree.0.clone())]).unwrap();
     let resource =
         SafeResourceRef::new(SageRootId::parse("root-one").unwrap(), "context.txt").unwrap();
-    let exact = "é".repeat(crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX / 2);
+    let exact = "é".repeat(sage_core::limits::DIFF_SIDE_BYTES_MAX / 2);
     fs::write(&path, &exact).unwrap();
     assert_eq!(
         mapper.read_diff_context(&resource).as_deref(),

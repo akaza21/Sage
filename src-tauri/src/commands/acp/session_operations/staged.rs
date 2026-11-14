@@ -9,10 +9,10 @@ pub(super) fn resolve(
     state: &AppState,
     project: &SageProjectId,
     chat: &SageChatId,
-    staged: Option<crate::acp::intent::StagedSelection>,
-    prompt: &crate::acp::intent::Prompt,
+    staged: Option<crate::acp::ipc::StagedSelection>,
+    prompt: &crate::acp::transcript_quote::Prompt,
 ) -> Result<Selection, AcpIpcError> {
-    use crate::acp::intent::StagedSelection;
+    use crate::acp::ipc::StagedSelection;
     if prompt.action.is_some() {
         return Ok(Selection::None);
     }
@@ -65,7 +65,7 @@ pub(super) fn record_sent(
     state: &AppState,
     project: &SageProjectId,
     chat: &SageChatId,
-    client_intent_id: &crate::acp::contract::ClientIntentId,
+    client_intent_id: &sage_acp_protocol::contract::ClientIntentId,
     files: &Resources,
 ) {
     let attached_at = attachment(&state.database, project.as_str(), chat.as_str());
@@ -97,7 +97,7 @@ pub(super) fn record_sent(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::contract::ClientIntentId;
+    use sage_acp_protocol::contract::ClientIntentId;
 
     /// A chat with an open tab and a pasted batch named by the next send.
     fn sent_batch() -> (
@@ -161,7 +161,7 @@ mod tests {
 
     #[test]
     fn a_session_action_leaves_the_staged_files_for_the_next_prompt() {
-        use crate::acp::intent::{Prompt, StagedSelection};
+        use crate::acp::{ipc::StagedSelection, transcript_quote::Prompt};
         let (state, project, chat, files, root) = sent_batch();
         let revision = state
             .acp

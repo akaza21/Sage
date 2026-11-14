@@ -73,7 +73,7 @@ impl Mentions {
     }
 }
 
-impl super::intent::Prompt {
+impl crate::acp::transcript_quote::Prompt {
     /// The bytes the dispatch budget counts: everything the prompt holds
     /// but its images, which have a budget of their own, plus `files`.
     fn dispatch_bytes(&self, files: &Resources) -> usize {

@@ -14,7 +14,7 @@ use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
 
 use super::SettingsStore;
-use crate::acp_protocol::access_mode::SessionAccessMode;
+use sage_acp_protocol::access_mode::SessionAccessMode;
 
 /// Chats whose choice is kept. Past it the oldest choice goes first; losing
 /// one only returns that chat to its binding's default.

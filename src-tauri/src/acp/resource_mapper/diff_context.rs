@@ -1,7 +1,7 @@
 use std::io::Read;
 
 use super::*;
-use crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX;
+use sage_core::limits::DIFF_SIDE_BYTES_MAX;
 
 impl NativeResourceMapper {
     pub(super) fn bounded_diff_context(&self, resource: &SafeResourceRef) -> Option<String> {

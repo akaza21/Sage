@@ -5,7 +5,9 @@
 
 use super::*;
 use crate::acp::bindings::claude::{mode_change_admitted, option_target_mode, wider_mode};
-use crate::acp::intent::session_event::{SessionNotice, SessionNoticeLevel, SessionScopedEvent};
+use sage_acp_protocol::intent::session_event::{
+    SessionNotice, SessionNoticeLevel, SessionScopedEvent,
+};
 
 impl ClaudeRuntime {
     pub(super) fn sanction_option(&mut self, option_id: &str) {

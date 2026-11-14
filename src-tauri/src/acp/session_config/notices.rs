@@ -1,7 +1,7 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
-use super::{ConfigId, ConfigMutation};
-use crate::acp::contract::SageAgentSessionId;
+use sage_acp_protocol::contract::SageAgentSessionId;
+use sage_acp_protocol::session_config::{ConfigId, ConfigMutation};
 
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]

@@ -5,7 +5,7 @@
 
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::EntityRevision,
     intent::{
         ExternalId,

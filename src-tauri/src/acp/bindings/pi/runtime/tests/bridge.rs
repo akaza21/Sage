@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::bindings::pi::bridge::Refusal;
-use crate::acp_protocol::{access_mode::SessionAccessMode, permissions::PermissionDecision};
+use sage_acp_protocol::{access_mode::SessionAccessMode, permissions::PermissionDecision};
 use std::path::PathBuf;
 #[cfg(feature = "acp-fixture")]
 #[path = "bridge_fixture.rs"]
@@ -19,15 +19,15 @@ impl ResourceMapper for FileMapper {
     fn map_existing(
         &self,
         path: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
         let path = std::path::Path::new(path)
             .strip_prefix(&self.0)
-            .map_err(|_| crate::acp::intent::UnavailableResourceReason::Unsupported)?;
+            .map_err(|_| sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)?;
         SafeResourceRef::new(
             SageRootId::parse("root-pi").unwrap(),
             path.to_str().unwrap(),
         )
-        .map_err(|_| crate::acp::intent::UnavailableResourceReason::Unsupported)
+        .map_err(|_| sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 impl Journey {
@@ -311,7 +311,7 @@ fn pi_bridge_expired_prompt_is_withdrawn_durably_and_frees_the_turn() {
         withdrawn.events(),
         [AdapterEvent::PermissionResolved { external_request_id, state, .. }]
             if external_request_id.as_str() == "prepare-1"
-                && *state == crate::acp::lifecycle::ServerRequestState::Cancelled
+                && *state == sage_acp_protocol::lifecycle::ServerRequestState::Cancelled
     ));
     assert_eq!(
         request(&withdrawn.egress()[0])["value"],
@@ -367,7 +367,7 @@ fn pi_bridge_journey_shell_command_asks_and_its_approval_frees_the_slot() {
     else {
         panic!("not a permission payload");
     };
-    assert_eq!(*category, crate::acp::intent::ToolCategory::Execute);
+    assert_eq!(*category, sage_acp_protocol::intent::ToolCategory::Execute);
     assert!(
         summary.as_str().ends_with("\ncargo test"),
         "{}",

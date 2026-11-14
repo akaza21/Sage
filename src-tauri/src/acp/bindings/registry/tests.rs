@@ -4,14 +4,12 @@ use std::{ffi::OsStr, fs};
 
 #[cfg(windows)]
 use crate::{
-    acp::{
-        bindings::standard_acp::OpenCodeBindingRegistration,
-        contract::{
-            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
-        },
-        process::RequiredContainment,
-    },
+    acp::{bindings::standard_acp::OpenCodeBindingRegistration, process::RequiredContainment},
     project_registry::ProjectRootAuthority,
+};
+#[cfg(windows)]
+use sage_acp_protocol::contract::{
+    ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
 };
 
 #[test]

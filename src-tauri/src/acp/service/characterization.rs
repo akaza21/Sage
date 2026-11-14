@@ -9,7 +9,6 @@ use std::sync::{Arc, atomic::AtomicU64};
 use crate::acp::{
     characterization_observation::CharacterizationObservationEvent,
     fixture::FixtureAdapter,
-    intent::ExternalId,
     process::{PlatformSupervisor, TreeCapacityPool, monotonic_tick},
     resource_mapper::NativeResourceMapper,
     runtime::{
@@ -18,12 +17,12 @@ use crate::acp::{
         HostCancelIntent, HostCloseIntent, HostOutcome, HostPromptIntent, LiveRunnerHandle,
         LiveRuntimeEngine, ProcessLivePort, RuntimeHost, SendCoordinator, SystemDriverClock,
     },
-    scheduler::RuntimeOwner,
     store::{
         ActivateSessionCommand, CloseSessionCommand, PrepareTurnCommand, SessionMutation,
         StartSessionCommand,
     },
 };
+use sage_acp_protocol::{intent::ExternalId, scheduler::RuntimeOwner};
 
 use super::AcpService;
 use crate::project_registry::ProjectRootAuthority;
@@ -306,16 +305,16 @@ impl AcpService {
     pub(crate) fn send_characterization(
         &self,
         command: PrepareTurnCommand,
-    ) -> Result<HostOutcome, super::PromptSendError<CharacterizationError>> {
+    ) -> Result<HostOutcome, crate::acp::prompt_send::PromptSendError<CharacterizationError>> {
         let owner = command_owner(&command);
         self.lane_at(0)
             .runtime
             .for_owner(&owner)
             .map_err(map_slot)
-            .map_err(super::PromptSendError::not_started)?
+            .map_err(crate::acp::prompt_send::PromptSendError::not_started)?
             .send(HostPromptIntent {
                 command,
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .map_err(|failure| {
                 failure.map(|error| map_host_error(&self.lane_at(0).runtime, &owner, error))

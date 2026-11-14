@@ -1,9 +1,7 @@
 use serde_json::json;
 
-use crate::acp::{
-    background_terminals::{MAX_BACKGROUND_TERMINALS, TerminalAction},
-    contract::RequiredText,
-};
+use crate::acp::background_terminals::{MAX_BACKGROUND_TERMINALS, TerminalAction};
+use sage_acp_protocol::contract::RequiredText;
 
 use super::{OutgoingRequest, RequestError, RequestKind};
 

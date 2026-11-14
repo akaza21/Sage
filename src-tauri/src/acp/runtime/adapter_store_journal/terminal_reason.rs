@@ -1,8 +1,8 @@
 use crate::acp::{
-    lifecycle::TurnTerminalReason,
     runtime::adapter_pump::{PumpIntent, PumpJournalError, TurnScope},
     store::{AdapterInboundEvent, TurnTerminalReasonCommand},
 };
+use sage_acp_protocol::lifecycle::TurnTerminalReason;
 
 const MESSAGE_BYTES: usize = 8192;
 

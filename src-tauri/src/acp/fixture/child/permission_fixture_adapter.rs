@@ -1,15 +1,15 @@
-use crate::{
-    acp::{
-        bindings::adapter::{
-            AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
-            AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
-        },
-        contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
-        intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, ToolCategory},
-        semantic_ingress::{SemanticIngressError, validate_permission_payload},
-        transport::{Frame, OutboundFrame, request_payload_digest},
+use crate::acp::{
+    bindings::adapter::{
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
+        AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
-    acp_protocol::permissions::PermissionDecision,
+    semantic_ingress::{SemanticIngressError, validate_permission_payload},
+    transport::{Frame, OutboundFrame, request_payload_digest},
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId},
+    intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload, ToolCategory},
+    permissions::PermissionDecision,
 };
 
 pub(super) struct PermissionFixtureAdapter {

@@ -5,8 +5,8 @@ use std::sync::{
 };
 
 use crate::acp::browser::{BrowserScope, permission::BrowserAuthority};
-use crate::acp::contract::{SageChatId, SageProjectId};
 use crate::{browser::BrowserState, state::AppState};
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 use tauri::State;
 
 const MAX_ATTACHMENTS: usize = 8;

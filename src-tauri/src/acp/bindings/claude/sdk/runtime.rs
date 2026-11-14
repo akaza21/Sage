@@ -20,11 +20,13 @@ use crate::acp::{
         },
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
-    contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
-    intent::CapabilitySnapshotV1,
     process::LaunchSpec,
     runtime::ActivationMode,
     transport::{Frame, OutboundFrame, request_value_digest},
+};
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
+    intent::CapabilitySnapshotV1,
 };
 
 pub(crate) struct ClaudeSdkRuntimeFactory {
@@ -66,7 +68,7 @@ struct ClaudeSdkRuntime {
     bridge: Option<SdkBridge>,
     children: Children,
     native: Option<crate::acp::goal::NativeRpcReply>,
-    usage: Arc<crate::acp::usage::UsageCell>,
+    usage: Arc<sage_acp_protocol::usage::UsageCell>,
     sent: Vec<(EgressToken, Sent)>,
     steering: Steering,
     launch: Option<SessionLaunch>,
@@ -231,7 +233,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     fn available_commands(&self) -> Arc<crate::acp::slash_commands::CommandState> {
         self.session.available_commands()
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.session.session_config()
     }
     fn refusal_detail(&self) -> Option<RefusalDetail> {
@@ -242,7 +244,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
     fn configure(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.session
             .configure(intent)?
@@ -254,7 +256,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
     fn session_control(
         &mut self,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.control_request(control)
     }
@@ -264,17 +266,21 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     /// Claude Code holds nothing for a fork until its chat launches.
     fn release_fork(
         &mut self,
-        _fork: &crate::acp::intent::ExternalId,
+        _fork: &sage_acp_protocol::intent::ExternalId,
         _committed: bool,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.native = Some(crate::acp::goal::NativeRpcReply::Released);
         Ok(None)
     }
-    fn defer_fork_release(&mut self, _fork: &crate::acp::intent::ExternalId, _done: bool) -> bool {
+    fn defer_fork_release(
+        &mut self,
+        _fork: &sage_acp_protocol::intent::ExternalId,
+        _done: bool,
+    ) -> bool {
         self.native = Some(crate::acp::goal::NativeRpcReply::Released);
         true
     }
-    fn usage(&self) -> Option<Arc<crate::acp::usage::UsageCell>> {
+    fn usage(&self) -> Option<Arc<sage_acp_protocol::usage::UsageCell>> {
         Some(Arc::clone(&self.usage))
     }
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {

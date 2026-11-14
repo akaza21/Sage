@@ -8,11 +8,12 @@ use crate::acp::{
         codex::request::OutgoingRequest,
         standard_acp::surface::{first_listed, panel},
     },
-    intent::{CapabilitySnapshotV1, Prompt},
     slash_commands::{
         AvailableCommand, CommandDispatch, CommandPanel, CommandSource, CommandState,
     },
+    transcript_quote::Prompt,
 };
+use sage_acp_protocol::intent::CapabilitySnapshotV1;
 
 /// A skill's harness path; a longer one is left out of the list.
 const PATH_BYTES: usize = 1024;

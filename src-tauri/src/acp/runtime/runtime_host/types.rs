@@ -1,11 +1,11 @@
-use crate::{
-    acp::{
-        contract::{ClientIntentId, RequiredText, SageProjectId, SageServerRequestId, SageTurnId},
-        intent::Prompt,
-        scheduler::RuntimeOwner,
-        store::{AdapterTurnCursor, CloseSessionCommand, PrepareTurnCommand},
-    },
-    acp_protocol::permissions::PermissionDecision,
+use crate::acp::{
+    store::{AdapterTurnCursor, CloseSessionCommand, PrepareTurnCommand},
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, RequiredText, SageProjectId, SageServerRequestId, SageTurnId},
+    permissions::PermissionDecision,
+    scheduler::RuntimeOwner,
 };
 use std::{sync::mpsc, time::Instant};
 
@@ -92,7 +92,7 @@ pub(crate) enum HostError {
 #[derive(Clone, PartialEq, Eq)]
 pub(crate) struct HostPromptIntent {
     pub(crate) command: PrepareTurnCommand,
-    pub(crate) access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+    pub(crate) access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
 }
 
 impl HostPromptIntent {
@@ -238,7 +238,7 @@ pub(crate) trait RuntimeEngine: Send + 'static {
     }
     fn begin_configure_session(
         &mut self,
-        _intent: &crate::acp::session_config::ConfigIntent,
+        _intent: &sage_acp_protocol::session_config::ConfigIntent,
         _deadline: Instant,
         completion: ConfigCompletionSink,
     ) -> Result<(), HostError> {
@@ -316,7 +316,7 @@ pub(crate) trait RuntimeShutdownRecovery: Send + Sync {
 }
 
 pub(super) enum HostCommand {
-    ConfigureSession(crate::acp::session_config::ConfigIntent),
+    ConfigureSession(sage_acp_protocol::session_config::ConfigIntent),
     NativeRpc(crate::acp::goal::NativeRpcIntent),
     ResolvePermission {
         owner: RuntimeOwner,

@@ -51,9 +51,9 @@ fn oversized_combined_config_preserves_identity_through_native_config_channel() 
     for (name, option_count) in [("Short".to_owned(), 2), ("M".repeat(512), 1)] {
         let mut adapter = fixture_runtime();
         initialize(&mut adapter);
-        let owner = crate::acp::scheduler::RuntimeOwner {
+        let owner = sage_acp_protocol::scheduler::RuntimeOwner {
             project_id: SageProjectId::parse("project-model-budget").unwrap(),
-            chat_id: crate::acp::contract::SageChatId::parse("chat-model-budget").unwrap(),
+            chat_id: sage_acp_protocol::contract::SageChatId::parse("chat-model-budget").unwrap(),
             session_id: SageAgentSessionId::parse("session-codex-runtime").unwrap(),
             runtime_epoch: RuntimeEpoch::new(1).unwrap(),
         };
@@ -151,21 +151,26 @@ fn confirmed_effort_survives_failed_or_unusable_catalog_hydration() {
         );
         assert!(
             runtime
-                .configure(&crate::acp::session_config::ConfigIntent {
-                    owner: crate::acp::scheduler::RuntimeOwner {
+                .configure(&sage_acp_protocol::session_config::ConfigIntent {
+                    owner: sage_acp_protocol::scheduler::RuntimeOwner {
                         project_id: SageProjectId::parse("project-model-effort").unwrap(),
-                        chat_id: crate::acp::contract::SageChatId::parse("chat-model-effort")
-                            .unwrap(),
+                        chat_id: sage_acp_protocol::contract::SageChatId::parse(
+                            "chat-model-effort"
+                        )
+                        .unwrap(),
                         session_id: SageAgentSessionId::parse("session-codex-runtime").unwrap(),
                         runtime_epoch: RuntimeEpoch::new(1).unwrap(),
                     },
-                    expected_config_revision: crate::acp::session_config::ConfigRevision::first(),
-                    mutation: crate::acp::session_config::ConfigMutation::Option {
-                        config_id: crate::acp::session_config::ConfigId::new("id", "effort")
+                    expected_config_revision:
+                        sage_acp_protocol::session_config::ConfigRevision::first(),
+                    mutation: sage_acp_protocol::session_config::ConfigMutation::Option {
+                        config_id: sage_acp_protocol::session_config::ConfigId::new("id", "effort")
                             .unwrap(),
-                        value: crate::acp::session_config::ConfigValue::Select {
-                            value: crate::acp::session_config::ConfigId::new("value", "high")
-                                .unwrap(),
+                        value: sage_acp_protocol::session_config::ConfigValue::Select {
+                            value: sage_acp_protocol::session_config::ConfigId::new(
+                                "value", "high"
+                            )
+                            .unwrap(),
                         },
                     },
                 })
@@ -308,7 +313,7 @@ fn missing_reported_effort_never_becomes_catalog_default_effort() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "continue").unwrap(),
                 client_message_id: RequiredText::new("client", "no-inferred-effort").unwrap(),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .unwrap();
         let request: Value = serde_json::from_slice(prompt.frame().payload()).unwrap();

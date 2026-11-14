@@ -1,10 +1,9 @@
 use crate::acp::{
     goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
-    intent::ExternalId,
     runtime::HostError,
-    scheduler::RuntimeOwner,
     store::chat_fork::ForkSource,
 };
+use sage_acp_protocol::{intent::ExternalId, scheduler::RuntimeOwner};
 
 use super::AcpService;
 

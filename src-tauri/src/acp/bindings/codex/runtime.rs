@@ -3,9 +3,9 @@ use crate::acp::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
         EgressToken,
     },
-    declared_test::DeclaredTestCommands,
     transport::OutboundFrame,
 };
+use sage_acp_protocol::declared_test::DeclaredTestCommands;
 
 use super::{
     incoming::{IncomingEvent, IngressDisposition},
@@ -44,19 +44,19 @@ pub(crate) struct CodexRuntime {
     pending_browser_failure_details: Vec<(String, String, usize)>,
     browser_failure_warning_logged: bool,
     native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
-    selected_model_id: Option<crate::acp::intent::ModelId>,
-    reported_model_id: Option<crate::acp::intent::ModelId>,
+    selected_model_id: Option<sage_acp_protocol::intent::ModelId>,
+    reported_model_id: Option<sage_acp_protocol::intent::ModelId>,
     selected_model: Option<super::incoming::ModelDescriptor>,
-    selected_effort: Option<crate::acp::contract::RequiredText<512>>,
+    selected_effort: Option<sage_acp_protocol::contract::RequiredText<512>>,
     model_catalog: model_config::ModelCatalog,
     model_list_requested: bool,
     model_catalog_idle_only: bool,
     model_catalog_entries: usize,
     model_catalog_bytes: usize,
-    next_model_cursor: Option<crate::acp::intent::PageCursor>,
+    next_model_cursor: Option<sage_acp_protocol::intent::PageCursor>,
     model_pages_seen: u64,
-    session_config: Option<crate::acp::session_config::SessionConfig>,
-    usage: std::sync::Arc<crate::acp::usage::UsageCell>,
+    session_config: Option<sage_acp_protocol::session_config::SessionConfig>,
+    usage: std::sync::Arc<sage_acp_protocol::usage::UsageCell>,
     rate_limits: super::incoming::rate_limits::RateLimits,
 }
 
@@ -96,7 +96,7 @@ impl CodexRuntime {
                     let browser_notice = if matches!(
                         &event,
                         IncomingEvent::Turn {
-                            state: crate::acp::lifecycle::TurnState::Running,
+                            state: sage_acp_protocol::lifecycle::TurnState::Running,
                             ..
                         }
                     ) {
@@ -128,15 +128,17 @@ impl CodexRuntime {
                     })?;
                     if let Some(message) = browser_notice {
                         batch.push_event(AdapterEvent::Error(
-                            crate::acp::intent::NormalizedPayload::Error {
+                            sage_acp_protocol::intent::NormalizedPayload::Error {
                                 kind: None,
-                                code: crate::acp::contract::SafeText::new(
+                                code: sage_acp_protocol::contract::SafeText::new(
                                     "code",
                                     "browserMcpUnavailable",
                                 )
                                 .map_err(|_| AdapterRuntimeError::Frame)?,
-                                message: crate::acp::contract::SafeText::new("message", message)
-                                    .map_err(|_| AdapterRuntimeError::Frame)?,
+                                message: sage_acp_protocol::contract::SafeText::new(
+                                    "message", message,
+                                )
+                                .map_err(|_| AdapterRuntimeError::Frame)?,
                                 retryable: false,
                             },
                         ))?;

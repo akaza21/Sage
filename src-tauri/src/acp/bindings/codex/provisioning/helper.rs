@@ -4,12 +4,10 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
 use super::{AclPlan, STAGE_NAME, SealedHandoff, hex};
-use crate::{
-    acp::bindings::codex::{
-        managed::ManagedStagingPrerequisite, manifest::MetadataValidatedPacket,
-    },
-    acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
+use crate::acp::bindings::codex::{
+    managed::ManagedStagingPrerequisite, manifest::MetadataValidatedPacket,
 };
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 mod transaction;
 

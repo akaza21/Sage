@@ -1,6 +1,6 @@
 use super::*;
-use crate::acp::lifecycle::ServerRequestState;
 use rusqlite::params;
+use sage_acp_protocol::lifecycle::ServerRequestState;
 
 fn tool_payload() -> NormalizedPayload {
     NormalizedPayload::ToolCall {
@@ -32,7 +32,7 @@ fn running_tool_item(
         payload,
         payload_digest: facts::hex_digest(json.as_bytes()),
         lifecycle: ItemLifecycle::Started,
-        tool_state: Some(crate::acp::lifecycle::ToolState::InProgress),
+        tool_state: Some(sage_acp_protocol::lifecycle::ToolState::InProgress),
         now_millis,
     })
 }
@@ -227,7 +227,7 @@ fn the_read_path_projects_a_terminal_tool_card_after_an_interrupted_turn() {
     assert_eq!(tool.lifecycle, ItemLifecycle::Cancelled);
     assert_eq!(
         tool.tool_state,
-        Some(crate::acp::lifecycle::ToolState::Cancelled)
+        Some(sage_acp_protocol::lifecycle::ToolState::Cancelled)
     );
     assert_eq!(tool.terminal_at, Some(9));
 }

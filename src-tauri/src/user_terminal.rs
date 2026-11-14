@@ -1,5 +1,5 @@
-use crate::acp::contract::{ProjectGeneration, SageChatId, SageProjectId};
 use rusqlite::OptionalExtension;
+use sage_acp_protocol::contract::{ProjectGeneration, SageChatId, SageProjectId};
 use std::{
     collections::HashMap,
     sync::{

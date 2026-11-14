@@ -1,7 +1,7 @@
 use super::*;
 use crate::acp::bindings::registry::{BindingProjectRoot, BindingRegistry};
-use crate::acp::lifecycle::Residency;
 use crate::acp::runtime::{HostCancelIntent, HostOutcome, HostPromptIntent};
+use sage_acp_protocol::lifecycle::Residency;
 use std::fs;
 
 #[test]
@@ -121,7 +121,7 @@ fn native_claude_subprocess_binding_pump_sqlite_stream_cancel_and_permissions() 
                     .service
                     .send_session_turn(HostPromptIntent {
                         command: setup.turn_command(&owner),
-                        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+                        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
                     })
                     .unwrap();
                 setup.wait_for_completed_after(&owner, &previous);
@@ -133,7 +133,7 @@ fn native_claude_subprocess_binding_pump_sqlite_stream_cancel_and_permissions() 
                 .service
                 .send_session_turn(HostPromptIntent {
                     command: setup.turn_command(&owner),
-                    access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+                    access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
                 })
                 .unwrap();
             if case == "claude-thinking-live" {
@@ -173,12 +173,14 @@ fn native_claude_subprocess_binding_pump_sqlite_stream_cancel_and_permissions() 
                         session_id: owner.session_id.clone(),
                         runtime_epoch: owner.runtime_epoch,
                         turn_id: SageTurnId::parse(turn).unwrap(),
-                        request_id: crate::acp::contract::SageServerRequestId::parse(request)
-                            .unwrap(),
+                        request_id: sage_acp_protocol::contract::SageServerRequestId::parse(
+                            request,
+                        )
+                        .unwrap(),
                         decision: if case.ends_with("declined") {
-                            crate::acp_protocol::permissions::PermissionDecision::Deny
+                            sage_acp_protocol::permissions::PermissionDecision::Deny
                         } else {
-                            crate::acp_protocol::permissions::PermissionDecision::AllowOnce
+                            sage_acp_protocol::permissions::PermissionDecision::AllowOnce
                         },
                     })
                     .unwrap();

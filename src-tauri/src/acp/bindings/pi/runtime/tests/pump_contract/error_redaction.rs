@@ -1,8 +1,7 @@
 use super::turn_failures::Reopened;
 use super::*;
-use crate::acp::{
-    intent::ErrorKind, lifecycle::TurnState, projection::ItemContent, store::load_chat_page,
-};
+use crate::acp::{projection::ItemContent, store::load_chat_page};
+use sage_acp_protocol::{intent::ErrorKind, lifecycle::TurnState};
 
 #[tokio::test]
 async fn pi_credentials_never_reopen_in_terminal_reasons_or_retry_items() {

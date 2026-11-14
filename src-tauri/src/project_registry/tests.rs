@@ -9,12 +9,12 @@ use uuid::Uuid;
 use super::create::MAX_PROJECT_NAME_CHARS;
 use super::*;
 use crate::{
-    acp::contract::{ProjectGeneration, SageProjectId, SageRootId},
     domain::{ProjectLayoutRequest, ProjectSwitchRequest},
     editor,
     persistence::Database,
     state::AppState,
 };
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 
 fn runtime() -> tokio::runtime::Runtime {
     tokio::runtime::Runtime::new().unwrap()

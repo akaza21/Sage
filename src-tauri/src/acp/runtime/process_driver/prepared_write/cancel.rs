@@ -1,8 +1,8 @@
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    contract::RequiredText,
     runtime::{AdapterBatchJournal, HostCancelIntent},
 };
+use sage_acp_protocol::contract::RequiredText;
 
 use super::super::TeardownCause;
 use super::{

@@ -1,14 +1,15 @@
-use crate::acp::{
-    bindings::adapter::{
-        AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError, ResourceMapper,
-    },
+use crate::acp::bindings::adapter::{
+    AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError, ResourceMapper,
+};
+use sage_acp_protocol::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
-        COMMAND_RESOURCE_LIMIT, ExternalId, NormalizedPayload, SafeResourceLocation, ToolCategory,
+        ExternalId, NormalizedPayload, SafeResourceLocation, ToolCategory,
         session_event::SessionScopedEvent,
     },
     lifecycle::{ItemLifecycle, ToolState},
 };
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
 use super::super::PiRuntime;

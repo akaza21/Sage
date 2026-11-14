@@ -1,18 +1,20 @@
 use std::{sync::Arc, time::Instant};
 
 use crate::acp::{
-    contract::{RequiredText, RuntimeEpoch},
     fixture::adapter::FixtureAdapter,
-    intent::ExternalId,
-    lifecycle::SessionState,
     process::TreeCapacityPool,
     runtime::{
         ActivationDriverError, ActivationIntent, ActivationMode, ActivationProcessDriver,
         ActivationPump, BoundedThread, CoordinatorActivationHandoff, CoordinatorActivationJournal,
         DriverClock, DriverMailbox, SystemDriverClock, ZeroProcessProof,
     },
-    scheduler::RuntimeOwner,
     store::{FailActivationCommand, ParkSessionCommand},
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch},
+    intent::ExternalId,
+    lifecycle::SessionState,
+    scheduler::RuntimeOwner,
 };
 
 use super::{

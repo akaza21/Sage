@@ -1,15 +1,15 @@
 use super::*;
 use crate::{
-    acp::{
-        contract::{
-            ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageChatId,
-            SageProjectId, SageRootId,
-        },
-        intent::{BindingId, SafeResourceLocation, SafeResourceRef},
-    },
-    acp_protocol::file_diff::{SnapshotReadError, pair_digest},
     domain::{ProjectLayoutRequest, ResourceRef, WorkbenchTab},
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageChatId,
+        SageProjectId, SageRootId,
+    },
+    file_diff::{SnapshotReadError, pair_digest},
+    intent::{BindingId, SafeResourceLocation, SafeResourceRef},
 };
 use std::{fs, path::PathBuf};
 use uuid::Uuid;
@@ -32,14 +32,14 @@ fn reopen_pair_batch_for_root(
 ) -> AdapterInboundBatchCommand {
     let mut metadata = item(owner, key);
     metadata.payload = NormalizedPayload::file_admitted(
-        crate::acp::intent::FileChangeFacts {
+        sage_acp_protocol::intent::FileChangeFacts {
             resource: SafeResourceLocation::Resource {
                 resource: SafeResourceRef::new(root_id.clone(), "src/lib.rs").unwrap(),
             },
             summary: SafeText::new("summary", "File changed").unwrap(),
             additions: Some(1),
             deletions: Some(1),
-            operation: crate::acp::intent::FileChangeOperation::Updated,
+            operation: sage_acp_protocol::intent::FileChangeOperation::Updated,
         },
         0,
         (old.len() as u64, new.len() as u64),
@@ -87,8 +87,8 @@ fn reopen_reference_in(
     revision: u64,
     old: &str,
     new: &str,
-) -> crate::acp_protocol::file_diff::DiffRef {
-    crate::acp_protocol::file_diff::DiffRef {
+) -> sage_acp_protocol::file_diff::DiffRef {
+    sage_acp_protocol::file_diff::DiffRef {
         project_id: owner.project_id.as_str().into(),
         chat_id: owner.chat_id.as_str().into(),
         session_id: owner.session_id.as_str().into(),
@@ -158,7 +158,7 @@ fn reopen_reference(
     revision: u64,
     old: &str,
     new: &str,
-) -> crate::acp_protocol::file_diff::DiffRef {
+) -> sage_acp_protocol::file_diff::DiffRef {
     reopen_reference_in(
         &fixture.owner,
         &fixture.connection,

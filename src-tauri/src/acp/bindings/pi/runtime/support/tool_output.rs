@@ -1,7 +1,5 @@
-use crate::acp::{
-    bindings::adapter::{AdapterEvent, AdapterRuntimeError, ResourceMapper},
-    lifecycle::{ItemLifecycle, ToolState},
-};
+use crate::acp::bindings::adapter::{AdapterEvent, AdapterRuntimeError, ResourceMapper};
+use sage_acp_protocol::lifecycle::{ItemLifecycle, ToolState};
 
 use super::super::PiRuntime;
 use super::identity::{self, external};

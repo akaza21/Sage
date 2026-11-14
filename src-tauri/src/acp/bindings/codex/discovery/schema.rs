@@ -1,9 +1,9 @@
 use serde_json::{Map, Value, json};
 
-use crate::acp::{
+use crate::acp::transport::{Frame, OutboundFrame};
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{SafeResourceRef, UnavailableResourceReason},
-    transport::{Frame, OutboundFrame},
 };
 use sage_core::limits::LIMITS;
 

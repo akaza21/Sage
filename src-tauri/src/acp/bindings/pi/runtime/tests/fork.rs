@@ -134,8 +134,8 @@ fn shipped_runtime(install: &std::path::Path) -> crate::acp::bindings::runtime::
         .refresh()
         .expect("an installed Pi is admitted");
     let root = crate::project_registry::ProjectRootAuthority::for_test(
-        crate::acp::contract::SageProjectId::parse("project-pi-fork").unwrap(),
-        crate::acp::contract::ProjectGeneration::ZERO,
+        sage_acp_protocol::contract::SageProjectId::parse("project-pi-fork").unwrap(),
+        sage_acp_protocol::contract::ProjectGeneration::ZERO,
         SageRootId::parse("root-pi-fork").unwrap(),
         install,
     )
@@ -217,7 +217,7 @@ fn the_chat_cannot_prompt_or_change_settings_until_pi_is_back() {
         chat.runtime.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             client_message_id: RequiredText::new("client", "client-pi-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::Operation)
     ));

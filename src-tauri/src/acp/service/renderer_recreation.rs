@@ -3,10 +3,8 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use super::AcpService;
-use crate::acp::{
-    contract::{SageChatId, SageProjectId},
-    store::StoreError,
-};
+use crate::acp::store::StoreError;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 const MAX_TABLE_ROWS: u64 = 200_000;
 const TABLES: [&str; 14] = [

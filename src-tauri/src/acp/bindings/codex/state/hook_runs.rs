@@ -2,7 +2,7 @@
 //! `hook/completed`, so these rows are settled as cancelled when the Turn
 //! ends instead of staying Running.
 
-use crate::acp::intent::session_event::{
+use sage_acp_protocol::intent::session_event::{
     SESSION_ACTIVITIES_MAX, SessionActivity, SessionActivityState,
 };
 

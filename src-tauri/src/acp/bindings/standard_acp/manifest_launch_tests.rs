@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::acp::contract::{ProjectGeneration, SageProjectId, SageRootId};
 use crate::acp::process::BoundedEnvironment;
 use crate::project_registry::ProjectRootAuthority;
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 
 use super::{AcpLaunchAuthority, admit, candidate_from_global_npm_shim, profile_for};
 

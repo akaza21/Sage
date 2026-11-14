@@ -6,16 +6,18 @@ impl ResourceMapper for CreatedFileMapper {
     fn map_existing(
         &self,
         path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
         if path != self.0.to_str().expect("target path") || !self.0.is_file() {
-            return Err(crate::acp::intent::UnavailableResourceReason::Unsupported);
+            return Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported);
         }
-        crate::acp::intent::SafeResourceRef::new(
+        sage_acp_protocol::intent::SafeResourceRef::new(
             SageRootId::parse("root-created-file").expect("root id"),
             "captured.txt",
         )
-        .map_err(|_| crate::acp::intent::UnavailableResourceReason::Unsupported)
+        .map_err(|_| sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 
@@ -40,7 +42,7 @@ fn captured_created_file_is_published_only_after_approved_write_and_completion()
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "create captured file").expect("prompt"),
             client_message_id: RequiredText::new("client", "created-file").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         })
         .expect("prompt command");
     runtime
@@ -65,7 +67,7 @@ fn captured_created_file_is_published_only_after_approved_write_and_completion()
     let approval = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: scoped_permission_id("created-file", 61),
-            decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+            decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
         })
         .expect("approval");
     runtime
@@ -90,7 +92,7 @@ fn captured_created_file_is_published_only_after_approved_write_and_completion()
         event,
         AdapterEvent::Item {
             payload: NormalizedPayload::FileChangeDiff {
-                operation: crate::acp::intent::FileChangeOperation::Created,
+                operation: sage_acp_protocol::intent::FileChangeOperation::Created,
                 additions: Some(1),
                 deletions: Some(0),
                 ..
@@ -143,7 +145,7 @@ fn differing_or_refused_client_write_never_projects_the_proposed_created_diff() 
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "create captured file").expect("prompt"),
                 client_message_id: RequiredText::new("client", label).expect("client"),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
             })
             .expect("prompt command");
         runtime
@@ -161,7 +163,7 @@ fn differing_or_refused_client_write_never_projects_the_proposed_created_diff() 
         let approval = runtime
             .command(AdapterCommand::ResolvePermission {
                 request_id: scoped_permission_id(label, 62),
-                decision: crate::acp_protocol::permissions::PermissionDecision::AllowOnce,
+                decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
             })
             .expect("approval");
         runtime

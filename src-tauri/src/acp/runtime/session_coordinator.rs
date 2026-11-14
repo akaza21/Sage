@@ -3,15 +3,17 @@ use std::sync::Arc;
 #[cfg(any(test, all(windows, feature = "acp-fixture")))]
 use crate::acp::store::FailActivationCommand;
 use crate::acp::{
-    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
-    intent::ProjectionChangedV1,
+    ipc::ProjectionChangedV1,
     process::ZeroProcessToken,
-    scheduler::{RuntimeOwner, Scheduler, SchedulerError, TreeLease},
     store::{
         ActivateSessionCommand, CloseSessionCommand, CompleteActivationCommand,
         FinalizeCloseCommand, ParkSessionCommand, RecoverRuntimeCommand, SessionMutation,
         StartSessionCommand, StoreCommit, StoreError, StoreMutation, StoreMutationResult,
     },
+};
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
+    scheduler::{RuntimeOwner, Scheduler, SchedulerError, TreeLease},
 };
 
 use super::{
@@ -312,17 +314,19 @@ mod tests {
     use std::{collections::VecDeque, sync::Mutex};
 
     use crate::acp::{
+        runtime::ProjectionMailbox,
+        store::{
+            AbortActivationCommand, AcpStore, ActivationAbortCategory, MutationDisposition,
+            StoreCommit,
+        },
+    };
+    use sage_acp_protocol::{
         contract::{
             ClientIntentId, EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch,
             SafeText, SageTurnId,
         },
         intent::{BindingId, ExternalId, ModelId},
         lifecycle::SessionState,
-        runtime::ProjectionMailbox,
-        store::{
-            AbortActivationCommand, AcpStore, ActivationAbortCategory, MutationDisposition,
-            StoreCommit,
-        },
     };
 
     use super::*;

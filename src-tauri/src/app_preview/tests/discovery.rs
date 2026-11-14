@@ -361,7 +361,7 @@ fn discovery_keeps_root_manifest_when_root_listing_overflows() {
         chat_id: request.chat_id.clone(),
         session_id: request.session_id.clone(),
         runtime_epoch: request.runtime_epoch,
-        root_id: crate::acp::contract::SageRootId::parse("root-preview").unwrap(),
+        root_id: sage_acp_protocol::contract::SageRootId::parse("root-preview").unwrap(),
         script_name: PreviewScriptName::Dev,
     };
     let expected_response = PreviewDiscoveryResponse {
@@ -398,7 +398,8 @@ fn assert_repeated_discovery(
                         chat_id: request.chat_id.clone(),
                         session_id: request.session_id.clone(),
                         runtime_epoch: request.runtime_epoch,
-                        root_id: crate::acp::contract::SageRootId::parse("root-preview").unwrap(),
+                        root_id: sage_acp_protocol::contract::SageRootId::parse("root-preview")
+                            .unwrap(),
                         script_name,
                     },
                     package.to_owned(),

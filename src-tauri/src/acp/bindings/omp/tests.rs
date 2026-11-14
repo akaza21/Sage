@@ -10,20 +10,23 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::acp::{
-    contract::{
-        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
-        ToolState,
-    },
-    intent::{
-        COMMAND_RESOURCE_LIMIT, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
-        ToolCategory, UnavailableResourceReason,
-    },
     read_text_file::{
         DiskAllowedState, ReadTextFileService, ReadTextFlushAck, ReadTextFlushState, ReadTextOwner,
     },
     runtime::read_text_file::{DeferredReadTextOwnerResolver, ExpectedOwnerScope},
     transport::DeadlineAsyncWriter,
 };
+use sage_acp_protocol::{
+    contract::{
+        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
+    },
+    intent::{
+        NormalizedPayload, SafeResourceLocation, SafeResourceRef, ToolCategory,
+        UnavailableResourceReason,
+    },
+    lifecycle::ToolState,
+};
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
 use super::{
@@ -92,7 +95,7 @@ fn p02_omp_real_ingress_preflights_routes_service_and_preserves_numeric_id() {
         SageAgentSessionId::parse("session-omp-runtime").unwrap(),
     );
     runtime.external_session =
-        Some(crate::acp::intent::ExternalId::new("sessionId", "omp-session-1").unwrap());
+        Some(sage_acp_protocol::intent::ExternalId::new("sessionId", "omp-session-1").unwrap());
     let path = serde_json::to_string(&file.display().to_string()).unwrap();
     let request = format!(
         r#"{{"jsonrpc":"2.0","id":7,"method":"fs/read_text_file","params":{{"sessionId":"omp-session-1","path":{},"line":2,"limit":1,"_meta":{{"opaque":true}}}}}}"#,
@@ -582,7 +585,7 @@ fn read_only_fixture_normalizes_items_and_denies_broad_tool_authority() {
     assert!(events.iter().any(|event| matches!(
         event,
         AdapterEvent::Item { payload: NormalizedPayload::FileChangeDiff { resource, additions: Some(2), deletions: Some(1), .. }, .. }
-        if matches!(resource, crate::acp::intent::SafeResourceLocation::Resource { resource }
+        if matches!(resource, sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }
             if resource.relative_path.as_str() == "src/lib.rs")
     )));
     assert!(events.iter().any(|event| matches!(
@@ -1118,7 +1121,7 @@ fn failed_resource_mapping_emits_a_typed_nonclickable_location() {
         event,
         AdapterEvent::Item {
             payload: NormalizedPayload::FileChangeDiff {
-                resource: crate::acp::intent::SafeResourceLocation::Unavailable {
+                resource: sage_acp_protocol::intent::SafeResourceLocation::Unavailable {
                     reason: UnavailableResourceReason::Foreign,
                     ..
                 },

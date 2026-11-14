@@ -1,8 +1,8 @@
 use crate::acp::{
     bindings::{claude::sdk::CLAUDE_SDK_BINDING_ID, release_version::ReleaseVersion},
-    contract::SafeText,
     store::ActivateSessionCommand,
 };
+use sage_acp_protocol::contract::SafeText;
 
 use super::{super::AcpService, CodexSessionError, DurableSession, load_durable_session};
 
@@ -96,8 +96,8 @@ pub(in crate::acp::service) fn store_error(
 
 pub(in crate::acp::service) fn next_runtime_epoch(
     database: &crate::persistence::Database,
-    session: &crate::acp::contract::SageAgentSessionId,
-) -> Result<crate::acp::contract::RuntimeEpoch, CodexSessionError> {
+    session: &sage_acp_protocol::contract::SageAgentSessionId,
+) -> Result<sage_acp_protocol::contract::RuntimeEpoch, CodexSessionError> {
     let latest: i64 = database
         .connection()
         .query_row(
@@ -109,7 +109,7 @@ pub(in crate::acp::service) fn next_runtime_epoch(
     latest
         .checked_add(1)
         .and_then(|next| u64::try_from(next).ok())
-        .and_then(|next| crate::acp::contract::RuntimeEpoch::new(next).ok())
+        .and_then(|next| sage_acp_protocol::contract::RuntimeEpoch::new(next).ok())
         .ok_or(CodexSessionError::Intent)
 }
 
@@ -146,7 +146,7 @@ pub(super) fn continues_on_later_release(
 pub(super) fn restarts_after_undo(
     database: &crate::persistence::Database,
     session: &DurableSession,
-    session_id: &crate::acp::contract::SageAgentSessionId,
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
 ) -> Result<bool, CodexSessionError> {
     if session.state != "ready" || session.residency != "cold" {
         return Ok(false);

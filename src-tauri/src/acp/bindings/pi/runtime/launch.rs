@@ -5,9 +5,9 @@
 
 use crate::acp::{
     bindings::{adapter::AdapterRuntimeError, runtime::LaunchableRuntime},
-    contract::RuntimeEpoch,
     process::LaunchSpec,
 };
+use sage_acp_protocol::contract::RuntimeEpoch;
 
 use super::PiRuntime;
 

@@ -55,8 +55,8 @@ pub(super) fn classify_begin_send_failure<A, R, T, C>(
             PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
         >,
     >,
-    owner: crate::acp::scheduler::RuntimeOwner,
-    turn_id: crate::acp::contract::SageTurnId,
+    owner: sage_acp_protocol::scheduler::RuntimeOwner,
+    turn_id: sage_acp_protocol::contract::SageTurnId,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
 where
@@ -96,8 +96,8 @@ pub(super) fn classify_observe_failure<A, R, T, C>(
             PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
         >,
     >,
-    owner: crate::acp::scheduler::RuntimeOwner,
-    turn_id: crate::acp::contract::SageTurnId,
+    owner: sage_acp_protocol::scheduler::RuntimeOwner,
+    turn_id: sage_acp_protocol::contract::SageTurnId,
     observation: crate::acp::store::SendObservation,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>

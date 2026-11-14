@@ -1,4 +1,4 @@
-use crate::acp::contract::SafeText;
+use sage_acp_protocol::contract::SafeText;
 
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum SessionControlError {

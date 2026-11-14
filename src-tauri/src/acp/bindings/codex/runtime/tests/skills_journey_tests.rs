@@ -96,7 +96,7 @@ fn a_picked_skill_reaches_the_journeys_turn_as_its_skill_input() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let mut turn = wire(&egress);

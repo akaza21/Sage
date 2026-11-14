@@ -12,10 +12,10 @@ use crate::acp::{
         CodexProcessTransport, CodexProjectRootAuthority, DiscoveryZeroProcess,
         ProcessLaunchPolicy,
     },
-    contract::RuntimeEpoch,
     process::TreeControl,
     transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
+use sage_acp_protocol::contract::RuntimeEpoch;
 
 pub(crate) struct ProductionAuthTransport {
     process: CodexProcessTransport,

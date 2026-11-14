@@ -1,14 +1,12 @@
 use crate::{
     acp::{
         attached_context::effective_prompt,
-        contract::SafeText,
-        intent::{
+        ipc::{
             AcpCapacityResource, AcpConflictResource, AcpIpcError, AcpMutationResponse,
             AcpUnavailableReason, ActivateAcpSessionRequest, CancelAcpTurnRequest,
             CloseAcpSessionRequest, SendAcpTurnFailure, SendAcpTurnRequest, StartAcpSessionRequest,
         },
         runtime::HostCancelIntent,
-        scheduler::RuntimeOwner,
         service::{CHARACTERIZATION_BINDING_DIGEST, CharacterizationError},
         store::{
             ActivateSessionCommand, CloseSessionCommand, PrepareTurnCommand, StartSessionCommand,
@@ -17,6 +15,7 @@ use crate::{
     project_registry::ProjectRootAuthority,
     state::AppState,
 };
+use sage_acp_protocol::{contract::SafeText, scheduler::RuntimeOwner};
 use sage_core::limits::LIMITS;
 
 use super::{
@@ -210,12 +209,10 @@ pub(super) fn map_error(error: CharacterizationError) -> AcpIpcError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{
-        contract::{
-            ClientIntentId, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId,
-            SageProjectId,
-        },
-        intent::{Prompt, PromptDispatch},
+    use crate::acp::{ipc::PromptDispatch, transcript_quote::Prompt};
+    use sage_acp_protocol::contract::{
+        ClientIntentId, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId,
+        SageProjectId,
     };
 
     #[test]

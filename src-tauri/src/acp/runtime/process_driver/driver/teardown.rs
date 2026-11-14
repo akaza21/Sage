@@ -41,9 +41,11 @@ where
         }
     }
 
-    pub(crate) fn terminal_outcome(&self) -> Option<crate::acp::lifecycle::TurnTerminalOutcome> {
+    pub(crate) fn terminal_outcome(
+        &self,
+    ) -> Option<sage_acp_protocol::lifecycle::TurnTerminalOutcome> {
         let cause = self.teardown_cause()?;
-        let reason = crate::acp::lifecycle::TurnTerminalReason::from(cause.clone());
+        let reason = sage_acp_protocol::lifecycle::TurnTerminalReason::from(cause.clone());
         let message = match (&cause, self.teardown_detail) {
             (TeardownCause::RefusedVersion { observed }, _) => {
                 crate::acp::runtime::terminal_detail::refused_version(observed.as_str(), &[])
@@ -56,7 +58,7 @@ where
             }
             (_, None) => None,
         };
-        Some(crate::acp::lifecycle::TurnTerminalOutcome {
+        Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
             reason,
             message,
             remediation: None,

@@ -1,9 +1,9 @@
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     runtime::{AdapterBatchJournal, SessionTreeLease, ZeroProcessProof},
-    scheduler::RuntimeOwner,
     store::{CloseSessionCommand, FinalizeCloseCommand, SendObservation},
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::{
     CoordinatorZeroToken, DriverError, PreparedProcessWrite, PreparedWriteError,
@@ -81,7 +81,7 @@ where
     cancel_dispatched: bool,
     cancel_delivery_ambiguous: bool,
     durable_mutation_unknown: bool,
-    authoritative_projection: Option<crate::acp::contract::ProjectionRevision>,
+    authoritative_projection: Option<sage_acp_protocol::contract::ProjectionRevision>,
 }
 
 pub(crate) struct ZeroCloseState<A, J, R, T, C>

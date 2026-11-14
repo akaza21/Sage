@@ -26,7 +26,7 @@ impl BindingRegistry {
         // A case whose session runs the model it is opened with offers its
         // catalogue through the same discovery a real Codex account uses.
         let offers_models =
-            crate::acp_protocol::native_cases::native_case_offers_models(&selection.case);
+            sage_acp_protocol::native_cases::native_case_offers_models(&selection.case);
         let codex = CodexBindingRegistration::desktop_fixture(selection)?;
         let mut registry = Self::new(codex, ClaudeBindingRegistration::fixture_disabled());
         registry.codex.model_provider = if offers_models {
@@ -42,7 +42,7 @@ impl BindingRegistry {
     pub(crate) fn desktop_claude_fixture(
         selection: crate::launch_profile::FixtureSelection,
     ) -> Result<Self, ClaudeAdmissionUnavailable> {
-        if crate::acp_protocol::native_cases::native_case_matches(&selection.case, "claude-sdk") {
+        if sage_acp_protocol::native_cases::native_case_matches(&selection.case, "claude-sdk") {
             let sdk = claude_sdk::fixture_record(selection)
                 .map_err(|_| ClaudeAdmissionUnavailable::Drift)?;
             let mut registry = Self::new(

@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use super::profile::{StandardAcpProfile, profile_for};
 use super::sanitize::normalized_label_text;
 use super::translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator};
-use crate::acp::intent::{
+use sage_acp_protocol::intent::{
     NormalizedPayload, SafeResourceRef, ToolCategory, UnavailableResourceReason,
 };
 

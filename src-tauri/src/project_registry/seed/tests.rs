@@ -1,12 +1,7 @@
 use std::{fs, path::Path};
 
-use crate::{
-    acp::{
-        contract::{SageChatId, SageProjectId},
-        store::load_chat_page,
-    },
-    persistence::Database,
-};
+use crate::{acp::store::load_chat_page, persistence::Database};
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 fn page(database: &Database, project: &str, chat: &str) -> crate::acp::projection::AcpChatPage {
     load_chat_page(

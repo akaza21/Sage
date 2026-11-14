@@ -1,4 +1,4 @@
-use crate::acp::{contract::SchemaVersionV1, intent::CapabilitySnapshotV1};
+use sage_acp_protocol::{contract::SchemaVersionV1, intent::CapabilitySnapshotV1};
 use sage_core::limits::LIMITS;
 
 use super::ActivationPumpError;
@@ -89,7 +89,7 @@ pub(super) fn intersect(
 
 #[cfg(test)]
 mod tests {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::{RequiredText, SchemaVersionV1},
         intent::CapabilitySnapshotV1,
     };

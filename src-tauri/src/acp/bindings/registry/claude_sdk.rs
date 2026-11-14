@@ -1,12 +1,10 @@
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::{
-        claude::sdk::{
-            CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration, ClaudeSdkRuntimeFactory,
-        },
-        runtime::RuntimeFactory,
-    },
+use crate::acp::bindings::{
+    claude::sdk::{CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration, ClaudeSdkRuntimeFactory},
+    runtime::RuntimeFactory,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };
@@ -111,11 +109,9 @@ pub(super) fn launch_effort_choice(
     binding: &AdmittedBinding,
     model: Option<&str>,
     effort: &str,
-) -> Option<crate::acp::session_config::ConfigMutation> {
-    use crate::acp::{
-        bindings::claude::sdk,
-        session_config::{ConfigId, ConfigMutation, ConfigValue},
-    };
+) -> Option<sage_acp_protocol::session_config::ConfigMutation> {
+    use crate::acp::bindings::claude::sdk;
+    use sage_acp_protocol::session_config::{ConfigId, ConfigMutation, ConfigValue};
     let AdmittedBinding::ClaudeSdk(binding) = binding else {
         return None;
     };

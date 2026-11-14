@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::{
-        pi::{
-            PI_VERSION,
-            native_admission::{PI_BINDING_ID, PiBindingRegistration},
-            native_runtime::PiNativeRuntimeFactory,
-        },
-        runtime::RuntimeFactory,
+use crate::acp::bindings::{
+    pi::{
+        PI_VERSION,
+        native_admission::{PI_BINDING_ID, PiBindingRegistration},
+        native_runtime::PiNativeRuntimeFactory,
     },
+    runtime::RuntimeFactory,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };

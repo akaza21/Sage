@@ -5,9 +5,11 @@ use crate::acp::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
         EgressToken, HarnessAdapter, ResourceMapper,
     },
+    transport::{Frame, request_payload_digest},
+};
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId},
-    transport::{Frame, request_payload_digest},
 };
 use sage_core::limits::LIMITS;
 
@@ -311,7 +313,7 @@ impl HarnessAdapter for OmpRuntime {
 
     fn cancel_permission(
         &mut self,
-        request_id: &crate::acp::contract::SageServerRequestId,
+        request_id: &sage_acp_protocol::contract::SageServerRequestId,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.prepare_permission_cancel(request_id)
     }

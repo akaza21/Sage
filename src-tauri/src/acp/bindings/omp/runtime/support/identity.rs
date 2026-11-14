@@ -1,5 +1,7 @@
-use crate::acp::{
-    bindings::adapter::{AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError},
+use crate::acp::bindings::adapter::{
+    AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError,
+};
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{ExternalId, ModelId},
 };

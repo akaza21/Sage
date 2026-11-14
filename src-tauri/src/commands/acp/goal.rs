@@ -1,7 +1,7 @@
 use super::*;
-use crate::acp::{
-    contract::{ClientIntentId, ProjectionRevision, RuntimeEpoch, SageAgentSessionId},
-    goal::GoalAction,
+use crate::acp::goal::GoalAction;
+use sage_acp_protocol::contract::{
+    ClientIntentId, ProjectionRevision, RuntimeEpoch, SageAgentSessionId,
 };
 use serde::Deserialize;
 
@@ -82,7 +82,7 @@ fn goal_error(error: crate::acp::runtime::HostError) -> AcpIpcError {
         },
         crate::acp::runtime::HostError::Intent | crate::acp::runtime::HostError::State => {
             AcpIpcError::Unavailable {
-                reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
+                reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
                 message: safe_message("This session has no mutable native Goal."),
             }
         }

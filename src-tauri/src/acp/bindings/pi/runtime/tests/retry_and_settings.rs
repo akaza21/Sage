@@ -1,7 +1,7 @@
 use super::*;
-use crate::acp::{
+use crate::acp::goal::NativeRpcReply;
+use sage_acp_protocol::{
     contract::{SageChatId, SageProjectId},
-    goal::NativeRpcReply,
     intent::session_event::{SessionActivity, SessionActivityState, SessionScopedEvent},
     scheduler::RuntimeOwner,
     session_config::{ConfigId, ConfigIntent, ConfigKind, ConfigMutation, ConfigValue},

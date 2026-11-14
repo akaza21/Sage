@@ -1,11 +1,13 @@
 use super::*;
 use crate::acp::{
-    contract::{ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
     read_text_file::{ReadTextFileService, ReadTextFlushAck},
     service::AcpService,
     transport::DeadlineAsyncWriter,
 };
 use crate::persistence::Database;
+use sage_acp_protocol::contract::{
+    ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
+};
 use std::{
     fs,
     future::Future,

@@ -1,6 +1,6 @@
 use super::*;
 use crate::acp::goal::GoalAction;
-use crate::acp::session_config::ConfigIntent;
+use sage_acp_protocol::session_config::ConfigIntent;
 
 pub(crate) fn hydrate_model_config<A: HarnessAdapter>(
     adapter: &mut A,
@@ -110,7 +110,7 @@ pub(crate) fn write_fork<A: HarnessAdapter>(
 pub(crate) fn write_release_fork<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
-    fork: &crate::acp::intent::ExternalId,
+    fork: &sage_acp_protocol::intent::ExternalId,
     committed: bool,
 ) -> Result<(), crate::acp::runtime::HostError> {
     use crate::acp::runtime::HostError;
@@ -127,7 +127,7 @@ pub(crate) fn write_release_fork<A: HarnessAdapter>(
 pub(crate) fn write_control<A: HarnessAdapter>(
     adapter: &mut A,
     transport: &mut impl EgressTransport,
-    control: &crate::acp::session_control::SessionControl,
+    control: &sage_acp_protocol::session_control::SessionControl,
 ) -> Result<(), crate::acp::runtime::HostError> {
     use crate::acp::runtime::HostError;
     if adapter.answered_control(control) {
@@ -186,7 +186,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     /// A Turn is running: the fork release is deferred to the next idle.
     pub(crate) fn defer_fork_release(
         &mut self,
-        fork: &crate::acp::intent::ExternalId,
+        fork: &sage_acp_protocol::intent::ExternalId,
         committed: bool,
     ) -> bool {
         self.adapter.defer_fork_release(fork, committed)
@@ -229,7 +229,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     pub(crate) fn write_control(
         &mut self,
         transport: &mut impl EgressTransport,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<(), crate::acp::runtime::HostError> {
         self.ensure_live()
             .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
@@ -312,7 +312,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
     pub(crate) fn write_control(
         &mut self,
         transport: &mut impl EgressTransport,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<(), crate::acp::runtime::HostError> {
         write_control(&mut self.adapter, transport, control)
     }
@@ -330,7 +330,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
     pub(crate) fn write_release_fork(
         &mut self,
         transport: &mut impl EgressTransport,
-        fork: &crate::acp::intent::ExternalId,
+        fork: &sage_acp_protocol::intent::ExternalId,
         committed: bool,
     ) -> Result<(), crate::acp::runtime::HostError> {
         write_release_fork(&mut self.adapter, transport, fork, committed)

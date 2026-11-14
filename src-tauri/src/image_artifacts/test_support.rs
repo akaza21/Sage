@@ -4,10 +4,8 @@ use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::{
-    acp::intent::ImageMediaType,
-    image_attachment::{ImageAttachedContext, ImageAttachmentKind},
-};
+use crate::image_attachment::{ImageAttachedContext, ImageAttachmentKind};
+use sage_acp_protocol::intent::ImageMediaType;
 
 use super::store::{full_path, thumb_path, validate_root};
 

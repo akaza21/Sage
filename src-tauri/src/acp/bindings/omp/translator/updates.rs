@@ -5,10 +5,11 @@ mod tool_snapshots;
 
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    contract::{ItemLifecycle, RequiredText, SafeText, ToolState},
+use crate::acp::runtime::host_browse::browse_tool_summary;
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText},
     intent::NormalizedPayload,
-    runtime::host_browse::browse_tool_summary,
+    lifecycle::{ItemLifecycle, ToolState},
 };
 use sage_core::limits::LIMITS;
 
@@ -109,7 +110,7 @@ impl OmpTranslator {
                 return Err(TranslationError::Limit("tools per Turn"));
             }
         }
-        let command = category == crate::acp::intent::ToolCategory::Execute;
+        let command = category == sage_acp_protocol::intent::ToolCategory::Execute;
         let protocol_locations = path_locations(category, update, resources)?;
         let snapshot = if command {
             Some(
@@ -189,7 +190,7 @@ impl OmpTranslator {
             .ok_or(TranslationError::Correlation)?;
         let next = parse_tool_state(update.get("status"), current)?;
         let protocol_locations = path_locations(category, update, resources)?;
-        let command = category == crate::acp::intent::ToolCategory::Execute;
+        let command = category == sage_acp_protocol::intent::ToolCategory::Execute;
         let patch = command
             .then(|| command_update_payload(update, protocol_locations.clone()))
             .transpose()?;

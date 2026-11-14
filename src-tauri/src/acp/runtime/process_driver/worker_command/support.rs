@@ -1,4 +1,5 @@
-use crate::acp::{runtime::HostError, scheduler::RuntimeOwner, store::CloseSessionCommand};
+use crate::acp::{runtime::HostError, store::CloseSessionCommand};
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::MailboxError;
 

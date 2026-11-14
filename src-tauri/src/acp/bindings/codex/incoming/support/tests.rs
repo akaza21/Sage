@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::{IngressError, parse_usage, sanitize, sanitized_command_output};
-use crate::acp::intent::NormalizedPayload;
+use sage_acp_protocol::intent::NormalizedPayload;
 
 #[test]
 fn usage_context_window_is_known_only_for_a_positive_bounded_integer() {
