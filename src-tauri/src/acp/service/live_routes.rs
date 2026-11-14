@@ -18,10 +18,9 @@ impl AcpService {
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
         command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
-    ) -> Result<(), CodexSessionError> {
+    ) -> Result<RuntimeOwner, CodexSessionError> {
         self.activate_head_session(admitted, command, project_root)
             .await
-            .map(drop)
     }
 
     pub(in crate::acp::service) async fn activate_head_session(
@@ -261,6 +260,7 @@ impl AcpService {
             crate::acp::bindings::registry::BindingProjectRoot::Codex(project_root),
         )
         .await
+        .map(drop)
     }
 
     #[cfg(all(test, windows))]

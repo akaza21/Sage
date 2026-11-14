@@ -85,6 +85,32 @@ pub(super) fn turn_access_mode(
     })
 }
 
+/// Gives a session that has run no turn the access of the session its chat
+/// ran just before it on the same binding, so the chat's choice outlives a
+/// failed session, a resume on a later harness release and a restart after
+/// an undo. Called on every start and activation, before a prompt reads the
+/// session's access, so a retry after a refused activation still carries it.
+pub(super) fn carry_chat_access(
+    state: &AppState,
+    session_id: &SageAgentSessionId,
+) -> Result<(), AcpIpcError> {
+    let Some(earlier) =
+        crate::acp::store::preceding_session(&state.database.connection(), session_id)
+            .map_err(|_| access_unreadable())?
+    else {
+        return Ok(());
+    };
+    state
+        .settings
+        .carry_chat_access(
+            earlier.as_str(),
+            session_id.as_str(),
+            sage_core::time::now_millis(),
+        )
+        .map_err(|_| access_unreadable())?;
+    Ok(())
+}
+
 /// The access a prompt runs under, selected in its live session first.
 pub(super) fn select_turn_access(
     state: &AppState,

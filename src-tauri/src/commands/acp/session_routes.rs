@@ -68,6 +68,7 @@ pub(crate) async fn start_acp_session_inner(
         )
         .await
         .map_err(session_error)?;
+    session_access::carry_chat_access(state, &started.session_id)?;
     if let Some(choice) = effort_choice
         && !state
             .acp
@@ -116,7 +117,7 @@ pub(crate) async fn activate_acp_session_inner(
         .map_err(|_| binding_unavailable())?;
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
-    state
+    let owner = state
         .acp
         .activate_session(
             admitted,
@@ -134,6 +135,7 @@ pub(crate) async fn activate_acp_session_inner(
         )
         .await
         .map_err(session_error)?;
+    session_access::carry_chat_access(state, &owner.session_id)?;
     mutation_response(state, project_id, chat_id)
 }
 

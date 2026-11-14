@@ -164,9 +164,12 @@ fn failed_chat() -> AcpService {
     service
 }
 
-/// Starts the chat's next session, as a send does, and returns the choices
-/// it holds.
-fn start_next(service: &AcpService, binding: &str, model: Option<&str>) -> Vec<ConfigMutation> {
+/// Starts the chat's next session, as a send does.
+fn start_next_session(
+    service: &AcpService,
+    binding: &str,
+    model: Option<&str>,
+) -> sage_acp_protocol::contract::SageAgentSessionId {
     let revision: i64 = service
         .database
         .connection()
@@ -176,7 +179,7 @@ fn start_next(service: &AcpService, binding: &str, model: Option<&str>) -> Vec<C
             |row| row.get(0),
         )
         .unwrap();
-    let next = crate::acp::store::start_session(
+    crate::acp::store::start_session(
         &mut service.database.write_connection().unwrap(),
         crate::acp::store::StartSessionCommand {
             project_id: owner(1).project_id,
@@ -196,7 +199,12 @@ fn start_next(service: &AcpService, binding: &str, model: Option<&str>) -> Vec<C
         },
     )
     .unwrap()
-    .session_id;
+    .session_id
+}
+
+/// Starts the chat's next session and returns the choices it holds.
+fn start_next(service: &AcpService, binding: &str, model: Option<&str>) -> Vec<ConfigMutation> {
+    let next = start_next_session(service, binding, model);
     crate::acp::session_config::choices::load(&service.database.connection(), &next).unwrap()
 }
 
@@ -219,4 +227,19 @@ fn a_failed_session_hands_its_choices_to_the_session_the_next_send_starts() {
 fn a_session_started_on_another_model_or_binding_takes_no_choices_over() {
     assert!(start_next(&failed_chat(), "opencode-acp", Some("other-model")).is_empty());
     assert!(start_next(&failed_chat(), "claude-sdk", None).is_empty());
+}
+
+#[test]
+fn the_session_started_after_a_failure_goes_on_from_it_on_the_same_binding_only() {
+    let preceding = |service: &AcpService, binding| {
+        let next = start_next_session(service, binding, Some("other-model"));
+        crate::acp::store::preceding_session(&service.database.connection(), &next)
+            .unwrap()
+            .map(|session| session.as_str().to_owned())
+    };
+    assert_eq!(
+        preceding(&failed_chat(), "opencode-acp").as_deref(),
+        Some("session-restore")
+    );
+    assert_eq!(preceding(&failed_chat(), "claude-sdk"), None);
 }
