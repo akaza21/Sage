@@ -20,6 +20,7 @@ export function createNewChatDraftActions(
   | "sendNewChatDraft"
   | "reloadNewChatDraft"
 > {
+  let selectionRequest: object | undefined;
   const submit = async (draft: NewChatDraft) => {
     const submission = {
       projectId: draft.projectId,
@@ -34,9 +35,20 @@ export function createNewChatDraftActions(
     await runNewChatDraftSend(set, get, draft, submission);
   };
   return {
-    openNewChatDraft: async (projectId) =>
-      openNewChatDraft(set, get, projectId),
-    selectDraftHarness: (harnessId) => selectDraftHarness(set, get, harnessId),
+    openNewChatDraft: async (projectId) => {
+      if (!get().newChatDraft) selectionRequest = undefined;
+      return openNewChatDraft(set, get, projectId);
+    },
+    selectDraftHarness: (harnessId) => {
+      const request = {};
+      selectionRequest = request;
+      return selectDraftHarness(
+        set,
+        get,
+        harnessId,
+        () => selectionRequest === request,
+      );
+    },
     updateNewChatDraft: (patch) => {
       const draft = get().newChatDraft;
       if (!draft || draft.creating) return;
@@ -60,6 +72,7 @@ export function createNewChatDraftActions(
         return;
       const model = state.models.find((model) => model.id === modelId);
       if (!model) return;
+      selectionRequest = undefined;
       set({
         newChatDraft: {
           ...draft,

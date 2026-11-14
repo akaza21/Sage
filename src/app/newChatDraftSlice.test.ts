@@ -3,6 +3,9 @@ import { MAX_CHAT_COMPOSER_BYTES } from "../domain/chatOwnership";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { resetBrowserDesktopForTests } from "../services/browserDesktop";
 import { useWorkbenchStore } from "./store";
+import { desktop } from "../services/desktop";
+import { resetHarnessModelCache } from "./harnessModelCache";
+import type { HarnessDefinition } from "../domain/workbench";
 
 const initial = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
@@ -123,4 +126,55 @@ it("refuses delayed creation after the project ownership lifetime changes", asyn
   expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(
     before.tabs,
   );
+});
+
+it("keeps the latest draft model when A, B, A discovery completes out of order", async () => {
+  resetHarnessModelCache();
+  useWorkbenchStore.setState({
+    harnesses: ["A", "B"].map((id): HarnessDefinition => ({
+      id,
+      name: id,
+      description: "Fixture ACP harness",
+      source: "builtIn",
+      transport: "acp",
+      installState: "available",
+      bindingId: `binding-${id}`,
+      accountModelDiscovery: false,
+    })),
+  });
+  const models = [
+    { id: "default", name: "Default", isDefault: true },
+    { id: "chosen", name: "Chosen" },
+  ];
+  let finishFirst!: (value: typeof models) => void;
+  let finishLatest!: (value: typeof models) => void;
+  vi.spyOn(desktop, "listHarnessModels")
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishFirst = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(models)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishLatest = resolve;
+        }),
+    );
+  const state = useWorkbenchStore.getState();
+  const first = state.selectDraftHarness("A");
+  await vi.waitFor(() => expect(finishFirst).toBeDefined());
+  await state.selectDraftHarness("B");
+  const latest = state.selectDraftHarness("A");
+  await vi.waitFor(() => expect(finishLatest).toBeDefined());
+  finishLatest(models);
+  await latest;
+  state.selectDraftModel("chosen");
+  finishFirst(models);
+  await first;
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    harnessId: "A",
+    modelId: "chosen",
+  });
 });

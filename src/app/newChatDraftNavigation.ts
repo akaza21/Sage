@@ -44,6 +44,7 @@ export async function selectDraftHarness(
   set: Set,
   get: Get,
   harnessId: string,
+  isCurrent: () => boolean,
 ) {
   const state = get();
   const draft = state.newChatDraft;
@@ -68,6 +69,8 @@ export async function selectDraftHarness(
   );
   const current = get();
   if (
+    isCurrent() &&
+    current.chatOwnershipEpoch === state.chatOwnershipEpoch &&
     current.newChatDraft?.harnessId === harnessId &&
     current.newChatDraft.projectId === draft.projectId
   ) {

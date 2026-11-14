@@ -20,7 +20,10 @@ import type {
   SendAcpTurnRequest,
 } from "../../domain/acp";
 import { agentSessionFixture } from "../../domain/acpProjection.fixture";
-import type { ProjectTransitionResult } from "../../domain/workbench";
+import type {
+  BootstrapSnapshot,
+  ProjectTransitionResult,
+} from "../../domain/workbench";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { acpDesktop } from "../../services/acpDesktop";
 import { AcpDesktopError } from "../../services/acpDesktopCommand";
@@ -31,7 +34,10 @@ import { settleLazyModules } from "../../test/settleLazyModules";
 import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
 import { registerWorkbenchSurfaces } from "../../workbench/registeredSurfaces";
 import { AgentChatPanes } from "../../workbench/AgentChatPanes";
+import { resetHarnessModelCache } from "../../app/harnessModelCache";
 import { LeftSidebar } from "../../workbench/LeftSidebar";
+import { openSideChat } from "../../workbench/sideChatActions";
+import { useSideChatState } from "../../workbench/sideChatState";
 
 const initialState = useWorkbenchStore.getState();
 const ports = getWorkbenchPorts();
@@ -78,13 +84,17 @@ let prompts: SendAcpTurnRequest[];
 let pages: Map<string, AcpChatPage>;
 
 function withHarnessCatalog(result: ProjectTransitionResult) {
-  if (result.snapshot)
-    Object.assign(result.snapshot, {
-      harnesses: [harness, otherHarness],
-      selectedHarnessId: harness.id,
-      selectedModelId: "model-a",
-    });
+  if (result.snapshot) result.snapshot = withHarnessSnapshot(result.snapshot);
   return result;
+}
+
+function withHarnessSnapshot(snapshot: BootstrapSnapshot): BootstrapSnapshot {
+  return {
+    ...snapshot,
+    harnesses: [harness, otherHarness],
+    selectedHarnessId: harness.id,
+    selectedModelId: "model-a",
+  };
 }
 
 function emptyPage(projectId: string, chatId: string): AcpChatPage {
@@ -99,11 +109,11 @@ function emptyPage(projectId: string, chatId: string): AcpChatPage {
     nextCursor: null,
   } as unknown as AcpChatPage;
 }
-function mount(strict = false) {
+function mount(strict = false, compact = false) {
   registerWorkbenchSurfaces();
   const content = (
     <AgentChatRuntimeHarness>
-      <AgentChatPanes />
+      <AgentChatPanes compact={compact} />
     </AgentChatRuntimeHarness>
   );
   return render(strict ? <StrictMode>{content}</StrictMode> : content);
@@ -111,6 +121,7 @@ function mount(strict = false) {
 const composer = () => screen.getByRole("combobox", { name: "Message agent" });
 
 beforeEach(async () => {
+  useSideChatState.setState({ sides: [], pairedId: null, pendingClose: null });
   resetBrowserDesktopForTests();
   useWorkbenchStore.setState(initialState, true);
   await useWorkbenchStore.getState().initialize();
@@ -135,6 +146,10 @@ beforeEach(async () => {
   const activate = ports.chat.activateChat.bind(ports.chat);
   vi.spyOn(ports.chat, "activateChat").mockImplementation(async (...args) =>
     withHarnessCatalog(await activate(...args)),
+  );
+  const restore = ports.chat.restoreChat.bind(ports.chat);
+  vi.spyOn(ports.chat, "restoreChat").mockImplementation(async (...args) =>
+    withHarnessCatalog(await restore(...args)),
   );
   vi.spyOn(acpDesktop, "getChatPage").mockImplementation(
     async (request) =>
@@ -172,6 +187,7 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   clearAcpProjectionRegistry();
+  useSideChatState.setState({ sides: [], pairedId: null, pendingClose: null });
   vi.restoreAllMocks();
   useChatAccessDrafts.setState({ drafts: {} });
   useChatEffortDraft.setState({ draft: null });
@@ -404,7 +420,7 @@ it.each([
   },
 );
 
-it("restoring an archived chat while creation is unconfirmed leaves its composer and selections untouched", async () => {
+it("recovers after restoring an archived chat without losing either composer or creating twice", async () => {
   const state = useWorkbenchStore.getState();
   const archivedId = state.activeTabId!;
   const owner = state.captureChatOwnership(archivedId)!;
@@ -427,6 +443,7 @@ it("restoring an archived chat while creation is unconfirmed leaves its composer
   vi.mocked(ports.chat.createChat).mockRejectedValueOnce(
     new Error("Creation response unavailable"),
   );
+  const bootstrap = ports.project.getBootstrapSnapshot.bind(ports.project);
   const projection = vi
     .spyOn(ports.project, "getBootstrapSnapshot")
     .mockRejectedValue(new Error("Projection unavailable"));
@@ -441,7 +458,9 @@ it("restoring an archived chat while creation is unconfirmed leaves its composer
       "Chat creation is unconfirmed. Reload chats before trying again.",
     ),
   );
-  projection.mockRestore();
+  projection.mockImplementation(async () =>
+    withHarnessSnapshot(await bootstrap()),
+  );
   await act(async () => {
     expect(await useWorkbenchStore.getState().restoreChat(archivedId)).toBe(
       true,
@@ -459,12 +478,247 @@ it("restoring an archived chat while creation is unconfirmed leaves its composer
   await settleLazyModules();
   expect(useWorkbenchStore.getState().chatUiById[archivedId]).toEqual(archived);
   expect(composer()).toHaveValue("Keep this unsaved draft");
-  expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Reload chats" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled();
   fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  const after = await ports.project.getBootstrapSnapshot();
+  expect(after.tabs).toHaveLength(before.tabs.length + 2);
+  expect(prompts[0]).toMatchObject({
+    chatId: after.activeTabId,
+    prompt: "Keep this unsaved draft",
+  });
+  expect(after.activeTabId).not.toBe(archivedId);
+  expect(useWorkbenchStore.getState().chatUiById[archivedId]).toEqual(archived);
+});
+
+it("explains non-account model discovery failure and retries without losing the draft", async () => {
+  resetHarnessModelCache();
+  vi.mocked(desktop.listHarnessModels).mockRejectedValueOnce(
+    new Error("Model service unavailable"),
+  );
+  mount();
   await settleLazyModules();
-  expect(prompts).toEqual([]);
+  fireEvent.change(composer(), { target: { value: "Keep this model draft" } });
+  fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+  fireEvent.click(await screen.findByRole("option", { name: /Other harness/ }));
+  await settleLazyModules();
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    "Model service unavailable",
+  );
+  expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
+  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled(),
+  );
+  expect(composer()).toHaveValue("Keep this model draft");
+  expect(screen.queryByRole("alert")).toBeNull();
   expect(starts).toEqual([]);
+});
+
+it("keeps an intervening side chat's text and session while recovering the draft into its own chat", async () => {
+  const before = await ports.project.getBootstrapSnapshot();
+  vi.mocked(ports.chat.createChat).mockRejectedValueOnce(
+    new Error("Creation response unavailable"),
+  );
+  const bootstrap = ports.project.getBootstrapSnapshot.bind(ports.project);
+  const projection = vi
+    .spyOn(ports.project, "getBootstrapSnapshot")
+    .mockRejectedValue(new Error("Projection unavailable"));
+  mount(false, true);
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "Draft's own request" } });
+  fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Reload chats" })).toBeEnabled(),
+  );
+  projection.mockImplementation(async () =>
+    withHarnessSnapshot(await bootstrap()),
+  );
+  await act(async () => {
+    await openSideChat(before.activeTabId!, {
+      turnId: "turn",
+      itemId: "item",
+      text: "Quote",
+      startOffset: 0,
+      endOffset: 5,
+    });
+    const state = useWorkbenchStore.getState();
+    const sideId = useSideChatState.getState().sides[0].id;
+    state.setChatHarnessSelection(state.captureChatOwnership(sideId)!, {
+      harnessId: otherHarness.id,
+      modelId: "model-b",
+    });
+    await state.activateTab(sideId);
+  });
+  await settleLazyModules();
+  const sideId = useSideChatState.getState().sides[0].id;
+  fireEvent.change(composer(), { target: { value: "Side chat question" } });
+  fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState().chatUiById[sideId].sending).toBe(false),
+  );
+  fireEvent.change(composer(), {
+    target: { value: "Side chat's next message" },
+  });
+  const sideUi = useWorkbenchStore.getState().chatUiById[sideId];
+  const sidePage = structuredClone(pages.get(sideId));
+  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await settleLazyModules();
+  expect(composer()).toHaveValue("Draft's own request");
+  fireEvent.click(screen.getByRole("button", { name: "Reload chats" }));
+  await settleLazyModules();
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Send message" })).toBeEnabled(),
+  );
+  expect(composer()).toHaveValue("Draft's own request");
+  fireEvent.submit(screen.getByRole("form"));
+  await waitFor(() => expect(prompts).toHaveLength(2));
+  const after = await ports.project.getBootstrapSnapshot();
+  expect(prompts[1]).toMatchObject({
+    chatId: after.activeTabId,
+    prompt: "Draft's own request",
+  });
+  expect(after.activeTabId).not.toBe(sideId);
+  expect(after.tabs).toHaveLength(before.tabs.length + 2);
+  expect(useWorkbenchStore.getState().chatUiById[sideId]).toEqual(sideUi);
+  expect(pages.get(sideId)).toEqual(sidePage);
+  expect(starts.map((request) => request.chatId)).toEqual([
+    sideId,
+    after.activeTabId,
+  ]);
+});
+
+it.each(["open", "close"])(
+  "recovers the created chat after an Editor tab %s without losing either composer",
+  async (change) => {
+    const state = useWorkbenchStore.getState();
+    const priorId = state.activeTabId!;
+    state.setChatComposer(
+      state.captureChatOwnership(priorId)!,
+      "Previous chat text",
+    );
+    const file = {
+      id: "file:example",
+      kind: "file" as const,
+      title: "example.ts",
+      position: 1,
+      pinned: false,
+      dirty: false,
+      resource: {
+        rootId: state.project!.roots[0].id,
+        relativePath: "src/example.ts",
+      },
+    };
+    if (change === "close") {
+      await ports.project.persistProjectLayout(
+        {
+          projectId: state.project!.id,
+          tabs: [...state.tabs, file],
+          activeTabId: priorId,
+          selectedRootId: state.selectedRootId,
+          selectedResource: null,
+        },
+        state.nativeTransitionEpoch,
+      );
+      useWorkbenchStore.setState({ tabs: [...state.tabs, file] });
+    }
+    const create = vi.mocked(ports.chat.createChat).getMockImplementation()!;
+    vi.mocked(ports.chat.createChat).mockImplementationOnce(
+      async (...args) => ({ ...(await create(...args)), snapshot: null }),
+    );
+    const bootstrap = ports.project.getBootstrapSnapshot.bind(ports.project);
+    const projection = vi
+      .spyOn(ports.project, "getBootstrapSnapshot")
+      .mockRejectedValue(new Error("Projection unavailable"));
+    state.updateNewChatDraft({ text: "Recover my draft" });
+    await state.sendNewChatDraft();
+    const native = await bootstrap();
+    const createdId = native.activeTabId!;
+    expect(useWorkbenchStore.getState().newChatDraft?.creating).toBe(true);
+    projection.mockImplementation(async () =>
+      withHarnessSnapshot(await bootstrap()),
+    );
+    await ports.project.persistProjectLayout(
+      {
+        projectId: native.project!.id,
+        tabs:
+          change === "open"
+            ? [...native.tabs, { ...file, position: native.tabs.length }]
+            : native.tabs.filter((tab) => tab.id !== file.id),
+        activeTabId: change === "open" ? file.id : priorId,
+        selectedRootId: native.selectedRootId,
+        selectedResource: null,
+      },
+      native.transitionEpoch,
+    );
+    await state.reloadNewChatDraft();
+    const recovered = useWorkbenchStore.getState();
+    expect(recovered.newChatDraft).toBeNull();
+    expect(recovered.activeTabId).toBe(createdId);
+    expect(recovered.chatUiById[createdId].composerText).toBe(
+      "Recover my draft",
+    );
+    expect(recovered.chatUiById[priorId].composerText).toBe(
+      "Previous chat text",
+    );
+    const after = await bootstrap();
+    expect(after.tabs.filter((tab) => tab.kind === "chat")).toHaveLength(2);
+    expect(after.archivedChats).toEqual([]);
+    expect(after.tabs.some((tab) => tab.kind === "file")).toBe(
+      change === "open",
+    );
+  },
+);
+
+it("reattaches the draft's own archived creation instead of creating another chat", async () => {
+  const state = useWorkbenchStore.getState();
+  const priorId = state.activeTabId!;
+  state.setChatComposer(
+    state.captureChatOwnership(priorId)!,
+    "Previous chat text",
+  );
+  state.updateNewChatDraft({ text: "Recover the same chat" });
+  const create = vi.mocked(ports.chat.createChat).getMockImplementation()!;
+  vi.mocked(ports.chat.createChat).mockImplementationOnce(async (...args) => ({
+    ...(await create(...args)),
+    snapshot: null,
+  }));
+  const bootstrap = ports.project.getBootstrapSnapshot.bind(ports.project);
+  const projection = vi
+    .spyOn(ports.project, "getBootstrapSnapshot")
+    .mockRejectedValue(new Error("Projection unavailable"));
+  await state.sendNewChatDraft();
+  const native = await bootstrap();
+  const createdId = native.activeTabId!;
+  projection.mockImplementation(async () =>
+    withHarnessSnapshot(await bootstrap()),
+  );
+  await ports.chat.archiveChat(
+    {
+      projectId: native.project!.id,
+      chatId: createdId,
+      currentLayout: {
+        projectId: native.project!.id,
+        tabs: native.tabs,
+        activeTabId: createdId,
+        selectedRootId: native.selectedRootId,
+        selectedResource: native.selectedResource,
+      },
+    },
+    native.transitionEpoch,
+  );
+  await state.reloadNewChatDraft();
+  const recovered = useWorkbenchStore.getState();
+  expect(recovered.newChatDraft).toBeNull();
+  expect(recovered.activeTabId).toBe(createdId);
+  expect(recovered.chatUiById[createdId].composerText).toBe(
+    "Recover the same chat",
+  );
+  expect(recovered.chatUiById[priorId].composerText).toBe("Previous chat text");
+  const after = await bootstrap();
+  expect(after.tabs.filter((tab) => tab.kind === "chat")).toHaveLength(2);
+  expect(after.archivedChats).toEqual([]);
 });
 
 it("keeps draft picker choices separate from the previous chat and its defaults", async () => {

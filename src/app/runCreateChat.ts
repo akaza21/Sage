@@ -115,35 +115,32 @@ async function createOnActiveProject(input: {
 }): Promise<CreateChatResult> {
   const { set, get, applyProjection, loadAuthoritativeProjection, chat } =
     input;
-  const priorChatIds = new Set(
-    [
-      ...input.current.tabs.filter((tab) => tab.kind === "chat"),
-      ...get().archivedChats,
-    ].map((chat) => chat.id),
-  );
-  let confirmedId: string | null = null;
+  // Native persists this identity as the Chat primary key in the creation
+  // transaction. Recovery must never infer ownership from resource layout.
+  const chatId = crypto.randomUUID();
   let committed = false;
   let mutationInvoked = false;
   const classify = (snapshot: BootstrapSnapshot) => {
     if (snapshot.project?.id !== input.current.projectId) return null;
-    const created = snapshot.tabs.filter(
-      (tab) => tab.kind === "chat" && !priorChatIds.has(tab.id),
-    );
     if (
-      snapshot.tabs.length === input.current.tabs.length + 1 &&
-      created.length === 1
+      snapshot.tabs.some((tab) => tab.kind === "chat" && tab.id === chatId) ||
+      snapshot.archivedChats.some((chat) => chat.id === chatId)
     ) {
-      confirmedId = created[0]!.id;
       return "committed" as const;
     }
-    if (
-      !committed &&
-      snapshot.tabs.length === input.current.tabs.length &&
-      snapshot.activeTabId === input.current.activeTabId
-    ) {
+    if (!committed) {
       return "unchanged" as const;
     }
     return null;
+  };
+  const confirm = async (): Promise<CreateChatResult> => {
+    // A later layout edit may have detached the Chat before recovery. Its
+    // durable identity still belongs to this creation; reattach that Chat.
+    if (get().archivedChats.some((chat) => chat.id === chatId)) {
+      if (!(await get().restoreChat(chatId)))
+        return { status: "unconfirmed", reconcile };
+    }
+    return { status: "confirmed", chatId };
   };
   const reconcile = async (): Promise<CreateChatResult> => {
     const generation = nextProjectGeneration(get().projectGeneration);
@@ -154,8 +151,7 @@ async function createOnActiveProject(input: {
     });
     try {
       const outcome = await loadAuthoritativeProjection(generation, classify);
-      if (outcome === "committed")
-        return { status: "confirmed", chatId: confirmedId! };
+      if (outcome === "committed") return await confirm();
       if (outcome === "unchanged") {
         set({ error: "Could not create the chat. Try again." });
         return { status: "not-created" };
@@ -174,7 +170,12 @@ async function createOnActiveProject(input: {
     const latest = currentProjectLayout(get());
     if (!latest) throw new Error("Open a project before starting a new chat.");
     mutationInvoked = true;
-    const result = await chat.createChat(latest, input.expectedTransitionEpoch);
+    const result = await chat.createChat(
+      latest,
+      input.expectedTransitionEpoch,
+      undefined,
+      chatId,
+    );
     committed = result.committed;
     validateTransitionIntent(result, input.expectedTransitionEpoch);
     if (!result.committed) {
@@ -204,7 +205,7 @@ async function createOnActiveProject(input: {
         throw new Error("Chat creation has not been confirmed");
       }
     }
-    return { status: "confirmed", chatId: confirmedId! };
+    return await confirm();
   } catch {
     if (mutationInvoked) {
       return reconcile();
