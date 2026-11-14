@@ -71,6 +71,17 @@ fn fixture_runtime() -> CodexRuntime {
     CodexRuntime::fixture(Platform::WindowsX86_64)
 }
 
+#[cfg(windows)]
+fn observed_cli_path(label: &str) -> std::path::PathBuf {
+    let directory = std::env::temp_dir().join(format!("{label}-{}", uuid::Uuid::new_v4()));
+    let package = directory.join("node_modules/@openai/codex");
+    std::fs::create_dir_all(&package).unwrap();
+    std::fs::write(package.join("package.json"), br#"{"name":"@openai/codex"}"#).unwrap();
+    let path = directory.join("codex.cmd");
+    std::fs::write(&path, "@echo off\r\n").unwrap();
+    path
+}
+
 fn launch_project_id() -> SageProjectId {
     SageProjectId::parse("project-codex-launch").unwrap()
 }
@@ -997,11 +1008,7 @@ fn running_turn(runtime: &mut CodexRuntime) {
 fn steer_targets_only_the_active_codex_turn() {
     use std::{fs, sync::Arc};
 
-    let path = std::env::temp_dir().join(format!(
-        "sage-observed-codex-steer-{}.cmd",
-        uuid::Uuid::new_v4()
-    ));
-    fs::write(&path, "@echo off\r\n").unwrap();
+    let path = observed_cli_path("sage-observed-codex-steer");
     let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
         version_line("codex-cli"),
@@ -1116,7 +1123,7 @@ fn steer_targets_only_the_active_codex_turn() {
             })
             .is_err()
     );
-    fs::remove_file(path).unwrap();
+    fs::remove_dir_all(path.parent().unwrap()).unwrap();
 }
 
 #[test]
@@ -1571,11 +1578,7 @@ fn admitted_binding_is_the_only_constructor_that_crosses_the_launch_gate() {
 fn observed_cli_binding_accepts_its_own_initialize_identity() {
     use std::{fs, sync::Arc};
 
-    let path = std::env::temp_dir().join(format!(
-        "sage-observed-codex-runtime-{}.cmd",
-        uuid::Uuid::new_v4()
-    ));
-    fs::write(&path, "@echo off\r\n").unwrap();
+    let path = observed_cli_path("sage-observed-codex-runtime");
     let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
         version_line("codex"),
@@ -1613,7 +1616,7 @@ fn observed_cli_binding_accepts_its_own_initialize_identity() {
         initialized.unwrap().events(),
         [AdapterEvent::Initialized { .. }]
     ));
-    fs::remove_file(path).unwrap();
+    fs::remove_dir_all(path.parent().unwrap()).unwrap();
 }
 
 #[cfg(windows)]
@@ -1621,11 +1624,7 @@ fn observed_cli_binding_accepts_its_own_initialize_identity() {
 fn an_observed_pinned_binding_publishes_its_own_identity_not_the_pinned_package() {
     use std::{fs, sync::Arc};
 
-    let path = std::env::temp_dir().join(format!(
-        "sage-observed-codex-identity-{}.cmd",
-        uuid::Uuid::new_v4()
-    ));
-    fs::write(&path, "@echo off\r\n").unwrap();
+    let path = observed_cli_path("sage-observed-codex-identity");
     let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
         version_line("codex-cli"),
@@ -1683,7 +1682,7 @@ fn an_observed_pinned_binding_publishes_its_own_identity_not_the_pinned_package(
         }),
         Err(AdapterRuntimeError::Operation)
     ));
-    fs::remove_file(path).unwrap();
+    fs::remove_dir_all(path.parent().unwrap()).unwrap();
 }
 
 #[test]
@@ -1839,9 +1838,7 @@ fn observed_goal_cleared_notification_is_ignored_during_ready_handoff() {
 fn admitted_observed_codex_hydrates_goal_and_bounds_existing_mutations() {
     use std::{fs, sync::Arc};
 
-    let path =
-        std::env::temp_dir().join(format!("sage-observed-goal-{}.cmd", uuid::Uuid::new_v4()));
-    fs::write(&path, "@echo off\r\n").unwrap();
+    let path = observed_cli_path("sage-observed-goal");
     let binding = crate::acp::bindings::codex::AdmittedCodexBinding::admit_observed_for_test(
         path.clone(),
         version_line("codex-cli"),
@@ -1977,7 +1974,7 @@ fn admitted_observed_codex_hydrates_goal_and_bounds_existing_mutations() {
             .mutate_goal(crate::acp::goal::GoalAction::ClearExisting)
             .is_err()
     );
-    fs::remove_file(path).unwrap();
+    fs::remove_dir_all(path.parent().unwrap()).unwrap();
 }
 
 #[test]

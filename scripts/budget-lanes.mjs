@@ -599,7 +599,7 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
   {
     file: "gate.node-test.mjs",
     reason:
-      "Portable gate environment contract proves the deterministic Vitest worker defaults and explicit operator overrides.",
+      "Portable gate plan contract proves the deterministic Vitest worker defaults, explicit operator overrides, and the steps the changed gate picks for a diff.",
   },
   {
     file: "hr6-chat-scope.node-test.mjs",

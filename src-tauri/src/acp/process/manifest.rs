@@ -16,6 +16,20 @@ pub(crate) struct ManifestExpectation {
 }
 
 impl ManifestExpectation {
+    #[cfg(windows)]
+    pub(crate) fn record(canonical_absolute_path: PathBuf) -> Result<Self, LaunchError> {
+        let mut bytes = Vec::new();
+        open_denying_writers(&canonical_absolute_path)?
+            .take(MANIFEST_BYTES_MAX + 1)
+            .read_to_end(&mut bytes)
+            .map_err(|_| LaunchError::Io)?;
+        Self::new(
+            canonical_absolute_path,
+            Sha256::digest(&bytes).into(),
+            bytes.len() as u64,
+        )
+    }
+
     #[cfg_attr(
         not(windows),
         allow(
@@ -79,7 +93,7 @@ impl ManifestExpectation {
             );
             return Err(LaunchError::IdentityMismatch);
         }
-        Ok(ManifestGuard { file })
+        Ok(ManifestGuard { file, bytes })
     }
 }
 
@@ -94,9 +108,16 @@ impl ManifestExpectation {
 pub(crate) struct ManifestGuard {
     #[allow(dead_code, reason = "held open to deny writers until the guard drops")]
     file: File,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    bytes: Vec<u8>,
 }
 
 impl ManifestGuard {
+    #[cfg(windows)]
+    pub(super) fn bytes(&self) -> &[u8] {
+        &self.bytes
+    }
+
     #[cfg(test)]
     pub(crate) fn byte_len(&self) -> Result<u64, LaunchError> {
         Ok(self.file.metadata().map_err(|_| LaunchError::Io)?.len())
