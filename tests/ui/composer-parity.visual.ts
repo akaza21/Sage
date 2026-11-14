@@ -129,8 +129,6 @@ for (const width of [1888, 720, 480]) {
       ).toBeVisible();
       await noClip(page, ".chat-home .searchable-picker__trigger-label");
       const composer = page.locator("form.composer");
-      // Like Codex, a new chat names where it runs above the input; the
-      // toolbar holds no project chip.
       await expect(
         composer.locator(".composer__controls .project-scope"),
       ).toHaveCount(0);

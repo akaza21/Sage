@@ -313,7 +313,6 @@ for (const forcedColors of ["none", "active"] as const) {
     const options = page.getByRole("menu", { name: "Composer options menu" });
     const picker = options;
     await expectOverlay(picker, viewports[3]);
-    // Project lives in the same menu once the chat has started.
     const project = options.getByRole("menuitem", {
       name: "Work in a project",
       exact: true,

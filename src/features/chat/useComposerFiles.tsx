@@ -34,7 +34,7 @@ export function useComposerFiles({
   return {
     parts: <ComposerFileParts files={files} {...parts} />,
     attach,
-    /** The chat whose refusal the row shows; images keep the menu open. */
+    /** Images keep the attach menu open where files are refused. */
     refusalChatId: attach && !parts.imageAction ? parts.chatId : undefined,
   };
 }

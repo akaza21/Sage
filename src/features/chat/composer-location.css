@@ -1,5 +1,4 @@
-/* Where a new chat runs: a quiet band attached above the input, as in Codex.
-   The project picker drops its chip so both read as labels. */
+/* The project picker drops its chip so both items read as labels. */
 .composer__location {
   --project-scope-trigger-border: 0;
   --project-scope-trigger-fill: transparent;

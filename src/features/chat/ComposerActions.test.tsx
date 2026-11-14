@@ -268,7 +268,6 @@ it("keeps configuration choices on the same surface and project selection in Add
   expect(setConfig).toHaveBeenCalledExactlyOnceWith("speed", { value: "slow" });
   expect(screen.queryByRole("menu")).toBeNull();
   expect(trigger).toHaveFocus();
-  // The toolbar carries no project chip: the project is picked from Add.
   expect(screen.queryByRole("button", { name: "Project: A" })).toBeNull();
   fireEvent.click(trigger);
   const project = await screen.findByRole("menuitem", {

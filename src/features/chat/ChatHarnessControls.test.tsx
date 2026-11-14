@@ -679,7 +679,6 @@ describe("last confirmed model label", () => {
   it.each([false, true])(
     "keeps keyboard focus when an overflow control returns beside a disabled=%s fixed action",
     async (disabled) => {
-      // The project row is the fixed action; a sibling Chat's send disables it.
       useWorkbenchStore.setState({
         projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
         chatUiById: { peer: { sending: disabled } } as never,
@@ -1569,7 +1568,6 @@ describe("composer permission mode picker", () => {
       ],
     });
     renderControls({ projectName: "Alpha", turnBusy: true });
-    // The project is picked from Add, which a running turn disables.
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
     ).toBeDisabled();
@@ -1770,7 +1768,6 @@ describe("composer permission mode picker", () => {
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).toHaveTextContent("Workspace edits");
-    // Only Full access takes a tone; every other mode looks the same.
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).not.toHaveClass("composer__access-label--full");

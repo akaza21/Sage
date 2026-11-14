@@ -7,12 +7,10 @@ import {
 } from "./chatAccessChoice";
 import type { ComposerAccessControlProps } from "./ComposerAccessControl";
 
-/** The chat whose access the "+" menu's Plan mode switches. */
 export type PlanAccessTarget = Pick<
   ComposerAccessControlProps,
   "bindingId" | "chatId" | "sessionConfig" | "capabilities"
 > & {
-  /** Opens the access menu, where a mode that needs one is confirmed. */
   onOpenAccess: () => void;
 };
 

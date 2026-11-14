@@ -16,7 +16,6 @@ const ChatAccess = lazy(() => import("./ChatAccessSelection"));
 export interface AccessView {
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
-  /** The mode the chat takes without a choice of its own. */
   defaultMode?: SessionAccessMode | null;
   error?: string | null;
   sessionId?: string;
@@ -28,7 +27,6 @@ export interface AccessView {
 
 export interface ComposerAccessControlProps {
   bindingId: string;
-  /** Names the harness in the menu's question. */
   harnessName: string;
   /** The chat whose access is drafted; given only while it has no session. */
   chatId?: string;

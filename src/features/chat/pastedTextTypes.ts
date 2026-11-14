@@ -23,7 +23,6 @@ export interface HeldPaste {
  */
 export type HeldInput =
   | { kind: "paste"; paste: HeldPaste }
-  /** A pick from the attach menu: native's dialog adds to the batch. */
   | { kind: "pick"; pick: PromptPick }
   /** A paste over the attachment limit, refused when it was made. */
   | { kind: "overLimit"; bytes: number }

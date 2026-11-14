@@ -123,7 +123,6 @@ afterEach(() => {
   useWorkbenchStore.setState(initial, true);
 });
 
-/** Opens the attach menu from the "+" menu's Files and folders row. */
 async function openAttach() {
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
   await settleLazyModules();
@@ -135,7 +134,6 @@ async function openAttach() {
   await settleLazyModules();
 }
 
-/** Picks from the attach menu, which loads with the first press. */
 async function pick(name: "Files…" | "Folder…" | "Images…") {
   await openAttach();
   await act(async () => {

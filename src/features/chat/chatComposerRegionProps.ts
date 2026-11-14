@@ -78,7 +78,6 @@ export interface ChatComposerRegionProps {
   onRetryLoad?: (() => void) | null;
   /** The chat's project; none for a side chat, which cannot switch it. */
   project: { name: string } | null | undefined;
-  /** A new chat before its first turn shows where it will run. */
   newChat?: boolean;
   usage: ChatUsage | null;
   usageRequest?: AcpUsageRequest | null;

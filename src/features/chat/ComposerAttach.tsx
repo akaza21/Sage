@@ -5,7 +5,6 @@ import { MenuPopover } from "../../ui/MenuPopover";
 import { attachRefusal as refusal } from "./composerAttachRefusal";
 import type { useComposerImageInput } from "./useComposerImageInput";
 
-/** The composer's image action, offered as the attach menu's Images item. */
 export type ComposerImageAction = NonNullable<
   ReturnType<typeof useComposerImageInput>["action"]
 >;
@@ -16,11 +15,9 @@ const PICKS = [
 ] as const satisfies readonly (readonly [PromptPick, string])[];
 
 /**
- * Lazy: loads with the first Files and folders press. Says why files
- * cannot be attached here, and offers native's file or folder dialog, and
- * images when the harness takes images. The picked files join the chat's
- * one staged batch, which the paste part stages, shows and sends, so
- * pasted text and picked files go with the same message.
+ * Lazy: loads with the first Files and folders press. Picked files join the
+ * chat's one staged batch, which the paste part owns, so pasted text and
+ * picked files go with the same message.
  */
 export function ComposerAttach({
   chatId,
@@ -32,10 +29,8 @@ export function ComposerAttach({
   chatId: string;
   /** Presses of Files and folders so far; each is taken once. */
   presses: number;
-  /** The control the menu anchors on. */
   triggerId: string;
   imageAction?: ComposerImageAction;
-  /** Asks the batch's owner for native's dialog. */
   onPick: (pick: PromptPick) => void;
 }) {
   const [notice, setNotice] = useState("");
@@ -48,8 +43,6 @@ export function ComposerAttach({
     setNotice("");
     setMenuOpen(false);
   }
-  // Each press is taken once: it opens the menu, or says why nothing here
-  // can be attached.
   const [taken, setTaken] = useState(0);
   if (presses !== taken) {
     setTaken(presses);

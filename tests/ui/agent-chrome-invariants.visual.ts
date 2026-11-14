@@ -512,7 +512,6 @@ test("shows access as one pill, plain at rest in every mode", async ({
     shadow: "none",
   };
 
-  // Every mode but Full access looks the same: no tone, no box at rest.
   for (const [id, label] of [
     ["readOnly", "Read-only"],
     ["workspaceWrite", "Workspace edits"],

@@ -154,7 +154,6 @@ test("location strip project target fits its chip without bleeding into adjacent
 }) => {
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  // A new chat shows the project in its location strip.
   await page.evaluate(async () => {
     const { acpProjectionStoreFor } =
       await import("/src/app/acpProjectionRegistry.ts");

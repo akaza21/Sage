@@ -32,7 +32,6 @@ export function ComposerFileParts({
   chatId: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
-  /** The control the attach menu anchors on. */
   attachAnchorId: string;
   text: string;
   imageAction?: ComposerImageAction;

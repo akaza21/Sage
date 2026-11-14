@@ -518,7 +518,6 @@ describe("ChatSurface ACP resource integration", () => {
       "title",
       "Project: Sage (No other projects available)",
     );
-    // The toolbar never carries the project, so nothing moves after the turn.
     expect(container.querySelector(".composer__controls .project-scope")).toBe(
       null,
     );

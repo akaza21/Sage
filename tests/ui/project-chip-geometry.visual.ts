@@ -51,7 +51,6 @@ async function expectEffortReachable(composer: Locator, level: string) {
 
 async function expectResponsiveToolbar(composer: Locator) {
   await settledComposerFit(composer);
-  // Project lives in the location strip or the "+" menu, never the toolbar.
   await expect(
     composer.locator(".composer__toolbar .project-scope"),
   ).toHaveCount(0);

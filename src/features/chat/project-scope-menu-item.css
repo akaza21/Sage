@@ -1,4 +1,3 @@
-/* In the "+" menu the project picker is a plain row: Work in a project. */
 .composer__options .project-scope {
   --project-scope-trigger-border: 0;
   --project-scope-trigger-fill: transparent;

@@ -110,7 +110,6 @@ for (const width of [1888, 720, 480]) {
           hasProjects: state.projects.length > 0,
         };
       });
-      // Add always offers Files and folders while the binding is usable.
       for (const [name, menuName, available] of [
         ["Access options", "Access mode", profile.access.length > 0],
         ["Composer options", "Composer options menu", true],

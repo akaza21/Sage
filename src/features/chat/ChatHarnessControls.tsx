@@ -48,7 +48,6 @@ interface Props {
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
   accessTarget?: ComposerAccessTarget;
   addActions?: ComposerMenuActions;
-  /** Names the "+" button, which the attach menu anchors on. */
   optionsTriggerId?: string;
   availableBinding: boolean;
   canPrompt: boolean;
@@ -234,8 +233,6 @@ export function ChatHarnessControls({
     canSelectEffort,
     active !== null && active !== "options",
   );
-  // Plan mode switches access where access carries it, for the chat the
-  // access control serves: its live session, or its draft before one.
   const planAccess =
     availableBinding &&
     accessHarness?.bindingId &&
@@ -249,7 +246,6 @@ export function ChatHarnessControls({
           onOpenAccess: () => toggle("access"),
         }
       : undefined;
-  // Work in a project is offered only with projects to choose from.
   const projectAction =
     projectName && hasProjects ? (
       <ProjectScopeChip projectName={projectName} menuItem />

@@ -187,7 +187,6 @@ async function expectComposerToolbarLaidOut(form: Locator) {
       }),
     };
   });
-  // Files and Project live in the "+" menu, so the row holds no chip for them.
   expect(geometry.buttons.map((button) => button.name)).toEqual([
     "Composer options",
     "Access options",
@@ -781,7 +780,6 @@ test.describe("V2-4 session mode picker", () => {
       "GPT-5",
     );
     await expect(closedTrigger).toHaveAttribute("aria-checked", "true");
-    // A started chat has no location strip; Project moves into "+".
     await expect(page.locator(".composer__location")).toHaveCount(0);
     const projectTrigger = closedOptions.getByRole("menuitem", {
       name: "Work in a project",

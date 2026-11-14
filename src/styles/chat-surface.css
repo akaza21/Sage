@@ -306,7 +306,6 @@ button.composer__control-trigger[aria-expanded="true"] {
   flex: 0 0 auto;
 }
 
-/* One pill for every harness: plain at rest, filled on hover or open. */
 .composer__access-label {
   display: inline-flex;
   min-width: 0;

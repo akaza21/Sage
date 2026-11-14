@@ -83,7 +83,6 @@ function renderComposer(
   };
 }
 
-/** Opens the attach menu from the "+" menu's Files and folders row. */
 async function openAttachMenu() {
   fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
   await settleLazyModules();

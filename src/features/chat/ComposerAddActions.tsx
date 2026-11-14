@@ -123,13 +123,10 @@ export function ComposerAddActions({
 }: {
   sessionConfig: AcpSessionConfig | null;
   projectAction?: ReactNode;
-  /** Present where the harness's access modes carry its plan mode. */
   planAccess?: PlanAccessTarget;
   pending: boolean;
   disabled: boolean;
-  /** Opens the attach menu on the "+" button. */
   onAttachFiles?: () => void;
-  /** The chat whose refusal of files, if any, the row shows disabled. */
   attachRefusalChatId?: string;
   onOpenGoal?: () => void;
   /** Present only while the session can compact its context. */
