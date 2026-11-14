@@ -97,7 +97,9 @@ const COMMAND_DYNAMIC_FACADES = [
   "src/features/chat/slashCommandTurn.ts",
 ];
 const REQUEST_ONLY_DYNAMIC_FACADES = [
-  "src/app/newChatDraftNavigation.ts",
+  // The draft actions (and the navigation they use) load with the first
+  // new-chat draft.
+  "src/app/newChatDraftActions.ts",
   "src/app/runNewChatDraftSend.ts",
   "src/app/runCreateChat.ts",
   "src/features/chat/NewChatDraftSurface.tsx",
