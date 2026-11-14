@@ -14,6 +14,11 @@ export const Laptop = leanIcon("laptop", [
   "M18 5a2 2 0 0 1 2 2v8.526a2 2 0 0 0 .212.897l1.068 2.127a1 1 0 0 1-.9 1.45H3.62a1 1 0 0 1-.9-1.45l1.068-2.127A2 2 0 0 0 4 15.526V7a2 2 0 0 1 2-2z",
   "M20.054 15.987H3.946",
 ]);
+export const Lightbulb = leanIcon("lightbulb", [
+  "M15 14c.2-1 .7-1.7 1.5-2.5 1-.9 1.5-2.2 1.5-3.5A6 6 0 0 0 6 8c0 1 .2 2.2 1.5 3.5.7.7 1.3 1.5 1.5 2.5",
+  "M9 18h6",
+  "M10 22h4",
+]);
 export const Link2 = leanIcon("link2 lucide-link-2", [
   "M9 17H7A5 5 0 0 1 7 7h2",
   "M15 7h2a5 5 0 1 1 0 10h-2",

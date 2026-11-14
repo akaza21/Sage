@@ -139,7 +139,7 @@ export function ComposerPaste({
         if (held.kind === "paste")
           await pasteOver(owner, attachability, held.paste, announce, disabled);
         else if (held.kind === "pick")
-          await pickFiles(owner, announce, disabled);
+          await pickFiles(owner, announce, disabled, held.pick);
         else announce(heldInputMessage(held, refusal));
       }
     });

@@ -22,3 +22,13 @@ export function withoutGovernedModes(
     ),
   };
 }
+
+/**
+ * The Plan access mode, when it selects the harness's plan session mode: the
+ * "+" menu's Plan mode then switches access, as the access menu does.
+ */
+export function governedPlanMode(
+  accessModes: readonly SessionAccessModeCapability[] | undefined,
+) {
+  return accessModes?.find((mode) => mode.id === "plan" && mode.sessionModeId);
+}

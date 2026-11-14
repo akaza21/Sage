@@ -500,24 +500,51 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeDisabled();
   });
 
-  it("keeps the project chip in the composer toolbar before and after the first turn", () => {
+  it("shows where a new chat runs above its input until the first turn", () => {
     hooks.page = { ...projection(), turns: [], nextCursor: null };
     useWorkbenchStore.setState({
-      project: { id: "project-a", name: "Sage", roots: [] },
+      project: { id: "project-a", name: "  Sage  ", roots: [] },
     });
     const { rerender, container } = render(<ChatSurface />);
-    const chip = () =>
-      container.querySelector(
-        "form.composer .composer__controls .project-scope",
-      );
     expect(
       screen.getByRole("region", { name: "New chat" }),
     ).toBeInTheDocument();
-    expect(chip()).toHaveTextContent("Sage");
+    const strip = screen.getByRole("group", { name: "Chat location" });
+    expect(container.querySelector("form.composer .composer__slots")).toBe(
+      strip.parentElement,
+    );
+    expect(strip).toHaveTextContent(/^This computerSage$/);
+    expect(strip.querySelector(".project-scope")).toHaveAttribute(
+      "title",
+      "Project: Sage (No other projects available)",
+    );
+    // The toolbar never carries the project, so nothing moves after the turn.
+    expect(container.querySelector(".composer__controls .project-scope")).toBe(
+      null,
+    );
     hooks.page = projection();
     rerender(<ChatSurface />);
     expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
-    expect(chip()).toHaveTextContent("Sage");
+    expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
+  });
+
+  it("offers files and the project from Add in a new chat", async () => {
+    hooks.page = { ...projection(), turns: [], nextCursor: null };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "Sage", roots: [] },
+      projects: [
+        { id: "project-a", name: "Sage", rootCount: 0, lastOpenedAt: 1 },
+      ],
+    });
+    render(<ChatSurface />);
+    await openComposerOptions();
+    const menu = screen.getByRole("menu", { name: "Composer options menu" });
+    expect(
+      within(menu).getByRole("menuitem", { name: "Files and folders" }),
+    ).toBeEnabled();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Work in a project" }),
+    ).toHaveAccessibleDescription("Sage");
   });
 
   it("gives a side chat no project chip before or after its first turn (Codex s2/f0244)", () => {
@@ -531,22 +558,21 @@ describe("ChatSurface ACP resource integration", () => {
       project: { id: "project-a", name: "Sage", roots: [] },
     });
     const { rerender } = render(<ChatSurface chatId="side-1" />);
+    expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
     expect(document.querySelector("form.composer .project-scope")).toBeNull();
     hooks.page = { ...projection(), chatId: "side-1" as never };
     rerender(<ChatSurface chatId="side-1" />);
     expect(document.querySelector("form.composer .project-scope")).toBeNull();
   });
 
-  it("retains composer project scope while an empty retained page is not the new-chat home", () => {
+  it("shows no location strip while an empty retained page is not the new-chat home", () => {
     hooks.page = { ...projection(), turns: [], nextCursor: "earlier" as never };
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "Sage", roots: [] },
     });
     render(<ChatSurface />);
     expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
-    expect(
-      document.querySelector("form.composer .project-scope"),
-    ).toHaveTextContent("Sage");
+    expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
   });
   it.each(["primary", "focused"] as const)(
     "explains the existing %s turn guard when the empty home's project action is refused",
@@ -2083,7 +2109,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeTruthy();
   });
 
-  it("omits unsupported config actions instead of enabling an inert Add menu", async () => {
+  it("offers no action for an unsupported config option in Add", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -2116,10 +2142,16 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     await openComposerOptions();
 
-    expect(screen.queryByText("Thinking budget")).toBeNull();
+    // An unsupported option is named, never offered as an action.
+    expect(screen.getByText("Thinking budget")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
     expect(
-      screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
+      screen
+        .getAllByRole("menuitem")
+        .map((item) => item.getAttribute("aria-label") ?? item.textContent),
+    ).toEqual(["Files and folders"]);
     expect(
       screen.queryByRole("button", { name: "Session thinking budget" }),
     ).toBeNull();
@@ -2318,7 +2350,13 @@ describe("ChatSurface ACP resource integration", () => {
     const modeInput = screen.getByRole("menuitemradio", {
       name: "Review changes",
     });
-    await waitFor(() => expect(modeInput).toHaveFocus());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("menu", { name: "Composer options menu" }),
+      ).toContainElement(document.activeElement as HTMLElement),
+    );
+    act(() => modeInput.focus());
+    expect(modeInput).toHaveFocus();
     hooks.page = {
       ...hooks.page!,
       sessionConfig: {
@@ -5623,36 +5661,6 @@ describe("ChatSurface composer context", () => {
     expect(
       screen.queryByRole("button", { name: "Composer options" }),
     ).toBeDisabled();
-  });
-
-  it("names the active project in the composer scope control", async () => {
-    useWorkbenchStore.setState({
-      project: { id: "project-a", name: "  micrograd  ", roots: [] },
-      harnesses: [
-        {
-          id: "sage-simulator",
-          name: "Simulator",
-          description: "Development",
-          installState: "available",
-          source: "development",
-          accountModelDiscovery: false,
-          transport: "legacySimulator",
-          bindingId: null,
-        },
-      ],
-      selectedHarnessId: "sage-simulator",
-    });
-    render(<ChatSurface />);
-    await openComposerOptions();
-
-    const scope = document.querySelector(".project-scope");
-    expect(scope).not.toBeNull();
-    expect(scope).toHaveTextContent("micrograd");
-    expect(scope).toHaveAttribute(
-      "title",
-      "Project: micrograd (No other projects available)",
-    );
-    expect(screen.queryByLabelText("Composer context")).toBeNull();
   });
 
   it("shows Working for nonterminal ACP turns but hides it during project transition", async () => {

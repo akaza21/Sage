@@ -16,6 +16,8 @@ const ChatAccess = lazy(() => import("./ChatAccessSelection"));
 export interface AccessView {
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
+  /** The mode the chat takes without a choice of its own. */
+  defaultMode?: SessionAccessMode | null;
   error?: string | null;
   sessionId?: string;
   /** Holds a choice for a chat whose session has not started. */

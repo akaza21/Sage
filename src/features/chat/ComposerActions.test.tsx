@@ -111,7 +111,7 @@ it("lists every advertised mode, including one whose id is default", async () =>
   ).toHaveAttribute("aria-checked", "true");
   const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
   expect(plan).toHaveAttribute("aria-checked", "false");
-  expect(plan).toHaveAccessibleDescription("Plan mode is off");
+  expect(plan).toHaveAccessibleDescription("Turn plan mode on");
   fireEvent.click(plan);
   expect(setMode).toHaveBeenCalledExactlyOnceWith("plan");
 });
@@ -125,7 +125,7 @@ it("selects an advertised session mode directly in the Add menu", async () => {
   const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
   expect(build).toHaveAttribute("aria-checked", "true");
   expect(build).not.toHaveAttribute("aria-description");
-  expect(plan).toHaveAccessibleDescription("Plan mode is off");
+  expect(plan).toHaveAccessibleDescription("Turn plan mode on");
   expect(build).toHaveFocus();
   fireEvent.keyDown(menu, { key: "End" });
   expect(plan).toHaveFocus();
@@ -235,7 +235,7 @@ it("does not enable Add for effort alone while its trigger is visible", async ()
   expect(screen.queryByRole("menuitem", { name: "Thinking level" })).toBeNull();
 });
 
-it("keeps configuration choices on the same surface and project selection outside Add", async () => {
+it("keeps configuration choices on the same surface and project selection in Add", async () => {
   const setConfig = vi.fn().mockResolvedValue(undefined);
   useWorkbenchStore.setState({
     project: { id: "a", name: "A", roots: [] },
@@ -264,18 +264,24 @@ it("keeps configuration choices on the same surface and project selection outsid
     }),
   });
   const menu = screen.getByRole("menu", { name: "Composer options menu" });
-  expect(within(menu).queryByRole("button", { name: "Project: A" })).toBeNull();
   fireEvent.click(within(menu).getByRole("menuitemradio", { name: "Careful" }));
   expect(setConfig).toHaveBeenCalledExactlyOnceWith("speed", { value: "slow" });
   expect(screen.queryByRole("menu")).toBeNull();
   expect(trigger).toHaveFocus();
-  fireEvent.click(screen.getByRole("button", { name: "Project: A" }));
-  expect(
-    screen.queryByRole("menu", { name: "Composer options menu" }),
-  ).toBeNull();
-  expect(screen.getAllByRole("listbox")).toHaveLength(1);
+  // The toolbar carries no project chip: the project is picked from Add.
+  expect(screen.queryByRole("button", { name: "Project: A" })).toBeNull();
   fireEvent.click(trigger);
-  expect(screen.queryByRole("listbox")).toBeNull();
+  const project = await screen.findByRole("menuitem", {
+    name: "Work in a project",
+  });
+  expect(project).toHaveAccessibleDescription("A");
+  expect(project).toHaveTextContent(
+    "Work in a projectChoose project for new chats",
+  );
+  fireEvent.click(project);
+  expect(
+    await screen.findByRole("listbox", { name: "Work in a project" }),
+  ).toBeInTheDocument();
 });
 
 it.each([false, true])(
@@ -313,10 +319,10 @@ it("gives Add a header and icon rows with truthful one-line Plan and Goal descri
   expect(within(menu).getByText("Add", { exact: true })).toBeVisible();
   expect(within(menu).queryByText("Session mode")).toBeNull();
   const plan = within(menu).getByRole("menuitemradio", { name: "Plan mode" });
-  expect(plan).toHaveAccessibleDescription("Plan mode is off");
+  expect(plan).toHaveAccessibleDescription("Turn plan mode on");
   expect(plan.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   const goal = within(menu).getByRole("menuitem", { name: "Goal" });
-  expect(goal).toHaveAccessibleDescription("View the current goal");
+  expect(goal).toHaveAccessibleDescription("Set a goal to keep pursuing");
   expect(goal.querySelector('svg[aria-hidden="true"]')).not.toBeNull();
   fireEvent.click(goal);
   expect(onOpenGoal).toHaveBeenCalledOnce();
@@ -396,11 +402,13 @@ it("keeps Add open when a sibling Chat disables only project switching", async (
       screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeVisible(),
   );
-  expect(screen.getByRole("button", { name: "Project: A" })).toBeDisabled();
+  expect(
+    screen.getByRole("menuitem", { name: "Work in a project" }),
+  ).toBeDisabled();
   expect(screen.getByRole("menuitemradio", { name: "Build" })).toHaveFocus();
 });
 
-it.each(["image", "goal", "config"])(
+it.each(["files", "goal", "config"])(
   "dismisses Add when its focused %s action is withdrawn",
   async (kind) => {
     const onModeRemoved = vi.fn();
@@ -415,10 +423,8 @@ it.each(["image", "goal", "config"])(
     });
     const { rerenderActions } = await renderActions(false, {
       onModeRemoved,
-      ...(kind === "image"
-        ? {
-            addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
-          }
+      ...(kind === "files"
+        ? { addActions: { onAttachFiles: vi.fn() } }
         : kind === "goal"
           ? { addActions: { onOpenGoal: vi.fn() } }
           : { sessionConfig: config }),
@@ -454,7 +460,13 @@ it.each(["Claude", "Codex", "Pi", "OpenCode", "OMP"])(
     expect(trigger).toBeDisabled();
     expect(screen.queryByRole("menu")).toBeNull();
     expect(screen.queryByRole("menuitemradio")).toBeNull();
-    for (const action of ["Files", "Goal", "Plan", "Add images", "Plugins"]) {
+    for (const action of [
+      "Files and folders",
+      "Work in a project",
+      "Goal",
+      "Plan mode",
+      "Plugins",
+    ]) {
       expect(screen.queryByText(action, { exact: true })).toBeNull();
     }
   },

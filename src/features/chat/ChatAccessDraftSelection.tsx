@@ -46,6 +46,7 @@ export function ChatAccessDraftSelection({
   return children({
     candidates,
     effective: shown,
+    defaultMode: effective,
     error,
     icon: shown ? CHAT_ACCESS_ICONS[shown] : undefined,
     tone: shown === "fullAccess" ? " composer__access-label--full" : undefined,
