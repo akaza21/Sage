@@ -82,8 +82,6 @@ fn a_new_runtime_epoch_resets_live_state_but_keeps_history() {
     );
     surface.apply(1, &activity("task", SessionActivityState::Running, "1/3"));
 
-    // The notice is a duplicate, but dropping the old epoch's model is not
-    // send-neutral.
     assert_eq!(
         surface.apply(2, &notice("deprecated flag")),
         Some(SurfaceChange::SendRelevant)
@@ -175,7 +173,6 @@ fn a_chat_sees_live_activities_by_key_and_only_running_ones_can_be_stopped() {
     assert!(!key.contains("task"));
     assert_eq!(surface.activity_id(key), Some(&running.id));
     assert_eq!(surface.activity_id("unknown"), None);
-    // Another epoch's activities are not the running session's.
     assert!(surface.view(Some(3)).activities.is_empty());
     assert!(surface.view(None).activities.is_empty());
 }

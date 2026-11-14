@@ -21,9 +21,6 @@ pub(crate) struct FileChangeFacts {
 }
 
 impl FileChangeOperation {
-    /// The reader-facing line for one changed file, such as `Edited src/lib.rs`.
-    /// A path that cannot be shown safely reads as `file`; nothing here names
-    /// the harness or invents detail it did not report.
     pub(crate) fn describe(self, location: &SafeResourceLocation) -> String {
         let verb = match self {
             Self::Created => "Created",

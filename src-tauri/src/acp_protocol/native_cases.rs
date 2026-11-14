@@ -1,9 +1,3 @@
-//! The native replay catalogue: each journey case's id and scripted steps,
-//! and the facts a binding reads from a case (the harness it is for, whether
-//! it lists or offers models, whether it spans a restart). Data and pure
-//! lookups only; the fixture interpreter that plays a case lives in
-//! `acp::fixture`, above the bindings.
-
 #[cfg(any(test, all(windows, debug_assertions)))]
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -82,7 +76,6 @@ pub(crate) fn native_case_offers_models(case: &str) -> bool {
         && reply_shape(case, "codexModelList").is_some()
 }
 
-/// Each journey case's steps, parsed once.
 #[cfg(any(test, all(windows, debug_assertions)))]
 fn steps(case: &str) -> Option<&'static [Value]> {
     static STEPS: OnceLock<HashMap<&'static str, Vec<Value>>> = OnceLock::new();
@@ -97,7 +90,6 @@ fn steps(case: &str) -> Option<&'static [Value]> {
         .map(Vec::as_slice)
 }
 
-/// The frame the case emits right after it waits for `kind`.
 #[cfg(any(test, all(windows, debug_assertions)))]
 pub(crate) fn reply_shape(case: &str, kind: &str) -> Option<String> {
     let steps = steps(case)?;

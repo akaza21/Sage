@@ -5,7 +5,6 @@ use crate::acp::{
 #[cfg(test)]
 use sage_core::limits::LIMITS;
 
-/// A user choice for one exact, durably identified permission request.
 /// This remains a runtime-level value so host and adapter routing never need
 /// to know which harness originated the request.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -31,7 +30,6 @@ impl PermissionDecision {
         }
     }
 
-    /// True when the decision sends the harness a positive reply.
     pub(crate) fn resolves_allowed(&self) -> bool {
         matches!(self, Self::AllowOnce | Self::AllowAlways | Self::Answer(_))
     }

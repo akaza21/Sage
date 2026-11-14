@@ -33,7 +33,6 @@ fn a_codex_list_becomes_named_servers_with_states_counts_and_origins() {
     }))
     .unwrap();
     assert!(!listed.truncated);
-    // Sign-in is offered only where Sage can open the browser.
     assert_eq!(
         listed.actions,
         McpActions {

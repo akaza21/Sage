@@ -1,5 +1,3 @@
-//! What a restore of the stored choices reads from the channel, and when it
-//! may start.
 use std::time::Instant;
 
 use super::{ConfigChannel, ConfigMutation, RuntimeOwner, SessionConfig, SessionConfigOverlay};
@@ -133,7 +131,6 @@ mod tests {
         channel.update(&runtime, effort()).unwrap();
         channel.set_hydrating(&runtime, true);
         channel.publish(&runtime);
-        // Options are reported, but more are on their way.
         assert!(
             channel
                 .take_restore(&runtime, &[stored()], |_| true)
@@ -166,7 +163,6 @@ mod tests {
         channel.reserve(runtime.clone());
         channel.update(&runtime, effort()).unwrap();
         channel.set_hydrating(&runtime, true);
-        // Not live yet: nothing waits on it.
         let started = Instant::now();
         channel.wait_while_hydrating(&runtime, started + Duration::from_secs(30));
         assert!(started.elapsed() < Duration::from_secs(30));
@@ -174,8 +170,6 @@ mod tests {
         let deadline = Instant::now() + Duration::from_millis(20);
         channel.wait_while_hydrating(&runtime, deadline);
         assert!(Instant::now() >= deadline);
-        // The session has lapsed: a reply that never comes holds no later
-        // wait or restore back, even as it says it is still reading.
         channel.set_hydrating(&runtime, true);
         let started = Instant::now();
         channel.wait_while_hydrating(&runtime, started + Duration::from_secs(30));

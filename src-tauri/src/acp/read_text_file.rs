@@ -1,5 +1,3 @@
-//! Bounded P-02 read coordination for a future admitted ACP adapter pump.
-
 use std::{
     sync::{
         Arc,
@@ -61,8 +59,6 @@ impl ReadTextFileService {
         dead_code,
         reason = "P-02 Decision B deferred adapter seam; exercised by conformance tests and not production-admitted"
     )]
-    /// Resolves a pinned ACP absolute path under an owner Project's registered
-    /// roots before beginning the ordinary two-step source handshake.
     pub(crate) fn begin_absolute(
         &self,
         owner: ReadTextOwner,
@@ -278,8 +274,6 @@ impl ReadTextFileService {
         expire_all(&self.state);
         Vec::new()
     }
-    /// Scheduler-facing monotonic expiry seam. This is the same production
-    /// state transition used by the ordinary scheduler, not a test-only jump.
     #[allow(
         dead_code,
         reason = "P-02 Decision B deferred adapter scheduler seam; exercised by conformance tests"

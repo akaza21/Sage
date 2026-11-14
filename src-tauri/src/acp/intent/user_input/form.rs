@@ -28,7 +28,6 @@ const CUSTOM_ANSWER_META: &str = "_askUserQuestionCustomAnswer";
 /// rather than shown without its rule.
 const UNCHECKED_RULES: [&str; 2] = ["pattern", "format"];
 
-/// A form elicitation as questions, or `None` when it cannot be shown.
 pub(crate) fn form_request(schema: &Value) -> Option<UserInputRequest> {
     let schema = schema.as_object()?;
     let required = schema
@@ -78,8 +77,7 @@ pub(crate) fn form_request(schema: &Value) -> Option<UserInputRequest> {
     })
 }
 
-/// A link elicitation, admitted only for `http`/`https` with a host and no
-/// embedded credentials. A link with surrounding whitespace or any control
+/// A link with surrounding whitespace or any control
 /// or invisible format character is refused before parsing (the parser
 /// would silently drop some), and the normalized link is what is shown and
 /// opened, never the raw text.
@@ -136,7 +134,6 @@ pub(crate) fn question_payload(
         .then_some(payload)
 }
 
-/// Harness display text, neutralized and redacted, clipped to `MAX` bytes.
 pub(crate) fn display<const MAX: usize>(field: &'static str, text: &str) -> Option<SafeText<MAX>> {
     let mut end = text.len().min(MAX);
     while !text.is_char_boundary(end) {
@@ -189,7 +186,6 @@ fn field(key: &str, property: &Map<String, Value>) -> Option<UserInputQuestion> 
             .and_then(Value::as_str)
             .unwrap_or_default()
     };
-    // A property without a title is headed by its key.
     let title = Some(text("title")).filter(|title| !title.trim().is_empty());
     let mut question = UserInputQuestion::text(
         RequiredText::new("userInputQuestionId", key).ok()?,
@@ -291,7 +287,6 @@ fn titled_options(entries: &Value) -> Option<BoundedVec<UserInputOption, USER_IN
     distinct(options)
 }
 
-/// Options named by their values, checked as every harness's choices are.
 pub(crate) fn plain_options(
     values: &Value,
     names: Option<&Value>,

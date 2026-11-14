@@ -1,11 +1,3 @@
-//! Session-scoped harness events: facts that belong to the agent session
-//! rather than to one Turn (notices, the harness title, the effective model,
-//! and long-lived activity such as subagents or background tasks).
-//!
-//! Every text value is byte-capped by its type, and [`SessionSurface`] folds
-//! events into one bounded per-session state, so nothing here grows with the
-//! number of events a harness streams.
-
 use serde::{Deserialize, Serialize};
 
 use super::{ExternalId, ModelId};
@@ -17,7 +9,6 @@ pub(crate) const SESSION_NOTICE_SOURCE_BYTES: usize = 128;
 pub(crate) const SESSION_ACTIVITY_KIND_BYTES: usize = 64;
 pub(crate) const SESSION_ACTIVITY_LABEL_BYTES: usize = 256;
 pub(crate) const SESSION_ACTIVITY_PROGRESS_BYTES: usize = 512;
-/// Newest notices kept per session; older ones are dropped.
 pub(crate) const SESSION_NOTICES_MAX: usize = 16;
 /// Live activity rows kept per session; terminal rows are evicted first.
 pub(crate) const SESSION_ACTIVITIES_MAX: usize = 16;
@@ -53,8 +44,7 @@ impl SessionActivityState {
     }
 }
 
-/// Long-lived activity that may outlive the Turn that started it. `id` is
-/// the harness's own identity and never leaves native code.
+/// `id` is the harness's own identity and never leaves native code.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionActivity {
@@ -68,7 +58,6 @@ pub struct SessionActivity {
     /// Routing only: the session surface never stores it.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub in_previous_turn: bool,
-    /// The harness can stop this activity on request while it runs.
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub stoppable: bool,
 }
@@ -106,8 +95,6 @@ impl SessionScopedEvent {
         }
     }
 
-    /// Whether `next` makes this event obsolete: a later title or model, or
-    /// a later state of the same activity.
     pub(crate) fn superseded_by(&self, next: &Self) -> bool {
         match (self, next) {
             (Self::Title { .. }, Self::Title { .. })
@@ -119,8 +106,7 @@ impl SessionScopedEvent {
 }
 
 /// Session events held while no Turn can own a durable write (activation
-/// and the idle span before the first Turn). Superseded events are replaced
-/// and the oldest is dropped at the cap, so the buffer never grows.
+/// and the idle span before the first Turn).
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct PendingSessionEvents<T = SessionScopedEvent> {
     events: Vec<T>,
@@ -132,7 +118,6 @@ impl<T> Default for PendingSessionEvents<T> {
     }
 }
 
-/// Session events buffered before the first Turn of a runtime epoch.
 pub(crate) const SESSION_PENDING_EVENTS_MAX: usize = 32;
 
 impl<T> PendingSessionEvents<T> {
@@ -163,8 +148,7 @@ pub(crate) enum SurfaceChange {
     SendRelevant,
 }
 
-/// Bounded per-session state that session-scoped events fold into. The
-/// title and notices are durable history. The model and activities describe
+/// The title and notices are durable history. The model and activities describe
 /// one live runtime epoch and reset when a new epoch reports.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -177,14 +161,12 @@ pub struct SessionSurface {
 }
 
 impl SessionSurface {
-    /// Rejects a stored value that is over any cap.
     pub(crate) fn is_bounded(&self) -> bool {
         self.notices.len() <= SESSION_NOTICES_MAX && self.activities.len() <= SESSION_ACTIVITIES_MAX
     }
 
-    /// Applies one event and reports what changed, or `None` if nothing did. A new epoch's first event
-    /// also resets the live model and activities; dropping a model is a
-    /// send-relevant change whatever the event's own kind.
+    /// A new epoch's first event also resets the live model and activities;
+    /// dropping a model is a send-relevant change whatever the event's own kind.
     pub(crate) fn apply(
         &mut self,
         runtime_epoch: u64,
@@ -282,8 +264,6 @@ fn replace<T: Clone + PartialEq>(slot: &mut Option<T>, value: Option<&T>) -> boo
     true
 }
 
-/// What a chat's controls show of its current session: the activities of
-/// the epoch that is running now. Notices reach the page on their own.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSurfaceView {
@@ -297,7 +277,7 @@ pub struct SessionSurfaceView {
     pub undo_keeps_files: bool,
 }
 
-/// One activity as the chat shows it. Its key is a digest of the harness's
+/// Its key is a digest of the harness's
 /// id, which stays in native code.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -311,7 +291,6 @@ pub struct SessionActivityView {
 }
 
 impl SessionSurface {
-    /// The view for a chat whose session runs `runtime_epoch` now, if any.
     pub(crate) fn view(&self, runtime_epoch: Option<u64>) -> SessionSurfaceView {
         let live = runtime_epoch == Some(self.live_epoch);
         SessionSurfaceView {
@@ -333,7 +312,6 @@ impl SessionSurface {
         }
     }
 
-    /// The harness id of the live activity a view key names.
     pub(crate) fn activity_id(&self, key: &str) -> Option<&ExternalId> {
         self.activities
             .iter()

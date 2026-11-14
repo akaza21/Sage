@@ -1,7 +1,3 @@
-//! The access modes a chat session runs under, and how a harness offers them.
-//! Settings store the mode, bindings map it to their own session modes, and
-//! the WebView reads both through these serialized forms.
-
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -22,21 +18,17 @@ pub enum SessionAccessMode {
 }
 
 impl SessionAccessMode {
-    /// Whether this mode can be a binding's stored default for new chats.
-    /// A mode that needs a confirmation never can: it would reach every
-    /// chat without one.
+    /// A mode requiring confirmation cannot be a stored default: it would reach every new chat without that confirmation.
     pub(crate) fn is_default_eligible(self) -> bool {
         !self.needs_confirmation()
     }
 
-    /// Whether choosing this mode for a chat takes a confirmed token: the
-    /// modes that run actions without asking beyond file edits.
+    /// Modes that run actions without asking beyond file edits require a confirmed token.
     pub(crate) fn needs_confirmation(self) -> bool {
         matches!(self, Self::FullAccess | Self::Auto)
     }
 }
 
-/// One access mode as a harness offers it: the composer's menu entry.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AccessModeCapability {

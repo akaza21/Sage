@@ -18,7 +18,6 @@ pub(crate) enum FrameWriteOutcome {
     DeliveryUnknown { bytes_written: usize },
 }
 
-/// A validated, delimiter-free outbound JSON frame.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[allow(dead_code, reason = "P-02 sealed frame class")]
 pub(crate) enum OutboundFrameClass {

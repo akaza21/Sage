@@ -468,7 +468,6 @@ fn every_ipc_request_is_closed_and_uses_camel_case() {
         SendAcpTurnRequest::Session { attached_context, staged: None, .. }
             if attached_context.as_slice().is_empty()
     ));
-    // Staged files go only with a send that names them.
     for (staged, expected) in [
         (
             json!({"revision": "r1"}),
@@ -585,18 +584,15 @@ fn exact_intent_validation_rejects_each_stale_or_foreign_component() {
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectGeneration)
     );
-    // A session-neutral change after the read leaves the intent current.
     let mut neutral = cold.clone();
     neutral.projection_revision = ProjectionRevision::new(8).unwrap();
     assert_eq!(validate_session_intent(&activate, &neutral), Ok(()));
-    // A send-relevant change after the read makes it stale.
     stale = neutral.clone();
     stale.intent_revision = ProjectionRevision::new(8).unwrap();
     assert_eq!(
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectionRevision)
     );
-    // A view ahead of the chat is never current.
     stale = cold.clone();
     stale.projection_revision = ProjectionRevision::new(6).unwrap();
     stale.intent_revision = ProjectionRevision::new(6).unwrap();

@@ -1,10 +1,3 @@
-//! Commits a binding's facts through the store's own adapter batch apply
-//! against a migrated in-memory database and reads the transcript back
-//! through the chat page projection, so every rule the store enforces
-//! (terminal items, lifecycle and tool-state transitions, items or turn
-//! changes after the turn is terminal, file pair shape) refuses the sequence
-//! exactly as it would in the app.
-
 use serde_json::{Map, Value, json};
 
 use super::Fact;

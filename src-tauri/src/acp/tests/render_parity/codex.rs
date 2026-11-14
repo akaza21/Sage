@@ -1,5 +1,3 @@
-//! Codex app-server wire for each scenario, through the Codex runtime.
-
 use serde_json::{Value, json};
 
 use super::{FILE, Fact, Mapper, ROOT, Scenario, frame};
