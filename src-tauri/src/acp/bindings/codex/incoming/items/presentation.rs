@@ -131,6 +131,16 @@ pub(super) fn tool_with_summary(
     })
 }
 
+/// The item lifecycle a settled tool state ends in; `None` while it runs.
+pub(super) fn terminal_lifecycle(tool_state: ToolState) -> Option<ItemLifecycle> {
+    match tool_state {
+        ToolState::Completed => Some(ItemLifecycle::Completed),
+        ToolState::Failed => Some(ItemLifecycle::Failed),
+        ToolState::Declined => Some(ItemLifecycle::Cancelled),
+        _ => None,
+    }
+}
+
 pub(super) fn tool_with_summary_status(
     input: ToolPresentationInput<'_>,
 ) -> Result<ItemNormalization, IngressError> {
@@ -144,12 +154,7 @@ pub(super) fn tool_with_summary_status(
         command_activity,
         execution,
     } = input;
-    let terminal = match tool_state {
-        ToolState::Completed => Some(ItemLifecycle::Completed),
-        ToolState::Failed => Some(ItemLifecycle::Failed),
-        ToolState::Declined => Some(ItemLifecycle::Cancelled),
-        _ => None,
-    };
+    let terminal = terminal_lifecycle(tool_state);
     let label = SafeText::new("toolLabel", label).map_err(content)?;
     let input_summary = input_summary
         .map(|value| SafeText::new("toolInput", value))

@@ -69,6 +69,8 @@ struct DesktopCodexFixture {
 struct ObservedEntrypoint {
     inputs: Arc<dyn ObservedLaunchInputs>,
     environment: Vec<(String, String)>,
+    #[cfg(windows)]
+    manifest: Option<crate::acp::process::ManifestExpectation>,
 }
 
 mod environment;

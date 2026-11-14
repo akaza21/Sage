@@ -40,14 +40,14 @@ test("BETA-0001 macOS CI compiles and tests the named shared contracts", async (
   assert.ok(
     rust.indexOf(placeholder) <
       rust.indexOf(
-        'cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features "${{ matrix.lint-features }}" -- -D warnings',
+        'cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings',
       ),
     "Rust frontend placeholder must be created before Clippy",
   );
   for (const command of [
-    "cargo fmt --manifest-path src-tauri/Cargo.toml --all -- --check",
-    'cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets --features "${{ matrix.lint-features }}" -- -D warnings',
-    "cargo check --manifest-path src-tauri/Cargo.toml --release --lib",
+    "cargo fmt --all -- --check",
+    'cargo clippy --workspace --all-targets --features "${{ matrix.lint-features }}" -- -D warnings',
+    "cargo check -p sage --release --lib",
   ]) {
     assert.ok(
       rust.includes(command),

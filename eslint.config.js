@@ -14,7 +14,7 @@ export default tseslint.config(
       "coverage/**",
       "local-evidence/**",
       "work/**",
-      "src-tauri/target/**",
+      "**/target/**",
       "tools/footprint-control/target/**",
     ],
   },

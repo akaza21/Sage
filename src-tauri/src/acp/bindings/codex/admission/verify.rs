@@ -17,6 +17,13 @@ impl AdmittedCodexBinding {
                 .map_err(|_| CodexAdmissionUnavailable::Drift);
         }
         if let Some(observed) = &self.observed {
+            #[cfg(windows)]
+            let _manifest_guard = observed
+                .manifest
+                .as_ref()
+                .map(|manifest| manifest.open_guard())
+                .transpose()
+                .map_err(|_| CodexAdmissionUnavailable::Drift)?;
             let current = observed_entrypoint_identity(&self.entrypoint.path)?;
             return (current.sha256 == self.entrypoint.sha256
                 && current.byte_len == self.entrypoint.byte_len

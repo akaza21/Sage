@@ -12,6 +12,7 @@ pub(crate) mod claude;
 )]
 pub(crate) mod codex;
 pub(crate) mod command_summary;
+pub(crate) mod node_engine;
 #[allow(
     dead_code,
     unused_imports,

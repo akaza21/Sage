@@ -88,7 +88,7 @@ pub(crate) fn validate_research_candidate(
     {
         return Err(ManifestError::IdentityMismatch);
     }
-    if !node_satisfies_engine(&candidate.node_version, &candidate.node_engine) {
+    if !node_satisfies_declared_engine(&candidate.node_version, &candidate.node_engine) {
         return Err(ManifestError::NodeEngineMismatch);
     }
     if candidate.fixed_arguments.len() > MAX_FIXED_ARGUMENTS
@@ -169,19 +169,11 @@ fn valid_semver(value: &str) -> bool {
     value.len() <= 256 && valid_numeric_version(value, 3, 3)
 }
 
-fn node_satisfies_engine(node_version: &str, declared_engine: &str) -> bool {
-    node_version
-        .split('.')
-        .next()
-        .and_then(|major| major.parse::<u32>().ok())
-        .is_some_and(|major| node_satisfies_declared_engine(major, declared_engine))
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ManifestError {
     #[error("Claude candidate identity is incompatible with the admitted ACP launch contract")]
     IdentityMismatch,
-    #[error("discovered Node does not satisfy the adapter's declared >=22 engine")]
+    #[error("discovered Node does not satisfy the adapter's declared engine")]
     NodeEngineMismatch,
     #[error("Claude candidate uses a noncanonical or nonabsolute path")]
     Path,

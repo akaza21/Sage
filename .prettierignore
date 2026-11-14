@@ -2,7 +2,6 @@ node_modules
 dist
 coverage
 target
-src-tauri/target
 .claude/worktrees
 package-lock.json
 *.md
