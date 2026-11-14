@@ -1,3 +1,7 @@
+//! A hook may run outside any Turn (`turnId` is null), so the event is
+//! session-scoped; the store records the row in the Turn whose batch carries
+//! it, or in the previous Turn when Codex names that one.
+//!
 //! Codex names a run by its handler (event, order and source path), not by
 //! its invocation, so a handler that runs again updates its own row and
 //! concurrent runs of one handler share it. That name carries a local path,
@@ -90,6 +94,7 @@ pub(super) fn hook_run(
     let status = run_status(text(run, "status", 32)?)?;
     let state = match (phase, status) {
         (HookPhase::Started, RunStatus::Running) => SessionActivityState::Running,
+        // A block is the hook doing its job; the line says what it blocked.
         (HookPhase::Completed, RunStatus::Completed | RunStatus::Blocked) => {
             SessionActivityState::Completed
         }
@@ -192,6 +197,7 @@ fn run_status(value: &str) -> Result<RunStatus, IngressError> {
     })
 }
 
+/// Context entries are for the model, not the user-facing status line.
 fn progress(run: &Map<String, Value>, status: RunStatus) -> Result<Option<String>, IngressError> {
     if status == RunStatus::Running {
         return Ok(run

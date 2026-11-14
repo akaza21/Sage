@@ -10,6 +10,7 @@ pub(super) fn prompt_input(prompt: &Prompt) -> Result<Vec<Value>, RequestError> 
         .echoed()
         .map_err(|_| RequestError::FrameBytes)?;
     let text = prompt.resources.inline(prompt.as_str());
+    // Codex echoes the text and every image in one inbound line.
     if !prompt.images.echo_fits(&text) {
         return Err(RequestError::FrameBytes);
     }

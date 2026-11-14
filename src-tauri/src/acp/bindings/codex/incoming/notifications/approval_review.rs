@@ -1,3 +1,5 @@
+//! Codex's automatic approval reviewer decides requests before they reach Sage
+//! as approvals, so a denial or timeout needs a session notice.
 //! The payload is marked unstable upstream, so a payload Sage cannot read is
 //! ignored.
 

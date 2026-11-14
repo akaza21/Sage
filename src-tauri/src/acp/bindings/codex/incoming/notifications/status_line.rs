@@ -4,7 +4,8 @@ use crate::acp::redaction::text::{Mode, redact};
 const ELLIPSIS: char = '\u{2026}';
 
 /// Only a bounded prefix of `raw` is read, so an oversized message costs no
-/// more than a short one.
+/// more than a short one. `max` is a byte limit. Blank text, or text the
+/// redactor refuses, yields `None`.
 pub(super) fn status_line(raw: &str, max: usize) -> Option<String> {
     let prefix = clip(raw, max.saturating_mul(4));
     let collapsed = prefix.split_whitespace().collect::<Vec<_>>().join(" ");

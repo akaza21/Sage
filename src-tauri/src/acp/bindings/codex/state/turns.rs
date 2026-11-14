@@ -255,6 +255,8 @@ impl CodexAdapter {
             .is_some_and(|terminals| terminals.iter().any(|entry| entry.id == id))
     }
 
+    /// The identity of a turn this adapter knows, carrying its own turn id
+    /// and client message id, which the pump needs to match the turn.
     pub(crate) fn scoped_turn(&self, turn: &str) -> Result<ScopedExternalId, AdapterError> {
         self.scoped_in_turn(ExternalKind::Turn, turn, turn)
     }

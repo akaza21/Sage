@@ -1,5 +1,5 @@
-//! Answered `accept` (with typed content for a form), `decline` or `cancel`,
-//! exactly as ACP `elicitation/create` is.
+//! MCP elicitations are answered `accept` (with typed form content), `decline`
+//! or `cancel`, as ACP `elicitation/create` requests are.
 
 use serde_json::{Map, Value};
 

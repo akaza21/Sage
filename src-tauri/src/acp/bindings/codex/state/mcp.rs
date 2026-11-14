@@ -60,8 +60,8 @@ impl CodexAdapter {
         }
     }
 
-    /// Its answer can pass the frame bound, since Codex sends every tool's
-    /// schema with it.
+    /// An MCP list answer can exceed the frame bound because Codex includes
+    /// every tool's schema.
     pub(super) fn mcp_list_awaited(&self) -> bool {
         !self.mcp_read_tombstones.is_empty() || self.awaits(RequestKind::McpList)
     }

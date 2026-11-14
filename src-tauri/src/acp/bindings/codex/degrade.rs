@@ -8,8 +8,8 @@ use super::manifest::CuratedCapabilityCeiling;
 use crate::acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, pinned_codex_version};
 
 const VERSION_TOKEN_BYTES_MAX: usize = 32;
-/// wire, so its sessions carry the pinned capability evidence under their
-/// own name.
+/// The desktop fixture replays the observed pinned wire, so its sessions carry
+/// the pinned capability evidence under their own name.
 const DESKTOP_FIXTURE_PROTOCOL_IDENTITY: &str =
     concat!("codex-app-server-desktop-fixture-", pinned_codex_version!());
 

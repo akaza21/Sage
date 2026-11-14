@@ -92,8 +92,9 @@ pub(crate) fn valid_account_read(result: &Map<String, Value>) -> bool {
             .is_some_and(Value::is_boolean)
 }
 
-/// Sage keeps no identity data from it, so the email, plan and workspace
-/// members are not read: a new plan or member must not sign the user out of Sage.
+/// Sage keeps no identity data from a ChatGPT sign-in, so the email, plan and
+/// workspace members are not read: a new plan or member must not sign the user
+/// out of Sage.
 pub(crate) fn managed_chatgpt(account: &Map<String, Value>) -> bool {
     account_type(account) == Some("chatgpt")
 }

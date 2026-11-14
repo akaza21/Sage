@@ -300,7 +300,8 @@ impl CodexAdapter {
         Ok(background)
     }
 
-    /// Only a characterised negotiation admits it, and only between Turns.
+    /// Only a characterised negotiation admits it, and only between Turns: the
+    /// fork carries the thread through its latest completed Turn.
     pub(crate) fn fork(&mut self, id: u64) -> Result<OutgoingRequest, AdapterError> {
         self.require_method(|methods| methods.snapshot.native_session_fork)?;
         if self.pending_fork.is_some()
@@ -333,8 +334,7 @@ impl CodexAdapter {
         Ok(())
     }
 
-    /// The bound source thread, which a fork response must name as its
-    /// `forkedFromId`.
+    /// A non-null `forkedFromId` in the fork response must match this source.
     pub(crate) fn bound_thread_id(&self) -> Option<&str> {
         self.external_thread_id.as_ref().map(|value| value.as_str())
     }

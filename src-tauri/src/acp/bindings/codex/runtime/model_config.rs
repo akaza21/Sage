@@ -218,8 +218,8 @@ impl CodexRuntime {
         Ok(())
     }
 
-    /// Codex keeps a thread's effort until a `turn/start` names another, so
-    /// one is always named.
+    /// Codex retains the thread's effort when `turn/start` omits it, so a
+    /// switch to a model offering efforts must choose one that model supports.
     fn apply_model(&mut self, id: &str) -> Result<(), AdapterRuntimeError> {
         let Some(model) = self.model_catalog.find(id).cloned() else {
             return if self.reported_model_id.as_ref().map(|model| model.as_str()) == Some(id) {

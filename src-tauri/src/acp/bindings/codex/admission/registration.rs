@@ -71,6 +71,8 @@ impl CodexBindingRegistration {
         )?);
         let mut state = self.lock_state();
         match &*state {
+            // An updated CLI replaces the drifted or earlier observed build;
+            // a live session keeps the binding it started with.
             CodexRegistrationState::Unavailable(
                 CodexAdmissionUnavailable::IndependentAdmission
                 | CodexAdmissionUnavailable::Platform

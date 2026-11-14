@@ -1,6 +1,3 @@
-//! `item/tool/requestUserInput` (Codex `ToolRequestUserInputParams`) mapped
-//! onto the harness-neutral `UserInputRequest`.
-
 use serde_json::{Map, Value, json};
 
 use crate::acp::{
@@ -111,6 +108,8 @@ fn parse(params: &Map<String, Value>) -> Option<UserInputRequest> {
 
 fn question(value: &Value) -> Option<UserInputQuestion> {
     let value = value.as_object()?;
+    // An empty option list offers nothing to pick, so the question takes
+    // free text, as one without options does.
     let options = match value.get("options") {
         None | Some(Value::Null) => None,
         Some(Value::Array(options)) if options.is_empty() => None,

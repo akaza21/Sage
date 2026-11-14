@@ -162,6 +162,8 @@ fn free_text_other_and_secret_answers_reply_as_codex_user_notes() {
             "token": {"answers": ["user_note: s3cret-token"]}
         })
     );
+    // The secret leaves only in the reply frame: the projected request never
+    // held it and the retained decline bytes are cleared on answer.
     assert!(adapter.cancelled_permission_response("number:73").is_err());
 }
 

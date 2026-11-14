@@ -5,8 +5,8 @@ use crate::{
 use super::request::RequestError;
 use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
-/// Codex applies each one given to that Turn and the Turns after it; one left
-/// out keeps the thread's own.
+/// Settings supplied to `turn/start` persist for that Turn and later Turns;
+/// omitted settings retain the thread's values.
 #[derive(Debug, Clone, Copy, Default)]
 pub(crate) struct TurnSettings<'a> {
     pub(crate) model: Option<&'a crate::acp::intent::ModelId>,
@@ -20,6 +20,7 @@ pub(crate) enum TurnPolicySurface {
 }
 
 impl TurnPolicySurface {
+    /// None denotes the curated package, which must match the pinned version.
     pub(super) fn from_identity(observed: Option<Characterisation>, runtime_version: &str) -> Self {
         let supported = match observed {
             Some(characterisation) => characterisation.runs_tested_features(),

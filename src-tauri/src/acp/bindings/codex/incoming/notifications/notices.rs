@@ -59,6 +59,8 @@ pub(super) fn warning(
 
 pub(super) const REAUTHENTICATION_REQUIRED: &str = "reauthenticationRequired";
 
+/// Codex keeps running when an MCP server fails to start, so report the
+/// missing tools without ending the session.
 pub(super) fn mcp_startup_failed(
     adapter: &mut CodexAdapter,
     params: &Map<String, Value>,

@@ -310,6 +310,7 @@ pub(super) fn notification<M: ResourceMapper>(
         "model/rerouted" => notices::model_rerouted(adapter, params),
         "model/verification" => notices::model_verification(adapter, params),
         "model/safetyBuffering/updated" => notices::model_safety_buffering(adapter, params),
+        // Opaque, unversioned metadata with no user-facing text: checked, not shown.
         "turn/moderationMetadata" => {
             notices::turn_session(adapter, params).map(|_| IngressDisposition::IgnoredLate)
         }

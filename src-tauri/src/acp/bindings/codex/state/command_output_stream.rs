@@ -162,6 +162,8 @@ impl CommandOutputStream {
             .ok_or(CommandOutputStreamError::Allocation)
     }
 
+    /// Charges all physically retained UTF-8 text, including a consumed front
+    /// prefix still owned by a rolling chunk, plus private pending-token bytes.
     /// Callers stage the whole delta on a clone and discard that clone on any
     /// error before using this charge for snapshot admission.
     pub(crate) fn retained_bytes(&self) -> usize {
@@ -170,6 +172,9 @@ impl CommandOutputStream {
         })
     }
 
+    /// Reports observed string/deque backing capacity for diagnostics. It does
+    /// not include allocator metadata. A clone has separate backing storage;
+    /// projection creates bounded marker-free/display strings on demand.
     pub(crate) fn allocated_bytes(&self) -> usize {
         let chunk_bytes = self.chunks.iter().fold(0_usize, |total, chunk| {
             total.saturating_add(chunk.text.capacity())

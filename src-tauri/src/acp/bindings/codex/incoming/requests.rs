@@ -102,6 +102,7 @@ struct PendingServerRequest<'a> {
     item: &'a str,
     bytes: Vec<u8>,
     payload: NormalizedPayload,
+    /// The form an elicitation asked, kept to type the accepted content.
     form: Option<Box<UserInputRequest>>,
 }
 

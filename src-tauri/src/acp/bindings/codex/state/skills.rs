@@ -21,7 +21,7 @@ const PATH_BYTES: usize = 1024;
 #[derive(Clone)]
 pub(super) struct Skills {
     list: Arc<CommandState>,
-    /// The list is missing or stale and no read is pending.
+    /// The list needs refreshing; an earlier read may still be pending.
     wanted: bool,
     /// Codex said the skills changed, so reads skip its cache until one
     /// succeeds.
@@ -69,6 +69,7 @@ fn text(value: Option<&Value>) -> Option<&str> {
     value.and_then(Value::as_str)
 }
 
+/// Preserve the skills' wire order.
 /// A skill Sage cannot list is left out, not the whole list.
 fn parse(result: &Map<String, Value>) -> Option<Vec<AvailableCommand>> {
     let entries = result.get("data").and_then(Value::as_array)?;
@@ -143,6 +144,7 @@ impl CodexAdapter {
             && !self.skills_read_pending()
     }
 
+    /// The skills come from the thread's root, as Codex scopes them.
     pub(crate) fn skills_root(&mut self, root: &str) {
         if self.skills.root.as_deref() != Some(root) {
             self.skills.root = Some(root.to_owned());

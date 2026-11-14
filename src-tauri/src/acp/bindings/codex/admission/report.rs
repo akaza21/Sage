@@ -160,6 +160,8 @@ impl AdmittedCodexBinding {
     }
 
     pub(crate) fn model_discovery_available(&self) -> Result<bool, CodexAdmissionUnavailable> {
+        // A desktop replay offers a model choice only when its session runs
+        // the model it is opened with; its catalogue is the case's own.
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if self.is_desktop_fixture() {
             return Ok(self

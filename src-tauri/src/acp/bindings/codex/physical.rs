@@ -47,6 +47,10 @@ impl ConfiguredCodexSourceRoot {
 /// bounded observations, but the namespace is not frozen and can change after
 /// the final observation. This proof therefore grants no admission or launch
 /// authority.
+///
+/// It also does not establish Authenticode or other signatures,
+/// ACLs/ownership/immutability, provisioning, auth/state, process containment,
+/// atomic check-to-launch, or macOS admission.
 #[derive(Debug)]
 pub(crate) struct PhysicallyInspectedPackage {
     package_root: PathBuf,
