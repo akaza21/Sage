@@ -1,11 +1,10 @@
 //! Write admission for one workspace-relative path. A name is refused when it
 //! could alias a protected directory on any supported file system, or when the
 //! approval prompt could not show it to the user exactly as it will be written.
+use sage_core::win32_path::windows_reserved_device_name;
+
 use super::Refusal;
-use crate::{
-    win32_path::windows_reserved_device_name,
-    workspace::{Workspace, directory_skip::protected_workspace_name},
-};
+use crate::workspace::{Workspace, directory_skip::protected_workspace_name};
 use std::path::{Component, Path, PathBuf};
 
 /// The approval prompt names the path in full, so it must fit the summary.

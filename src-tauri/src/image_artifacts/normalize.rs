@@ -6,17 +6,16 @@
 //! the tighter `PROMPT` bounds when it is sent.
 use std::io::Cursor;
 
-use crate::{
-    acp::{
-        intent::ImageMediaType,
-        limits::{
-            IMAGE_PREVIEW_BYTES, IMAGE_PREVIEW_EDGE_PX, IMAGE_UPLOAD_BYTES, IMAGE_UPLOAD_EDGE_PX,
-            IMAGE_UPLOAD_PIXELS, PNG_DECODER_ROW_BYTES, PROMPT_IMAGE_EDGE_PX,
-            PROMPT_IMAGE_JPEG_QUALITY, PROMPT_IMAGE_PNG_BYTES, PROMPT_IMAGE_TOTAL_BYTES,
-            STORED_IMAGE_BYTES, STORED_IMAGE_EDGE_PX,
-        },
+use sage_core::error::{AppError, AppResult};
+
+use crate::acp::{
+    intent::ImageMediaType,
+    limits::{
+        IMAGE_PREVIEW_BYTES, IMAGE_PREVIEW_EDGE_PX, IMAGE_UPLOAD_BYTES, IMAGE_UPLOAD_EDGE_PX,
+        IMAGE_UPLOAD_PIXELS, PNG_DECODER_ROW_BYTES, PROMPT_IMAGE_EDGE_PX,
+        PROMPT_IMAGE_JPEG_QUALITY, PROMPT_IMAGE_PNG_BYTES, PROMPT_IMAGE_TOTAL_BYTES,
+        STORED_IMAGE_BYTES, STORED_IMAGE_EDGE_PX,
     },
-    error::{AppError, AppResult},
 };
 
 /// Where a normalised image goes: its long edge, its byte bound, and the size

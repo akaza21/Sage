@@ -1,13 +1,16 @@
 use std::collections::{HashMap, HashSet};
 
 use rusqlite::{OptionalExtension, params};
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     acp::attached_context::{AttachedContext, AttachedContexts},
-    error::{AppError, AppResult},
     image_artifacts::verify_image_reference,
-    persistence::{Database, now_millis},
+    persistence::Database,
 };
 
 const MAX_PROMPTS: usize = 8;

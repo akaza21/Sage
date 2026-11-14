@@ -19,7 +19,7 @@ const fn deadline(seconds: u64) -> Duration {
 
 #[cfg(test)]
 const fn deadline(_seconds: u64) -> Duration {
-    crate::test_wait::BUDGET
+    sage_test_support::test_wait::BUDGET
 }
 
 #[cfg(test)]

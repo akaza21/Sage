@@ -1,6 +1,7 @@
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     domain::{GitFileMutationAction, ResourceRef},
-    error::{AppError, AppResult},
     git_budget, repository,
     workspace::Workspace,
 };

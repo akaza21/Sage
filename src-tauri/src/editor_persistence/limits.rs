@@ -1,6 +1,5 @@
 use rusqlite::params;
-
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 pub const MAX_DIRTY_BUFFERS: i64 = 16;
 pub const MAX_TOTAL_DIRTY_BYTES: i64 = 8 * 1024 * 1024;

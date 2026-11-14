@@ -1,11 +1,9 @@
 use std::{fs, path::Path};
 
+use sage_core::error::{AppError, AppResult};
 use tokio::process::Command;
 
-use crate::{
-    error::{AppError, AppResult},
-    workspace::Workspace,
-};
+use crate::workspace::Workspace;
 
 pub(crate) struct GitRootAuthority {
     directory: fs::File,

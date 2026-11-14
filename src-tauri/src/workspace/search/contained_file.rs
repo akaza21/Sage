@@ -3,9 +3,10 @@ use std::{
     path::PathBuf,
 };
 
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     domain::ResourceRef,
-    error::{AppError, AppResult},
     workspace::{Workspace, validate_contract_path},
 };
 

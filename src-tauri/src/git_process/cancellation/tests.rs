@@ -4,7 +4,7 @@ use std::{fs, sync::mpsc};
 
 #[test]
 fn cancelling_an_in_flight_git_read_reaps_it_before_another_read() {
-    let root = crate::test_paths::temp_dir()
+    let root = sage_test_support::test_paths::temp_dir()
         .join(format!("sage-git-window-cancel-{}", uuid::Uuid::new_v4()));
     fs::create_dir(&root).unwrap();
     let initialized = crate::git_process::fixture_git()
@@ -41,7 +41,7 @@ fn cancelling_an_in_flight_git_read_reaps_it_before_another_read() {
         resumed
             .lock()
             .unwrap()
-            .recv_timeout(crate::test_wait::HANG_GUARD)
+            .recv_timeout(sage_test_support::test_wait::HANG_GUARD)
             .unwrap();
     });
     let worker = {
@@ -54,13 +54,15 @@ fn cancelling_an_in_flight_git_read_reaps_it_before_another_read() {
             ))
         })
     };
-    started.recv_timeout(crate::test_wait::HANG_GUARD).unwrap();
+    started
+        .recv_timeout(sage_test_support::test_wait::HANG_GUARD)
+        .unwrap();
     cancelled.store(true, Ordering::Release);
     resume.send(()).unwrap();
     let result = worker.join().unwrap();
     drop(wait_gate);
     assert!(
-        matches!(result, Err(crate::error::AppError::Git(message)) if message.contains("cancelled"))
+        matches!(result, Err(sage_core::error::AppError::Git(message)) if message.contains("cancelled"))
     );
     assert_eq!(harness.observation().available_reaper_permits, 8);
     let later = tauri::async_runtime::block_on(crate::git_process::run_cancellable(

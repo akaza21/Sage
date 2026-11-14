@@ -202,12 +202,13 @@ fn read_sqlite(connection: &rusqlite::Connection) -> Value {
 }
 
 fn capture_structured_logs(diagnostics: &[SafeDiagnostic]) -> String {
-    let ((), captured) = crate::test_diagnostics::capture_matching(crate::is_sage_target, || {
-        for diagnostic in diagnostics {
-            tracing::info!(?diagnostic, "ACP sensitive input redacted");
-        }
-        tracing::info!(target: "unrelated_dependency", "must be filtered");
-    });
+    let ((), captured) =
+        sage_test_support::test_diagnostics::capture_matching(crate::is_sage_target, || {
+            for diagnostic in diagnostics {
+                tracing::info!(?diagnostic, "ACP sensitive input redacted");
+            }
+            tracing::info!(target: "unrelated_dependency", "must be filtered");
+        });
     assert!(captured.len() <= STRUCTURED_LOG_BYTES);
     assert!(!captured.contains("must be filtered"));
     assert_eq!(

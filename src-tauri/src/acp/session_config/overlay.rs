@@ -383,7 +383,7 @@ impl ConfigChannel {
         }
         let state = Arc::clone(&self.state);
         let scheduled = Arc::clone(&self.notice_scheduled);
-        tauri::async_runtime::spawn(async move {
+        sage_core::rt::spawn(async move {
             loop {
                 tokio::time::sleep(std::time::Duration::from_millis(50)).await;
                 let notice = {

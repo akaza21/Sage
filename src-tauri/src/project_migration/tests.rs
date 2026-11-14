@@ -194,7 +194,7 @@ fn missing_root_buffer_case_aliases_roll_back_with_legacy_rows_intact() {
 
     assert!(matches!(
         Database::open(&path),
-        Err(crate::error::AppError::InvalidRequest(_))
+        Err(sage_core::error::AppError::InvalidRequest(_))
     ));
     let connection = Connection::open(&path).unwrap();
     let paths = connection

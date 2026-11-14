@@ -26,7 +26,7 @@ use std::{
     sync::Arc,
 };
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::{ResourceTrashAuthority, TRASH_NAME, open_directory, stat_at, stat_identity};
 

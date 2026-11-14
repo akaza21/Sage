@@ -55,7 +55,7 @@ pub(crate) fn ingest_test_image(
     project_id: &str,
     chat_id: &str,
     bytes: &[u8],
-) -> crate::error::AppResult<ImageAttachedContext> {
+) -> sage_core::error::AppResult<ImageAttachedContext> {
     super::store::ingest_image(
         connection,
         root,

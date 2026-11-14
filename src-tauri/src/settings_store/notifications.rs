@@ -1,10 +1,10 @@
 //! Native preference in the existing versioned settings rows; no new settings
 //! schema. The editor catalogue ignores this key and cannot modify it.
 use rusqlite::{OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
-use crate::error::{AppError, AppResult};
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

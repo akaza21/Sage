@@ -9,6 +9,7 @@ use std::{
     ptr,
 };
 
+use sage_core::error::{AppError, AppResult};
 use windows_sys::Win32::{
     Foundation::{ERROR_ALREADY_EXISTS, ERROR_FILE_EXISTS},
     Storage::FileSystem::{
@@ -16,11 +17,8 @@ use windows_sys::Win32::{
     },
 };
 
-use crate::{
-    error::{AppError, AppResult},
-    workspace::{
-        RootIdentity, Workspace, open_held_parent, open_workspace_text_file, root_identity_file,
-    },
+use crate::workspace::{
+    RootIdentity, Workspace, open_held_parent, open_workspace_text_file, root_identity_file,
 };
 
 pub(in crate::editor) struct HeldParent {

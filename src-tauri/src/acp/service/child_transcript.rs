@@ -85,7 +85,7 @@ impl AcpService {
                     &mut self.database.connection(),
                     &scope,
                     &snapshot,
-                    crate::persistence::now_millis(),
+                    sage_core::time::now_millis(),
                 ) {
                     Ok(()) => {}
                     Err(ChildTranscriptStoreError::Capacity) => {

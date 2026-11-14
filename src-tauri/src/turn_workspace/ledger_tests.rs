@@ -44,7 +44,7 @@ fn root() -> std::path::PathBuf {
 }
 
 fn baseline(root: &Path) -> WorkspaceMark {
-    tauri::async_runtime::block_on(capture(root)).unwrap()
+    sage_core::rt::block_on(capture(root)).unwrap()
 }
 
 fn terminal(connection: &mut Connection, session: &str, key: &str) {

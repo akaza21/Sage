@@ -87,7 +87,7 @@ mod tests {
 
     #[test]
     fn configured_agents_are_listed_with_their_binding_and_reason() {
-        let root = crate::test_paths::temp_dir()
+        let root = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-custom-catalog-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let executable = root.join("agent.exe");
@@ -159,7 +159,7 @@ mod tests {
 
     #[test]
     fn a_removed_agents_id_stays_unavailable_after_a_new_agent_takes_its_registration() {
-        let root = crate::test_paths::temp_dir()
+        let root = sage_test_support::test_paths::temp_dir()
             .join(format!("sage-custom-reuse-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let executable = root.join("agent.exe");

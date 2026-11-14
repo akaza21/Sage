@@ -231,7 +231,7 @@ fn apply_renamed_file_fails_closed_without_mutating_the_source() {
         .expect_err("non-Windows rename must fail closed");
 
     assert!(
-        matches!(error, crate::error::AppError::Unsupported(message) if message == "safe closed-file rename currently requires Windows held-source authority")
+        matches!(error, sage_core::error::AppError::Unsupported(message) if message == "safe closed-file rename currently requires Windows held-source authority")
     );
     assert_eq!(
         fs::read_to_string(fixture.root.join("before.txt")).unwrap(),
@@ -251,7 +251,7 @@ fn apply_deleted_file_fails_closed_without_mutating_the_source() {
         .expect_err("non-Windows deletion must fail closed");
 
     assert!(
-        matches!(error, crate::error::AppError::Unsupported(message) if message == "recoverable resource trash currently requires the Windows Recycle Bin adapter")
+        matches!(error, sage_core::error::AppError::Unsupported(message) if message == "recoverable resource trash currently requires the Windows Recycle Bin adapter")
     );
     assert_eq!(
         fs::read_to_string(fixture.root.join("deleted.txt")).unwrap(),

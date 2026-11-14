@@ -75,7 +75,7 @@ fn tracked_dependency_changes_do_not_consume_dirty_or_committed_source_capacity(
     git_in(&root, &["add", "."]);
     git_in(&root, &["commit", "-qm", "baseline"]);
     let root = root.canonicalize().unwrap();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         let before = capture(&root).await.unwrap();
         for index in 0..301 {
             std::fs::write(dependencies.join(format!("{index}.js")), "after").unwrap();
@@ -108,7 +108,7 @@ fn deleting_a_baseline_untracked_file_is_a_deleted_turn_change() {
     std::fs::create_dir(root.join("scratch")).unwrap();
     std::fs::write(root.join("scratch/untracked.txt"), "before the turn").unwrap();
     let root = root.canonicalize().unwrap();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         let before = capture(&root).await.unwrap();
         assert_eq!(before.entries["scratch/untracked.txt"].status, "??");
         std::fs::remove_file(root.join("scratch/untracked.txt")).unwrap();
@@ -134,7 +134,7 @@ fn deleting_an_untracked_parent_directory_is_a_deleted_turn_change() {
     std::fs::create_dir(root.join("scratch")).unwrap();
     std::fs::write(root.join("scratch/untracked.txt"), "before the turn").unwrap();
     let root = root.canonicalize().unwrap();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         let before = capture(&root).await.unwrap();
         std::fs::remove_dir_all(root.join("scratch")).unwrap();
         let after = capture_after(&root, &before).await.unwrap();
@@ -162,7 +162,7 @@ fn baseline_files_becoming_clean_or_committed_are_not_deleted() {
     std::fs::write(root.join("committed.txt"), "dirty").unwrap();
     std::fs::write(root.join("added.txt"), "untracked").unwrap();
     let root = root.canonicalize().unwrap();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         let before = capture(&root).await.unwrap();
         git_in(&root, &["restore", "reverted.txt"]);
         git_in(&root, &["add", "committed.txt", "added.txt"]);
@@ -204,7 +204,7 @@ fn baseline_only_paths_with_substituted_symlinks_fail_closed() {
         std::fs::write(root.join("scratch/file.txt"), "baseline").unwrap();
         std::fs::write(outside.join("file.txt"), "external").unwrap();
         let root = root.canonicalize().unwrap();
-        tauri::async_runtime::block_on(async {
+        sage_core::rt::block_on(async {
             let before = capture(&root).await.unwrap();
             if replace_parent {
                 std::fs::remove_dir_all(root.join("scratch")).unwrap();
@@ -231,7 +231,7 @@ fn committing_a_substituted_symlink_does_not_bypass_baseline_validation() {
     std::fs::write(root.join("file.txt"), "baseline").unwrap();
     std::fs::write(outside.join("file.txt"), "external").unwrap();
     let root = root.canonicalize().unwrap();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         let before = capture(&root).await.unwrap();
         std::fs::remove_file(root.join("file.txt")).unwrap();
         std::os::unix::fs::symlink(outside.join("file.txt"), root.join("file.txt")).unwrap();
@@ -253,7 +253,7 @@ fn a_shell_edit_committed_before_the_turn_ends_is_a_turn_change() {
     git_in(&root, &["add", "."]);
     git_in(&root, &["commit", "-q", "-m", "init"]);
     let root = root.canonicalize().unwrap();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         let before = capture(&root).await.unwrap();
         assert!(before.entries.is_empty());
         std::fs::write(root.join("README.md"), b"hello\nAudited.\n").unwrap();
@@ -292,7 +292,7 @@ fn the_first_commit_in_an_unborn_repository_is_a_turn_change() {
     let root = temp_root();
     git_in(&root, &["init", "-q"]);
     let root = root.canonicalize().unwrap();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         let before = capture(&root).await.unwrap();
         assert_eq!(before.head, Some(history::HeadMark::Unborn));
         std::fs::write(root.join("first.txt"), b"one\n").unwrap();
@@ -399,7 +399,7 @@ fn a_shell_edit_in_a_real_repository_is_a_turn_change() {
     git(&["add", "README.md"]);
     git(&["commit", "-q", "-m", "init"]);
     let root = root.canonicalize().unwrap();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         let before = capture(&root).await.expect("a repository root has a mark");
         // What a harness shell command (for example Add-Content) does.
         std::fs::write(root.join("README.md"), b"hello\nAudited.\n").unwrap();
@@ -442,7 +442,7 @@ fn capture_skips_dependencies_and_ignored_directories_and_fails_closed_at_the_wa
     }
     std::fs::write(root.join("visible.txt"), "keep").unwrap();
     let root = root.canonicalize().unwrap();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         let mark = capture::capture_with_limit(&root, 10).await.unwrap();
         assert_eq!(
             mark.entries.keys().map(String::as_str).collect::<Vec<_>>(),
@@ -503,10 +503,10 @@ fn deleting_a_tracked_directory_preserves_its_deletions_and_unrelated_edits() {
         "Initial",
     ]);
     let root = root.canonicalize().unwrap();
-    let before = tauri::async_runtime::block_on(capture(&root)).unwrap();
+    let before = sage_core::rt::block_on(capture(&root)).unwrap();
     std::fs::remove_dir_all(root.join("sub")).unwrap();
     std::fs::write(root.join("keep.txt"), "Edited unrelated file").unwrap();
-    let after = tauri::async_runtime::block_on(capture(&root)).unwrap();
+    let after = sage_core::rt::block_on(capture(&root)).unwrap();
     let changes = diff_marks(&before, &after);
     assert!(changes.tracked);
     assert_eq!(
@@ -528,7 +528,7 @@ fn deleting_a_tracked_directory_preserves_its_deletions_and_unrelated_edits() {
 #[test]
 fn non_git_baseline_is_unsupported_while_unreadable_root_is_failed() {
     let root = temp_root();
-    tauri::async_runtime::block_on(async {
+    sage_core::rt::block_on(async {
         assert!(matches!(
             capture_baseline(&root).await,
             BaselineCapture::Unsupported

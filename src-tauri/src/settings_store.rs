@@ -6,7 +6,6 @@ use std::{
 use rusqlite::{Connection, params};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{AppError, AppResult};
 mod access;
 mod chat_access;
 mod notifications;
@@ -37,6 +36,7 @@ pub use custom_acp_agents::{
 };
 pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
 pub use new_chat_defaults::NewChatDefaults;
+use sage_core::error::{AppError, AppResult};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

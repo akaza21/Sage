@@ -10,8 +10,8 @@ struct Repository(PathBuf);
 
 impl Repository {
     fn new() -> Self {
-        let root =
-            crate::test_paths::temp_dir().join(format!("sage-notify-git-{}", uuid::Uuid::new_v4()));
+        let root = sage_test_support::test_paths::temp_dir()
+            .join(format!("sage-notify-git-{}", uuid::Uuid::new_v4()));
         fs::create_dir_all(root.join("dist")).unwrap();
         let repo = Self(root);
         repo.git(&["init"]);
@@ -87,15 +87,16 @@ fn deliver_window(
         Arc::new(move |batch| {
             sent.send(batch).unwrap();
         }),
-        crate::test_wait::BUDGET,
+        sage_test_support::test_wait::BUDGET,
         |window, path, stop| async move { window.irrelevant(&path, stop).await },
     );
     tauri::async_runtime::block_on(async {
         for root in refresh.roots.values() {
             if let Some(gate) = &root.gate {
-                let _settled = tokio::time::timeout(crate::test_wait::HANG_GUARD, gate.lock())
-                    .await
-                    .unwrap();
+                let _settled =
+                    tokio::time::timeout(sage_test_support::test_wait::HANG_GUARD, gate.lock())
+                        .await
+                        .unwrap();
             }
         }
     });

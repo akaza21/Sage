@@ -1,3 +1,5 @@
+use sage_test_support::test_diagnostics::capture_diagnostics;
+
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use serde_json::{Value, json};
 
@@ -6,8 +8,6 @@ use crate::acp::{
     intent::{NormalizedPayload, Prompt, SafeResourceRef, UnavailableResourceReason},
     lifecycle::{ItemLifecycle, ServerRequestState},
 };
-
-use crate::test_diagnostics::capture_diagnostics;
 
 use super::incoming::{ItemUpdateMode, UNPROJECTED_DIAGNOSTIC};
 use super::state::CodexAdapter;

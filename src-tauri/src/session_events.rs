@@ -5,13 +5,16 @@ mod store;
 pub(crate) use store::seed_legacy_welcome;
 
 use rusqlite::params;
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
     acp::limits::LIMITS,
     domain::{ChatMessage, SimulatorTurnResult},
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
+    persistence::Database,
 };
 
 #[cfg(test)]

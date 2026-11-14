@@ -99,7 +99,7 @@ where
             client_intent_id: crate::acp::contract::ClientIntentId::new(),
             session_id: parts.owner.session_id.clone(),
             runtime_epoch: parts.owner.runtime_epoch,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         };
         Self {
             parts,
@@ -255,7 +255,7 @@ where
                     session_id: owner.session_id,
                     runtime_epoch: owner.runtime_epoch,
                     exit_kind,
-                    now_millis: crate::persistence::now_millis(),
+                    now_millis: sage_core::time::now_millis(),
                 },
                 proof,
             )

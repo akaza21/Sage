@@ -127,7 +127,7 @@ async fn activating_session_fixture(
             binding_digest: "11".repeat(32),
             harness_version: None,
             model_id: None,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .await
         .unwrap();
@@ -148,7 +148,7 @@ async fn activating_session_fixture(
             session_id: started.session_id,
             runtime_epoch: owner.runtime_epoch,
             artifact_digest: "22".repeat(32),
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .await
         .unwrap();
@@ -188,7 +188,7 @@ fn cancel_after_runner_failure_recovers_durable_runtime_then_releases_slot() {
                 owner: owner.clone(),
                 turn_id: crate::acp::contract::SageTurnId::parse("turn-runner-recovery").unwrap(),
                 client_intent_id: ClientIntentId::new(),
-                now_millis: crate::persistence::now_millis(),
+                now_millis: sage_core::time::now_millis(),
             }),
             Err(CodexSessionError::Recovery)
         ));
@@ -356,7 +356,7 @@ async fn seat_ready_session_with(
             binding_digest: "31".repeat(32),
             harness_version: None,
             model_id: None,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .await
         .unwrap();
@@ -377,7 +377,7 @@ async fn seat_ready_session_with(
             session_id: started.session_id,
             runtime_epoch: owner.runtime_epoch,
             artifact_digest: "32".repeat(32),
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .await
         .unwrap();
@@ -395,7 +395,7 @@ async fn seat_ready_session_with(
             )
             .unwrap(),
             capabilities_json: serde_json::to_string(&capabilities).unwrap(),
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .await
         .unwrap();
@@ -1141,7 +1141,7 @@ async fn projection_start_fixture(
             binding_digest: "41".repeat(32),
             harness_version: None,
             model_id: None,
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .await
         .unwrap();
@@ -1162,7 +1162,7 @@ async fn projection_start_fixture(
             session_id: started.session_id,
             runtime_epoch: owner.runtime_epoch,
             artifact_digest: "42".repeat(32),
-            now_millis: crate::persistence::now_millis(),
+            now_millis: sage_core::time::now_millis(),
         })
         .await
         .unwrap();
@@ -1191,7 +1191,7 @@ fn effect_unknown_cancel_retains_its_exact_host_without_redispatch() {
         owner: owner.clone(),
         turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
         client_intent_id: ClientIntentId::new(),
-        now_millis: crate::persistence::now_millis(),
+        now_millis: sage_core::time::now_millis(),
     };
 
     assert!(matches!(
@@ -1352,7 +1352,7 @@ fn close_session(owner: &RuntimeOwner) -> crate::acp::store::CloseSessionCommand
         client_intent_id: ClientIntentId::new(),
         session_id: owner.session_id.clone(),
         runtime_epoch: owner.runtime_epoch,
-        now_millis: crate::persistence::now_millis(),
+        now_millis: sage_core::time::now_millis(),
     }
 }
 
@@ -1901,7 +1901,7 @@ fn prepare_turn(owner: &RuntimeOwner) -> crate::acp::store::PrepareTurnCommand {
         expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
         client_intent_id: ClientIntentId::new(),
         prompt: crate::acp::intent::Prompt::new("prompt", "no replay").unwrap(),
-        now_millis: crate::persistence::now_millis(),
+        now_millis: sage_core::time::now_millis(),
     }
 }
 
@@ -2284,7 +2284,7 @@ fn cancel_intent(owner: &RuntimeOwner) -> crate::acp::runtime::HostCancelIntent 
         owner: owner.clone(),
         turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
         client_intent_id: ClientIntentId::new(),
-        now_millis: crate::persistence::now_millis(),
+        now_millis: sage_core::time::now_millis(),
     }
 }
 

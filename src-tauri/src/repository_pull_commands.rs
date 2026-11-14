@@ -1,8 +1,8 @@
+use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::{
     domain::{GitFileMutationCommandError, GitRepositoryPullRequest, GitRepositoryPullResult},
-    error::{AppError, AppResult, GitContainmentState},
     repository_pull,
     state::AppState,
     workspace::Workspace,

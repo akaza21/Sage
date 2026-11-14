@@ -16,7 +16,7 @@ fn notice(root: &str, path: &str) -> WorkspaceNotifyNotice {
 
 #[test]
 fn blocked_git_delivers_listings_and_other_roots_before_its_budget_expires() {
-    let root = crate::test_paths::temp_dir().join(uuid::Uuid::new_v4().to_string());
+    let root = sage_test_support::test_paths::temp_dir().join(uuid::Uuid::new_v4().to_string());
     let refresh = Arc::new(GitRefresh::new(vec![
         ("slow".into(), root.join("slow")),
         ("fast".into(), root.join("fast")),
@@ -84,7 +84,9 @@ fn blocked_git_delivers_listings_and_other_roots_before_its_budget_expires() {
             .iter()
             .all(|n| n.git_relevant == Some(false))
     );
-    running.recv_timeout(crate::test_wait::HANG_GUARD).unwrap();
+    running
+        .recv_timeout(sage_test_support::test_wait::HANG_GUARD)
+        .unwrap();
     // Another window must remain prompt while the first query still owns
     // this root. It conservatively refreshes Git instead of queuing a query.
     let next = notice("slow", "src/later.rs");
@@ -122,7 +124,7 @@ fn blocked_git_delivers_listings_and_other_roots_before_its_budget_expires() {
     assert!(gate.try_lock().is_err());
     release.notify_one();
     tauri::async_runtime::block_on(async {
-        let _settled = tokio::time::timeout(crate::test_wait::HANG_GUARD, gate.lock())
+        let _settled = tokio::time::timeout(sage_test_support::test_wait::HANG_GUARD, gate.lock())
             .await
             .unwrap();
     });

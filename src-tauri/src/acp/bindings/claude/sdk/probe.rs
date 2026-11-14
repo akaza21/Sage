@@ -358,7 +358,7 @@ mod tests {
         let directory = std::env::temp_dir().join(format!("sage-probe-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let script = directory.join("claude");
-        crate::test_executable::write(
+        sage_test_support::test_executable::write(
             &script,
             format!(
                 "#!/bin/sh\nread line\necho '{}'\nsleep 30\n",

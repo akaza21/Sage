@@ -2,6 +2,8 @@ mod absent;
 mod filesystem;
 mod replace;
 
+use sage_core::error::{AppError, AppResult};
+
 pub use self::replace::{DiskReplace, read_for_replace, replace_on_disk, replaced_file_text};
 
 pub use self::absent::{ABSENT_FINGERPRINT, rebase_buffer};
@@ -21,7 +23,6 @@ use crate::{
         reject_oversized_materialized, reject_unsupported_content, validate_line_ending,
     },
     editor_persistence::PersistedEditorBuffer,
-    error::{AppError, AppResult},
     persistence::Database,
     workspace::Workspace,
 };

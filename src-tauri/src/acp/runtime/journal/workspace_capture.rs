@@ -74,7 +74,7 @@ fn dispatch(
     });
     drop(state);
     let queue = Arc::clone(queue);
-    tauri::async_runtime::spawn_blocking(move || {
+    sage_core::rt::spawn_blocking(move || {
         envelope.workspace_result = Some(
             std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| prepare(&envelope)))
                 .unwrap_or(Err(StoreError::Corrupt("workspace capture worker"))),

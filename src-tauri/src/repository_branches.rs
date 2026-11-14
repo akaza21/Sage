@@ -1,7 +1,6 @@
-use crate::{
-    error::{AppError, AppResult},
-    workspace::Workspace,
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::workspace::Workspace;
 
 pub const MAX_LOCAL_BRANCHES: usize = 64;
 pub(crate) const MAX_BRANCH_NAME_BYTES: usize = 255;

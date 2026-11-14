@@ -42,7 +42,7 @@ pub async fn get_bootstrap_snapshot(
 pub(crate) async fn build_bootstrap_snapshot(
     state: &AppState,
     transition_epoch: u64,
-) -> crate::error::AppResult<BootstrapSnapshot> {
+) -> sage_core::error::AppResult<BootstrapSnapshot> {
     build_bootstrap_snapshot_with_repository_status(state, transition_epoch).await
 }
 
@@ -51,7 +51,7 @@ fn build_initial_bootstrap_snapshot(
     harnesses: &crate::harnesses::HarnessCatalog,
     startup_recovery_notice: Option<&str>,
     transition_epoch: u64,
-) -> crate::error::AppResult<BootstrapSnapshot> {
+) -> sage_core::error::AppResult<BootstrapSnapshot> {
     let mut snapshot = database.bootstrap_snapshot_with_catalog(harnesses)?;
     snapshot.transition_epoch = transition_epoch;
     let Some(project) = &snapshot.project else {
@@ -68,7 +68,7 @@ fn build_initial_bootstrap_snapshot(
 async fn build_bootstrap_snapshot_with_repository_status(
     state: &AppState,
     transition_epoch: u64,
-) -> crate::error::AppResult<BootstrapSnapshot> {
+) -> sage_core::error::AppResult<BootstrapSnapshot> {
     let mut snapshot = state
         .database
         .bootstrap_snapshot_with_catalog(&state.harnesses)?;
@@ -272,10 +272,10 @@ pub struct EditorOpenError {
     kind: &'static str,
     message: String,
 }
-impl From<crate::error::AppError> for EditorOpenError {
-    fn from(error: crate::error::AppError) -> Self {
+impl From<sage_core::error::AppError> for EditorOpenError {
+    fn from(error: sage_core::error::AppError) -> Self {
         Self {
-            kind: if matches!(error, crate::error::AppError::MixedLineEndings) {
+            kind: if matches!(error, sage_core::error::AppError::MixedLineEndings) {
                 "mixedLineEndings"
             } else {
                 "unavailable"
@@ -378,10 +378,10 @@ async fn run_editor_operation<T: Send + 'static>(
         &crate::persistence::Database,
         &Workspace,
         &ResourceRef,
-    ) -> crate::error::AppResult<T>
+    ) -> sage_core::error::AppResult<T>
     + Send
     + 'static,
-) -> crate::error::AppResult<T> {
+) -> sage_core::error::AppResult<T> {
     let database = state.database.clone();
     let operations = state.editor_operations.clone();
     let ticket = operations.issue_ticket()?;
@@ -392,7 +392,7 @@ async fn run_editor_operation<T: Send + 'static>(
         })
     })
     .await
-    .map_err(|error| crate::error::AppError::InvalidRequest(error.to_string()))?
+    .map_err(|error| sage_core::error::AppError::InvalidRequest(error.to_string()))?
 }
 
 #[cfg(test)]

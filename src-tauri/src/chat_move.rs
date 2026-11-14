@@ -1,10 +1,11 @@
 use rusqlite::{OptionalExtension, params};
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 
 use crate::{
-    chat_lifecycle::validate_chat_identifier,
-    domain::MoveChatRequest,
-    error::{AppError, AppResult},
-    persistence::{Database, now_millis},
+    chat_lifecycle::validate_chat_identifier, domain::MoveChatRequest, persistence::Database,
     workbench_persistence::persist_layout_in,
 };
 

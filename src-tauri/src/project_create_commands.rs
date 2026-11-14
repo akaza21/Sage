@@ -6,6 +6,7 @@
 
 use std::{collections::VecDeque, path::PathBuf, sync::Mutex};
 
+use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, State, Window};
 use uuid::Uuid;
@@ -13,7 +14,6 @@ use uuid::Uuid;
 use crate::{
     browser::BrowserState,
     domain::ProjectTransitionResult,
-    error::{AppError, AppResult},
     project_commands::{execute_committed_transition_checked, pick_folder},
     project_registry::{MAX_ROOTS_PER_PROJECT, project_name},
     state::AppState,

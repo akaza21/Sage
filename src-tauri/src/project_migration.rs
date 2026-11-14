@@ -7,12 +7,14 @@ use std::{
 };
 
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::{
-    error::{AppError, AppResult},
-    persistence::now_millis,
     project_registry::{
         MAX_PROJECTS, MAX_ROOTS_PER_PROJECT, canonical_comparison_key, persisted_path_text,
     },

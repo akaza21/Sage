@@ -256,7 +256,7 @@ impl super::AcpService {
                 },
             );
         }
-        let now = crate::persistence::now_millis();
+        let now = sage_core::time::now_millis();
         let committed = self
             .journal
             .enqueue_one(
@@ -359,7 +359,7 @@ impl super::AcpService {
             ],
         };
         for state in states {
-            let now = crate::persistence::now_millis();
+            let now = sage_core::time::now_millis();
             self.journal
                 .enqueue_one(
                     JournalLane::Control,

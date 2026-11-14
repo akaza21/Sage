@@ -1,3 +1,4 @@
+use sage_core::error::{AppError, AppResult};
 use tauri::State;
 
 use crate::{
@@ -5,7 +6,6 @@ use crate::{
         ProjectChatSearchRequest, ProjectChatSearchResponse,
         search_project_chats as execute_project_chat_search, validate_chat_search_request,
     },
-    error::{AppError, AppResult},
     state::AppState,
 };
 

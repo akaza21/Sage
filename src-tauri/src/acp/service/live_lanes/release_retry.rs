@@ -27,7 +27,7 @@ impl AcpService {
         still_wanted: impl Fn() -> bool,
     ) -> Result<(), ChatRuntimeRelease> {
         loop {
-            let outcome = crate::blocking::in_place(|| {
+            let outcome = sage_core::blocking::in_place(|| {
                 self.release_chat_runtime(project, chat, deadline, &still_wanted)
             });
             match outcome {

@@ -76,7 +76,7 @@ fn command(
 
 #[test]
 fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() {
-    let _serial = crate::test_wait::serial_process_guard();
+    let _serial = sage_test_support::test_wait::serial_process_guard();
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         let directory = std::env::temp_dir().join(format!("sage-slash-journey-{}", Uuid::new_v4()));
         fs::create_dir_all(directory.join("project/src")).unwrap();
@@ -154,7 +154,7 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
         )
         .await
         .unwrap();
-        crate::test_wait::until("the fixture's command list", || {
+        sage_test_support::test_wait::until("the fixture's command list", || {
             state
                 .acp
                 .available_commands(&owner)
@@ -187,11 +187,15 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
         )
         .await
         .unwrap();
-        crate::test_wait::until("the /review turn", || completed_turns(&state, &owner) == 1);
+        sage_test_support::test_wait::until("the /review turn", || {
+            completed_turns(&state, &owner) == 1
+        });
         run(&state, command(&state, &owner, revision, "compact", None))
             .await
             .unwrap();
-        crate::test_wait::until("the /compact turn", || completed_turns(&state, &owner) == 2);
+        sage_test_support::test_wait::until("the /compact turn", || {
+            completed_turns(&state, &owner) == 2
+        });
         let page = state
             .acp
             .load_chat_page(project_id.clone(), chat_id.clone(), None)
@@ -213,7 +217,9 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
         )
         .await
         .unwrap();
-        crate::test_wait::until("the plain turn", || completed_turns(&state, &owner) == 3);
+        sage_test_support::test_wait::until("the plain turn", || {
+            completed_turns(&state, &owner) == 3
+        });
 
         let page = state
             .acp
@@ -233,7 +239,7 @@ fn claude_slash_commands_run_through_the_command_route_with_the_live_revision() 
         )
         .await
         .unwrap();
-        crate::test_wait::until("the fixture process to exit", || {
+        sage_test_support::test_wait::until("the fixture process to exit", || {
             crate::acp::process::TreeCapacityPool::global()
                 .observation_usage()
                 .0

@@ -6,7 +6,8 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
-use crate::{error::AppError, git_process, workspace::file_walk::MAX_WORKSPACE_FILES};
+use crate::{git_process, workspace::file_walk::MAX_WORKSPACE_FILES};
+use sage_core::error::AppError;
 
 const MAX_TRACKED_PATH_BYTES: usize = 16 * 1024 * 1024;
 

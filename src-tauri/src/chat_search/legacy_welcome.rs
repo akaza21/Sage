@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::{ChatRow, map_deadline};
 

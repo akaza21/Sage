@@ -1,3 +1,5 @@
+use sage_core::error::AppError;
+
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent, version_line};
 use crate::acp::bindings::codex::{CODEX_OBSERVED_PROTOCOL_IDENTITY, CODEX_PROTOCOL_IDENTITY};
 use serde_json::{Value, json};
@@ -23,7 +25,7 @@ use crate::acp::{
     transport::{Frame, IncrementalFrameDecoder},
 };
 use crate::project_registry::ProjectRootAuthority;
-use crate::{error::AppError, persistence::Database, state::AppState};
+use crate::{persistence::Database, state::AppState};
 
 mod background_terminal_tests;
 mod browser_mcp_tests;

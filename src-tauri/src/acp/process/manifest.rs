@@ -155,7 +155,7 @@ mod tests {
 
     fn recorded(label: &str, bytes: &[u8]) -> (TempFile, ManifestExpectation) {
         let path = TempFile(
-            crate::test_paths::temp_dir()
+            sage_test_support::test_paths::temp_dir()
                 .join(format!("sage-manifest-{label}-{}", uuid::Uuid::new_v4())),
         );
         std::fs::write(&path.0, bytes).expect("write manifest");

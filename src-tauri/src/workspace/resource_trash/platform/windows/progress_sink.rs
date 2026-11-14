@@ -17,7 +17,7 @@ use windows::{
     core::{HRESULT, PCWSTR, Ref, implement},
 };
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::{ResourceTrashAuthority, verify_visible_source};
 

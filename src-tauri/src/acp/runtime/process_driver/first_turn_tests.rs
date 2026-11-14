@@ -804,7 +804,7 @@ async fn prepare_first_turn_fixture() -> FirstTurnFixture {
     let project = database.create_project_from_root(root.path()).unwrap();
     let project_id = SageProjectId::parse(project.id).unwrap();
     let chat_id = SageChatId::parse("chat-first-turn").unwrap();
-    let now_millis = crate::persistence::now_millis();
+    let now_millis = sage_core::time::now_millis();
     database
         .connection()
         .execute(
@@ -1194,7 +1194,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             // The caller measures its own elapsed time; this wait only guards
             // against a hang, so scheduling on a loaded machine cannot fail it.
             let (dispatch, elapsed) = caller_result_receiver
-                .recv_timeout(crate::test_wait::BUDGET)
+                .recv_timeout(sage_test_support::test_wait::BUDGET)
                 .expect("cancel dispatch returned");
             caller.wait();
             assert_eq!(dispatch, Ok(()));
@@ -1234,7 +1234,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
             wait_for_queued_control(mailbox.as_ref());
             let queued = mailbox.submit_worker(WorkerCommand::Shutdown).unwrap();
             let (timeout_result, timeout_elapsed) = timeout_result_receiver
-                .recv_timeout(crate::test_wait::BUDGET)
+                .recv_timeout(sage_test_support::test_wait::BUDGET)
                 .expect("timed-out cancel dispatch returned");
             timeout.wait();
             assert_eq!(timeout_result, Err(HostError::Deadline));
@@ -1609,7 +1609,7 @@ fn one_worker_reuses_the_same_session_for_two_store_minted_turns_then_closes() {
         let project = database.create_project_from_root(&root).unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse("chat-two-turns").unwrap();
-        let now = crate::persistence::now_millis();
+        let now = sage_core::time::now_millis();
         database
             .connection()
             .execute(
@@ -2141,7 +2141,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
         let project = database.create_project_from_root(root.path()).unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse("chat-idle-close").unwrap();
-        let now = crate::persistence::now_millis();
+        let now = sage_core::time::now_millis();
         database
             .connection()
             .execute(

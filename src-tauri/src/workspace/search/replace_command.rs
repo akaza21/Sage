@@ -2,6 +2,7 @@
 //! a Replace would change and the fingerprint it saw; an apply writes each
 //! File only if it still has that fingerprint.
 
+use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
@@ -17,7 +18,6 @@ use crate::{
     editor::{DiskReplace, read_for_replace, replace_on_disk, replaced_file_text},
     editor_content::MAX_EDITABLE_BYTES,
     editor_coordination::EditorOperationKind,
-    error::{AppError, AppResult},
     persistence::Database,
     state::AppState,
 };

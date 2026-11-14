@@ -10,11 +10,12 @@ use std::{
     path::{Component, Path},
 };
 
+use sage_core::error::AppResult;
+
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 use super::ensure_root_identity;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
-use crate::error::AppError;
-use crate::error::AppResult;
+use sage_core::error::AppError;
 
 pub(super) struct ParentAuthority<'a> {
     pub(super) root: &'a std::path::Path,
@@ -246,7 +247,7 @@ mod windows {
         FILE_LIST_DIRECTORY, FILE_READ_ATTRIBUTES, FILE_SHARE_READ, FILE_SHARE_WRITE,
     };
 
-    use crate::error::{AppError, AppResult};
+    use sage_core::error::{AppError, AppResult};
 
     fn open_directory(path: &Path) -> AppResult<File> {
         let directory = OpenOptions::new()
@@ -375,17 +376,17 @@ pub(super) fn create_new<B, S, L>(
     _before_create: B,
     _sync_file: S,
     _list_after: L,
-) -> crate::error::AppResult<(
+) -> sage_core::error::AppResult<(
     Option<String>,
-    crate::error::AppResult<crate::domain::DirectoryListing>,
+    sage_core::error::AppResult<crate::domain::DirectoryListing>,
     bool,
 )>
 where
     B: FnOnce(&std::path::Path) -> std::io::Result<()>,
     S: FnOnce(&std::fs::File) -> std::io::Result<()>,
-    L: FnOnce() -> crate::error::AppResult<crate::domain::DirectoryListing>,
+    L: FnOnce() -> sage_core::error::AppResult<crate::domain::DirectoryListing>,
 {
-    Err(crate::error::AppError::InvalidRequest(
+    Err(sage_core::error::AppError::InvalidRequest(
         "safe file creation is unavailable on this platform".into(),
     ))
 }
@@ -398,14 +399,14 @@ pub(super) fn create_new_directory<B, C, S, L>(
     _created: C,
     _sync_parent: S,
     _list_after: L,
-) -> crate::error::AppResult<DirectoryCreateObservation>
+) -> sage_core::error::AppResult<DirectoryCreateObservation>
 where
     B: FnOnce(&std::path::Path) -> std::io::Result<()>,
     C: FnOnce(),
     S: FnOnce(&std::fs::File) -> std::io::Result<()>,
-    L: FnOnce() -> crate::error::AppResult<crate::domain::DirectoryListing>,
+    L: FnOnce() -> sage_core::error::AppResult<crate::domain::DirectoryListing>,
 {
-    Err(crate::error::AppError::InvalidRequest(
+    Err(sage_core::error::AppError::InvalidRequest(
         "safe folder creation is unavailable on this platform".into(),
     ))
 }

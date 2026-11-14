@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use rusqlite::{Connection, params};
 
-use crate::error::{AppError, AppResult};
+use sage_core::error::{AppError, AppResult};
 
 use super::fingerprint::SchemaClass;
 

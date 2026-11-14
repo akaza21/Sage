@@ -3,8 +3,6 @@ use std::path::Path;
 use rusqlite::{Connection, types::ValueRef};
 use sha2::{Digest, Sha256};
 
-use crate::error::{AppError, AppResult};
-
 mod expected;
 mod preflight;
 mod version;
@@ -12,6 +10,7 @@ use expected::{expected_legacy_v10_session_events_fingerprint, expected_schema_f
 use version::{class_for_version, reject_newer_history};
 
 pub(super) use preflight::reject_newer_live;
+use sage_core::error::{AppError, AppResult};
 
 pub(super) use super::file_artifact::{FileFingerprint, file_fingerprint, open_read_only};
 

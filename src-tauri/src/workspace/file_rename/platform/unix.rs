@@ -15,10 +15,9 @@ use std::{
     sync::Arc,
 };
 
-use crate::{
-    error::{AppError, AppResult},
-    workspace::{RootIdentity, root_identity_metadata},
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::workspace::{RootIdentity, root_identity_metadata};
 
 use super::{
     FileRenameAuthority, ParentAuthority, RenameIdentityProof, RenameObservation, observe_listing,

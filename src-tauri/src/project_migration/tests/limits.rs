@@ -1,10 +1,10 @@
 use rusqlite::Connection;
+use sage_core::error::AppError;
 use uuid::Uuid;
 
 use super::*;
 use crate::{
     editor_persistence::{MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES},
-    error::AppError,
     project_registry::MAX_PROJECTS,
 };
 

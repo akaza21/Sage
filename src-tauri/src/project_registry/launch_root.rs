@@ -3,9 +3,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use sage_core::error::{AppError, AppResult};
+
 use crate::{
     acp::contract::{ProjectGeneration, SageProjectId, SageRootId},
-    error::{AppError, AppResult},
     workspace::{RootIdentity, Workspace, root_identity_path},
 };
 

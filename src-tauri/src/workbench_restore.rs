@@ -3,10 +3,10 @@ use std::collections::{HashMap, HashSet};
 use rusqlite::{OptionalExtension, params};
 
 mod tab_repository;
+use sage_core::error::{AppError, AppResult};
 
 use crate::{
     domain::{RepositoryRef, ResourceRef, WorkbenchTab},
-    error::{AppError, AppResult},
     project_registry::RootRecord,
     workspace::{Workspace, validate_contract_path},
 };

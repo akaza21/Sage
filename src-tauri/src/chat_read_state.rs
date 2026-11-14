@@ -8,10 +8,10 @@
 use std::collections::HashMap;
 
 use rusqlite::Connection;
+use sage_core::error::AppResult;
 use serde::Serialize;
 
 use crate::{
-    error::AppResult,
     persistence::Database,
     project_registry::{CHAT_LATEST_TURN_ID, rail_chat_ids, rail_chat_set},
     settings_store::{ChatReadMark, ChatReadMarkWrite, SettingsStore},

@@ -2942,6 +2942,8 @@ dependencies = [
  "regex",
  "rusqlite",
  "rustls",
+ "sage-core",
+ "sage-test-support",
  "serde",
  "serde_json",
  "sha2",
@@ -2963,6 +2965,27 @@ dependencies = [
  "windows-future",
  "windows-sys 0.61.2",
  "zeroize",
+]
+
+[[package]]
+name = "sage-core"
+version = "0.0.0"
+dependencies = [
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.19",
+ "tokio",
+]
+
+[[package]]
+name = "sage-test-support"
+version = "0.0.0"
+dependencies = [
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]

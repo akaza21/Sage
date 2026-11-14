@@ -1,8 +1,6 @@
-use crate::{
-    error::{AppError, AppResult},
-    git_budget, repository, repository_conflict,
-    workspace::Workspace,
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::{git_budget, repository, repository_conflict, workspace::Workspace};
 
 const MAX_GIT_MUTATION_OUTPUT_BYTES: usize = 64 * 1024;
 
@@ -171,7 +169,7 @@ mod tests {
                 &resource,
                 &change,
                 GitFileMutationAction::KeepOurs,
-                repository::GitProcessPolicy::mutation(crate::test_wait::BUDGET),
+                repository::GitProcessPolicy::mutation(sage_test_support::test_wait::BUDGET),
             ))
             .unwrap();
         assert_eq!(
@@ -192,7 +190,7 @@ mod tests {
                 &resource,
                 &change,
                 GitFileMutationAction::KeepOurs,
-                repository::GitProcessPolicy::mutation(crate::test_wait::BUDGET),
+                repository::GitProcessPolicy::mutation(sage_test_support::test_wait::BUDGET),
             ))
             .unwrap();
         runtime.block_on(continue_revert(&workspace)).unwrap();

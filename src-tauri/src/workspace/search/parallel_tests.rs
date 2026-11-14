@@ -84,7 +84,7 @@ fn search_with(
 fn four_threads_answer_exactly_as_one_does() {
     let path = tree();
     let base = SearchLimits {
-        max_duration: crate::test_wait::BUDGET,
+        max_duration: sage_test_support::test_wait::BUDGET,
         ..SearchLimits::default()
     };
     let cases = [
@@ -142,7 +142,7 @@ fn large_folders_answer_exactly_as_one_does() {
         }
     }
     let base = SearchLimits {
-        max_duration: crate::test_wait::BUDGET,
+        max_duration: sage_test_support::test_wait::BUDGET,
         ..SearchLimits::default()
     };
     let cases = [
@@ -172,7 +172,7 @@ fn large_folders_answer_exactly_as_one_does() {
 fn a_time_limit_stops_four_threads_where_it_stops_one() {
     let path = tree();
     let limits = SearchLimits {
-        max_duration: crate::test_wait::BUDGET,
+        max_duration: sage_test_support::test_wait::BUDGET,
         max_results: 100_000,
         ..SearchLimits::default()
     };
@@ -226,7 +226,7 @@ fn a_line_with_more_matches_than_a_page_pages_through_all_of_them() {
     )
     .unwrap();
     let limits = SearchLimits {
-        max_duration: crate::test_wait::BUDGET,
+        max_duration: sage_test_support::test_wait::BUDGET,
         ..SearchLimits::default()
     };
     for threads in [1, 4] {

@@ -107,12 +107,12 @@ impl Drop for RouteScope {
 }
 
 /// Runs `body` and returns what it logged on this thread.
-pub(crate) fn capture_diagnostics<T>(body: impl FnOnce() -> T) -> (T, String) {
+pub fn capture_diagnostics<T>(body: impl FnOnce() -> T) -> (T, String) {
     capture_matching(|_| true, body)
 }
 
 /// Runs `body` and returns what it logged on this thread that `admit` accepts.
-pub(crate) fn capture_matching<T>(
+pub fn capture_matching<T>(
     admit: fn(&Metadata<'_>) -> bool,
     body: impl FnOnce() -> T,
 ) -> (T, String) {
@@ -133,6 +133,7 @@ pub(crate) fn capture_matching<T>(
     (value, captured)
 }
 
+#[cfg(test)]
 mod tests {
     use super::capture_diagnostics;
 

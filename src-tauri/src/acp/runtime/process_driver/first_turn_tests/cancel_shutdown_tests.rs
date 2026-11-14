@@ -2,7 +2,7 @@ use super::*;
 
 #[test]
 fn committed_cancellation_is_an_intentional_shutdown_before_terminal_acknowledgement() {
-    crate::test_wait::guarded("committed cancellation shutdown", async {
+    sage_test_support::test_wait::guarded("committed cancellation shutdown", async {
         let FirstTurnFixture {
             database,
             project_id,

@@ -32,10 +32,9 @@
 //! are compared by their contents.
 use std::path::{Path, PathBuf};
 
-use crate::{
-    error::{AppError, AppResult, RepositoryLayout},
-    git_budget,
-};
+use sage_core::error::{AppError, AppResult, RepositoryLayout};
+
+use crate::git_budget;
 
 use super::{GitOutput, GitProcessPolicy, GitRootAuthority, parallel_limits};
 

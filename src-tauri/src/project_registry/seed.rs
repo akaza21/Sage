@@ -1,8 +1,9 @@
 use std::path::Path;
 
+use sage_core::error::AppResult;
+
 use crate::{
     chat_lifecycle::attach_chat_tab_in,
-    error::AppResult,
     project_registry::{canonical_comparison_key, persisted_path_text},
 };
 use rusqlite::{OptionalExtension, params};
@@ -72,7 +73,7 @@ pub(super) fn seed_project(
         [],
     )? != 1
     {
-        return Err(crate::error::AppError::InvalidRequest(
+        return Err(sage_core::error::AppError::InvalidRequest(
             "global ACP usage ledger is absent".into(),
         ));
     }

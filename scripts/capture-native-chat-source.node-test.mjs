@@ -648,7 +648,7 @@ test("named build checkout admission rejects untracked native inputs", async () 
           return args.includes("--untracked-files=all")
             ? "?? src-tauri/src/untracked.rs"
             : "";
-        return ["e", "e", "e"].map((digit) => digit.repeat(40)).join("\n");
+        return ["e", "e", "e", "e"].map((digit) => digit.repeat(40)).join("\n");
       },
       () => {},
     ),
@@ -657,7 +657,7 @@ test("named build checkout admission rejects untracked native inputs", async () 
 });
 test("a named build checkout must be absolute, clean and carry the same native tree", async () => {
   const build = path.resolve("synthetic-build");
-  const tree = ["a", "b", "c"].map((digit) => digit.repeat(40)).join("\n");
+  const tree = ["a", "b", "c", "d"].map((digit) => digit.repeat(40)).join("\n");
   const plain = [];
   const tool =
     ({ workspaceTree = tree, buildTree = tree, status = "" } = {}) =>
@@ -672,6 +672,7 @@ test("a named build checkout must be absolute, clean and carry the same native t
           "--untracked-files=all",
           "--",
           "src-tauri",
+          "crates",
           "Cargo.toml",
           "Cargo.lock",
         ]);
@@ -680,6 +681,7 @@ test("a named build checkout must be absolute, clean and carry the same native t
       assert.deepEqual(args.slice(2), [
         "rev-parse",
         "HEAD:src-tauri",
+        "HEAD:crates",
         "HEAD:Cargo.toml",
         "HEAD:Cargo.lock",
       ]);

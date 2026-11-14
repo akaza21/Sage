@@ -1,11 +1,11 @@
 #[cfg(test)]
 use std::time::Duration;
 
+use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::{
     domain::{GitFileMutationCommandError, GitRepositoryCommitRequest, GitRepositoryCommitResult},
-    error::{AppError, AppResult, GitContainmentState},
     repository, repository_commit,
     state::AppState,
     workspace::Workspace,

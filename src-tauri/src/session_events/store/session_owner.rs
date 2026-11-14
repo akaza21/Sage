@@ -1,11 +1,8 @@
 use rusqlite::{OptionalExtension, Transaction, params};
+use sage_core::error::{AppError, AppResult};
 use uuid::Uuid;
 
-use crate::{
-    acp::limits::LIMITS,
-    error::{AppError, AppResult},
-    harnesses::SIMULATOR_ID,
-};
+use crate::{acp::limits::LIMITS, harnesses::SIMULATOR_ID};
 
 use super::{SIMULATOR_CAPABILITIES, digest, require_one};
 

@@ -1,6 +1,10 @@
 use std::collections::HashSet;
 
 use rusqlite::{OptionalExtension, params};
+use sage_core::{
+    error::{AppError, AppResult},
+    time::now_millis,
+};
 use serde_json::json;
 
 use crate::{
@@ -9,9 +13,8 @@ use crate::{
     domain::{
         BootstrapSnapshot, ProjectLayoutRequest, ProjectRepositoryStatus, ProjectSwitchRequest,
     },
-    error::{AppError, AppResult},
     harnesses::HarnessCatalog,
-    persistence::{Database, now_millis},
+    persistence::Database,
     project_registry::MAX_PROJECTS,
     workbench_restore::{
         restore_layout, validate_layout_tab_repository, validate_resource_for_project,

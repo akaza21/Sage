@@ -122,14 +122,14 @@ mod tests {
         #[cfg(not(windows))]
         let executable = directory.join("codex");
         #[cfg(windows)]
-        crate::test_executable::write(
+        sage_test_support::test_executable::write(
             &executable,
             format!("@echo off\r\necho {}\r\n", version_line("codex-cli")),
         )
         .unwrap();
         #[cfg(not(windows))]
         {
-            crate::test_executable::write(
+            sage_test_support::test_executable::write(
                 &executable,
                 format!("#!/bin/sh\necho {}\n", version_line("codex-cli")),
             )
@@ -175,14 +175,14 @@ mod tests {
         let executable = directory.join("codex");
         let install = |version: &str| {
             #[cfg(windows)]
-            crate::test_executable::write(
+            sage_test_support::test_executable::write(
                 &executable,
                 format!("@echo off\r\necho codex-cli {version}\r\n"),
             )
             .unwrap();
             #[cfg(not(windows))]
             {
-                crate::test_executable::write(
+                sage_test_support::test_executable::write(
                     &executable,
                     format!("#!/bin/sh\necho codex-cli {version}\n"),
                 )
@@ -241,14 +241,14 @@ mod tests {
         #[cfg(not(windows))]
         let executable = directory.join("codex");
         #[cfg(windows)]
-        crate::test_executable::write(
+        sage_test_support::test_executable::write(
             &executable,
             b"@echo off\r\necho codex-cli not-a-version\r\n",
         )
         .unwrap();
         #[cfg(not(windows))]
         {
-            crate::test_executable::write(
+            sage_test_support::test_executable::write(
                 &executable,
                 b"#!/bin/sh\necho codex-cli not-a-version\n",
             )

@@ -1,9 +1,8 @@
 use std::path::Path;
 
-use crate::{
-    error::{AppError, AppResult, RepositoryLayout},
-    git_budget, git_process,
-};
+use sage_core::error::{AppError, AppResult, RepositoryLayout};
+
+use crate::{git_budget, git_process};
 
 pub(crate) use git_process::{GitOutput, GitProcessPolicy};
 

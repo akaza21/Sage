@@ -1,3 +1,5 @@
+use sage_core::error::AppResult;
+
 use super::{
     backup::{VerifiedBackup, ensure, recover_existing},
     fingerprint::SchemaClass,
@@ -5,7 +7,6 @@ use super::{
     paths::MigrationPaths,
     reject_partial_backup_publication, reject_unexpected_backup_artifacts,
 };
-use crate::error::AppResult;
 
 pub(super) fn paths_for_v18(paths: &MigrationPaths) -> MigrationPaths {
     let mut versioned = paths.clone();

@@ -1,11 +1,9 @@
 //! How a buffer snapshot meets the buffer already stored for its File.
 
 use rusqlite::{OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    domain::{BufferSnapshotAck, BufferSnapshotRequest},
-    error::{AppError, AppResult},
-};
+use crate::domain::{BufferSnapshotAck, BufferSnapshotRequest};
 
 /// Whether a buffer is stored for the snapshot's File, and the answer when
 /// that buffer already settles the snapshot: an older revision is not

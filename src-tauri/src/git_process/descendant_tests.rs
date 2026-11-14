@@ -2,8 +2,9 @@
 use std::path::PathBuf;
 use std::{fs, time::Duration};
 
+use sage_core::error::{AppError, GitContainmentState};
+
 use super::{GitProcessTestHarness, run as run_git_with_policy};
-use crate::error::{AppError, GitContainmentState};
 
 #[cfg(unix)]
 struct ReleaseBackend(PathBuf);
@@ -15,7 +16,7 @@ impl Drop for ReleaseBackend {
             return;
         }
         let completed = self.0.with_file_name("completed");
-        let watchdog = std::time::Instant::now() + crate::test_wait::HANG_GUARD;
+        let watchdog = std::time::Instant::now() + sage_test_support::test_wait::HANG_GUARD;
         while !completed.exists() {
             if std::time::Instant::now() >= watchdog {
                 eprintln!("Git descendant fixture did not finish after gate release");
@@ -58,7 +59,7 @@ fn terminate_proxy(pid: u32) {
 #[cfg(unix)]
 #[test]
 fn inherited_stdio_keeps_mutation_admission_after_proxy_exit() {
-    crate::test_wait::guarded("Git descendant settlement", async {
+    sage_test_support::test_wait::guarded("Git descendant settlement", async {
         let root =
             std::env::temp_dir().join(format!("sage-git-descendant-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&root).unwrap();
@@ -81,14 +82,16 @@ fn inherited_stdio_keeps_mutation_admission_after_proxy_exit() {
         let release = ReleaseBackend(root.join("release"));
         let harness = GitProcessTestHarness::new();
         let entered = root.join("entered");
-        let mut policy =
-            harness.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET);
+        let mut policy = harness.mutation_policy(
+            sage_test_support::test_wait::BUDGET,
+            sage_test_support::test_wait::BUDGET,
+        );
         policy.post_reap_failure = true;
         // The post-reap failure runs after root exit. Only its descendant
         // remains behind the file gate, so a zero timeout is deterministic.
         policy.reap_timeout = Some(Duration::ZERO);
         let policy = policy.with_spawned_hook(move |pid| {
-            crate::test_wait::until("Git backend entered", || entered.exists());
+            sage_test_support::test_wait::until("Git backend entered", || entered.exists());
             terminate_proxy(pid);
         });
         let Err(failure) =
@@ -110,7 +113,7 @@ fn inherited_stdio_keeps_mutation_admission_after_proxy_exit() {
             &root,
             &["add", "--", "new.txt"],
             1_024,
-            harness.mutation_policy(crate::test_wait::BUDGET, Duration::ZERO),
+            harness.mutation_policy(sage_test_support::test_wait::BUDGET, Duration::ZERO),
         )
         .await
         else {
@@ -121,15 +124,20 @@ fn inherited_stdio_keeps_mutation_admission_after_proxy_exit() {
             "{blocked:?}"
         );
         drop(release);
-        crate::test_wait::until("Git backend completed", || root.join("completed").exists());
-        crate::test_wait::until("Git descendants released admission", || {
+        sage_test_support::test_wait::until("Git backend completed", || {
+            root.join("completed").exists()
+        });
+        sage_test_support::test_wait::until("Git descendants released admission", || {
             harness.observation().unconfirmed_exits == 0
         });
         let staged = run_git_with_policy(
             &root,
             &["diff", "--cached", "--name-only"],
             1_024,
-            harness.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET),
+            harness.mutation_policy(
+                sage_test_support::test_wait::BUDGET,
+                sage_test_support::test_wait::BUDGET,
+            ),
         )
         .await
         .unwrap();
@@ -145,7 +153,7 @@ fn inherited_stdio_keeps_mutation_admission_after_proxy_exit() {
 #[cfg(windows)]
 #[test]
 fn a_killed_proxy_takes_its_parked_backend_with_it_on_windows() {
-    crate::test_wait::guarded("Git tree termination", async {
+    sage_test_support::test_wait::guarded("Git tree termination", async {
         let root =
             std::env::temp_dir().join(format!("sage-git-descendant-{}", uuid::Uuid::new_v4()));
         fs::create_dir(&root).unwrap();
@@ -168,12 +176,14 @@ fn a_killed_proxy_takes_its_parked_backend_with_it_on_windows() {
         );
         let harness = GitProcessTestHarness::new();
         let entered = root.join("entered");
-        let mut policy =
-            harness.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET);
+        let mut policy = harness.mutation_policy(
+            sage_test_support::test_wait::BUDGET,
+            sage_test_support::test_wait::BUDGET,
+        );
         policy.post_reap_failure = true;
         policy.reap_timeout = Some(Duration::ZERO);
         let policy = policy.with_spawned_hook(move |pid| {
-            crate::test_wait::until("Git backend entered", || entered.exists());
+            sage_test_support::test_wait::until("Git backend entered", || entered.exists());
             terminate_proxy(pid);
         });
         let Err(failure) =
@@ -191,7 +201,7 @@ fn a_killed_proxy_takes_its_parked_backend_with_it_on_windows() {
             ),
             "termination of the whole tree must be proven: {failure:?}"
         );
-        crate::test_wait::until("the Git tree's exit to be confirmed", || {
+        sage_test_support::test_wait::until("the Git tree's exit to be confirmed", || {
             harness.observation().unconfirmed_exits == 0
         });
         // Job accounting reached zero, so the parked backend is gone and can
@@ -200,7 +210,10 @@ fn a_killed_proxy_takes_its_parked_backend_with_it_on_windows() {
             &root,
             &["diff", "--cached", "--name-only"],
             1_024,
-            harness.mutation_policy(crate::test_wait::BUDGET, crate::test_wait::BUDGET),
+            harness.mutation_policy(
+                sage_test_support::test_wait::BUDGET,
+                sage_test_support::test_wait::BUDGET,
+            ),
         )
         .await
         .unwrap();

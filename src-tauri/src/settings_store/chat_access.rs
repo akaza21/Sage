@@ -11,9 +11,9 @@
 //! commands, is set directly and replaces a permissive one.
 
 use rusqlite::{Connection, OptionalExtension, params};
+use sage_core::error::{AppError, AppResult};
 
 use super::{SessionAccessMode, SettingsStore};
-use crate::error::{AppError, AppResult};
 
 /// Chats whose choice is kept. Past it the oldest choice goes first; losing
 /// one only returns that chat to its binding's default.

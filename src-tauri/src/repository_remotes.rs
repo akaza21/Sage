@@ -1,7 +1,6 @@
-use crate::{
-    error::{AppError, AppResult},
-    workspace::Workspace,
-};
+use sage_core::error::{AppError, AppResult};
+
+use crate::workspace::Workspace;
 
 pub const MAX_REMOTES: usize = 16;
 const MAX_REMOTE_NAME_BYTES: usize = 255;

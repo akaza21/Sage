@@ -5,6 +5,7 @@
 
 use std::collections::HashMap;
 
+use sage_core::time::now_millis;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::{
@@ -20,7 +21,6 @@ use crate::{
         scheduler::RuntimeOwner,
         store::browser_operations,
     },
-    persistence::now_millis,
     state::AppState,
 };
 

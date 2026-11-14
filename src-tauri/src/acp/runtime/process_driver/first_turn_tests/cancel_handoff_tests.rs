@@ -340,7 +340,7 @@ fn assert_not_reusable(handoff: Handoff) {
 /// runtime, so a later cancel park found the epoch no longer running.
 #[test]
 fn cancelled_turn_hands_off_while_post_terminal_stdout_is_queued() {
-    crate::test_wait::guarded("duplicate terminal behind the callback", async {
+    sage_test_support::test_wait::guarded("duplicate terminal behind the callback", async {
         let handoff = accept_terminal_behind(|thread, turn| {
             vec![interrupted(thread, turn), interrupted(thread, turn)]
         })
@@ -352,7 +352,7 @@ fn cancelled_turn_hands_off_while_post_terminal_stdout_is_queued() {
 
 #[test]
 fn queued_terminal_for_another_turn_keeps_the_handoff_closed() {
-    crate::test_wait::guarded("foreign terminal behind the callback", async {
+    sage_test_support::test_wait::guarded("foreign terminal behind the callback", async {
         assert_not_reusable(
             accept_terminal_behind(|thread, _| vec![interrupted(thread, "fixture-turn-other")])
                 .await,
@@ -362,7 +362,7 @@ fn queued_terminal_for_another_turn_keeps_the_handoff_closed() {
 
 #[test]
 fn queued_terminal_of_another_kind_keeps_the_handoff_closed() {
-    crate::test_wait::guarded("other terminal kind behind the callback", async {
+    sage_test_support::test_wait::guarded("other terminal kind behind the callback", async {
         assert_not_reusable(
             accept_terminal_behind(|thread, turn| vec![completed(thread, turn, "completed")]).await,
         );
@@ -371,7 +371,7 @@ fn queued_terminal_of_another_kind_keeps_the_handoff_closed() {
 
 #[test]
 fn unrelated_queued_stdout_keeps_the_handoff_closed() {
-    crate::test_wait::guarded("unrelated stdout behind the callback", async {
+    sage_test_support::test_wait::guarded("unrelated stdout behind the callback", async {
         assert_not_reusable(
             accept_terminal_behind(|thread, turn| {
                 vec![
@@ -388,7 +388,7 @@ fn unrelated_queued_stdout_keeps_the_handoff_closed() {
 
 #[test]
 fn split_duplicate_terminal_keeps_the_handoff_closed() {
-    crate::test_wait::guarded("split terminal behind the callback", async {
+    sage_test_support::test_wait::guarded("split terminal behind the callback", async {
         assert_not_reusable(
             accept_terminal_behind(|thread, turn| {
                 let mut duplicate = interrupted(thread, turn);
@@ -404,7 +404,7 @@ fn split_duplicate_terminal_keeps_the_handoff_closed() {
 /// structural validation rejects.
 #[test]
 fn duplicate_key_terminal_keeps_the_handoff_closed() {
-    crate::test_wait::guarded("duplicate-key terminal behind the callback", async {
+    sage_test_support::test_wait::guarded("duplicate-key terminal behind the callback", async {
         assert_not_reusable(
             accept_terminal_behind(|thread, turn| {
                 vec![
@@ -426,7 +426,7 @@ fn duplicate_key_terminal_keeps_the_handoff_closed() {
 /// route it as a response without an id and reject it.
 #[test]
 fn terminal_with_a_result_member_keeps_the_handoff_closed() {
-    crate::test_wait::guarded("result-bearing terminal behind the callback", async {
+    sage_test_support::test_wait::guarded("result-bearing terminal behind the callback", async {
         assert_not_reusable(
             accept_terminal_behind(|thread, turn| {
                 vec![line(
@@ -452,7 +452,7 @@ fn failed(thread: &str, turn: &str) -> Vec<u8> {
 /// terminal is the duplicate idle ingestion ignores.
 #[test]
 fn failed_turn_hands_off_while_its_duplicate_terminal_is_queued() {
-    crate::test_wait::guarded("duplicate failed terminal behind the callback", async {
+    sage_test_support::test_wait::guarded("duplicate failed terminal behind the callback", async {
         let handoff =
             accept_native_terminal_behind(failed, |thread, turn| vec![failed(thread, turn)]).await;
         assert_eq!(handoff.reply, Ok(()));
@@ -465,7 +465,7 @@ fn failed_turn_hands_off_while_its_duplicate_terminal_is_queued() {
 /// as a duplicate, so the proof must too.
 #[test]
 fn failed_terminal_with_a_malformed_error_keeps_the_handoff_closed() {
-    crate::test_wait::guarded("malformed failed terminal behind the callback", async {
+    sage_test_support::test_wait::guarded("malformed failed terminal behind the callback", async {
         assert_not_reusable(
             accept_native_terminal_behind(failed, |thread, turn| {
                 vec![line(
@@ -486,7 +486,7 @@ fn failed_terminal_with_a_malformed_error_keeps_the_handoff_closed() {
 /// order on one copy of the adapter and sees the state change.
 #[test]
 fn queued_late_turn_start_responses_keep_the_handoff_closed() {
-    crate::test_wait::guarded("late turn/start responses behind the callback", async {
+    sage_test_support::test_wait::guarded("late turn/start responses behind the callback", async {
         assert_not_reusable(
             accept_terminal_behind_late_starts(interrupted, 2, |_, _| Vec::new()).await,
         );
