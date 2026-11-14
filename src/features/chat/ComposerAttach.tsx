@@ -3,6 +3,7 @@ import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { MenuPopover } from "../../ui/MenuPopover";
+import type { ImageAction } from "./useComposerImageInput";
 
 /**
  * Why files cannot be staged for this chat's next message, or null. Native
@@ -40,7 +41,7 @@ export function ComposerAttach({
   presses: number;
   /** The attach button, which anchors the menu. */
   triggerId: string;
-  imageAction?: { disabled: boolean; onChoose: () => void };
+  imageAction?: ImageAction;
   /** Asks the batch's owner for native's file dialog. */
   onPick: () => void;
 }) {
@@ -61,7 +62,7 @@ export function ComposerAttach({
   if (presses !== taken) {
     setTaken(presses);
     const refused = refusal(chatId);
-    if (imageAction) setMenuOpen(true);
+    if (imageAction && !imageAction.reason) setMenuOpen(true);
     else if (refused) setNotice(refused);
     else setPicks((count) => count + 1);
   }

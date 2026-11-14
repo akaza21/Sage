@@ -28,6 +28,7 @@ use snapshots::ItemSnapshots;
 mod harness;
 mod ingress;
 mod model_config;
+pub(crate) use model_config::launch_effort_option;
 mod usage;
 
 mod factory;

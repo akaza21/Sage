@@ -158,3 +158,19 @@ pub struct ModelOption {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub effort_levels: Option<Vec<String>>,
 }
+
+impl ModelOption {
+    /// `model`, or the listed default when none is named.
+    pub fn launched<'a>(models: &'a [Self], model: Option<&str>) -> Option<&'a Self> {
+        models.iter().find(|entry| match model {
+            Some(model) => entry.id == model,
+            None => entry.is_default == Some(true),
+        })
+    }
+
+    pub fn lists_effort(&self, effort: &str) -> bool {
+        self.effort_levels
+            .as_ref()
+            .is_some_and(|levels| levels.iter().any(|level| level == effort))
+    }
+}

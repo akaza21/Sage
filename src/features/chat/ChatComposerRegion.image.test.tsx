@@ -155,7 +155,9 @@ describe("composer image input", () => {
         await screen.findByRole("menu", { name: "Composer options menu" });
       }
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
-      expect(screen.queryByRole("menuitem", { name: "Add images" })).toBeNull();
+      expect(
+        screen.getByRole("menuitem", { name: "Add images" }),
+      ).toBeDisabled();
     },
   );
 
@@ -299,19 +301,22 @@ describe("composer image input", () => {
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
   });
 
-  it("omits unavailable image actions and refuses a dropped image", () => {
-    const { onAddImages } = renderComposer();
+  it("keeps + open with unavailable images disabled, and refuses a dropped image", async () => {
+    const { onAddImages } = renderComposer({
+      imageInputDisabledReason: "This harness does not advertise image input.",
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
     expect(
-      screen.queryByRole("button", { name: "Composer options" }),
+      await screen.findByRole("menuitem", { name: "Add images" }),
     ).toBeDisabled();
-    expect(screen.queryByText("Add images", { exact: true })).toBeNull();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByLabelText("Choose images")).toBeNull();
     fireEvent.drop(screen.getByRole("form"), {
       dataTransfer: { files: [png()], types: ["Files"] },
     });
     expect(onAddImages).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent(
-      "Image input is unavailable",
+      "This harness does not advertise image input.",
     );
   });
 

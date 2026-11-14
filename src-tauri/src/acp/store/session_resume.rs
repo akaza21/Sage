@@ -122,6 +122,13 @@ pub(crate) fn link_resumed_session(
         projection,
         command.now_millis,
     )?;
+    // The new session resumes the earlier one's thread, so it keeps that
+    // session's confirmed config choices.
+    crate::acp::session_config::choices::copy(
+        &transaction,
+        &command.earlier_session_id,
+        &session_id,
+    )?;
     let payload = serde_json::json!({
         "kind": "sessionResumeLinked",
         "entityId": session_id.as_str(),

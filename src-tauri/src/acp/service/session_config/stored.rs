@@ -15,6 +15,8 @@ pub(crate) enum QueueError {
     NotOffered,
     /// The session's runtime reports its config: change it there.
     Live,
+    /// The chat's next send no longer runs the session.
+    Foreign,
     Store,
 }
 
@@ -102,19 +104,24 @@ impl AcpService {
                 .config
                 .rearm_restore(owner, std::slice::from_ref(choice));
         }
+        // Written only while the chat's next send still runs this session.
         let stored = self.database.write_connection().and_then(|mut connection| {
             let transaction = connection.transaction()?;
+            if !crate::acp::store::runs_next_send(&transaction, session)? {
+                return Ok(None);
+            }
             notices::clear(&transaction, session, choice)?;
             let written =
                 choices::record(&transaction, session, choice, sage_core::time::now_millis())?;
             transaction.commit()?;
-            Ok(written)
+            Ok(Some(written))
         });
         // On failure the rearmed restore resets what it holds from what is
         // stored when it runs.
         match stored {
-            Ok(true) => Ok(()),
-            Ok(false) | Err(_) => Err(QueueError::Store),
+            Ok(Some(true)) => Ok(()),
+            Ok(None) => Err(QueueError::Foreign),
+            Ok(Some(false)) | Err(_) => Err(QueueError::Store),
         }
     }
 }

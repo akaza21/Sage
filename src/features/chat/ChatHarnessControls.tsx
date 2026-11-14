@@ -39,7 +39,7 @@ export function ChatHarnessControls({
   draftPickers,
   contextUsage,
   usageRequest,
-  accessTarget,
+  accessTarget: { bindingId: accessBindingId, draftChatId, endedSession } = {},
   addActions = {},
   attachSlot,
   availableBinding,
@@ -85,7 +85,6 @@ export function ChatHarnessControls({
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
-  const accessBindingId = accessTarget?.bindingId;
   const accessHarness = accessBindingId
     ? harnesses.find((harness) => harness.bindingId === accessBindingId)
     : selectedHarness;
@@ -157,10 +156,10 @@ export function ChatHarnessControls({
       (draftPickers ? currentModel?.name : null) ??
       "Model",
   );
-  // Before the chat's first session (`draftChatId` is set only then), the
-  // levels the harness lists for the selected model can be chosen.
+  // While the next send starts a session (`draftChatId` is set only then),
+  // the levels the harness lists for the selected model can be chosen.
   const draft = {
-    chatId: accessTarget?.draftChatId,
+    chatId: draftChatId,
     bindingId: selectedHarness?.bindingId,
     modelId: currentModelId,
     levels: effortOption ? undefined : currentModel?.effortLevels,
@@ -250,7 +249,8 @@ export function ChatHarnessControls({
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
-            chatId={accessTarget?.draftChatId}
+            chatId={draftChatId}
+            endedSession={endedSession}
             value={draftPickers?.access}
             onChange={draftPickers?.onAccessChange}
             capabilities={accessHarness.accessModes}

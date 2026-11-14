@@ -19,10 +19,7 @@ pub(crate) use admission::{
     AdmittedClaudeSdkBinding, CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration,
     launch_environment,
 };
-pub(crate) use probe::{
-    known_models, models as probed_models, offers as offers_model, offers_effort,
-};
-pub(crate) const EFFORT_CONFIG_ID: &str = config::EFFORT_ID;
+pub(crate) use probe::{known_models, launch_effort_option, models as probed_models};
 pub(crate) use runtime::ClaudeSdkRuntimeFactory;
 
 #[cfg(test)]
