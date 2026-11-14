@@ -53,13 +53,11 @@ const quoted = (value: string | undefined) =>
   utf8ByteLength(JSON.stringify(value ?? ""));
 const plain = (value: string | undefined) => utf8ByteLength(value ?? "");
 
-// Cache per draft text/context identity; don't remeasure unchanged renders.
 const measured = new WeakMap<
   readonly AttachedContext[],
   [string, string | null]
 >();
 
-/** Size refusal reason, or null; memoised by text/context. */
 export function sizeReason(
   text: string,
   contexts: readonly AttachedContext[],

@@ -28,7 +28,6 @@ function windowSpan(minutes: number | null): string | null {
   return `${size}-${unit}`;
 }
 
-/** "5-hour limit", "Opus weekly limit", or the harness's own name alone. */
 function windowTitle({ label, windowMinutes }: UsageWindow): string {
   const span = windowSpan(windowMinutes);
   if (!span) return label ?? "Usage limit";
@@ -62,7 +61,6 @@ function UsageLimit({ window }: { window: UsageWindow }) {
 }
 
 function costText(usd: number): string {
-  // Sub-dollar sessions keep their cents' fractions, as harnesses price them.
   return usd.toLocaleString(undefined, {
     style: "currency",
     currency: "USD",
@@ -79,7 +77,6 @@ function SessionSpendRows({
   labelledBy: string;
 }) {
   const count = (tokens: number) => tokens.toLocaleString();
-  // Cache rows show only when the harness used its cache.
   const rows = (
     [
       ["Input", count(spend.inputTokens)],
@@ -136,7 +133,6 @@ export default function ComposerUsageLimits({
   );
 }
 
-/** The harness's usage limits and session spend, read when shown. */
 export function UsageReport({ request }: { request: AcpUsageRequest }) {
   const [state, setState] = useState<AcpUsageState | string | null>(null);
   const headingId = useId();
@@ -153,7 +149,6 @@ export function UsageReport({ request }: { request: AcpUsageRequest }) {
   }, [request]);
   const reported = typeof state === "object" ? state : null;
   const snapshot = reported?.kind === "usage" ? reported.snapshot : null;
-  // A harness that reports only its session's spend has no limits to name.
   const sessionOnly = Boolean(
     snapshot && snapshot.windows.length === 0 && snapshot.session,
   );

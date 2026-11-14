@@ -47,13 +47,11 @@ interface Props {
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
   accessTarget?: ComposerAccessTarget;
   addActions?: ComposerMenuActions;
-  /** The attach button, beside the options button. */
   attachSlot?: ReactNode;
   availableBinding: boolean;
   canPrompt: boolean;
   discoveryPhase: HarnessDiscoveryPhase;
   modelLabelScope: string;
-  /** The Chat whose parent-inherited model and effort may label the composer. */
   inheritScope?: string;
   sessionHarnessId: string | null;
   sessionModelId: string | null;
@@ -135,10 +133,6 @@ export function ChatHarnessControls({
     selectedHarnessId === globalSelectedHarnessId
       ? globalModels
       : (cachedHarnessModels(modelIdentity) ?? []);
-  // Effort levels are known only once a session runs the selected harness and
-  // model; until then effort shows as unavailable, however the selection and
-  // the session were reached.
-  // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
     !!sessionConfig?.restored ||
     (sessionHarnessId === selectedHarnessId &&
@@ -165,8 +159,6 @@ export function ChatHarnessControls({
     models,
     selectedSessionConfig?.confirmedModel,
   );
-  // A side chat or fork shows its parent's confirmed model and effort until
-  // its own session confirms them; nothing else is ever invented.
   const inherited = useInheritedComposerModel(inheritScope);
   const inheriting =
     !confirmedModelLabel &&
@@ -192,8 +184,6 @@ export function ChatHarnessControls({
     confirmedModelLabel,
     selectedModelId,
   );
-  // Before the chat's first session (`draftChatId` is set only then), the
-  // levels the harness lists for the selected model can be chosen.
   const draft = {
     chatId: accessTarget?.draftChatId,
     bindingId: selectedHarness?.bindingId,
@@ -234,8 +224,6 @@ export function ChatHarnessControls({
       Boolean(projectName),
       active !== null && active !== "options",
     );
-  // "+" is always the row's first control, as in Codex, so the toolbar keeps
-  // the same shape in every chat; it is disabled while it has nothing to offer.
   const hasActions = Boolean(
     Object.values(addActions).some(Boolean) ||
     effortInMenu ||

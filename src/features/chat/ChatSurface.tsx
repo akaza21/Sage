@@ -244,8 +244,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
             hidden={projectTransitioning}
           />
           <div className="session-controls">
-            {/* Side chats render only under Agent chrome, so this header never
-                belongs to one. */}
             <ChatHandoffControl
               acpPage={useNativeAcp ? acpPage : null}
               messages={messages}
@@ -387,9 +385,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        // The project chip keeps one place in the toolbar before and after
-        // the first turn. A side chat belongs to its parent's project and
-        // cannot switch it, so it has no chip.
         project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
         usage={usage}
         usageRequest={usageRequest}

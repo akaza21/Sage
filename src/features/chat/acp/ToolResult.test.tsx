@@ -79,7 +79,6 @@ describe("integration results", () => {
     expect(
       result?.querySelector(".acp-code-block__language"),
     ).toHaveTextContent("JSON");
-    // Codex labels the result block with the bare, lowercase id (s5/f0390).
     expect(
       readFileSync(
         resolve("src/features/chat/acp/acp-activity-details.css"),

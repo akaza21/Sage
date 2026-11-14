@@ -11,11 +11,6 @@ import type { WorkbenchTab } from "../../domain/workbench";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 
-/**
- * Lazy handoff chunk: the "Hand off this chat" dialog. The eager
- * ChatHandoffControl owns the trigger, the intent and its staleness checks;
- * this mounts only while a current intent exists.
- */
 export function ChatHandoffDialog({
   intent,
   targets,

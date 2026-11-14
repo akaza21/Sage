@@ -6,8 +6,6 @@ import {
 } from "./forkChatRequest";
 import { ForkPart } from "./lazyParts";
 
-/** The answer may disappear during a native project transition. Its dialog
- * stays here until the fork commits or the caller dismisses its refusal. */
 export function ForkChatDialogHost({
   children,
   focusRoot,

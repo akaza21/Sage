@@ -83,7 +83,6 @@ it("labels the rail, widens like Codex, delays the preview card and jumps", asyn
   expect(card).toHaveTextContent("Answer 3");
   expect(card).toHaveTextContent("• first point");
   expect(buttons[2]).toHaveAttribute("aria-describedby", card.id);
-  // Moving to a neighbour moves the open card at once.
   fireEvent.pointerEnter(buttons[3]!);
   expect(screen.getByRole("tooltip")).toHaveTextContent("Prompt 4");
   fireEvent.click(buttons[3]!);

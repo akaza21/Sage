@@ -5,16 +5,8 @@ import type {
 } from "../../domain/acpSessionConfig";
 import type { ComposerModelChoice } from "./ChatModelPicker";
 
-/**
- * The composer's model choices, the one the picker checks, and the one whose
- * choice changes nothing. A session model select owns all three. Otherwise
- * the picker checks the running model its label names. While no catalog is
- * available (none advertised, still loading, or a cache miss), a session's
- * confirmed model is the one known choice, so the picker lists it instead of
- * disabling, and choosing it only closes the menu. With a catalog the
- * unchanged choice is the chat's own request (the confirmed model only when
- * it requested none), so a harness substitution stays choosable.
- */
+// With a catalog the unchanged choice is the chat's own request, not the
+// confirmed model, so a harness substitution stays choosable.
 export function useComposerModelSelection(
   modelOption: AcpConfigOption | undefined,
   models: readonly ComposerModelChoice[],

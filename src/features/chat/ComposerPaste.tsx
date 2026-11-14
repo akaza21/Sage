@@ -23,15 +23,6 @@ import type {
 
 const EMPTY: PastedTextState = { revision: null, items: [], busy: false };
 
-/**
- * Lazy: loads with a native chat's composer or with held input. The one
- * owner of the chat's staged batch: attaching a paste too long for the
- * composer, refusing one that cannot attach, files picked with the attach
- * button, the announcements, the chips and their preview. The composer
- * keeps only its synchronous size check and hands over what it held back,
- * a paste or pick made before this part loaded included. Mounted once per
- * chat, so another chat starts empty and reads its own batch back.
- */
 export function ComposerPaste({
   chatId,
   session,
@@ -47,16 +38,9 @@ export function ComposerPaste({
   session: PasteAttachability["session"];
   nativeAcp: boolean;
   activeTurn: boolean;
-  /**
-   * The composer's held-back input: seq is bumped for each input held, and
-   * take hands over all of it, oldest first.
-   */
   input: { seq: number; take(): HeldInput[] };
-  /** The draft; a notice about an earlier draft clears once it changes. */
   text: string;
-  /** Busy while a send is in flight; a send may consume the batch. */
   disabled: boolean;
-  /** The id the field names in aria-describedby once the part reports. */
   noticeId: string;
   onStaged(next: StagedSummary): void;
 }) {
@@ -71,7 +55,6 @@ export function ComposerPaste({
   // Held input is answered in order, a paste only once the one before it
   // was staged or refused.
   const chain = useRef(Promise.resolve());
-  // Keyed to the draft it was made for, so the next edit clears it.
   const announce = useCallback(
     (message: string) => setNotice({ text, message }),
     [text],
@@ -128,12 +111,10 @@ export function ComposerPaste({
     // Each bump is handled once, also under a doubled effect.
     if (seq === handled.current) return;
     handled.current = seq;
-    // Everything held is taken, whatever came last.
     const inputs = take();
     const refusal = pasteAttachmentRefusal(
       isTauriRuntime() ? attachability : { nativeAcp: false, session: null },
     );
-    // Announced after the event, like a native refusal would be.
     chain.current = chain.current.then(async () => {
       for (const held of inputs) {
         if (held.kind === "paste")

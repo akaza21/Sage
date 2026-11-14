@@ -1,17 +1,16 @@
 import { markdownTextTail } from "../../files/markdownTextLocations";
 import type { MarkdownPreviewDocument } from "../../files/markdownPreview";
 
-/** Oldest-first lengths of appended runs forming a contiguous suffix of a block/item/cell. */
 export type StreamRuns = {
   blockIndex: number;
   itemIndex: number | undefined;
   runs: number[];
 };
 
-/** Retain spans for 16 chunks: at >19 ms/chunk this outlasts the 300 ms fade, so unwrapped runs are solid. */
+// 16 chunks at more than 19 ms each outlast the 300 ms fade, so unwrapped runs
+// are solid.
 export const MAX_STREAM_RUNS = 16;
 
-/** Trail only appended rendered text, not raw Markdown or rewritten text. New blocks/items/rows fade whole; code never trails (s5/f0309). */
 export default function nextStreamRuns(
   current: StreamRuns | null | undefined,
   previous: MarkdownPreviewDocument | null,

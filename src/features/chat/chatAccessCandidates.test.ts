@@ -42,7 +42,6 @@ const ids = (candidates: readonly SessionAccessModeCapability[]) =>
   candidates.map((candidate) => candidate.id);
 
 it("offers only the modes the live session advertises", () => {
-  // Claude run as root advertises no bypass mode, and this one no plan mode.
   const advertised = ["default", "acceptEdits", "auto"];
   expect(ids(chatAccessCandidates(claude, advertised))).toEqual([
     "ask",
@@ -79,6 +78,5 @@ it("runs a chat in its own mode and every other chat at the default", () => {
     "acceptEdits",
   );
   expect(chatAccessEffective(undefined, candidates, undefined)).toBe("ask");
-  // A choice the session no longer offers falls back to the default.
   expect(chatAccessEffective("plan", candidates, "auto")).toBe("plan");
 });

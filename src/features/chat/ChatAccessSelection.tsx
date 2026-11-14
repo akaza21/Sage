@@ -31,7 +31,6 @@ interface AccessSelectionProps {
   children: (view: AccessView) => ReactNode;
 }
 
-/** The access menu's anchor, as the composer's trigger holds it. */
 export interface AccessMenuAnchor {
   id: string;
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -39,10 +38,6 @@ export interface AccessMenuAnchor {
   onDismiss: () => void;
 }
 
-/**
- * Hands the composer's trigger what it shows, when that changes. The trigger
- * stays the composer's own, so it is never remounted as this chunk loads.
- */
 function ReportView({
   view,
   onView,
@@ -64,11 +59,6 @@ function ReportView({
   return null;
 }
 
-/**
- * A chat's own access, and its menu: its live session's, or before the
- * session exists the access drafted for it. Loaded on demand, so the chat
- * path carries none of it.
- */
 export default function ChatAccessSelection({
   bindingId,
   capabilities,
@@ -84,7 +74,6 @@ export default function ChatAccessSelection({
     onView: (view: AccessView | null) => void;
   }) {
   const props = { bindingId, capabilities };
-  // The harness defaults' own load error shows with the chat's access.
   const error = useSessionAccessModeStore((state) => state.error);
   const withMenu = (view: AccessView) => (
     <>
@@ -120,7 +109,6 @@ export default function ChatAccessSelection({
       ) : null}
     </>
   );
-  // A removed session is past; its chat drafts like one not yet started.
   return session && !session.removed ? (
     <LiveChatAccess session={session} error={error} {...props}>
       {withMenu}
@@ -132,10 +120,6 @@ export default function ChatAccessSelection({
   );
 }
 
-/**
- * A live chat's access: its own mode when it has one the session offers,
- * else its harness default.
- */
 function LiveChatAccess({
   bindingId,
   capabilities,

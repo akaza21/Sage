@@ -10,11 +10,10 @@ const LEVEL_LABEL: Record<SessionNotice["level"], string> = {
   error: "Error",
 };
 
-/** A notice's identity: the session surface already collapses repeats. */
+// The session surface already collapses repeats.
 const keyOf = (notice: SessionNotice) =>
   `${notice.level}\u0000${notice.source ?? ""}\u0000${notice.text}`;
 
-/** The page's session notices, then its background activities and Undo. */
 export function SessionStrip({ page }: { page: AcpChatPage }) {
   return (
     <>
@@ -39,18 +38,12 @@ interface Dismissed {
   keys: ReadonlySet<string>;
 }
 
-/**
- * The current session's harness notices (warnings, configuration problems,
- * model reroutes), newest last. The list is already bounded by the session
- * surface; dismissing one hides it in this view only. Dismissals belong to
- * one `session` and to the notices it still has, so another session starts
- * clean and the dismissed set never outgrows the list.
- */
+// Dismissals belong to one `session` and to the notices it still has, so the
+// dismissed set never outgrows the list.
 export function SessionNoticeStrip({
   session,
   notices,
 }: {
-  /** Identifies the session the notices belong to. */
   session: string;
   notices: readonly SessionNotice[];
 }) {

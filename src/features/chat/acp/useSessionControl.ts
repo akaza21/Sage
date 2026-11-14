@@ -12,7 +12,6 @@ export type SessionControlStatus =
   | { kind: "done"; message: string }
   | { kind: "failed"; message: string };
 
-/** One session control at a time for the chat's running session. */
 export function useSessionControl(boundChatId?: string | null) {
   const [status, setStatus] = useState<SessionControlStatus>({ kind: "idle" });
   const pending = useRef(false);

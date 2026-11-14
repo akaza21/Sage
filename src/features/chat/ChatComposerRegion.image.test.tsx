@@ -229,7 +229,6 @@ describe("composer image input", () => {
       goal,
       imageInputAvailable: true,
     });
-    // The Goal control loads with the first chat that shows one.
     await settleLazyModules();
     screen.getByLabelText("Goal details");
     const options = screen.queryByRole("button", { name: "Composer options" });
@@ -442,7 +441,6 @@ describe("composer image input", () => {
       imagePreviews: { [image.artifactId]: "blob:preview" },
       onRemoveContext,
     });
-    // The chips load with the first context attached to the draft.
     await settleLazyModules();
     screen.getByLabelText("Attached context");
     expect(document.querySelector(".composer__image-preview")).toHaveAttribute(
@@ -483,7 +481,6 @@ describe("composer image input", () => {
       imageInputAvailable: true,
       attachedContext: [image],
     });
-    // A native chat's send waits for its staged batch to be read back.
     await waitFor(() => expect(send).toBeEnabled(), { timeout: 5_000 });
   });
 

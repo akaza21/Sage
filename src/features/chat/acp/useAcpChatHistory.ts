@@ -14,7 +14,6 @@ export function useAcpChatHistory(boundChatId?: string | null) {
   const activeLoad = useStore(store, (state) => state.activeLoad);
   const historyLoad = useStore(store, (state) => state.historyLoad);
   const historyError = useStore(store, (state) => state.historyError);
-  // A failed newest-page load settles a chat that has no page to show.
   const firstPageError = useStore(store, (state) =>
     state.page ? null : state.error,
   );

@@ -36,7 +36,6 @@ describe("CollaborationItem", () => {
         },
       } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
       const { container } = render(<CollaborationItem item={item} />);
-      // Codex s4/f0485: the glyph is the child's coloured shape.
       expect(
         container.querySelector(".acp-subagent-row__glyph"),
       ).toBeEmptyDOMElement();

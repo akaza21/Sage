@@ -1,17 +1,12 @@
 import type { RefObject } from "react";
 import type { TurnProjection } from "../../domain/acp";
 
-/** A navigation target the virtual list keeps pinned until reader input. */
 export interface VirtualTurnTarget {
   id: string;
   inset: number;
   prompt: boolean;
   behavior: ScrollBehavior;
   settling: boolean;
-  /**
-   * Re-aligns the target after the list renders; installed by the lazy
-   * navigator, called from the list's anchoring layout effect.
-   */
   align: (
     list: HTMLElement,
     scrollport: HTMLElement,
@@ -21,11 +16,6 @@ export interface VirtualTurnTarget {
   ) => void;
 }
 
-/**
- * What the eager virtual list exposes. The lazy navigator
- * (useTurnListNavigation) builds TurnListNavigation on top of it, so jump
- * and find anchoring loads with ChatNavigation, not with the transcript.
- */
 export interface TurnListHost {
   turns: readonly TurnProjection[];
   offsets: readonly number[];

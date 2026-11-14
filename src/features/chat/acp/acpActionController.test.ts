@@ -230,7 +230,6 @@ describe("ACP action controller", () => {
       }),
     );
     expect(test.cleared).toEqual([{ prompt: "", attachedContext: [] }]);
-    // A refused send restores the empty draft, not the stand-in prompt.
     expect(test.restored).toEqual([{ prompt: "", attachedContext: [] }]);
   });
   it("names no staged files unless the send asks for them", async () => {
@@ -238,12 +237,10 @@ describe("ACP action controller", () => {
     vi.mocked(test.commands.sendTurn).mockResolvedValue({
       projection: page("11", session("hot", "2", null)),
     });
-    // A queued message: the batch staged for the next message stays staged.
     await test.controller.submit("Queued", [], bindingId, modelId);
     expect(
       vi.mocked(test.commands.sendTurn).mock.calls[0][0],
     ).not.toHaveProperty("staged");
-    // Retry: the files that turn carried go again.
     const retryOf = "turn-1" as SageTurnId;
     await test.controller.submit("Again", [], bindingId, modelId, { retryOf });
     expect(test.commands.sendTurn).toHaveBeenLastCalledWith(
@@ -326,7 +323,6 @@ describe("ACP action controller", () => {
     );
     expect(test.commands.setSessionMode).not.toHaveBeenCalled();
 
-    // A mode that becomes current while queued is also not sent.
     const pending = test.controller.setSessionMode("code");
     test.setContext({
       ...test.getContext()!,
@@ -1162,7 +1158,6 @@ describe("ACP action controller", () => {
       endOffset: 5,
     };
     await expect(test.controller.steer("  ", [])).resolves.toBe("rejected");
-    // A queued attachment-only message has empty text.
     await expect(test.controller.steer("", [quote])).resolves.toBe("applied");
     expect(test.commands.steerTurn).toHaveBeenCalledExactlyOnceWith(
       expect.objectContaining({

@@ -10,10 +10,6 @@ import {
 export const imageDisabledReason =
   "Image input is unavailable for the selected binding.";
 
-/**
- * Image input follows the selected session's negotiated ACP prompt
- * capability; a harness that has not advertised it never gets images.
- */
 export function composerImageAvailability(
   useNativeAcp: boolean,
   session:
@@ -49,11 +45,8 @@ export function useComposerImageInput({
   uploading?: boolean;
   onAddImages?: (files: File[]) => void;
 }) {
-  // An error is kept with the availability it was raised under, so one
-  // about images being unavailable clears once the session takes them.
   const [raised, setRaised] = useState<[string, boolean] | null>(null);
   const setError = (text: string) => setRaised([text, available]);
-  // Dropped, not hidden, so it cannot return if availability flips back.
   if (raised && raised[1] !== available) setRaised(null);
   const error = raised?.[1] === available ? raised[0] : null;
   const chooserRef = useRef<HTMLInputElement>(null);

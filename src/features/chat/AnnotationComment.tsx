@@ -10,11 +10,6 @@ import { Check } from "../../ui/leanIcons";
 
 const FIELD_HEIGHT = 44;
 
-/**
- * The optional comment pill opened by "Add to chat" or the chip's edit action.
- * The annotation already exists: Enter or ✓ saves, Escape or leaving the
- * field keeps the stored comment.
- */
 export function AnnotationComment({
   quote,
   content,

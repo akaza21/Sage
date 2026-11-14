@@ -17,10 +17,8 @@ interface Props {
 // click on plain transcript text) Ctrl+F goes to that pane, and to no other.
 let lastPressedSurface: Element | null = null;
 
-// An open find outlives a transcript remount in its pane: a chat activation
-// reloads the authoritative projection, which unmounts the transcript. Keyed
-// by the pane's surface element, so a closed pane forgets it, and by Chat,
-// so a pane that now shows another Chat starts without one.
+// A chat activation reloads the projection and unmounts the transcript, so an
+// open find is kept here to survive that remount.
 const openFinds = new WeakMap<Element, { chatId?: string; query: string }>();
 
 function surfaceVisible(surface: Element) {
@@ -29,7 +27,6 @@ function surfaceVisible(surface: Element) {
     : surface.isConnected;
 }
 
-/** Owns Ctrl+F for one chat pane; editors keep their own Ctrl+F. */
 export function ChatFindController(props: Props) {
   const { scrollport, chatId, ...sessionProps } = props;
   const pane = scrollport.closest(".chat-surface") ?? scrollport;
@@ -39,8 +36,6 @@ export function ChatFindController(props: Props) {
   );
   const [focusRequest, setFocusRequest] = useState(0);
   useEffect(() => {
-    // The pane now shows another Chat: the kept find belonged to the old one
-    // and must not come back when the pane returns to it.
     const kept = openFinds.get(pane);
     if (kept && kept.chatId !== chatId) openFinds.delete(pane);
   }, [chatId, pane]);

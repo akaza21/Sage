@@ -22,7 +22,6 @@ export function TranscriptSelectionPopover({
 }: {
   content: HTMLElement;
   scrollport: HTMLElement;
-  /** Consumed once on mount; true when the menu key armed the chunk. */
   takeInitialKeyboard?: () => boolean;
   onAdd: (quote: TranscriptQuote) => void;
   onSideChat: (quote: TranscriptQuote) => void;
@@ -86,7 +85,6 @@ export function TranscriptSelectionPopover({
     const pointerDown = (event: PointerEvent) => {
       if (!inside(event.target)) dismiss();
     };
-    // Keyboard-opened toolbars own focus, so only a mouse selection collapses them.
     const selectionChange = () => {
       if (!selected.keyboard && window.getSelection()?.isCollapsed) dismiss();
     };
@@ -119,8 +117,6 @@ export function TranscriptSelectionPopover({
     if (!selected || !element) return;
     const rects = selected.range.getClientRects();
     if (!rects.length) return;
-    // Centred on the selection start, the pill may overhang the answer
-    // column but stays inside the scrollport.
     const viewport = scrollport.getBoundingClientRect();
     const point = selectionPopoverPosition(
       {

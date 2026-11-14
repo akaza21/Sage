@@ -23,7 +23,6 @@ import { settleLazyModules } from "../../test/settleLazyModules";
 import { page } from "./acp/acpProjection.fixture";
 import { ChatTranscript } from "./ChatTranscript";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 
 const initialState = useWorkbenchStore.getState();
@@ -202,7 +201,6 @@ it.each([
       />,
     );
     expect(screen.queryByText("Loading chat history…")).toBeNull();
-    // A chat without a native session loads its transcript on demand.
     expect(await screen.findByText("Existing conversation")).toBeVisible();
     expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
   },

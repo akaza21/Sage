@@ -165,12 +165,10 @@ it("sizes chat table columns to content before wrapping overflow", async () => {
     expect(getComputedStyle(cell).minWidth).toBe("0px");
     expect(getComputedStyle(cell).whiteSpace).toBe("normal");
   }
-  // Words set each column's minimum, so auto layout never splits "DuckDB".
   for (const name of ["OK", "Long"])
     expect(
       getComputedStyle(screen.getByRole("cell", { name })).overflowWrap,
     ).toBe("break-word");
-  // Only an unbreakable run (plain or code) may break anywhere.
   expect(getComputedStyle(screen.getByText(/^abcdefghij/)).overflowWrap).toBe(
     "anywhere",
   );

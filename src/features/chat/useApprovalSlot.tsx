@@ -26,7 +26,6 @@ let lastKeyAt = Number.NEGATIVE_INFINITY;
 let lastFocused: Element | null = null;
 let tracking = false;
 
-/** One capture-phase tracker for every pane: cheap, and installed before any card. */
 function trackTyping() {
   if (tracking || typeof document === "undefined") return;
   tracking = true;
@@ -40,13 +39,8 @@ const typesInto = (element: Element) =>
   element.matches("input, textarea, select, iframe") ||
   (element as HTMLElement).isContentEditable;
 
-/**
- * Whether the approval card of `pane` may move focus: only from the body or
- * from this pane's own transcript or card. Never from an editable field (the
- * composer, find bar, a rename input), an iframe (the browser preview), or
- * anywhere outside this pane. A focus that just fell to the body counts as
- * the element it fell from while that element is still in the document.
- */
+// A focus that just fell to the body counts as the element it fell from while
+// that element is still in the document.
 export function approvalFocusInReach(pane: Element | null) {
   const active = document.activeElement;
   const fellFrom = lastFocused && lastFocused.isConnected ? lastFocused : null;
@@ -59,7 +53,6 @@ export function approvalFocusInReach(pane: Element | null) {
   return Boolean(from.closest(".message-list, .acp-permission-prompt"));
 }
 
-/** Focus is in reach and nobody pressed a key within the typing hold. */
 export function approvalFocusAllowed(composer: HTMLElement | null) {
   return (
     Date.now() - lastKeyAt >= TYPING_HOLD_MS &&
@@ -67,17 +60,11 @@ export function approvalFocusAllowed(composer: HTMLElement | null) {
   );
 }
 
-/**
- * The decision hold shared by the loading fallback and the card: the time of
- * the last decision, and each fallback Deny (by item id) so the loaded card
- * shows it in flight and never focuses Allow for that request. Bounded.
- */
 export const approvalHold = {
   at: Number.NEGATIVE_INFINITY,
   denies: new Map<string, Promise<unknown>>(),
 };
 
-/** Test seam: forget every recorded decision. */
 export function clearApprovalDecisions() {
   approvalHold.at = Number.NEGATIVE_INFINITY;
   approvalHold.denies.clear();
@@ -98,7 +85,6 @@ export function resolveApproval(
   });
 }
 
-/** Shown while the card's chunk loads: Deny and Stop are always reachable. */
 function ApprovalFallback({
   item,
   onCancelTurn,
@@ -145,7 +131,6 @@ function ApprovalFallback({
   );
 }
 
-/** A card that fails to render hands the slot back to the composer. */
 class ApprovalBoundary extends Component<
   { onError: () => void; children: ReactNode },
   { failed: boolean }
@@ -162,12 +147,6 @@ class ApprovalBoundary extends Component<
   }
 }
 
-/**
- * A pending approval in the live turn takes the composer slot. The composer
- * stays mounted (hidden) so its draft survives, and the rail is told which
- * visible chat awaits approval. A card that cannot load restores the
- * composer, whose Stop control still ends the Turn.
- */
 export function useApprovalSlot(
   turn: TurnProjection | null | undefined,
   chatId: string | null,
@@ -190,7 +169,6 @@ export function useApprovalSlot(
   );
   useEffect(
     () => () => {
-      // A pane that unmounts never holds the tracker to its composer.
       if (lastFocused && lastFocused === composerRef.current)
         lastFocused = null;
     },
@@ -203,8 +181,6 @@ export function useApprovalSlot(
   }, [chatId, awaiting]);
   const holdsSlot = awaiting && !failed;
   useEffect(() => {
-    // The unmounted prompt dropped focus to the body; hand it back to the
-    // returning composer unless the person already moved focus elsewhere.
     if (
       wasAwaiting.current &&
       !holdsSlot &&
@@ -213,8 +189,6 @@ export function useApprovalSlot(
       composerRef.current?.focus();
     wasAwaiting.current = holdsSlot;
   }, [holdsSlot, composerRef]);
-  // A card whose chunk fails to load, or that fails to render, hands the
-  // slot back to the composer.
   const giveWay = () => first && setFailedFor(first.id);
   return {
     awaiting: holdsSlot,
@@ -226,7 +200,6 @@ export function useApprovalSlot(
     ) : (
       <ApprovalBoundary key={first.id} onError={giveWay}>
         {first.payload.userInput ? (
-          // A harness asking the user questions gets the question card.
           <QuestionPart
             part="UserInputPrompt"
             fallback={

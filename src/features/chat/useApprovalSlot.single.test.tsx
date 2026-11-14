@@ -77,7 +77,6 @@ it("shows one request as exactly one card, with one item id, from first load to 
   observer.observe(document.body, { childList: true, subtree: true });
 
   const view = render(<Pane items={[permission()]} />);
-  // The loading fallback holds the slot until the chunk arrives.
   expect(cards()).toHaveLength(1);
   const card = await screen.findByRole("group", {
     name: "Permission request",
@@ -85,11 +84,9 @@ it("shows one request as exactly one card, with one item id, from first load to 
   });
   expect(card).toHaveAttribute("data-acp-item-id", "bridge-write-item");
 
-  // A re-projection of the same request keeps the same card.
   view.rerender(<Pane items={[permission("received", "2")]} />);
   expect(cards()).toEqual([card]);
 
-  // Allow settles it; the slot hands back to the composer.
   view.rerender(<Pane items={[permission("allowPending", "3")]} />);
   await act(async () => undefined);
   observer.disconnect();

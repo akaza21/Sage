@@ -1,7 +1,3 @@
-/**
- * A picked command's input hint, drawn after the typed text where a
- * placeholder would be, and read with the field's description.
- */
 export function ComposerCommandHint({
   hint,
   hintId,

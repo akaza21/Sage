@@ -9,16 +9,13 @@ type HighlightWindow = Window & {
 };
 type HighlightCss = typeof CSS & { highlights?: Map<string, unknown> };
 
-/** A quote's resolved answer and range, reused until that answer changes. */
 type Resolved = {
   answer: HTMLElement | null;
   range: Range | null;
   dirty: boolean;
-  /** Quoted from another Chat (a side chat's parent): never mounts here. */
   foreign?: boolean;
 };
 
-/** Cache ranges per quote; observe only its answer subtree. Scroll/resize only reposition; coalesce updates to one per frame. */
 const notForeign = () => false;
 
 export function TranscriptAnnotations({
@@ -48,7 +45,6 @@ export function TranscriptAnnotations({
   const cache = useRef(new Map<string, Resolved>());
   useEffect(() => {
     let frame = 0;
-    // Resolve missing/replaced answers only on mount, resize, parent child-list changes or additions while waiting.
     let relookup = true;
     const resolved = cache.current;
     const observed = new Set<Node>();
@@ -75,7 +71,6 @@ export function TranscriptAnnotations({
           entry.answer?.isConnected ? [entry.answer] : [],
         ),
       );
-      // Wait for disconnected answers to remount, never foreign answers.
       const wait = entries.some(
         (entry) => !entry.foreign && !entry.answer?.isConnected,
       );
@@ -110,7 +105,6 @@ export function TranscriptAnnotations({
         if (!keys.has(key)) resolved.delete(key);
       const bounds = scrollport.getBoundingClientRect();
       const ranges: Range[] = [];
-      // Badge numbers follow draft order (Annotation N).
       const next = quotes.flatMap((quote, index) => {
         const key = attachedContextKey(quote);
         if (isForeign(quote)) {

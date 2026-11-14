@@ -1,10 +1,7 @@
 import type { AcpChatPage } from "../../../domain/acp";
 
-/**
- * The backend composes a Goal only for a current session whose binding
- * supports native Goals, so a Goal on the page is that capability; the
- * session must also be live to take a mutation.
- */
+// The backend composes a Goal only when the binding supports native Goals, so
+// its presence is the capability check.
 export function canMutateGoal(page: AcpChatPage | null | undefined): boolean {
   const session = page?.sessions.find(
     (item) => item.id === page.currentSessionId,

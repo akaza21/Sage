@@ -7,12 +7,6 @@ import { WorkedTurnTerminal } from "./WorkedTurnTerminal";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
-/**
- * The transcript record of a permission. While a live Turn awaits a decision
- * the request is answered in the composer slot (`PermissionPrompt`); once
- * settled the transcript keeps this compact record. A terminal Turn cannot
- * hold a pending decision, so an open request there reads "Not answered".
- */
 export function PermissionItem({ item }: { item: PermissionProjectionItem }) {
   const turnEnded = useContext(WorkedTurnTerminal);
   const openRequest = awaitingPermission(item as AcpItem);

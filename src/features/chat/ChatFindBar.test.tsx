@@ -236,19 +236,15 @@ it("keeps an open find and its query across a transcript remount in the same pan
   });
   act(() => vi.advanceTimersByTime(200));
   expect(screen.getByRole("status")).toHaveTextContent("1 / 3 results");
-  // A chat activation reloads the projection: the find unmounts and returns.
   rerender(<RemountingPane mounted={false} />);
   rerender(<RemountingPane mounted />);
   const search = screen.getByRole("searchbox", { name: "Search chat" });
   expect(search).toHaveValue("hit");
   expect(screen.getByRole("status")).toHaveTextContent("1 / 3 results");
-  // A resumed find never steals focus from the pane the person moved to.
   expect(search).not.toHaveFocus();
-  // The same pane showing another Chat starts without the find.
   rerender(<RemountingPane mounted={false} />);
   rerender(<RemountingPane mounted chatId="beta" />);
   expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();
-  // ...and switching back does not resurrect the old Chat's find.
   rerender(<RemountingPane mounted={false} />);
   rerender(<RemountingPane mounted />);
   expect(screen.queryByRole("searchbox")).not.toBeInTheDocument();

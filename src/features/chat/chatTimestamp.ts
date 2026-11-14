@@ -29,7 +29,6 @@ export function dayTimeLabel(timestamp: number): string {
   return `${day} ${timeOfDayLabel(timestamp)}`;
 }
 
-/** Local clock time, such as "12:23 PM". */
 export function timeOfDayLabel(timestamp: number): string {
   return new Intl.DateTimeFormat(undefined, {
     hour: "numeric",

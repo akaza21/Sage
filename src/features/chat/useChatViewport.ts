@@ -3,9 +3,7 @@ import type { TurnProjection } from "../../domain/acp";
 import type { TurnListNavigation } from "./chatScroll";
 
 export interface ChatViewport {
-  /** Turn ids intersecting the scrollport, in transcript order. */
   visibleIds: readonly string[];
-  /** Scrollport box relative to its chat surface, read on resize only. */
   top: number;
   height: number;
 }
@@ -19,7 +17,6 @@ function sameIds(left: readonly string[], right: readonly string[]) {
   );
 }
 
-/** Use virtual offsets/row IntersectionObserver, not per-Turn scroll measurements; read geometry only on resize. */
 export function useChatViewport(
   scrollport: HTMLElement | null,
   turns: readonly TurnProjection[],
@@ -126,7 +123,6 @@ export function useChatViewport(
       if (frame !== null) cancelAnimationFrame(frame);
     };
   }, [scrollport, navigationRef]);
-  // Re-read moved offsets after later changes; mount already covers initial Turns.
   const seenTurns = useRef(turns);
   useEffect(() => {
     if (seenTurns.current === turns) return;

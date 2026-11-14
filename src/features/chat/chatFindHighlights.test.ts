@@ -50,7 +50,6 @@ it("skips unmounted messages and looks each message up once", () => {
     match("virtualised", 0, 0, 3),
   ]);
   expect(ranges.size).toBe(3);
-  // One pass for the mounted messages, one for this message's segments.
   expect(lookups).toHaveBeenCalledTimes(2);
 });
 

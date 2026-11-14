@@ -63,7 +63,6 @@ it("loads nothing for clicks without a selection, then arms once on a live selec
   expect(await screen.findByTestId("interactions")).toHaveTextContent(
     "pointer",
   );
-  // The core trigger detaches as soon as the lazy chunk owns the listeners.
   expect(remove.mock.calls.length).toBe(add.mock.calls.length);
 });
 

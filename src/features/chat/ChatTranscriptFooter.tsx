@@ -41,10 +41,6 @@ export function ChatTranscriptTurnSummary({
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
-  /**
-   * Messages the user steered into the Turn. They sit at their place among
-   * the expanded activities and stay visible below a collapsed Worked row.
-   */
   steered?: readonly ReactNode[];
   thinkingPlaceholder?: boolean;
 }) {
@@ -68,7 +64,6 @@ export function ChatTranscriptTurnSummary({
       </div>
     );
   }
-  // Collapsed Worked shows only the user's own steered messages.
   const open = !terminal || expanded;
   const groups =
     (open && children) || steered?.length ? (
@@ -143,8 +138,6 @@ export function ChatTranscriptFooter({
     : (legacyAssistant?.text ?? "");
   const timestamp = page ? acpAssistant?.createdAt : legacyAssistant?.createdAt;
   if (!text.trim()) return null;
-  // A native answer here is the latest Turn's, which is terminal
-  // (lastAssistantItem); a legacy one retries only off native ACP.
   const retryAction = page || !useNativeAcp ? onRetry : undefined;
 
   return (
@@ -156,7 +149,6 @@ export function ChatTranscriptFooter({
             : null
         }
       />
-      {/* Text is guaranteed here: the footer returns early without it. */}
       <AnswerActions
         text={text}
         createdAt={page ? timestamp : undefined}

@@ -281,7 +281,6 @@ export function useChatSurfaceModel({
                 useNativeAcp: model.useNativeAcp,
               }));
   const submit = useCallback(
-    // The composer names the batch it staged; a queued message never does.
     (event: FormEvent, stagedRevision?: string | null) => {
       event.preventDefault();
       if (sendBlocked) return;
@@ -359,13 +358,11 @@ export function useChatSurfaceModel({
   );
   return {
     ...model,
-    // A chat with no session at all drafts its access for its first one.
     accessTarget: {
       bindingId: accessBindingId,
       draftChatId: page?.sessions.length === 0 ? page.chatId : undefined,
     },
     foregroundError: acpActions.error ?? chatError,
-    // The sign-in sentence renders lazily in the composer, off the chat path.
     signInHarness:
       acpActions.errorKind === "signInRequired"
         ? (model.selectedHarness ?? null)

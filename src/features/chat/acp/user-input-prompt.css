@@ -1,4 +1,3 @@
-/* A harness's questions: one choice (or free text) per question. */
 .acp-user-input__questions {
   display: grid;
   gap: var(--space-3);

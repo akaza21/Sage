@@ -20,8 +20,6 @@ import {
 const initialWorkbenchState = useWorkbenchStore.getState();
 const noop = () => Promise.resolve();
 
-// What a parked chat's page carries after an app restart: the config the
-// session last reported, with its stored model and effort as current values.
 const restored = decodeRestoredSessionConfig({
   sageAgentSessionId: "session-1",
   awaiting: "resume",
@@ -182,7 +180,6 @@ it("shows a cold chat's stored model and effort as restored, and a pick goes to 
       canPrompt
       discoveryPhase="ready"
       modelLabelScope="project/chat/session-1"
-      // Cold: no runtime, so the session owns no harness selection yet.
       sessionHarnessId={null}
       sessionModelId={null}
       selectedHarnessId="restored-test"
@@ -209,7 +206,6 @@ it("shows a cold chat's stored model and effort as restored, and a pick goes to 
     name: "Thinking level: High",
   });
   expect(effort).toHaveAttribute("aria-description", RESTORED_NOTE);
-  // No "Thinking level" placeholder waiting for a session.
   expect(
     screen.queryByRole("button", { name: "Thinking level" }),
   ).not.toBeInTheDocument();

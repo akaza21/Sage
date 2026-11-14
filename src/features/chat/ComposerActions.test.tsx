@@ -13,7 +13,6 @@ import { decodeSessionConfig } from "../../domain/acpSessionConfig";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 
 const initial = useWorkbenchStore.getState();

@@ -21,7 +21,6 @@ const MAX_INHERITED = 16;
 const category = (option: AcpConfigOption) =>
   (option.category ?? option.id).toLocaleLowerCase();
 
-/** Confirmed parent labels, or null. */
 export function confirmedComposerModel(
   config: AcpSessionConfig | null | undefined,
 ): InheritedComposerModel | null {
@@ -47,7 +46,6 @@ export function confirmedComposerModel(
   return { model, effort, id };
 }
 
-/** Forks continue the parent's model/effort. Side sessions start on startsOnModelId without effort; inherit its label only if the parent confirmed that exact model. */
 export function inheritComposerModel(
   chatId: string,
   parentConfig: AcpSessionConfig | null | undefined,

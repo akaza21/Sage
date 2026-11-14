@@ -259,12 +259,8 @@ export function createAcpSessionActions(
 
   type Mutation =
     { modeId: string } | { configId: string; value: AcpConfigValue };
-  /**
-   * A session with no live config (no runtime, or a live runtime that has
-   * not reported yet) shows its restored config. A choice on it is stored,
-   * not sent: the restore applies it before the session's next prompt, as
-   * it does every stored choice, so no runtime starts for it.
-   */
+  // A choice on a session with no live config is stored, not sent: the restore
+  // applies it before the next prompt, so no runtime starts for it.
   const queue = (
     captured: AcpActionContext,
     sessionId: string,

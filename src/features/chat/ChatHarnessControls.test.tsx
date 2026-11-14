@@ -36,7 +36,6 @@ import {
 import { PickerOption } from "../../ui/PickerOption";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 const chatAccess = vi.hoisted(() => ({
   get: vi.fn(() => Promise.resolve(null)),
@@ -260,7 +259,6 @@ it("holds a thinking level chosen before the first session for the listed model"
     effort: "high",
   });
   expect(onSetSessionConfigOption).not.toHaveBeenCalled();
-  // A model without listed levels keeps effort waiting for its session.
   rerenderControls({
     sessionHarnessId: null,
     selectedModelId: "haiku",
@@ -600,7 +598,6 @@ describe("last confirmed model label", () => {
       project: { id: "a", name: "A", roots: [] },
       projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
     });
-    // A row too narrow for any of its controls takes every compaction step.
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
       function (this: Element) {
         return DOMRect.fromRect({
@@ -840,7 +837,6 @@ describe("last confirmed model label", () => {
     const trigger = screen.getByLabelText("Model", { exact: true });
     expect(trigger).toHaveTextContent(/^actual High$/);
     expect(trigger).toHaveAccessibleDescription("actual High");
-    // The confirmed model is the sole choice, so the picker stays openable.
     expect(trigger).toBeEnabled();
     expect(
       screen.queryByRole("button", { description: "Select effort" }),
@@ -1047,7 +1043,6 @@ describe("last confirmed model label", () => {
     const option = within(listbox).getByRole("option");
     expect(option).toHaveAccessibleName("GPT-6 Astra");
     expect(option).toHaveAttribute("aria-selected", "true");
-    // With no requested model, choosing the confirmed one only closes the menu.
     fireEvent.click(option);
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
     expect(trigger).toHaveFocus();
@@ -2008,7 +2003,6 @@ describe("composer permission mode picker", () => {
         .getByRole("option", { name: /^Pi —/ })
         .querySelector('[data-harness-icon="pi"]'),
     ).not.toBeNull();
-    // A custom harness never borrows a built-in brand by its name.
     expect(
       screen
         .getByRole("option", { name: /Pi helper/ })
@@ -2120,8 +2114,6 @@ describe("composer permission mode picker", () => {
       /^OpenCode$/,
     );
     expect(screen.getByRole("option", { name: /Missing/ })).toBeDisabled();
-    // The unavailable reason is a visible line under the name, not only
-    // the option's accessible description.
     const missingCopy = screen
       .getByRole("option", { name: /Missing/ })
       .querySelector(".searchable-picker__option-copy")!;

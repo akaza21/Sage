@@ -1,4 +1,3 @@
-/** Lazy: loads with a native chat's composer or with over-cap input. */
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import {
   PROMPT_ATTACHMENT_COUNT,
@@ -25,7 +24,6 @@ export function utf8Length(value: string): number {
   return bytes;
 }
 
-/** Sizes as people read them: whole kilobytes, rounded up. */
 export function formatSize(bytes: number): string {
   return `${Math.max(1, Math.ceil(bytes / 1024)).toLocaleString("en-US")} KB`;
 }
@@ -43,7 +41,6 @@ export function pastedTextLabel(bytes: number, lines: number): string {
   return `Pasted text · ${lines.toLocaleString("en-US")} ${lines === 1 ? "line" : "lines"} · ${formatSize(bytes)}`;
 }
 
-/** A paste made here shows its line count; a picked file shows its name. */
 export function stagedItemLabel(item: {
   name: string;
   bytes: number;
@@ -57,7 +54,6 @@ export function stagedItemLabel(item: {
 const TYPED_LIMIT = formatSize(MAX_CHAT_COMPOSER_BYTES);
 const ATTACHMENT_LIMIT = formatSize(PROMPT_ATTACHMENT_TOTAL_BYTES);
 
-/** An edit over the cap; pasting attaches only where attaching works. */
 export function typedOverflowMessage(
   bytes: number,
   refusal: string | null,
@@ -68,10 +64,8 @@ export function typedOverflowMessage(
     : `${held} Paste longer text to attach it instead.`;
 }
 
-/** Why text over the composer cap cannot become an attachment right now. */
 export interface PasteAttachability {
   nativeAcp: boolean;
-  /** The session the next send uses; null until the chat starts one. */
   session: { capabilities: { promptResources?: boolean } } | null | undefined;
 }
 
@@ -90,7 +84,6 @@ export function pasteAttachmentRefusal({
   return null;
 }
 
-/** What the composer says about input it held back without its text. */
 export function heldInputMessage(
   held: Exclude<HeldInput, { kind: "paste" | "pick" }>,
   refusal: string | null,
@@ -110,7 +103,6 @@ export type PasteDecision =
   | { kind: "attach"; bytes: number }
   | { kind: "refuse"; message: string };
 
-/** Whether a paste fits the composer in place of its selection. */
 export function fitsComposer(before: string, pasted: string, after: string) {
   return (
     utf8Length(before) + utf8Length(pasted) + utf8Length(after) <=
@@ -118,7 +110,6 @@ export function fitsComposer(before: string, pasted: string, after: string) {
   );
 }
 
-/** Pastes that fit the composer stay inline; longer ones attach or are refused. */
 export function pasteDecision({
   before,
   pasted,

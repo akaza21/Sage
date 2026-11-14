@@ -17,7 +17,6 @@ function place(
     .join(" / ");
 }
 
-/** The session's running background terminals, each with its own Stop. */
 export function BackgroundTerminals({
   terminals,
   rootLabels,

@@ -10,9 +10,6 @@ const STATE_LABEL = {
   cancelled: "Stopped",
 } as const;
 
-/** The session's background activities, each running one with a Stop
- * control when the agent can stop it, and an Undo that removes the latest
- * turn once the user confirms. */
 export function SessionSurfacePanel({
   surface,
   chatId,

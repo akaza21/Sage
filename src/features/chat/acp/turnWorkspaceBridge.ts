@@ -6,10 +6,7 @@ import type { TurnWorkspaceLedger } from "./turnWorkspaceChanges";
 
 const NONE: TurnWorkspaceLedger = { changes: [], incompleteTurnIds: new Set() };
 
-/**
- * Loads workspace changes of the page's latest terminal turns. The
- * loader is imported on demand so it stays out of the initial Agent bundle.
- */
+// The loader is imported on demand so it stays out of the initial Agent bundle.
 export function useTurnWorkspaceChanges(
   page: AcpChatPage | null,
   enabled: boolean,

@@ -11,13 +11,7 @@ import type { SuggestionKeyEvent } from "../../ui/textFieldSuggestionNavigation"
 import { ComposerMentionMenu } from "./ComposerMentionMenu";
 import { mentionQuery } from "./composerMention";
 
-/**
- * Replaces the `@` token at [start, end) with the picked file's token
- * through the editing commands, so Undo restores what was typed in one
- * step. The caret lands past the character that ends the token (the space
- * after it, or the closing parenthesis of `(@a.rs)`), and a space is added
- * at the end of the text, so what is typed next never joins the token.
- */
+// Goes through the editing commands so Undo restores what was typed in one step.
 function insertMention(
   field: HTMLTextAreaElement,
   start: number,
@@ -41,14 +35,6 @@ function insertMention(
 
 const CARET_EVENTS = ["input", "change", "select", "keyup", "mouseup"] as const;
 
-/**
- * The composer's `@` file picker. It loads with the first `@` in the draft,
- * so the first-Chat path carries only its mount. It listens on the textarea
- * itself (which keeps the focus), takes the keys the open list uses before
- * the composer's own handler sees them, and sets the field's list
- * attributes (WAI-ARIA combobox pattern) only while the caret is in an `@`
- * token.
- */
 export function ComposerMentionController({
   fieldRef,
   disabled,
@@ -65,13 +51,11 @@ export function ComposerMentionController({
   );
   const anchorRef = useRef<HTMLElement | null>(null);
   const [dismissed, setDismissed] = useState<number | null>(null);
-  // The list belongs to the field: it hides while the focus is elsewhere.
   const [focused, setFocused] = useState(false);
   const [caret, setCaret] = useState<number | null>(null);
   const [activeOptionId, setActiveOptionId] = useState<string | null>(null);
   const [status, setStatus] = useState("");
   const token = mentionQuery(text, caret);
-  // Escape closes the list for that token only.
   if (dismissed !== null && token?.start !== dismissed) setDismissed(null);
   const open = token !== null && dismissed === null && focused && !disabled;
   const listboxId = `${fieldId}-mentions`;
@@ -86,7 +70,6 @@ export function ComposerMentionController({
     [],
   );
   const pick = useCallback(
-    // The list only opens on a field this listens to, so one is there.
     (token: string) => {
       const at = tokenRef.current;
       const field = fieldRef.current;
@@ -110,7 +93,6 @@ export function ComposerMentionController({
       if (!openRef.current) return;
       if (keyHandlerRef.current?.(event)) event.stopPropagation();
     };
-    // The field already holds the focus and a caret when this loads.
     if (document.activeElement === field) {
       focus();
       track();

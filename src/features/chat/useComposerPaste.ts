@@ -5,11 +5,6 @@ import { useComposerPasteSignal } from "./useComposerPasteSignal";
 
 export type ComposerPasteWiring = ReturnType<typeof useComposerPaste>;
 
-/**
- * The composer's eager paste wiring: the field's paste and edit handlers,
- * the attach button's picks, whether the paste part is in place, and the
- * batch it reports staged.
- */
 export function useComposerPaste(
   nativeAcp: boolean,
   activeTurn: boolean,
@@ -18,10 +13,7 @@ export function useComposerPaste(
 ) {
   const signal = useComposerPasteSignal();
   const [staged, setStaged] = useState<StagedSummary>();
-  // A native chat loads it at once, so the batch staged before a reload is
-  // read back before any send, whether or not the field was focused.
   const armed = nativeAcp || signal.seq > 0;
-  // The paste notices the field names, once the paste part is in place.
   const noticeId = `${disabledReasonId}-paste`;
   return {
     nativeAcp,
@@ -30,14 +22,9 @@ export function useComposerPaste(
     setStaged,
     armed,
     noticeId,
-    /** Files picked with the attach button join the same batch. */
     pickFiles: signal.holdPick,
-    /** The staged batch a send carries, if any. */
     revision: staged?.revision,
-    /** Appended to the field's aria-describedby. */
     describedBy: armed && staged ? ` ${noticeId}` : "",
-    // Staged pasted text goes with a sent message, never a queued one, and
-    // no send goes before the batch staged earlier has been read back.
     blocksSend: Boolean(
       staged?.busy ||
       (activeTurn && staged?.revision) ||

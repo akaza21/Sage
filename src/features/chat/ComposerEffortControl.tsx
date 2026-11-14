@@ -12,8 +12,6 @@ type Props = Omit<
   "triggerRef" | "panelId"
 > & { onToggle: () => void; triggerVisible?: boolean; restored?: string };
 
-/** The Thinking level trigger's icon, label and chevron, the same whether
- * the control is open to choose or disabled until levels are known. */
 export function EffortTriggerFace({ label }: { label: string }) {
   return (
     <>

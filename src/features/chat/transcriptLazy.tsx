@@ -3,10 +3,8 @@ import { useWorkbenchStore } from "../../app/store";
 import { isTranscriptQuote } from "../../domain/transcriptQuote";
 import { TranscriptPart } from "./lazyParts";
 
-/** Lazy interactions load on selection, pending annotation or open side chat. */
 export { TranscriptPart };
 
-/** Arm once on selected pointer-up/Shift+Arrow key-up, answer context-menu key, or pending annotation (1=pointer, 2=keyboard). Chunk validates quotes; detach listeners on arm/unmount. */
 export function TranscriptInteractionsGate({
   chatId,
   focused,
@@ -28,7 +26,6 @@ export function TranscriptInteractionsGate({
       if (event.type === "pointerup") {
         if (getSelection()?.isCollapsed === false) setArmed(1);
       } else if (event.type === "keyup") {
-        // Only Shift+Arrow arms keyboard selection, never Ctrl+C after pointer selection.
         if (
           shiftKey &&
           key?.startsWith("Arrow") &&

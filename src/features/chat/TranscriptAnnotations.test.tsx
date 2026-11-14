@@ -74,7 +74,6 @@ it("keeps a badge when Custom Highlight is unavailable", async () => {
   const content = document.createElement("div");
   content.innerHTML =
     '<div data-selectable-answer="turn" data-item-id="answer">quote</div>';
-  // Badges only belong to answers that are actually mounted.
   document.body.append(content);
   vi.spyOn(content, "getBoundingClientRect").mockReturnValue({
     top: 0,
@@ -155,16 +154,12 @@ it("re-resolves only the quoted answer whose subtree changed, at most once per f
     await screen.findByRole("button", { name: "Annotation 2" }),
   ).toBeVisible();
   const resolved = lookups.mock.calls.length;
-  // Streaming elsewhere in the transcript never re-resolves a quote.
   content.querySelector("#elsewhere")!.textContent = "streaming more";
   await new Promise((settle) => setTimeout(settle, 0));
   flush();
-  // Scrolling repositions from the cached ranges.
   content.dispatchEvent(new Event("scroll"));
   flush();
   expect(lookups.mock.calls.length).toBe(resolved);
-  // Two edits inside one quoted answer coalesce into one frame and touch
-  // only that answer: the other stays cached.
   const bravo = content.querySelector('[data-item-id="b"]')!;
   bravo.firstChild!.textContent = "bravo text!";
   bravo.append(" more");
@@ -237,7 +232,6 @@ it("waits for an unmounted answer without lookups, then follows it when it mount
   expect(
     await screen.findByRole("button", { name: "Annotation 1" }),
   ).toBeVisible();
-  // A re-render replaces the answer node: its parent's childList reports it.
   list.replaceChildren(answer());
   await flush();
   expect(screen.getByRole("button", { name: "Annotation 1" })).toBeVisible();
@@ -312,8 +306,6 @@ it("brings a badge back when the virtual list unmounts and remounts the answer's
   expect(
     await screen.findByRole("button", { name: "Annotation 1" }),
   ).toBeVisible();
-  // Scrolling unmounts the whole turn row behind same-height spacers: no
-  // resize, and nothing inside the answer or its parent fires.
   const row = content.querySelector(".row")!;
   row.remove();
   content.dispatchEvent(new Event("scroll"));

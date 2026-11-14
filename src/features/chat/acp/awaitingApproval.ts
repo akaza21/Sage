@@ -1,11 +1,7 @@
 import { useSyncExternalStore } from "react";
 
-/**
- * Chats whose mounted surface currently shows a pending approval. Entries are
- * written only by a mounted chat surface and removed when it unmounts, so the
- * set is bounded by the visible chat panes and never claims a chat it cannot
- * see.
- */
+// Written only by mounted chat surfaces and cleared on unmount, so it stays
+// bounded by the visible panes.
 let awaiting: ReadonlySet<string> = new Set();
 const listeners = new Set<() => void>();
 

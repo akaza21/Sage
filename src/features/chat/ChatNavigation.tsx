@@ -17,18 +17,11 @@ const ImportPart = lazyParts<typeof ImportChunk>(
 
 export interface ChatNavigationProps {
   turns: readonly TurnProjection[];
-  /** The virtual list's host; null while the Chat renders every Turn. */
   hostRef: RefObject<TurnListHost | null>;
-  /** Earlier Turns exist that are not loaded or were discarded. */
   incomplete: boolean;
-  /** The Chat shown, so a resumed find never crosses to another Chat. */
   chatId?: string;
 }
 
-/**
- * Turn navigator and find-in-chat for one chat pane. Both are overlays of
- * the pane's chat surface, so two side-by-side panes never share state.
- */
 export function ChatNavigation({
   turns,
   hostRef,

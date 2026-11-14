@@ -113,7 +113,6 @@ it("renders a later part of an already loaded chunk in the same commit", async (
       />
     </>,
   );
-  // No Suspense round trip: the composer chip shows with the comment field.
   expect(screen.getByText("1 annotation")).toBeVisible();
 });
 
@@ -143,7 +142,6 @@ it("keeps the surface up when a chunk fails to load, then imports again on the n
   await act(async () => {
     await expect(Part.preload()).rejects.toThrow("offline");
   });
-  // Only the part gives way: the boundary above never sees the failure.
   expect(await screen.findByText("card unavailable")).toBeVisible();
   expect(screen.getByText("chat surface")).toBeVisible();
   expect(screen.queryByText("load failed")).toBeNull();

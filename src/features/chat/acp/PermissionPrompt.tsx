@@ -14,20 +14,12 @@ import { ToolKindIcon } from "./ToolItem";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
-/** Header noun per gated tool kind; other kinds stay generic. */
 const nouns: Record<string, string> = {
   execute: "Terminal",
   edit: "Edit",
   mcp: "MCP",
 };
 
-/**
- * The pending approval, shown in the composer slot. The oldest request comes
- * first. Each button answers only for itself (Enter on Deny denies); Esc
- * denies from inside the card. Keys that began outside the card (a held
- * Enter from the composer, a stray keyup) are swallowed. Focus moves here
- * only for the focused pane when the person is not typing elsewhere.
- */
 export function PermissionPrompt({
   items,
   focused = true,
@@ -35,11 +27,8 @@ export function PermissionPrompt({
   onCancelTurn,
 }: {
   items: readonly PermissionProjectionItem[];
-  /** Only the focused pane may take focus. */
   focused?: boolean;
-  /** False while the composer is active or the person typed in the last 500 ms. */
   canTakeFocus?: () => boolean;
-  /** Stop the Turn; always offered so the pane can never be stranded. */
   onCancelTurn?: () => void;
 }) {
   const item = items[0];
@@ -105,7 +94,6 @@ export function PermissionPrompt({
     !offered ||
     offered.includes("reject_once") ||
     offered.includes("reject_always");
-  // A fallback Deny for this request is in flight until it settles here.
   const pending =
     sent?.[0] === item.id ? sent[1] : approvalHold.denies.has(item.id);
   const resolve = (decision: PermissionDecision) => {
@@ -141,8 +129,8 @@ export function PermissionPrompt({
         ) : null}
         {items.length > 1 ? <span>1 of {items.length}</span> : null}
         {onCancelTurn ? (
-          // Always offered so the pane is never stranded, but quiet: the
-          // reference card has no Stop, so it is a secondary header control.
+          // Always offered so the pane is never stranded, although the
+          // reference card has no Stop.
           <button
             ref={firstRef}
             type="button"

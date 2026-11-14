@@ -37,10 +37,6 @@ const activityIcons: Partial<Record<ToolRollup["kind"], typeof Workflow>> = {
   think: BrainCircuit,
 };
 
-/**
- * One activity row: a muted kind icon and label. A live row shows only the
- * shimmer; state and duration stay in the accessible name and the detail.
- */
 export function ToolActivityRollup({
   rollup,
   interactive,
@@ -50,7 +46,6 @@ export function ToolActivityRollup({
   interactive: boolean;
   onOpenResource?: AgentArtifactOpenHandler;
 }) {
-  // A row opens only when the user opens it.
   const [expanded, setExpanded] = useState(false);
   const turnEnded = useContext(WorkedTurnTerminal);
   const label = toolRollupLabel(
@@ -67,7 +62,6 @@ export function ToolActivityRollup({
   const iconKind = (current ?? rollup.items[0])?.payload.presentation.kind;
   const ActivityIcon = (iconKind && activityIcons[iconKind]) || Workflow;
   const duration = toolRollupDurationLabel(rollup.items);
-  // A collapsed row still says what the live MCP call is doing.
   const progress = liveToolProgress(current);
   return (
     <details

@@ -20,7 +20,6 @@ const capabilityFor = {
   review: "nativeReview",
 } as const;
 
-/** The live, idle current session negotiated this action. */
 export function sessionActionAvailable(
   page: AcpChatPage | null | undefined,
   kind: AcpSessionAction["kind"],

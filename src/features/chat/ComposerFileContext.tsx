@@ -8,7 +8,6 @@ import type { useComposerFileContext } from "./useComposerFiles";
 
 type FileContext = ReturnType<typeof useComposerFileContext>;
 
-// The first-Chat path carries only these mounts and the attach button.
 const MentionPart = lazyParts<typeof MentionChunk>(
   () => import("./ComposerMentionController"),
 );
@@ -27,7 +26,6 @@ export function ComposerAttachButton({
 }) {
   return (
     <IconButton
-      // Anchors the attach menu.
       id={`${fieldId}-attach`}
       className="composer__plus"
       aria-label="Attach files"
@@ -56,10 +54,8 @@ export function ComposerFileParts({
   fieldId: string;
   text: string;
   imageAction?: { disabled: boolean; onChoose: () => void };
-  /** Hands a pick to the chat's staged batch, which the paste part owns. */
   onPickFiles: () => void;
   hidden: boolean;
-  /** The field cannot be edited. */
   disabled: boolean;
 }) {
   return (
@@ -73,8 +69,6 @@ export function ComposerFileParts({
           text={text}
         />
       ) : null}
-      {/* Only the button and its menu: the staged batch and its chips
-          belong to the paste part, so this loads with the first press. */}
       {chatId && files.attachPresses > 0 ? (
         <AttachPart
           part="ComposerAttach"

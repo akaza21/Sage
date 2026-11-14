@@ -7,7 +7,6 @@ import {
 import { utf8ByteLength } from "../../domain/text";
 
 export const SELECTABLE_ANSWER = "[data-selectable-answer]";
-/** Never quote answer/header/button chrome. */
 const CHROME =
   'button, header, [role="toolbar"], [aria-hidden="true"], .acp-message__partial';
 /** Fail closed beyond transcript retention limits. */
@@ -16,7 +15,6 @@ const MAX_ANSWER_CHARACTERS = 1_000_000;
 
 type Box = { left: number; top: number; bottom: number };
 
-/** Center 6 px above selection; clamp to column scrollport, flipping below if clipped. */
 export function selectionPopoverPosition(
   rect: Box,
   column: { left: number; top: number; width: number },
@@ -55,7 +53,6 @@ function textNodes(answer: HTMLElement): Text[] {
   return nodes;
 }
 
-/** Plain-text offset of a DOM point. */
 function offsetAt(
   answer: HTMLElement,
   nodes: Text[],
@@ -83,7 +80,6 @@ function answerOf(node: Node | null, content: HTMLElement) {
   return answer && content.contains(answer) ? answer : null;
 }
 
-/** Bounded quote, or null unless within one answer. */
 export function readTranscriptQuote(
   selection: Selection | null,
   content: HTMLElement,
@@ -134,7 +130,6 @@ export function readTranscriptQuote(
   return { quote, range: range.cloneRange(), answer };
 }
 
-/** With answer focus and no selection, quote the whole answer. */
 export function selectAnswerText(focused: HTMLElement, content: HTMLElement) {
   const answer = answerOf(focused, content);
   const nodes = answer && answer === focused ? textNodes(answer) : [];
@@ -148,7 +143,6 @@ export function selectAnswerText(focused: HTMLElement, content: HTMLElement) {
   return readTranscriptQuote(selection, content);
 }
 
-/** Quoted answer, or null while unmounted. */
 export function quoteAnswer(
   content: HTMLElement,
   quote: TranscriptQuoteContext,
@@ -162,7 +156,6 @@ export function quoteAnswer(
   );
 }
 
-/** Resolve stored quote; null if text moved. */
 export function quoteRange(
   content: HTMLElement,
   quote: TranscriptQuoteContext,
@@ -171,7 +164,6 @@ export function quoteRange(
   return answer ? quoteRangeIn(answer, quote) : null;
 }
 
-/** Range in a known answer; null if text moved. */
 export function quoteRangeIn(
   answer: HTMLElement,
   quote: TranscriptQuoteContext,
@@ -209,7 +201,6 @@ export function quoteContext(quote: TranscriptQuote): TranscriptQuoteContext {
   };
 }
 
-/** Per-Chat disposable chip/decoration intents; attached context stays in the store. */
 const bus = new EventTarget();
 
 export type AnnotationRequest = "edit" | "show";

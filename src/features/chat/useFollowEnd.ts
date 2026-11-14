@@ -50,7 +50,6 @@ export function useFollowEnd({
 }: {
   ownerKey: string;
   revision: string | number | undefined;
-  /** A live turn: growth below a paused reader shows the activity pill. */
   running?: boolean;
   transcriptRef: RefObject<HTMLElement | null>;
   contentRef: RefObject<HTMLElement | null>;
@@ -59,7 +58,6 @@ export function useFollowEnd({
   const [followState, setFollowState] = useState({ ownerKey, following: true });
   const followingEnd =
     followState.ownerKey === ownerKey ? followState.following : true;
-  // "activity": new rows landed below a paused reader.
   const [jumpState, setJumpState] = useState<{
     ownerKey: string;
     visible: boolean | "activity";
@@ -73,7 +71,6 @@ export function useFollowEnd({
   const lastScrollTopRef = useRef(0);
   const followingEndRef = useRef(followingEnd);
   const navigationPausedRef = useRef(false);
-  // Content height while the reader last followed the end.
   const followedHeightRef = useRef(Infinity);
   const jumpFor = useCallback(
     (transcript: HTMLElement) => ({
@@ -161,7 +158,6 @@ export function useFollowEnd({
     };
     const wheel = (event: WheelEvent) =>
       movesTranscriptUp(event) ? navigate() : readerInput();
-    // Any pointerdown inside the transcript counts, including child controls.
     transcript.addEventListener("wheel", wheel);
     transcript.addEventListener("pointerdown", readerInput);
     transcript.addEventListener("touchstart", readerInput);
@@ -190,7 +186,6 @@ export function useFollowEnd({
     const observer = new ResizeObserver(() => {
       const current = transcriptRef.current;
       if (!current) return;
-      // A travelling jump retargets the moving end on its next frame.
       if (jumpingRef.current) return;
       if (!followingEndRef.current) {
         setJumpState(jumpFor(current));
@@ -232,7 +227,6 @@ export function useFollowEnd({
       const transcript = transcriptRef.current;
       if (transcript) {
         const atEnd = transcriptIsAtEnd(transcript);
-        // Nothing is below the fold at the end, including where a jump lands.
         if (atEnd) followedHeightRef.current = transcript.scrollHeight;
         if (jumpingRef.current || anchoringRef.current) {
           if (atEnd) jumpingRef.current = false;
@@ -283,7 +277,6 @@ export function useFollowEnd({
       }
       jumpingRef.current = false;
       anchoringRef.current = distanceFromEnd(current) > 1;
-      // The pill stays through the travel and fades once it lands (s6/f0699).
       hide();
     };
     frameRef.current = requestAnimationFrame(step);

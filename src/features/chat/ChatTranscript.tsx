@@ -85,18 +85,15 @@ export function ChatTranscript({
   ) => void;
   hasEarlier: boolean;
   historyLoading?: boolean;
-  /** A native chat is resolved, so a page without one is still loading. */
   pageExpected?: boolean;
   loadingEarlier: boolean;
   historyError: string | null;
-  /** Why a native chat's first page failed; it then has nothing to wait for. */
   firstPageError?: string | null;
   onLoadEarlier: () => void;
   messages: readonly ChatMessage[];
   developmentSimulator: boolean;
   onRetry?: () => void;
   onReviewChanges?: () => void;
-  /** "activity": follow is paused and a running turn grew below. */
   showJumpToLatest: boolean | "activity";
   onJumpToLatest: () => void;
 }) {
@@ -139,7 +136,6 @@ export function ChatTranscript({
   }, []);
   const retryAction = useMemo(
     () =>
-      // A side chat is temporary: nothing in it offers Retry.
       useNativeAcp &&
       page &&
       !isSideChatId(page.chatId) &&

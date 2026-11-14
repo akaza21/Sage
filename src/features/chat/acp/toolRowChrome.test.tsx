@@ -128,7 +128,6 @@ it("opens a Web run row to its plaintext result block (s5/f0405)", () => {
   const row = container.querySelector("details.acp-tool-rollup")!;
   const summary = row.querySelector("summary")!;
   expect(summary).toHaveTextContent("Web run");
-  // Collapsed at rest, like every row (s2/f0011); it has a chevron to open.
   expect(row.querySelector(".acp-tool-result")).toBeNull();
   expect(summary.querySelector(".acp-tool-rollup__chevron")).not.toBeNull();
   (row as HTMLDetailsElement).open = true;
