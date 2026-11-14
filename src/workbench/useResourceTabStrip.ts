@@ -31,6 +31,10 @@ function revealInStrip(strip: HTMLElement, row: HTMLElement) {
 
 const EDGE_TOLERANCE_PX = 1;
 
+/**
+ * `data-overflow` names the edges that hide tabs ("start", "end"), for the
+ * stylesheet's fades.
+ */
 function markOverflowEdges(strip: HTMLElement) {
   const hidden = strip.scrollWidth - strip.clientWidth;
   const edges = [
@@ -74,6 +78,7 @@ function revealSelectedTab(strip: HTMLElement) {
 
 export interface ResourceTabStripOptions {
   activation?: TabListActivation;
+  /** A change reveals the selected tab before paint. */
   revealKey?: string | null;
 }
 

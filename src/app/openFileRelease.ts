@@ -23,11 +23,12 @@ type SetState = StoreApi<WorkbenchState>["setState"];
 
 export interface ReleasedFile {
   projectId: string;
-  /** A failed move may still have changed the layout natively. */
+  /** At release; a failed move may still have changed the layout natively. */
   projectGeneration: number;
   transitionEpoch: number;
   tabs: WorkbenchTab[];
   activeId: string | null;
+  /** The tab closing the active one would have activated instead. */
   neighbourId: string | null;
 }
 
@@ -72,7 +73,8 @@ function neighbourOf(
 
 /**
  * Native rename and recycle act only on closed Files, so a clean open File's
- * tabs are taken out first and settled afterwards.
+ * tabs are taken out first and settled afterwards. Null when nothing is open
+ * or the move cannot start; the action itself then reports why.
  */
 export async function releaseCleanFile(
   get: GetState,

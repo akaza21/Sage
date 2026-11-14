@@ -14,10 +14,12 @@ export interface EditorPlace {
 interface Trip {
   place: EditorPlace;
   opening: boolean;
+  /** A caret has moved in the File since it opened: the target landed. */
   arrived: boolean;
 }
 
 export const MAX_EDITOR_PLACES = 50;
+/** A caret jump farther than this leaves a new place; a nearer one moves it. */
 const FAR_LINES = 10;
 
 let back: EditorPlace[] = [];
@@ -213,5 +215,7 @@ async function travel(backwards: boolean) {
   trip = null;
   current = left;
   if (left) to.pop();
+  // Busy for a moment (a save, a rename, a Project opening): keep the place
+  // for the next try.
   if (busy) from.push(target);
 }

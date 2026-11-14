@@ -38,6 +38,7 @@ function invalid(): never {
   throw new Error("Invalid native session response");
 }
 
+/** Newest activity first, on the runtime that listed earlier pages. */
 export async function listNativeSessions(
   projectId: string,
   cursor: string | null,

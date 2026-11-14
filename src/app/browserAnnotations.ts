@@ -15,6 +15,7 @@ export {
 };
 
 export interface BrowserElementSink {
+  /** The next free draft element number (1–8), or null when none is free. */
   nextOrdinal(): number | null;
   attach(element: BrowserElementContext): boolean;
 }

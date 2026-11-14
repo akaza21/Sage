@@ -8,6 +8,7 @@ import { chatAccessChanges } from "../ports/chatAccessChanges";
 // Loaded on demand, with the access menu or a live chat's access, so the
 // chat path carries none of it.
 interface ChatAccessStore {
+  /** By session; null is the harness default. Newest last. */
   modes: Readonly<Record<string, SessionAccessMode | null>>;
   error: string | null;
 }
@@ -16,6 +17,7 @@ export const useChatAccessStore = create<ChatAccessStore>(() => ({
   error: null,
 }));
 const store = useChatAccessStore;
+/** Modes that run actions without asking take a confirmed native token. */
 export const PERMISSIVE_ACCESS: readonly SessionAccessMode[] = [
   "auto",
   "fullAccess",

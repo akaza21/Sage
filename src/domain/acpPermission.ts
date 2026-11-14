@@ -46,6 +46,7 @@ export interface UserInputQuestion {
   id: string;
   header: string;
   question: string;
+  /** Absent for a free-text question. */
   options?: readonly UserInputOption[];
   allowsOther: boolean;
   /** Render masked; the answer is never retained. */

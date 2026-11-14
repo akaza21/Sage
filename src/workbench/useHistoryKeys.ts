@@ -25,7 +25,8 @@ function typingElsewhere(target: EventTarget | null) {
 
 /**
  * The Editor window takes the keys before the editor sees them, which would
- * otherwise move the caret by a word.
+ * otherwise move the caret by a word. `null` (Settings over the window) leaves
+ * the keys alone.
  */
 export function useHistoryKeys(mode: WorkbenchWindowMode | null) {
   useEffect(() => {

@@ -60,8 +60,10 @@ const CHILD_REFRESH_MS = 1_000;
 export type ChildRefresh = {
   identity: string;
   inFlight: boolean;
+  /** The epoch moved while a read was in flight. */
   again: boolean;
   timer: ReturnType<typeof setTimeout> | undefined;
+  /** performance.now() when the latest read started. */
   startedAt: number;
   send: () => void;
 };

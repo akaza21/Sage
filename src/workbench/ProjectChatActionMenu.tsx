@@ -32,6 +32,7 @@ import {
 const ActionsPart = lazyParts<typeof ActionsChunk>(() =>
   Promise.all([
     import("./ProjectChatActionPopover"),
+    // A failed Hand off chunk must not prevent the rest of the menu loading.
     preloadChatHandoffControl().catch(() => undefined),
   ]).then(([chunk]) => chunk),
 );
@@ -292,6 +293,8 @@ export function ProjectChatRailGlyph({
 
 const HOVER_CARD_WIDTH = 288;
 
+// The owning row supplies the accessible text, so this hover card is
+// aria-hidden.
 export function ProjectChatHoverCard({
   row,
   shownAt,

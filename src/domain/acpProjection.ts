@@ -60,6 +60,7 @@ export type ToolPresentation =
       label: string;
       resources: readonly SafeResourceLocation[];
     }
+  /** The query, when supplied, is the item's `inputSummary`. */
   | { kind: "webSearch"; label: string }
   | {
       kind: "move";
@@ -106,6 +107,7 @@ export type ToolPresentation =
       toolLabel: string;
       argumentsSummary: string | null;
       resultSummary: string | null;
+      /** Running status only; omitted after the call becomes terminal. */
       progress?: string;
     }
   | {
@@ -155,6 +157,7 @@ type ToolItem<Kind extends string, Payload> = AcpItemIdentity & {
 
 export type AcpItem =
   | PlainItem<"text", { role: "user" | "assistant" | "system"; text: string }>
+  /** A message the user steered into the running Turn, at its place. */
   | PlainItem<"userPrompt", { text: string }>
   | PlainItem<"thoughtSummary", { summary: string }>
   | PlainItem<"compactionNotice", Record<string, never>>
@@ -194,6 +197,7 @@ export type AcpItem =
         > | null;
         category?: ToolPresentation["kind"];
         reason?: string | null;
+        /** Questions for the user, rather than a request for approval. */
         userInput?: UserInputRequest | null;
       }
     >
@@ -312,7 +316,9 @@ export interface AcpChatPage {
   restoredSessionConfig?: AcpRestoredSessionConfig | null;
   sessionConfigNotice?: AcpSessionConfigNotice | null;
   goal?: AcpGoalState;
+  /** The current session's live runtime reports usage limits. */
   usage?: true;
+  /** Undecoded; the panel that shows it decodes it (`decodeSessionSurface`). */
   sessionSurface?: unknown;
   projectId: SageProjectId;
   chatId: SageChatId;

@@ -6,6 +6,7 @@ import { invokeNative, isTauriRuntime } from "./nativeInvoke";
  * the chat path.
  */
 export interface ChatAccessChanges {
+  /** The chat's own mode, or null when it uses its harness default. */
   get(sessionId: string): Promise<unknown>;
   /**
    * Sets a mode that needs no confirmation; it replaces any other. Stepping

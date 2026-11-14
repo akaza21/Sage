@@ -10,6 +10,7 @@ export interface SideChatEntry {
 
 /** At most one side chat per Project and eight in all (Rust enforces the same). */
 export const MAX_SIDE_CHATS = 8;
+/** The 43/57 split; never persisted. */
 export const SIDE_CHAT_SPLIT = 43;
 
 export const useSideChatState = create<{

@@ -30,6 +30,7 @@ export interface McpServer {
   tools: number;
   resources: number;
   error: string | null;
+  /** The scheme, host and port of an HTTP server. */
   origin: string | null;
 }
 

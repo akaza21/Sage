@@ -13,6 +13,7 @@ export interface SessionActivity {
 
 export interface AcpSessionSurface {
   activities: readonly SessionActivity[];
+  /** The latest turn, when the running session can undo its file changes. */
   undoTurn?: string;
   undoKeepsFiles?: boolean;
 }

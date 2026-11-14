@@ -14,6 +14,7 @@ export interface DismissLayerOptions {
   inside: readonly RefObject<Element | null>[];
   onEscape?: () => void;
   onOutside?: (event: PointerEvent) => void;
+  /** Presses outside a modal layer never reach the layers under it. */
   modal?: boolean;
 }
 
@@ -81,7 +82,8 @@ function remove(layer: Layer) {
 
 /**
  * React bubbles keys through portals along the component tree, so the innermost
- * open layer sees Escape first.
+ * open layer sees Escape first. A handler inside the layer that wants Escape
+ * calls `preventDefault()`, and the layer stays open.
  */
 export function dismissLayerKeyDown(
   event: ReactKeyboardEvent,
@@ -101,6 +103,10 @@ export function dismissLayerKeyDown(
   onEscape();
 }
 
+/**
+ * A press outside dismisses every layer above the one it lands in, stopping at
+ * a modal layer.
+ */
 export function useDismissLayer(open: boolean, options: DismissLayerOptions) {
   const parent = useContext(DismissLayerContext);
   const optionsRef = useRef(options);

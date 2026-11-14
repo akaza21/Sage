@@ -195,6 +195,7 @@ export interface AgentRailSections {
   projects: AgentRailProjectGroup[];
   recent: AgentRailChatItem[];
   all: AgentRailChatItem[];
+  /** Where Chat search continues when "In one list" cannot hold every chat. */
   allOverflowProjectId: string | null;
 }
 

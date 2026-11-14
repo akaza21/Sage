@@ -18,7 +18,6 @@ import { preloadSearchablePicker } from "../ui/searchablePickerLoad";
 import { useSideChatState } from "./sideChatState";
 import { resetAgentChatHistory } from "./agentChatHistory";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 
 const initialState = useWorkbenchStore.getState();

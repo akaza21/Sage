@@ -1,9 +1,10 @@
 import { utf8ByteLength } from "./text";
 
 /**
- * Matches whole project-relative / paths; a whole ** segment matches zero or
- * more segments; * and ? match within a segment; case-sensitive. Mirrors src-tauri/src/workspace/path_glob.rs; both test
- * against path_glob/cases.json.
+ * A pattern matches a whole Project-relative path with `/` separators: a `**`
+ * segment matches zero or more segments, `*` and `?` match within a segment,
+ * and matching is case-sensitive. Mirrors src-tauri/src/workspace/path_glob.rs;
+ * both test against path_glob/cases.json.
  */
 
 export const MAX_PATH_GLOB_BYTES = 256;

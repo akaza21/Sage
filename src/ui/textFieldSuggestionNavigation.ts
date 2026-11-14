@@ -2,6 +2,7 @@ import { useCallback, useMemo, type ReactNode } from "react";
 import { useActiveOption } from "./listNavigation";
 import { isImeComposing } from "./imeComposition";
 
+/** Rows rendered at once; the rest are counted and reached by typing more. */
 export const TEXT_FIELD_SUGGESTIONS_MAX_RENDERED = 50;
 
 export interface TextFieldSuggestion {

@@ -4,17 +4,20 @@
 import type { WorkspaceNotifyNotice } from "../features/files/workspaceNotifyCompose";
 
 export const REFRESH_DEBOUNCE_MS = 300;
+/** Caps the debounce so a busy build cannot hold a refresh back. */
 export const MAX_WAIT_MS = 1_500;
 export const STAMP_INTERVAL_MS = 500;
 export const MIN_POLL_MS = 2_000;
 export const MAX_POLL_MS = 15_000;
 export const MIN_IDLE_POLL_MS = 30_000;
 export const MAX_IDLE_POLL_MS = 120_000;
+/** How long Git is polled after the watcher's last lost-events resync. */
 export const RESYNC_POLL_MS = 60_000;
 const POLL_STATUS_FACTOR = 10;
 const IDLE_STATUS_FACTOR = 200;
 const MAX_BACKOFF_STEPS = 8;
 
+/** `skipped`: the store was busy and refreshed nothing. */
 export type RefreshOutcome = "changed" | "unchanged" | "skipped";
 
 export interface RepositoryAutoRefreshDeps {
@@ -23,6 +26,7 @@ export interface RepositoryAutoRefreshDeps {
   subscribeNotices(
     listener: (notice: WorkspaceNotifyNotice) => void,
   ): () => void;
+  /** The watcher misses some edits from the start (see the hook). */
   pollAlways: boolean;
 }
 
@@ -102,6 +106,7 @@ export function startRepositoryAutoRefresh(
     else if (outcome === "unchanged" && pollOnly && !activity) {
       idlePolls = Math.min(MAX_BACKOFF_STEPS, idlePolls + 1);
     }
+    // A rename, commit or Project change kept it from running: retry soon.
     if (outcome === "skipped") {
       pollTimer = clear(pollTimer);
       pollTimer = setTimeout(() => request(), STAMP_INTERVAL_MS);

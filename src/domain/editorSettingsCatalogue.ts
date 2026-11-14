@@ -223,6 +223,8 @@ export function sameEditorSettingValue(
     (Array.isArray(a) &&
       Array.isArray(b) &&
       a.length === b.length &&
+      // Admitted globs contain no NUL, so joining with NUL preserves list
+      // boundaries.
       a.join("\0") === b.join("\0"))
   );
 }

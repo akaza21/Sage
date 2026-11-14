@@ -30,6 +30,10 @@ function walk(
   return null;
 }
 
+/**
+ * `current` is -1 when no item is active. Null for a key that does not
+ * navigate, or when no other item can become active.
+ */
 export function listIndexForKey(
   key: string,
   current: number,
@@ -63,6 +67,7 @@ export function hasNavigationModifier(event: {
   return event.altKey || event.ctrlKey || event.metaKey || event.shiftKey;
 }
 
+/** `labels` holds only the items that can take focus. */
 export function typeaheadIndex(
   labels: readonly string[],
   current: number,
@@ -83,6 +88,10 @@ export function typeaheadIndex(
 
 export const ACTIVE_OPTION_PAGE_SIZE = 10;
 
+/**
+ * `fallback: "none"` leaves no row active, so Enter keeps its meaning in the
+ * field.
+ */
 export function useActiveOption(
   ids: readonly string[],
   fallback: "first" | "none",
@@ -91,6 +100,7 @@ export function useActiveOption(
   const chosen = chosenId === null ? -1 : ids.indexOf(chosenId);
   const activeIndex =
     chosen >= 0 ? chosen : fallback === "first" && ids.length > 0 ? 0 : -1;
+  // Editable-field callers must leave Home/End to the caret.
   const move = useCallback(
     (key: string) => {
       const next = listIndexForKey(
@@ -110,6 +120,7 @@ export function useActiveOption(
   return {
     activeId: activeIndex >= 0 ? ids[activeIndex] : null,
     activeIndex,
+    /** The id last chosen, even while it is not in the list. */
     chosenId,
     move,
     setActiveId,

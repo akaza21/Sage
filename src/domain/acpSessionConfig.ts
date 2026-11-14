@@ -51,6 +51,7 @@ export interface AcpSessionConfig {
   /** Only on the composer's view of a restored config: its controls' note; a
    * choice on it is stored for the session to apply. */
   restored?: string;
+  /** The composer's note on a stored choice the session could not take back. */
   notice?: string;
 }
 /** Stored choices apply before the next prompt: on resume when there is no
@@ -62,6 +63,7 @@ export type AcpRestoredSessionConfig = Omit<
 export interface AcpSessionConfigNotice {
   configId: string;
   saved: string;
+  /** The value the session uses instead of `saved`. */
   current: string;
   reason: "notOffered" | "rejected";
 }

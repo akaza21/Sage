@@ -29,7 +29,6 @@ vi.mock("../features/chat/acp/useAcpChatLiveSnapshot", () => ({
   useAcpChatLiveSnapshot: (chatId: string) => snapshot(chatId, true),
 }));
 
-// The header menu body loads when the window first idles.
 beforeAll(() => preloadAgentHeaderMenu());
 
 const initialState = useWorkbenchStore.getState();

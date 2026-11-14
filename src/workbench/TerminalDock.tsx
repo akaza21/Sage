@@ -18,11 +18,13 @@ import {
 import { utf8ByteLength } from "../domain/text";
 import { withStyleNonce } from "../ports/styleNonce";
 
+/** How long input refused as busy keeps being offered before it is dropped. */
 const INPUT_RETRY_MS = 10_000;
 const INPUT_RETRY_FIRST_DELAY_MS = 50;
 const INPUT_RETRY_MAX_DELAY_MS = 500;
 const READ_RETRY_DELAY_MS = 100;
 const SCROLLBACK_LINES = 1_000;
+/** The only system setting that redefines the theme tokens. */
 const FORCED_COLORS_QUERY = "(forced-colors: active)";
 // xterm requires two columns for wide characters and at least one row.
 const MIN_COLUMNS = 2;

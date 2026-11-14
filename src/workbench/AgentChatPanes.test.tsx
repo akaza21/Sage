@@ -49,7 +49,6 @@ import { launchSideChat } from "./AgentToolPanel";
 import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
 import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
 
-// The header menu body loads when the window first idles.
 beforeAll(() => preloadAgentHeaderMenu());
 
 let resizeCallback: ResizeObserverCallback | null = null;

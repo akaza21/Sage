@@ -10,8 +10,10 @@ export interface AgentChatPlace {
 
 export type AgentChatTrip =
   | { kind: "opened" }
+  /** Nothing moved: a turn holds the project, or a transition is running. */
   | { kind: "blocked" }
   | { kind: "missing" }
+  /** The project opened but not the chat; a gone chat's entry is dropped. */
   | { kind: "landedElsewhere"; place: AgentChatPlace; targetGone: boolean };
 
 export type OpenAgentChat = (place: AgentChatPlace) => Promise<AgentChatTrip>;
