@@ -9,12 +9,14 @@ use uuid::Uuid;
 
 use crate::editor_persistence::store::EditorBufferStore;
 use crate::{
-    editor_content::{MAX_EDITABLE_BYTES, detect_line_ending, fingerprint},
+    editor_content::{detect_line_ending, fingerprint},
     editor_persistence::PersistedEditorBuffer,
 };
 use sage_db::database::Database;
 use sage_domain::{editor::DocumentVersion, resource::ResourceRef};
-use sage_workspace::{RootIdentity, Workspace, leaf_identity, open_workspace_text_file};
+use sage_workspace::{
+    MAX_EDITABLE_BYTES, RootIdentity, Workspace, leaf_identity, open_workspace_text_file,
+};
 
 pub(super) use self::platform::HeldParent;
 

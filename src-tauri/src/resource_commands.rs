@@ -5,7 +5,6 @@ use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     editor,
     editor_coordination::EditorOperationKind,
-    repository,
     state::AppState,
     workbench_restore::{
         MAX_RESOURCE_TABS, MAX_RESTORED_TAB_BYTES, MAX_RESTORED_TABS, tab_projection_bytes,
@@ -95,7 +94,7 @@ async fn build_bootstrap_snapshot_with_repository_status(
             .map_err(|error| error.to_string());
         repository_roots.push((root.id, workspace));
     }
-    snapshot.repositories = repository::project_status(repository_roots).await;
+    snapshot.repositories = sage_git::project_status(repository_roots).await;
     snapshot.recovered_buffers = editor::recovered_buffers(&state.database, &project.id)?;
     merge_recovered_file_tabs(&mut snapshot);
     append_startup_recovery_notice(&mut snapshot, state.startup_recovery_notice.as_deref());
@@ -220,24 +219,22 @@ pub async fn get_repository_status(
             (root.id, workspace)
         })
         .collect();
-    Ok(repository::project_status(roots).await)
+    Ok(sage_git::project_status(roots).await)
 }
 
 #[tauri::command]
 pub async fn get_file_diff(
     state: State<'_, AppState>,
     resource: ResourceRef,
-    scope: Option<crate::repository_diff::GitDiffScope>,
+    scope: Option<sage_git::diff::GitDiffScope>,
 ) -> Result<FileDiff, String> {
     let workspace = state
         .database
         .resolve_active_resource(&resource)
         .map_err(|error| error.to_string())?;
     match scope {
-        Some(scope) => {
-            crate::repository_diff::scoped_file_diff(&workspace, &resource, Some(scope)).await
-        }
-        None => repository::file_diff(&workspace, &resource).await,
+        Some(scope) => sage_git::diff::scoped_file_diff(&workspace, &resource, Some(scope)).await,
+        None => sage_git::diff::file_diff(&workspace, &resource).await,
     }
     .map_err(|error| error.to_string())
 }

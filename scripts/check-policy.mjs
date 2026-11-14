@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { lstat, readFile, readdir } from "node:fs/promises";
 import path from "node:path";
@@ -6,6 +7,7 @@ import process from "node:process";
 import { cargoPackageFeatureErrors } from "./ade0006a-package-policy.mjs";
 import { acpTransportParityErrors } from "./acp-transport-parity.mjs";
 import { browserTestPolicyErrors } from "./browser-test-policy.mjs";
+import { testSupportGraphErrors } from "./cargo-test-support-policy.mjs";
 import { cssHygienePolicyErrors } from "./css-hygiene-policy.mjs";
 import {
   cssHighlightPolicyErrors,
@@ -16,7 +18,7 @@ import { q02SharedHelperPolicyErrors } from "./q02-shared-helpers-policy.mjs";
 import { packageResourcePolicyErrors } from "./package-resource-policy.mjs";
 
 const reviewedSpawnModules = new Map([
-  ["src-tauri/src/git_process.rs", "Git CLI execution boundary"],
+  ["crates/sage-git/src/process.rs", "Git CLI execution boundary"],
   [
     "src-tauri/src/acp/process/unix/spawn.rs",
     "Contained ACP harness launch on Unix",
@@ -791,11 +793,19 @@ for (const [file, manifest] of [
   ...crateManifestPaths.map((file, index) => [file, crateManifests[index]]),
 ]) {
   for (const error of memberDependencyErrors(file, manifest)) fail(error);
-  for (const error of memberFeatureErrors(file, manifest)) fail(error);
 }
-for (const error of workspaceTestSupportErrors(workspaceCargoToml)) {
-  fail(error);
-}
+const cargoMetadata = JSON.parse(
+  execFileSync(
+    "cargo",
+    ["metadata", "--format-version", "1", "--all-features", "--locked"],
+    {
+      cwd: root,
+      encoding: "utf8",
+      maxBuffer: 64 * 1024 * 1024,
+    },
+  ),
+);
+for (const error of testSupportGraphErrors(cargoMetadata)) fail(error);
 const nativeLibrary = await readFile(
   path.join(root, "src-tauri/src/lib.rs"),
   "utf8",
@@ -1144,27 +1154,10 @@ function memberDependencyErrors(file, manifest) {
   for (const [, kind, body] of tables) {
     for (const line of body.split(/\r?\n/u)) {
       if (line.trim() === "" || line.trimStart().startsWith("#")) continue;
-      // Test helpers never reach a shipped or build-time binary.
-      if (kind !== "dev-" && /^sage-test-support\b/u.test(line)) {
-        errors.push(
-          `${file} may take sage-test-support only as a dev-dependency.`,
-        );
-      }
-      // A crate's `test-support` feature is turned on only by the tests of
-      // the crates above it (spec 4.4 rule 4 and 7.5).
       const testSupport =
         /^[A-Za-z0-9_-]+\s*=\s*\{\s*workspace\s*=\s*true\s*,\s*features\s*=\s*\["test-support"\]\s*\}\s*$/u.test(
           line,
         );
-      if (
-        kind !== "dev-" &&
-        /test-support/u.test(line) &&
-        !/^sage-test-support\b/u.test(line)
-      ) {
-        errors.push(
-          `${file} may enable a test-support feature only from [dev-dependencies].`,
-        );
-      }
       if (
         !(kind === "dev-" && testSupport) &&
         !/^[A-Za-z0-9_-]+(?:\.workspace\s*=\s*true|\s*=\s*\{\s*workspace\s*=\s*true\s*,\s*optional\s*=\s*true\s*\})\s*$/u.test(
@@ -1175,60 +1168,6 @@ function memberDependencyErrors(file, manifest) {
           `${file} must take dependencies from the workspace: ${line.trim()}`,
         );
       }
-    }
-  }
-  return errors;
-}
-
-// No feature turns on a `test-support` feature, so it cannot reach a build
-// through `[features]` either (spec 4.4 rule 4 and 7.5). The one exception
-// is a crate's own `test-support` feature, which may forward only to other
-// crates' `test-support` features.
-function memberFeatureErrors(file, manifest) {
-  const errors = [];
-  const table = manifest.match(
-    /^\[features\]\r?\n([\s\S]*?)(?=^\[|(?![\s\S]))/mu,
-  );
-  if (!table) return errors;
-  const body = table[1]
-    .split(/\r?\n/u)
-    .filter((line) => !line.trimStart().startsWith("#"))
-    .join("\n");
-  for (const [, name, list] of body.matchAll(
-    /^([A-Za-z0-9_-]+)\s*=\s*\[([^\]]*)\]/gmu,
-  )) {
-    const values = [...list.matchAll(/"([^"]*)"/gu)].map(([, value]) => value);
-    if (name === "test-support") {
-      for (const value of values) {
-        if (!/^[A-Za-z0-9_-]+\??\/test-support$/u.test(value)) {
-          errors.push(
-            `${file}'s test-support feature may forward only to other crates' test-support features: ${value}`,
-          );
-        }
-      }
-    } else if (values.some((value) => /(?:^|\/)test-support$/u.test(value))) {
-      errors.push(
-        `${file} may not enable a test-support feature from its ${name} feature.`,
-      );
-    }
-  }
-  return errors;
-}
-
-// The workspace pins no `test-support` feature, so a member that takes the
-// crate with `.workspace = true` cannot inherit it.
-function workspaceTestSupportErrors(manifest) {
-  const errors = [];
-  const table = manifest.match(
-    /^\[workspace\.dependencies\]\r?\n([\s\S]*?)(?=^\[|(?![\s\S]))/mu,
-  );
-  if (!table) return errors;
-  for (const line of table[1].split(/\r?\n/u)) {
-    if (line.trimStart().startsWith("#")) continue;
-    if (/\bfeatures\s*=\s*\[[^\]]*"test-support"/u.test(line)) {
-      errors.push(
-        `Cargo.toml may not enable a test-support feature in [workspace.dependencies]: ${line.trim()}`,
-      );
     }
   }
   return errors;

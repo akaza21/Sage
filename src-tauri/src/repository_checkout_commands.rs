@@ -2,7 +2,7 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{repository_checkout, state::AppState};
+use crate::state::AppState;
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryCheckoutRequest, GitRepositoryCheckoutResult,
 };
@@ -33,10 +33,10 @@ fn checkout_command_error(error: AppError) -> GitFileMutationCommandError {
                     sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
-            message: crate::repository_public_error::containment().into(),
+            message: sage_git::public_error::containment().into(),
         },
         error => GitFileMutationCommandError::Failed {
-            message: crate::repository_public_error::checkout(&error),
+            message: sage_git::public_error::checkout(&error),
         },
     }
 }
@@ -93,7 +93,7 @@ async fn checkout_git_local_branch_inner(
         })
         .collect();
     let checkout_result =
-        repository_checkout::checkout_listed_local_branch(&workspace, &request.branch).await;
+        sage_git::checkout::checkout_listed_local_branch(&workspace, &request.branch).await;
     let error = match checkout_result {
         Ok(()) => None,
         Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
@@ -107,7 +107,7 @@ async fn checkout_git_local_branch_inner(
         project_id: request.project_id,
         root_id: request.root_id,
         transition_epoch: *transition_epoch,
-        repositories: crate::repository_index_status::project_status(repository_roots).await,
+        repositories: sage_git::index_status::index_project_status(repository_roots).await,
         error,
     })
 }
