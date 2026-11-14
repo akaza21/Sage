@@ -1,12 +1,8 @@
-//! What the composer tells the user about a stored choice the session could
-//! not take back (schema v23). The row keeps the facts; the composer words
-//! them.
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::{ConfigId, ConfigMutation};
 use crate::acp::contract::SageAgentSessionId;
 
-/// A saved value the session does not run, and the value it runs instead.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SessionConfigNotice {
@@ -19,9 +15,7 @@ pub(crate) struct SessionConfigNotice {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum NoticeReason {
-    /// The session no longer offers the saved value.
     NotOffered,
-    /// The harness refused the saved value.
     Rejected,
 }
 
@@ -34,7 +28,7 @@ impl NoticeReason {
     }
 }
 
-/// Replaces the session's notice. Runs in the caller's transaction.
+/// Runs in the caller's transaction.
 pub(crate) fn set(
     connection: &Connection,
     session: &SageAgentSessionId,
@@ -59,8 +53,7 @@ pub(crate) fn set(
     Ok(())
 }
 
-/// Clears the session's notice about the mode or option `choice` sets, once
-/// a value is stored for it. Runs in the caller's transaction.
+/// Runs in the caller's transaction.
 pub(crate) fn clear(
     connection: &Connection,
     session: &SageAgentSessionId,
@@ -76,7 +69,7 @@ pub(crate) fn clear(
     Ok(())
 }
 
-/// The session's notice. A row this build cannot read is left out.
+/// A row this build cannot read is left out.
 pub(crate) fn load(
     connection: &Connection,
     session: &SageAgentSessionId,

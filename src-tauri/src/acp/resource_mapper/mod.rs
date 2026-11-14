@@ -40,7 +40,6 @@ pub(crate) enum ResourceMapError {
     PathMissing,
     ForeignPath,
     AmbiguousRoot,
-    /// A native root or leaf no longer denotes the object admitted at ingress.
     IdentityChanged,
     InvalidResource,
 }

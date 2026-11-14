@@ -10,8 +10,6 @@ pub(crate) struct RetainedCommandOutput {
     pub(crate) truncated: bool,
 }
 
-/// Joins text blocks exactly as they appeared in one bounded wire frame.
-///
 /// Callers must sanitize the joined value before retaining it: separate block
 /// sanitization would lose token context such as `Bearer` followed by a value.
 pub(crate) fn join_command_output_blocks<'a>(
@@ -30,9 +28,7 @@ pub(crate) fn join_command_output_blocks<'a>(
     Some(joined)
 }
 
-/// Retains a UTF-8-safe suffix of already-sanitized command output. The
-/// marker-free representation lets future streaming append source text without
-/// treating a display marker as source output.
+/// Retains a UTF-8-safe suffix of already-sanitized command output.
 pub(crate) fn retain_command_output(input: &str) -> Option<RetainedCommandOutput> {
     let maximum = LIMITS.wire.retained_tool_output_bytes as usize;
     let mut lines = VecDeque::new();
@@ -79,7 +75,6 @@ pub(crate) fn retain_command_output(input: &str) -> Option<RetainedCommandOutput
 }
 
 impl RetainedCommandOutput {
-    /// Composes the bounded presentation without modifying marker-free state.
     pub(crate) fn display_text(&self) -> Option<String> {
         if !self.truncated {
             let mut display = String::new();

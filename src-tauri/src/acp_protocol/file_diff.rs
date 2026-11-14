@@ -1,5 +1,3 @@
-//! Bounded immutable file-diff pair admission and snapshot identity.
-//!
 //! Native owns raw UTF-8 byte admission for `oldText`/`newText`. An admitted
 //! pair is stored as two SQLite BLOBs keyed by [`DiffRef`]; only bounded
 //! metadata stays in the encoded [`NormalizedPayload`](crate::acp::intent::NormalizedPayload).
@@ -10,10 +8,10 @@ use sha2::{Digest, Sha256};
 mod line_counts;
 pub(crate) use line_counts::line_change_counts;
 
-/// Maximum raw UTF-8 bytes per diff side. Checked before serialization so
+/// Checked before serialization so
 /// JSON escaping can never turn an admitted pair into an oversized payload.
 pub(crate) use sage_core::limits::DIFF_SIDE_BYTES_MAX;
-/// Maximum retained diffs per Turn. Over-cap admits summary-only metadata.
+/// Over-cap admits summary-only metadata.
 pub(crate) use sage_core::limits::DIFFS_PER_TURN;
 /// Single diff ordinal per persisted item (one resource per item).
 pub(crate) const DIFF_ORDINAL: u64 = 0;
@@ -22,7 +20,6 @@ const DIGEST_HEX_LEN: usize = 64;
 const MAX_ID_BYTES: usize = 512;
 const MAX_PATH_BYTES: usize = 16_384;
 
-/// Outcome of harness-neutral pair admission.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum PairAdmission {
     /// Both sides fit; bytes are the raw UTF-8 lengths.
@@ -49,7 +46,6 @@ pub(crate) fn admit_pair(old_text: &str, new_text: &str) -> PairAdmission {
     }
 }
 
-/// Content digest binding one immutable snapshot revision to its bytes.
 pub(crate) fn pair_digest(old_bytes: &[u8], new_bytes: &[u8]) -> String {
     let mut hash = Sha256::new();
     hash.update(b"sage-file-diff-v1\x00");
@@ -138,7 +134,7 @@ impl DiffRef {
     }
 }
 
-/// One bounded snapshot read result. Re-checked against the side cap.
+/// Re-checked against the side cap.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct SnapshotData {
     pub old_text: String,
@@ -149,15 +145,13 @@ pub(crate) struct SnapshotData {
     pub content_digest: String,
 }
 
-/// Typed snapshot read failure. Missing, mismatched, stale, or corrupt rows
+/// Missing, mismatched, stale, or corrupt rows
 /// never fall back to disk or Git.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SnapshotReadError {
     /// No admitted pair exists for this ref (summary-only or unknown).
     Unavailable,
-    /// Owner tuple or revision does not match the durable row.
     Stale,
-    /// Row bytes fail integrity checks.
     Corrupt,
     /// Refused: foreign root, malformed ref, or wrong project/chat owner.
     Forbidden,

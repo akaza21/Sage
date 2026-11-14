@@ -1,5 +1,3 @@
-//! Ephemeral harness usage limits. A runtime keeps only its latest snapshot;
-//! nothing is persisted and no history is kept.
 use serde::Serialize;
 use std::sync::{Arc, Mutex, PoisonError};
 
@@ -18,7 +16,6 @@ pub(crate) struct UsageWindow {
     pub(crate) resets_at: Option<i64>,
 }
 
-/// What the current session has spent so far, as its harness counts it.
 #[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SessionSpend {
@@ -32,7 +29,6 @@ pub(crate) struct SessionSpend {
 }
 
 impl SessionSpend {
-    /// Admits a reported cost only when it is a real, non-negative amount.
     pub(crate) fn with_cost(mut self, cost: Option<f64>) -> Self {
         self.cost_usd = cost.filter(|cost| cost.is_finite() && *cost >= 0.0);
         self
@@ -45,12 +41,10 @@ pub(crate) struct UsageSnapshot {
     pub(crate) plan: Option<String>,
     pub(crate) limit_reached: bool,
     pub(crate) windows: Vec<UsageWindow>,
-    /// The session's own spend, for harnesses that report one.
     pub(crate) session: Option<SessionSpend>,
 }
 
 impl UsageSnapshot {
-    /// Admits one window; windows past the cap are dropped.
     pub(crate) fn push(
         &mut self,
         label: Option<&str>,
@@ -69,8 +63,6 @@ impl UsageSnapshot {
         });
     }
 
-    /// Names the plan as harnesses spell it (`plus`, `max`, `pro_lite`),
-    /// shown with its first letter capitalized.
     pub(crate) fn set_plan(&mut self, plan: &str) {
         self.plan = bounded_label(&plan.replace('_', " ")).map(|mut plan| {
             if let Some(first) = plan.get_mut(..1) {
@@ -109,12 +101,10 @@ impl UsageCell {
         *self.lock() = UsageState::Usage { snapshot };
     }
 
-    /// The harness refused to report usage for this account.
     pub(crate) fn mark_unsupported(&self) {
         *self.lock() = UsageState::Unsupported;
     }
 
-    /// Forgets a refusal or snapshot that an account change made stale.
     pub(crate) fn reset(&self) {
         *self.lock() = UsageState::Unavailable;
     }
@@ -132,7 +122,7 @@ impl UsageCell {
     }
 }
 
-/// One slot per runtime lane. Old epochs cannot read or clear a new owner.
+/// Old epochs cannot read or clear a new owner.
 #[derive(Default)]
 pub(crate) struct UsageChannel(Mutex<Option<(RuntimeOwner, Arc<UsageCell>)>>);
 

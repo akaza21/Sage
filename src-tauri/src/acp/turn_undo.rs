@@ -1,6 +1,3 @@
-//! The durable first step of undoing a turn, shared by the service and the
-//! native bindings that carry an undo out.
-
 use crate::acp::{contract::SageTurnId, errors::SessionControlError, scheduler::RuntimeOwner};
 
 /// Preparation boundary shared by native bindings: resolve first, then commit

@@ -1,4 +1,3 @@
-//! The MCP servers a harness reports for its session: what `/mcp` shows.
 //! Everything is bounded and cleaned here, so the WebView receives only
 //! short plain text, counts and closed sets of states. Authorization URLs
 //! stay native.
@@ -14,7 +13,6 @@ const MAX_ERROR_BYTES: usize = 512;
 const MAX_ORIGIN_BYTES: usize = 256;
 const MAX_AUTH_URL_BYTES: usize = 4096;
 
-/// Whether the session reached the server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum McpConnection {
@@ -29,17 +27,12 @@ pub(crate) enum McpConnection {
     Unknown,
 }
 
-/// How the server authenticates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum McpAuth {
-    /// Signed in through OAuth.
     OAuth,
-    /// A configured bearer token.
     Token,
-    /// Supports OAuth and is not signed in.
     SignedOut,
-    /// Needs no sign-in.
     None,
     Unknown,
 }
@@ -60,15 +53,12 @@ pub(crate) struct McpServer {
     pub(crate) origin: Option<String>,
 }
 
-/// What the user can ask of the listed servers through this harness.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct McpActions {
-    /// Read the whole MCP configuration again.
     pub(crate) reload: bool,
     /// Open a server's sign-in page, which Sage can do on this system.
     pub(crate) sign_in: bool,
-    /// Connect one server again.
     pub(crate) reconnect: bool,
 }
 
@@ -76,7 +66,6 @@ pub(crate) struct McpActions {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct McpInventory {
     pub(crate) servers: Vec<McpServer>,
-    /// The harness listed more servers than are shown.
     pub(crate) truncated: bool,
     pub(crate) actions: McpActions,
 }
@@ -120,7 +109,6 @@ impl McpInventory {
         Some(Self::listed(servers, false, actions))
     }
 
-    /// The first servers by name, and whether any were left out.
     fn listed(mut servers: Vec<McpServer>, more: bool, actions: McpActions) -> Self {
         let truncated = more || servers.len() > MAX_LISTED_SERVERS;
         servers.sort_by(|left, right| left.name.cmp(&right.name));

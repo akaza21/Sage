@@ -14,7 +14,6 @@ pub(crate) enum PackageManifestError {
     Malformed,
 }
 
-/// Reads one package manifest using the shared bounded admission policy.
 /// `Ok(None)` identifies a truthful over-cap manifest.
 pub(crate) fn read_bounded_package_manifest(
     path: &Path,

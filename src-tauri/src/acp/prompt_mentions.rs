@@ -1,13 +1,8 @@
-//! Workspace files a prompt names with `@path` (or `@"path with spaces"`),
-//! as the composer's `@` picker writes them and as Claude Code users type
-//! them. A file in a root other than the first is written `@root:path`,
-//! where `root` is that root's id or, when no other root shares it, its
-//! display name; a bare `@path` takes the first root that holds the file.
 //! The token stays in the prompt text; each one that names a file also goes
 //! to the harness as a content block: an embedded `resource` with the file's
 //! text when the session advertises embedded context and the file fits the
 //! dispatch budget, otherwise a `resource_link` (the ACP baseline every agent
-//! accepts). Nothing is persisted: the durable prompt keeps only its text.
+//! accepts).
 use super::attached_context::files::{Resources, file_is_excluded};
 use crate::acp::prompt_files::secrets::path_is_secret;
 use crate::workspace::{
@@ -26,13 +21,10 @@ const PROBE_COUNT: usize = 4 * MENTION_COUNT;
 /// The longest token that can name a file; the path index holds no longer
 /// relative path.
 const TOKEN_BYTES: usize = 4096;
-/// Sentence punctuation a typed mention may end with ("see @a.rs.").
 const TRAILING: &[char] = &['.', ',', ';', ':', '!', '?', ')', ']', '}', '\'', '"'];
 
-/// One mentioned file as the harness receives it.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct Mention {
-    /// `file://` URI of the file inside its root.
     uri: String,
     name: String,
     size: u64,
@@ -45,7 +37,6 @@ pub(crate) struct Mention {
 pub(crate) struct Mentions(Option<Arc<[Mention]>>);
 
 impl Mention {
-    /// What holding this mention costs, link fields first, then any text.
     fn link_bytes(&self) -> usize {
         std::mem::size_of::<Self>() + self.uri.len() + self.name.len()
     }
@@ -59,7 +50,6 @@ impl Mentions {
                 .sum()
         })
     }
-    /// The content blocks, embedded only while `embedded` is still offered.
     pub(crate) fn blocks(&self, embedded: bool) -> impl Iterator<Item = serde_json::Value> + '_ {
         self.0.iter().flat_map(|all| all.iter()).map(move |m| {
             match m.text.as_deref().filter(|_| embedded) {
@@ -84,8 +74,6 @@ impl super::intent::Prompt {
     fn dispatch_bytes(&self, files: &Resources) -> usize {
         self.retained_bytes() - self.images.retained_bytes() + files.retained_bytes()
     }
-    /// The dispatch bytes this prompt and its staged `files` leave for
-    /// mentions; mentions resolved within it keep [`Self::fits_dispatch`].
     pub(crate) fn mention_budget(&self, files: &Resources) -> usize {
         DISPATCH_BYTES.saturating_sub(self.dispatch_bytes(files))
     }
@@ -94,10 +82,6 @@ impl super::intent::Prompt {
     }
 }
 
-/// The `@` tokens of `text` that could name a file, in order and without
-/// repeats: each starts the text or follows whitespace or an opening
-/// parenthesis that does, and is either quoted (`@"a b.txt"`) or runs to the
-/// next whitespace.
 pub(crate) fn mention_tokens(text: &str) -> Vec<&str> {
     let mut tokens: Vec<&str> = Vec::new();
     let (mut previous, mut before) = (None, None);
@@ -128,19 +112,12 @@ pub(crate) fn mention_tokens(text: &str) -> Vec<&str> {
     tokens
 }
 
-/// A project root a mention may name, with the display name the composer
-/// shows for it.
 pub(crate) struct MentionRoot {
     pub(crate) workspace: Workspace,
     pub(crate) name: String,
 }
 
-/// Resolves `tokens` against `roots`: a root-qualified token in its root
-/// only, a bare one in root order. A token that names no regular file inside
-/// a root stays text, as does a file the attachment ignore rules exclude.
-/// Each mention is charged to `budget`; its text is read only when `embed`
-/// is set, the file is no larger than the per-file cap, still fits, and is
-/// not a credential file, which is only ever linked.
+/// A credential file is only ever linked.
 pub(crate) fn resolve(
     tokens: &[String],
     roots: &[MentionRoot],
@@ -179,9 +156,7 @@ pub(crate) fn resolve(
     Mentions((!found.is_empty()).then(|| found.into()))
 }
 
-/// The roots `spelling` may name and its path: `root:path` names the one
-/// root with that id, or the one root with that display name; any other
-/// `:` (a Windows stream or drive) names nothing.
+/// Any other `:` (a Windows stream or drive) names nothing.
 fn target<'a>(spelling: &'a str, roots: &'a [MentionRoot]) -> Option<(&'a [MentionRoot], &'a str)> {
     let Some((qualifier, relative)) = spelling.split_once(':') else {
         return Some((roots, spelling));

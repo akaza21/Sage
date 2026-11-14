@@ -1,9 +1,3 @@
-//! The native replay catalogue: each journey case's id and scripted steps,
-//! and the facts a binding reads from a case (the harness it is for, whether
-//! it lists or offers models, whether it spans a restart). Data and pure
-//! lookups only; the fixture interpreter that plays a case lives in
-//! `acp::fixture`, above the bindings.
-
 #[cfg(any(test, all(windows, debug_assertions)))]
 use std::{collections::HashMap, sync::OnceLock};
 
@@ -22,10 +16,6 @@ pub(crate) fn native_case_lists_models(case: &str) -> bool {
     case.starts_with("codex-") && native_case_awaits(case, &["codexModelList"])
 }
 
-/// A replay case that runs twice on its profile, so it needs a second launch:
-/// one that opens a new session on its first launch and resumes the same one
-/// after an app restart, or a Claude Code case that names its relaunch (the
-/// fork chat a fork opens, say).
 #[cfg(any(test, all(windows, debug_assertions)))]
 pub(crate) fn native_case_spans_restart(case: &str) -> bool {
     native_case_awaits(case, &["acpOpen", "codexStartOrResume"])
@@ -61,16 +51,11 @@ pub(crate) fn native_case_matches(case: &str, protocol: &str) -> bool {
         .any(|entry| entry.id == case && entry.id.starts_with(&format!("{protocol}-")))
 }
 
-/// A Pi replay case that drives tool calls through the bundled Sage bridge
-/// extension, so its child stands in for a Pi with that extension installed.
 #[cfg(all(windows, debug_assertions))]
 pub(crate) fn native_case_uses_pi_bridge(case: &str) -> bool {
     case.starts_with("pi-") && native_case_awaits(case, &["piBridgeTool"])
 }
 
-/// A Codex case whose thread runs the model it is opened or resumed with, so
-/// a model picked in the composer is one the session really uses. Only such a
-/// case offers a model choice.
 #[cfg(any(test, all(windows, debug_assertions)))]
 pub(crate) fn native_case_offers_models(case: &str) -> bool {
     case.starts_with("codex-")
@@ -82,7 +67,6 @@ pub(crate) fn native_case_offers_models(case: &str) -> bool {
         && reply_shape(case, "codexModelList").is_some()
 }
 
-/// Each journey case's steps, parsed once.
 #[cfg(any(test, all(windows, debug_assertions)))]
 fn steps(case: &str) -> Option<&'static [Value]> {
     static STEPS: OnceLock<HashMap<&'static str, Vec<Value>>> = OnceLock::new();
@@ -97,7 +81,6 @@ fn steps(case: &str) -> Option<&'static [Value]> {
         .map(Vec::as_slice)
 }
 
-/// The frame the case emits right after it waits for `kind`.
 #[cfg(any(test, all(windows, debug_assertions)))]
 pub(crate) fn reply_shape(case: &str, kind: &str) -> Option<String> {
     let steps = steps(case)?;

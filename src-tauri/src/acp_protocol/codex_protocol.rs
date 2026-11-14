@@ -1,8 +1,3 @@
-//! Facts about the Codex app-server protocol that Sage stores and reads back
-//! outside the Codex binding: the pinned release and protocol identities a
-//! session records, and the child-thread transcript snapshot the store keeps.
-//! The binding derives every version-bearing identity from these.
-
 use serde::{Deserialize, Serialize};
 
 use crate::acp::{
@@ -37,7 +32,6 @@ macro_rules! pinned_schema_sha256 {
 }
 pub(crate) use pinned_schema_sha256;
 
-/// The first eight hex digits of `pinned_schema_sha256!`.
 macro_rules! pinned_schema_prefix {
     () => {
         "486c7c8d"
@@ -57,8 +51,6 @@ pub(crate) const PINNED_PROTOCOL_IDENTITY: &str = concat!(
 pub(crate) const OBSERVED_PROTOCOL_IDENTITY: &str =
     concat!("codex-app-server-observed-", pinned_codex_version!());
 
-/// Whether a session's protocol identity speaks the pinned app-server wire,
-/// either through the curated packet or an observed install of that build.
 pub(crate) fn speaks_pinned_protocol(identity: &str) -> bool {
     matches!(
         identity,

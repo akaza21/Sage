@@ -5,8 +5,6 @@ use serde::{Deserialize, Serialize};
 use crate::acp::package_manifest::read_bounded_package_manifest;
 use sage_core::limits::PREVIEW_LIMITS;
 
-/// The only retained command classification. It deliberately says nothing
-/// about a process exit code or test reporter output.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum CommandActivity {
@@ -15,8 +13,7 @@ pub enum CommandActivity {
     DeclaredTest,
 }
 
-/// A small, bounded declaration set retained for one runtime. It contains only
-/// manifest-declared invocations, never a harness-provided raw command.
+/// Contains only manifest-declared invocations, never a harness-provided raw command.
 #[derive(Debug, Clone, Default)]
 pub(crate) struct DeclaredTestCommands(Vec<String>);
 
@@ -30,8 +27,6 @@ impl DeclaredTestCommands {
     }
 }
 
-/// Reads the declared test invocations once from the project's bounded manifest.
-/// This is declaration lookup, not an inference about an arbitrary shell command.
 pub(crate) fn declared_test_commands_for_project(root: &Path) -> DeclaredTestCommands {
     let manifest = root.join("package.json");
     let Ok(Some(value)) = read_bounded_package_manifest(&manifest) else {

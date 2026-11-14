@@ -19,8 +19,6 @@ pub(crate) fn assistant_text(payload_json: &str) -> Option<String> {
     }
 }
 
-/// The quoted answer is missing, is not durable assistant prose in this
-/// Project, or is shorter than the quoted range.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct QuoteSourceMismatch;
 
@@ -36,7 +34,6 @@ impl From<QuoteSourceMismatch> for super::ipc::AcpIpcError {
     }
 }
 
-/// Every transcript quote in `contexts` must match its durable answer.
 pub(crate) fn validate_quote_sources(
     connection: &rusqlite::Connection,
     project_id: &super::contract::SageProjectId,
@@ -196,8 +193,6 @@ impl Prompt {
     pub fn as_str(&self) -> &str {
         self.text.as_str()
     }
-    /// False when the prompt carries a session action these capabilities do
-    /// not admit.
     pub(crate) fn action_admitted(
         &self,
         capabilities: Option<&super::intent::CapabilitySnapshotV1>,
@@ -249,13 +244,11 @@ impl Prompt {
     }
 }
 
-/// What a Turn's prompt item keeps beside its text.
 #[derive(Debug, Default, PartialEq)]
 pub(crate) struct PromptMetadata {
     pub(crate) attached_context: Vec<super::attached_context::AttachedContext>,
     /// As stored, so an action this build does not run still marks its Turn.
     pub(crate) session_action: Option<serde_json::Value>,
-    /// The listed command the Turn ran, as stored.
     pub(crate) command: Option<serde_json::Value>,
 }
 
@@ -306,7 +299,6 @@ mod tests {
             "Explain\n\nAnnotations on earlier assistant output (quoted context; cite as \"Annotation N\"):\n- Annotation 1\n  Selected text (JSON-quoted): \"a \\\"quote\\\"\\nnext\"\n  User comment (JSON-quoted): \"Why?\"\n- Annotation 2\n  Selected text (JSON-quoted): \"other\"\n  User comment (JSON-quoted): (none)"
         );
         assert_eq!(prompt.user_payload()["text"], "Explain");
-        // Every prompt records its attachment count, none included.
         assert_eq!(prompt.user_payload()["attachments"], 0);
         assert_eq!(
             Prompt::new("prompt", "Plain").unwrap().user_payload()["attachments"],
@@ -436,9 +428,7 @@ mod tests {
             )
             .unwrap();
         for (id, payload) in [
-            // Native ingress: NormalizedPayload::Text, no role.
             ("answer", answer.clone()),
-            // Legacy rows carry a role; only assistant prose is quotable.
             (
                 "legacy-answer",
                 serde_json::json!({"kind":"text","payload":{"role":"assistant","text":text}})
@@ -460,7 +450,6 @@ mod tests {
         let quote = |item: &str, turn: &str, end: u64| -> TranscriptQuoteContext {
             serde_json::from_value(serde_json::json!({"kind":"transcriptQuote","ordinal":1,"sourceTurnId":turn,"sourceItemId":item,"text":"answer","startOffset":0,"endOffset":end})).unwrap()
         };
-        // Offsets count UTF-16 units of the rendered answer: 16 here.
         assert!(
             validate_quote_source(&connection, "project", &quote("answer", "turn", 16)).is_ok()
         );

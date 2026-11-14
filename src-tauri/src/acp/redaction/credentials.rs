@@ -226,11 +226,8 @@ pub(crate) fn contains_token(value: &str) -> bool {
 pub(crate) mod work {
     #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
     pub(crate) struct ContainsTokenWork {
-        /// Outer-loop byte positions visited.
         pub(crate) positions: usize,
-        /// Positions that start with an AWS access key prefix.
         pub(crate) aws_prefixes: usize,
-        /// Bytes inspected after those prefixes.
         pub(crate) aws_tail_bytes: usize,
     }
 

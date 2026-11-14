@@ -7,9 +7,7 @@ fn answers(value: Value) -> UserInputAnswers {
     serde_json::from_value(value).unwrap()
 }
 
-/// The form claude-agent-acp 0.76 builds for a two-question AskUserQuestion:
-/// a titled single select, a titled multi select, and a free-text companion
-/// for each, nothing required.
+/// The form claude-agent-acp 0.76 builds for a two-question AskUserQuestion.
 fn ask_user_question() -> Value {
     let custom = |question: &str| {
         json!({"type": "string", "title": "Other",
@@ -136,7 +134,6 @@ fn forms_sage_cannot_show_exactly_are_refused() {
         json!({"type": "object", "properties": {"f": {"type": "string", "enum": []}}}),
         json!({"type": "object", "properties": {"f": {"type": "string", "enum": vec!["v"; 9]}}}),
         json!({"type": "object", "properties": {"f": {"type": "string", "enum": ["a\u{202e}b"]}}}),
-        // Rules Sage does not check, and limits no answer can meet.
         json!({"type": "object", "properties": {"f": {"type": "string", "format": "email"}}}),
         json!({"type": "object", "properties": {"f": {"type": "string", "format": "date"}}}),
         json!({"type": "object", "properties": {"f": {"type": "string", "pattern": "^a"}}}),
@@ -193,7 +190,6 @@ fn schema_limits_are_carried_and_enforced() {
         request.admit(&answers(json!([answer])))
     };
     let text = |id: &str, text: &str| admit(id, json!({"text": text}));
-    // Lengths count characters, not bytes.
     assert_eq!(text("name", "é漢"), Ok(()));
     assert_eq!(text("name", "a"), Err(UserInputError::TextLength));
     assert_eq!(text("name", "abcd"), Err(UserInputError::TextLength));

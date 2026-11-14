@@ -1,6 +1,3 @@
-//! Pi RPC wire for each scenario, through the Pi runtime. File edits run
-//! through Sage's Pi bridge against a scratch workspace.
-
 use serde_json::{Value, json};
 
 use super::{FILE, Fact, Mapper, NEW_TEXT, OLD_TEXT, ROOT, Scenario, frame};
@@ -83,7 +80,6 @@ impl Turn {
         request
     }
 
-    /// Answers `egress` and returns the follow-up request it triggers, if any.
     fn reply(&mut self, egress: AdapterEgress, data: Value) -> Option<AdapterEgress> {
         let request = self.deliver(egress);
         let batch = self

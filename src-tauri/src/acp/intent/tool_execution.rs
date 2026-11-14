@@ -2,7 +2,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{SafeResourceLocation, SafeText};
 
-/// Execution facts a tool call carries beside its category and label.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct ToolExecution {
@@ -12,18 +11,16 @@ pub struct ToolExecution {
     pub output_truncated: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub task_lifecycle: Option<bool>,
-    /// MCP server identity as the harness names it; never a display name
-    /// Sage invents. Boxed so tool payloads stay compact in adapter events.
+    /// Boxed so tool payloads stay compact in adapter events.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub mcp_server: Option<Box<SafeText<128>>>,
     /// Latest status line a running tool reported, replaced on each report
     /// and absent once the tool is terminal. Capped at
-    /// [`TOOL_PROGRESS_BYTES`]; boxed like `mcp_server`.
+    /// [`TOOL_PROGRESS_BYTES`].
     #[serde(skip_serializing_if = "Option::is_none")]
     pub progress: Option<Box<SafeText<TOOL_PROGRESS_BYTES>>>,
 }
 
-/// Byte cap of a running tool's status line.
 pub const TOOL_PROGRESS_BYTES: usize = 512;
 
 #[cfg(test)]

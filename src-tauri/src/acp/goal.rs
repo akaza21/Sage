@@ -1,4 +1,3 @@
-//! Ephemeral native Harness Goal state. No Goal is inferred from chat text.
 use serde::Serialize;
 use serde_json::Value;
 use std::sync::{Arc, Mutex};
@@ -23,30 +22,20 @@ pub(crate) struct NativeRpcIntent {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRpcRequest {
     Goal(GoalAction),
-    /// One page of a native read; see `NativeRead`.
     Read(NativeRead),
-    /// Forks the runtime's own native session through its latest turn. Only
-    /// an idle runtime whose negotiated capabilities admit
-    /// `nativeSessionFork` accepts it.
+    /// Only an idle runtime whose negotiated capabilities admit `nativeSessionFork` accepts it.
     ForkSession,
-    /// Releases a fork this runtime created once its fork Chat was committed
-    /// or refused. Best effort: the fork Chat never depends on it.
+    /// Best effort: the fork Chat never depends on it.
     ReleaseFork {
         fork: crate::acp::intent::ExternalId,
         committed: bool,
     },
-    /// Refreshes the runtime's usage-limit snapshot from the harness.
     UsageRead,
-    /// Lists or stops the commands the harness left running. Only a runtime
-    /// whose negotiated capabilities admit `nativeBackgroundTerminals`
-    /// accepts it.
+    /// Only a runtime whose negotiated capabilities admit `nativeBackgroundTerminals` accepts it.
     BackgroundTerminals(crate::acp::background_terminals::TerminalAction),
-    /// Acts on the running session without starting a turn.
     Control(crate::acp::session_control::SessionControl),
 }
 
-/// A paged native read. Each RPC reads one page; the caller follows the
-/// cursor and bounds how many pages it reads.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NativeRead {
     /// Turns of a child thread this runtime spawned, oldest first.
@@ -110,24 +99,17 @@ pub(crate) enum NativeRpcReply {
     SessionsPage(crate::acp::bindings::codex::NativeSessionsPage),
     TooLarge,
     Rejected,
-    /// The harness created a new native session holding the forked history.
     Forked(crate::acp::intent::ExternalId),
-    /// The harness let go of a fork this runtime created.
     Released,
     /// The harness answered a usage read; the snapshot is in the usage cell.
     UsageRead,
     /// The terminals the harness still runs, at most
     /// `MAX_BACKGROUND_TERMINALS` of them.
     BackgroundTerminals(Vec<crate::acp::background_terminals::BackgroundTerminal>),
-    /// The harness took a stop request.
     TerminalsStopped,
-    /// The harness carried out a session control; the text says what it did.
     Controlled(Option<crate::acp::contract::SafeText<512>>),
-    /// The harness declined a session control, with its reason if it gave one.
     ControlRefused(Option<crate::acp::contract::SafeText<512>>),
-    /// The session's MCP servers as the harness listed them.
     McpServers(crate::acp::mcp::inventory::McpInventory),
-    /// Where the user signs in to the MCP server named in the request.
     McpSignIn(crate::acp::mcp::inventory::McpAuthUrl),
 }
 

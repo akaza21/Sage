@@ -173,7 +173,6 @@ fn idle_since_restarts_when_a_turn_ends_and_is_absent_while_one_runs() {
     let after_turn = scheduler.active().unwrap().idle_since.unwrap();
     assert!(after_turn > reserved_idle);
 
-    // A Turn refused before it committed also ends the busy stretch.
     let refused = tree.reserve_turn().unwrap();
     assert_eq!(scheduler.active().unwrap().idle_since, None);
     refused.abort_before_durable_commit().unwrap();
