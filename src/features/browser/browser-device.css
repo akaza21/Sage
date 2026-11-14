@@ -17,7 +17,6 @@
 }
 .browser-device-toolbar {
   display: grid;
-  /* The size fields start 231 px into the pane, as in the reference. */
   grid-template-columns: minmax(0, 223px) auto minmax(0, 1fr);
   align-items: center;
   height: 100%;
@@ -48,7 +47,6 @@
   background: transparent;
   font: inherit;
   text-overflow: ellipsis;
-  /* Codex shows the preset as plain text, without a chevron. */
   appearance: none;
   cursor: pointer;
 }

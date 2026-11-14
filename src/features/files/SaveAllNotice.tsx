@@ -48,6 +48,8 @@ export function SaveAllNotice() {
   const tabs = useWorkbenchStore((state) => state.tabs);
   const failures = report ? unsaved(report.failures, tabs) : [];
   const stale = !!report && failures.length < report.failures.length;
+  // Prune resolved failures from the report so later edits cannot
+  // resurrect them.
   useEffect(() => {
     if (!stale) return;
     useWorkbenchStore.setState(({ saveAllReport, tabs }) => {

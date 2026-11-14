@@ -7,6 +7,7 @@ import {
   type ViewUpdate,
 } from "@codemirror/view";
 
+// Marks map through edits so they stay on their text while a search waits.
 const setMarks = StateEffect.define<DecorationSet>();
 const marks = StateField.define<DecorationSet>({
   create: () => Decoration.none,

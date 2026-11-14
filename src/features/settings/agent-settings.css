@@ -176,8 +176,8 @@
   margin-top: var(--space-2);
 }
 
-/* A card of rows. The Editor's Browser rows, padded by their own
-   variables in the Editor, take the card's inset here. */
+/* The Editor's Browser rows, padded by their own variables in the Editor,
+   take the card's inset here. */
 .agent-settings__card,
 .agent-settings .settings-surface__rows {
   padding: 0 var(--space-4);

@@ -116,6 +116,9 @@ export function FileFindBar({
     if (request.replace) setReplaceOpen(true);
   }
 
+  // Debounce document edits to keep scans off the typing path; existing marks
+  // map through edits while the search waits. Query and option changes search
+  // immediately.
   const [searched, setSearched] = useState({ content, query, options });
   if (searched.query !== query || searched.options !== options)
     setSearched({ content, query, options });

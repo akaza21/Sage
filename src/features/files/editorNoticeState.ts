@@ -200,7 +200,6 @@ export async function applyWatchNotice(
     await getFileEditorController()
       .flush(bridge)
       .catch((error: unknown) => actionFailed(bridge, error));
-  // A File that cannot be read now gets the banner too.
   const document = await editor
     .openEditorDocument(notice.resource)
     .catch(() => null);
