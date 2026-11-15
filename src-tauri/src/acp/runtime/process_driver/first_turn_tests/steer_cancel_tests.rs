@@ -51,7 +51,10 @@ fn queued_steer_overtaken_by_cancel_never_writes() {
             transport: CancelTransport {
                 writes: Arc::clone(&writes),
             },
-            control: NoChildProcessControl { zero_checks },
+            control: NoChildProcessControl {
+                zero_checks,
+                harness_error: None,
+            },
             owner: owner.clone(),
             clock: Arc::new(SystemDriverClock),
         };

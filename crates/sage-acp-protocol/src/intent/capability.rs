@@ -2,6 +2,8 @@ use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::contract::{RequiredText, SchemaVersionV1};
 
+/// What one harness-process negotiation admits. Activation replaces this
+/// snapshot on resume; it is not part of the native session's identity.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CapabilitySnapshotV1 {

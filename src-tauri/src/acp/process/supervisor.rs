@@ -221,6 +221,47 @@ pub(crate) enum TreeExit {
     ParentShutdown,
 }
 
+/// Sage's first termination request kept apart from the root's own exit.
+/// Waits report the request so callers see Sage's intent; a root that had
+/// already exited when Sage first asked keeps its native status here.
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct TerminationRecord {
+    requested: Option<TreeExit>,
+    exited_first: Option<TreeExit>,
+}
+
+impl TerminationRecord {
+    /// Records only the first request. `root_exit` is consulted then, and
+    /// only then, for the root's exit if it has already happened.
+    pub(super) fn request(
+        &mut self,
+        reason: TreeExit,
+        root_exit: impl FnOnce() -> Option<TreeExit>,
+    ) {
+        if self.requested.is_none() {
+            self.exited_first = root_exit();
+            self.requested = Some(reason);
+        }
+    }
+
+    pub(super) fn requested(&self) -> Option<TreeExit> {
+        self.requested
+    }
+
+    /// The root's own exit when no request preceded it. `root_exit` reads
+    /// the current native status and is consulted only while Sage has not
+    /// asked for termination.
+    pub(super) fn exit_before_request(
+        &self,
+        root_exit: impl FnOnce() -> Option<TreeExit>,
+    ) -> Option<TreeExit> {
+        match self.requested {
+            Some(_) => self.exited_first,
+            None => root_exit(),
+        }
+    }
+}
+
 /// Linear evidence minted only after the native supervisor has observed zero
 /// processes for the exact runtime epoch. It is intentionally neither Clone
 /// nor constructible outside the process boundary.

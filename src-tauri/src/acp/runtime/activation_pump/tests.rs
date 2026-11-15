@@ -818,12 +818,66 @@ fn commit_unknown_blocks_for_authoritative_recovery_without_releasing_ownership(
         ));
         assert_eq!(commands.lock().unwrap().len(), 1);
         assert!(pump.projection_recovery_required());
+        assert_eq!(pump.startup_step(), ActivationStartupStep::ActivationCommit);
         assert!(!pump.teardown_required());
         assert!(!pump.completion_ready());
         let recovery = pump.try_into_recovery_parts().ok().unwrap();
         assert_eq!(recovery.adapter.batches.len(), 0);
         assert_eq!(recovery.resources.0, 17);
         assert!(Arc::ptr_eq(&recovery.journal.commands, &commands));
+    });
+}
+
+#[test]
+fn a_rejected_resume_commit_tears_down_at_the_commit_step() {
+    runtime().block_on(async {
+        let advertised = capabilities(true, true);
+        let batches = vec![
+            AdapterBatch::new(
+                vec![AdapterEvent::Initialized {
+                    capabilities: advertised.clone(),
+                }],
+                vec![],
+            )
+            .unwrap(),
+            AdapterBatch::new(
+                vec![AdapterEvent::SessionReady {
+                    id: identity("persisted", RuntimeEpoch::new(7).unwrap()),
+                    loaded: false,
+                }],
+                vec![],
+            )
+            .unwrap(),
+        ];
+        let (journal, commands) = journal(Err(ActivationJournalError::Rejected));
+        let mut pump = ActivationPump::new(
+            adapter(advertised, batches),
+            journal,
+            NoResources(17),
+            intent(ActivationMode::Resume {
+                external_session_id: ExternalId::new("externalSessionId", "persisted").unwrap(),
+                native_root: "/repo".into(),
+                model: None,
+                rewind_at: None,
+            }),
+        )
+        .unwrap();
+        let mut transport = Transport(VecDeque::new());
+        pump.begin().unwrap();
+        pump.flush_one(&mut transport).unwrap();
+        push_frame(&mut pump, 1).await.unwrap();
+        pump.flush_one(&mut transport).unwrap();
+        assert_eq!(pump.startup_step(), ActivationStartupStep::SessionResume);
+        assert!(matches!(
+            push_frame(&mut pump, 2).await,
+            Err(ActivationPumpError::TeardownRequired)
+        ));
+        assert_eq!(commands.lock().unwrap().len(), 1);
+        assert!(pump.teardown_required());
+        assert_eq!(pump.startup_step(), ActivationStartupStep::ActivationCommit);
+        // A later forced teardown keeps the step that failed first.
+        pump.force_teardown();
+        assert_eq!(pump.startup_step(), ActivationStartupStep::ActivationCommit);
     });
 }
 

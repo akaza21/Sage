@@ -3,7 +3,8 @@ use rusqlite::params;
 use super::*;
 use crate::{acp::projection::TurnTerminalReasonProjection, persistence::Database};
 use sage_acp_protocol::{
-    contract::{ClientIntentId, SchemaVersionV1},
+    contract::{ClientIntentId, SafeText, SchemaVersionV1},
+    intent::NormalizedPayload,
     lifecycle::{TurnState, TurnTerminalOutcome, TurnTerminalReason},
 };
 
@@ -377,4 +378,84 @@ fn a_live_turn_never_projects_a_terminal_reason() {
         )
         .unwrap();
     assert_eq!(projected(&connection), (TurnState::Sending, None));
+}
+
+#[test]
+fn a_recovered_turn_keeps_its_harness_error_beyond_the_newest_history_page() {
+    let database = seeded();
+    let mut connection = database.connection();
+    let insert_item = |id: String, ordinal: u64, kind: &str, payload: &NormalizedPayload| {
+        let payload = serde_json::to_string(payload).unwrap();
+        connection
+            .execute(
+                "INSERT INTO items(id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,origin,kind,lifecycle,payload_json,payload_bytes,payload_digest,created_at,updated_at,terminal_at)
+                 VALUES(?1,'project-one','chat-one','session-one','turn-one',1,?2,'primary',?3,'completed',?4,?5,?6,2,2,2)",
+                params![id, ordinal as i64, kind, payload, payload.len() as i64, hex_digest(payload.as_bytes())],
+            )
+            .unwrap();
+    };
+    insert_item(
+        "error-item".to_owned(),
+        0,
+        "error",
+        &NormalizedPayload::Error {
+            kind: None,
+            code: SafeText::new("code", "stream").unwrap(),
+            message: SafeText::new("message", "stream disconnected before completion").unwrap(),
+            retryable: false,
+        },
+    );
+    let later = sage_core::limits::LIMITS.durable.history_page_items + 1;
+    for ordinal in 1..=later {
+        insert_item(
+            format!("text-{ordinal}"),
+            ordinal,
+            "text",
+            &NormalizedPayload::Text {
+                text: SafeText::new("text", "progress").unwrap(),
+            },
+        );
+    }
+
+    crate::acp::recovery::recover_runtime_after_zero_process(
+        &mut connection,
+        RecoverRuntimeCommand {
+            project_id: SageProjectId::parse("project-one").unwrap(),
+            chat_id: SageChatId::parse("chat-one").unwrap(),
+            session_id: SageAgentSessionId::parse("session-one").unwrap(),
+            runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+            terminal_reason: TurnTerminalOutcome {
+                reason: TurnTerminalReason::HarnessExited,
+                message: Some("harness process exited with code 1".to_owned()),
+                remediation: None,
+            },
+            now_millis: 30,
+        },
+    )
+    .unwrap();
+
+    let page = load_chat_page(
+        &connection,
+        SageProjectId::parse("project-one").unwrap(),
+        SageChatId::parse("chat-one").unwrap(),
+        None,
+    )
+    .unwrap();
+    let turn = page.turns.as_slice().first().unwrap();
+    assert!(
+        turn.items
+            .as_slice()
+            .iter()
+            .all(|item| item.id.as_str() != "error-item"),
+        "the error item must lie outside the newest page"
+    );
+    assert_eq!(turn.state, TurnState::Failed);
+    assert_eq!(
+        turn.terminal_reason,
+        Some(TurnTerminalReasonProjection {
+            kind: TurnTerminalReason::HarnessExited,
+            message: Some("stream disconnected before completion".to_owned()),
+            remediation: None,
+        })
+    );
 }

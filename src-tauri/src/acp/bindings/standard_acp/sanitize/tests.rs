@@ -350,3 +350,16 @@ fn authorization_schemes_and_mixed_case_bearer_never_expose_values() {
         assert_eq!(sanitized_command_output(input).unwrap(), expected);
     }
 }
+
+#[test]
+fn a_long_label_is_redacted_whole_before_it_is_clipped() {
+    let input = format!(
+        "{} sk-ant-api03-secretvalue Bearer abc123 tail",
+        "x".repeat(490)
+    );
+    let label = normalized_label_text::<512>("toolLabel", &input).unwrap();
+    assert_eq!(
+        label.as_str(),
+        format!("{} [redacted] Bearer \u{2026}", "x".repeat(490))
+    );
+}

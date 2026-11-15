@@ -108,9 +108,9 @@
 
 .acp-permission-prompt__split > button[data-initial-focus],
 .acp-permission-prompt__split > button:first-child:focus-visible {
-  outline: var(--focus-ring-width) solid var(--chat-annotation-accent);
+  outline: var(--focus-ring-width) solid var(--color-accent);
   outline-offset: 0;
-  box-shadow: 0 0 0 1px var(--chat-annotation-accent);
+  box-shadow: 0 0 0 1px var(--color-accent);
 }
 
 .acp-permission-prompt__actions button:disabled {

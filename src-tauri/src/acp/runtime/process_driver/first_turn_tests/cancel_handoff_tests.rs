@@ -100,6 +100,7 @@ async fn accept_terminal_behind_late_starts(
             transport: RecordingTransport(Arc::clone(&writes)),
             control: NoChildProcessControl {
                 zero_checks: Arc::new(AtomicUsize::new(0)),
+                harness_error: None,
             },
             owner: fixture.owner.clone(),
             clock: Arc::new(SystemDriverClock),
