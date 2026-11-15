@@ -34,7 +34,7 @@ impl SdkBridge {
             }
             // Results still finish the rows a subagent's approvals opened.
             Some("user") => {
-                self.tool_results(&sdk["message"], &mut inbound);
+                self.tool_results(&sdk, &mut inbound);
                 if nested {
                     self.nested(&sdk, &mut inbound);
                 }
@@ -248,7 +248,7 @@ impl SdkBridge {
             return;
         };
         let input = block.get("input").unwrap_or(&Value::Null);
-        if self.tools.contains_key(id) || self.subagents.contains(id) {
+        if self.tools.contains_key(id) || self.subagents.contains_key(id) {
             return;
         }
         if self.spawn(id, name, input, inbound) {
@@ -273,8 +273,8 @@ impl SdkBridge {
         inbound.acp.push(self.update(update.into()));
     }
 
-    fn tool_results(&mut self, message: &Value, inbound: &mut Inbound) {
-        for block in message
+    fn tool_results(&mut self, sdk: &Value, inbound: &mut Inbound) {
+        for block in sdk["message"]
             .get("content")
             .and_then(Value::as_array)
             .into_iter()
@@ -286,7 +286,10 @@ impl SdkBridge {
             let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else {
                 continue;
             };
-            if self.subagents.contains(id) {
+            if self.subagents.contains_key(id) {
+                if self.launched_in_background(id, sdk.get("tool_use_result")) {
+                    continue;
+                }
                 let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
                 let outcome = if failed {
                     ChildOutcome::Failed

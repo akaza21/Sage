@@ -750,6 +750,81 @@ fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
 }
 
 #[test]
+fn a_background_subagent_streams_past_its_launch_and_the_turn_until_its_task_settles() {
+    let mut runtime = prompted();
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"toolu_bg","name":"Agent",
+            "input":{"description":"Find the model source","prompt":"Find it","run_in_background":true}}]}}),
+    );
+    feed(
+        &mut runtime,
+        json!({"type":"system","subtype":"task_started","task_id":"t1","tool_use_id":"toolu_bg",
+            "description":"Find the model source","subagent_type":"general-purpose","is_backgrounded":true}),
+    );
+    let child_ended = |events: &[AdapterEvent]| {
+        events
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::ChildTurnStatus { .. }))
+    };
+    let launched = feed(
+        &mut runtime,
+        json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_bg",
+            "content":"Async agent launched successfully."}]},
+            "tool_use_result":{"status":"async_launched","agentId":"a1","description":"Find the model source","prompt":"Find it"}}),
+    );
+    assert!(!child_ended(&launched), "{launched:?}");
+    let finished = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    assert!(turn_ended(&finished));
+    assert!(!child_ended(&finished), "{finished:?}");
+
+    let inner = feed(
+        &mut runtime,
+        json!({"type":"assistant","parent_tool_use_id":"toolu_bg","uuid":"u1","message":{"id":"s1","content":[
+            {"type":"text","text":"Searching"}]}}),
+    );
+    let second = feed(
+        &mut runtime,
+        json!({"type":"assistant","parent_tool_use_id":"toolu_bg","uuid":"u2","message":{"id":"s1","content":[
+            {"type":"tool_use","id":"sub-1","name":"Grep","input":{"pattern":"model/list"}}]}}),
+    );
+    let live: Vec<_> = inner
+        .iter()
+        .chain(&second)
+        .filter_map(|event| match event {
+            AdapterEvent::ChildLiveItem { item_id, .. } => Some(item_id.as_str().to_owned()),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(live, ["u1:0", "sub-1"]);
+
+    let settled = feed(
+        &mut runtime,
+        json!({"type":"system","subtype":"task_notification","task_id":"t1","tool_use_id":"toolu_bg",
+            "status":"completed","output_file":"","summary":"Found it"}),
+    );
+    assert!(settled.iter().any(|event| matches!(
+        event,
+        AdapterEvent::ChildTurnStatus { child_thread_id, status: TurnState::Completed, .. }
+            if child_thread_id.as_str() == "toolu_bg"
+    )));
+    assert!(
+        !settled
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::ChildThreadItem { .. })),
+        "the finished turn's spawn row is not rewritten: {settled:?}"
+    );
+    assert!(settled.iter().any(|event| matches!(
+        event,
+        AdapterEvent::ChildLiveItem { item_id, lifecycle, .. }
+            if item_id.as_str() == "sub-1" && lifecycle.is_terminal()
+    )));
+}
+
+#[test]
 fn a_prompt_larger_than_an_ordinary_frame_is_sent_as_a_prompt_frame() {
     let ordinary = sage_core::limits::LIMITS.wire.frame_bytes as usize;
     let user = json!({"type":"user","message":{"content":"x".repeat(ordinary)}});
