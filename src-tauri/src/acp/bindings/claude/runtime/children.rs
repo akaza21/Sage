@@ -37,6 +37,17 @@ pub(crate) enum ChildOutcome {
     Stopped,
 }
 
+impl ChildOutcome {
+    /// A subagent's end as Claude Code words it; any other end stopped it.
+    pub(crate) fn settled(status: Option<&str>) -> Self {
+        match status {
+            Some("completed") => Self::Completed,
+            Some("failed") => Self::Failed,
+            _ => Self::Stopped,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Children(BTreeMap<String, (ClaudeTranslator, Row)>);
 

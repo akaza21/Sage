@@ -287,14 +287,10 @@ impl SdkBridge {
                 continue;
             };
             let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
+            let status = if failed { "failed" } else { "completed" };
             if self.subagents.contains_key(id) {
-                if !self.launched_in_background(id, sdk.get("tool_use_result")) {
-                    let outcome = if failed {
-                        ChildOutcome::Failed
-                    } else {
-                        ChildOutcome::Completed
-                    };
-                    self.end_child(id, outcome, inbound);
+                if !self.keeps_open_after_launch(id, sdk.get("tool_use_result")) {
+                    self.end_child(id, ChildOutcome::settled(Some(status)), inbound);
                 }
                 continue;
             }
@@ -304,7 +300,7 @@ impl SdkBridge {
             let mut update = json!({
                 "sessionUpdate": "tool_call_update",
                 "toolCallId": id,
-                "status": if failed { "failed" } else { "completed" },
+                "status": status,
                 "_meta": {"claudeCode": {"toolName": name}},
             });
             let edits = tool_fields(&name, &Value::Null)["kind"] == "edit";

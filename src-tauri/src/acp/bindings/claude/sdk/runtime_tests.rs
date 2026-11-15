@@ -825,6 +825,53 @@ fn a_background_subagent_streams_past_its_launch_and_the_turn_until_its_task_set
 }
 
 #[test]
+fn a_background_subagent_settling_during_a_later_turn_leaves_the_old_spawn_row_alone() {
+    let mut runtime = prompted();
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","message":{"id":"m1","content":[{"type":"tool_use","id":"toolu_bg","name":"Agent",
+            "input":{"description":"Find the model source","prompt":"Find it","run_in_background":true}}]}}),
+    );
+    feed(
+        &mut runtime,
+        json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_bg",
+            "content":"Async agent launched successfully."}]},
+            "tool_use_result":{"status":"async_launched","agentId":"a1","description":"Find the model source","prompt":"Find it"}}),
+    );
+    feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    send(
+        &mut runtime,
+        AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "And now this").unwrap(),
+            client_message_id: RequiredText::new("client", "client-2").unwrap(),
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
+        },
+    );
+    let settled = feed(
+        &mut runtime,
+        json!({"type":"system","subtype":"task_notification","task_id":"a1",
+            "status":"failed","output_file":"","summary":"Gave up"}),
+    );
+    assert!(
+        settled.iter().any(|event| matches!(
+            event,
+            AdapterEvent::ChildTurnStatus { child_thread_id, status: TurnState::Failed, .. }
+                if child_thread_id.as_str() == "toolu_bg"
+        )),
+        "{settled:?}"
+    );
+    assert!(
+        !settled
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::ChildThreadItem { .. })),
+        "the earlier turn's spawn row is not rewritten in this one: {settled:?}"
+    );
+}
+
+#[test]
 fn a_prompt_larger_than_an_ordinary_frame_is_sent_as_a_prompt_frame() {
     let ordinary = sage_core::limits::LIMITS.wire.frame_bytes as usize;
     let user = json!({"type":"user","message":{"content":"x".repeat(ordinary)}});

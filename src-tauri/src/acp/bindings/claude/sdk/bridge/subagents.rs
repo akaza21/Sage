@@ -11,7 +11,8 @@ use crate::acp::bindings::claude::sdk::tools::{result_text, text_content, tool_f
 
 #[derive(Debug, Default)]
 pub(super) struct Subagent {
-    /// Claude Code's background task id, once `task_started` names it.
+    /// Claude Code's task id for the subagent, from its task events, its
+    /// async launch result (`agentId`) or its own frames (`agent_id`).
     task_id: Option<String>,
     background: bool,
 }
@@ -56,8 +57,11 @@ impl SdkBridge {
         let Some(key) = sdk.get("parent_tool_use_id").and_then(Value::as_str) else {
             return;
         };
-        if !self.subagents.contains_key(key) {
+        let Some(subagent) = self.subagents.get_mut(key) else {
             return;
+        };
+        if let Some(agent) = sdk.get("agent_id").and_then(Value::as_str) {
+            subagent.task_id.get_or_insert_with(|| agent.to_owned());
         }
         let message = &sdk["message"];
         let blocks = message
@@ -187,16 +191,19 @@ impl SdkBridge {
     }
 
     /// A subagent's tool result that only reports its launch into the
-    /// background leaves its transcript open.
-    pub(super) fn launched_in_background(&mut self, key: &str, output: Option<&Value>) -> bool {
-        let launched = output
-            .and_then(|output| output.get("status"))
-            .and_then(Value::as_str)
-            == Some("async_launched");
+    /// background leaves its transcript open, and names the task whose
+    /// `task_notification` will settle it.
+    pub(super) fn keeps_open_after_launch(&mut self, key: &str, output: Option<&Value>) -> bool {
         let Some(subagent) = self.subagents.get_mut(key) else {
             return false;
         };
-        subagent.background |= launched;
+        let field = |name: &str| output.and_then(|output| output.get(name)?.as_str());
+        if field("status") == Some("async_launched") {
+            subagent.background = true;
+            if let Some(agent) = field("agentId") {
+                subagent.task_id.get_or_insert_with(|| agent.to_owned());
+            }
+        }
         subagent.background
     }
 
@@ -232,11 +239,6 @@ impl SdkBridge {
         if field("subtype") != Some("task_notification") {
             return;
         }
-        let outcome = match field("status") {
-            Some("completed") => ChildOutcome::Completed,
-            Some("failed") => ChildOutcome::Failed,
-            _ => ChildOutcome::Stopped,
-        };
-        self.end_child(&key, outcome, inbound);
+        self.end_child(&key, ChildOutcome::settled(field("status")), inbound);
     }
 }

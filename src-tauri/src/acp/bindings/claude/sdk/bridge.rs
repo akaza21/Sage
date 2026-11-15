@@ -265,3 +265,6 @@ fn acp_error(id: Value, code: i64, message: &str) -> Value {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod subagent_tests;
