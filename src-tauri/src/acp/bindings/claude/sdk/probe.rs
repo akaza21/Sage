@@ -112,7 +112,7 @@ fn run(executable: &Path, environment: &[(OsString, OsString)]) -> Option<Value>
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+        command.creation_flags(sage_process::console::CREATION_FLAGS);
     }
     let mut child = command.spawn().ok()?;
     let stdout = child.stdout.take();

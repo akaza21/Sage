@@ -45,8 +45,6 @@ const INHERITED_ENV: &[&str] = &[
     #[cfg(windows)]
     "SystemRoot",
 ];
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 #[cfg(test)]
 type GitProcessHook = Arc<dyn Fn() + Send + Sync>;
@@ -570,7 +568,9 @@ fn configured_command(
             .env("GIT_WORK_TREE", repository.work_tree());
     }
     #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW | sage_process::process_tree::CREATION_FLAGS);
+    command.creation_flags(
+        sage_process::console::CREATION_FLAGS | sage_process::process_tree::CREATION_FLAGS,
+    );
     command
 }
 

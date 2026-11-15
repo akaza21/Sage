@@ -125,7 +125,7 @@ async fn run_status_with_timeout(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+        command.creation_flags(sage_process::console::CREATION_FLAGS);
     }
     #[cfg(unix)]
     std::os::unix::process::CommandExt::process_group(&mut command, 0);
