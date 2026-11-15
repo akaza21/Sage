@@ -45,10 +45,8 @@ export function ModalDialog({
   describedBy?: string;
   initialFocusRef?: RefObject<HTMLElement | null>;
   /**
-   * Puts the focus back on what had it when the dialog opened. Off by
-   * default because most dialogs choose where the focus goes when they close
-   * (their trigger, the editor they opened, the chat they picked); turn it on
-   * when nothing else does.
+   * Off by default because most dialogs choose where the focus goes when they
+   * close.
    */
   restoreFocus?: boolean;
   onDismiss: () => void;
@@ -56,7 +54,6 @@ export function ModalDialog({
   const dialogRef = useRef<HTMLDialogElement>(null);
   const previousFocusRef = useRef(document.activeElement);
   useNativePageLayer(dialogRef, { coverage: "window" });
-  // A modal keeps presses on it from dismissing the layers it opened over.
   const { layer, onKeyDown: layerKeyDown } = useDismissLayer(true, {
     inside: [dialogRef],
     onEscape: onDismiss,

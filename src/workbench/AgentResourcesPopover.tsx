@@ -150,7 +150,6 @@ export function AgentResourcesPopover({
           <span>Changes</span>
           {changesCount > 0 ? (
             <span>
-              {/* The projection scans a bounded window of recent turns. */}
               {changesCount} recently changed{" "}
               {changesCount === 1 ? "file" : "files"}
             </span>

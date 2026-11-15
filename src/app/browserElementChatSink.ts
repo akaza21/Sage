@@ -13,11 +13,6 @@ function draft() {
     : null;
 }
 
-/**
- * Annotate's elements join the draft of the Agent Chat the browser pane
- * belongs to (the pinned owner), through the same ownership capture and
- * attach path as the page attachment.
- */
 export const browserElementChatSink: BrowserElementSink = {
   nextOrdinal() {
     const contexts = draft();

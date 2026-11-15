@@ -20,8 +20,6 @@
   height: var(--agent-pane-tab-height);
   min-width: var(--agent-pane-tab-min-width);
   max-width: var(--agent-pane-tab-max-width);
-  /* Size each tab to its own title so a filename gets room before the strip
-     shrinks; when space runs out, tabs shrink in proportion to that width. */
   flex: 0 1 auto;
   border: var(--border-width) solid transparent;
   border-radius: var(--radius-agent-pane-tab);

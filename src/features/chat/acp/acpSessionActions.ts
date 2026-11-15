@@ -260,12 +260,8 @@ export function createAcpSessionActions(
   type Mutation =
     { modeId: string } | { configId: string; value: AcpConfigValue };
   /**
-   * A session with no live config (no runtime, or a live runtime that has
-   * not reported yet) shows its restored config, as does a chat with no
-   * current session for its last one. A choice on it is stored, not sent:
-   * the restore applies it before the next prompt of that session, or of the
-   * one the next send starts from it, as it does every stored choice, so no
-   * runtime starts for it.
+   * A choice on a restored config is stored, not sent: the restore applies it
+   * before the next prompt, so no runtime starts for it.
    */
   const queue = (
     captured: AcpActionContext,

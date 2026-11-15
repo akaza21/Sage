@@ -30,7 +30,6 @@ const statusText = {
   failed: "Failed",
 } as const;
 
-/** Re-renders each second only while something is live. */
 export function useNow(live: boolean): number {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -70,7 +69,6 @@ export function invocationOf(
   return null;
 }
 
-/** Per-invocation times; later events belong to the key's latest spawn. */
 export function subagentTimes(
   page: AcpChatPage,
   agents: readonly RecentAgent[],
@@ -102,7 +100,6 @@ export function subagentTimes(
   return times;
 }
 
-/** Active rows count seconds; settled rows read `just now`, then m/h/d. */
 export function subagentAge(updatedAt: number, now: number, active: boolean) {
   const seconds = Math.max(0, Math.floor((now - updatedAt) / 1_000));
   const minutes = Math.floor(seconds / 60);

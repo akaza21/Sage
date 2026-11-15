@@ -51,9 +51,11 @@ export function popupAdoption(
   };
 }
 
-/** Acknowledges an adopted popup. If the ack fails for a tab this call just
- * inserted (for example the native deadline closed it first), the tab is
- * removed again so the chrome never shows a tab without a webview. */
+/**
+ * If the ack fails for a tab this call just inserted (the native deadline may
+ * have closed it first), the tab is removed again so the chrome never shows a
+ * tab without a webview.
+ */
 export async function ackPopup(
   set: StoreApi<WorkbenchState>["setState"],
   get: StoreApi<WorkbenchState>["getState"],
@@ -69,7 +71,6 @@ export async function ackPopup(
   }
 }
 
-/** Popup adoption is demand-loaded; startup only installs the event listeners. */
 export async function adoptPopup(
   set: StoreApi<WorkbenchState>["setState"],
   get: StoreApi<WorkbenchState>["getState"],

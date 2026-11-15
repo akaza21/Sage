@@ -10,14 +10,9 @@ export interface TextFieldSuggestion {
   label: string;
   icon?: ReactNode;
   description?: string;
-  /** Muted trailing text, such as an argument hint. */
   hint?: string;
-  /** The whole row as a screen reader should hear it. */
   accessibleLabel: string;
-  /**
-   * The heading of the section the row belongs to. Rows of one section are
-   * contiguous; a list whose rows share one section shows no heading.
-   */
+  /** Rows that share a group must be contiguous. */
   group?: string;
 }
 
@@ -27,7 +22,6 @@ export type TextFieldSuggestionsState =
   | { kind: "error"; title: string; detail?: string }
   | { kind: "empty"; title: string; detail?: string };
 
-/** The keys the list reads from the field's native keydown. */
 export type SuggestionKeyEvent = Pick<
   KeyboardEvent,
   | "key"
@@ -45,13 +39,6 @@ export function suggestionOptionId(listboxId: string, id: string) {
   return `${listboxId}-option-${encodeURIComponent(id)}`;
 }
 
-/**
- * Keyboard model for a list that pops up from a text field which keeps the
- * focus (the WAI-ARIA combobox pattern with aria-activedescendant). Up and
- * Down move, PageUp and PageDown move a page, Enter or Tab pick, Escape
- * dismisses; every other key, Home and End included, edits the field. The
- * first row is active until the user moves.
- */
 export function useSuggestionNavigation(
   candidates: readonly TextFieldSuggestion[],
   onPick: (item: TextFieldSuggestion) => void,

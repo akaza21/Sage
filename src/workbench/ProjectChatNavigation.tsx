@@ -43,9 +43,7 @@ const RenamePart = lazyParts<typeof RenameChunk>(
   () => import("./ProjectChatRename"),
 );
 
-// Archived chats are rare; the row and its actions load with the first one.
 const loadArchivedChatList = () => import("./ArchivedChatList");
-// A refused row action is rare; its notice loads when one is shown.
 const loadChatRowErrorNotice = () => import("./ChatRowErrorNotice");
 
 export function ProjectChatNavigation({
@@ -63,13 +61,11 @@ export function ProjectChatNavigation({
   projectId: string;
   chats: AgentRailChat[];
   archived?: ArchivedChatSummary[];
-  /** A trailing "Show more" / "Show less" row. */
   more?: { label: string; onClick: () => void };
   selected: boolean;
   hideArchived?: boolean;
   flat?: boolean;
   projectChatCount?: number;
-  /** Rows of the Recents list, which name themselves as recent chats. */
   recent?: boolean;
   suppressActive?: boolean;
 }) {
@@ -91,7 +87,6 @@ export function ProjectChatNavigation({
       : null,
   );
   const archivedChats = selected ? storeArchivedChats : (archived ?? []);
-  // A side chat never lists; its parent keeps the highlight.
   const activeTabId = useRailChatId(
     useWorkbenchStore((state) => state.activeTabId),
   );
@@ -108,7 +103,6 @@ export function ProjectChatNavigation({
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
-  // Temporary side chats never list; a parent shows working while one runs.
   const parentChatStatus = useParentChatStatus();
   const chatTabs = chats.filter((chat) => !isSideChatId(chat.id));
   const hoverChat = chatTabs.find((tab) => tab.id === hoverCard.card?.chatId);
@@ -240,8 +234,6 @@ export function ProjectChatNavigation({
                 onClick={() => {
                   clearAgentRailUnread(tab.id);
                   if (selected) {
-                    // Opening the chat acknowledges its finished Turn, even
-                    // when it is already on screen after "Mark unread".
                     if (sessionRailFinished(status))
                       markChatRead(tab.id, tab.finishedAt ?? 0);
                     void activateTab(tab.id);
@@ -321,13 +313,10 @@ export function ProjectChatNavigation({
                     setRenameDraft(displayTitle);
                     setRenamingChatId(tab.id);
                   }}
-                  // Only a finished Turn has a time to read through (Codex
-                  // offers Mark unread on the same chats).
                   onMarkUnread={
                     sessionRailFinished(status)
                       ? () => {
                           markAgentRailUnread(tab.id);
-                          // A refused request leaves the chat read in the store.
                           void markChatUnread(tab.id).then((stored) => {
                             if (!stored) clearAgentRailUnread(tab.id);
                           });

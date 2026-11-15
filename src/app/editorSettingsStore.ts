@@ -13,7 +13,6 @@ import type {
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { bindEditorSettingsClose } from "./workbenchClose";
 
-/** The settings the CodeMirror runtime draws with. */
 export function editorAppearanceFrom(
   settings: EditorSettings,
 ): EditorAppearance {
@@ -26,7 +25,6 @@ export function editorAppearanceFrom(
   };
 }
 
-/** The editing features the CodeMirror runtime loads for an editable File. */
 export function editorEditingFrom(settings: EditorSettings): EditorEditing {
   return {
     matchBrackets: settings["editor.matchBrackets"],

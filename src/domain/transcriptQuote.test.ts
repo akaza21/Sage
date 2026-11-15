@@ -73,7 +73,6 @@ describe("transcript attached context", () => {
     expect(() =>
       attachContextToDraft(edited, { ...quote, sourceItemId: "new-item" }),
     ).toThrow();
-    // Display numbers follow position, so deletion needs no renumbering pass.
     const deleted = edited.filter((_, index) => index !== 2);
     expect(deleted[2]).toMatchObject({
       sourceItemId: "item-3",

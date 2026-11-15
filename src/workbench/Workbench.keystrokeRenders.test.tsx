@@ -120,7 +120,6 @@ afterEach(() => {
 });
 
 it("re-renders nothing outside the File surface for keystrokes after the first, and loses no edit", async () => {
-  // The desktop's buffer store: it keeps each snapshot it is sent.
   const persisted: BufferSnapshotRequest[] = [];
   vi.spyOn(
     getWorkbenchPorts().editor,
@@ -166,7 +165,6 @@ it("re-renders nothing outside the File surface for keystrokes after the first, 
       view.dispatch(view.state.replaceSelection(text));
     });
 
-  // The first keystroke flips the tab to dirty, which the tab strip shows.
   type("a");
   expect(useWorkbenchStore.getState().tabs[0]?.dirty).toBe(true);
   for (const region of ["TabStrip", "TitleBar", "StatusBar", "RightSidebar"]) {
@@ -180,14 +178,11 @@ it("re-renders nothing outside the File surface for keystrokes after the first, 
   expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
     revision: 5,
   });
-  // StatusBar shows Ln and Col, so it may commit for the caret; nothing else.
   const { StatusBar: statusCommits = 0, ...others } =
     Object.fromEntries(commits);
   expect(others).toEqual({});
   expect(statusCommits).toBeLessThanOrEqual(4);
 
-  // Skipping those renders lost nothing: the edit, its caret and the dirty
-  // tab all show, and the buffer persisted is the text that was typed.
   const typed = "abcdeconst current = 1;";
   expect(view.state.doc.toString()).toBe(typed);
   expect(editor).toHaveTextContent(typed);
@@ -201,7 +196,6 @@ it("re-renders nothing outside the File surface for keystrokes after the first, 
   });
   const active = useWorkbenchStore.getState().activeEditor;
   if (active?.phase !== "ready") throw new Error("Expected a ready editor");
-  // The store keeps the editor's own document, not a string copy.
   expect(String(active.content)).toBe(typed);
   expect(active.persistedRevision).toBe(5);
 });

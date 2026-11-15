@@ -12,9 +12,8 @@ export const AgentTaskResourcesPart = lazyParts<typeof ResourcesChunk>(() =>
 export const AgentHeaderMenuPart = lazyParts<typeof MenuChunk>(
   () => import("./AgentHeaderMenu"),
 );
-// Once loaded anywhere, every header mounts its menu at once, as it always
-// did. A header mounts the menu only then, so a failed load never reaches
-// the render and the next hover, focus or open asks again.
+// A header mounts the menu only once loaded, so a failed load never reaches the
+// render and the next hover, focus or open asks again.
 let menuReady = false;
 const menuListeners = new Set<() => void>();
 export const agentHeaderMenuReady = () => menuReady;

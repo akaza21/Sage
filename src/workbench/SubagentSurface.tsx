@@ -40,12 +40,10 @@ type ChildRead = Extract<ChildTranscript, { turns: unknown }>;
 type ReadState = {
   key: string;
   value: ChildTranscript | "error";
-  /** The latest full read for this child, kept across later failures. */
   good?: ChildRead;
   stale: number;
 };
 
-/** One deduplicated run of child items without the spawn prompt bubble. */
 function childRows(read: ChildRead | undefined) {
   const seen = new Set<string>();
   const rows: AcpItem[] = [];

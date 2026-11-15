@@ -24,12 +24,6 @@ import {
 
 const EMPTY_CANDIDATES: readonly SearchablePickerOption[] = [];
 
-/**
- * The open list of a SearchablePicker: its search field, rows and keyboard
- * handling. It loads on the first open (preloaded before) and then stays
- * mounted. The picker keeps the typed query (`draft`), including what was
- * typed on the trigger before this list arrived.
- */
 export function SearchablePickerPopover({
   ariaLabel,
   candidates,
@@ -64,7 +58,6 @@ export function SearchablePickerPopover({
   disabled: boolean;
   draft: string;
   expanded: boolean;
-  /** True when focus moved on while this list was loading for an open. */
   focusMoved: () => boolean;
   footer?: string;
   id: string;
@@ -88,7 +81,6 @@ export function SearchablePickerPopover({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState(draft);
-  // A list that arrives after focus moved on leaves it there for this open.
   const [holdFocus, setHoldFocus] = useState(focusMoved);
   if (!open && holdFocus) setHoldFocus(false);
   const visible = useMemo(() => {
@@ -112,7 +104,6 @@ export function SearchablePickerPopover({
   );
   const option = useActiveOption(selectableIds, "none");
   const setActiveId = option.setActiveId;
-  // Every close clears the active row, whichever side closed the list.
   if (!open && option.chosenId !== null) setActiveId(null);
   const active =
     option.activeIndex >= 0 ? selectable[option.activeIndex] : null;
@@ -144,7 +135,6 @@ export function SearchablePickerPopover({
     },
     [close, setActiveId],
   );
-  // `selectable` holds only the candidates that can be picked.
   const moveActive = option.move;
   const selectCandidate = useCallback(
     (next: string) => {
@@ -156,7 +146,6 @@ export function SearchablePickerPopover({
     [dismiss, disabled, onSelect, triggerRef],
   );
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
-    // Keys that confirm an input method composition belong to the field.
     if (disabled || isImeComposing(event)) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
       event.preventDefault();

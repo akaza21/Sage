@@ -14,7 +14,6 @@ import {
 import { chatRowErrorId, useChatRowError } from "./chatRowError";
 import ChatRowErrorNotice from "./ChatRowErrorNotice";
 
-/** A Project's archived chats, each restorable or permanently deletable. */
 export default function ArchivedChatList({
   projectId,
   chats,

@@ -4,20 +4,13 @@ import { AcpDesktopError } from "../services/acpDesktopCommand";
 import { chatAccessDraftPort } from "./chatAccessDraftPort";
 import { applyChatAccessDraft } from "./sessionAccessActions";
 
-/** An access choice made before a chat's session takes it. */
 export interface ChatAccessDraft {
   bindingId: string;
   mode: SessionAccessMode;
 }
 
-/** Chats whose draft is held; the oldest is dropped beyond this. */
 const MAX_DRAFTS = 32;
 
-/**
- * Access chosen in a chat's composer before its session can hold it. The
- * draft is spent before the chat's next prompt is dispatched, through the
- * same native chat access commands the menu uses once the session exists.
- */
 export const useChatAccessDrafts = create<{
   drafts: Readonly<Record<string, ChatAccessDraft>>;
 }>(() => ({ drafts: {} }));
@@ -27,7 +20,6 @@ function withoutDraft(chatId: string) {
   return rest;
 }
 
-/** Holds `draft` for the chat, or clears the chat's draft when null. */
 export function draftChatAccess(chatId: string, draft: ChatAccessDraft | null) {
   const rest = withoutDraft(chatId);
   useChatAccessDrafts.setState({
@@ -41,7 +33,6 @@ export function draftChatAccess(chatId: string, draft: ChatAccessDraft | null) {
   });
 }
 
-/** Removes and returns the chat's draft for `bindingId`, if it has one. */
 function takeChatAccessDraft(
   chatId: string,
   bindingId: string,
@@ -52,12 +43,7 @@ function takeChatAccessDraft(
   return draft.bindingId === bindingId ? draft.mode : null;
 }
 
-/**
- * Gives the chat's new `session` the chat's draft for its binding before a
- * prompt is dispatched, and throws when it was not given, so nothing is
- * sent. The draft is spent either way: once the session exists, its access
- * menu shows and changes what it holds.
- */
+/** The draft is spent even when applying it fails: the new session owns it. */
 export async function spendChatAccessDraft(
   chatId: string,
   session: { id: string; bindingId: string },

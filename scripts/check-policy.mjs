@@ -59,6 +59,10 @@ const reviewedSpawnModules = new Map([
     "crates/sage-test-support/src/test_executable.rs",
     "Test-only executable fixture writer",
   ],
+  [
+    "src-tauri/src/console_window_fixture.rs",
+    "Test-only console window fixture",
+  ],
 ]);
 
 const frontendSecurityPatterns = [

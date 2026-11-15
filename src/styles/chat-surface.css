@@ -35,7 +35,6 @@
   grid-area: composer;
 }
 
-/* The dock owns the edit summary slot; the transcript only supplies content. */
 .chat-edit-summary-zone {
   --edit-summary-width: 100%;
   --edit-summary-margin: 0;

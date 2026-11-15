@@ -43,11 +43,6 @@ const CreateProjectPart = lazyParts<typeof CreateProjectChunk>(
   () => import("./CreateProjectDialog"),
 );
 
-/**
- * Tiny core trigger for the Chat search dialog. The first folder request
- * (rail, title bar or shortcut) loads the dialog chunk once; the dialog then
- * takes that pending request on mount and owns every later one.
- */
 export function ChatSearchGate({
   triggerRef,
 }: {
@@ -74,7 +69,6 @@ export function LeftSidebar({
   railRef,
 }: {
   inert?: boolean;
-  /** Reports the mounted rail, so focus can follow a fold or unfold. */
   railRef?: (node: HTMLElement | null) => void;
 } = {}) {
   const projects = useWorkbenchStore((state) => state.projects);

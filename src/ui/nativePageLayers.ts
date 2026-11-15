@@ -11,7 +11,6 @@ const layerState = create(() => ({
 export const nativePageLayers = layerState.getState;
 export const subscribeNativePageLayers = layerState.subscribe;
 
-/** Modals block every native page; nonmodal layers cover only their overlap. */
 export function nativePageOverlapped(page: DOMRectReadOnly): boolean {
   const { layers, overflow } = nativePageLayers();
   return (
@@ -48,7 +47,6 @@ function registerNativePageLayer(element: HTMLElement, coverage: Coverage) {
   };
 }
 
-/** Register only open UI layers; native pages never scan the document. */
 export function useNativePageLayer(
   ref: RefObject<HTMLElement | null>,
   {
