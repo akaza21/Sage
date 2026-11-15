@@ -6,7 +6,6 @@ import { Files, MessageSquare, Search } from "../ui/leanIcons";
 import { useWorkbenchStore, type SidebarView } from "../app/store";
 import { openQuickOpen } from "../features/quickOpen/quickOpenState";
 
-// About half a second at 60 Hz.
 const BROWSE_FOCUS_FRAMES = 30;
 
 export function EditorWelcome({ onOpenAgent }: { onOpenAgent: () => void }) {

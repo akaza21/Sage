@@ -1,7 +1,5 @@
-// Which chat the Agent window shows: the active chat tab, else the chat the
-// Agent body kept focus on (while a file, diff or preview is active), else
-// the first chat. A side chat stands for its parent. The title bar and the
-// chat history both read it through here, so they never disagree.
+// A side chat stands for its parent. The title bar and the chat history both
+// read the shown chat through here, so they never disagree.
 
 import { agentChatFocus, useAgentChatFocus } from "../app/agentChatOwner";
 import { draftShownFor } from "../app/newChatDraftSlice";
@@ -33,7 +31,6 @@ function focusedRailChatId(input: {
   );
 }
 
-/** The shown chat now, read outside React. */
 export function currentShownAgentChatId(): string | null {
   const state = useWorkbenchStore.getState();
   const id = focusedRailChatId({

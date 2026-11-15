@@ -132,9 +132,9 @@
   /* Owner Codex capture, measured from a rail row's right edge. */
   --agent-rail-title-end: 33px;
   --agent-rail-title-end-hover: 58px; /* title clip beside Pin and Archive */
-  --agent-rail-title-fade: 20px; /* titles fade out instead of an ellipsis */
+  --agent-rail-title-fade: 20px;
   --agent-rail-trailing-control: 24px; /* dot, Pin and Archive share this slot */
-  --agent-rail-hover-card-gap: 1px; /* hover card starts where the row ends */
+  --agent-rail-hover-card-gap: 1px;
   --agent-shell-sidebar: #1b1b1b;
   --agent-shell-divider: #2b2b2b;
   --agent-shell-rail-divider: #252525;
@@ -438,7 +438,6 @@
   --motion-duration-bounce: 1s; /* s6/f0056, f0064, f0072 dot cycle */
   --motion-duration-indicator: 200ms;
 
-  /* Compatibility aliases for existing surfaces */
   --bg: var(--color-canvas);
   --surface: var(--color-panel);
   --surface-raised: var(--color-surface);
@@ -865,7 +864,6 @@ textarea:disabled,
   }
 }
 
-/* Staggered rows: the Nth child waits N-1 steps; later rows share step 5. */
 @keyframes sage-row-in {
   from {
     opacity: 0.3;

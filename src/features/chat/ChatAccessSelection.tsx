@@ -17,8 +17,8 @@ export interface AccessMenuAnchor {
 }
 
 /**
- * Hands the composer's trigger what it shows, when that changes. The trigger
- * stays the composer's own, so it is never remounted as this chunk loads.
+ * The trigger stays the composer's own, so it is never remounted as this
+ * chunk loads.
  */
 function ReportView({
   view,
@@ -41,11 +41,7 @@ function ReportView({
   return null;
 }
 
-/**
- * A chat's own access, and its menu: its live session's, or before the
- * session exists the access drafted for it. Loaded on demand, so the chat
- * path carries none of it.
- */
+/** Loaded on demand, so the chat path carries none of it. */
 export default function ChatAccessSelection({
   bindingId,
   harnessName,
@@ -66,7 +62,6 @@ export default function ChatAccessSelection({
     onView: (view: AccessView | null) => void;
   }) {
   const props = { bindingId, capabilities };
-  // The harness defaults' own load error shows with the chat's access.
   const error = useSessionAccessModeStore((state) => state.error);
   const withMenu = (view: AccessView) => (
     <>
