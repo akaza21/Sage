@@ -12,6 +12,7 @@ use super::{
     },
     AdmittedCodexBinding, CodexAdmissionUnavailable, ObservedLaunchInputs,
 };
+use sage_domain::harness::ModelOption;
 
 #[derive(Debug)]
 pub(crate) enum CodexRegistrationState {
@@ -22,6 +23,9 @@ pub(crate) enum CodexRegistrationState {
 #[derive(Debug)]
 pub(crate) struct CodexRegistrationAuthority {
     pub(super) state: Mutex<CodexRegistrationState>,
+    /// The catalog the last account discovery listed, with the digest of the
+    /// binding that listed it.
+    pub(super) models: Mutex<Option<([u8; 32], Vec<ModelOption>)>>,
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pub(super) fixture_only: bool,
 }
@@ -40,6 +44,7 @@ impl CodexBindingRegistration {
         Ok(Self {
             authority: Arc::new(CodexRegistrationAuthority {
                 state: Mutex::new(CodexRegistrationState::Admitted(binding)),
+                models: Mutex::default(),
                 fixture_only: true,
             }),
         })
@@ -52,6 +57,7 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Unavailable(
                     CodexAdmissionUnavailable::IndependentAdmission,
                 )),
+                models: Mutex::default(),
                 fixture_only: true,
             }),
         }
@@ -172,6 +178,24 @@ impl CodexBindingRegistration {
         }
     }
 
+    /// The models the admitted binding listed in its last account discovery,
+    /// so they can be offered before a session or a discovery of this Project.
+    pub(crate) fn known_models(&self) -> Option<Vec<ModelOption>> {
+        let digest = self.admitted()?.binding_digest();
+        match &*lock(&self.authority.models) {
+            Some((listed_by, models)) if *listed_by == digest => Some(models.clone()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn remember_models(&self, binding_digest: [u8; 32], models: Vec<ModelOption>) {
+        *lock(&self.authority.models) = Some((binding_digest, models));
+    }
+
+    pub(crate) fn forget_models(&self) {
+        *lock(&self.authority.models) = None;
+    }
+
     pub(crate) fn invalidate_drift(&self) {
         *self.lock_state() = CodexRegistrationState::Unavailable(CodexAdmissionUnavailable::Drift);
     }
@@ -203,4 +227,10 @@ impl CodexBindingRegistration {
             unavailable
         }
     }
+}
+
+fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
+    mutex
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }

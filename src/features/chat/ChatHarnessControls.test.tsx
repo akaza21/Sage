@@ -275,6 +275,46 @@ it("holds a thinking level chosen before the first session for the listed model"
   useChatEffortDraft.setState({ draft: null });
 });
 
+it("lists an account-discovery harness's models and thinking levels in a chat the global selection left", async () => {
+  const codex = {
+    id: "codex",
+    name: "Codex",
+    description: "",
+    installState: "available" as const,
+    source: "builtIn" as const,
+    accountModelDiscovery: true,
+    transport: "acp" as const,
+    bindingId: "codex-app-server",
+    version: "0.167.1",
+  };
+  rememberHarnessModels(harnessModelIdentity(codex), [
+    {
+      id: "gpt-x",
+      name: "GPT-X",
+      isDefault: true,
+      effortLevels: ["low", "xhigh"],
+    },
+  ]);
+  useWorkbenchStore.setState({
+    harnesses: [...useWorkbenchStore.getState().harnesses, codex],
+    selectedHarnessId: "access-test",
+    models: [{ id: "opus", name: "Opus 5" }],
+  });
+  renderControls({
+    sessionHarnessId: null,
+    selectedHarnessId: "codex",
+    selectedModelId: "gpt-x",
+    accessTarget: { bindingId: "codex-app-server", draftChatId: "chat-draft" },
+  });
+  expect(
+    await screen.findByRole("button", { name: "Thinking level: Default" }),
+  ).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: /^Model/ }));
+  expect(
+    await screen.findByRole("option", { name: /GPT-X/ }),
+  ).toBeInTheDocument();
+});
+
 it("shows a held thinking level the model no longer lists as held, not as Default", async () => {
   useWorkbenchStore.setState({
     selectedHarnessId: "access-test",

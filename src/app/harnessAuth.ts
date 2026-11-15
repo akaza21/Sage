@@ -6,6 +6,7 @@ import type {
   SageProjectId,
 } from "../domain/acp";
 import { errorMessage } from "../domain/errors";
+import { forgetHarnessModels, harnessModelIdentity } from "./harnessModelCache";
 import type { WorkbenchState } from "./store";
 
 type Set = (partial: Partial<WorkbenchState>) => void;
@@ -21,6 +22,13 @@ export const accountChange =
     const scope = authScope(get());
     if (!scope) return;
     const requestGeneration = get().harnessRequestGeneration;
+    forgetHarnessModels(
+      harnessModelIdentity(
+        get().harnesses.find(
+          (candidate) => candidate.id === get().selectedHarnessId,
+        ),
+      ),
+    );
     set({
       harnessDiscoveryPhase: "checking",
       harnessDiscoveryError: null,

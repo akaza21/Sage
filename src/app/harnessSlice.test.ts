@@ -151,4 +151,40 @@ describe("harness discovery reconciliation", () => {
     expect(state.selectedModelId).toBeNull();
     expect(state.harnessDiscoveryPhase).not.toBe("ready");
   });
+
+  it("lists an account's last discovered models while the next discovery runs, until it signs out", async () => {
+    const effortModel = {
+      id: "gpt-x",
+      name: "GPT-X",
+      isDefault: true,
+      effortLevels: ["low", "xhigh", "ultra"],
+    };
+    seed({ harnesses: [available] });
+    discoverCodex.mockResolvedValue({ ...discovery, models: [effortModel] });
+    await useWorkbenchStore.getState().selectHarness("codex");
+
+    let release: (value: unknown) => void = () => undefined;
+    discoverCodex.mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    );
+    useWorkbenchStore.setState({ selectedHarnessId: "simulator" });
+    const pending = useWorkbenchStore.getState().selectHarness("codex");
+    let state = useWorkbenchStore.getState();
+    expect(state.models).toEqual([effortModel]);
+    expect(state.selectedModelId).toBe("gpt-x");
+    expect(state.harnessDiscoveryPhase).toBe("checking");
+
+    release({ ...discovery, account: "signedOut" });
+    await pending;
+    state = useWorkbenchStore.getState();
+    expect(state.models).toEqual([]);
+    expect(state.harnessDiscoveryPhase).toBe("signInRequired");
+
+    discoverCodex.mockReturnValue(new Promise(() => undefined));
+    void useWorkbenchStore.getState().selectHarness("codex");
+    expect(useWorkbenchStore.getState().models).toEqual([]);
+  });
 });

@@ -112,20 +112,7 @@ impl DiscoveryCache {
             Some(model) => &entry.id == model,
             None => entry.is_default,
         })?;
-        Some(sage_domain::harness::ModelOption {
-            id: model.id.as_str().to_owned(),
-            name: model.name.as_str().to_owned(),
-            description: None,
-            is_default: Some(model.is_default),
-            context_window: None,
-            effort_levels: (!model.effort_levels.is_empty()).then(|| {
-                model
-                    .effort_levels
-                    .iter()
-                    .map(|level| level.as_str().to_owned())
-                    .collect()
-            }),
-        })
+        Some(model_option(model))
     }
 
     pub(super) fn publish_if_current(
@@ -288,5 +275,31 @@ pub(super) fn response_from(
             })
             .collect(),
         default_model_id: content.default_model_id.clone(),
+    }
+}
+
+/// The models a discovery listed, as a session of the account can start on
+/// them; `None` when the account cannot start one.
+pub(super) fn launchable_models(
+    response: &CodexDiscoveryResponse,
+) -> Option<Vec<sage_domain::harness::ModelOption>> {
+    (response.account != CodexDiscoveryAccount::SignedOut)
+        .then(|| response.models.iter().map(model_option).collect())
+}
+
+fn model_option(model: &CodexDiscoveryModel) -> sage_domain::harness::ModelOption {
+    sage_domain::harness::ModelOption {
+        id: model.id.as_str().to_owned(),
+        name: model.name.as_str().to_owned(),
+        description: None,
+        is_default: Some(model.is_default),
+        context_window: None,
+        effort_levels: (!model.effort_levels.is_empty()).then(|| {
+            model
+                .effort_levels
+                .iter()
+                .map(|level| level.as_str().to_owned())
+                .collect()
+        }),
     }
 }

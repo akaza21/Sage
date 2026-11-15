@@ -12,7 +12,9 @@ use crate::acp::{
 use super::codex_operation::{ActiveCodexOperation, CodexOperationGate, PreparedCodexOperation};
 
 mod cache;
-use cache::{CacheKey, CacheScope, DiscoveryCache, response_from, validate_scope};
+use cache::{
+    CacheKey, CacheScope, DiscoveryCache, launchable_models, response_from, validate_scope,
+};
 mod flight;
 use flight::{DiscoveryFlight, DiscoveryFlightKey};
 
@@ -279,8 +281,10 @@ impl CodexDiscoveryManager {
         self.cache.clear();
     }
 
+    /// Called when the account changes, so its catalog is not offered again.
     pub(crate) fn forget_snapshot(&self) {
         self.cache.clear();
+        self.registration.forget_models();
     }
 
     pub(super) fn launch_model(
@@ -339,9 +343,16 @@ impl CodexDiscoveryManager {
         key: CacheKey,
         response: CodexDiscoveryResponse,
     ) -> Result<(), CodexDiscoveryRunError> {
+        let binding_digest = key.scope.binding_digest;
+        let models = launchable_models(&response);
         self.cache.publish_if_current(key, response, || {
             self.gate.is_current(expected_invalidation_epoch)
-        })
+        })?;
+        match models {
+            Some(models) => self.registration.remember_models(binding_digest, models),
+            None => self.registration.forget_models(),
+        }
+        Ok(())
     }
 
     fn clear_flight(&self, completed: &Arc<DiscoveryFlight>) {
@@ -1113,5 +1124,70 @@ mod tests {
         ))
         .unwrap();
         CodexDiscoveryProtocol::new(&packet, [9; 32], RuntimeEpoch::new(71).unwrap())
+    }
+
+    #[test]
+    fn a_published_catalog_lists_before_any_session_until_the_account_changes() {
+        let executable = std::env::temp_dir().join(format!(
+            "sage-codex-known-models-{}.bin",
+            uuid::Uuid::new_v4()
+        ));
+        fs::write(&executable, b"observed-codex").unwrap();
+        let registration = CodexBindingRegistration::unavailable_for_test();
+        let binding = registration
+            .authenticate_observed_for_test(executable.clone(), "codex-cli 0.167.1".into())
+            .unwrap();
+        let manager = CodexDiscoveryManager::new(registration.clone());
+        let scope = CacheScope {
+            binding_digest: binding.binding_digest(),
+            ..scope()
+        };
+        let runtime_epoch = RuntimeEpoch::new(15).unwrap();
+        let publish = |account| {
+            let mut listed = response(&scope, runtime_epoch);
+            listed.account = account;
+            listed.models[0].effort_levels = ["low", "xhigh", "ultra"]
+                .map(|level| RequiredText::new("effort", level).unwrap())
+                .to_vec();
+            manager
+                .publish(
+                    manager.gate.current_epoch(),
+                    CacheKey {
+                        scope: scope.clone(),
+                        runtime_epoch,
+                    },
+                    listed,
+                )
+                .unwrap();
+        };
+        let known = || serde_json::to_value(registration.known_models()).unwrap();
+        let listed = serde_json::to_value(Some(vec![sage_domain::harness::ModelOption {
+            id: "gpt-cache".into(),
+            name: "GPT Cache".into(),
+            description: None,
+            is_default: Some(true),
+            context_window: None,
+            effort_levels: Some(vec!["low".into(), "xhigh".into(), "ultra".into()]),
+        }]))
+        .unwrap();
+        assert!(registration.known_models().is_none());
+
+        publish(CodexDiscoveryAccount::ManagedChatgpt);
+        assert_eq!(known(), listed);
+        manager.invalidate();
+        assert_eq!(known(), listed);
+
+        manager.forget_snapshot();
+        assert!(registration.known_models().is_none());
+
+        publish(CodexDiscoveryAccount::ApiKey);
+        publish(CodexDiscoveryAccount::SignedOut);
+        assert!(registration.known_models().is_none());
+
+        publish(CodexDiscoveryAccount::ManagedChatgpt);
+        fs::write(&executable, b"updated-codex").unwrap();
+        assert!(registration.refresh().is_err());
+        assert!(registration.known_models().is_none());
+        fs::remove_file(executable).unwrap();
     }
 }

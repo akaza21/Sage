@@ -43,6 +43,10 @@ export function rememberHarnessModels(
   }
 }
 
+export function forgetHarnessModels(identity: string | null): void {
+  if (identity !== null) entries.delete(identity);
+}
+
 export function resetHarnessModelCache(): void {
   entries.clear();
 }

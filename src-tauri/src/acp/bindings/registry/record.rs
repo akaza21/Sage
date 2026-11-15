@@ -104,13 +104,14 @@ pub(crate) struct BindingRecord {
 
 impl BindingRecord {
     /// `None` when the binding lists no models outside a session: Codex lists
-    /// them through account discovery in a project root, and Pi only from
-    /// inside a running session.
+    /// the catalog its last account discovery read, and Pi lists models only
+    /// from inside a running session.
     pub(crate) fn launch_models(&self, probe: bool) -> Option<Vec<ModelOption>> {
         match &self.admission {
             Admission::ClaudeSdk(registration) => {
                 super::claude_sdk::launch_models(registration, probe)
             }
+            Admission::Codex(registration) => registration.known_models(),
             _ => None,
         }
     }

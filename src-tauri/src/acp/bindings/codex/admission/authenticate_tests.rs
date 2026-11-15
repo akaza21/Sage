@@ -319,6 +319,7 @@ fn authenticate_signed_installed_role_rejects_a_mismatched_artifact_role() {
             state: Mutex::new(CodexRegistrationState::Unavailable(
                 CodexAdmissionUnavailable::IndependentAdmission,
             )),
+            models: Mutex::default(),
             #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
             fixture_only: false,
         }),

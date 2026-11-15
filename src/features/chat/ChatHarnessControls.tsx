@@ -99,13 +99,10 @@ export function ChatHarnessControls({
     accessOpen: active === "access",
     openAccess: () => toggle("access"),
   });
-  const modelIdentity = selectedHarness?.accountModelDiscovery
-    ? null
-    : harnessModelIdentity(selectedHarness);
   const models =
     selectedHarnessId === globalSelectedHarnessId
       ? globalModels
-      : (cachedHarnessModels(modelIdentity) ?? []);
+      : (cachedHarnessModels(harnessModelIdentity(selectedHarness)) ?? []);
   // Effort levels are known only once a session runs the selected harness and
   // model; until then effort shows as unavailable, however the selection and
   // the session were reached.

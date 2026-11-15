@@ -14,6 +14,7 @@ import { acpHarnessDesktop } from "../services/acpHarnessDesktop";
 import { desktop } from "../services/desktop";
 import {
   cachedHarnessModels,
+  forgetHarnessModels,
   harnessModelIdentity,
   rememberHarnessModels,
 } from "./harnessModelCache";
@@ -141,10 +142,10 @@ export const createHarnessSlice: StateCreator<
       });
       return;
     }
-    const identity = usesAccountModelDiscovery
-      ? null
-      : harnessModelIdentity(harness);
+    const identity = harnessModelIdentity(harness);
     const cached = cachedHarnessModels(identity);
+    // An account's catalog is listed from its last discovery while this
+    // Project's discovery runs, but only that discovery admits a send.
     set({
       selectedHarnessId: harnessId,
       models: cached ?? [],
@@ -152,16 +153,17 @@ export const createHarnessSlice: StateCreator<
         ? preferredModelId(cached, previousModelId)
         : null,
       harnessRequestGeneration: requestGeneration,
-      harnessDiscoveryPhase: cached
-        ? "ready"
-        : detecting || usesAccountModelDiscovery
-          ? "checking"
-          : "idle",
+      harnessDiscoveryPhase:
+        cached && !usesAccountModelDiscovery
+          ? "ready"
+          : detecting || usesAccountModelDiscovery
+            ? "checking"
+            : "idle",
       harnessDiscoveryError: null,
       harnessAccount: null,
     });
     if (detecting) return;
-    if (cached) {
+    if (cached && !usesAccountModelDiscovery) {
       revalidate(harnessId, identity, generation, projectId, requestGeneration);
       return;
     }
@@ -195,7 +197,13 @@ export const createHarnessSlice: StateCreator<
         }
         set({ harnessAccount: response.account });
         if (response.account === "signedOut") {
-          set({ harnessDiscoveryPhase: "signInRequired", error: null });
+          forgetHarnessModels(identity);
+          set({
+            models: [],
+            selectedModelId: null,
+            harnessDiscoveryPhase: "signInRequired",
+            error: null,
+          });
           return;
         }
         const models = response.models.map((model) => ({
@@ -206,6 +214,7 @@ export const createHarnessSlice: StateCreator<
             ? { effortLevels: [...model.effortLevels] }
             : {}),
         }));
+        rememberHarnessModels(identity, models);
         set({
           models,
           selectedModelId: preferredModelId(models, previousModelId),

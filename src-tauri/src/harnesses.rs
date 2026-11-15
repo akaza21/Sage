@@ -1207,4 +1207,46 @@ mod tests {
         assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
         assert!(catalog.models("codex").unwrap().is_empty());
     }
+
+    #[test]
+    fn catalog_lists_the_codex_models_its_account_discovery_read_before_a_session() {
+        let executable = std::env::temp_dir().join(format!(
+            "sage-codex-catalog-models-{}.bin",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&executable, b"observed-codex").unwrap();
+        let registration = CodexBindingRegistration::unavailable_for_test();
+        let binding = registration
+            .authenticate_observed_for_test(executable.clone(), "codex-cli 0.167.1".into())
+            .unwrap();
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            registration.clone(),
+            CodexHostPresence::Present,
+        )
+        .settled_for_test();
+        let model = ModelOption {
+            id: "gpt-6.1-sol".into(),
+            name: "GPT-6.1-Sol".into(),
+            description: None,
+            is_default: Some(true),
+            context_window: None,
+            effort_levels: Some(vec!["low".into(), "max".into(), "ultra".into()]),
+        };
+        assert!(catalog.models("codex").unwrap().is_empty());
+
+        registration.remember_models([0; 32], vec![model.clone()]);
+        assert!(catalog.known_models("codex").unwrap().is_empty());
+
+        registration.remember_models(binding.binding_digest(), vec![model.clone()]);
+        let listed = serde_json::to_value(vec![model]).unwrap();
+        assert_eq!(
+            serde_json::to_value(catalog.models("codex").unwrap()).unwrap(),
+            listed
+        );
+        assert_eq!(
+            serde_json::to_value(catalog.known_models("codex").unwrap()).unwrap(),
+            listed
+        );
+        std::fs::remove_file(executable).unwrap();
+    }
 }
