@@ -72,17 +72,14 @@ export const createNewChatDraftSlice: StateCreator<
     newChatDraft: null,
     draftFocusRequest: 0,
     pendingFirstSend: null,
-    openNewChatDraft: async (projectId) => {
-      return (await load()).openNewChatDraft(projectId);
-    },
+    openNewChatDraft: async (projectId) =>
+      (await load()).openNewChatDraft(projectId),
     updateNewChatDraft: (patch) => actions?.updateNewChatDraft(patch),
-    selectDraftHarness: async (harnessId) => {
-      await (await load()).selectDraftHarness(harnessId);
-    },
+    selectDraftHarness: async (harnessId) =>
+      (await load()).selectDraftHarness(harnessId),
     selectDraftModel: (modelId) => actions?.selectDraftModel(modelId),
-    sendNewChatDraft: () => actions?.sendNewChatDraft() ?? Promise.resolve(),
-    reloadNewChatDraft: () =>
-      actions?.reloadNewChatDraft() ?? Promise.resolve(),
+    sendNewChatDraft: async () => actions?.sendNewChatDraft(),
+    reloadNewChatDraft: async () => actions?.reloadNewChatDraft(),
     discardNewChatDraft: () => actions?.discardNewChatDraft(),
   };
 };
