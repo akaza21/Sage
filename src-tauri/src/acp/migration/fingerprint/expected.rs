@@ -16,6 +16,17 @@ static EXPECTED: [OnceLock<String>; MAX_SCHEMA_VERSION + 1] =
     [const { OnceLock::new() }; MAX_SCHEMA_VERSION + 1];
 static EXPECTED_LEGACY_V10_SESSION_EVENTS: OnceLock<String> = OnceLock::new();
 
+/// Historic fixtures must restore the trigger belonging to their version,
+/// rather than retaining a trigger installed by a later migration.
+#[cfg(test)]
+pub(crate) fn historical_trigger_sql(version: u32, name: &str) -> AppResult<String> {
+    Ok(expected_schema_connection(version)?.query_row(
+        "SELECT sql FROM sqlite_schema WHERE type='trigger' AND name=?1",
+        [name],
+        |row| row.get(0),
+    )?)
+}
+
 pub(super) fn expected_schema_fingerprint(version: u32) -> AppResult<String> {
     let replay = || schema_fingerprint(&expected_schema_connection(version)?);
     match usize::try_from(version)
@@ -267,6 +278,15 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
             [imported],
         )?;
         expected.pragma_update(None, "user_version", imported)?;
+    }
+    let capabilities = super::super::session_capabilities::VERSION;
+    if version >= capabilities {
+        expected.execute_batch(super::super::session_capabilities::SQL)?;
+        expected.execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+            [capabilities],
+        )?;
+        expected.pragma_update(None, "user_version", capabilities)?;
     }
     Ok(expected)
 }

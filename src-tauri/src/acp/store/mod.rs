@@ -55,7 +55,7 @@ use sage_acp_protocol::{
         ClientIntentId, EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
         SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageServerRequestId, SageTurnId,
     },
-    lifecycle::{DeliveryState, ServerRequestState, TurnState},
+    lifecycle::{DeliveryState, ServerRequestState, TurnState, TurnTerminalOutcome},
 };
 
 type StartDuplicateRow = (
@@ -128,6 +128,7 @@ pub(crate) use snapshots::{FilePairCommand, read_snapshot};
 #[cfg(test)]
 pub(crate) use terminal::apply_session_terminal;
 pub(crate) use terminal::apply_turn_terminal;
+pub(crate) use terminal_reason::recordable as recordable_terminal_reason;
 pub(crate) use terminalize::{terminalize_epoch, terminalize_recovery_epoch};
 pub(crate) use turn_undo::{
     TurnUndoneCommand, UndoneThread, pending_thread_rewind, record_turn_undone,
@@ -176,6 +177,7 @@ pub(crate) struct RecoverRuntimeCommand {
     pub chat_id: SageChatId,
     pub session_id: SageAgentSessionId,
     pub runtime_epoch: RuntimeEpoch,
+    pub terminal_reason: TurnTerminalOutcome,
     pub now_millis: i64,
 }
 
@@ -408,6 +410,8 @@ fn mutation_shape(mutation: &StoreMutation) -> (&str, &str, bool) {
     }
 }
 
+#[cfg(test)]
+mod activation_resume_tests;
 #[cfg(test)]
 mod adapter_batch_tests;
 #[cfg(test)]

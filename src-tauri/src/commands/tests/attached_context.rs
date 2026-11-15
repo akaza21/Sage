@@ -662,8 +662,7 @@ fn with_staged(
 fn a_named_revision_is_consumed_after_admitted_dispatch_and_only_its_count_is_durable() {
     use crate::acp::attached_context::files::{Resource, Resources};
     tokio::runtime::Runtime::new().unwrap().block_on(async {
-        // Durable session capabilities are immutable after activation, so the
-        // session is activated with embedded-resource support from the start.
+        // Negotiate embedded-resource support when activating this session.
         let fixture =
             Fixture::with_capabilities(|capabilities| capabilities.prompt_resources = true).await;
         let (calls, _) = fixture.install_host();

@@ -3,8 +3,9 @@ use std::time::{Duration, Instant};
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     process::{TreeControl, TreeExit},
-    runtime::{BoundedThread, ProjectIntentAuthority},
+    runtime::{BoundedThread, ProjectIntentAuthority, terminal_detail},
 };
+use sage_acp_protocol::lifecycle::TurnTerminalOutcome;
 
 use super::{
     DriverMailbox, FirstTurnWorkerContext, FirstTurnWorkerState, RetainedRunnerRecovery,
@@ -121,6 +122,7 @@ where
                             .recover_runtime_after_zero_process_retained(
                                 context.owner.clone(),
                                 proof,
+                                runtime_loss(&exit, root_exit, control),
                             )
                             .is_ok();
                     }
@@ -154,6 +156,54 @@ where
     )
 }
 
+fn runtime_loss<A, R, T>(
+    exit: &RunnerExit<A, R, T>,
+    root_exit: TreeExit,
+    control: &TreeControl,
+) -> TurnTerminalOutcome
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+{
+    lost_runtime_outcome(
+        exit.reason,
+        exit.state.teardown_outcome(),
+        root_exit,
+        exit.state.stderr_watermark(),
+        control,
+    )
+}
+
+/// The wait reports Sage's termination request, so a root that had already
+/// exited on its own is read back from the supervisor to keep its exit code.
+/// Only an error the harness wrote since the turn began is that turn's own;
+/// the tree is at zero here, so its stderr is already drained.
+fn lost_runtime_outcome(
+    runner_exit: TreeExit,
+    teardown: Option<TurnTerminalOutcome>,
+    root_exit: TreeExit,
+    turn_watermark: Option<u64>,
+    control: &TreeControl,
+) -> TurnTerminalOutcome {
+    let root_exit = control
+        .exit_before_termination()
+        .ok()
+        .flatten()
+        .unwrap_or(root_exit);
+    let harness_error =
+        turn_watermark.and_then(|watermark| control.harness_error(Instant::now(), watermark));
+    terminal_detail::runtime_lost(
+        terminal_detail::observed_exit(runner_exit, root_exit),
+        teardown,
+        harness_error.as_deref(),
+    )
+}
+
 pub(super) fn cleanup_budget() -> Duration {
     Duration::from_millis(sage_core::limits::LIMITS.deadlines_ms.explicit_close)
 }
+
+#[cfg(test)]
+#[path = "shutdown_tests.rs"]
+mod tests;

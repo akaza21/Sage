@@ -103,6 +103,17 @@ impl RunningTree {
 
 #[cfg(test)]
 pub(crate) fn launch_fixture_for_test(runtime_epoch: u64) -> RunningTree {
+    launch_shell_for_test(runtime_epoch, "exec sleep 30")
+}
+
+/// A root that exits by itself with `code`, without Sage asking it to.
+#[cfg(test)]
+pub(crate) fn launch_exiting_for_test(runtime_epoch: u64, code: u8) -> RunningTree {
+    launch_shell_for_test(runtime_epoch, &format!("exit {code}"))
+}
+
+#[cfg(test)]
+fn launch_shell_for_test(runtime_epoch: u64, script: &str) -> RunningTree {
     use std::{ffi::OsString, fs::File, io::Read};
 
     use sha2::{Digest, Sha256};
@@ -137,11 +148,8 @@ pub(crate) fn launch_fixture_for_test(runtime_epoch: u64) -> RunningTree {
             byte_len,
         )
         .unwrap(),
-        fixed_args: super::BoundedOsArgs::new(vec![
-            OsString::from("-c"),
-            OsString::from("exec sleep 30"),
-        ])
-        .unwrap(),
+        fixed_args: super::BoundedOsArgs::new(vec![OsString::from("-c"), OsString::from(script)])
+            .unwrap(),
         environment: super::BoundedEnvironment::new(Vec::new()).unwrap(),
         project_root,
         required_guarantee: super::RequiredContainment::TrustedCooperativeTree,

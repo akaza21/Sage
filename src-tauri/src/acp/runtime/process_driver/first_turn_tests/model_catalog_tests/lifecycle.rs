@@ -78,6 +78,7 @@ async fn run_catalog_page_crossing_turn(
         transport: CatalogTransport::new(&writes, Arc::clone(&mailbox), None),
         control: NoChildProcessControl {
             zero_checks: Arc::new(AtomicUsize::new(0)),
+            harness_error: None,
         },
         owner: fixture.owner.clone(),
         clock: Arc::new(SystemDriverClock),
