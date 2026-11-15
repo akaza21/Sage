@@ -5,6 +5,7 @@ import type * as AttachChunk from "./ComposerAttach";
 import type * as MentionChunk from "./ComposerMentionController";
 import { lazyParts } from "./lazyParts";
 import type { useComposerFileContext } from "./useComposerFiles";
+import type { ImageAction } from "./useComposerImageInput";
 
 type FileContext = ReturnType<typeof useComposerFileContext>;
 
@@ -18,16 +19,19 @@ const AttachPart = lazyParts<typeof AttachChunk>(
 
 export function ComposerAttachButton({
   files,
+  triggerRef,
   fieldId,
   disabled,
 }: {
   files: FileContext;
+  triggerRef: RefObject<HTMLButtonElement | null>;
   fieldId: string;
   disabled: boolean;
 }) {
   return (
     <IconButton
       // Anchors the attach menu.
+      ref={triggerRef}
       id={`${fieldId}-attach`}
       className="composer__plus"
       aria-label="Attach files"
@@ -41,6 +45,7 @@ export function ComposerAttachButton({
 
 export function ComposerFileParts({
   files,
+  triggerRef,
   chatId,
   fieldRef,
   fieldId,
@@ -51,11 +56,13 @@ export function ComposerFileParts({
   disabled,
 }: {
   files: FileContext;
+  /** The attach button, which the attach menu anchors on. */
+  triggerRef: RefObject<HTMLButtonElement | null>;
   chatId: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
   text: string;
-  imageAction?: { disabled: boolean; onChoose: () => void };
+  imageAction?: ImageAction;
   /** Hands a pick to the chat's staged batch, which the paste part owns. */
   onPickFiles: () => void;
   hidden: boolean;
@@ -80,7 +87,7 @@ export function ComposerFileParts({
           part="ComposerAttach"
           chatId={chatId}
           presses={files.attachPresses}
-          triggerId={`${fieldId}-attach`}
+          triggerRef={triggerRef}
           imageAction={imageAction}
           onPick={onPickFiles}
         />

@@ -273,9 +273,15 @@ for (const width of [1888, 720, 480]) {
             plan.locator('svg[aria-hidden="true"]').first(),
           ).toBeVisible();
         }
-      } else await expect(add).toBeDisabled();
+      } else {
+        // With no session actions "+" still opens for its draft action.
+        await add.click();
+        await expect(
+          menu.getByRole("menuitem", { name: "Add images", exact: true }),
+        ).toBeDisabled();
+      }
       if (!profile.effort) {
-        if (hasAddActions) await page.keyboard.press("Escape");
+        await page.keyboard.press("Escape");
         return;
       }
       const effortAnchor = compactEffort
@@ -286,7 +292,7 @@ for (const width of [1888, 720, 480]) {
           .getByRole("menuitem", { name: "Thinking level", exact: true })
           .click();
       } else {
-        if (hasAddActions) await page.keyboard.press("Escape");
+        await page.keyboard.press("Escape");
         await effortAnchor.click();
       }
       const effort = page.getByRole("dialog", { name: "Thinking level" });

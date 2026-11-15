@@ -564,6 +564,7 @@
         "src-tauri/src/acp/bindings/registry/pi_native.rs",
         "src-tauri/src/acp/bindings/registry/record.rs",
         "src-tauri/src/acp/bindings/registry/record/browser_mcp.rs",
+        "src-tauri/src/acp/bindings/registry/record/models.rs",
         "src-tauri/src/acp/bindings/registry/record/undo.rs",
         "src-tauri/src/acp/bindings/registry/record_reason.rs",
         "src-tauri/src/acp/bindings/registry/record_root.rs",

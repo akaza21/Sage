@@ -59,6 +59,13 @@ impl RuntimeFactory for CodexRuntimeFactory {
 }
 
 impl LaunchableRuntime for CodexRuntime {
+    fn bind_launch_choices(
+        &mut self,
+        choices: &[sage_acp_protocol::session_config::ConfigMutation],
+    ) {
+        self.bind_launch_effort(choices);
+    }
+
     fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
         CodexRuntime::launch_spec(self)
     }

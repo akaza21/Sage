@@ -58,16 +58,18 @@ fn send(runtime: &mut NativeRuntime, command: AdapterCommand) -> Value {
     request
 }
 
-fn resumed(
+/// A Codex runtime that learned `launch_choices` and is initialized.
+fn initialized(
     owner: &RuntimeOwner,
     channel: Arc<ConfigChannel>,
-    effort: Option<&str>,
+    launch_choices: &[ConfigMutation],
 ) -> NativeRuntime {
     let mut runtime = NativeRuntime::new(CodexRuntime::fixture_with_identity(
         Platform::WindowsX86_64,
         [3; 32],
         owner.session_id.clone(),
     ));
+    runtime.bind_launch_choices(launch_choices);
     runtime.attach_config(owner.clone(), channel);
     let initialize = send(&mut runtime, AdapterCommand::Initialize);
     let batch = runtime
@@ -84,6 +86,15 @@ fn resumed(
             .resolve_egress(egress.token().clone(), EgressResolution::Written)
             .unwrap();
     }
+    runtime
+}
+
+fn resumed(
+    owner: &RuntimeOwner,
+    channel: Arc<ConfigChannel>,
+    effort: Option<&str>,
+) -> NativeRuntime {
+    let mut runtime = initialized(owner, channel, &[]);
     let resume = send(
         &mut runtime,
         AdapterCommand::ResumeSession {
@@ -336,6 +347,101 @@ fn a_stored_effort_waits_for_codex_to_report_the_thread_effort() {
     let next = prompt(&service, &owner, &runtime, "reported");
     assert_eq!(next["params"]["effort"], "high");
     assert_eq!(stored(&service), [option("effort", "high")]);
+    service.shutdown_blocking().unwrap();
+}
+
+/// A new thread on the account's default model, which Codex answers without
+/// a thinking level when its config sets none. The runtime learned the
+/// session's stored choices first, as activation hands them over.
+fn started(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+    channel: Arc<ConfigChannel>,
+) -> NativeRuntime {
+    let mut runtime = initialized(owner, channel, &service.launch_choices(&owner.session_id));
+    let start = send(
+        &mut runtime,
+        AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        },
+    );
+    runtime
+        .ingest(
+            &frame(&json!({"id":start["id"],"result":{
+                "thread":{"id":"thread-1"},"model":"fixture-model","reasoningEffort":null
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    runtime
+}
+
+#[test]
+fn a_new_threads_first_prompt_carries_the_level_chosen_before_the_session_existed() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    let owner = owner(1);
+    store(&service, &owner, &[option("effort", "high")]);
+    let slot = &service.lane_at(0).runtime;
+    slot.reserve_start(owner.clone()).unwrap();
+    slot.config.mark_new_session(&owner);
+    let runtime = Arc::new(Mutex::new(started(
+        &service,
+        &owner,
+        Arc::clone(&slot.config),
+    )));
+    let list = go_live(&service, &owner, &runtime);
+    runtime
+        .lock()
+        .unwrap()
+        .ingest(&frame(&catalogue(&list)), &Mapper)
+        .unwrap();
+    let first = prompt(&service, &owner, &runtime, "first");
+    assert_eq!(first["method"], "turn/start");
+    assert_eq!(first["params"]["effort"], "high");
+    let config = serde_json::to_value(slot.config.live_snapshot(&owner).unwrap().config).unwrap();
+    let effort = config["configOptions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|option| option["id"] == "effort")
+        .cloned()
+        .unwrap();
+    assert_eq!(effort["currentValue"], "high");
+    assert_eq!(
+        choices::load(&service.database.connection(), &owner.session_id).unwrap(),
+        [option("effort", "high")]
+    );
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_level_the_catalogue_no_longer_offers_is_not_sent_on_a_new_threads_first_prompt() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    let owner = owner(1);
+    // Taken over from the chat's last session, before the catalogue dropped it.
+    store(&service, &owner, &[option("effort", "xhigh")]);
+    let slot = &service.lane_at(0).runtime;
+    slot.reserve_start(owner.clone()).unwrap();
+    slot.config.mark_new_session(&owner);
+    let runtime = Arc::new(Mutex::new(started(
+        &service,
+        &owner,
+        Arc::clone(&slot.config),
+    )));
+    let list = go_live(&service, &owner, &runtime);
+    runtime
+        .lock()
+        .unwrap()
+        .ingest(&frame(&catalogue(&list)), &Mapper)
+        .unwrap();
+    let first = prompt(&service, &owner, &runtime, "first");
+    assert_eq!(first["method"], "turn/start");
+    assert!(first["params"].get("effort").is_none(), "{first}");
     service.shutdown_blocking().unwrap();
 }
 

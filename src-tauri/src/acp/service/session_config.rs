@@ -172,25 +172,10 @@ impl AcpService {
         }
         page.restored_session_config = None;
         page.session_config_notice = None;
-        let current = sessions
-            .iter()
-            .find(|session| Some(&session.id) == page.current_session_id.as_ref());
+        let target = next_send_target(&sessions, page.current_session_id.as_ref());
         if page.session_config.is_none()
-            && let Some(session) = current.filter(|session| {
-                matches!(
-                    session.state,
-                    sage_acp_protocol::lifecycle::SessionState::Ready
-                        | sage_acp_protocol::lifecycle::SessionState::Active
-                )
-            })
+            && let Some((session, awaiting)) = target
         {
-            let awaiting = if session.runtime_epoch.is_some()
-                && session.residency == sage_acp_protocol::lifecycle::Residency::Hot
-            {
-                Awaiting::Report
-            } else {
-                Awaiting::Resume
-            };
             page.restored_session_config =
                 self.restored_session_config(&session.id)
                     .map(|config| RestoredSessionConfig {
@@ -199,7 +184,7 @@ impl AcpService {
                         config,
                     });
         }
-        if let Some(session) = current {
+        if let Some((session, _)) = target {
             page.session_config_notice = self.session_config_notice(&session.id);
         }
         page.sessions = BoundedVec::new("sessions", sessions)
@@ -219,6 +204,34 @@ impl AcpService {
             |session| self.stored_choices_view(session),
         )
     }
+}
+
+/// The session the chat's next send runs, and what has to happen before its
+/// stored choices are that session's: the head, resumed or reporting; or,
+/// with no head, the session the chat ran last, which the session the send
+/// starts goes on from.
+fn next_send_target<'a>(
+    sessions: &'a [crate::acp::projection::SessionProjection],
+    head: Option<&sage_acp_protocol::contract::SageAgentSessionId>,
+) -> Option<(&'a crate::acp::projection::SessionProjection, Awaiting)> {
+    let Some(head) = head else {
+        return sessions
+            .iter()
+            .rev()
+            .find(|session| !session.legacy)
+            .map(|session| (session, Awaiting::Start));
+    };
+    let session = sessions.iter().find(|session| &session.id == head)?;
+    let live = session.runtime_epoch.is_some()
+        && session.residency == sage_acp_protocol::lifecycle::Residency::Hot;
+    Some((
+        session,
+        if live {
+            Awaiting::Report
+        } else {
+            Awaiting::Resume
+        },
+    ))
 }
 
 /// The bytes the page's session config fields (live config, restored config

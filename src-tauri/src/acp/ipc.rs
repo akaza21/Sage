@@ -109,6 +109,8 @@ pub struct CodexDiscoveryModel {
     pub id: ModelId,
     pub name: RequiredText<512>,
     pub is_default: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub effort_levels: Vec<RequiredText<512>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

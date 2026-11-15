@@ -83,10 +83,6 @@ pub(crate) fn known_models(binding: &AdmittedClaudeSdkBinding) -> Option<Vec<Mod
     }
 }
 
-pub(crate) fn offers(binding: &AdmittedClaudeSdkBinding, model: &str) -> bool {
-    known_models(binding).is_some_and(|models| models.iter().any(|m| m.id == model))
-}
-
 fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
     mutex
         .lock()
@@ -215,15 +211,21 @@ fn effort_levels(entry: &Value) -> Option<Vec<String>> {
     (!levels.is_empty()).then_some(levels)
 }
 
-pub(crate) fn offers_effort(binding: &AdmittedClaudeSdkBinding, model: &str, effort: &str) -> bool {
-    known_models(binding).is_some_and(|models| {
-        models.iter().any(|entry| {
-            entry.id == model
-                && entry.effort_levels.as_ref().is_some_and(|levels| {
-                    effort == super::config::DEFAULT_EFFORT || levels.iter().any(|l| l == effort)
-                })
-        })
-    })
+/// The effort option a session started on `model` shows, set to `effort`,
+/// when the model lists levels and `effort` is Default or one of them.
+pub(crate) fn launch_effort_option(
+    model: &ModelOption,
+    effort: &str,
+) -> Option<sage_acp_protocol::session_config::ConfigOption> {
+    let levels = model.effort_levels.as_ref()?;
+    if effort != super::config::DEFAULT_EFFORT && !model.lists_effort(effort) {
+        return None;
+    }
+    serde_json::from_value(super::config::effort_option(
+        levels.iter().map(String::as_str),
+        effort,
+    ))
+    .ok()
 }
 
 #[cfg(test)]
@@ -311,13 +313,36 @@ mod tests {
             {"value": "haiku"},
         ]}));
         *lock(&PROBED) = Some((binding.binding_digest(), Probed::Models(models)));
-        assert!(offers(&binding, "haiku"));
-        assert!(!offers(&binding, "opus"));
-        assert!(offers_effort(&binding, "default", "high"));
-        assert!(offers_effort(&binding, "default", "default"));
-        assert!(!offers_effort(&binding, "default", "max"));
-        assert!(!offers_effort(&binding, "haiku", "low"));
-        assert!(!offers_effort(&binding, "haiku", "default"));
+        let known = known_models(&binding).unwrap();
+        let launched = |model| ModelOption::launched(&known, model);
+        assert_eq!(launched(Some("haiku")).unwrap().id, "haiku");
+        assert!(launched(Some("opus")).is_none());
+        let default = launched(None).unwrap();
+        assert_eq!(default.id, "default");
+        let haiku = launched(Some("haiku")).unwrap();
+        let offered = |model, effort| {
+            launch_effort_option(model, effort).map(|option| serde_json::to_value(option).unwrap())
+        };
+        // The option offers every level the model lists, as the session will.
+        let high = offered(default, "high").unwrap();
+        assert_eq!(high["id"], "effort");
+        assert_eq!(high["currentValue"], "high");
+        assert_eq!(
+            high["options"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|choice| choice["value"].clone())
+                .collect::<Vec<_>>(),
+            [json!("default"), json!("low"), json!("high")]
+        );
+        assert_eq!(
+            offered(default, "default").unwrap()["currentValue"],
+            "default"
+        );
+        assert!(offered(default, "max").is_none());
+        assert!(offered(haiku, "low").is_none());
+        assert!(offered(haiku, "default").is_none());
     }
 
     #[test]
@@ -331,7 +356,6 @@ mod tests {
         ));
         assert!(models(&binding).is_none());
         assert!(known_models(&binding).is_none());
-        assert!(!offers(&binding, "default"));
     }
 
     #[cfg(unix)]

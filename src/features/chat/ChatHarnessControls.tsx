@@ -192,8 +192,8 @@ export function ChatHarnessControls({
     confirmedModelLabel,
     selectedModelId,
   );
-  // Before the chat's first session (`draftChatId` is set only then), the
-  // levels the harness lists for the selected model can be chosen.
+  // While the next send starts a session (`draftChatId` is set only then),
+  // the levels the harness lists for the selected model can be chosen.
   const draft = {
     chatId: accessTarget?.draftChatId,
     bindingId: selectedHarness?.bindingId,

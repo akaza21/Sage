@@ -17,6 +17,9 @@ pub(crate) struct CodexModelSnapshot {
     pub(crate) id: RequiredText<512>,
     pub(crate) name: RequiredText<512>,
     pub(crate) is_default: bool,
+    /// The thinking levels the model takes, as its thread's effort option
+    /// will offer them.
+    pub(crate) effort_levels: Vec<RequiredText<512>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

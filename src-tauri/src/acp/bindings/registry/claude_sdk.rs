@@ -27,6 +27,7 @@ pub(super) fn record(registration: Arc<ClaudeSdkBindingRegistration>) -> Binding
         turn_dispatch: crate::acp::service::AcpService::send_session_turn,
         cancel_dispatch: crate::acp::service::AcpService::cancel_session_turn,
         close_dispatch: crate::acp::service::AcpService::close_session,
+        launch_effort: Some(crate::acp::bindings::claude::sdk::launch_effort_option),
         model_provider: ModelProvider::ClaudeAdapter,
         auth_provider: AuthProvider::Claude,
     }
@@ -96,32 +97,17 @@ fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
     })
 }
 
-pub(super) fn accepts_launch_model(binding: &AdmittedBinding, model: &str) -> bool {
-    match binding {
-        AdmittedBinding::ClaudeSdk(binding) => {
-            crate::acp::bindings::claude::sdk::offers_model(binding, model)
-        }
-        _ => false,
-    }
-}
-
-pub(super) fn launch_effort_choice(
-    binding: &AdmittedBinding,
-    model: Option<&str>,
-    effort: &str,
-) -> Option<sage_acp_protocol::session_config::ConfigMutation> {
+pub(super) fn launch_models(
+    registration: &ClaudeSdkBindingRegistration,
+    probe: bool,
+) -> Option<Vec<sage_domain::harness::ModelOption>> {
     use crate::acp::bindings::claude::sdk;
-    use sage_acp_protocol::session_config::{ConfigId, ConfigMutation, ConfigValue};
-    let AdmittedBinding::ClaudeSdk(binding) = binding else {
-        return None;
-    };
-    sdk::offers_effort(binding, model.unwrap_or("default"), effort).then_some(())?;
-    Some(ConfigMutation::Option {
-        config_id: ConfigId::new("configId", sdk::EFFORT_CONFIG_ID).ok()?,
-        value: ConfigValue::Select {
-            value: ConfigId::new("value", effort).ok()?,
-        },
-    })
+    let binding = registration.admitted()?;
+    if probe {
+        sdk::probed_models(&binding)
+    } else {
+        sdk::known_models(&binding)
+    }
 }
 
 #[cfg(test)]

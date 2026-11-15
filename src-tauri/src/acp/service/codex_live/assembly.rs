@@ -25,6 +25,9 @@ impl Lane<'_> {
             crate::acp::runtime::ActivationMode::New { .. }
         ) {
             self.runtime.config.mark_new_session(&prepared.owner);
+            prepared
+                .runtime
+                .bind_launch_choices(&self.launch_choices(&prepared.owner.session_id));
         }
         prepared.runtime.bind_activation(&prepared.intent.mode);
         let mut spec = match prepared.runtime.launch_spec() {

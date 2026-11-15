@@ -26,7 +26,7 @@ export interface AccessView {
 
 export interface ComposerAccessControlProps {
   bindingId: string;
-  /** The chat whose access is drafted; given only while it has no session. */
+  /** The chat whose access is drafted; given only while its next send starts a session. */
   chatId?: string;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
   /** The live chat a choice applies to; without one nothing can change. */
