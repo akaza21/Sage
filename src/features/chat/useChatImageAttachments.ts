@@ -3,8 +3,18 @@ import { useWorkbenchStore } from "../../app/store";
 import {
   attachedContextKey,
   type AttachedContext,
+  type ImageAttachedContext,
 } from "../../domain/attachedContext";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
+
+function attachedImage(chatId: string, artifactId: string) {
+  return useWorkbenchStore
+    .getState()
+    .chatUiById[chatId]?.attachedContext.find(
+      (context): context is ImageAttachedContext =>
+        context.kind === "image" && context.artifactId === artifactId,
+    );
+}
 
 export function useChatImageAttachments(
   chatId: string | undefined,
@@ -77,14 +87,14 @@ export function useChatImageAttachments(
     try {
       const { uploadChatImages } = await import("./chatImageTransfer");
       await uploadChatImages(intent, files, (artifactId, thumbnail) => {
-        if (!imagePreviewMounted.current) return;
-        const stillAttached = useWorkbenchStore
-          .getState()
-          .chatUiById[intent.chatId]?.attachedContext.some(
-            (context) =>
-              context.kind === "image" && context.artifactId === artifactId,
-          );
-        if (!stillAttached) return;
+        if (
+          !imagePreviewMounted.current ||
+          !(
+            pendingRemovalIds.current.has(artifactId) ||
+            attachedImage(intent.chatId, artifactId)
+          )
+        )
+          return;
         const url = URL.createObjectURL(thumbnail);
         setImagePreviews((current) => ({ ...current, [artifactId]: url }));
       });
@@ -106,11 +116,11 @@ export function useChatImageAttachments(
     const owner = chatId ?? state.activeTabId ?? undefined;
     const intent = owner ? state.captureChatOwnership(owner) : null;
     if (!intent) return;
-    const image = state.chatUiById[intent.chatId]?.attachedContext.find(
-      (context) =>
-        context.kind === "image" && attachedContextKey(context) === contextKey,
-    );
-    if (!image || image.kind !== "image") {
+    const image =
+      context.kind === "image"
+        ? attachedImage(intent.chatId, context.artifactId)
+        : undefined;
+    if (!image) {
       state.detachChatContext(intent, contextKey);
       return;
     }

@@ -91,3 +91,73 @@ test("a session without the image capability refuses a paste with its reason", a
   );
   await expect(composer.locator(".composer__image-preview")).toHaveCount(0);
 });
+
+for (const [width, height] of [
+  [4000, 10],
+  [10, 4000],
+]) {
+  test(`a ${width}x${height} image previews its center as a square thumbnail`, async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+    const thumbnail = await page.evaluate(
+      async ([width, height]) => {
+        const source = document.createElement("canvas");
+        source.width = width;
+        source.height = height;
+        const draw = source.getContext("2d")!;
+        const along = width > height ? width : height;
+        for (const [index, color] of [
+          "#ff0000",
+          "#00ff00",
+          "#0000ff",
+        ].entries()) {
+          draw.fillStyle = color;
+          const start = (along / 3) * index;
+          if (width > height) draw.fillRect(start, 0, along / 3, height);
+          else draw.fillRect(0, start, width, along / 3);
+        }
+        const file = await new Promise<Blob>((resolve) =>
+          source.toBlob((value) => resolve(value!), "image/png"),
+        );
+        const { createImageThumbnail } =
+          await import("/src/features/chat/imageThumbnail.ts");
+        const decode = window.createImageBitmap;
+        let largestDecode = 0;
+        window.createImageBitmap = async (
+          ...args: Parameters<typeof createImageBitmap>
+        ) => {
+          const bitmap = await decode(...args);
+          largestDecode = Math.max(largestDecode, bitmap.width * bitmap.height);
+          return bitmap;
+        };
+        const preview = await createImageThumbnail(file, {
+          width,
+          height,
+        }).finally(() => (window.createImageBitmap = decode));
+        const bitmap = await createImageBitmap(preview!);
+        const canvas = document.createElement("canvas");
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const read = canvas.getContext("2d")!;
+        read.drawImage(bitmap, 0, 0);
+        return {
+          width: bitmap.width,
+          height: bitmap.height,
+          center: Array.from(read.getImageData(24, 24, 1, 1).data),
+          largestDecode,
+        };
+      },
+      [width, height],
+    );
+    expect(thumbnail).toEqual({
+      width: IMAGE_THUMBNAIL_EDGE_PX,
+      height: IMAGE_THUMBNAIL_EDGE_PX,
+      center: [0, 255, 0, 255],
+      largestDecode: expect.any(Number),
+    });
+    expect(thumbnail.largestDecode).toBeLessThanOrEqual(
+      (IMAGE_THUMBNAIL_EDGE_PX * 8) ** 2,
+    );
+  });
+}
