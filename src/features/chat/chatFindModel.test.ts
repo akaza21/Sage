@@ -164,7 +164,6 @@ describe("retained chat find", () => {
       [turn([text("answer", "assistant", "prefix hit ".repeat(1000))])],
       "hit",
     );
-    // A 4,096-character block shows 372 of the 1,000 hits; only those count.
     expect(truncated.matches).toHaveLength(372);
     expect(truncated).toMatchObject({ capped: false, previewLimited: true });
   });

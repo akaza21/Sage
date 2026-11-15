@@ -170,7 +170,6 @@ describe("composer / and @ menus on one field", () => {
     );
     expect(field()).toHaveAttribute("aria-expanded", "true");
 
-    // The caret moves into an `@` token: the `/` menu lets go.
     await type("/review @ma");
     const files = await screen.findByRole("listbox", {
       name: "Mention a file",
@@ -188,13 +187,11 @@ describe("composer / and @ menus on one field", () => {
       screen.getByRole("option", { name: "src/main.rs" }).id,
     );
 
-    // Neither menu is active: the field is back to the composer's own state.
     await type("/review @src/main.rs now");
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(field()).toHaveAttribute("aria-expanded", "false");
     for (const name of OWNED) expect(field()).not.toHaveAttribute(name);
 
-    // And the `/` menu takes the field again.
     await type("/");
     const again = await screen.findByRole("listbox", {
       name: "Slash commands",

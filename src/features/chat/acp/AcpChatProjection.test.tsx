@@ -52,7 +52,6 @@ function toggleWorked(work: Element | null | undefined, open = true) {
   fireEvent(disclosure, new Event("toggle"));
 }
 
-/** Worked's rows; a closed Worked has none mounted (Codex s2/f0011). */
 function workedGroups(work: Element | null | undefined) {
   if (!work?.matches("details")) return work;
   const next = work.nextElementSibling;
@@ -472,7 +471,6 @@ describe("AcpChatProjection", () => {
       answer!.compareDocumentPosition(changedFiles) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
-    // A closed Worked shows no rows (Codex s2/f0011).
     expect(container.querySelectorAll(".acp-tool-rollup")).toHaveLength(0);
     expect(turn?.querySelectorAll(".acp-message--user")).toHaveLength(1);
     expect(within(turn!).queryByText("Ran tests · npm test")).toBeNull();
@@ -1041,7 +1039,6 @@ describe("AcpChatProjection", () => {
         <ChatTranscriptTurnSummary turn={running} hasActivities />,
       );
       expect(screen.getByText("Working for 3s")).toBeInTheDocument();
-      // Codex s8: the live header stays muted; only row labels shimmer.
       expect(screen.getByText("Working for 3s")).not.toHaveClass(
         "acp-live-shimmer",
       );

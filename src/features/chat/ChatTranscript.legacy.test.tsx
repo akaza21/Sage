@@ -7,7 +7,6 @@ import { settleLazyModules } from "../../test/settleLazyModules";
 import { page } from "./acp/acpProjection.fixture";
 import { ChatTranscript } from "./ChatTranscript";
 
-// Counts every import of the legacy transcript chunk.
 const legacy = vi.hoisted(() => ({ imports: 0 }));
 vi.mock("./ChatLegacyTranscript", () => {
   legacy.imports += 1;

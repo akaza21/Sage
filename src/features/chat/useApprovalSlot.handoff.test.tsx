@@ -86,7 +86,6 @@ it("carries a fallback Deny into the loaded card: Allow is never focused for tha
   });
   const allow = await screen.findByRole("button", { name: /Allow once/ });
   expect(allow).not.toHaveFocus();
-  // The Deny is still in flight: the card shows it, and sends nothing more.
   await waitFor(() => expect(allow).toBeDisabled());
   fireEvent.click(screen.getByRole("button", { name: /Deny/ }));
   expect(resolve).toHaveBeenCalledOnce();

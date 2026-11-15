@@ -27,22 +27,17 @@ import "./fork-chat.css";
 import { inheritComposerModel } from "./inheritedComposerModel";
 import { ForkChatRequestContext } from "./forkChatRequest";
 
-/** Lazy fork UI; Rust owns the fork and authoritative Project snapshot. */
-
-/** Offer Branch only when forkable; otherwise reuse the row's Copy feedback. */
 export function AnswerMoreMenu({
   onCopy,
   onBranch,
   trigger,
 }: {
   onCopy: () => void;
-  /** Present only when this answer can be forked; true when keyed. */
   onBranch?: (keyboard: boolean) => void;
   trigger: RefObject<HTMLButtonElement | null>;
 }) {
   const menuId = useId();
   const [open, setOpen] = useState(false);
-  // Only Enter/Space counts as keyboard activation.
   const keyed = useRef(false);
   const [Icon, label] = onBranch
     ? [GitBranch, "Branch in new chat"]
@@ -102,7 +97,7 @@ export interface ForkTarget {
   turnId: string;
 }
 
-/** Resolves to null on success or to the reason the fork did not commit. */
+// Resolves to null on success or to the reason the fork did not commit.
 // eslint-disable-next-line react-refresh/only-export-components -- the chunk's fork action, shared by its parts and tests
 export async function forkChat({
   chatId,
@@ -113,7 +108,6 @@ export async function forkChat({
   if (!layout || get().projectTransitioning)
     return "Wait for the current project operation.";
   const context = createChatTransitionContext(set, get);
-  // The native fork keeps the parent's model and effort.
   const parentConfig =
     acpProjectionStoreFor(chatId).getState().page?.sessionConfig;
   set({ projectTransitioning: true, error: null });
@@ -135,14 +129,12 @@ export async function forkChat({
     },
   });
   if (committed) {
-    // Rust activates the fork; it replaces the parent's pane, unpaired.
     const fork = get().activeTabId;
     if (fork && fork !== chatId) {
       inheritComposerModel(fork, parentConfig);
     }
     return null;
   }
-  // The dialog reports the failure inline instead of the global banner.
   const reason = get().error;
   set({ error: null });
   return reason || "Try again.";
@@ -155,7 +147,6 @@ export function AnswerMoreActions({
 }: {
   page: AcpChatPage;
   onCopy: () => void;
-  /** Only the latest answer's row may fork; earlier and inherited never. */
   forkable?: boolean;
 }) {
   const trigger = useRef<HTMLButtonElement>(null);
@@ -206,7 +197,6 @@ export function ForkChatDialog({
   focusRoot,
 }: ForkTarget & {
   onClose: () => void;
-  /** Opened with Enter or Space; a pointer or scripted click is not. */
   keyboard?: boolean;
   fork?: (target: ForkTarget) => Promise<string | null>;
   focusRoot?: RefObject<HTMLDivElement | null>;
@@ -216,7 +206,6 @@ export function ForkChatDialog({
   const busyRef = useRef(false);
   const [result, setResult] = useState<string | null | undefined>(null);
   const busy = result === undefined;
-  // Focus the first option; highlight only for keyboard input.
   const [fresh, setFresh] = useState(!keyboard);
   const close = useCallback(() => {
     onClose();
@@ -283,7 +272,6 @@ export function ForkChatDialog({
   );
 }
 
-/** Where the fork's own history begins; returns to the parent Chat. */
 export function ForkDivider({
   parentChatId,
   forkTurnId,
@@ -323,7 +311,6 @@ export function ForkDivider({
   );
 }
 
-/** Read-only Turns from before this Chat (a fork's parent, an imported session) except answer actions; the Chat owns the sole navigator, find and virtual list. */
 export function InheritedHistory({
   page,
   earlier,
@@ -347,7 +334,6 @@ export function InheritedHistory({
   );
 }
 
-/** At most this many inherited parent Turns render above the divider. */
 const MAX_INHERITED_TURNS = 20;
 
 const loadInheritedTurns = () =>
@@ -357,11 +343,9 @@ const loadInheritedTurns = () =>
 
 type Inherited = AcpChatPage & {
   forkTurnId: string;
-  /** Parent Turns before the shown ones exist but are not rendered. */
   earlier: boolean;
 };
 
-/** Read one parent page through the fork, capped at MAX_INHERITED_TURNS. Announce omitted history; show nothing if the fork predates the page. Keep the previous render during Project-transition re-fetches. */
 function useInheritedHistory(parentChatId: string, forkTurnId?: string) {
   const projectId = useWorkbenchStore((state) => state.project?.id);
   const generation = useWorkbenchStore((state) => state.nativeTransitionEpoch);

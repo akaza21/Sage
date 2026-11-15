@@ -148,7 +148,6 @@ describe("slash commands on the send path", () => {
 
   it("refuses a picked command the session no longer offers and keeps the draft", async () => {
     const test = harness({ revision: 5, commands: [] });
-    // The menu records a pick for its Chat while the text names it.
     setPickedCommand(scope.chatId, "review");
     await expect(
       test.controller.submit("/review 42", [], bindingId, modelId),

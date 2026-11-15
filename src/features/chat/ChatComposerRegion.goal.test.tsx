@@ -19,7 +19,6 @@ import {
   capabilitySetFixture,
 } from "../../domain/acpProjection.fixture";
 
-// Holds the Goal chunk's import until the test lets it finish.
 const chunk = vi.hoisted(() => {
   let release = () => undefined as void;
   const gate = new Promise<void>((resolve) => (release = resolve));
@@ -147,7 +146,6 @@ it("offers the + menu's Goal only once the Goal control is there to open", async
   mutableGoalChat();
   render(<ChatComposerRegion {...props} />);
   await openOptions();
-  // The Goal chunk is still loading, so there are no details to open.
   expect(screen.getByRole("menuitem", { name: "Add images" })).toBeVisible();
   expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
   fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });

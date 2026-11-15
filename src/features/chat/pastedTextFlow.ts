@@ -1,5 +1,3 @@
-/** Lazy: staging, its IPC and paste decisions load with ComposerPaste. The
- * chat's one staged batch: pasted text and picked files alike. */
 import type { RefObject } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
@@ -20,12 +18,10 @@ import type { HeldPaste, PastedTextState } from "./pastedTextTypes";
 
 type Announce = (message: string) => void;
 
-/** One chat's staged batch as the composer shows it. */
 export interface StagedOwner {
   chatId: string | undefined;
   ref: RefObject<PastedTextState>;
   set(next: PastedTextState): void;
-  /** Marks the batch as read back from native state. */
   settle(): void;
 }
 
@@ -36,7 +32,6 @@ function failure(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback;
 }
 
-/** The chat's own owner; never another tab's, such as the active one. */
 function owner(chatId: string | undefined): PromptFileOwner | null {
   const state = useWorkbenchStore.getState();
   const intent = chatId ? state.captureChatOwnership(chatId) : null;
@@ -87,13 +82,11 @@ export async function reconcile(staged: StagedOwner) {
   }
 }
 
-/** Attaches, or refuses with a message; the composer text is never changed. */
 export async function pasteOver(
   staged: StagedOwner,
   attachability: PasteAttachability | undefined,
   { before, value, after }: HeldPaste,
   announce: Announce,
-  /** A send is in flight and may consume the batch. */
   sending = false,
 ) {
   const state = staged.ref.current;
@@ -141,14 +134,10 @@ export async function pasteOver(
   }
 }
 
-/**
- * Adds the files picked in native's dialog, which stages them in Rust: the
- * WebView never sees a path or the bytes. A cancelled pick keeps the batch.
- */
+// Native stages the picked files in Rust: the WebView never sees a path or the bytes.
 export async function pickFiles(
   staged: StagedOwner,
   announce: Announce,
-  /** A send is in flight and may consume the batch. */
   sending: boolean,
 ) {
   if (sending)

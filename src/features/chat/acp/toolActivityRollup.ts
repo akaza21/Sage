@@ -12,7 +12,6 @@ type ToolKind = ToolPresentation["kind"];
 
 const MAX_TOOL_ROLLUP_ITEMS = 64;
 const COMPACTED = "Context automatically compacted";
-/** Present web search as a harness integration. */
 const WEB_SEARCH_INTEGRATION = "Search Service";
 
 export type ToolRollup = {
@@ -74,7 +73,6 @@ export function liveToolItem(
     .find((item) => !terminalToolStates.has(item.toolState));
 }
 
-/** A running MCP call's status line; the line drops once the call settles. */
 export function liveToolProgress(
   item: ToolProjectionItem | undefined,
 ): string | null {
@@ -116,7 +114,6 @@ export function toolItemLabel(
   }
 }
 
-/** Join clauses in first-occurrence order. */
 function mixedClauses(items: readonly ToolProjectionItem[]): string {
   const counts = new Map<string, number>();
   const integrations = new Set<string>();
@@ -272,7 +269,8 @@ export function groupPrimaryActivities(
       continue;
     }
 
-    // Until bindings admit callItemId, only projected toolState is authoritative. Group consecutive tools; subagents group only within their lifecycle kind.
+    // Until bindings admit callItemId, only projected toolState is
+    // authoritative.
     const toolKind = item.payload.presentation.kind;
     const activity = commandActivity(item);
     const tools = [item];

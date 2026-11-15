@@ -158,8 +158,6 @@ describe("PermissionPrompt", () => {
       "Allow once ⏎",
       "",
     ]);
-    // Codex's card has no Stop among its decisions (s6/f0526); Sage keeps
-    // one for safety, as a secondary header control.
     const stop = screen.getByRole("button", { name: "Stop turn" });
     expect(stop.closest("header")).not.toBeNull();
     expect(stop.closest(".acp-permission-prompt__actions")).toBeNull();
@@ -259,7 +257,6 @@ describe("PermissionPrompt", () => {
     const resolve = accepted("deny");
     render(<PermissionPrompt items={[permission()]} />);
     const allow = screen.getByRole("button", { name: /Allow once/ });
-    // A held key from the composer arrives as repeats or a bare keyup.
     expect(fireEvent.keyDown(allow, { key: "Escape", repeat: true })).toBe(
       false,
     );
@@ -329,7 +326,6 @@ describe("PermissionPrompt", () => {
     expect(
       screen.getByRole("button", { name: /Allow once/ }),
     ).not.toHaveFocus();
-    // Focus left the previous request's button for the card itself.
     expect(
       screen.getByRole("group", { name: "Permission request" }),
     ).toHaveFocus();
@@ -371,7 +367,6 @@ describe("PermissionPrompt", () => {
     expect(resolve).toHaveBeenCalledTimes(1);
     unmount();
     resolve.mockRejectedValue(new Error("unsupported approval"));
-    // A request already answered stays answered; a new request can fail.
     render(<PermissionPrompt items={[permission(undefined, {}, "refused")]} />);
     fireEvent.click(screen.getByRole("button", { name: /Allow once/ }));
     expect(await screen.findByRole("alert")).toHaveTextContent(

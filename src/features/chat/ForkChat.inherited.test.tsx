@@ -18,7 +18,6 @@ import { ChatTranscript } from "./ChatTranscript";
 // always resolves after evaluation).
 import "./acp/AcpChatPresentation";
 
-// Only the parent page read is stubbed; every view below is the real one.
 const getGoalChatPage = vi.hoisted(() => vi.fn());
 vi.mock("../../services/acpGoalDesktop", async (importOriginal) => ({
   ...((await importOriginal()) as object),
@@ -103,21 +102,17 @@ it("inherited history mounts no second navigator, find or virtual list", async (
   expect(history.querySelectorAll(".acp-turn")).toHaveLength(20);
   expect(screen.getByText("Earlier history isn't shown.")).toBeInTheDocument();
   expect(screen.getByText("Fork answer 1")).toBeInTheDocument();
-  // Inherited answers are read-only: not quotable, not focusable. The fork's
-  // own final answers stay selectable.
   expect(history.querySelector("[data-selectable-answer]")).toBeNull();
   expect(history.querySelector('[tabindex="0"]')).toBeNull();
   expect(
     document.querySelectorAll(".message-list [data-selectable-answer]").length,
   ).toBeGreaterThan(0);
-  // One navigator, the fork's own, and no virtual list anywhere.
   expect(
     document.querySelectorAll('[aria-label="Turn navigator"]').length,
   ).toBe(1);
   expect(history.querySelector('[aria-label="Turn navigator"]')).toBeNull();
   expect(document.querySelectorAll(".acp-virtual-turns")).toHaveLength(0);
   await settleLazyModules();
-  // Ctrl+F opens exactly one find box, the fork chat's.
   const list = document.querySelector(".message-list")!;
   fireEvent.keyDown(list, { key: "f", ctrlKey: true });
   await act(async () => {});

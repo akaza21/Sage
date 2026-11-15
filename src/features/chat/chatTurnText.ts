@@ -8,7 +8,6 @@ import { terminalTurnStates } from "./acp/statusSemantics";
 
 type TextItem = Extract<AcpItem, { kind: "text" }>;
 
-/** One rendered text leaf (paragraph, heading, table cell or code), in DOM order. */
 export interface ChatTextSegment {
   text: string;
   bullet: boolean;
@@ -18,7 +17,6 @@ export interface ChatTextMessage {
   itemId: string;
   role: "user" | "assistant";
   segments: readonly ChatTextSegment[];
-  /** The renderer stopped early, so later source text is not shown. */
   previewLimited: boolean;
 }
 
@@ -38,11 +36,8 @@ function flatten(spans: readonly InlineFormat[]): string {
     .join("");
 }
 
-/**
- * Plain text of the blocks ChatMarkdown renders, in the same order as the
- * `p, h1-h6, [data-markdown-inline], th, td, pre > code` elements it produces. Text
- * past the renderer's bounds is not shown, so it is not searchable either.
- */
+// Must stay in the same order as the `p, h1-h6, [data-markdown-inline], th, td,
+// pre > code` elements ChatMarkdown produces.
 function segments(source: string) {
   const document = renderMarkdownPreview(source);
   const formats = new Map(
@@ -69,7 +64,6 @@ function segments(source: string) {
   };
 }
 
-/** The user prompt(s) and the presented final answer of one Turn. */
 export function chatTurnText(turn: TurnProjection): readonly ChatTextMessage[] {
   const cached = cache.get(turn);
   if (cached) return cached;

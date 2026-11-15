@@ -29,7 +29,6 @@ vi.mock("../../ports/nativeInvoke", async (importOriginal) => ({
 }));
 
 const initial = useWorkbenchStore.getState();
-/** The batch's owner loads lazily, so a pick may take a moment to land. */
 const owner = {
   projectId: "project-a",
   chatId: "chat-a",
@@ -137,14 +136,11 @@ describe("composer attach button", () => {
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
     });
-    // Picked files join the chat's one batch, beside any pasted text. Its
-    // owner loads lazily, so the pick lands after the batch read back.
     await settleLazyModules();
     expect(await screen.findByText("notes.txt · 2 KB")).toBeInTheDocument();
     const chips = screen.getByRole("list", {
       name: "Attachments for the next message",
     });
-    // The picker replaces the batch read back first, never a stale one.
     expect(native.mock.calls.map(([command]) => command)).toEqual([
       "list_prompt_files",
       "stage_prompt_files",
@@ -153,7 +149,6 @@ describe("composer attach button", () => {
       request: { owner, pick: "files", expectedRevision: "r1" },
     });
     expect(within(chips).getAllByRole("listitem")).toHaveLength(2);
-    // The batch's owner announces it, in the notices the field names.
     expect(
       document.querySelector("#disabled-reason-paste [aria-live=polite]"),
     ).toHaveTextContent("2 files attached to the next message.");
@@ -188,7 +183,6 @@ describe("composer attach button", () => {
 
   it("shows the batch native already holds for the chat without a press", async () => {
     withSession(true);
-    // As after a reload: native kept the batch the WebView forgot.
     native.mockImplementation(async (command: string) =>
       command === "list_prompt_files" ? staged("r1", ["kept.md"]) : null,
     );

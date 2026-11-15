@@ -8,16 +8,9 @@ import {
   restoreChatReadMarks,
 } from "./chatReadMarks";
 
-/**
- * A model of the settings store. Like settings_store/chat_read_marks.rs it
- * keeps the later mark and only the most recently read chats, and reports
- * the marks a read evicted. Every call waits until the test answers it, so
- * the test decides the order in which the store runs the snapshot query,
- * applies writes, and delivers answers. `stored` is kept in read order,
- * oldest first.
- */
+// Models settings_store/chat_read_marks.rs. Every call waits until the test
+// answers it, so the test controls the order of queries, writes and answers.
 const fake = vi.hoisted(() => ({
-  // The store's bound, which it reports with every answer.
   capacity: 1072,
   stored: new Map<string, { readThrough: number }>(),
   writes: [] as Array<{
@@ -48,7 +41,6 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
     args?: { chatId?: string; mark?: { chatId: string; readThrough: number } },
   ): Promise<unknown> =>
     new Promise((resolve, reject) => {
-      // The query runs when it is issued; its answer arrives later.
       if (command === "chat_read_marks")
         fake.loads.push({ snapshot: snapshot(), resolve, reject });
       else
@@ -62,10 +54,8 @@ vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
     }),
 }));
 
-/** Applies a read; returns the mark kept and the chats evicted for it. */
 function storeRead(chatId: string, readThrough: number) {
   const current = fake.stored.get(chatId)?.readThrough ?? 0;
-  // Re-inserting moves the chat to the most recently read end.
   fake.stored.delete(chatId);
   fake.stored.set(chatId, { readThrough: Math.max(current, readThrough) });
   const evicted: string[] = [];
@@ -149,10 +139,8 @@ async function landEverything() {
   }
 }
 
-/** Lets every outstanding call land, as a running app eventually does. */
 async function settle() {
   await landEverything();
-  // The rail loads the stored marks on mount and retries a failed load.
   void restoreChatReadMarks();
   await flush();
   await landEverything();
@@ -179,10 +167,8 @@ function expectRailMatchesStore(chats: readonly string[], context: string) {
 
 async function checkAll(input: {
   chats: readonly string[];
-  /** Marks already in the store, oldest first. */
   initial: ReadonlyArray<readonly [string, number]>;
   depth: number;
-  /** Chats to compare besides the ones the steps touch. */
   watched?: readonly string[];
 }) {
   const alphabet = steps(input.chats);
@@ -200,7 +186,6 @@ async function checkAll(input: {
       await settle();
       const context = sequence.map(label).join(" ") || "(no steps)";
       expectRailMatchesStore(watched, context);
-      // A restart starts from the store alone.
       resetChatReadMarks();
       void restoreChatReadMarks();
       await flush();
@@ -235,7 +220,6 @@ it("shows what the store holds for one chat once every interleaving settles, and
 }, 300_000);
 
 it("keeps every stored mark at the capacity boundary across two chats", async () => {
-  // The store is one mark short of full, and chat-b starts unmarked.
   const fillers = Array.from(
     { length: fake.capacity - 1 },
     (_, index) => [`filler-${index}`, 1] as const,
@@ -244,7 +228,6 @@ it("keeps every stored mark at the capacity boundary across two chats", async ()
     chats: ["chat-a", "chat-b"],
     initial: [...fillers, ["chat-a", 50]],
     depth: 4,
-    // The oldest stored marks are the ones a new mark pushes out.
     watched: ["filler-0", "filler-1", `filler-${fake.capacity - 2}`],
   });
   expect(checked).toBe(total(9, 4));

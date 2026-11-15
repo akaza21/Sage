@@ -52,8 +52,6 @@ describe("annotation comment field (Codex s2/f0095)", () => {
     expect(field.width).toBe(186);
     expect(field.left).toBeGreaterThanOrEqual(scrollport.left);
     expect(field.left + field.width).toBeLessThanOrEqual(scrollport.right);
-    // There is room above, so the field stays above the line (s2/f0095)
-    // and never covers the rest of the answer or its action row.
     expect(field.top).toBe(228);
     expect(
       intersects(

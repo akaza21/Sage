@@ -96,7 +96,6 @@
   text-decoration: underline;
 }
 
-/* Inherited parent Turns keep the transcript turn rhythm (acp-chat.css). */
 .chat-fork-inherited {
   display: grid;
   gap: var(--space-6);

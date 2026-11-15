@@ -37,7 +37,6 @@ const Usage = lazyParts<typeof LimitsChunk>(
   () => import("./ComposerUsageLimits"),
 );
 
-/** The chat's running session, as the native reads name it. */
 function liveRequest(
   boundChatId: string | undefined,
   page: AcpChatPage | null,
@@ -54,7 +53,6 @@ function liveRequest(
   };
 }
 
-/** What `/status` and `/mcp` open beside the composer. */
 export function ComposerCommandPanel({
   kind,
   boundChatId,
@@ -71,8 +69,7 @@ export function ComposerCommandPanel({
     acpProjectionStoreFor(boundChatId),
     (state) => state.page,
   );
-  // Read once per opening: a session that changes closes nothing, but a
-  // new runtime is named by the next opening.
+  // Keep the runtime captured at open; reopening picks a new one.
   const [request] = useState(() => liveRequest(boundChatId, page));
   return (
     <MenuPopover
@@ -207,7 +204,6 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
           },
           (error: unknown) => {
             const message = errorMessage(error);
-            // A list already shown stays; the failure is a notice.
             setLoad((shown) =>
               shown.kind === "ready" ? shown : { kind: "error", message },
             );
@@ -275,7 +271,6 @@ function McpServers({ request }: { request: AcpUsageRequest | null }) {
             {busy === "reload" ? "Reloading…" : "Reload"}
           </button>
         ) : load.kind === "error" ? (
-          // No list arrived, so there is nothing to reload or reconnect yet.
           <button
             type="button"
             className="button button--compact"

@@ -64,7 +64,6 @@ function actionWords(operation: BrowserOperationProjection): ActionWords {
         completed: onOrigin("Waited for page condition"),
         imperative: onOrigin("wait for page condition"),
       };
-    // `act`, and a developer-mode `cdp` call, whose method the detail names.
     default: {
       const clickLabel = operation.summary.match(
         /^Click "([^"\r\n]{1,80})"$/,

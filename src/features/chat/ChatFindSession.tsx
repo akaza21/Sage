@@ -24,11 +24,9 @@ interface ChatFindSessionProps {
   turns: readonly TurnProjection[];
   scrollport: HTMLElement;
   navigationRef: RefObject<TurnListNavigation | null>;
-  /** Earlier Turns exist that are not loaded or were discarded. */
   incomplete: boolean;
   focusRequest: number;
   onClose: () => void;
-  /** The pane-held query of an open find, so a remount resumes it. */
   initialQuery?: string;
   onQueryChange?: (query: string) => void;
 }
@@ -45,7 +43,6 @@ function scopeNote(
   return notes.length ? notes.join(" ") : null;
 }
 
-/** The open find box for one chat pane: debounced search plus highlights. */
 export function ChatFindSession({
   turns,
   scrollport,
@@ -56,7 +53,6 @@ export function ChatFindSession({
   initialQuery = "",
   onQueryChange,
 }: ChatFindSessionProps) {
-  // A remounted find resumes its query already settled.
   const [query, setQueryState] = useState(initialQuery);
   const [settledQuery, setSettledQuery] = useState(initialQuery);
   const setQuery = useCallback(

@@ -1,17 +1,10 @@
-/** Geometry shared by the annotation badge and its comment field. */
-
 type Box = { left: number; top: number; right: number; bottom: number };
 
 const BADGE = 24;
 const FIELD_WIDTH = 270;
-/** Breathing room between the field, the badge and the scrollport edges. */
 const GAP = 4;
 const INSET = 8;
 
-/**
- * A 24 px badge sits above the range end, its bottom on the highlight top,
- * in both the open and saved states.
- */
 export function annotationBadgeOrigin(last: Omit<Box, "left">) {
   return {
     left: last.right - BADGE / 2,
@@ -19,12 +12,6 @@ export function annotationBadgeOrigin(last: Omit<Box, "left">) {
   };
 }
 
-/**
- * The comment field: min(270 px, column) wide, centred on the selection start
- * 6 px above its first line and clamped inside the scrollport. When it fits,
- * it ends before the badge; it drops below the last line only when there is
- * no room above. At narrow widths it clears the badge vertically instead.
- */
 export function annotationFieldBox(
   selection: { first: Box; last: Box },
   columnWidth: number,

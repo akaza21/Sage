@@ -93,16 +93,16 @@ describe("coalescedRefresh", () => {
     const loads = deferredLoads();
     const refresh = coalescedRefresh(loads.load, { onThrow, maxInFlight: 2 });
 
-    refresh.now(); // hangs
-    refresh.now(); // overtakes it
+    refresh.now();
+    refresh.now();
     refresh.now();
     refresh.now();
     expect(loads.load).toHaveBeenCalledTimes(2);
     expect(loads.maxInFlight()).toBe(2);
 
-    await loads.settleNext(); // the hung load ends: not the newest, no rerun
+    await loads.settleNext();
     expect(loads.load).toHaveBeenCalledTimes(2);
-    await loads.settleNext(); // the newest lands: one rerun for both requests
+    await loads.settleNext();
     expect(loads.load).toHaveBeenCalledTimes(3);
   });
 
@@ -145,10 +145,10 @@ describe("coalescedRefresh", () => {
     const loads = deferredLoads();
     const refresh = coalescedRefresh(loads.load, { onThrow, maxInFlight: 2 });
 
-    refresh.now(); // hangs
     refresh.now();
     refresh.now();
-    await loads.settleAt(1); // the newest lands first
+    refresh.now();
+    await loads.settleAt(1);
     expect(loads.load).toHaveBeenCalledTimes(3);
 
     refresh.now();
@@ -156,7 +156,7 @@ describe("coalescedRefresh", () => {
     expect(loads.load).toHaveBeenCalledTimes(3);
     expect(loads.maxInFlight()).toBe(2);
 
-    await loads.settleAt(1); // the rerun lands: one more for both requests
+    await loads.settleAt(1);
     expect(loads.load).toHaveBeenCalledTimes(4);
   });
 

@@ -6,7 +6,6 @@ const css = (path: string) =>
     text.replace(/\/\*[\s\S]*?\*\//g, ""),
   );
 
-/** The declarations of the first rule whose selector list is exactly `selector`. */
 function rule(text: string, selector: string) {
   const escaped = selector
     .replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -118,7 +117,6 @@ describe("Codex chrome parity (w10 group B)", () => {
       /color:\s*var\(--approval-primary-fill\);/,
     );
     expect(global).toMatch(/--approval-primary-fill:\s*#ffffff;/);
-    // Its Esc keycap follows the button's own text colour.
     expect(rule(text, ".acp-permission-prompt__actions kbd")).not.toMatch(
       /color:/,
     );

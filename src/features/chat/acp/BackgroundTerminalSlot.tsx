@@ -20,13 +20,8 @@ interface Listed {
   terminals: readonly BackgroundTerminal[];
 }
 
-/**
- * The commands the current session left running, once it negotiated
- * background terminals. It lists them when it mounts or the runtime changes,
- * each time a Turn ends and after each stop, even while a Turn runs, but
- * never on a timer or a streaming update; the strip loads only while one
- * runs.
- */
+// Lists only on mount, runtime change, Turn end and stop, never on a timer or a
+// streaming update.
 export function BackgroundTerminalSlot({
   page,
   rootLabels,
@@ -73,7 +68,6 @@ export function BackgroundTerminalSlot({
   );
 }
 
-/** The newest Turn that has ended: it moves only when a Turn ends. */
 function lastSettledTurn(turns: AcpChatPage["turns"]): string | undefined {
   for (let index = turns.length - 1; index >= 0; index--) {
     const turn = turns[index];

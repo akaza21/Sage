@@ -16,7 +16,6 @@ const initial = useWorkbenchStore.getState();
 const invoke = vi.fn();
 
 function match(path: string) {
-  // "root:path" names another root's file.
   const [rootId, relativePath] = path.includes(":")
     ? path.split(":")
     : ["root-a", path];
@@ -106,7 +105,6 @@ describe("composer @ file picker", () => {
     ]);
     expect(field).toHaveAttribute("aria-controls", "message-mentions");
     expect(field).toHaveAttribute("aria-activedescendant", options[0]!.id);
-    // A plain textbox carries no aria-expanded.
     expect(field).not.toHaveAttribute("aria-expanded");
     await act(async () => {
       fireEvent.keyDown(field, { key: "ArrowDown" });
@@ -230,7 +228,6 @@ describe("composer @ file picker", () => {
       await act(async () => {
         fireEvent.keyDown(field, { key: "Enter" });
       });
-      // Type one character where the caret is.
       const at = field.selectionStart;
       await type(field, `${field.value.slice(0, at)}x${field.value.slice(at)}`);
       return field.value;

@@ -41,7 +41,6 @@ vi.mock("../../services/acpCommandsDesktop", async (original) => ({
     listCommands: vi.fn(async (request: unknown) => {
       native.requests.push(request);
       if (native.hold) return native.hold;
-      // The last list stays current, as the native list does.
       return native.lists.length > 1 ? native.lists.shift()! : native.lists[0]!;
     }),
     subscribeCommandChanges: vi.fn(
@@ -58,7 +57,6 @@ const mcp = vi.hoisted(() => ({
   signIn: vi.fn(),
   reconnect: vi.fn(),
 }));
-/** What Codex offers on a system where Sage can open the browser. */
 const CODEX_MCP = { reload: true, signIn: true, reconnect: false };
 vi.mock("../../services/acpMcpDesktop", () => ({ acpMcpDesktop: mcp }));
 vi.mock("./acp/useAcpChatActions", async (original) => ({
@@ -236,18 +234,15 @@ describe("composer slash commands", () => {
     expect(field).toHaveAttribute("aria-controls", listbox.id);
     expect(field).toHaveAttribute("aria-expanded", "true");
     expect(field).toHaveAttribute("aria-autocomplete", "list");
-    // The status region lives beside the field, not inside the popover.
     await waitFor(() => expect(status()).toHaveTextContent("3 commands"));
 
     type("/s");
-    // Prefix matches lead; other name matches follow.
     await waitFor(() => expect(names(listbox)).toEqual(["/mcp:docs:search"]));
     type("/re");
     await waitFor(() => expect(names(listbox)).toEqual(["/review"]));
     type("/zz");
     await screen.findByText("No commands match “/zz”.", { selector: TITLE });
     expect(within(listbox).queryAllByRole("option")).toHaveLength(0);
-    // With the caret past the name the menu closes, and inside it reopens.
     type("/review x");
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(field).not.toHaveAttribute("aria-autocomplete");
@@ -256,7 +251,6 @@ describe("composer slash commands", () => {
     await waitFor(() =>
       expect(names(screen.getByRole("listbox"))).toEqual(["/review"]),
     );
-    // The menu hides while the focus is elsewhere and returns with it.
     act(() => field.blur());
     expect(screen.queryByRole("listbox")).toBeNull();
     act(() => field.focus());
@@ -279,12 +273,10 @@ describe("composer slash commands", () => {
     fireEvent.keyDown(field, { key: "ArrowUp" });
     fireEvent.keyDown(field, { key: "ArrowUp" });
     expect(active()).toHaveTextContent("/mcp:docs:search");
-    // PageUp and PageDown move a page and stop at the ends.
     fireEvent.keyDown(field, { key: "PageUp" });
     expect(active()).toHaveTextContent("/compact");
     fireEvent.keyDown(field, { key: "PageDown" });
     expect(active()).toHaveTextContent("/mcp:docs:search");
-    // Home and End move the caret in the composer.
     expect(fireEvent.keyDown(field, { key: "Home" })).toBe(true);
     expect(fireEvent.keyDown(field, { key: "End" })).toBe(true);
     expect(active()).toHaveTextContent("/mcp:docs:search");
@@ -296,7 +288,6 @@ describe("composer slash commands", () => {
     expect(onSubmit).not.toHaveBeenCalled();
 
     await openMenu("/rev");
-    // Shift+Tab leaves the field as usual; the menu does not take it.
     expect(fireEvent.keyDown(field, { key: "Tab", shiftKey: true })).toBe(true);
     expect(field).toHaveValue("/rev");
     fireEvent.keyDown(field, { key: "Tab" });
@@ -306,7 +297,6 @@ describe("composer slash commands", () => {
     fireEvent.keyDown(field, { key: "Escape" });
     expect(screen.queryByRole("listbox")).toBeNull();
     expect(field).toHaveValue("/co");
-    // Escape holds until the caret leaves the command name.
     type("/com");
     expect(screen.queryByRole("listbox")).toBeNull();
     type("");
@@ -327,7 +317,6 @@ describe("composer slash commands", () => {
     expect(screen.getByRole("listbox")).toBeInTheDocument();
     expect(onSubmit).not.toHaveBeenCalled();
 
-    // The composer's own Enter is held by both signals too.
     type("hello");
     expect(screen.queryByRole("listbox")).toBeNull();
     fireEvent.keyDown(field, { key: "Enter", isComposing: true });
@@ -566,10 +555,8 @@ describe("composer slash commands", () => {
     expect(document.querySelector(".composer__command-hint")).toBeNull();
     fireEvent.keyDown(field, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    // The send route sees the pick, so a withdrawn command is refused.
     expect(pickedCommandFor("chat-a")).toBe("review");
 
-    // A pick replaces only the name: the input after it stays.
     type("/co 42");
     (field as HTMLTextAreaElement).setSelectionRange(3, 3);
     fireEvent.select(field);
@@ -586,7 +573,6 @@ describe("composer slash commands", () => {
     fireEvent.keyDown(field, { key: "Enter" });
     expect(field).toHaveValue("/compact");
     expect(onSubmit).toHaveBeenCalledTimes(1);
-    // Not picked from the menu: the send path matches it against the list.
     expect(pickedCommandFor("chat-a")).toBeUndefined();
   });
 
@@ -659,7 +645,6 @@ describe("composer slash commands", () => {
     expect(
       within(panel).getByText("notion · 0 tools · https://mcp.notion.com"),
     ).toBeVisible();
-    // Only the server that needs it offers a sign-in.
     expect(
       within(panel).getAllByRole("button", { name: /^Sign in/u }),
     ).toHaveLength(1);
@@ -680,7 +665,6 @@ describe("composer slash commands", () => {
     fireEvent.keyDown(panel, { key: "Escape" });
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 
-    // Picked from the menu, `/status` opens its panel the same way.
     await openMenu("/sta");
     fireEvent.click(screen.getByRole("option", { name: /^\/status/u }));
     expect(
@@ -731,19 +715,16 @@ describe("composer slash commands", () => {
     const panel = await screen.findByRole("dialog", { name: "MCP servers" });
     expect(await within(panel).findByText("files")).toBeVisible();
     fireEvent.click(within(panel).getByRole("button", { name: "Reload" }));
-    // Coming back to the window mid-reload starts no second call.
     act(() => void window.dispatchEvent(new Event("focus")));
     expect(mcp.read).toHaveBeenCalledTimes(1);
     expect(
       within(panel).getByRole("button", { name: "Reloading…" }),
     ).toHaveAttribute("aria-disabled", "true");
-    // It keeps the focus but starts nothing while the reload runs.
     fireEvent.click(within(panel).getByRole("button", { name: "Reloading…" }));
     expect(mcp.reload).toHaveBeenCalledTimes(1);
     await act(async () =>
       reloaded({ servers: [files], truncated: false, actions: CODEX_MCP }),
     );
-    // A refused re-read leaves the list in place and says why.
     mcp.read.mockRejectedValueOnce(
       new Error("This session cannot do that right now."),
     );
@@ -811,7 +792,6 @@ describe("composer slash commands", () => {
     expect(
       within(panel).getByText("Sign in to this server from a terminal."),
     ).toBeVisible();
-    // Only the failed server offers a reconnect.
     expect(
       within(panel).getAllByRole("button", { name: /^Reconnect/u }),
     ).toHaveLength(1);
@@ -873,7 +853,6 @@ describe("composer slash commands", () => {
         "The agent did not answer in time; it may still finish.",
       ),
     ).toBeVisible();
-    // With no list there is nothing to reload, only another read.
     expect(within(panel).queryByRole("button", { name: "Reload" })).toBeNull();
     fireEvent.click(within(panel).getByRole("button", { name: "Try again" }));
     expect(await within(panel).findByText("files")).toBeVisible();
@@ -910,7 +889,6 @@ describe("composer slash commands", () => {
         ],
       },
     ];
-    // Another session's notice is ignored.
     announce("session-b");
     expect(native.requests).toHaveLength(1);
     announce();
@@ -939,7 +917,6 @@ describe("composer slash commands", () => {
     ];
     announce();
     await waitFor(() => expect(native.requests).toHaveLength(2));
-    // The first read finishes last with the older list; it is dropped.
     await act(async () => finishFirst({ revision: 1, commands }));
     const listbox = await screen.findByRole("listbox");
     await waitFor(() => expect(names(listbox)).toEqual(["/init"]));
@@ -999,8 +976,6 @@ describe("composer slash commands", () => {
         selector: TITLE,
       }),
     ).toBeInTheDocument();
-    // No list can load before the session starts, so Enter sends the text
-    // as it stands; the send path starts the session and checks the list.
     fireEvent.keyDown(field, { key: "Enter" });
     expect(onSubmit).toHaveBeenCalledTimes(1);
   });
