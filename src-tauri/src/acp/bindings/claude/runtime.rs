@@ -38,6 +38,7 @@ mod children;
 mod commands;
 mod egress;
 mod fork;
+mod harness_turn;
 mod ingress;
 mod launch;
 mod mode_guard;

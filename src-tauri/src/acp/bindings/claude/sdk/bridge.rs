@@ -17,6 +17,7 @@ mod notices;
 mod outbound;
 mod permission;
 mod questions;
+mod runs;
 mod steer;
 mod subagents;
 mod usage;
@@ -58,6 +59,10 @@ pub(super) struct Inbound {
     pub(super) children: Vec<crate::acp::bindings::claude::runtime::ChildEvent>,
     /// Mid-turn messages, by id: taken up (or queued to be), or not.
     pub(super) steers: Vec<(String, bool)>,
+    /// Claude Code started a run of its own (after a background task ended)
+    /// or asked for an approval with no turn open: the frame opens a turn,
+    /// which `adopt` names.
+    pub(super) started: bool,
 }
 
 #[derive(Debug)]
@@ -104,6 +109,9 @@ pub(super) struct SdkBridge {
     pending: BTreeMap<String, Pending>,
     next_request: u64,
     prompt: Option<Value>,
+    /// A run of Claude Code's is in progress: from a prompt's write, or a
+    /// run's first frame, to its `result`.
+    running: bool,
     interrupted: bool,
     auth_failed: bool,
     permissions: BTreeMap<u64, Permission>,
@@ -143,6 +151,7 @@ impl SdkBridge {
             pending: BTreeMap::new(),
             next_request: 0,
             prompt: None,
+            running: false,
             interrupted: false,
             auth_failed: false,
             permissions: BTreeMap::new(),
@@ -224,6 +233,7 @@ impl SdkBridge {
         match sent {
             Sent::Prompt => {
                 self.prompt = None;
+                self.running = false;
                 self.interrupted = false;
             }
             Sent::Control(request_id) => {
@@ -268,3 +278,6 @@ mod tests;
 
 #[cfg(test)]
 mod subagent_tests;
+
+#[cfg(test)]
+mod harness_turn_tests;

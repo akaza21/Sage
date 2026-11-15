@@ -34,7 +34,7 @@ pub(super) fn initialized() -> SdkBridge {
     bridge
 }
 
-fn success(request: &Value, response: Value) -> Value {
+pub(super) fn success(request: &Value, response: Value) -> Value {
     json!({"type":"control_response","response":{"subtype":"success","request_id":request["request_id"],"response":response}})
 }
 
@@ -378,8 +378,9 @@ fn withdrawn_and_outlived_approvals_cancel_their_cards() {
     );
     assert_eq!(late, Err(BridgeError::Unsupported));
     let after = bridge.inbound(json!({"type":"control_request","request_id":"r3","request":{"subtype":"can_use_tool","tool_name":"Bash","input":{"command":"ls"}}})).unwrap();
-    assert!(after.acp.is_empty(), "no turn is running");
-    assert_eq!(after.replies[0]["response"]["response"]["behavior"], "deny");
+    assert!(after.started, "an approval with no turn running opens one");
+    assert!(after.replies.is_empty());
+    assert_eq!(after.acp[1]["method"], "session/request_permission");
 }
 
 #[test]

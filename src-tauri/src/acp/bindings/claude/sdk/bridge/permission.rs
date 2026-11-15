@@ -1,5 +1,5 @@
-//! Requests outside a turn or beyond the session's card limit are declined here, before the
-//! session sees them.
+//! Requests beyond the session's card limit are declined here, before the session sees them. A
+//! request with no turn open (a background subagent's) opens one.
 
 use serde_json::{Value, json};
 
@@ -30,7 +30,6 @@ const EXIT_PLAN: [(&str, &str, &str, &str); 2] = [
 const DECLINED: &str = "The user declined this tool use.";
 const KEEP_PLANNING: &str = "The user chose to keep planning.";
 const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
-const NO_TURN: &str = "The user's turn has ended, so no one can approve this now.";
 /// Questions beyond what a Sage card shows; declining with this reason makes
 /// Claude ask in its reply instead.
 const QUESTIONS_UNSUPPORTED: &str = "Sage cannot show these questions. \
@@ -47,10 +46,7 @@ impl SdkBridge {
             .get("tool_name")
             .and_then(Value::as_str)
             .ok_or(BridgeError::Frame)?;
-        if self.prompt.is_none() {
-            inbound.replies.push(decision(request_id, deny(NO_TURN)));
-            return Ok(());
-        }
+        inbound.started = self.prompt.is_none();
         if self.permissions.len() + self.answering.len() >= OPEN_APPROVALS {
             inbound.replies.push(decision(request_id, deny(TOO_MANY)));
             return Ok(());
@@ -147,6 +143,16 @@ impl SdkBridge {
             }
             keep
         });
+    }
+
+    /// Declines every open approval: Claude Code still waits on them.
+    pub(super) fn decline_open(&mut self, inbound: &mut Inbound) {
+        for (wire, permission) in std::mem::take(&mut self.permissions) {
+            inbound.withdrawn.push(wire);
+            inbound
+                .replies
+                .push(decision(&permission.request_id, deny(DECLINED)));
+        }
     }
 
     pub(super) fn withdraw_open(&mut self, inbound: &mut Inbound) {

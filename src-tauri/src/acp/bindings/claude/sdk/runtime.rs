@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::{
     admission::AdmittedClaudeSdkBinding,
-    bridge::{SdkBridge, Sent},
+    bridge::{Inbound, SdkBridge, Sent},
     launch::SessionLaunch,
 };
 use crate::acp::{
@@ -55,6 +55,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
             usage: Arc::default(),
             sent: Vec::new(),
             steering: Steering::default(),
+            started: None,
             launch: None,
             binding: self.binding,
             root: Some(self.root),
@@ -71,6 +72,9 @@ struct ClaudeSdkRuntime {
     usage: Arc<sage_acp_protocol::usage::UsageCell>,
     sent: Vec<(EgressToken, Sent)>,
     steering: Steering,
+    /// What Claude Code reported for a turn it started on its own, held
+    /// until Sage opens that turn. Sage reads nothing more meanwhile.
+    started: Option<Inbound>,
     launch: Option<SessionLaunch>,
     binding: Arc<AdmittedClaudeSdkBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,
@@ -122,10 +126,26 @@ impl ClaudeSdkRuntime {
         sdk: Value,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        if self.started.is_some() {
+            return Err(AdapterRuntimeError::Operation);
+        }
         let inbound = self
             .bridge()?
             .inbound(sdk)
             .map_err(|_| AdapterRuntimeError::Frame)?;
+        if inbound.started {
+            let id = self.session.harness_session_identity()?;
+            self.started = Some(inbound);
+            return AdapterBatch::new(vec![AdapterEvent::TurnStarted { id }], Vec::new());
+        }
+        self.translate(inbound, resources)
+    }
+
+    fn translate(
+        &mut self,
+        inbound: Inbound,
+        resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let mut batch = AdapterBatchBuilder::new();
         let mut observed = false;
         for wire in inbound.withdrawn {
@@ -347,6 +367,19 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         let sdk = decode_frame(frame.as_bytes()).map_err(|_| AdapterRuntimeError::Frame)?;
         self.ingest_sdk(sdk, resources)
+    }
+
+    fn adopt_turn(
+        &mut self,
+        client_message_id: sage_acp_protocol::contract::RequiredText<512>,
+        resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let inbound = self.started.take().ok_or(AdapterRuntimeError::Operation)?;
+        let id = self.session.begin_harness_turn(client_message_id)?;
+        self.bridge()?
+            .adopt(id.into())
+            .map_err(|_| AdapterRuntimeError::Operation)?;
+        self.translate(inbound, resources)
     }
 
     /// Claude Code's own output can exceed the structure limits sized for ACP frames: an edit's
