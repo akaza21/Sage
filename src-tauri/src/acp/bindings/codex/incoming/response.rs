@@ -319,9 +319,13 @@ pub(super) fn response<M: ResourceMapper>(
 }
 
 pub(super) fn browser_mcp_unavailable() -> Result<IncomingEvent, IngressError> {
-    Ok(IncomingEvent::Error(error_payload(
+    let mut payload = error_payload(
         "browserMcpUnavailable",
         "Browser tools are unavailable for this Codex chat. You can continue chatting, but browser actions will not work until a new chat starts with a working browser helper.",
         false,
-    )?))
+    )?;
+    if let sage_acp_protocol::intent::NormalizedPayload::Error { kind, .. } = &mut payload {
+        *kind = Some(sage_acp_protocol::intent::ErrorKind::Notice);
+    }
+    Ok(IncomingEvent::Error(payload))
 }

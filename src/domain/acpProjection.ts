@@ -205,7 +205,12 @@ export type AcpItem =
     >
   | PlainItem<
       "error",
-      { kind?: "attempt"; code: string; message: string; recoverable: boolean }
+      {
+        kind?: "attempt" | "notice";
+        code: string;
+        message: string;
+        recoverable: boolean;
+      }
     >
   | PlainItem<
       "unsupported",

@@ -312,8 +312,8 @@ export function safeItem(value: unknown): AcpItem | null {
               code,
               message,
               recoverable: payload.recoverable,
-              ...(payload.kind === "attempt"
-                ? { kind: "attempt" as const }
+              ...(payload.kind === "attempt" || payload.kind === "notice"
+                ? { kind: payload.kind }
                 : {}),
             },
           }
