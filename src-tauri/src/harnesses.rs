@@ -1226,12 +1226,14 @@ mod tests {
         .settled_for_test();
         let listed = registration.model_catalog();
         let model = || {
-            vec![crate::acp::bindings::codex::listed_model(
-                "gpt-6.1-sol",
-                "GPT-6.1-Sol",
-                true,
-                ["low", "max", "ultra"].into_iter(),
-            )]
+            vec![ModelOption {
+                id: "gpt-6.1-sol".into(),
+                name: "GPT-6.1-Sol".into(),
+                description: None,
+                is_default: Some(true),
+                context_window: None,
+                effort_levels: Some(vec!["low".into(), "max".into(), "ultra".into()]),
+            }]
         };
         assert!(catalog.known_models("codex").unwrap().is_empty());
 
@@ -1246,10 +1248,6 @@ mod tests {
             "isDefault": true,
             "effortLevels": ["low", "max", "ultra"]
         }]);
-        assert_eq!(
-            serde_json::to_value(catalog.models("codex").unwrap()).unwrap(),
-            expected
-        );
         assert_eq!(
             serde_json::to_value(catalog.known_models("codex").unwrap()).unwrap(),
             expected

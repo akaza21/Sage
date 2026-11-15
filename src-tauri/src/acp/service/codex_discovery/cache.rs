@@ -112,14 +112,17 @@ impl DiscoveryCache {
             Some(model) => &entry.id == model,
             None => entry.is_default,
         })?;
-        Some(model_option(model))
+        Some(model.into())
     }
 
+    /// Stores `response` when `is_current` holds, then runs `published`
+    /// before a clear can take the entry away again.
     pub(super) fn publish_if_current(
         &self,
         key: CacheKey,
         response: CodexDiscoveryResponse,
         is_current: impl FnOnce() -> bool,
+        published: impl FnOnce(&CodexDiscoveryResponse),
     ) -> Result<(), CodexDiscoveryRunError> {
         let mut entry = self
             .entry
@@ -128,7 +131,7 @@ impl DiscoveryCache {
         if !is_current() {
             return Err(CodexDiscoveryRunError::Drift);
         }
-        *entry = Some(CachedDiscovery { key, response });
+        published(&entry.insert(CachedDiscovery { key, response }).response);
         Ok(())
     }
 
@@ -267,12 +270,7 @@ pub(super) fn response_from(
         models: content
             .models
             .iter()
-            .map(|model| CodexDiscoveryModel {
-                id: model.id.clone(),
-                name: model.name.clone(),
-                is_default: model.is_default,
-                effort_levels: model.effort_levels.clone(),
-            })
+            .map(CodexDiscoveryModel::from)
             .collect(),
         default_model_id: content.default_model_id.clone(),
     }
@@ -284,14 +282,5 @@ pub(super) fn launchable_models(
     response: &CodexDiscoveryResponse,
 ) -> Option<Vec<sage_domain::harness::ModelOption>> {
     (response.account != CodexDiscoveryAccount::SignedOut)
-        .then(|| response.models.iter().map(model_option).collect())
-}
-
-fn model_option(model: &CodexDiscoveryModel) -> sage_domain::harness::ModelOption {
-    crate::acp::bindings::codex::listed_model(
-        model.id.as_str(),
-        model.name.as_str(),
-        model.is_default,
-        model.effort_levels.iter().map(|level| level.as_str()),
-    )
+        .then(|| response.models.iter().map(Into::into).collect())
 }

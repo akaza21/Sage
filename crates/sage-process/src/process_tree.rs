@@ -1,4 +1,4 @@
-//! The whole process tree a Git child starts.
+//! The whole process tree a Git child, or a short-lived harness probe, starts.
 //!
 //! On Windows `git` on PATH is usually Git for Windows' `cmd\git.exe`, a
 //! launcher that starts the real `mingw64\bin\git.exe`, which in turn starts
@@ -47,6 +47,10 @@ impl ProcessTree {
         Ok(Self)
     }
 
+    pub fn contain_blocking(_child: &std::process::Child) -> io::Result<Self> {
+        Ok(Self)
+    }
+
     /// Nothing beyond the root process is tracked here.
     pub fn terminate(&self) -> bool {
         false
@@ -62,7 +66,7 @@ impl ProcessTree {
 
 #[cfg(windows)]
 mod windows {
-    use std::io;
+    use std::{io, os::windows::io::AsRawHandle};
 
     use tokio::process::Child;
     use windows_sys::Win32::{Foundation::HANDLE, System::Threading::CREATE_SUSPENDED};
@@ -92,12 +96,21 @@ mod windows {
                 .raw_handle()
                 .ok_or_else(|| io::Error::other("the suspended Git process has no handle"))?
                 as HANDLE;
+            Self::contain_handle(process)
+        }
+
+        /// [`Self::contain`] for a child started with `std::process`.
+        pub fn contain_blocking(child: &std::process::Child) -> io::Result<Self> {
+            Self::contain_handle(child.as_raw_handle() as HANDLE)
+        }
+
+        fn contain_handle(process: HANDLE) -> io::Result<Self> {
             let job = JobBoundary::create(MAX_TREE_PROCESSES)
                 .map_err(|_| io::Error::other("the Git Job Object could not be created"))?;
-            // SAFETY: `process` is the live handle tokio owns for `child`.
+            // SAFETY: `process` is the live handle the caller's child owns.
             unsafe { job.assign(process) }
                 .map_err(|_| io::Error::other("Git could not be assigned to its Job Object"))?;
-            // SAFETY: `process` is the live handle tokio owns for `child`.
+            // SAFETY: `process` is the live handle the caller's child owns.
             if unsafe { NtResumeProcess(process) } < 0 {
                 let _ = job.terminate();
                 return Err(io::Error::other(

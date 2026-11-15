@@ -2,9 +2,13 @@ import type { ChatHarnessControlsProps } from "./chatHarnessControlsProps";
 import { IconButton } from "../../ui/IconButton";
 import { Plus } from "../../ui/leanIcons";
 
-import { useState } from "react";
+import { useReducer, useState } from "react";
 import { ComposerContext } from "./ComposerContext";
 
+import {
+  cachedHarnessModels,
+  harnessModelIdentity,
+} from "../../app/harnessModelCache";
 import { useWorkbenchStore } from "../../app/store";
 import {
   selectedConfigChoice,
@@ -31,7 +35,6 @@ import {
 } from "./useChatHarnessSelection";
 import { useComposerModelSelection } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
-import { useListedHarnessModels } from "./useListedHarnessModels";
 
 export function ChatHarnessControls({
   draftPickers,
@@ -96,11 +99,12 @@ export function ChatHarnessControls({
     accessOpen: active === "access",
     openAccess: () => toggle("access"),
   });
-  const ownsGlobalModels = selectedHarnessId === globalSelectedHarnessId;
-  const listedModels = useListedHarnessModels(
-    ownsGlobalModels ? undefined : selectedHarness,
-  );
-  const models = ownsGlobalModels ? globalModels : (listedModels ?? []);
+  const [, listed] = useReducer((count: number) => count + 1, 0);
+  const knownModels =
+    selectedHarnessId === globalSelectedHarnessId
+      ? globalModels
+      : cachedHarnessModels(harnessModelIdentity(selectedHarness));
+  const models = knownModels ?? [];
   // Effort levels are known only once a session runs the selected harness and
   // model; until then effort shows as unavailable, however the selection and
   // the session were reached.
@@ -229,6 +233,13 @@ export function ChatHarnessControls({
   };
   return (
     <>
+      {knownModels || !selectedHarness ? null : (
+        <ComposerOptionsPart
+          part="ListedHarnessModels"
+          harness={selectedHarness}
+          onListed={listed}
+        />
+      )}
       <div
         ref={controls}
         className="composer__controls"

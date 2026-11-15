@@ -14,9 +14,10 @@ use std::{
 
 use sage_acp_protocol::contract::RuntimeEpoch;
 use sage_domain::harness::ModelOption;
+use sage_process::process_tree::ProcessTree;
 
 use super::{
-    CodexDiscoveryProtocol, CodexModelSnapshot,
+    CodexDiscoveryProtocol,
     runner::{
         CodexDiscoveryDeadline, CodexDiscoveryRunError, DiscoveryTransport, DiscoveryZeroProcess,
         RevalidationCheckpoint, run_discovery_protocol,
@@ -24,6 +25,7 @@ use super::{
 };
 use crate::acp::{
     bindings::codex::AdmittedCodexBinding,
+    ipc::CodexDiscoveryModel,
     transport::{Frame, FrameError, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame},
 };
 
@@ -97,8 +99,9 @@ impl CodexModelCatalog {
         let listed = models
             .clone()
             .map_or_else(|| Listed::Failed(Instant::now()), Listed::Models);
-        self.store_if_current(generation, digest, listed);
-        models
+        self.store_if_current(generation, digest, listed)
+            .then_some(models)
+            .flatten()
     }
 
     fn settled(&self, binding_digest: [u8; 32]) -> Option<Option<Vec<ModelOption>>> {
@@ -147,33 +150,6 @@ impl CodexModelCatalog {
     }
 }
 
-/// The models a Codex build lists before a session, as a session reads them.
-pub(crate) fn listed_model<'a>(
-    id: &str,
-    name: &str,
-    is_default: bool,
-    effort_levels: impl ExactSizeIterator<Item = &'a str>,
-) -> ModelOption {
-    ModelOption {
-        id: id.to_owned(),
-        name: name.to_owned(),
-        description: None,
-        is_default: Some(is_default),
-        context_window: None,
-        effort_levels: (effort_levels.len() > 0)
-            .then(|| effort_levels.map(str::to_owned).collect()),
-    }
-}
-
-fn model_option(model: &CodexModelSnapshot) -> ModelOption {
-    listed_model(
-        model.id.as_str(),
-        model.name.as_str(),
-        model.is_default,
-        model.effort_levels.iter().map(|level| level.as_str()),
-    )
-}
-
 /// Only a build the user installed is probed: Sage's managed package runs
 /// only inside its supervised containment.
 fn probe(
@@ -201,14 +177,23 @@ fn probe(
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+        command.creation_flags(
+            windows_sys::Win32::System::Threading::CREATE_NO_WINDOW
+                | sage_process::process_tree::CREATION_FLAGS,
+        );
     }
     let mut transport = ProbeTransport::spawn(command, binding)?;
     let runtime_epoch = RuntimeEpoch::new(PROBE_EPOCH).ok()?;
     let mut protocol = CodexDiscoveryProtocol::from_admitted_binding(binding, runtime_epoch);
     run_discovery_protocol(&mut protocol, &mut transport, PROBE_EPOCH, deadline)
         .ok()
-        .map(|content| content.models.iter().map(model_option).collect())
+        .map(|content| {
+            content
+                .models
+                .iter()
+                .map(|model| (&CodexDiscoveryModel::from(model)).into())
+                .collect()
+        })
 }
 
 fn profile_directory(environment: &[(OsString, OsString)]) -> Option<PathBuf> {
@@ -222,6 +207,9 @@ fn profile_directory(environment: &[(OsString, OsString)]) -> Option<PathBuf> {
 
 struct ProbeTransport<'a> {
     child: Child,
+    /// On Windows the Job Object holding everything the probe starts, such as
+    /// the node and codex.exe behind a `.cmd` shim; dropping it ends them.
+    tree: ProcessTree,
     stdin: Option<ChildStdin>,
     frames: mpsc::Receiver<Result<Option<Frame>, FrameError>>,
     binding: &'a AdmittedCodexBinding,
@@ -230,19 +218,44 @@ struct ProbeTransport<'a> {
 impl<'a> ProbeTransport<'a> {
     fn spawn(mut command: Command, binding: &'a AdmittedCodexBinding) -> Option<Self> {
         let mut child = command.spawn().ok()?;
-        let stdin = child.stdin.take();
-        let Some(stdout) = child.stdout.take() else {
-            reap(&mut child, Instant::now());
-            return None;
+        let tree = match ProcessTree::contain_blocking(&child) {
+            Ok(tree) => tree,
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
         };
+        let stdin = child.stdin.take();
+        let stdout = child.stdout.take();
         let (sender, frames) = mpsc::sync_channel(4);
-        thread::spawn(move || read_frames(stdout.take(PROBE_BYTES), &sender));
-        Some(Self {
+        let transport = Self {
             child,
+            tree,
             stdin,
             frames,
             binding,
-        })
+        };
+        let stdout = stdout?;
+        thread::spawn(move || read_frames(stdout.take(PROBE_BYTES), &sender));
+        Some(transport)
+    }
+
+    /// Codex exits once its stdin closes. A probe still running after the
+    /// grace is killed together with every process it started.
+    fn reap(&mut self, cleanup_end: Instant) {
+        self.stdin = None;
+        let grace_end =
+            Instant::now() + EXIT_GRACE.min(cleanup_end.saturating_duration_since(Instant::now()));
+        while Instant::now() < grace_end {
+            if !matches!(self.child.try_wait(), Ok(None)) {
+                return;
+            }
+            thread::sleep(Duration::from_millis(10));
+        }
+        self.tree.terminate();
+        let _ = self.child.kill();
+        let _ = self.child.wait();
     }
 }
 
@@ -313,30 +326,15 @@ impl DiscoveryTransport for ProbeTransport<'_> {
         _: bool,
         deadline: CodexDiscoveryDeadline,
     ) -> Result<DiscoveryZeroProcess, CodexDiscoveryRunError> {
-        reap(&mut self.child, deadline.cleanup_end());
+        self.reap(deadline.cleanup_end());
         Ok(DiscoveryZeroProcess::reaped(PROBE_EPOCH))
     }
 }
 
 impl Drop for ProbeTransport<'_> {
     fn drop(&mut self) {
-        reap(&mut self.child, Instant::now());
+        self.reap(Instant::now() + EXIT_GRACE);
     }
-}
-
-/// Codex exits once its stdin closes, taking the CLI shim's own children with
-/// it; a probe that does not is killed.
-fn reap(child: &mut Child, cleanup_end: Instant) {
-    let grace_end =
-        Instant::now() + EXIT_GRACE.min(cleanup_end.saturating_duration_since(Instant::now()));
-    while Instant::now() < grace_end {
-        if !matches!(child.try_wait(), Ok(None)) {
-            return;
-        }
-        thread::sleep(Duration::from_millis(10));
-    }
-    let _ = child.kill();
-    let _ = child.wait();
 }
 
 fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {

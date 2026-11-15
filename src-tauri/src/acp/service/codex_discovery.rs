@@ -283,7 +283,7 @@ impl CodexDiscoveryManager {
 
     pub(crate) fn invalidate(&self) {
         self.gate.invalidate();
-        self.cache.clear();
+        self.forget_snapshot();
     }
 
     /// Called when the account changes: a discovery prepared before now can
@@ -351,15 +351,20 @@ impl CodexDiscoveryManager {
         response: CodexDiscoveryResponse,
     ) -> Result<(), CodexDiscoveryRunError> {
         let binding_digest = key.scope.binding_digest;
-        let models = launchable_models(&response);
         let catalog = self.registration.model_catalog();
-        self.cache.publish_if_current(key, response, || {
-            self.gate.is_current(expected_invalidation_epoch)
-                && match models {
-                    Some(models) => catalog.refresh(catalog_generation, binding_digest, models),
-                    None => catalog.generation() == catalog_generation,
+        self.cache.publish_if_current(
+            key,
+            response,
+            || {
+                self.gate.is_current(expected_invalidation_epoch)
+                    && catalog.generation() == catalog_generation
+            },
+            |published| {
+                if let Some(models) = launchable_models(published) {
+                    catalog.refresh(catalog_generation, binding_digest, models);
                 }
-        })
+            },
+        )
     }
 
     fn clear_flight(&self, completed: &Arc<DiscoveryFlight>) {

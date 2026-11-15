@@ -3,7 +3,16 @@ use super::*;
 #[test]
 fn an_account_change_during_a_listing_keeps_that_listing_out() {
     let catalog = CodexModelCatalog::default();
-    let model = || vec![listed_model("gpt-x", "GPT-X", true, ["low"].into_iter())];
+    let model = || {
+        vec![ModelOption {
+            id: "gpt-x".into(),
+            name: "GPT-X".into(),
+            description: None,
+            is_default: Some(true),
+            context_window: None,
+            effort_levels: Some(vec!["low".into()]),
+        }]
+    };
     let began = catalog.generation();
 
     catalog.forget();
@@ -120,6 +129,71 @@ mod fake_app_server {
             serde_json::to_value(catalog.known(binding.binding_digest())).unwrap(),
             serde_json::to_value(&models).unwrap()
         );
+    }
+
+    #[test]
+    fn a_probe_runs_in_the_profile_folder_with_only_the_launch_environment() {
+        let server = FakeAppServer::new("");
+        let recorded = server.directory.join("recorded");
+        let body = format!(
+            "{{ pwd -P; awk 'BEGIN {{ for (key in ENVIRON) print key }}'; }} > '{}'\n{}",
+            recorded.display(),
+            answering_app_server(&std::env::temp_dir())
+        );
+        sage_test_support::test_executable::write(server.script(), format!("#!/bin/sh\n{body}\n"))
+            .unwrap();
+        let binding = server.binding();
+        let launch: Vec<&str> = binding
+            .launch_environment()
+            .iter()
+            .map(|(key, _)| key.as_str())
+            .collect();
+        let home = &binding
+            .launch_environment()
+            .iter()
+            .find(|(key, _)| key == "HOME")
+            .unwrap()
+            .1;
+        let inherited = std::env::vars()
+            .map(|(key, _)| key)
+            .find(|key| !launch.contains(&key.as_str()))
+            .expect("the test process has a variable the launch environment leaves out");
+
+        assert!(CodexModelCatalog::default().probed(&binding).is_some());
+
+        let recorded = std::fs::read_to_string(recorded).unwrap();
+        let mut lines = recorded.lines();
+        assert_eq!(
+            Path::new(lines.next().unwrap()),
+            std::fs::canonicalize(home).unwrap()
+        );
+        let seen: Vec<&str> = lines.collect();
+        assert!(!seen.contains(&inherited.as_str()), "{inherited} leaked");
+        for key in seen {
+            assert!(
+                launch.contains(&key) || ["PWD", "SHLVL", "_"].contains(&key),
+                "{key} was not in the launch environment"
+            );
+        }
+    }
+
+    #[test]
+    fn a_listing_read_before_an_account_change_is_neither_kept_nor_offered() {
+        let body = format!("sleep 1\n{}", answering_app_server(&std::env::temp_dir()));
+        let server = FakeAppServer::new(&body);
+        let catalog = CodexModelCatalog::default();
+        let binding = server.binding();
+
+        let models = std::thread::scope(|scope| {
+            let probing = scope.spawn(|| catalog.probed(&binding));
+            std::thread::sleep(Duration::from_millis(300));
+            catalog.forget();
+            probing.join().unwrap()
+        });
+
+        assert!(models.is_none());
+        assert!(catalog.known(binding.binding_digest()).is_none());
+        assert!(catalog.probed(&binding).is_some());
     }
 
     #[test]
