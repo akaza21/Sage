@@ -23,11 +23,8 @@ fn is_line_break(value: char) -> bool {
     )
 }
 
-/// The first line of `text` as display text for a title: whitespace control
-/// characters such as tabs become a single space so words stay apart, other control
-/// and hidden format characters are removed, then the text is trimmed and cut
-/// at a character boundary within `max_bytes`. `None` when nothing printable
-/// is left.
+/// Whitespace controls become one space and other controls and hidden format
+/// characters are dropped; `None` when nothing printable is left.
 pub(crate) fn title_line(text: &str, max_bytes: usize) -> Option<String> {
     let mut visible = String::new();
     for value in text.split(is_line_break).next()?.chars() {
@@ -53,7 +50,6 @@ pub(crate) fn title_line(text: &str, max_bytes: usize) -> Option<String> {
     (!title.is_empty()).then(|| title.to_owned())
 }
 
-/// The first line of `text` as a canonical chat title.
 pub(super) fn first_line_title(text: &str) -> Option<String> {
     super::canonical_chat_title(&title_line(text, super::MAX_CHAT_TITLE_BYTES)?).ok()
 }

@@ -42,7 +42,6 @@ fn direct_probe_honours_caller_elevation_without_residue() {
     );
 
     if current_process_elevated().unwrap() {
-        // Elevated callers are refused before the helper starts.
         assert_eq!(result, Err(BoundaryError::Authority));
     } else {
         let receipt = result.unwrap();

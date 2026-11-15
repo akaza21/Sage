@@ -81,7 +81,6 @@ fn a_conditional_save_loses_to_any_change_since_it_read_even_a_change_back() {
     let store = SettingsStore::in_memory().unwrap();
     let dialog = std::env::temp_dir().join("dialog");
     let settings = std::env::temp_dir().join("settings");
-    // The first dialog read "nothing saved"; Settings chose B, then Reset.
     let read = store.browser_download_folder_record().unwrap();
     store.set_browser_download_folder(&settings).unwrap();
     store.clear_browser_download_folder().unwrap();
@@ -135,14 +134,12 @@ fn tables_from_earlier_development_builds_are_migrated() {
             revision: 1
         }
     );
-    // The old placeholder records are gone (their files are left alone).
     let connection = store.0.lock().unwrap();
     assert!(!has_table(&connection, "browser_download_reservations").unwrap());
     drop(connection);
     store.clear_browser_download_folder().unwrap();
     assert_eq!(store.browser_download_folder_record().unwrap().revision, 2);
     drop(store);
-    // Opening again leaves the migrated tables alone.
     assert_eq!(
         SettingsStore::open(&path)
             .unwrap()

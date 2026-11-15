@@ -1,17 +1,12 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-/// Who set a chat's current title. Stored in `chats.title_source`.
+/// Stored in `chats.title_source`.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum ChatTitleSource {
-    /// Sage's placeholder for a new chat.
     Default,
-    /// Derived from the first prompt.
     Prompt,
-    /// Reported by the harness for the chat's agent session.
     Harness,
-    /// Typed by the user.
     User,
-    /// Derived from the parent chat when the chat was forked.
     Fork,
 }
 
@@ -27,8 +22,7 @@ impl ChatTitleSource {
     }
 }
 
-/// Shows a harness-reported title as the chat title unless the user named
-/// the chat or it is a fork. A title that is empty once sanitized is ignored,
+/// Leaves user and fork titles alone; a title empty once sanitized is ignored,
 /// so a harness can never blank a chat.
 pub(crate) fn apply_harness_title_in(
     transaction: &Transaction<'_>,
@@ -60,10 +54,8 @@ pub(crate) fn apply_harness_title_in(
     retitle_attached_tab_in(transaction, project_id, chat_id, &title, now)
 }
 
-/// Id prefix of a temporary side chat.
 pub(crate) const SIDE_CHAT_ID_PREFIX: &str = "side-";
 
-/// The title Sage gives a new chat before anything names it.
 pub(crate) fn placeholder_chat_title(chat_id: &str) -> &'static str {
     if chat_id.starts_with(SIDE_CHAT_ID_PREFIX) {
         "Chat: Side chat"
@@ -72,10 +64,8 @@ pub(crate) fn placeholder_chat_title(chat_id: &str) -> &'static str {
     }
 }
 
-/// Puts back the title Sage would have given the chat once its harness
-/// clears the title it reported: the first prompt's title, or the
-/// placeholder when there is no usable first prompt. Only a harness-titled
-/// chat changes; user and fork titles are never touched.
+/// Only a harness-titled chat changes, back to its first-prompt title or the
+/// placeholder.
 pub(crate) fn clear_harness_title_in(
     transaction: &Transaction<'_>,
     project_id: &str,
@@ -107,8 +97,6 @@ pub(crate) fn clear_harness_title_in(
     retitle_attached_tab_in(transaction, project_id, chat_id, &title, now)
 }
 
-/// The title the chat's first prompt gives it: the primary user item of its
-/// earliest visible turn, by the same rule as auto-titling.
 fn first_prompt_title(
     transaction: &Transaction<'_>,
     project_id: &str,
@@ -141,7 +129,6 @@ fn first_prompt_title(
         .and_then(super::auto_title::first_line_title))
 }
 
-/// Mirrors a chat's new title onto the workbench tab attached to it.
 pub(super) fn retitle_attached_tab_in(
     transaction: &Transaction<'_>,
     project_id: &str,
@@ -204,7 +191,6 @@ mod tests {
             transaction.commit().unwrap();
         }
 
-        /// Switches the fixture to a new side chat of the current chat.
         fn side_chat(mut self) -> Self {
             let mut connection = self.database.write_connection().unwrap();
             let transaction = connection.transaction().unwrap();
@@ -231,7 +217,6 @@ mod tests {
             transaction.commit().unwrap();
         }
 
-        /// The chat row's title and source, and the attached tab's title.
         fn shown(&self) -> (String, String, String) {
             let connection = self.database.write_connection().unwrap();
             let (title, source) = connection

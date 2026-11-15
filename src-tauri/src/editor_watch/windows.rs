@@ -52,9 +52,7 @@ pub(super) fn spawn_editor_watch(
         .map_err(AppError::Io)
 }
 
-/// Runs the folder watch until it is cancelled or fails. A failure that is not
-/// a cancellation delivers one `Changed` so the Editor re-reads the file
-/// instead of keeping text that may have gone stale while nothing watched it.
+/// A non-cancel failure delivers one `Changed`, forcing the Editor to re-read.
 fn run_editor_watch(
     cancelled: &AtomicBool,
     directory: &Path,
@@ -92,8 +90,6 @@ fn run_directory_watch(
     watch_directory(cancelled, directory, watched_file_name, deliver, || {})
 }
 
-/// `on_armed` runs on the watch thread each time a read is pending, so tests
-/// can act on a watch that is known to be listening.
 fn watch_directory(
     cancelled: &AtomicBool,
     directory: &Path,
@@ -161,7 +157,6 @@ fn watch_directory(
     Ok(())
 }
 
-/// What `GetOverlappedResult` reported for one `ReadDirectoryChangesW` read.
 #[derive(Debug, Clone, Copy)]
 struct WatchCompletion {
     completed: i32,
@@ -170,8 +165,7 @@ struct WatchCompletion {
     cancelled: bool,
 }
 
-/// Handles one completed read. Returns `Ok(true)` to keep watching, `Ok(false)`
-/// when the watch was cancelled, and `Err` when the watch failed.
+/// `Ok(true)` keeps watching, `Ok(false)` means the watch was cancelled.
 ///
 /// When more changes arrive than the buffer holds, Windows drops them and
 /// completes the read with 0 bytes, or fails it with `ERROR_NOTIFY_ENUM_DIR`.
@@ -628,8 +622,6 @@ mod tests {
         }
         resume.send(()).expect("watch waits to be resumed");
 
-        // Read until the watch re-arms after its first notice: the overflow
-        // reports one `Changed`, and the watch keeps listening after it.
         let mut notices = Vec::new();
         loop {
             match next_event() {

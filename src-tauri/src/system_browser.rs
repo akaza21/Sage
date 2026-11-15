@@ -1,15 +1,10 @@
-//! Opens a web page in the user's own browser, outside Sage, for a
-//! sign-in a harness asks the user to complete.
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BrowserError {
-    /// This system has no way to open the user's browser from Sage.
     #[cfg_attr(
         windows,
         expect(dead_code, reason = "Windows always has a way to open the browser")
     )]
     Unavailable,
-    /// The system refused to open the page.
     Failed,
 }
 
@@ -27,7 +22,6 @@ pub(crate) fn open_https(url: &str) -> Result<(), BrowserError> {
     open(parsed.as_str())
 }
 
-/// Whether `open_https` can open anything on this system.
 pub(crate) const fn available() -> bool {
     cfg!(windows)
 }

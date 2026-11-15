@@ -1,21 +1,8 @@
-//! S1 `window.open('javascript:…')`: contained, not denied. WebView2 reports
-//! it as an `about:blank` request and raises no `NavigationStarting` for the
-//! `javascript:` URL, so the payload runs in the blank child, which has the
-//! opener's origin. Chrome does the same, and the opener could run that
-//! script itself (`window.open('')` then `eval` or `document.write`). What
-//! must hold:
-//!
-//! - the child has the opener's origin, so it gains nothing;
-//! - it has no Sage IPC: the S3 probe set, run inside it, is refused and
-//!   no command runs;
-//! - its next navigations are policed: HTTP(S) settles through Sage's
-//!   hooks, and a refused scheme leaves it where it was;
-//! - there is at most one child, and the chrome can see, adopt and close
-//!   it, because it is a Sage tab (counted against the cap) listed in
-//!   `browser_popup_pending`.
-//!
-//! The evidence always shows whether the payload ran and what its fetches
-//! did.
+//! WebView2 reports `window.open('javascript:…')` as an `about:blank` request
+//! and raises no `NavigationStarting` for the `javascript:` URL, so the payload
+//! runs in the blank child, which has the opener's origin. Chrome does the
+//! same, and the opener could run that script itself, so it is contained
+//! rather than denied.
 
 use std::time::Duration;
 
@@ -39,8 +26,6 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
     let tabs = lane.tabs();
     let popups = lane.native_popups();
     let abandoned = lane.abandoned_popups();
-    // The payload records that it ran, its base URL, and how each fetch
-    // (relative and absolute) ended, so a missing fixture hit is explained.
     let payload = format!(
         "javascript:void((window.__jsRan=1),(window.__jsBase=document.baseURI),(window.__jsFetch={{}}),[['relative','{RELATIVE_MARKER}'],['absolute','{}']].forEach(([key,url])=>{{window.__jsFetch[key]='pending';fetch(url,{{method:'POST'}}).then((response)=>window.__jsFetch[key]='status '+response.status,(error)=>window.__jsFetch[key]='error '+error)}}))",
         site.url(ABSOLUTE_MARKER)
@@ -66,8 +51,8 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
         )
         .and_then(|text| serde_json::from_str::<Value>(text.as_str().unwrap_or("null")).map_err(|error| error.to_string()))
     };
-    // The scenario is pinned: exactly one child, a Sage tab. Anything else
-    // fails every check below rather than skipping it.
+    // Exactly one child, a Sage tab; anything else fails every check below
+    // rather than skipping it.
     let [child] = children.as_slice() else {
         let why = format!(
             "one window.open made {} children {children:?} (want exactly 1); window.open -> {opened:?}; opener __jsRan {in_opener:?}; new linked popups {linked:?}",
@@ -79,7 +64,6 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
         close(lane, &children);
         return;
     };
-    // Fetches may still be in flight; give them a few seconds to settle.
     let state = wait_for(Duration::from_secs(5), || {
         ran(child).ok().filter(|state| {
             !state["fetch"]
@@ -114,8 +98,8 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
     let probes = ipc(lane, site, child);
     navigations(lane, site, report, child);
     cap(lane, report, child);
-    // Backstop for paths that went unanswered: long after the probes, the
-    // command still has not run and the tab list is unchanged.
+    // Backstop for unanswered paths: long after the probes, the command still
+    // has not run and the tab list is unchanged.
     let after = lane.tabs();
     report.check(
         CHECKS[1],
@@ -136,9 +120,6 @@ const CHECKS: [&str; 4] = [
     "s1.javascript-contained.cap",
 ];
 
-/// The child holds a tab-cap slot: with it alive, exactly
-/// `TAB_CAP - live tabs` more tabs open (one fewer than without it), and
-/// the next one is refused. The filler tabs are closed afterwards.
 fn cap(lane: &Lane, report: &mut Report, child: &str) {
     let live = lane.tabs();
     let mut filler = Vec::new();
@@ -165,9 +146,7 @@ fn cap(lane: &Lane, report: &mut Report, child: &str) {
     );
 }
 
-/// The S3 probe set, from inside the child: every path refused or absent
-/// (an unanswered raw message counts as refused; `run` backstops it), and
-/// `browser_open` of the marker has not run after a long quiet period.
+/// An unanswered raw message counts as refused; `run` backstops it.
 fn ipc(lane: &Lane, site: &Site, child: &str) -> (bool, String) {
     let tabs = lane.tabs();
     let started = lane.evaluate(
@@ -207,9 +186,6 @@ fn ipc(lane: &Lane, site: &Site, child: &str) -> (bool, String) {
     )
 }
 
-/// The child's next navigations: an HTTP(S) page settles through Sage's
-/// hooks, then a `blob:` page (a scheme Sage refuses) leaves it there and
-/// never reports.
 fn navigations(lane: &Lane, site: &Site, report: &mut Report, child: &str) {
     let target = site.url("/s1-popup.html?report=s1-js-next");
     let assigned = lane.evaluate(child, &format!("location.href = {}", json!(target)), false);

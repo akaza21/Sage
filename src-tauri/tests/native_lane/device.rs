@@ -1,5 +1,3 @@
-//! A high-DPR preset must fit the native device frame, including at fit scale.
-
 use std::{io::Cursor, time::Duration};
 
 use base64::{Engine as _, engine::general_purpose::STANDARD};

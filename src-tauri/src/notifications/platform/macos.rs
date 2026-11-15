@@ -1,10 +1,5 @@
-//! macOS notices through `UNUserNotificationCenter`, with Sage's own delegate.
-//! The delegate presents notices while Sage is frontmost (the chat may still
-//! be out of view) and routes a click to its receipt by the notice's
-//! identifier, so no thread waits for an answer. At most `MAX_IN_FLIGHT`
-//! delivered notices are kept, like Windows toasts, and the rest are
-//! withdrawn. The center is thread-safe, so the notice thread uses it
-//! directly; a dispatch slot is held until the center accepts the request.
+//! The center is thread-safe, so the notice thread uses it directly; a
+//! dispatch slot is held until the center accepts the request.
 //!
 //! The center works only inside Sage's app bundle: a development binary run
 //! outside one shows no notices rather than raising an exception.
@@ -29,12 +24,11 @@ use std::{
 
 const IDENTIFIER_PREFIX: &str = "sage-turn-";
 
-/// `None` when the process cannot post notices; see the module docs.
+/// `None` when the process cannot post notices, as outside the app bundle.
 static CENTER: OnceLock<Option<Center>> = OnceLock::new();
 
-/// Installs the delegate and asks once for permission to show alerts; macOS
-/// remembers the answer. Called at startup while notices are on and when
-/// they are turned on, so the first notice is not lost to the prompt.
+/// Asks for alert permission up front so the first notice is not lost to the
+/// prompt; macOS remembers the answer.
 pub(in crate::notifications) fn prepare(app: &tauri::AppHandle) {
     center(app);
 }
@@ -51,7 +45,6 @@ pub(in crate::notifications) fn dispatch(
     }
 }
 
-/// Withdraws Sage's delivered notices when the app exits.
 pub(in crate::notifications) fn withdraw_all() {
     if let Some(Some(center)) = CENTER.get() {
         center.withdraw_all();
@@ -141,7 +134,6 @@ impl Center {
             .addNotificationRequest_withCompletionHandler(&request, Some(&added));
     }
 
-    /// Stops tracking a notice the user answered and removes it.
     fn forget(&self, identifier: &NSString) {
         self.delivered
             .lock()
@@ -169,7 +161,6 @@ impl Center {
     }
 }
 
-/// The receipt id a notice was delivered for, from its identifier.
 fn receipt(identifier: &NSString) -> Option<i64> {
     identifier
         .to_string()

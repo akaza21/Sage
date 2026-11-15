@@ -1,7 +1,3 @@
-//! Pi launch discovery: the npm-global Pi package and the Node
-//! runtime that hosts the entrypoint its `pi` bin names. Paths stay
-//! native-only.
-
 use std::path::{Path, PathBuf};
 
 use serde_json::Value;
@@ -95,13 +91,9 @@ pub(super) fn discover_pi_launch_from(
 struct PiPackage {
     version: String,
     node_engine: String,
-    /// The `pi` bin target, relative to the package root. Releases move it
-    /// (1.x ships `dist/bundle/cli.js`), so it is read rather than assumed.
     entry: PathBuf,
 }
 
-/// Reads only the curated package identity: name, version, the `pi` bin
-/// entry and the Node engine. Nothing is inferred from the shim.
 fn read_package(npm_root: &Path) -> Option<PiPackage> {
     let manifest = read_json(&npm_root.join(package_relative("package.json")))?;
     let name = manifest.get("name").and_then(Value::as_str)?;

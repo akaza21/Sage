@@ -1,7 +1,3 @@
-//! The loopback HTTPS fixture for S10: a certificate made at test time and
-//! trusted by nobody. It counts TCP connections (the browser tried),
-//! completed handshakes, and decrypted requests (page content was fetched).
-
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
@@ -19,7 +15,6 @@ use rustls::{
     pki_types::{CertificateDer, PrivateKeyDer, PrivatePkcs8KeyDer, ServerName},
 };
 
-/// Text that appears only in the HTTPS fixture's page.
 pub const SECRET: &str = "S10-TLS-PAGE-7c41";
 const MAX_CONNECTIONS: usize = 16;
 
@@ -92,9 +87,8 @@ impl TlsSite {
         format!("https://{}{path}", self.address)
     }
 
-    /// A client that pins the fixture's own certificate fetches the page:
-    /// proves the fixture serves and counts, so a zero later means the
-    /// browser never got the page.
+    /// Proves the fixture serves and counts, so a zero later means the browser
+    /// never got the page.
     pub fn fetch_pinned(&self, path: &str) -> Result<String, String> {
         let mut roots = RootCertStore::empty();
         roots

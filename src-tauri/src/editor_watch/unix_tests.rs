@@ -42,7 +42,6 @@ impl WatchTest {
         }
         let cancelled = Arc::new(AtomicBool::new(false));
         let worker_cancelled = Arc::clone(&cancelled);
-        // Same prepare-before-spawn seam as production: target exists before registration.
         let prepared = prepare_editor_watch(&path).expect("prepare editor watch");
         let (notices, receive_notice) = mpsc::sync_channel(16);
         let (completed, receive_completion) = mpsc::sync_channel(1);

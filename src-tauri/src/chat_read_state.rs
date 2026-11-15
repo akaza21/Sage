@@ -1,10 +1,3 @@
-//! Which chats, across every project, need the user's attention: a finished
-//! latest Turn the user has not seen, or a Turn waiting on an approval. The
-//! rail shows this for projects that are not open, so it is answered from
-//! durable truth: Turns in the project database and the read marks in the
-//! settings store (settings_store/chat_read_marks.rs), which this module
-//! only reads.
-
 use std::collections::HashMap;
 
 use rusqlite::Connection;
@@ -17,9 +10,7 @@ use crate::{
     settings_store::{ChatReadMark, ChatReadMarkWrite, SettingsStore},
 };
 
-/// The most chats one answer lists. Chats awaiting an approval come first,
-/// then the most recently finished, so a cut never hides an approval behind
-/// an unread chat.
+/// Approvals sort first, so truncation never hides one behind an unread chat.
 pub const MAX_CHAT_ATTENTION: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -34,30 +25,26 @@ pub struct ChatAttention {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(tag = "reason", rename_all = "camelCase")]
 pub enum AttentionReason {
-    /// The latest Turn is waiting for the user to answer an approval.
     AwaitingApproval,
-    /// The latest Turn finished (Done or Failed) after the chat's read mark,
-    /// or the chat has none. `finished_at` is what reading it marks through.
+    /// Finished after the read mark, or with none; reading marks through
+    /// `finished_at`.
     #[serde(rename_all = "camelCase")]
-    Unread { finished_at: i64 },
+    Unread {
+        finished_at: i64,
+    },
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatAttentionList {
     pub chats: Vec<ChatAttention>,
-    /// More chats need attention than `chats` lists.
     pub truncated: bool,
 }
 
-/// The chats the rail can show (`rail_chat_set`) whose latest Turn waits on
-/// an approval or has finished; approvals first, then newest finish first.
-/// The read marks retain exactly these chats (see `mark_read`), so a
-/// chat the user has read keeps its mark while it is listed here.
-///
-/// The latest Turn is looked up for those chats alone, so at most
-/// `MAX_RAIL_CHATS` rows reach the final sort, however many chats the
-/// projects hold.
+/// Rail chats whose latest Turn waits on an approval or has finished,
+/// approvals first, then newest finish first. Read marks retain rail chats, so a read chat keeps
+/// its mark while listed here.
+/// Only rail chats are looked up, so at most `MAX_RAIL_CHATS` rows reach the sort.
 fn attention_candidates() -> String {
     format!(
         "SELECT c.project_id, c.tab_id, t.state = 'waitingApproval', t.terminal_at
@@ -71,9 +58,6 @@ fn attention_candidates() -> String {
     )
 }
 
-/// Lists the chats needing attention, given each chat's read mark. Memory
-/// is bounded by the candidate cap above and the `MAX_CHAT_ATTENTION`
-/// answer; nothing outlives the call.
 pub(crate) fn chat_attention_in(
     connection: &Connection,
     read_through: &HashMap<String, i64>,

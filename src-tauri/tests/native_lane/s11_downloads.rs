@@ -1,8 +1,5 @@
-//! BP-H5b: a link whose response becomes a download must leave the tab on
-//! the page it was on (URL, settled state, no New tab), and a real load
-//! failure must still be reported. The tab is opened with Agent provenance,
-//! so Sage denies the download in `begin()` and no save picker appears; the
-//! denied download is itself one of the cases the fix covers.
+//! The tab is opened with Agent provenance, so Sage denies the download in
+//! `begin()` and no save picker appears.
 
 use std::time::Duration;
 
@@ -73,7 +70,6 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         format!("native events: {:?}", lane.navigation_trace(&tab)),
     );
 
-    // Stop during a slow load keeps the page as well.
     let navigated = lane.navigate(&tab, &site.url(SLOW));
     let requested = wait_for(Duration::from_secs(15), || {
         (site.hits(SLOW) > 0).then_some(())
@@ -97,8 +93,6 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         ),
     );
 
-    // Stop during a slow load to another origin (localhost vs 127.0.0.1):
-    // the abandon must still keep this origin's page.
     let other = site.url(SLOW).replacen("127.0.0.1", "localhost", 1);
     let hits = site.hits(SLOW);
     let navigated = lane.navigate(&tab, &other);
@@ -126,7 +120,6 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
         ),
     );
 
-    // Control: a refused connection is a real failure and is reported.
     let refused = "http://127.0.0.1:1/";
     let navigated = lane.navigate(&tab, refused);
     let failed = wait_for(Duration::from_secs(20), || {

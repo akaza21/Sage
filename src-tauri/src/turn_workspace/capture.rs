@@ -56,8 +56,6 @@ pub(crate) async fn capture(root: &Path) -> Option<WorkspaceMark> {
     }
 }
 
-/// The terminal capture: a mark plus the paths committed since `before`'s
-/// HEAD, bounded like the dirty set (overflow marks the result truncated).
 pub(crate) async fn capture_after(root: &Path, before: &WorkspaceMark) -> Option<WorkspaceMark> {
     tokio::time::timeout(CAPTURE_DEADLINE, async {
         let deadline = Instant::now() + CAPTURE_DEADLINE;

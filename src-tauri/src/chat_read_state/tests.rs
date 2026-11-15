@@ -35,8 +35,6 @@ impl Fixture {
         }
     }
 
-    /// A new project, and its first chat. Each new project becomes active,
-    /// so every earlier project is a background one.
     fn project(&self, name: &str) -> (String, String) {
         let root = self.base.join(name);
         fs::create_dir_all(&root).unwrap();
@@ -50,16 +48,12 @@ impl Fixture {
         (project.id, chat)
     }
 
-    /// Another chat on a project that is no longer active. (On the active
-    /// project the layout passed in would replace its tabs.)
     fn background_chat(&self, project: &str) -> String {
         self.database
             .create_chat_on(project, &empty_layout(project))
             .unwrap()
     }
 
-    /// Gives the chat one session whose Turns end in the given states, in
-    /// order; a terminal Turn finishes at its `terminal_at`.
     fn turns(&self, project: &str, chat: &str, turns: &[(&str, Option<i64>)]) {
         let connection = self.database.connection();
         let session = format!("session-{chat}");
@@ -216,8 +210,6 @@ fn a_read_mark_hides_a_finish_until_a_later_turn_finishes() {
     fixture.read(&seen, 1_000);
     fixture.read(&behind, 9_000);
 
-    // Read exactly through its finish, or past it: seen. Read only through
-    // an earlier Turn: the later finish is unseen.
     assert_eq!(
         fixture.attention().chats,
         vec![unread(&project, &seen, 2_500)]
@@ -226,7 +218,6 @@ fn a_read_mark_hides_a_finish_until_a_later_turn_finishes() {
     fixture.read(&seen, 2_500);
     assert!(fixture.attention().chats.is_empty());
 
-    // Marking unread brings the seen finish back.
     fixture.settings.mark_chat_unread(&chat).unwrap();
     assert_eq!(
         fixture.attention().chats,
@@ -247,8 +238,6 @@ fn an_approval_shows_even_when_the_chat_was_read() {
     assert_eq!(fixture.attention().chats, vec![awaiting(&project, &chat)]);
 }
 
-/// Background projects, then an active one, so every background project
-/// takes chats without a layout.
 fn background_projects(fixture: &Fixture, count: usize) -> Vec<String> {
     let projects = (0..count)
         .map(|index| fixture.project(&format!("project-{index}")).0)
@@ -262,8 +251,6 @@ fn only_the_chats_the_rail_shows_are_considered() {
     let fixture = Fixture::new();
     let project = background_projects(&fixture, 1).remove(0);
     let rail = MAX_AGENT_RAIL_CHATS_PER_PROJECT as usize;
-    // Seeded in tab order, so the manual order shows the first chats and
-    // the recency order the last; the two just past both cuts are hidden.
     let chats = (0..2 * rail + 1)
         .map(|finished| {
             let chat = fixture.background_chat(&project);
@@ -277,7 +264,6 @@ fn only_the_chats_the_rail_shows_are_considered() {
         .into_iter()
         .map(|chat| chat.chat_id)
         .collect::<Vec<_>>();
-    // The project's first chat has no Turn and takes one manual slot.
     let hidden = &chats[rail - 1..=rail];
     assert_eq!(listed.len(), chats.len() - hidden.len());
     assert!(hidden.iter().all(|chat| !listed.contains(chat)));
@@ -298,7 +284,6 @@ fn every_chat_of_the_open_project_is_considered() {
         selected_root_id: layout.selected_root_id,
         selected_resource: layout.selected_resource,
     };
-    // Enough chats that the first is past both preview cuts.
     for finished in 0..2 * MAX_AGENT_RAIL_CHATS_PER_PROJECT {
         let chat = fixture.database.create_chat(&layout).unwrap();
         fixture.turns(&project, &chat, &[("completed", Some(finished + 2))]);
@@ -326,7 +311,6 @@ fn every_chat_of_the_open_project_is_considered() {
 fn the_list_is_capped_and_keeps_approvals_ahead_of_the_cut() {
     let fixture = Fixture::new();
     let rail = MAX_AGENT_RAIL_CHATS_PER_PROJECT as usize;
-    // Enough projects that their rail chats outnumber the answer's cap.
     let projects = background_projects(&fixture, MAX_CHAT_ATTENTION / rail + 1);
     let mut finished = 0_i64;
     for project in &projects {
@@ -352,7 +336,6 @@ fn the_list_is_capped_and_keeps_approvals_ahead_of_the_cut() {
         })
         .collect::<Vec<_>>();
     assert_eq!(finishes.len(), MAX_CHAT_ATTENTION - 1);
-    // Newest finishes first, and the cut takes the oldest.
     assert!(finishes.windows(2).all(|pair| pair[0] > pair[1]));
     assert_eq!(finishes[0], finished);
 }
@@ -360,13 +343,10 @@ fn the_list_is_capped_and_keeps_approvals_ahead_of_the_cut() {
 #[test]
 fn reading_many_other_chats_never_evicts_a_chat_the_rail_shows() {
     let fixture = Fixture::new();
-    // A chat read in a project that then sits idle.
     let idle = background_projects(&fixture, 1).remove(0);
     let first = fixture.background_chat(&idle);
     fixture.turns(&idle, &first, &[("completed", Some(1))]);
     fixture.read(&first, 1);
-    // Then more chats than the mark bound are read elsewhere, most of them
-    // past their project's rail cut.
     let per_project = 60;
     let projects = background_projects(&fixture, MAX_CHAT_READ_MARKS / per_project + 1);
     let mut finished = 1_i64;
@@ -381,7 +361,6 @@ fn reading_many_other_chats_never_evicts_a_chat_the_rail_shows() {
     let marks = fixture.settings.chat_read_marks().unwrap().marks;
     assert_eq!(marks.len(), MAX_CHAT_READ_MARKS);
     assert!(marks.iter().any(|mark| mark.chat_id == first));
-    // Every chat the rail shows still has its mark.
     assert!(fixture.attention().chats.is_empty());
 }
 

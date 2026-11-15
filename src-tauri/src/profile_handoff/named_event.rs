@@ -1,5 +1,3 @@
-//! The doorbell as a Windows auto-reset named event.
-
 use std::{io, os::windows::ffi::OsStrExt};
 
 use windows_sys::Win32::{

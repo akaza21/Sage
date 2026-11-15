@@ -1,9 +1,6 @@
-//! The durable defaults a new chat starts from: a harness, and optionally a
-//! model and an effort within it. One closed record. The store only admits
-//! well-formed identifiers and keeps them exactly as given; judging them
-//! against discovery (the settings commands) and against a live session's
-//! configuration (new chat start) belongs to the callers, which report a value
-//! they cannot use instead of rewriting it.
+//! The store only admits well-formed identifiers and keeps them exactly as
+//! given; callers judge them and report a value they cannot use instead of
+//! rewriting it.
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
@@ -11,12 +8,10 @@ use serde::{Deserialize, Serialize};
 
 use super::SettingsStore;
 
-/// The longest harness, model or effort identifier the store keeps.
 pub const MAX_NEW_CHAT_DEFAULT_BYTES: usize = 256;
 
 /// Model and effort belong to the harness they were chosen in, so the record
-/// is replaced whole: saving a new harness never keeps a model or effort that
-/// was picked for another one.
+/// is replaced whole.
 #[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NewChatDefaults {
@@ -93,7 +88,7 @@ impl SettingsStore {
         Ok(stored.unwrap_or_default())
     }
 
-    /// Replaces the whole record; a record without a harness clears it.
+    /// A record without a harness clears it.
     pub fn set_new_chat_defaults(&self, value: NewChatDefaults) -> AppResult<NewChatDefaults> {
         admitted_new_chat_defaults(&value)?;
         let connection = self

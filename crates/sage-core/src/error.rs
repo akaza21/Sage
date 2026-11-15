@@ -4,15 +4,12 @@ pub enum GitContainmentState {
     PotentiallyRunning,
 }
 
-/// A repository layout Sage refuses because Git would reach repository data
-/// other than the opened folder's own `.git` directory.
+/// Refused because Git would reach repository data other than the opened
+/// folder's own `.git` directory.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RepositoryLayout {
-    /// The opened folder is below the repository's top level.
     NestedRoot,
-    /// The repository's Git data is not the opened folder's own `.git`
-    /// directory, as with a linked worktree, a `gitdir:` file or a
-    /// `commondir` pointer.
+    /// A linked worktree, a `gitdir:` file or a `commondir` pointer.
     ExternalGitDir,
 }
 
@@ -58,8 +55,8 @@ pub enum AppError {
     #[error("Git operation failed: {0}")]
     Git(String),
 
-    /// Sage refused to run Git because the repository's own config names a
-    /// program Git would run. The message is safe to show to the user.
+    /// Refused because the repository's own config names a program Git would
+    /// run. The message is safe to show to the user.
     #[error("{0}")]
     UnsafeRepositoryConfig(String),
 
@@ -75,9 +72,6 @@ pub enum AppError {
         message: String,
     },
 
-    /// The profile's database was migrated by a newer Sage than this one.
-    /// Opening it would mean guessing at a schema this build does not know,
-    /// so Sage refuses before changing anything.
     #[error(
         "this Sage profile was written by a newer version of Sage (data version \
          {stored_version}; this version reads up to {supported_version}) and was left unchanged"
@@ -87,18 +81,12 @@ pub enum AppError {
         supported_version: u32,
     },
 
-    /// The background task running an operation ended before reporting an
-    /// outcome (it panicked or was cancelled). The detail is for logs only.
+    /// The detail is for logs only; `public_message` redacts it.
     #[error("background task ended before finishing: {0}")]
     TaskInterrupted(String),
 }
 
 impl AppError {
-    /// The text a person reads in the UI. A typed refusal already carries a
-    /// sentence written for them, so it surfaces without the category prefix
-    /// that `Display` keeps for logs. An interrupted task or a failed database
-    /// operation gets a retry sentence of its own instead of its detail (see
-    /// `hides_detail`); every other error reads as `Display` does.
     pub fn public_message(&self) -> String {
         match self {
             Self::InvalidRequest(message) => message.clone(),
@@ -108,8 +96,6 @@ impl AppError {
         }
     }
 
-    /// Whether `public_message` leaves out the error's detail, which the
-    /// caller then logs.
     pub fn hides_detail(&self) -> bool {
         matches!(self, Self::TaskInterrupted(_) | Self::Database(_))
     }

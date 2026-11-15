@@ -341,7 +341,6 @@ fn committed_paths_are_bounded_and_deduplicated_with_the_dirty_set() {
             },
         ]
     );
-    // Marks stored before HEAD was recorded still deserialize.
     let legacy: WorkspaceMark =
         serde_json::from_str(r#"{"root_identity":null,"entries":{},"truncated":false}"#).unwrap();
     assert_eq!(legacy.head, None);
@@ -401,7 +400,6 @@ fn a_shell_edit_in_a_real_repository_is_a_turn_change() {
     let root = root.canonicalize().unwrap();
     sage_core::rt::block_on(async {
         let before = capture(&root).await.expect("a repository root has a mark");
-        // What a harness shell command (for example Add-Content) does.
         std::fs::write(root.join("README.md"), b"hello\nAudited.\n").unwrap();
         let after = capture(&root).await.unwrap();
         let changes = diff_marks(&before, &after);

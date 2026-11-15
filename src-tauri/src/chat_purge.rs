@@ -1,13 +1,8 @@
-//! Permanent removal of one Chat and everything it owns. Temporary side
-//! chats and deleted archived Chats share this path, so both release the
-//! same rows, files and usage charges.
-
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use sage_core::error::{AppError, AppResult};
 
 use crate::persistence::Database;
 
-/// The immutable-history guards a Chat purge lifts and restores.
 pub(crate) const HISTORY_GUARDS: [&str; 9] = [
     "deny_activity_delete",
     "deny_agent_session_delete",
@@ -19,12 +14,10 @@ pub(crate) const HISTORY_GUARDS: [&str; 9] = [
     "deny_server_request_delete",
     "deny_turn_delete",
 ];
-/// Selects one Chat's rows through an index led by (project_id, chat_id).
+/// Each selector leads with an indexed column: (project_id, chat_id) or
+/// session_id.
 const BY_OWNER: &str = "project_id=?1 AND chat_id=?2";
-/// Selects one Chat's rows through an index led by session_id.
 const BY_SESSION: &str = "session_id IN (SELECT id FROM agent_sessions WHERE project_id=?1 AND chat_id=?2) AND project_id=?1 AND chat_id=?2";
-/// Selects rows of the Chat's sessions through an index led by session_id,
-/// for tables that carry no chat_id.
 const BY_CHAT_SESSION: &str =
     "session_id IN (SELECT id FROM agent_sessions WHERE project_id=?1 AND chat_id=?2)";
 /// A Chat's rows, deleted in this order while the guards are lifted, each
@@ -49,10 +42,8 @@ const CHAT_ROWS: [(&str, &str); 14] = [
     ("session_runtime_epochs", BY_OWNER),
     ("chat_session_heads", BY_OWNER),
 ];
-/// Image artifact rows leave the purge transaction in bounded batches.
 const IMAGE_BATCH: usize = 500;
 
-/// What the Chat's sessions still charge once its rows are gone.
 struct SessionCharge {
     sessions: i64,
     turns: i64,
@@ -64,10 +55,8 @@ struct SessionCharge {
 }
 
 impl Database {
-    /// Deletes the Chat, its history, sessions, tabs and image files, and
-    /// releases every Project and store usage charge it held, in one
-    /// transaction. `admit` runs before anything changes and again inside
-    /// that transaction, so a Chat that stopped qualifying is never removed.
+    /// `admit` runs before anything changes and again inside the transaction, so
+    /// a Chat that stopped qualifying is never removed.
     pub(crate) fn purge_chat(
         &self,
         project: &str,
@@ -75,7 +64,6 @@ impl Database {
         admit: impl Fn(&Connection) -> AppResult<()>,
     ) -> AppResult<()> {
         admit(&self.connection())?;
-        // Refuse before touching anything when a guard is already missing.
         history_guards(&self.connection())?;
         let images = {
             let mut connection = self.write_connection()?;
@@ -106,8 +94,6 @@ impl Database {
         Ok(())
     }
 
-    /// Unlinks the full and thumbnail files of artifacts whose rows are
-    /// already committed as deleted.
     fn remove_image_files(&self, ids: &[String]) {
         let Ok(root) = self.image_artifact_root() else {
             return;
@@ -124,9 +110,6 @@ impl Database {
     }
 }
 
-/// Deletes a Chat's image artifact rows `batch` at a time inside the purge
-/// transaction, each batch through the (project_id, chat_id) index, and
-/// returns their ids so the files can go after COMMIT.
 pub(crate) fn take_chat_images(
     transaction: &Transaction<'_>,
     project: &str,
@@ -225,8 +208,6 @@ fn remaining_session_charge(
     )?)
 }
 
-/// Releases the Chat and its sessions' remaining charge. The usage CHECK
-/// constraints refuse a release that would drive a counter below zero.
 fn release_usage(
     transaction: &Transaction<'_>,
     project: &str,
@@ -270,7 +251,6 @@ fn release_usage(
     Ok(())
 }
 
-/// Each guard by name, with the SQL that restores it; a missing one names itself.
 fn history_guards(connection: &Connection) -> AppResult<Vec<(&'static str, String)>> {
     HISTORY_GUARDS
         .into_iter()

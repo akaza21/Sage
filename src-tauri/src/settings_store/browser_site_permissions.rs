@@ -1,8 +1,5 @@
-//! Built-in browser site permissions, saved per site (origin). One row per
-//! origin and permission kind holds the user's Allow or Block answer; a
-//! missing row means "Ask". The table is bounded and closed: the kinds and
-//! decisions are fixed by CHECK constraints, and the browser module admits
-//! every origin before it reaches this store.
+//! A missing row means "Ask". The browser module admits every origin before it
+//! reaches this store.
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
@@ -10,10 +7,8 @@ use sage_core::error::{AppError, AppResult};
 use super::SettingsStore;
 use crate::browser::site_permissions::{Decision, PermissionKind};
 
-/// At most this many saved answers across every site.
+/// Saved answers across every site.
 pub const MAX_SITE_PERMISSIONS: usize = 256;
-/// The longest origin the store admits; `scheme://host:port` with a full
-/// DNS name fits well inside it.
 pub const MAX_SITE_ORIGIN_BYTES: usize = 512;
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
@@ -66,8 +61,6 @@ fn decision_from_text(text: &str) -> Option<Decision> {
 }
 
 impl SettingsStore {
-    /// Every saved answer, at most [`MAX_SITE_PERMISSIONS`] rows, ordered by
-    /// origin then kind.
     pub fn browser_site_permissions(&self) -> AppResult<Vec<(String, PermissionKind, Decision)>> {
         let connection = self
             .0
@@ -98,8 +91,8 @@ impl SettingsStore {
         Ok(saved)
     }
 
-    /// Saves one answer. A new row past [`MAX_SITE_PERMISSIONS`] is refused
-    /// inside the same transaction; replacing an existing row always works.
+    /// A new row past [`MAX_SITE_PERMISSIONS`] is refused; replacing a row always
+    /// works.
     pub fn put_browser_site_permission(
         &self,
         origin: &str,
@@ -143,7 +136,7 @@ impl SettingsStore {
         Ok(())
     }
 
-    /// Forgets one answer, so the site asks again. Reports whether a row went.
+    /// Reports whether a row was deleted.
     pub fn delete_browser_site_permission(
         &self,
         origin: &str,
@@ -159,7 +152,6 @@ impl SettingsStore {
         )? > 0)
     }
 
-    /// Forgets every answer.
     pub fn clear_browser_site_permissions(&self) -> AppResult<()> {
         let connection = self
             .0
@@ -169,8 +161,6 @@ impl SettingsStore {
         Ok(())
     }
 
-    /// Makes every later site-permission read and write fail, so callers can
-    /// prove they fail closed.
     #[cfg(test)]
     pub(crate) fn break_browser_site_permissions_for_tests(&self) {
         self.0

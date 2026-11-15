@@ -1,6 +1,5 @@
-//! Browser developer mode (ADR-0009b): the Settings switch, off by default,
-//! and the bounded audit log of every raw CDP call an Agent made or tried.
-//! Grants are never stored here; they live in memory on the attachment.
+//! Browser developer mode (ADR-0009b). Grants are never stored here; they live
+//! in memory on the attachment.
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::AppResult;
@@ -39,9 +38,9 @@ pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
     )?;
     // The audit table's schema version, kept in its own row: the settings
     // database has no shared `user_version` scheme, and claiming the whole
-    // file's pragma for one table would collide with other settings
-    // migrations. Version 1 (dev builds only) lacked the `sent` outcome;
-    // version 2 added sent; version 3 adds grant events and omits untrusted text.
+    // file's pragma for one table would collide with other settings migrations.
+    // Version 2 added the `sent` outcome; version 3 adds grant events and omits
+    // untrusted text.
     connection.execute_batch(
         "CREATE TABLE IF NOT EXISTS browser_cdp_audit_schema (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
@@ -159,8 +158,6 @@ impl SettingsStore {
         Ok(enabled)
     }
 
-    /// Appends one row and drops rows past the newest `CDP_AUDIT_ROWS`, in
-    /// one transaction.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub fn record_cdp_audit(&self, entry: &CdpAuditEntry, at_ms: i64) -> AppResult<()> {
         let mut connection = self

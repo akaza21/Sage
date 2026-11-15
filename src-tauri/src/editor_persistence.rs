@@ -119,9 +119,7 @@ impl Database {
         self.write_editor_buffer(project_id, request, content, buffer_fingerprint, false)
     }
 
-    /// "Keep mine": writes the buffer on a new base, `request.base`, in one
-    /// transaction. Unlike a snapshot it replaces the durable base instead of
-    /// refusing a different one; the caller has checked that base is on disk.
+    /// Replaces the durable base with `request.base`; the caller must verify it on disk.
     pub fn rebase_editor_buffer(
         &self,
         project_id: &str,
@@ -241,7 +239,6 @@ impl Database {
     ) -> AppResult<BufferSnapshotAck> {
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction()?;
-        // A clean snapshot's text is the base's.
         let (stored, settled) = settled_by_stored(
             &transaction,
             project_id,

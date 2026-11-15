@@ -28,7 +28,6 @@ fn an_available_harness_is_saved_with_its_model_and_effort() {
             defaults: value.clone(),
             harness_status: Some(DefaultHarnessStatus::Available),
             model_status: Some(DefaultOptionStatus::Available),
-            // No discovery source lists efforts; the live session judges it.
             effort_status: Some(DefaultOptionStatus::Unknown),
         }
     );
@@ -76,9 +75,7 @@ fn a_harness_saved_during_discovery_is_kept_and_reported_once_discovery_settles(
     let value = defaults("pi", Some("sonnet"), None);
     let saved = save_new_chat_defaults(&settings, &detecting, value.clone()).unwrap();
     assert_eq!(saved.harness_status, Some(DefaultHarnessStatus::Detecting));
-    // Nothing can judge the model before discovery settles.
     assert_eq!(saved.model_status, Some(DefaultOptionStatus::Unknown));
-    // Discovery finds no Pi: the default is reported, never rewritten.
     assert_eq!(
         read_new_chat_defaults(&settings, &settled_catalog()).unwrap(),
         NewChatDefaultsState {

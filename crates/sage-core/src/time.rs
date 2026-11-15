@@ -1,5 +1,3 @@
-//! Wall-clock time as Sage records it.
-
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// Milliseconds since the Unix epoch, or 0 when the clock reads earlier.

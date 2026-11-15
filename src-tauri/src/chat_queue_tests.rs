@@ -288,9 +288,6 @@ fn element_prompt(id: &str, elements: Vec<(u8, &str)>) -> DurableQueuedPrompt {
     .unwrap()
 }
 
-/// A queued page element stored before a stricter redaction rule must not
-/// stop its Project from opening, nor block adding or removing the other
-/// queued prompts; only a new or edited prompt is admitted afresh.
 #[test]
 fn a_stored_element_that_fails_a_stricter_rule_still_loads_and_only_new_writes_are_refused() {
     let directory =
@@ -314,14 +311,12 @@ fn a_stored_element_that_fails_a_stricter_rule_still_loads_and_only_new_writes_a
         database.project_chat_queued_prompts("p").unwrap()["c"].len(),
         2
     );
-    // Adding P3, then deleting P2, passes the unchanged stale P1 through.
     database
         .replace_chat_queued_prompts("p", "c", &[stale.clone(), second, third.clone()])
         .unwrap();
     database
         .replace_chat_queued_prompts("p", "c", &[stale.clone(), third.clone()])
         .unwrap();
-    // Editing P1 admits it afresh, and it no longer passes.
     let mut edited = stale;
     edited.text = "sooner".into();
     let refused = database

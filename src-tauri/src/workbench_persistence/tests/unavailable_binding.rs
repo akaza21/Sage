@@ -69,8 +69,6 @@ fn unknown_persisted_binding_restores_as_unavailable_without_losing_the_chat() {
     assert_eq!(unavailable.install_state, "unavailable");
     unavailable.validate_transport_contract().unwrap();
 
-    // Restoring a new active tab must still expose the older tab's binding,
-    // while the new Chat uses the catalog default.
     reopened
         .create_chat(&ProjectLayoutRequest {
             project_id: project.id,

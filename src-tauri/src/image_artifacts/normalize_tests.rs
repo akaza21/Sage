@@ -21,7 +21,6 @@ fn png_of(
     bytes
 }
 
-/// A photo-like RGB raster: smooth gradients under fine grain.
 fn photo(width: u32, height: u32) -> Vec<u8> {
     let mut state = 0x9e37_79b9_u32;
     let mut pixels = Vec::with_capacity(width as usize * height as usize * 3);
@@ -62,8 +61,6 @@ fn tiff_orientation(value: u8) -> Vec<u8> {
     tiff
 }
 
-/// A JPEG whose stored pixels are red on the left and blue on the right,
-/// tagged with an EXIF orientation.
 fn oriented_jpeg(width: u16, height: u16, orientation: u8) -> Vec<u8> {
     let rgb = (0..height)
         .flat_map(|_| {
@@ -101,15 +98,12 @@ fn an_exif_rotated_photo_is_stored_and_sent_upright() {
             (raster.width, raster.height),
             ((1000 * long).div_ceil(3000), long)
         );
-        // Rotated 90 degrees clockwise: the stored left half is now on top.
         let top = pixel(&raster, raster.width / 2, raster.height / 4);
         let bottom = pixel(&raster, raster.width / 2, raster.height * 3 / 4);
         assert!(top[0] > 150 && top[2] < 100, "{top:?}");
         assert!(bottom[2] > 150 && bottom[0] < 100, "{bottom:?}");
     }
 
-    // Within the stored bounds it is kept byte for byte, EXIF and all, but a
-    // prompt re-encodes it upright for a reader that may ignore EXIF.
     let small = oriented_jpeg(1200, 400, 6);
     assert_eq!(
         normalize(ImageMediaType::Jpeg, &small, STORED)
@@ -123,7 +117,6 @@ fn an_exif_rotated_photo_is_stored_and_sent_upright() {
 
 #[test]
 fn every_exif_orientation_maps_the_stored_corner_to_its_upright_place() {
-    // A 3x2 raster whose top-left stored pixel is marked.
     let raster = || {
         let mut pixels = vec![0_u8; 3 * 2 * 4];
         pixels[..4].copy_from_slice(&[255, 255, 255, 255]);
@@ -183,7 +176,6 @@ fn a_photo_is_sent_as_the_smaller_jpeg_and_a_screenshot_stays_png() {
 
 #[test]
 fn past_the_png_size_the_smaller_encoding_wins_even_when_it_is_png() {
-    // Flat colour compresses better as PNG than as JPEG.
     let flat = png_of(
         2000,
         2000,
@@ -312,7 +304,6 @@ fn an_animated_png_past_the_bounds_is_refused_as_animated() {
 
 #[test]
 fn an_oversized_header_is_refused_with_its_limits_before_any_decode() {
-    // Only a signature and IHDR: there is nothing to decode.
     let header_only = |width: u32, height: u32| {
         let mut bytes = b"\x89PNG\r\n\x1a\n\0\0\0\x0dIHDR".to_vec();
         bytes.extend_from_slice(&width.to_be_bytes());

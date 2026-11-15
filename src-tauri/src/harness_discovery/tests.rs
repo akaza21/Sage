@@ -234,8 +234,6 @@ fn fresh_scripts_can_be_probed_while_other_threads_spawn_children() {
             let start = &start;
             scope.spawn(move || {
                 start.wait();
-                // Each probe must succeed on its first attempt, including
-                // replacements of a script that was already executed.
                 for _ in 0..16 {
                     let executable = write_script(
                         &directory,

@@ -1,10 +1,3 @@
-//! S1: a same-origin `window.open` becomes a policed Sage tab that keeps
-//! `window.opener`, and `opener.postMessage` reaches the opener; so does
-//! `window.open('')` followed by assigning `location`. A `javascript:` popup is
-//! contained in an opener-origin blank child (`s1_javascript`), a blank child
-//! whose first navigation is `blob:` is abandoned, and a popup past the tab
-//! cap is denied.
-
 use std::time::Duration;
 
 use sage_lib::native_lane::{Lane, NativePopup};
@@ -83,14 +76,10 @@ pub fn run(lane: &Lane, site: &Site, report: &mut Report) {
     );
 }
 
-/// Runs `script` in the opener with a user gesture, as a click would.
 pub fn open(lane: &Lane, opener: &str, script: &str) -> Result<Value, String> {
     lane.evaluate(opener, script, true)
 }
 
-/// One opener-linked popup: Sage hosts it as a native child of `opener`, it
-/// loads `target` under Sage's navigation hooks, keeps `window.opener`, and
-/// its `postMessage` reaches the opener.
 #[allow(clippy::too_many_arguments)]
 fn popup(
     lane: &Lane,
@@ -157,10 +146,6 @@ fn popup(
     );
 }
 
-/// `window.open('')` then `location = blob:…`: the opener's assignment must
-/// go through (`"assigned"`), Sage must answer exactly one navigation with
-/// `Abandon` (the lane-only counter), and the child must be gone without
-/// its page ever reporting.
 fn blob_popup(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
     let abandoned = lane.abandoned_popups();
     let tabs = lane.tabs();
@@ -179,8 +164,6 @@ fn blob_popup(lane: &Lane, site: &Site, report: &mut Report, opener: &str) {
     );
 }
 
-/// `window.open(url)` from the opener must leave no tab or linked popup behind
-/// and never load `marker`.
 fn denied(
     lane: &Lane,
     site: &Site,
@@ -197,8 +180,6 @@ fn denied(
     report.check(id, passed, evidence);
 }
 
-/// Within 10 s the tabs are back to `before` and no new linked popup
-/// remains, and `marker` was never fetched.
 fn gone(
     lane: &Lane,
     site: &Site,

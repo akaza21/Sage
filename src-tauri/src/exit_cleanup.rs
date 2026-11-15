@@ -1,4 +1,3 @@
-//! One bounded Git cleanup retry survives destruction of the last window.
 use std::{
     future::Future,
     sync::atomic::{AtomicU8, Ordering},

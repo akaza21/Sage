@@ -6,7 +6,6 @@ use crate::{
 
 const MAX_GIT_PULL_OUTPUT_BYTES: usize = 64 * 1024;
 
-/// Integrates only a known-behind branch through Git's fast-forward-only mode.
 pub(crate) async fn pull_fast_forward(workspace: &Workspace) -> AppResult<()> {
     pull_fast_forward_with_policy(
         workspace,

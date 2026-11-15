@@ -1,8 +1,5 @@
-//! Executable fixtures must not leave writable descriptors in sibling children.
-
 use std::{io, path::Path};
 
-/// Write a script, preserving the caller's choice of executable permissions.
 /// Callers own the fixture path; it must not be written again during execution.
 pub fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> io::Result<()> {
     #[cfg(unix)]
@@ -18,8 +15,7 @@ pub fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> io::Result<(
         // process are insufficient: an already-forked child may still hold it
         // until exec, making an immediate probe fail with ETXTBSY.
         // https://github.com/rust-lang/rust/issues/114554
-        // Both path and script bytes are quoted positional arguments, never
-        // shell source. printf is a shell builtin; wait for the writer to exit.
+        // Both path and script bytes are positional arguments, never shell source.
         let status = Command::new("/bin/sh")
             .args(["-c", "printf '%s' \"$2\" > \"$1\"", "sage-test-executable"])
             .arg(path.as_ref())

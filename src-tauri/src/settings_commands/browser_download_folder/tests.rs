@@ -25,7 +25,6 @@ async fn settings_change_saves_the_canonical_folder_and_reset_clears_it() {
     let directory = scratch("change");
     let nested = directory.join("inner");
     std::fs::create_dir_all(&nested).unwrap();
-    // A path with `..` in it is stored in canonical form.
     remember_folder(&store, &nested.join("..").join("inner"))
         .await
         .unwrap();
@@ -136,7 +135,6 @@ async fn the_first_save_choice_is_remembered_only_if_settings_did_not_change_mea
     store.clear_browser_download_folder().unwrap();
     assert!(!remember_first_choice(&store, read.revision, &dialog.join("file.zip")).await);
     assert_eq!(store.browser_download_folder_record().unwrap().path, None);
-    // With nothing in between, the dialog's folder is saved.
     let read = store.browser_download_folder_record().unwrap();
     assert!(remember_first_choice(&store, read.revision, &dialog.join("file.zip")).await);
     assert_eq!(
@@ -171,8 +169,6 @@ async fn timed_out_probes_release_capacity_for_a_healthy_destination() {
     let second = view_with_probe(stored, &executor, admit_folder_before).await;
     assert!(!first.await.unwrap().available);
     assert!(!second.available);
-    // Both reads timed out, and the OS call is still blocked. Change must
-    // nevertheless admit and durably remember the healthy local folder.
     remember_with_probe(&store, &directory, &executor, admit_folder_before)
         .await
         .unwrap();
@@ -229,7 +225,6 @@ async fn reset_releases_pending_selection_without_waiting_for_the_os() {
         .unwrap();
     drop(release);
     finish.await.unwrap();
-    // The late successful probe must not replace the newer local choice.
     let view = folder_view(&store).await.unwrap();
     assert!(view.available);
     assert_eq!(

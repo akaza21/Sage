@@ -18,7 +18,7 @@ use crate::state::AppState;
 
 const MAX_POINTER_BYTES: u64 = 1024;
 const MAX_REMOTES: usize = 8;
-/// Files in the Git directory of the checkout (a linked worktree has its own).
+/// A linked worktree has its own.
 const CHECKOUT_FILES: &[&str] = &[
     "HEAD",
     "index",
@@ -118,8 +118,6 @@ fn hash_metadata(hasher: &mut DefaultHasher, path: &Path) {
         .hash(hasher);
 }
 
-/// `<root>/.git`, or the directory a `.git` file points to (a linked worktree
-/// or a submodule).
 fn git_dir(root: &Path, dot_git: &Path) -> Option<PathBuf> {
     let metadata = fs::symlink_metadata(dot_git).ok()?;
     if metadata.is_dir() {
@@ -143,7 +141,6 @@ fn common_dir(git_dir: &Path) -> PathBuf {
         .unwrap_or_else(|| git_dir.to_path_buf())
 }
 
-/// The first line of a small text file.
 fn read_pointer(path: &Path) -> Option<String> {
     // Opening a pipe would block.
     if !fs::metadata(path).ok()?.is_file() {

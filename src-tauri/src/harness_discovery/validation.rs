@@ -51,9 +51,8 @@ pub(super) fn authentic_regular_file(path: &Path) -> bool {
     authentic_file_with_parents(path)
 }
 
-/// Validates a package file relative to a bounded, plain npm-global root. Every
-/// path segment is inspected so a package, `node_modules`, or adapter entry can
-/// never cross a symlink/reparse-point boundary after root discovery.
+/// Every path segment is inspected so nothing can cross a symlink/reparse-point
+/// boundary after root discovery.
 pub(super) fn authentic_descendant_file(root: &Path, relative: impl AsRef<Path>) -> bool {
     let relative = relative.as_ref();
     if !is_local_probe_root(root)

@@ -11,6 +11,5 @@ pub(super) use windows::{ActiveToast, dispatch};
 #[cfg(target_os = "linux")]
 pub(super) use xdg::{dispatch, present};
 
-/// Readies the platform once notices are on; only macOS needs to.
 #[cfg(not(target_os = "macos"))]
 pub(super) fn prepare(_app: &tauri::AppHandle) {}

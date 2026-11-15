@@ -17,7 +17,6 @@ impl Report {
         println!("\n[native-lane] {title}");
     }
 
-    /// Records one assertion with the evidence it was decided on.
     pub fn check(&mut self, id: &str, pass: bool, evidence: impl AsRef<str>) -> bool {
         let evidence = evidence.as_ref().replace(['\r', '\n'], " ");
         println!("  {} {id}: {evidence}", if pass { "PASS" } else { "FAIL" });
@@ -29,7 +28,6 @@ impl Report {
         pass
     }
 
-    /// Prints the summary and returns the process exit code.
     pub fn finish(&self) -> i32 {
         println!(
             "\n[native-lane] {} passed, {} failed",
@@ -47,7 +45,6 @@ impl Report {
     }
 }
 
-/// Polls `probe` every 50 ms until it yields a value or `timeout` passes.
 pub fn wait_for<T>(timeout: Duration, mut probe: impl FnMut() -> Option<T>) -> Option<T> {
     let deadline = Instant::now() + timeout;
     loop {
@@ -66,7 +63,6 @@ pub fn quiet_period() {
     std::thread::sleep(Duration::from_millis(2_000));
 }
 
-/// Sage's Rust sources and Tauri configs, as built, for source assertions.
 pub fn sage_sources() -> Vec<(PathBuf, String)> {
     let root = Path::new(env!("CARGO_MANIFEST_DIR"));
     let mut files = Vec::new();

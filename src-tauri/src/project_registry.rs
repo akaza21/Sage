@@ -325,7 +325,6 @@ fn canonical_folder(root: &Path) -> AppResult<PathBuf> {
     Ok(canonical)
 }
 
-/// A root's display name, as the project's root list shows it.
 pub(crate) fn folder_name(root: &Path) -> String {
     root.file_name()
         .and_then(|name| name.to_str())

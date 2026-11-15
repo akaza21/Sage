@@ -124,7 +124,6 @@ fn popup_layout_failure_after_staging_and_upserts_rolls_back_every_row() {
         .connection()
         .execute_batch("DROP TRIGGER fail_popup_layout_tail;")
         .unwrap();
-    // The corrected request and its replay must remain usable after rollback.
     for _ in 0..2 {
         database.persist_project_layout(&request).unwrap();
         let restored = database.bootstrap_snapshot().unwrap();

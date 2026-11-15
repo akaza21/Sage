@@ -1,9 +1,3 @@
-//! Settings commands for user-defined ACP agents. Saving runs the same
-//! executable check admission runs before every launch and refuses with its
-//! reason before anything is written; then the registrations are made to
-//! hold the saved list and the harness catalog is republished, so the agent
-//! appears in the harness picker at once. Hashing runs off the main thread.
-
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::{
@@ -74,7 +68,6 @@ pub(crate) fn remove(state: &AppState, id: &str) -> Result<Vec<CustomAcpAgent>, 
     republish(state)
 }
 
-/// Makes the registrations hold the saved list and returns it.
 fn republish(state: &AppState) -> Result<Vec<CustomAcpAgent>, String> {
     let agents = state
         .settings
@@ -87,7 +80,6 @@ fn republish(state: &AppState) -> Result<Vec<CustomAcpAgent>, String> {
     Ok(agents)
 }
 
-/// Admits the saved agents at startup, off the main thread.
 pub(crate) fn apply_saved(state: &AppState) {
     match state.settings.custom_acp_agents() {
         Ok(agents) => state

@@ -1,7 +1,7 @@
-//! The built-in browser's saved download folder. Rust alone writes it: the
-//! folder comes from a native picker or the Save dialog, never from a
-//! renderer. The stored path is only a hint; `browser::downloads::folder` re-admits it
-//! (canonical, existing, writable) before every use.
+//! Rust alone writes the folder: it comes from a native picker or the Save
+//! dialog, never from a renderer. The stored path is only a hint;
+//! `browser::downloads::folder` re-admits it (canonical, existing, writable)
+//! before every use.
 //!
 //! Every change to the folder (set or reset) advances `revision`, so the
 //! first download's Save dialog can save its folder only if nothing changed
@@ -68,7 +68,6 @@ fn has_column(connection: &Connection, table: &str, column: &str) -> AppResult<b
         .is_some())
 }
 
-/// The saved folder and the revision it was read at.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct DownloadFolderRecord {
     pub path: Option<PathBuf>,
@@ -86,8 +85,8 @@ impl SettingsStore {
         write(&self.download_lock(), Some(text))
     }
 
-    /// Saves `folder` only while the record is still at `revision`, read and
-    /// written under one lock.
+    /// Saves only while the record is still at `revision`, read and written under
+    /// one lock.
     #[cfg_attr(not(windows), allow(dead_code))]
     pub fn set_browser_download_folder_if(&self, revision: i64, folder: &Path) -> AppResult<bool> {
         let text = admitted_text(folder)?;
