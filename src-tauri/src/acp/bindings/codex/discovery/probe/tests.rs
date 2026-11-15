@@ -136,7 +136,7 @@ mod fake_app_server {
         let server = FakeAppServer::new("");
         let recorded = server.directory.join("recorded");
         let body = format!(
-            "{{ pwd -P; awk 'BEGIN {{ for (key in ENVIRON) print key }}'; }} > '{}'\n{}",
+            "{{ pwd -P; env | cut -d= -f1; }} > '{}'\n{}",
             recorded.display(),
             answering_app_server(&std::env::temp_dir())
         );
