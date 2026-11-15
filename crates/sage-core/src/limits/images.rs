@@ -64,8 +64,9 @@ pub const ECHOED_PROMPT_IMAGE_TOTAL_BYTES: usize = 600 * 1024;
 /// The long edge of the transcript copy of a sent image too large to keep
 /// whole: legible in the transcript, a quarter of the prompt's pixels.
 pub const IMAGE_PREVIEW_EDGE_PX: u32 = 768;
-/// The long edge of the store's own thumbnail of a large image.
-pub const STORED_THUMBNAIL_EDGE_PX: u32 = 128;
+/// The side of the store's square thumbnail of an attached image: twice the
+/// 24 px composer chip tile, so it stays sharp on high-DPI screens.
+pub const STORED_THUMBNAIL_EDGE_PX: u32 = 48;
 /// JSON escapes a byte to at most six (a control character as `\u001b`).
 pub const JSON_ESCAPE_MAX_BYTES: usize = 6;
 

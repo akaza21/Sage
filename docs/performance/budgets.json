@@ -405,8 +405,8 @@
       },
       {
         "entry": "src/features/chat/chatImageTransfer.ts",
-        "maxGzipBytes": 830,
-        "reason": "Image attachment transfer adapter and its 48 px chip thumbnail; loads only when images are chosen, pasted or dropped into a Chat. Measured 825 B; cap 830 B."
+        "maxGzipBytes": 644,
+        "reason": "Image attachment transfer adapter; loads only when images are chosen, pasted or dropped into a Chat."
       },
       {
         "entry": "src/features/diff/DiffSurface.tsx",

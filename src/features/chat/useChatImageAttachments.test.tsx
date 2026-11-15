@@ -1,16 +1,18 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
-import {
-  attachedContextKey,
-  type ImageAttachedContext,
-} from "../../domain/attachedContext";
+import type { ImageAttachedContext } from "../../domain/attachedContext";
 import { useChatImageAttachments } from "./useChatImageAttachments";
 
-const transfer = vi.hoisted(() => ({ upload: vi.fn(), remove: vi.fn() }));
+const transfer = vi.hoisted(() => ({
+  upload: vi.fn(),
+  remove: vi.fn(),
+  read: vi.fn(),
+}));
 vi.mock("./chatImageTransfer", () => ({
   uploadChatImages: transfer.upload,
   removeChatImage: transfer.remove,
+  readChatImageThumbnail: transfer.read,
 }));
 vi.mock("../../ports/nativeInvoke", () => ({
   isTauriRuntime: () => true,
@@ -63,126 +65,106 @@ function seedChat() {
   });
 }
 
-it("keeps an image thumbnail available when native removal fails and its chip returns", async () => {
-  const revoke = vi.fn();
+function stubObjectUrls() {
+  let created = 0;
+  const urls = {
+    create: vi.fn(() => `blob:thumbnail-${++created}`),
+    revoke: vi.fn(),
+  };
   vi.stubGlobal("URL", {
-    createObjectURL: () => "blob:preview",
-    revokeObjectURL: revoke,
+    createObjectURL: urls.create,
+    revokeObjectURL: urls.revoke,
   });
-  seedChat();
-  transfer.upload.mockImplementation(async (intent, files, onPreview) => {
-    useWorkbenchStore.getState().attachChatContext(intent, image);
-    onPreview(image.artifactId, files[0]);
-  });
-  let rejectRemoval!: (error: Error) => void;
-  transfer.remove.mockImplementation(
-    () =>
-      new Promise<void>((_, reject) => {
-        rejectRemoval = reject;
-      }),
-  );
-  const view = renderHook(
+  return urls;
+}
+
+function renderAttachments() {
+  return renderHook(
     ({ contexts }) => useChatImageAttachments("chat-a", contexts),
-    {
-      initialProps: { contexts: [] as ImageAttachedContext[] },
-    },
+    { initialProps: { contexts: [image] as ImageAttachedContext[] } },
   );
-  await act(async () =>
-    view.result.current.addImages([
-      new File(["x"], "sample.png", { type: "image/png" }),
-    ]),
+}
+
+it("previews an attached image's native thumbnail and releases it once the image is gone", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  const view = renderAttachments();
+
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews).toEqual({
+      [image.artifactId]: "blob:thumbnail-1",
+    }),
   );
-  view.rerender({ contexts: [image] });
-  expect(view.result.current.imagePreviews[image.artifactId]).toBe(
-    "blob:preview",
+  expect(transfer.read).toHaveBeenCalledWith(
+    expect.objectContaining({ projectId: "project-a", chatId: "chat-a" }),
+    image.artifactId,
   );
 
-  act(() => view.result.current.removeAttachedContext(image));
   view.rerender({ contexts: [] });
-  await waitFor(() => expect(transfer.remove).toHaveBeenCalled());
-  await act(async () => {
-    rejectRemoval(new Error("disk busy"));
-  });
-  view.rerender({ contexts: [image] });
-  await waitFor(() =>
-    expect(view.result.current.imagePreviews[image.artifactId]).toBe(
-      "blob:preview",
-    ),
-  );
-  expect(revoke).not.toHaveBeenCalledWith("blob:preview");
+  expect(urls.revoke).toHaveBeenCalledWith("blob:thumbnail-1");
 });
 
-it("creates no object URL for a thumbnail that finishes after its chip was removed", async () => {
-  const create = vi.fn(() => "blob:preview");
-  vi.stubGlobal("URL", { createObjectURL: create, revokeObjectURL: vi.fn() });
+it("creates no object URL for a thumbnail that arrives after its image was removed", async () => {
+  const urls = stubObjectUrls();
   seedChat();
-  transfer.upload.mockImplementation(async (intent, files, onPreview) => {
-    const state = useWorkbenchStore.getState();
-    state.attachChatContext(intent, image);
-    state.detachChatContext(intent, attachedContextKey(image));
-    onPreview(image.artifactId, files[0]);
-  });
-  const view = renderHook(() => useChatImageAttachments("chat-a", []));
-  await act(async () =>
-    view.result.current.addImages([
-      new File(["x"], "sample.png", { type: "image/png" }),
-    ]),
+  let deliver!: (thumbnail: Blob) => void;
+  transfer.read.mockReturnValue(
+    new Promise<Blob>((resolve) => {
+      deliver = resolve;
+    }),
   );
-  expect(create).not.toHaveBeenCalled();
+  const view = renderAttachments();
+  await waitFor(() => expect(transfer.read).toHaveBeenCalled());
+
+  view.rerender({ contexts: [] });
+  await act(async () => deliver(new Blob(["png"])));
+
+  expect(urls.create).not.toHaveBeenCalled();
   expect(view.result.current.imagePreviews).toEqual({});
 });
 
-it("keeps a thumbnail that finishes during a removal that then rolls back", async () => {
-  const revoke = vi.fn();
-  vi.stubGlobal("URL", {
-    createObjectURL: () => "blob:preview",
-    revokeObjectURL: revoke,
-  });
+it("shows the thumbnail again when a failed removal restores the image", async () => {
+  stubObjectUrls();
   seedChat();
-  let finishThumbnail!: () => void;
-  transfer.upload.mockImplementation(async (intent, files, onPreview) => {
-    useWorkbenchStore.getState().attachChatContext(intent, image);
-    await new Promise<void>((resolve) => {
-      finishThumbnail = resolve;
-    });
-    onPreview(image.artifactId, files[0]);
-  });
-  let rejectRemoval!: (error: Error) => void;
-  transfer.remove.mockImplementation(
-    () =>
-      new Promise<void>((_, reject) => {
-        rejectRemoval = reject;
-      }),
+  useWorkbenchStore.setState((state) => ({
+    chatUiById: {
+      "chat-a": { ...state.chatUiById["chat-a"]!, attachedContext: [image] },
+    },
+  }));
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  transfer.remove.mockRejectedValue(new Error("disk busy"));
+  const view = renderAttachments();
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
   );
-  const view = renderHook(
-    ({ contexts }) => useChatImageAttachments("chat-a", contexts),
-    { initialProps: { contexts: [] as ImageAttachedContext[] } },
-  );
-  let upload!: Promise<void>;
-  act(() => {
-    upload = view.result.current.addImages([
-      new File(["x"], "sample.png", { type: "image/png" }),
-    ]);
-  });
-  await waitFor(() => expect(finishThumbnail).toBeDefined());
-  view.rerender({ contexts: [image] });
+
   act(() => view.result.current.removeAttachedContext(image));
   view.rerender({ contexts: [] });
-  await waitFor(() => expect(transfer.remove).toHaveBeenCalled());
-
-  await act(async () => {
-    finishThumbnail();
-    await upload;
-  });
-  await act(async () => {
-    rejectRemoval(new Error("disk busy"));
-  });
+  await waitFor(() =>
+    expect(
+      useWorkbenchStore.getState().chatUiById["chat-a"]!.attachedContext,
+    ).toEqual([image]),
+  );
   view.rerender({ contexts: [image] });
 
   await waitFor(() =>
-    expect(view.result.current.imagePreviews[image.artifactId]).toBe(
-      "blob:preview",
-    ),
+    expect(view.result.current.imagePreviews).toEqual({
+      [image.artifactId]: "blob:thumbnail-2",
+    }),
   );
-  expect(revoke).not.toHaveBeenCalled();
+});
+
+it("releases every thumbnail when the composer unmounts", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  const view = renderAttachments();
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
+  );
+
+  view.unmount();
+
+  expect(urls.revoke).toHaveBeenCalledWith("blob:thumbnail-1");
 });

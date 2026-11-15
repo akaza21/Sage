@@ -1,4 +1,4 @@
-use std::{fs, io::Cursor, path::Path};
+use std::{fs, path::Path};
 
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
@@ -16,9 +16,8 @@ use sage_core::limits::{
 };
 /// A stored full image is read back within the store bound.
 const FULL_LIMIT: u64 = STORED_IMAGE_BYTES as u64;
-/// A stored image this small is its own thumbnail; a larger one gets a
-/// `STORED_THUMBNAIL_EDGE_PX` PNG thumbnail, which must also stay within this size.
-const THUMBNAIL_INLINE_BYTES: usize = 256 * 1024;
+/// A stored thumbnail is read back within this bound.
+const THUMBNAIL_LIMIT: u64 = 64 * 1024;
 
 pub(crate) fn ingest_image(
     connection: &Connection,
@@ -54,11 +53,7 @@ pub(crate) fn ingest_image(
     let (media_type, bytes) = normalized.as_ref().map_or((media_type, bytes), |image| {
         (image.media_type, image.bytes.as_slice())
     });
-    let (width, height, thumbnail) = match media_type {
-        ImageMediaType::Png => admit_png(bytes)?,
-        ImageMediaType::Jpeg => admit_jpeg(bytes)?,
-        ImageMediaType::Webp => unreachable!(),
-    };
+    let (width, height, thumbnail) = admit(media_type, bytes)?;
     validate_root(root)?;
     let id = Uuid::new_v4().to_string();
     let hash = format!("{:x}", Sha256::digest(bytes));
@@ -128,134 +123,15 @@ pub(super) fn normalize_upload(
     super::normalize::normalize(media_type, bytes, super::normalize::STORED).map(Some)
 }
 
-fn admit_png(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
-    let mut decoder = png::Decoder::new(Cursor::new(bytes));
-    decoder.set_ignore_text_chunk(true);
-    decoder.set_transformations(png::Transformations::EXPAND | png::Transformations::STRIP_16);
-    let mut reader = decoder
-        .read_info()
-        .map_err(|_| invalid("image is malformed"))?;
-    let info = reader.info();
-    let (width, height) = (info.width, info.height);
-    if !valid_dimensions(width, height) || info.animation_control.is_some() {
-        return Err(invalid("image dimensions or animation are unsupported"));
-    }
-    let mut decoded = vec![0; reader.output_buffer_size()];
-    let frame = reader
-        .next_frame(&mut decoded)
-        .map_err(|_| invalid("image is malformed"))?;
-    let thumbnail = if bytes.len() <= THUMBNAIL_INLINE_BYTES {
-        bytes.to_vec()
-    } else {
-        let thumb_width = width.min(STORED_THUMBNAIL_EDGE_PX);
-        let thumb_height = height.min(STORED_THUMBNAIL_EDGE_PX);
-        let mut pixels = vec![0; thumb_width as usize * thumb_height as usize * 4];
-        let stride = match frame.color_type {
-            png::ColorType::Grayscale => 1,
-            png::ColorType::GrayscaleAlpha => 2,
-            png::ColorType::Rgb => 3,
-            png::ColorType::Rgba => 4,
-            png::ColorType::Indexed => return Err(invalid("image color format is unsupported")),
-        };
-        for y in 0..thumb_height as usize {
-            for x in 0..thumb_width as usize {
-                let source_x = x * width as usize / thumb_width as usize;
-                let source_y = y * height as usize / thumb_height as usize;
-                let source = (source_y * width as usize + source_x) * stride;
-                let target = (y * thumb_width as usize + x) * 4;
-                match frame.color_type {
-                    png::ColorType::Grayscale => {
-                        pixels[target..target + 3].fill(decoded[source]);
-                        pixels[target + 3] = 255;
-                    }
-                    png::ColorType::GrayscaleAlpha => {
-                        pixels[target..target + 3].fill(decoded[source]);
-                        pixels[target + 3] = decoded[source + 1];
-                    }
-                    png::ColorType::Rgb => {
-                        pixels[target..target + 3].copy_from_slice(&decoded[source..source + 3]);
-                        pixels[target + 3] = 255;
-                    }
-                    png::ColorType::Rgba => {
-                        pixels[target..target + 4].copy_from_slice(&decoded[source..source + 4]);
-                    }
-                    png::ColorType::Indexed => unreachable!(),
-                }
-            }
-        }
-        let mut thumbnail = Vec::new();
-        {
-            let mut encoder = png::Encoder::new(&mut thumbnail, thumb_width, thumb_height);
-            encoder.set_color(png::ColorType::Rgba);
-            encoder.set_depth(png::BitDepth::Eight);
-            encoder
-                .write_header()
-                .and_then(|mut writer| writer.write_image_data(&pixels))
-                .map_err(|_| invalid("image preview could not be encoded"))?;
-        }
-        if thumbnail.len() > THUMBNAIL_INLINE_BYTES {
-            return Err(invalid("image preview exceeds its bound"));
-        }
-        thumbnail
-    };
-    Ok((width, height, thumbnail))
-}
-
-fn admit_jpeg(bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
-    let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(bytes));
-    decoder
-        .read_info()
-        .map_err(|_| invalid("image is malformed"))?;
-    let info = decoder
-        .info()
-        .ok_or_else(|| invalid("image is malformed"))?;
-    let (width, height) = (u32::from(info.width), u32::from(info.height));
+/// The stored dimensions and chip thumbnail of an image within the stored
+/// bounds; decoding the thumbnail also proves every pixel is readable.
+fn admit(media_type: ImageMediaType, bytes: &[u8]) -> AppResult<(u32, u32, Vec<u8>)> {
+    let (width, height) = super::normalize::dimensions(media_type, bytes)?;
     if !valid_dimensions(width, height) {
         return Err(invalid("image dimensions are unsupported"));
     }
-    let decoded = decoder
-        .decode()
-        .map_err(|_| invalid("image is malformed"))?;
-    let thumbnail = if bytes.len() <= THUMBNAIL_INLINE_BYTES {
-        bytes.to_vec()
-    } else {
-        let stride = match info.pixel_format {
-            jpeg_decoder::PixelFormat::L8 => 1,
-            jpeg_decoder::PixelFormat::RGB24 => 3,
-            _ => return Err(invalid("image color format is unsupported")),
-        };
-        let thumb_width = width.min(STORED_THUMBNAIL_EDGE_PX);
-        let thumb_height = height.min(STORED_THUMBNAIL_EDGE_PX);
-        let mut pixels = vec![0; thumb_width as usize * thumb_height as usize * 4];
-        for y in 0..thumb_height as usize {
-            for x in 0..thumb_width as usize {
-                let source_x = x * width as usize / thumb_width as usize;
-                let source_y = y * height as usize / thumb_height as usize;
-                let source = (source_y * width as usize + source_x) * stride;
-                let target = (y * thumb_width as usize + x) * 4;
-                if stride == 1 {
-                    pixels[target..target + 3].fill(decoded[source]);
-                } else {
-                    pixels[target..target + 3].copy_from_slice(&decoded[source..source + 3]);
-                }
-                pixels[target + 3] = 255;
-            }
-        }
-        let mut thumbnail = Vec::new();
-        {
-            let mut encoder = png::Encoder::new(&mut thumbnail, thumb_width, thumb_height);
-            encoder.set_color(png::ColorType::Rgba);
-            encoder.set_depth(png::BitDepth::Eight);
-            encoder
-                .write_header()
-                .and_then(|mut writer| writer.write_image_data(&pixels))
-                .map_err(|_| invalid("image preview could not be encoded"))?;
-        }
-        if thumbnail.len() > THUMBNAIL_INLINE_BYTES {
-            return Err(invalid("image preview exceeds its bound"));
-        }
-        thumbnail
-    };
+    let thumbnail =
+        super::thumbnail::square_thumbnail(media_type, bytes, STORED_THUMBNAIL_EDGE_PX)?;
     Ok((width, height, thumbnail))
 }
 
@@ -325,6 +201,39 @@ pub(crate) fn remove_pending_image(
     migration::remove_image_file(&full_path(root, artifact_id))?;
     migration::remove_image_file(&thumb_path(root, artifact_id))?;
     Ok(())
+}
+
+/// The chip thumbnail of an image still attached to, queued in or being sent
+/// by `chat_id`.
+pub(crate) fn read_image_thumbnail(
+    connection: &Connection,
+    root: &Path,
+    project_id: &str,
+    chat_id: &str,
+    artifact_id: &str,
+) -> AppResult<Vec<u8>> {
+    let id = Uuid::parse_str(artifact_id).map_err(|_| invalid("image artifact id is invalid"))?;
+    if id.to_string() != artifact_id {
+        return Err(invalid("image artifact id is not canonical"));
+    }
+    validate_root(root)?;
+    let row: Option<(i64, String)> = connection
+        .query_row(
+            "SELECT thumbnail_bytes,thumbnail_sha256 FROM chat_image_artifacts
+             WHERE id=?1 AND project_id=?2 AND chat_id=?3
+             AND lifecycle IN ('pending','queued','inFlight')",
+            params![artifact_id, project_id, chat_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let Some((length, hash)) = row else {
+        return Err(invalid("image artifact is unavailable"));
+    };
+    let bytes = migration::read_image_file(&thumb_path(root, artifact_id), THUMBNAIL_LIMIT)?;
+    if bytes.len() as i64 != length || format!("{:x}", Sha256::digest(&bytes)) != hash {
+        return Err(invalid("image thumbnail is missing or corrupt"));
+    }
+    Ok(bytes)
 }
 
 pub(crate) fn verify_image_reference(
