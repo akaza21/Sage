@@ -29,7 +29,6 @@ type SubagentRowEntry = SubagentEntry & {
   state?: SubagentRowState;
 };
 
-/** Each name opens its own child; "N more" opens the Subagents list. */
 function SubagentRow({
   agents,
   state,
@@ -145,7 +144,6 @@ function CollaborationItemContent({
       }
     }
   }
-  // Finished children stay in the run's working row until none is live.
   const working = [...agents.values()].some(
     (agent) => agent.state === "started working",
   );

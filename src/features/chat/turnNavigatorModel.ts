@@ -1,7 +1,6 @@
 import type { TurnProjection } from "../../domain/acp";
 import { chatTurnText } from "./chatTurnText";
 
-/** At most this many dashes, whatever the Turn count (bounded list rule). */
 export const MAX_TURN_DASHES = 60;
 export const DASH_PITCH = 9;
 export const PROMPT_PREVIEW_CHARS = 120;
@@ -11,10 +10,6 @@ export function dashWidth(distance: number) {
   return [24, 18, 13, 9][Math.abs(distance)] ?? 6;
 }
 
-/**
- * Evenly samples `count` Turns down to `maximum` dashes, always keeping the
- * first, the last and the current Turn.
- */
 export function sampleTurnIndices(
   count: number,
   current: number,
@@ -49,10 +44,7 @@ export function truncatePreview(value: string, limit: number) {
 
 const prompts = new WeakMap<TurnProjection, string>();
 
-/**
- * The Turn's user prompt on one line, bounded. Reads only the prompt items
- * (no markdown parse), so labelling 60 dashes stays cheap.
- */
+// Avoid Markdown parsing when labeling up to 60 navigator dashes.
 export function turnPrompt(turn: TurnProjection): string {
   const cached = prompts.get(turn);
   if (cached !== undefined) return cached;
@@ -72,7 +64,6 @@ export function turnPrompt(turn: TurnProjection): string {
   return value;
 }
 
-/** The start of the presented answer, plain text with "• " bullets. */
 export function turnAnswerPreview(turn: TurnProjection): string {
   const answer = chatTurnText(turn).find(
     (message) => message.role === "assistant",

@@ -15,7 +15,6 @@ vi.mock("../../ports/nativeInvoke", () => ({ isTauriRuntime: () => false }));
 
 afterEach(cleanup);
 
-/** The Agent right pane's real Escape handling around the browser toolbar. */
 function Pane({
   onExpandedChange,
   onMenuOpenChange,

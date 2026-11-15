@@ -8,9 +8,7 @@ import { AcpChatProjection } from "./AcpChatProjection";
 import { page } from "./acpProjection.fixture";
 import parity from "./harnessRenderParity.fixture.json";
 
-// The shared fixture the Rust parity test drives every binding against
-// (docs/harness-render-contract.md): one canonical projection per scenario,
-// plus each harness's known differences from it.
+// Shared with the Rust parity test (docs/harness-render-contract.md).
 
 type Projection = { turnState: string; items: Record<string, unknown>[] };
 type Gap = {
@@ -28,7 +26,6 @@ const HARNESSES = ["claude", "codex", "pi", "acp"] as const;
 
 afterEach(cleanup);
 
-/** Restores the store-assigned identity the parity fixture strips. */
 function chatPage({ turnState, items }: Projection): AcpChatPage {
   const base = page(turnState as TurnProjection["state"]);
   base.sessions = [{ id: "session-1", ordinal: 0 } as never];
@@ -86,7 +83,6 @@ const implicitRoles: Record<string, string> = {
   UL: "list",
 };
 
-/** Roles, accessible names, link targets and text in document order. */
 function outline(root: Element, lines: string[] = []): string[] {
   for (const node of root.childNodes) {
     if (node.nodeType === Node.TEXT_NODE) {
@@ -115,7 +111,6 @@ function outline(root: Element, lines: string[] = []): string[] {
   return lines;
 }
 
-/** Renders a projection with every disclosure opened, as a reader would. */
 async function rendered(projection: Projection): Promise<string[]> {
   const { container } = render(<Chat projection={chatPage(projection)} />);
   await settleLazyModules();
@@ -152,7 +147,6 @@ function pointerTokens(pointer: string): string[] {
     .map((token) => token.replaceAll("~1", "/").replaceAll("~0", "~"));
 }
 
-/** The canonical projection with a harness's known differences in place. */
 function harnessProjection(
   scenario: string,
   harness: string,

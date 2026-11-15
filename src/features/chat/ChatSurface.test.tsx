@@ -46,7 +46,6 @@ import { AgentChatPanes } from "../../workbench/AgentChatPanes";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import type * as AcpModule from "./acp";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 
 const hooks = vi.hoisted(() => ({
@@ -99,7 +98,6 @@ import "../settings/AgentArchivedSettings";
 import "../settings/AgentChatSettings";
 import "../settings/AgentHarnessSettings";
 
-// Exercise the same runtime/presentation boundary as the Agent host.
 function ChatSurface(props: { chatId?: string }) {
   const pending = useWorkbenchStore((state) => {
     const chat = state.chatUiById[props.chatId ?? state.activeTabId ?? ""];
@@ -404,8 +402,6 @@ describe("ChatSurface approval slot", () => {
       name: "Permission request",
     });
     expect(within(prompt).getByRole("button", { name: /Deny/ })).toBeVisible();
-    // The composer held focus, so the card announces itself instead of
-    // taking focus (an Enter meant for the draft must never approve).
     expect(
       within(prompt).getByRole("button", { name: /Allow once/ }),
     ).not.toHaveFocus();
@@ -501,24 +497,52 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeDisabled();
   });
 
-  it("keeps the project chip in the composer toolbar before and after the first turn", () => {
+  it("shows where a new chat runs above its input until the first turn", () => {
     hooks.page = { ...projection(), turns: [], nextCursor: null };
     useWorkbenchStore.setState({
-      project: { id: "project-a", name: "Sage", roots: [] },
+      project: { id: "project-a", name: "  Sage  ", roots: [] },
     });
     const { rerender, container } = render(<ChatSurface />);
-    const chip = () =>
-      container.querySelector(
-        "form.composer .composer__controls .project-scope",
-      );
     expect(
       screen.getByRole("region", { name: "New chat" }),
     ).toBeInTheDocument();
-    expect(chip()).toHaveTextContent("Sage");
+    const strip = screen.getByRole("group", { name: "Chat location" });
+    expect(container.querySelector("form.composer .composer__slots")).toBe(
+      strip.parentElement,
+    );
+    expect(strip).toHaveTextContent(/^This computerSage$/);
+    expect(strip.querySelector(".project-scope")).toHaveAttribute(
+      "title",
+      "Project: Sage (No other projects available)",
+    );
+    expect(container.querySelector(".composer__controls .project-scope")).toBe(
+      null,
+    );
     hooks.page = projection();
     rerender(<ChatSurface />);
     expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
-    expect(chip()).toHaveTextContent("Sage");
+    expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
+  });
+
+  it("offers files, refused outside the desktop app, and the project from Add in a new chat", async () => {
+    hooks.page = { ...projection(), turns: [], nextCursor: null };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "Sage", roots: [] },
+      projects: [
+        { id: "project-a", name: "Sage", rootCount: 0, lastOpenedAt: 1 },
+      ],
+    });
+    render(<ChatSurface />);
+    await openComposerOptions();
+    const menu = screen.getByRole("menu", { name: "Composer options menu" });
+    expect(
+      within(menu).getByRole("menuitem", { name: "Work in a project" }),
+    ).toHaveAccessibleDescription("Sage");
+    // Images can be chosen before the first session, so the attach menu
+    // stays reachable and refuses only its file picks.
+    expect(
+      within(menu).getByRole("menuitem", { name: "Files and folders" }),
+    ).toHaveAttribute("aria-disabled", "false");
   });
 
   it("gives a side chat no project chip before or after its first turn (Codex s2/f0244)", () => {
@@ -532,22 +556,21 @@ describe("ChatSurface ACP resource integration", () => {
       project: { id: "project-a", name: "Sage", roots: [] },
     });
     const { rerender } = render(<ChatSurface chatId="side-1" />);
+    expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
     expect(document.querySelector("form.composer .project-scope")).toBeNull();
     hooks.page = { ...projection(), chatId: "side-1" as never };
     rerender(<ChatSurface chatId="side-1" />);
     expect(document.querySelector("form.composer .project-scope")).toBeNull();
   });
 
-  it("retains composer project scope while an empty retained page is not the new-chat home", () => {
+  it("shows no location strip while an empty retained page is not the new-chat home", () => {
     hooks.page = { ...projection(), turns: [], nextCursor: "earlier" as never };
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "Sage", roots: [] },
     });
     render(<ChatSurface />);
     expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
-    expect(
-      document.querySelector("form.composer .project-scope"),
-    ).toHaveTextContent("Sage");
+    expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
   });
   it.each(["primary", "focused"] as const)(
     "explains the existing %s turn guard when the empty home's project action is refused",
@@ -912,8 +935,6 @@ describe("ChatSurface ACP resource integration", () => {
         null,
       ),
     );
-    // A queued message names no staged files, so a paste staged for the
-    // message being written stays staged for it.
     expect(hooks.actions.submit.mock.calls[0]).toHaveLength(4);
     await waitFor(() => expect(screen.queryByText("Follow up")).toBeNull());
   });
@@ -1947,7 +1968,6 @@ describe("ChatSurface ACP resource integration", () => {
       view.unmount();
       expect(publish).toHaveBeenLastCalledWith("chat-a", null);
       publish.mockClear();
-      // A Chat that is neither focused nor the side chat's parent is silent.
       render(
         <AgentSessionChromeContext.Provider value={publish}>
           <ChatSurface chatId="chat-b" />
@@ -1960,8 +1980,6 @@ describe("ChatSurface ACP resource integration", () => {
   });
 
   it("renders no header of its own under Agent chrome, side chats included", () => {
-    // The task header names the Chat; a side chat's tab lives in the Agent
-    // center header row (Codex s2/f0244).
     const publish = vi.fn();
     for (const chatId of ["side-chat-a", "chat-a"]) {
       const view = render(
@@ -2084,7 +2102,7 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeTruthy();
   });
 
-  it("omits unsupported config actions instead of enabling an inert Add menu", async () => {
+  it("offers no action for an unsupported config option in Add", async () => {
     hooks.page = {
       ...hooks.page!,
       turns: [],
@@ -2117,8 +2135,20 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
     await openComposerOptions();
 
-    // The menu opens for its draft action, disabled for this harness.
-    expect(screen.getByRole("menuitem", { name: "Add images" })).toBeDisabled();
+    // An unsupported option is named, never offered as an action.
+    expect(screen.getByText("Thinking budget")).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    expect(
+      screen
+        .getAllByRole("menuitem")
+        .map((item) => item.getAttribute("aria-label") ?? item.textContent),
+    ).toEqual(["Files and folders"]);
+    // Neither files nor images can be attached here, so Add says why in place.
+    expect(
+      screen.getByRole("menuitem", { name: "Files and folders" }),
+    ).toHaveAttribute("aria-disabled", "true");
     expect(
       screen.queryByRole("button", { name: "Session thinking budget" }),
     ).toBeNull();
@@ -2472,7 +2502,6 @@ describe("ChatSurface ACP resource integration", () => {
 
     render(<ChatSurface />);
 
-    // The generic refusal shows until the lazy sign-in sentence arrives.
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The harness requires sign-in before it can continue.",
     );
@@ -2883,7 +2912,6 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(screen.getByText("Test simulator")).toBeInTheDocument();
-    // A chat without a native session loads its transcript on demand.
     expect(
       await screen.findByText("Development simulator"),
     ).toBeInTheDocument();
@@ -3206,8 +3234,6 @@ describe("ChatSurface ACP resource integration", () => {
     render(<ChatSurface />);
 
     expect(screen.getByRole("alert")).toHaveTextContent("Only Chat A failed");
-    // The byte cap is enforced with an announced notice, never a silent
-    // UTF-16 maxlength truncation.
     const field = screen.getByRole("combobox", { name: "Message agent" });
     expect(field).not.toHaveAttribute("maxlength");
     fireEvent.change(field, { target: { value: "\u00e9".repeat(8193) } });
@@ -3722,7 +3748,6 @@ describe("ChatSurface ACP resource integration", () => {
         </section>
       );
       const { rerender } = render(renderPane());
-      // Focusable transcript content (a scrollable diagram and its action).
       const figure = document.createElement("figure");
       figure.setAttribute("aria-label", "Overflowing diagram");
       figure.tabIndex = 0;
@@ -3899,8 +3924,6 @@ describe("ChatSurface ACP resource integration", () => {
         selectedModelId: null,
       }),
     );
-    // The notice is a lazy chunk: wait for it rather than rely on an earlier
-    // test in the file having loaded it.
     await settleLazyModules();
     expect(
       screen.getByText(/Checking the Codex account and available models/),
@@ -5598,7 +5621,7 @@ describe("ChatSurface composer context", () => {
     );
     expect(useWorkbenchStore.getState().composerText).toBe(sentDraft);
   });
-  it("omits an inert plus action when no context chips are attached", () => {
+  it("omits an inert plus action when no context chips are attached", async () => {
     const chatId = "chat-empty-context";
     hooks.page = { ...projection(), chatId: chatId as never };
     useWorkbenchStore.setState({
@@ -5620,39 +5643,11 @@ describe("ChatSurface composer context", () => {
 
     expect(document.querySelector(".composer__attachment-row")).toBeNull();
     expect(screen.queryByLabelText("Composer actions")).toBeNull();
+    // The running turn leaves "+" for attaching to a queued follow-up.
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
     expect(
-      screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
-  });
-
-  it("names the active project in the composer scope control", async () => {
-    useWorkbenchStore.setState({
-      project: { id: "project-a", name: "  micrograd  ", roots: [] },
-      harnesses: [
-        {
-          id: "sage-simulator",
-          name: "Simulator",
-          description: "Development",
-          installState: "available",
-          source: "development",
-          accountModelDiscovery: false,
-          transport: "legacySimulator",
-          bindingId: null,
-        },
-      ],
-      selectedHarnessId: "sage-simulator",
-    });
-    render(<ChatSurface />);
-    await openComposerOptions();
-
-    const scope = document.querySelector(".project-scope");
-    expect(scope).not.toBeNull();
-    expect(scope).toHaveTextContent("micrograd");
-    expect(scope).toHaveAttribute(
-      "title",
-      "Project: micrograd (No other projects available)",
-    );
-    expect(screen.queryByLabelText("Composer context")).toBeNull();
+      await screen.findByRole("menuitem", { name: "Files and folders" }),
+    ).toBeInTheDocument();
   });
 
   it("shows Working for nonterminal ACP turns but hides it during project transition", async () => {

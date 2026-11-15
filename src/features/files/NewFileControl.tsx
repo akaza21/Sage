@@ -93,8 +93,6 @@ function NewEntryControl({
     setLocalError(null);
     const before = useWorkbenchStore.getState().activeEditor;
     if (!(await createProjectResource(parent, basename))) return;
-    // A new File that opened in the editor takes focus for typing. A folder,
-    // or a File that did not open, returns focus to the button.
     const opened = useWorkbenchStore.getState().activeEditor;
     if (
       kind === "file" &&
@@ -102,7 +100,6 @@ function NewEntryControl({
       !(before && sameResource(before.resource, opened.resource))
     ) {
       close(false);
-      // Loaded with the File surface; kept out of the startup bundle.
       void import("./editorFocusRequest").then((request) =>
         request.requestEditorFocus(opened.resource),
       );

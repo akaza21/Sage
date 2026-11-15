@@ -229,11 +229,7 @@ export const createHarnessSlice: StateCreator<
     } catch (error) {
       if (!current(generation, projectId, requestGeneration, harnessId)) return;
       const message = errorMessage(error);
-      if (usesAccountModelDiscovery) {
-        set({ harnessDiscoveryPhase: "error", harnessDiscoveryError: message });
-      } else {
-        set({ error: message, harnessDiscoveryPhase: "error" });
-      }
+      set({ harnessDiscoveryPhase: "error", harnessDiscoveryError: message });
     }
   };
 

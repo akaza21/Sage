@@ -29,11 +29,6 @@ function groupByDay(visits: readonly BrowserVisit[]) {
   return days;
 }
 
-/**
- * The browser's History page (BF-7c): every page any browser tab
- * committed, newest first and grouped by day, with search and per-visit
- * removal. It covers this tab's page; choosing a visit opens it here.
- */
 export function BrowserHistoryPage({
   onNavigate,
   onClose,

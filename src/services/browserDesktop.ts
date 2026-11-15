@@ -178,6 +178,7 @@ export const browserDesktop = {
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
     projectId?: string,
+    chatId?: string,
   ): Promise<ProjectTransitionResult> {
     assertBrowserChatCreation(
       currentLayout,
@@ -187,9 +188,12 @@ export const browserDesktop = {
       durableChatIds.size,
       projectId,
     );
+    if (chatId && durableChatIds.has(chatId))
+      throw new Error("Chat ID already exists");
     await this.persistProjectLayout(currentLayout, expectedTransitionEpoch);
     const chatCount = durableChatIds.size;
     const chat = createBrowserChatTab(snapshot.tabs, chatCount);
+    if (chatId) chat.id = chatId;
     snapshot.tabs = [...snapshot.tabs, chat];
     snapshot.activeTabId = chat.id;
     snapshot.sessionId = null;

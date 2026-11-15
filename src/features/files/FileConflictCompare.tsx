@@ -15,10 +15,6 @@ type CompareState =
   | { phase: "ready"; diff: FileDiff }
   | { phase: "error"; message: string };
 
-/**
- * The File on disk against the unsaved buffer, drawn with the Diff surface's
- * own hunks. It reads disk once per buffer and keeps only the bounded hunks.
- */
 export function FileConflictCompare({
   resource,
   text,
@@ -28,7 +24,6 @@ export function FileConflictCompare({
 }) {
   const [state, setState] = useState<CompareState>({ phase: "loading" });
   useEffect(() => {
-    // The surface remounts this per File, so it starts at loading.
     let cancelled = false;
     getWorkbenchPorts()
       .editor.readTextFile(resource)

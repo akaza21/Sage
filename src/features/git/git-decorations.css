@@ -1,4 +1,3 @@
-/* Git decoration tones, shared by Explorer rows and tabs. */
 .git-tone--modified {
   --git-tone: var(--color-warning);
 }
@@ -32,12 +31,10 @@
   color: var(--git-tone);
 }
 
-/* Git status: a changed entry's name takes its tone. */
 .tree__row--git > .tree__name {
   color: var(--git-tone);
 }
 
-/* Ignored and changed (a tracked File an ignore rule matches): dimmed tone. */
 .tree__row--ignored.tree__row--git > .tree__name {
   color: color-mix(in srgb, var(--git-tone) 55%, var(--color-text-muted));
 }
@@ -46,7 +43,6 @@
   text-decoration: line-through;
 }
 
-/* A File tab's title takes its Git tone; the badge sits after it. */
 .tab__title--git {
   color: var(--git-tone);
 }

@@ -17,7 +17,6 @@ export interface ActiveDictation {
   unlisten?: () => void;
 }
 
-/** Native speech is loaded only when dictation is requested. */
 export async function startNativeDictation(
   current: ActiveDictation,
   input: HTMLTextAreaElement | null,
@@ -93,7 +92,6 @@ export interface BrowserRecognition {
   abort: () => void;
 }
 
-/** Browser speech shares the hook's cancellation and byte admission boundary. */
 export function startBrowserDictation(
   next: BrowserRecognition,
   callbacks: {
@@ -128,7 +126,6 @@ export function startBrowserDictation(
   next.start();
 }
 
-/** A recording owns its native listener or browser recognizer until disposal. */
 export function createDictation(options: {
   sequence: number;
   text: string;

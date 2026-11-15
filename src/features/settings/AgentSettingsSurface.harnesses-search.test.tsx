@@ -48,7 +48,6 @@ it("leaves focus and typed text in Search when the user moves there while Harnes
   await act(async () => {
     await new Promise((resolve) => setTimeout(resolve, 20));
   });
-  // The user moves to Search and types while the module is still loading.
   const search = screen.getByRole("searchbox", {
     name: "Search Agent settings sections",
   });

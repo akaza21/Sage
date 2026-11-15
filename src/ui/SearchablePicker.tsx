@@ -87,6 +87,7 @@ export function SearchablePicker({
   triggerClassName,
   triggerRole,
   triggerIcon,
+  triggerLabel,
   sectionLabel,
   searchable = true,
   onSelect,
@@ -111,6 +112,8 @@ export function SearchablePicker({
   triggerClassName?: string;
   triggerRole?: "menuitem";
   triggerIcon?: ReactNode;
+  /** Shown in place of the selected label, which still describes the trigger. */
+  triggerLabel?: ReactNode;
   sectionLabel?: string;
   searchable?: boolean;
   onSelect: (id: string) => void;
@@ -210,7 +213,7 @@ export function SearchablePicker({
           triggerIcon
         )}
         <span className="searchable-picker__trigger-label">
-          {selectedLabel ?? emptyLabel}
+          {triggerLabel ?? selectedLabel ?? emptyLabel}
         </span>
         <ChevronDown
           className="searchable-picker__chevron"

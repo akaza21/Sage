@@ -52,7 +52,6 @@ it.each([1888, 720, 480])(
       release();
       await load;
     });
-    // Then the chunks it loads in turn to render the answer.
     await settleLazyModules();
     expect(screen.getByText("Normalized answer")).toBeVisible();
     expect(screen.queryByText(/Loading Chat history/)).not.toBeInTheDocument();

@@ -9,6 +9,7 @@ export const Archive = leanIcon("archive", [
   "M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8",
   "M10 12h4",
 ]);
+export const ArrowDown = leanIcon("arrow-down", ["M12 5v14", "m19 12-7 7-7-7"]);
 export const ArrowLeft = leanIcon("arrow-left", ["m12 19-7-7 7-7", "M19 12H5"]);
 export const ArrowRight = leanIcon("arrow-right", [
   "M5 12h14",
@@ -21,7 +22,6 @@ export const ArrowRightLeft = leanIcon("arrow-right-left", [
   "M4 17h16",
 ]);
 export const ArrowUp = leanIcon("arrow-up", ["m5 12 7-7 7 7", "M12 19V5"]);
-export const ArrowDown = leanIcon("arrow-down", ["M12 5v14", "m19 12-7 7-7-7"]);
 export const Bot = leanIcon("bot", [
   "M12 8V4H8",
   ["rect", { width: "16", height: "12", x: "4", y: "8", rx: "2" }],
@@ -72,13 +72,12 @@ export const CaseSensitive = leanIcon("case-sensitive", [
 ]);
 export const Check = leanIcon("check", ["M20 6 9 17l-5-5"]);
 export const ChevronDown = leanIcon("chevron-down", ["m6 9 6 6 6-6"]);
-export const ChevronLeft = leanIcon("chevron-left", ["m15 18-6-6 6-6"]);
 export const ChevronRight = leanIcon("chevron-right", ["m9 18 6-6-6-6"]);
+export const ChevronUp = leanIcon("chevron-up", ["m18 15-6-6-6 6"]);
 export const ChevronsUpDown = leanIcon("chevrons-up-down", [
   "m7 15 5 5 5-5",
   "m7 9 5-5 5 5",
 ]);
-export const ChevronUp = leanIcon("chevron-up", ["m18 15-6-6-6 6"]);
 export const Circle = leanIcon("circle", [
   ["circle", { cx: "12", cy: "12", r: "10" }],
 ]);
@@ -92,17 +91,7 @@ export const CircleX = leanIcon("circle-x", [
   "m15 9-6 6",
   "m9 9 6 6",
 ]);
-export const Copy = leanIcon("copy", [
-  ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" }],
-  "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",
+export const Command = leanIcon("command", [
+  "M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3",
 ]);
-export const Download = leanIcon("download", [
-  "M12 15V3",
-  "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4",
-  "m7 10 5 5 5-5",
-]);
-export const Ellipsis = leanIcon("ellipsis", [
-  ["circle", { cx: "12", cy: "12", r: "1" }],
-  ["circle", { cx: "19", cy: "12", r: "1" }],
-  ["circle", { cx: "5", cy: "12", r: "1" }],
-]);
+export { AlertTriangle as TriangleAlert, CircleX as XCircle };

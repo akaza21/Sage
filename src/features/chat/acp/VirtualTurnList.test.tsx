@@ -144,7 +144,6 @@ function History({
     transcriptRef.current = node;
     setScrollport(node);
   }, []);
-  // The lazy ChatNavigation chunk owns jump anchoring over the list's host.
   const navigationRef = useTurnListNavigation(scrollport, hostRef, turns);
   const { jumpToLatest, updateFollowEnd } = useFollowEnd({
     ownerKey: "chat-1",
@@ -251,8 +250,6 @@ it("retains the settled anchor after a correction scroll event and another histo
   view.rerender(<History turns={older} />);
   expect(visibleAnchor()).toEqual(before);
   expect(document.querySelectorAll(".acp-turn").length).toBeLessThanOrEqual(40);
-  // A late layout can land before the native event for the correction's
-  // scrollTop write. That event must not capture the already-shifted anchor.
   const overscan = document.querySelector<HTMLElement>(".acp-turn")!;
   expect(overscan.dataset.turnId).not.toBe(before.id);
   rowHeights.set(overscan.dataset.turnId!, 120);
@@ -265,7 +262,6 @@ it("retains the settled anchor after a correction scroll event and another histo
   const all = [...turns(-19, 10), ...older];
   view.rerender(<History turns={all} />);
   expect(visibleAnchor()).toEqual(before);
-  // Reader movement wins even when another commit beats its native event.
   document.querySelector<HTMLElement>(".message-list")!.scrollTop = 0;
   view.rerender(<History turns={[...all]} />);
   expect(scrollTop).toBe(0);
@@ -304,7 +300,6 @@ it("yields to reader movement before its scroll event after a row below the view
   expect(scrollTop).toBe(pinnedTop);
   expect(visibleAnchor()).toEqual(before);
 
-  // The browser moves first; another commit beats the native scroll event.
   document.querySelector<HTMLElement>(".message-list")!.scrollTop = 0;
   view.rerender(<History turns={[...current]} />);
   expect(scrollTop).toBe(0);
@@ -347,9 +342,7 @@ it("streams each delta into the pinned final Turn in one commit, staying at the 
 
     const last = document.querySelector('[data-turn-id="turn-100"]');
     expect(last).toHaveTextContent(streamed.trim());
-    // The row keeps its height, so following the end leaves the scroll put.
     expect(scrollTop).toBe(pinnedTop);
-    // No extra layout or measurement pass rides along with a delta.
     expect(commits).toBe(delta);
   }
   act(() => vi.advanceTimersByTime(50));

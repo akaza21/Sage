@@ -110,6 +110,19 @@ describe("notification visibility", () => {
     stopHidden();
   });
 
+  it("reports an empty displayed set for the visible Home draft", async () => {
+    const native = port();
+    const stop = observeNotificationVisibility(native, [], true, source());
+    await flush();
+    expect(native.reportVisibility).toHaveBeenLastCalledWith({
+      generation: 1,
+      revision: 1,
+      documentVisible: true,
+      chatIds: [],
+    });
+    stop();
+  });
+
   it("contains native failure and rejects neither cleanup nor visibility events", async () => {
     const native = port();
     vi.mocked(native.reportVisibility).mockRejectedValue(

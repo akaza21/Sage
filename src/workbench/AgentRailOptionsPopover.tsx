@@ -1,12 +1,7 @@
 import { useState, type ComponentType, type RefObject } from "react";
 
-import {
-  ArrowDownUp,
-  Check,
-  FolderOpen,
-  List,
-  PanelLeft,
-} from "../ui/leanIcons";
+import { Check, FolderOpen } from "../ui/leanIcons";
+import { ArrowDownUp, List, PanelLeft } from "../ui/leanIconNodesLazy";
 import { MenuPopover } from "../ui/MenuPopover";
 import { MenuSubmenu } from "../ui/MenuSubmenu";
 import { useSubmenuGrace } from "../ui/submenuGrace";

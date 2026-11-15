@@ -123,8 +123,6 @@ fn discard_document(
     super::discard_document(database, workspace, &spelled(workspace, path))
 }
 
-/// The resource as the UI names it; the editor validates it, and the File
-/// may have been deleted.
 fn spelled(workspace: &Workspace, path: &str) -> ResourceRef {
     ResourceRef {
         root_id: workspace.root_id().into(),
@@ -605,8 +603,6 @@ fn temp_entries(directory: &Path) -> usize {
         .count()
 }
 
-/// The save failed without losing the edit: the buffer is still dirty and no
-/// temporary file is left behind or still recorded.
 fn assert_failed_save_kept_buffer(fixture: &Fixture, path: &str, dirty: &str, directory: &Path) {
     let buffer = fixture.buffer(path).expect("the dirty buffer is kept");
     assert_eq!(buffer.content, dirty);
@@ -721,7 +717,6 @@ fn save_refuses_a_target_swapped_for_a_symlink_just_before_the_replace() {
     fs::remove_file(outside).unwrap();
 }
 
-/// Moves `dir` aside to `dir-held` and puts a link to `outside` in its place.
 #[cfg(unix)]
 fn swap_parent_for_link(root: &Path, outside: &Path) -> std::io::Result<()> {
     fs::rename(root.join("dir"), root.join("dir-held"))?;
@@ -781,8 +776,6 @@ fn save_reports_a_parent_swapped_after_the_replace_and_keeps_the_buffer() {
         },
     );
 
-    // The bytes reached the held folder, and the save says so instead of
-    // reporting the requested resource as saved and clean.
     assert!(matches!(result, Err(AppError::InvalidRequest(_))));
     assert_eq!(
         fs::read(fixture.root.join("dir-held/doc.txt")).unwrap(),
@@ -1012,7 +1005,6 @@ fn held_parent_cannot_be_renamed_while_a_save_holds_it() {
     assert_eq!(result.outcome, "saved");
     assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"dirty\n");
     assert!(fixture.buffer(path).is_none());
-    // Once the save releases its hold, the same rename succeeds.
     fs::rename(fixture.root.join("dir"), fixture.root.join("dir-moved")).unwrap();
 }
 
@@ -1037,7 +1029,6 @@ fn save_reports_a_target_held_open_without_delete_sharing_and_removes_the_temp()
     assert_failed_save_kept_buffer(&fixture, path, "dirty\n", &fixture.root);
     drop(holder);
 
-    // The durable edit can be saved once the external sharing lock is released.
     let saved = save_document(fixture.database(), &fixture.workspace, path).unwrap();
     assert_eq!(saved.outcome, "saved");
     assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"dirty\n");
@@ -1611,7 +1602,6 @@ fn keep_mine_on_a_deleted_file_that_came_back_shows_it_as_changed() {
     assert_eq!(refused.outcome, "conflict");
     assert_eq!(refused.document.conflict.unwrap().kind, "external-change");
     assert_ne!(refused.document.disk.fingerprint, ABSENT_FINGERPRINT);
-    // Keep mine on the File as it is now goes through.
     let kept = rebase_buffer(
         fixture.database(),
         &fixture.workspace,
@@ -1650,9 +1640,6 @@ fn keep_mine_on_a_file_that_came_back_with_the_same_text_has_no_conflict() {
 
 #[test]
 fn keep_mine_never_reports_older_recovery_text_as_matching_a_restored_file() {
-    // A recovery copy of "older" over "base"; the editor has moved on to
-    // "newest", not yet snapshotted. The File is deleted, then restored
-    // unchanged before its notice arrives.
     let fixture = dirty_fixture("restored.txt", b"base\n", "older\n");
     fs::remove_file(fixture.root.join("restored.txt")).unwrap();
     fixture.write("restored.txt", b"base\n");
@@ -1676,7 +1663,6 @@ fn keep_mine_never_reports_older_recovery_text_as_matching_a_restored_file() {
         b"base\n"
     );
 
-    // Disk holding the editor's own text matches, and the copy goes.
     fixture.write("restored.txt", b"newest\n");
     let matched = rebase_buffer(fixture.database(), &fixture.workspace, request).unwrap();
     assert_eq!(matched.outcome, "matched");
@@ -1699,7 +1685,6 @@ fn reload_of_a_file_that_is_gone_keeps_the_buffer() {
     assert_eq!(reverted.conflict.unwrap().kind, "deleted");
     assert_eq!(reverted.buffer.content, "mine\n");
     assert_eq!(fixture.buffer("gone.txt").unwrap().content, "mine\n");
-    // Reload of a File that is there still drops the buffer.
     fixture.write("gone.txt", b"back\n");
     let reloaded = revert_document(
         fixture.database(),
@@ -1733,8 +1718,6 @@ fn a_kept_file_is_created_again_in_a_folder_of_many_entries() {
     assert_eq!(fs::read(fixture.root.join(path)).unwrap(), b"kept\n");
 }
 
-/// Keeps `path` after its folder `folder` is deleted, then puts `link` in
-/// the folder's place.
 fn kept_behind_a_link(path: &str, folder: &str, link: impl FnOnce(&Path)) -> Fixture {
     let fixture = dirty_fixture(path, b"base\n", "kept\n");
     fs::remove_dir_all(fixture.root.join(folder)).unwrap();
@@ -1814,14 +1797,10 @@ fn a_snapshot_says_whether_its_text_is_the_stored_buffer() {
     };
 
     assert!(snapshot("two\n", 2).unwrap().applied);
-    // The same revision with the same text is already applied.
     assert!(snapshot("two\n", 2).unwrap().applied);
-    // An older revision is not applied, and says what is stored.
     let older = snapshot("one\n", 1).unwrap();
     assert!(!older.applied);
     assert_eq!(older.revision, 2);
-    // The same revision with other text is an error, never an ack, whether
-    // the text is dirty or the File's own.
     assert!(snapshot("other\n", 2).is_err());
     assert!(snapshot("base\n", 2).is_err());
     assert_eq!(fixture.buffer(path).unwrap().content, "two\n");

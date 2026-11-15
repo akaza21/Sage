@@ -1,5 +1,3 @@
-//! Reads the files a prompt's `@` mentions name, before it is dispatched.
-//!
 //! Steer carries no mentions: every binding that accepts it sends its text
 //! alone, so a resolved file would never reach the harness.
 use super::*;
@@ -21,10 +19,6 @@ pub(super) fn tokens(typed: &Prompt) -> Vec<String> {
         .collect()
 }
 
-/// The files `tokens` name, resolved in the project's roots off the async
-/// runtime, for a binding whose prompts carry content blocks. Embedded text
-/// is read only when the session advertises embedded context, and every
-/// mention is charged to the `budget` the dispatch leaves.
 pub(super) async fn resolve_mentions(
     state: &AppState,
     project_id: &SageProjectId,
@@ -58,7 +52,6 @@ pub(super) async fn resolve_mentions(
     tauri::async_runtime::spawn_blocking(move || {
         let roots: Vec<MentionRoot> = records
             .iter()
-            // An unavailable root names no file; its mentions stay text.
             .filter_map(|root| {
                 Some(MentionRoot {
                     workspace: Workspace::open(&project, &root.id, &root.absolute_path).ok()?,

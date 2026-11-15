@@ -1,4 +1,6 @@
 import { create } from "zustand";
+import { draftShownFor } from "../app/newChatDraftSlice";
+import { useWorkbenchStore } from "../app/store";
 
 /** Rust owns temporary chats; this is the disposable mirror. */
 export interface SideChatEntry {
@@ -37,7 +39,8 @@ export function railChatIdIn(
 }
 
 export function useRailChatId(activeId: string | null) {
-  return useSideChatState((state) => railChatIdIn(state.sides, activeId));
+  const id = useSideChatState((state) => railChatIdIn(state.sides, activeId));
+  return useWorkbenchStore((state) => draftShownFor(state, id)) ? null : id;
 }
 
 export function useParentChatStatus() {

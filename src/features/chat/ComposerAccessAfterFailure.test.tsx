@@ -62,8 +62,12 @@ function renderAfterFailure(
   render(
     <ComposerAccessControl
       bindingId="pi-rpc"
+      harnessName="Pi"
       chatId="chat-1"
-      endedSession={ended}
+      endedPage={{
+        currentSessionId: null,
+        sessions: [{ ...ended, ordinal: 0, legacy: false }] as never,
+      }}
       capabilities={pi}
       sessionConfig={sessionConfig}
       open

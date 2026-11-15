@@ -96,7 +96,6 @@ const questions: UserInputRequest = {
 
 const submit = () => screen.getByRole("button", { name: /Submit/ });
 
-/** The card as the approval slot mounts it, for the oldest request. */
 function QuestionCard({
   items,
   ...props
@@ -366,7 +365,6 @@ describe("UserInputPrompt", () => {
     });
     expect(deny).toHaveBeenCalledTimes(1);
     expect(deny).toHaveBeenCalledWith({ ...identity, decision: "deny" });
-    // The decision is in flight: a second press sends nothing more.
     fireEvent.click(screen.getByRole("button", { name: /Decline/ }));
     expect(deny).toHaveBeenCalledTimes(1);
     expect(answer).not.toHaveBeenCalled();
@@ -445,7 +443,6 @@ describe("UserInputPrompt", () => {
   it("lets a key held inside the card repeat in its fields, but not one held from outside", () => {
     render(<QuestionCard items={[questionRequest(questions)]} />);
     const field = screen.getByLabelText("Answer: Token");
-    // A repeat whose keydown came before the card is swallowed.
     expect(fireEvent.keyDown(field, { key: "ArrowLeft", repeat: true })).toBe(
       false,
     );

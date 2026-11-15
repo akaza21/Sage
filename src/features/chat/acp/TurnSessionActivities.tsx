@@ -9,13 +9,8 @@ const stateLabels: Record<TurnSessionActivity["state"], string> = {
 };
 const stateIcons = { completed: Check, failed: CircleX, cancelled: Circle };
 
-/**
- * The Turn's session activity rows (hook runs), one compact line each with
- * the harness's status or failure line. The state is read out, not
- * announced: running rows are no live regions. Rust bounds the list to 16
- * rows; they carry no order relative to the Turn's items, so they follow
- * them.
- */
+// Session activities carry no order relative to the Turn's items, so they
+// follow them. Running rows are not live regions: state is read, not announced.
 export function TurnSessionActivities({
   activities,
 }: {

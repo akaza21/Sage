@@ -41,7 +41,6 @@ export function RenameResourceControl({
     (state) => state.renameProjectFolder,
   );
   const clearError = useWorkbenchStore((state) => state.clearFileRenameError);
-  // In the Editor an open File is closed for the rename and reopened after.
   const releasesOpenFile = useContext(ExplorerReleasesOpenFiles) && !folder;
   const sourceOpen = useWorkbenchStore(
     (state) =>

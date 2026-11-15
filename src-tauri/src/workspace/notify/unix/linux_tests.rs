@@ -1,6 +1,3 @@
-//! Linux root watches against real inotify: each test changes a temporary
-//! Project and checks the exact paths reported, with bounded waits only.
-
 use super::{linux, run_prepared, unix_events};
 use crate::workspace::notify::{OVERFLOW_NOTIFY_ACTION, OVERFLOW_RELATIVE_PATH};
 use std::{
@@ -38,7 +35,6 @@ fn created(relative: &str) -> Notice {
     (relative.to_string(), 1)
 }
 
-/// A root watch set up as the Project watch sets it up.
 struct Watch {
     cancelled: Arc<AtomicBool>,
     notices: mpsc::Receiver<Notice>,
@@ -50,7 +46,6 @@ impl Watch {
         Self::start_within(root, unix_events::MAX_UNIX_WATCH_ENTRIES)
     }
 
-    /// A root watch whose walks examine at most `max_entries` entries.
     fn start_within(root: &Path, max_entries: u64) -> Self {
         let (directories, truncated) =
             unix_events::bounded_watch_directories(root).expect("walk test root");
@@ -74,12 +69,10 @@ impl Watch {
         }
     }
 
-    /// How the watch ended, if it ended on its own within two seconds.
     fn ended(&self) -> Option<std::io::Result<()>> {
         self.ended.recv_timeout(Duration::from_secs(2)).ok()
     }
 
-    /// The notices received until `expected` arrives or two seconds pass.
     fn until(&self, expected: &Notice) -> Vec<Notice> {
         let deadline = Instant::now() + Duration::from_secs(2);
         let mut received = Vec::new();
@@ -281,7 +274,6 @@ fn folder_past_the_watch_cap_resyncs_and_the_watch_keeps_running() {
     assert_only(&written, &created("marker.ts"));
 }
 
-/// Swaps two paths in one step, as `renameat2` with `RENAME_EXCHANGE`.
 fn exchange(first: &Path, second: &Path) {
     let first = std::ffi::CString::new(first.as_os_str().as_bytes()).expect("first path");
     let second = std::ffi::CString::new(second.as_os_str().as_bytes()).expect("second path");

@@ -82,7 +82,6 @@ export function FileSurface({
     : previewSessionKey === activeResourceKey;
   const goToOpen = goToSessionKey === activeResourceKey;
 
-  // A status belongs to the File it was written for and is dropped on switch.
   const [status, setStatus] = useState({ key: "", text: "" });
   const languageNavigationStatus =
     status.key === activeResourceKey ? status.text : "";
@@ -103,7 +102,6 @@ export function FileSurface({
     () => setLanguageNavigationStatus(LIMIT_EXCEEDED_STATUS),
     [setLanguageNavigationStatus],
   );
-  // The next edit that lands shows the refusal no longer applies.
   const editorChanged = useCallback<typeof updateEditorContent>(
     (...change) => {
       setStatus((current) =>
@@ -140,8 +138,6 @@ export function FileSurface({
     resource ?? null,
     editorShown,
   );
-  // A workspace Replace changes this File's unsaved text here, as one edit
-  // the user can undo.
   const replaceView =
     !readOnly && gutterEditor?.key === activeResourceKey ? gutterEditor : null;
   useEffect(() => {
@@ -206,12 +202,10 @@ export function FileSurface({
     return () => window.removeEventListener("keydown", onKeyDown, true);
   }, [findControlRef, findOpen, openFind, previewing, readOnly]);
 
-  // Go back and Go forward (ED-2b) follow the editable File's caret.
   useEffect(() => {
     if (!readOnly) watchEditorHistory();
   }, [readOnly]);
 
-  // The command palette (ED-2a) runs the same actions as the editor's keys.
   const availableCommand = useRef<FileSurfaceCommands["available"]>(
     () => false,
   );

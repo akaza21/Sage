@@ -1,25 +1,14 @@
 import { useCallback, useMemo, useRef } from "react";
 import { useToolbarOverflow } from "../../ui/useToolbarOverflow";
 
-/**
- * The toolbar's compaction steps, lowest priority first, as data-fit tokens
- * that chat-container-controls.css keys on. A disabled placeholder goes first,
- * then the context meter beside the send action, as Codex drops it from a
- * narrow composer before any control loses its label.
- * The project chip and effort give way before the session's own controls, so
- * access and harness keep their labels while those are icons, and the model
- * name goes last: it truncates to a readable prefix before it gives way to
- * its icon.
- */
+// Lowest priority first; chat-container-controls.css keys on these data-fit tokens.
 const TOOLBAR_STEPS = [
   "placeholder",
   "context",
   "capacity",
-  "project",
   "effort",
   "access",
   "harness",
-  "project-menu",
   "effort-menu",
   "model-shrink",
   "model",
@@ -27,27 +16,17 @@ const TOOLBAR_STEPS = [
   "wrap",
 ] as const;
 
-/**
- * Fits the composer toolbar's controls row. Effort and the project chip move
- * into the options menu only when there is a menu item to take their place;
- * while a popover from the row is open, the row keeps its steps.
- */
 export function useComposerToolbarFit(
   canSelectEffort: boolean,
-  hasProject: boolean,
   paused: boolean,
 ) {
   const controls = useRef<HTMLDivElement>(null);
   const steps = useMemo(
     () =>
-      TOOLBAR_STEPS.filter(
-        (step) =>
-          (step !== "effort-menu" || canSelectEffort) &&
-          (step !== "project-menu" || hasProject),
-      ),
-    [canSelectEffort, hasProject],
+      TOOLBAR_STEPS.filter((step) => step !== "effort-menu" || canSelectEffort),
+    [canSelectEffort],
   );
-  const widths = useRef({ project: [0, 0], effort: [0, 0] });
+  const widths = useRef({ effort: [0, 0] });
   const tier = useToolbarOverflow(
     useCallback(() => {
       const row = controls.current;
@@ -98,7 +77,6 @@ export function useComposerToolbarFit(
   return {
     controls,
     effortInMenu: taken.includes("effort-menu"),
-    projectInMenu: taken.includes("project-menu"),
     contextVisible: tier >= 0 && !taken.includes("context"),
   };
 }

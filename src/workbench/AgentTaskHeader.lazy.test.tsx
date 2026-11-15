@@ -13,6 +13,7 @@ beforeAll(() => preloadAgentHeaderMenu());
 import { useWorkbenchStore } from "../app/store";
 import { clearAcpProjectionRegistry } from "../app/acpProjectionRegistry";
 import type { WorkbenchTab } from "../domain/workbench";
+import { NewChatDraftSurface } from "../features/chat/NewChatDraftSurface";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import { AgentTaskResourcesPart } from "./agentTaskHeaderLazy";
 
@@ -60,13 +61,17 @@ it("keeps the header painted during a cold open without a loading flash", async 
 });
 
 it("keeps lazy resources and menu rename available beside the collapsed-navigation New Chat control", async () => {
-  const createChat = vi.fn(async () => undefined);
-  useWorkbenchStore.setState({ createChat });
+  const before = useWorkbenchStore.getState().tabs;
   render(
     <AgentTaskHeader tab={tab} chatCount={1} snapshot={null} showNewChat />,
   );
   fireEvent.click(await screen.findByRole("button", { name: "New chat" }));
-  expect(createChat).toHaveBeenCalledOnce();
+  expect(useWorkbenchStore.getState().tabs).toEqual(before);
+  const draftView = render(<NewChatDraftSurface />);
+  expect(
+    await screen.findByRole("heading", { name: "What should we work on?" }),
+  ).toBeVisible();
+  draftView.unmount();
   expect(screen.queryByRole("button", { name: "Rename chat" })).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   expect(

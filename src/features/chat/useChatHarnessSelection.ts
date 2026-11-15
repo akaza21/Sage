@@ -44,17 +44,22 @@ export function harnessPickerCandidates(
     );
 }
 
-export function useComposerPopovers(disabled = false) {
-  const [selected, setActive] = useState<
-    "options" | "access" | "harness" | "model" | "effort" | "project" | null
-  >(null);
-  const active = disabled ? null : selected;
+/**
+ * The composer's one open popover. `disabled` closes them all; `busy` (a
+ * running turn) closes all but the "+" menu, whose attachments a queued
+ * follow-up still needs.
+ */
+export function useComposerPopovers(disabled = false, busy = false) {
+  type Kind = "options" | "access" | "harness" | "model" | "effort" | "project";
+  const [selected, setActive] = useState<Kind | null>(null);
+  const blocked = (kind: Kind) => disabled || (busy && kind !== "options");
+  const active = selected && blocked(selected) ? null : selected;
   const optionsId = useId();
   const modelId = useId();
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const modelTrigger = useRef<HTMLButtonElement>(null);
 
-  if (disabled && selected !== null) setActive(null);
+  if (selected !== null && active === null) setActive(null);
 
   return {
     active,
@@ -64,15 +69,14 @@ export function useComposerPopovers(disabled = false) {
     optionsTrigger,
     dismiss: () => setActive(null),
     setHarnessOpen: (open: boolean) => {
-      if (!disabled)
+      if (!blocked("harness"))
         setActive((current) =>
           open ? "harness" : current === "harness" ? null : current,
         );
     },
-    toggle: (
-      kind: "options" | "access" | "harness" | "model" | "effort" | "project",
-    ) => {
-      if (!disabled) setActive((current) => (current === kind ? null : kind));
+    toggle: (kind: Kind) => {
+      if (!blocked(kind))
+        setActive((current) => (current === kind ? null : kind));
     },
   };
 }

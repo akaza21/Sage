@@ -313,10 +313,10 @@ for (const forcedColors of ["none", "active"] as const) {
     const options = page.getByRole("menu", { name: "Composer options menu" });
     const picker = options;
     await expectOverlay(picker, viewports[3]);
-    // With the responsive rail collapsed, this composer keeps Project inline.
-    const project = page
-      .locator("form.composer")
-      .getByRole("button", { name: "Project: Sage", exact: true });
+    const project = options.getByRole("menuitem", {
+      name: "Work in a project",
+      exact: true,
+    });
     await expect(project).toBeVisible();
     const last = picker.getByRole("menuitemradio").last();
     await last.scrollIntoViewIfNeeded();
@@ -334,6 +334,7 @@ for (const forcedColors of ["none", "active"] as const) {
     await last.click();
     await expect(picker).toHaveCount(0);
     await expect(options).toHaveCount(0);
+    await openComposerOptions(page);
     await project.click();
     const projectPicker = page.locator(".searchable-picker__popover");
     await expectOverlay(projectPicker, viewports[3]);
@@ -492,7 +493,6 @@ for (const profile of profiles) {
                   ".composer__harness .searchable-picker__trigger-label",
                   ".composer__model-label",
                   ".composer__effort-picker[aria-controls] .composer__effort-label",
-                  ".project-scope .searchable-picker__trigger-label",
                 ].some((selector) => {
                   const label = element.querySelector(selector);
                   return (
@@ -673,8 +673,8 @@ const emptyChatPickers = (profile: ChatContainmentProfile) => [
   "Harness",
   "Model",
   ...(profile.effort ? ["Thinking level: High"] : []),
-  // Add stays disabled here (no capability-backed action); its menu
-  // keyboard and resize behaviour is covered with installModeActions.
+  // Add always offers Files and folders; its menu keyboard and resize
+  // behaviour is covered with installModeActions.
   "Access options",
   "Project",
 ];
@@ -750,13 +750,13 @@ for (const profile of profiles) {
             name: "Composer options",
             exact: true,
           }),
-        ).toBeDisabled();
+        ).toBeEnabled();
         const options = page.getByRole("menu", {
           name: "Composer options menu",
         });
         // The fixture renames the project, so match the picker by its prefix.
-        // This exercises the new-chat heading's picker; the composer's own
-        // chip is covered by the project-chip geometry tests.
+        // This exercises the new-chat heading's picker; the location strip's
+        // picker is covered by the project-chip geometry tests.
         const project = page
           .getByRole("region", { name: "New chat", exact: true })
           .first()
@@ -802,8 +802,8 @@ for (const profile of profiles) {
         await page.keyboard.press("Escape");
         await expect(project).toBeFocused();
         await expect(options).toHaveCount(0);
-        // The new-chat caption picker does not fold at 480 (only the composer
-        // chip does); its open picker stays contained across the resize.
+        // The new-chat caption picker does not fold at 480; its open picker
+        // stays contained across the resize.
         await page.keyboard.press("Enter");
         await expect(picker).toHaveCount(1);
         await page.setViewportSize(viewports[3]);
@@ -986,6 +986,15 @@ test("a harness notice takes its own row above the transcript and composer", asy
   const surface = page.locator(".chat-surface");
   const transcript = surface.locator(".message-list");
   const composer = surface.locator("form.composer");
+  // This empty chat's location strip and lazy context rows mount once its
+  // history settles; measure the composer they leave.
+  await expect(
+    composer.getByRole("group", { name: "Chat location" }),
+  ).toBeVisible();
+  await expect(
+    composer.getByRole("list", { name: "Attached context" }),
+  ).toBeVisible();
+  await expect(composer.getByRole("alert")).toBeVisible();
   const before = (await transcript.boundingBox())!;
   const composerBefore = (await composer.boundingBox())!;
   await page.evaluate(async () => {

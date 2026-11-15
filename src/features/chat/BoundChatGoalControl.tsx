@@ -15,7 +15,6 @@ export function BoundChatGoalControl({
 }) {
   const boundChatId = chatId || undefined;
   const mutate = useGoalMutation(boundChatId);
-  // The details exist once this lazily loaded control has mounted.
   useEffect(onReady, [onReady]);
   return (
     <ChatGoalControl

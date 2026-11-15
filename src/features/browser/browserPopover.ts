@@ -6,9 +6,8 @@ import {
 } from "../../ui/listNavigation";
 
 /**
- * Closes an open toolbar popover when a pointer goes down outside every one
- * of `within`. A covering popover hides the native page, so outside clicks
- * in the covered page area also land on Sage's DOM.
+ * A covering popover hides the native page, so outside clicks in the covered
+ * page area also land on Sage's DOM.
  */
 export function useDismissOnOutsidePointer(
   open: boolean,

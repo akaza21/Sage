@@ -28,7 +28,6 @@ const loadMarkdown = () =>
     default: ChatMarkdown,
   }));
 
-/** What a command chip names beside the command, by source. */
 const commandSourceLabels: Partial<Record<AcpTurnCommand["source"], string>> = {
   builtin: "Built-in",
   skill: "Skill",
@@ -38,7 +37,6 @@ const commandSourceLabels: Partial<Record<AcpTurnCommand["source"], string>> = {
   plugin: "Plugin",
 };
 
-/** What a prompt that ran `/name` typed after the name, or null. */
 function commandInput(text: string, name?: string): string | null {
   const rest =
     name && text.startsWith(`/${name}`) ? text.slice(name.length + 1) : null;
@@ -72,16 +70,13 @@ export const ItemView = memo(
     fileReferenceOwner?: AgentArtifactOwner;
     onOpenResource?: AgentArtifactOpenHandler;
     selectableTurnId?: string;
-    /** The listed command a user prompt ran, shown as a chip. */
     command?: AcpTurnCommand;
   }) {
     switch (item.kind) {
-      // A steered message is the user's own bubble, at its place in the Turn.
       case "userPrompt":
       case "text": {
         const role = item.kind === "text" ? item.payload.role : "user";
         const timestamp = chatTimestamp(item.createdAt);
-        // Final assistant prose is quotable (and focusable for the menu key).
         const answerTurn = role === "assistant" && selectableTurnId;
         const input =
           role === "user"

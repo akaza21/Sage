@@ -63,7 +63,6 @@ export function explorerSelectionAction(
   }
 
   if (entry.kind === "file" && releaseOpenFiles) {
-    // An open File is closed for the move and reopened after it.
     return fileHasUnsavedChanges(state, source)
       ? { kind: "unavailable", reason: UNSAVED_FILE_REASON }
       : { kind: "file", source };

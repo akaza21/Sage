@@ -29,10 +29,9 @@ pub(super) fn environment_block() -> Result<Vec<u16>, TerminalError> {
     environment_block_from(std::env::var_os)
 }
 
-/// Builds the block from `host`, which is Sage's own environment outside
-/// tests, looking up one listed name at a time. Values are copied as UTF-16
-/// unchanged: a value with a NUL or over the variable limit, or one that would
-/// take the block over its cap, fails the launch before it is copied.
+/// Values are copied as UTF-16 unchanged: a value with a NUL or over the
+/// variable limit, or one that would take the block over its cap, fails the
+/// launch before it is copied.
 pub(super) fn environment_block_from(
     host: impl Fn(&'static str) -> Option<OsString>,
 ) -> Result<Vec<u16>, TerminalError> {

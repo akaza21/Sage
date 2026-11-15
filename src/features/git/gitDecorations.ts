@@ -6,19 +6,12 @@ import type {
 import type { ResourceRef } from "../../domain/workbench";
 import { markedGitState, type MarkedGitState } from "./gitDecorationsGate";
 
-/**
- * Git decorations for the Explorer and tabs, as in VS Code: a coloured
- * name and a letter for each changed File, and a tint and a dot for each
- * folder that holds one.
- */
 export type GitDecorationTone =
   "conflict" | "modified" | "deleted" | "added" | "untracked" | "unknown";
 
 export interface GitDecoration {
   tone: GitDecorationTone;
-  /** The badge: a status letter, a folder's dot, or a "many changes" count. */
   badge: string;
-  /** What the badge means, for the tooltip and screen readers. */
   label: string;
 }
 
@@ -58,7 +51,6 @@ const FOLDER_DECORATIONS: Record<GitDecorationTone, GitDecoration> = {
   unknown: decoration("unknown", "•", "Contains changes"),
 };
 
-/** A folder takes the colour of its most pressing change. */
 const TONE_RANK: Record<GitDecorationTone, number> = {
   conflict: 4,
   modified: 3,
@@ -73,7 +65,6 @@ export function fileGitDecoration(change: FileChange): GitDecoration | null {
   return state ? FILE_DECORATIONS[state] : null;
 }
 
-/** Built once per refreshed root: refreshes keep unchanged roots. */
 const cache = new WeakMap<RootRepositoryStatus, RootGitDecorations>();
 
 const EMPTY: RootGitDecorations = Object.freeze({
@@ -81,11 +72,7 @@ const EMPTY: RootGitDecorations = Object.freeze({
   folders: new Map(),
 });
 
-/**
- * The marks for one root. Native lists at most 300 changes; when it reports
- * more, the root shows a "many changes" count, since Files beyond the cap are
- * changed but unmarked. Any other partial status marks the root incomplete.
- */
+/** Native lists at most 300 changes; Files beyond the cap are changed but unmarked. */
 export function rootGitDecorations(
   root: RootRepositoryStatus,
 ): RootGitDecorations {
@@ -151,7 +138,6 @@ export function gitDecorationAt(
   );
 }
 
-/** The mark for an open File tab. */
 export function resourceGitDecoration(
   repositories: ProjectRepositoryStatus,
   resource: ResourceRef,

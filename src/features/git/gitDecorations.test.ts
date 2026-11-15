@@ -103,7 +103,6 @@ describe("rootGitDecorations", () => {
       label: "Contains conflicts",
     });
     expect(marks.folders.has("docs")).toBe(false);
-    // Files are not folders.
     expect(gitDecorationAt(marks, "src/a/edit.ts", true)).toBeUndefined();
     expect(gitDecorationAt(marks, "src/a/edit.ts", false)?.badge).toBe("M");
   });
@@ -134,7 +133,6 @@ describe("rootGitDecorations", () => {
   });
 
   it("marks a partial status as incomplete, not as a change count", () => {
-    // After a commit the index-only projection is clean but partial.
     const clean = rootGitDecorations(root([], { truncated: true }));
     expect(clean.files.size).toBe(0);
     expect(clean.folders.get("")).toEqual({
@@ -142,7 +140,6 @@ describe("rootGitDecorations", () => {
       badge: "…",
       label: "Git status is incomplete. Some changes may not be marked.",
     });
-    // Line counts cut short with a few changes listed.
     const partial = rootGitDecorations(
       root([change("src/a.ts", "modified")], { truncated: true }),
     );
@@ -152,7 +149,6 @@ describe("rootGitDecorations", () => {
     });
     expect(partial.folders.get("src")?.badge).toBe("•");
     expect(partial.files.get("src/a.ts")?.badge).toBe("M");
-    // Exactly 300 staged changes in the index-only projection: no count.
     const full = rootGitDecorations(
       root(
         Array.from({ length: 300 }, (_, index) =>
@@ -169,7 +165,6 @@ describe("rootGitDecorations", () => {
     expect(rootGitDecorations(first)).toBe(rootGitDecorations(first));
     const second = root([change("a.ts", "modified")]);
     expect(rootGitDecorations(second)).not.toBe(rootGitDecorations(first));
-    // A row whose mark did not change gets the same prop.
     expect(rootGitDecorations(second).files.get("a.ts")).toBe(
       rootGitDecorations(first).files.get("a.ts"),
     );

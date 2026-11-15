@@ -215,8 +215,6 @@ fn tracked_edit_then_new_root_file_both_refresh_after_separate_windows() {
     assert_eq!(first[1].notices[0].kind, "repository");
     assert!(relevant(&first[1].notices));
 
-    // A status read can leave a .git directory record ahead of the new file
-    // in the next window. The decision must still cover that whole window.
     repo.write("control.txt", "new");
     let next = deliver_window(
         &mut refresh,
@@ -270,7 +268,6 @@ fn a_tracked_edit_after_an_ignored_output_burst_still_refreshes_git() {
     for path in &paths {
         repo.write(path, "build output");
     }
-    // The edit arrives after the original paths no longer fit in the window.
     repo.write("dist/tracked.txt", "edited");
     paths.push("dist/tracked.txt".into());
     let input: Vec<_> = paths.iter().map(|path| (path.as_str(), 3)).collect();

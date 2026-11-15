@@ -90,7 +90,7 @@ export function useWorkbenchKeys({
         event.preventDefault();
         useAgentSettingsState.getState().close();
         setWindowMode("agent");
-        void useWorkbenchStore.getState().createChat();
+        void useWorkbenchStore.getState().openNewChatDraft();
       }
     };
     window.addEventListener("keydown", onKeyDown);

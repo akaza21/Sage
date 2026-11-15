@@ -4,7 +4,6 @@ import { browserSuggestedSites } from "../../ports/nativeBrowserHistoryPort";
 import type { BrowserNavigation } from "../../ports/nativeBrowserPort";
 import { browserFaviconDataUrl } from "./browserFavicon";
 
-/** New-tab suggestions combine native history with at most eight live tabs. */
 export async function browserSuggestions() {
   const sites = await browserSuggestedSites();
   const openTabs = useWorkbenchStore

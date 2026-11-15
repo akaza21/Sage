@@ -5,16 +5,11 @@ import { useSideChatState } from "../../workbench/sideChatState";
 
 type Published = Omit<AgentSessionChrome, "chatId" | "actions">;
 
-/**
- * Publishes the focused chat's session chrome to the Agent header and keeps
- * the header's session actions pointed at the latest callbacks. A parent
- * whose side chat holds focus keeps publishing its own live chrome, so its
- * header cell never mixes its status with another Chat's session.
- */
+// A parent whose side chat holds focus keeps publishing its own live chrome, so
+// its header cell never mixes its status with another Chat's session.
 export function useAgentSessionChromePublisher(
   publish: ((chatId: string, chrome: AgentSessionChrome | null) => void) | null,
   chatId: string | undefined,
-  /** The pinned Agent owner: the focused Chat. */
   focusedChatId: string | null,
   chrome: Published,
   actions: { closeSession: () => void; endSession: () => void },

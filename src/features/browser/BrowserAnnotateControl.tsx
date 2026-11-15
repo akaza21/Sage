@@ -15,12 +15,6 @@ const BrowserAnnotateComment = lazy(() => import("./BrowserAnnotatePopover"));
 // registration serves every browser tab.
 registerBrowserElementSink(browserElementChatSink);
 
-/**
- * Rust owns the mode, the picked element, the disabled reason, and Escape in
- * the page. While an element waits for a comment the comment box covers the
- * page frame. Escape everywhere drops a waiting element first, and only then
- * turns Annotate off.
- */
 export function BrowserAnnotateControl({
   navigation,
   onControl,

@@ -168,7 +168,6 @@ it("shows the same shell-only ledger file in the chat summary, Edited files and 
     name: "Changes shell.ts",
   });
   expect(changes).toHaveTextContent(/did not retain a before\/after pair/);
-  // Without a dock host, the same ledger still powers the inline card.
   view.rerender(
     <>
       {chatPresentation(page, false)}

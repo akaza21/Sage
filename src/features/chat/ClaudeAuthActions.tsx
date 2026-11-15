@@ -3,7 +3,6 @@ import { useState } from "react";
 import type { HarnessDefinition } from "../../domain/harness";
 import { acpDesktop } from "../../services/acpDesktop";
 
-/** The composer's sign-in alert; it loads with the sign-in actions. */
 export function SignInRequiredMessage({
   harness: { name, signIn },
 }: {
@@ -11,7 +10,6 @@ export function SignInRequiredMessage({
 }) {
   if (!signIn)
     return `${name} requires sign-in before it can continue. Sign in with its CLI, then try again.`;
-  // A user-defined agent has no command; its hint names the offered methods.
   const run = signIn.command ? `Run ${signIn.command}. ` : "";
   return `${name} requires sign-in before it can continue. ${run}${signIn.hint} Then try again.`;
 }

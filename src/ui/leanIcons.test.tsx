@@ -3,7 +3,10 @@ import { createRef } from "react";
 import { render } from "@testing-library/react";
 import * as Lucide from "lucide-react";
 import { expect, it } from "vitest";
-import * as Lean from "./leanIcons";
+import * as LeanBarrel from "./leanIcons";
+import * as LeanLazy from "./leanIconNodesLazy";
+
+const Lean = { ...LeanBarrel, ...LeanLazy };
 
 it.each(["MoreHorizontal", "TriangleAlert", "XCircle"] as const)(
   "preserves SVG refs and children for %s",
@@ -23,7 +26,7 @@ it.each(["MoreHorizontal", "TriangleAlert", "XCircle"] as const)(
 );
 
 it("preserves every moved Lucide SVG and its accessibility attributes", () => {
-  expect(Object.keys(Lean)).toHaveLength(106);
+  expect(Object.keys(Lean)).toHaveLength(108);
   for (const [name, Icon] of Object.entries(Lean)) {
     const Original = Lucide[name as keyof typeof Lucide] as typeof Icon;
     expect(renderToStaticMarkup(<Icon />), name).toBe(

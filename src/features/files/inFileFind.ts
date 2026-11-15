@@ -5,7 +5,6 @@ import {
 } from "./editorContent";
 
 export const MAX_FIND_MATCHES = 10_000;
-/** A regex search that has not finished by then is stopped. */
 export const REGEX_FIND_TIMEOUT_MS = 250;
 
 export interface FindOptions {
@@ -14,17 +13,17 @@ export interface FindOptions {
   regex: boolean;
 }
 
-/** Why a pattern found nothing. Messages never repeat the pattern. */
+/** Messages never repeat the pattern. */
 export type FindError =
   "invalid" | "inlineFlag" | "empty" | "timeout" | "unavailable";
 
 export interface FindMatches {
-  /** Flat `[from, to, from, to, …]` offsets, cheap to pass to and from a worker. */
+  /** Flat `[from, to, from, to, …]` offsets. */
   ranges: number[];
   truncated: boolean;
   contentLimitExceeded: boolean;
   error?: FindError;
-  /** With a replacement: the text for each range. */
+  /** With a replacement: `inserts[i]` is the replacement text for range `i`. */
   inserts?: string[];
 }
 
@@ -33,7 +32,6 @@ export interface FindRequest {
   query: string;
   options: FindOptions;
   replacement?: string;
-  /** Matches to keep; `MAX_FIND_MATCHES` unless Replace asks for all. */
   limit?: number;
 }
 
@@ -69,7 +67,6 @@ function compile(query: string, options: FindOptions): RegExp | FindError {
   }
 }
 
-/** JavaScript's `$1`, `$<name>`, `$&` and `$$`, plus VS Code's `\n` and `\t`. */
 function expand(replacement: string, match: RegExpExecArray): string {
   return replacement.replace(
     /\$(\$|&|<([^>]*)>|\d{1,2})|\\([nt\\])/gu,
@@ -84,11 +81,7 @@ function expand(replacement: string, match: RegExpExecArray): string {
   );
 }
 
-/**
- * Finds matches line by line, so a match never crosses a line end and `^`
- * and `$` mean the line's ends. With a replacement it also returns the text
- * each match becomes. Stops at the request's limit.
- */
+/** Matches never cross a line end, and `^`/`$` match line ends. */
 export function findMatches(request: FindRequest): FindMatches {
   const { content, query, options, replacement } = request;
   const limit = request.limit ?? MAX_FIND_MATCHES;
@@ -148,11 +141,8 @@ export function findMatches(request: FindRequest): FindMatches {
 type Settle = (result: FindMatches | null) => void;
 
 /**
- * Runs regex requests in one reused worker. While a search runs, newer
- * requests wait and only the latest is kept, so typing never respawns the
- * worker. The `REGEX_FIND_TIMEOUT_MS` deadline terminates a busy worker, so
- * a runaway pattern costs the main thread nothing; the next request starts a
- * fresh one.
+ * The deadline terminates a busy worker, so a runaway pattern costs the main
+ * thread nothing.
  */
 export function createFindWorkerClient(
   spawn: () => Worker,
@@ -188,7 +178,6 @@ export function createFindWorkerClient(
         worker = spawn();
         worker.onmessage = (event: MessageEvent<FindMatches>) =>
           finish(event.data);
-        // A worker that cannot load answers at once, not at the deadline.
         worker.onerror = () => stop({ ...NO_MATCHES, error: "unavailable" });
       }
       worker.postMessage(request);

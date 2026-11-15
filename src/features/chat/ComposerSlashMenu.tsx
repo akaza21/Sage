@@ -43,7 +43,6 @@ type Load =
   | { kind: "ready"; owner: string; list: AcpCommandList }
   | { kind: "error"; owner: string; message: string };
 
-/** The current session when it has a live runtime that can list commands. */
 function liveOwnerKey(page: AcpChatPage | null): string {
   const session = page?.sessions.find(
     (item) => item.id === page.currentSessionId,
@@ -61,12 +60,6 @@ function liveOwnerKey(page: AcpChatPage | null): string {
  */
 const SECTION_ROWS = 7;
 
-/**
- * With no query, the first commands of each source in sections, each in
- * advertised order. While typing, exact names first, then exact aliases,
- * then prefix matches, then other matches, each in advertised order. A command
- * matches by its name or any alias its harness gives it, by the closest of them.
- */
 function filterSlashCommands(
   commands: readonly AvailableAcpCommand[],
   query: string,
@@ -120,7 +113,6 @@ function suggestion(
   };
 }
 
-/** Reads the session's advertised commands and re-reads each new revision. */
 function useSessionCommands(boundChatId: string | undefined): Load | null {
   const owner = useStore(acpProjectionStoreFor(boundChatId), (state) =>
     liveOwnerKey(state.page),
@@ -149,7 +141,6 @@ function useSessionCommands(boundChatId: string | undefined): Load | null {
           unlisten = dispose;
           setListening(owner);
         },
-        // Without live updates the list is still read once.
         () => !disposed && setListening(owner),
       );
     return () => {
@@ -198,8 +189,6 @@ function useSessionCommands(boundChatId: string | undefined): Load | null {
     };
   }, [boundChatId, listening, owner, revision]);
   if (!owner) return null;
-  // A live update keeps the last list until its re-read lands; another
-  // session starts from loading.
   return load.kind === "loading" || load.owner === owner ? load : LOADING;
 }
 
@@ -257,10 +246,8 @@ export function ComposerSlashMenu({
   listboxId: string;
   onActiveOptionChange: (optionId: string | null) => void;
   onDismiss: () => void;
-  /** Whether the listbox the field controls is in the document. */
   onMountedChange: (mounted: boolean) => void;
   onPick: (command: PickedSlashCommand) => void;
-  /** What the list holds, for the field's polite status region. */
   onStatusChange: (status: string) => void;
   query: string;
 }) {
@@ -297,8 +284,7 @@ export function ComposerSlashMenu({
         !event.ctrlKey &&
         !event.metaKey &&
         !isImeComposing(event);
-      // A fully typed name runs on the first Enter, as in the Claude Code
-      // CLI: the field's own Enter sends it, and a panel command opens.
+      // As in the Claude Code CLI, a fully typed name runs on the first Enter.
       if (enter && navigation.active?.id === query) {
         if (!commands.find((command) => command.name === query)?.panel)
           return false;
@@ -306,7 +292,7 @@ export function ComposerSlashMenu({
         pick(navigation.active);
         return true;
       }
-      // While the list loads, Enter must not send a half-typed name.
+      // While suggestions load, Enter must not send a half-typed command.
       if (enter && loading) {
         event.preventDefault();
         return true;

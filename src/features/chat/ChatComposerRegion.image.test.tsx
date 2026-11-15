@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ComponentProps } from "react";
@@ -83,6 +84,13 @@ function renderComposer(
   };
 }
 
+async function openAttachMenu() {
+  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+  await settleLazyModules();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Files and folders" }));
+  await settleLazyModules();
+}
+
 describe("composer image input", () => {
   it("unmounts hidden toolbar controls while preserving the draft", () => {
     const { container, rerenderComposer } = renderComposer();
@@ -156,8 +164,8 @@ describe("composer image input", () => {
       }
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
       expect(
-        screen.getByRole("menuitem", { name: "Add images" }),
-      ).toBeDisabled();
+        screen.getByRole("menuitem", { name: "Files and folders" }),
+      ).toHaveAttribute("aria-disabled", "true");
     },
   );
 
@@ -231,7 +239,6 @@ describe("composer image input", () => {
       goal,
       imageInputAvailable: true,
     });
-    // The Goal control loads with the first chat that shows one.
     await settleLazyModules();
     screen.getByLabelText("Goal details");
     const options = screen.queryByRole("button", { name: "Composer options" });
@@ -256,9 +263,10 @@ describe("composer image input", () => {
       if (options && !options.hasAttribute("disabled")) {
         fireEvent.click(options);
         await screen.findByRole("menu", { name: "Composer options menu" });
+        expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
+        fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       }
       expect(screen.queryByRole("menuitem", { name: "Goal" })).toBeNull();
-      fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
       expect(screen.getByRole("button", { name: "Pause goal" })).toBeEnabled();
       expect(screen.getByRole("button", { name: "Delete goal" })).toBeEnabled();
     }
@@ -301,14 +309,15 @@ describe("composer image input", () => {
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
   });
 
-  it("keeps + open with unavailable images disabled, and refuses a dropped image", async () => {
+  it("keeps + open with nothing to attach refused in place, and refuses a dropped image", async () => {
     const { onAddImages } = renderComposer({
       imageInputDisabledReason: "This harness does not advertise image input.",
     });
-    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    await openAttachMenu();
     expect(
-      await screen.findByRole("menuitem", { name: "Add images" }),
-    ).toBeDisabled();
+      screen.getByRole("menuitem", { name: "Files and folders" }),
+    ).toHaveAttribute("aria-disabled", "true");
+    expect(screen.queryByRole("menu", { name: "Attach" })).toBeNull();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
     expect(screen.queryByLabelText("Choose images")).toBeNull();
     fireEvent.drop(screen.getByRole("form"), {
@@ -318,6 +327,23 @@ describe("composer image input", () => {
     expect(screen.getByRole("alert")).toHaveTextContent(
       "This harness does not advertise image input.",
     );
+  });
+
+  it("opens the attach menu for images where files are refused", async () => {
+    renderComposer({ imageInputAvailable: true });
+    await openAttachMenu();
+    const attach = screen.getByRole("menu", { name: "Attach" });
+    for (const pick of ["Files…", "Folder…"]) {
+      const item = within(attach).getByRole("menuitem", { name: pick });
+      expect(item).toBeDisabled();
+      expect(item).toHaveAttribute(
+        "title",
+        "Attaching files needs the Sage desktop app with an ACP harness.",
+      );
+    }
+    expect(
+      within(attach).getByRole("menuitem", { name: "Images…" }),
+    ).toBeEnabled();
   });
 
   it("accepts image paste and chooser only with capability", () => {
@@ -387,15 +413,13 @@ describe("composer image input", () => {
     );
   });
 
-  it("opens the persistent chooser from Add and closes the only menu", async () => {
+  it("opens the persistent chooser from Add's attach menu and closes it", async () => {
     renderComposer({ imageInputAvailable: true });
     const chooser = screen.getByLabelText("Choose images");
     const choose = vi.spyOn(chooser, "click");
     const trigger = screen.getByRole("button", { name: "Composer options" });
-    fireEvent.click(trigger);
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "Add images" }),
-    );
+    await openAttachMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: "Images…" }));
     expect(choose).toHaveBeenCalledOnce();
     expect(chooser.isConnected).toBe(true);
     expect(screen.queryByRole("menu")).toBeNull();
@@ -421,12 +445,8 @@ describe("composer image input", () => {
     });
     expect(onAddImages).not.toHaveBeenCalled();
     expect(screen.getByRole("alert")).toHaveTextContent("at most 4 images");
-    const options = screen.queryByRole("button", { name: "Composer options" });
-    if (options) {
-      fireEvent.click(options);
-      await screen.findByRole("menu", { name: "Composer options menu" });
-    }
-    expect(screen.getByRole("menuitem", { name: "Add images" })).toBeDisabled();
+    await openAttachMenu();
+    expect(screen.getByRole("menuitem", { name: "Images…" })).toBeDisabled();
   });
 
   it("shows an uploaded image thumbnail and removes its context", async () => {
@@ -447,7 +467,6 @@ describe("composer image input", () => {
       imagePreviews: { [image.artifactId]: "blob:preview" },
       onRemoveContext,
     });
-    // The chips load with the first context attached to the draft.
     await settleLazyModules();
     screen.getByLabelText("Attached context");
     expect(document.querySelector(".composer__image-preview")).toHaveAttribute(
@@ -488,7 +507,6 @@ describe("composer image input", () => {
       imageInputAvailable: true,
       attachedContext: [image],
     });
-    // A native chat's send waits for its staged batch to be read back.
     await waitFor(() => expect(send).toBeEnabled(), { timeout: 5_000 });
   });
 

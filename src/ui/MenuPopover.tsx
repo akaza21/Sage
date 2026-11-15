@@ -124,6 +124,7 @@ export function MenuPopover({
   portalTarget = "document",
   restoreFocusOnTab = false,
   role = "menu",
+  sharedTrigger = false,
   trapFocus = false,
   triggerRef,
 }: {
@@ -147,6 +148,12 @@ export function MenuPopover({
   portalTarget?: PortalTarget;
   restoreFocusOnTab?: boolean;
   role?: PopoverRole;
+  /**
+   * The trigger opens another surface and only anchors this one: a press on
+   * it dismisses this popover like a press outside, so that surface replaces
+   * it instead of opening beside it.
+   */
+  sharedTrigger?: boolean;
   trapFocus?: boolean;
   triggerRef: RefObject<HTMLElement | null>;
 }) {
@@ -292,7 +299,7 @@ export function MenuPopover({
   }, [focusKey, focusStrategy, initialFocus, placeFocus, role, portalRoot]);
 
   const { layer, onKeyDown: layerKeyDown } = useDismissLayer(open, {
-    inside: [popoverRef, triggerRef],
+    inside: sharedTrigger ? [popoverRef] : [popoverRef, triggerRef],
     onOutside: () => onDismiss("outside"),
     // Non-roving menus leave Escape to the focused text field.
     onEscape:

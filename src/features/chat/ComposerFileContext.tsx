@@ -1,6 +1,5 @@
-import type { RefObject } from "react";
-import { IconButton } from "../../ui/IconButton";
-import { Paperclip } from "../../ui/leanIcons";
+import { useMemo, type RefObject } from "react";
+import type { PromptPick } from "../../ports/promptAttachments";
 import type * as AttachChunk from "./ComposerAttach";
 import type * as MentionChunk from "./ComposerMentionController";
 import { lazyParts } from "./lazyParts";
@@ -9,7 +8,7 @@ import type { ImageAction } from "./useComposerImageInput";
 
 type FileContext = ReturnType<typeof useComposerFileContext>;
 
-// The first-Chat path carries only these mounts and the attach button.
+// The first-Chat path carries only these mounts.
 const MentionPart = lazyParts<typeof MentionChunk>(
   () => import("./ComposerMentionController"),
 );
@@ -17,38 +16,12 @@ const AttachPart = lazyParts<typeof AttachChunk>(
   () => import("./ComposerAttach"),
 );
 
-export function ComposerAttachButton({
-  files,
-  triggerRef,
-  fieldId,
-  disabled,
-}: {
-  files: FileContext;
-  triggerRef: RefObject<HTMLButtonElement | null>;
-  fieldId: string;
-  disabled: boolean;
-}) {
-  return (
-    <IconButton
-      // Anchors the attach menu.
-      ref={triggerRef}
-      id={`${fieldId}-attach`}
-      className="composer__plus"
-      aria-label="Attach files"
-      disabled={disabled}
-      onClick={files.pressAttach}
-    >
-      <Paperclip size={15} aria-hidden="true" />
-    </IconButton>
-  );
-}
-
 export function ComposerFileParts({
   files,
-  triggerRef,
   chatId,
   fieldRef,
   fieldId,
+  attachAnchorId,
   text,
   imageAction,
   onPickFiles,
@@ -56,19 +29,28 @@ export function ComposerFileParts({
   disabled,
 }: {
   files: FileContext;
-  /** The attach button, which the attach menu anchors on. */
-  triggerRef: RefObject<HTMLButtonElement | null>;
   chatId: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
+  attachAnchorId: string;
   text: string;
   imageAction?: ImageAction;
   /** Hands a pick to the chat's staged batch, which the paste part owns. */
-  onPickFiles: () => void;
+  onPickFiles: (pick: PromptPick) => void;
   hidden: boolean;
   /** The field cannot be edited. */
   disabled: boolean;
 }) {
+  // The anchor belongs to the toolbar: it is looked up whenever the menu
+  // reads it, so the menu is placed from its first commit.
+  const anchor = useMemo(
+    () => ({
+      get current() {
+        return document.getElementById(attachAnchorId);
+      },
+    }),
+    [attachAnchorId],
+  );
   return (
     <>
       {files.mentionArmed && !hidden ? (
@@ -80,14 +62,14 @@ export function ComposerFileParts({
           text={text}
         />
       ) : null}
-      {/* Only the button and its menu: the staged batch and its chips
-          belong to the paste part, so this loads with the first press. */}
+      {/* Only the attach menu: the staged batch and its chips belong to
+          the paste part, so this loads with the first press. */}
       {chatId && files.attachPresses > 0 ? (
         <AttachPart
           part="ComposerAttach"
           chatId={chatId}
           presses={files.attachPresses}
-          triggerRef={triggerRef}
+          triggerRef={anchor}
           imageAction={imageAction}
           onPick={onPickFiles}
         />

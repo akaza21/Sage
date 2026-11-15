@@ -36,7 +36,6 @@ import {
 import { PickerOption } from "../../ui/PickerOption";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 const chatAccess = vi.hoisted(() => ({
   get: vi.fn(() => Promise.resolve(null)),
@@ -79,7 +78,6 @@ function renderControls(overrides: Record<string, unknown> = {}) {
     <ChatHarnessControls
       availableBinding
       canPrompt
-      discoveryPhase="ready"
       modelLabelScope="project/chat/session-1"
       sessionHarnessId="access-test"
       sessionModelId={null}
@@ -183,6 +181,14 @@ it("waits for session confirmation before labeling the active model", () => {
   );
 });
 
+it("does not offer Add for a project when there are no projects to choose", () => {
+  useWorkbenchStore.setState({ projects: [] });
+  renderControls({ projectName: "Alpha" });
+  expect(
+    screen.queryByRole("button", { name: "Composer options" }),
+  ).toBeDisabled();
+});
+
 it("disables the add button when there are no composer actions", () => {
   renderControls();
   expect(
@@ -260,7 +266,6 @@ it("holds a thinking level chosen before the first session for the listed model"
     effort: "high",
   });
   expect(onSetSessionConfigOption).not.toHaveBeenCalled();
-  // A model without listed levels keeps effort waiting for its session.
   rerenderControls({
     sessionHarnessId: null,
     selectedModelId: "haiku",
@@ -632,7 +637,6 @@ describe("last confirmed model label", () => {
       project: { id: "a", name: "A", roots: [] },
       projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
     });
-    // A row too narrow for any of its controls takes every compaction step.
     vi.spyOn(Element.prototype, "getBoundingClientRect").mockImplementation(
       function (this: Element) {
         return DOMRect.fromRect({
@@ -647,7 +651,6 @@ describe("last confirmed model label", () => {
       <ChatHarnessControls
         availableBinding
         canPrompt
-        discoveryPhase="ready"
         modelLabelScope="chat"
         sessionHarnessId="access-test"
         sessionModelId={null}
@@ -668,10 +671,14 @@ describe("last confirmed model label", () => {
       { container: host },
     );
     fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
-    const project = await screen.findByRole("menuitem", { name: "Project: A" });
+    const project = await screen.findByRole("menuitem", {
+      name: "Work in a project",
+    });
     expect(screen.queryByRole("button", { name: "Project: A" })).toBeNull();
     fireEvent.click(project);
-    const projects = screen.getByRole("combobox", { name: "Project: A" });
+    const projects = screen.getByRole("combobox", {
+      name: "Work in a project",
+    });
     const candidate = screen.getByRole("option", { name: /^A$/ });
     fireEvent.pointerDown(candidate);
     expect(projects).toBeVisible();
@@ -699,6 +706,10 @@ describe("last confirmed model label", () => {
   it.each([false, true])(
     "keeps keyboard focus when an overflow control returns beside a disabled=%s fixed action",
     async (disabled) => {
+      useWorkbenchStore.setState({
+        projects: [{ id: "a", name: "A", rootCount: 0, lastOpenedAt: 1 }],
+        chatUiById: { peer: { sending: disabled } } as never,
+      });
       let width = 0;
       vi.spyOn(Element.prototype, "getClientRects").mockImplementation(
         function (this: Element) {
@@ -714,7 +725,7 @@ describe("last confirmed model label", () => {
       );
       const props = {
         sessionConfig: confirmedModelConfig(),
-        addActions: { imageAction: { disabled, onChoose: () => {} } },
+        projectName: "A",
       };
       const view = renderControls(props);
       fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
@@ -872,7 +883,6 @@ describe("last confirmed model label", () => {
     const trigger = screen.getByLabelText("Model", { exact: true });
     expect(trigger).toHaveTextContent(/^actual High$/);
     expect(trigger).toHaveAccessibleDescription("actual High");
-    // The confirmed model is the sole choice, so the picker stays openable.
     expect(trigger).toBeEnabled();
     expect(
       screen.queryByRole("button", { description: "Select effort" }),
@@ -1079,7 +1089,6 @@ describe("last confirmed model label", () => {
     const option = within(listbox).getByRole("option");
     expect(option).toHaveAccessibleName("GPT-6 Astra");
     expect(option).toHaveAttribute("aria-selected", "true");
-    // With no requested model, choosing the confirmed one only closes the menu.
     fireEvent.click(option);
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
     expect(trigger).toHaveFocus();
@@ -1564,7 +1573,7 @@ describe("composer permission mode picker", () => {
     });
     renderControls({ projectName: "Alpha" });
     await openOptions();
-    const project = screen.getByRole("button", { name: "Project: Alpha" });
+    const project = screen.getByRole("menuitem", { name: "Work in a project" });
     expect(project).toHaveAttribute("title", "Project: Alpha");
     expect(project.querySelector(".project-scope__icon")).toHaveAttribute(
       "aria-hidden",
@@ -1584,11 +1593,10 @@ describe("composer permission mode picker", () => {
       ],
     });
     renderControls({ projectName: "Alpha", turnBusy: true });
+    expect(screen.queryByRole("button", { name: "Project: Alpha" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
     expect(
-      screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
-    expect(
-      screen.getByRole("button", { name: "Project: Alpha" }),
+      await screen.findByRole("menuitem", { name: "Work in a project" }),
     ).toBeDisabled();
   });
 
@@ -1597,7 +1605,7 @@ describe("composer permission mode picker", () => {
       projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
     });
     renderControls({
-      addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+      addActions: { onAttachFiles: vi.fn() },
     });
     const trigger = screen.getByRole("button", { name: "Composer options" });
     fireEvent.click(trigger);
@@ -1605,7 +1613,7 @@ describe("composer permission mode picker", () => {
       screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeVisible();
     expect(document.activeElement).toBe(
-      screen.getByRole("menuitem", { name: "Add images" }),
+      screen.getByRole("menuitem", { name: "Files and folders" }),
     );
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
@@ -1619,7 +1627,7 @@ describe("composer permission mode picker", () => {
     async (name) => {
       renderControls({
         projectName: "Alpha",
-        addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+        addActions: { onAttachFiles: vi.fn() },
       });
       const opener = screen.getByRole("button", { name });
       const other = screen.getByRole("button", {
@@ -1657,11 +1665,13 @@ describe("composer permission mode picker", () => {
         ],
       });
       renderControls({
-        addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+        addActions: { onAttachFiles: vi.fn() },
       });
       const trigger = screen.getByRole("button", { name: "Composer options" });
       fireEvent.click(trigger);
-      const control = screen.getByRole("menuitem", { name: "Add images" });
+      const control = screen.getByRole("menuitem", {
+        name: "Files and folders",
+      });
       expect(control).toHaveFocus();
       fireEvent.keyDown(control, { key: "Tab", shiftKey });
       expect(
@@ -1717,25 +1727,19 @@ describe("composer permission mode picker", () => {
     expect(document.activeElement).toBe(document.body);
   });
 
-  it("replaces Add with the project picker and closes it on a single Escape", async () => {
+  it("offers Add for the project alone and closes its picker on a single Escape", async () => {
     useWorkbenchStore.setState({
       projects: [{ id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 }],
     });
     renderControls({ projectName: "Alpha" });
-    expect(
-      screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Project: Alpha" }));
+    await openOptions();
+    const project = screen.getByRole("menuitem", { name: "Work in a project" });
+    fireEvent.click(project);
     fireEvent.keyDown(document.activeElement as Element, { key: "Escape" });
     expect(
-      screen.queryByRole("listbox", { name: "Project: Alpha" }),
+      screen.queryByRole("listbox", { name: "Work in a project" }),
     ).toBeNull();
-    expect(
-      screen.queryByRole("menu", { name: "Composer options menu" }),
-    ).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "Project: Alpha" }),
-    ).toHaveFocus();
+    expect(project).toHaveFocus();
   });
 
   it("shows effective read-only access when ask is unsupported", async () => {
@@ -1790,9 +1794,9 @@ describe("composer permission mode picker", () => {
     expect(
       screen.getByRole("button", { name: "Access options" }),
     ).toHaveTextContent("Workspace edits");
-    expect(screen.getByRole("button", { name: "Access options" })).toHaveClass(
-      "composer__access-label--write",
-    );
+    expect(
+      screen.getByRole("button", { name: "Access options" }),
+    ).not.toHaveClass("composer__access-label--full");
     fireEvent.click(screen.getByLabelText("Model", { exact: true }));
     expect(
       await screen.findByRole("listbox", { name: "Select model" }),
@@ -1907,7 +1911,7 @@ describe("composer permission mode picker", () => {
 
   it("closes an already open menu when a turn starts", async () => {
     const { rerenderControls } = renderControls({
-      addActions: { imageAction: { disabled: false, onChoose: vi.fn() } },
+      addActions: { onAttachFiles: vi.fn() },
     });
     await openOptions();
     expect(
@@ -2040,7 +2044,6 @@ describe("composer permission mode picker", () => {
         .getByRole("option", { name: /^Pi —/ })
         .querySelector('[data-harness-icon="pi"]'),
     ).not.toBeNull();
-    // A custom harness never borrows a built-in brand by its name.
     expect(
       screen
         .getByRole("option", { name: /Pi helper/ })
@@ -2152,8 +2155,6 @@ describe("composer permission mode picker", () => {
       /^OpenCode$/,
     );
     expect(screen.getByRole("option", { name: /Missing/ })).toBeDisabled();
-    // The unavailable reason is a visible line under the name, not only
-    // the option's accessible description.
     const missingCopy = screen
       .getByRole("option", { name: /Missing/ })
       .querySelector(".searchable-picker__option-copy")!;
@@ -2540,11 +2541,11 @@ it("keeps the send binding's access modes when switching between Access and Add"
       },
     ],
   });
-  const onChoose = vi.fn();
+  const onAttachFiles = vi.fn();
   renderControls({
     selectedHarnessId: "other",
     accessTarget: { bindingId: "fixture" },
-    addActions: { imageAction: { disabled: false, onChoose } },
+    addActions: { onAttachFiles },
   });
   const access = screen.getByRole("button", { name: "Access options" });
   const add = screen.getByRole("button", { name: "Composer options" });
@@ -2558,8 +2559,8 @@ it("keeps the send binding's access modes when switching between Access and Add"
   fireEvent.click(add);
   expect(screen.queryByRole("menu", { name: "Access mode" })).toBeNull();
   expect(screen.getAllByRole("menu")).toHaveLength(1);
-  fireEvent.click(screen.getByRole("menuitem", { name: "Add images" }));
-  expect(onChoose).toHaveBeenCalledOnce();
+  fireEvent.click(screen.getByRole("menuitem", { name: "Files and folders" }));
+  expect(onAttachFiles).toHaveBeenCalledOnce();
   expect(add).toHaveFocus();
   fireEvent.click(add);
   fireEvent.click(access);

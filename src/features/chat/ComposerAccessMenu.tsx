@@ -1,6 +1,5 @@
 import { useEffect, useState, type RefObject } from "react";
 import {
-  chooseChatAccess,
   grantChatAccess,
   PERMISSIVE_ACCESS as PERMISSIVE,
   prepareChatAccess,
@@ -14,14 +13,12 @@ import { Check } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { CHAT_ACCESS_ICONS as ICONS } from "./chatAccessIcons";
+import {
+  chooseAccess,
+  CONFIRMED_ACCESS as CONFIRMED,
+} from "./chatAccessChoice";
 
 const FULL_ACCESS: SessionAccessMode = "fullAccess";
-
-/** Modes confirmed before they apply. */
-const CONFIRMED: readonly SessionAccessMode[] = [
-  "workspaceWrite",
-  ...PERMISSIVE,
-];
 
 const WARNING: Partial<Record<SessionAccessMode, string>> = {
   auto: "Claude's own checks decide which actions run without asking. Sage does not review them, and there is no filesystem sandbox.",
@@ -35,6 +32,8 @@ export default function ComposerAccessMenu({
   candidates,
   effective,
   sessionId,
+  harnessName,
+  confirmation: confirm,
   onDraft,
   onDismiss,
 }: {
@@ -42,17 +41,16 @@ export default function ComposerAccessMenu({
   triggerRef: RefObject<HTMLButtonElement | null>;
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
-  /** The live chat a choice applies to; null before its session starts. */
   sessionId?: string;
-  /**
-   * Holds a choice made before the session starts; it is applied, through
-   * the same commands, before the chat's first prompt is dispatched.
-   */
+  harnessName: string;
+  confirmation?: SessionAccessMode | null;
   onDraft?: (mode: SessionAccessMode) => void;
   onDismiss: () => void;
 }) {
   const [confirmation, setConfirmation] =
-    useState<SessionAccessModeCapability | null>(null);
+    useState<SessionAccessModeCapability | null>(
+      () => candidates.find((candidate) => candidate.id === confirm) ?? null,
+    );
   const [token, setToken] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const permissive =
@@ -80,12 +78,8 @@ export default function ComposerAccessMenu({
     };
   }, [permissive, sessionId]);
   const close = () => setClosing(true);
-  /** Gives the chat a mode that needs no native token, or drafts it. */
-  const choose = (mode: SessionAccessMode) => {
-    if (sessionId) void chooseChatAccess(sessionId, mode);
-    else onDraft?.(mode);
-  };
-  // Without a session or a draft to hold it, a choice has nowhere to go.
+  const choose = (mode: SessionAccessMode) =>
+    chooseAccess({ sessionId, onDraft }, mode);
   const selectable = !!sessionId || !!onDraft;
   if (closing) return null;
   if (confirmation && !candidates.includes(confirmation)) setConfirmation(null);
@@ -123,8 +117,8 @@ export default function ComposerAccessMenu({
             type="button"
             disabled={permissive !== null && !!sessionId && token === null}
             onClick={() => {
-              // A drafted permissive mode is confirmed natively once the
-              // session it is given to has started.
+              // A drafted permissive mode is confirmed natively once its
+              // session has started, before the first prompt.
               if (!permissive || !sessionId) choose(confirmation.id);
               else if (token)
                 void grantChatAccess(sessionId, permissive, token);
@@ -161,7 +155,7 @@ export default function ComposerAccessMenu({
         aria-hidden="true"
       >
         {sessionId || onDraft
-          ? "How should agent actions be approved in this chat?"
+          ? `How should ${harnessName} actions be approved?`
           : "This chat's access can change once its session starts. Defaults for new chats are in Settings."}
       </p>
       {candidates.map((candidate) => {

@@ -85,7 +85,6 @@ it("draws the frozen frame, the outline and the numbered badge over the element"
     ".browser-annotate__frame",
   )!;
   expect(image.src).toBe("data:image/jpeg;base64,/9j/AAAA");
-  // The stage keeps the page area's proportions; the picture fills it.
   expect(
     container
       .querySelector<HTMLElement>(".browser-annotate__stage")!
@@ -141,7 +140,6 @@ it("cancels on Escape in the comment or on the frozen page, or a click on it", (
     key: "Escape",
   });
   expect(onCancel).toHaveBeenCalledTimes(1);
-  // A click inside the box focuses it, so Escape reaches it there too.
   const dialog = screen.getByRole("dialog", { name: "Comment on Press me" });
   expect(dialog).toHaveAttribute("tabindex", "-1");
   fireEvent.keyDown(dialog, { key: "Escape" });
@@ -237,7 +235,6 @@ it("keeps an item the composer refuses waiting, says why, and cancels through Ru
     "The page element could not be attached",
   );
   expect(attach).not.toHaveBeenCalled();
-  // The element still waits: nothing released it in Rust.
   expect(invokeNative).not.toHaveBeenCalledWith("browser_control", {
     tabId: "browser-1",
     action: "annotateCancel",

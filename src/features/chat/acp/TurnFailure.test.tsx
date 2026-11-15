@@ -204,6 +204,27 @@ describe("TurnFailure", () => {
     },
   );
 
+  it("never shows a notice as the failure of a harness that exited", () => {
+    const turn = page("failed", { kind: "harnessExited" }).turns[0];
+    turn.items = [
+      {
+        id: "browser-notice",
+        kind: "error",
+        lifecycle: "failed",
+        payload: {
+          kind: "notice",
+          code: "browserMcpUnavailable",
+          message: "Browser tools are unavailable for this Codex version.",
+          recoverable: false,
+        },
+      } as never,
+    ];
+    render(<TurnFailure turn={turn} />);
+    const failure = screen.getByRole("group", { name: "Turn failed" });
+    expect(within(failure).getByText("Harness exited")).toBeVisible();
+    expect(failure).not.toHaveTextContent("Browser tools are unavailable");
+  });
+
   it("does not exclude a display label without an attempt kind", () => {
     const turn = page("failed", { kind: "other" }).turns[0];
     turn.items = [

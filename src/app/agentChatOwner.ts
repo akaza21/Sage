@@ -41,10 +41,18 @@ const useAgentChatOwnerStore = create<AgentChatOwnerStore>(() => ({
  */
 export const AgentChatOwnerScopeContext = createContext(false);
 
-export function pinAgentChatOwner(chatId: string | null): void {
+/**
+ * Pins the Chat that may be edited and, separately, the Chat the Agent body
+ * keeps focus on: a new-chat draft standing in for its chat keeps the focus
+ * on that chat while nothing owns it.
+ */
+export function pinAgentChatOwner(
+  chatId: string | null,
+  focusId: string | null = chatId,
+): void {
   const { ownerId, agentFocusId } = useAgentChatOwnerStore.getState();
-  if (ownerId === chatId && agentFocusId === chatId) return;
-  useAgentChatOwnerStore.setState({ ownerId: chatId, agentFocusId: chatId });
+  if (ownerId === chatId && agentFocusId === focusId) return;
+  useAgentChatOwnerStore.setState({ ownerId: chatId, agentFocusId: focusId });
 }
 
 export function releaseAgentChatOwner(): void {

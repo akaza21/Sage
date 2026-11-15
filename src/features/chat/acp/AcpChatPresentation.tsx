@@ -56,9 +56,7 @@ const Turn = memo(
   }: {
     page: AcpChatPage;
     turn: TurnProjection;
-    /** A fork's read-only parent Turn: never interactive or quotable. */
     inherited?: boolean;
-    /** Earlier/inherited answers retain Copy. */
     answerActions?: boolean;
     fileSummaryInDock?: boolean;
     rootLabels?: Readonly<Record<string, string>>;
@@ -143,7 +141,6 @@ const Turn = memo(
         onOpenResource={openForTurn}
       />
     );
-    // An inherited Turn is inert, all but its answer's own row.
     const content = (
       <>
         <section
@@ -238,7 +235,6 @@ const Turn = memo(
                 )}
               />
             ))}
-            {/* Live edits precede file data. */}
             {isEditingFiles(page, turn) &&
             !turn.items.some(
               (item) =>
@@ -276,7 +272,6 @@ const Turn = memo(
               </button>
             ) : null}
             <TurnFailure turn={turn} onRetry={onRetry} />
-            {/* The row closes the Turn, as the footer closes the latest one. */}
             {!inherited && actions}
           </div>
         </section>
@@ -372,7 +367,6 @@ export function AcpChatPresentation({
         incomplete={hasEarlier || countIncomplete}
       />
       {hasEarlier || historyError || countIncomplete ? (
-        // History notices stay in the navigation chunk.
         <NavigationPart
           part="AcpHistoryNotices"
           hasEarlier={hasEarlier}
@@ -400,7 +394,7 @@ export function AcpChatPresentation({
   );
 }
 
-/** Inherited Turns mount no navigator/find/virtual list/edit summary; the fork transcript owns those. */
+// The fork transcript owns the navigator, find, virtual list and edit summary.
 export function InheritedTurns({ page }: { page: AcpChatPage }) {
   const dayTimestamps = useTurnDayTimestamps(page.turns);
   return page.turns.map((turn, index) => (

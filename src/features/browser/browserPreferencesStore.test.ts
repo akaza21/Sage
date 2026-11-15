@@ -96,7 +96,6 @@ describe("browser preferences", () => {
     }
     expect(getPreferences).toHaveBeenCalledTimes(MAX_AUTOMATIC_LOADS);
 
-    // An explicit Retry still loads, and a success re-arms the automatic loads.
     getPreferences.mockResolvedValue({ showFullUrl: true });
     await useBrowserPreferencesStore.getState().restore();
     expect(useBrowserPreferencesStore.getState()).toMatchObject({

@@ -19,7 +19,6 @@ import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 import { currentChatUsage } from "./acp/chatUsage";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
 import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
-import { useEndedSession } from "./endedSession";
 import { composerImageAvailability } from "./useComposerImageInput";
 
 type SurfaceHarness = Pick<
@@ -366,7 +365,7 @@ export function useChatSurfaceModel({
     accessTarget: {
       bindingId: accessBindingId,
       draftChatId: page && !page.currentSessionId ? page.chatId : undefined,
-      endedSession: useEndedSession(page),
+      endedPage: page && !page.currentSessionId ? page : undefined,
     },
     foregroundError: acpActions.error ?? chatError,
     // The sign-in sentence renders lazily in the composer, off the chat path.

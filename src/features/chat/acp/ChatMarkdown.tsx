@@ -20,7 +20,8 @@ import { ChatCodeBlock } from "./ChatCodeBlock";
 import type { StreamRuns } from "./streamTail";
 import type nextStreamRuns from "./streamTail";
 
-/** Load streamTail lazily with this module, outside first-Chat; text streams undecorated until ready (s5/f0309). */
+// Loaded lazily to stay out of the first Chat; text streams undecorated until
+// it is ready (s5/f0309).
 let tracker: typeof nextStreamRuns | null = null;
 let loading: Promise<void> | null = null;
 
@@ -41,7 +42,7 @@ export function loadStreamRuns(): Promise<void> {
 
 void loadStreamRuns();
 
-/** Fade only blocks appended after mount; settle existing blocks on remount to prevent flashing. */
+// Existing blocks are settled on remount so they do not flash.
 function settleMountedStream(element: HTMLDivElement | null) {
   for (const animation of element?.getAnimations?.({ subtree: true }) ?? [])
     if ((animation as CSSAnimation).animationName === "acp-stream-in")
@@ -76,7 +77,7 @@ export function ChatMarkdown({
     setParsed(current);
   }
   const document = current.document;
-  // One record per answer/chunk; retain appended spans so older fades finish while new words trail.
+  // Appended spans are retained so older fades finish while new words trail.
   const [stream, setStream] = useState<{
     text: string;
     document: typeof document;
