@@ -203,6 +203,82 @@ fn no_context_is_reported_before_any_model_call_states_one() {
     );
 }
 
+fn reports_context(inbound: &Inbound) -> bool {
+    updates(inbound)
+        .iter()
+        .any(|update| update["sessionUpdate"] == "usage_update")
+}
+
+#[test]
+fn a_compaction_without_its_compacted_size_leaves_the_context_unknown_until_a_model_call_states_it()
+{
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    bridge
+        .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[],
+            "usage":{"input_tokens":5,"output_tokens":120,"cache_read_input_tokens":41_000,"cache_creation_input_tokens":0}}}))
+        .unwrap();
+    bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+            "usage":{},"modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+
+    prompt(&mut bridge, 4);
+    bridge
+        .inbound(json!({"type":"system","subtype":"compact_boundary",
+            "compact_metadata":{"trigger":"auto","pre_tokens":41_125}}))
+        .unwrap();
+    let failed = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,
+            "usage":{},"modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert!(!reports_context(&failed));
+    assert_eq!(failed.acp.last().unwrap()["id"], 4);
+
+    prompt(&mut bridge, 5);
+    bridge
+        .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m2","content":[],
+            "usage":{"input_tokens":3_000,"output_tokens":200,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}))
+        .unwrap();
+    let result = bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+            "usage":{},"modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert_eq!(
+        updates(&result)[0],
+        &json!({"sessionUpdate":"usage_update","used":3_200,"size":1_000_000})
+    );
+}
+
+#[test]
+fn token_counts_too_large_to_add_up_are_reported_as_unknown() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    for usage in [
+        json!({"input_tokens":5,"output_tokens":120,"cache_read_input_tokens":41_000}),
+        json!({"input_tokens":u64::MAX,"output_tokens":0,"cache_read_input_tokens":1}),
+    ] {
+        bridge
+            .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[],"usage":usage}}))
+            .unwrap();
+    }
+    let result = bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+            "usage":{"input_tokens":u64::MAX,"output_tokens":1},
+            "modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert!(!reports_context(&result));
+    assert_eq!(result.acp[0]["result"], json!({"stopReason":"end_turn"}));
+}
+
 #[test]
 fn a_rejected_tool_is_denied_and_its_failure_text_is_shown() {
     let mut bridge = initialized();
