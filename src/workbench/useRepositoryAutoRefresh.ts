@@ -7,19 +7,15 @@ import { subscribeWorkspaceNotifyRepository } from "../features/files/workspaceN
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import { desktop } from "../services/desktop";
 
-/** Refreshes Git state on outside changes while `git.autoRefresh` is on. */
 export function useRepositoryAutoRefresh() {
   const enabled = useEditorSettingsStore(
     (store) => store.settings["git.autoRefresh"],
   );
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   useEffect(() => {
-    // The browser runtime has no watcher and a fixed repository.
     if (!enabled || !projectId || !isTauriRuntime()) return;
     return startRepositoryAutoRefresh({
       refresh: async () => {
-        // The store counts each refresh it starts; a busy store starts none.
-        // An unchanged status keeps its object (`shareRepositoryStatus`).
         const before = useWorkbenchStore.getState();
         await before.refreshRepository();
         const after = useWorkbenchStore.getState();

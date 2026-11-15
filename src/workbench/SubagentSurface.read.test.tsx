@@ -25,7 +25,6 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
 const childNotices = vi.hoisted(
   () => new Map<string, (epoch: number) => void>(),
 );
-// Holds the child-notice subscription open until a test releases it.
 const subscribeGate = vi.hoisted(() => ({
   wait: null as Promise<void> | null,
 }));
@@ -241,7 +240,6 @@ it.each(["project", "chat", "generation", "epoch", "session"])(
     );
     await act(async () => finish(current));
     expect(screen.queryByText("No child activity was captured.")).toBeNull();
-    // The changed owner reads at once, as soon as the stale read settles.
     await waitFor(() => expect(readChild).toHaveBeenCalledTimes(2));
     view.rerender(
       <SubagentSurface
@@ -252,8 +250,6 @@ it.each(["project", "chat", "generation", "epoch", "session"])(
       />,
     );
     await act(async () => reject({ kind: "rejected" }));
-    // The same child refreshes after its epoch is quiet, never beside the
-    // read already in flight.
     expect(
       await screen.findByText(/too large to display/, undefined, {
         timeout: 3_000,
@@ -413,7 +409,6 @@ it("refreshes an open live child on each invalidation epoch without losing or du
   await waitFor(() => expect(readChild).toHaveBeenCalledTimes(2), {
     timeout: 3_000,
   });
-  // Child reads carry no projection revision: they key off the child epoch.
   expect(readChild.mock.lastCall?.[1].request).not.toHaveProperty(
     "expectedProjectionRevision",
   );
@@ -496,7 +491,6 @@ it("offers Copy under a settled child's answer and only for that answer (s4/f048
     within(actions[0]).getByRole("button", { name: "Copy" }).click();
   });
   expect(writeText).toHaveBeenCalledWith("README.md has 2 lines.");
-  // Codex child answers offer no "…" menu (spec section 7).
   expect(screen.queryByRole("button", { name: "More actions" })).toBeNull();
   vi.unstubAllGlobals();
 });
@@ -618,19 +612,15 @@ it("continuous child activity reads about once a second, one read at a time", as
   });
   const view = render(live("7"));
   expect(await screen.findByText("Step 1")).toBeVisible();
-  // A new epoch every 200 ms for 3.6 s never lets the child go quiet.
   for (let epoch = 8; epoch < 26; epoch += 1) {
     view.rerender(live(String(epoch)));
     await sleep(200);
   }
-  // A trailing debounce would read once at the end; the 1 s max wait reads
-  // throughout, never twice in one window and never two at once.
   expect(starts.length).toBeGreaterThanOrEqual(4);
   expect(starts.length).toBeLessThanOrEqual(6);
   for (let index = 1; index < starts.length; index += 1)
     expect(starts[index] - starts[index - 1]).toBeGreaterThanOrEqual(950);
   expect(overlapped).toBe(false);
-  // Once activity stops, one trailing read settles the last epoch.
   const before = starts.length;
   await sleep(1_300);
   expect(starts.length).toBeLessThanOrEqual(before + 1);
@@ -647,7 +637,6 @@ it("a fast failure after a slow good read never discards it", async () => {
   const view = render(live("7"));
   view.rerender(live("8"));
   await sleep(1_200);
-  // The failing refresh waits for the slow read instead of racing it.
   expect(readChild).toHaveBeenCalledTimes(1);
   await act(async () =>
     finish(childRead([{ status: "inProgress", items: [text("a", "Slow")] }])),
@@ -707,7 +696,6 @@ it("a child-only notice re-reads the open child without a parent page change", a
   render(live("7"));
   expect(await screen.findByText("Step A")).toBeVisible();
   await waitFor(() => expect(childNotices.has("project/chat")).toBe(true));
-  // The same page object stays mounted; only the child notice arrives.
   act(() => childNotices.get("project/chat")!(1_000));
   expect(
     await screen.findByText("Step B", undefined, { timeout: 2_000 }),
@@ -724,8 +712,6 @@ it("the first child read waits until child notices are subscribed", async () => 
   );
   render(live("7"));
   await act(async () => {});
-  // A notice published before the listener exists would be lost, so no
-  // read starts until the subscription is attached.
   expect(readChild).not.toHaveBeenCalled();
   await act(async () => open());
   expect(await screen.findByText("Step A")).toBeVisible();

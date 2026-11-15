@@ -39,12 +39,10 @@ type ChildRead = Extract<ChildTranscript, { turns: unknown }>;
 type ReadState = {
   key: string;
   value: ChildTranscript | "error";
-  /** The latest full read for this child, kept across later failures. */
   good?: ChildRead;
   stale: number;
 };
 
-/** One deduplicated run of child items without the spawn prompt bubble. */
 function childRows(read: ChildRead | undefined) {
   const seen = new Set<string>();
   const rows: AcpItem[] = [];
@@ -122,7 +120,6 @@ function SubagentChild({
     attributedKey === agentKey &&
     (session.runtimeEpoch === null ||
       session.runtimeEpoch === turn.runtimeEpoch);
-  // The child identity; the child projection epoch is its invalidation token.
   const identity = canRead
     ? [
         page.projectId,
@@ -173,10 +170,8 @@ function SubagentChild({
     const state = sync.current;
     const fresh = state.identity !== identity;
     state.identity = identity;
-    // Throttled to about once a second (scheduleChildRefresh), never
-    // beside another read. A
-    // user config, goal or fork command that meets a read in flight waits
-    // for it in Rust (RuntimeHost::native_rpc), so reads cannot starve it.
+    // A user config, goal or fork command that meets a read in flight waits for
+    // it in Rust (RuntimeHost::native_rpc), so reads cannot starve it.
     const schedule = () => scheduleChildRefresh(state);
     state.send = () => {
       state.timer = undefined;
@@ -206,7 +201,6 @@ function SubagentChild({
               return {
                 key: identity,
                 value,
-                // A failure never replaces the last full read.
                 good:
                   typeof value === "object" && "turns" in value
                     ? value

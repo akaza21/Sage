@@ -42,8 +42,8 @@
   opacity: 1;
 }
 
-/* A restored value is the chat's choice, not yet reapplied to a running
-   session: it reads in the muted tone until the session reports it. */
+/* A restored value is the saved choice, muted until the live session reports
+   it. */
 .composer__model-group
   [data-restored]
   :is(.composer__model-label, .composer__effort-label) {

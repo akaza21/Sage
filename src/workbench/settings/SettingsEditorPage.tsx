@@ -17,7 +17,6 @@ import {
 import { usesMetaModifier } from "../../ui/shortcutLabel";
 import { GlobListSetting } from "./GlobListSetting";
 
-/** `editor.fontSize` becomes `editor-font-size`. */
 function controlId(key: EditorSettingKey) {
   return key
     .replace(".", "-")
@@ -150,11 +149,6 @@ function SelectSetting({
   );
 }
 
-/**
- * The Editor settings page, rendered from the catalogue: each group with a
- * visible entry, in catalogue order. A new setting needs a registry entry and,
- * only for a new kind of value, a new control here.
- */
 export function SettingsEditorPage({
   visible,
   controlsDisabled,
@@ -214,7 +208,6 @@ export function SettingsEditorPage({
                   spec={spec}
                   value={settings[spec.key]}
                   disabled={controlsDisabled}
-                  // The store admits the value, as it does every value.
                   onChange={(value) =>
                     setSettings({
                       [spec.key]:

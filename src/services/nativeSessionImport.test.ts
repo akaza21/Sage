@@ -89,7 +89,6 @@ it("reads imported history as settled Turns of the imported session", async () =
     turnId: "turn-1",
     payload: { role: "assistant", text: "Done" },
   });
-  // An unfinished last Turn never runs here: nothing in it stays live.
   expect(history?.turns[1]).toMatchObject({ state: "interrupted" });
   expect(history?.turns[1]?.items[0]).toMatchObject({ lifecycle: "cancelled" });
   invokeNative.mockResolvedValueOnce({

@@ -70,7 +70,6 @@ it("gives Quick Open a chord no other Editor or Global binding uses", () => {
       .filter((binding) => binding.scope !== "Agent")
       .map((binding) => binding.id),
   ).toEqual(["quickOpen"]);
-  // CP-48: in Agent mode only, Ctrl+P opens this Chat's Files picker (Codex 67).
   expect(
     matches
       .filter((binding) => binding.scope === "Agent")

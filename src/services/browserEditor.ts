@@ -30,7 +30,6 @@ const buffers = new Map<
   { request: BufferSnapshotRequest; fingerprint: string }
 >();
 const fixtureCreatedFiles = new Set<string>();
-// Files deleted "outside Sage" by a test, and the open Files' watches.
 const deletedFiles = new Set<string>();
 const watchers = new Map<
   string,
@@ -91,7 +90,6 @@ function readTextFile(resource: ResourceRef): TextFile {
   };
 }
 
-/** The File's text, or `null` when a test deleted it. */
 function diskIfPresent(resource: ResourceRef): string | null {
   return deletedFiles.has(resourceKey(resource)) ? null : diskContent(resource);
 }
@@ -105,7 +103,6 @@ function diskVersion(resource: ResourceRef) {
 function open(resource: ResourceRef): EditorDocument {
   const key = resourceKey(resource);
   const persisted = buffers.get(key);
-  // Without a buffer, a deleted File cannot be opened.
   const currentDiskContent = persisted
     ? diskIfPresent(resource)
     : diskContent(resource);
@@ -216,8 +213,6 @@ function save(resource: ResourceRef): EditorSaveResult {
   return { outcome: "saved", document: open(resource) };
 }
 
-/** Drops the buffer whether or not the File still exists, as native does. */
-/** Mirrors the native discard; `keepIfAbsent` is Reload's. */
 function discard(resource: ResourceRef, keepIfAbsent = false): EditorDocument {
   const key = resourceKey(resource);
   if (diskIfPresent(resource) === null) {
@@ -289,7 +284,6 @@ function resetCreatedFiles() {
   removedEntries.clear();
 }
 
-/** One watch per open File, as the native watch keeps. */
 function watch(resource: ResourceRef): EditorWatchSubscription {
   const key = resourceKey(resource);
   const injected = createInjectedEditorWatchDelivery();
@@ -317,10 +311,6 @@ function restoreListing(resource: ResourceRef) {
   }
 }
 
-/**
- * Test fixture: another program writes the File (`content`) or deletes it
- * (`null`), and its watches hear about it as the native watch reports.
- */
 function changeOnDisk(resource: ResourceRef, content: string | null) {
   const key = resourceKey(resource);
   if (content === null) {

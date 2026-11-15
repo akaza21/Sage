@@ -67,8 +67,6 @@ export interface SessionControlRequest {
   control: SessionControlIntent;
 }
 
-/** Undoes a turn's file changes or stops an activity; resolves with what
- * the agent says it did. */
 export async function controlAcpSession(
   request: SessionControlRequest,
 ): Promise<string | null> {

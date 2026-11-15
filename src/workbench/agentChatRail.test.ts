@@ -258,8 +258,6 @@ describe("agent chat rail", () => {
   });
 
   it("keeps a folder-named project's whole name past the typed-name limit", () => {
-    // A project added from a folder is named after it, with no 64-character
-    // cap; the rail shortens it with a CSS ellipsis, so the name stays whole.
     const name =
       "cross-platform-desktop-shell-with-an-extraordinarily-long-project-name-for-tests";
     const projects = [

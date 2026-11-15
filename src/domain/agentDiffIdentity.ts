@@ -14,7 +14,6 @@ export function isSnapshotDiffTab(
   );
 }
 
-/** Small shared identity helper; snapshot parsing/hashing remain lazy. */
 export function agentDiffKey(ref: AgentDiffRef): string {
   return `snapshot:${JSON.stringify([
     ref.projectId,

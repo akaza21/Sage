@@ -12,7 +12,6 @@ const loadSettingsSurface = () =>
     default: SettingsSurface,
   }));
 
-// Loads only once a Save All has something to report.
 const loadSaveAllNotice = () =>
   import("../features/files/SaveAllNotice").then(({ SaveAllNotice }) => ({
     default: SaveAllNotice,

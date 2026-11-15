@@ -54,11 +54,9 @@ it("opens Changes once the owner loads after the pane expands", () => {
     owner,
     selected: true,
   });
-  // An explicit close sticks for the rest of this expansion.
   act(() => useAgentChangesState.getState().close());
   rerender({ expanded: true, current: { ...owner } });
   expect(useAgentChangesState.getState().owner).toBeNull();
-  // Collapsing before the owner loads drops the request.
   rerender({ expanded: false, current: null });
   rerender({ expanded: true, current: null });
   rerender({ expanded: false, current: null });

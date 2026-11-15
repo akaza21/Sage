@@ -18,7 +18,6 @@ import { preloadSearchablePicker } from "../ui/searchablePickerLoad";
 import { useSideChatState } from "./sideChatState";
 import { resetAgentChatHistory } from "./agentChatHistory";
 
-// The picker list loads when the window first idles.
 beforeAll(() => preloadSearchablePicker());
 
 const initialState = useWorkbenchStore.getState();
@@ -122,7 +121,6 @@ describe("TitleBar center chrome", () => {
       <TitleBar mode="agent" onModeChange={vi.fn()} />,
     );
     const banner = screen.getByRole("banner");
-    // The chat header names the chat; the title bar does not repeat it.
     expect(within(banner).queryByText("Review")).toBeNull();
     expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "Forward" })).toBeDisabled();

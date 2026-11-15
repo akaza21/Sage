@@ -24,7 +24,6 @@ const ACP_PAGE_LIMITS = {
   activities: 128,
 } as const;
 
-/** Boolean capabilities every session reports. */
 const REQUIRED_CAPABILITIES = [
   "newSession",
   "resumeSession",
@@ -38,7 +37,6 @@ const REQUIRED_CAPABILITIES = [
   "childTranscriptRead",
   "collaborationEventProjection",
 ] as const;
-/** Capabilities carried only when the wire grants them. */
 const OPTIONAL_CAPABILITIES = [
   "promptResources",
   "promptImages",

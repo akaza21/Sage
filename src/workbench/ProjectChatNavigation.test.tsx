@@ -112,7 +112,6 @@ it("shows a green Awaiting approval pill only for a chat whose surface awaits ap
     screen.getByRole("button", { name: /^Open chat Beta(?:,|$)/ }),
   ).toHaveAccessibleName("Open chat Beta, Awaiting approval");
   expect(screen.getAllByText("Awaiting approval")).toHaveLength(1);
-  // The Turn still runs behind the pill, so its spinner follows (s6/f0526).
   expect(
     screen
       .getByRole("button", { name: /^Open chat Beta(?:,|$)/ })
@@ -518,7 +517,6 @@ it("records the read again when the chat on screen is reopened after Mark unread
       selected
     />,
   );
-  // The chat stays on screen, so nothing else records the read.
   fireEvent.click(
     screen.getByRole("button", { name: /^Open chat Beta(?:,|$)/ }),
   );

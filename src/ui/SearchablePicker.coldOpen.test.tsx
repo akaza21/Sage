@@ -151,7 +151,6 @@ it("opens a non-searchable list that arrives late without taking moved focus", a
   expect(elsewhere).toHaveFocus();
   fireEvent.keyDown(trigger, { key: "Escape" });
   expect(trigger).toHaveAttribute("aria-expanded", "false");
-  // The next open, with the list in, focuses the selected row again.
   fireEvent.click(trigger);
   await waitFor(() =>
     expect(screen.getByRole("option", { name: "Root A" })).toHaveFocus(),
