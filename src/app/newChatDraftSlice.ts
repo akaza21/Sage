@@ -72,8 +72,18 @@ export const createNewChatDraftSlice: StateCreator<
     newChatDraft: null,
     draftFocusRequest: 0,
     pendingFirstSend: null,
-    openNewChatDraft: async (projectId) =>
-      (await load()).openNewChatDraft(projectId),
+    openNewChatDraft: async (projectId) => {
+      const from = get();
+      const loaded = await load();
+      const now = get();
+      // A selection made while the actions loaded supersedes this open.
+      if (
+        now.project?.id === from.project?.id &&
+        now.activeTabId === from.activeTabId &&
+        now.chatOwnershipEpoch === from.chatOwnershipEpoch
+      )
+        return loaded.openNewChatDraft(projectId);
+    },
     updateNewChatDraft: (patch) => actions?.updateNewChatDraft(patch),
     selectDraftHarness: async (harnessId) =>
       (await load()).selectDraftHarness(harnessId),
