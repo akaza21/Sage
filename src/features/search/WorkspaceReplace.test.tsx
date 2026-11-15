@@ -93,7 +93,6 @@ function replaceGateway(): WorkspaceReplaceGateway {
               {
                 lineNumber: only?.lineNumber ?? 1,
                 columnNumber: only?.columnNumber ?? 7,
-                // The line Search showed for that match.
                 ...(only?.lineNumber === 2
                   ? { before: "oldName();", after: "newName();" }
                   : {
@@ -168,7 +167,6 @@ async function searchAndOpenReplace(
   });
   expect(screen.queryByLabelText("Replace text")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Toggle Replace" }));
-  // Replace loads on demand, so its row shows once its chunk is in.
   fireEvent.change(await screen.findByLabelText("Replace text"), {
     target: { value: "newName" },
   });
@@ -286,7 +284,6 @@ describe("Workspace Replace", () => {
         ],
       }),
     );
-    // The stale File is named, not written.
     expect(
       within(
         screen.getByRole("list", { name: "Files left as they are" }),
@@ -295,7 +292,6 @@ describe("Workspace Replace", () => {
       ),
     ).toBeVisible();
     expect(screen.queryByRole("dialog")).toBeNull();
-    // Search runs again, so results show the files as they now are.
     await waitFor(() => expect(search.search).toHaveBeenCalledTimes(2));
   });
 
@@ -451,8 +447,6 @@ describe("Workspace Replace", () => {
       );
       fireEvent.click(within(dialog).getByRole("button", { name: "Replace" }));
       await screen.findByText("Replaced 1 match in 1 file.");
-      // Only what differs is replaced, so the rest of the text keeps its
-      // marks and the cursor.
       expect(changes).toEqual([
         JSON.stringify({ from: 0, to: 3, insert: "new" }),
       ]);

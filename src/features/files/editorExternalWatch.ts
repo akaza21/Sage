@@ -23,12 +23,10 @@ export const WATCH_LIMIT_MESSAGE =
   "File is not watched: the external-change watch limit was reached. Focus this file to retry.";
 export const WATCH_UNAVAILABLE_MESSAGE =
   "File is not watched: external-change notifications could not start.";
-/** Shown quietly: the File is gone, and is watched again once it exists. */
 export const WATCH_MISSING_MESSAGE =
   "Not watched while the file is missing. Sage checks for it every few seconds.";
 const WATCH_RETRY_MS = 2_000;
 
-/** Returns the element whose focus means the user is back in this File. */
 export type EditorFocusBoundary = () => Element | null;
 
 export async function bindEditorExternalWatch(
@@ -57,13 +55,8 @@ export function isEditorWatchLimitError(error: unknown): boolean {
 }
 
 /**
- * Keeps one external-change watch for a ready File. When every native watch
- * slot is taken, the File stays editable and says it is not watched; the next
- * focus inside `focusBoundary` tries again.
- *
- * Returns the not-watched notice while this File has no watch, and null once
- * one starts. The notice is kept apart from the editor's operation message,
- * so an edit, snapshot or save cannot clear it while the File is unwatched.
+ * Returns the not-watched notice, or null once a watch starts. It is kept apart
+ * from the operation message, so an edit, snapshot or save cannot clear it.
  */
 export function useEditorExternalWatch(
   resource: ResourceRef | undefined,
@@ -96,7 +89,6 @@ export function useEditorExternalWatch(
     let applying = false;
     let pendingNotice: EditorExternalWatchNotice | undefined;
     let missing = false;
-    // Set while the File may have changed unseen: read once a watch starts.
     let reread = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     const editor = getWorkbenchPorts().editor;
@@ -106,8 +98,7 @@ export function useEditorExternalWatch(
         return;
       }
       // A deletion can take the File's folder, and the native watch with it,
-      // and no watch starts on a missing File. So the watch starts again
-      // once the File exists, and the File is read then.
+      // and no watch starts on a missing File.
       if (notice.kind === "deleted" && subscription) {
         const ended = subscription;
         subscription = undefined;
@@ -136,8 +127,6 @@ export function useEditorExternalWatch(
       );
     };
 
-    // Only focus entering this File's editor retries, so a click elsewhere, or
-    // focus moving within the editor, sends no watch request.
     const retryWhenFocused = (event: FocusEvent) => {
       const focusedEditor = boundary.current?.();
       if (
@@ -197,10 +186,8 @@ export function useEditorExternalWatch(
           const limited = isEditorWatchLimitError(error);
           const gone =
             missing || (active?.phase === "ready" && isDeletedOnDisk(active));
-          // Unseen while unwatched: read once a watch starts.
           if (gone) reread = true;
-          // Every slot taken is not a missing File: it waits for focus, as
-          // ever, without polling.
+          // A watch-limit failure waits for focus rather than polling.
           if (!limited && gone) {
             missing = true;
             retryTimer = setTimeout(tryStart, WATCH_RETRY_MS);
@@ -250,8 +237,6 @@ export async function applyEditorExternalWatchNotice(
   bridge: EditorStateBridge,
   editor: Pick<EditorPort, "openEditorDocument">,
 ): Promise<void> {
-  // The editor is read now, as the notice arrives; what the notice does
-  // loads with the first one, since most sessions never see one.
   const active = bridge.getActiveEditor();
   if (!active || !noticeMatchesWatch(notice, active.resource)) {
     return;

@@ -14,8 +14,8 @@ import {
   MAX_MARKDOWN_LIST_DEPTH,
 } from "./markdownLimits";
 
-// This module belongs to the demand-loaded markdown renderer. The instance
-// retains rules only: tokens, environments and source maps are per invocation.
+// The instance retains rules only: tokens, environments and source maps are per
+// invocation.
 const parser = new MarkdownIt({
   html: false,
   linkify: false,
@@ -75,7 +75,6 @@ parser.block.ruler.before(
   { alt: ["list"] },
 );
 
-// Preserve Sage's bounded inline presentation and file-link admission rules.
 // markdown-it owns block classification, never HTML rendering.
 parser.core.ruler.disable([
   "inline",
@@ -122,7 +121,6 @@ parser.block.ruler.before(
   },
 );
 
-// A source position for each visible top-level block, without retaining tokens.
 // Weak keys let unmounted documents and their offsets be collected together.
 const positions = new WeakMap<
   MarkdownPreviewDocument,
@@ -169,9 +167,8 @@ export function retainMarkdownPrefix(
   return prefix;
 }
 
-// List-item prose retains the existing character/item allowance. Every other
-// block, including nested containers and full code/table renderers, shares the
-// document block cap. Recount only the bounded retained streaming prefix.
+// List-item prose keeps the character/item allowance; every other block shares
+// the document block cap.
 function blockCost(block: MarkdownPreviewBlock, listItem = false): number {
   let cost = Number(!(listItem && block.kind === "paragraph"));
   if (block.kind === "quote")
@@ -217,7 +214,6 @@ export function adaptMarkdownTokens(
         break containers;
       }
       reset();
-      // One bounded budget per top-level block, shared by every descendant.
       let remainingBlocks = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS + 1;
       let remainingItems = MAX_MARKDOWN_PREVIEW_BLOCK_CHARS;
       let slot = 0;
@@ -268,8 +264,6 @@ export function adaptMarkdownTokens(
               break;
             }
             const retained = children(item.children, true);
-            // Discard markup-only paragraphs, but preserve their child containers
-            // and genuinely empty markers in their original owner.
             if (item.children.length && !retained.length) continue;
             remainingItems--;
             items.push({ ...item, children: retained });
@@ -290,8 +284,6 @@ export function adaptMarkdownTokens(
           };
         if (raw.kind === "code") return { ...raw, text: literal(raw.text) };
         if (raw.kind === "rule") return raw;
-        // A heading is one line: its soft breaks read as spaces. A
-        // paragraph keeps them for the surface to break or join.
         const text = inline(
           raw.kind === "heading" ? raw.text.replace(/\n/gu, " ") : raw.text,
           nested ? slot : undefined,

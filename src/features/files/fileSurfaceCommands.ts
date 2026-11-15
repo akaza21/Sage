@@ -14,19 +14,13 @@ export interface FileSurfaceCommandActions {
   closeGoToLine: () => void;
   openFind: () => void;
   openReplace: () => void;
-  /** Steps through the find bar's matches, opening it when closed. */
   moveFind: (direction: 1 | -1) => void;
   openGoToLine: () => void;
   goToLocalSymbol: () => void;
   save: () => void;
 }
 
-/**
- * Editor chords from the keymap registry, matched with the platform's own
- * modifier: Command+S/F and Control+G on macOS, Control+S/F/G elsewhere.
- * Replace and Find next follow VS Code: Command+Option+F and Command+G on
- * macOS (Command+H hides the app), Control+H and F3 elsewhere.
- */
+/** Replace is Command+Option+F on macOS because Command+H hides the app. */
 export function handleFileSurfaceCommandKey(
   event: {
     key: string;
@@ -47,7 +41,6 @@ export function handleFileSurfaceCommandKey(
     if (!actions.previewing) actions.goToLocalSymbol();
     return true;
   }
-  // Escape dismisses whatever modifiers are held, as it always has.
   if (event.key === "Escape") {
     if (actions.previewing) {
       event.preventDefault();
@@ -98,7 +91,6 @@ export function handleFileSurfaceCommandKey(
   return false;
 }
 
-/** Names the platform's save chord: Cmd+S on macOS, Ctrl+S elsewhere. */
 export function unsavedState(apple: boolean) {
   const [chord] = formatKeymapChords(keymapBinding("save"), apple);
   return {

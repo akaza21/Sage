@@ -1,6 +1,5 @@
 import { browserCaptureScreenshot } from "../../ports/nativeBrowserPort";
 
-/** Copies a captured page PNG (base64, at most 2 MB) to the clipboard. */
 export async function copyPngToClipboard(pngBase64: string): Promise<void> {
   if (!pngBase64.startsWith("iVBORw0KGgo") || pngBase64.length > 2_000_000) {
     throw new Error("invalid screenshot result");
@@ -16,7 +15,6 @@ export async function copyPngToClipboard(pngBase64: string): Promise<void> {
   ]);
 }
 
-/** Copies only while the requesting page is still current. */
 export async function copyPageScreenshot(
   tabId: string,
   revision: string,

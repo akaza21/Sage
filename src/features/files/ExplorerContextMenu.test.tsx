@@ -81,7 +81,6 @@ it("selects a File without opening it and offers its actions at its row (ED-18)"
   act(() => {
     fileRow().dispatchEvent(event);
   });
-  // The webview's own menu (Reload, Inspect) does not show over it.
   expect(event.defaultPrevented).toBe(true);
   expect(useWorkbenchStore.getState().selectedResource).toEqual(file);
   expect(openFile).not.toHaveBeenCalled();
@@ -93,7 +92,6 @@ it("selects a File without opening it and offers its actions at its row (ED-18)"
     ).toHaveFocus(),
   );
 
-  // Escape gives the focus back to the row, not the "…" button.
   fireEvent.keyDown(menu(), { key: "Escape" });
   await waitFor(() => expect(fileRow()).toHaveFocus());
 });
@@ -162,7 +160,6 @@ it("opens from the keyboard's context-menu key without a contextmenu event", asy
   render(<ExplorerSurface />);
   fireEvent.keyDown(fileRow(), { key: "F10", shiftKey: true });
   expect(menu()).toBeVisible();
-  // The menu is the row's, not the button's.
   expect(
     screen.getByRole("button", { name: "More Explorer actions" }),
   ).toHaveAttribute("aria-expanded", "false");

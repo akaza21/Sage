@@ -15,8 +15,6 @@ interface Structure {
   items?: Structure[][];
 }
 
-// Inline text, formatting and tight/loose paragraph wrappers are immaterial
-// here. Container ownership, list boundaries, starts and heading levels are not.
 function structure(block: MarkdownPreviewBlock): Structure {
   if (block.kind === "heading") return { kind: block.kind, level: block.level };
   if (block.kind === "quote")
@@ -76,9 +74,6 @@ describe("CommonMark list paragraph interruption sweep", () => {
 
   // Spec 5.2 exception 1 and examples 281/285/294:
   // https://spec.commonmark.org/0.31.2/#list-items
-  // Empty siblings continue the existing list; an empty nested list cannot
-  // interrupt a paragraph, but can start after a blank line. These literal
-  // structures follow the reference HTML, ignoring tight/loose wrappers.
   const cases = [
     {
       marker: "+",

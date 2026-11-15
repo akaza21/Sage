@@ -25,12 +25,10 @@ describe("Quick Open input", () => {
       line: 40,
       column: null,
     });
-    // Not a position: a colon inside the name, or line 0.
     expect(parseQuickOpenInput("a:b")).toMatchObject({
       query: "a:b",
       line: null,
     });
-    // A ":" being typed already counts as the suffix.
     expect(parseQuickOpenInput("app:")).toEqual({
       query: "app",
       line: null,

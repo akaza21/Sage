@@ -1,4 +1,3 @@
-/** What the toolbar asks for; the scale follows from the pane. */
 export interface BrowserDeviceSize {
   preset: string;
   width: number;
@@ -28,7 +27,6 @@ export function clampDeviceSide(value: number): number {
   );
 }
 
-/** The room the device has inside the page frame, less the gutter. */
 export function deviceArea(frame: BrowserDeviceArea): BrowserDeviceArea {
   return {
     width: Math.max(0, Math.floor(frame.width - 2 * GUTTER_SIDE)),
@@ -36,7 +34,6 @@ export function deviceArea(frame: BrowserDeviceArea): BrowserDeviceArea {
   };
 }
 
-/** Responsive opens at the size of the room it has, as in Codex. */
 export function responsiveDevice(area: BrowserDeviceArea): BrowserDeviceSize {
   return {
     preset: RESPONSIVE,
@@ -49,8 +46,6 @@ export function rotateDevice(current: BrowserDeviceSize): BrowserDeviceSize {
   return { ...current, width: current.height, height: current.width };
 }
 
-/** The whole percent the device is drawn at so it fits, at most 100%.
- * Null while the pane has no room to measure. */
 export function fitScalePercent(
   size: BrowserDeviceSize,
   area: BrowserDeviceArea,
@@ -64,7 +59,6 @@ export function fitScalePercent(
   return Math.max(MIN_SCALE_PERCENT, Math.floor(fit));
 }
 
-/** The size the device takes on screen at a scale. */
 export function drawnDeviceSize(
   size: BrowserDeviceSize,
   scalePercent: number,

@@ -378,7 +378,6 @@ it("marks an unconfirmed reset instead of guessing which device is on", async ()
   expect(screen.getByRole("status")).toHaveTextContent("Unconfirmed");
   expect(screen.getByRole("toolbar", { name: "Device toolbar" })).toBeVisible();
   expect(setDeviceInvoke).toHaveBeenCalledTimes(2);
-  // The next change is sent whatever the toolbar shows, and clears the mark.
   fireEvent.click(screen.getByRole("button", { name: "Rotate" }));
   await waitFor(() => expect(setDeviceInvoke).toHaveBeenCalledTimes(3));
   expect(setDeviceInvoke).toHaveBeenLastCalledWith(
@@ -553,7 +552,6 @@ it("restores the Unconfirmed warning on remount without touching the page", asyn
   expect(screen.getByRole("status")).toHaveTextContent("Unconfirmed");
   await act(async () => undefined);
   expect(setDeviceInvoke).not.toHaveBeenCalled();
-  // Closing is the recovery: it sends the reset whatever the toolbar shows.
   fireEvent.click(screen.getByRole("button", { name: "Close device toolbar" }));
   await waitFor(() =>
     expect(setDeviceInvoke).toHaveBeenCalledWith(tab.id, null),

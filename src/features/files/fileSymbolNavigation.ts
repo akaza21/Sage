@@ -9,7 +9,6 @@ import type { EditorAdapterHandle } from "./EditorAdapter";
 import { contentText, sameContent } from "./editorContent";
 import type { ActiveEditorState } from "./fileEditorController";
 
-/** Navigate only if the requested File and buffer survive syntax loading. */
 export async function navigateFileSymbol(
   input: EditorAdapterHandle | null,
   resource: ResourceRef | undefined,

@@ -19,7 +19,6 @@ interface SignInProvider {
   start: () => Promise<void>;
 }
 
-/** Curated sign-in providers: the harnesses with a native status check. */
 const PROVIDERS: Readonly<Record<string, SignInProvider>> = {
   "claude-code": {
     status: async () => (await acpDesktop.getClaudeAuthStatus()).loggedIn,
@@ -89,7 +88,6 @@ function stopPolling(harnessId: string) {
   polls.delete(harnessId);
 }
 
-/** Opens the harness's own sign-in and checks it on a bounded schedule. */
 export function startHarnessSignIn(harnessId: string): Promise<void> {
   const pending = polls.get(harnessId)?.starting;
   if (pending) return pending;
@@ -159,7 +157,6 @@ export function resetHarnessSignInForTest() {
   listeners.clear();
 }
 
-/** The picker-row action for a harness's current sign-in state. */
 export function harnessSignInAction(
   harnessId: string,
   harnessName: string,

@@ -155,7 +155,6 @@ it("follows exits Rust makes itself and ignores other tabs", async () => {
   rustSays("browser-1", true);
   rustSays("browser-2", false);
   expect(button).toHaveAttribute("aria-pressed", "true");
-  // Navigation, hide, close or Escape in the page: Rust leaves and says so.
   rustSays("browser-1", false);
   expect(button).toHaveAttribute("aria-pressed", "false");
 });
@@ -169,7 +168,6 @@ it("on Escape at the control drops a waiting element first, then leaves", async 
   expect(onControl).not.toHaveBeenCalled();
   fireEvent.keyDown(button, { key: "Escape" });
   expect(onControl).toHaveBeenLastCalledWith("annotateCancel");
-  // Rust dropped the element and Annotate stays on.
   rustSays("browser-1", true);
   fireEvent.keyDown(button, { key: "Escape" });
   expect(onControl).toHaveBeenLastCalledWith("annotateOff");
@@ -253,7 +251,6 @@ it("covers the page frame with the comment box while an element waits", async ()
       action: "annotateFrame",
     }),
   );
-  // Rust resumes hovering once the comment is done or cancelled.
   rustSays("browser-1", true);
   expect(screen.queryByRole("dialog")).toBeNull();
   rustSays("browser-1", true, { selection });

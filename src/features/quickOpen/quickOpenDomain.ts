@@ -42,17 +42,12 @@ export type QuickOpenInvoke = (
 
 let lastStamp = 0;
 
-/**
- * Increasing numbers for generations and sessions. Native keeps the highest
- * generation it has seen across webview reloads, so these start from the
- * clock rather than from zero.
- */
+/** Native keeps the highest generation across webview reloads, so these start from the clock, not zero. */
 export function nextQuickOpenStamp(now = Date.now()): number {
   lastStamp = Math.max(now * 1000, lastStamp + 1);
   return lastStamp;
 }
 
-/** Splits a trailing `:line` or `:line:column` from what was typed. */
 export function parseQuickOpenInput(text: string): {
   query: string;
   line: number | null;
@@ -121,7 +116,6 @@ export function parseQuickOpenResponse(value: unknown): QuickOpenResponse {
   };
 }
 
-/** `text` cut into runs, each marked whether it holds matched characters. */
 export function highlightRuns(
   text: string,
   offset: number,
@@ -144,10 +138,7 @@ export function highlightRuns(
   return runs;
 }
 
-/**
- * The keys of a shortcut label such as "Ctrl+Shift+P", one per keycap. A
- * literal "+" key ("Ctrl++") stays a key of its own.
- */
+/** A literal "+" key ("Ctrl++") stays a key of its own. */
 export function shortcutKeys(label: string): string[] {
   return label.split(/\+(?=.)/).filter(Boolean);
 }

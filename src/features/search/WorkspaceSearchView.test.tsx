@@ -461,7 +461,6 @@ describe("Workspace Search view", () => {
       "dist/bundle.ts",
     ];
 
-    /** A gateway that filters sample files with the real matcher, as native Search would. */
     function filteringGateway() {
       return vi.fn(
         async (request: {
@@ -656,7 +655,6 @@ describe("Workspace Search view", () => {
         },
       });
     });
-    // The setting retires the shown result like any other criterion.
     expect(screen.queryByText("stop")).toBeNull();
     submitWorkspaceSearch();
     await waitFor(() => expect(search).toHaveBeenCalledTimes(2));
@@ -698,7 +696,6 @@ describe("Workspace Search view", () => {
     });
     expect(await screen.findByText("stop")).toBeVisible();
 
-    // An equal list with a new identity is no change.
     act(() => {
       useEditorSettingsStore.setState({
         settings: {

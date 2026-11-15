@@ -9,10 +9,8 @@ import {
 const TOGGLE = "browser-developer-mode";
 
 /**
- * Settings › Browser › Developer mode, after Codex ref 65 (ADR-0009b). Rust
- * owns the switch; this reads it and writes it, with no copy of its own.
  * Turning it on grants nothing: each browser session still needs the user's
- * approval on its own card. Hidden where the browser has no CDP.
+ * approval on its own card.
  */
 export function BrowserDeveloperModeSetting() {
   const [mode, setMode] = useState<BrowserDeveloperMode | null>(null);

@@ -10,8 +10,6 @@ import type { EditorView } from "@codemirror/view";
 import { useWorkbenchStore, type WorkbenchState } from "../../../app/store";
 import type { ResourceRef } from "../../../domain/workbench";
 
-// The gutter's lazy entry: nothing here loads until a File in a
-// repository opens with `editor.gitGutter` on.
 let cache: ReturnType<typeof createGutterBaseCache> | null = null;
 
 export function gutterBases() {
@@ -28,7 +26,6 @@ export function attachSharedGitGutter(
   return attachGitGutter(view, sharedGutterWorkerPool(), knownText);
 }
 
-/** Subscribe and coalesce base reloads only after the gutter has loaded. */
 export function watchGitGutterBase(handle: GitGutter, resource: ResourceRef) {
   let current = true;
   let loading = false;
