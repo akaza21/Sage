@@ -74,7 +74,7 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
     let assistant = bridge.inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_1","content":[
         {"type":"text","text":"Writing"},
         {"type":"tool_use","id":"toolu_1","name":"Write","input":{"file_path":"/w/a.txt","content":"x\n"}}
-    ]}})).unwrap();
+    ],"usage":{"input_tokens":2,"output_tokens":4,"cache_read_input_tokens":100,"cache_creation_input_tokens":0}}})).unwrap();
     let tool = updates(&assistant);
     assert_eq!(tool.len(), 1, "streamed text is not repeated");
     assert_eq!(
@@ -142,6 +142,65 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
     assert_eq!(result.acp[1]["id"], 3);
     assert_eq!(result.acp[1]["result"]["stopReason"], "end_turn");
     assert_eq!(result.acp[1]["result"]["usage"]["totalTokens"], 106);
+}
+
+#[test]
+fn the_context_reported_is_the_last_main_thread_call_not_the_turns_summed_spend() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    for (input, cached, output) in [(10, 40_000, 300), (5, 41_000, 120)] {
+        bridge
+            .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[],
+                "usage":{"input_tokens":input,"output_tokens":output,"cache_read_input_tokens":cached,"cache_creation_input_tokens":0}}}))
+            .unwrap();
+    }
+    bridge
+        .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"synthetic","content":[],
+            "usage":{"input_tokens":0,"output_tokens":0}}}))
+        .unwrap();
+    let result = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+        "usage":{"input_tokens":15,"output_tokens":420,"cache_read_input_tokens":81_000,"cache_creation_input_tokens":0},
+        "modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}})).unwrap();
+    assert_eq!(
+        updates(&result)[0],
+        &json!({"sessionUpdate":"usage_update","used":41_125,"size":1_000_000})
+    );
+    assert_eq!(result.acp[1]["result"]["usage"]["totalTokens"], 81_435);
+
+    prompt(&mut bridge, 4);
+    bridge
+        .inbound(json!({"type":"system","subtype":"compact_boundary",
+            "compact_metadata":{"trigger":"manual","pre_tokens":41_125,"post_tokens":3_200}}))
+        .unwrap();
+    let compacted = bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+        "usage":{"input_tokens":0,"output_tokens":0},
+        "modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert_eq!(
+        updates(&compacted)[0],
+        &json!({"sessionUpdate":"usage_update","used":3_200,"size":1_000_000})
+    );
+}
+
+#[test]
+fn no_context_is_reported_before_any_model_call_states_one() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let result = bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+        "usage":{"input_tokens":0,"output_tokens":0},
+        "modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert!(
+        updates(&result)
+            .iter()
+            .all(|update| update["sessionUpdate"] != "usage_update")
+    );
 }
 
 #[test]

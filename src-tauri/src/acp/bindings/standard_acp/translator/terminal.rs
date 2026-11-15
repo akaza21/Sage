@@ -83,9 +83,11 @@ impl StandardAcpTranslator {
         let running = self.turn_running();
         self.pending_prompt = None;
         self.record_terminal(request_id.as_str(), terminal);
+        // The prompt's usage is the turn's spend, not what the context holds.
         let usage = frame
             .get("result")
             .and_then(Value::as_object)
+            .filter(|_| !self.context_reported)
             .and_then(|result| usage_event(usage_object(result), self.context_window));
         let mut events = Vec::new();
         events.extend(running);

@@ -37,6 +37,9 @@ impl SdkBridge {
                 } else {
                     " automatically"
                 };
+                if let Some(after) = tokens("post_tokens") {
+                    self.context_tokens = Some(after);
+                }
                 let text = match (tokens("pre_tokens"), tokens("post_tokens")) {
                     (Some(before), Some(after)) => format!(
                         "Claude Code compacted the conversation{how}, from {before} to {after} tokens."

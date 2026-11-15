@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+use super::usage::{context_tokens, context_window};
 use super::{
     BridgeError, Inbound, MAX_TRACKED_TOOLS, Pending, RECENT_STREAMED_MESSAGES, SdkBridge,
     acp_error, acp_result,
@@ -212,6 +213,9 @@ impl SdkBridge {
             self.auth_failed = true;
         }
         let message = &sdk["message"];
+        if let Some(tokens) = context_tokens(&message["usage"]) {
+            self.context_tokens = Some(tokens);
+        }
         let streamed = message
             .get("id")
             .and_then(Value::as_str)
@@ -341,9 +345,9 @@ impl SdkBridge {
             count("cache_creation_input_tokens"),
         );
         let total = input + output + cache_read + cache_write;
-        if let Some(size) = context_window(sdk) {
+        if let (Some(used), Some(size)) = (self.context_tokens, context_window(sdk)) {
             inbound.acp.push(
-                self.update(json!({"sessionUpdate": "usage_update", "used": total, "size": size})),
+                self.update(json!({"sessionUpdate": "usage_update", "used": used, "size": size})),
             );
         }
         let failed = sdk.get("is_error").and_then(Value::as_bool) == Some(true);
@@ -387,14 +391,6 @@ impl Pending {
             | Self::Fork(_) => None,
         }
     }
-}
-
-fn context_window(sdk: &Value) -> Option<u64> {
-    sdk.get("modelUsage")?
-        .as_object()?
-        .values()
-        .filter_map(|usage| usage.get("contextWindow").and_then(Value::as_u64))
-        .max()
 }
 
 fn stop_reason(sdk: &Value) -> &'static str {

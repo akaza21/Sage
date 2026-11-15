@@ -25,6 +25,24 @@ pub(in crate::acp::bindings::claude::sdk) enum UsageReply {
     Unsupported,
 }
 
+/// A model call's prompt, cached or not, plus its reply; `None` for Claude
+/// Code's synthetic error replies, which report no prompt.
+pub(super) fn context_tokens(usage: &Value) -> Option<u64> {
+    let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
+    let prompt = count("input_tokens")
+        + count("cache_read_input_tokens")
+        + count("cache_creation_input_tokens");
+    (prompt > 0).then(|| prompt + count("output_tokens"))
+}
+
+pub(super) fn context_window(sdk: &Value) -> Option<u64> {
+    sdk.get("modelUsage")?
+        .as_object()?
+        .values()
+        .filter_map(|usage| usage.get("contextWindow").and_then(Value::as_u64))
+        .max()
+}
+
 /// The read asks only for the limits; the transcript scan behind `/usage`'s
 /// breakdown reads a week of local transcripts that Sage never shows.
 pub(super) fn read_request() -> Value {

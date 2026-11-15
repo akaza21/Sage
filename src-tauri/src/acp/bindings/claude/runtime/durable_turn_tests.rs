@@ -138,8 +138,8 @@ fn two_prompts_in_one_epoch_persist_both_agent_messages_and_both_usage_snapshots
     assert_eq!(
         usage,
         [
-            ("turn-one".to_owned(), 2, 4, Some(1_000_000)),
-            ("turn-two".to_owned(), 2, 4, Some(1_000_000)),
+            ("turn-one".to_owned(), 23_753, 0, Some(1_000_000)),
+            ("turn-two".to_owned(), 23_753, 0, Some(1_000_000)),
         ]
     );
 
