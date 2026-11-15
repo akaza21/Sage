@@ -1,10 +1,6 @@
 import { useEffect, useReducer, useRef, useState } from "react";
-import {
-  Link2,
-  MessageCircleQuestion,
-  MessageSquare,
-  Unlink2,
-} from "../../ui/leanIcons";
+import { Link2, MessageSquare } from "../../ui/leanIcons";
+import { MessageCircleQuestion, Unlink2 } from "../../ui/leanIconNodesLazy";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
 import type { BrowserOperationProjection } from "../../domain/browserOperation";

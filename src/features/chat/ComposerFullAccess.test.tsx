@@ -69,6 +69,7 @@ const session = {
 function renderControl(target: typeof session | null = session) {
   return render(
     <ComposerAccessControl
+      harnessName="Fixture"
       bindingId="claude-agent-acp"
       capabilities={claude}
       sessionConfig={

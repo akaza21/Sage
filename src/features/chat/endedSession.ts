@@ -1,4 +1,3 @@
-import { useMemo } from "react";
 import type { AcpChatPage } from "../../domain/acpProjection";
 
 export interface EndedSession {
@@ -6,13 +5,16 @@ export interface EndedSession {
   bindingId: string;
 }
 
+/** A chat's sessions, read for the one it ran last. */
+export type EndedPage = Pick<AcpChatPage, "currentSessionId" | "sessions">;
+
 /**
  * The session a chat with no head ran last. The session its next send
  * starts on the same binding takes that session's access, unless the access
  * needs a confirmation (`store::preceding_session`, `carry_chat_access`).
  */
 export function endedSession(
-  page: Pick<AcpChatPage, "currentSessionId" | "sessions"> | null | undefined,
+  page: EndedPage | null | undefined,
 ): EndedSession | undefined {
   if (!page || page.currentSessionId) return undefined;
   let last: AcpChatPage["sessions"][number] | undefined;
@@ -21,17 +23,4 @@ export function endedSession(
       last = session;
   }
   return last && { id: last.id, bindingId: last.bindingId };
-}
-
-/** The chat's `endedSession`, kept the same object while it is the same. */
-export function useEndedSession(
-  page: Pick<AcpChatPage, "currentSessionId" | "sessions"> | null | undefined,
-): EndedSession | undefined {
-  const ended = endedSession(page);
-  const id = ended?.id;
-  const bindingId = ended?.bindingId;
-  return useMemo(
-    () => (id && bindingId ? { id, bindingId } : undefined),
-    [id, bindingId],
-  );
 }

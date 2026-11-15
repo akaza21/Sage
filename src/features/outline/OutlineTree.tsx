@@ -6,8 +6,8 @@ import {
   Folder,
   ListTree,
   SquareFunction,
-  Target,
 } from "../../ui/leanIcons";
+import { Target } from "../../ui/leanIconNodesLazy";
 import { useMemo, useState, type CSSProperties } from "react";
 
 import { outlineKindLabel } from "./outlineCard";

@@ -12,6 +12,7 @@ import {
   useComposerDictation,
 } from "./composerChrome";
 import { ComposerImageInput } from "./ComposerImageInput";
+import { ComposerLocationStrip } from "./ComposerLocationStrip";
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { useComposerFiles } from "./useComposerFiles";
@@ -78,6 +79,7 @@ export function ChatComposerRegion({
   disabledReason,
   onRetryLoad,
   project,
+  newChat = false,
   usage,
   usageRequest,
   goal,
@@ -123,11 +125,14 @@ export function ChatComposerRegion({
     imageInput.sendBlocked ||
     paste.blocksSend;
   const queueing = activeTurn && queueAvailable && !composerDisabled;
+  const optionsTriggerId = `${fieldId}-options`;
+  const projectName = composerWorkspaceName(project);
   const files = useComposerFiles({
     text,
     chatId: dictationScope,
     fieldRef: composerRef,
     fieldId,
+    attachAnchorId: optionsTriggerId,
     imageAction: imageInput.action,
     onPickFiles: paste.pickFiles,
     hidden,
@@ -167,6 +172,12 @@ export function ChatComposerRegion({
         }}
       >
         <div className="composer__slots">
+          {newChat && projectName ? (
+            <ComposerLocationStrip
+              projectName={projectName}
+              disabled={actionBusy || projectTransitioning}
+            />
+          ) : null}
           {otherContext.length < attachedContext.length ? (
             <TranscriptPart
               part="ComposerAnnotations"
@@ -338,11 +349,12 @@ export function ChatComposerRegion({
               inheritScope={dictationScope}
               accessTarget={accessTarget}
               addActions={{
-                imageAction: imageInput.action,
+                onAttachFiles: files.attach,
+                attachRefusalChatId: files.refusalChatId,
                 onOpenGoal: goalDetails.onOpen,
                 onCompact,
               }}
-              attachSlot={files.attachButton}
+              optionsTriggerId={optionsTriggerId}
               availableBinding={availableBinding}
               canPrompt={canPrompt}
               discoveryPhase={discoveryPhase}
@@ -350,7 +362,7 @@ export function ChatComposerRegion({
               sessionModelId={sessionModelId}
               selectedHarnessId={selectedHarnessId}
               selectedModelId={selectedModelId}
-              projectName={composerWorkspaceName(project)}
+              projectName={projectName}
               turnBusy={actionBusy || activeTurn}
               sessionConfig={sessionConfig}
               modePending={modePending}

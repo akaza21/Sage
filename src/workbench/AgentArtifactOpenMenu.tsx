@@ -1,5 +1,6 @@
 import type { RefObject } from "react";
-import { Copy, SquareArrowOutUpRight } from "../ui/leanIcons";
+import { Copy } from "../ui/leanIcons";
+import { SquareArrowOutUpRight } from "../ui/leanIconNodesLazy";
 import { MenuPopover } from "../ui/MenuPopover";
 export function AgentArtifactOpenMenu({
   id,

@@ -10,7 +10,7 @@ import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { ChatUsage } from "./acp/chatUsage";
 import type { PasteAttachability } from "./composerPasteText";
-import type { EndedSession } from "./endedSession";
+import type { EndedPage } from "./endedSession";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
 
 /** Whose access the composer offers: the session's binding, and the chat
@@ -19,7 +19,7 @@ import type { AcpUsageRequest } from "../../domain/acpUsage";
 export interface ComposerAccessTarget {
   bindingId?: string | null;
   draftChatId?: string;
-  endedSession?: EndedSession;
+  endedPage?: EndedPage;
 }
 
 export interface ChatComposerRegionProps {
@@ -79,7 +79,9 @@ export interface ChatComposerRegionProps {
   missingBindingNotice: boolean;
   disabledReason: string | null;
   onRetryLoad?: (() => void) | null;
+  /** The chat's project; none for a side chat, which cannot switch it. */
   project: { name: string } | null | undefined;
+  newChat?: boolean;
   usage: ChatUsage | null;
   usageRequest?: AcpUsageRequest | null;
   goal: AcpGoalState;

@@ -1,4 +1,5 @@
-import { Maximize2, Pause, Target, Trash2 } from "../../ui/leanIcons";
+import { Maximize2, Trash2 } from "../../ui/leanIcons";
+import { Pause, Target } from "../../ui/leanIconNodesLazy";
 import { useRef, useState, type RefObject } from "react";
 import type { AcpGoalState } from "../../domain/acpGoal";
 import "../../styles/chat-goal.css";

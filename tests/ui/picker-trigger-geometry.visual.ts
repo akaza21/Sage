@@ -167,7 +167,7 @@ for (const width of [1280, 960, 480]) {
         [".composer__model-trigger", ".composer__model-label"],
         [".composer__effort-picker", ".composer__effort-label"],
         [
-          ".project-scope .searchable-picker__trigger",
+          ".composer__location .searchable-picker__trigger",
           ".searchable-picker__trigger-label",
         ],
       ]) {
@@ -180,7 +180,7 @@ for (const width of [1280, 960, 480]) {
 }
 
 for (const width of [1280, 960]) {
-  test(`model, effort and project triggers keep the tight gap at ${width}px`, async ({
+  test(`model and effort triggers keep the tight gap at ${width}px`, async ({
     page,
   }) => {
     await page.setViewportSize({ width, height: 900 });
@@ -198,10 +198,6 @@ for (const width of [1280, 960]) {
     for (const [selector, label] of [
       [".composer__model-trigger", ".composer__model-label"],
       [".composer__effort-picker", ".composer__effort-label"],
-      [
-        ".project-scope .searchable-picker__trigger",
-        ".searchable-picker__trigger-label",
-      ],
     ]) {
       const control = composer.locator(selector);
       await expect(control).toBeVisible();

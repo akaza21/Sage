@@ -1,5 +1,6 @@
-import { useRef, useState, type ComponentProps } from "react";
-import { ComposerAttachButton, ComposerFileParts } from "./ComposerFileContext";
+import { useState, type ComponentProps } from "react";
+import { ComposerFileParts } from "./ComposerFileContext";
+import { imagesOffered } from "./useComposerImageInput";
 
 export function useComposerFileContext(text: string) {
   const [mentionArmed, setMentionArmed] = useState(false);
@@ -15,23 +16,16 @@ export function useComposerFileContext(text: string) {
 export function useComposerFiles({
   attachable,
   ...parts
-}: Omit<ComponentProps<typeof ComposerFileParts>, "files" | "triggerRef"> & {
+}: Omit<ComponentProps<typeof ComposerFileParts>, "files"> & {
   attachable: boolean;
 }) {
   const files = useComposerFileContext(parts.text);
-  // The attach button, which the attach part's menu anchors on.
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
+  const attach = attachable && !parts.disabled ? files.pressAttach : undefined;
   return {
-    parts: (
-      <ComposerFileParts files={files} triggerRef={triggerRef} {...parts} />
-    ),
-    attachButton: attachable ? (
-      <ComposerAttachButton
-        files={files}
-        triggerRef={triggerRef}
-        fieldId={parts.fieldId}
-        disabled={parts.disabled}
-      />
-    ) : null,
+    parts: <ComposerFileParts files={files} {...parts} />,
+    attach,
+    /** Images keep the attach menu open where files are refused. */
+    refusalChatId:
+      attach && !imagesOffered(parts.imageAction) ? parts.chatId : undefined,
   };
 }

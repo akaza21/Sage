@@ -5,6 +5,7 @@ import { hasActiveAcpTurn } from "../../app/acpProjectionRegistry";
 import { Folder } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import type { MenuPlacement } from "../../ui/menuPopoverPosition";
+import "./project-scope-menu-item.css";
 
 export function ProjectScopeChip({
   projectName,
@@ -42,7 +43,6 @@ export function ProjectScopeChip({
   );
   return (
     <span
-      data-overflow-control="project"
       role={candidates.length === 0 ? "img" : undefined}
       aria-label={
         candidates.length === 0 ? `Project: ${projectName}` : undefined
@@ -65,7 +65,7 @@ export function ProjectScopeChip({
           portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
           popoverClassName="composer__popover composer__project-menu"
           popoverPlacement={popoverPlacement}
-          ariaLabel={`Project: ${projectName}`}
+          ariaLabel={menuItem ? "Work in a project" : `Project: ${projectName}`}
           stateTitle={`Project: ${projectName}`}
           triggerIcon={
             <Folder
@@ -73,6 +73,16 @@ export function ProjectScopeChip({
               size={14}
               aria-hidden="true"
             />
+          }
+          triggerLabel={
+            menuItem ? (
+              <>
+                Work in a project
+                <span className="composer__action-description">
+                  Choose project for new chats
+                </span>
+              </>
+            ) : undefined
           }
           open={open}
           onOpenChange={onOpenChange}

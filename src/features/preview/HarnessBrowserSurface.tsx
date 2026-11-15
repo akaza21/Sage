@@ -1,10 +1,5 @@
-import {
-  ChevronLeft,
-  MoreHorizontal,
-  RotateCw,
-  ChevronRight,
-  X,
-} from "../../ui/leanIcons";
+import { MoreHorizontal, ChevronRight, X } from "../../ui/leanIcons";
+import { ChevronLeft, RotateCw } from "../../ui/leanIconNodesLazy";
 
 import {
   useId,
