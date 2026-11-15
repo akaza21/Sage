@@ -522,8 +522,49 @@ fn token_shaped_words_without_secrets_stay_in_prose() {
         "push to git@github.com:org/repo.git as alice@example.test at 10:30",
         "the design=final signature=pending Sig: done",
         r"C:\keys\keyboard=US and /srv/notes:today",
+        "meet at 12:00@noon, ratio 1:2@3x, HH:MM@UTC",
+        "ping bob:x@y.com and pull img:tag@sha512:zz",
     ] {
         assert_eq!(redact("text", input, 4096, Mode::Prose).unwrap(), input);
+    }
+    for input in [
+        "meet at 12:00@noon, ratio 1:2@3x, HH:MM@UTC",
+        "ping bob:x@y.com and pull img:tag@sha512:zz",
+    ] {
+        assert_eq!(
+            redact("text", input, 4096, Mode::CommandOutput).unwrap(),
+            input
+        );
+    }
+}
+
+#[test]
+fn source_locations_with_secret_like_file_names_stay_visible() {
+    for input in [
+        "see src/auth/token.rs:42 and src-tauri/src/acp/redaction/secrets.rs:66",
+        "[x](~/proj/src/token.rs:12) and credentials.rs:151.",
+        "error at token.rs:42:7, password.py:10-20 and secrets.rs:3:1-9",
+    ] {
+        for mode in [Mode::Prose, Mode::CommandOutput] {
+            assert_eq!(
+                redact("text", input, 4096, mode).unwrap(),
+                input,
+                "{mode:?}"
+            );
+        }
+    }
+    for (input, secret) in [
+        ("see token.rs:ghp_abc123def456 now", "ghp_abc123def456"),
+        ("see password.txt:hunter2 now", "hunter2"),
+        ("see secrets.rs:66x now", "66x"),
+        ("see token.rs:42:abc now", "abc"),
+        ("see src/token:42 now", "42"),
+    ] {
+        for mode in [Mode::Prose, Mode::CommandOutput] {
+            let shown = redact("text", input, 4096, mode).unwrap();
+            assert_eq!(shown, "see [redacted] now", "{mode:?}: {input}");
+            assert!(!shown.contains(secret));
+        }
     }
 }
 

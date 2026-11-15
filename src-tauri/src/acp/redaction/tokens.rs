@@ -6,10 +6,31 @@ fn provider_token_at(rest: &[u8]) -> bool {
     starts_with_jwt(rest) || PREFIXED_TOKENS.iter().any(|token| token.starts(rest))
 }
 
+/// Whether `key:value` is a source location such as `src/token.rs:42`,
+/// `token.rs:42:7` or `token.rs:42-50` rather than a secret: the key ends in a
+/// file name with an extension and the value is only a line, column or range.
+pub(crate) fn file_reference(key: &str, value: &str) -> bool {
+    let name = key.rsplit(['/', '\\']).next().unwrap_or(key);
+    let has_extension = name.rsplit_once('.').is_some_and(|(stem, extension)| {
+        !stem.is_empty()
+            && (1..=10).contains(&extension.len())
+            && extension.bytes().all(|byte| byte.is_ascii_alphanumeric())
+    });
+    let value = value.trim_end_matches(['.', ',', ';', ')', ']', '!', '?']);
+    let (position, range_end) = value.split_once('-').unwrap_or((value, "0"));
+    let (line, column) = position.split_once(':').unwrap_or((position, "0"));
+    has_extension
+        && [line, column, range_end]
+            .iter()
+            .all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))
+}
+
 /// The span of a `user:password@host` path segment, as in `/srv/u:pw@db/x`.
+/// Only a segment after a separator counts: a bare `12:00@noon` is prose.
 pub(crate) fn segment_userinfo(token: &str) -> Option<(usize, usize)> {
-    let mut start = 0;
-    for segment in token.split(['/', '\\']) {
+    let (first, path) = token.split_once(['/', '\\'])?;
+    let mut start = first.len() + 1;
+    for segment in path.split(['/', '\\']) {
         if let Some((userinfo, host)) = segment.split_once('@')
             && let Some((user, password)) = userinfo.split_once(':')
             && !user.is_empty()
