@@ -74,6 +74,16 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     test: /src[\\/](?:workbench[\\/]AgentWorkbenchBody\.tsx$|features[\\/]chat[\\/]acp[\\/](?!(?:ChatMarkdown|MermaidFigure|mermaid|AcpChatProjection|AcpAnnouncementRegions|InlineSavedDiff|PermissionPrompt|UserInputPrompt|UserInputField|SessionNoticeStrip|approvalCard|TurnFileActivity|streamTail|turnWorkspace|TurnEditSummary|BackgroundTerminal|chatEditSummary|useGoalMutation|SessionSurfacePanel|useSessionControl))[^\\/]+\.(?:tsx|ts)$)/,
   },
   {
+    name: "chat-setup",
+    priority: 2,
+    includeDependenciesRecursively: false,
+    // Draft navigation, a chat's access and effort choices, the creation
+    // handoff and the Editor chat's session header form one deferred feature.
+    // Sharing its tiny controllers avoids request/import overhead while
+    // keeping all of them outside Agent and Editor startup.
+    test: /src[\\/](?:ports[\\/]chatAccessChanges\.ts|app[\\/](?:newChatDraft(?:Actions|Navigation)|run(?:CreateChat|NewChatDraftSend)|sessionAccessActions|chat(?:AccessDrafts|EffortDraft))\.ts|features[\\/]chat[\\/](?:(?:chatAccess(?:Mode|Icons|Choice)|endedSession)\.ts|(?:ChatAccess(?:Draft)?(?:Selection|View)|NewChatDraftSurface|FirstChatSend|DraftEffortControl|ChatSessionHeader|SessionWorkingPill)\.tsx))$/,
+  },
+  {
     name: "codemirror-deps",
     priority: 1,
     test: /(?:node_modules[\\/]@codemirror[\\/](?:state|view|language|commands|autocomplete)[\\/]|src[\\/]features[\\/]files[\\/]CodeMirrorEditorRuntime\.ts$)/,

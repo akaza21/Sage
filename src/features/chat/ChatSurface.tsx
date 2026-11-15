@@ -8,7 +8,6 @@ import { useWorkbenchStore } from "../../app/store";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatTranscript } from "./ChatTranscript";
 import { useUsageRequest } from "./acp/useUsageRequest";
-import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
   latestRetryPrompt,
   sessionActionAvailable,
@@ -20,7 +19,7 @@ import {
   useRendererRecreationFocus,
 } from "./acp";
 import { useComposerFocusHotkey } from "./composerChrome";
-import { ChatHandoffControl, LazyHarnessNotice } from "./lazyParts";
+import { LazyHarnessNotice, lazyParts } from "./lazyParts";
 import { isSideChatId } from "../../workbench/sideChatState";
 import { isNewProjectChat } from "./newProjectChat";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
@@ -34,6 +33,15 @@ import {
   restoredSessionConfigView,
   withSessionConfigNotice,
 } from "./restoredSessionConfigView";
+import type * as SessionHeaderChunk from "./ChatSessionHeader";
+const SessionHeaderPart = lazyParts<typeof SessionHeaderChunk>(
+  () => import("./ChatSessionHeader"),
+);
+import type * as FirstSendChunk from "./FirstChatSend";
+const FirstSendPart = lazyParts<typeof FirstSendChunk>(
+  () => import("./FirstChatSend"),
+);
+
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
   const setAgentSessionChrome = useContext(AgentSessionChromeContext);
@@ -197,6 +205,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     surfaceRef,
     composerRef,
   });
+  const firstSendPending = useWorkbenchStore((state) =>
+    Boolean(chatId && state.pendingFirstSend?.chatId === chatId),
+  );
   const newChat = isNewProjectChat({
     useNativeAcp,
     page: acpPage,
@@ -212,52 +223,29 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}`}
       aria-label="Agent chat"
     >
+      {chatId && firstSendPending ? (
+        <FirstSendPart
+          part="FirstChatSend"
+          chatId={chatId}
+          page={acpPage}
+          actions={acpActions}
+        />
+      ) : null}
       {!setAgentSessionChrome ? (
-        <header className="surface-header">
-          <SessionWorkingPill
-            count={workingTurnCount}
-            hidden={projectTransitioning}
-          />
-          <div className="session-controls">
-            <ChatHandoffControl
-              acpPage={useNativeAcp ? acpPage : null}
-              messages={messages}
-              busy={actionBusy || Boolean(activeAcpTurn)}
-              onCommitted={() =>
-                queueMicrotask(() => composerRef.current?.focus())
-              }
-            />
-            {canCloseSession ? (
-              <button
-                className="button button--compact"
-                type="button"
-                disabled={actionBusy || projectTransitioning}
-                onClick={closeSession}
-              >
-                Close session
-              </button>
-            ) : null}
-            {canEndSession ? (
-              <button
-                className="button button--compact"
-                type="button"
-                disabled={actionBusy || projectTransitioning}
-                onClick={endSession}
-              >
-                End session
-              </button>
-            ) : null}
-            <div
-              className="session-state"
-              aria-label={`Harness status: ${harnessStatus}`}
-            >
-              {harnessStatus === "Live" ? (
-                <span className="session-state__dot" />
-              ) : null}
-              {harnessStatus}
-            </div>
-          </div>
-        </header>
+        <SessionHeaderPart
+          part="ChatSessionHeader"
+          page={useNativeAcp ? acpPage : null}
+          messages={messages}
+          workingTurnCount={workingTurnCount}
+          projectTransitioning={projectTransitioning}
+          busy={actionBusy || Boolean(activeAcpTurn)}
+          canCloseSession={canCloseSession}
+          canEndSession={canEndSession}
+          closeSession={closeSession}
+          endSession={endSession}
+          harnessStatus={harnessStatus}
+          onCommitted={() => queueMicrotask(() => composerRef.current?.focus())}
+        />
       ) : null}
       <LazyHarnessNotice
         harness={selectedHarnessDefinition}
@@ -315,9 +303,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         imageInputAvailable={imageInput.available}
         imageInputDisabledReason={imageInput.reason}
         onAddImages={useNativeAcp ? addImages : undefined}
-        enabled={composerEnabled}
+        enabled={composerEnabled && !firstSendPending}
         sendBlocked={sendBlocked}
-        actionBusy={actionBusy}
+        actionBusy={actionBusy || firstSendPending}
         activeTurn={Boolean(activeAcpTurn)}
         queueAvailable={queueAvailable}
         queuedPrompts={queuedPrompts}

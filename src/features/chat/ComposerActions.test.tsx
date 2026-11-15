@@ -30,7 +30,6 @@ async function renderActions(
     <ChatHarnessControls
       availableBinding
       canPrompt
-      discoveryPhase="ready"
       modelLabelScope="chat-a"
       sessionHarnessId="fixture"
       sessionModelId={null}

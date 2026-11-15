@@ -53,6 +53,8 @@ export default function ChatAccessSelection({
   capabilities,
   sessionConfig: session,
   chatId,
+  value,
+  onChange,
   endedPage,
   id,
   triggerRef,
@@ -106,6 +108,8 @@ export default function ChatAccessSelection({
     <ChatAccessView
       sessionConfig={session}
       chatId={chatId}
+      value={value}
+      onChange={onChange}
       endedPage={endedPage}
       error={error}
       {...props}

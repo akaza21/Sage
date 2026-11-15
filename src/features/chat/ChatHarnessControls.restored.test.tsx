@@ -204,7 +204,6 @@ it("shows a cold chat's stored model and effort as restored, and a pick goes to 
     <ChatHarnessControls
       availableBinding
       canPrompt
-      discoveryPhase="ready"
       modelLabelScope="project/chat/session-1"
       sessionHarnessId={null}
       sessionModelId={null}
@@ -251,7 +250,6 @@ function renderControls(
     <ChatHarnessControls
       availableBinding
       canPrompt
-      discoveryPhase="ready"
       modelLabelScope="project/chat/session-1"
       sessionHarnessId={null}
       sessionModelId={null}

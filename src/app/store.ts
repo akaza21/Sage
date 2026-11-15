@@ -1,4 +1,8 @@
 import { create } from "zustand";
+import {
+  createNewChatDraftSlice,
+  type NewChatDraftSlice,
+} from "./newChatDraftSlice";
 
 import { diffCacheKey } from "../domain/diffIdentity";
 import { childResource } from "../domain/resourceIdentity";
@@ -80,6 +84,7 @@ export type ResourceState<T> =
 export interface WorkbenchState
   extends
     ChatSlice,
+    NewChatDraftSlice,
     ChatArchiveSlice,
     ChatHandoffSlice,
     ChatOwnershipSlice,
@@ -122,7 +127,10 @@ export interface WorkbenchState
   repositoryRefreshSuperseded: boolean;
   repositoryRequestGeneration: number;
   selectRoot: (rootId: string) => void;
-  activateTab: (tabId: string) => Promise<void>;
+  activateTab: (
+    tabId: string,
+    submission?: NonNullable<WorkbenchState["pendingFirstSend"]>,
+  ) => Promise<void>;
   closeTab: (tabId: string) => void;
   refreshRepository: () => Promise<void>;
   setSidebarView: (view: SidebarView) => void;
@@ -165,6 +173,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     repositoryRequestGeneration: 0,
     ...createProjectSlice(set, get, store),
     ...createChatSlice(set, get, store),
+    ...createNewChatDraftSlice(set, get, store),
     ...createChatArchiveSlice(set, get, store),
     ...createChatHandoffSlice(set, get, store),
     ...createChatOwnershipSlice(set, get, store),
@@ -203,7 +212,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
       void get().loadDirectory(childResource(selectedRootId));
     },
 
-    activateTab: async (tabId) => {
+    activateTab: async (tabId, submission) => {
       const generation = get().projectGeneration;
       const projectId = get().project?.id;
       if (
@@ -215,6 +224,16 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
         return;
       const tab = get().tabs.find((candidate) => candidate.id === tabId);
       if (!tab) {
+        return;
+      }
+      if (get().pendingFirstSend !== submission)
+        set({ pendingFirstSend: null });
+      if (
+        tab.kind === "chat" &&
+        get().agentCenter === "draft" &&
+        tab.id === get().activeTabId
+      ) {
+        set({ agentCenter: "chat", pendingFirstSend: null });
         return;
       }
       if (tab.id !== get().activeTabId) {
@@ -234,7 +253,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
           return;
         }
         if (tab.kind === "chat") {
-          await get().activateChat(tab.id);
+          await get().activateChat(tab.id, undefined, submission);
           return;
         }
         set({

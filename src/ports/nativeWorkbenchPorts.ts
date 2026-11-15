@@ -145,11 +145,12 @@ const chat: ChatPort = {
   forkChat(request) {
     return invokeNative("fork_chat", { ...request });
   },
-  createChat(currentLayout, expectedTransitionEpoch, projectId) {
+  createChat(currentLayout, expectedTransitionEpoch, projectId, chatId) {
     return invokeNative("create_chat", {
       currentLayout,
       expectedTransitionEpoch,
       ...(projectId ? { projectId } : {}),
+      ...(chatId ? { chatId } : {}),
     });
   },
   activateChat(currentLayout, expectedTransitionEpoch) {

@@ -13,12 +13,16 @@ import { createAttachedContextActions } from "./chatAttachedContextState";
 import type { WorkbenchState } from "./store";
 import { nextProjectGeneration } from "./projectIntent";
 import { emptyChatOwnershipEntry as emptyEntry } from "./chatOwnershipProjection";
+import { draftOwnedChatId } from "./newChatDraftSlice";
 
 export interface ChatOwnershipSlice {
   chatOwnershipEpoch: number;
   chatUiById: Record<string, ChatOwnershipEntry>;
   chatError: string | null;
-  captureChatOwnership: (chatId?: string) => ChatOwnershipIntent | null;
+  captureChatOwnership: (
+    chatId?: string,
+    draft?: object,
+  ) => ChatOwnershipIntent | null;
   setChatHarnessSelection: (
     intent: ChatOwnershipIntent,
     selection: { harnessId: string | null; modelId: string | null },
@@ -73,6 +77,8 @@ function ownsChat(state: WorkbenchState, intent: ChatOwnershipIntent) {
   return (
     state.project?.id === intent.projectId &&
     state.chatOwnershipEpoch === intent.ownershipEpoch &&
+    (intent.chatId !== draftOwnedChatId(state) ||
+      intent.draft === state.newChatDraft?.id) &&
     (state.tabs.some(
       (tab) => tab.id === intent.chatId && tab.kind === "chat",
     ) ||
@@ -89,7 +95,7 @@ export const createChatOwnershipSlice: StateCreator<
   chatOwnershipEpoch: 0,
   chatUiById: {},
   chatError: null,
-  captureChatOwnership: (requestedChatId) => {
+  captureChatOwnership: (requestedChatId, draft) => {
     const state = get();
     const chatId = requestedChatId ?? activeChatId(state);
     if (
@@ -101,6 +107,7 @@ export const createChatOwnershipSlice: StateCreator<
         chatId,
         projectGeneration: state.projectGeneration,
         transitionEpoch: state.nativeTransitionEpoch,
+        draft,
       })
     ) {
       return null;
@@ -111,6 +118,7 @@ export const createChatOwnershipSlice: StateCreator<
       chatId,
       projectGeneration: state.projectGeneration,
       transitionEpoch: state.nativeTransitionEpoch,
+      ...(draft ? { draft } : {}),
     };
   },
   setChatHarnessSelection: (intent, selection) => {

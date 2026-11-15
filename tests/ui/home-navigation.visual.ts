@@ -6,6 +6,7 @@ async function savedChats(page: Page) {
       await import("/src/ports/workbenchRuntime.ts");
     const snapshot = await getWorkbenchPorts().project.getBootstrapSnapshot();
     return {
+      tabs: snapshot.tabs,
       chats: snapshot.tabs.filter((tab) => tab.kind === "chat"),
       archived: snapshot.archivedChats,
       active: snapshot.activeTabId,
@@ -16,7 +17,7 @@ async function savedChats(page: Page) {
 }
 
 for (const collapsed of [false, true]) {
-  test(`Home focuses Chat beside inline resources; collapsed=${collapsed}`, async ({
+  test(`Home opens a focused draft beside inline resources; collapsed=${collapsed}`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 720, height: 1000 });
@@ -38,8 +39,22 @@ for (const collapsed of [false, true]) {
     ).toHaveCount(0);
     await expect(page.locator(".center-region")).not.toHaveAttribute("inert");
     await page.getByRole("button", { name: "Home", exact: true }).click();
-    await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue("Inline Home draft");
+    const draft = page.getByRole("region", { name: "New chat draft" });
+    await expect(
+      draft.getByRole("heading", { name: "What should we work on?" }),
+    ).toBeVisible();
+    await expect(
+      draft.getByRole("combobox", { name: "Message agent" }),
+    ).toBeFocused();
+    await expect(
+      draft.getByRole("combobox", { name: "Message agent" }),
+    ).toHaveValue("");
+    await expect(page.getByRole("region", { name: /^Chat pane / })).toHaveCount(
+      0,
+    );
+    await expect(
+      page.locator('.project-chat[aria-current="page"]'),
+    ).toHaveCount(0);
     await expect(resources).toBeVisible();
     expect(await savedChats(page)).toEqual(before);
   });
@@ -54,6 +69,12 @@ for (const collapsed of [false, true]) {
     const before = await savedChats(page);
     expect(before.chats).toHaveLength(1);
     expect(before.messages.length).toBeGreaterThan(0);
+    await expect(
+      page.getByText(before.messages[0].text, { exact: true }),
+    ).toBeVisible();
+    const transcript = page.locator(".message-list__content");
+    const savedTranscript = await transcript.innerText();
+    expect(savedTranscript.trim()).not.toBe("");
     if (collapsed)
       await page
         .getByRole("button", { name: "Hide projects and chats" })
@@ -62,8 +83,25 @@ for (const collapsed of [false, true]) {
     for (let click = 0; click < 5; click += 1)
       await page.getByRole("button", { name: "Home", exact: true }).click();
     expect(await savedChats(page)).toEqual(before);
-    await expect(composer).toBeFocused();
-    await expect(composer).toHaveValue("Unsent Home navigation check");
+    const draft = page.getByRole("region", { name: "New chat draft" });
+    const draftComposer = draft.getByRole("combobox", {
+      name: "Message agent",
+    });
+    await expect(
+      draft.getByRole("heading", { name: "What should we work on?" }),
+    ).toBeVisible();
+    await expect(draftComposer).toBeFocused();
+    await expect(draftComposer).toHaveValue("");
+    await expect(page.getByRole("region", { name: /^Chat pane / })).toHaveCount(
+      0,
+    );
+    await expect(
+      page.locator('.project-chat[aria-current="page"]'),
+    ).toHaveCount(0);
+    await draftComposer.fill("Unsaved Home text");
+    await page.getByRole("button", { name: "Home", exact: true }).click();
+    await expect(draftComposer).toBeFocused();
+    await expect(draftComposer).toHaveValue("Unsaved Home text");
     await expect(page.getByText(/New chat [2-9]/)).toHaveCount(0);
     await expect(page.getByRole("radio", { name: "Agent" })).toBeChecked();
     await page
@@ -73,29 +111,47 @@ for (const collapsed of [false, true]) {
       })
       .click();
     await page.getByRole("button", { name: "Close settings" }).click();
-    await expect(composer).toHaveValue("Unsent Home navigation check");
+    await expect(draftComposer).toHaveValue("Unsaved Home text");
     expect(await savedChats(page)).toEqual(before);
     await page
       .getByRole("button", {
-        name: collapsed ? "New chat" : "New chat",
+        name: "New chat",
         exact: true,
       })
       .click();
-    await expect
-      .poll(async () => (await savedChats(page)).chats.length)
-      .toBe(2);
-    const created = await savedChats(page);
-    expect(created.active).not.toBe(before.active);
-    expect(created.messages).toEqual([]);
-    expect(created.project).toEqual(before.project);
-    expect(created.chats.find((chat) => chat.id === before.active)).toEqual(
-      before.chats[0],
+    await expect(draftComposer).toBeFocused();
+    await expect(draftComposer).toHaveValue("Unsaved Home text");
+    await expect(page.getByRole("region", { name: /^Chat pane / })).toHaveCount(
+      0,
     );
+    expect(await savedChats(page)).toEqual(before);
+    if (collapsed)
+      await page
+        .getByRole("button", { name: "Show projects and chats" })
+        .click();
+    const previousChat = page.locator(
+      `.project-chat[data-chat-id="${before.active}"]`,
+    );
+    await expect(previousChat).toBeVisible();
+    await expect(
+      page.locator('.project-chat[aria-current="page"]'),
+    ).toHaveCount(0);
+    await previousChat.click();
+    await expect(draft).toHaveCount(0);
+    const restoredPane = page.getByRole("region", { name: /^Chat pane / });
+    await expect(restoredPane).toHaveCount(1);
+    await expect(restoredPane).toHaveAttribute("data-chat-id", before.active!);
+    await expect(previousChat).toHaveAttribute("aria-current", "page");
+    await expect(composer).toHaveValue("Unsent Home navigation check");
+    await expect(transcript).toHaveText(savedTranscript, {
+      useInnerText: true,
+    });
+    expect(await savedChats(page)).toEqual(before);
   });
 }
 
 for (const owner of ["single", "parent", "side"] as const) {
-  test(`Home focuses the ${owner} Chat region when its composer is disabled`, async ({
+  test(`Home focuses the draft composer when the ${owner} Chat composer is disabled`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 2400, height: 1000 });
@@ -103,7 +159,7 @@ for (const owner of ["single", "parent", "side"] as const) {
     await expect(
       page.getByRole("combobox", { name: "Message agent" }),
     ).toBeVisible();
-    const focusedId = await page.evaluate(async (owner) => {
+    await page.evaluate(async (owner) => {
       const { useWorkbenchStore } = await import("/src/app/store.ts");
       const { useSideChatState } =
         await import("/src/workbench/sideChatState.ts");
@@ -157,7 +213,6 @@ for (const owner of ["single", "parent", "side"] as const) {
           },
         },
       }));
-      return focusedId;
     }, owner);
     const before = await savedChats(page);
     const panes = page.getByRole("region", { name: /^Chat pane / });
@@ -177,14 +232,20 @@ for (const owner of ["single", "parent", "side"] as const) {
       await home.focus();
       await page.keyboard.press("Enter");
     } else await home.click();
-    await expect(focused).toBeFocused();
-    if (owner === "single")
-      await expect(focused).toHaveCSS("outline-style", "solid");
-    await expect(focused).toHaveAttribute("data-chat-id", focusedId);
-    await expect(focused).toHaveAccessibleName(/^Chat pane /);
+    await expect(panes).toHaveCount(0);
+    const draft = page.getByRole("region", { name: "New chat draft" });
     await expect(
-      focused.getByRole("combobox", { name: "Message agent" }),
-    ).toHaveValue("Focused draft");
+      draft.getByRole("heading", { name: "What should we work on?" }),
+    ).toBeVisible();
+    const draftComposer = draft.getByRole("combobox", {
+      name: "Message agent",
+    });
+    await expect(draftComposer).toBeEnabled();
+    await expect(draftComposer).toBeFocused();
+    await expect(draftComposer).toHaveValue("");
+    await expect(
+      page.locator('.project-chat[aria-current="page"]'),
+    ).toHaveCount(0);
     expect(await savedChats(page)).toEqual(before);
   });
 }

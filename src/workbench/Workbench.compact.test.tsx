@@ -858,7 +858,7 @@ describe("compact Workbench project tools", () => {
   });
 
   it("routes the Agent New chat control through one creation action", async () => {
-    const createChat = vi.fn(async () => undefined);
+    const createChat = vi.fn(async () => ({ status: "not-created" as const }));
     useWorkbenchStore.setState({
       createChat,
       project: { id: "project-a", name: "A", roots: [] },
@@ -870,13 +870,17 @@ describe("compact Workbench project tools", () => {
       name: "New chat",
     });
     expect(newChatControls).toHaveLength(1);
-    const beforeClick = createChat.mock.calls.length;
+    const beforeTabs = useWorkbenchStore.getState().tabs;
     fireEvent.click(newChatControls[0]);
-    expect(createChat).toHaveBeenCalledTimes(beforeClick + 1);
+    await settleLazyModules();
+    expect(
+      screen.getByRole("heading", { name: "What should we work on?" }),
+    ).toBeVisible();
+    expect(useWorkbenchStore.getState().tabs).toEqual(beforeTabs);
   });
 
   it("creates a task from the new task keyboard shortcut", async () => {
-    const createChat = vi.fn(async () => undefined);
+    const createChat = vi.fn(async () => ({ status: "not-created" as const }));
     useWorkbenchStore.setState({
       createChat,
       project: { id: "project-a", name: "A", roots: [] },
@@ -884,9 +888,13 @@ describe("compact Workbench project tools", () => {
     render(<Workbench />);
     await selectWindowMode("Agent");
 
-    const before = createChat.mock.calls.length;
+    const beforeTabs = useWorkbenchStore.getState().tabs;
     fireEvent.keyDown(window, { key: "n", ctrlKey: true });
-    expect(createChat).toHaveBeenCalledTimes(before + 1);
+    await settleLazyModules();
+    expect(
+      screen.getByRole("heading", { name: "What should we work on?" }),
+    ).toBeVisible();
+    expect(useWorkbenchStore.getState().tabs).toEqual(beforeTabs);
   });
 
   it("reveals Settings when the rail gear is used from Agent mode", async () => {

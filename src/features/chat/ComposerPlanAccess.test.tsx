@@ -65,7 +65,6 @@ function renderControls(
     <ChatHarnessControls
       availableBinding
       canPrompt
-      discoveryPhase="ready"
       modelLabelScope="chat-a"
       sessionHarnessId="governed"
       sessionModelId={null}

@@ -177,7 +177,9 @@ export function LazyHarnessNotice(
       (harness.installState !== "available" ||
         (harness.characterisation ?? "characterised") !== "characterised" ||
         harness.update ||
-        (harness.accountModelDiscovery && discoveryPhase !== "ready"))
+        (harness.accountModelDiscovery && discoveryPhase !== "ready") ||
+        // Any model-discovery failure is explained with a retry.
+        discoveryPhase === "error")
     )
   )
     return null;

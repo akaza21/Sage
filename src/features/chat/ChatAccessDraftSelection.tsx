@@ -32,6 +32,8 @@ import {
  */
 export function ChatAccessDraftSelection({
   bindingId,
+  value,
+  onChange,
   chatId,
   endedPage,
   capabilities,
@@ -39,6 +41,8 @@ export function ChatAccessDraftSelection({
   children,
 }: {
   bindingId: string;
+  value?: SessionAccessMode | null;
+  onChange?: (value: SessionAccessMode) => void;
   chatId: string | undefined;
   endedPage?: EndedPage;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
@@ -47,7 +51,10 @@ export function ChatAccessDraftSelection({
 }) {
   const { effective } = useSessionAccessSelection(bindingId, capabilities);
   // Per-chat modes are offered only where they can be drafted.
-  const candidates = sessionAccessModeCandidates(capabilities, !!chatId);
+  const candidates = sessionAccessModeCandidates(
+    capabilities,
+    !!chatId || !!onChange,
+  );
   const draft = useChatAccessDrafts((state) =>
     chatId ? state.drafts[chatId] : undefined,
   );
@@ -63,7 +70,7 @@ export function ChatAccessDraftSelection({
   // Until the ended session's access is read, what the session gets
   // without a draft is unknown: every pick is kept as a draft.
   const base = carried === undefined ? undefined : (carried ?? effective);
-  const shown = drafted ?? base ?? null;
+  const shown = (onChange ? value : drafted) ?? base ?? null;
   const carryError = useChatAccessStore((state) => state.error);
   return children({
     candidates,
@@ -73,10 +80,15 @@ export function ChatAccessDraftSelection({
     icon: shown ? CHAT_ACCESS_ICONS[shown] : undefined,
     tone: shown === "fullAccess" ? " composer__access-label--full" : undefined,
     // What the session gets without a draft needs none.
-    onDraft: !chatId
-      ? undefined
-      : (mode: SessionAccessMode) =>
-          draftChatAccess(chatId, mode === base ? null : { bindingId, mode }),
+    onDraft:
+      onChange ??
+      (!chatId
+        ? undefined
+        : (mode: SessionAccessMode) =>
+            draftChatAccess(
+              chatId,
+              mode === base ? null : { bindingId, mode },
+            )),
   });
 }
 
