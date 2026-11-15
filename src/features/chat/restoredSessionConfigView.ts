@@ -5,25 +5,16 @@ import type {
 } from "../../domain/acpSessionConfig";
 import { flattenChoices } from "../../domain/acpSessionConfigControls";
 
-/** Said of a restored value: the session has not reapplied it yet. */
 export const RESTORED_NOTE =
   "Restored from this chat's last session; applied when the chat resumes.";
-/** Said of a stored value while a live session has not reported its own. */
 export const PENDING_NOTE =
   "Saved for this chat; applied once the session reports its settings.";
-/** Said of a restored value while the chat has no current session. */
 export const START_NOTE =
   "Restored from this chat's last session; applied to the session your next message starts.";
 
 /**
- * What the composer shows for a chat whose next send runs a session with no
- * live config yet: the current session, or with none the chat's last
- * session, which the started one goes on from. It shows the config that
- * session last reported with its stored choices, marked restored. It needs
- * the session to be on the selected harness binding and requested model,
- * and gives way to the live config as soon as a runtime reports one. It
- * carries no runtime epoch or revision: a choice made on it is stored for
- * the next runtime instead of being sent to one.
+ * The view carries no runtime epoch or revision: a choice made on it is
+ * stored for the next runtime instead of being sent to one.
  */
 export function restoredSessionConfigView(
   page: AcpChatPage | null | undefined,
@@ -60,10 +51,6 @@ export function restoredSessionConfigView(
   };
 }
 
-/**
- * What the composer says about a saved model the session does not run,
- * naming each model as the session's options name it.
- */
 export function sessionConfigNoticeText(
   config: AcpSessionConfig,
   notice: AcpSessionConfigNotice,
@@ -82,7 +69,6 @@ export function sessionConfigNoticeText(
     : `The saved model ${saved} isn't offered any more; this chat uses ${current}.`;
 }
 
-/** The config the composer shows, with the page's notice about it. */
 export function withSessionConfigNotice(
   config: AcpSessionConfig | null,
   notice: AcpSessionConfigNotice | null | undefined,

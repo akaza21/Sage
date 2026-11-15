@@ -1,7 +1,6 @@
 import { create } from "zustand";
 import { chatAccessDraftPort } from "./chatAccessDraftPort";
 
-/** A thinking level chosen in a chat before its session exists. */
 export interface ChatEffortDraft {
   chatId: string;
   bindingId: string;
@@ -10,11 +9,8 @@ export interface ChatEffortDraft {
 }
 
 /**
- * The composer's thinking level held before a chat's session. It goes with
- * the start of that chat's session for the same binding and model, and stays
- * held until a start succeeds, so a start that fails sends it again. Once a
- * session started, the level is that session's stored choice, and a later
- * session of the chat takes it over from there, not from the draft.
+ * Held until a start succeeds, so a start that fails sends it again; after
+ * that the level is the session's stored choice, not the draft.
  */
 export const useChatEffortDraft = create<{ draft: ChatEffortDraft | null }>(
   () => ({ draft: null }),
@@ -24,9 +20,8 @@ export const useChatEffortDraft = create<{ draft: ChatEffortDraft | null }>(
 export const DEFAULT_EFFORT_DRAFT = "default";
 
 /**
- * The session start's `effort` for the held draft, if it matches. Default
- * sends none: a start with a level is refused when the binding does not list
- * it for the model, so a level is sent only when one was chosen.
+ * Default sends none: a start with a level is refused when the binding does
+ * not list it for the model.
  */
 export function chatEffortField(
   chatId: string,

@@ -19,7 +19,6 @@ pub struct VisibilityUpdate {
 }
 
 impl VisibilityUpdate {
-    /// The Chats this update shows: none while the window is hidden.
     pub(super) fn shown_chats(&self) -> Vec<sage_acp_protocol::contract::SageChatId> {
         self.chat_ids
             .iter()
