@@ -286,23 +286,21 @@ impl SdkBridge {
             let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else {
                 continue;
             };
+            let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
             if self.subagents.contains_key(id) {
-                if self.launched_in_background(id, sdk.get("tool_use_result")) {
-                    continue;
+                if !self.launched_in_background(id, sdk.get("tool_use_result")) {
+                    let outcome = if failed {
+                        ChildOutcome::Failed
+                    } else {
+                        ChildOutcome::Completed
+                    };
+                    self.end_child(id, outcome, inbound);
                 }
-                let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
-                let outcome = if failed {
-                    ChildOutcome::Failed
-                } else {
-                    ChildOutcome::Completed
-                };
-                self.end_child(id, outcome, inbound);
                 continue;
             }
             let Some(name) = self.tools.remove(id) else {
                 continue;
             };
-            let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
             let mut update = json!({
                 "sessionUpdate": "tool_call_update",
                 "toolCallId": id,
