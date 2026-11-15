@@ -3005,6 +3005,7 @@ dependencies = [
 name = "sage-process"
 version = "0.0.0"
 dependencies = [
+ "libc",
  "tokio",
  "windows-sys 0.61.2",
 ]

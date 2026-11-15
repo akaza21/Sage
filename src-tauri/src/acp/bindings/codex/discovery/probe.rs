@@ -4,17 +4,20 @@
 
 use std::{
     ffi::OsString,
-    io::{Read, Write},
+    io::{self, Read, Write},
     path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{Mutex, MutexGuard, PoisonError, mpsc},
-    thread,
+    thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
 use sage_acp_protocol::contract::RuntimeEpoch;
 use sage_domain::harness::ModelOption;
-use sage_process::process_tree::ProcessTree;
+#[cfg(unix)]
+use sage_process::process_group::ProcessGroup as ProbeTree;
+#[cfg(windows)]
+use sage_process::process_tree::ProcessTree as ProbeTree;
 
 use super::{
     CodexDiscoveryProtocol,
@@ -31,7 +34,8 @@ use crate::acp::{
 
 const PROBE_OPERATION: Duration = Duration::from_secs(20);
 const PROBE_CLEANUP: Duration = Duration::from_secs(5);
-/// How long a probe whose stdin is closed may take to exit before it is killed.
+/// How long a probe whose stdin is closed may take to end its output before
+/// it is killed.
 const EXIT_GRACE: Duration = Duration::from_secs(2);
 /// Startup output and four catalog pages; this bounds a misbehaving CLI.
 const PROBE_BYTES: u64 = 4 * 1024 * 1024;
@@ -174,14 +178,7 @@ fn probe(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        command.creation_flags(
-            windows_sys::Win32::System::Threading::CREATE_NO_WINDOW
-                | sage_process::process_tree::CREATION_FLAGS,
-        );
-    }
+    isolate(&mut command);
     let mut transport = ProbeTransport::spawn(command, binding)?;
     let runtime_epoch = RuntimeEpoch::new(PROBE_EPOCH).ok()?;
     let mut protocol = CodexDiscoveryProtocol::from_admitted_binding(binding, runtime_epoch);
@@ -205,20 +202,46 @@ fn profile_directory(environment: &[(OsString, OsString)]) -> Option<PathBuf> {
         .filter(|path| path.is_absolute() && path.is_dir())
 }
 
+/// Everything the probe starts, such as the node and codex.exe behind a
+/// `.cmd` shim, runs inside its tree: a Job Object on Windows, the process
+/// group it leads on Unix.
+fn isolate(command: &mut Command) {
+    #[cfg(unix)]
+    sage_process::process_group::isolate(command);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        command.creation_flags(
+            windows_sys::Win32::System::Threading::CREATE_NO_WINDOW
+                | sage_process::process_tree::CREATION_FLAGS,
+        );
+    }
+}
+
+#[cfg(unix)]
+fn contain(child: &Child) -> io::Result<ProbeTree> {
+    ProbeTree::led_by(child.id())
+}
+
+#[cfg(windows)]
+fn contain(child: &Child) -> io::Result<ProbeTree> {
+    ProbeTree::contain_blocking(child)
+}
+
 struct ProbeTransport<'a> {
     child: Child,
-    /// On Windows the Job Object holding everything the probe starts, such as
-    /// the node and codex.exe behind a `.cmd` shim; dropping it ends them.
-    tree: ProcessTree,
+    /// Taken when the probe is reaped.
+    tree: Option<ProbeTree>,
     stdin: Option<ChildStdin>,
     frames: mpsc::Receiver<Result<Option<Frame>, FrameError>>,
+    reader: Option<JoinHandle<()>>,
     binding: &'a AdmittedCodexBinding,
 }
 
 impl<'a> ProbeTransport<'a> {
     fn spawn(mut command: Command, binding: &'a AdmittedCodexBinding) -> Option<Self> {
         let mut child = command.spawn().ok()?;
-        let tree = match ProcessTree::contain_blocking(&child) {
+        let tree = match contain(&child) {
             Ok(tree) => tree,
             Err(_) => {
                 let _ = child.kill();
@@ -229,33 +252,55 @@ impl<'a> ProbeTransport<'a> {
         let stdin = child.stdin.take();
         let stdout = child.stdout.take();
         let (sender, frames) = mpsc::sync_channel(4);
-        let transport = Self {
+        let mut transport = Self {
             child,
-            tree,
+            tree: Some(tree),
             stdin,
             frames,
+            reader: None,
             binding,
         };
         let stdout = stdout?;
-        thread::spawn(move || read_frames(stdout.take(PROBE_BYTES), &sender));
+        transport.reader = Some(thread::spawn(move || {
+            read_frames(stdout.take(PROBE_BYTES), &sender);
+        }));
         Some(transport)
     }
 
-    /// Codex exits once its stdin closes. A probe still running after the
-    /// grace is killed together with every process it started.
+    /// Codex exits once its stdin closes. Whatever is left of its tree after
+    /// the grace, such as a child still holding its stdout, is killed before
+    /// the root is reaped, while the root still pins the tree's identity.
     fn reap(&mut self, cleanup_end: Instant) {
+        let Some(tree) = self.tree.take() else {
+            return;
+        };
         self.stdin = None;
-        let grace_end =
-            Instant::now() + EXIT_GRACE.min(cleanup_end.saturating_duration_since(Instant::now()));
-        while Instant::now() < grace_end {
-            if !matches!(self.child.try_wait(), Ok(None)) {
-                return;
-            }
-            thread::sleep(Duration::from_millis(10));
-        }
-        self.tree.terminate();
+        let now = Instant::now();
+        self.drain_output(now + EXIT_GRACE.min(cleanup_end.saturating_duration_since(now)));
+        tree.terminate();
         let _ = self.child.kill();
         let _ = self.child.wait();
+        if self.drain_output(cleanup_end)
+            && let Some(reader) = self.reader.take()
+        {
+            let _ = reader.join();
+        }
+    }
+
+    /// Discards output until the reader ends at end of stream; false when
+    /// `until` passes first. Draining keeps the reader from blocking on a
+    /// full channel.
+    fn drain_output(&self, until: Instant) -> bool {
+        loop {
+            match self
+                .frames
+                .recv_timeout(until.saturating_duration_since(Instant::now()))
+            {
+                Ok(_) => {}
+                Err(mpsc::RecvTimeoutError::Disconnected) => return true,
+                Err(mpsc::RecvTimeoutError::Timeout) => return false,
+            }
+        }
     }
 }
 
@@ -333,7 +378,7 @@ impl DiscoveryTransport for ProbeTransport<'_> {
 
 impl Drop for ProbeTransport<'_> {
     fn drop(&mut self) {
-        self.reap(Instant::now() + EXIT_GRACE);
+        self.reap(Instant::now() + PROBE_CLEANUP);
     }
 }
 

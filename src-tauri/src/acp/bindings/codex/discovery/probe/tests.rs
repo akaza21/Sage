@@ -178,6 +178,38 @@ mod fake_app_server {
     }
 
     #[test]
+    fn a_child_still_holding_the_probes_output_is_killed_with_it() {
+        let server = FakeAppServer::new("");
+        let recorded = server.directory.join("child");
+        let body = format!(
+            "sleep 60 &\necho $! > '{}'\n{}",
+            recorded.display(),
+            answering_app_server(&std::env::temp_dir())
+        );
+        sage_test_support::test_executable::write(server.script(), format!("#!/bin/sh\n{body}\n"))
+            .unwrap();
+
+        assert!(
+            CodexModelCatalog::default()
+                .probed(&server.binding())
+                .is_some()
+        );
+
+        let child: libc::pid_t = std::fs::read_to_string(recorded)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        // SAFETY: signal 0 only checks that the process exists.
+        let alive = || unsafe { libc::kill(child, 0) } == 0;
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while alive() && Instant::now() < deadline {
+            std::thread::sleep(Duration::from_millis(10));
+        }
+        assert!(!alive(), "the probe's child outlived it");
+    }
+
+    #[test]
     fn a_listing_read_before_an_account_change_is_neither_kept_nor_offered() {
         let body = format!("sleep 1\n{}", answering_app_server(&std::env::temp_dir()));
         let server = FakeAppServer::new(&body);

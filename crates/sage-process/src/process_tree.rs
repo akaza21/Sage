@@ -42,10 +42,6 @@ impl ProcessTree {
         Ok(Self)
     }
 
-    pub fn contain_blocking(_child: &std::process::Child) -> io::Result<Self> {
-        Ok(Self)
-    }
-
     /// Nothing beyond the root process is tracked here.
     pub fn terminate(&self) -> bool {
         false
