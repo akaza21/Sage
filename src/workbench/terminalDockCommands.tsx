@@ -10,7 +10,6 @@ import {
 } from "../domain/keymapRegistry";
 import { usesMetaModifier } from "../ui/shortcutLabel";
 
-/** One command owner for buttons, launchers and keys, including focus return. */
 export function connectTerminalDock(
   blocked: () => boolean,
   onChange: (snapshot: TerminalDockProjection) => void,

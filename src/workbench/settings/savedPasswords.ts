@@ -27,9 +27,7 @@ export interface PasswordImportReport {
   fileName: string;
 }
 
-/** How long a revealed password stays on screen. */
 export const REVEAL_MS = 30_000;
-/** Typing pauses this long before the vault is searched. */
 export const SEARCH_DEBOUNCE_MS = 150;
 /** Rust returns at most this many rows; search narrows the rest. */
 export const MAX_LISTED = 200;

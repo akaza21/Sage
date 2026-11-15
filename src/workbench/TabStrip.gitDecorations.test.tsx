@@ -79,7 +79,6 @@ it("marks File tabs with their Git status and follows refreshes (EP-13)", async 
       .getByRole("tab", { name: "b.ts, Deleted" })
       .querySelector(".tab__title--git"),
   ).toHaveClass("git-tone--deleted");
-  // A Diff tab already shows the change.
   expect(screen.getByRole("tab", { name: "a.ts" })).toHaveAttribute(
     "title",
     "src/a.ts",

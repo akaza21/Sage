@@ -1,4 +1,3 @@
-/* Editor controls share one stable interaction language without moving layout. */
 .workbench--editor
   :where(
     button,

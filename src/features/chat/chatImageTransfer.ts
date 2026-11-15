@@ -42,10 +42,27 @@ export async function removeChatImage(
   });
 }
 
+export async function readChatImageThumbnail(
+  intent: ChatOwnershipIntent,
+  artifactId: string,
+): Promise<Blob | null> {
+  try {
+    const bytes = await invokeNative<ArrayBuffer>("read_chat_image_thumbnail", {
+      request: {
+        projectId: intent.projectId,
+        chatId: intent.chatId,
+        artifactId,
+      },
+    });
+    return new Blob([bytes], { type: "image/png" });
+  } catch {
+    return null;
+  }
+}
+
 export async function uploadChatImages(
   intent: ChatOwnershipIntent,
   files: File[],
-  onPreview: (artifactId: string, file: File) => void,
 ) {
   for (const file of files) {
     if (
@@ -71,6 +88,5 @@ export async function uploadChatImages(
       await removeChatImage(intent, image.artifactId);
       throw new Error("Chat changed before the image could be attached.");
     }
-    onPreview(image.artifactId, file);
   }
 }

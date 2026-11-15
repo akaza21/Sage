@@ -1,16 +1,10 @@
-/** The first tooltip waits this long, like a native title but shorter. */
 export const TOOLTIP_DELAY_MS = 600;
-/** After one hides, the next shows at once for this long (moving along a toolbar). */
 export const TOOLTIP_SKIP_DELAY_MS = 300;
-/** Leaving the control waits this long, so the pointer can reach the tooltip. */
+// Allow the pointer to cross the gap from the control to the tooltip.
 export const TOOLTIP_HIDE_GRACE_MS = 100;
 const GAP = 6;
 const EDGE = 8;
 
-/**
- * Controls that ask for the tooltip: `data-tooltip`, or an `IconButton`
- * without a native title, which shows its accessible name.
- */
 const ANCHOR = "[data-tooltip], .icon-button[aria-label]:not([title])";
 
 function anchorOf(target: EventTarget | null): HTMLElement | null {
@@ -30,7 +24,6 @@ function focusVisible(element: Element) {
   }
 }
 
-/** Above the control and centred; below it when there is no room above. */
 function place(node: HTMLElement, rect: DOMRect) {
   // Measure at the origin: a fixed box left near the right edge by the last
   // tooltip would wrap into the space that remains there.
@@ -50,12 +43,7 @@ function place(node: HTMLElement, rect: DOMRect) {
   node.style.top = `${Math.round(top)}px`;
 }
 
-/**
- * Shows the tooltip text of the control under the pointer, or of the control
- * focused from the keyboard, in one shared node. The control keeps its
- * accessible name, so the node is hidden from assistive technology.
- * Returns an uninstall.
- */
+/** The node is aria-hidden because the control keeps its accessible name. */
 export function installTooltipLayer(): () => void {
   const node = document.createElement("div");
   node.className = "tooltip";
@@ -68,7 +56,6 @@ export function installTooltipLayer(): () => void {
   let shown = false;
   let timer: number | undefined;
   let warmUntil = 0;
-  // A shown control that is removed, hidden or resized hides the tooltip.
   const resize =
     typeof ResizeObserver === "undefined"
       ? null
@@ -100,7 +87,6 @@ export function installTooltipLayer(): () => void {
 
   function open(next: HTMLElement, immediate: boolean) {
     if (next === anchor) {
-      // Back on the control (or on a child of it): keep it, or show it now.
       if (shown || immediate) window.clearTimeout(timer);
       if (immediate && !shown) show();
       return;
@@ -112,7 +98,6 @@ export function installTooltipLayer(): () => void {
     else timer = window.setTimeout(show, TOOLTIP_DELAY_MS);
   }
 
-  /** Hides after a short grace, unless the pointer comes back first. */
   function leave() {
     window.clearTimeout(timer);
     if (shown) timer = window.setTimeout(hide, TOOLTIP_HIDE_GRACE_MS);
@@ -131,8 +116,6 @@ export function installTooltipLayer(): () => void {
     },
     options,
   );
-  // Leaving the control or the tooltip for anything else, including another
-  // window, a native page, or a disabled control that gets no pointer events.
   document.addEventListener(
     "pointerout",
     (event) => {
@@ -162,9 +145,8 @@ export function installTooltipLayer(): () => void {
     },
     options,
   );
-  // Any key hides it, as a native title does: a press may relabel or move
-  // the control. The key is never taken, so Escape still closes the menu or
-  // dialog around the control.
+  // The key is never taken, so Escape still closes the menu or dialog around
+  // the control.
   document.addEventListener("keydown", hide, options);
   document.addEventListener("pointerdown", hide, options);
   document.addEventListener(

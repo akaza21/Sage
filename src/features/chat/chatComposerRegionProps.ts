@@ -14,9 +14,6 @@ import type { PasteAttachability } from "./composerPasteText";
 import type { EndedPage } from "./endedSession";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
 
-/** Whose access the composer offers: the session's binding, and the chat
- * while it has no head, whose access is then drafted on top of the access
- * its last session hands the next one. */
 export interface ComposerAccessTarget {
   bindingId?: string | null;
   draftChatId?: string;
@@ -32,14 +29,12 @@ export interface ChatComposerRegionProps {
   composerRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
   dictationScope: string;
-  /** The bound Chat whose live session lists the `/` commands. */
   commandChatId?: string;
   sessionId?: string | null;
   descriptionId: string;
   disabledReasonId: string;
   text: string;
   attachedContext: readonly AttachedContext[];
-  /** The session the next send uses, for whether it takes attached text. */
   pasteSession?: PasteAttachability["session"];
   imagePreviews?: Readonly<Record<string, string>>;
   imageUploading?: boolean;
@@ -87,7 +82,6 @@ export interface ChatComposerRegionProps {
   usage: ChatUsage | null;
   usageRequest?: AcpUsageRequest | null;
   goal: AcpGoalState;
-  /** Sends, naming the staged batch revision the message carries. */
   onSubmit: (
     event: FormEvent<HTMLFormElement>,
     stagedRevision?: string | null,
@@ -95,7 +89,6 @@ export interface ChatComposerRegionProps {
   onTextChange: (text: string) => void;
   onRemoveContext: (context: AttachedContext) => void;
   imageInputAvailable?: boolean;
-  /** Why image input is unavailable, shown when an image is offered anyway. */
   imageInputDisabledReason?: string | null;
   onAddImages?: (files: File[]) => void;
   onCancelTurn: (() => void) | null;

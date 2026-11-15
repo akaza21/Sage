@@ -73,7 +73,6 @@ export function ownerFromFocusedPage(
 interface SubagentPaneStore {
   open: SubagentPaneTarget | null;
   selected: boolean;
-  /** The plural tab shows its Active / Done list rather than one child. */
   list?: boolean;
   show: (target: SubagentPaneTarget, list?: boolean) => void;
   select: (selected: boolean) => void;

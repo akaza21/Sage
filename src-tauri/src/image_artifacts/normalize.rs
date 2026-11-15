@@ -56,17 +56,17 @@ pub(crate) struct Normalized {
 }
 
 /// Decoded RGBA8 pixels.
-struct Raster {
-    width: u32,
-    height: u32,
-    pixels: Vec<u8>,
+pub(super) struct Raster {
+    pub width: u32,
+    pub height: u32,
+    pub pixels: Vec<u8>,
 }
 
 /// What a header says before any pixel is decoded.
-struct Header {
+pub(super) struct Header {
     width: u32,
     height: u32,
-    orientation: u8,
+    pub orientation: u8,
 }
 
 fn invalid(message: impl Into<String>) -> AppError {
@@ -155,7 +155,7 @@ pub(crate) fn dimensions(media_type: ImageMediaType, bytes: &[u8]) -> AppResult<
     Ok((header.width, header.height))
 }
 
-fn header(media_type: ImageMediaType, bytes: &[u8]) -> AppResult<Header> {
+pub(super) fn header(media_type: ImageMediaType, bytes: &[u8]) -> AppResult<Header> {
     let header = match media_type {
         // IHDR is the first chunk: signature, length, type, width, height.
         ImageMediaType::Png => {
@@ -218,7 +218,7 @@ fn exif_orientation(tiff: &[u8]) -> u8 {
         .map_or(1, |value| value as u8)
 }
 
-fn decode(media_type: ImageMediaType, bytes: &[u8]) -> AppResult<Raster> {
+pub(super) fn decode(media_type: ImageMediaType, bytes: &[u8]) -> AppResult<Raster> {
     match media_type {
         ImageMediaType::Png => decode_png(bytes),
         ImageMediaType::Jpeg => decode_jpeg(bytes),
@@ -318,7 +318,7 @@ fn widen(width: u32, height: u32, mut pixels: Vec<u8>, channels: usize) -> Raste
 
 /// Area-average downscale over premultiplied alpha, so text and thin UI lines
 /// stay legible and transparent pixels lend no colour to their neighbours.
-fn downscale(raster: Raster, edge: u32) -> Raster {
+pub(super) fn downscale(raster: Raster, edge: u32) -> Raster {
     let long = raster.width.max(raster.height);
     if long <= edge {
         return raster;
@@ -362,7 +362,7 @@ fn downscale(raster: Raster, edge: u32) -> Raster {
 }
 
 /// Applies an EXIF orientation (2-8) so the raster is upright.
-fn orient(raster: Raster, orientation: u8) -> Raster {
+pub(super) fn orient(raster: Raster, orientation: u8) -> Raster {
     if !(2..=8).contains(&orientation) {
         return raster;
     }
@@ -392,7 +392,7 @@ fn orient(raster: Raster, orientation: u8) -> Raster {
     }
 }
 
-fn encode_png(raster: &Raster, opaque: bool) -> AppResult<Vec<u8>> {
+pub(super) fn encode_png(raster: &Raster, opaque: bool) -> AppResult<Vec<u8>> {
     let rgb;
     let (color, data) = if opaque {
         rgb = raster

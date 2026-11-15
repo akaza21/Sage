@@ -614,8 +614,6 @@ describe("SubagentSurface", () => {
         agentKey="b"
       />,
     );
-    // The new child reads as soon as the previous child's read settles,
-    // never beside it, and that late read is never shown for the new child.
     expect(readChild).toHaveBeenCalledTimes(1);
     complete({
       kind: "current",

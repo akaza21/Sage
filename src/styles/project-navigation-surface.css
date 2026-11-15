@@ -63,7 +63,6 @@
   position: relative;
 }
 
-/* The header's icon buttons: New chat (with the rail hidden) and resources. */
 .agent-task-header__pencil,
 .agent-task-header__resources > button {
   display: grid;
@@ -394,7 +393,6 @@ button.agent-task-header__resource-row:hover {
   opacity: 0.4;
 }
 
-/* A refused archive, restore or delete, under the row it was started from. */
 .chat-row-error {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 26px;

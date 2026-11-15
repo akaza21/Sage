@@ -26,8 +26,6 @@ export interface ResourceTrashSlice {
   resourceTrashNotice: string | null;
   resourceTrashRequestGeneration: number;
   clearResourceTrashError: () => void;
-  /** With `releaseOpenFile`, a clean open File is closed for the move and
-   * reopened if the move fails. */
   trashProjectResource: (
     source: ResourceRef,
     kind: TrashResourceKind,

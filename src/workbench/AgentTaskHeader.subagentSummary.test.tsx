@@ -10,7 +10,6 @@ import {
 import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { preloadAgentHeaderMenu } from "./agentTaskHeaderLazy";
 
-// The header menu body loads when the window first idles.
 beforeAll(() => preloadAgentHeaderMenu());
 
 import {
@@ -290,14 +289,12 @@ it("counts spawn invocations, not repeated spawn, start, finish, or resource obs
   ).toHaveLength(2);
   expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
   expect(screen.getByText("example.com")).toBeVisible();
-  // A later revision of the same spawn item is a repeated observation.
   replaceItems(observations("3"));
   expect(screen.getByRole("heading", { name: "Subagents" })).toBeVisible();
   expect(
     document.querySelector(".agent-task-header__agent-list")?.children,
   ).toHaveLength(2);
   expect(screen.getByLabelText("Recent subagents done: 2")).toBeVisible();
-  // A separate spawn that reuses a child thread id is another subagent.
   replaceItems([
     ...observations("3"),
     collaboration(
@@ -807,7 +804,6 @@ it("separates recent working and done figures without an inert child-open contro
   render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
   fireEvent.click(screen.getByRole("button", { name: "Show chat resources" }));
   const section = await screen.findByRole("region", { name: "Subagents" });
-  // A plain "Subagents" heading, then the count row; "1 working" once (P1).
   expect(
     within(section).getByRole("heading", { name: "Subagents" }),
   ).toHaveTextContent(/^Subagents$/);

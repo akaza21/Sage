@@ -103,9 +103,6 @@
   clip-path: inset(50%);
 }
 
-/* The header row paints the chat card's surface once, so every cell (task
-   header, side tab, right-pane toggle) and the split gap above the pane
-   splitter read as one surface. */
 .agent-chat-center__header {
   display: flex;
   min-width: 0;
@@ -139,7 +136,6 @@
   grid-column: -2;
   justify-self: end;
   align-self: center;
-  /* Clear of the side tab's bottom rule, which already spans the cell. */
   border-bottom: 0;
 }
 
@@ -190,10 +186,10 @@
   outline: none;
 }
 
-/* The rail reads role tokens per state; a mode sets the tokens. Hover and
-   drag keep the idle width unless a mode gives them their own. A pointer
-   drag keeps the rail hovered, so hover carries no extra specificity and
-   the drag state after it wins. */
+/*
+ * A pointer drag keeps the rail hovered, so hover carries no extra specificity
+ * and the drag state after it wins.
+ */
 .workbench-sidebar-splitter::after {
   position: absolute;
   top: 0;
@@ -223,7 +219,6 @@
   box-shadow: var(--sidebar-splitter-active-shadow, none);
 }
 
-/* The Agent artifact edge keeps its generous pointer target without painting it. */
 .workbench-sidebar-splitter--trailing {
   --sidebar-splitter-width: 1px;
 }

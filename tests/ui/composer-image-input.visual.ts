@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { serveUnderTauriCsp } from "./shared/tauriCsp";
 import {
   openScenario,
   settleChatProjections,
@@ -9,13 +10,18 @@ const captureDir =
   process.env.SAGE_IMAGE_INPUT_CAPTURE_DIR ??
   "output/playwright/composer-image-input";
 
-async function prepare(page: Page, promptImages: boolean) {
+async function prepare(page: Page, promptImages: boolean, thumbnails = true) {
+  await serveUnderTauriCsp(page);
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  await page.evaluate(async (images) => {
-    const fixture = await import("/tests/ui/fixtures/composerImageFixture.ts");
-    fixture.installComposerImageFixture(images);
-  }, promptImages);
+  await page.evaluate(
+    async ([images, thumbnails]) => {
+      const fixture =
+        await import("/tests/ui/fixtures/composerImageFixture.ts");
+      fixture.installComposerImageFixture(images, thumbnails);
+    },
+    [promptImages, thumbnails],
+  );
 }
 
 /** Pastes a generated PNG screenshot into the composer, as a clipboard would. */
@@ -65,6 +71,7 @@ for (const width of [1280, 720]) {
     const preview = composer.locator(".composer__image-preview");
     await expect(preview).toBeVisible();
     await expect(preview).toHaveJSProperty("complete", true);
+    await expect(preview).toHaveJSProperty("naturalWidth", 48);
     await expect(composer.getByRole("alert")).toHaveCount(0);
     await page.screenshot({
       path: `${captureDir}/claude-composer-pasted-image-${width}.png`,
@@ -83,4 +90,27 @@ test("a session without the image capability refuses a paste with its reason", a
     "This harness does not advertise image input.",
   );
   await expect(composer.locator(".composer__image-preview")).toHaveCount(0);
+});
+
+test("an image whose thumbnail cannot be read still attaches, without a preview", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await prepare(page, true, false);
+  await pasteScreenshot(page);
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { refusedThumbnailReads: number })
+        .refusedThumbnailReads === 1,
+  );
+  // The refusal settles in microtasks; let them run before asserting.
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
+  const composer = page.locator("form.composer").first();
+  await expect(
+    composer.getByRole("button", {
+      name: "Remove Image · screenshot.png context",
+    }),
+  ).toBeVisible();
+  await expect(composer.locator(".composer__image-preview")).toHaveCount(0);
+  await expect(composer.getByRole("alert")).toHaveCount(0);
 });

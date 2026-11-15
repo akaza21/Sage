@@ -50,10 +50,7 @@ export interface BufferSnapshotRequest {
   revision: number;
 }
 
-/**
- * "Keep mine": `content` goes on top of the File as the user saw it on disk
- * (`expectedDisk`); if disk has moved on since, nothing changes.
- */
+/** "Keep mine" onto `expectedDisk`; nothing changes if disk has moved on. */
 export interface BufferRebaseRequest {
   resource: ResourceRef;
   expectedDisk: DocumentVersion;
@@ -66,13 +63,11 @@ export interface BufferSnapshotAck {
   revision: number;
   persistedAt: number;
   dirty: boolean;
-  /** Whether the stored buffer is this snapshot's text; false when a newer
-   * revision was already stored. */
+  /** False when a newer snapshot was already stored. */
   applied: boolean;
 }
 
 export interface EditorSaveResult {
-  /** "matched": a Keep mine found disk holding the editor's own text. */
   outcome: "saved" | "unchanged" | "conflict" | "rebased" | "matched";
   document: EditorDocument;
 }
@@ -96,10 +91,7 @@ export interface DiffHunk {
   lines: DiffLine[];
 }
 
-/**
- * The staged (index) text of a File, which the gutter marks changes against.
- * `unchanged` answers a request that named the current blob.
- */
+/** `unchanged` answers a request that named the current blob. */
 export type FileGitBase =
   | { state: "unavailable" }
   | { state: "unchanged"; oid: string }

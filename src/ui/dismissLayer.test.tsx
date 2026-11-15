@@ -7,7 +7,6 @@ import { DismissLayerContext, useDismissLayer } from "./dismissLayer";
 
 afterEach(cleanup);
 
-/** A layer rendered into the body, like a popover or a dialog. */
 function Layer({
   name,
   modal,

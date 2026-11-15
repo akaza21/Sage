@@ -17,7 +17,6 @@
     display var(--motion-duration-fade) allow-discrete;
 }
 
-/* Centred on the reading column, accounting for its reserved scrollbar. */
 .chat-surface--agent > .chat-follow-end {
   grid-area: transcript;
   align-self: end;

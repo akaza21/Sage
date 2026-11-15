@@ -10,22 +10,14 @@ import {
 
 import { isImeComposing } from "./imeComposition";
 
-/**
- * What one open transient surface (menu, popover, dialog, drawer) needs from
- * the stack. `inside` holds the surface, its trigger and any branch rendered
- * elsewhere; a press or key in any of them belongs to this layer.
- */
 export interface DismissLayerOptions {
   inside: readonly RefObject<Element | null>[];
-  /** Omitted: Escape inside this layer is left to its own handlers. */
   onEscape?: () => void;
-  /** Omitted: a press outside does not dismiss this layer. */
   onOutside?: (event: PointerEvent) => void;
   /** Presses outside a modal layer never reach the layers under it. */
   modal?: boolean;
 }
 
-/** A stack entry; `parent` is the layer it was rendered inside, if any. */
 export type DismissLayer = {
   options: RefObject<DismissLayerOptions>;
   parent: RefObject<DismissLayer | null>;
@@ -33,13 +25,11 @@ export type DismissLayer = {
 type Layer = DismissLayer;
 
 /**
- * The layer that content renders inside. A layer's children read it, so a
- * child layer always stacks above its parent, even when both open together
- * and the child's effects run first.
+ * A layer's children read it, so a child layer always stacks above its parent,
+ * even when both open together and the child's effects run first.
  */
 export const DismissLayerContext = createContext<DismissLayer | null>(null);
 
-// Bottom to top. A layer opened later sits above, and a child above its parent.
 const stack: Layer[] = [];
 
 function descends(layer: Layer, ancestor: Layer) {
@@ -91,10 +81,9 @@ function remove(layer: Layer) {
 }
 
 /**
- * Escape for a layer, to spread on its root element as `onKeyDown`. React
- * bubbles keys through portals along the component tree, so the innermost
+ * React bubbles keys through portals along the component tree, so the innermost
  * open layer sees Escape first. A handler inside the layer that wants Escape
- * for itself calls `preventDefault()`; the layer then stays open.
+ * calls `preventDefault()`, and the layer stays open.
  */
 export function dismissLayerKeyDown(
   event: ReactKeyboardEvent,
@@ -115,11 +104,8 @@ export function dismissLayerKeyDown(
 }
 
 /**
- * Joins the dismiss stack while `open`. Returns the layer, to provide through
- * `DismissLayerContext` around the layer's content, and its `onKeyDown`.
- * A press outside dismisses every layer above the one it lands in, stopping
- * at a modal layer, so a press inside a dialog opened from a menu keeps the
- * menu, and a press inside a parent menu closes only its submenu.
+ * A press outside dismisses every layer above the one it lands in, stopping at
+ * a modal layer.
  */
 export function useDismissLayer(open: boolean, options: DismissLayerOptions) {
   const parent = useContext(DismissLayerContext);
@@ -129,7 +115,6 @@ export function useDismissLayer(open: boolean, options: DismissLayerOptions) {
     optionsRef.current = options;
     parentRef.current = parent;
   });
-  // One stable entry per component; its refs follow the latest render.
   const [layer] = useState<Layer>(() => ({
     options: optionsRef,
     parent: parentRef,

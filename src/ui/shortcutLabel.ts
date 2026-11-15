@@ -4,9 +4,8 @@ export function shortcutLabel(key: string, usesMeta: boolean): string {
 }
 
 /**
- * True on Apple platforms, where Command is the shortcut modifier. WKWebView
- * reports "MacIntel" on Intel and Apple silicon, and iPadOS in desktop mode
- * does too; the user agent covers an empty platform string.
+ * WKWebView reports "MacIntel" on Intel and Apple silicon, and iPadOS in
+ * desktop mode does too; the user agent covers an empty platform string.
  */
 export function usesMetaModifier(): boolean {
   if (typeof navigator === "undefined") return false;

@@ -6,14 +6,12 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-/** A non-negative safe integer, or null. */
 export function safeOrdinal(value: unknown): number | null {
   return Number.isSafeInteger(value) && (value as number) >= 0
     ? (value as number)
     : null;
 }
 
-/** A non-empty string of at most 512 UTF-16 units with no NUL. */
 export function isShortId(value: unknown): value is string {
   return (
     typeof value === "string" &&

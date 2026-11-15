@@ -12,7 +12,6 @@ import { AgentChatRuntimeContext } from "./AgentChatRuntimeContext";
 import BodyView from "./AgentWorkbenchBodyView";
 const Presentation = memo(BodyView);
 
-/** Runtime ownership survives while the Agent workspace's presentation sleeps. */
 export default function AgentWorkbenchHost({
   visible = true,
   onEnterEditor,

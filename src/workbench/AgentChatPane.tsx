@@ -43,9 +43,6 @@ export const AgentChatPane = memo(function AgentChatPane({
     void activateTab(tab.id);
   }
 
-  // Under Agent chrome the pane has no header of its own: the task header
-  // names the focused Chat, and a side chat's tab sits in the center
-  // header row.
   return (
     <section
       className={`agent-chat-pane${focused ? " agent-chat-pane--focused" : ""}`}

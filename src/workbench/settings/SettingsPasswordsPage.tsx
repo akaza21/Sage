@@ -27,11 +27,6 @@ import {
 } from "./savedPasswords";
 import "./settings-passwords.css";
 
-/**
- * BF-7b-1 Settings › Passwords, after Codex ref 48. Rust keeps the vault;
- * this page holds only the current list and, for 30 seconds at most, a
- * password the user revealed after the OS confirmed them.
- */
 export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
   const desktop = isTauriRuntime();
   const [search, setSearch] = useState("");
@@ -89,10 +84,9 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     setRevealed((current) => (current.size === 0 ? current : new Map()));
   }, []);
 
-  // Every reload of vault data goes through here. Rust may now hold a newer
-  // password than one revealed, changed by this page or by another Sage
-  // window, so revealed passwords, their timers and any reveal still waiting
-  // on the OS prompt are dropped first. A search reloads with `nextQuery`.
+  // Rust may now hold a newer password than one revealed, changed by this page
+  // or by another Sage window, so revealed passwords, their timers and any
+  // reveal still waiting on the OS prompt are dropped first.
   const refreshVault = useCallback(
     (nextQuery?: string) => {
       vaultEpoch.current += 1;
@@ -113,10 +107,9 @@ export function SettingsPasswordsPage({ visible }: { visible: Set<string> }) {
     return () => window.clearTimeout(timer);
   }, [search, query, refreshVault]);
 
-  // Settings stays alive while hidden, so on every hide, as on close,
-  // revealed passwords and their timers go, a reveal still at the OS prompt
-  // is dropped, and a running import is cancelled. State that only reports
-  // results, such as an import that finishes meanwhile, is kept for wake.
+  // Settings stays alive while hidden, so on every hide, as on close, revealed
+  // passwords and their timers go, a reveal still at the OS prompt is dropped,
+  // and a running import is cancelled.
   useClearOnSuspend(
     useCallback(() => {
       const request = activeImport.current;

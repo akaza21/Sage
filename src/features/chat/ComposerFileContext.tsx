@@ -38,7 +38,6 @@ export function ComposerFileParts({
   /** Hands a pick to the chat's staged batch, which the paste part owns. */
   onPickFiles: (pick: PromptPick) => void;
   hidden: boolean;
-  /** The field cannot be edited. */
   disabled: boolean;
 }) {
   // The anchor belongs to the toolbar: it is looked up whenever the menu

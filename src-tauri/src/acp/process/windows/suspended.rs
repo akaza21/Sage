@@ -61,7 +61,10 @@ impl SuspendedLaunch {
                 null(),
                 null(),
                 1,
-                CREATE_SUSPENDED | CREATE_UNICODE_ENVIRONMENT | EXTENDED_STARTUPINFO_PRESENT,
+                CREATE_SUSPENDED
+                    | CREATE_UNICODE_ENVIRONMENT
+                    | EXTENDED_STARTUPINFO_PRESENT
+                    | sage_process::console::CREATION_FLAGS,
                 environment.map_or(null(), |value| value.as_ptr().cast()),
                 cwd.as_ptr(),
                 (&raw const startup.StartupInfo),

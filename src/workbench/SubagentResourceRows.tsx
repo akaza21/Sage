@@ -16,7 +16,7 @@ type RecentAgent = ReturnType<
 >["recentAgents"][number];
 export type SubagentTime = { startedAt: number; updatedAt: number };
 
-/** Latest child epoch; desktop reads wait for listener attachment to avoid gaps. Non-desktop reads never wait. */
+/** Desktop reads wait for listener attachment to avoid gaps. */
 // eslint-disable-next-line react-refresh/only-export-components -- SubagentChild's refresh state
 export function useChildEpoch(page: AcpChatPage): number | null {
   const [notice, setNotice] = useState({ chat: "", epoch: 0, attached: false });
@@ -32,7 +32,6 @@ export function useChildEpoch(page: AcpChatPage): number | null {
             : { chat, epoch: 0, attached: true },
         );
     };
-    // Ignore notices from torn-down Chat listeners.
     subscribeChildProjectionChanges(page.projectId, page.chatId, (epoch) => {
       if (live) setNotice({ chat, epoch, attached: true });
     }).then(
@@ -56,17 +55,15 @@ export function useChildEpoch(page: AcpChatPage): number | null {
   return listenerless ? own : null;
 }
 
-/** A live child re-reads at most once per this window, and within it. */
 const CHILD_REFRESH_MS = 1_000;
 
-/** Single-flight, throttled reads for one open child. */
 export type ChildRefresh = {
   identity: string;
   inFlight: boolean;
   /** The epoch moved while a read was in flight. */
   again: boolean;
   timer: ReturnType<typeof setTimeout> | undefined;
-  /** When the latest read started (performance.now()). */
+  /** performance.now() when the latest read started. */
   startedAt: number;
   send: () => void;
 };
@@ -109,7 +106,6 @@ const statusText = {
   failed: "Failed",
 } as const;
 
-/** Re-renders each second only while something is live. */
 export function useNow(live: boolean): number {
   const [now, setNow] = useState(Date.now);
   useEffect(() => {
@@ -149,7 +145,6 @@ export function invocationOf(
   return null;
 }
 
-/** Per-invocation times; later events belong to the key's latest spawn. */
 export function subagentTimes(
   page: AcpChatPage,
   agents: readonly RecentAgent[],
@@ -181,7 +176,6 @@ export function subagentTimes(
   return times;
 }
 
-/** Active rows count seconds; settled rows read `just now`, then m/h/d. */
 export function subagentAge(updatedAt: number, now: number, active: boolean) {
   const seconds = Math.max(0, Math.floor((now - updatedAt) / 1_000));
   const minutes = Math.floor(seconds / 60);

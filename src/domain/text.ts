@@ -14,7 +14,6 @@ export function utf8ByteLength(value: string): number {
   return utf8Bytes(value).byteLength;
 }
 
-/** Returns the original value when it fits, otherwise a whole-character UTF-8 prefix. */
 export function truncateUtf8(value: string, maximumBytes: number): string {
   const bytes = utf8Bytes(value);
   if (bytes.byteLength <= maximumBytes) return value;

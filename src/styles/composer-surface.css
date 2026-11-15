@@ -16,13 +16,11 @@
   );
 }
 
-/* Slots take space in the column before the composer shares the remainder. */
 .chat-dock > * {
   flex: none;
 }
 
 .chat-dock > .chat-edit-summary-zone {
-  /* Expanded edits use spare room without squeezing the input and toolbar. */
   flex: 1 1 auto;
 }
 
@@ -284,7 +282,6 @@
   text-overflow: ellipsis;
 }
 
-/* Interactive scope delegates its entire box to the picker trigger. */
 .project-scope.select-control {
   --select-control-trigger-min-width: var(--control-height-compact);
   --select-control-trigger-padding: 0 var(--space-1);

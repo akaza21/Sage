@@ -31,9 +31,7 @@ const MessageCirclePlus = leanIcon("lucide lucide-message-circle-plus", [
   ["path", { d: "M12 8v8" }],
 ]);
 
-/** Focus the side composer once, when it first becomes enabled after open. */
 const FOCUS_WAIT_MS = 5000;
-/** Coalesces a burst of projection change events into one refresh. */
 const PROJECTION_REFRESH_COALESCE_MS = 50;
 
 export function SideChatHeader({
@@ -52,7 +50,6 @@ export function SideChatHeader({
     return item?.kind === "text" ? item.payload.text.slice(0, 128) : null;
   });
   useEffect(() => {
-    // Tab lives outside its pane, in the center header.
     const pane = document.querySelector(
       `.agent-chat-pane[data-chat-id="${CSS.escape(chatId)}"]`,
     );
@@ -120,7 +117,6 @@ export function SideChatHeader({
   );
 }
 
-/** Mount registry/running sync while any side chat exists. */
 export function SideChatDialogs() {
   useSideChatRegistry();
   const pending = useSideChatState((state) => state.pendingClose);
@@ -163,7 +159,6 @@ export function SideChatHome() {
   );
 }
 
-/** Close dialog initially focuses the danger action. */
 export function CloseSideChatDialog({
   onCancel,
   onClose,
@@ -250,7 +245,6 @@ export function CloseSideChatDialog({
   );
 }
 
-/** Refresh Rust's temporary Chat mirror on side-chat projection changes. */
 function useSideChatRegistry() {
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
   useEffect(() => {

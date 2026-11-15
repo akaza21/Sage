@@ -7,13 +7,10 @@ import type {
 import { useWorkbenchStore } from "./store";
 
 export interface ChatPlacement {
-  /** The chat has a tab in its project's layout. */
   attached: boolean;
-  /** The chat is closed or archived and can be restored. */
   archived: boolean;
 }
 
-/** Where a chat lives, from the active layout or its folder's rail. */
 export function chatPlacement(
   state: {
     project: ProjectSummary | null;
@@ -39,12 +36,6 @@ export function chatPlacement(
   };
 }
 
-/**
- * Opens a chat from a search result or a notification. An attached chat is
- * activated, switching folders when it belongs to another one; a closed or
- * archived chat is restored. A chat restored into another folder stays there
- * unless `revealRestored` asks to open that folder too.
- */
 export async function openChat(
   projectId: string,
   chatId: string,
@@ -64,9 +55,8 @@ export async function openChat(
 }
 
 /**
- * Opens the chat a notification names. Rails list a bounded set of attached
- * chats, so only a chat known to be closed or archived is restored, and a
- * restored chat is always shown, in its own folder.
+ * Rails list a bounded set of attached chats, so only a chat known to be closed
+ * or archived is restored.
  */
 export async function openNotifiedChat(projectId: string, chatId: string) {
   const { archived } = chatPlacement(

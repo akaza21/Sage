@@ -7,7 +7,6 @@ import { safeResourceLocation } from "./acpDesktopResponsePayloads";
 /** Rust `MAX_BACKGROUND_TERMINALS`. */
 const MAX_TERMINALS = 32;
 
-/** A command the session's harness left running. */
 export interface BackgroundTerminal {
   /** Opaque; sent back to stop this terminal. */
   handle: string;
@@ -44,7 +43,6 @@ async function list(runtime: AcpUsageRequest) {
 }
 
 export const acpBackgroundTerminals = {
-  /** The terminals the harness still runs. */
   list,
   /** Stops one terminal, or every one when `handle` is null. */
   stop: async (runtime: AcpUsageRequest, handle: string | null) => {
