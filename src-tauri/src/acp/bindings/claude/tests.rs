@@ -336,7 +336,7 @@ fn model_metadata_redacts_labels_and_rejects_unsafe_ids() {
     let offer = ClaudeCapabilityOffer::from_initialize_bytes(&encoded(&value)).unwrap();
     assert_eq!(
         offer.models[0].label.as_str(),
-        "Claude [redacted] [redacted]"
+        r"Claude C:\private\model [redacted]"
     );
     value["result"]["models"][0]["id"] = json!(r"C:\private\model");
     assert!(ClaudeCapabilityOffer::from_initialize_bytes(&encoded(&value)).is_err());
@@ -358,7 +358,7 @@ fn raw_decode_rejects_malformed_duplicate_deep_and_limit_plus_one_shapes() {
 }
 
 #[test]
-fn message_and_plan_text_redact_native_paths_and_secrets() {
+fn message_and_plan_text_show_native_paths_and_redact_secrets() {
     let message = json!({
         "method": "session/update",
         "params": {
@@ -386,13 +386,15 @@ fn message_and_plan_text_redact_native_paths_and_secrets() {
         }
     });
     let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
-    for frame in [message, plan] {
+    for (frame, shown) in [
+        (message, r"Result C:\\private\\file [redacted]"),
+        (plan, "/private/file [redacted]"),
+    ] {
         let events = translator
             .translate_notification(&encoded(&frame), &FixtureResources)
             .unwrap();
         let projected = format!("{events:?}");
-        assert!(projected.contains("[redacted]"));
-        assert!(!projected.contains("private"));
+        assert!(projected.contains(shown), "{projected}");
         assert!(!projected.contains("sk-ant"));
         assert!(!projected.contains("token=secret"));
     }
@@ -599,9 +601,8 @@ fn message_snapshot_redacts_tokens_split_across_frame_boundaries() {
         .translate_notification(&encoded(&chunk(r"\private\file.txt")), &FixtureResources)
         .unwrap();
     let projected = format!("{events:?}");
-    assert!(projected.contains("[redacted]"));
+    assert!(projected.contains(r"Bearer [redacted] C:\\private\\file.txt"));
     assert!(!projected.contains("secret"));
-    assert!(!projected.contains("private"));
 }
 
 #[test]
@@ -730,8 +731,7 @@ fn correlated_rpc_error_is_redacted_and_terminalized() {
         ]
     ));
     let projected = format!("{events:?}");
-    assert!(projected.contains("[redacted]"));
-    assert!(!projected.contains("private"));
+    assert!(projected.contains(r"failed at C:\\private\\file with [redacted]"));
     assert!(!projected.contains("sk-ant"));
 }
 

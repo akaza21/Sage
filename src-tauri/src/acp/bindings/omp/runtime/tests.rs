@@ -547,7 +547,7 @@ fn chunks_append_plan_replaces_and_plus_one_poison_clears_snapshots() {
     }
     for (item, first, second, forbidden) in [
         ("split-bearer", "Bearer ", "secret-value", "secret-value"),
-        ("split-path", "C:", r"\Users\private", "Users"),
+        ("split-path", "C:", r"\Users\private", "[redacted]"),
         ("split-key", "sk-", "private", "private"),
     ] {
         for text in [first, second] {

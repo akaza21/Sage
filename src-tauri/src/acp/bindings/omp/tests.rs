@@ -947,7 +947,7 @@ fn malformed_duplicate_key_deep_foreign_and_unknown_frames_are_rejected() {
 }
 
 #[test]
-fn normalized_text_redacts_secrets_and_absolute_paths() {
+fn normalized_text_redacts_secrets_and_shows_absolute_paths() {
     let mut translator = translator(8);
     initialize(&mut translator, false);
     new_session(&mut translator);
@@ -955,7 +955,7 @@ fn normalized_text_redacts_secrets_and_absolute_paths() {
     let event = br#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"See C:\\Users\\private, sk-secret, and Bearer token-secret"}}}}"#;
     let events = translator.ingest(event, &FixtureResources).unwrap();
     let rendered = format!("{events:?}");
-    assert!(!rendered.contains("Users"));
+    assert!(rendered.contains(r"See C:\\Users\\private, [redacted]"));
     assert!(!rendered.contains("sk-secret"));
     assert!(!rendered.contains("token-secret"));
     assert!(rendered.contains("[redacted]"));

@@ -2,7 +2,7 @@ use super::{Mode, redact};
 
 #[test]
 fn home_paths_hide_windows_names_and_preserve_posix_prose() {
-    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+    for mode in [Mode::CommandOutput, Mode::Diagnostic] {
         let marker = if mode == Mode::Diagnostic {
             "[path]"
         } else {
@@ -57,7 +57,7 @@ fn home_paths_hide_windows_names_and_preserve_posix_prose() {
 
 #[test]
 fn windows_home_names_stay_private_before_continuation_boundaries() {
-    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+    for mode in [Mode::CommandOutput, Mode::Diagnostic] {
         for (input, name, public_tail) in [
             (r"C:\Users\Jane Doe copied to /tmp/x tail", "Doe", " tail"),
             (r#"C:\Users\John Smith "D:\out" tail"#, "Smith", " tail"),
@@ -85,7 +85,7 @@ fn windows_home_names_stay_private_before_continuation_boundaries() {
 
 #[test]
 fn windows_home_first_name_word_accepts_forward_slash_suffixes() {
-    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+    for mode in [Mode::CommandOutput, Mode::Diagnostic] {
         for name in ["Smith", "smith"] {
             let input = format!(r"C:\Users\John {name}/Documents tail");
             let expected = if mode == Mode::Diagnostic {
@@ -115,7 +115,7 @@ fn windows_home_first_name_word_accepts_forward_slash_suffixes() {
 
 #[test]
 fn posix_home_paths_redact_only_the_path_token() {
-    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+    for mode in [Mode::CommandOutput, Mode::Diagnostic] {
         let marker = if mode == Mode::Diagnostic {
             "[path]"
         } else {
@@ -139,42 +139,41 @@ fn posix_home_paths_redact_only_the_path_token() {
 
 #[test]
 fn windows_home_names_remain_private_without_a_path_suffix() {
-    for mode in [Mode::Prose, Mode::CommandOutput] {
-        for input in [
-            r"cd C:\Users\John Paul Smith",
-            r"C:\Users\Jane Doe Smith",
-            r"C:\Users\John Smith is locked",
-            r"C:\Users\John van smith",
-            "C:/Users/John Smith",
-            "C:/Users/John Paul Smith",
-            "/c/Users/John Paul Smith",
-        ] {
-            let actual = redact("test", input, 4096, mode).unwrap();
-            for name in ["John", "Paul", "Jane", "Doe", "Smith", "van", "smith"] {
-                assert!(!actual.contains(name), "{mode:?}: {actual}");
-            }
+    let mode = Mode::CommandOutput;
+    for input in [
+        r"cd C:\Users\John Paul Smith",
+        r"C:\Users\Jane Doe Smith",
+        r"C:\Users\John Smith is locked",
+        r"C:\Users\John van smith",
+        "C:/Users/John Smith",
+        "C:/Users/John Paul Smith",
+        "/c/Users/John Paul Smith",
+    ] {
+        let actual = redact("test", input, 4096, mode).unwrap();
+        for name in ["John", "Paul", "Jane", "Doe", "Smith", "van", "smith"] {
+            assert!(!actual.contains(name), "{actual}");
         }
-        for home in [r"C:\Users\John", "C:/Users/John", "/c/Users/John"] {
-            let input = format!("{home} Smith {} tail", "Name ".repeat(300));
-            let actual = redact("test", &input, 8192, mode).unwrap();
-            assert!(!actual.contains("Smith"), "{mode:?}: {actual}");
-            assert!(actual.ends_with(" tail"), "{mode:?}: {actual}");
-            for boundary in [";", "|", "&", "\n", "\r\n"] {
-                let input = format!("{home} Doe Smith{boundary} echo public");
-                let actual = redact("test", &input, 4096, mode).unwrap();
-                assert!(
-                    !actual.contains("Doe") && !actual.contains("Smith"),
-                    "{mode:?}: {actual}"
-                );
-                assert!(actual.ends_with("echo public"), "{mode:?}: {actual}");
-            }
+    }
+    for home in [r"C:\Users\John", "C:/Users/John", "/c/Users/John"] {
+        let input = format!("{home} Smith {} tail", "Name ".repeat(300));
+        let actual = redact("test", &input, 8192, mode).unwrap();
+        assert!(!actual.contains("Smith"), "{actual}");
+        assert!(actual.ends_with(" tail"), "{actual}");
+        for boundary in [";", "|", "&", "\n", "\r\n"] {
+            let input = format!("{home} Doe Smith{boundary} echo public");
+            let actual = redact("test", &input, 4096, mode).unwrap();
+            assert!(
+                !actual.contains("Doe") && !actual.contains("Smith"),
+                "{actual}"
+            );
+            assert!(actual.ends_with("echo public"), "{actual}");
         }
     }
 }
 
 #[test]
 fn home_continuations_do_not_capture_unrelated_relative_paths() {
-    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+    for mode in [Mode::CommandOutput, Mode::Diagnostic] {
         let marker = if mode == Mode::Diagnostic {
             "[path]"
         } else {
@@ -375,10 +374,86 @@ fn escaped_web_urls_preserve_prose_without_weakening_native_path_detection() {
         r"before file:\/\/\/home\/alice\/x tail",
     ] {
         assert!(redact("test", input, 512, Mode::Permission).is_err());
-        for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+        for mode in [Mode::CommandOutput, Mode::Diagnostic] {
             let actual = redact("test", input, 512, mode).unwrap();
             assert!(!actual.contains("alice"), "{mode:?}: {actual}");
             assert!(actual.starts_with("before ") && actual.ends_with(" tail"));
         }
     }
+}
+
+#[test]
+fn prose_shows_absolute_paths_as_written() {
+    for input in [
+        r"cargo build --release is compiling now into D:\SageWork\main-build\target which is still empty",
+        "logs are in /var/log/sage/run.log and /srv/data.",
+        "open `/opt/sage/bin` or (E:/builds/out)",
+        r"the share \\buildhost\drops\nightly is mounted",
+        "file:///srv/data/report.html",
+    ] {
+        assert_eq!(redact("text", input, 4096, Mode::Prose).unwrap(), input);
+    }
+}
+
+#[test]
+fn prose_shortens_the_current_home_folder() {
+    let home = std::env::home_dir().expect("test machines have a home folder");
+    let input = format!(
+        "edited {} just now",
+        home.join("proj").join("x.rs").display()
+    );
+    let separator = std::path::MAIN_SEPARATOR;
+    assert_eq!(
+        redact("text", &input, 4096, Mode::Prose).unwrap(),
+        format!("edited ~{separator}proj{separator}x.rs just now")
+    );
+    assert_eq!(
+        redact("toolOutput", &input, 4096, Mode::CommandOutput).unwrap(),
+        "edited [redacted] just now"
+    );
+}
+
+#[test]
+fn prose_paths_never_carry_secrets_into_view() {
+    for (input, expected) in [
+        (
+            r"wrote D:\work\app\.env with API_KEY='sk-live-abcdef' for you",
+            r"wrote D:\work\app\.env with [redacted] for you",
+        ),
+        (
+            "use /srv/app/run.sh --token abc123 now",
+            "use /srv/app/run.sh --token [redacted] now",
+        ),
+        (
+            "cloned into /srv/git/repo from https://alice:hunter2@example.test/repo.git",
+            "cloned into /srv/git/repo from [redacted]",
+        ),
+        (
+            "cache at /tmp/ghp_abcdef123456/data is stale",
+            "cache at [redacted] is stale",
+        ),
+        (
+            r"key in C:\keys\AKIAIOSFODNN7EXAMPLE\creds was rotated",
+            "key in [redacted] was rotated",
+        ),
+        (
+            "file:///srv/sk-abcdef123456/x and file://alice:hunter2@host/x",
+            "[redacted] and [redacted]",
+        ),
+    ] {
+        assert_eq!(
+            redact("text", input, 4096, Mode::Prose).unwrap(),
+            expected,
+            "{input}"
+        );
+    }
+}
+
+#[test]
+fn tool_prose_keeps_paths_private() {
+    let input = r"read D:\SageWork\main-build\target and /var/log/sage/run.log";
+    assert_eq!(
+        super::redact_prose_hiding_paths("toolOutput", input, 4096).unwrap(),
+        "read [redacted] and [redacted]"
+    );
 }

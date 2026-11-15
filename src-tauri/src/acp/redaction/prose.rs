@@ -4,10 +4,35 @@ use super::{
 };
 use sage_acp_protocol::contract::ContractError;
 
+/// How prose shows absolute paths. Messages show them as written, with the
+/// home folder shortened to `~`; tool content keeps them private like command
+/// output does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProsePaths {
+    Shown,
+    Redacted,
+}
+
 pub(crate) fn redact_prose(
     field: &'static str,
     input: &str,
     maximum_output: usize,
+    path_display: ProsePaths,
+) -> Result<String, ContractError> {
+    let output = redact_secrets(field, input, maximum_output, path_display)?;
+    let home = super::home::HomePrefix::current().filter(|_| path_display == ProsePaths::Shown);
+    let shortened = home.and_then(|home| match home.shorten(&output) {
+        std::borrow::Cow::Owned(shortened) => Some(shortened),
+        std::borrow::Cow::Borrowed(_) => None,
+    });
+    Ok(shortened.unwrap_or(output))
+}
+
+fn redact_secrets(
+    field: &'static str,
+    input: &str,
+    maximum_output: usize,
+    path_display: ProsePaths,
 ) -> Result<String, ContractError> {
     let pem = super::pem::redact_pem(input);
     let input = pem.as_ref();
@@ -55,7 +80,8 @@ pub(crate) fn redact_prose(
             };
             let prefix = &body[..body.len() - suffix.len()];
             let secret = secrets.redact(prefix, "", continued);
-            let path = paths.redact(prefix, "", tail, PathMode::Prose).is_some();
+            let path = path_display == ProsePaths::Redacted
+                && paths.redact(prefix, "", tail, PathMode::Prose).is_some();
             if !continued {
                 let replacement = if secret || path || quoted {
                     REDACTED
