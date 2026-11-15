@@ -1,9 +1,7 @@
 use super::*;
-use crate::acp::{
-    browser::{BrowserScope, attachment::BrowserAttachments},
-    contract::{SageChatId, SageProjectId},
-};
+use crate::acp::browser::{BrowserScope, attachment::BrowserAttachments};
 use crate::settings_store::SettingsStore;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 use std::sync::{Arc, Mutex};
 
 #[test]

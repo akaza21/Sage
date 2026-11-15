@@ -6,10 +6,8 @@
 //! choose), its safe answer is the default, an Allow given faster than a
 //! person reads is refused, and only one such dialog is open at a time.
 
-use crate::{
-    acp::contract::SageAgentSessionId, acp_protocol::access_mode::SessionAccessMode,
-    state::AppState,
-};
+use crate::state::AppState;
+use sage_acp_protocol::{access_mode::SessionAccessMode, contract::SageAgentSessionId};
 use std::sync::{
     Arc, LazyLock,
     atomic::{AtomicBool, Ordering},

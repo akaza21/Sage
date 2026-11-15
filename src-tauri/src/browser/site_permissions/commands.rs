@@ -1,7 +1,5 @@
-//! Site permission commands. All of them run only for the main webview: the
-//! invoke guard in `ipc_commands.rs` rejects every browser tab, and any other
-//! origin, before a command runs. Origins from the renderer must already be
-//! canonical http(s) origins; kinds and decisions are closed enums.
+//! The invoke guard in `ipc_commands.rs` rejects every browser tab, and any
+//! other origin, before a command runs.
 
 use std::{
     collections::BTreeSet,
@@ -54,8 +52,6 @@ pub(super) fn snapshot(state: &BrowserState, tab_id: &str) -> Result<PermissionS
     })
 }
 
-/// Settings > Browser's view: every saved answer, and the sites of tabs whose
-/// page may still use an Allow that ended because it has not reloaded yet.
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SiteSettingsView {
@@ -85,8 +81,6 @@ fn site_settings(state: &BrowserState) -> Result<SiteSettingsView, String> {
     })
 }
 
-/// Tells the main webview the saved answers changed: every open tab's drawer
-/// gets a fresh snapshot, and Settings gets the full view.
 pub(super) fn emit_site_settings(app: &AppHandle, state: &BrowserState) {
     let labels = state
         .tabs
@@ -103,7 +97,6 @@ pub(super) fn emit_site_settings(app: &AppHandle, state: &BrowserState) {
     }
 }
 
-/// Every tab showing one of `origins`, whoever drives it.
 fn tabs_on(
     state: &BrowserState,
     origins: &BTreeSet<String>,
@@ -127,16 +120,12 @@ fn tabs_on(
         .collect())
 }
 
-/// How long a Settings change waits for reloaded tabs to commit a new
-/// document before it reports them as still stale.
 const RELOAD_CONFIRM_TIMEOUT: Duration = Duration::from_secs(5);
 const RELOAD_CONFIRM_POLL: Duration = Duration::from_millis(50);
 
-/// Reloads `tabs` and waits, up to [`RELOAD_CONFIRM_TIMEOUT`], until each has
-/// committed a new document. `WebView::reload` only queues the reload, so
-/// only the commit of a navigation that started after the mark (a document
-/// or an error page, which clears the tab's stale mark) proves the old page
-/// is gone. Tabs that do not get there stay marked.
+/// `WebView::reload` only queues the reload, so only the commit of a
+/// navigation that started after the mark proves the old page is gone. Tabs
+/// that do not get there stay marked.
 async fn reload_and_confirm(state: &BrowserState, tabs: Vec<(String, Webview)>) {
     if tabs.is_empty() {
         return;
@@ -158,9 +147,9 @@ async fn reload_and_confirm(state: &BrowserState, tabs: Vec<(String, Webview)>) 
     }
 }
 
-/// Applies a Settings change. Tabs on sites whose Allow ended are marked
-/// stale before they reload, so a page that keeps its document is reported
-/// rather than silently treated as revoked.
+/// Tabs on sites whose Allow ended are marked stale before they reload, so a
+/// page that keeps its document is reported rather than silently treated as
+/// revoked.
 async fn apply(
     app: &AppHandle,
     state: &BrowserState,
@@ -204,7 +193,6 @@ pub(crate) async fn browser_permission_status(
     snapshot(&state, &tab_id)
 }
 
-/// Every saved site permission, for Settings > Browser.
 #[tauri::command]
 pub(crate) async fn browser_site_settings(
     state: State<'_, BrowserState>,
@@ -212,9 +200,7 @@ pub(crate) async fn browser_site_settings(
     site_settings(&state)
 }
 
-/// Switches a saved answer between Allow and Block; a site with no saved
-/// answer is refused. Changing an Allow to Block reloads that site's tabs so
-/// their access ends now.
+/// Ending an Allow requests reload; unconfirmed tabs remain marked stale.
 #[tauri::command]
 pub(crate) async fn browser_site_setting_set(
     app: AppHandle,
@@ -235,8 +221,6 @@ pub(crate) async fn browser_site_setting_set(
     .await
 }
 
-/// Forgets one site's answer, so the site asks again. Ending an Allow reloads
-/// that site's tabs.
 #[tauri::command]
 pub(crate) async fn browser_permission_reset(
     app: AppHandle,
@@ -251,7 +235,6 @@ pub(crate) async fn browser_permission_reset(
     .await
 }
 
-/// Forgets every saved answer and reloads tabs on sites that had an Allow.
 #[tauri::command]
 pub(crate) async fn browser_site_settings_reset_all(
     app: AppHandle,
@@ -260,8 +243,6 @@ pub(crate) async fn browser_site_settings_reset_all(
     apply(&app, &state, SitePermissions::reset_all).await
 }
 
-/// Reloads every tab still marked stale and waits for each to commit a new
-/// document. Takes no arguments: Rust knows which tabs are stale.
 #[tauri::command]
 pub(crate) async fn browser_site_reload_tabs(
     app: AppHandle,

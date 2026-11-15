@@ -1,7 +1,3 @@
-//! The elevated path of the gate (ADR-0009b): a raw CDP command needs the
-//! Settings switch, a live authority and the deny list before it may ask,
-//! and every attempt is audited, whatever its outcome.
-
 use std::sync::Arc;
 
 use serde_json::{Map, Value};
@@ -14,8 +10,6 @@ use crate::acp::browser::developer::{
     CdpAuditEntry, CdpAuditOutcome, DeveloperModePolicy, admit_command,
 };
 
-/// What `perform_admitted` needs for an elevated command: the policy, the
-/// origin the command was admitted for, and the `sent` audit writer.
 #[derive(Clone, Copy)]
 pub(super) struct Elevated<'a> {
     pub(super) policy: &'a Arc<dyn DeveloperModePolicy>,
@@ -54,7 +48,6 @@ impl BrowserAuthority {
 }
 
 impl<P, D> BrowserPermissionGate<P, D> {
-    /// Admits elevated commands under `policy`; without it they are denied.
     pub fn with_developer_mode(mut self, policy: Arc<dyn DeveloperModePolicy>) -> Self {
         self.developer = Some(policy);
         self

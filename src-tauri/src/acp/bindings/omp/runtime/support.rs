@@ -3,10 +3,12 @@ use crate::acp::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent as RuntimeEvent,
         AdapterRuntimeError, ResourceMapper,
     },
+    transport::OutboundFrame,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload},
     lifecycle::TurnState,
-    transport::OutboundFrame,
 };
 
 use super::{OmpRuntime, RequestKind};
@@ -39,8 +41,10 @@ impl crate::acp::bindings::omp::ResourceMapper for MapperBridge<'_> {
     fn map_absolute(
         &self,
         absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
         self.0.map_existing(absolute_path)
     }
 }

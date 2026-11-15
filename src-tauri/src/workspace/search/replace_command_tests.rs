@@ -3,7 +3,8 @@ use std::{fs, path::PathBuf};
 use uuid::Uuid;
 
 use super::*;
-use crate::{domain::BufferSnapshotRequest, editor, workspace::Workspace};
+use crate::{editor, workspace::Workspace};
+use sage_domain::editor::BufferSnapshotRequest;
 
 struct Fixture {
     root: PathBuf,

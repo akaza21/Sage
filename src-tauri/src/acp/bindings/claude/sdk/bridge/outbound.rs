@@ -1,13 +1,10 @@
-//! ACP requests from the session, written as SDK frames.
-
 use serde_json::{Value, json};
 
 use super::{BridgeError, Pending, SdkBridge};
 use crate::acp::bindings::claude::sdk::config::{EFFORT_ID, MODE_ID, MODEL_ID, SessionSettings};
 
 impl SdkBridge {
-    /// The SDK frame for one ACP frame the session wants to send. Every ACP
-    /// frame maps to exactly one SDK frame, so delivery outcomes stay exact.
+    /// Every ACP frame maps to exactly one SDK frame, so delivery outcomes stay exact.
     pub(in crate::acp::bindings::claude::sdk) fn outbound(
         &mut self,
         acp: &Value,
@@ -110,12 +107,9 @@ fn text(value: Option<&Value>) -> Result<&str, BridgeError> {
         .ok_or(BridgeError::Unsupported)
 }
 
-/// ACP prompt blocks as Messages API content: text and images pass through;
-/// an attached text file becomes a text block that names its source, and a
-/// linked file becomes an `@path` mention. Sage
-/// attaches other files as opaque blobs, so their type is read from their
-/// leading bytes: images and PDFs go as such, anything else is named but
-/// not sent, since Claude Code accepts no other binary content.
+/// Sage attaches other files as opaque blobs, so their type is read from their leading bytes:
+/// images and PDFs go as such, anything else is named but not sent, since Claude Code accepts
+/// no other binary content.
 fn prompt_content(blocks: Option<&Value>) -> Result<Vec<Value>, BridgeError> {
     blocks
         .and_then(Value::as_array)
@@ -179,7 +173,6 @@ fn prompt_content(blocks: Option<&Value>) -> Result<Vec<Value>, BridgeError> {
         .collect()
 }
 
-/// The media type of a base64 file Claude accepts, from its leading bytes.
 fn sniff(blob: &str) -> Option<&'static str> {
     use base64::Engine;
     let head = base64::engine::general_purpose::STANDARD

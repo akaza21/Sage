@@ -23,7 +23,7 @@ pub(crate) enum CodexSessionError {
     #[error("the Steer acknowledgement timed out; the message may have been delivered")]
     SteerOutcomeUnknown,
     #[error("Codex process launch failed: {0:?}")]
-    LaunchFailure(crate::acp::process::LaunchError),
+    LaunchFailure(sage_process::error::LaunchError),
     #[error("Codex process launch setup failed: {0:?}")]
     LaunchSetup(CodexLaunchSetupError),
 }

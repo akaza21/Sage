@@ -1,12 +1,12 @@
 use rusqlite::{Transaction, params};
 
 #[cfg(test)]
-use crate::acp::lifecycle::ServerRequestState;
+use sage_acp_protocol::lifecycle::ServerRequestState;
 #[cfg(test)]
-use crate::acp_protocol::permissions::{PermissionError, PermissionJournal};
-use crate::{
-    acp::contract::SageItemId,
-    acp_protocol::permissions::{DeclineCommit, PermissionIntent},
+use sage_acp_protocol::permissions::{PermissionError, PermissionJournal};
+use sage_acp_protocol::{
+    contract::SageItemId,
+    permissions::{DeclineCommit, PermissionIntent},
 };
 
 use super::{
@@ -136,7 +136,7 @@ pub(super) fn receive_permission_request_in(
         now_millis,
     )?;
     Ok(EntityMutation {
-        revision: crate::acp::contract::EntityRevision::ZERO,
+        revision: sage_acp_protocol::contract::EntityRevision::ZERO,
         projection_revision: projection,
         disposition: MutationDisposition::Applied,
     })
@@ -282,7 +282,7 @@ fn append_request_fact(
     transaction: &Transaction<'_>,
     intent: &PermissionIntent,
     state: &str,
-    projection: crate::acp::contract::ProjectionRevision,
+    projection: sage_acp_protocol::contract::ProjectionRevision,
     now: i64,
 ) -> Result<(), StoreError> {
     let payload = serde_json::to_string(&serde_json::json!({
@@ -315,10 +315,12 @@ fn duplicate(
         |r| r.get(0),
     )?;
     Ok(EntityMutation {
-        revision: crate::acp::contract::EntityRevision::new(revision as u64)
+        revision: sage_acp_protocol::contract::EntityRevision::new(revision as u64)
             .map_err(|_| StoreError::Corrupt("request revision"))?,
-        projection_revision: crate::acp::contract::ProjectionRevision::new(projection as u64)
-            .map_err(|_| StoreError::Corrupt("projection revision"))?,
+        projection_revision: sage_acp_protocol::contract::ProjectionRevision::new(
+            projection as u64,
+        )
+        .map_err(|_| StoreError::Corrupt("projection revision"))?,
         disposition: MutationDisposition::Duplicate,
     })
 }

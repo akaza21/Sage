@@ -48,22 +48,36 @@ export interface AcpSessionConfig {
   confirmedEffort?: string;
   modes: AcpSessionModes | null;
   configOptions: AcpConfigOption[];
-  /** Only on the composer's view of a restored config: its controls' note; a
-   * choice on it is stored for the session to apply. */
+  /**
+   * Set only on the composer's view of a restored config (see
+   * `restoredSessionConfigView`), to the note its controls carry: it has no
+   * runtime epoch or revision of its own, and a choice on it is stored for
+   * the session to apply.
+   */
   restored?: string;
-  /** The composer's note on a stored choice the session could not take back. */
+  /** What the composer says about a stored choice the session could not
+   * take back, such as a saved model it no longer offers. */
   notice?: string;
 }
-/** Stored choices apply before the next prompt: on resume when there is no
- * runtime (`resume`), or once the live runtime reports (`report`). */
+/**
+ * A session's config while it has no live one: what it last reported, with
+ * its stored choices as the current values. A choice made on it is stored
+ * and applied before the next prompt: on resume when the session has no
+ * runtime (`resume`), once its live runtime reports (`report`), or, in a
+ * chat with no current session, by the session the next send starts on the
+ * same harness and model (`start`).
+ */
 export type AcpRestoredSessionConfig = Omit<
   AcpSessionConfig,
   "runtimeEpoch" | "configRevision" | "removed" | "restored" | "notice"
-> & { awaiting: "resume" | "report" };
+> & { awaiting: "resume" | "report" | "start" };
+/**
+ * A stored choice the session could not take back: the saved value of
+ * `configId`, the value the session uses instead, and why.
+ */
 export interface AcpSessionConfigNotice {
   configId: string;
   saved: string;
-  /** The value the session uses instead of `saved`. */
   current: string;
   reason: "notOffered" | "rejected";
 }

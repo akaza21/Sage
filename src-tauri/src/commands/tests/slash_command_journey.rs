@@ -6,7 +6,8 @@
 use super::*;
 use crate::acp::bindings::registry::BindingRegistry;
 use crate::commands::acp::slash_commands::{RunCommandRequest, run};
-use crate::{acp::contract::RequiredText, launch_profile::FixtureSelection};
+use crate::launch_profile::FixtureSelection;
+use sage_acp_protocol::contract::RequiredText;
 
 fn fixture_selection(directory: &Path, case: &str) -> FixtureSelection {
     let profile = directory.join("profile");

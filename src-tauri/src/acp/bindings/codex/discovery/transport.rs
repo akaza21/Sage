@@ -8,13 +8,13 @@ use crate::acp::{
         adapter::AdapterRuntimeError,
         codex::{AdmittedCodexBinding, CodexProjectRootAuthority, CodexRuntime},
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
     process::{
-        LaunchError, LaunchFailure, PlatformSupervisor, StdinEndpoint, TreeCapacityPool,
-        TreeControl, TreeExit,
+        LaunchFailure, PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit,
     },
     transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
+use sage_process::error::LaunchError;
 
 use super::{
     CodexDiscoveryContent, CodexDiscoveryProtocol,

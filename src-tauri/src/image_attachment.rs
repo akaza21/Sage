@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 use uuid::{Uuid, Variant, Version};
 
-use crate::acp::intent::ImageMediaType;
+use sage_acp_protocol::intent::ImageMediaType;
 
 pub(crate) const MAX_OUTGOING_IMAGE_BYTES: u32 = sage_core::limits::STORED_IMAGE_BYTES as u32;
 

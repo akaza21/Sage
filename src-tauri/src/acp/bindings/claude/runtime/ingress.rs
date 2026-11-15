@@ -135,8 +135,11 @@ impl ClaudeRuntime {
             external_id: external_id.clone(),
             translator,
             turn: None,
-            config: crate::acp::session_config::SessionConfig::from_wire(&value["result"], true)
-                .map_err(|_| AdapterRuntimeError::Frame)?,
+            config: sage_acp_protocol::session_config::SessionConfig::from_wire(
+                &value["result"],
+                true,
+            )
+            .map_err(|_| AdapterRuntimeError::Frame)?,
             cancelled_prompt_errors: Default::default(),
             commands: Arc::default(),
         });
@@ -321,10 +324,9 @@ impl ClaudeRuntime {
         Ok(batch.finish())
     }
 
-    /// A session-scoped fact for the open session; none before it opens.
     pub(crate) fn session_event(
         &self,
-        event: crate::acp::intent::session_event::SessionScopedEvent,
+        event: sage_acp_protocol::intent::session_event::SessionScopedEvent,
     ) -> Option<SharedEvent> {
         let active = self.active.as_ref()?;
         Some(SharedEvent::Session {
@@ -389,8 +391,6 @@ impl ClaudeRuntime {
         self.ingest_value(value, request_digest, resources)
     }
 
-    /// One decoded ACP frame; `request_digest` identifies it when it is a
-    /// request.
     pub(crate) fn ingest_value(
         &mut self,
         value: Value,

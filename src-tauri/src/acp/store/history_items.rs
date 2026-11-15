@@ -3,13 +3,13 @@ use std::collections::BTreeMap;
 use rusqlite::{OptionalExtension, params};
 use sage_core::encoded_len::encoded_len;
 
-use crate::acp::{
+use crate::acp::projection::{ActivityProjection, ItemProjection, TurnProjection};
+use sage_acp_protocol::{
     contract::{
         BoundedVec, EntityRevision, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
         SageRootId, SageServerRequestId, SageTurnId,
     },
     intent::PageCursor,
-    projection::{ActivityProjection, ItemProjection, TurnProjection},
 };
 
 use super::{
@@ -239,7 +239,7 @@ fn permission(
 ) -> Result<
     Option<(
         SageServerRequestId,
-        crate::acp::lifecycle::ServerRequestState,
+        sage_acp_protocol::lifecycle::ServerRequestState,
         crate::acp::projection::PermissionRequestSource,
     )>,
     StoreError,

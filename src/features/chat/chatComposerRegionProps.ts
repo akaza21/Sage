@@ -10,13 +10,16 @@ import type { QueuedChatPrompt } from "../../domain/chatOwnership";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { ChatUsage } from "./acp/chatUsage";
 import type { PasteAttachability } from "./composerPasteText";
+import type { EndedSession } from "./endedSession";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
 
 /** Whose access the composer offers: the session's binding, and the chat
- * while it has no session at all, whose access is then drafted. */
+ * while it has no head, whose access is then drafted on top of the access
+ * its last session hands the next one. */
 export interface ComposerAccessTarget {
   bindingId?: string | null;
   draftChatId?: string;
+  endedSession?: EndedSession;
 }
 
 export interface ChatComposerRegionProps {

@@ -3,10 +3,8 @@ use serde::Serialize;
 use sha2::{Digest, Sha256};
 
 use super::AcpService;
-use crate::acp::{
-    contract::{SageChatId, SageProjectId},
-    store::StoreError,
-};
+use crate::acp::store::StoreError;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 const MAX_TABLE_ROWS: u64 = 200_000;
 const TABLES: [&str; 14] = [
@@ -26,7 +24,6 @@ const TABLES: [&str; 14] = [
     "acp_store_usage",
 ];
 
-/// The native counters a renderer recreation snapshot records.
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct RendererRecreationUsage {
     runtime_slot_active: u8,
@@ -49,7 +46,6 @@ impl AcpService {
         )
     }
 
-    /// Live runtimes and process-tree reservations, read without the store.
     pub(crate) fn renderer_recreation_usage(&self) -> RendererRecreationUsage {
         let (live_trees, live_descendants) =
             crate::acp::process::TreeCapacityPool::global().observation_usage();

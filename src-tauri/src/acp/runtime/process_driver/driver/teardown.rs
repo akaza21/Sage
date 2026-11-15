@@ -41,26 +41,36 @@ where
         }
     }
 
-    pub(crate) fn terminal_outcome(&self) -> Option<crate::acp::lifecycle::TurnTerminalOutcome> {
+    pub(crate) fn terminal_outcome(
+        &self,
+    ) -> Option<sage_acp_protocol::lifecycle::TurnTerminalOutcome> {
         let cause = self.teardown_cause()?;
-        let reason = crate::acp::lifecycle::TurnTerminalReason::from(cause.clone());
+        let reason = sage_acp_protocol::lifecycle::TurnTerminalReason::from(cause.clone());
         let message = match (&cause, self.teardown_detail) {
             (TeardownCause::RefusedVersion { observed }, _) => {
                 crate::acp::runtime::terminal_detail::refused_version(observed.as_str(), &[])
             }
             (_, Some(TeardownDetail::Exit(exit))) => {
-                crate::acp::runtime::terminal_detail::harness_exited(Some(exit))
+                crate::acp::runtime::terminal_detail::harness_exited_with_error(
+                    exit,
+                    self.harness_error.as_deref(),
+                )
             }
             (_, Some(TeardownDetail::Summary(summary))) => {
                 crate::acp::runtime::terminal_detail::protocol_error(summary)
             }
             (_, None) => None,
         };
-        Some(crate::acp::lifecycle::TurnTerminalOutcome {
+        Some(sage_acp_protocol::lifecycle::TurnTerminalOutcome {
             reason,
             message,
             remediation: None,
         })
+    }
+
+    /// Where the current turn began on the harness's stderr.
+    pub(crate) fn stderr_watermark(&self) -> Option<u64> {
+        self.stderr_watermark
     }
 
     pub(crate) fn teardown_exit(&self) -> Option<crate::acp::process::TreeExit> {

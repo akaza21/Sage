@@ -100,6 +100,7 @@ async fn accept_terminal_behind_late_starts(
             transport: RecordingTransport(Arc::clone(&writes)),
             control: NoChildProcessControl {
                 zero_checks: Arc::new(AtomicUsize::new(0)),
+                harness_error: None,
             },
             owner: fixture.owner.clone(),
             clock: Arc::new(SystemDriverClock),
@@ -178,7 +179,7 @@ async fn accept_terminal_behind_late_starts(
                     prompt: Prompt::new("prompt", "cancel me").unwrap(),
                     now_millis: fixture.now_millis + 3,
                 },
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             }))
             .unwrap()
         else {

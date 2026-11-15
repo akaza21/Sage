@@ -1,43 +1,25 @@
-//! Why Sage did not let a bridged Pi edit reach the workspace. The extension
-//! raises the message as the tool's error, so both the model and the user see
+//! The extension raises the message as the tool's error, so both the model and the user see
 //! the reason Sage decided on rather than a generic failure.
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Refusal {
-    /// The user denied the approval card.
     Denied,
-    /// Pi gave up on the dialog and Sage cancelled the undecided request.
     Withdrawn,
-    /// No Turn is running, or the session can no longer take edits.
     Inactive,
-    /// The Turn runs with read-only access.
     ReadOnly,
-    /// The Turn already asked for its bounded number of approvals.
     WriteLimit,
-    /// Another request in this Turn is still awaiting its decision.
     Busy,
-    /// The command has hidden characters or blank lines, so a card could
-    /// not show exactly what runs.
     Undisplayable,
-    /// The request is not a well-formed write, edit or command of a known tool call.
     Unsupported,
-    /// This tool call already had its one approval request.
     Replayed,
-    /// A commit named no edit the user approved in this Turn.
     NotApproved,
     OutsideWorkspace,
-    /// The path names a protected, reserved or ambiguous file.
     ProtectedPath,
-    /// The parent folder is missing or is not a plain folder.
     MissingParent,
-    /// The target is a link, not a regular file, or not UTF-8 text.
     Unreadable,
-    /// An edit's `oldText` is empty or does not match exactly once.
     NoUniqueMatch,
     TooLarge,
-    /// The file changed between approval and the write.
     Changed,
-    /// The approved write could not be completed.
     WriteFailed,
 }
 

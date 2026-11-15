@@ -1,6 +1,6 @@
-use crate::acp::{
-    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
-    projection::BrowserOperationProjection,
+use crate::acp::projection::BrowserOperationProjection;
+use sage_acp_protocol::contract::{
+    RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
 };
 
 use super::{
@@ -431,7 +431,6 @@ fn each_turn_projects_only_its_own_operations_in_order() {
         start(&mut connection, epoch, &operation).unwrap();
         started.push(operation);
     }
-    // Terminals land after later Turns' facts; each still joins its own start.
     for (index, phase) in [(0, "completed"), (3, "failed"), (1, "denied")] {
         let operation = &mut started[index];
         operation.phase = phase.into();
@@ -598,9 +597,16 @@ fn upgraded_store_with_a_duplicate_terminal_recovers_only_the_unfinished_operati
         // Return the file to schema 26, before the operation indexes, with its
         // facts already written and a duplicate terminal an older store could
         // hold, so the next open has to upgrade it.
+        let identity_trigger = crate::acp::migration::historical_trigger_sql(
+            26,
+            "deny_agent_session_identity_mutation",
+        )
+        .unwrap();
         connection
-            .execute_batch(
-                "INSERT INTO session_facts(project_id,chat_id,session_id,sequence,turn_id,kind,
+            .execute_batch(&format!(
+                "DROP TRIGGER deny_agent_session_identity_mutation;
+                 {identity_trigger};
+                 INSERT INTO session_facts(project_id,chat_id,session_id,sequence,turn_id,kind,
                    payload_json,payload_bytes,payload_digest,projection_revision,created_at)
                  SELECT project_id,chat_id,session_id,sequence+1,turn_id,kind,
                    payload_json,payload_bytes,payload_digest,projection_revision,created_at
@@ -614,7 +620,7 @@ fn upgraded_store_with_a_duplicate_terminal_recovers_only_the_unfinished_operati
                  DROP INDEX idx_agent_sessions_external_session;
                  DELETE FROM schema_migrations WHERE version>=27;
                  PRAGMA user_version=26;",
-            )
+            ))
             .unwrap();
     }
 

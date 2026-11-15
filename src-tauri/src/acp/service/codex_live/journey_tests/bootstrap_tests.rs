@@ -7,15 +7,15 @@ use crate::acp::{
         BrowserResult, BrowserScope, FillSecret, permission::BrowserPermissionChoice,
         session_capability::attached::AttachedSessionCapability,
     },
-    contract::SageAgentSessionId,
     runtime::BoundedThread,
     service::browser_permission::BrowserPermissionOwner,
     store::DatabaseAcpStore,
 };
 use crate::browser::state_query::bootstrap_fixture::BrowserDocumentFixture;
+use sage_acp_protocol::contract::SageAgentSessionId;
 use std::sync::{Arc, Mutex, mpsc};
 
-fn permission(events: &mpsc::Receiver<Event>) -> crate::acp::contract::SageServerRequestId {
+fn permission(events: &mpsc::Receiver<Event>) -> sage_acp_protocol::contract::SageServerRequestId {
     for _ in 0..64 {
         match next(events) {
             Event::Permission(id) => return id,
@@ -42,7 +42,7 @@ fn outcome(events: &mpsc::Receiver<Event>) -> Result<BrowserResult, BrowserFailu
 fn allow(
     setup: &FixtureSetup,
     owner: &BrowserPermissionOwner,
-    id: crate::acp::contract::SageServerRequestId,
+    id: sage_acp_protocol::contract::SageServerRequestId,
 ) {
     let page = setup
         .service
@@ -61,7 +61,7 @@ fn allow(
         .find(|item| {
             matches!(&item.content,
         ItemContent::PermissionRequest { request_id,
-            state: crate::acp::lifecycle::ServerRequestState::Received,
+            state: sage_acp_protocol::lifecycle::ServerRequestState::Received,
             source: crate::acp::projection::PermissionRequestSource::Browser, .. }
             if request_id == &id)
         })
@@ -159,7 +159,6 @@ fn first_chat_real_turn_two_bootstrap_authorizes_snapshot_fill_without_replay() 
         let trace = Arc::new(Mutex::new(Trace::default()));
         trace.lock().unwrap().browser.open_tab(scope.clone());
 
-        // First real prompt, protocol completion, and production terminal handling.
         setup
             .service
             .send_codex_turn(setup.turn_command(&runtime_owner))
@@ -303,7 +302,6 @@ fn first_chat_real_turn_two_bootstrap_authorizes_snapshot_fill_without_replay() 
         call.finish();
         assert_eq!(trace.lock().unwrap().issued, 2);
 
-        // Hand back is chat/tab-scoped and restores a fresh authorized request.
         assert!(setup.service.take_over_browser_tab("browser-1"));
         let other_chat = setup.create_chat();
         setup
@@ -363,7 +361,7 @@ fn first_chat_real_turn_two_bootstrap_authorizes_snapshot_fill_without_replay() 
                     .unwrap();
             } else {
                 setup.service.revoke_browser_tab("browser-1");
-            } // Stop's service operation.
+            }
             assert_eq!(outcome(&events), Err(BrowserFailure::Denied));
             call.finish();
             assert!(

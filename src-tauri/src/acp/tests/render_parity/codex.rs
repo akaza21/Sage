@@ -1,5 +1,3 @@
-//! Codex app-server wire for each scenario, through the Codex runtime.
-
 use serde_json::{Value, json};
 
 use super::{FILE, Fact, Mapper, ROOT, Scenario, frame};
@@ -8,9 +6,9 @@ use crate::acp::{
         adapter::{AdapterCommand, AdapterEgress, AdapterEvent, EgressResolution, HarnessAdapter},
         codex::{CodexRuntime, Platform},
     },
-    contract::RequiredText,
-    intent::Prompt,
+    transcript_quote::Prompt,
 };
+use sage_acp_protocol::contract::RequiredText;
 
 const DIFF: &str = "@@ -1,3 +1,3 @@\n pub fn answer() -> u32 {\n-    41\n+    42\n }\n";
 
@@ -186,7 +184,7 @@ pub(super) fn run(scenario: Scenario) -> Option<Vec<Fact>> {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Render parity").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     answer(&mut runtime, prompt, json!({"turn":{"id":"turn-1"}}));

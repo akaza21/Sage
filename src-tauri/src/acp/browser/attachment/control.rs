@@ -1,5 +1,3 @@
-//! Take over and hand back: the user's pause of Agent control on one tab.
-//!
 //! Taking over stops every authority on the tab, so a pending permission card
 //! declines and an in-flight operation ends `denied` (or `outcomeUnknown` once
 //! issued). The attachments stay, but they admit no authority until the user
@@ -36,7 +34,6 @@ impl AttachmentLease {
     }
 }
 
-/// Who may drive a tab, for the chrome's Stop, Take over and Hand back.
 #[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct AgentControl {
@@ -89,15 +86,12 @@ impl BrowserAttachments {
                 user_control: true,
                 developer_mode: false,
             });
-            // The user controls the tab only when no attached Agent can act.
             control.user_control &= lease.user_controls();
             control.developer_mode |= lease.developer_mode_active();
         }
         control
     }
 
-    /// Whether a live attachment of this chat, the user's or one its Agent
-    /// opened, is under user control.
     pub(crate) fn chat_under_user_control(
         &self,
         project: &SageProjectId,
@@ -134,8 +128,6 @@ impl BrowserAttachments {
         !chats.is_empty()
     }
 
-    /// Moves on each hand back in this chat; a paused call of the chat
-    /// resumes only once it moved.
     pub(crate) fn hand_back_generation(&self, project: &SageProjectId, chat: &SageChatId) -> u64 {
         self.hand_backs
             .lock()
@@ -263,7 +255,6 @@ mod tests {
         assert!(authority.liveness_for(&prompt(7)).is_none());
         assert!(lease.user_controls());
         assert!(lease.authority_for(&scope(7)).is_none());
-        // The attachment survives a user navigation while taken over.
         registry.navigation_settled("browser-7", "https://example.org/", 2);
         let lease = registry.resolve(&project, &chat).unwrap();
         assert!(lease.authority_for(&scope(7)).is_none());
@@ -339,7 +330,6 @@ mod tests {
             registry.chat_under_user_control(&project, &chat),
             "the Agent opens no parallel tab while the user holds one"
         );
-        // The user attaching the same tab is a new grant for every lease on it.
         registry
             .attach(
                 project.clone(),

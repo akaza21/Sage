@@ -1,7 +1,3 @@
-//! The `custom-acp-embedded-resources` journey on the wire: it advertises
-//! embedded context and answers each prompt with what Sage's own prompt
-//! builder put in it.
-
 use std::sync::Arc;
 
 use sha2::{Digest, Sha256};
@@ -29,7 +25,6 @@ fn resources(files: &[(&str, &[u8])]) -> Resources {
     ))
 }
 
-/// The requests Sage sends for one session with these two prompts.
 fn session(first: &Value, second: &Value) -> Vec<Value> {
     vec![
         json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}),
@@ -59,11 +54,11 @@ fn the_case_advertises_embedded_context_and_echoes_each_resource_sage_sends() {
     let prompt = Value::Array(carried.wire("Summarize the log", true).unwrap());
     let frames = replay(CASE, &session(&prompt, &prompt));
 
-    assert!(crate::acp::intent::offers_prompt_capability(
+    assert!(sage_acp_protocol::intent::offers_prompt_capability(
         &frames[0],
         "embeddedContext"
     ));
-    assert!(crate::acp::intent::offers_prompt_capability(
+    assert!(sage_acp_protocol::intent::offers_prompt_capability(
         &frames[0], "image"
     ));
     let expected = format!(
@@ -72,7 +67,6 @@ fn the_case_advertises_embedded_context_and_echoes_each_resource_sage_sends() {
         sha256(&log),
         sha256(blob)
     );
-    // The send and its Retry are each answered with what they carried.
     assert_eq!(answer(&frames, 3), expected);
     assert_eq!(answer(&frames, 4), expected);
     assert!(

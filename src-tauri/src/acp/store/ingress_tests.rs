@@ -1,9 +1,9 @@
 use super::{extended_tests::*, *};
-use crate::acp::{
+use crate::acp::projection::ActivityRole;
+use sage_acp_protocol::{
     contract::{ClientIntentId, RequiredText, SchemaVersionV1},
     intent::{ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload},
     lifecycle::{ActivityLifecycle, ItemLifecycle},
-    projection::ActivityRole,
 };
 
 #[test]
@@ -41,7 +41,7 @@ fn normalized_item_and_activity_ingress_are_exact_idempotent_and_terminal_safe()
     .unwrap();
     connection.execute("INSERT INTO turns VALUES('turn-ingress','project-one','chat-one',?1,1,0,'turn-ingress-intent','running','correlated',0,4,4,NULL)",[started.session_id.as_str()]).unwrap();
     let payload = NormalizedPayload::Text {
-        text: crate::acp::contract::SafeText::new("text", "hello").unwrap(),
+        text: sage_acp_protocol::contract::SafeText::new("text", "hello").unwrap(),
     };
     let payload_json = serde_json::to_string(&payload).unwrap();
     let command = ItemIngressCommand {

@@ -23,8 +23,6 @@ pub(super) fn await_request(
     let expected = match kind {
         "acpInitialize" => "initialize",
         "acpNew" => "session/new",
-        // A journey that runs across an app restart: a new session first,
-        // the same session resumed after.
         "acpOpen" => "session/new|session/resume",
         "acpPrompt" => "session/prompt",
         "acpCancel" => "session/cancel",
@@ -115,8 +113,6 @@ pub(super) fn await_request(
             .ok_or(FixtureError::InvalidArguments)?;
         state.last_request_id = Some(id);
         if expected == "session/prompt" {
-            // A journey that names the prompt text proves what Sage put on
-            // the wire: one text block, byte for byte.
             if let Some(text) = prompt_text
                 && request["params"]["prompt"] != json!([{"type":"text","text":text}])
             {
@@ -172,7 +168,6 @@ impl AcpConfig {
         ]},"configOptions":self.options()})
     }
 
-    /// The frames that answer one `set_config_option` or `set_mode`.
     fn answer(&mut self, id: u64, request: &Value) -> Vec<Value> {
         let params = &request["params"];
         let pick = |choices: &[&'static str], value: &Value| {
@@ -308,8 +303,6 @@ pub(super) fn emit(
             let result = match shape {
                 "acpInitialize" => {
                     let auth = step.get("authMethods").cloned().unwrap_or(json!([]));
-                    // A journey may advertise its own prompt capabilities;
-                    // with embedded context it reads what each prompt carries.
                     let prompt = step
                         .get("promptCapabilities")
                         .cloned()
@@ -326,7 +319,6 @@ pub(super) fn emit(
                 "acpInitializeFork" => {
                     json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":{"image":true},"sessionCapabilities":{"close":{},"fork":{}}},"models":[{"id":"fixture-model","name":"Synthetic replay"}],"authMethods":[]})
                 }
-                // Resumable, with a model and effort to choose.
                 "acpInitializeConfig" => {
                     state.acp_config = Some(AcpConfig::defaults());
                     json!({"protocolVersion":1,"agentCapabilities":{"loadSession":false,"promptCapabilities":{"image":true},"sessionCapabilities":{"close":{},"resume":{}}},"models":[{"id":MODELS[0],"name":"Synthetic replay"},{"id":MODELS[1],"name":"Synthetic replay deep"}],"authMethods":[]})

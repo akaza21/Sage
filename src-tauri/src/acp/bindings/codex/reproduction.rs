@@ -4,7 +4,7 @@ use super::manifest::{
     AUTHENTICODE_SIGNED_FILES, AUTHENTICODE_UNSIGNED_FILES, MetadataValidatedPacket, Platform,
 };
 use super::physical::PhysicallyInspectedPackage;
-use crate::acp_protocol::codex_protocol::pinned_codex_version;
+use sage_acp_protocol::pinned_codex_version;
 
 pub(super) const REPRODUCTION_BYTES: usize = 32 * 1024;
 
@@ -198,10 +198,9 @@ pub(crate) enum ReproductionError {
     PhysicalBinding,
 }
 
-/// A retained physical package observation bound to the exact reproduction
-/// requirements and metadata packet. This remains a non-authoritative
-/// prerequisite: it neither upgrades workstation signature observations nor
-/// grants artifact admission or launch authority.
+/// This remains a non-authoritative prerequisite: it neither upgrades
+/// workstation signature observations nor grants artifact admission or launch
+/// authority.
 #[derive(Debug)]
 pub(crate) struct ReproducedPackagePrerequisite {
     requirements: PackageReproductionRequirements,

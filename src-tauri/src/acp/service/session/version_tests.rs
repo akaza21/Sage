@@ -1,7 +1,6 @@
 use super::{head_continuation::continues_on_later_release, *};
-use crate::{
-    acp::bindings::codex::CODEX_BINDING_ID, acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
-};
+use crate::acp::bindings::codex::CODEX_BINDING_ID;
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 fn session_at(version: &str) -> DurableSession {
     DurableSession {
@@ -83,11 +82,9 @@ fn a_parked_session_continues_after_its_harness_updates_past_the_pin() {
         CODEX_BINDING_ID,
         &next_minor()
     ));
-    // Pi and other bindings continue the same way.
     let mut pi = session_at("0.74.0");
     pi.binding_id = "pi-rpc".into();
     assert!(continues_on_later_release(&pi, "pi-rpc", "0.74.2"));
-    // A prerelease on either side never links, even when it orders first.
     for (stored, current) in [
         ("0.74.0", "0.74.0-rc.1"),
         ("0.74.0-rc.1", "0.74.0"),

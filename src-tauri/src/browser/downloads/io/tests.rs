@@ -70,7 +70,6 @@ fn a_stuck_destination_has_bounded_admission_and_does_not_consume_local_capacity
             io::ErrorKind::TimedOut
         );
     }
-    // Repeated timeouts cannot create new threads, tasks or retained results.
     for _ in 0..100 {
         assert!(executor.acquire(&remote).is_none());
     }

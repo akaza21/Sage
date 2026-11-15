@@ -98,10 +98,8 @@ mod tests {
     };
 
     use super::*;
-    use crate::{
-        acp::bindings::codex::test_identity::version_line,
-        acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
-    };
+    use crate::acp::bindings::codex::test_identity::version_line;
+    use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
     #[cfg(windows)]
     fn write_package_manifest(directory: &std::path::Path) {
@@ -213,8 +211,6 @@ mod tests {
         let earlier = registration.refresh().unwrap();
         assert_eq!(earlier.harness_version(), "0.167.1");
 
-        // The update lands while Sage runs: the earlier build drifts, and the
-        // next discovery admits the new one instead of staying unavailable.
         install("0.168.0");
         assert_eq!(
             registration.refresh().err(),
@@ -223,8 +219,6 @@ mod tests {
         assert!(discover(&registration));
         assert_eq!(registration.refresh().unwrap().harness_version(), "0.168.0");
 
-        // An update found before any launch noticed the drift replaces the
-        // admitted build directly.
         install("0.169.0");
         assert!(discover(&registration));
         assert_eq!(registration.refresh().unwrap().harness_version(), "0.169.0");

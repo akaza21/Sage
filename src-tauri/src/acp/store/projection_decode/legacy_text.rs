@@ -1,6 +1,7 @@
 //! Text rows written before normalized payloads.
 
-use crate::acp::{contract::SafeText, intent::NormalizedPayload, projection::TextRole};
+use crate::acp::projection::TextRole;
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload};
 
 pub(super) fn parse_legacy_text(
     value: &str,

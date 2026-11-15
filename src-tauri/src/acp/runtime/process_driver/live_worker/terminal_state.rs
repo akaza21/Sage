@@ -1,4 +1,5 @@
 use super::*;
+use sage_acp_protocol::lifecycle::TurnTerminalOutcome;
 
 impl<A, R, T, C> FirstTurnWorkerState<A, R, T, C>
 where
@@ -17,6 +18,22 @@ where
             self.durable_cursor(),
             Some(TurnState::Cancelled | TurnState::Interrupted)
         )
+    }
+
+    pub(crate) fn teardown_outcome(&self) -> Option<TurnTerminalOutcome> {
+        match self {
+            Self::Active(active) => active.turn.driver.terminal_outcome(),
+            _ => None,
+        }
+    }
+
+    /// Where the active turn began on the harness's stderr; no other state
+    /// has a turn whose error stderr could hold.
+    pub(crate) fn stderr_watermark(&self) -> Option<u64> {
+        match self {
+            Self::Active(active) => active.turn.driver.stderr_watermark(),
+            _ => None,
+        }
     }
 
     fn durable_cursor_is(&self, expected: TurnState) -> bool {

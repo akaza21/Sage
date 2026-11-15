@@ -1,22 +1,17 @@
-//! Pi RPC wire for each scenario, through the Pi runtime. File edits run
-//! through Sage's Pi bridge against a scratch workspace.
-
 use serde_json::{Value, json};
 
 use super::{FILE, Fact, Mapper, NEW_TEXT, OLD_TEXT, ROOT, Scenario, frame};
-use crate::acp_protocol::access_mode::SessionAccessMode;
-use crate::{
-    acp::{
-        bindings::{
-            adapter::{
-                AdapterBatch, AdapterCommand, AdapterEgress, EgressResolution, HarnessAdapter,
-            },
-            pi::PiRuntime,
-        },
-        contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
-        intent::Prompt,
+use crate::acp::{
+    bindings::{
+        adapter::{AdapterBatch, AdapterCommand, AdapterEgress, EgressResolution, HarnessAdapter},
+        pi::PiRuntime,
     },
-    acp_protocol::permissions::PermissionDecision,
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::access_mode::SessionAccessMode;
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
+    permissions::PermissionDecision,
 };
 
 struct Turn {
@@ -83,7 +78,6 @@ impl Turn {
         request
     }
 
-    /// Answers `egress` and returns the follow-up request it triggers, if any.
     fn reply(&mut self, egress: AdapterEgress, data: Value) -> Option<AdapterEgress> {
         let request = self.deliver(egress);
         let batch = self

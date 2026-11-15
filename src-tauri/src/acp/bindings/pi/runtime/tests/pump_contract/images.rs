@@ -1,10 +1,7 @@
 use super::turn_failures::Reopened;
 use super::*;
-use crate::acp::{
-    lifecycle::{ItemLifecycle, TurnState},
-    projection::ItemContent,
-    store::load_chat_page,
-};
+use crate::acp::{projection::ItemContent, store::load_chat_page};
+use sage_acp_protocol::lifecycle::{ItemLifecycle, TurnState};
 
 #[tokio::test]
 async fn pi_read_image_bytes_and_identity_survive_live_pump_and_sqlite_reopen() {
@@ -54,7 +51,7 @@ async fn pi_read_image_bytes_and_identity_survive_live_pump_and_sqlite_reopen() 
         assert!(
             matches!(&images[0].content, ItemContent::Image { media_type, data_url, source }
             if media_type.as_str() == "image/png" && data_url.as_str() == format!("data:image/png;base64,{PNG}")
-            && *source == crate::acp::intent::ImageSource::Agent)
+            && *source == sage_acp_protocol::intent::ImageSource::Agent)
         );
         assert!(
             !turn

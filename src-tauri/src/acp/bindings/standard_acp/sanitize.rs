@@ -14,43 +14,38 @@ mod regression_tests;
 #[path = "sanitize/review_tests.rs"]
 mod review_tests;
 
-use crate::acp::{
-    contract::{ContractError, SafeText},
-    redaction::text::{Mode, neutralized, redact},
-};
+use crate::acp::redaction::text::{Mode, clip_display, neutralized, redact};
+use sage_acp_protocol::contract::{ContractError, SafeText};
 use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
 pub(crate) fn normalized_text<const MAX: usize>(
     field: &'static str,
     input: &str,
 ) -> Result<SafeText<MAX>, ContractError> {
-    redacted_text(field, input, false)
+    if input.len() > MAX {
+        return SafeText::new(field, input);
+    }
+    let input = neutralized(input, false);
+    SafeText::new(field, prose::redact_prose(field, &input, MAX)?)
 }
 
+/// A label is display text, so one longer than `MAX` is clipped after its
+/// whole text is redacted rather than refused.
 pub(crate) fn normalized_label_text<const MAX: usize>(
     field: &'static str,
     input: &str,
 ) -> Result<SafeText<MAX>, ContractError> {
-    redacted_text(field, input, true)
+    let input = neutralized(input, true);
+    let redacted = prose::redact_prose(
+        field,
+        &input,
+        input.len().saturating_mul(COMMAND_OUTPUT_REDACTION_BYTES),
+    )?;
+    SafeText::new(field, clip_display(&redacted, MAX))
 }
 
-fn redacted_text<const MAX: usize>(
-    field: &'static str,
-    input: &str,
-    strip_format: bool,
-) -> Result<SafeText<MAX>, ContractError> {
-    if input.len() > MAX {
-        return SafeText::new(field, input);
-    }
-    let input = neutralized(input, strip_format);
-    let output = prose::redact_prose(field, &input, MAX)?;
-    SafeText::new(field, output)
-}
-
-/// Sanitizes one already frame-bounded command-output value before its display
-/// suffix is retained. This deliberately has a wider intermediate bound than
-/// `SafeText<65536>`: a valid oversized command output must be truncated, not
-/// rejected before redaction.
+/// This deliberately has a wider intermediate bound than `SafeText<65536>`: a valid oversized
+/// command output must be truncated, not rejected before redaction.
 pub(crate) fn sanitized_command_output(input: &str) -> Result<String, ContractError> {
     let maximum_input = LIMITS.wire.frame_bytes as usize;
     let maximum_output = maximum_input.saturating_mul(COMMAND_OUTPUT_REDACTION_BYTES);

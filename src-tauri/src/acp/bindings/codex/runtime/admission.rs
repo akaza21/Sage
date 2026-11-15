@@ -12,9 +12,9 @@ use crate::acp::{
             reproduction::ReproducedPackagePrerequisite,
         },
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
-    declared_test::declared_test_commands_for_project,
+    package_manifest::declared_test_commands_for_project,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 impl CodexRuntime {
     pub(crate) fn from_metadata_packet(
@@ -97,6 +97,7 @@ impl CodexRuntime {
             reported_model_id: None,
             selected_model: None,
             selected_effort: None,
+            launch_effort: Default::default(),
             model_catalog: Default::default(),
             model_list_requested: false,
             model_catalog_idle_only: false,
@@ -152,6 +153,7 @@ impl CodexRuntime {
             reported_model_id: None,
             selected_model: None,
             selected_effort: None,
+            launch_effort: Default::default(),
             model_catalog: Default::default(),
             model_list_requested: false,
             model_catalog_idle_only: false,

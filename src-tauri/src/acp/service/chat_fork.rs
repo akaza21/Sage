@@ -1,15 +1,13 @@
 use crate::acp::{
     goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
-    intent::ExternalId,
     runtime::HostError,
-    scheduler::RuntimeOwner,
     store::chat_fork::ForkSource,
 };
+use sage_acp_protocol::{intent::ExternalId, scheduler::RuntimeOwner};
 
 use super::AcpService;
 
-/// Why a native fork produced no new session. Every variant leaves the
-/// parent Chat untouched and creates no Sage Chat.
+/// Every variant leaves the parent Chat untouched and creates no Sage Chat.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum ChatForkError {
     #[error("This chat can't be forked until its harness is running and idle.")]
@@ -27,9 +25,6 @@ pub(crate) enum ChatForkError {
 }
 
 impl AcpService {
-    /// Asks the source session's own live runtime for a native fork through
-    /// its latest Turn and returns the new native session id. Nothing durable
-    /// changes here; the caller installs the fork Chat and its lineage.
     pub(crate) fn fork_native_session(
         &self,
         source: &ForkSource,
@@ -150,8 +145,6 @@ mod tests {
             fork_reply(Ok(NativeRpcReply::GoalApplied)),
             Err(ChatForkError::RecoveryRequired)
         );
-        // A runtime that refuses the RPC outright (busy, unsupported harness)
-        // is unavailable, not a recovery case.
         assert_eq!(
             fork_reply(Err(HostError::State)),
             Err(ChatForkError::Unavailable)
@@ -160,7 +153,6 @@ mod tests {
             fork_reply(Err(HostError::Deadline)),
             Err(ChatForkError::RecoveryRequired)
         );
-        // A full per-runtime fork ledger says what the user can do about it.
         assert_eq!(
             fork_reply(Err(HostError::Capacity)),
             Err(ChatForkError::TooManyForks)

@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::lifecycle::{ItemLifecycle, TurnState};
+use sage_acp_protocol::lifecycle::{ItemLifecycle, TurnState};
 
 use super::{CodexAdapter, IncomingEvent, IngressDisposition, IngressError, identity, text};
 

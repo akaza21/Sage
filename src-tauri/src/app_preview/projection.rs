@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::acp::contract::{
+use sage_acp_protocol::contract::{
     ContractError, EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId,
     SageProjectId,
 };

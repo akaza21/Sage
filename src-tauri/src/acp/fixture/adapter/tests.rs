@@ -2,9 +2,12 @@ use crate::acp::{
     bindings::adapter::{
         AdapterCommand, AdapterEvent, EgressResolution, HarnessAdapter, ResourceMapper,
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SchemaVersionV1},
-    intent::{ExternalId, Prompt, SafeResourceRef, UnavailableResourceReason},
+    transcript_quote::Prompt,
     transport::IncrementalFrameDecoder,
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SchemaVersionV1},
+    intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
 };
 
 use super::{AdapterRuntimeError, FixtureAdapter, ingest_metadata};
@@ -177,7 +180,7 @@ fn cancel_after_activation_uses_the_next_request_identity() {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "fixture cancel setup").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         },
     );
 
@@ -196,7 +199,7 @@ fn cancel_after_activation_uses_the_next_request_identity() {
     assert!(matches!(
         terminal.events(),
         [AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Cancelled,
+            state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
             ..
         }]
     ));
@@ -219,7 +222,7 @@ fn output_before_cancel_converges_to_cancelled() {
     assert!(matches!(
         terminal.events(),
         [AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Cancelled,
+            state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
             ..
         }]
     ));
@@ -244,7 +247,7 @@ fn failed_streaming_cancel_delivery_restores_the_turn() {
         assert!(matches!(
             delta.events(),
             [AdapterEvent::Item {
-                lifecycle: crate::acp::lifecycle::ItemLifecycle::Streaming,
+                lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Streaming,
                 ..
             }]
         ));
@@ -280,7 +283,7 @@ fn streaming_adapter() -> FixtureAdapter {
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "fixture cold cycle").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         },
     );
 
@@ -291,11 +294,11 @@ fn streaming_adapter() -> FixtureAdapter {
         item.events(),
         [
             AdapterEvent::Turn {
-                state: crate::acp::lifecycle::TurnState::Running,
+                state: sage_acp_protocol::lifecycle::TurnState::Running,
                 ..
             },
             AdapterEvent::Item {
-                lifecycle: crate::acp::lifecycle::ItemLifecycle::Started,
+                lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle::Started,
                 ..
             }
         ]
@@ -379,7 +382,7 @@ fn resume_failure_cannot_issue_a_second_resume_or_prompt() {
         adapter.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "must not replay").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::Operation)
     ));

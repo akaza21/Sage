@@ -8,12 +8,10 @@ use sage_core::error::AppResult;
 
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 use super::TRASH_NAME;
+use crate::workspace::RootIdentity;
 #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
 use crate::workspace::root_identity_path;
-use crate::{
-    domain::{DirectoryListing, TrashResourceKind},
-    workspace::RootIdentity,
-};
+use sage_domain::{file_operations::TrashResourceKind, project::DirectoryListing};
 
 pub(super) struct ParentAuthority<'a> {
     pub(super) root: &'a Path,

@@ -35,8 +35,6 @@ impl Drop for Folder {
     }
 }
 
-/// A newer export saved over the name after the check, before the removal,
-/// survives: only the file that passed the check is deleted.
 #[cfg(unix)]
 #[test]
 fn a_file_saved_over_the_name_during_the_delete_survives() {
@@ -54,7 +52,6 @@ fn a_file_saved_over_the_name_during_the_delete_survives() {
     assert_eq!(fs::read_to_string(&path).unwrap(), "newer export");
 }
 
-/// A file that fails the check goes back under its own name.
 #[cfg(unix)]
 #[test]
 fn a_file_that_fails_the_check_is_put_back() {
@@ -71,8 +68,6 @@ fn a_file_that_fails_the_check_is_put_back() {
     assert_eq!(fs::read_to_string(&path).unwrap(), "newer export");
 }
 
-/// From the check to the delete, no program can open the file for writing,
-/// and a program already writing to it stops the delete.
 #[cfg(windows)]
 #[test]
 fn writers_are_shut_out_from_the_check_to_the_delete() {

@@ -1,4 +1,4 @@
-use crate::acp::intent::BindingId;
+use sage_acp_protocol::intent::BindingId;
 
 use super::{AcpService, SessionDispatchError};
 

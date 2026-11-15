@@ -10,9 +10,7 @@ use sage_core::limits::LIMITS;
 use super::super::FixtureError;
 use super::{WireState, acp, codex};
 
-/// Most commands a replayed Pi lists.
 const MAX_COMMANDS: usize = 64;
-/// Most text fields one `piNative` step may fill.
 const MAX_FILLS: usize = 32;
 
 pub(super) struct PiWireState {
@@ -44,7 +42,6 @@ pub(super) fn await_request(
     let kind = step["kind"]
         .as_str()
         .ok_or(FixtureError::InvalidArguments)?;
-    // A journey names the commands Pi loads as it starts.
     if let Some(commands) = step.get("commands") {
         let listed = commands
             .as_array()
@@ -239,11 +236,6 @@ pub(super) fn emit(
     codex::emit_json(output, state, &frame)
 }
 
-/// Fills each text field `fill.pointers` names with `fill.unit` repeated to
-/// `fill.bytes`, so a journey can replay output as large as a real run's
-/// (a read tool's result, or `agent_end` repeating the whole run) without
-/// spelling it out. Each field stays within one frame, and all of them
-/// within the case's output budget.
 fn fill_text(frame: &mut Value, fill: &Value) -> Result<(), FixtureError> {
     let pointers = fill["pointers"]
         .as_array()

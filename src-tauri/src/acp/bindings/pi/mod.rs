@@ -1,11 +1,5 @@
-//! Pi JSONL/RPC binding.
-//!
-//! Pi does not expose first-party ACP. This module keeps Pi wire types
-//! adapter-local and translates only the behavior proven by the curated RPC
-//! contract (pinned at v1.5.0 and admitted for the 1.5 line). The product
-//! admits it read-only through `native_admission` by default. Only the exact
-//! bundled bridge on the pinned version can expose Rust-managed write tools;
-//! all writes require a current permission decision and a contained target.
+//! Only the exact bundled bridge can expose Rust-managed write tools; all writes require a
+//! current permission decision and a contained target.
 
 pub(crate) mod bridge;
 mod decode;

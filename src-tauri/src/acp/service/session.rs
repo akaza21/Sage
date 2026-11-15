@@ -2,11 +2,13 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
     bindings::runtime::NativeRuntime,
+    runtime::{ActivationIntent, ActivationMode},
+    store::{ActivateSessionCommand, SessionMutation, StartSessionCommand},
+};
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{ExternalId, ModelId},
-    runtime::{ActivationIntent, ActivationMode},
     scheduler::RuntimeOwner,
-    store::{ActivateSessionCommand, SessionMutation, StartSessionCommand},
 };
 
 use super::{AcpService, CodexSessionError};
@@ -98,6 +100,32 @@ impl AcpService {
             .start_session(command)
             .await
             .map_err(Into::into)
+    }
+
+    /// The model a new session of `admitted` starts on, as the binding
+    /// listed it before the session: `model`, or the listed default when
+    /// none is named. A binding with model discovery lists it through the
+    /// discovery of this root, any other through its own list.
+    pub(crate) fn launch_model(
+        &self,
+        admitted: &crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
+        project_root: &crate::acp::bindings::registry::BindingProjectRoot,
+        model: Option<&sage_acp_protocol::intent::ModelId>,
+    ) -> Option<sage_domain::harness::ModelOption> {
+        if admitted.has_model_discovery().ok()? {
+            let binding_id =
+                sage_acp_protocol::intent::BindingId::new("bindingId", admitted.binding_id())
+                    .ok()?;
+            return self.codex_discovery.launch_model(
+                project_root.codex_project_root().ok()?,
+                &binding_id,
+                admitted.identity().binding_digest,
+                model,
+            );
+        }
+        let models = admitted.launch_models(false)?;
+        sage_domain::harness::ModelOption::launched(&models, model.map(|model| model.as_str()))
+            .cloned()
     }
 
     pub(super) fn prepare_session_activation(
@@ -233,9 +261,9 @@ impl AcpService {
 
 fn load_durable_session(
     database: &crate::persistence::Database,
-    project_id: &crate::acp::contract::SageProjectId,
-    chat_id: &crate::acp::contract::SageChatId,
-    session_id: &crate::acp::contract::SageAgentSessionId,
+    project_id: &sage_acp_protocol::contract::SageProjectId,
+    chat_id: &sage_acp_protocol::contract::SageChatId,
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
 ) -> Result<DurableSession, CodexSessionError> {
     database
         .connection()

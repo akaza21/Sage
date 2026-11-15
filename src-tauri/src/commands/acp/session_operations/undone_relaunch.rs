@@ -5,7 +5,7 @@
 //! left its runtime running, for instance to keep background tasks going.
 
 use super::*;
-use crate::acp::{intent::AcpConflictResource, service::UndoneRelaunchError};
+use crate::acp::{ipc::AcpConflictResource, service::UndoneRelaunchError};
 
 /// Points `request` at a relaunch of its session when its runtime still
 /// holds an undone turn; any other request is left as it is. Runs under the
@@ -60,6 +60,7 @@ pub(super) async fn relaunch_undone(
             }
             UndoneRelaunchError::Activation(error) => session_error(error),
         })?;
+    super::super::session_access::carry_chat_access(state, &relaunched.session_id)?;
     // The park and the activation moved the page on; the prompt was
     // validated against the page the user saw just before them.
     let snapshot = state

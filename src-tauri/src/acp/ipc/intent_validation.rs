@@ -1,4 +1,4 @@
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{
         EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageAgentSessionId,
         SageChatId, SageProjectId, SageTurnId, admits_projection,
@@ -44,6 +44,7 @@ pub enum IntentError {
     UnexpectedTurnState,
     #[error("turn revision is stale")]
     StaleTurnRevision,
+    #[cfg(test)]
     #[error("projection notification revision must be positive")]
     InvalidProjectionRevision,
 }

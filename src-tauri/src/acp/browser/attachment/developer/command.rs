@@ -1,6 +1,3 @@
-//! A bounded command lease keeps its original grant through attachment handoff.
-//! Only a tab with another live grant can hand off; losing the last grant,
-//! explicit revocation, navigation or sleep still ends native work.
 use super::*;
 
 pub(crate) struct DeveloperCommand {

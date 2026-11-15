@@ -1,8 +1,8 @@
 use std::{future::Future, pin::Pin};
 
-use crate::{
-    acp::{contract::ProjectionRevision, lifecycle::ServerRequestState, store::AdapterTurnCursor},
-    acp_protocol::permissions::PermissionIntent,
+use crate::acp::store::AdapterTurnCursor;
+use sage_acp_protocol::{
+    contract::ProjectionRevision, lifecycle::ServerRequestState, permissions::PermissionIntent,
 };
 
 use super::{DurableAdapterEvent, PumpIntent};

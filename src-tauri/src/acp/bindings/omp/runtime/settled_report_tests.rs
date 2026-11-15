@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::lifecycle::ToolState;
+use sage_acp_protocol::lifecycle::ToolState;
 
 fn settled_decline(runtime: &mut OmpRuntime) {
     initialize(runtime, false);
@@ -39,7 +39,7 @@ fn cards(events: &[AdapterEvent]) -> Vec<Option<ToolState>> {
         .filter_map(|event| match event {
             AdapterEvent::Item {
                 tool_state,
-                payload: crate::acp::intent::NormalizedPayload::ToolCall { .. },
+                payload: sage_acp_protocol::intent::NormalizedPayload::ToolCall { .. },
                 ..
             } => Some(*tool_state),
             _ => None,

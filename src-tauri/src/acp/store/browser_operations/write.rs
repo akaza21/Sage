@@ -1,7 +1,8 @@
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 use serde::{Deserialize, Serialize};
 
-use crate::acp::{contract::RuntimeEpoch, projection::BrowserOperationProjection};
+use crate::acp::projection::BrowserOperationProjection;
+use sage_acp_protocol::contract::RuntimeEpoch;
 
 use super::super::{
     StoreError,
@@ -262,7 +263,7 @@ fn append_terminal(
     tx: &Transaction<'_>,
     record: &BrowserOperationProjection,
     sequence: i64,
-    revision: crate::acp::contract::ProjectionRevision,
+    revision: sage_acp_protocol::contract::ProjectionRevision,
 ) -> Result<(), StoreError> {
     let mut terminal = TerminalFact {
         s: sequence,
@@ -310,7 +311,7 @@ fn collapse_oldest(
     tx: &Transaction<'_>,
     record: &BrowserOperationProjection,
     turn: Option<&str>,
-    revision: crate::acp::contract::ProjectionRevision,
+    revision: sage_acp_protocol::contract::ProjectionRevision,
 ) -> Result<(), StoreError> {
     let row: (String, i64, String) = tx.query_row(
         "SELECT start.session_id,start.sequence,start.turn_id FROM session_facts start

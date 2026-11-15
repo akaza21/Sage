@@ -11,10 +11,7 @@ use uuid::Uuid;
 use crate::{
     acp::{
         bindings::adapter::ResourceMapper,
-        contract::{
-            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
-        },
-        intent::{IntentSnapshot, ProjectionChangedV1, SafeResourceRef, UnavailableResourceReason},
+        ipc::{IntentSnapshot, ProjectionChangedV1},
         process::{
             ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, ProcessDeadlines,
             RequiredContainment, TreeLimits,
@@ -27,6 +24,10 @@ use crate::{
     },
     persistence::Database,
     project_registry::ProjectRootAuthority,
+};
+use sage_acp_protocol::{
+    contract::{ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId},
+    intent::{SafeResourceRef, UnavailableResourceReason},
 };
 
 #[derive(Clone, Copy)]

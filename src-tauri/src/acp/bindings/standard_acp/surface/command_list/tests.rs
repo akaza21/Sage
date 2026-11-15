@@ -1,7 +1,7 @@
 use super::*;
 use serde_json::json;
 fn owner(epoch: u64) -> RuntimeOwner {
-    use crate::acp::contract::*;
+    use sage_acp_protocol::contract::*;
     RuntimeOwner {
         project_id: SageProjectId::parse("project").unwrap(),
         chat_id: SageChatId::parse("chat").unwrap(),
@@ -84,12 +84,12 @@ fn channel_retains_only_latest_exact_owner_and_clears_after_release() {
 }
 #[test]
 fn command_marker_is_native_only_and_survives_host_prompt_clones() {
-    let mut prompt = crate::acp::intent::Prompt::new("prompt", "/plan task").unwrap();
+    let mut prompt = crate::acp::transcript_quote::Prompt::new("prompt", "/plan task").unwrap();
     prompt.command_revision = Some(7);
     assert_eq!(prompt.clone().command_revision, Some(7));
     let wire = serde_json::to_value(&prompt).unwrap();
     assert_eq!(wire, json!("/plan task"));
-    let decoded: crate::acp::intent::Prompt = serde_json::from_value(wire).unwrap();
+    let decoded: crate::acp::transcript_quote::Prompt = serde_json::from_value(wire).unwrap();
     assert_eq!(decoded.command_revision, None);
 }
 #[test]
@@ -158,14 +158,12 @@ fn channel_announces_each_new_revision_once_for_the_exact_owner() {
     let live = owner(1);
     channel.reserve(live.clone());
     let state = Arc::new(CommandState::default());
-    // Adopting the empty list at revision 0 is not a change.
     channel.update(&live, Arc::clone(&state));
     assert!(seen.lock().unwrap().is_empty());
     state
         .replace(parse_acp(&json!([{"name":"plan","description":"d"}])))
         .unwrap();
     channel.update(&live, Arc::clone(&state));
-    // Every ingested frame calls update; one revision is announced once.
     channel.update(&live, Arc::clone(&state));
     channel.update(&owner(2), Arc::clone(&state));
     state.replace(parse_acp(&json!([]))).unwrap();
@@ -198,10 +196,8 @@ fn channel_announces_a_swapped_list_from_its_own_revisions() {
         .replace(parse_acp(&json!([{"name":"plan","description":"d"}])))
         .unwrap();
     channel.update(&live, Arc::clone(&first));
-    // A fresh empty state at revision 0 replaces it: nothing to announce.
     let second = Arc::new(CommandState::default());
     channel.update(&live, Arc::clone(&second));
-    // Its first list is revision 1 again and must still be announced.
     second
         .replace(parse_acp(&json!([{"name":"init","description":"d"}])))
         .unwrap();
@@ -244,7 +240,6 @@ fn acp_commands_carry_the_source_an_adapter_names_and_list_as_prompts() {
         wire,
         json!({"name":"review","description":"Review","inputHint":null,"source":"skill"})
     );
-    // A run names the source of the command it ran, at that revision only.
     let state = CommandState::default();
     state.replace(Ok(list.commands)).unwrap();
     assert_eq!(

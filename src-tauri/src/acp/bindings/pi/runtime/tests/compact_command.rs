@@ -16,13 +16,13 @@ fn slash(runtime: &mut PiRuntime, text: &str, revision: u64) -> Value {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "slash").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     deliver(runtime, send)
 }
 
-fn turn_states(batch: &AdapterBatch) -> Vec<crate::acp::lifecycle::TurnState> {
+fn turn_states(batch: &AdapterBatch) -> Vec<sage_acp_protocol::lifecycle::TurnState> {
     batch
         .events()
         .iter()
@@ -60,7 +60,6 @@ fn compact_is_listed_once_and_takes_the_place_of_a_same_named_template() {
             ),
         ]
     );
-    // Pi's `/session` opens the session's status in the chat.
     assert_eq!(
         runtime.available_commands().snapshot().commands[1].dispatch,
         crate::acp::slash_commands::CommandDispatch::Panel(
@@ -79,7 +78,6 @@ fn slash_compact_runs_pis_compaction_as_a_turn_with_its_compaction_item() {
         request,
         json!({"type":"compact","id":request["id"],"customInstructions":"keep the API notes"})
     );
-    // Pi compacts before it answers, so its events arrive first.
     let started = runtime
         .ingest(
             &frame(json!({"type":"compaction_start","reason":"manual"})),
@@ -102,13 +100,10 @@ fn slash_compact_runs_pis_compaction_as_a_turn_with_its_compaction_item() {
         .unwrap();
     assert_eq!(
         turn_states(&done),
-        [crate::acp::lifecycle::TurnState::Completed]
+        [sage_acp_protocol::lifecycle::TurnState::Completed]
     );
-    // A bare `/compact` sends no instructions, and the session takes prompts again.
     let request = slash(&mut runtime, "/compact", revision);
     assert_eq!(request, json!({"type":"compact","id":request["id"]}));
-    // Pi reports a session too small to compact as a failed compaction; its
-    // reason reaches the user as a notice beside the failed compaction item.
     runtime
         .ingest(
             &frame(json!({"type":"compaction_start","reason":"manual"})),
@@ -131,7 +126,7 @@ fn slash_compact_runs_pis_compaction_as_a_turn_with_its_compaction_item() {
     else {
         panic!("failed compaction and its reason, got {:?}", ended.events())
     };
-    let crate::acp::intent::session_event::SessionScopedEvent::Notice(notice) = event else {
+    let sage_acp_protocol::intent::session_event::SessionScopedEvent::Notice(notice) = event else {
         panic!("notice expected")
     };
     assert_eq!(
@@ -149,7 +144,7 @@ fn slash_compact_runs_pis_compaction_as_a_turn_with_its_compaction_item() {
         .unwrap();
     assert_eq!(
         turn_states(&failed),
-        [crate::acp::lifecycle::TurnState::Failed]
+        [sage_acp_protocol::lifecycle::TurnState::Failed]
     );
     assert!(
         !failed
@@ -215,7 +210,7 @@ fn a_compact_pi_rejects_outright_still_reports_the_failure() {
     );
     assert_eq!(
         turn_states(&failed),
-        [crate::acp::lifecycle::TurnState::Failed]
+        [sage_acp_protocol::lifecycle::TurnState::Failed]
     );
 }
 
@@ -224,8 +219,6 @@ fn the_compact_action_runs_pis_compaction_without_a_listed_command() {
     let mut runtime = fixture_runtime(1);
     ready(&mut runtime);
     assert!(runtime.capabilities().unwrap().native_session_compact);
-    // The composer's Compact button sends the action with its `/compact`
-    // prompt text and no command revision, even before commands are listed.
     let action = crate::acp::session_action::SessionAction::Compact {};
     let mut prompt = Prompt::new("prompt", action.prompt_text()).unwrap();
     prompt.action = Some(action);
@@ -233,7 +226,7 @@ fn the_compact_action_runs_pis_compaction_without_a_listed_command() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "compact-action").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let request = deliver(&mut runtime, send);
@@ -243,7 +236,7 @@ fn the_compact_action_runs_pis_compaction_without_a_listed_command() {
         .unwrap();
     assert_eq!(
         turn_states(&done),
-        [crate::acp::lifecycle::TurnState::Completed]
+        [sage_acp_protocol::lifecycle::TurnState::Completed]
     );
 }
 
@@ -261,10 +254,9 @@ fn a_review_action_is_refused_since_pi_has_no_review() {
         runtime.command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "review-action").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
         Err(AdapterRuntimeError::UnsupportedCommand)
     ));
-    // Nothing was reserved: the session still takes a prompt.
     running(&mut runtime);
 }

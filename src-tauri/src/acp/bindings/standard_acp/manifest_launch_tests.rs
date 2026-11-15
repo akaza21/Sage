@@ -1,9 +1,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use crate::acp::contract::{ProjectGeneration, SageProjectId, SageRootId};
 use crate::acp::process::BoundedEnvironment;
 use crate::project_registry::ProjectRootAuthority;
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 
 use super::{AcpLaunchAuthority, admit, candidate_from_global_npm_shim, profile_for};
 
@@ -146,7 +146,7 @@ fn manifest_guard_refuses_a_byte_identical_reparse_point_substituted_after_admis
         assert!(!manifest.exists());
         assert_eq!(
             expectation.open_guard().err(),
-            Some(crate::acp::process::LaunchError::Io)
+            Some(sage_process::error::LaunchError::Io)
         );
     }
 

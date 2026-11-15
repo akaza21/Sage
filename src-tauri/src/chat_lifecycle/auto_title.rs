@@ -191,11 +191,11 @@ mod tests {
         let snapshot = database.bootstrap_snapshot().unwrap();
         let chat = snapshot.active_tab_id.clone().unwrap();
         database
-            .rename_chat(&crate::domain::RenameChatRequest {
+            .rename_chat(&sage_domain::chat::RenameChatRequest {
                 project_id: project.id.clone(),
                 chat_id: chat.clone(),
                 title: "Chat".into(),
-                current_layout: crate::domain::ProjectLayoutRequest {
+                current_layout: sage_domain::chat::ProjectLayoutRequest {
                     project_id: project.id.clone(),
                     tabs: snapshot.tabs,
                     active_tab_id: snapshot.active_tab_id,

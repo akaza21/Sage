@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::BoundedVec,
     declared_test::CommandActivity,
     intent::{NormalizedPayload, ToolCategory, ToolExecution},
@@ -57,7 +57,6 @@ pub(super) fn entered_review(
     )
 }
 
-/// The review's findings are the review Turn's reply.
 pub(super) fn exited_review(
     item: &Map<String, Value>,
 ) -> Result<Option<ItemNormalization>, IngressError> {

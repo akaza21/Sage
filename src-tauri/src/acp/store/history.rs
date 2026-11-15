@@ -1,13 +1,13 @@
 use rusqlite::{OptionalExtension, params};
 use sage_core::encoded_len::encoded_len;
 
-use crate::acp::{
+use crate::acp::projection::AcpChatPage;
+use sage_acp_protocol::{
     contract::{
         BoundedVec, ProjectionRevision, SafeText, SageAgentSessionId, SageChatId, SageProjectId,
         SageRootId,
     },
     intent::PageCursor,
-    projection::AcpChatPage,
 };
 use sage_core::limits::LIMITS;
 

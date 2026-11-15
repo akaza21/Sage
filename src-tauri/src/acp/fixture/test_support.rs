@@ -2,14 +2,15 @@ use std::time::{Duration, Instant};
 
 #[cfg(windows)]
 use crate::acp::process::{
-    LaunchError, LaunchFailure, LaunchSpec, PlatformSupervisor, RunningTree, TreeCapacityLease,
-    TreeExit,
+    LaunchFailure, LaunchSpec, PlatformSupervisor, RunningTree, TreeCapacityLease, TreeExit,
 };
 use crate::acp::{
     runtime::{BoundedThread, JournalHandle, JournalRunner, ThreadWaitError},
     store::AcpStore,
 };
 use sage_core::limits::LIMITS;
+#[cfg(windows)]
+use sage_process::error::LaunchError;
 
 #[derive(Clone, Copy)]
 pub(super) struct FixtureDeadline {

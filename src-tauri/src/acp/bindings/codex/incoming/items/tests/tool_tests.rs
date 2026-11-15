@@ -316,7 +316,7 @@ fn command_execution_uses_only_typed_output_and_a_single_read_action() {
         "Bearer [redacted]\nsecond\n"
     );
     assert!(
-        matches!(locations.as_slice(), [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+        matches!(locations.as_slice(), [sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }]
             if resource.relative_path.as_str() == "package.json")
     );
 
@@ -403,7 +403,7 @@ fn command_execution_maps_its_cwd_to_a_workspace_resource() {
         fn map_existing(&self, path: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
             assert_eq!(path, "C:\\fixture\\src");
             SafeResourceRef::new(
-                crate::acp::contract::SageRootId::parse("fixture-root").expect("root"),
+                sage_acp_protocol::contract::SageRootId::parse("fixture-root").expect("root"),
                 "src",
             )
             .map_err(|_| UnavailableResourceReason::Unsupported)

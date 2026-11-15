@@ -193,9 +193,11 @@ fn assert_glued_path_rejected(input: &str) {
     assert!(sanitize_command_summary(input).is_err(), "{input}");
     assert!(matches!(
         redact("permissionCommand", input, 512, Mode::Permission),
-        Err(crate::acp::contract::ContractError::ForbiddenContent {
-            field: "permissionCommand"
-        })
+        Err(
+            sage_acp_protocol::contract::ContractError::ForbiddenContent {
+                field: "permissionCommand"
+            }
+        )
     ));
 }
 

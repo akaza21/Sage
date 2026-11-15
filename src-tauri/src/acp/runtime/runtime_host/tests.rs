@@ -3,16 +3,14 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{
+use crate::acp::{runtime::LiveRuntimePort, store::AdapterTurnCursor, transcript_quote::Prompt};
+use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageAgentSessionId,
         SageChatId, SageProjectId, SageTurnId,
     },
-    intent::Prompt,
     lifecycle::{DeliveryState, TurnState},
-    runtime::LiveRuntimePort,
     scheduler::RuntimeOwner,
-    store::AdapterTurnCursor,
 };
 
 use super::types::HostCommand;
@@ -183,7 +181,7 @@ impl RuntimeEngine for FakeEngine {
 
     fn begin_configure_session(
         &mut self,
-        _intent: &crate::acp::session_config::ConfigIntent,
+        _intent: &sage_acp_protocol::session_config::ConfigIntent,
         _deadline: Instant,
         completion: ConfigCompletionSink,
     ) -> Result<(), HostError> {
@@ -207,8 +205,8 @@ impl RuntimeEngine for FakeEngine {
     fn resolve_permission(
         &mut self,
         _owner: &RuntimeOwner,
-        _request_id: &crate::acp::contract::SageServerRequestId,
-        _decision: crate::acp_protocol::permissions::PermissionDecision,
+        _request_id: &sage_acp_protocol::contract::SageServerRequestId,
+        _decision: sage_acp_protocol::permissions::PermissionDecision,
     ) -> Result<(), HostError> {
         self.push("resolvePermission");
         Ok(())
@@ -400,7 +398,7 @@ fn prompt(owner: &RuntimeOwner) -> HostPromptIntent {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             now_millis: sage_core::time::now_millis(),
         },
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 
@@ -426,16 +424,17 @@ fn steer(owner: &RuntimeOwner) -> HostSteerIntent {
         owner: owner.clone(),
         turn_id: turn(),
         prompt: Prompt::new("prompt", "Change direction").unwrap(),
-        client_message_id: crate::acp::contract::RequiredText::new("client", "steer-host").unwrap(),
+        client_message_id: sage_acp_protocol::contract::RequiredText::new("client", "steer-host")
+            .unwrap(),
     }
 }
 
-fn config(owner: &RuntimeOwner) -> crate::acp::session_config::ConfigIntent {
-    crate::acp::session_config::ConfigIntent {
+fn config(owner: &RuntimeOwner) -> sage_acp_protocol::session_config::ConfigIntent {
+    sage_acp_protocol::session_config::ConfigIntent {
         owner: owner.clone(),
-        expected_config_revision: crate::acp::session_config::ConfigRevision::first(),
-        mutation: crate::acp::session_config::ConfigMutation::Mode(
-            crate::acp::session_config::ConfigId::new("mode", "ask").unwrap(),
+        expected_config_revision: sage_acp_protocol::session_config::ConfigRevision::first(),
+        mutation: sage_acp_protocol::session_config::ConfigMutation::Mode(
+            sage_acp_protocol::session_config::ConfigId::new("mode", "ask").unwrap(),
         ),
     }
 }
@@ -522,8 +521,8 @@ fn pending_steer_does_not_block_controls_or_admit_a_second_steer() {
     assert_eq!(
         host.resolve_permission(
             runtime.clone(),
-            crate::acp::contract::SageServerRequestId::parse("request-host").unwrap(),
-            crate::acp_protocol::permissions::PermissionDecision::Deny,
+            sage_acp_protocol::contract::SageServerRequestId::parse("request-host").unwrap(),
+            sage_acp_protocol::permissions::PermissionDecision::Deny,
         ),
         Ok(HostOutcome::PermissionResolved)
     );
@@ -564,8 +563,8 @@ fn pending_configuration_does_not_block_permission_resolution() {
     assert_eq!(
         host.resolve_permission(
             runtime,
-            crate::acp::contract::SageServerRequestId::parse("request-host").unwrap(),
-            crate::acp_protocol::permissions::PermissionDecision::Deny,
+            sage_acp_protocol::contract::SageServerRequestId::parse("request-host").unwrap(),
+            sage_acp_protocol::permissions::PermissionDecision::Deny,
         )
         .unwrap(),
         HostOutcome::PermissionResolved
@@ -774,9 +773,12 @@ fn a_native_rpc_that_cannot_begin_in_time_recovers_only_when_not_passive() {
         // costs the chat its runtime.
         (
             crate::acp::goal::NativeRpcRequest::Control(
-                crate::acp::session_control::SessionControl::SetTitle {
-                    title: crate::acp::contract::RequiredText::new("sessionTitle", "Renamed")
-                        .unwrap(),
+                sage_acp_protocol::session_control::SessionControl::SetTitle {
+                    title: sage_acp_protocol::contract::RequiredText::new(
+                        "sessionTitle",
+                        "Renamed",
+                    )
+                    .unwrap(),
                 },
             ),
             HostState::Idle,
@@ -784,7 +786,7 @@ fn a_native_rpc_that_cannot_begin_in_time_recovers_only_when_not_passive() {
         // Listing MCP servers is a read; reloading them changes the session.
         (
             crate::acp::goal::NativeRpcRequest::Control(
-                crate::acp::session_control::SessionControl::ReadMcpServers,
+                sage_acp_protocol::session_control::SessionControl::ReadMcpServers,
             ),
             HostState::Idle,
         ),
@@ -792,15 +794,16 @@ fn a_native_rpc_that_cannot_begin_in_time_recovers_only_when_not_passive() {
         // still finish it after Sage stops waiting.
         (
             crate::acp::goal::NativeRpcRequest::Control(
-                crate::acp::session_control::SessionControl::ReconnectMcpServer {
-                    name: crate::acp::contract::RequiredText::new("serverName", "linear").unwrap(),
+                sage_acp_protocol::session_control::SessionControl::ReconnectMcpServer {
+                    name: sage_acp_protocol::contract::RequiredText::new("serverName", "linear")
+                        .unwrap(),
                 },
             ),
             HostState::Idle,
         ),
         (
             crate::acp::goal::NativeRpcRequest::Control(
-                crate::acp::session_control::SessionControl::ReloadMcpServers,
+                sage_acp_protocol::session_control::SessionControl::ReloadMcpServers,
             ),
             HostState::Recovery,
         ),
@@ -1176,7 +1179,7 @@ fn possible_bytes_are_terminally_recorded_without_prompt_replay() {
 
     assert_eq!(
         host.send(prompt(&runtime)),
-        Err(crate::acp::intent::PromptSendError::unknown(
+        Err(crate::acp::prompt_send::PromptSendError::unknown(
             HostError::DeliveryUnknown
         ))
     );
@@ -1229,7 +1232,7 @@ fn failed_zero_byte_retry_enters_recovery_and_cannot_replay() {
 
     assert_eq!(
         host.send(prompt(&runtime)),
-        Err(crate::acp::intent::PromptSendError::unknown(
+        Err(crate::acp::prompt_send::PromptSendError::unknown(
             HostError::Unavailable
         ))
     );
@@ -1252,7 +1255,7 @@ fn failed_delivery_unknown_record_enters_recovery_without_replay() {
 
     assert_eq!(
         host.send(prompt(&runtime)),
-        Err(crate::acp::intent::PromptSendError::unknown(
+        Err(crate::acp::prompt_send::PromptSendError::unknown(
             HostError::RecoveryRequired
         ))
     );
@@ -1302,7 +1305,7 @@ fn zero_byte_retry_cannot_substitute_a_different_store_minted_turn() {
 
     assert_eq!(
         host.send(prompt(&runtime)),
-        Err(crate::acp::intent::PromptSendError::unknown(
+        Err(crate::acp::prompt_send::PromptSendError::unknown(
             HostError::Intent
         ))
     );
@@ -1323,7 +1326,7 @@ fn zero_bytes_retry_once_and_second_failure_is_durable() {
 
     assert_eq!(
         host.send(prompt(&runtime)),
-        Err(crate::acp::intent::PromptSendError::unknown(
+        Err(crate::acp::prompt_send::PromptSendError::unknown(
             HostError::RetryExhausted
         ))
     );
@@ -1354,8 +1357,8 @@ fn terminal_cursor_returns_idle_and_close_orders_zero_before_finalize() {
         turn_id,
         TurnState::Completed,
         DeliveryState::Correlated,
-        crate::acp::contract::EntityRevision::new(2).unwrap(),
-        crate::acp::contract::ProjectionRevision::new(3).unwrap(),
+        sage_acp_protocol::contract::EntityRevision::new(2).unwrap(),
+        sage_acp_protocol::contract::ProjectionRevision::new(3).unwrap(),
     );
 
     assert_eq!(
@@ -1395,8 +1398,8 @@ fn worker_terminal_notification_never_waits_for_the_host_callback() {
         turn(),
         TurnState::Completed,
         DeliveryState::Correlated,
-        crate::acp::contract::EntityRevision::new(2).unwrap(),
-        crate::acp::contract::ProjectionRevision::new(3).unwrap(),
+        sage_acp_protocol::contract::EntityRevision::new(2).unwrap(),
+        sage_acp_protocol::contract::ProjectionRevision::new(3).unwrap(),
     );
 
     let notification = host.try_notify_terminal(runtime, cursor).unwrap();
@@ -1437,8 +1440,8 @@ fn terminal_acceptance_failure_retries_only_the_exact_cursor_and_releases_once()
         turn(),
         TurnState::Completed,
         DeliveryState::Correlated,
-        crate::acp::contract::EntityRevision::new(2).unwrap(),
-        crate::acp::contract::ProjectionRevision::new(3).unwrap(),
+        sage_acp_protocol::contract::EntityRevision::new(2).unwrap(),
+        sage_acp_protocol::contract::ProjectionRevision::new(3).unwrap(),
     );
 
     assert_eq!(
@@ -1738,11 +1741,11 @@ fn command_deadlines_use_the_frozen_operation_classes() {
         })
         .deadline_millis()
     };
-    use crate::acp::session_control::SessionControl;
+    use sage_acp_protocol::session_control::SessionControl;
     assert!(control(SessionControl::ReadMcpServers) < LIMITS.deadlines_ms.ordinary_rpc);
     assert_eq!(
         control(SessionControl::ReconnectMcpServer {
-            name: crate::acp::contract::RequiredText::new("serverName", "linear").unwrap(),
+            name: sage_acp_protocol::contract::RequiredText::new("serverName", "linear").unwrap(),
         }),
         LIMITS.deadlines_ms.ordinary_rpc
     );
@@ -1759,10 +1762,10 @@ fn a_prompt_carrying_the_largest_admitted_images_is_prepared() {
     // Two images at the echoed bound, each with a thumbnail, as a Codex or Pi
     // prompt can carry once admitted.
     let image = |bytes| PromptImage {
-        media_type: crate::acp::intent::ImageMediaType::Png,
+        media_type: sage_acp_protocol::intent::ImageMediaType::Png,
         bytes: vec![0; bytes],
         preview: ImagePreview::Thumbnail(
-            crate::acp::intent::ImageMediaType::Png,
+            sage_acp_protocol::intent::ImageMediaType::Png,
             vec![0; sage_core::limits::IMAGE_PREVIEW_BYTES],
         ),
     };
@@ -1777,7 +1780,7 @@ fn a_prompt_carrying_the_largest_admitted_images_is_prepared() {
 
 #[test]
 fn a_prompt_refused_before_it_is_prepared_is_known_not_to_have_started() {
-    use crate::acp::intent::PromptSendError;
+    use crate::acp::prompt_send::PromptSendError;
     let host =
         RuntimeHost::start(FakeEngine::new([]).with_prepare_error(HostError::Capacity)).unwrap();
     let runtime = owner("project-a");

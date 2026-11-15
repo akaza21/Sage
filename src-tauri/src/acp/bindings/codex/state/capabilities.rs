@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 
 use crate::acp::bindings::characterisation::valid_numeric_version;
-use crate::acp::intent::CapabilitySnapshotV1;
+use sage_acp_protocol::intent::CapabilitySnapshotV1;
 
 use super::{AdapterError, CodexAdapter, NegotiatedMethods};
 use crate::acp::bindings::codex::{degrade, request::APP_SERVER_CLIENT_IDENTITY};

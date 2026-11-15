@@ -8,14 +8,16 @@ use crate::acp::{
         BrowserAuthority, BrowserPermissionChoice, BrowserPermissionDecider,
         BrowserPermissionPrompt,
     },
+    ipc::ProjectionChangedV1,
+    runtime::{JournalLane, TurnNotice},
+    store::{RequestStateCommand, StoreMutation},
+};
+use sage_acp_protocol::{
     contract::{
         RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
         SageTurnId,
     },
-    intent::ProjectionChangedV1,
     lifecycle::ServerRequestState,
-    runtime::{JournalLane, TurnNotice},
-    store::{RequestStateCommand, StoreMutation},
 };
 use std::time::{Duration, Instant};
 
@@ -52,8 +54,8 @@ pub(crate) struct BrowserPermissionDecisionResponse {
     state: &'static str,
 }
 
-/// One admitted tab/turn's local decision source. The browser gate still
-/// performs the final authority recheck before invoking a capability.
+/// The browser gate still performs the final authority recheck before
+/// invoking a capability.
 pub(crate) struct ServiceBrowserPermissionDecider<'a> {
     pub(crate) service: &'a super::AcpService,
     pub(crate) owner: BrowserPermissionOwner,

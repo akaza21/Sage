@@ -193,6 +193,8 @@ export interface CodexDiscoveryModel {
   id: CuratedModelId;
   name: string;
   isDefault: boolean;
+  /** The thinking levels the model takes, as its session will offer them. */
+  effortLevels?: readonly string[];
 }
 
 export type CodexAccount =

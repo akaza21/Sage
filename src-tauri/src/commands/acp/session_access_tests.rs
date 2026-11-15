@@ -1,6 +1,6 @@
 use super::*;
-use crate::acp::contract::RuntimeEpoch;
-use crate::acp::session_config::{
+use sage_acp_protocol::contract::RuntimeEpoch;
+use sage_acp_protocol::session_config::{
     ConfigId, ConfigMutation, ConfigRevision, ConfigValue, SessionConfig,
 };
 use serde_json::json;
@@ -363,4 +363,143 @@ async fn a_grant_needs_a_pending_token_and_a_deliberate_allow() {
         grant(&state, &dialog, PATIENT, &token).await,
         Err(AcpIpcError::Conflict { .. })
     ));
+}
+
+/// A chat whose session A holds Plan, then sessions that went on from it on
+/// the same binding without running a turn: `later` of them, in order.
+fn chat_going_on_from_plan(later: &[&str]) -> AppState {
+    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    {
+        let connection = database.connection();
+        connection
+            .execute_batch(
+                "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at)
+                   VALUES('project-carry','Carry',1,1,1);
+                 INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at)
+                   VALUES('chat-carry','project-carry',0,'Carry',1,1);",
+            )
+            .unwrap();
+        for (ordinal, (id, state)) in [("session-a", "closed")]
+            .into_iter()
+            .chain(later.iter().map(|id| (*id, "failed")))
+            .enumerate()
+        {
+            connection
+                .execute(
+                    "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,
+                       binding_digest,capabilities_json,state,residency,terminal_at,created_at,updated_at)
+                     VALUES(?1,'project-carry','chat-carry',?2,'claude-agent-acp',?3,'{}',?4,
+                       'cold',1,1,1)",
+                    rusqlite::params![id, ordinal as i64, "a".repeat(64), state],
+                )
+                .unwrap();
+        }
+    }
+    let state = AppState::try_new(database).unwrap();
+    state
+        .settings
+        .set_chat_access("session-a", SessionAccessMode::Plan, 1)
+        .unwrap();
+    state
+}
+
+fn session(id: &str) -> SageAgentSessionId {
+    SageAgentSessionId::parse(id).unwrap()
+}
+
+#[test]
+fn a_session_after_an_interrupted_activation_keeps_the_chats_access() {
+    // Sage stopped while activating B, which took nothing over; C then
+    // started from B.
+    let state = chat_going_on_from_plan(&["session-b", "session-c"]);
+    assert_eq!(
+        session_chat_access(&state, &session("session-c")).unwrap(),
+        Some(SessionAccessMode::Plan)
+    );
+    assert_eq!(
+        state.settings.chat_access("session-b").unwrap(),
+        Some(SessionAccessMode::Plan)
+    );
+}
+
+#[test]
+fn a_refused_activation_shows_the_access_its_retry_runs_under() {
+    // B replaced A, and its activation was refused before taking anything
+    // over. The composer reloads B's access, and the retry then runs.
+    let state = chat_going_on_from_plan(&["session-b"]);
+    let b = session("session-b");
+    let shown = session_chat_access(&state, &b).unwrap();
+    assert_eq!(shown, Some(SessionAccessMode::Plan));
+    // The successful retry takes the access over again, and a prompt reads
+    // what the composer showed.
+    carry_chat_access(&state, &b).unwrap();
+    assert_eq!(session_chat_access(&state, &b).unwrap(), shown);
+    assert_eq!(state.settings.chat_access("session-b").unwrap(), shown);
+}
+
+/// A chat on OpenCode whose first session holds Read-only, under a broader
+/// binding default, followed by sessions that ran no turn: `sessions` in
+/// all. Returns the state and the last session.
+#[cfg(windows)]
+fn read_only_chat_of(sessions: usize) -> (AppState, SageAgentSessionId, std::path::PathBuf) {
+    let (state, project, chat, root) =
+        crate::commands::tests::state_with_internal_opencode_registry();
+    for ordinal in 0..sessions {
+        state
+            .database
+            .connection()
+            .execute(
+                "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,
+                   binding_digest,capabilities_json,state,residency,terminal_at,created_at,
+                   updated_at)
+                 VALUES(?1,?2,?3,?4,'opencode-acp',?5,'{}','failed','cold',1,1,1)",
+                rusqlite::params![
+                    format!("session-{ordinal}"),
+                    project,
+                    chat,
+                    ordinal as i64,
+                    "a".repeat(64)
+                ],
+            )
+            .unwrap();
+    }
+    state
+        .settings
+        .set_chat_access("session-0", SessionAccessMode::ReadOnly, 1)
+        .unwrap();
+    state
+        .settings
+        .set_session_access_modes(&std::collections::BTreeMap::from([(
+            "opencode-acp".to_owned(),
+            SessionAccessMode::WorkspaceWrite,
+        )]))
+        .unwrap();
+    let last = session(&format!("session-{}", sessions - 1));
+    (state, last, root)
+}
+
+#[cfg(windows)]
+#[test]
+fn a_prompt_after_a_chats_full_run_of_failed_starts_keeps_its_access() {
+    let limit = sage_core::limits::LIMITS.durable.sessions_per_chat as usize;
+    let (state, last, root) = read_only_chat_of(limit);
+    assert_eq!(
+        turn_access_mode(&state, "opencode-acp", &last).unwrap(),
+        SessionAccessMode::ReadOnly
+    );
+    drop(state);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn a_prompt_whose_inherited_access_cannot_be_resolved_is_refused() {
+    // More sessions than a chat holds: the walk stops at the limit, and the
+    // prompt is refused rather than run under the broader default.
+    let limit = sage_core::limits::LIMITS.durable.sessions_per_chat as usize;
+    let (state, last, root) = read_only_chat_of(limit + 1);
+    assert!(turn_access_mode(&state, "opencode-acp", &last).is_err());
+    assert_eq!(state.settings.chat_access(last.as_str()).unwrap(), None);
+    drop(state);
+    std::fs::remove_dir_all(root).unwrap();
 }

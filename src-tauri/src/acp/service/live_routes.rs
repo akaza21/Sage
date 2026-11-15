@@ -1,5 +1,3 @@
-//! Service entry points that route one exact runtime owner to its live lane.
-//!
 //! An owner no lane holds is stale or foreign; it is refused here without
 //! touching any lane.
 
@@ -7,11 +5,12 @@ use std::{sync::Arc, time::Instant};
 
 use crate::acp::{
     runtime::{HostCancelIntent, HostError, HostOutcome, HostPromptIntent, RuntimeHost},
-    scheduler::RuntimeOwner,
     store::{ActivateSessionCommand, CloseSessionCommand},
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
-use super::{AcpService, CodexSessionError, PromptSendError};
+use super::{AcpService, CodexSessionError};
+use crate::acp::prompt_send::PromptSendError;
 
 impl AcpService {
     pub(crate) async fn activate_session(
@@ -19,14 +18,11 @@ impl AcpService {
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
         command: ActivateSessionCommand,
         project_root: crate::acp::bindings::registry::BindingProjectRoot,
-    ) -> Result<(), CodexSessionError> {
+    ) -> Result<RuntimeOwner, CodexSessionError> {
         self.activate_head_session(admitted, command, project_root)
             .await
-            .map(drop)
     }
 
-    /// Activates the session `command` names, or the head session that
-    /// continues it, and returns the runtime that now runs.
     pub(in crate::acp::service) async fn activate_head_session(
         &self,
         admitted: crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
@@ -88,7 +84,7 @@ impl AcpService {
     pub(in crate::acp::service) fn turn_is_terminal(
         &self,
         owner: &RuntimeOwner,
-        turn_id: &crate::acp::contract::SageTurnId,
+        turn_id: &sage_acp_protocol::contract::SageTurnId,
     ) -> bool {
         crate::acp::store::turn_is_terminal(
             &self.database.connection(),
@@ -126,8 +122,8 @@ impl AcpService {
 
     pub(crate) fn dispose_temporary_runtime(
         &self,
-        project: &crate::acp::contract::SageProjectId,
-        chat: &crate::acp::contract::SageChatId,
+        project: &sage_acp_protocol::contract::SageProjectId,
+        chat: &sage_acp_protocol::contract::SageChatId,
     ) -> Result<(), CodexSessionError> {
         if !crate::side_chat_storage::is_temporary(&self.database.connection(), chat.as_str())
             .map_err(|_| CodexSessionError::Recovery)?
@@ -160,8 +156,6 @@ impl AcpService {
         }
     }
 
-    /// Drives every lane's retained recovery once. It reports whether any
-    /// lane reclaimed capacity and fails if any lane still retains authority.
     pub(in crate::acp::service) fn shutdown_codex_recovery(
         &self,
         deadline: Instant,
@@ -207,7 +201,7 @@ impl AcpService {
     ) -> Result<HostOutcome, CodexSessionError> {
         self.send_session_turn(HostPromptIntent {
             command,
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .map_err(|failure| failure.error)
     }
@@ -266,6 +260,7 @@ impl AcpService {
             crate::acp::bindings::registry::BindingProjectRoot::Codex(project_root),
         )
         .await
+        .map(drop)
     }
 
     #[cfg(all(test, windows))]

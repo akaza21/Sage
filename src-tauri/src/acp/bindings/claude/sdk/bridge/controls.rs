@@ -1,18 +1,11 @@
-//! Session controls as SDK control requests: undoing a turn rewinds the
-//! files Claude Code checkpointed since that turn's message, stopping a
-//! task ends one background task, `/mcp` lists the session's MCP servers
-//! or connects one again, and a usage read asks for the plan's limits.
-
 use serde_json::{Value, json};
 
 use super::{
     BridgeError, Inbound, Pending, SdkBridge,
     notices::{TASK_PREFIX, prose},
 };
-use crate::acp::{
-    contract::SafeText, goal::NativeRpcReply, mcp::inventory::McpInventory,
-    session_control::SessionControl,
-};
+use crate::acp::{goal::NativeRpcReply, mcp::inventory::McpInventory};
+use sage_acp_protocol::{contract::SafeText, session_control::SessionControl};
 
 /// Passive requests Claude Code has not answered after their callers gave
 /// up; at this many, further passive requests wait until one is answered.
@@ -22,16 +15,12 @@ const MAX_ABANDONED_REQUESTS: usize = 4;
 /// it (see `SessionControl::abandons_at_deadline`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum PassiveRequest {
-    /// A read of the session's MCP servers.
     McpList,
-    /// Connecting one MCP server again.
     McpReconnect,
-    /// A read of the plan's usage limits.
     Usage,
 }
 
 impl PassiveRequest {
-    /// Claude Code's reply, as the request's native answer.
     pub(super) fn answered(self, reply: Result<&Value, &str>, inbound: &mut Inbound) {
         match (self, reply) {
             (Self::McpList, Ok(reply)) => SdkBridge::mcp_listed(reply, inbound),
@@ -42,7 +31,6 @@ impl PassiveRequest {
 }
 
 impl SdkBridge {
-    /// The control request for a session control; one at a time.
     pub(in crate::acp::bindings::claude::sdk) fn session_control(
         &mut self,
         control: &SessionControl,
@@ -80,8 +68,6 @@ impl SdkBridge {
         self.control(request, pending)
     }
 
-    /// The control request for the plan's usage limits; it waits behind a
-    /// session control like any other.
     pub(in crate::acp::bindings::claude::sdk) fn usage_read(
         &mut self,
     ) -> Result<Value, BridgeError> {
@@ -94,7 +80,6 @@ impl SdkBridge {
         )
     }
 
-    /// Enough abandoned requests are still unanswered that no more are sent.
     fn abandoned_full(&self) -> bool {
         self.pending
             .values()
@@ -103,7 +88,6 @@ impl SdkBridge {
             >= MAX_ABANDONED_REQUESTS
     }
 
-    /// A session control is waiting on Claude Code's reply.
     pub(in crate::acp::bindings::claude::sdk) fn controlling(&self) -> bool {
         self.pending.values().any(|pending| {
             matches!(
@@ -113,11 +97,9 @@ impl SdkBridge {
         })
     }
 
-    /// Stops waiting for a passive request whose caller gave up: an MCP
-    /// list or reconnect, or a usage read. None changes what Sage holds, and
-    /// Claude Code may still finish a reconnect. The request id stays known,
-    /// so the late reply is dropped rather than read as a frame Sage never
-    /// asked for.
+    /// Passive requests change nothing Sage holds, and Claude Code may still finish a reconnect.
+    /// The request id stays known, so the late reply is dropped rather than read as a frame Sage
+    /// never asked for.
     pub(in crate::acp::bindings::claude::sdk) fn abandon_passive_requests(&mut self) {
         for pending in self.pending.values_mut() {
             if matches!(pending, Pending::Passive(_)) {
@@ -126,7 +108,6 @@ impl SdkBridge {
         }
     }
 
-    /// Claude Code's MCP servers; a reply without a list is refused.
     fn mcp_listed(reply: &Value, inbound: &mut Inbound) {
         inbound.native = Some(
             McpInventory::from_claude(reply)
@@ -146,21 +127,17 @@ impl SdkBridge {
         self.control(json!({"subtype": "get_settings"}), Pending::Fork(config))
     }
 
-    /// The fork through the session's latest saved reply, or a refusal
-    /// when there is none (or Claude Code failed the round trip).
     pub(super) fn forked(&self, config: Option<&std::path::Path>, inbound: &mut Inbound) {
         inbound.native = Some(
             config
                 .and_then(|config| super::super::fork::Fork::of(&self.session_id, config))
                 .and_then(|fork| {
-                    crate::acp::intent::ExternalId::new("externalSessionId", fork.id()).ok()
+                    sage_acp_protocol::intent::ExternalId::new("externalSessionId", fork.id()).ok()
                 })
                 .map_or(NativeRpcReply::Rejected, NativeRpcReply::Forked),
         );
     }
 
-    /// Claude Code's reply to a session control. A rewind it could not
-    /// carry out is refused with its reason.
     pub(super) fn controlled(reply: Result<&Value, &str>, inbound: &mut Inbound) {
         let summary = |text: Option<String>| {
             text.and_then(|text| prose(&text, 512))

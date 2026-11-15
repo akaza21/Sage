@@ -3,7 +3,7 @@ use tauri::State;
 use crate::{
     acp::{
         bindings::codex::{CodexAuthDeadline, CodexDiscoveryRunError, NativeApiKey},
-        intent::{AcpIpcError, AcpUnavailableReason, CodexAuthResponse, CodexAuthScope},
+        ipc::{AcpIpcError, AcpUnavailableReason, CodexAuthResponse, CodexAuthScope},
         service::CodexAuthAction,
     },
     state::AppState,

@@ -201,6 +201,9 @@ export const createHarnessSlice: StateCreator<
           id: model.id,
           name: model.name,
           isDefault: model.isDefault,
+          ...(model.effortLevels
+            ? { effortLevels: [...model.effortLevels] }
+            : {}),
         }));
         set({
           models,

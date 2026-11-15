@@ -48,8 +48,6 @@ pub(crate) fn admit_screenshot(
     admit_capture_pixels(f64::from(width), f64::from(height), 1.0).map(|_| ())
 }
 
-/// Bounds the bitmap before native capture and after image decoding. Round
-/// each side outward before multiplying, without integer casts or overflow.
 pub(crate) fn admit_capture_pixels(
     width: f64,
     height: f64,

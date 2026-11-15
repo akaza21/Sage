@@ -1,6 +1,6 @@
 use std::{
     process::Child,
-    sync::{Arc, Mutex, mpsc},
+    sync::{Arc, Mutex},
     time::Duration,
 };
 
@@ -8,9 +8,10 @@ use crate::acp::{
     process::{ProcessIdentityReceipt, TreeCapacityLease},
     redaction::{SafeDiagnostic, SafeStderrDiagnostic, StderrRing},
 };
+use sage_process::error::LaunchError;
 
 use super::{
-    super::supervisor::{LaunchError, TreeExit},
+    super::supervisor::{TerminationRecord, TreeExit},
     spawn::ArtifactIdentity,
 };
 
@@ -19,10 +20,10 @@ pub(crate) struct TreeControl(pub(super) Arc<TreeAuthority>);
 
 pub(super) struct TreeAuthority {
     pub(super) child: Mutex<Child>,
-    pub(super) requested_exit: Mutex<Option<TreeExit>>,
+    pub(super) termination: Mutex<TerminationRecord>,
     pub(super) lease: Mutex<Option<TreeCapacityLease>>,
     pub(super) stderr: Arc<Mutex<StderrRing>>,
-    pub(super) stderr_done: Mutex<mpsc::Receiver<()>>,
+    pub(super) stderr_done: Mutex<super::reap::StderrDone>,
     pub(super) converged: Mutex<bool>,
     pub(super) runtime_epoch: u64,
     pub(super) terminate_deadline: Duration,
@@ -55,20 +56,54 @@ impl TreeControl {
     }
 
     pub(crate) fn request_termination(&self, reason: TreeExit) -> Result<(), LaunchError> {
+        // The child lock spans the request so the root cannot be killed
+        // between observing its status and recording that request.
+        let mut child = self
+            .0
+            .child
+            .lock()
+            .map_err(|_| LaunchError::ContainmentFailure);
+        let status = child.as_mut().ok().map(|child| child.try_wait());
         self.0
-            .requested_exit
+            .termination
             .lock()
             .map_err(|_| LaunchError::ContainmentFailure)?
-            .get_or_insert(reason);
+            .request(reason, || match &status {
+                Some(Ok(Some(status))) => Some(TreeExit::Exited {
+                    code: status.code(),
+                }),
+                _ => None,
+            });
+        let mut child = child?;
+        let status = status.ok_or(LaunchError::ContainmentFailure)?;
+        if status.map_err(|_| LaunchError::Io)?.is_none() {
+            child.kill().map_err(|_| LaunchError::Io)?;
+        }
+        Ok(())
+    }
+
+    /// The root's own exit status when it ended before Sage first requested
+    /// termination; `None` while it runs or once Sage ended it.
+    pub(crate) fn exit_before_termination(&self) -> Result<Option<TreeExit>, LaunchError> {
         let mut child = self
             .0
             .child
             .lock()
             .map_err(|_| LaunchError::ContainmentFailure)?;
-        if child.try_wait().map_err(|_| LaunchError::Io)?.is_none() {
-            child.kill().map_err(|_| LaunchError::Io)?;
-        }
-        Ok(())
+        let termination = *self
+            .0
+            .termination
+            .lock()
+            .map_err(|_| LaunchError::ContainmentFailure)?;
+        Ok(termination.exit_before_request(|| {
+            child
+                .try_wait()
+                .ok()
+                .flatten()
+                .map(|status| TreeExit::Exited {
+                    code: status.code(),
+                })
+        }))
     }
 
     #[cfg(test)]
@@ -117,7 +152,11 @@ impl TreeControl {
     }
 
     pub(super) fn requested_exit(&self) -> Option<TreeExit> {
-        self.0.requested_exit.lock().ok().and_then(|exit| *exit)
+        self.0
+            .termination
+            .lock()
+            .ok()
+            .and_then(|termination| termination.requested())
     }
 }
 

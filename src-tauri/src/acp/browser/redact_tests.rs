@@ -71,7 +71,6 @@ fn ordinary_values_and_slugs_survive() {
 
 #[test]
 fn word_slugs_survive_and_random_tokens_do_not() {
-    // Words switch case or turn into digits rarely; separators do not count.
     for slug in [
         "Rust2024-Edition-Release-Notes",
         "covid19-vaccine-Update-2021-Moderna",
@@ -97,7 +96,6 @@ fn word_slugs_survive_and_random_tokens_do_not() {
         "aB3dE5gH7jK9mN1pQ3sT5vX7",
         "dGhpcyBpcyBhIHNlY3JldCB0b2tlbiB2YWx1ZQ==",
         "Ab3dEf6hIj9kLm2nOp5qRs8t",
-        // Base64 of text switches rarely, but runs long without a separator.
         "QWxhZGRpbjpvcGVuIHNlc2FtZQQWxhZGRpbjpvcGVu",
     ] {
         assert_eq!(
@@ -129,13 +127,11 @@ fn credential_path_segments_are_redacted_but_git_object_ids_are_kept() {
         let url = format!("https://forge.example/acme/sage/commit/{hash}");
         assert_eq!(redact_url(&url), url);
     }
-    // Hex runs of other lengths are not exempt.
     let other = "0123456789abcdef".repeat(3);
     assert_eq!(
         redact_url(&format!("https://example.com/files/{other}")),
         "https://example.com/files/%5Bredacted%5D"
     );
-    // An encoded secret is decoded before it is judged.
     assert_eq!(
         redact_url("https://example.com/k/%41b3dEf6hIj9kLm2nOp5qRs8t"),
         "https://example.com/k/%5Bredacted%5D"

@@ -1,4 +1,4 @@
-use crate::acp::intent::{ExternalId, ModelId};
+use sage_acp_protocol::intent::{ExternalId, ModelId};
 
 /// How an activation opens its native session.
 #[derive(Clone)]

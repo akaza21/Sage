@@ -5,15 +5,17 @@ use tauri::State;
 use crate::{
     acp::{
         browser::permission::BrowserPermissionChoice,
-        contract::{
-            RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
-            SageTurnId,
-        },
-        intent::{AcpIpcError, AcpUnavailableReason},
+        ipc::{AcpIpcError, AcpUnavailableReason},
         service::{PermissionDecisionIntent, browser_permission::BrowserPermissionOwner},
     },
-    acp_protocol::permissions::PermissionDecision,
     state::AppState,
+};
+use sage_acp_protocol::{
+    contract::{
+        RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
+        SageTurnId,
+    },
+    permissions::PermissionDecision,
 };
 
 use super::errors::safe_message;

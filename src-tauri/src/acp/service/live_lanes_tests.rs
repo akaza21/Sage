@@ -1,12 +1,10 @@
 use super::*;
-use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId};
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId};
 
 #[path = "live_lanes_test_engine.rs"]
 mod engine;
 
 impl AcpService {
-    /// Holds the activation claim on the lane serving `owner`, as an
-    /// activation or a chat release does while it works.
     pub(in crate::acp::service) fn claim_lane_activation_for_test(
         &self,
         owner: &RuntimeOwner,
@@ -24,19 +22,15 @@ impl AcpService {
         ActivationClaim { lane }
     }
 
-    /// How many chat releases found their lane held by another claim.
     pub(in crate::acp::service) fn lane_busy_refusals_for_test(&self) -> usize {
         self.lane_busy_refusals.load(Ordering::Acquire)
     }
 
-    /// Holds the claim on the lane serving `owner` until a release is first
-    /// refused for it, then lets go, as a holder finishing would.
     pub(in crate::acp::service) fn hold_lane_until_busy_for_test(&self, owner: &RuntimeOwner) {
         std::mem::forget(self.claim_lane_activation_for_test(owner));
         self.yield_lane_on_busy.store(true, Ordering::Release);
     }
 
-    /// How many chat releases found the harness answering a control.
     pub(in crate::acp::service) fn control_running_refusals_for_test(&self) -> usize {
         self.control_running_refusals.load(Ordering::Acquire)
     }
@@ -104,7 +98,6 @@ fn concurrent_activations_claim_distinct_lanes_until_capacity_is_reached() {
         Err(CodexSessionError::Capacity)
     ));
     drop(claims);
-    // Starting lanes are neither free, recoverable, nor idle: still bounded.
     assert!(matches!(
         service.claim_activation_lane(&owner("overflow", 1), activation_deadline()),
         Err(CodexSessionError::Capacity)
@@ -153,10 +146,8 @@ fn an_unknown_owner_routes_to_no_lane() {
 
 #[test]
 fn durable_activation_admits_at_most_the_live_tree_limit() {
-    use crate::acp::{
-        contract::ClientIntentId,
-        store::{ActivateSessionCommand, StartSessionCommand, StoreError},
-    };
+    use crate::acp::store::{ActivateSessionCommand, StartSessionCommand, StoreError};
+    use sage_acp_protocol::contract::ClientIntentId;
     tauri::async_runtime::block_on(async {
         let database =
             crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
@@ -175,7 +166,7 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
                 let snapshot = database.bootstrap_snapshot().unwrap();
                 SageChatId::parse(
                     database
-                        .create_chat(&crate::domain::ProjectLayoutRequest {
+                        .create_chat(&sage_domain::chat::ProjectLayoutRequest {
                             project_id: project.id.clone(),
                             tabs: snapshot.tabs,
                             active_tab_id: snapshot.active_tab_id,
@@ -200,8 +191,11 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
                     chat_id: chat_id.clone(),
                     expected_projection_revision: revision,
                     client_intent_id: ClientIntentId::new(),
-                    binding_id: crate::acp::intent::BindingId::new("bindingId", "test-lanes")
-                        .unwrap(),
+                    binding_id: sage_acp_protocol::intent::BindingId::new(
+                        "bindingId",
+                        "test-lanes",
+                    )
+                    .unwrap(),
                     binding_digest: "11".repeat(32),
                     harness_version: None,
                     model_id: None,
@@ -229,8 +223,6 @@ fn durable_activation_admits_at_most_the_live_tree_limit() {
                         .unwrap(),
                 );
             } else {
-                // A coordinator with a free scheduler still meets the durable
-                // bound: the store refuses a tree beyond the limit.
                 let failure = service
                     .session_starts
                     .activate_session(command)
@@ -255,7 +247,7 @@ fn idle_lane(
     service: &AcpService,
     index: usize,
     resumable: bool,
-) -> crate::acp::scheduler::TreeLease {
+) -> sage_acp_protocol::scheduler::TreeLease {
     occupied_lane(service, index, resumable, true)
 }
 
@@ -264,7 +256,7 @@ fn occupied_lane(
     index: usize,
     resumable: bool,
     completed: bool,
-) -> crate::acp::scheduler::TreeLease {
+) -> sage_acp_protocol::scheduler::TreeLease {
     occupied_lane_with(
         service,
         index,
@@ -280,7 +272,7 @@ fn occupied_lane_with(
     resumable: bool,
     completed: bool,
     engine: engine::IdleEngine,
-) -> crate::acp::scheduler::TreeLease {
+) -> sage_acp_protocol::scheduler::TreeLease {
     let owner = owner(&format!("idle-{index}"), 1);
     let capabilities = serde_json::json!({
         "schemaVersion":1,"protocolVersion":"test","newSession":true,
@@ -394,7 +386,6 @@ fn releasing_a_chat_with_a_reserved_turn_is_refused_and_keeps_its_runtime() {
     assert!(!service.lanes[0].activating.load(Ordering::Acquire));
 }
 
-/// Starts a native RPC on lane `index`'s runtime that waits for an answer.
 fn answering_control(
     service: &AcpService,
     index: usize,
@@ -424,7 +415,6 @@ fn an_idle_runtime_answering_a_control_is_passed_over_for_eviction() {
     let answering = engine::IdleEngine {
         answering: Some(Arc::clone(&pending)),
     };
-    // Lane 0 is the oldest idle runtime, first in line to be evicted.
     let mut leases = vec![occupied_lane_with(&service, 0, true, true, answering)];
     leases.extend((1..LIVE_RUNTIME_LANES).map(|index| idle_lane(&service, index, true)));
     let control = answering_control(&service, 0, &pending);
@@ -432,7 +422,6 @@ fn an_idle_runtime_answering_a_control_is_passed_over_for_eviction() {
         .claim_activation_lane(&owner("new", 1), activation_deadline())
         .unwrap();
     assert!(Arc::ptr_eq(&lane.runtime, &service.lanes[1].runtime));
-    // The lane chosen for eviction takes no new control until it is parked.
     let evicted = service.lanes[1]
         .runtime
         .for_owner(&owner("idle-1", 1))
@@ -478,7 +467,6 @@ fn a_full_house_of_runtimes_answering_controls_says_so() {
         answer.complete(Ok(crate::acp::goal::NativeRpcReply::UsageRead));
         assert!(control.join().unwrap().is_ok());
     }
-    // Once they have answered, the oldest idle runtime makes room again.
     let (lane, _claim) = service
         .claim_activation_lane(&owner("new", 1), activation_deadline())
         .unwrap();
@@ -533,7 +521,7 @@ fn never_used_or_unavailable_idle_hosts_do_not_block_parkable_capacity() {
 impl crate::acp::runtime::ProjectionPublisher for AlwaysPublished {
     fn publish_committed(
         &self,
-        _: crate::acp::intent::ProjectionChangedV1,
+        _: crate::acp::ipc::ProjectionChangedV1,
     ) -> Result<
         crate::acp::runtime::ProjectionPublishStatus,
         crate::acp::runtime::ProjectionPublishError,

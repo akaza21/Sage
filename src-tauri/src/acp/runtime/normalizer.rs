@@ -1,5 +1,5 @@
-use crate::acp::contract::{BoundedVec, ContractError, SafeText};
-use crate::acp::intent::{NormalizedPayload, SafeResourceRef, ToolCategory};
+use sage_acp_protocol::contract::{BoundedVec, ContractError, SafeText};
+use sage_acp_protocol::intent::{NormalizedPayload, SafeResourceRef, ToolCategory};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) enum NormalizerInput {
@@ -93,12 +93,12 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
             additions,
             deletions,
         } => NormalizedPayload::file_summary_only(
-            crate::acp::intent::FileChangeFacts {
-                resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
+            sage_acp_protocol::intent::FileChangeFacts {
+                resource: sage_acp_protocol::intent::SafeResourceLocation::Resource { resource },
                 summary: SafeText::new("fileSummary", summary)?,
                 additions,
                 deletions,
-                operation: crate::acp::intent::FileChangeOperation::Updated,
+                operation: sage_acp_protocol::intent::FileChangeOperation::Updated,
             },
             false,
         ),
@@ -163,7 +163,7 @@ pub(crate) fn normalize(input: NormalizerInput) -> Result<NormalizedPayload, Con
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::contract::SageRootId;
+    use sage_acp_protocol::contract::SageRootId;
 
     #[test]
     fn every_closed_variant_normalizes_without_absolute_path_authority() {

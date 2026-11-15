@@ -5,26 +5,29 @@ use std::{
 
 use crate::{
     acp::{
-        contract::{
-            ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
-            SageAgentSessionId, SageChatId, SageProjectId,
-        },
         fixture::adapter::FixtureAdapter,
-        intent::{ExternalId, Prompt},
-        lifecycle::{DeliveryState, TurnState},
         process::{TreeCapacityPool, TreeExit},
         runtime::{
             ActivationFlush, ActivationIntent, ActivationMode, ActivationPump,
             CoordinatorActivationHandoff, CoordinatorActivationJournal, SessionCoordinator,
             SessionTreeLease, ZeroProcessProof,
         },
-        scheduler::RuntimeOwner,
         store::{
             ActivateSessionCommand, PrepareTurnCommand, SendObservation, TurnMutationCommand,
             begin_send, load_chat_page, prepare_turn, record_send_observation,
         },
+        transcript_quote::Prompt,
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageAgentSessionId,
+        SageChatId, SageProjectId,
+    },
+    intent::ExternalId,
+    lifecycle::{DeliveryState, TurnState},
+    scheduler::RuntimeOwner,
 };
 
 use super::{

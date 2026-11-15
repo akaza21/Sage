@@ -10,15 +10,17 @@ use sage_core::time::now_millis;
 use uuid::Uuid;
 
 use super::*;
-use crate::{
-    domain::{ProjectLayoutRequest, RenameProjectFileRequest, ResourceRef, WorkbenchTab},
-    editor_coordination::EditorOperationKind,
-    persistence::Database,
-    state::AppState,
+use crate::{editor_coordination::EditorOperationKind, persistence::Database, state::AppState};
+use sage_domain::{
+    chat::{ProjectLayoutRequest, WorkbenchTab},
+    file_operations::RenameProjectFileRequest,
+    resource::ResourceRef,
 };
 
 #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
-use crate::{domain::FileRenameOutcome, project_commands::persist_project_layout_inner};
+use crate::project_commands::persist_project_layout_inner;
+#[cfg(any(windows, target_os = "linux", target_os = "macos"))]
+use sage_domain::file_operations::FileRenameOutcome;
 
 struct Fixture {
     root: std::path::PathBuf,

@@ -53,7 +53,7 @@ pub(crate) enum DurableAdapterEvent {
         child_thread_id: ExternalId,
         child_turn_id: ExternalId,
         item_id: ExternalId,
-        role: Option<crate::acp_protocol::codex_protocol::ChildTextRole>,
+        role: Option<sage_acp_protocol::codex_protocol::ChildTextRole>,
         lifecycle: ItemLifecycle,
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
@@ -120,7 +120,7 @@ pub(crate) enum DurableAdapterEvent {
     },
     Session {
         scope: SessionScope,
-        event: crate::acp::intent::session_event::SessionScopedEvent,
+        event: sage_acp_protocol::intent::session_event::SessionScopedEvent,
         now_millis: i64,
     },
 }

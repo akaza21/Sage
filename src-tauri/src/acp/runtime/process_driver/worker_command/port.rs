@@ -1,16 +1,16 @@
 use std::time::Instant;
 
-use crate::{
-    acp::{
-        contract::{SageServerRequestId, SageTurnId},
-        runtime::{
-            ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
-            LiveRuntimePort, LiveWrite, NativeRpcCompletionSink, SteerCompletionSink,
-        },
-        scheduler::RuntimeOwner,
-        store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+use crate::acp::{
+    runtime::{
+        ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
+        LiveRuntimePort, LiveWrite, NativeRpcCompletionSink, SteerCompletionSink,
     },
-    acp_protocol::permissions::PermissionDecision,
+    store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+};
+use sage_acp_protocol::{
+    contract::{SageServerRequestId, SageTurnId},
+    permissions::PermissionDecision,
+    scheduler::RuntimeOwner,
 };
 
 use super::{ProcessLivePort, WorkerCommand, WorkerReply};
@@ -43,7 +43,7 @@ impl LiveRuntimePort for ProcessLivePort {
     }
     fn begin_configure_session(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
         deadline: Instant,
         completion: ConfigCompletionSink,
     ) -> Result<(), HostError> {

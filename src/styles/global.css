@@ -5,8 +5,7 @@
   --color-panel-raised-hover: #3e3e3e;
   --chat-selection-bg: #626262;
   --chat-selection-border: #393939;
-  --chat-annotation-accent: #3a83f7;
-  --chat-annotation-highlight: #154674;
+  --chat-annotation-highlight: var(--color-sage-900);
   --chat-annotation-placeholder: #7a7a7a;
   --chat-annotation-muted: #999;
   --chat-annotation-icon: #969696;
@@ -31,14 +30,24 @@
   --radius-annotation-checkbox: 3px;
   color-scheme: dark;
 
+  /* Brand */
   --color-sage: #7fa877;
+  /* Accent ramp. Against every surface up to the composer
+     fill (#363636), 400 and 300 keep text at 4.5:1 or more, and body text
+     keeps 6.5:1 or more on 800 and 900. Ink is the text colour on 300/400. */
+  --color-sage-300: #6ee27f;
+  --color-sage-400: #32d74b;
+  --color-sage-800: #1b3f22;
+  --color-sage-900: #143219;
+  --color-sage-ink: #0f1a0d;
 
+  /* Color roles */
   --color-canvas: #141414;
   --color-panel: #141414;
   --color-surface: #232323;
   --color-plane-raised: #2a2a2a;
   --color-surface-hover: #2a2a2a;
-  --color-surface-active: #2a4b6d;
+  --color-surface-active: var(--color-sage-800);
   --color-surface-selected: var(--color-surface-active);
   --color-border-subtle: #242424;
   --color-border-strong: #2a2a2a;
@@ -48,16 +57,16 @@
   --color-text-emphasis: #fff;
   --color-text-muted: #858585;
   --color-text-disabled: #656565;
-  --color-text-inverse: #07111c;
+  --color-text-inverse: var(--color-sage-ink);
   --color-status-foreground: #fff;
   --color-file-script: #4c9df3;
   --color-file-python: #e2b66b;
   --color-file-rust: #ef9a9a;
   --color-file-data: #d7c078;
   --color-file-media: #75b4f7;
-  --color-accent: #4c9df3;
-  --color-accent-hover: #75b4f7;
-  --color-accent-muted: #2a4b6d;
+  --color-accent: var(--color-sage-400);
+  --color-accent-hover: var(--color-sage-300);
+  --color-accent-muted: var(--color-sage-800);
   --color-accent-foreground: var(--color-text-inverse);
   --color-focus-ring: var(--color-accent-hover);
   --color-success: #68d983;
@@ -83,7 +92,6 @@
   --color-danger-border: #7c211f;
   --color-danger-surface-text: #dbd6d6;
 
-  --approval-card-fill: #2d2d2d;
   --approval-kind-text: #b6b6b6;
   --approval-detail-fill: #282828;
   --approval-detail-text: #939393;
@@ -108,7 +116,7 @@
     var(--color-diff-delete) 12%,
     var(--color-panel)
   );
-  --color-selection: #264f78;
+  --color-selection: var(--color-sage-800);
   --glass-fill: rgb(73 82 88 / 0.34);
   --glass-fill-hover: rgb(88 98 104 / 0.46);
   --glass-border: rgb(255 255 255 / 0.13);
@@ -126,9 +134,9 @@
   /* Owner Codex capture, measured from a rail row's right edge. */
   --agent-rail-title-end: 33px; /* title clip, idle row */
   --agent-rail-title-end-hover: 58px; /* title clip beside Pin and Archive */
-  --agent-rail-title-fade: 20px;
+  --agent-rail-title-fade: 20px; /* titles fade out instead of an ellipsis */
   --agent-rail-trailing-control: 24px; /* dot, Pin and Archive share this slot */
-  --agent-rail-hover-card-gap: 1px;
+  --agent-rail-hover-card-gap: 1px; /* hover card starts where the row ends */
   --agent-shell-sidebar: #1b1b1b;
   --agent-shell-divider: #2b2b2b;
   --agent-shell-rail-divider: #252525;
@@ -137,6 +145,8 @@
   --agent-shell-center: #181818;
   --agent-shell-title-divider: #262626;
   --agent-shell-tab-border: #4c4c4c;
+  /* The future light palette should use the same chat-background token with
+     color-mix(in srgb, var(--color-sage) 26%, var(--agent-shell-center)). */
   --agent-shell-user-bubble: color-mix(
     in srgb,
     var(--color-sage) 22%,
@@ -172,8 +182,6 @@
   --search-dialog-highlight: inset 0 1px 0 rgb(255 255 255 / 0.11);
   --search-dialog-text-primary: #ffffff;
   --search-dialog-text: #f4f4f4;
-  --search-dialog-button-fill: #25486a;
-  --search-dialog-button-hover: #2d587f;
   --search-dialog-error-fill: #2a1f1f;
   --browser-chrome-fill: #202020;
   --browser-chrome-divider: #2b2b2b;
@@ -188,7 +196,6 @@
   --browser-popover-shadow: 0 12px 28px #0009;
   --browser-start-fill: #181818;
   --browser-bright-text: #f4f4f4;
-  --browser-annotate-blue: #339cff;
   --browser-annotate-tick: #808080;
   --browser-annotate-placeholder: #8c8c8c;
 
@@ -199,26 +206,26 @@
   --doc-surface: #232323;
   --doc-plane-raised: #2a2a2a;
   --doc-surface-hover: #2a2a2a;
-  --doc-surface-active: #2a4b6d;
-  --doc-surface-selected: #2a4b6d;
+  --doc-surface-active: var(--color-sage-800);
+  --doc-surface-selected: var(--color-sage-800);
   --doc-border-subtle: #242424;
   --doc-border-strong: #2a2a2a;
   --doc-text-primary: #c5c5c5;
   --doc-text-secondary: #adadad;
   --doc-text-muted: #858585;
   --doc-text-disabled: #656565;
-  --doc-text-inverse: #07111c;
+  --doc-text-inverse: var(--color-sage-ink);
   --doc-file-script: #4c9df3;
   --doc-file-python: #e2b66b;
   --doc-file-rust: #ef9a9a;
   --doc-file-data: #d7c078;
   --doc-file-media: #75b4f7;
-  --doc-accent: #4c9df3;
-  --doc-accent-hover: #75b4f7;
-  --doc-accent-muted: #2a4b6d;
-  --doc-accent-foreground: #07111c;
-  --doc-focus-ring: #4c9df3;
-  --doc-selection: #264f78;
+  --doc-accent: var(--color-sage-400);
+  --doc-accent-hover: var(--color-sage-300);
+  --doc-accent-muted: var(--color-sage-800);
+  --doc-accent-foreground: var(--color-sage-ink);
+  --doc-focus-ring: var(--color-sage-400);
+  --doc-selection: var(--color-sage-800);
   --doc-elevation-popover: 0 8px 24px rgb(0 0 0 / 0.36);
   --doc-elevation-floating: 0 12px 32px rgb(0 0 0 / 0.42);
   --doc-code-foreground: #cbd1ca;
@@ -226,11 +233,17 @@
   --doc-gutter-divider: rgb(255 255 255 / 0.045);
   --doc-active-line: rgb(255 255 255 / 0.035);
   --doc-caret: #e1e7df;
-  --doc-selection-background: #264f78;
+  --doc-selection-background: var(--color-sage-800);
   --doc-selection-foreground: #f4f7fb;
+  /* Editing marks, after VS Code's dark defaults. */
   --doc-bracket-match-border: #888888;
   --doc-bracket-match-background: rgb(0 100 0 / 0.1);
-  --doc-occurrence-background: rgb(173 214 255 / 0.15);
+  --doc-occurrence-background: color-mix(
+    in srgb,
+    var(--color-sage-300) 15%,
+    transparent
+  );
+  /* Find matches, amber like Search results. */
   --doc-find-match-background: rgb(226 182 107 / 0.32);
   --doc-find-match-border: rgb(226 182 107 / 0.72);
   --doc-fold-placeholder-background: rgb(255 255 255 / 0.08);
@@ -258,6 +271,7 @@
     var(--doc-panel)
   );
 
+  /* Typography */
   --font-family-ui:
     Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
     sans-serif;
@@ -283,6 +297,7 @@
   --font-weight-semibold: 600;
   --font-weight-bold: 700;
 
+  /* Four-pixel spacing and density */
   --space-1: 4px;
   --space-2: 8px;
   --space-3: 12px;
@@ -295,7 +310,7 @@
      modals above every popover so nothing paints over an open dialog. */
   --z-behind: -1;
   --z-raised: 1;
-  --z-sticky: 2;
+  --z-sticky: 2; /* sticky rows and edge handles such as splitters */
   --z-floating: 4;
   --z-sidebar-overlay: 10;
   --z-overlay-backdrop: 11;
@@ -344,6 +359,7 @@
   --reading-measure-compact: 56ch;
   --reading-measure-min: 44ch;
 
+  /* Shape, elevation, focus, and interaction */
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -355,6 +371,7 @@
   --radius-turn-preview: 10px;
   --radius-pill: 999px;
   --radius-none: 0;
+  /* Part radii that window modes re-project. */
   --radius-center-region: var(--radius-none);
   --radius-title-bar-search: var(--radius-pill);
   --radius-activity-button: var(--radius-md);
@@ -427,8 +444,9 @@
   --motion-duration-exit: 50ms; /* s3/f0004-f0005: closed within one 60 ms frame */
   --motion-duration-fade: 150ms; /* s3/f0021-f0024 send; s2/f0048 jump */
   --motion-duration-bounce: 1s; /* s6/f0056, f0064, f0072 dot cycle */
-  --motion-duration-indicator: 200ms;
+  --motion-duration-indicator: 200ms; /* turn-navigator dash grow and tint */
 
+  /* Compatibility aliases for existing surfaces */
   --bg: var(--color-canvas);
   --surface: var(--color-panel);
   --surface-raised: var(--color-surface);
@@ -667,6 +685,7 @@ textarea:disabled,
     calc(var(--sidebar-width) + 46px);
 }
 
+/* Window modes set center rows; the shared surface primitive owns its frame. */
 .center-region {
   display: grid;
   min-width: 0;
@@ -794,7 +813,6 @@ textarea:disabled,
     --color-danger-surface: Canvas;
     --color-danger-border: CanvasText;
     --color-danger-surface-text: CanvasText;
-    --approval-card-fill: Canvas;
     --approval-detail-fill: Canvas;
     --approval-primary-fill: ButtonText;
     --approval-primary-text: ButtonFace;
@@ -855,6 +873,7 @@ textarea:disabled,
   }
 }
 
+/* Staggered rows: the Nth child waits N-1 steps; later rows share step 5. */
 @keyframes sage-row-in {
   from {
     opacity: 0.3;

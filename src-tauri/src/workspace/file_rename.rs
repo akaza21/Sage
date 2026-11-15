@@ -2,7 +2,7 @@ use std::sync::{Arc, Mutex};
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::domain::{DirectoryListing, ResourceRef};
+use sage_domain::{project::DirectoryListing, resource::ResourceRef};
 
 use super::{Workspace, file_create::validate_new_file_path};
 

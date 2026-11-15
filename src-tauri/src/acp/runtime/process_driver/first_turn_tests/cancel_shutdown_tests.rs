@@ -54,6 +54,7 @@ fn committed_cancellation_is_an_intentional_shutdown_before_terminal_acknowledge
             transport: Transport(Mutex::new(VecDeque::new())),
             control: NoChildProcessControl {
                 zero_checks: Arc::new(AtomicUsize::new(0)),
+                harness_error: None,
             },
             owner: owner.clone(),
             clock: Arc::new(SystemDriverClock),
@@ -108,7 +109,7 @@ fn committed_cancellation_is_an_intentional_shutdown_before_terminal_acknowledge
                     prompt: Prompt::new("prompt", "cancel this turn").unwrap(),
                     now_millis: now_millis + 3,
                 },
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             }))
         else {
             panic!("prepared turn")

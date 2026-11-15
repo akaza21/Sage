@@ -3,14 +3,12 @@ use sage_core::error::{AppError, AppResult};
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{BoundedVec, SafeText},
     declared_test::CommandActivity,
-    intent::{
-        COMMAND_RESOURCE_LIMIT, NormalizedPayload, SafeResourceLocation, ToolCategory,
-        ToolExecution,
-    },
+    intent::{NormalizedPayload, SafeResourceLocation, ToolCategory, ToolExecution},
 };
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 
 const SUSPENDED_TRIGGERS: [&str; 6] = [
     "deny_item_invalid_transition",

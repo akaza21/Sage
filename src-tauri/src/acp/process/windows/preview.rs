@@ -23,7 +23,9 @@ impl PreviewJobBoundary {
     }
 
     pub(crate) fn assign_process(&self, process: HANDLE) -> Result<(), LaunchError> {
-        self.0.assign(process)
+        // SAFETY: both crate callers pass the raw handle of the preview
+        // process their recovery owns, which stays live for the call.
+        unsafe { self.0.assign(process) }
     }
 
     pub(crate) fn terminate_and_wait_zero(&self, deadline: Instant) -> Result<(), LaunchError> {

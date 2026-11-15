@@ -1,11 +1,12 @@
 use super::*;
-use crate::acp::{
+use crate::acp::session_config::{
+    NoticeSink,
+    choices::{Awaiting, RestoredSessionConfig},
+};
+use sage_acp_protocol::{
     contract::BoundedVec,
     scheduler::RuntimeOwner,
-    session_config::{
-        ConfigIntent, NoticeSink, SessionConfig,
-        choices::{Awaiting, RestoredSessionConfig},
-    },
+    session_config::{ConfigIntent, SessionConfig},
 };
 
 #[cfg(test)]
@@ -88,38 +89,34 @@ impl AcpService {
         }
         result.map(|_| ())
     }
-    /// The owner of the live runtime that runs `session_id`, if one does.
     pub(crate) fn live_owner_of(
         &self,
-        session_id: &crate::acp::contract::SageAgentSessionId,
+        session_id: &sage_acp_protocol::contract::SageAgentSessionId,
     ) -> Option<RuntimeOwner> {
         self.lanes()
             .filter(|lane| lane.runtime.is_active())
             .filter_map(|lane| lane.runtime.owner())
             .find(|owner| owner.session_id == *session_id)
     }
-    /// The turn `owner`'s live session is running, while it can still be
-    /// cancelled.
     pub(crate) fn cancellable_turn(
         &self,
         owner: &RuntimeOwner,
-        generation: crate::acp::contract::ProjectGeneration,
-    ) -> Result<Option<crate::acp::contract::SageTurnId>, StoreError> {
+        generation: sage_acp_protocol::contract::ProjectGeneration,
+    ) -> Result<Option<sage_acp_protocol::contract::SageTurnId>, StoreError> {
         let snapshot =
             self.intent_snapshot(owner.project_id.clone(), generation, owner.chat_id.clone())?;
         let current = snapshot.session_id.as_ref() == Some(&owner.session_id)
             && snapshot.runtime_epoch == Some(owner.runtime_epoch)
             && snapshot.turn_state.is_some_and(|state| {
-                state.can_transition_to(crate::acp::lifecycle::TurnState::Cancelling)
+                state.can_transition_to(sage_acp_protocol::lifecycle::TurnState::Cancelling)
             });
         Ok(snapshot.turn_id.filter(|_| current))
     }
-    /// Reports `config` as the live session's, as a runtime would.
     #[cfg(all(test, windows))]
     pub(crate) fn report_session_config_for_test(
         &self,
         owner: &RuntimeOwner,
-        config: crate::acp::session_config::SessionConfig,
+        config: sage_acp_protocol::session_config::SessionConfig,
     ) {
         let lane = self
             .lane_for(owner)
@@ -128,11 +125,10 @@ impl AcpService {
         lane.runtime.config.update(owner, config).unwrap();
         lane.runtime.config.publish(owner);
     }
-    /// The session config the live runtime last reported for `owner`.
     pub(crate) fn live_session_config(
         &self,
         owner: &RuntimeOwner,
-    ) -> Option<crate::acp::session_config::SessionConfigOverlay> {
+    ) -> Option<sage_acp_protocol::session_config::SessionConfigOverlay> {
         self.lane_for(owner)?.runtime.config.live_snapshot(owner)
     }
     pub(super) fn compose_session_config(&self, page: &mut AcpChatPage) -> Result<(), StoreError> {
@@ -141,11 +137,11 @@ impl AcpService {
         for session in &mut sessions {
             session.capabilities.config_count = 0;
             if Some(&session.id) != page.current_session_id.as_ref()
-                || session.residency != crate::acp::contract::Residency::Hot
+                || session.residency != sage_acp_protocol::lifecycle::Residency::Hot
                 || !matches!(
                     session.state,
-                    crate::acp::contract::SessionState::Ready
-                        | crate::acp::contract::SessionState::Active
+                    sage_acp_protocol::lifecycle::SessionState::Ready
+                        | sage_acp_protocol::lifecycle::SessionState::Active
                 )
             {
                 continue;
@@ -174,30 +170,12 @@ impl AcpService {
                     .map_or(0, |c| c.config.config_options.as_slice().len() as u16);
             }
         }
-        // A session without a live config shows what it last reported, with
-        // its stored choices, until its runtime resumes and reports again. A
-        // live runtime that has not reported yet shows them the same way.
         page.restored_session_config = None;
         page.session_config_notice = None;
-        let current = sessions
-            .iter()
-            .find(|session| Some(&session.id) == page.current_session_id.as_ref());
+        let target = next_send_target(&sessions, page.current_session_id.as_ref());
         if page.session_config.is_none()
-            && let Some(session) = current.filter(|session| {
-                matches!(
-                    session.state,
-                    crate::acp::contract::SessionState::Ready
-                        | crate::acp::contract::SessionState::Active
-                )
-            })
+            && let Some((session, awaiting)) = target
         {
-            let awaiting = if session.runtime_epoch.is_some()
-                && session.residency == crate::acp::contract::Residency::Hot
-            {
-                Awaiting::Report
-            } else {
-                Awaiting::Resume
-            };
             page.restored_session_config =
                 self.restored_session_config(&session.id)
                     .map(|config| RestoredSessionConfig {
@@ -206,7 +184,7 @@ impl AcpService {
                         config,
                     });
         }
-        if let Some(session) = current {
+        if let Some((session, _)) = target {
             page.session_config_notice = self.session_config_notice(&session.id);
         }
         page.sessions = BoundedVec::new("sessions", sessions)
@@ -214,10 +192,6 @@ impl AcpService {
         Ok(())
     }
 
-    /// Keeps the page within its budget. A restored config that does not
-    /// fit shows only the stored choices, and none at all if even those do
-    /// not fit, and then the notice goes too; the transcript always stays
-    /// loadable.
     pub(super) fn fit_session_config_to_page_budget(
         &self,
         page: &mut AcpChatPage,
@@ -230,6 +204,34 @@ impl AcpService {
             |session| self.stored_choices_view(session),
         )
     }
+}
+
+/// The session the chat's next send runs, and what has to happen before its
+/// stored choices are that session's: the head, resumed or reporting; or,
+/// with no head, the session the chat ran last, which the session the send
+/// starts goes on from.
+fn next_send_target<'a>(
+    sessions: &'a [crate::acp::projection::SessionProjection],
+    head: Option<&sage_acp_protocol::contract::SageAgentSessionId>,
+) -> Option<(&'a crate::acp::projection::SessionProjection, Awaiting)> {
+    let Some(head) = head else {
+        return sessions
+            .iter()
+            .rev()
+            .find(|session| !session.legacy)
+            .map(|session| (session, Awaiting::Start));
+    };
+    let session = sessions.iter().find(|session| &session.id == head)?;
+    let live = session.runtime_epoch.is_some()
+        && session.residency == sage_acp_protocol::lifecycle::Residency::Hot;
+    Some((
+        session,
+        if live {
+            Awaiting::Report
+        } else {
+            Awaiting::Resume
+        },
+    ))
 }
 
 /// The bytes the page's session config fields (live config, restored config
@@ -261,7 +263,7 @@ fn fit_config_to_page_budget(
     page: &mut AcpChatPage,
     size: &PageBytes,
     limit: usize,
-    stored_only: impl FnOnce(&crate::acp::contract::SageAgentSessionId) -> Option<SessionConfig>,
+    stored_only: impl FnOnce(&sage_acp_protocol::contract::SageAgentSessionId) -> Option<SessionConfig>,
 ) -> Result<(), StoreError> {
     if size.of(page)? <= limit {
         return Ok(());

@@ -1,25 +1,25 @@
 use std::sync::Arc;
 
-use crate::{
-    acp::{
-        bindings::adapter::{
-            AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
-            EgressResolution, HarnessAdapter, ResourceMapper,
-        },
-        contract::{
-            ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
-            SageProjectId, SageServerRequestId, SageTurnId,
-        },
-        intent::{ExternalId, NormalizedPayload},
-        lifecycle::{ItemLifecycle, ServerRequestState, ToolState, TurnState, TurnTerminalReason},
-        runtime::{ProjectionPublishStatus, ProjectionPublisher, TurnNotice},
-        store::AdapterTurnCursor,
-        transport::{
-            Frame, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame, ReservedQueue,
-            validate_structure,
-        },
+use crate::acp::{
+    bindings::adapter::{
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
+        EgressResolution, HarnessAdapter, ResourceMapper,
     },
-    acp_protocol::permissions::PermissionIntent,
+    runtime::{ProjectionPublishStatus, ProjectionPublisher, TurnNotice},
+    store::AdapterTurnCursor,
+    transport::{
+        Frame, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame, ReservedQueue,
+        validate_structure,
+    },
+};
+use sage_acp_protocol::{
+    contract::{
+        ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
+        SageProjectId, SageServerRequestId, SageTurnId,
+    },
+    intent::{ExternalId, NormalizedPayload},
+    lifecycle::{ItemLifecycle, ServerRequestState, ToolState, TurnState, TurnTerminalReason},
+    permissions::PermissionIntent,
 };
 use sage_core::limits::LIMITS;
 
@@ -67,7 +67,7 @@ impl ActiveTurnIntent {
     /// after a correlated ingress event.
     pub(crate) fn store_minted(
         turn_id: SageTurnId,
-    ) -> Result<Self, crate::acp::contract::ContractError> {
+    ) -> Result<Self, sage_acp_protocol::contract::ContractError> {
         let client_message_id = RequiredText::new("clientMessageId", turn_id.as_str().to_owned())?;
         Ok(Self {
             turn_id,
