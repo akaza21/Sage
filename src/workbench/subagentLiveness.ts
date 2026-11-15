@@ -6,7 +6,8 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import type { AcpChatPage } from "../domain/acpProjection";
+import type { AcpChatPage, TurnProjection } from "../domain/acpProjection";
+import { terminalTurnStates } from "../features/chat/acp/statusSemantics";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import {
   getAcpChildTranscript,
@@ -14,7 +15,7 @@ import {
   type ChildTranscript,
   type ChildTranscriptRequest,
 } from "../services/acpChildTranscript";
-import type { RecentAgent } from "./agentArtifactTabPresentation";
+import { liveAgent, type RecentAgent } from "./agentArtifactTabPresentation";
 
 /** Latest child epoch; desktop reads wait for listener attachment to avoid gaps. Non-desktop reads never wait. */
 export function useChildEpoch(page: AcpChatPage): number | null {
@@ -348,20 +349,24 @@ export function useChildReads(
   }, [read, epoch, wanted, onRead]);
 }
 
-type Unconfirmed = RecentAgent & {
-  unconfirmed: NonNullable<RecentAgent["unconfirmed"]>;
-  target: NonNullable<RecentAgent["target"]>;
-};
+/**
+ * The ended parent turn whose row still reports a child live: no later
+ * parent row can change it, so only its own transcript can.
+ */
+export function unconfirmedTurn(agent: RecentAgent): TurnProjection | null {
+  const turn = agent.reportedTurn;
+  return turn && liveAgent(agent.status) && terminalTurnStates.has(turn.state)
+    ? turn
+    : null;
+}
 
 /**
  * Whether the runtime that ran an ended turn is gone: its session is no
  * longer current or has since closed or restarted its runtime.
  */
-function runtimeEnded(page: AcpChatPage, turnId: string) {
-  const turn = page.turns.find(({ id }) => id === turnId);
-  const session = page.sessions?.find(({ id }) => id === turn?.sessionId);
+function runtimeEnded(page: AcpChatPage, turn: TurnProjection) {
+  const session = page.sessions?.find(({ id }) => id === turn.sessionId);
   return (
-    !!turn &&
     !!session &&
     ((page.currentSessionId !== undefined &&
       session.id !== page.currentSessionId) ||
@@ -385,44 +390,42 @@ export function useSettledSubagents(
 ): RecentAgent[] {
   useSyncExternalStore(subscribeSettlements, currentSettlementVersion);
   const readers = useRef(new Map<string, Reader>());
+  const unconfirmed = useMemo(
+    () =>
+      agents.flatMap((agent) => {
+        const turn = unconfirmedTurn(agent);
+        return turn ? [{ agent, turn }] : [];
+      }),
+    [agents],
+  );
   const ended = useMemo(
     () =>
       new Set(
-        agents
-          .filter(
-            ({ unconfirmed }) =>
-              unconfirmed && runtimeEnded(page, unconfirmed.turnId),
-          )
-          .map(({ id }) => id),
+        unconfirmed
+          .filter(({ turn }) => runtimeEnded(page, turn))
+          .map(({ agent }) => agent.id),
       ),
-    [page, agents],
+    [page, unconfirmed],
   );
   const watched = useMemo(
     () =>
-      agents
-        .filter(
-          (agent): agent is Unconfirmed =>
-            !!agent.unconfirmed && !!agent.target && !ended.has(agent.id),
-        )
+      unconfirmed
+        .filter(({ agent }) => !ended.has(agent.id))
         .slice(-MAX_WATCHED_AGENTS)
-        .flatMap((agent) => {
-          const read = childReadFor(
-            page,
-            projectGeneration,
-            agent.target.itemId,
-            agent.target.agentKey,
-          );
+        .flatMap(({ agent, turn }) => {
+          const read =
+            agent.target &&
+            childReadFor(
+              page,
+              projectGeneration,
+              agent.target.itemId,
+              agent.target.agentKey,
+            );
           return read
-            ? [
-                {
-                  agent,
-                  read,
-                  key: settlementKey(read.identity, agent.unconfirmed.turnId),
-                },
-              ]
+            ? [{ agent, read, key: settlementKey(read.identity, turn.id) }]
             : [];
         }),
-    [page, projectGeneration, agents, ended],
+    [page, projectGeneration, unconfirmed, ended],
   );
   useEffect(() => {
     if (epoch === null) return;

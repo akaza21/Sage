@@ -2,6 +2,7 @@ import { expect, it } from "vitest";
 
 import type { AcpChatPage, AcpItem } from "../domain/acp";
 import { projectTaskResources } from "./agentArtifactTabPresentation";
+import { unconfirmedTurn } from "./subagentLiveness";
 
 function event(
   id: string,
@@ -147,6 +148,7 @@ it("counts paired spawn and native completion observations as one child", () => 
       label: "Reviewer",
       status: "done",
       agentKey: "child-1",
+      reportedTurn: expect.objectContaining({ id: "turn" }),
     },
   ]);
 });
@@ -197,7 +199,10 @@ it("leaves a live child unconfirmed only while its latest parent row sits in an 
     projectTaskResources(
       { projectId: "project", chatId: "chat", turns } as unknown as AcpChatPage,
       "chat",
-    ).recentAgents.map(({ status, unconfirmed }) => ({ status, unconfirmed }));
+    ).recentAgents.map((agent) => ({
+      status: agent.status,
+      unconfirmed: unconfirmedTurn(agent)?.id,
+    }));
   const spawn = (key: string, state: string) =>
     event(`spawn-${key}`, "spawnAgent", [key], ["Reviewer"], [[key, state]]);
   const ended = turn("first", "completed", [
@@ -205,7 +210,7 @@ it("leaves a live child unconfirmed only while its latest parent row sits in an 
     spawn("b", "completed"),
   ]);
   expect(recent([ended])).toEqual([
-    { status: "working", unconfirmed: { turnId: "first" } },
+    { status: "working", unconfirmed: "first" },
     { status: "done", unconfirmed: undefined },
   ]);
   expect(recent([{ ...ended, state: "running" }])[0].unconfirmed).toBe(
