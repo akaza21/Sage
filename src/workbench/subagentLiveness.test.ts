@@ -2,7 +2,7 @@ import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
 import type { AcpChatPage } from "../domain/acp";
-import { projectTaskResources } from "./agentArtifactTabPresentation";
+import { projectRecentAgents } from "./agentArtifactTabPresentation";
 import { resetSubagentLiveness, useSettledSubagents } from "./subagentLiveness";
 
 const transcripts = vi.hoisted(
@@ -82,7 +82,7 @@ function renderStatuses(initial: AcpChatPage, epoch = 1) {
       useSettledSubagents(
         page,
         "3",
-        projectTaskResources(page, page.chatId).recentAgents,
+        projectRecentAgents(page, page.chatId),
         epoch,
       ).map((agent) => agent.status),
     { initialProps: { page: initial, epoch } },

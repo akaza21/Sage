@@ -9,10 +9,7 @@ import {
 } from "../features/chat/transcriptSummary";
 import type { ChildTranscript } from "../services/acpChildTranscript";
 import { ArrowLeft } from "../ui/leanIcons";
-import {
-  liveAgent,
-  projectTaskResources,
-} from "./agentArtifactTabPresentation";
+import { liveAgent, projectRecentAgents } from "./agentArtifactTabPresentation";
 import {
   childActivityLabel,
   choiceName,
@@ -109,8 +106,7 @@ function SubagentChild({
   const identity = childRead?.identity ?? "";
   const epoch = useChildEpoch(page);
   const recent = useMemo(
-    () =>
-      agentKey ? projectTaskResources(page, page.chatId).recentAgents : [],
+    () => (agentKey ? projectRecentAgents(page, page.chatId) : []),
     [page, agentKey],
   );
   const invocation =

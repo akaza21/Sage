@@ -6,7 +6,7 @@ import { avatarColor } from "../features/chat/acp/subagentActivity";
 import { focusPopoverDialog } from "../ui/menuPopoverDialogFocus";
 import {
   liveAgent,
-  projectTaskResources,
+  projectRecentAgents,
   type RecentAgent,
 } from "./agentArtifactTabPresentation";
 import { useChildEpoch, useSettledSubagents } from "./subagentLiveness";
@@ -134,7 +134,7 @@ export function SubagentList({
   const agents = useSettledSubagents(
     page,
     projectGeneration,
-    useMemo(() => projectTaskResources(page, page.chatId).recentAgents, [page]),
+    useMemo(() => projectRecentAgents(page, page.chatId), [page]),
     useChildEpoch(page),
   );
   const times = subagentTimes(page, agents);
