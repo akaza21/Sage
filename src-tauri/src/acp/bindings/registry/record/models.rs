@@ -1,6 +1,14 @@
+use sage_acp_protocol::session_config::{ConfigId, ConfigMutation, ConfigOption, ConfigValue};
 use sage_domain::harness::ModelOption;
 
 use super::{AdmittedBinding, AdmittedBindingRecord, RegistryAdmissionUnavailable};
+
+/// A thinking level a session starts with: the choice stored for it, and the
+/// option the binding offers it through, with the other levels it lists.
+pub(crate) struct LaunchEffortChoice {
+    pub(crate) choice: ConfigMutation,
+    pub(crate) offered: ConfigOption,
+}
 
 impl AdmittedBindingRecord<'_> {
     pub(crate) fn launch_models(&self, probe: bool) -> Option<Vec<ModelOption>> {
@@ -12,19 +20,21 @@ impl AdmittedBindingRecord<'_> {
             .is_some_and(|models| ModelOption::launched(&models, Some(model)).is_some())
     }
 
+    /// How a session started on the listed `model` takes thinking level
+    /// `effort`; `None` when the binding does not offer that level for it.
     pub(crate) fn launch_effort_choice(
         &self,
         model: &ModelOption,
         effort: &str,
-    ) -> Option<sage_acp_protocol::session_config::ConfigMutation> {
-        use sage_acp_protocol::session_config::{ConfigId, ConfigMutation, ConfigValue};
-        let config_id = (self.record.launch_effort?)(model, effort)?;
-        Some(ConfigMutation::Option {
-            config_id: ConfigId::new("configId", config_id).ok()?,
+    ) -> Option<LaunchEffortChoice> {
+        let offered = (self.record.launch_effort?)(model, effort)?;
+        let choice = ConfigMutation::Option {
+            config_id: offered.id.clone(),
             value: ConfigValue::Select {
                 value: ConfigId::new("value", effort).ok()?,
             },
-        })
+        };
+        Some(LaunchEffortChoice { choice, offered })
     }
 
     pub(crate) fn has_model_discovery(&self) -> Result<bool, RegistryAdmissionUnavailable> {

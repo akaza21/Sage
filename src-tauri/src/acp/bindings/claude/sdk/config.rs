@@ -127,9 +127,6 @@ impl SessionSettings {
                 "description": model.get("description").and_then(Value::as_str).unwrap_or_default(),
             }))
         });
-        let efforts = std::iter::once(DEFAULT)
-            .chain(self.effort_levels())
-            .map(|level| json!({"value": level, "name": capitalized(level)}));
         let mut options = vec![
             json!({
                 "id": MODE_ID, "name": "Mode", "description": "Session permission mode",
@@ -145,12 +142,7 @@ impl SessionSettings {
             }),
         ];
         if self.effort_levels().next().is_some() {
-            options.push(json!({
-                "id": EFFORT_ID, "name": "Effort",
-                "description": "Available effort levels for this model",
-                "category": "thought_level", "type": "select", "currentValue": self.effort,
-                "options": efforts.collect::<Vec<_>>(),
-            }));
+            options.push(effort_option(self.effort_levels(), &self.effort));
         }
         options.into()
     }
@@ -170,6 +162,19 @@ impl SessionSettings {
             .flatten()
             .filter_map(Value::as_str)
     }
+}
+
+/// The session's effort option: Default, then `levels`, set to `current`.
+pub(super) fn effort_option<'a>(levels: impl Iterator<Item = &'a str>, current: &str) -> Value {
+    let efforts = std::iter::once(DEFAULT)
+        .chain(levels)
+        .map(|level| json!({"value": level, "name": capitalized(level)}));
+    json!({
+        "id": EFFORT_ID, "name": "Effort",
+        "description": "Available effort levels for this model",
+        "category": "thought_level", "type": "select", "currentValue": current,
+        "options": efforts.collect::<Vec<_>>(),
+    })
 }
 
 fn capitalized(value: &str) -> String {

@@ -211,10 +211,21 @@ fn effort_levels(entry: &Value) -> Option<Vec<String>> {
     (!levels.is_empty()).then_some(levels)
 }
 
-pub(crate) fn launch_effort_option(model: &ModelOption, effort: &str) -> Option<&'static str> {
-    (model.effort_levels.is_some()
-        && (effort == super::config::DEFAULT_EFFORT || model.lists_effort(effort)))
-    .then_some(super::config::EFFORT_ID)
+/// The effort option a session started on `model` shows, set to `effort`,
+/// when the model lists levels and `effort` is Default or one of them.
+pub(crate) fn launch_effort_option(
+    model: &ModelOption,
+    effort: &str,
+) -> Option<sage_acp_protocol::session_config::ConfigOption> {
+    let levels = model.effort_levels.as_ref()?;
+    if effort != super::config::DEFAULT_EFFORT && !model.lists_effort(effort) {
+        return None;
+    }
+    serde_json::from_value(super::config::effort_option(
+        levels.iter().map(String::as_str),
+        effort,
+    ))
+    .ok()
 }
 
 #[cfg(test)]
@@ -309,11 +320,29 @@ mod tests {
         let default = launched(None).unwrap();
         assert_eq!(default.id, "default");
         let haiku = launched(Some("haiku")).unwrap();
-        assert_eq!(launch_effort_option(default, "high"), Some("effort"));
-        assert_eq!(launch_effort_option(default, "default"), Some("effort"));
-        assert_eq!(launch_effort_option(default, "max"), None);
-        assert_eq!(launch_effort_option(haiku, "low"), None);
-        assert_eq!(launch_effort_option(haiku, "default"), None);
+        let offered = |model, effort| {
+            launch_effort_option(model, effort).map(|option| serde_json::to_value(option).unwrap())
+        };
+        // The option offers every level the model lists, as the session will.
+        let high = offered(default, "high").unwrap();
+        assert_eq!(high["id"], "effort");
+        assert_eq!(high["currentValue"], "high");
+        assert_eq!(
+            high["options"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|choice| choice["value"].clone())
+                .collect::<Vec<_>>(),
+            [json!("default"), json!("low"), json!("high")]
+        );
+        assert_eq!(
+            offered(default, "default").unwrap()["currentValue"],
+            "default"
+        );
+        assert!(offered(default, "max").is_none());
+        assert!(offered(haiku, "low").is_none());
+        assert!(offered(haiku, "default").is_none());
     }
 
     #[test]

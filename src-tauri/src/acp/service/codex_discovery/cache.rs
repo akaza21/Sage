@@ -152,6 +152,7 @@ impl DiscoveryCache {
         binding_digest: [u8; 32],
         binding_id: &str,
         model: Option<ModelId>,
+        effort_levels: &[&str],
     ) {
         use crate::acp::ipc::{CodexDiscoveryAccount, CodexDiscoveryModel};
         use sage_acp_protocol::contract::{RequiredText, RuntimeEpoch};
@@ -170,7 +171,10 @@ impl DiscoveryCache {
                     id,
                     name: RequiredText::new("modelName", "Codex test model").unwrap(),
                     is_default: true,
-                    effort_levels: Vec::new(),
+                    effort_levels: effort_levels
+                        .iter()
+                        .map(|level| RequiredText::new("effort", *level).unwrap())
+                        .collect(),
                 }]
             })
             .unwrap_or_default();

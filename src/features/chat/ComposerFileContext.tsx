@@ -19,16 +19,19 @@ const AttachPart = lazyParts<typeof AttachChunk>(
 
 export function ComposerAttachButton({
   files,
+  triggerRef,
   fieldId,
   disabled,
 }: {
   files: FileContext;
+  triggerRef: RefObject<HTMLButtonElement | null>;
   fieldId: string;
   disabled: boolean;
 }) {
   return (
     <IconButton
       // Anchors the attach menu.
+      ref={triggerRef}
       id={`${fieldId}-attach`}
       className="composer__plus"
       aria-label="Attach files"
@@ -42,6 +45,7 @@ export function ComposerAttachButton({
 
 export function ComposerFileParts({
   files,
+  triggerRef,
   chatId,
   fieldRef,
   fieldId,
@@ -52,6 +56,8 @@ export function ComposerFileParts({
   disabled,
 }: {
   files: FileContext;
+  /** The attach button, which the attach menu anchors on. */
+  triggerRef: RefObject<HTMLButtonElement | null>;
   chatId: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
@@ -81,7 +87,7 @@ export function ComposerFileParts({
           part="ComposerAttach"
           chatId={chatId}
           presses={files.attachPresses}
-          triggerId={`${fieldId}-attach`}
+          triggerRef={triggerRef}
           imageAction={imageAction}
           onPick={onPickFiles}
         />

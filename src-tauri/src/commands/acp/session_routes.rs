@@ -31,19 +31,22 @@ pub(crate) async fn start_acp_session_inner(
     let project_root = admitted
         .project_root(&state.database, &transition)
         .map_err(|_| root_unavailable())?;
-    // A thinking level chosen before the session existed is kept only when
-    // this binding lists it for the chosen model; the composer shows any
-    // other level as Default, which is what the session then starts with.
-    // Without the binding's listing (such as account discovery for another
-    // root, or one that went stale) nothing starts, rather than the level
-    // being dropped unseen.
+    // A thinking level chosen before the session existed starts the session
+    // only when this binding lists it for the chosen model; no `effort` is
+    // the harness's default. A level the binding does not list, or one it
+    // cannot be checked against (account discovery for another root, or one
+    // that went stale), starts nothing, rather than being dropped unseen.
     let effort_choice = match &request.effort {
         Some(effort) => {
             let model = state
                 .acp
                 .launch_model(&admitted, &project_root, request.model_id.as_ref())
                 .ok_or_else(effort_unconfirmed)?;
-            admitted.launch_effort_choice(&model, effort.as_str())
+            Some(
+                admitted
+                    .launch_effort_choice(&model, effort.as_str())
+                    .ok_or_else(effort_not_offered)?,
+            )
         }
         None => None,
     };
@@ -69,10 +72,10 @@ pub(crate) async fn start_acp_session_inner(
         .await
         .map_err(session_error)?;
     session_access::carry_chat_access(state, &started.session_id)?;
-    if let Some(choice) = effort_choice
+    if let Some(effort) = effort_choice
         && !state
             .acp
-            .remember_start_choice(&started.session_id, &choice)
+            .remember_start_choice(&started.session_id, &effort.choice, &effort.offered)
     {
         return Err(AcpIpcError::Internal {
             message: safe_message("The chosen thinking level could not be kept. Send again."),
@@ -144,6 +147,15 @@ fn effort_unconfirmed() -> AcpIpcError {
         reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
         message: safe_message(
             "The chosen thinking level could not be confirmed. Select the harness again to refresh its models, then send.",
+        ),
+    }
+}
+
+fn effort_not_offered() -> AcpIpcError {
+    AcpIpcError::Unavailable {
+        reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
+        message: safe_message(
+            "The chosen thinking level is not offered for this model any more. Choose another level, then send.",
         ),
     }
 }

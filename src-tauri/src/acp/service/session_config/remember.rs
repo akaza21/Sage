@@ -5,8 +5,11 @@ use crate::acp::session_config::{
     notices::{self, NoticeReason, SessionConfigNotice},
 };
 use sage_acp_protocol::{
+    contract::BoundedVec,
     scheduler::RuntimeOwner,
-    session_config::{ConfigMutation, ConfigValue, SessionConfig, reported::current_value},
+    session_config::{
+        ConfigMutation, ConfigOption, ConfigValue, SessionConfig, reported::current_value,
+    },
 };
 
 use super::AcpService;
@@ -68,27 +71,55 @@ pub(super) fn remember(
 }
 
 impl AcpService {
-    /// Stores a choice made before `session` existed, so the restore gives it
-    /// to the session's first runtime once that runtime reports its config,
-    /// before the first prompt. A value the session carried over from the
-    /// chat's ended session for the same option was picked after any draft
-    /// still held, so it stays. Returns whether the session keeps a value.
+    /// Stores a choice made before `session` existed, so its first runtime
+    /// starts with it (see `launch_choices`) or the restore gives it once that
+    /// runtime reports its config, before the first prompt. `offered` is the
+    /// option the binding listed it in, with every value the binding listed:
+    /// until the session reports its own config, the chat shows that option,
+    /// so another listed value can still be chosen if the session never gets
+    /// that far. A value the session carried over from the chat's ended
+    /// session for the same option was picked after any draft still held, so
+    /// it stays. Returns whether the session keeps a value.
     pub(crate) fn remember_start_choice(
         &self,
         session: &sage_acp_protocol::contract::SageAgentSessionId,
         choice: &ConfigMutation,
+        offered: &ConfigOption,
     ) -> bool {
+        let shown = BoundedVec::new("configOptions", vec![offered.clone()])
+            .ok()
+            .map(|config_options| SessionConfig {
+                config_options,
+                ..SessionConfig::default()
+            });
         self.database
             .write_connection()
-            .and_then(|connection| {
-                if choices::get(&connection, session, choice)?.is_some() {
+            .and_then(|mut connection| {
+                let transaction = connection.transaction()?;
+                if choices::get(&transaction, session, choice)?.is_some() {
                     return Ok(true);
                 }
-                choices::record(&connection, session, choice, sage_core::time::now_millis())
-                    .map_err(Into::into)
+                let now = sage_core::time::now_millis();
+                let written = choices::record(&transaction, session, choice, now)?;
+                if written && let Some(shown) = &shown {
+                    choices::seed_snapshot(&transaction, session, shown, now)?;
+                }
+                transaction.commit()?;
+                Ok(written)
             })
             .inspect_err(|error| tracing::warn!(?error, "starting config choice was not stored"))
             .unwrap_or(false)
+    }
+
+    /// The choices stored for `session` before its runtime opens it; a new
+    /// session's runtime learns them before it starts its session.
+    pub(in crate::acp::service) fn launch_choices(
+        &self,
+        session: &sage_acp_protocol::contract::SageAgentSessionId,
+    ) -> Vec<ConfigMutation> {
+        choices::load(&self.database.connection(), session)
+            .inspect_err(|error| tracing::warn!(?error, "stored session config was not read"))
+            .unwrap_or_default()
     }
 
     pub(in crate::acp::service) fn session_config_recorder(&self) -> ChoiceRecorder {
