@@ -1,5 +1,8 @@
 import type { ComponentProps } from "react";
-import { useChatEffortDraft } from "../../app/chatEffortDraft";
+import {
+  DEFAULT_EFFORT_DRAFT,
+  useChatEffortDraft,
+} from "../../app/chatEffortDraft";
 import { capitalizeLabel } from "../../domain/text";
 import { ComposerEffortControl } from "./ComposerEffortControl";
 
@@ -14,8 +17,9 @@ export interface DraftEffort {
 /**
  * The Thinking level control before a chat's first session: the levels the
  * harness lists for the selected model, held as a draft that goes with the
- * session start. A held level the model no longer lists shows, and is
- * started, as Default.
+ * session start. A held level the model no longer lists still shows as
+ * held: the start refuses it rather than running Default unseen, so it is
+ * changed here.
  */
 export default function DraftEffortControl({
   draft,
@@ -26,14 +30,14 @@ export default function DraftEffortControl({
 >) {
   const held = useChatEffortDraft((state) => state.draft);
   const { chatId, bindingId, modelId } = draft;
-  const values = ["default", ...draft.levels];
   const current =
     held?.chatId === chatId &&
     held.bindingId === bindingId &&
-    held.modelId === modelId &&
-    values.includes(held.effort)
+    held.modelId === modelId
       ? held.effort
-      : "default";
+      : DEFAULT_EFFORT_DRAFT;
+  const listed = [DEFAULT_EFFORT_DRAFT, ...draft.levels];
+  const values = listed.includes(current) ? listed : [...listed, current];
   return (
     <ComposerEffortControl
       {...props}

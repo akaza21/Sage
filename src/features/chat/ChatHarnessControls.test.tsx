@@ -270,6 +270,38 @@ it("holds a thinking level chosen before the first session for the listed model"
   useChatEffortDraft.setState({ draft: null });
 });
 
+it("shows a held thinking level the model no longer lists as held, not as Default", async () => {
+  useWorkbenchStore.setState({
+    selectedHarnessId: "access-test",
+    models: [
+      {
+        id: "default",
+        name: "Default",
+        isDefault: true,
+        effortLevels: ["low"],
+      },
+    ],
+  });
+  useChatEffortDraft.setState({
+    draft: {
+      chatId: "chat-draft",
+      bindingId: "fixture",
+      modelId: "default",
+      effort: "high",
+    },
+  });
+  renderControls({
+    sessionHarnessId: null,
+    selectedModelId: "default",
+    accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
+  });
+  // The start refuses that level, so the composer must not show Default.
+  expect(
+    await screen.findByRole("button", { name: "Thinking level: High" }),
+  ).toBeEnabled();
+  useChatEffortDraft.setState({ draft: null });
+});
+
 it("keeps advertised model groups and exact IDs when changing session models", async () => {
   const onSetSessionConfigOption = vi.fn();
   renderControls({

@@ -381,7 +381,25 @@ impl CodexDiscoveryManager {
         model: Option<sage_acp_protocol::intent::ModelId>,
     ) {
         self.cache
-            .seed_session_validation(project_root, binding_digest, binding_id, model);
+            .seed_session_validation(project_root, binding_digest, binding_id, model, &[]);
+    }
+
+    /// Lists `model` as the Codex account default, with `effort_levels`.
+    #[cfg(all(test, windows))]
+    pub(crate) fn seed_session_catalog_for_test(
+        &self,
+        project_root: &CodexProjectRootAuthority,
+        binding_digest: [u8; 32],
+        model: sage_acp_protocol::intent::ModelId,
+        effort_levels: &[&str],
+    ) {
+        self.cache.seed_session_validation(
+            project_root,
+            binding_digest,
+            crate::acp::bindings::codex::CODEX_BINDING_ID,
+            Some(model),
+            effort_levels,
+        );
     }
 }
 

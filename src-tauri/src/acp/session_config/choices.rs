@@ -126,19 +126,44 @@ pub(crate) fn save_snapshot(
     config: &SessionConfig,
     now_millis: i64,
 ) -> rusqlite::Result<()> {
+    write_snapshot(connection, session, config, now_millis, true)
+}
+
+/// What a session that has reported nothing yet is shown as offering: kept
+/// only while it has no snapshot, and replaced by the first config it
+/// reports.
+pub(crate) fn seed_snapshot(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+    config: &SessionConfig,
+    now_millis: i64,
+) -> rusqlite::Result<()> {
+    write_snapshot(connection, session, config, now_millis, false)
+}
+
+fn write_snapshot(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+    config: &SessionConfig,
+    now_millis: i64,
+    replace: bool,
+) -> rusqlite::Result<()> {
     let Ok(config_json) = serde_json::to_string(config) else {
         return Ok(());
     };
     if config_json.len() > LIMITS.wire.models_or_config_bytes as usize {
         return Ok(());
     }
-    connection.execute(
+    let sql = if replace {
         "INSERT INTO acp_session_config_snapshots(session_id,config_json,updated_at)
          VALUES(?1,?2,?3)
          ON CONFLICT(session_id) DO UPDATE SET
-           config_json=excluded.config_json,updated_at=excluded.updated_at",
-        params![session.as_str(), config_json, now_millis],
-    )?;
+           config_json=excluded.config_json,updated_at=excluded.updated_at"
+    } else {
+        "INSERT INTO acp_session_config_snapshots(session_id,config_json,updated_at)
+         VALUES(?1,?2,?3) ON CONFLICT(session_id) DO NOTHING"
+    };
+    connection.execute(sql, params![session.as_str(), config_json, now_millis])?;
     Ok(())
 }
 

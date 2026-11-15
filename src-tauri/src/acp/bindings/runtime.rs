@@ -5,6 +5,7 @@ use crate::acp::{process::LaunchSpec, transport::Frame};
 use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
     intent::CapabilitySnapshotV1,
+    session_config::ConfigMutation,
 };
 
 use super::adapter::{
@@ -25,6 +26,11 @@ pub(crate) trait LaunchableRuntime: HarnessAdapter + Send {
     /// that names its session on the command line needs it; one that opens
     /// sessions over its protocol ignores it.
     fn bind_activation(&mut self, _mode: &crate::acp::runtime::ActivationMode) {}
+    /// Learns the choices stored for a new session before it opens it. A
+    /// harness that reports no value for an option until a prompt carries
+    /// one (Codex's thinking level on a new thread) starts with the stored
+    /// value; any other gets its choices from the restore once it reports.
+    fn bind_launch_choices(&mut self, _choices: &[ConfigMutation]) {}
     fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError>;
 }
 
@@ -91,6 +97,10 @@ impl NativeRuntime {
 
     pub(crate) fn bind_activation(&mut self, mode: &crate::acp::runtime::ActivationMode) {
         self.0.bind_activation(mode);
+    }
+
+    pub(crate) fn bind_launch_choices(&mut self, choices: &[ConfigMutation]) {
+        self.0.bind_launch_choices(choices);
     }
 
     pub(crate) fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
