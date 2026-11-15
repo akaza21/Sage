@@ -68,7 +68,6 @@ export function validateTransitionIntent(
   }
 }
 
-/** No project transition is running and the native epoch is still `epoch`. */
 export function idleAtEpoch(
   state: { projectTransitioning: boolean; nativeTransitionEpoch: number },
   epoch: number,
@@ -146,7 +145,6 @@ interface RepositoryWorkState {
   repositoryRemote: unknown;
 }
 
-/** True while a project switch or any repository operation is running. */
 export function repositoryBusy(state: RepositoryWorkState): boolean {
   return Boolean(
     state.projectTransitioning ||

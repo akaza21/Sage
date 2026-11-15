@@ -21,7 +21,6 @@ export interface AgentSessionChrome {
   };
 }
 
-/** Publishes (or, with null, withdraws) one Chat's session chrome. */
 export const AgentSessionChromeContext = createContext<
   ((chatId: string, chrome: AgentSessionChrome | null) => void) | null
 >(null);
@@ -37,8 +36,8 @@ const useAgentChatOwnerStore = create<AgentChatOwnerStore>(() => ({
 }));
 
 /**
- * True inside the Agent body. Its readers keep the last focused Chat while the
- * body sleeps under Activity, so hidden renders never see the withdrawn pin.
+ * Readers keep the last focused Chat while the body sleeps under Activity, so
+ * hidden renders never see the withdrawn pin.
  */
 export const AgentChatOwnerScopeContext = createContext(false);
 
@@ -56,7 +55,6 @@ export function pinAgentChatOwner(
   useAgentChatOwnerStore.setState({ ownerId: chatId, agentFocusId: focusId });
 }
 
-/** Withdraws the pin seen outside Agent; the Agent body keeps its focus. */
 export function releaseAgentChatOwner(): void {
   if (useAgentChatOwnerStore.getState().ownerId === null) return;
   useAgentChatOwnerStore.setState({ ownerId: null });
@@ -73,12 +71,10 @@ export function usePinnedAgentChatOwner(): string | null {
   );
 }
 
-/** The Agent body's retained focus, read outside React. */
 export function agentChatFocus(): string | null {
   return useAgentChatOwnerStore.getState().agentFocusId;
 }
 
-/** Window chrome follows retained Agent focus while Settings sleeps the body. */
 export function useAgentChatFocus(): string | null {
   return useAgentChatOwnerStore((state) => state.agentFocusId);
 }

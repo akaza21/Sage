@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import type { projectTaskResources } from "./agentArtifactTabPresentation";
 import { SubagentResourceRows } from "./SubagentResourceRows";
 
-/** Lazy Subagents region around the eagerly rendered counts. */
 export function AgentTaskSubagentSummary({
   recentAgents,
   working,
@@ -33,8 +32,6 @@ export function AgentTaskSubagentSummary({
           ))}
         </span>,
       )}
-      {/* Rows come from the parent page's subagent states and re-render with
-          every page load, so they move as the parent projection changes. */}
       <SubagentResourceRows agents={recentAgents} onSelect={onSelect} />
     </section>
   );

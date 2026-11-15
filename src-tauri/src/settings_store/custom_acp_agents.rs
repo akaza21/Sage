@@ -181,7 +181,6 @@ impl SettingsStore {
                 args: serde_json::from_str(&args).unwrap_or_default(),
                 env: serde_json::from_str(&env).unwrap_or_default(),
             };
-            // A row that no longer passes validation is skipped, never launched.
             let Ok((name, executable, args, env)) = validate_custom_acp_agent(&draft) else {
                 continue;
             };

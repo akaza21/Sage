@@ -1,4 +1,3 @@
-/* The shared tooltip; see tooltipLayer.ts. */
 .tooltip {
   position: fixed;
   z-index: var(--z-alert);

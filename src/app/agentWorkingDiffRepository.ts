@@ -4,7 +4,6 @@ import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import { agentArtifactOwnerIsCurrent } from "./openAgentArtifact";
 import { useWorkbenchStore } from "./store";
 
-/** Repository lookup is needed only when opening a summary-only working Diff. */
 export async function resolveAgentWorkingDiffRepository(
   intent: AgentArtifactOpenIntent,
   projectGeneration: number,

@@ -26,10 +26,8 @@ function wildcard(pattern: string[], value: string[]): boolean {
   return at === pattern.length;
 }
 
-/** A pattern split once: `null` for `**`, else the segment's characters. */
 type Segments = (string[] | null)[];
 
-/** Which path prefixes each pattern prefix can match, one segment at a time. */
 function segmentsMatch(pattern: Segments, path: string[][]): boolean {
   let row = path.map(() => false);
   row.unshift(true);
@@ -51,7 +49,6 @@ const split = (text: string, glob: boolean) =>
 
 const compiled = new WeakMap<readonly string[], PathGlobMatcher>();
 
-/** One matcher for a list, split once per list; invalid patterns are left out. */
 export function pathGlobMatcher(patterns: readonly string[]): PathGlobMatcher {
   let matcher = compiled.get(patterns);
   if (!matcher) {

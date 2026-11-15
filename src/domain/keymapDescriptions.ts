@@ -1,7 +1,6 @@
 /**
- * What each shortcut does, for the Keyboard settings page and its search.
  * Kept apart from `keymapRegistry` so this copy stays out of the startup
- * bundle: matching a chord never needs it.
+ * bundle.
  */
 export const KEYMAP_DESCRIPTIONS: Readonly<Record<string, string>> = {
   "agent.changes": "Open changes for the focused chat.",

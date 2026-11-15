@@ -80,7 +80,6 @@ it("shows a refused action on the archived row it belongs to and dismisses it", 
     screen.getByRole("button", { name: "Dismiss error for Research" }),
   );
   expect(screen.queryByRole("alert")).toBeNull();
-  // Focus returns to the control whose action was refused.
   expect(
     screen.getByRole("button", { name: "Delete chat Research" }),
   ).toHaveFocus();

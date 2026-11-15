@@ -652,7 +652,6 @@ describe("Agent artifact file chips", () => {
     expect(tab.querySelector(".lucide-sparkles")).toBeNull();
     fireEvent.click(tab);
     expect(tab).toHaveAttribute("aria-selected", "true");
-    // The plural tab opens on its Active / Done list.
     const active = await screen.findByRole("region", {
       name: "Active subagents",
     });
@@ -2612,7 +2611,6 @@ describe("Agent artifact file chips", () => {
       url: "http://127.0.0.1:5174/second",
     });
     render(<AgentArtifactPane />);
-    // The pane shows a Preview only once its Chat owns the harness browse.
     expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
     act(() =>
       setHarnessBrowseOwner(previewOwner, ["chat-focused", "chat-second"]),
@@ -2702,7 +2700,6 @@ describe("Agent artifact pane Changes ownership", () => {
       JSON.stringify(pageWithEdit()).replaceAll("chat-focused", "chat-late"),
     ) as AcpChatPage & { currentSessionId: string | null };
     page.currentSessionId = sessionId as AcpChatPage["currentSessionId"];
-    // Starting a session is a newer projection revision.
     page.projectionRevision = (
       sessionId ? "9" : "8"
     ) as AcpChatPage["projectionRevision"];
@@ -2735,7 +2732,6 @@ describe("Agent artifact pane Changes ownership", () => {
     focusLateChat();
     const { rerender } = render(<AgentArtifactPane expanded={false} />);
     rerender(<AgentArtifactPane expanded />);
-    // The session is unknown until the projection loads: no invented review.
     expect(
       screen.getByRole("heading", { name: "Waiting for this chat" }),
     ).toBeVisible();
@@ -2764,8 +2760,6 @@ describe("Agent artifact pane Changes ownership", () => {
     const { rerender } = render(<AgentArtifactPane expanded={false} />);
     rerender(<AgentArtifactPane expanded />);
     expect(useAgentChangesState.getState().owner?.sessionId).toBeNull();
-    // A session starts: the same tab now belongs to it, still selected, so
-    // an exact-session open of one of its resources can reveal over it.
     act(() => {
       store.getState().applyAuthoritativePage(lateScope, pageFor("session-a"));
     });
@@ -2773,8 +2767,6 @@ describe("Agent artifact pane Changes ownership", () => {
       owner: { chatId: "chat-late", sessionId: "session-a" },
       selected: true,
     });
-    // Leaving releases the projection; the retained tab must not show a
-    // review again until the Chat's projection reloads.
     act(() => store.getState().clear());
     expect(screen.queryByRole("region", { name: "Chat changes" })).toBeNull();
     expect(
@@ -2813,7 +2805,6 @@ describe("Agent artifact pane Changes ownership", () => {
       />,
     );
     onExpandedChange.mockClear();
-    // Asking again after collapsing is a new request, not an adoption.
     act(() => useAgentChangesState.getState().show(sessionless(), 0));
     expect(onExpandedChange).toHaveBeenCalledWith(true);
   });

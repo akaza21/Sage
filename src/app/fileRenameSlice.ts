@@ -9,8 +9,6 @@ export interface FileRenameSlice {
   fileRenameNotice: string | null;
   fileRenameRequestGeneration: number;
   clearFileRenameError: () => void;
-  /** With `releaseOpenFile`, a clean open source File is closed for the
-   * rename and reopened at the new name. */
   renameProjectFile: (
     source: ResourceRef,
     basename: string,
@@ -22,7 +20,6 @@ export interface FileRenameSlice {
   ) => Promise<boolean>;
 }
 
-// The rename itself loads with the first rename a session asks for.
 const actions = () => import("./fileRenameActions");
 
 export const createFileRenameSlice: StateCreator<

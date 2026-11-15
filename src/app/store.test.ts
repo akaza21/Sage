@@ -896,7 +896,6 @@ describe("workbench resource and project navigation", () => {
     expect(
       await useWorkbenchStore.getState().archiveChat("chat:cross", "cross"),
     ).toBe(true);
-    // The store forgets an archived chat's read mark, and so does the rail.
     expect(chatReadThrough("chat:cross")).toBeUndefined();
     resetChatReadMarks();
     expect(archive).toHaveBeenCalledWith(
@@ -1929,7 +1928,6 @@ describe("workbench resource and project navigation", () => {
 
     useWorkbenchStore.getState().closeTab(chatTab.id);
 
-    // The archive action loads with its first use.
     await vi.waitFor(() => expect(archive).toHaveBeenCalled());
     await vi.waitFor(() => {
       expect(useWorkbenchStore.getState().projectTransitioning).toBe(false);
@@ -1968,7 +1966,6 @@ describe("workbench resource and project navigation", () => {
 
     useWorkbenchStore.getState().closeTab(chatTab.id);
 
-    // The archive action loads with its first use.
     await vi.waitFor(() =>
       expect(getWorkbenchPorts().chat.archiveChat).toHaveBeenCalled(),
     );
@@ -2017,7 +2014,6 @@ describe("workbench resource and project navigation", () => {
 
     useWorkbenchStore.getState().closeTab(chatTab.id);
 
-    // The archive action loads with its first use.
     await vi.waitFor(() =>
       expect(getWorkbenchPorts().chat.archiveChat).toHaveBeenCalled(),
     );

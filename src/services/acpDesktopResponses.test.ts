@@ -260,7 +260,6 @@ describe("safeAcpMutationResponse", () => {
     expect(safeAcpMutationResponse(mutation())?.projection).not.toHaveProperty(
       "childProjectionEpoch",
     );
-    // Both are display-only: an unsafe value is dropped, never trusted.
     for (const childProjectionEpoch of [-1, 0, 1.5, "7", 2 ** 60])
       expect(
         safeAcpMutationResponse(mutation({ childProjectionEpoch }))?.projection,
@@ -278,8 +277,6 @@ describe("safeAcpMutationResponse", () => {
       sessionId: "session-0",
       projectionRevision: "4",
     };
-    // Rust coalesces on the epoch; the WebView only reloads, and the page
-    // it loads carries childProjectionEpoch.
     expect(
       safeProjectionChanged({ ...notice, childProjectionEpoch: 9 }),
     ).toEqual(notice);

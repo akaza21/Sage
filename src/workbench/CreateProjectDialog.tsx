@@ -22,7 +22,6 @@ import "./create-project-dialog.css";
 
 const fullMessage = `A project holds at most ${MAX_PROJECT_SOURCE_FOLDERS} folders`;
 
-/** The rail's "+": name a project and pick the folders it works in. */
 export function CreateProjectDialog({ onClose }: { onClose: () => void }) {
   const [name, setName] = useState("");
   const [folders, setFolders] = useState<ProjectSourceFolder[]>([]);
@@ -36,7 +35,6 @@ export function CreateProjectDialog({ onClose }: { onClose: () => void }) {
   const titleId = useId();
   const errorId = useId();
   const createProject = useWorkbenchStore((state) => state.createProject);
-  // An unnamed project takes its first folder's name.
   const projectName =
     name.trim() || folders[0]?.name.slice(0, MAX_PROJECT_NAME_CHARS) || "";
   const busy = picking || saving;

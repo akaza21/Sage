@@ -1,5 +1,3 @@
-//! The whole process tree a Git child, or a short-lived harness probe, starts.
-//!
 //! On Windows `git` on PATH is usually Git for Windows' `cmd\git.exe`, a
 //! launcher that starts the real `mingw64\bin\git.exe`, which in turn starts
 //! filters, transports and helpers. Terminating only the spawned process
@@ -8,8 +6,6 @@
 //! resumed, so nothing it starts can escape the job. Killing the tree
 //! terminates the job, and an exit is proven only once job accounting shows
 //! no active process.
-//!
-//! Elsewhere the tree is just the spawned process, as before.
 //!
 //! Git can also run several children at once (parallel checkout workers,
 //! parallel fetches). [`MAX_PARALLEL_JOBS`] is derived from the same capacity,
@@ -24,7 +20,6 @@ const TREE_HEADROOM: u32 = 8;
 /// Processes one parallel job may need: a submodule fetch can be Git, its
 /// transport and a helper; a checkout worker is one process.
 const PROCESSES_PER_JOB: u32 = 3;
-/// The most parallel jobs Git may run, whatever the repository configures.
 pub const MAX_PARALLEL_JOBS: u32 = (MAX_TREE_PROCESSES - TREE_HEADROOM) / PROCESSES_PER_JOB;
 
 const _: () = assert!(TREE_HEADROOM + MAX_PARALLEL_JOBS * PROCESSES_PER_JOB <= MAX_TREE_PROCESSES);
@@ -60,7 +55,6 @@ impl ProcessTree {
         true
     }
 
-    /// Nothing is held here.
     pub fn close(self) {}
 }
 
@@ -90,7 +84,6 @@ mod windows {
     pub struct ProcessTree(JobBoundary);
 
     impl ProcessTree {
-        /// Assigns the suspended `child` to a new job, then resumes it.
         pub fn contain(child: &Child) -> io::Result<Self> {
             let process = child
                 .raw_handle()
@@ -128,8 +121,7 @@ mod windows {
         /// Closes the job handle; kill-on-close ends anything still running.
         pub fn close(self) {}
 
-        /// True once job accounting shows no active process. A failed query
-        /// proves nothing, so it counts as not empty.
+        /// A failed query proves nothing, so it counts as not empty.
         pub(super) fn is_empty(&self) -> bool {
             self.0
                 .active_processes(MAX_TREE_PROCESSES)
@@ -138,13 +130,11 @@ mod windows {
     }
 }
 
-/// A spawned Git root together with the tree it may start.
 pub struct GitChild {
     pub root: tokio::process::Child,
     pub tree: ProcessTree,
 }
 
-/// Waits up to `budget` for the tree to empty.
 pub async fn wait_until_empty(tree: &ProcessTree, budget: std::time::Duration) -> bool {
     let deadline = tokio::time::Instant::now() + budget;
     loop {

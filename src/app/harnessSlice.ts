@@ -50,7 +50,6 @@ export interface HarnessSlice {
   harnessRequestGeneration: number;
   harnessDiscoveryPhase: HarnessDiscoveryPhase;
   harnessDiscoveryError: string | null;
-  /** The account the selected harness reported at its last discovery. */
   harnessAccount: CodexAccount | null;
   selectHarness: (harnessId: string) => Promise<void>;
   applyHarnessDiscovery: (harnesses: HarnessDefinition[]) => Promise<void>;

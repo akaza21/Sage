@@ -2,10 +2,8 @@ import type { AcpSessionConfig } from "./acpSessionConfig";
 import type { SessionAccessModeCapability } from "./sessionAccessMode";
 
 /**
- * The session's config without its modes, when the harness's access modes
- * carry its session modes (Claude Code's permission modes). The generic mode
- * controls then step aside, so a mode is never chosen without the access
- * menu's rules and confirmations. Loaded with the composer's options menu.
+ * The generic mode controls step aside, so a mode is never chosen without the
+ * access menu's rules and confirmations.
  */
 export function withoutGovernedModes(
   config: AcpSessionConfig | null,

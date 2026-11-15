@@ -11,11 +11,8 @@ export const imageDisabledReason =
   "Image input is unavailable for the selected binding.";
 
 /**
- * Images are a draft action of a native ACP binding. They follow the
- * negotiated prompt capability of the session the next send resumes,
- * whatever state it was left in, else of the binding's latest negotiated
- * session in this chat. With neither, native admission checks the session
- * that send starts, as it does for attached files.
+ * With no negotiated session, native admission checks the session the next
+ * send starts, as it does for attached files.
  */
 export function composerImageAvailability(
   nextSession: Pick<AgentSessionProjection, "capabilities"> | null | undefined,
@@ -38,7 +35,6 @@ export function composerImageAvailability(
   return { available: true, reason: null };
 }
 
-/** Choosing images for the draft; `reason` says why images are unavailable. */
 export interface ImageAction {
   disabled: boolean;
   reason?: string | null;

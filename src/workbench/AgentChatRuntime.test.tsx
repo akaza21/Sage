@@ -155,8 +155,6 @@ it("sleeps after a hidden submission blocks and wakes on explicit retry", async 
     changeQueuedChatPrompt(useWorkbenchStore, "chat-a", prompt.id, "queued");
   });
   await waitFor(() => expect(queue().queuedPrompts).toEqual([]));
-  // The accepted submission must keep listening for the new turn even with
-  // an empty queue. Once the turn-start deadline expires it may sleep again.
   expect(queue().queuedTurnBarrier).not.toBeNull();
   expect(listeners.size).toBe(1);
   expect(configListeners.size).toBe(1);
