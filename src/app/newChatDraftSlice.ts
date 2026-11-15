@@ -87,25 +87,43 @@ export const createNewChatDraftSlice: StateCreator<
   };
 };
 
+type DraftOwnerState = Pick<
+  WorkbenchState,
+  "newChatDraft" | "project" | "tabs" | "archivedChats"
+>;
+
 /**
- * The chat a draft is creating or has created, until the draft hands off its
- * prompt or is emptied. Wherever that chat would be shown, the draft is.
+ * The draft's creation, released once the chat it created no longer exists:
+ * a deleted chat cannot take the prompt, so the next send creates another.
  */
-export function draftOwnedChatId(
-  state: Pick<WorkbenchState, "newChatDraft" | "project">,
-) {
-  const draft = state.newChatDraft;
-  return draft &&
-    draft.projectId === state.project?.id &&
-    draft.submission.status !== "released" &&
-    (draft.submission.status === "submitting" || draft.text.trim())
-    ? draft.submission.chatId
-    : null;
+export function liveDraftCreation(
+  creation: DraftCreation,
+  state: Pick<WorkbenchState, "tabs" | "archivedChats">,
+): DraftCreation {
+  return creation.status === "created" &&
+    !state.tabs.some((tab) => tab.id === creation.chatId) &&
+    !state.archivedChats.some((chat) => chat.id === creation.chatId)
+    ? { status: "released" }
+    : creation;
 }
 
-/** Whether Agent's center shows the draft in place of `shownChatId`. */
+/**
+ * The chat a draft is creating or has created. Only the draft's handoff or
+ * an explicit discard releases it; until then the draft is shown wherever
+ * that chat would be, and no other writer owns it.
+ */
+export function draftOwnedChatId(state: DraftOwnerState) {
+  const draft = state.newChatDraft;
+  if (!draft || draft.projectId !== state.project?.id) return null;
+  const submission =
+    draft.submission.status === "submitting"
+      ? draft.submission
+      : liveDraftCreation(draft.submission, state);
+  return submission.status === "released" ? null : submission.chatId;
+}
+
 export function draftShownFor(
-  state: Pick<WorkbenchState, "agentCenter" | "newChatDraft" | "project">,
+  state: DraftOwnerState & Pick<WorkbenchState, "agentCenter">,
   shownChatId: string | null,
 ) {
   return (

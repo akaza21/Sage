@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { effectiveDraftChoice } from "../../app/newChatDraftNavigation";
+import { draftOwnedChatId } from "../../app/newChatDraftSlice";
 import { useWorkbenchStore } from "../../app/store";
 import { AgentNavigationPart } from "../../workbench/agentNavigationLazy";
 import { ChatHome } from "./ChatHome";
@@ -37,6 +38,7 @@ export function NewChatDraftSurface({
   const chooseModel = useWorkbenchStore((state) => state.selectDraftModel);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const submitting = draft?.submission.status === "submitting";
+  const ownsChat = useWorkbenchStore((state) => !!draftOwnedChatId(state));
   const unconfirmed =
     draft?.submission.status === "unconfirmed" ||
     (draft?.submission.status === "submitting" &&
@@ -88,6 +90,25 @@ export function NewChatDraftSurface({
         <div className="message-list message-list--home">
           <div className="message-list__content">
             <ChatHome projectName={project.name} />
+            {ownsChat && !submitting ? (
+              <div>
+                <button
+                  type="button"
+                  className="button button--compact"
+                  aria-describedby="new-chat-discard-note"
+                  disabled={transitioning}
+                  onClick={discard}
+                >
+                  Discard prompt
+                </button>
+                <span
+                  id="new-chat-discard-note"
+                  className="select-control__reason"
+                >
+                  The chat it created stays in your chats.
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
         <ChatComposerRegion
@@ -116,15 +137,6 @@ export function NewChatDraftSurface({
                     onClick={() => void reload()}
                   >
                     Reload chats
-                  </button>
-                ) : null}
-                {draft.submission.status === "created" ? (
-                  <button
-                    type="button"
-                    className="button button--compact"
-                    onClick={discard}
-                  >
-                    Discard draft
                   </button>
                 ) : null}
               </>

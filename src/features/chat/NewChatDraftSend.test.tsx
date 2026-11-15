@@ -807,6 +807,7 @@ it("lets an unconfirmed draft be edited and reloads its creation with the edited
   expect(composer()).toHaveValue("Edited while unconfirmed");
   expect(screen.getByRole("button", { name: "Send message" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Reload chats" })).toBeEnabled();
+  expect(screen.getByRole("button", { name: "Discard prompt" })).toBeEnabled();
   projection.mockImplementation(async () =>
     withHarnessSnapshot(await bootstrap()),
   );
@@ -1193,24 +1194,139 @@ it("shows the draft and its error when the handoff fails after opening its chat"
   expect(prompts).toEqual([]);
 });
 
-it.each(["discarded", "emptied"] as const)(
-  "opens the created chat normally once its draft is %s",
-  async (release) => {
-    const { chatId, previousId } = await createdDraft({ text: "Owned prompt" });
-    if (release === "discarded")
-      fireEvent.click(screen.getByRole("button", { name: "Discard draft" }));
-    else fireEvent.change(composer(), { target: { value: "" } });
-    await act(async () => useWorkbenchStore.getState().activateTab(previousId));
-    await act(async () => useWorkbenchStore.getState().activateTab(chatId));
-    await settleLazyModules();
-    expect(draftRegion()).toBeNull();
-    expect(screen.getByRole("region", { name: /^Chat pane/ })).toBeVisible();
-    fireEvent.change(composer(), { target: { value: "Typed in the chat" } });
-    expect(useWorkbenchStore.getState().chatUiById[chatId].composerText).toBe(
-      "Typed in the chat",
-    );
-  },
-);
+it("opens the created chat normally once its draft is discarded", async () => {
+  const { chatId, previousId } = await createdDraft({ text: "Owned prompt" });
+  fireEvent.click(screen.getByRole("button", { name: "Discard prompt" }));
+  await act(async () => useWorkbenchStore.getState().activateTab(previousId));
+  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
+  await settleLazyModules();
+  expect(draftRegion()).toBeNull();
+  expect(screen.getByRole("region", { name: /^Chat pane/ })).toBeVisible();
+  fireEvent.change(composer(), { target: { value: "Typed in the chat" } });
+  expect(useWorkbenchStore.getState().chatUiById[chatId].composerText).toBe(
+    "Typed in the chat",
+  );
+});
+
+it("keeps the draft shown for its chat while its text is cleared and retyped", async () => {
+  const { chatId, previousId } = await createdDraft({ text: "Owned prompt" });
+  await act(async () => useWorkbenchStore.getState().activateTab(previousId));
+  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
+  await settleLazyModules();
+  const field = composer();
+  fireEvent.change(field, { target: { value: "" } });
+  await settleLazyModules();
+  expect(draftRegion()).toBeVisible();
+  expect(composer()).toBe(field);
+  fireEvent.change(field, { target: { value: "Retyped" } });
+  expect(useWorkbenchStore.getState().newChatDraft?.text).toBe("Retyped");
+  expect(
+    screen.getByRole("button", { name: "Discard prompt" }),
+  ).toHaveAccessibleDescription("The chat it created stays in your chats.");
+  expect(
+    useWorkbenchStore.getState().chatUiById[chatId]?.composerText ?? "",
+  ).toBe("");
+});
+
+it("never re-owns a chat once its draft is discarded and a new draft is typed", async () => {
+  const { chatId } = await createdDraft({ text: "Owned prompt" });
+  fireEvent.click(screen.getByRole("button", { name: "Discard prompt" }));
+  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "Kept in the chat" } });
+  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "A new chat" } });
+  expect(useWorkbenchStore.getState().newChatDraft?.submission).toEqual({
+    status: "released",
+  });
+  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0].chatId).not.toBe(chatId);
+  expect(useWorkbenchStore.getState().chatUiById[chatId].composerText).toBe(
+    "Kept in the chat",
+  );
+});
+
+it("keeps the draft in place of its chat while a non-chat tab is active", async () => {
+  const { chatId, previousId } = await createdDraft({ text: "Owned prompt" });
+  await act(async () => useWorkbenchStore.getState().activateTab(previousId));
+  await act(async () => useWorkbenchStore.getState().activateTab(chatId));
+  await settleLazyModules();
+  expect(draftRegion()).toBeVisible();
+  act(() => {
+    const { tabs } = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      tabs: [
+        ...tabs,
+        {
+          id: "file-1",
+          kind: "file",
+          title: "File",
+          position: tabs.length,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "file-1",
+    });
+  });
+  await settleLazyModules();
+  expect(draftRegion()).toBeVisible();
+  expect(composer()).toHaveValue("Owned prompt");
+  expect(screen.queryByRole("region", { name: /^Chat pane/ })).toBeNull();
+});
+
+it("refuses a Chat Handoff into the chat its draft owns", async () => {
+  const { chatId, previousId } = await createdDraft({ text: "Owned prompt" });
+  await act(async () => useWorkbenchStore.getState().activateTab(previousId));
+  const state = useWorkbenchStore.getState();
+  expect(state.captureChatOwnership(chatId)).toBeNull();
+  let committed!: boolean;
+  await act(async () => {
+    committed = await state.handoffChat({
+      projectId: state.project!.id,
+      projectGeneration: state.projectGeneration,
+      transitionEpoch: state.nativeTransitionEpoch,
+      sourceChatId: previousId,
+      targetChatId: chatId,
+      draft: "Handoff text",
+    });
+  });
+  expect(committed).toBe(false);
+  expect(
+    useWorkbenchStore.getState().chatUiById[chatId]?.composerText ?? "",
+  ).toBe("");
+  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0]).toMatchObject({ chatId, prompt: "Owned prompt" });
+});
+
+it("releases the draft when its created chat is deleted, and sends into a new chat", async () => {
+  const { chatId } = await createdDraft({ text: "Owned prompt" });
+  const archive = ports.chat.archiveChat.bind(ports.chat);
+  vi.spyOn(ports.chat, "archiveChat").mockImplementation(async (...args) =>
+    withHarnessCatalog(await archive(...args)),
+  );
+  const remove = ports.chat.deleteChat.bind(ports.chat);
+  vi.spyOn(ports.chat, "deleteChat").mockImplementation(async (...args) =>
+    withHarnessCatalog(await remove(...args)),
+  );
+  await act(async () => {
+    await useWorkbenchStore.getState().archiveChat(chatId);
+    expect(await useWorkbenchStore.getState().deleteChat(chatId)).toBe(true);
+  });
+  expect(useWorkbenchStore.getState().archivedChats).not.toContainEqual(
+    expect.objectContaining({ id: chatId }),
+  );
+  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await settleLazyModules();
+  expect(screen.queryByRole("button", { name: "Discard prompt" })).toBeNull();
+  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(prompts[0].chatId).not.toBe(chatId);
+  expect(prompts[0].prompt).toBe("Owned prompt");
+});
 
 it("hands a retried draft's model, access and effort to the chat it created", async () => {
   const { chatId } = await createdDraft({

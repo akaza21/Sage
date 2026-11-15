@@ -130,18 +130,17 @@ export function AgentChatPanes({
     );
   const focusCandidates =
     splitRequested && side ? [side.parentChatId, side.id] : chatIds;
-  const focusedChatId = draftOpened
-    ? null
-    : focusedAgentChatId(
-        focusCandidates,
-        activeTabId,
-        previousFocusedId ?? lastFocusedId,
-      );
-  const draftShown = useWorkbenchStore((state) =>
-    draftShownFor(state, focusedChatId),
+  const shownChatId = focusedAgentChatId(
+    focusCandidates,
+    activeTabId,
+    previousFocusedId ?? lastFocusedId,
   );
-  const focusedId = draftShown ? null : focusedChatId;
-  if (lastFocusedId !== focusedId) setLastFocusedId(focusedId);
+  const draftShown = useWorkbenchStore((state) =>
+    draftShownFor(state, shownChatId),
+  );
+  const focusedId = draftShown ? null : shownChatId;
+  const focusMemory = draftOpened ? lastFocusedId : shownChatId;
+  if (lastFocusedId !== focusMemory) setLastFocusedId(focusMemory);
   const displayedIds = useMemo(
     () =>
       splitRequested && !compact && !narrow && side
@@ -156,9 +155,9 @@ export function AgentChatPanes({
   pinUnreadAckIds(displayedIds);
 
   useLayoutEffect(() => {
-    pinAgentChatOwner(focusedId);
+    pinAgentChatOwner(focusedId, draftOpened ? null : shownChatId);
     return releaseAgentChatOwner;
-  }, [focusedId]);
+  }, [draftOpened, focusedId, shownChatId]);
 
   const focusedProjectionStore = acpProjectionStoreFor(focusedId);
   const focusedPage = useStore(focusedProjectionStore, (state) => state.page);

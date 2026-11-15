@@ -4,7 +4,11 @@ import {
   validateChatComposerText,
 } from "../domain/chatOwnership";
 import { openNewChatDraft, selectDraftHarness } from "./newChatDraftNavigation";
-import type { NewChatDraft, NewChatDraftSlice } from "./newChatDraftSlice";
+import {
+  liveDraftCreation,
+  type NewChatDraft,
+  type NewChatDraftSlice,
+} from "./newChatDraftSlice";
 import type { WorkbenchState } from "./store";
 
 /** Loaded before the first draft opens; its mutations then run synchronously. */
@@ -23,13 +27,12 @@ export function createNewChatDraftActions(
 > {
   const submit = async (draft: NewChatDraft) => {
     if (draft.submission.status === "submitting") return;
+    const creation = liveDraftCreation(draft.submission, get());
     const attempt = {
       status: "submitting" as const,
       chatId:
-        draft.submission.status === "released"
-          ? crypto.randomUUID()
-          : draft.submission.chatId,
-      creation: draft.submission,
+        creation.status === "released" ? crypto.randomUUID() : creation.chatId,
+      creation,
     };
     const submittingDraft = { ...draft, submission: attempt, error: null };
     const submission = {

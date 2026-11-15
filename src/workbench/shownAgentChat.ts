@@ -53,7 +53,6 @@ function useFocusedRailChatId(): string | null {
   return focusedRailChatId({ tabs, activeTabId, agentFocusId, sides });
 }
 
-/** Whether the Agent center shows the new-chat draft in place of a chat. */
 export function useDraftShown(): boolean {
   const id = useFocusedRailChatId();
   return useWorkbenchStore((state) => draftShownFor(state, id));

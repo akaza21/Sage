@@ -104,6 +104,8 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/chat/NewChatDraftSurface.tsx",
   "src/features/chat/FirstChatSend.tsx",
   "src/features/chat/ChatSessionHeader.tsx",
+  // A Chat Handoff loads with the first handoff the user confirms.
+  "src/app/runChatHandoff.ts",
   // Only the question card sends answers.
   "src/services/acpDesktopUserInputAnswer.ts",
   "src/features/chat/acp/ChatMarkdown.tsx",

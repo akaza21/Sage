@@ -85,7 +85,7 @@ export async function runNewChatDraftSend(
     if (get().activeTabId !== chatId)
       await get().activateTab(chatId, submission);
     const { state, draft } = current();
-    const owner = state.captureChatOwnership(chatId);
+    const owner = state.captureChatOwnership(chatId, draft.id);
     if (!owner || state.activeTabId !== chatId)
       throw new Error("Could not open the created chat. Retry to continue.");
     // From here through clearing the draft, handoff is synchronous. No project
