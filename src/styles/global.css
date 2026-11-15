@@ -34,11 +34,11 @@
   --color-sage: #7fa877;
   /* Accent ramp. Against every surface up to the composer
      fill (#363636), 400 and 300 keep text at 4.5:1 or more, and body text
-     keeps 6.5:1 or more on 800 and 900. Ink is the text colour on 300/400. */
-  --color-sage-300: #6ee27f;
-  --color-sage-400: #32d74b;
-  --color-sage-800: #1b3f22;
-  --color-sage-900: #143219;
+     keeps 6:1 or more on 800 and 900. Ink is the text colour on 300/400. */
+  --color-sage-300: #9dc695;
+  --color-sage-400: #84b87a;
+  --color-sage-800: #294126;
+  --color-sage-900: #1f3b1b;
   --color-sage-ink: #0f1a0d;
 
   /* Color roles */
