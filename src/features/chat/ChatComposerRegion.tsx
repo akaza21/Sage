@@ -12,6 +12,7 @@ import {
   useComposerDictation,
 } from "./composerChrome";
 import { ComposerImageInput } from "./ComposerImageInput";
+import { ComposerLocationStrip } from "./ComposerLocationStrip";
 import { ComposerStatusNotices } from "./ComposerStatusNotices";
 import { ComposerTurnControl } from "./ComposerTurnControl";
 import { useComposerFiles } from "./useComposerFiles";
@@ -39,6 +40,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     commandChatId,
     sessionId = null,
     project,
+    newChat = false,
     usage,
     onCompact,
     descriptionId,
@@ -103,7 +105,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
   });
   // The paste part loads with the composer of a native chat, or with
   // held-back input, and reports the batch it staged: pasted text and files
-  // picked with the attach button alike.
+  // picked from the attach menu alike.
   const paste = useComposerPaste(
     sessionFeatures && availableBinding,
     activeTurn,
@@ -119,11 +121,14 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     imageInput.sendBlocked ||
     (sessionFeatures && paste.blocksSend);
   const queueing = activeTurn && queueAvailable && !composerDisabled;
+  const optionsTriggerId = `${fieldId}-options`;
+  const projectName = composerWorkspaceName(project);
   const files = useComposerFiles({
     text,
     chatId: dictationScope,
     fieldRef: composerRef,
     fieldId,
+    attachAnchorId: optionsTriggerId,
     imageAction: imageInput.action,
     onPickFiles: paste.pickFiles,
     hidden: hidden || !sessionFeatures,
@@ -163,6 +168,12 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
         }}
       >
         <div className="composer__slots">
+          {newChat && projectName ? (
+            <ComposerLocationStrip
+              projectName={projectName}
+              disabled={actionBusy || projectTransitioning}
+            />
+          ) : null}
           {otherContext.length < attachedContext.length ? (
             <TranscriptPart
               part="ComposerAnnotations"
@@ -341,16 +352,17 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
               selectedHarnessId={selectedHarnessId}
               modelLabelScope={JSON.stringify([dictationScope, sessionId])}
               inheritScope={dictationScope}
-              projectName={composerWorkspaceName(project)}
+              projectName={projectName}
               turnBusy={actionBusy || activeTurn}
               contextUsage={usage}
               onModeRemoved={() => composerRef.current?.focus()}
-              attachSlot={sessionFeatures ? files.attachButton : null}
               addActions={{
-                imageAction: imageInput.action,
+                onAttachFiles: files.attach,
+                attachRefusalChatId: files.refusalChatId,
                 onOpenGoal: goalDetails.onOpen,
                 onCompact,
               }}
+              optionsTriggerId={optionsTriggerId}
             />
           ) : null}
           {!composerDisabled ? (

@@ -16,7 +16,11 @@ import {
 } from "../../domain/sessionAccessMode";
 import { CHAT_ACCESS_ICONS } from "./chatAccessIcons";
 import type { AccessView } from "./ComposerAccessControl";
-import type { EndedSession } from "./endedSession";
+import {
+  endedSession,
+  type EndedPage,
+  type EndedSession,
+} from "./endedSession";
 
 /**
  * A chat's access before its next session exists: the access drafted for
@@ -31,7 +35,7 @@ export function ChatAccessDraftSelection({
   value,
   onChange,
   chatId,
-  endedSession,
+  endedPage,
   capabilities,
   error,
   children,
@@ -40,7 +44,7 @@ export function ChatAccessDraftSelection({
   value?: SessionAccessMode | null;
   onChange?: (value: SessionAccessMode) => void;
   chatId: string | undefined;
-  endedSession?: EndedSession;
+  endedPage?: EndedPage;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
   error: string | null;
   children: (view: AccessView) => ReactNode;
@@ -58,7 +62,11 @@ export function ChatAccessDraftSelection({
     (candidate) =>
       draft?.bindingId === bindingId && candidate.id === draft.mode,
   )?.id;
-  const carried = useCarriedAccess(bindingId, endedSession, candidates);
+  const carried = useCarriedAccess(
+    bindingId,
+    endedSession(endedPage),
+    candidates,
+  );
   // Until the ended session's access is read, what the session gets
   // without a draft is unknown: every pick is kept as a draft.
   const base = carried === undefined ? undefined : (carried ?? effective);
@@ -67,6 +75,7 @@ export function ChatAccessDraftSelection({
   return children({
     candidates,
     effective: shown,
+    defaultMode: effective,
     error: error ?? (carried === undefined ? carryError : null),
     icon: shown ? CHAT_ACCESS_ICONS[shown] : undefined,
     tone: shown === "fullAccess" ? " composer__access-label--full" : undefined,
@@ -90,11 +99,10 @@ export function ChatAccessDraftSelection({
  */
 function useCarriedAccess(
   bindingId: string,
-  endedSession: EndedSession | undefined,
+  ended: EndedSession | undefined,
   candidates: readonly SessionAccessModeCapability[],
 ): SessionAccessMode | null | undefined {
-  const from =
-    endedSession?.bindingId === bindingId ? endedSession.id : undefined;
+  const from = ended?.bindingId === bindingId ? ended.id : undefined;
   const mode = useChatAccessStore((state) => (from ? state.modes[from] : null));
   const unread = mode === undefined;
   useEffect(() => {

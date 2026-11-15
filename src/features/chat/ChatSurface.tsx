@@ -1,5 +1,3 @@
-import { useTerminalComposerFocus } from "./useTerminalComposerFocus";
-
 import { useContext, useRef } from "react";
 import { useRetainedElement } from "../../ui/useRetainedElement";
 import {
@@ -23,12 +21,14 @@ import {
 import { useComposerFocusHotkey } from "./composerChrome";
 import { LazyHarnessNotice, lazyParts } from "./lazyParts";
 import { isSideChatId } from "../../workbench/sideChatState";
+import { isNewProjectChat } from "./newProjectChat";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 import { useApprovalSlot } from "./useApprovalSlot";
 import { useBoundChatComposer } from "./useBoundChatComposer";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
+import { useTerminalTurnFocus } from "./useTerminalTurnFocus";
 import {
   restoredSessionConfigView,
   withSessionConfigNotice,
@@ -195,19 +195,27 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     void acpActions.submit(prompt, [], bindingId, modelId, { retryOf: turnId });
   };
 
-  useTerminalComposerFocus({
-    acpPage,
-    activeAcpTurn,
-    focused,
+  useTerminalTurnFocus({
+    page: acpPage,
+    activeTurn: activeAcpTurn,
     actionBusy,
-    projectTransitioning,
     canPrompt,
+    focused,
+    projectTransitioning,
     surfaceRef,
     composerRef,
   });
   const firstSendPending = useWorkbenchStore((state) =>
     Boolean(chatId && state.pendingFirstSend?.chatId === chatId),
   );
+  const newChat = isNewProjectChat({
+    useNativeAcp,
+    page: acpPage,
+    project,
+    projectTransitioning,
+    ...acpHistory,
+    retentionIncomplete: acpRetentionIncomplete,
+  });
 
   return (
     <section
@@ -340,10 +348,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        // The project chip keeps one place in the toolbar before and after
-        // the first turn. A side chat belongs to its parent's project and
-        // cannot switch it, so it has no chip.
+        // A side chat belongs to its parent's project and cannot switch it.
         project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
+        newChat={newChat}
         usage={usage}
         usageRequest={usageRequest}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}

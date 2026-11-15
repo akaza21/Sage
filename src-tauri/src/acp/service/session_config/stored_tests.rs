@@ -150,6 +150,13 @@ fn failed_chat() -> AcpService {
         1,
     )
     .unwrap();
+    fail_session(&service);
+    service
+}
+
+/// The chat's only session fails before its runtime reported anything, as a
+/// failed activation leaves it: no head.
+fn fail_session(service: &AcpService) {
     service
         .database
         .connection()
@@ -161,7 +168,6 @@ fn failed_chat() -> AcpService {
              VALUES('project-restore',1,1,0,0,0,0,0);",
         )
         .unwrap();
-    service
 }
 
 /// Starts the chat's next session, as a send does.
@@ -242,4 +248,49 @@ fn the_session_started_after_a_failure_goes_on_from_it_on_the_same_binding_only(
         Some("session-restore")
     );
     assert_eq!(preceding(&failed_chat(), "claude-sdk"), None);
+}
+
+#[test]
+fn a_start_that_failed_before_its_session_reported_still_offers_every_listed_level() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    // The send that started the session carried a drafted High, which the
+    // binding listed for the model beside Low.
+    let model = sage_domain::harness::ModelOption {
+        id: "fixture-model".into(),
+        name: "Fixture".into(),
+        description: None,
+        is_default: Some(true),
+        context_window: None,
+        effort_levels: Some(vec!["low".into(), "high".into()]),
+    };
+    let offered = crate::acp::bindings::codex::launch_effort_option(&model, "high").unwrap();
+    assert!(service.remember_start_choice(
+        &owner(1).session_id,
+        &option("effort", "high"),
+        &offered
+    ));
+    fail_session(&service);
+    let restored = restored_page(&service);
+    assert_eq!(restored["awaiting"], "start");
+    let effort = &restored["configOptions"][0];
+    assert_eq!(effort["currentValue"], "high");
+    assert_eq!(
+        effort["options"],
+        json!([{"value":"low","name":"Low"},{"value":"high","name":"High"}])
+    );
+    // Low is chosen after the failure, and the session the next send starts
+    // takes Low, not the High it was drafted with.
+    service
+        .queue_session_config_choice(&owner(1).session_id, None, &option("effort", "low"))
+        .unwrap();
+    assert_eq!(
+        restored_page(&service)["configOptions"][0]["currentValue"],
+        "low"
+    );
+    assert_eq!(
+        start_next(&service, "opencode-acp", None),
+        [option("effort", "low")]
+    );
 }

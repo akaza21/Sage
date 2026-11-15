@@ -7,6 +7,7 @@ import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { nativePromptAttachments as port } from "../../ports/nativePromptAttachments";
 import type {
   PromptFileOwner,
+  PromptPick,
   StagedPromptFiles,
 } from "../../ports/promptAttachments";
 import {
@@ -150,6 +151,7 @@ export async function pickFiles(
   announce: Announce,
   /** A send is in flight and may consume the batch. */
   sending: boolean,
+  pick: PromptPick,
 ) {
   if (sending)
     return announce(
@@ -163,7 +165,7 @@ export async function pickFiles(
   try {
     const result = await port.stagePromptFiles({
       owner: target,
-      pick: "files",
+      pick,
       expectedRevision: staged.ref.current.revision,
     });
     if (!result) return;

@@ -209,6 +209,19 @@ describe("a thinking level drafted before a chat's session starts", () => {
     expect(useChatEffortDraft.getState().draft).toBeNull();
   });
 
+  it("sends no level for Default, which the harness then chooses", async () => {
+    useChatEffortDraft.setState({
+      draft: { chatId: scope.chatId, bindingId, modelId, effort: "default" },
+    });
+    const test = newChat();
+
+    await test.controller.submit("hello", [], bindingId, modelId);
+
+    expect(test.commands.startSession).toHaveBeenCalledWith(
+      expect.not.objectContaining({ effort: expect.anything() }),
+    );
+  });
+
   it("is not sent for another model", async () => {
     useChatEffortDraft.setState({
       draft: {

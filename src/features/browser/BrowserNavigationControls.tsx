@@ -1,11 +1,5 @@
-import {
-  ArrowLeft,
-  ArrowRight,
-  Ellipsis,
-  Lock,
-  RotateCw,
-  X,
-} from "../../ui/leanIcons";
+import { ArrowLeft, ArrowRight, Ellipsis, Lock, X } from "../../ui/leanIcons";
+import { RotateCw } from "../../ui/leanIconNodesLazy";
 
 import {
   useEffect,

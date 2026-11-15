@@ -169,6 +169,7 @@ export function NewChatDraftSurface({
           missingBindingNotice={false}
           disabledReason={null}
           project={project}
+          newChat
           usage={null}
           goal={{ kind: "unsupported" }}
           onSubmit={(event) => {

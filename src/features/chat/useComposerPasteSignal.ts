@@ -2,7 +2,10 @@ import { useCallback, useRef, useState, type ClipboardEvent } from "react";
 
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { utf8ByteLength } from "../../domain/text";
-import { PROMPT_ATTACHMENT_TOTAL_BYTES } from "../../ports/promptAttachments";
+import {
+  PROMPT_ATTACHMENT_TOTAL_BYTES,
+  type PromptPick,
+} from "../../ports/promptAttachments";
 import type { HeldInput } from "./pastedTextTypes";
 
 /** UTF-8 takes at most this many bytes per UTF-16 code unit. */
@@ -55,8 +58,11 @@ export function useComposerPasteSignal() {
     seq,
     /** Hands over everything held, oldest first, once. */
     take: useCallback(() => queue.current.splice(0), []),
-    /** Asks for native's file dialog, staged in order with held pastes. */
-    holdPick: useCallback(() => hold({ kind: "pick" }), [hold]),
+    /** Asks for native's dialog, staged in order with held pastes. */
+    holdPick: useCallback(
+      (pick: PromptPick) => hold({ kind: "pick", pick }),
+      [hold],
+    ),
     /** True when an edit is over the cap and was held back; never truncated. */
     holdEdit(next: string) {
       const bytes = overCap(next);

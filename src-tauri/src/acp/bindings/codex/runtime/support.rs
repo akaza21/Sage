@@ -150,37 +150,49 @@ pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<se
     if model.supported_efforts.is_empty() {
         return None;
     }
-    let options: Vec<_> = model
-        .supported_efforts
-        .iter()
-        .map(|effort| {
-            let name = effort.id.as_str();
-            let mut chars = name.chars();
-            let label = chars
-                .next()
-                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
-                .unwrap_or_default();
-            serde_json::json!({
-                "value":name,
-                "name":label,
-                "description":effort.description
-            })
-        })
-        .collect();
+    let mut option = effort_select(
+        model
+            .supported_efforts
+            .iter()
+            .map(|effort| (effort.id.as_str(), Some(effort.description.as_str()))),
+        current,
+    );
     let default = model.default_effort.as_ref().filter(|default| {
         model
             .supported_efforts
             .iter()
             .any(|effort| effort.id == **default)
     });
-    let mut option = serde_json::json!({
-        "id":super::model_config::EFFORT_CONFIG_ID, "name":"Thinking level", "category":"effort", "type":"select",
-        "currentValue":current, "options":options
-    });
     if let Some(default) = default {
         option["defaultValue"] = serde_json::json!(default);
     }
     Some(option)
+}
+
+/// The thread's thinking level option offering `levels` (each with its
+/// description, when known), set to `current`.
+pub(super) fn effort_select<'a>(
+    levels: impl Iterator<Item = (&'a str, Option<&'a str>)>,
+    current: &str,
+) -> serde_json::Value {
+    let options: Vec<_> = levels
+        .map(|(name, description)| {
+            let mut chars = name.chars();
+            let label = chars
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default();
+            let mut choice = serde_json::json!({"value":name, "name":label});
+            if let Some(description) = description {
+                choice["description"] = serde_json::json!(description);
+            }
+            choice
+        })
+        .collect();
+    serde_json::json!({
+        "id":super::model_config::EFFORT_CONFIG_ID, "name":"Thinking level", "category":"effort", "type":"select",
+        "currentValue":current, "options":options
+    })
 }
 
 /// A model Codex did not list (one its picker hides) is still the thread's,

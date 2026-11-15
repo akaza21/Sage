@@ -154,18 +154,16 @@ export function ChatTranscript({
       ? "New activity below. Jump to latest"
       : "Jump to latest";
   const forkedFrom = useNativeAcp ? page?.forkedFrom : undefined;
-  const showHome =
-    !forkedFrom &&
-    isNewProjectChat({
-      useNativeAcp,
-      page,
-      project,
-      projectTransitioning,
-      loadingEarlier,
-      historyError,
-      hasEarlier,
-      retentionIncomplete,
-    });
+  const showHome = isNewProjectChat({
+    useNativeAcp,
+    page,
+    project,
+    projectTransitioning,
+    loadingEarlier,
+    historyError,
+    hasEarlier,
+    retentionIncomplete,
+  });
   const historyFailure = historyError ?? firstPageError;
   const historyNotice = historyFailure ? (
     <div className="composer__notice" role="alert">

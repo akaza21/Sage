@@ -30,7 +30,6 @@ export function useComposerPaste(
     setStaged,
     armed,
     noticeId,
-    /** Files picked with the attach button join the same batch. */
     pickFiles: signal.holdPick,
     /** The staged batch a send carries, if any. */
     revision: staged?.revision,

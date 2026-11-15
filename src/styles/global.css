@@ -378,8 +378,7 @@
   --composer-control-hover: #444;
   --composer-muted-text: #a8a8a8;
   --composer-access-text: #c7c7c7;
-  --composer-access-write: #f27c27;
-  --composer-access-full: var(--color-danger);
+  --composer-access-full: var(--color-warning);
   --composer-send-text: #171717;
   --composer-send-hover: #e8e8e8;
   --composer-send-disabled-text: #606060;

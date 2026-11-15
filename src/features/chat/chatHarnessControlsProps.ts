@@ -1,4 +1,4 @@
-import type { ComponentProps, ReactNode } from "react";
+import type { ComponentProps } from "react";
 import type { ChatUsage } from "./acp/chatUsage";
 import type { ComposerContext } from "./ComposerContext";
 import type { ComposerAccessTarget } from "./chatComposerRegionProps";
@@ -20,7 +20,7 @@ export interface ChatHarnessControlsProps {
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
   accessTarget?: ComposerAccessTarget;
   addActions?: ComposerMenuActions;
-  attachSlot?: ReactNode;
+  optionsTriggerId?: string;
   availableBinding: boolean;
   canPrompt: boolean;
   modelLabelScope: string;

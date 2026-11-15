@@ -1,22 +1,28 @@
 import { useEffect, useRef, type RefObject } from "react";
 import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { terminalTurnStates } from "./acp";
-export function useTerminalComposerFocus({
-  acpPage,
-  activeAcpTurn,
-  focused,
+
+/**
+ * Once the chat's running turn ends, focus returns to the composer, or to
+ * that turn's status while the composer is disabled, unless the person has
+ * since moved focus elsewhere in the chat.
+ */
+export function useTerminalTurnFocus({
+  page,
+  activeTurn,
   actionBusy,
-  projectTransitioning,
   canPrompt,
+  focused,
+  projectTransitioning,
   surfaceRef,
   composerRef,
 }: {
-  acpPage: AcpChatPage | null | undefined;
-  activeAcpTurn: TurnProjection | null | undefined;
-  focused: boolean;
+  page: AcpChatPage | null | undefined;
+  activeTurn: TurnProjection | null | undefined;
   actionBusy: boolean;
-  projectTransitioning: boolean;
   canPrompt: boolean;
+  focused: boolean;
+  projectTransitioning: boolean;
   surfaceRef: RefObject<HTMLElement | null>;
   composerRef: RefObject<HTMLTextAreaElement | null>;
 }) {
@@ -25,13 +31,13 @@ export function useTerminalComposerFocus({
   useEffect(() => {
     const priorId = priorActiveTurnId.current;
     const priorTurn = priorId
-      ? acpPage?.turns.find((turn) => turn.id === priorId)
+      ? page?.turns.find((turn) => turn.id === priorId)
       : null;
     if (priorId && priorTurn && terminalTurnStates.has(priorTurn.state)) {
       terminalFocusTurnId.current = priorId;
-      priorActiveTurnId.current = activeAcpTurn?.id ?? null;
-    } else if (activeAcpTurn) {
-      priorActiveTurnId.current = activeAcpTurn.id;
+      priorActiveTurnId.current = activeTurn?.id ?? null;
+    } else if (activeTurn) {
+      priorActiveTurnId.current = activeTurn.id;
     } else if (priorId && !priorTurn) {
       priorActiveTurnId.current = null;
     }
@@ -56,11 +62,13 @@ export function useTerminalComposerFocus({
       if (target || preserveFocus) terminalFocusTurnId.current = null;
     }
   }, [
-    acpPage,
-    activeAcpTurn,
+    page,
+    activeTurn,
     actionBusy,
     canPrompt,
     focused,
     projectTransitioning,
+    surfaceRef,
+    composerRef,
   ]);
 }

@@ -1,3 +1,5 @@
+import type { PromptPick } from "../../ports/promptAttachments";
+
 /** What a send needs to know about the chat's staged batch. */
 export interface StagedSummary {
   /** The batch revision the next send names; null when nothing is staged. */
@@ -21,8 +23,7 @@ export interface HeldPaste {
  */
 export type HeldInput =
   | { kind: "paste"; paste: HeldPaste }
-  /** A pick from the attach button: native's file dialog adds to the batch. */
-  | { kind: "pick" }
+  | { kind: "pick"; pick: PromptPick }
   /** A paste over the attachment limit, refused when it was made. */
   | { kind: "overLimit"; bytes: number }
   /** A paste made while another was still held, refused when it was made. */
