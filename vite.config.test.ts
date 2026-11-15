@@ -325,6 +325,12 @@ const DEFERRED_CHAT_GROUPS: Record<string, readonly string[]> = {
     "src/app/newChatDraftActions.ts",
     "src/app/newChatDraftNavigation.ts",
     "src/features/chat/NewChatDraftSurface.tsx",
+    "src/features/chat/ChatAccessView.tsx",
+    "src/features/chat/endedSession.ts",
+    "src/features/chat/chatAccessChoice.ts",
+    "src/ports/chatAccessChanges.ts",
+    "src/features/chat/ChatSessionHeader.tsx",
+    "src/features/chat/SessionWorkingPill.tsx",
   ],
 };
 const GROUPED_DYNAMIC_FACADES = REQUIRED_DYNAMIC_FACADES.filter(
