@@ -37,6 +37,11 @@ export function installComposerImageFixture(
     });
   }
   let uploads = 0;
+  let refusedThumbnailReads = 0;
+  Object.defineProperty(window, "refusedThumbnailReads", {
+    configurable: true,
+    get: () => refusedThumbnailReads,
+  });
   Object.defineProperty(window, "__TAURI_INTERNALS__", {
     configurable: true,
     value: {
@@ -46,7 +51,10 @@ export function installComposerImageFixture(
         args: { request?: { label?: string; dataBase64?: string } },
       ) => {
         if (command === "read_chat_image_thumbnail") {
-          if (!thumbnails) throw new Error("thumbnail unavailable");
+          if (!thumbnails) {
+            refusedThumbnailReads += 1;
+            throw new Error("thumbnail unavailable");
+          }
           const canvas = document.createElement("canvas");
           canvas.width = 48;
           canvas.height = 48;

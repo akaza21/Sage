@@ -168,3 +168,21 @@ it("releases every thumbnail when the composer unmounts", async () => {
 
   expect(urls.revoke).toHaveBeenCalledWith("blob:thumbnail-1");
 });
+
+it("stops showing a released thumbnail even if the restored image's thumbnail cannot be read", async () => {
+  stubObjectUrls();
+  seedChat();
+  transfer.read
+    .mockResolvedValueOnce(new Blob(["png"]))
+    .mockResolvedValueOnce(null);
+  const view = renderAttachments();
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
+  );
+
+  view.rerender({ contexts: [] });
+  view.rerender({ contexts: [image] });
+  await waitFor(() => expect(transfer.read).toHaveBeenCalledTimes(2));
+
+  expect(view.result.current.imagePreviews).toEqual({});
+});

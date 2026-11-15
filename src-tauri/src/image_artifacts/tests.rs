@@ -380,3 +380,48 @@ fn uploads_queue_for_one_image_work_permit_without_holding_the_project_lock() {
             let _ = std::fs::remove_dir_all(root);
         });
 }
+
+#[test]
+fn a_thumbnail_an_earlier_build_kept_whole_is_rebuilt_as_a_chip_thumbnail() {
+    let directory =
+        std::env::temp_dir().join(format!("sage-image-legacy-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir(&directory).unwrap();
+    let database = Database::open(&directory.join("sage.db")).unwrap();
+    let connection = database.connection();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    let root = database.image_artifact_root().unwrap();
+    // Past the new thumbnail's size, and tiny but with large dimensions.
+    let mut flat = Vec::new();
+    {
+        let mut encoder = png::Encoder::new(&mut flat, 2048, 2048);
+        encoder.set_color(png::ColorType::Rgb);
+        encoder
+            .write_header()
+            .unwrap()
+            .write_image_data(&vec![90; 2048 * 2048 * 3])
+            .unwrap();
+    }
+    for bytes in [super::noise_png(200, 200), flat] {
+        let image = super::ingest_test_image(&connection, root, "p", "c", &bytes).unwrap();
+        std::fs::write(root.join(format!("{}.thumb", image.artifact_id)), &bytes).unwrap();
+        connection
+            .execute(
+                "UPDATE chat_image_artifacts SET thumbnail_bytes=?1,thumbnail_sha256=?2 WHERE id=?3",
+                rusqlite::params![
+                    bytes.len() as i64,
+                    format!("{:x}", <sha2::Sha256 as sha2::Digest>::digest(&bytes)),
+                    image.artifact_id
+                ],
+            )
+            .unwrap();
+
+        let thumbnail =
+            read_image_thumbnail(&connection, root, "p", "c", &image.artifact_id).unwrap();
+
+        assert_eq!(super::png_dimensions(&thumbnail), (48, 48));
+    }
+    drop(connection);
+    drop(database);
+    std::fs::remove_dir_all(directory).unwrap();
+}

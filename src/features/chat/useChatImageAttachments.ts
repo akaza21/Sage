@@ -36,11 +36,22 @@ export function useChatImageAttachments(
   useEffect(() => {
     const ids = new Set(imageIds.split(","));
     const loaded = thumbnails.current;
+    const publish = () =>
+      setImagePreviews(
+        Object.fromEntries(
+          [...loaded].filter((entry): entry is [string, string] =>
+            Boolean(entry[1]),
+          ),
+        ),
+      );
+    let pruned = false;
     for (const [id, url] of loaded) {
       if (ids.has(id)) continue;
       if (url) URL.revokeObjectURL(url);
       loaded.delete(id);
+      pruned = true;
     }
+    if (pruned) publish();
     const state = useWorkbenchStore.getState();
     const owner = chatId ?? state.activeTabId ?? undefined;
     const intent = owner ? state.captureChatOwnership(owner) : null;
@@ -55,13 +66,7 @@ export function useChatImageAttachments(
         .then((thumbnail) => {
           if (!thumbnail || loaded.get(id) !== null) return;
           loaded.set(id, URL.createObjectURL(thumbnail));
-          setImagePreviews(
-            Object.fromEntries(
-              [...loaded].filter((entry): entry is [string, string] =>
-                Boolean(entry[1]),
-              ),
-            ),
-          );
+          publish();
         });
     }
   }, [chatId, imageIds]);

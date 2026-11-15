@@ -98,8 +98,14 @@ test("an image whose thumbnail cannot be read still attaches, without a preview"
   await page.setViewportSize({ width: 1280, height: 800 });
   await prepare(page, true, false);
   await pasteScreenshot(page);
+  await page.waitForFunction(
+    () =>
+      (window as unknown as { refusedThumbnailReads: number })
+        .refusedThumbnailReads === 1,
+  );
+  // The refusal settles in microtasks; let them run before asserting.
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve)));
   const composer = page.locator("form.composer").first();
-  await expect(composer).toHaveAttribute("aria-busy", "false");
   await expect(
     composer.getByRole("button", {
       name: "Remove Image · screenshot.png context",
