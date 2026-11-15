@@ -19,12 +19,8 @@ import type { AccessView } from "./ComposerAccessControl";
 import type { EndedSession } from "./endedSession";
 
 /**
- * A chat's access before its next session exists: the access drafted for
- * this chat and harness, else the access its last session hands on, else
- * the harness default. Every mode the harness offers a chat can be drafted;
- * the draft is given to the session as soon as it starts, before the first
+ * The draft is given to the session as soon as it starts, before the first
  * prompt is sent, and Auto and Full access are confirmed natively then.
- * Without a chat to hold it, nothing can be chosen.
  */
 export function ChatAccessDraftSelection({
   bindingId,

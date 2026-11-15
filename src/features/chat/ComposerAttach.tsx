@@ -6,9 +6,8 @@ import { MenuPopover } from "../../ui/MenuPopover";
 import type { ImageAction } from "./useComposerImageInput";
 
 /**
- * Why files cannot be staged for this chat's next message, or null. Native
- * admission treats an absent capability as unsupported; a chat without a
- * session yet is checked again when its first message starts one.
+ * Native admission treats an absent capability as unsupported; a chat without
+ * a session yet is checked again when its first message starts one.
  */
 function refusal(chatId: string): string | null {
   if (!isTauriRuntime())
@@ -22,13 +21,6 @@ function refusal(chatId: string): string | null {
     : null;
 }
 
-/**
- * Lazy: loads with the first press of the attach button. Says why files
- * cannot be attached here, offers images beside files when the harness
- * takes images, and asks for native's file dialog. The picked files join
- * the chat's one staged batch, which the paste part stages, shows and
- * sends, so pasted text and picked files go with the same message.
- */
 export function ComposerAttach({
   chatId,
   presses,
@@ -39,13 +31,9 @@ export function ComposerAttach({
   chatId: string;
   /** Presses of the attach button so far; each is taken once. */
   presses: number;
-  /**
-   * The attach button, which anchors the menu. It is set before this part
-   * mounts, so the menu is placed from its first commit.
-   */
+  /** Set before this part mounts, so the menu is placed from its first commit. */
   triggerRef: RefObject<HTMLButtonElement | null>;
   imageAction?: ImageAction;
-  /** Asks the batch's owner for native's file dialog. */
   onPick: () => void;
 }) {
   const [notice, setNotice] = useState("");
@@ -58,8 +46,6 @@ export function ComposerAttach({
     setNotice("");
     setMenuOpen(false);
   }
-  // Each press is taken once: it opens the menu, says why files cannot be
-  // attached, or asks for the native picker, which opens once per ask.
   const [taken, setTaken] = useState(0);
   const [picks, setPicks] = useState(0);
   if (presses !== taken) {

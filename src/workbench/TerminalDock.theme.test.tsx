@@ -33,7 +33,6 @@ const handle = {
 const appStylesheet = substituteRootTokens(
   readFileSync("src/styles/global.css", "utf8"),
 );
-// The styles the running app gives the dock: xterm's own and the dock's.
 const dockStylesheets = [
   "node_modules/@xterm/xterm/css/xterm.css",
   "src/workbench/terminal-dock.css",
@@ -110,7 +109,6 @@ function stubMatchMedia() {
   });
 }
 
-/** The live xterm the dock opened, observed without replacing it. */
 let opened: ReturnType<typeof vi.spyOn>;
 
 function mountedTerminal(): Terminal {
@@ -118,7 +116,6 @@ function mountedTerminal(): Terminal {
   return opened.mock.contexts[0] as Terminal;
 }
 
-/** A declaration from the stylesheet xterm's DOM renderer injected. */
 function rendered(selector: string, property: string): string | undefined {
   const css = Array.from(
     document.querySelectorAll("style"),
@@ -134,9 +131,8 @@ function rendered(selector: string, property: string): string | undefined {
 }
 
 /**
- * The colour the viewport behind the rows computes to. jsdom keeps `var()`
- * unresolved in computed values and does not inherit custom properties, so a
- * token reference is resolved here from the root, where the theme defines it.
+ * jsdom keeps `var()` unresolved in computed values and does not inherit
+ * custom properties, so a token reference is resolved here from the root.
  */
 function viewportBackground(container: HTMLElement): string {
   const viewport = container.querySelector(".xterm-viewport")!;
@@ -220,7 +216,6 @@ it("renders in the app theme's canvas, text, selection and mono font", async () 
         .style.backgroundColor,
     ).toBe("rgb(20, 20, 20)"),
   );
-  // The part-row under the last whole row shows the viewport.
   expect(viewportBackground(container)).toBe("#141414");
   const faces = String(rendered(".xterm-rows", "font-family"))
     .split(",")

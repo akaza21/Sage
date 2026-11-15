@@ -30,7 +30,6 @@ export function ComposerAttachButton({
 }) {
   return (
     <IconButton
-      // Anchors the attach menu.
       ref={triggerRef}
       id={`${fieldId}-attach`}
       className="composer__plus"
@@ -56,17 +55,14 @@ export function ComposerFileParts({
   disabled,
 }: {
   files: FileContext;
-  /** The attach button, which the attach menu anchors on. */
   triggerRef: RefObject<HTMLButtonElement | null>;
   chatId: string;
   fieldRef: RefObject<HTMLTextAreaElement | null>;
   fieldId: string;
   text: string;
   imageAction?: ImageAction;
-  /** Hands a pick to the chat's staged batch, which the paste part owns. */
   onPickFiles: () => void;
   hidden: boolean;
-  /** The field cannot be edited. */
   disabled: boolean;
 }) {
   return (
