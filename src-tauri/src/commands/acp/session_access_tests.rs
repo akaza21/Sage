@@ -436,3 +436,70 @@ fn a_refused_activation_shows_the_access_its_retry_runs_under() {
     assert_eq!(session_chat_access(&state, &b).unwrap(), shown);
     assert_eq!(state.settings.chat_access("session-b").unwrap(), shown);
 }
+
+/// A chat on OpenCode whose first session holds Read-only, under a broader
+/// binding default, followed by sessions that ran no turn: `sessions` in
+/// all. Returns the state and the last session.
+#[cfg(windows)]
+fn read_only_chat_of(sessions: usize) -> (AppState, SageAgentSessionId, std::path::PathBuf) {
+    let (state, project, chat, root) =
+        crate::commands::tests::state_with_internal_opencode_registry();
+    for ordinal in 0..sessions {
+        state
+            .database
+            .connection()
+            .execute(
+                "INSERT INTO agent_sessions(id,project_id,chat_id,ordinal,binding_id,
+                   binding_digest,capabilities_json,state,residency,terminal_at,created_at,
+                   updated_at)
+                 VALUES(?1,?2,?3,?4,'opencode-acp',?5,'{}','failed','cold',1,1,1)",
+                rusqlite::params![
+                    format!("session-{ordinal}"),
+                    project,
+                    chat,
+                    ordinal as i64,
+                    "a".repeat(64)
+                ],
+            )
+            .unwrap();
+    }
+    state
+        .settings
+        .set_chat_access("session-0", SessionAccessMode::ReadOnly, 1)
+        .unwrap();
+    state
+        .settings
+        .set_session_access_modes(&std::collections::BTreeMap::from([(
+            "opencode-acp".to_owned(),
+            SessionAccessMode::WorkspaceWrite,
+        )]))
+        .unwrap();
+    let last = session(&format!("session-{}", sessions - 1));
+    (state, last, root)
+}
+
+#[cfg(windows)]
+#[test]
+fn a_prompt_after_a_chats_full_run_of_failed_starts_keeps_its_access() {
+    let limit = sage_core::limits::LIMITS.durable.sessions_per_chat as usize;
+    let (state, last, root) = read_only_chat_of(limit);
+    assert_eq!(
+        turn_access_mode(&state, "opencode-acp", &last).unwrap(),
+        SessionAccessMode::ReadOnly
+    );
+    drop(state);
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[cfg(windows)]
+#[test]
+fn a_prompt_whose_inherited_access_cannot_be_resolved_is_refused() {
+    // More sessions than a chat holds: the walk stops at the limit, and the
+    // prompt is refused rather than run under the broader default.
+    let limit = sage_core::limits::LIMITS.durable.sessions_per_chat as usize;
+    let (state, last, root) = read_only_chat_of(limit + 1);
+    assert!(turn_access_mode(&state, "opencode-acp", &last).is_err());
+    assert_eq!(state.settings.chat_access(last.as_str()).unwrap(), None);
+    drop(state);
+    std::fs::remove_dir_all(root).unwrap();
+}

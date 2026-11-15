@@ -310,6 +310,23 @@ fn child_exit_after_item_completion_fails_the_turn_and_ends_the_runtime_epoch() 
             (turn_state.as_str(), delivery_state.as_str()),
             ("failed", "correlated")
         );
+        let (reason_kind, reason_message): (String, Option<String>) = setup
+            .service
+            .database
+            .connection()
+            .query_row(
+                "SELECT kind, message FROM acp_turn_terminal_reasons WHERE turn_id=?1",
+                rusqlite::params![turn_id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(reason_kind, "harnessExited");
+        assert!(
+            reason_message
+                .as_deref()
+                .is_some_and(|message| message.starts_with("harness process exited with code 17")),
+            "message={reason_message:?}"
+        );
 
         let items = session_items(&setup, &owner);
         let harness_completed = items

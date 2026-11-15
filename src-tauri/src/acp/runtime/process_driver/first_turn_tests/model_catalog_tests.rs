@@ -144,6 +144,7 @@ fn idle_worker_hydrates_model_catalog_and_bounds_pagination() {
                 },
                 control: NoChildProcessControl {
                     zero_checks: Arc::new(AtomicUsize::new(0)),
+                    harness_error: None,
                 },
                 owner: fixture.owner.clone(),
                 clock: Arc::new(SystemDriverClock),
@@ -304,6 +305,7 @@ fn idle_catalog_keeps_exact_aggregate_limits_and_ignores_one_more_model_without_
             ),
             control: NoChildProcessControl {
                 zero_checks: Arc::new(AtomicUsize::new(0)),
+                harness_error: None,
             },
             owner: RuntimeOwner {
                 project_id,

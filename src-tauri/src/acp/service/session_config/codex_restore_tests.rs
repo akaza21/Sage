@@ -417,6 +417,34 @@ fn a_new_threads_first_prompt_carries_the_level_chosen_before_the_session_existe
     service.shutdown_blocking().unwrap();
 }
 
+#[test]
+fn a_level_the_catalogue_no_longer_offers_is_not_sent_on_a_new_threads_first_prompt() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    let owner = owner(1);
+    // Taken over from the chat's last session, before the catalogue dropped it.
+    store(&service, &owner, &[option("effort", "xhigh")]);
+    let slot = &service.lane_at(0).runtime;
+    slot.reserve_start(owner.clone()).unwrap();
+    slot.config.mark_new_session(&owner);
+    let runtime = Arc::new(Mutex::new(started(
+        &service,
+        &owner,
+        Arc::clone(&slot.config),
+    )));
+    let list = go_live(&service, &owner, &runtime);
+    runtime
+        .lock()
+        .unwrap()
+        .ingest(&frame(&catalogue(&list)), &Mapper)
+        .unwrap();
+    let first = prompt(&service, &owner, &runtime, "first");
+    assert_eq!(first["method"], "turn/start");
+    assert!(first["params"].get("effort").is_none(), "{first}");
+    service.shutdown_blocking().unwrap();
+}
+
 /// What one restore takes, as a share of the budget a wait for the
 /// session's options may use: a restore that waited took all of it.
 fn restore_share(service: &AcpService, owner: &RuntimeOwner) -> f64 {

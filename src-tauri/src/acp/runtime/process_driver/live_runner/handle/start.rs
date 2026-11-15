@@ -13,8 +13,9 @@ use crate::acp::{
     },
 };
 
-use crate::acp::runtime::process_driver::{
-    ActivationStartupStep, DriverMailbox, FirstTurnWorkerContext, StdinTransport,
+use crate::acp::runtime::{
+    ActivationStartupStep,
+    process_driver::{DriverMailbox, FirstTurnWorkerContext, StdinTransport},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -31,6 +32,7 @@ pub(crate) enum RunnerStartSubstep {
         reason = "consumers handle this variant; nothing produces it yet"
     )]
     Permission,
+    ActivationCommit,
     ReadyHandoff,
     Timeout,
     #[allow(
@@ -48,6 +50,7 @@ impl From<ActivationStartupStep> for RunnerStartSubstep {
             ActivationStartupStep::SessionNew => Self::SessionNew,
             ActivationStartupStep::SessionResume => Self::SessionResume,
             ActivationStartupStep::SessionLoad => Self::SessionLoad,
+            ActivationStartupStep::ActivationCommit => Self::ActivationCommit,
             ActivationStartupStep::ReadyHandoff => Self::ReadyHandoff,
         }
     }

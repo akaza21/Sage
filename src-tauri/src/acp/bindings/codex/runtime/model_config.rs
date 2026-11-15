@@ -48,10 +48,8 @@ impl ModelCatalog {
 impl CodexRuntime {
     pub(super) fn discard_invalid_model_page(
         &mut self,
-        frame: &crate::acp::transport::Frame,
+        id: u64,
     ) -> Result<crate::acp::bindings::adapter::AdapterBatch, AdapterRuntimeError> {
-        let id = crate::acp::bindings::adapter::response_id_for_discard(frame)
-            .ok_or(AdapterRuntimeError::Frame)?;
         if self.inner.fork_pending() == Some(id) {
             // A fork answer beyond the structural bound is also beyond what
             // `thread/resume` could later load, so no Chat is made for it.
@@ -107,16 +105,42 @@ impl CodexRuntime {
         self.launch_effort.starting = self.launch_effort.bound.clone();
     }
 
-    /// Adopts what `thread/start` or `thread/resume` answered. Its level is
-    /// the reported one, else on a new thread the bound one, which its first
-    /// `turn/start` then carries.
+    /// Adopts what `thread/start` or `thread/resume` answered. A reported
+    /// level is the thread's own; without one a new thread takes the bound
+    /// level once the catalogue lists it for the thread's model (see
+    /// `settle_launch_effort`), and its first `turn/start` then carries it.
     pub(super) fn adopt_ready_settings(
         &mut self,
         model: Option<ModelId>,
         reported: Option<sage_acp_protocol::contract::RequiredText<512>>,
     ) {
-        let starting = self.launch_effort.starting.take();
-        self.adopt_reported_settings(model, reported.or(starting));
+        self.adopt_reported_settings(model, reported);
+        self.settle_launch_effort();
+    }
+
+    /// Gives a new thread its bound level once the catalogue lists the
+    /// thread's model, and only when that model still offers it: a level the
+    /// catalogue dropped since it was stored is never sent, and the thread
+    /// keeps Codex's own level, which the restore then waits to be reported.
+    fn settle_launch_effort(&mut self) {
+        let Some(model) = self
+            .selected_model
+            .as_ref()
+            .filter(|model| self.reported_model_id.as_ref() == Some(&model.id))
+        else {
+            return;
+        };
+        let Some(level) = self.launch_effort.starting.take() else {
+            return;
+        };
+        if self.selected_effort.is_none()
+            && model
+                .supported_efforts
+                .iter()
+                .any(|offered| offered.id == level)
+        {
+            self.apply_effort(level);
+        }
     }
 
     pub(super) fn catalogue_pending(&self) -> bool {
@@ -133,6 +157,10 @@ impl CodexRuntime {
         model: Option<ModelId>,
         effort: Option<sage_acp_protocol::contract::RequiredText<512>>,
     ) {
+        // A level Codex reports is the thread's own, over any bound one.
+        if effort.is_some() {
+            self.launch_effort.starting = None;
+        }
         if let Some(model) = &model {
             if self.selected_model_id.as_ref() != Some(model) {
                 self.selected_effort = None;
@@ -369,6 +397,7 @@ impl CodexRuntime {
             self.selected_model = Some(model.clone());
         }
         self.refresh_model_config();
+        self.settle_launch_effort();
         if self.model_catalog_idle_only {
             (AdapterEvent::IgnoredLate, None)
         } else {

@@ -13,6 +13,7 @@ use crate::acp::{
 };
 use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
+    lifecycle::TurnTerminalOutcome,
     scheduler::{RuntimeOwner, Scheduler, SchedulerError, TreeLease},
 };
 
@@ -816,7 +817,7 @@ mod tests {
 
             let (error, proof) = h
                 .coordinator
-                .recover_runtime_after_zero_process_retained(owner("one", 1), proof)
+                .recover_runtime_after_zero_process_retained(owner("one", 1), proof, lost())
                 .unwrap_err();
             assert!(matches!(
                 error,
@@ -825,7 +826,7 @@ mod tests {
             assert!(h.scheduler.active().unwrap().turn_reserved);
 
             h.coordinator
-                .recover_runtime_after_zero_process_retained(owner("one", 1), proof)
+                .recover_runtime_after_zero_process_retained(owner("one", 1), proof, lost())
                 .unwrap();
             assert!(h.scheduler.active().is_none());
             assert_eq!(h.mailbox.take().unwrap().projection_revision, revision(4));
@@ -866,14 +867,14 @@ mod tests {
 
             let (error, proof) = h
                 .coordinator
-                .recover_runtime_after_zero_process_retained(owner("one", 1), proof)
+                .recover_runtime_after_zero_process_retained(owner("one", 1), proof, lost())
                 .unwrap_err();
             assert!(matches!(error, SessionCoordinatorError::BootstrapRequired));
             assert!(h.scheduler.active().is_some());
             h.mailbox.take();
 
             h.coordinator
-                .recover_runtime_after_zero_process_retained(owner("one", 1), proof)
+                .recover_runtime_after_zero_process_retained(owner("one", 1), proof, lost())
                 .unwrap();
             assert!(h.scheduler.active().is_none());
             assert_eq!(h.mailbox.take().unwrap().projection_revision, revision(4));
@@ -882,12 +883,17 @@ mod tests {
                 .recover_runtime_after_zero_process_retained(
                     owner("one", 1),
                     ZeroProcessProof::confirmed(owner("one", 1)),
+                    lost(),
                 )
                 .unwrap();
             assert!(h.scheduler.active().is_none());
             assert_eq!(h.mailbox.take().unwrap().projection_revision, revision(4));
             h.finish().await;
         });
+    }
+
+    fn lost() -> TurnTerminalOutcome {
+        sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited.into()
     }
 
     fn runtime() -> tokio::runtime::Runtime {
