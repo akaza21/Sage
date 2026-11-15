@@ -136,7 +136,7 @@ fn image_rows_leave_in_bounded_batches_and_files_only_after_commit() {
     let artifact_root = database.image_artifact_root().unwrap().to_path_buf();
     let images = (0..5)
         .map(|index| {
-            crate::image_artifacts::insert_test_image(
+            sage_images::insert_test_image(
                 &database.connection(),
                 &artifact_root,
                 &project,

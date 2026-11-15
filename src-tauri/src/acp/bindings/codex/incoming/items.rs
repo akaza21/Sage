@@ -1,9 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    image_admit::{ImageAdmitError, admit_image_data_url},
-    runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url},
-};
+use crate::acp::runtime::host_browse::{CURATED_BROWSE_TOOL_NAME, admit_browse_url};
 use sage_acp_protocol::{
     command_output::retain_command_output,
     contract::{BoundedVec, SafeText},
@@ -12,6 +9,7 @@ use sage_acp_protocol::{
     lifecycle::{ItemLifecycle, ToolState},
 };
 use sage_core::limits::LIMITS;
+use sage_images::admit::{ImageAdmitError, admit_image_data_url};
 
 use super::super::{CODEX_BROWSE_TOOL_NAME, state::MaterializedCommandItem};
 use super::{

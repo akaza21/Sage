@@ -8,11 +8,9 @@ use sage_core::{
 use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    acp::attached_context::{AttachedContext, AttachedContexts},
-    image_artifacts::verify_image_reference,
-};
+use crate::acp::attached_context::{AttachedContext, AttachedContexts};
 use sage_db::database::Database;
+use sage_images::verify_image_reference;
 
 const MAX_PROMPTS: usize = 8;
 const MAX_PROMPT_BYTES: usize = 16 * 1024;
@@ -237,7 +235,7 @@ impl ChatQueueStore for Database {
         if !retired.is_empty() {
             let root = self.image_artifact_root()?;
             for id in retired {
-                let _ = crate::acp::migration::remove_image_file(&root.join(format!("{id}.full")));
+                let _ = sage_images::remove_image_file(&root.join(format!("{id}.full")));
             }
         }
         Ok(())

@@ -96,7 +96,7 @@ fn archived_chat_with_history(fixture: &Fixture) -> (String, String) {
             )
             .unwrap();
     }
-    let image = crate::image_artifacts::insert_test_image(
+    let image = sage_images::insert_test_image(
         &database.connection(),
         database.image_artifact_root().unwrap(),
         project,

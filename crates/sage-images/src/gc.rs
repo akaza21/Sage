@@ -6,7 +6,7 @@ use sage_db::error::SqliteResultExt;
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::acp::migration;
+use crate::files::{read_image_file, remove_image_file};
 
 use super::store::{full_path, thumb_path, validate_root};
 
@@ -16,7 +16,7 @@ fn verify_file(path: &Path, expected_length: i64, expected_hash: &str, cap: u64)
             "image artifact metadata is invalid".into(),
         ));
     }
-    let bytes = migration::read_image_file(path, cap)?;
+    let bytes = read_image_file(path, cap)?;
     if bytes.len() != expected_length as usize
         || format!("{:x}", Sha256::digest(&bytes)) != expected_hash
     {
@@ -48,7 +48,7 @@ fn owned_stage(file_name: &str) -> bool {
         && Uuid::parse_str(nonce).is_ok_and(|id| id.to_string() == nonce)
 }
 
-pub(crate) fn reconcile_image_artifacts(connection: &Connection, root: &Path) -> AppResult<()> {
+pub fn reconcile_image_artifacts(connection: &Connection, root: &Path) -> AppResult<()> {
     validate_root(root)?;
     connection
         .execute(
@@ -92,7 +92,7 @@ pub(crate) fn reconcile_image_artifacts(connection: &Connection, root: &Path) ->
         let name = entry.file_name();
         let Some(name) = name.to_str() else { continue };
         if owned_stage(name) {
-            migration::remove_image_file(&entry.path())?;
+            remove_image_file(&entry.path())?;
             continue;
         }
         let Some((id, full)) = artifact_id(name) else {
@@ -107,42 +107,8 @@ pub(crate) fn reconcile_image_artifacts(connection: &Connection, root: &Path) ->
             .optional()
             .db()?;
         if lifecycle.is_none() || (full && lifecycle.as_deref() == Some("retired")) {
-            migration::remove_image_file(&entry.path())?;
+            remove_image_file(&entry.path())?;
         }
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn reconciliation_removes_owned_orphans_and_rejects_live_corruption() {
-        let opened = migration::open_or_migrate(Path::new(":memory:")).unwrap();
-        let (connection, _) = opened.into_parts();
-        connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
-        connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
-        let root = std::env::temp_dir()
-            .join(format!("sage-image-gc-{}", Uuid::new_v4()))
-            .join("image-artifacts");
-        let image =
-            crate::image_artifacts::insert_test_image(&connection, &root, "p", "c", "image.png");
-        connection
-            .execute(
-                "UPDATE chat_image_artifacts SET lifecycle='queued',queue_id='q1' WHERE id=?1",
-                [&image.artifact_id],
-            )
-            .unwrap();
-        let orphan = full_path(&root, &Uuid::new_v4().to_string());
-        fs::write(&orphan, b"orphan").unwrap();
-        reconcile_image_artifacts(&connection, &root).unwrap();
-        assert!(!orphan.exists());
-        fs::write(full_path(&root, &image.artifact_id), b"tampered").unwrap();
-        assert!(reconcile_image_artifacts(&connection, &root).is_err());
-        fs::remove_file(full_path(&root, &image.artifact_id)).unwrap();
-        fs::remove_file(thumb_path(&root, &image.artifact_id)).unwrap();
-        fs::remove_dir(&root).unwrap();
-        fs::remove_dir(root.parent().unwrap()).unwrap();
-    }
 }

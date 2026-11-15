@@ -103,7 +103,7 @@ impl ChatPurgeStore for Database {
         };
         // Files go only once their rows are gone for good. A crash before
         // this leaves orphan files that startup reconciliation
-        // (image_artifacts::reconcile_image_artifacts) removes.
+        // (sage_images::reconcile_image_artifacts) removes.
         remove_image_files(self, &images);
         Ok(())
     }
@@ -116,9 +116,7 @@ fn remove_image_files(database: &Database, ids: &[String]) {
     for id in ids {
         if uuid::Uuid::parse_str(id).is_ok_and(|uuid| uuid.to_string() == *id) {
             for extension in ["full", "thumb"] {
-                let _ = crate::acp::migration::remove_image_file(
-                    &root.join(format!("{id}.{extension}")),
-                );
+                let _ = sage_images::remove_image_file(&root.join(format!("{id}.{extension}")));
             }
         }
     }

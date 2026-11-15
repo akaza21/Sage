@@ -9,7 +9,7 @@ use sage_core::limits::LIMITS;
 const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ImageAdmitError {
+pub enum ImageAdmitError {
     MissingBytes,
     InvalidBase64,
     UnsupportedMediaType,
@@ -17,7 +17,7 @@ pub(crate) enum ImageAdmitError {
 }
 
 impl ImageAdmitError {
-    pub(crate) fn unsupported_summary(self) -> &'static str {
+    pub fn unsupported_summary(self) -> &'static str {
         match self {
             Self::MissingBytes => "Image payload is missing",
             Self::InvalidBase64 => "Image payload is not valid base64",
@@ -27,12 +27,12 @@ impl ImageAdmitError {
     }
 }
 
-pub(crate) fn admit_image_data_url(url: &str) -> Result<NormalizedPayload, ImageAdmitError> {
+pub fn admit_image_data_url(url: &str) -> Result<NormalizedPayload, ImageAdmitError> {
     let (media_type, data) = split_data_url(url)?;
     admit_image_parts(media_type, data)
 }
 
-pub(crate) fn admit_image_parts(
+pub fn admit_image_parts(
     media_type: ImageMediaType,
     encoded: &str,
 ) -> Result<NormalizedPayload, ImageAdmitError> {
@@ -57,7 +57,7 @@ pub(crate) fn admit_image_parts(
     Ok(payload)
 }
 
-pub(crate) fn image_data_url(
+pub fn image_data_url(
     media_type: ImageMediaType,
     data: &str,
 ) -> Result<SafeText<262144>, sage_acp_protocol::contract::ContractError> {

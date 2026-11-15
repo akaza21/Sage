@@ -9,7 +9,7 @@ static IMAGE_WORK: Semaphore = Semaphore::const_new(IMAGE_WORK_PERMITS);
 
 /// Waits for a share of the image-work memory budget. Hold the permit until
 /// the decoded pixels are freed.
-pub(crate) async fn image_work_permit() -> SemaphorePermit<'static> {
+pub async fn image_work_permit() -> SemaphorePermit<'static> {
     match IMAGE_WORK.acquire().await {
         Ok(permit) => permit,
         // The semaphore is a static that is never closed.
@@ -17,7 +17,7 @@ pub(crate) async fn image_work_permit() -> SemaphorePermit<'static> {
     }
 }
 
-#[cfg(test)]
-pub(crate) fn image_work_available() -> usize {
+#[cfg(feature = "test-support")]
+pub fn image_work_available() -> usize {
     IMAGE_WORK.available_permits()
 }

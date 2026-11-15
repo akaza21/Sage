@@ -4,14 +4,14 @@ use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
-use crate::image_attachment::{ImageAttachedContext, ImageAttachmentKind};
+use crate::attachment::{ImageAttachedContext, ImageAttachmentKind};
 use sage_acp_protocol::intent::ImageMediaType;
 
 use super::store::{full_path, thumb_path, validate_root};
 
 const PNG: &[u8] = b"\x89\x50\x4e\x47\x0d\x0a\x1a\x0a\x00\x00\x00\x0d\x49\x48\x44\x52\x00\x00\x00\x01\x00\x00\x00\x01\x08\x04\x00\x00\x00\xb5\x1c\x0c\x02\x00\x00\x00\x0b\x49\x44\x41\x54\x78\xda\x63\xfc\xff\x1f\x00\x03\x03\x02\x00\xef\xa2\xa7\x5b\x00\x00\x00\x00\x49\x45\x4e\x44\xae\x42\x60\x82";
 
-pub(crate) fn insert_test_image(
+pub fn insert_test_image(
     connection: &Connection,
     root: &Path,
     project_id: &str,
@@ -45,7 +45,7 @@ pub(crate) fn insert_test_image(
     }
 }
 
-pub(crate) fn ingest_test_image(
+pub fn ingest_test_image(
     connection: &Connection,
     root: &Path,
     project_id: &str,
@@ -78,7 +78,7 @@ fn encode_rgb(width: u32, height: u32, pixels: &[u8]) -> Vec<u8> {
     bytes
 }
 
-pub(crate) fn screenshot_png(width: u32, height: u32) -> Vec<u8> {
+pub fn screenshot_png(width: u32, height: u32) -> Vec<u8> {
     let mut pixels = Vec::with_capacity(width as usize * height as usize * 3);
     for y in 0..height {
         for x in 0..width {
@@ -102,7 +102,7 @@ pub(crate) fn screenshot_png(width: u32, height: u32) -> Vec<u8> {
     encode_rgb(width, height, &pixels)
 }
 
-pub(crate) fn noise_png(width: u32, height: u32) -> Vec<u8> {
+pub fn noise_png(width: u32, height: u32) -> Vec<u8> {
     let mut state = 0x2545_f491_u32;
     let pixels = (0..width as usize * height as usize * 3)
         .map(|_| {
@@ -115,7 +115,7 @@ pub(crate) fn noise_png(width: u32, height: u32) -> Vec<u8> {
     encode_rgb(width, height, &pixels)
 }
 
-pub(crate) fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
+pub fn png_dimensions(bytes: &[u8]) -> (u32, u32) {
     let reader = png::Decoder::new(std::io::Cursor::new(bytes))
         .read_info()
         .unwrap();

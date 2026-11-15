@@ -18,7 +18,7 @@ use sage_core::limits::{
 /// Where a normalised image goes: its long edge, its byte bound, and the size
 /// up to which lossless PNG is kept before a smaller JPEG is preferred.
 #[derive(Debug, Clone, Copy)]
-pub(crate) struct Bounds {
+pub struct Bounds {
     pub edge: u32,
     pub bytes: usize,
     pub png_bytes: usize,
@@ -35,14 +35,14 @@ pub(crate) const STORED: Bounds = Bounds {
     upright: false,
 };
 /// What an ACP image prompt sends.
-pub(crate) const PROMPT: Bounds = Bounds {
+pub const PROMPT: Bounds = Bounds {
     edge: PROMPT_IMAGE_EDGE_PX,
     bytes: PROMPT_IMAGE_TOTAL_BYTES,
     png_bytes: PROMPT_IMAGE_PNG_BYTES,
     upright: true,
 };
 /// The transcript copy of a sent image too large to keep whole.
-pub(crate) const PREVIEW: Bounds = Bounds {
+pub const PREVIEW: Bounds = Bounds {
     edge: IMAGE_PREVIEW_EDGE_PX,
     bytes: IMAGE_PREVIEW_BYTES,
     png_bytes: IMAGE_PREVIEW_BYTES,
@@ -50,7 +50,7 @@ pub(crate) const PREVIEW: Bounds = Bounds {
 };
 
 #[derive(Debug, PartialEq, Eq)]
-pub(crate) struct Normalized {
+pub struct Normalized {
     pub media_type: ImageMediaType,
     pub bytes: Vec<u8>,
 }
@@ -78,7 +78,7 @@ fn malformed() -> AppError {
 }
 
 /// `bytes` as KiB or MiB for a user-facing message.
-pub(crate) fn byte_size(bytes: usize) -> String {
+pub fn byte_size(bytes: usize) -> String {
     if bytes.is_multiple_of(1024 * 1024) {
         format!("{} MiB", bytes / (1024 * 1024))
     } else {
@@ -87,7 +87,7 @@ pub(crate) fn byte_size(bytes: usize) -> String {
 }
 
 /// The form `bounds` admits, or a refusal that names its limit and its fix.
-pub(crate) fn normalize(
+pub fn normalize(
     media_type: ImageMediaType,
     bytes: &[u8],
     bounds: Bounds,

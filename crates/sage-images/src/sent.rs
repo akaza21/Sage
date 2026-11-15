@@ -4,13 +4,13 @@ use rusqlite::{Connection, params};
 use sage_core::error::AppResult;
 use sage_db::error::SqliteResultExt;
 
-use crate::acp::migration;
+use crate::files::remove_image_file;
 
 use super::store::{full_path, validate_root};
 
 /// The transcript keeps its own copy, and a later send can no longer reuse the
 /// artifact. Queued images stay with the queue, which retires them itself.
-pub(crate) fn retire_sent_images(
+pub fn retire_sent_images(
     connection: &Connection,
     root: &Path,
     project_id: &str,
@@ -27,7 +27,7 @@ pub(crate) fn retire_sent_images(
             )
             .db()?;
         if retired == 1 {
-            let _ = migration::remove_image_file(&full_path(root, id));
+            let _ = remove_image_file(&full_path(root, id));
         }
     }
     Ok(())

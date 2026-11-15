@@ -6,9 +6,9 @@ use super::{
     manifest::{StageOwner, read, write_stage},
     platform::{
         SqlitePathAnchor, anchor_existing_sqlite, create_sqlite_stage, delete_file_with_identity,
-        remove_synced,
     },
 };
+use sage_db::files::remove_synced;
 
 pub(super) struct BoundStage {
     stage: SqlitePathAnchor,

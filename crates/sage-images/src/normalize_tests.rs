@@ -1,5 +1,5 @@
 use super::*;
-use crate::image_artifacts::thumbnail::square_thumbnail;
+use crate::thumbnail::square_thumbnail;
 
 fn png_of(
     width: u32,
@@ -169,7 +169,7 @@ fn a_photo_is_sent_as_the_smaller_jpeg_and_a_screenshot_stays_png() {
     let png = encode_png(&scaled, true).unwrap();
     assert!(png.len() > PROMPT_IMAGE_PNG_BYTES && image.bytes.len() < png.len());
 
-    let screenshot = crate::image_artifacts::screenshot_png(3840, 2160);
+    let screenshot = crate::screenshot_png(3840, 2160);
     let image = normalize(ImageMediaType::Png, &screenshot, PROMPT).unwrap();
     assert_eq!(image.media_type, ImageMediaType::Png);
     assert!(image.bytes.len() <= PROMPT_IMAGE_PNG_BYTES);
@@ -358,7 +358,7 @@ fn a_normalized_image_allocates_only_its_length() {
         png::BitDepth::Eight,
         &photo(3000, 2000),
     );
-    let screenshot = crate::image_artifacts::screenshot_png(3840, 2160);
+    let screenshot = crate::screenshot_png(3840, 2160);
     for source in [&photo, &screenshot] {
         let image = normalize(ImageMediaType::Png, source, PROMPT).unwrap();
         assert_eq!(image.bytes.capacity(), image.bytes.len());

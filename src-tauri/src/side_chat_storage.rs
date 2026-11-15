@@ -181,14 +181,14 @@ mod tests {
         );
         assert!(database.remove_side_chat(&project, &parent).is_err());
         let artifact_root = database.image_artifact_root().unwrap();
-        let parent_image = crate::image_artifacts::insert_test_image(
+        let parent_image = sage_images::insert_test_image(
             &database.connection(),
             artifact_root,
             &project,
             &parent,
             "parent.png",
         );
-        let side_image = crate::image_artifacts::insert_test_image(
+        let side_image = sage_images::insert_test_image(
             &database.connection(),
             artifact_root,
             &project,

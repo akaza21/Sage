@@ -188,7 +188,7 @@ impl Reader {
         if name.len() > 255
             || name
                 .chars()
-                .any(crate::acp::attached_context::has_unsafe_display_character)
+                .any(sage_acp_protocol::contract::has_unsafe_display_character)
         {
             return Err("Attachment name contains unsupported characters.");
         }

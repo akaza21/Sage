@@ -5,22 +5,20 @@
 use std::sync::Arc;
 
 use super::*;
-use crate::{
-    acp::{
-        attached_context::{
-            AttachedContext,
-            files::images::{ImagePreview, ImageRefusal, PromptImage, PromptImages, admit_sizes},
-        },
-        ipc::AcpUnavailableReason,
-        transcript_quote::Prompt,
+use crate::acp::{
+    attached_context::{
+        AttachedContext,
+        files::images::{ImagePreview, ImageRefusal, PromptImage, PromptImages, admit_sizes},
     },
-    image_attachment::ImageAttachedContext,
+    ipc::AcpUnavailableReason,
+    transcript_quote::Prompt,
 };
 use sage_acp_protocol::{contract::SageAgentSessionId, intent::ImageMediaType};
 use sage_core::limits::{
     ECHOED_PROMPT_IMAGE_TOTAL_BYTES, IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_COUNT,
     PROMPT_IMAGE_TOTAL_BYTES,
 };
+use sage_images::attachment::ImageAttachedContext;
 
 fn requested(contexts: &AttachedContexts) -> Vec<&ImageAttachedContext> {
     contexts
@@ -96,7 +94,7 @@ pub(super) async fn attach(
     )?;
     // Decoding and re-encoding take a blocking thread, not the async runtime,
     // and an image-work permit shared with uploads (`IMAGE_WORK_PERMITS`).
-    let permit = crate::image_artifacts::image_work_permit().await;
+    let permit = sage_images::image_work_permit().await;
     let normalized = tauri::async_runtime::spawn_blocking(move || normalize(stored, bounds))
         .await
         .map_err(|_| internal_error())??;
@@ -115,18 +113,15 @@ pub(super) async fn attach(
 
 /// Codex and Pi repeat each prompt image in their own events, so their
 /// images are normalised to, and admitted against, the echoed bound.
-fn prompt_bounds(binding_id: &str) -> (crate::image_artifacts::Bounds, usize) {
+fn prompt_bounds(binding_id: &str) -> (sage_images::Bounds, usize) {
     use crate::acp::bindings::{codex::CODEX_BINDING_ID, pi::native_admission::PI_BINDING_ID};
     if matches!(binding_id, CODEX_BINDING_ID | PI_BINDING_ID) {
         (
-            crate::image_artifacts::ECHOED_PROMPT_IMAGE_BOUNDS,
+            sage_images::ECHOED_PROMPT_IMAGE_BOUNDS,
             ECHOED_PROMPT_IMAGE_TOTAL_BYTES,
         )
     } else {
-        (
-            crate::image_artifacts::PROMPT_IMAGE_BOUNDS,
-            PROMPT_IMAGE_TOTAL_BYTES,
-        )
+        (sage_images::PROMPT_IMAGE_BOUNDS, PROMPT_IMAGE_TOTAL_BYTES)
     }
 }
 
@@ -162,15 +157,9 @@ fn load(
     images
         .iter()
         .map(|image| {
-            crate::image_artifacts::verify_image_reference(
-                &connection,
-                root,
-                project_id,
-                chat_id,
-                image,
-            )
-            .map(|bytes| (image.media_type, bytes))
-            .map_err(|_| gone())
+            sage_images::verify_image_reference(&connection, root, project_id, chat_id, image)
+                .map(|bytes| (image.media_type, bytes))
+                .map_err(|_| gone())
         })
         .collect()
 }
@@ -179,31 +168,35 @@ fn load(
 /// long edge and the harness's image bound, with a transcript preview.
 fn normalize(
     stored: Vec<(ImageMediaType, Vec<u8>)>,
-    bounds: crate::image_artifacts::Bounds,
+    bounds: sage_images::Bounds,
 ) -> Result<Vec<PromptImage>, AcpIpcError> {
     stored
         .into_iter()
         .map(|(media_type, bytes)| {
-            let normalized = crate::image_artifacts::normalize_image(media_type, &bytes, bounds)
-                .map_err(|error| match error {
-                    sage_core::error::AppError::ResourceLimit(_) => {
-                        refused(ImageRefusal::TooLarge(bounds.bytes))
-                    }
-                    sage_core::error::AppError::InvalidRequest(message) => {
-                        AcpIpcError::InvalidRequest {
-                            message: text(format!("An attached image cannot be sent: {message}.")),
+            let normalized =
+                sage_images::normalize_image(media_type, &bytes, bounds).map_err(|error| {
+                    match error {
+                        sage_core::error::AppError::ResourceLimit(_) => {
+                            refused(ImageRefusal::TooLarge(bounds.bytes))
                         }
+                        sage_core::error::AppError::InvalidRequest(message) => {
+                            AcpIpcError::InvalidRequest {
+                                message: text(format!(
+                                    "An attached image cannot be sent: {message}."
+                                )),
+                            }
+                        }
+                        _ => gone(),
                     }
-                    _ => gone(),
                 })?;
             drop(bytes);
             let preview = if normalized.bytes.len() <= IMAGE_PREVIEW_BYTES {
                 ImagePreview::Full
             } else {
-                match crate::image_artifacts::normalize_image(
+                match sage_images::normalize_image(
                     normalized.media_type,
                     &normalized.bytes,
-                    crate::image_artifacts::PREVIEW_IMAGE_BOUNDS,
+                    sage_images::PREVIEW_IMAGE_BOUNDS,
                 ) {
                     Ok(small) => ImagePreview::Thumbnail(small.media_type, small.bytes),
                     Err(_) => ImagePreview::Unavailable,
@@ -227,7 +220,7 @@ fn read(
 ) -> Result<Vec<PromptImage>, AcpIpcError> {
     normalize(
         load(database, project_id, chat_id, images)?,
-        crate::image_artifacts::PROMPT_IMAGE_BOUNDS,
+        sage_images::PROMPT_IMAGE_BOUNDS,
     )
 }
 
@@ -245,7 +238,7 @@ pub(super) fn retire(
         return;
     };
     let ids: Vec<&str> = artifact_ids.iter().map(String::as_str).collect();
-    let _ = crate::image_artifacts::retire_sent_images(
+    let _ = sage_images::retire_sent_images(
         &state.database.connection(),
         root,
         project_id.as_str(),
