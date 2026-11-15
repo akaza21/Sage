@@ -1,19 +1,13 @@
 import type { OutlineSymbol } from "./syntaxOutline";
 
 export interface OutlineRow {
-  /** Stable across edits elsewhere in the File; see outlineRowKeys. */
   key: string;
   symbol: OutlineSymbol;
-  /** True when deeper symbols directly follow, so the row can collapse. */
   parent: boolean;
   collapsed: boolean;
 }
 
-/**
- * A row's identity is its path of kinds and names from the top level, with an
- * ordinal for same-named siblings. Unlike an offset, it survives edits above
- * the symbol, so a collapsed row stays collapsed while it is typed around.
- */
+/** Unlike an offset, a path of kinds and names survives edits above the symbol. */
 export function outlineRowKeys(symbols: readonly OutlineSymbol[]): string[] {
   const ancestors: string[] = [];
   const counts = new Map<string, number>();
@@ -28,11 +22,6 @@ export function outlineRowKeys(symbols: readonly OutlineSymbol[]): string[] {
   });
 }
 
-/**
- * The rows a reader sees: every symbol, minus the descendants of a collapsed
- * parent. Symbols are in document order with a depth, so a parent's
- * descendants are the run of deeper symbols right after it.
- */
 export function visibleOutlineRows(
   symbols: readonly OutlineSymbol[],
   keys: readonly string[],

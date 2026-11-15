@@ -99,7 +99,6 @@ fn rule_files_inside_dropped_or_ignored_folders_keep_the_cache() {
         ignored_below("target")
     );
 
-    // Unignoring `target` would show up only after a reload.
     root.write(".gitignore", "");
     for relative in [
         "node_modules/pkg/.gitignore",

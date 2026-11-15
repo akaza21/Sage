@@ -314,7 +314,6 @@ describe("renderMarkdownPreview", () => {
       },
       { kind: "paragraph", text: "alert(1)\ndiagram" },
     ]);
-    // An image is never fetched, and its address is not shown.
     expect(JSON.stringify(document)).not.toContain("a.png");
     expect(JSON.stringify(document)).toContain("alert(1)");
   });

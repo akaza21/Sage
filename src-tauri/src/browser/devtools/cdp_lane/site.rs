@@ -1,6 +1,3 @@
-//! A loopback HTTP server for the CDP lane's fixture pages. One request per
-//! connection, served in order; requests and pages are bounded.
-
 use std::{
     io::{Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
@@ -13,7 +10,6 @@ use std::{
 };
 
 const REQUEST_BYTES: usize = 8192;
-/// Rows on the large page; each row is four DOM nodes.
 const BIG_PAGE_ROWS: usize = 2_500;
 
 pub(super) struct Site {
@@ -109,7 +105,6 @@ fn page(path: &str) -> Option<String> {
     Some(body.to_owned())
 }
 
-/// A slow page, and a subresource that keeps the slow page loading.
 fn delay(path: &str) -> Option<Duration> {
     match path {
         "/shared-new.html" => Some(Duration::from_secs(5)),
@@ -118,7 +113,6 @@ fn delay(path: &str) -> Option<Duration> {
     }
 }
 
-/// About 10,000 DOM nodes: every row is an item, a link, and two text nodes.
 fn big_page() -> String {
     let mut body = String::from(
         "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\"><title>Big list</title></head><body><ul>",

@@ -10,12 +10,7 @@ import {
 /** Upper bound for a smooth scroll; `scrollend` usually settles it sooner. */
 const SMOOTH_SCROLL_SETTLE_MS = 1000;
 
-/**
- * Jump and find anchoring over the virtual list's host. It loads with the
- * lazy ChatNavigation chunk; the eager list only keeps a pinned target.
- * The returned ref reads null while no virtual list is mounted, so callers
- * fall back to plain DOM scrolling exactly as before.
- */
+// The returned ref reads null while no virtual list is mounted.
 export function useTurnListNavigation(
   scrollport: HTMLElement | null,
   // Read only from effects and events, never during render.
@@ -23,7 +18,6 @@ export function useTurnListNavigation(
   turns: readonly TurnProjection[],
 ): RefObject<TurnListNavigation | null> {
   const [controller] = useState(() => createController(() => host.current));
-  // A target whose Turn left the projection is dropped.
   useLayoutEffect(() => controller.forget(turns), [turns, controller]);
   useLayoutEffect(() => {
     const port = scrollport;
@@ -59,7 +53,7 @@ function createController(currentHost: () => TurnListHost | null) {
     if (timer !== null) clearTimeout(timer);
     timer = null;
   };
-  /** Reader input drops the target; true when a smooth scroll was settling. */
+  // Drops the target; true when a smooth scroll was settling.
   const release = () => {
     const target = currentHost()?.target;
     const settling = target?.current?.settling;

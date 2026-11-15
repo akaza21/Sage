@@ -27,7 +27,6 @@ import "./user-input-prompt.css";
 
 type PermissionProjectionItem = Extract<AcpItem, { kind: "permissionRequest" }>;
 
-/** Seconds left until the request resolves itself, ticking once a second. */
 function useSecondsLeft(deadline: number | null) {
   const left = () =>
     deadline === null
@@ -54,7 +53,6 @@ function countdown(seconds: number) {
     : `${minutes}:${rest}`;
 }
 
-/** The wire answer for one answered question, read at submit time. */
 function answerOf(
   question: UserInputQuestion,
   field: FieldState,
@@ -74,14 +72,6 @@ function answerOf(
     : { questionId: question.id, ...typed };
 }
 
-/**
- * The shared card for every question a harness asks, in the composer slot:
- * questions (one or several choices, free, secret, multi-line or numeric
- * text) and links to open (sign-in). Submit stays disabled until every
- * required question is answered; a link is opened only when the user
- * presses Open. Decline (or Esc) sends the ordinary decline; stopping the
- * Turn cancels. Focus follows the approval card's arrival rules.
- */
 export function UserInputPrompt({
   item,
   userInput,
@@ -101,19 +91,16 @@ export function UserInputPrompt({
   const link = userInput.url;
   const formId = useId();
   const sectionRef = useRef<HTMLElement>(null);
-  // Held keys pressed inside the card repeat, so editing fields behave.
   const keyGuard = useCardKeyGuard({ ownRepeats: true });
-  // Text stays in the (uncontrolled) fields; React state keeps only whether
-  // each one holds an answer, so a secret never enters state or the DOM text.
+  // Text stays in the uncontrolled fields so a secret never enters React state
+  // or the DOM text.
   const textRefs = useRef<(HTMLInputElement | HTMLTextAreaElement | null)[]>(
     [],
   );
   const [fields, setFields] = useState(() => questions.map(initialField));
   const [announce, setAnnounce] = useState(false);
-  /** The decision in flight, or one that failed to send (`false`). */
+  // null: nothing sent; true: in flight; false: failed to send.
   const [sent, setSent] = useState<boolean | null>(null);
-  // The window runs from when the request arrived; the card is keyed per
-  // request, so the deadline is fixed once.
   const [deadline] = useState(() =>
     userInput.autoResolutionMs === undefined
       ? null

@@ -1,6 +1,5 @@
 import { Info } from "../../ui/leanIcons";
 
-/** Load-earlier control and the notices about history that is not shown. */
 export function AcpHistoryNotices({
   hasEarlier,
   loadingEarlier,
@@ -13,7 +12,6 @@ export function AcpHistoryNotices({
   loadingEarlier: boolean;
   historyError: string | null;
   onLoadEarlier?: () => void;
-  /** Earlier pages exist that have not been loaded. */
   unloaded: boolean;
   retentionIncomplete: boolean;
 }) {
@@ -50,7 +48,6 @@ export function AcpHistoryNotices({
   );
 }
 
-/** A system note about the turn, styled apart from the agent's own prose. */
 export function WorkspaceTrackingNotice() {
   return (
     <p

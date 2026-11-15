@@ -1,7 +1,6 @@
-//! `ContentLoading`: WebView2's evidence that a navigation id committed a
-//! document or an error page. It fires after `SourceChanged` and before
-//! `NavigationCompleted`; `outcome` relies on it to tell a committed
-//! document from a navigation that never committed.
+//! WebView2 fires `ContentLoading` after `SourceChanged` and before
+//! `NavigationCompleted`; `outcome` relies on it to tell a committed document
+//! from a navigation that never committed.
 
 use tauri::{AppHandle, Manager};
 use webview2_com::{ContentLoadingEventHandler, Microsoft::Web::WebView2::Win32::ICoreWebView2};

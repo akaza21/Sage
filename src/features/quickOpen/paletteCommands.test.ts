@@ -35,7 +35,6 @@ describe("palette commands", () => {
       expect(find?.shortcut).toBe("Ctrl+F");
       if (typeof find?.run === "function") find.run();
       expect(run).toHaveBeenCalledWith("find");
-      // A Markdown preview has no find or go to, but can still be saved.
       previewing = true;
       expect(labels()).not.toContain("Find");
       expect(labels()).not.toContain("Go to Line…");

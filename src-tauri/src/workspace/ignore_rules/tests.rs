@@ -31,8 +31,6 @@ impl Drop for Fixture {
     }
 }
 
-/// Whether `relative` is ignored, building the chain the way a walker does:
-/// one folder at a time, from what each folder holds.
 fn ignored(rules: &IgnoreRules, root: &Path, relative: &str, is_dir: bool) -> bool {
     let parent = relative.rsplit_once('/').map_or("", |(parent, _)| parent);
     let mut chain = rules.enter(&FolderChain::default(), "", RuleFiles::probe(root));
@@ -134,8 +132,6 @@ fn reads_the_exclude_file_of_a_worktree_through_its_common_directory() {
 
 #[test]
 fn rule_files_above_the_root_never_apply() {
-    // A home-folder dotfiles repository that ignores everything must not hide
-    // a Project inside it (VS Code's `search.useParentIgnoreFiles` is off).
     let fixture = Fixture::new("above");
     fixture
         .write(".gitignore", "*\n")
@@ -168,8 +164,6 @@ fn git_directory_targets_stay_local_and_inside_the_root_unless_the_root_owns_the
         git_target(&root.join("wt"), inside.to_str().unwrap(), &root, false),
         Some(inside)
     );
-    // Only the root's own `.git` file may lead outside, and never to a
-    // network path.
     let outside = std::env::temp_dir().join("sage-main-repo/.git/worktrees/x");
     let outside_text = outside.to_str().unwrap();
     assert_eq!(git_target(&root, outside_text, &root, false), None);
@@ -300,8 +294,6 @@ fn only_a_missing_dot_git_means_no_repository() {
     let dot_git = Path::new("project").join(".git");
     let missing = std::io::Error::from(ErrorKind::NotFound);
     assert!(matches!(present(&dot_git, Err(missing)), Ok(None)));
-    // An unreadable `.git` leaves the repository's exclude rules unknown, so
-    // it is a skipped source that fail-closed callers refuse.
     let denied = std::io::Error::from(ErrorKind::PermissionDenied);
     assert!(matches!(present(&dot_git, Err(denied)), Err(Skipped)));
 }

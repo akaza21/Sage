@@ -141,7 +141,6 @@ mod tests {
             )
             .is_err()
         );
-        // An undone Turn is not the chat's latest.
         db.execute(
             "INSERT INTO session_facts VALUES('new','latest','turnUndone')",
             [],

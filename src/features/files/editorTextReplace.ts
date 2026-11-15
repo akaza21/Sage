@@ -1,11 +1,6 @@
 import type { EditorView } from "@codemirror/view";
 
-/**
- * The File editors a workspace Replace can change in place: the File surface
- * registers its editable editor by resource key, and Replace puts its text
- * there as one edit the user can undo. Like `editorFocusRequest`, it lives in
- * its own chunk so the File surface carries only the registration.
- */
+/** Lives in its own chunk so the File surface carries only the registration. */
 const editors = new Map<string, EditorView>();
 
 export function registerReplaceEditor(key: string, view: EditorView) {
@@ -15,10 +10,6 @@ export function registerReplaceEditor(key: string, view: EditorView) {
   };
 }
 
-/**
- * Changes the text of the editor showing `key` from `expected` to `content`,
- * touching only what differs between their common start and common end.
- */
 export function replaceEditorText(
   key: string,
   expected: string,

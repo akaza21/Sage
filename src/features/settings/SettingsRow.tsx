@@ -1,6 +1,5 @@
 import type { ReactNode } from "react";
 
-/** One setting in an Agent settings card: its copy, then its control. */
 export function SettingsRow({
   title,
   description,

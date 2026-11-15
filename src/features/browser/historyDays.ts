@@ -1,5 +1,3 @@
-/** Day grouping for the History page, in the user's local time. */
-
 const dayFormat = new Intl.DateTimeFormat(undefined, {
   weekday: "long",
   month: "long",
@@ -12,7 +10,6 @@ export function dayKey(time: number): string {
   return `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 }
 
-/** "Today", "Yesterday" or the full local date, as Chrome heads its days. */
 export function historyDayLabel(time: number, now = Date.now()): string {
   const today = new Date(now);
   const yesterday = new Date(

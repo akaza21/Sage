@@ -4,11 +4,8 @@ import { getTurnWorkspaceChanges } from "../../../services/acpDesktop";
 import { canonicalRelativePath } from "./agentEditSummary";
 import { terminalTurnStates } from "./statusSemantics";
 
-/**
- * workspace (Git) changes of terminal turns, computed and owned by
- * Rust. Edits made by shell commands never reach harness fileChange items;
- * this disposable cache only renders what the native ledger reports.
- */
+// Shell-command edits never reach harness fileChange items, so Rust derives
+// these from Git.
 export interface TurnWorkspaceChange {
   turnId: string;
   rootId: string;
@@ -37,7 +34,6 @@ const inFlight = new Map<string, { result?: TurnWorkspaceResult }>();
 const waiters = new Set<() => void>();
 const unavailable: TurnWorkspaceResult = { changes: [], incomplete: true };
 
-/** Decodes the native reply, rejecting anything unbounded or unsafe. */
 export function decodeTurnWorkspaceChanges(
   record: unknown,
   turnId: string,

@@ -1,5 +1,3 @@
-//! Keeps Sage's Git from ever running in a submodule repository.
-//!
 //! A submodule's own config (filters, hooks paths, `core.worktree`, helpers)
 //! is not admitted, so Sage's Git must never start a Git process inside one,
 //! recurse a checkout or fetch into one, or summarise one. Every call gets
@@ -13,7 +11,6 @@
 //! commit in-process when it refreshes the index, which reads its refs and
 //! config but runs nothing there.
 
-/// `-c` settings passed on every call.
 pub(super) const CONFIG: [&str; 6] = [
     "submodule.recurse=false",
     "fetch.recurseSubmodules=false",
@@ -23,7 +20,6 @@ pub(super) const CONFIG: [&str; 6] = [
     "status.submoduleSummary=false",
 ];
 
-/// The flag a subcommand takes to keep out of submodules, if any.
 fn flag(subcommand: &str) -> Option<&'static str> {
     match subcommand {
         // Compares only the recorded and checked-out commits, so no Git runs
@@ -38,7 +34,6 @@ fn flag(subcommand: &str) -> Option<&'static str> {
     }
 }
 
-/// `args` with the subcommand's flag, if any, right after the subcommand.
 pub(super) fn arguments<'a>(args: &[&'a str]) -> Vec<&'a str> {
     let mut arguments = Vec::with_capacity(args.len() + 1);
     let mut rest = args.iter().copied();

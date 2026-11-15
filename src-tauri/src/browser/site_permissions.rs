@@ -1,9 +1,5 @@
-//! Site permissions (BF-2e) for the built-in browser: camera, microphone,
-//! location, notifications and clipboard read. Every request defaults to a
-//! visible, origin-labelled prompt that only the user can answer; agent tabs
-//! are denied outright. An answer is saved per site (origin) in the settings
-//! store, so it applies to every user tab on that origin and survives a
-//! restart, until the user resets it here or in Settings > Browser.
+//! Every request defaults to a visible, origin-labelled prompt that only the
+//! user can answer; agent tabs are denied outright.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -56,7 +52,6 @@ pub(super) enum RequestOutcome {
     Prompt(PermissionPrompt),
 }
 
-/// One saved answer, as the tab drawer and Settings > Browser show it.
 #[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct PermissionDecisionView {
@@ -76,8 +71,7 @@ pub(crate) struct PermissionSnapshot {
     stale_access: bool,
 }
 
-/// The canonical origin of an admitted browser URL, or `None` when the
-/// source is not an admitted http(s) URL or its origin is too long to save.
+/// `None` for a non-admitted URL or an origin too long to save.
 pub(super) fn site_origin(source: &str) -> Option<String> {
     let origin = admit_url(source).ok()?.origin().ascii_serialization();
     (origin.len() <= MAX_SITE_ORIGIN_BYTES).then_some(origin)
@@ -86,27 +80,22 @@ pub(super) fn site_origin(source: &str) -> Option<String> {
 #[derive(Default)]
 pub(super) struct SitePermissions {
     next_id: u64,
-    /// The saved answers, mirrored from `store` so a request never waits on
-    /// SQLite. Every change writes the store first.
+    /// Mirrored from `store` so a request never waits on SQLite. Every change
+    /// writes the store first.
     saved: BTreeMap<(String, PermissionKind), Decision>,
     store: Option<SettingsStore>,
     pending: BTreeMap<u64, PermissionPrompt>,
     waiters: BTreeMap<u64, usize>,
     active_origin: BTreeMap<String, String>,
     closing_tabs: BTreeSet<String>,
-    /// Tabs whose page held an Allow that has since ended and whose document
-    /// has not been replaced yet, so the page may still be using it. The
-    /// value is the latest navigation that started after the mark: only that
-    /// navigation committing (a document or an error page) proves the old
-    /// page is gone. A late commit of a navigation already under way when the
-    /// Allow ended proves nothing. Cleared otherwise only once the tab's
-    /// native close succeeds. At most one entry per open tab.
+    /// Only the commit of the latest navigation that started after the mark (a
+    /// document or an error page) proves the old page is gone; a late commit of a
+    /// navigation already under way when the Allow ended proves nothing. Cleared
+    /// otherwise only once the tab's native close succeeds.
     stale_tabs: BTreeMap<String, Option<u64>>,
 }
 
 impl SitePermissions {
-    /// Loads the saved answers and writes every later change through to
-    /// `store`. Rows whose origin no longer admits are deleted.
     pub(super) fn attach_store(&mut self, store: SettingsStore) -> Result<(), String> {
         let rows = store
             .browser_site_permissions()
@@ -188,8 +177,7 @@ impl SitePermissions {
         RequestOutcome::Prompt(prompt)
     }
 
-    /// Records the user's answer to a pending prompt for its whole site. A
-    /// failed save reports `false` and changes nothing, so the caller denies
+    /// A failed save reports `false` and changes nothing, so the caller denies
     /// the request instead of granting an unsaved answer.
     pub(super) fn resolve(&mut self, id: u64, tab_id: &str, decision: Decision) -> bool {
         let Some(prompt) = self.pending.get(&id) else {
@@ -214,9 +202,8 @@ impl SitePermissions {
         true
     }
 
-    /// [`Self::resolve`], then the other pending prompts on any tab that the
-    /// saved answer now settles, so they get the same answer instead of a
-    /// second question. `None` when nothing was saved.
+    /// The other pending prompts the saved answer now settles, as `(id, tab)`;
+    /// `None` when nothing was saved.
     pub(super) fn resolve_site(
         &mut self,
         id: u64,
@@ -250,9 +237,8 @@ impl SitePermissions {
         Ok(())
     }
 
-    /// Changes a saved answer from Settings. Settings only edits answers the
-    /// user gave a prompt, so an unsaved site is refused. Returns the answer
-    /// it replaced.
+    /// Settings only edits answers the user gave a prompt, so an unsaved site is
+    /// refused.
     pub(super) fn set(
         &mut self,
         origin: &str,
@@ -267,7 +253,6 @@ impl SitePermissions {
         Ok(previous)
     }
 
-    /// Forgets a site's answer, so it asks again. Returns the answer removed.
     pub(super) fn reset(
         &mut self,
         origin: &str,
@@ -286,8 +271,8 @@ impl SitePermissions {
         Ok(self.saved.remove(&key))
     }
 
-    /// Forgets every answer. Returns the origins that had an Allow, whose
-    /// pages may still hold access until they reload.
+    /// Returns the origins that had an Allow, whose pages may still hold access
+    /// until they reload.
     pub(super) fn reset_all(&mut self) -> Result<BTreeSet<String>, String> {
         if let Some(store) = &self.store {
             store
@@ -301,8 +286,6 @@ impl SitePermissions {
             .collect())
     }
 
-    /// Pending prompts on any tab that a saved answer for `origin` and `kind`
-    /// now settles, as `(id, tab)`.
     pub(super) fn settled_by_saved(
         &self,
         origin: &str,
@@ -362,8 +345,7 @@ impl SitePermissions {
             .collect()
     }
 
-    /// Marks tabs whose page may still hold an Allow that just ended. A tab
-    /// already marked starts over: navigations that began before this Allow
+    /// A tab already marked starts over: navigations that began before this Allow
     /// ended no longer count.
     pub(super) fn mark_stale<'a>(&mut self, tabs: impl IntoIterator<Item = &'a str>) {
         for tab in tabs {
@@ -371,19 +353,12 @@ impl SitePermissions {
         }
     }
 
-    /// `NavigationStarting` admitted `navigation_id` in `tab_id`. It
-    /// supersedes any earlier navigation, so it is the one whose commit can
-    /// clear a stale mark.
     pub(super) fn navigation_started(&mut self, tab_id: &str, navigation_id: u64) {
         if let Some(after) = self.stale_tabs.get_mut(tab_id) {
             *after = Some(navigation_id);
         }
     }
 
-    /// `ContentLoading`: `navigation_id` committed a document or an error
-    /// page in `tab_id`. Clears the stale mark only when that navigation
-    /// started after the mark, so the old page and any access it held are
-    /// gone. Reports whether the mark cleared.
     pub(super) fn document_committed(&mut self, tab_id: &str, navigation_id: u64) -> bool {
         let replaced = self.stale_tabs.get(tab_id) == Some(&Some(navigation_id));
         if replaced {
@@ -400,9 +375,8 @@ impl SitePermissions {
         self.stale_tabs.keys().cloned().collect()
     }
 
-    /// Ends a closing tab's prompts. Saved answers belong to the site, not
-    /// the tab, so they stay, and so does a stale mark: the page lives until
-    /// the native close succeeds (`finish_close`).
+    /// Saved answers belong to the site and stay, and so does a stale mark: the
+    /// page lives until the native close succeeds (`finish_close`).
     pub(super) fn cancel_tab(&mut self, tab_id: &str) -> Vec<u64> {
         self.closing_tabs.insert(tab_id.to_owned());
         self.active_origin.remove(tab_id);
@@ -419,8 +393,6 @@ impl SitePermissions {
         ids
     }
 
-    /// The tab's native close succeeded: its page, and any access it held,
-    /// are gone.
     pub(super) fn finish_close(&mut self, tab_id: &str) {
         self.closing_tabs.remove(tab_id);
         self.stale_tabs.remove(tab_id);
@@ -434,7 +406,6 @@ impl SitePermissions {
             .collect()
     }
 
-    /// The saved answers for one site.
     pub(super) fn decisions_for(&self, origin: &str) -> Vec<PermissionDecisionView> {
         self.saved
             .range((origin.to_owned(), PermissionKind::Camera)..)
@@ -443,7 +414,6 @@ impl SitePermissions {
             .collect()
     }
 
-    /// Every saved answer, ordered by origin then kind.
     pub(super) fn decisions(&self) -> Vec<PermissionDecisionView> {
         self.saved.iter().map(view).collect()
     }
@@ -459,8 +429,8 @@ fn view(
     }
 }
 
-/// Admits an origin a renderer named only when it is already canonical, so
-/// Settings can never save a path, credentials or a non-http(s) scheme.
+/// Admits only an already-canonical origin, so Settings can never save a
+/// path, credentials or a non-http(s) scheme.
 fn canonical_origin(origin: &str) -> Result<String, String> {
     match site_origin(origin) {
         Some(admitted) if admitted == origin => Ok(admitted),

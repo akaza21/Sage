@@ -34,8 +34,7 @@ pub(crate) trait DevtoolsPort {
         Err(BrowserFailure::Unavailable)
     }
     fn capture(&mut self, region: Option<ViewportRegion>) -> Result<BrowserResult, BrowserFailure>;
-    /// Issues one developer-mode CDP command; the gate has already admitted
-    /// it. Returns the CDP `result` object as JSON.
+    /// Returns the CDP `result` object as JSON.
     fn raw(&mut self, _method: &str, _params: &str) -> Result<String, BrowserFailure> {
         Err(BrowserFailure::Unavailable)
     }
@@ -47,8 +46,8 @@ pub(crate) trait DevtoolsPort {
         condition: &WaitCondition,
         remaining: Duration,
     ) -> Result<bool, BrowserFailure>;
-    /// Whether Stop, Take over or detach ended the dispatch, so a wait,
-    /// whose probes need no permit, stops probing the page.
+    /// Stopped (Stop, Take over, detach), not spent on a navigation; a wait's
+    /// probes hold no permit, so this is how they learn to stop.
     fn stopped(&self) -> bool {
         false
     }

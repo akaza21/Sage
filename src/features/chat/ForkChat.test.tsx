@@ -344,7 +344,6 @@ describe("Continued from chat", () => {
       name: "History from the parent chat",
     });
     await settleLazyModules();
-    // Each inherited Turn is inert itself, so its answer row stays usable.
     expect(history).not.toHaveAttribute("inert");
     expect(
       (await within(history).findAllByRole("listitem")).map(
@@ -358,7 +357,6 @@ describe("Continued from chat", () => {
         cursor: null,
       }),
     );
-    // The divider follows the inherited history.
     const divider = screen.getByRole("button", { name: "Continued from chat" });
     expect(
       history.compareDocumentPosition(divider) &
@@ -405,7 +403,6 @@ describe("Continued from chat", () => {
     expect(
       within(history).getByText("Earlier history isn't shown."),
     ).toBeVisible();
-    // A Project transition re-fetches; the last render stays meanwhile.
     act(() => useWorkbenchStore.setState({ nativeTransitionEpoch: 2 }));
     expect(getGoalChatPage).toHaveBeenCalledTimes(2);
     expect(

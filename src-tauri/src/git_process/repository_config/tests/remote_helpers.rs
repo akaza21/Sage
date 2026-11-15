@@ -26,7 +26,6 @@ fn fetch_refuses_a_repository_selected_vcs_before_running_its_alias() {
     assert!(message.contains("remote.origin.vcs"), "{message}");
     assert!(!root.join("helper-ran").exists());
 
-    // Control: ordinary Git falls back to the shell alias for this helper.
     let output = crate::git_process::fixture_git()
         .arg("-C")
         .arg(&root)
@@ -101,9 +100,8 @@ fn remote_helper_urls_and_rewrites_cannot_enable_unadmitted_protocols() {
         );
         assert!(!root.join("helper-ran").exists());
 
-        // The fixture is live: without Sage's invocation policy, Git reaches
-        // this real shell alias. Keep it on the control's command line so
-        // repository alias refusal cannot mask the transport restriction.
+        // Keep the alias on the control's command line so repository alias refusal
+        // cannot mask the transport restriction.
         let output = crate::git_process::fixture_git()
             .arg("-C")
             .arg(&root)

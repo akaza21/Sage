@@ -1,5 +1,3 @@
-//! How a browsing-history failure shapes a clear's result.
-
 use super::*;
 
 #[test]

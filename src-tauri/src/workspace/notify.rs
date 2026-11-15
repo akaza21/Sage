@@ -258,8 +258,7 @@ pub fn apply_unwatch_workspace_notify(value: &Value) -> Result<(), WorkspaceNoti
         .as_str()
         .filter(|item| bounded_identifier(item))
         .ok_or_else(|| reject("schema-invalid"))?;
-    // The Project is closing or being switched away from: free Quick Open's
-    // path index with it, even if it was never watched.
+    // Free Quick Open's index for the closing Project, even if it was never watched.
     crate::workspace::path_index::forget_project(project_id);
     let mut registry = registry();
     let Some(watch) = registry.watches.remove(project_id) else {
@@ -343,8 +342,7 @@ pub fn watch_workspace_notify(
         let _ = apply_unwatch_if_generation(&project_id, generation);
         return Err(error.code().to_string());
     }
-    // A newly watched Project is the active one: Quick Open's index for any
-    // other is no longer needed.
+    // The newly watched Project is the active one; other Quick Open indexes go.
     crate::workspace::path_index::focus_project(&project_id);
     emit_queued_workspace_notices(&app, &value);
     Ok(WorkspaceNotifyWatchAck { generation })

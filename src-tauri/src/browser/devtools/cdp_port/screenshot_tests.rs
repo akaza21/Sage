@@ -1,4 +1,3 @@
-//! Behavioral pre-dispatch tests with a deterministic browser transport.
 //! An issued capture succeeds, so Capacity can only come from preflight.
 use serde_json::{Value, json};
 use std::time::Duration;

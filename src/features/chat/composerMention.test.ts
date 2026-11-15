@@ -12,7 +12,6 @@ describe("composer @ mentions", () => {
       end: 15,
       query: "src/ma",
     });
-    // The caret inside the token still names the whole token for a pick.
     expect(mentionQuery("@src/main.rs please", 3)).toEqual({
       start: 0,
       end: 12,
@@ -25,11 +24,8 @@ describe("composer @ mentions", () => {
     });
     expect(mentionQuery("mail bob@example.com", null)).toBeNull();
     expect(mentionQuery("@done next", null)).toBeNull();
-    // A caret before the @ is not in the token.
     expect(mentionQuery("@src", 0)).toBeNull();
-    // An opening quote typed by hand is not part of the query.
     expect(mentionQuery('@"docs', null)?.query).toBe("docs");
-    // An opening parenthesis may lead the token and keeps its closer.
     expect(mentionQuery("see (@src/a.rs)", 10)).toEqual({
       start: 5,
       end: 14,
@@ -44,7 +40,6 @@ describe("composer @ mentions", () => {
       end: 12,
       query: "my no",
     });
-    // The caret inside a closed quote names the whole token.
     expect(mentionQuery('@"my notes.md" next', 5)).toEqual({
       start: 0,
       end: 14,
@@ -60,7 +55,6 @@ describe("composer @ mentions", () => {
     expect(mentionToken("docs/my notes.md")).toBe('@"docs/my notes.md"');
     expect(mentionToken("src/a.rs", "lib")).toBe("@lib:src/a.rs");
     expect(mentionToken("a b.rs", "my lib")).toBe('@"my lib:a b.rs"');
-    // A quote inside a quoted token, or a colon anywhere, cannot be read back.
     expect(mentionToken('say "hi".md')).toBeNull();
     expect(mentionToken('"lead.md')).toBeNull();
     expect(mentionToken("a:b.md")).toBeNull();

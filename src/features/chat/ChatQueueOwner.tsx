@@ -9,7 +9,7 @@ const loadExecution = () =>
     ),
   }));
 
-/** Queue work lives beside projection ownership, outside sleeping Chat UI. */
+// Queue execution stays outside the sleeping Chat UI.
 export function ChatQueueOwner({ chatId }: { chatId?: string }) {
   return (
     <LazyModuleBoundary

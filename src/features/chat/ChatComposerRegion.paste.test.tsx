@@ -18,7 +18,6 @@ import {
 } from "../../ports/promptAttachments";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 
-/** In-memory stand-in for the Rust batch: same caps, same revision check. */
 const native = vi.hoisted(() => ({
   revision: null as string | null,
   files: [] as { id: string; name: string; bytes: number }[],
@@ -53,7 +52,6 @@ vi.mock(import("../../ports/nativeInvoke"), () => ({
         const id = `file-${++native.next}`;
         native.files.push({ id, name: "pasted-text.txt", bytes });
         native.revision = `revision-${native.next}`;
-        // Native names the resource the paste added.
         return { ...summary(), added: id };
       }
       if (command === "remove_prompt_file") {
@@ -87,10 +85,8 @@ afterEach(() => {
 });
 
 type Props = ComponentProps<typeof ChatComposerRegion>;
-/** The paste module and chips load lazily, so first use may take a moment. */
 const LAZY = { timeout: 5000 };
 
-/** The region under test; cold tests swap in a fresh, gated copy. */
 let Region = ChatComposerRegion;
 function Composer({
   acceptsResources = true,
@@ -104,7 +100,6 @@ function Composer({
     disabledReasonId: "disabled-reason",
     text: "",
     attachedContext: [],
-    // No session yet means native admission decides at send time.
     pasteSession:
       acceptsResources === null
         ? null
@@ -147,7 +142,6 @@ function Composer({
 
 const field = () => screen.getByRole("combobox", { name: "Message agent" });
 
-/** Waits for the paste part to load and read the staged batch. */
 async function focusField() {
   await waitFor(
     () => expect(native.calls).toContain("list_prompt_files"),
@@ -155,14 +149,12 @@ async function focusField() {
   );
 }
 
-/** Whether the field's aria-describedby takes in this element. */
 const describesField = (element: HTMLElement) =>
   field()
     .getAttribute("aria-describedby")!
     .split(" ")
     .some((id) => document.getElementById(id)?.contains(element));
 
-/** Fires a text paste; returns whether the browser would insert it. */
 function paste(text: string, files: File[] = []) {
   const event = createEvent.paste(field(), {
     clipboardData: { files, getData: () => text },
@@ -171,8 +163,6 @@ function paste(text: string, files: File[] = []) {
   return !event.defaultPrevented;
 }
 
-/** The paste part's polite live region for paste and length notices; the
- * `/` menu keeps a live region of its own. */
 const status = () =>
   document.querySelector<HTMLElement>(
     "#disabled-reason-paste [aria-live=polite]",
@@ -183,13 +173,11 @@ const announced = (text: string) =>
 const log = `${"x".repeat(30)}\n`.repeat(2431);
 const label = "Pasted text · 2,431 lines · 74 KB";
 
-// The first test pays for loading the lazy paste part.
 describe("composer large paste", { timeout: 15_000 }, () => {
   it("outside a native chat, loads nothing for a paste that fits inline", async () => {
     render(<Composer availableBinding={false} />);
     fireEvent.focus(field());
     expect(paste("short note")).toBe(true);
-    // Only held-back input loads the paste part there.
     await new Promise((resolve) => setTimeout(resolve, 50));
     expect(native.calls).toEqual([]);
   });
@@ -199,7 +187,6 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     await focusField();
     const image = new File(["x"], "shot.png", { type: "image/png" });
     paste(log, [image]);
-    // The image input answered; no text was staged.
     expect(
       await screen.findByText(/Image input is unavailable/),
     ).toBeInTheDocument();
@@ -209,8 +196,6 @@ describe("composer large paste", { timeout: 15_000 }, () => {
   it("stages a long paste made before the paste part loads", async () => {
     const onTextChange = vi.fn();
     render(<Composer onTextChange={onTextChange} />);
-    // The part may not be loaded yet: the composer holds the paste back
-    // synchronously and hands it over once the part arrives.
     expect(paste(log)).toBe(false);
     expect(
       await screen.findByRole("button", { name: label }, LAZY),
@@ -222,7 +207,6 @@ describe("composer large paste", { timeout: 15_000 }, () => {
   it("holds back an over-cap edit that is not a paste, with a message for that path", async () => {
     const onTextChange = vi.fn();
     render(<Composer onTextChange={onTextChange} />);
-    // Text dropped or typed past the cap never reaches the draft.
     fireEvent.change(field(), { target: { value: log } });
     expect(onTextChange).not.toHaveBeenCalled();
     await announced(
@@ -251,8 +235,6 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     const onSubmit = vi.fn((event) => event.preventDefault());
     render(<Composer text="Draft from before" onSubmit={onSubmit} />);
     const send = screen.getByRole("button", { name: "Send message" });
-    // A native chat loads the part at once, with no focus needed; until its
-    // first read settles, no send goes, a click with no prior focus included.
     expect(send).toBeDisabled();
     await screen.findByText("notes.md · 2 KB", undefined, LAZY);
     expect(send).toBeEnabled();
@@ -263,7 +245,6 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     render(<Composer />);
     await focusField();
     expect(describesField(status()!)).toBe(true);
-    // Every element the field names exists.
     for (const id of field().getAttribute("aria-describedby")!.split(" "))
       expect(document.getElementById(id), id).not.toBeNull();
   });
@@ -281,7 +262,6 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     expect(send).toBeDisabled();
     await screen.findByText("notes.md · 2 KB", undefined, LAZY);
     expect(native.calls).toEqual(["list_prompt_files"]);
-    // The batch alone can be sent, by its revision.
     expect(send).toBeEnabled();
   });
 
@@ -325,7 +305,6 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     expect(
       screen.getByRole("button", { name: /Queue message|Send message/ }),
     ).toBeDisabled();
-    // A standing reason, apart from the transient live notices.
     const reason = screen.getByText(
       /Attached text goes with the next message you send, not a queued one\./,
     );
@@ -412,13 +391,10 @@ describe("composer large paste", { timeout: 15_000 }, () => {
     view.rerender(
       <Composer text={full.slice(1)} onTextChange={onTextChange} />,
     );
-    // The notice was about the earlier draft.
     expect(status()).toBeEmptyDOMElement();
   });
 });
 
-// The paste part's chunk arrives only when a test lets it, so pastes and
-// edits made before then must be held, never dropped.
 describe(
   "composer large paste before the paste part loads",
   { timeout: 15_000 },
@@ -456,7 +432,6 @@ describe(
       expect(paste(log)).toBe(false);
       expect(paste(second)).toBe(false);
       await new Promise((resolve) => setTimeout(resolve, 50));
-      // The chunk has not arrived: nothing was read or staged yet.
       expect(native.calls).toEqual([]);
       release();
       expect(
@@ -514,7 +489,6 @@ describe(
       await waitFor(() => expect(send).toBeEnabled(), LAZY);
       expect(describesField(notice)).toBe(true);
       expect(native.calls).toEqual([]);
-      // A later long paste is still never inserted.
       expect(paste(log)).toBe(false);
     });
 
@@ -526,14 +500,11 @@ describe(
         undefined,
         LAZY,
       );
-      // The failed mount keeps its notice across renders, without loading
-      // again on each one.
       view.rerender(<Composer text="Edited" />);
       view.rerender(<Composer text="Edited again" />);
       await new Promise((resolve) => setTimeout(resolve, 50));
       expect(notice.isConnected).toBe(true);
       view.unmount();
-      // The chunk is reachable again; the failure was not kept.
       vi.doMock("./ComposerPaste", (importOriginal) => importOriginal());
       native.files = [{ id: "file-9", name: "notes.md", bytes: 2048 }];
       native.revision = "revision-9";
@@ -554,7 +525,6 @@ describe(
       render(<Composer />);
       const named = () =>
         field().getAttribute("aria-describedby")!.split(" ").filter(Boolean);
-      // Until the part is in place, the field names no paste notices.
       expect(named()).not.toContain("disabled-reason-paste");
       release();
       await focusField();

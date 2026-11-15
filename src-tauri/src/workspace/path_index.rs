@@ -1,14 +1,5 @@
-//! Quick Open's in-memory path index (EDIT-0005 AD-4). It holds the active
-//! Project's File paths, gathered with the same rules Search uses.
-//!
-//! The first query builds it. After that, each new Quick Open session walks
-//! the Project again in the background while queries keep answering from the
-//! current index, as VS Code lists the workspace afresh for each Quick Open
-//! session. File events aren't used: on macOS and Linux the watcher covers at
-//! most 64 folders and doesn't say which folder an event is in, so it can't
-//! keep a list of every File current. One index exists at a time, and it is
-//! dropped when its Project closes or is switched away from. Every walk runs
-//! on one long-lived thread (see `on_walker`).
+//! File events aren't used: the watcher's coverage is bounded and incomplete,
+//! so it can't keep a complete index current.
 
 mod arena;
 mod build;
@@ -35,10 +26,8 @@ use crate::workspace::{
 use arena::PathArena;
 use build::Walk;
 
-/// At most this many Files are indexed across a Project's roots.
 const MAX_INDEXED_FILES: usize = MAX_WORKSPACE_FILES as usize;
 
-/// What an index was built from. A query with different inputs rebuilds it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct IndexInputs {
     pub(crate) project_id: String,
@@ -58,7 +47,6 @@ struct IndexedRoot {
 struct ProjectIndex {
     inputs: IndexInputs,
     roots: Vec<IndexedRoot>,
-    /// The Quick Open session it was built for.
     session: u64,
 }
 
@@ -80,9 +68,7 @@ struct Slot {
     /// Queries rank a shared handle, so the lock is held only to look it up
     /// or swap it.
     index: Option<Arc<ProjectIndex>>,
-    /// A background walk is building the next index.
     refreshing: bool,
-    /// Counts forgets.
     epoch: u64,
     /// The epoch at which each Project closed in this run was last
     /// forgotten, so a query checked before that keeps nothing.
@@ -105,7 +91,6 @@ impl Slot {
                 .is_some_and(|(id, epoch)| id != project_id && *epoch > ticket.0)
     }
 
-    /// Stops the walks `which` picks by Project.
     fn stop_walks(&self, which: impl Fn(&str) -> bool) {
         for (id, stop) in &self.walks {
             if which(id) {
@@ -114,7 +99,6 @@ impl Slot {
         }
     }
 
-    /// Registers a walk of `project_id`; the returned guard ends it.
     fn begin(&mut self, project_id: &str, refresh: bool) -> Walking {
         let stop = Arc::new(AtomicBool::new(false));
         self.walks.push((project_id.to_owned(), Arc::clone(&stop)));
@@ -163,7 +147,6 @@ static LATEST_GENERATION: AtomicU64 = AtomicU64::new(0);
 /// walking on a thread of its own instead. The walker only falls this far
 /// behind if a folder read hangs, as on an unreachable network drive.
 const WALKER_WAIT: Duration = Duration::from_secs(2);
-/// How often a query waiting on a build checks whether it is still wanted.
 const WAIT_CHECK: Duration = Duration::from_millis(5);
 /// Memory is handed back after walks and drops of indexes at least this
 /// large (about 13,000 paths); below it there is little to return.
@@ -182,9 +165,8 @@ pub(crate) fn ticket() -> Ticket {
     Ticket(lock(&INDEX).epoch)
 }
 
-/// Drops the index of a Project that is closing and stops its walks. The
-/// lock is only ever held briefly, so this doesn't wait on a walk, and the
-/// index is freed on the walker thread.
+/// The lock is only ever held briefly, so this doesn't wait on a walk, and
+/// the index is freed on the walker thread.
 pub(crate) fn forget_project(project_id: &str) {
     let mut slot = lock(&INDEX);
     slot.epoch += 1;
@@ -203,8 +185,7 @@ pub(crate) fn forget_project(project_id: &str) {
     }
 }
 
-/// Forgets every Project but `project_id`, which is now being watched. A
-/// query for the Project being closed can still pass the active-Project
+/// A query for the Project being closed can still pass the active-Project
 /// check after its forget and before the switch; this drops what it built.
 pub(crate) fn focus_project(project_id: &str) {
     let mut slot = lock(&INDEX);
@@ -220,7 +201,6 @@ pub(crate) fn focus_project(project_id: &str) {
     }
 }
 
-/// Records `generation` as the newest query and says whether it still is.
 fn claim_generation(generation: u64) -> bool {
     LATEST_GENERATION.fetch_max(generation, Ordering::AcqRel) <= generation
 }
@@ -229,7 +209,6 @@ fn superseded(generation: u64) -> bool {
     LATEST_GENERATION.load(Ordering::Acquire) > generation
 }
 
-/// How the index was readied for a query.
 pub(crate) struct Readied {
     /// This query walked the Project first.
     pub(crate) built: bool,
@@ -238,12 +217,8 @@ pub(crate) struct Readied {
     pub(crate) took: Duration,
 }
 
-/// The index to answer `inputs` from. Without one for these inputs, it is
-/// built now; queries that arrive meanwhile wait for that build rather than
-/// start another. With one from an earlier Quick Open session, it answers
-/// at once and a fresh one is walked in the background. `None` when the
-/// Project was forgotten after `ticket`, or a newer query than `generation`
-/// arrived while this one waited for a build.
+/// `None` when the Project was forgotten after `ticket`, or a newer query than
+/// `generation` arrived while this one waited for a build.
 fn ready(
     inputs: &IndexInputs,
     session: u64,
@@ -288,7 +263,6 @@ fn ready(
         slot.stop_walks(|_| true);
         (slot.begin(&inputs.project_id, false), slot.index.take())
     };
-    // Freed before the new one is built.
     if let Some(old) = old {
         free_on_walker(old);
     }
@@ -304,8 +278,7 @@ fn ready(
     readied(index, true, false)
 }
 
-/// The index for `inputs` if there is one, starting a background refresh
-/// when it was built for another session, and whether one is running.
+/// The flag says whether a background refresh is running.
 fn current(inputs: &IndexInputs, session: u64) -> Option<(Arc<ProjectIndex>, bool)> {
     let mut slot = lock(&INDEX);
     let index = slot.index.clone().filter(|index| &index.inputs == inputs)?;
@@ -321,9 +294,7 @@ fn current(inputs: &IndexInputs, session: u64) -> Option<(Arc<ProjectIndex>, boo
     Some((index, queued))
 }
 
-/// Walks the Project again and swaps the result in, unless the walk was
-/// stopped or the index was rebuilt for other inputs meanwhile. Returns
-/// whether the walk was queued.
+/// Returns whether the walk was queued.
 fn refresh_in_background(current: Arc<ProjectIndex>, session: u64, walking: Walking) -> bool {
     on_walker(Box::new(move || {
         let inputs = current.inputs.clone();
@@ -348,10 +319,7 @@ fn refresh_in_background(current: Arc<ProjectIndex>, session: u64, walking: Walk
     }))
 }
 
-/// Builds an index on the walker thread and waits for it, or `None` once
-/// `stop` is raised. If that thread can't be reached or hasn't started the
-/// walk within `WALKER_WAIT`, it walks on a thread of its own instead; once
-/// started, a walk is waited for until it ends or is stopped.
+/// `None` once `stop` is raised.
 fn walk(inputs: &IndexInputs, session: u64, stop: &Arc<AtomicBool>) -> Option<ProjectIndex> {
     let build = {
         let (inputs, stop) = (inputs.clone(), Arc::clone(stop));
@@ -365,7 +333,6 @@ fn walk(inputs: &IndexInputs, session: u64, stop: &Arc<AtomicBool>) -> Option<Pr
     // Only the walker job and the fallback hold a sender, so a walk that
     // panics shows here as a disconnect rather than a wait without end.
     let (done, built) = mpsc::sync_channel(1);
-    // Whichever of the walker and the fallback sets it first walks.
     let taken = Arc::new(AtomicBool::new(false));
     let queued = {
         let (build, taken, done) = (build.clone(), Arc::clone(&taken), done.clone());
@@ -385,7 +352,6 @@ fn walk(inputs: &IndexInputs, session: u64, stop: &Arc<AtomicBool>) -> Option<Pr
             return None;
         }
         if fallback.is_some() && taken.load(Ordering::Acquire) {
-            // The walker started it; the fallback won't be needed.
             fallback = None;
         } else if Instant::now() >= fallback_at && !taken.swap(true, Ordering::AcqRel) {
             let (build, done) = (build.clone(), fallback.take()?);
@@ -401,7 +367,6 @@ fn walk(inputs: &IndexInputs, session: u64, stop: &Arc<AtomicBool>) -> Option<Pr
     }
 }
 
-/// Frees `index` on the walker thread, which then hands the memory back.
 fn free_on_walker(index: Arc<ProjectIndex>) {
     on_walker(Box::new(move || {
         let large = index.heap_bytes() >= TRIM_FROM;
@@ -410,12 +375,11 @@ fn free_on_walker(index: Arc<ProjectIndex>) {
     }));
 }
 
-/// A walk or a drop, saying whether it freed enough to hand back.
+/// Returns whether it freed enough to hand back.
 type Job = Box<dyn FnOnce() -> bool + Send>;
 
-/// Hands memory freed by a walk or a dropped index back to the system. With
-/// every walk on one thread, glibc's pools hold one walk's worth of freed
-/// memory (about as much again as the index); this returns it. Other
+/// With every walk on one thread, glibc's pools hold one walk's worth of
+/// freed memory (about as much again as the index); this returns it. Other
 /// allocators return large freed blocks on their own.
 fn release_freed_memory() {
     #[cfg(all(target_os = "linux", target_env = "gnu"))]
@@ -426,18 +390,16 @@ fn release_freed_memory() {
     }
 }
 
-/// Runs `job` on the one thread that does every walk. glibc gives each
-/// thread its own memory pool and keeps what is freed there; with walks
-/// spread over many threads the process stayed 50 to 150 MiB larger after
-/// them, while one thread reuses the same memory every time. Returns false
-/// if the thread couldn't be started, having dropped `job`.
+/// glibc gives each thread its own memory pool and keeps what is freed there;
+/// with walks spread over many threads the process stayed 50 to 150 MiB
+/// larger after them, while one thread reuses the same memory every time.
+/// Returns false if the thread couldn't be started, having dropped `job`.
 fn on_walker(job: Job) -> bool {
     static WALKER: Mutex<Option<mpsc::Sender<Job>>> = Mutex::new(None);
     let mut walker = lock(&WALKER);
     let job = match walker.as_ref() {
         Some(sender) => match sender.send(job) {
             Ok(()) => return true,
-            // The thread is gone; start another.
             Err(mpsc::SendError(job)) => job,
         },
         None => job,
@@ -474,10 +436,8 @@ fn build_index(
     build_index_within(inputs, session, previous, MAX_INDEXED_FILES, stop)
 }
 
-/// Walks every root. Each may fill an even share of the `limit` Files still
-/// allowed, so one large root can't leave the others out. A root's arena is
-/// sized from what `previous` held for it. A raised `stop` ends the walk
-/// early; its result is then discarded.
+/// Each root may fill an even share of the `limit` Files still allowed, so
+/// one large root can't leave the others out.
 fn build_index_within(
     inputs: &IndexInputs,
     session: u64,

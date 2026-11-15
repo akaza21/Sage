@@ -1,6 +1,5 @@
-//! Workspace Replace: what a Replace makes of a File's text. The Search
-//! query's own matcher finds the matches, so Replace changes exactly what
-//! Search showed.
+//! The Search query's own matcher finds the matches, so Replace changes
+//! exactly what Search showed.
 
 use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
@@ -12,11 +11,9 @@ use super::{
 };
 
 pub const MAX_REPLACEMENT_BYTES: usize = 2 * 1024;
-/// Changed lines shown for one File, and for one whole Replace.
 pub const MAX_PREVIEW_LINES_PER_FILE: usize = 50;
 pub const MAX_PREVIEW_LINES: usize = 2_000;
 
-/// What to replace with what, with the Search options it was found with.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplaceSpec {
@@ -26,11 +23,10 @@ pub struct ReplaceSpec {
     pub case_sensitive: bool,
     #[serde(default)]
     pub whole_word: bool,
-    /// `$1`, `${name}` and `$$` in the replacement refer to the match.
+    /// `$1` and `${name}` in the replacement are capture references; `$$` is a literal `$`.
     #[serde(default)]
     pub use_regex: bool,
-    /// The replacement takes the matched text's case: all upper, all lower
-    /// or capitalized.
+    /// The replacement takes the match's case: all upper, all lower or capitalized.
     #[serde(default)]
     pub preserve_case: bool,
 }
@@ -43,7 +39,6 @@ pub struct MatchPosition {
     pub column_number: u32,
 }
 
-/// A changed line, before and after, trimmed and bounded as a Search preview.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ReplaceLinePreview {
@@ -62,7 +57,6 @@ pub struct ReplacedText {
     pub lines_truncated: bool,
 }
 
-/// A Replace, set up once and run on any number of Files.
 pub struct Replacer {
     query: LiteralQuery,
     whole_word: bool,
@@ -109,11 +103,8 @@ impl Replacer {
         })
     }
 
-    /// Replaces the matches in `content`, whose lines end in `\n`: every one,
-    /// or with `only` the one Search reported there. Previews are kept for
-    /// at most `preview_lines` changed lines. The replaced text may hold at
-    /// most `max_bytes`: past that it stops, before building any more, with
-    /// a resource limit error.
+    /// `content`'s lines end in `\n`; `only` limits it to the match Search reported
+    /// there. Past `max_bytes` of output it stops with a resource limit error.
     pub fn replace(
         &self,
         content: &str,
@@ -167,8 +158,7 @@ impl Replacer {
         })
     }
 
-    /// The line with its matches replaced, the column of the first and how
-    /// many there were; a resource limit error once it outgrows `budget`.
+    /// The replaced line, the column of the first match and how many there were.
     fn replace_line(
         &self,
         line: &str,
@@ -223,7 +213,6 @@ impl Replacer {
         let mut text = String::new();
         match self.query.pattern() {
             Some(pattern) if self.use_regex => {
-                // The match found at `start` is the leftmost one from there.
                 match pattern.captures_at(line, start) {
                     Some(captures) if captures.get(0).map(|m| m.start()) == Some(start) => {
                         // Every group lies inside the match, so this bounds
@@ -292,8 +281,7 @@ fn braced_group_numbers(replacement: &str) -> String {
     output
 }
 
-/// `replacement` in the case of `matched`: all upper, all lower or
-/// capitalized; any other mix leaves it as typed.
+/// Any mix other than all upper, all lower or capitalized leaves it as typed.
 pub fn preserve_case(matched: &str, replacement: &str) -> String {
     let letters = || matched.chars().filter(|c| c.is_alphabetic());
     if letters().next().is_none() {
@@ -529,8 +517,6 @@ mod tests {
         assert_eq!(braced_group_numbers("$12b$$3$"), "${12}b$$3$");
     }
 
-    /// Every character becomes 2 KB, so 1 MB would build about 2 GB: the
-    /// Replace stops as soon as the output passes its budget instead.
     #[test]
     fn output_growth_stops_at_the_byte_budget() {
         let replacer = Replacer::new(&ReplaceSpec {
@@ -544,17 +530,14 @@ mod tests {
             panic!("the output must stop at its budget");
         };
         assert!(matches!(error, AppError::ResourceLimit(_)), "{error}");
-        // Many lines each within budget are refused once their total is not.
         let lines = "x\n".repeat(budget);
         assert!(replacer.replace(&lines, None, 0, budget).is_err());
-        // A `$0`-heavy replacement is bounded before it expands.
         let echo = Replacer::new(&ReplaceSpec {
             use_regex: true,
             ..spec(".+", &"$0".repeat(1000))
         })
         .unwrap();
         assert!(echo.replace(&content, None, 0, budget).is_err());
-        // Within budget the same Replace runs.
         let small = replace(&spec("x", "yy"), "xx\nx\n");
         assert_eq!(small.content, "yyyy\nyy\n");
     }
@@ -567,7 +550,6 @@ mod tests {
         })
         .unwrap();
         let content = format!("{}x\n", "a".repeat(100_000));
-        // Bounding each reference by the line would refuse this.
         let done = replacer.replace(&content, None, 0, 200_000).unwrap();
         assert_eq!(done.content, format!("{}xx\n", "a".repeat(100_000)));
         assert_eq!(done.count, 1);

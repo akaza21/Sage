@@ -11,7 +11,6 @@ const ACCOUNT_TEXT: Record<CodexAccount, string> = {
   signedOut: "Signed out.",
 };
 
-/** Account controls for the selected account-discovery harness. */
 export function CodexAccountSettings({ disabled }: { disabled: boolean }) {
   const account = useWorkbenchStore((state) => state.harnessAccount);
   const phase = useWorkbenchStore((state) => state.harnessDiscoveryPhase);

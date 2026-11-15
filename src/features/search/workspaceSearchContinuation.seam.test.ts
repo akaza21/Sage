@@ -266,7 +266,6 @@ describe("workspace Search continuation public seam", () => {
         continuationToken: continuationToken(0, 4, 0, 1),
       }),
     ).toThrow("workspace Search continuation is stale");
-    // A regex page does not continue a literal Search, nor the reverse.
     const regexToken = continuationToken(0).replace("}", ',"x":1}');
     expect(() =>
       validateWorkspaceSearchRequest({

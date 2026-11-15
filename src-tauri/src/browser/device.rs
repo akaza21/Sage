@@ -1,10 +1,5 @@
-//! The user's device toolbar (BF-7a): a tab-scoped viewport and device
-//! emulation applied through CDP `Emulation.*`, after Codex reference 41.
-//!
-//! The WebView sends a preset id, the CSS viewport size and the scale it
-//! drew the page at; Rust admits them against its own preset table and
-//! builds every CDP call itself. Neither the page nor the Agent can reach
-//! this path, and it never grants a site permission.
+//! Rust admits the WebView's request against its own preset table and builds
+//! every CDP call itself; neither the page nor the Agent can reach this path.
 
 use serde::{Deserialize, Serialize};
 use tauri::State;
@@ -18,12 +13,10 @@ pub(crate) use emulation::{Left, apply_with};
 #[cfg(windows)]
 mod native;
 
-/// The free-size preset; every other preset has a fixed size.
 pub(crate) const RESPONSIVE: &str = "responsive";
-/// Viewport bounds in CSS px, for Responsive and for either orientation.
+/// Viewport bounds in CSS px.
 const MIN_SIDE: u32 = 50;
 const MAX_SIDE: u32 = 3840;
-/// The share of its CSS size the page is drawn at so it fits the pane.
 const MIN_SCALE_PERCENT: u16 = 10;
 const MAX_SCALE_PERCENT: u16 = 100;
 
@@ -35,11 +28,8 @@ const UNAVAILABLE_REASON: Option<&str> = None;
 #[derive(Clone, Copy, Debug, PartialEq)]
 #[cfg_attr(not(any(windows, test)), allow(dead_code))]
 enum Agent {
-    /// Keeps the engine's own user agent.
     Engine,
-    /// Mobile Safari on an iPhone or iPad, as Safari reports it.
     Apple { device: &'static str },
-    /// Chrome on Android, with matching client hints.
     Android { model: &'static str },
 }
 
@@ -124,7 +114,6 @@ pub(crate) const PRESETS: &[DevicePreset] = &[
     },
 ];
 
-/// What the toolbar asks for.
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(crate) struct DeviceRequest {
@@ -134,7 +123,6 @@ pub(crate) struct DeviceRequest {
     scale_percent: u16,
 }
 
-/// An admitted emulation, as the tab holds it and the toolbar restores it.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct DeviceEmulation {
@@ -183,11 +171,10 @@ pub(crate) fn unavailable_reason() -> Option<&'static str> {
     UNAVAILABLE_REASON
 }
 
-/// What a tab's page holds, as far as Rust can confirm it.
 #[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 #[serde(tag = "state", content = "device", rename_all = "camelCase")]
 pub(crate) enum DeviceHeld {
-    /// The page holds this emulation, or none.
+    /// `None`: the page holds no emulation.
     Known(Option<DeviceEmulation>),
     /// A reset step failed, so some override may still be on.
     Unconfirmed,
@@ -200,7 +187,6 @@ impl Default for DeviceHeld {
 }
 
 impl DeviceHeld {
-    /// The emulation a remounted toolbar restores: only a confirmed one.
     pub(crate) fn confirmed(self) -> Option<DeviceEmulation> {
         match self {
             Self::Known(device) => device,
@@ -213,8 +199,6 @@ impl DeviceHeld {
     }
 }
 
-/// A tab's device emulation: what the page holds, and how many updates were
-/// asked for, so only the latest request lands when two overlap.
 #[derive(Default)]
 pub(crate) struct TabDevice {
     held: DeviceHeld,
@@ -229,7 +213,6 @@ impl TabDevice {
 }
 
 impl<T> super::BrowserTabs<T> {
-    /// What the tab's page holds; a missing tab holds nothing.
     pub(super) fn device_held(&self, label: &str) -> DeviceHeld {
         self.entries
             .get(label)
@@ -239,22 +222,18 @@ impl<T> super::BrowserTabs<T> {
 
 #[cfg(any(windows, test))]
 impl<T> super::BrowserTabs<T> {
-    /// Numbers a new update for the tab; `None` when the tab is gone.
     pub(super) fn request_device(&mut self, label: &str) -> Option<u64> {
         let device = &mut self.entries.get_mut(label)?.device;
         device.requests = device.requests.wrapping_add(1);
         Some(device.requests)
     }
 
-    /// Whether `request` is still the tab's latest update.
     pub(super) fn latest_device(&self, label: &str, request: u64) -> bool {
         self.entries
             .get(label)
             .is_some_and(|tab| tab.device.requests == request)
     }
 
-    /// Records what `request` left on the page, unless a later update owns the
-    /// tab now. Returns whether it was recorded.
     pub(super) fn settle_device(&mut self, label: &str, request: u64, held: DeviceHeld) -> bool {
         match self.entries.get_mut(label) {
             Some(tab) if tab.device.requests == request => {
@@ -266,8 +245,6 @@ impl<T> super::BrowserTabs<T> {
     }
 }
 
-/// Why an update failed, with what the tab holds after it, so the toolbar
-/// shows what the page has rather than what was asked for.
 #[derive(Debug, PartialEq, Serialize)]
 pub(crate) struct DeviceFailure {
     message: String,
@@ -297,7 +274,6 @@ pub(crate) async fn browser_set_device(
     let device = match device.as_ref().map(admit).transpose() {
         Ok(device) => device,
         Err(message) => {
-            // Nothing was sent: the tab keeps what it had.
             let held = state
                 .tabs
                 .lock()
@@ -319,9 +295,6 @@ pub(crate) async fn browser_set_device(
     }
 }
 
-/// What the tab holds after an update: the request when it applied,
-/// nothing after a confirmed reset, and an unconfirmed state when a reset
-/// step failed, never a guess at which overrides are still on.
 #[cfg(any(windows, test))]
 pub(crate) fn held_after(
     requested: Option<DeviceEmulation>,

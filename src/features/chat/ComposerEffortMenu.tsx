@@ -101,8 +101,6 @@ export default function ComposerEffortMenu({
       void onSetOption(option.id, { value: level.value });
   };
   if (index < 0) return null;
-  // The heading names the level under the thumb, so a drag previews the
-  // harness's own level name before the release commits it.
   const label = capitalizeLabel(levels[position].name);
   return (
     <>
@@ -110,9 +108,6 @@ export default function ComposerEffortMenu({
         id={panelId}
         ariaLabel="Thinking level"
         role="dialog"
-        // Opened from its own toolbar trigger it lines up with that trigger's
-        // right edge, like the model menu; from the "+" menu it opens from
-        // the "+" button at the start of the row.
         placement={anchorRef ? "above-start" : "above-end"}
         open={open}
         triggerRef={panelTriggerRef}

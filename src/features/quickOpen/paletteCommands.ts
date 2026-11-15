@@ -1,6 +1,3 @@
-// The command palette's commands (ED-2a): a short list of what the Editor
-// can already do, each run exactly as its own key or button runs it.
-
 import {
   canGoBack,
   canGoForward,
@@ -23,7 +20,6 @@ import {
   type FileSurfaceCommand,
 } from "../files/fileSurfaceCommandBus";
 
-/** Runs a conflict or Save All action, which loads on first use. */
 const runConflictAction = (
   action: (actions: typeof ConflictActions) => Promise<unknown>,
 ) =>
@@ -36,7 +32,6 @@ const runConflictAction = (
 export interface PaletteCommand {
   id: string;
   label: string;
-  /** The command's own shortcut, as the Keyboard settings page shows it. */
   shortcut: string | null;
   /** "files" switches Quick Open back to Files instead of running. */
   run: (() => void) | "files";
@@ -61,7 +56,6 @@ const VIEWS: Array<[SidebarView, string]> = [
   ["outline", "Show Outline"],
 ];
 
-/** The commands that can run now, in a fixed order. */
 export function paletteCommands(apple: boolean): PaletteCommand[] {
   const store = useWorkbenchStore.getState();
   const activeTab = store.tabs.find((tab) => tab.id === store.activeTabId);
@@ -82,8 +76,6 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
       run: () => void runFileSurfaceCommand(command),
     });
   }
-  // Revert File drops the active File's unsaved edits, as Reload does; a
-  // deleted File has nothing to revert to.
   const editor = store.activeEditor;
   if (
     fileSurfaceCommandAvailable("save") &&
@@ -153,7 +145,6 @@ export function paletteCommands(apple: boolean): PaletteCommand[] {
   return commands;
 }
 
-/** Commands whose label holds every word typed, in any order. */
 export function filterCommands(
   commands: readonly PaletteCommand[],
   query: string,

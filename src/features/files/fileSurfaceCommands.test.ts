@@ -66,7 +66,6 @@ describe("handleFileSurfaceCommandKey", () => {
       ).toBe(true);
       expect(opened.openGoToLine).toHaveBeenCalledOnce();
     }
-    // Command+G is Find Next on macOS, so it never opens Go to Line.
     const mac = actions();
     handleFileSurfaceCommandKey(event({ key: "g", metaKey: true }), mac, true);
     expect(mac.openGoToLine).not.toHaveBeenCalled();

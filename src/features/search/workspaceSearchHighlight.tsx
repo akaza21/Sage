@@ -1,5 +1,3 @@
-// Marks the match in a Search result preview line, as Search found it.
-
 export function highlightPreview(
   preview: string,
   query: string,
@@ -29,10 +27,7 @@ interface PreviewMatchRange {
   end: number;
 }
 
-/**
- * Marks regex matches in a preview line. Search ran the Rust engine; this
- * is a JavaScript RegExp, so a pattern it cannot read just goes unmarked.
- */
+/** Search ran the Rust engine; a pattern JavaScript's RegExp cannot read just goes unmarked. */
 function regexPreviewMatchRanges(
   source: string,
   pattern: string,

@@ -155,7 +155,6 @@
   cursor: default;
 }
 
-/* Hover or focus reveals the trailing ✕ over a 12 px fade of the label. */
 .annotation-chip__remove {
   position: absolute;
   top: 50%;

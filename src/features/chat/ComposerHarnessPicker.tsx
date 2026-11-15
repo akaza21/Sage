@@ -7,7 +7,6 @@ import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 
 type PickerProps = ComponentProps<typeof HarnessSignInPicker>;
 
-/** The composer's harness switcher, with detection progress. */
 export function ComposerHarnessPicker({
   candidates,
   open,

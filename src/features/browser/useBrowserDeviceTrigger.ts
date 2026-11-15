@@ -1,12 +1,6 @@
 import { useState } from "react";
 import type { BrowserNavigation } from "../../ports/nativeBrowserPort";
 
-/**
- * Whether the pane's tab shows the device toolbar: all the surface keeps
- * while the toolbar itself loads lazily. The pane can show another tab
- * without remounting, and a tab's first status reopens the toolbar when Rust
- * still holds its emulation, or cannot confirm that none is left.
- */
 export function useBrowserDeviceTrigger(
   tabId: string,
   status: BrowserNavigation | null,
@@ -30,7 +24,6 @@ export function useBrowserDeviceTrigger(
   if (device.open && !loaded) setLoaded(true);
   return {
     open: device.tabId === tabId && device.open,
-    /** What the toolbar restores from the tab's status. */
     restored: status?.deviceUnconfirmed
       ? ("unconfirmed" as const)
       : (status?.device ?? null),

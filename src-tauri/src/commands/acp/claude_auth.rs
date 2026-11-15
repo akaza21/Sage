@@ -116,9 +116,6 @@ impl Drop for ProcessGroupGuard {
     }
 }
 
-/// Runs `claude auth status --json` and waits for its output and exit,
-/// both within `timeout`. Any early return (timeout, oversized output)
-/// kills the child and, on Unix, every process in its group.
 async fn run_status_with_timeout(
     path: &Path,
     environment: &ClaudeEnvironment,
@@ -191,7 +188,6 @@ mod tests {
     #[cfg(windows)]
     use std::{sync::mpsc, thread, time::Instant};
 
-    /// Runs one status check to completion on its own runtime.
     fn check(path: &Path, timeout: Duration) -> Result<ClaudeAuthStatus, &'static str> {
         tokio::runtime::Builder::new_current_thread()
             .enable_all()
@@ -271,7 +267,6 @@ mod tests {
             check(&oversized, STATUS_TIMEOUT),
             Err("Claude Code sign-in response was too large.")
         );
-        // A CLI that never exits is killed at the deadline, not waited on.
         let hung = fixture("hung", "exec sleep 30");
         let started = std::time::Instant::now();
         assert_eq!(
@@ -279,8 +274,6 @@ mod tests {
             Err("Claude Code sign-in check timed out.")
         );
         assert!(started.elapsed() < Duration::from_secs(5));
-        // A descendant that holds stdout open is killed with the group, so
-        // the check neither waits on it nor leaves it running.
         let marker = directory.join("descendant.pid");
         let forked = fixture(
             "forked",

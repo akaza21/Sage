@@ -4,8 +4,6 @@ import type {
 } from "./workspaceSearchDomain";
 import { invokeNative } from "../../ports/nativeInvoke";
 
-/** The request and response checks, loaded with the first Search rather
- * than with the Search panel. */
 export const loadWorkspaceSearchChecks = () =>
   import("./workspaceSearchDomain");
 

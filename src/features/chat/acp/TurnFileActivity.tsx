@@ -39,8 +39,6 @@ export function TurnFileActivity({
   );
   if (!changes.length && !workspaceIncomplete) return null;
   const notice = workspaceIncomplete ? <WorkspaceTrackingNotice /> : null;
-  // With no known file, an incomplete ledger is reported on its own rather
-  // than as an "Edited at least 0 files" card with dead actions.
   if (!changes.length) return notice;
   const incomplete = sourceTruncated || rejectedUnsafeOrStale;
   const count = changeKeys.size;

@@ -346,7 +346,6 @@ describe("useFollowEnd", () => {
     expect(view.result.current.showJumpToLatest).toBe(true);
 
     act(() => view.result.current.jumpToLatest());
-    // The pill stays while the jump travels; the scroll never re-modes it.
     expect(view.result.current.showJumpToLatest).toBe(true);
     measure(transcript, {
       clientHeight: 400,
@@ -373,7 +372,6 @@ describe("useFollowEnd", () => {
     });
     expect(view.result.current.followingEnd).toBe(true);
     expect(view.result.current.showJumpToLatest).toBe(true);
-    // It lands: only now does the pill go (its 150 ms CSS fade).
     act(() => {
       while (frames.length) frames.shift()?.(10_000);
     });
@@ -398,7 +396,6 @@ describe("useFollowEnd", () => {
       act(() => frames.shift()?.(1000 + time));
       return (scrollTo.mock.lastCall?.[0] as ScrollToOptions).top!;
     });
-    // Ease-out: well past linear at 100 ms and 200 ms, at the end on time.
     expect(tops[0]).toBe(0);
     expect(tops[1]).toBeGreaterThan(2000 * (100 / JUMP_DURATION_MS));
     expect(tops[2]).toBeGreaterThan(tops[1]);
@@ -468,7 +465,6 @@ describe("useFollowEnd", () => {
       return frames.length;
     });
     const { scrollTo, transcript, view } = mountFollowEnd(true);
-    // At the end of a transcript that can still scroll up.
     measure(transcript, {
       clientHeight: 400,
       scrollHeight: 1000,
@@ -479,7 +475,6 @@ describe("useFollowEnd", () => {
         new WheelEvent("wheel", { deltaY: -240, bubbles: true }),
       ),
     );
-    // The smooth wheel scroll has barely moved when activity lands.
     act(() => {
       view.result.current.updateFollowEnd();
       frames.shift()?.(0);
@@ -495,7 +490,6 @@ describe("useFollowEnd", () => {
     act(() => growTranscript());
     expect(scrollTo).not.toHaveBeenCalled();
     expect(view.result.current.showJumpToLatest).toBe("activity");
-    // A downward wheel back at the end resumes following.
     act(() =>
       transcript.dispatchEvent(
         new WheelEvent("wheel", { deltaY: 240, bubbles: true }),
@@ -564,13 +558,11 @@ describe("useFollowEnd", () => {
       return frames.length;
     });
     const { scrollTo, transcript, view } = mountFollowEnd();
-    // A new revision anchors toward the end of the wide layout.
     measure(transcript, { clientHeight: 633, scrollHeight: 649, scrollTop: 0 });
     view.rerender({ revision: 2, ownerKey: "chat-1" });
     expect(scrollTo).toHaveBeenLastCalledWith(
       expect.objectContaining({ top: 16 }),
     );
-    // Layout settles within the follow threshold before the travel starts.
     act(() => growTranscript());
 
     measure(transcript, { clientHeight: 633, scrollHeight: 649, scrollTop: 7 });
@@ -580,8 +572,6 @@ describe("useFollowEnd", () => {
     });
     expect(view.result.current.followingEnd).toBe(true);
 
-    // The pane narrows before that travel lands; its first scroll step reports
-    // a position more than the follow threshold away from the new end.
     measure(transcript, { clientHeight: 617, scrollHeight: 700, scrollTop: 7 });
     act(() => {
       view.result.current.updateFollowEnd();
@@ -928,7 +918,6 @@ describe("useFollowEnd", () => {
       getComputedStyle(transcript).getPropertyValue("overflow-anchor"),
     ).toBe("none");
   });
-  /** Follows a 1000 px transcript, then the reader scrolls 100 px up. */
   function pauseNearEnd(running: boolean) {
     const frames: FrameRequestCallback[] = [];
     vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {

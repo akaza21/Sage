@@ -12,27 +12,19 @@ import {
 } from "./chatReadMarks";
 import { sessionRailUnreadVisible } from "./sessionRail";
 
-// A stand-in for the Rust settings store: it keeps the marks across a reload
-// of this module's projection, so the tests observe what survives.
 const store = vi.hoisted(() => ({
-  // The store's bound, which it reports with its answers.
   capacity: 64,
   marks: new Map<string, number>(),
   failWrites: false,
   writes: 0,
-  // Resolves the stored snapshot when the test says so.
   holdLoad: null as Promise<void> | null,
   failLoad: false,
   failUnread: false,
-  // Keeps deletes from landing until the test says so.
   holdUnread: null as Promise<void> | null,
-  // Whether each next delete lands, in order; empty means it does.
   unreadOutcomes: [] as boolean[],
   holdRead: null as Promise<void> | null,
   sequence: 0,
-  // Chats a read evicts, by the chat read; the store reports them.
   evicts: new Map<string, string[]>(),
-  // Holds a read's answer, by chat, after the store has applied it.
   holdAnswer: new Map<string, Promise<void>>(),
 }));
 vi.mock("../../../ports/nativeInvoke", async (importOriginal) => ({
@@ -107,7 +99,6 @@ afterEach(() => {
   resetChatReadMarks();
 });
 
-/** What the rail shows for a finished chat that is not on screen. */
 const unread = (chatId: string, finishedAt: number) =>
   sessionRailUnreadVisible({
     focused: false,
@@ -126,7 +117,6 @@ it("keeps a viewed finished chat read after a reload (B-19)", async () => {
   await vi.waitFor(() => expect(store.marks.get("chat-a")).toBe(1_000));
   await reload();
   expect(unread("chat-a", 1_000)).toBe(false);
-  // A later update is new to the user again.
   expect(unread("chat-a", 2_000)).toBe(true);
 });
 
@@ -150,10 +140,8 @@ it("writes a failed read mark again when the chat is viewed again", async () => 
   store.failWrites = true;
   markChatRead("chat-a", 1_000);
   await vi.waitFor(() => expect(store.writes).toBe(1));
-  // Let the rejected write settle.
   await new Promise((resolve) => setTimeout(resolve, 0));
   store.failWrites = false;
-  // Viewing the chat again records the same Turn.
   markChatRead("chat-a", 1_000);
   await vi.waitFor(() => expect(store.marks.get("chat-a")).toBe(1_000));
   await reload();
@@ -178,7 +166,6 @@ it("keeps a mark made while a full stored snapshot loads", async () => {
   release();
   await loading;
   expect(chatReadThrough("chat-new")).toBe(2_000);
-  // The oldest stored mark gave way; the most recent stored one stayed.
   expect(chatReadThrough("stored-0")).toBeUndefined();
   expect(chatReadThrough(`stored-${store.capacity - 1}`)).toBe(1);
 });
@@ -189,7 +176,6 @@ it("shows the stored mark again when Mark unread is refused", async () => {
   store.failUnread = true;
   markChatUnread("chat-a");
   expect(chatReadThrough("chat-a")).toBeUndefined();
-  // The store still holds the mark, so the rail shows the chat read again.
   await vi.waitFor(() => expect(chatReadThrough("chat-a")).toBe(1_000));
   await reload();
   expect(unread("chat-a", 1_000)).toBe(false);
@@ -202,14 +188,11 @@ it("bounds the Mark unread requests held while the stored marks fail to load", a
   await restoreChatReadMarks();
   let release!: () => void;
   store.holdUnread = new Promise((resolve) => (release = resolve));
-  // The store has not answered any of these yet.
   const first = markChatUnread("chat-0");
   for (let index = 0; index < MAX_HELD_READ_STATES - 1; index += 1)
     void markChatUnread(`other-${index}`);
-  // One request beyond the bound is refused rather than held.
   await expect(markChatUnread("chat-1")).resolves.toBe(false);
   store.failLoad = false;
-  // The snapshot predates the deletes still on their way to the store.
   await restoreChatReadMarks();
   expect(chatReadThrough("chat-0")).toBeUndefined();
   expect(chatReadThrough("chat-1")).toBe(1);
@@ -221,8 +204,6 @@ it("bounds the Mark unread requests held while the stored marks fail to load", a
 it("keeps a chat read when it is reopened before Mark unread reaches the store", async () => {
   let release!: () => void;
   store.holdLoad = null;
-  // The first read is still on its way when the user marks the chat unread
-  // and opens it again.
   const held = new Promise<void>((resolve) => (release = resolve));
   store.holdRead = held;
   markChatRead("chat-a", 1_000);
@@ -247,11 +228,9 @@ it("shows the stored mark when Mark unread made while it loads is refused", asyn
   const request = markChatUnread("chat-a");
   releaseLoad();
   await loading;
-  // The pending delete hides the stored mark meanwhile.
   expect(chatReadThrough("chat-a")).toBeUndefined();
   releaseDelete();
   await expect(request).resolves.toBe(false);
-  // The store still holds the mark, and the rail says so.
   expect(chatReadThrough("chat-a")).toBe(1_000);
   expect(store.marks.get("chat-a")).toBe(1_000);
 });
@@ -265,7 +244,6 @@ it("keeps the newest Mark unread when an earlier one is refused", async () => {
   const first = markChatUnread("chat-a");
   const second = markChatUnread("chat-a");
   release();
-  // The second request is the one the chat shows.
   await expect(first).resolves.toBe(true);
   await expect(second).resolves.toBe(true);
   expect(chatReadThrough("chat-a")).toBeUndefined();
@@ -280,7 +258,6 @@ it("loads the stored marks again after a failed load while the rail is mounted",
     const rail = renderHook(() => useChatReadMarks());
     await vi.advanceTimersByTimeAsync(0);
     expect(chatReadThrough("chat-a")).toBeUndefined();
-    // The store recovers; the next attempt backs off, then lands.
     store.failLoad = false;
     await vi.advanceTimersByTimeAsync(1_000);
     expect(chatReadThrough("chat-a")).toBe(1_000);
@@ -293,8 +270,6 @@ it("loads the stored marks again after a failed load while the rail is mounted",
 it("drops a mark the store evicted even when that chat's own answer arrives later", async () => {
   let release!: () => void;
   store.holdAnswer.set("chat-a", new Promise((resolve) => (release = resolve)));
-  // The store applies chat-a's read, then chat-b's read evicts chat-a, but
-  // chat-b's answer reaches the rail first.
   markChatRead("chat-a", 1_000);
   await vi.waitFor(() => expect(store.marks.get("chat-a")).toBe(1_000));
   store.evicts.set("chat-b", ["chat-a"]);

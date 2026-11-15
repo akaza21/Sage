@@ -119,7 +119,6 @@ it("names a published update and the command that installs it", () => {
   expect(notice).not.toHaveTextContent("tested");
   fireEvent.click(screen.getByRole("button", { name: "Dismiss build notice" }));
   expect(screen.queryByRole("status")).toBeNull();
-  // A later release is announced again.
   rerender(
     <HarnessDiscoveryNotice
       harness={{

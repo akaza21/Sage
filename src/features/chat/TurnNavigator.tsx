@@ -32,7 +32,7 @@ export function TurnNavigator({
 }: {
   turns: readonly TurnProjection[];
   visibleIds: readonly string[];
-  /** Scrollport box relative to the chat surface. */
+  /** Scrollport top relative to the chat surface. */
   top: number;
   height: number;
   onJump: (turnId: string) => void;

@@ -1,9 +1,3 @@
-//! Quick Open's fuzzy match. The characters of each space-separated piece of
-//! the query must appear in order, ignoring case. Among the places they could
-//! match, the tightest window wins, and the score rewards matches in the
-//! basename, at word starts and in runs, as VS Code's ranking does. Each
-//! candidate costs a linear scan, with no allocation for ASCII paths.
-
 const MATCH: i32 = 16;
 const SEGMENT_START: i32 = 30;
 const WORD_START: i32 = 20;
@@ -16,11 +10,9 @@ const GAP_EXTEND: i32 = 1;
 const BASENAME: i32 = 50;
 const BASENAME_START: i32 = 20;
 
-/// The longest query scored; longer input is cut here.
+/// Longer input is cut here.
 pub(super) const MAX_QUERY_CHARS: usize = 256;
 
-/// A query split at spaces, as VS Code does: every piece must match, in any
-/// order, and their scores add up.
 pub(super) struct Query {
     pieces: Vec<Piece>,
 }
@@ -33,7 +25,7 @@ struct Piece {
 }
 
 impl Query {
-    /// The query's pieces, with `\` read as `/`. `None` when it is empty.
+    /// `\` is read as `/`. `None` when the query is empty.
     pub(super) fn new(text: &str) -> Option<Self> {
         let mut budget = MAX_QUERY_CHARS;
         let mut pieces = Vec::new();
@@ -88,9 +80,8 @@ fn lower(character: char) -> char {
     }
 }
 
-/// The score of `path`, whose basename starts at byte `base`, or `None` when
-/// the query doesn't match. Higher is better. `ascii` says whether the path
-/// is all ASCII, which the index already knows.
+/// Higher is better; `None` when the query doesn't match. `base` is the byte
+/// offset where the basename starts.
 pub(super) fn score(query: &Query, path: &str, base: usize, ascii: bool) -> Option<i32> {
     let mut total = 0;
     for piece in &query.pieces {
@@ -123,7 +114,6 @@ pub(super) fn positions(query: &Query, path: &str, base: usize) -> Vec<u32> {
     out.into_iter().map(|index| utf16[index]).collect()
 }
 
-/// One piece's score, with its matched character offsets in `out`.
 fn best(
     piece: &Piece,
     path: &str,
@@ -132,8 +122,6 @@ fn best(
     out: Option<&mut Vec<usize>>,
 ) -> Option<i32> {
     if ascii {
-        // Most paths don't hold the piece's characters in order; this byte
-        // scan turns them away before any scoring.
         let wanted = piece.ascii.as_deref()?;
         if !in_order(wanted, path.as_bytes()) {
             return None;
@@ -145,8 +133,6 @@ fn best(
     best_in(piece, &characters, base, out)
 }
 
-/// Whether `hay` holds the lowercase bytes of `wanted` in order, in either
-/// case. Each byte is found with a vectorised search.
 fn in_order(wanted: &[u8], hay: &[u8]) -> bool {
     let mut from = 0;
     for &want in wanted {
@@ -181,9 +167,6 @@ fn best_in<U: Unit>(
     align(query, hay, 0, out).map(|score| score - length_penalty)
 }
 
-/// Matches the query inside `hay[from..]`: finds where a greedy forward match
-/// ends, walks back to the latest start that still matches, and scores that
-/// window.
 fn align<U: Unit>(
     query: &Piece,
     hay: &[U],
@@ -256,8 +239,6 @@ fn score_window<U: Unit>(
     score
 }
 
-/// The bonus for a match at `index`: the start of a path segment, of a word
-/// after `_`, `-`, `.` or a space, of a camelCase hump, or of a number.
 fn boundary<U: Unit>(hay: &[U], index: usize) -> i32 {
     let Some(previous) = index.checked_sub(1).map(|before| hay[before].character()) else {
         return SEGMENT_START;

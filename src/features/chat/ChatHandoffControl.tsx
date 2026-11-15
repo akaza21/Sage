@@ -40,10 +40,6 @@ function sourceContext(
   );
 }
 
-/**
- * The Hand off trigger and its intent. The dialog itself loads in its own
- * lazy chunk (ChatHandoffDialog.tsx) on the first open.
- */
 export function ChatHandoffControl({
   acpPage,
   messages,

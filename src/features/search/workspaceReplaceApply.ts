@@ -1,7 +1,4 @@
-// Confirms and applies a previewed Workspace Replace: in the editor showing
-// a File, in the unsaved buffer of a File open elsewhere, and natively on
-// disk. This chunk loads with the first preview, so the Replace row carries
-// none of it.
+// Loads with the first preview, so the Replace row carries none of it.
 
 import { tabsWithEditorUpdate } from "../../app/editorSlice";
 import { enqueueEditorOperation } from "../../app/editorOperations";
@@ -24,7 +21,6 @@ import { problemFrom, unsavedEdits } from "./workspaceReplacePlan";
 
 export { WorkspaceReplaceDialog } from "./WorkspaceReplaceDialog";
 
-/** Puts `content` in the editor showing `file`, if it still shows `text`. */
 async function replaceInEditor(
   file: ResourceRef,
   text: string,
@@ -38,7 +34,6 @@ async function replaceInEditor(
   }
 }
 
-/** Writes `content` to the unsaved buffer of `file`, if it is as planned. */
 async function replaceInBuffer(
   file: ResourceRef,
   planned: EditorDocument,
@@ -68,7 +63,6 @@ async function replaceInBuffer(
 
 type AppliedOnDisk = Awaited<ReturnType<WorkspaceReplaceGateway["apply"]>>;
 
-/** The editor showing `file`, while it has nothing unsaved. */
 function cleanEditorOf(file: ResourceRef) {
   const editor = useWorkbenchStore.getState().activeEditor;
   if (
@@ -93,13 +87,7 @@ const editorBridge: EditorStateBridge = {
     })),
 };
 
-/**
- * Opens `file` again in the editor after a disk Replace, so it shows what
- * is stored now: the File, or the replaced text kept as unsaved edits.
- * Only while the editor still shows `file`, clean, at `revision`, in the
- * project it had, checked once the queued operation runs, so an edit made
- * meanwhile is never dropped.
- */
+/** Checked once the queued operation runs, so an edit made meanwhile is never dropped. */
 function reopenIfUnchanged(file: ResourceRef, revision: number) {
   const { project, projectGeneration } = useWorkbenchStore.getState();
   const projectId = project?.id;
@@ -118,7 +106,6 @@ function reopenIfUnchanged(file: ResourceRef, revision: number) {
   });
 }
 
-/** Applies `plan`, File by File; what could not be done is reported. */
 export async function applyReplacePlan(
   plan: ReplacePlan,
   gateway: WorkspaceReplaceGateway,
@@ -194,8 +181,6 @@ export async function applyReplacePlan(
     matchCount += file.count;
     fileCount += 1;
   }
-  // A clean editor on a File replaced on disk shows it again, and one
-  // whose replaced text was kept as unsaved edits shows those.
   const changed = [
     ...applied.replaced.map((file) => file.resource),
     ...applied.problems

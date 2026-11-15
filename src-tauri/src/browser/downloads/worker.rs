@@ -15,7 +15,6 @@ const MAX_QUEUED: usize = 32;
 
 static WORKER: OnceLock<Option<SyncSender<Job>>> = OnceLock::new();
 
-/// Queues `job`; false when the queue is full or the thread is gone.
 pub(crate) fn submit(job: impl FnOnce() + Send + 'static) -> bool {
     let sender = WORKER.get_or_init(|| {
         let (sender, receiver) = sync_channel::<Job>(MAX_QUEUED);
@@ -34,7 +33,6 @@ pub(crate) fn submit(job: impl FnOnce() + Send + 'static) -> bool {
         .is_some_and(|sender| sender.try_send(Box::new(job)).is_ok())
 }
 
-/// Waits until every job queued before this call has run.
 #[cfg(test)]
 pub(crate) fn flush() {
     let (sender, receiver) = std::sync::mpsc::channel();

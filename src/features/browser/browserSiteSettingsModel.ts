@@ -48,10 +48,6 @@ function admitOne(input: unknown): BrowserSiteSetting | null {
   return { origin, kind, decision };
 }
 
-/**
- * Keeps only well-formed rows from Rust's saved site answers, bounded to the
- * store's cap. A malformed payload yields no rows rather than a guess.
- */
 export function admitBrowserSiteSettings(input: unknown): BrowserSiteSetting[] {
   if (!Array.isArray(input)) return [];
   const rows: BrowserSiteSetting[] = [];
@@ -62,13 +58,11 @@ export function admitBrowserSiteSettings(input: unknown): BrowserSiteSetting[] {
   return rows;
 }
 
-/** Keeps only well-formed site origins, bounded to the store's cap. */
 export function admitSiteOrigins(input: unknown): string[] {
   if (!Array.isArray(input)) return [];
   return input.slice(0, MAX_SITE_SETTINGS).filter(isOrigin);
 }
 
-/** Admits Settings' view: the saved list and the sites with stale tabs. */
 export function admitSiteSettingsView(input: unknown): BrowserSiteSettingsView {
   const source =
     typeof input === "object" && input !== null

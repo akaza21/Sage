@@ -16,15 +16,13 @@ import {
 const UNCONFIRMED_HINT =
   "The page may still be partly emulated; change or close the device toolbar to try again";
 
-/** Responsive before the pane is measured: it opens at the room it has. */
 const FIT = "fit";
 
 export interface BrowserDeviceState {
-  /** The device shown; null while closed or until the pane is measured. */
+  /** Null while closed or until the pane is measured. */
   size: BrowserDeviceSize | null;
-  /** Whether the toolbar takes its row, measured or not. */
   shown: boolean;
-  /** The percent the device is drawn at; null while closed or unmeasured. */
+  /** Null while closed or unmeasured. */
   scalePercent: number | null;
   /** A reset step failed: the page may not match what the toolbar shows. */
   unconfirmed: boolean;
@@ -33,20 +31,20 @@ export interface BrowserDeviceState {
 
 interface DeviceQueue {
   running: boolean;
-  /** The latest update still to send for each tab, oldest tab first. */
   waiting: Map<string, BrowserDevice | null>;
 }
 
-/** How an update ended: undefined when it applied. `resetWaiting` says a
- * reset for the same tab is still queued and will report its own result. */
+/** `failure` is undefined when the update applied; `resetWaiting` means a
+ * queued reset for the tab reports its own result. */
 type SettleHandler = (
   tabId: string,
   failure?: BrowserDeviceFailure & { resetWaiting: boolean },
 ) => void;
 
-/** Sends updates to Rust one at a time. Each tab keeps only its latest
- * waiting update, so a drag queues one call while another tab's reset is
- * never dropped; the map holds at most one entry per open tab. */
+/**
+ * Each tab keeps only its latest waiting update, so a drag queues one call
+ * while another tab's reset is never dropped.
+ */
 function enqueue(
   queue: DeviceQueue,
   tabId: string,
@@ -68,7 +66,6 @@ function enqueue(
         // A waiting change would apply again what the failure just undid.
         const resetWaiting = queue.waiting.get(next) === null;
         if (!resetWaiting) queue.waiting.delete(next);
-        // The adapter already decoded Rust's tagged held state.
         onSettled(next, { ...(cause as BrowserDeviceFailure), resetWaiting });
       }
     }
@@ -76,7 +73,7 @@ function enqueue(
   })();
 }
 
-/** Sent to Rust last when the page's state is not known: any update differs. */
+/** Sent last when the page's state is unknown, so any update differs. */
 const UNCONFIRMED = "unconfirmed";
 type SentDevice = BrowserDevice | null | typeof UNCONFIRMED;
 
@@ -93,11 +90,6 @@ function sameDevice(a: BrowserDevice | null, b: SentDevice) {
   );
 }
 
-/**
- * The device toolbar's state for the pane's tab. `open` is the surface's
- * choice; Rust holds the applied emulation, and the toolbar follows what a
- * failed update says the tab holds.
- */
 export function useBrowserDevice({
   tabId,
   open,
@@ -108,8 +100,7 @@ export function useBrowserDevice({
 }: {
   tabId: string;
   open: boolean;
-  /** What this tab's status reports, used the first time the toolbar opens
-   * for the tab: its device, or `"unconfirmed"` when a reset step failed. */
+  /** `"unconfirmed"` when a reset step failed on the tab. */
   restored: BrowserDevice | typeof UNCONFIRMED | null;
   frame: RefObject<HTMLDivElement | null>;
   onOpenChange: (open: boolean) => void;
@@ -118,15 +109,14 @@ export function useBrowserDevice({
   const [size, setSize] = useState<BrowserDeviceSize | typeof FIT | null>(null);
   const [area, setArea] = useState<BrowserDeviceArea | null>(null);
   const [shownTab, setShownTab] = useState(tabId);
-  /** Whether a reset step failed on this tab since its last good update. */
   const [unconfirmed, setUnconfirmed] = useState(false);
-  /** The tab whose status the toolbar has restored from, once per tab. */
   const [restoredTab, setRestoredTab] = useState<string | null>(null);
-  /** Restored unconfirmed: nothing is sent until the user picks a size or
-   * closes, so the toolbar never changes a page it cannot vouch for. */
+  /**
+   * Nothing is sent until the user picks a size or closes, so the toolbar never
+   * changes a page it cannot vouch for.
+   */
   const [awaitingUser, setAwaitingUser] = useState(false);
   const queue = useRef<DeviceQueue>({ running: false, waiting: new Map() });
-  /** What was last asked of Rust, or found on the page, and for which tab. */
   const sent = useRef<{ tabId: string; device: SentDevice }>({
     tabId,
     device: null,
@@ -192,8 +182,6 @@ export function useBrowserDevice({
     settled.current = (settledTab, failure) => {
       if (settledTab !== tabId) return;
       if (!failure) {
-        // The page now holds what was sent: it is known again, and the
-        // next open sends its device as usual.
         if (
           sent.current.tabId === tabId &&
           sent.current.device !== UNCONFIRMED
@@ -205,12 +193,10 @@ export function useBrowserDevice({
       }
       const { held, message, resetWaiting } = failure;
       if (held !== "unconfirmed") onError(message);
-      // A queued reset reports for itself; unreadable keeps what is shown.
+      // A queued reset reports for itself; an unreadable held state keeps what is shown.
       if (resetWaiting || held === undefined) return;
       sent.current = { tabId, device: held };
       if (held === "unconfirmed") {
-        // Not a guess at what is on: the toolbar says so, and its next
-        // change or close is sent whatever it shows.
         setUnconfirmed(true);
         onError(`${message}. ${UNCONFIRMED_HINT}`);
       } else if (held === null) {
@@ -218,7 +204,6 @@ export function useBrowserDevice({
         setSize(null);
         onOpenChange(false);
       } else {
-        // A failed close of a known device reopens on it.
         const { preset, width, height } = held;
         setUnconfirmed(false);
         setSize({ preset, width, height });
@@ -238,11 +223,9 @@ export function useBrowserDevice({
       height === undefined ||
       scalePercent === null
     )
-      return; // Not measured yet: nothing to send.
-    else if (awaitingUser)
-      return; // Restored unconfirmed: wait for the user.
+      return;
+    else if (awaitingUser) return;
     else wanted = { preset, width, height, scalePercent };
-    // Restored unconfirmed, the page may hold anything: a close is sent.
     const last = awaitingUser
       ? UNCONFIRMED
       : sent.current.tabId === tabId
@@ -267,7 +250,7 @@ export function useBrowserDevice({
   };
 }
 
-/** The drawn device's size in CSS px, for the frame. */
+/** In CSS px. */
 export function drawnDevice(state: BrowserDeviceState) {
   return state.size && state.scalePercent !== null
     ? drawnDeviceSize(state.size, state.scalePercent)

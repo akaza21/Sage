@@ -52,7 +52,6 @@ function SessionConfigControl({
   onChange,
 }: {
   option: AcpConfigOption;
-  /** The note on a stored value the session has not reapplied yet. */
   restored?: string;
   disabled: boolean;
   onChange: (configId: string, value: AcpConfigValue) => void;

@@ -13,9 +13,8 @@ const EDITING = {
   multiCursorModifier: "alt" as const,
 };
 
-// The first editor loads the editing features and its language lazily; later
-// editors reuse them. Open one first, so a cold load, which waits on the test
-// runner under load, is not timed with the keystrokes.
+// Warm the lazy editing and language imports, so a cold load is not timed with
+// the keystrokes.
 beforeAll(async () => {
   const parent = document.createElement("div");
   document.body.append(parent);
@@ -39,8 +38,8 @@ afterEach(() => {
   document.body.replaceChildren();
 });
 
-// The spies fail on the first keystroke that builds the whole document, so a
-// few keystrokes prove it. More only add jsdom work under the test timeout.
+// One keystroke that builds the whole document fails the spies; more only add
+// jsdom work under the test timeout.
 const KEYSTROKES = 50;
 
 function mount(content: string | Text, maxContentLength: number) {
@@ -64,13 +63,11 @@ function mount(content: string | Text, maxContentLength: number) {
 
 describe("CodeMirrorEditorRuntime keystroke cost", () => {
   it("checks the byte limit of a large document without stringifying it", () => {
-    // Over a third of the limit, the old check encoded the whole document.
     const limit = 1024 * 1024;
     const { runtime, view, onChange } = mount("é".repeat(400_000), limit);
     const toString = vi.spyOn(Text.prototype, "toString");
     for (let index = 0; index < KEYSTROKES; index += 1) {
       view.dispatch({ changes: { from: index, insert: "x" } });
-      // The store echoes the document back, as FileSurface does.
       runtime.update({
         ariaLabel: "Edit big.txt",
         path: "big.txt",
@@ -81,7 +78,6 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
         onChange,
       });
     }
-    // No keystroke builds the whole document as a string.
     expect(toString).not.toHaveBeenCalled();
     expect(onChange).toHaveBeenCalledTimes(KEYSTROKES);
     expect(onChange.mock.lastCall?.[0]).toBe(view.state.doc);
@@ -112,7 +108,6 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
     expect(view.dom.querySelector(".cm-foldGutter")).not.toBeNull();
     const toString = vi.spyOn(Text.prototype, "toString");
     for (let index = 0; index < KEYSTROKES; index += 1) {
-      // Typing inside brackets, beside a repeated word: every feature runs.
       view.dispatch({
         changes: { from: 5 + index, insert: "x" },
         selection: { anchor: 6 + index },
@@ -136,13 +131,11 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
     expect(base(0)).toMatchObject({ unchanged: false });
     view.dispatch({ changes: { from: 50_000, to: 50_001 } });
     expect(base(1)).toMatchObject({ unchanged: true });
-    // Same length, different text.
     view.dispatch({ changes: { from: 7, to: 8, insert: "c" } });
     expect(base(2)).toMatchObject({ unchanged: false });
     expect(base(2).content).toHaveLength(100_000);
     runtime.destroy();
 
-    // A document handed back from the store has no string to compare with.
     const remount = mount(Text.of(["x"]), 1024);
     remount.view.dispatch({ changes: { from: 1, insert: "y" } });
     expect(remount.onChange.mock.calls[0][1]).toBeNull();
@@ -173,7 +166,6 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
     const emitted = onChange.mock.lastCall?.[0];
     runtime.destroy();
 
-    // Remounted on the store's document, it still knows the reloaded text.
     const remount = mount(emitted, 1024);
     remount.view.dispatch({ changes: { from: 0, to: 1 } });
     expect(remount.onChange.mock.lastCall?.[1]).toEqual({
@@ -184,8 +176,8 @@ describe("CodeMirrorEditorRuntime keystroke cost", () => {
   });
 
   it("does not claim a base for text with a lone carriage return", () => {
-    // CodeMirror turns the "\r" into a line break, so its document is not
-    // the given text; the controller must compare the text itself.
+    // CodeMirror turns the "\r" into a line break, so the controller must
+    // compare the text itself.
     const { runtime, view, onChange } = mount("a\rb", 1024);
     view.dispatch({ changes: { from: 0, insert: "x" } });
     expect(onChange.mock.lastCall?.[1]).toBeNull();

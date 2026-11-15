@@ -2,18 +2,15 @@ import type { UserInputQuestion } from "../../../domain/acp";
 import { USER_INPUT_TEXT_BYTES } from "../../../domain/acpPermission";
 import { utf8ByteLength } from "../../../domain/text";
 
-/** Whether a field's free text can be sent as an answer. */
 export type TextState =
   "empty" | "ok" | "tooLong" | "notNumber" | "badLength" | "outOfRange";
 
-/** One question's answer: chosen option indexes and whether "Other" is on. */
 export interface FieldState {
   picked: readonly number[];
   other: boolean;
   text: TextState;
 }
 
-/** Free text is admitted for free-text, "other" and secret questions. */
 export const admitsText = (question: UserInputQuestion) =>
   !question.options || question.allowsOther || question.secret;
 
@@ -21,11 +18,7 @@ const INTEGER = /^[+-]?\d+$/u;
 const NUMBER = /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/u;
 const I64 = 2n ** 63n;
 
-/**
- * A number answer as the native side reads it (`limits.rs`): an integer is
- * `[+-]?digits` within the i64 range; a number is a plain finite decimal
- * (no hex, `Infinity` or `NaN`). `null` when `text` is not one.
- */
+// Must match the native number grammar (`limits.rs`).
 export function parseAnswerNumber(
   kind: "number" | "integer",
   text: string,
@@ -39,7 +32,6 @@ export function parseAnswerNumber(
   return Number.isFinite(value) ? value : null;
 }
 
-/** `value` compared with `bound`: integers exactly, otherwise as numbers. */
 const compare = (value: bigint | number, bound: number) =>
   typeof value === "bigint" && Number.isInteger(bound)
     ? Math.sign(Number(value - BigInt(bound)))
@@ -55,7 +47,6 @@ export function textState(
   if (utf8ByteLength(text) > USER_INPUT_TEXT_BYTES) return "tooLong";
   const trimmed = text.trim();
   if (trimmed === "") return "empty";
-  // "Other" text of a choice is not checked as the question's own answer.
   if (question.allowsOther) return "ok";
   const limits = question.limits ?? {};
   if (!within([...text].length, limits.minLength, limits.maxLength)) {
@@ -71,7 +62,6 @@ export function textState(
   return below || above ? "outOfRange" : "ok";
 }
 
-/** Whether a multi-select answer chooses an admitted number of options. */
 export const itemsOk = (question: UserInputQuestion, field: FieldState) =>
   !question.multiSelect ||
   within(
@@ -92,7 +82,6 @@ export const isAnswered = (question: UserInputQuestion, field: FieldState) =>
   field.picked.length > 0 ||
   (field.other && admitsText(question) && field.text === "ok");
 
-/** Nothing in the field (typed text, or how many options) blocks sending. */
 export const isSendable = (question: UserInputQuestion, field: FieldState) =>
   (!field.other ||
     field.text === "ok" ||
@@ -100,7 +89,6 @@ export const isSendable = (question: UserInputQuestion, field: FieldState) =>
     !admitsText(question)) &&
   (!isAnswered(question, field) || itemsOk(question, field));
 
-/** "from 1 to 5", "at least 1" or "at most 5". */
 function span(min?: number, max?: number) {
   if (min !== undefined && max !== undefined) {
     return min === max ? `exactly ${min}` : `from ${min} to ${max}`;
@@ -124,12 +112,6 @@ function textProblem(question: UserInputQuestion, state: TextState) {
   }
 }
 
-/**
- * One question of the shared question card: radio buttons (one choice),
- * checkboxes (several), and a text field where free text is admitted —
- * masked for secrets, multi-line for editors, numeric for numbers. Text
- * stays in the uncontrolled field; only its state is lifted.
- */
 export function UserInputField({
   question,
   index,

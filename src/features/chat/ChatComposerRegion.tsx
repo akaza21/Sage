@@ -24,7 +24,6 @@ import { ComposerPasteSlot } from "./ComposerPastePart";
 import { useComposerPaste } from "./useComposerPaste";
 import type * as SlashChunk from "./ComposerSlashController";
 
-// The `/` command menu loads with the field's first focus.
 const SlashPart = lazyParts<typeof SlashChunk>(
   () => import("./ComposerSlashController"),
 );
@@ -102,7 +101,6 @@ export function ChatComposerRegion({
     dictationScope,
     availableBinding && sessionHarnessId === selectedHarnessId,
   );
-  // Transcript quotes render in their own lazy chip row above the textarea.
   const otherContext = attachedContext.filter((c) => !isTranscriptQuote(c));
   const imageInput = useComposerImageInput({
     contexts: attachedContext,
@@ -112,9 +110,6 @@ export function ChatComposerRegion({
     uploading: imageUploading,
     onAddImages,
   });
-  // The paste part loads with the composer of a native chat, or with
-  // held-back input, and reports the batch it staged: pasted text and files
-  // picked from the attach menu alike.
   const paste = useComposerPaste(
     availableBinding,
     activeTurn,
@@ -268,7 +263,8 @@ export function ChatComposerRegion({
               onKeyDown={(event) => {
                 // An IME composition owns its keys, Enter included.
                 if (isImeComposing(event)) return;
-                // Until the `/` menu loads, Enter holds a half-typed name.
+                // While suggestions load, Enter must not send a half-typed
+                // command.
                 if (
                   !slashReady.current &&
                   event.key === "Enter" &&
