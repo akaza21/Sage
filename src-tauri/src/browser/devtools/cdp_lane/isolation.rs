@@ -11,7 +11,6 @@ use crate::acp::browser::{BrowserAction, BrowserFailure, BrowserResult, FillSecr
 const FAKE: &str = "FAKE-PHRASE-9d1";
 const TRUTH: &str = "hostile-truth-41";
 
-/// No page hook saw the Agent, and the Agent left no global on the page.
 fn assert_unobserved(lane: &mut Lane) {
     assert_eq!(lane.evaluate("window.__agentSeen"), json!([]));
     assert_eq!(
@@ -105,7 +104,6 @@ fn s8_isolated_world_is_made_once_per_document_and_again_after_each_navigation()
     assert!(lane.wait_text("Departure", 2_000));
     assert_eq!(isolated_worlds(&mut lane), 2);
 
-    // A navigation the page starts itself needs a world in the new document.
     let (_, _, nodes) = lane.snapshot();
     let go = lane.act(BrowserAction::Click {
         handle: handle(&nodes, "link", "Go to landing"),
@@ -198,11 +196,8 @@ fn navigate_while_loading(lane: &mut Lane, path: &str) {
     lane.evaluate(&format!("location.href = '{path}'"));
 }
 
-/// The old page and the slow new page both show "Shared phrase"; the new
-/// page keeps loading on a hung image after it commits.
 fn assert_wait_skips_the_outgoing_page(lane: &mut Lane) {
     assert!(!lane.wait_text("Shared phrase", 1_000));
-    // Probes held by the pending navigation went without the dispatch permit.
     assert!(!lane.capability.port_mut().transport.issued());
     assert!(lane.wait_text("New page", 10_000));
     assert!(!lane.capability.port_mut().transport.issued());

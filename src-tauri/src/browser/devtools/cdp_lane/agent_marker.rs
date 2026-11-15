@@ -1,8 +1,3 @@
-//! The Agent act marker (H3): an act outlines its target and puts the cursor
-//! dot on the target's centre, both in Chromium's overlay, and clears both
-//! once the act returns. Clearing restores the exact page pixels, no capture
-//! shows the marker, and the page's main world sees none of it.
-
 use serde_json::json;
 
 use super::{
@@ -19,7 +14,6 @@ fn capture(lane: &mut Lane) -> String {
         .to_owned()
 }
 
-/// The button's backend node id, read without running page script.
 fn button(lane: &mut Lane) -> u64 {
     let root = cdp(lane, "DOM.getDocument", json!({"depth": 0}))["root"]["nodeId"].clone();
     let node = cdp(
@@ -53,7 +47,6 @@ fn the_marker_outlines_the_target_with_a_cursor_and_clearing_restores_the_page()
     cdp(&mut lane, hide_cursor, json!({}));
     assert_eq!(capture(&mut lane), plain, "clearing restores the page");
 
-    // An Agent screenshot clears a marker still on the page first.
     let port = lane.capability.port_mut();
     assert!(highlight::mark(port, stamp, backend));
     assert!(matches!(

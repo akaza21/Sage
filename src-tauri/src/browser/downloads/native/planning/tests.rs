@@ -90,7 +90,6 @@ fn saturated_probes_refuse_more_work_and_late_plans_release_their_files() {
     let first = request(&folder, "report-0.txt");
     assert!(executor.acquire(&folder).unwrap().run(
         move |destination, deadline| {
-            // Create real handles before expiring, then dispose the late result.
             let planned = first.plan_on(destination, deadline);
             assert!(matches!(&planned.step, Step::Silent(_)));
             started.send(()).unwrap();
@@ -124,7 +123,6 @@ fn saturated_probes_refuse_more_work_and_late_plans_release_their_files() {
         "saturated destination must refuse another probe"
     );
     drop(release);
-    // A new lease becomes available only after the late result's cleanup.
     let deadline = std::time::Instant::now() + Duration::from_secs(2);
     while executor.acquire(&folder).is_none() {
         assert!(std::time::Instant::now() < deadline);
@@ -156,7 +154,6 @@ fn publication_stalled_after_planning_does_not_block_local_work() {
     std::fs::write(remote_reservation.writer_path(), b"recoverable bytes").unwrap();
     std::fs::write(pending_local.writer_path(), b"pending local bytes").unwrap();
     let recovery = remote_reservation.writer_path().to_owned();
-    // The destination becomes unresponsive only after planning succeeded.
     let (release, wait) = mpsc::sync_channel::<()>(0);
     let (started, start) = mpsc::sync_channel(1);
     assert!(io::acquire(&remote).unwrap().run(
@@ -174,8 +171,6 @@ fn publication_stalled_after_planning_does_not_block_local_work() {
         failed.send(result).ok();
     }));
     let (published, publication) = mpsc::sync_channel(1);
-    // These coordination jobs queue in the same way as real native starts and
-    // settlements. Neither may wait for destination I/O.
     assert!(worker::submit(move || {
         assert!(pending_local.publish_off_thread(move |result| {
             published.send(result).ok();

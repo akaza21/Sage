@@ -10,7 +10,6 @@ use super::{
     secret::Secret,
 };
 
-/// The most rows one overview returns; search narrows a larger vault.
 pub(super) const MAX_LISTED: u32 = 200;
 /// The most passwords the vault holds, so every search and list scan stays
 /// bounded.
@@ -18,7 +17,7 @@ pub(super) const MAX_STORED: u32 = 50_000;
 const SCHEMA_VERSION: i64 = 1;
 const NOW_MS: &str = "CAST(unixepoch('subsec') * 1000 AS INTEGER)";
 
-/// One saved password as the Passwords page lists it: never the password.
+/// Never carries the password.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct CredentialSummary {
@@ -35,7 +34,6 @@ pub(crate) struct CredentialPage {
     pub(crate) entries: Vec<CredentialSummary>,
 }
 
-/// Where a saved password came from.
 #[derive(Debug, Clone, Copy)]
 pub(super) enum Source {
     Csv,
@@ -49,7 +47,6 @@ impl Source {
     }
 }
 
-/// A credential read from an import, before it is sealed.
 pub(super) struct NewCredential {
     pub(super) origin: String,
     pub(super) username: String,
@@ -64,8 +61,8 @@ pub(crate) struct MergeCounts {
     pub(crate) unchanged: u32,
 }
 
-/// The vault's SQLite file. Usernames and origins are plain text so search
-/// works without the key; passwords are sealed blobs only.
+/// Usernames and origins are plain text so search works without the key;
+/// passwords are sealed blobs only.
 pub(super) struct Store(Connection);
 
 impl Store {
@@ -113,8 +110,7 @@ impl Store {
             })?)
     }
 
-    /// Rows whose site or username contains `query`, ignoring ASCII case as
-    /// SQLite's `lower` does.
+    /// Ignores ASCII case as SQLite's `lower` does.
     pub(super) fn page(&self, query: &str) -> VaultResult<CredentialPage> {
         let needle = query.trim().to_ascii_lowercase();
         let filter = "instr(lower(origin), ?1) > 0 OR instr(lower(username), ?1) > 0";
@@ -180,9 +176,8 @@ impl Store {
         )
     }
 
-    /// Adds every credential in one transaction. An existing row for the same
-    /// site and username takes the newer password; nothing is written unless
-    /// every credential seals.
+    /// An existing row for the same site and username takes the newer password;
+    /// nothing is written unless every credential seals.
     pub(super) fn merge(
         &mut self,
         key: &VaultKey,
@@ -252,8 +247,7 @@ impl Store {
         Ok(counts)
     }
 
-    /// Changes a row's username and, when given, its password. A new username
-    /// re-seals the password, because the seal is bound to it.
+    /// A new username re-seals the password, because the seal is bound to it.
     pub(super) fn update(
         &mut self,
         key: &VaultKey,

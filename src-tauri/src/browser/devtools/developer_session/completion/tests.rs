@@ -68,7 +68,6 @@ fn invoked_completion_still_waits_for_detach_ack_and_acknowledges_only_once() {
     assert!(payload.upgrade().is_some());
     session.detach();
     assert!(payload.upgrade().is_none());
-    // A late Drop/duplicate invocation cannot discard a replacement's state.
     let replacement = Arc::new(vec![9; 1024]);
     let replacement_weak = Arc::downgrade(&replacement);
     *session.slot.lock().unwrap() = Some(replacement);
