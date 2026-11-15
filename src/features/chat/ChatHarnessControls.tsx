@@ -2,7 +2,7 @@ import type { ChatHarnessControlsProps } from "./chatHarnessControlsProps";
 import { IconButton } from "../../ui/IconButton";
 import { Plus } from "../../ui/leanIcons";
 
-import { useReducer, useState } from "react";
+import { useState } from "react";
 import { ComposerContext } from "./ComposerContext";
 
 import {
@@ -70,6 +70,7 @@ export function ChatHarnessControls({
     (state) => state.projectTransitioning,
   );
   const [effortFromAdd, setEffortFromAdd] = useState(false);
+  const [, listed] = useState(0);
   const {
     active,
     modelId,
@@ -99,7 +100,6 @@ export function ChatHarnessControls({
     accessOpen: active === "access",
     openAccess: () => toggle("access"),
   });
-  const [, listed] = useReducer((count: number) => count + 1, 0);
   const knownModels =
     selectedHarnessId === globalSelectedHarnessId
       ? globalModels
@@ -228,7 +228,7 @@ export function ChatHarnessControls({
   };
   return (
     <>
-      {knownModels || !selectedHarness ? null : (
+      {!knownModels && (
         <ComposerOptionsPart
           part="ListedHarnessModels"
           harness={selectedHarness}

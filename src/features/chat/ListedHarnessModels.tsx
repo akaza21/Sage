@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, type Dispatch, type SetStateAction } from "react";
 
 import {
   harnessModelGeneration,
@@ -21,26 +21,27 @@ export function ListedHarnessModels({
   harness,
   onListed,
 }: {
-  harness: HarnessDefinition;
-  onListed: () => void;
+  harness: HarnessDefinition | undefined;
+  onListed: Dispatch<SetStateAction<number>>;
 }) {
   const identity = harnessModelIdentity(harness);
+  const harnessId = harness?.installState === "available" ? harness.id : null;
   const generation = harnessModelGeneration();
   useEffect(() => {
-    if (harness.installState !== "available") return;
+    if (harnessId === null) return;
     let current = true;
     let tries = 2;
     let relist: ReturnType<typeof setTimeout> | undefined;
     const list = () =>
       desktop
-        .listHarnessModels(harness.id)
+        .listHarnessModels(harnessId)
         .catch((): ModelOption[] => [])
         .then((models) => {
           // Models listed for an account that has since changed are dropped.
           if (!current || harnessModelGeneration() !== generation) return;
           if (models.length > 0) {
             rememberHarnessModels(identity, models);
-            onListed();
+            onListed((count) => count + 1);
           } else if (--tries > 0) relist = setTimeout(list, RELIST_AFTER_MS);
         });
     void list();
@@ -48,6 +49,6 @@ export function ListedHarnessModels({
       current = false;
       clearTimeout(relist);
     };
-  }, [generation, harness.id, harness.installState, identity, onListed]);
+  }, [generation, harnessId, identity, onListed]);
   return null;
 }
