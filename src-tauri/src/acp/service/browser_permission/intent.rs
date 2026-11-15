@@ -1,13 +1,9 @@
-//! The card's journal intent and request kind (ADR-0009, ADR-0009b).
-
 use super::BrowserPermissionOwner;
-use crate::{
-    acp::{
-        browser::permission::{BrowserPermissionChoice, BrowserPermissionPrompt},
-        contract::{RequiredText, SafeText, SageServerRequestId},
-        intent::{ExternalId, NormalizedPayload, ToolCategory},
-    },
-    acp_protocol::permissions::PermissionIntent,
+use crate::acp::browser::permission::{BrowserPermissionChoice, BrowserPermissionPrompt};
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText, SageServerRequestId},
+    intent::{ExternalId, NormalizedPayload, ToolCategory},
+    permissions::PermissionIntent,
 };
 use sha2::{Digest, Sha256};
 
@@ -68,8 +64,6 @@ pub(super) fn local_intent(
 /// `browserPermission` so no other decision can answer it.
 const DEVELOPER_REQUEST_KIND: &str = "browserDeveloperPermission";
 
-/// Deny answers any card; developer mode answers only an elevated one, and
-/// the ordinary choices only an ordinary one.
 pub(super) fn choice_fits(elevated: bool, choice: BrowserPermissionChoice) -> bool {
     match choice {
         BrowserPermissionChoice::Deny => true,

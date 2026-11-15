@@ -10,9 +10,10 @@ use crate::acp::bindings::omp::{
     protocol::{AdapterEvent, ModelSummary, PromptTerminal},
     wire::{normalized_text, opaque_id},
 };
-use crate::acp::{
-    contract::{ItemLifecycle, RequiredText, SafeText},
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText},
     intent::NormalizedPayload,
+    lifecycle::ItemLifecycle,
 };
 
 const MAX_MODELS: usize = 128;

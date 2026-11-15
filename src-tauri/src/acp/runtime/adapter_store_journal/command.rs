@@ -1,10 +1,10 @@
 use crate::acp::{
-    intent::NormalizedPayload,
     runtime::adapter_pump::{DurableAdapterEvent, PumpIntent, PumpJournalError, TurnScope},
     store::{
         AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner, ItemIngressCommand,
     },
 };
+use sage_acp_protocol::intent::NormalizedPayload;
 use sage_core::limits::LIMITS;
 
 mod bytes;
@@ -184,8 +184,8 @@ fn event_bytes(
             ..
         } => {
             verify_scope(intent, scope)?;
-            if old_text.len() > crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX
-                || new_text.len() > crate::acp_protocol::file_diff::DIFF_SIDE_BYTES_MAX
+            if old_text.len() > sage_core::limits::DIFF_SIDE_BYTES_MAX
+                || new_text.len() > sage_core::limits::DIFF_SIDE_BYTES_MAX
             {
                 return Err(PumpJournalError::Rejected);
             }
@@ -383,8 +383,10 @@ pub(super) fn verify_payload(
         .ok_or(PumpJournalError::Rejected)
 }
 
-fn runtime_lifecycle(payload: &NormalizedPayload) -> Option<crate::acp::lifecycle::ItemLifecycle> {
-    use crate::acp::lifecycle::ItemLifecycle;
+fn runtime_lifecycle(
+    payload: &NormalizedPayload,
+) -> Option<sage_acp_protocol::lifecycle::ItemLifecycle> {
+    use sage_acp_protocol::lifecycle::ItemLifecycle;
     match payload {
         NormalizedPayload::Error { .. } => Some(ItemLifecycle::Failed),
         NormalizedPayload::Unsupported { .. } => Some(ItemLifecycle::Unsupported),

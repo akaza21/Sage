@@ -1,5 +1,7 @@
 use super::*;
-use crate::acp::contract::{ProjectionRevision, SageAgentSessionId, SageChatId, SageProjectId};
+use sage_acp_protocol::contract::{
+    ProjectionRevision, SageAgentSessionId, SageChatId, SageProjectId,
+};
 
 fn fixture() -> Connection {
     let connection = Connection::open_in_memory().unwrap();

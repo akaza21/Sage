@@ -1,4 +1,4 @@
-use crate::acp::intent::ProjectionChangedV1;
+use crate::acp::ipc::ProjectionChangedV1;
 
 #[cfg(test)]
 use super::{MailboxError, ProjectionMailbox, PublishDisposition};

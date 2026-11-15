@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::{
+use sage_acp_protocol::{
     intent::{
         ToolCategory,
         session_event::{SessionActivity, SessionActivityState, SessionScopedEvent},
@@ -49,7 +49,6 @@ fn progress(item: &str, message: &str) -> Vec<u8> {
     }}))
 }
 
-/// The one item event a frame produced, with its status line.
 fn item_update(
     disposition: IngressDisposition,
 ) -> (String, ItemLifecycle, Option<ToolState>, Option<String>) {
@@ -234,7 +233,7 @@ fn mcp_progress_line_is_redacted_and_byte_capped() {
         .ingest(&progress("mcp-1", &"p".repeat(64 * 1024)), &Mapper)
         .unwrap();
     let line = item_update(update).3.unwrap();
-    assert!(line.len() <= crate::acp::intent::TOOL_PROGRESS_BYTES);
+    assert!(line.len() <= sage_acp_protocol::intent::TOOL_PROGRESS_BYTES);
     assert!(line.ends_with('\u{2026}'));
 }
 

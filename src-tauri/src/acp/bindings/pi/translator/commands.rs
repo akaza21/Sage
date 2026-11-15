@@ -202,7 +202,6 @@ impl PiTranslator {
         let id = format!("pi-{}-{}", self.epoch, self.next_command);
         fields.insert("type".into(), Value::String(kind.command().into()));
         fields.insert("id".into(), Value::String(id.clone()));
-        // A prompt with images is sent as a prompt frame.
         let frame_bytes = if fields.contains_key("images") {
             sage_core::limits::PROMPT_FRAME_BYTES
         } else {
@@ -241,8 +240,6 @@ fn validate_message(message: &str) -> Result<(), AdapterError> {
 }
 
 impl PiTranslator {
-    /// Forgets the setting a refused, lost or unanswered config request
-    /// asked for, so the next change of that setting can be sent.
     pub(super) fn clear_pending_setting(&mut self, kind: PendingKind) {
         match kind {
             PendingKind::SetThinkingLevel => self.pending_thinking = None,

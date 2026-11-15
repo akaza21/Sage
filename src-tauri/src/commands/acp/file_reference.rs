@@ -4,14 +4,12 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    acp::{
-        contract::SageRootId,
-        resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
-    },
-    domain::ResourceRef,
+    acp::resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
     project_registry::RootRecord,
     state::AppState,
 };
+use sage_acp_protocol::contract::SageRootId;
+use sage_domain::resource::ResourceRef;
 
 const MAX_REFERENCE_BYTES: usize = 4096;
 

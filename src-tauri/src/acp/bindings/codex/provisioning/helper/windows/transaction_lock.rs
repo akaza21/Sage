@@ -7,10 +7,8 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 
 use super::super::ElevatedHelperError;
-use crate::{
-    acp::bindings::codex::physical::open_exact_state_root,
-    acp_protocol::codex_protocol::pinned_codex_version,
-};
+use crate::acp::bindings::codex::physical::open_exact_state_root;
+use sage_acp_protocol::pinned_codex_version;
 
 const LOCK_NAME: &str = concat!(
     ".sage-codex-",

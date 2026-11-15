@@ -1,8 +1,8 @@
 use serde_json::{Map, Value};
 
-use crate::acp::intent::ExternalId;
-use crate::acp::lifecycle::ItemLifecycle;
-use crate::acp::lifecycle::TurnState;
+use sage_acp_protocol::intent::ExternalId;
+use sage_acp_protocol::lifecycle::ItemLifecycle;
+use sage_acp_protocol::lifecycle::TurnState;
 
 use super::super::support::text;
 use super::{
@@ -76,9 +76,9 @@ pub(in crate::acp::bindings::codex::incoming) fn item_event<M: ResourceMapper>(
         item_id: ExternalId::new("childItemId", item_id.to_owned())
             .map_err(|_| IngressError::Identity)?,
         role: match kind {
-            Some("userMessage") => Some(crate::acp_protocol::codex_protocol::ChildTextRole::User),
+            Some("userMessage") => Some(sage_acp_protocol::codex_protocol::ChildTextRole::User),
             Some("agentMessage") => {
-                Some(crate::acp_protocol::codex_protocol::ChildTextRole::Assistant)
+                Some(sage_acp_protocol::codex_protocol::ChildTextRole::Assistant)
             }
             _ => None,
         },

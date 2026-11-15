@@ -4,8 +4,8 @@ use super::*;
 impl Lane<'_> {
     pub(crate) fn dispose_temporary_runtime(
         &self,
-        project: &crate::acp::contract::SageProjectId,
-        chat: &crate::acp::contract::SageChatId,
+        project: &sage_acp_protocol::contract::SageProjectId,
+        chat: &sage_acp_protocol::contract::SageChatId,
     ) -> Result<(), CodexSessionError> {
         if !crate::side_chat_storage::is_temporary(&self.database.connection(), chat.as_str())
             .map_err(|_| CodexSessionError::Recovery)?
@@ -59,12 +59,7 @@ impl Lane<'_> {
         self.park_idle_runtime(deadline)
     }
 
-    /// Parks this lane's runtime through the graceful explicit close a
-    /// replacement uses: the host drains, parks its session durably and
-    /// exits, and a later activation resumes it. Ok(false) leaves the
-    /// runtime as it was: no runtime, a reserved Turn, a host without
-    /// shutdown recovery, a session control still waiting for its answer,
-    /// or a refused idle drain.
+    /// Ok(false) leaves the runtime as it was.
     pub(crate) fn park_idle_runtime(
         &self,
         deadline: std::time::Instant,
@@ -146,7 +141,7 @@ impl Lane<'_> {
         &self,
         owner: &RuntimeOwner,
     ) -> Result<(), CodexSessionError> {
-        let exit_kind = crate::acp::contract::RequiredText::new("exitKind", "hostCancel")
+        let exit_kind = sage_acp_protocol::contract::RequiredText::new("exitKind", "hostCancel")
             .map_err(|_| CodexSessionError::Recovery)?;
         #[cfg(all(test, windows))]
         self.record_cancel_stage("park-store");
@@ -227,7 +222,7 @@ impl Lane<'_> {
     pub(crate) fn cancel_is_durable(
         &self,
         owner: &RuntimeOwner,
-        turn_id: &crate::acp::contract::SageTurnId,
+        turn_id: &sage_acp_protocol::contract::SageTurnId,
     ) -> bool {
         self.load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
             .is_ok_and(|page| {
@@ -236,8 +231,8 @@ impl Lane<'_> {
                         && turn.session_id == owner.session_id
                         && matches!(
                             turn.state,
-                            crate::acp::lifecycle::TurnState::Cancelled
-                                | crate::acp::lifecycle::TurnState::Interrupted
+                            sage_acp_protocol::lifecycle::TurnState::Cancelled
+                                | sage_acp_protocol::lifecycle::TurnState::Interrupted
                         )
                 })
             })

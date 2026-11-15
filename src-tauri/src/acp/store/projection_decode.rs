@@ -1,4 +1,8 @@
-use crate::acp::{
+use crate::acp::projection::{
+    FileChangeProjection, FileOperation, ItemContent, ItemOrigin, ItemProjection,
+    PermissionRequestSource, PlanEntry, PlanEntryState, TextRole,
+};
+use sage_acp_protocol::{
     contract::{
         BoundedVec, ContractError, EntityRevision, RuntimeEpoch, SafeText, SageActivityId,
         SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageRootId, SageServerRequestId,
@@ -6,10 +10,6 @@ use crate::acp::{
     },
     intent::NormalizedPayload,
     lifecycle::ServerRequestState,
-    projection::{
-        FileChangeProjection, FileOperation, ItemContent, ItemOrigin, ItemProjection,
-        PermissionRequestSource, PlanEntry, PlanEntryState, TextRole,
-    },
 };
 
 use super::StoreError;
@@ -132,7 +132,7 @@ pub(super) fn decode_item(
 
 fn content(
     value: NormalizedPayload,
-    lifecycle: crate::acp::lifecycle::ItemLifecycle,
+    lifecycle: sage_acp_protocol::lifecycle::ItemLifecycle,
     legacy_role: Option<TextRole>,
     activity: Option<&SageActivityId>,
     permission: Option<(
@@ -171,16 +171,16 @@ fn content(
                     .map(|entry| PlanEntry {
                         label: entry.label.clone(),
                         state: match entry.state {
-                            crate::acp::intent::NormalizedPlanState::Pending => {
+                            sage_acp_protocol::intent::NormalizedPlanState::Pending => {
                                 PlanEntryState::Pending
                             }
-                            crate::acp::intent::NormalizedPlanState::InProgress => {
+                            sage_acp_protocol::intent::NormalizedPlanState::InProgress => {
                                 PlanEntryState::InProgress
                             }
-                            crate::acp::intent::NormalizedPlanState::Completed => {
+                            sage_acp_protocol::intent::NormalizedPlanState::Completed => {
                                 PlanEntryState::Completed
                             }
-                            crate::acp::intent::NormalizedPlanState::Failed => {
+                            sage_acp_protocol::intent::NormalizedPlanState::Failed => {
                                 PlanEntryState::Failed
                             }
                         },
@@ -230,13 +230,13 @@ fn content(
                     vec![FileChangeProjection {
                         resource,
                         operation: match operation {
-                            crate::acp::intent::FileChangeOperation::Created => {
+                            sage_acp_protocol::intent::FileChangeOperation::Created => {
                                 FileOperation::Created
                             }
-                            crate::acp::intent::FileChangeOperation::Updated => {
+                            sage_acp_protocol::intent::FileChangeOperation::Updated => {
                                 FileOperation::Updated
                             }
-                            crate::acp::intent::FileChangeOperation::Deleted => {
+                            sage_acp_protocol::intent::FileChangeOperation::Deleted => {
                                 FileOperation::Deleted
                             }
                         },
@@ -352,7 +352,7 @@ fn summary_label(value: &str) -> Result<SafeText<512>, StoreError> {
     }
     SafeText::new("planLabel", &value[..end]).map_err(contract)
 }
-fn kind_text(value: crate::acp::contract::ItemKind) -> &'static str {
+fn kind_text(value: sage_acp_protocol::lifecycle::ItemKind) -> &'static str {
     value.as_str()
 }
 fn revision(value: i64) -> Result<EntityRevision, StoreError> {

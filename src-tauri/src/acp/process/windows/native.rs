@@ -3,9 +3,7 @@ use std::mem::size_of;
 use std::os::windows::io::{FromRawHandle, RawHandle};
 use std::ptr::{null, null_mut};
 
-use windows_sys::Win32::Foundation::{
-    CloseHandle, HANDLE, HANDLE_FLAG_INHERIT, INVALID_HANDLE_VALUE, SetHandleInformation,
-};
+use windows_sys::Win32::Foundation::{HANDLE, HANDLE_FLAG_INHERIT, SetHandleInformation};
 use windows_sys::Win32::Security::SECURITY_ATTRIBUTES;
 use windows_sys::Win32::System::Pipes::CreatePipe;
 use windows_sys::Win32::System::Threading::{
@@ -13,38 +11,7 @@ use windows_sys::Win32::System::Threading::{
     PROC_THREAD_ATTRIBUTE_HANDLE_LIST, UpdateProcThreadAttribute,
 };
 
-use super::super::supervisor::LaunchError;
-
-pub(super) struct NativeHandle(HANDLE);
-
-// Windows kernel handles may be waited, queried, and closed from any thread;
-// this wrapper owns exactly one handle and closes it once on drop.
-unsafe impl Send for NativeHandle {}
-unsafe impl Sync for NativeHandle {}
-
-impl NativeHandle {
-    pub(super) fn new(value: HANDLE) -> Result<Self, LaunchError> {
-        if value.is_null() || value == INVALID_HANDLE_VALUE {
-            Err(LaunchError::Io)
-        } else {
-            Ok(Self(value))
-        }
-    }
-
-    pub(super) fn raw(&self) -> HANDLE {
-        self.0
-    }
-}
-
-impl Drop for NativeHandle {
-    fn drop(&mut self) {
-        if !self.0.is_null() && self.0 != INVALID_HANDLE_VALUE {
-            // SAFETY: the wrapper uniquely owns this valid kernel handle.
-            unsafe { CloseHandle(self.0) };
-            self.0 = null_mut();
-        }
-    }
-}
+use sage_process::{error::LaunchError, handle::NativeHandle};
 
 pub(super) struct AttributeList {
     storage: Vec<usize>,
@@ -153,8 +120,10 @@ fn pipe(parent_reads: bool) -> Result<(NativeHandle, File), LaunchError> {
     if unsafe { CreatePipe(&mut read, &mut write, &security, 65_536) } == 0 {
         return Err(LaunchError::Io);
     }
-    let read = NativeHandle::new(read)?;
-    let write = NativeHandle::new(write)?;
+    // SAFETY: CreatePipe returned both new handles to this caller only.
+    let read = unsafe { NativeHandle::new(read) }?;
+    // SAFETY: as above.
+    let write = unsafe { NativeHandle::new(write) }?;
     let (child, parent) = if parent_reads {
         (write, read)
     } else {

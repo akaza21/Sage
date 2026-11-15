@@ -1,7 +1,7 @@
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
 
-use crate::domain::{BufferSnapshotAck, BufferSnapshotRequest};
+use sage_domain::editor::{BufferSnapshotAck, BufferSnapshotRequest};
 
 /// An older revision is not applied, the same revision with the same text
 /// already is, and the same revision with other text is an error. A `rebase`

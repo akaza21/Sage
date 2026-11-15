@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{SageChatId, SageProjectId},
     scheduler::RuntimeOwner,
     session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue},
@@ -99,7 +99,7 @@ fn pi_prompt_delivery_still_requires_queued_resolution() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect").unwrap(),
             client_message_id: RequiredText::new("client", "direct-config-only").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let token = egress.into_token();

@@ -1,4 +1,4 @@
-//! Single-session MCP stdio bridge. Production admission remains deliberately separate.
+//! Production admission remains deliberately separate.
 use super::{BrowserMcpError, BrowserMcpServer, BrowserMcpToken, read_bounded_line};
 use crate::acp::browser::BrowserCapability;
 use sage_core::limits::BROWSER_LIMITS;

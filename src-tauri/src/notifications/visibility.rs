@@ -19,11 +19,12 @@ pub struct VisibilityUpdate {
 }
 
 impl VisibilityUpdate {
-    pub(super) fn shown_chats(&self) -> Vec<crate::acp::contract::SageChatId> {
+    /// The Chats this update shows: none while the window is hidden.
+    pub(super) fn shown_chats(&self) -> Vec<sage_acp_protocol::contract::SageChatId> {
         self.chat_ids
             .iter()
             .filter(|_| self.document_visible)
-            .filter_map(|id| crate::acp::contract::SageChatId::parse(id.clone()).ok())
+            .filter_map(|id| sage_acp_protocol::contract::SageChatId::parse(id.clone()).ok())
             .collect()
     }
 }

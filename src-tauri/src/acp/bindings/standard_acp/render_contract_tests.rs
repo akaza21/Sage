@@ -1,13 +1,10 @@
-//! Partial ACP updates keep what earlier frames reported, fallbacks never
-//! stick, and every remembered item stays inside the turn's caps.
-
 use serde_json::{Value, json};
 
 use super::{
     profile::profile_for,
     translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator, TranslationError},
 };
-use crate::acp::{
+use sage_acp_protocol::{
     intent::{NormalizedPayload, SafeResourceRef, ToolExecution, UnavailableResourceReason},
     lifecycle::ItemLifecycle,
 };

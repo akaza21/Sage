@@ -219,7 +219,6 @@ fn wal_only_newer_profiles_preserve_valid_interrupted_probes() {
 }
 
 fn check_wal_preflight(probe_prefix: &str) {
-    // Exercise both markers together and history alone, with no live SHM.
     for update_marker in [true, false] {
         let source = test_directory();
         let path = source.0.join("sage.db");

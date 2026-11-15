@@ -1,16 +1,14 @@
 use super::*;
-use crate::{
-    acp::{
-        bindings::adapter::{
-            AdapterBatch, AdapterCommand, AdapterEgress, AdapterOptionalEgress,
-            AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
-        },
-        intent::ExternalId,
-        lifecycle::ServerRequestState,
-        runtime::later_permission::resolve_later_permission,
-        transport::{Frame, OutboundFrame},
+use crate::acp::{
+    bindings::adapter::{
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterOptionalEgress, AdapterRuntimeError,
+        EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
-    acp_protocol::permissions::PermissionDecision,
+    runtime::later_permission::resolve_later_permission,
+    transport::{Frame, OutboundFrame},
+};
+use sage_acp_protocol::{
+    intent::ExternalId, lifecycle::ServerRequestState, permissions::PermissionDecision,
 };
 
 use super::super::{request::RequestKind, state::CodexAdapter};
@@ -23,12 +21,11 @@ impl HarnessAdapter for CodexRuntime {
         &mut self,
         frame: &Frame,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        self.discard_invalid_model_page(frame)
+        self.discard_invalid_answer(frame)
     }
     fn available_commands(&self) -> std::sync::Arc<crate::acp::slash_commands::CommandState> {
         self.inner.skills()
     }
-    /// Reads the skills while idle, first and after Codex says they changed.
     fn discover_commands(&mut self) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         let wanted = self.inner.skills_wanted();
         wanted
@@ -41,7 +38,7 @@ impl HarnessAdapter for CodexRuntime {
     fn finish_model_config_hydration(&mut self) {
         self.model_catalog_idle_only = true;
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.session_config.clone()
     }
     fn config_hydrating(&self) -> bool {
@@ -50,7 +47,7 @@ impl HarnessAdapter for CodexRuntime {
 
     fn configure(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.configure_thread(intent).map(|()| None)
     }
@@ -92,7 +89,7 @@ impl HarnessAdapter for CodexRuntime {
             || self.inner.mcp_pending()
     }
 
-    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+    fn usage(&self) -> Option<std::sync::Arc<sage_acp_protocol::usage::UsageCell>> {
         Some(std::sync::Arc::clone(&self.usage))
     }
 
@@ -101,8 +98,6 @@ impl HarnessAdapter for CodexRuntime {
         self.request(CodexAdapter::rate_limits_read)
     }
 
-    /// A passive read whose caller gave up: a usage, MCP list,
-    /// background-terminal list or import read.
     fn abandon_passive_read(&mut self) {
         self.inner.abandon_rate_limits_read();
         self.inner.abandon_mcp_read();
@@ -124,12 +119,15 @@ impl HarnessAdapter for CodexRuntime {
         self.inner.oversize_recoverable()
     }
 
-    fn answered_control(&mut self, control: &crate::acp::session_control::SessionControl) -> bool {
+    fn answered_control(
+        &mut self,
+        control: &sage_acp_protocol::session_control::SessionControl,
+    ) -> bool {
         self.answered_undo(control)
     }
     fn session_control(
         &mut self,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.control_request(control)
     }
@@ -188,7 +186,7 @@ impl HarnessAdapter for CodexRuntime {
         }
     }
 
-    fn capabilities(&self) -> Option<crate::acp::intent::CapabilitySnapshotV1> {
+    fn capabilities(&self) -> Option<sage_acp_protocol::intent::CapabilitySnapshotV1> {
         self.inner.effective_capabilities().ok()
     }
 
@@ -212,6 +210,7 @@ impl HarnessAdapter for CodexRuntime {
             }
             AdapterCommand::NewSession { native_root, model } => {
                 self.reset_session_model(model.clone());
+                self.begin_new_thread();
                 let config = self
                     .mcp
                     .codex_config()
@@ -305,7 +304,7 @@ impl HarnessAdapter for CodexRuntime {
 
     fn cancel_permission(
         &mut self,
-        request_id: &crate::acp::contract::SageServerRequestId,
+        request_id: &sage_acp_protocol::contract::SageServerRequestId,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let bytes = self
             .inner

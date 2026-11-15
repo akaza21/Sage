@@ -1,10 +1,7 @@
 use serde_json::{Value, json};
 
-use crate::acp::{
-    contract::RequiredText,
-    intent::{ModelId, Prompt},
-    runtime::host_browse::MAX_HARNESS_BROWSE_URL_BYTES,
-};
+use crate::acp::{runtime::host_browse::MAX_HARNESS_BROWSE_URL_BYTES, transcript_quote::Prompt};
+use sage_acp_protocol::{contract::RequiredText, intent::ModelId};
 use sage_core::limits::LIMITS;
 
 use super::CODEX_BROWSE_TOOL_NAME;
@@ -257,11 +254,10 @@ impl OutgoingRequest {
         )
     }
 
-    /// `thread/fork` through the latest Turn. The pinned schema
-    /// requires only `threadId`; omitted overrides inherit the source thread,
-    /// and `lastTurnId` is left out because Sage forks only between Turns.
-    /// Sage imports no native history, so the forked Turns are excluded;
-    /// asking for them draws a `deprecationNotice` from the pinned server.
+    /// The pinned schema requires only `threadId`; omitted overrides inherit
+    /// the source thread, and `lastTurnId` is left out because Sage forks only
+    /// between Turns. Sage imports no native history, so the forked Turns are
+    /// excluded; asking for them draws a `deprecationNotice` from the pinned server.
     pub(crate) fn fork(id: u64, thread_id: &RequiredText<512>) -> Result<Self, RequestError> {
         Self::build(
             id,
@@ -300,7 +296,7 @@ impl OutgoingRequest {
             thread_id,
             prompt,
             client_message_id,
-            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             TurnPolicySurface::Unsupported,
             TurnSettings::default(),
         )
@@ -311,7 +307,7 @@ impl OutgoingRequest {
         thread_id: &RequiredText<512>,
         prompt: &Prompt,
         client_message_id: &RequiredText<512>,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
         surface: TurnPolicySurface,
         settings: TurnSettings<'_>,
     ) -> Result<Self, RequestError> {

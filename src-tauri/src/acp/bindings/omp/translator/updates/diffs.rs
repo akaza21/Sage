@@ -1,8 +1,9 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    contract::{ItemLifecycle, RequiredText, SafeText},
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText},
     intent::{FileChangeFacts, FileChangeOperation, NormalizedPayload},
+    lifecycle::ItemLifecycle,
 };
 
 use super::super::{ResourceMapper, TranslationError};
@@ -38,8 +39,8 @@ pub(super) fn push_diff_events(
             ),
         };
         let resource = match resources.map_absolute(path) {
-            Ok(resource) => crate::acp::intent::SafeResourceLocation::Resource { resource },
-            Err(reason) => crate::acp::intent::SafeResourceLocation::unavailable(reason),
+            Ok(resource) => sage_acp_protocol::intent::SafeResourceLocation::Resource { resource },
+            Err(reason) => sage_acp_protocol::intent::SafeResourceLocation::unavailable(reason),
         };
         let new_text = entry
             .get("newText")
@@ -52,7 +53,7 @@ pub(super) fn push_diff_events(
         // invented from disk or Git.
         if !matches!(
             resource,
-            crate::acp::intent::SafeResourceLocation::Resource { .. }
+            sage_acp_protocol::intent::SafeResourceLocation::Resource { .. }
         ) {
             events.push(AdapterEvent::Item {
                 external_key,
@@ -72,8 +73,8 @@ pub(super) fn push_diff_events(
             });
             continue;
         }
-        match crate::acp_protocol::file_diff::admit_pair(old_text, new_text) {
-            crate::acp_protocol::file_diff::PairAdmission::Admitted {
+        match sage_acp_protocol::file_diff::admit_pair(old_text, new_text) {
+            sage_acp_protocol::file_diff::PairAdmission::Admitted {
                 old_bytes,
                 new_bytes,
                 digest,
@@ -103,7 +104,7 @@ pub(super) fn push_diff_events(
                     update_mode: ItemUpdateMode::Replace,
                 });
             }
-            crate::acp_protocol::file_diff::PairAdmission::SummaryOnly => {
+            sage_acp_protocol::file_diff::PairAdmission::SummaryOnly => {
                 events.push(AdapterEvent::Item {
                     external_key,
                     lifecycle: ItemLifecycle::Completed,

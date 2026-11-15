@@ -1,10 +1,7 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    image_admit::{ImageAdmitError, admit_image_parts},
-    intent::ImageMediaType,
-    lifecycle::ItemLifecycle,
-};
+use crate::acp::image_admit::{ImageAdmitError, admit_image_parts};
+use sage_acp_protocol::{intent::ImageMediaType, lifecycle::ItemLifecycle};
 use sage_core::limits::LIMITS;
 
 use super::{AdapterEvent, StandardAcpTranslator, TranslationError};

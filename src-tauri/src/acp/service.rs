@@ -7,9 +7,7 @@ use std::sync::{
 use crate::{
     acp::{
         bindings::registry::{AdmittedBindingRecord, BindingRegistry, RegistryUnavailable},
-        contract::{ProjectGeneration, SageChatId, SageProjectId},
-        intent::{AcpChatPage, BindingId, IntentSnapshot, PageCursor},
-        page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
+        ipc::{AcpChatPage, IntentSnapshot},
         runtime::{
             BoundedThread, JournalHandle, ProjectionNotifier, ProjectionPublisher,
             SessionCoordinator, ThreadWaitError,
@@ -18,19 +16,23 @@ use crate::{
     },
     persistence::Database,
 };
+use sage_acp_protocol::{
+    contract::{ProjectGeneration, SageChatId, SageProjectId},
+    intent::{BindingId, PageCursor},
+    page_admission::{PageAdmissionError, PageReadAdmission, PageReadLease},
+};
 
 #[cfg(test)]
 use crate::acp::bindings::codex::CodexBindingRegistration;
 use crate::acp::{errors::SessionControlError, read_text_file::ReadTextFileService};
 
 #[cfg(all(test, windows))]
-use crate::acp::{
-    bindings::{
-        adapter::AdapterRuntimeError,
-        codex::{CodexProjectRootAuthority, CodexRuntime},
-    },
-    contract::{RuntimeEpoch, SageAgentSessionId},
+use crate::acp::bindings::{
+    adapter::AdapterRuntimeError,
+    codex::{CodexProjectRootAuthority, CodexRuntime},
 };
+#[cfg(all(test, windows))]
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 pub(crate) mod background_terminals;
 mod bootstrap;
@@ -55,7 +57,6 @@ mod live_routes;
 mod page_bytes;
 pub(crate) use live_lanes::{ChatRuntimeRelease, LIVE_RUNTIME_LANES, explicit_close_deadline};
 mod permission;
-// Only the Pi bridge fixture replay drives decisions through the service from outside it.
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use permission::tests::support::{
     admit_permission_request, service_with_pending_requests,
@@ -111,15 +112,12 @@ use page_bytes::PageBytes;
 use runtime_identity::CodexRuntimeIdentityLedger;
 use runtime_slot::RuntimeSlot;
 
-pub(crate) use crate::acp::intent::PromptSendError;
-
 pub(crate) struct AcpService {
     pub(crate) file_stages: Arc<Mutex<crate::acp::attached_context::files::FileStages>>,
     pub(crate) file_stage_reader: Arc<tokio::sync::Mutex<()>>,
     database: Database,
     journal: JournalHandle,
     journal_thread: Mutex<Option<BoundedThread>>,
-    /// Starts durable sessions; it never reserves a runtime tree.
     session_starts: SessionCoordinator,
     lanes: Box<[live_lanes::LiveLane]>,
     idle_release: live_lanes::IdleRelease,
@@ -129,7 +127,7 @@ pub(crate) struct AcpService {
     pub(super) read_text_files: ReadTextFileService,
     browser_permissions: Mutex<
         std::collections::HashMap<
-            crate::acp::contract::SageServerRequestId,
+            sage_acp_protocol::contract::SageServerRequestId,
             browser_permission::PendingBrowserPermission,
         >,
     >,
@@ -144,14 +142,10 @@ pub(crate) struct AcpService {
     codex_runtime_identity: Arc<CodexRuntimeIdentityLedger>,
     #[cfg(test)]
     codex_runtime_release_fail_once: AtomicBool,
-    /// Chat releases refused because another holder had the lane.
     #[cfg(test)]
     lane_busy_refusals: std::sync::atomic::AtomicUsize,
-    /// Chat releases refused because the harness was answering a control.
     #[cfg(test)]
     control_running_refusals: std::sync::atomic::AtomicUsize,
-    /// When set, the next lane-busy refusal lets go of the lane's claim, as
-    /// the holder finishing would.
     #[cfg(test)]
     yield_lane_on_busy: AtomicBool,
     #[cfg(test)]
@@ -167,8 +161,6 @@ pub(crate) struct AcpService {
 }
 
 impl AcpService {
-    /// Future admitted ACP pumps own path mapping and event delivery; this
-    /// narrow service owns only the bounded read/ack linearization state.
     pub(crate) fn read_text_file_service(&self) -> &ReadTextFileService {
         &self.read_text_files
     }
@@ -271,8 +263,8 @@ impl AcpService {
             .is_ok_and(|binding| binding.binding_id() == requested.as_str())
     }
 
-    /// Fixed provider lookup only. Requested session binding IDs must resolve
-    /// through `resolve_session_binding`, where unknown IDs remain hard failures.
+    /// Requested session binding IDs must resolve through
+    /// `resolve_session_binding`, where unknown IDs remain hard failures.
     #[cfg(test)]
     pub(super) fn refresh_codex_binding(
         &self,
@@ -327,9 +319,14 @@ impl AcpService {
         &self,
         binding_id: &BindingId,
         intent: crate::acp::runtime::HostPromptIntent,
-    ) -> Result<crate::acp::runtime::HostOutcome, PromptSendError<SessionDispatchError>> {
+    ) -> Result<
+        crate::acp::runtime::HostOutcome,
+        crate::acp::prompt_send::PromptSendError<SessionDispatchError>,
+    > {
         self.resolve_session_binding(binding_id)
-            .map_err(|_| PromptSendError::not_started(SessionDispatchError::Binding))?
+            .map_err(|_| {
+                crate::acp::prompt_send::PromptSendError::not_started(SessionDispatchError::Binding)
+            })?
             .dispatch_turn(self, intent)
             .map_err(|failure| failure.map(SessionDispatchError::Operation))
     }
@@ -353,9 +350,8 @@ impl AcpService {
         self.page_reads.try_acquire(project_id, chat_id)
     }
 
-    /// Reads a chat page from SQLite. When called from async code on a
-    /// multi-thread runtime, the worker's other tasks move to another thread
-    /// while it runs.
+    /// When called from async code on a multi-thread runtime, the worker's other
+    /// tasks move to another thread while it runs.
     pub(crate) fn load_chat_page(
         &self,
         project_id: SageProjectId,
@@ -371,7 +367,6 @@ impl AcpService {
             )?;
             self.compose_session_config(&mut page)?;
             let mut size = PageBytes::measure(&page)?;
-            // History yields room for the session config that does not fit.
             if let Some(reserve) = session_config::config_reserve(&mut page, &size)? {
                 page = crate::acp::store::load_chat_page_reserving(
                     &self.database.connection(),
@@ -410,7 +405,7 @@ impl AcpService {
     #[cfg(test)]
     pub(crate) fn install_runtime_for_test(
         &self,
-        owner: crate::acp::scheduler::RuntimeOwner,
+        owner: sage_acp_protocol::scheduler::RuntimeOwner,
         runtime: Arc<crate::acp::runtime::RuntimeHost>,
     ) {
         self.lane_at(0)

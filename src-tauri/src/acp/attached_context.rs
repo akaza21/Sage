@@ -1,10 +1,8 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
-use super::{
-    contract::{BoundedVec, ContractError, RequiredText},
-    intent::Prompt,
-};
-use crate::acp_protocol::file_diff::{DiffRef, SnapshotReadError, wire_counter};
+use crate::acp::transcript_quote::Prompt;
+use sage_acp_protocol::contract::{BoundedVec, ContractError, RequiredText};
+use sage_acp_protocol::file_diff::{DiffRef, SnapshotReadError, wire_counter};
 use sage_core::limits::{ATTACHED_CONTEXT_LIMIT, ATTACHED_CONTEXT_NOTE_BYTES};
 
 use crate::{browser::annotate::element::BrowserElement, image_attachment::ImageAttachedContext};
@@ -251,7 +249,6 @@ pub(crate) enum AttachedContextError {
     Snapshot(SnapshotReadError),
 }
 
-/// Why a prompt's page elements were refused at admission.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum BrowserElementRefusal {
     RepeatedNumber,
@@ -607,7 +604,6 @@ mod tests {
             rendered.as_str(),
             "Review it\n\nAttached diff comment (review context only; do not edit implicitly):\n- src/app.ts:27-31 (new side): Keep this branch explicit\n\nAttached diff comment (review context only; do not edit implicitly):\n- src/app.ts:32 (new side): Explain the fallback"
         );
-        // Diff-only turns keep the durable user text equal to the dispatched prompt.
         assert_eq!(rendered.user_payload()["text"], rendered.as_str());
         assert!(rendered.user_payload().get("attachedContext").is_none());
     }

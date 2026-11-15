@@ -123,7 +123,7 @@ async fn pi_pump_read_only_fixture_preserves_real_stream_content() {
     pump.queue_command(AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect read-only").unwrap(),
         client_message_id: RequiredText::new("client", "turn-pump-0").unwrap(),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     })
     .unwrap();
     let mut transport = Capture::default();
@@ -156,7 +156,7 @@ async fn pi_pump_content_free_frames_remain_absorbed_until_settlement() {
     pump.queue_command(AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect").unwrap(),
         client_message_id: RequiredText::new("client", "turn-pump-0").unwrap(),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     })
     .unwrap();
     let mut transport = Capture::default();

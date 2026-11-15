@@ -85,7 +85,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     pub(super) fn permission_resolved(
         &self,
         external_request_id: ExternalId,
-        state: crate::acp::lifecycle::ServerRequestState,
+        state: sage_acp_protocol::lifecycle::ServerRequestState,
         now_millis: i64,
     ) -> Result<Option<NormalizedFact>, AdapterPumpError> {
         let request_id = self.scoped_permission_id(&external_request_id)?;
@@ -110,7 +110,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             .map_err(|_| AdapterPumpError::Intent)?;
         let egress = match self.adapter.command(AdapterCommand::ResolvePermission {
             request_id,
-            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
+            decision: sage_acp_protocol::permissions::PermissionDecision::Deny,
         }) {
             Ok(egress) => egress,
             Err(error) => {

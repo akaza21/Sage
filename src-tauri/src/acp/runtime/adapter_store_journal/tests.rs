@@ -4,12 +4,6 @@ use std::sync::{
 };
 
 use crate::acp::{
-    contract::{
-        RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageChatId, SageProjectId,
-        SageServerRequestId, SageTurnId, SchemaVersionV1,
-    },
-    intent::{ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload},
-    lifecycle::{ActivityLifecycle, ItemLifecycle, ServerRequestState, TurnState},
     projection::ActivityRole,
     store::{
         AcpStore, AdapterActivityItemCommand, AdapterBatchMutation, AdapterTurnCursor,
@@ -17,10 +11,18 @@ use crate::acp::{
         StoreMutation,
     },
 };
+use sage_acp_protocol::{
+    contract::{
+        RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageChatId, SageProjectId,
+        SageServerRequestId, SageTurnId, SchemaVersionV1,
+    },
+    intent::{ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload},
+    lifecycle::{ActivityLifecycle, ItemLifecycle, ServerRequestState, TurnState},
+};
 
 use super::*;
 use crate::acp::runtime::adapter_pump::{ActiveTurnIntent, DurableActivityItem, SessionPumpIntent};
-use crate::acp_protocol::permissions::PermissionIntent;
+use sage_acp_protocol::permissions::PermissionIntent;
 
 struct RecordingStore(Arc<Mutex<usize>>);
 struct RequestStateStore(Arc<Mutex<Option<RequestStateCommand>>>);
@@ -39,7 +41,7 @@ impl AcpStore for RecordingStore {
             return Err(StoreError::BatchShape);
         };
         *self.0.lock().unwrap() += 1;
-        let revision = crate::acp::contract::ProjectionRevision::new(9).unwrap();
+        let revision = sage_acp_protocol::contract::ProjectionRevision::new(9).unwrap();
         Ok(StoreCommit {
             projection_revision: revision,
             results: vec![StoreMutationResult::AdapterBatch(
@@ -49,8 +51,8 @@ impl AcpStore for RecordingStore {
                     AdapterTurnCursor::test_only(
                         SageTurnId::parse("turn-one").unwrap(),
                         TurnState::Running,
-                        crate::acp::lifecycle::DeliveryState::Correlated,
-                        crate::acp::contract::EntityRevision::new(2).unwrap(),
+                        sage_acp_protocol::lifecycle::DeliveryState::Correlated,
+                        sage_acp_protocol::contract::EntityRevision::new(2).unwrap(),
                         revision,
                     ),
                 ),
@@ -65,11 +67,11 @@ impl AcpStore for RequestStateStore {
             return Err(StoreError::BatchShape);
         };
         *self.0.lock().unwrap() = Some(command.clone());
-        let projection_revision = crate::acp::contract::ProjectionRevision::new(10).unwrap();
+        let projection_revision = sage_acp_protocol::contract::ProjectionRevision::new(10).unwrap();
         Ok(StoreCommit {
             projection_revision,
             results: vec![StoreMutationResult::Entity(EntityMutation {
-                revision: crate::acp::contract::EntityRevision::new(2).unwrap(),
+                revision: sage_acp_protocol::contract::EntityRevision::new(2).unwrap(),
                 projection_revision,
                 disposition: MutationDisposition::Applied,
             })],

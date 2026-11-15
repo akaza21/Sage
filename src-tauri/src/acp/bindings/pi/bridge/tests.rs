@@ -94,7 +94,6 @@ fn pi_bridge_refuses_escapes_ambiguous_and_oversized_edits_with_reasons() {
         Some(Refusal::NoUniqueMatch)
     );
     assert!(!f.path.join("escape").exists());
-    // A leading `./` names the same workspace file.
     assert_eq!(
         f.edit("write", json!({"path":"./b.txt","content":"x"}))
             .unwrap()
@@ -210,7 +209,6 @@ fn pi_bridge_install_requires_exact_owned_bytes() {
     assert_eq!(install::matches_install(&f.path, &path), Ok(()));
     std::fs::write(&path, "outdated").unwrap();
     assert_eq!(install::matches_install(&f.path, &path), Err(Modified));
-    // Releases before the tested one lack the extension API the bridge uses.
     assert_eq!(install::installed("0.82.0"), Err(UnsupportedVersion));
     assert_eq!(install::installed("1.5.0-rc.1"), Err(UnsupportedVersion));
     let outside = Fixture::new();
@@ -225,8 +223,6 @@ fn pi_bridge_install_requires_exact_owned_bytes() {
     );
 }
 
-/// Packaged builds find the bridge only where `bundle.resources` ships it, and
-/// development builds read it from this checkout: both must hold the pinned bytes.
 #[test]
 fn pi_bridge_resource_ships_at_the_path_sage_resolves() {
     let manifest = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));

@@ -22,7 +22,7 @@ fn extension_delivery_failure_allows_retry(resolution: EgressResolution) {
         AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "retry-review").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }
     };
     let send = runtime.command(command()).unwrap();
@@ -49,7 +49,7 @@ fn extension_delivery_failure_allows_retry(resolution: EgressResolution) {
     assert!(matches!(
         done.events(),
         [AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Completed,
+            state: sage_acp_protocol::lifecycle::TurnState::Completed,
             ..
         }]
     ));
@@ -87,7 +87,6 @@ fn idle_idless_command_discovery_rejection_keeps_the_next_prompt_usable() {
     assert!(batch.egress().is_empty());
     let catalog = runtime.available_commands().snapshot();
     assert_eq!(catalog.revision, 1);
-    // Only Pi's built-in commands remain.
     assert_eq!(names(&catalog.commands), ["session", "compact"]);
     assert!(runtime.discover_commands().unwrap().is_none());
 
@@ -101,7 +100,7 @@ fn idle_idless_command_discovery_rejection_keeps_the_next_prompt_usable() {
     assert!(batch.events().iter().any(|event| matches!(
         event,
         AdapterEvent::Turn {
-            state: crate::acp::lifecycle::TurnState::Completed,
+            state: sage_acp_protocol::lifecycle::TurnState::Completed,
             ..
         }
     )));
@@ -168,7 +167,7 @@ fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
             .command(AdapterCommand::Prompt {
                 prompt,
                 client_message_id: RequiredText::new("client", format!("review-{turn}")).unwrap(),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .expect("discovery must not exhaust prompt capacity");
         let send = deliver(&mut runtime, send);
@@ -178,7 +177,7 @@ fn idle_command_discovery_preserves_rpc_capacity_across_turns() {
         assert!(batch.events().iter().any(|event| matches!(
             event,
             AdapterEvent::Turn {
-                state: crate::acp::lifecycle::TurnState::Completed,
+                state: sage_acp_protocol::lifecycle::TurnState::Completed,
                 ..
             }
         )));
@@ -215,7 +214,7 @@ fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "command-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let send = deliver(&mut runtime, send);
@@ -228,7 +227,7 @@ fn pi_discovers_only_advertised_commands_and_replaces_the_catalog() {
         done.events().iter().any(|e| matches!(
             e,
             AdapterEvent::Turn {
-                state: crate::acp::lifecycle::TurnState::Completed,
+                state: sage_acp_protocol::lifecycle::TurnState::Completed,
                 ..
             }
         )),
@@ -275,7 +274,7 @@ fn extension_model_events_before_ack_are_owned_and_late_ack_does_not_complete_tw
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "ext").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let send = deliver(&mut runtime, send);
@@ -355,14 +354,13 @@ fn pi_commands_keep_their_source_and_only_extensions_run_as_command_turns() {
             ("compact", CommandSource::Builtin),
         ]
     );
-    // A prompt template is model work: Pi's acknowledgment does not end it.
     let mut prompt = Prompt::new("prompt", "/fix the parser").unwrap();
     prompt.command_revision = Some(listed.revision);
     let send = runtime
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "template").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let send = deliver(&mut runtime, send);

@@ -2,10 +2,9 @@ use std::path::{Path, PathBuf};
 
 use crate::acp::{
     characterization_observation::CharacterizationObservation,
-    intent::BindingId,
     process::{ProcessIdentityReceipt, SpawnTimingReceipt},
-    scheduler::RuntimeOwner,
 };
+use sage_acp_protocol::{intent::BindingId, scheduler::RuntimeOwner};
 
 use super::super::AcpService;
 use super::receipt::CharacterizationReceiptSink;

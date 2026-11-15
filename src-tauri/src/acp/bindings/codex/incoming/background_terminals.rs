@@ -1,4 +1,3 @@
-//! Codex `thread/backgroundTerminals/*` answers as neutral terminal facts.
 use serde_json::Value;
 
 use super::{

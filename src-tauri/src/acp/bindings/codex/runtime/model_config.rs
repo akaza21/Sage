@@ -2,8 +2,8 @@ use super::{
     CodexRuntime,
     support::{effort_option, model_option, thread_config},
 };
-use crate::acp::{
-    bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError},
+use crate::acp::bindings::adapter::{AdapterEgress, AdapterEvent, AdapterRuntimeError};
+use sage_acp_protocol::{
     intent::{ModelId, PageCursor},
     session_config::{ConfigIntent, ConfigMutation, ConfigValue},
 };
@@ -11,15 +11,21 @@ use sage_core::limits::LIMITS;
 
 use super::super::incoming::ModelDescriptor;
 
-/// The models the thread's `model/list` pages named, which its model can be
-/// changed to, and the one Sage set for the next `turn/start`. Codex applies
-/// a `turn/start` model to that Turn and the ones after it, so the thread's
-/// model is a session choice like its effort. Holds at most one listing's
-/// bounded entries.
+/// Codex applies a `turn/start` model to that Turn and the ones after it, so
+/// the thread's model is a session choice like its effort.
 #[derive(Debug, Default)]
 pub(super) struct ModelCatalog {
     models: Vec<ModelDescriptor>,
     pub(super) choice: Option<ModelId>,
+}
+
+/// The thinking level stored for the session before it started, which a
+/// new thread starts with (see `bind_launch_effort`).
+#[derive(Debug, Default)]
+pub(super) struct LaunchEffort {
+    bound: Option<sage_acp_protocol::contract::RequiredText<512>>,
+    /// `bound` while `thread/start` has not been answered.
+    starting: Option<sage_acp_protocol::contract::RequiredText<512>>,
 }
 
 impl ModelCatalog {
@@ -42,10 +48,8 @@ impl ModelCatalog {
 impl CodexRuntime {
     pub(super) fn discard_invalid_model_page(
         &mut self,
-        frame: &crate::acp::transport::Frame,
+        id: u64,
     ) -> Result<crate::acp::bindings::adapter::AdapterBatch, AdapterRuntimeError> {
-        let id = crate::acp::bindings::adapter::response_id_for_discard(frame)
-            .ok_or(AdapterRuntimeError::Frame)?;
         if self.inner.fork_pending() == Some(id) {
             // A fork answer beyond the structural bound is also beyond what
             // `thread/resume` could later load, so no Chat is made for it.
@@ -68,6 +72,7 @@ impl CodexRuntime {
         self.selected_model = None;
         self.session_config = None;
         self.selected_effort = None;
+        self.launch_effort.starting = None;
         self.model_catalog = ModelCatalog::default();
         self.model_list_requested = false;
         self.model_catalog_idle_only = false;
@@ -77,24 +82,85 @@ impl CodexRuntime {
         self.model_pages_seen = 0;
     }
 
-    /// Whether a `model/list` page the thread's options come from is still
-    /// unanswered.
+    /// Keeps the stored thinking level a new thread starts with. Codex reports
+    /// no level for a new thread whose config sets none, and offers none to
+    /// choose until it reports one, so a level stored before the session
+    /// existed would wait for a report the first prompt goes out without.
+    /// The level was checked against the thread's model when it was stored.
+    pub(super) fn bind_launch_effort(&mut self, choices: &[ConfigMutation]) {
+        self.launch_effort.bound = choices.iter().find_map(|choice| match choice {
+            ConfigMutation::Option {
+                config_id,
+                value: ConfigValue::Select { value },
+            } if config_id.as_str() == EFFORT_CONFIG_ID => {
+                sage_acp_protocol::contract::RequiredText::new("effort", value.as_str()).ok()
+            }
+            _ => None,
+        });
+    }
+
+    /// A new thread starts with the bound level; a resumed or loaded thread
+    /// keeps its own.
+    pub(super) fn begin_new_thread(&mut self) {
+        self.launch_effort.starting = self.launch_effort.bound.clone();
+    }
+
+    /// Adopts what `thread/start` or `thread/resume` answered. A reported
+    /// level is the thread's own; without one a new thread takes the bound
+    /// level once the catalogue lists it for the thread's model (see
+    /// `settle_launch_effort`), and its first `turn/start` then carries it.
+    pub(super) fn adopt_ready_settings(
+        &mut self,
+        model: Option<ModelId>,
+        reported: Option<sage_acp_protocol::contract::RequiredText<512>>,
+    ) {
+        self.adopt_reported_settings(model, reported);
+        self.settle_launch_effort();
+    }
+
+    /// Gives a new thread its bound level once the catalogue lists the
+    /// thread's model, and only when that model still offers it: a level the
+    /// catalogue dropped since it was stored is never sent, and the thread
+    /// keeps Codex's own level, which the restore then waits to be reported.
+    fn settle_launch_effort(&mut self) {
+        let Some(model) = self
+            .selected_model
+            .as_ref()
+            .filter(|model| self.reported_model_id.as_ref() == Some(&model.id))
+        else {
+            return;
+        };
+        let Some(level) = self.launch_effort.starting.take() else {
+            return;
+        };
+        if self.selected_effort.is_none()
+            && model
+                .supported_efforts
+                .iter()
+                .any(|offered| offered.id == level)
+        {
+            self.apply_effort(level);
+        }
+    }
+
     pub(super) fn catalogue_pending(&self) -> bool {
         self.inner
             .awaits(super::super::request::RequestKind::Models)
     }
 
-    /// Adopts the model and effort Codex reports for the thread, on start or
-    /// resume and whenever its settings change. The reported model is the
-    /// thread's from now on, so a pick not yet sent is not sent over it, and
-    /// its listed descriptor offers its efforts at once. A different model
-    /// keeps only an effort reported with it; an absent effort keeps the
-    /// selected one only for the same model while the model runs it.
+    /// The reported model is the thread's from now on, so a pick not yet sent
+    /// is not sent over it. A different model keeps only an effort reported
+    /// with it; an absent effort keeps the selected one only for the same
+    /// model while the model runs it.
     pub(super) fn adopt_reported_settings(
         &mut self,
         model: Option<ModelId>,
-        effort: Option<crate::acp::contract::RequiredText<512>>,
+        effort: Option<sage_acp_protocol::contract::RequiredText<512>>,
     ) {
+        // A level Codex reports is the thread's own, over any bound one.
+        if effort.is_some() {
+            self.launch_effort.starting = None;
+        }
         if let Some(model) = &model {
             if self.selected_model_id.as_ref() != Some(model) {
                 self.selected_effort = None;
@@ -104,7 +170,7 @@ impl CodexRuntime {
             self.selected_model_id = Some(model.clone());
         }
         self.reported_model_id = model;
-        let runs = |effort: &crate::acp::contract::RequiredText<512>| {
+        let runs = |effort: &sage_acp_protocol::contract::RequiredText<512>| {
             self.selected_model.as_ref().is_none_or(|model| {
                 model
                     .supported_efforts
@@ -136,16 +202,15 @@ impl CodexRuntime {
                     .filter(|_| catalogue_read)
                     .map(|id| model_option(&self.model_catalog.models, id)),
             );
-        let confirmed_model =
-            self.reported_model_id
-                .as_ref()
-                .map(|id| crate::acp::session_config::ConfirmedModel {
-                    id: id.clone(),
-                    name: model.map(|model| model.name.clone()),
-                });
+        let confirmed_model = self.reported_model_id.as_ref().map(|id| {
+            sage_acp_protocol::session_config::ConfirmedModel {
+                id: id.clone(),
+                name: model.map(|model| model.name.clone()),
+            }
+        });
         let known = confirmed_model.is_some() || effort.is_some();
         let mut config = thread_config(
-            crate::acp::session_config::SessionConfig {
+            sage_acp_protocol::session_config::SessionConfig {
                 confirmed_model,
                 confirmed_effort: effort.cloned(),
                 ..Default::default()
@@ -159,7 +224,7 @@ impl CodexRuntime {
         let unreported = [
             ("model", self.reported_model_id.is_some() && !catalogue_read),
             (
-                "effort",
+                EFFORT_CONFIG_ID,
                 unlisted
                     || effort.is_none()
                         && model.is_some_and(|model| !model.supported_efforts.is_empty()),
@@ -167,22 +232,20 @@ impl CodexRuntime {
         ]
         .into_iter()
         .filter(|(_, unreported)| *unreported)
-        .map(|(id, _)| crate::acp::session_config::ConfigId::new("configId", id))
+        .map(|(id, _)| sage_acp_protocol::session_config::ConfigId::new("configId", id))
         .collect::<Result<Vec<_>, _>>()
         .expect("fixed option ids");
-        config.unreported = crate::acp::contract::BoundedVec::new("unreported", unreported)
+        config.unreported = sage_acp_protocol::contract::BoundedVec::new("unreported", unreported)
             .expect("two options at most");
         self.session_config =
             (known || !config.config_options.as_slice().is_empty()).then_some(config);
     }
 
-    pub(super) fn apply_effort(&mut self, effort: crate::acp::contract::RequiredText<512>) {
+    pub(super) fn apply_effort(&mut self, effort: sage_acp_protocol::contract::RequiredText<512>) {
         self.selected_effort = Some(effort);
         self.refresh_model_config();
     }
 
-    /// Changes the thread's model or effort for the next `turn/start`, between
-    /// Turns, to a value the session's config offers.
     pub(super) fn configure_thread(
         &mut self,
         intent: &ConfigIntent,
@@ -200,7 +263,7 @@ impl CodexRuntime {
         else {
             return Err(AdapterRuntimeError::Operation);
         };
-        if !matches!(config_id.as_str(), "effort" | "model") {
+        if config_id.as_str() != EFFORT_CONFIG_ID && config_id.as_str() != "model" {
             return Err(AdapterRuntimeError::Operation);
         }
         self.session_config
@@ -227,11 +290,8 @@ impl CodexRuntime {
         Ok(())
     }
 
-    /// Runs the thread on the listed model `id` from the next `turn/start`,
-    /// at an effort that model runs: the thread's own when the model offers
-    /// it, else the model's default, else its first. Codex keeps a thread's
-    /// effort until a `turn/start` names another, so one is always named.
-    /// Picking the thread's own unlisted model changes nothing.
+    /// Codex retains the thread's effort when `turn/start` omits it, so a
+    /// switch to a model offering efforts must choose one that model supports.
     fn apply_model(&mut self, id: &str) -> Result<(), AdapterRuntimeError> {
         let Some(model) = self.model_catalog.find(id).cloned() else {
             return if self.reported_model_id.as_ref().map(|model| model.as_str()) == Some(id) {
@@ -240,7 +300,7 @@ impl CodexRuntime {
                 Err(AdapterRuntimeError::Operation)
             };
         };
-        let offered = |effort: &&crate::acp::contract::RequiredText<512>| {
+        let offered = |effort: &&sage_acp_protocol::contract::RequiredText<512>| {
             model
                 .supported_efforts
                 .iter()
@@ -261,13 +321,11 @@ impl CodexRuntime {
         Ok(())
     }
 
-    /// The `turn/start` for `prompt`, carrying the model and effort chosen
-    /// for the thread.
     pub(super) fn prompt_request(
         &mut self,
-        prompt: &crate::acp::intent::Prompt,
-        client_message_id: &crate::acp::contract::RequiredText<512>,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        prompt: &crate::acp::transcript_quote::Prompt,
+        client_message_id: &sage_acp_protocol::contract::RequiredText<512>,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         let model = self.model_catalog.choice.clone();
         let effort = self.selected_effort.clone();
@@ -339,6 +397,7 @@ impl CodexRuntime {
             self.selected_model = Some(model.clone());
         }
         self.refresh_model_config();
+        self.settle_launch_effort();
         if self.model_catalog_idle_only {
             (AdapterEvent::IgnoredLate, None)
         } else {
@@ -356,4 +415,23 @@ impl CodexRuntime {
             )
         }
     }
+}
+
+pub(super) const EFFORT_CONFIG_ID: &str = "effort";
+
+/// Only a level discovery listed for the thread's starting `model`, offered
+/// among the levels it listed, as the thread offers them once it runs.
+pub(crate) fn launch_effort_option(
+    model: &sage_domain::harness::ModelOption,
+    effort: &str,
+) -> Option<sage_acp_protocol::session_config::ConfigOption> {
+    if !model.lists_effort(effort) {
+        return None;
+    }
+    let levels = model.effort_levels.iter().flatten();
+    serde_json::from_value(super::support::effort_select(
+        levels.map(|level| (level.as_str(), None)),
+        effort,
+    ))
+    .ok()
 }

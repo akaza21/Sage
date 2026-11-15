@@ -1,12 +1,13 @@
 use super::*;
 
-/// The schema version that indexes undo starts and their settlements.
 pub(super) const VERSION: u32 = 28;
 pub(super) const SQL: &str = include_str!("../../../migrations/028_turn_undo_intent_indexes.sql");
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentTurnUndoIntentIndexes | SchemaClass::CurrentImportedHistory => {
+        SchemaClass::CurrentTurnUndoIntentIndexes
+        | SchemaClass::CurrentImportedHistory
+        | SchemaClass::CurrentSessionCapabilities => {
             return Ok(());
         }
         SchemaClass::CurrentOperationTerminalIndex => {}

@@ -1,6 +1,3 @@
-//! Append-only undo intents use the same fact ledger, capacity reservation,
-//! terminal facts and zero-process recovery boundary as other durable effects.
-
 use super::*;
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 

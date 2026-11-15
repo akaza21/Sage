@@ -2,10 +2,12 @@ use serde_json::{Value, json};
 
 use crate::acp::{
     bindings::adapter::{AdapterEvent, AdapterRuntimeError, HarnessAdapter, ResourceMapper},
-    contract::{RuntimeEpoch, SageAgentSessionId},
     fixture::adapter::FixtureAdapter,
-    intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
     transport::{Frame, IncrementalFrameDecoder, validate_structure},
+};
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId},
+    intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
 };
 
 use super::super::{generated_cases::FrozenCase, wire};

@@ -44,7 +44,7 @@ pub(super) fn release_recovery_slot(registry: &mut super::lifecycle::Registry) {
 #[cfg(test)]
 pub(crate) fn retain_recovery_for_test(
     recovery: crate::acp::process::PreviewLaunchRecovery,
-) -> Result<(), crate::acp::process::LaunchError> {
+) -> Result<(), sage_process::error::LaunchError> {
     let mut incoming = Some(recovery);
     let retained = super::lifecycle_registry::with_registry(|registry| {
         if registry.retained_recovery.is_some() || !registry.recovery_slot_reserved {
@@ -66,7 +66,7 @@ pub(crate) fn retain_recovery_for_test(
             let _ = recovery.retry_zero();
         }
         drop(recovery);
-        Err(crate::acp::process::LaunchError::ContainmentFailure)
+        Err(sage_process::error::LaunchError::ContainmentFailure)
     }
 }
 

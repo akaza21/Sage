@@ -1,8 +1,6 @@
-//! The thread's native Goal: read, pause and clear.
-
 use serde_json::json;
 
-use crate::acp::contract::RequiredText;
+use sage_acp_protocol::contract::RequiredText;
 
 use super::{OutgoingRequest, RequestError, RequestKind};
 

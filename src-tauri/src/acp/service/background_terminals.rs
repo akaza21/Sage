@@ -3,8 +3,8 @@ use crate::acp::{
     background_terminals::{BackgroundTerminal, TerminalAction},
     goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
     runtime::HostError,
-    scheduler::RuntimeOwner,
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum TerminalsError {
@@ -101,8 +101,6 @@ mod tests {
             terminals_reply(false, Ok(NativeRpcReply::TerminalsStopped)),
             Ok(Vec::new())
         );
-        // A refused request must not look like one that worked: a busy or
-        // held-back listing is not an empty one.
         for (list, refused) in [
             (true, Err(HostError::Intent)),
             (true, Ok(NativeRpcReply::Rejected)),

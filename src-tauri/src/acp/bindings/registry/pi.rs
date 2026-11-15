@@ -1,15 +1,15 @@
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::{
-        adapter::AdapterRuntimeError,
-        pi::{
-            PI_VERSION,
-            fixture_admission::{PI_FIXTURE_BINDING_ID, PiFixtureBinding},
-            fixture_runtime::PiFixtureRuntimeFactory,
-        },
-        runtime::RuntimeFactory,
+use crate::acp::bindings::{
+    adapter::AdapterRuntimeError,
+    pi::{
+        PI_VERSION,
+        fixture_admission::{PI_FIXTURE_BINDING_ID, PiFixtureBinding},
+        fixture_runtime::PiFixtureRuntimeFactory,
     },
+    runtime::RuntimeFactory,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };
@@ -32,6 +32,7 @@ pub(super) fn record(binding: Arc<PiFixtureBinding>) -> BindingRecord {
         turn_dispatch: crate::acp::service::AcpService::send_session_turn,
         cancel_dispatch: crate::acp::service::AcpService::cancel_session_turn,
         close_dispatch: crate::acp::service::AcpService::close_session,
+        launch_effort: None,
         model_provider: ModelProvider::NoAccountModels,
         auth_provider: AuthProvider::None,
     }

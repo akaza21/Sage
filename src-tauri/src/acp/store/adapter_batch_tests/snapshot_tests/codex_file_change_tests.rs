@@ -15,9 +15,10 @@ use crate::acp::{
             parse_packet_metadata,
         },
     },
-    intent::{Prompt, SafeResourceRef, UnavailableResourceReason},
     resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
+    transcript_quote::Prompt,
 };
+use sage_acp_protocol::intent::{SafeResourceRef, UnavailableResourceReason};
 
 struct Root(PathBuf);
 
@@ -173,7 +174,7 @@ fn persist_events(fixture: &mut Fixture, events: Vec<IncomingEvent>) {
 fn saved_snapshot(
     fixture: &Fixture,
     relative_path: &str,
-) -> crate::acp_protocol::file_diff::SnapshotData {
+) -> sage_acp_protocol::file_diff::SnapshotData {
     let change = projected_change(&fixture.connection);
     let page = load_chat_page(&fixture.connection, project(), chat(), None).unwrap();
     let item = page.turns.as_slice()[0]
@@ -182,7 +183,7 @@ fn saved_snapshot(
         .iter()
         .find(|item| matches!(item.content, ItemContent::FileChangeDiff { .. }))
         .unwrap();
-    let reference = crate::acp_protocol::file_diff::DiffRef {
+    let reference = sage_acp_protocol::file_diff::DiffRef {
         project_id: fixture.owner.project_id.as_str().into(),
         chat_id: fixture.owner.chat_id.as_str().into(),
         session_id: fixture.owner.session_id.as_str().into(),
@@ -231,7 +232,6 @@ fn codex_fixture_file_change_retains_a_saved_diff_in_the_chat() {
     assert_eq!(change.pair_state, FilePairState::Available);
     assert_eq!(change.additions, Some(1));
     assert_eq!(change.deletions, Some(1));
-    // Subsequent disk edits cannot replace the immutable agent change.
     fs::write(path, "unrelated later edit\n").unwrap();
     let snapshot = saved_snapshot(&fixture, "src/example.ts");
     assert_eq!(snapshot.old_text, "export const example = 1;\n");

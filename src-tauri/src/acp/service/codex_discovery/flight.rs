@@ -3,11 +3,10 @@ use std::{
     time::Instant,
 };
 
-use crate::acp::{
-    bindings::codex::CodexDiscoveryRunError,
+use crate::acp::{bindings::codex::CodexDiscoveryRunError, ipc::CodexDiscoveryResponse};
+use sage_acp_protocol::{
     contract::{ProjectGeneration, SageProjectId, SageRootId},
     intent::BindingId,
-    ipc::CodexDiscoveryResponse,
 };
 
 #[derive(Clone, PartialEq, Eq)]

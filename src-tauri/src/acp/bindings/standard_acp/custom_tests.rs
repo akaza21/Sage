@@ -2,14 +2,9 @@ use std::{ffi::OsStr, path::PathBuf, sync::Arc};
 
 use super::super::StandardAcpRuntimeFactory;
 use super::*;
-use crate::{
-    acp::{
-        bindings::runtime::RuntimeFactory,
-        contract::{
-            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
-        },
-    },
-    project_registry::ProjectRootAuthority,
+use crate::{acp::bindings::runtime::RuntimeFactory, project_registry::ProjectRootAuthority};
+use sage_acp_protocol::contract::{
+    ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
 };
 
 struct TempRoot(PathBuf);

@@ -1,6 +1,7 @@
 use rusqlite::Transaction;
 
-use crate::acp::{lifecycle::TurnTerminalReason, store::StoreError};
+use crate::acp::store::StoreError;
+use sage_acp_protocol::lifecycle::TurnTerminalReason;
 
 use super::AdapterStoreOwner;
 

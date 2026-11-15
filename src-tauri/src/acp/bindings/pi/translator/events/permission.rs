@@ -2,11 +2,12 @@ use super::super::{ANSWER_ID, PendingUiRequest, PiTranslator, TurnPhase};
 use crate::acp::bindings::pi::{
     AdapterError, AdapterOutput, decode::external_id, protocol::is_allow_option,
 };
-use crate::acp::{
+use crate::acp::elicitation_form;
+use sage_acp_protocol::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
         session_event::SessionNoticeLevel,
-        user_input::{UserInputKind, UserInputOption, UserInputQuestion, UserInputRequest, form},
+        user_input::{UserInputKind, UserInputOption, UserInputQuestion, UserInputRequest},
     },
 };
 use serde_json::Value;
@@ -135,8 +136,8 @@ fn question(method: &str, value: &Value) -> Option<UserInputRequest> {
         .filter(|title| !title.trim().is_empty())?;
     let mut question = UserInputQuestion::text(
         RequiredText::new("userInputQuestionId", ANSWER_ID).ok()?,
-        form::display("userInputHeader", "Pi extension")?,
-        form::display("userInputQuestion", title)?,
+        elicitation_form::display("userInputHeader", "Pi extension")?,
+        elicitation_form::display("userInputQuestion", title)?,
     );
     match method {
         "input" => {}
@@ -144,14 +145,19 @@ fn question(method: &str, value: &Value) -> Option<UserInputRequest> {
             question.kind = UserInputKind::Multiline;
             question.initial_text = match value.get("prefill").and_then(Value::as_str) {
                 Some(text) if !text.is_empty() => {
-                    Some(form::display("userInputInitialText", text)?)
+                    Some(elicitation_form::display("userInputInitialText", text)?)
                 }
                 _ => None,
             };
         }
         // A label sanitising would change, or a repeated one, cannot be
         // echoed back exactly, so such a select is cancelled.
-        "select" => question.options = Some(form::plain_options(value.get("options")?, None)?),
+        "select" => {
+            question.options = Some(elicitation_form::plain_options(
+                value.get("options")?,
+                None,
+            )?)
+        }
         _ => return None,
     }
     Some(UserInputRequest {

@@ -130,7 +130,7 @@ fn link_source_fails_before_mutation() {
     std::os::unix::fs::symlink(fixture.root.join("src/old.rs"), &link).unwrap();
     #[cfg(windows)]
     std::os::windows::fs::symlink_file(fixture.root.join("src/old.rs"), &link).unwrap();
-    let source = crate::domain::ResourceRef {
+    let source = sage_domain::resource::ResourceRef {
         root_id: "root".into(),
         relative_path: "src/link.rs".into(),
     };
@@ -300,7 +300,7 @@ fn unsupported_platform_fails_without_mutating_the_source() {
 fn a_linked_parent_directory_fails_before_mutation() {
     let fixture = Fixture::new();
     std::os::unix::fs::symlink(fixture.root.join("src"), fixture.root.join("linked")).unwrap();
-    let source = crate::domain::ResourceRef {
+    let source = sage_domain::resource::ResourceRef {
         root_id: "root".into(),
         relative_path: "linked/old.rs".into(),
     };

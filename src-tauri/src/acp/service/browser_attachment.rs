@@ -4,10 +4,9 @@
 )]
 
 use crate::acp::{
-    browser::attachment::AttachmentLease,
-    contract::{SageChatId, SageProjectId},
-    service::browser_permission::BrowserPermissionOwner,
+    browser::attachment::AttachmentLease, service::browser_permission::BrowserPermissionOwner,
 };
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 #[cfg(windows)]
 use tauri::Manager;
 
@@ -326,13 +325,10 @@ impl super::AcpService {
         self.browser_attachments.hand_back_generation(project, chat)
     }
 
-    /// The popups that joined `opener`, which follow it on Take over.
     pub(crate) fn browser_joined_popups(&self, opener: &str) -> Vec<String> {
         self.browser_attachments.joined_popups(opener)
     }
 
-    /// Marks an Agent click, key or navigation running on `label`; a popup
-    /// joins only around one.
     pub(crate) fn begin_browser_agent_action(
         &self,
         label: &str,
@@ -340,8 +336,6 @@ impl super::AcpService {
         self.browser_attachments.begin_agent_action(label)
     }
 
-    /// Joins a tab that the Agent-driven `opener` opened to the opener's
-    /// Agent attachment, now or at its first settled page.
     pub(crate) fn adopt_browser_popup(
         &self,
         opener: &str,
@@ -354,9 +348,6 @@ impl super::AcpService {
             });
     }
 
-    /// Whether the chat is live and `session` has a current owner whose
-    /// turn runs: the same checks `attach_agent_browser_tab` makes, for a
-    /// popup that joins without an owner of its own.
     fn browser_turn_running(
         &self,
         project: &SageProjectId,
@@ -364,18 +355,17 @@ impl super::AcpService {
         session: &str,
     ) -> bool {
         self.browser_chat_is_live(project, chat)
-            && crate::acp::contract::SageAgentSessionId::parse(session).is_ok_and(|session| {
-                self.current_browser_owner(project, chat, &session)
-                    .is_some_and(|owner| {
-                        self.browser_owner_precheck_matches(&owner)
-                            && self.browser_owner_witness_matches(&owner)
-                    })
-            })
+            && sage_acp_protocol::contract::SageAgentSessionId::parse(session).is_ok_and(
+                |session| {
+                    self.current_browser_owner(project, chat, &session)
+                        .is_some_and(|owner| {
+                            self.browser_owner_precheck_matches(&owner)
+                                && self.browser_owner_witness_matches(&owner)
+                        })
+                },
+            )
     }
 
-    /// Ends every developer-mode grant, as the Settings switch going off
-    /// does, and returns the tabs that held one.
-    /// Ends every grant and releases each tab's developer-mode objects.
     pub(crate) fn end_browser_developer_mode(&self) -> Vec<String> {
         let labels = self.browser_attachments.end_developer_mode();
         for label in &labels {
@@ -426,10 +416,10 @@ mod tests {
 
     #[test]
     fn non_codex_close_routes_retired_tab_through_shared_cleanup() {
-        use crate::acp::{
+        use crate::acp::store::CloseSessionCommand;
+        use sage_acp_protocol::{
             contract::{ClientIntentId, ProjectionRevision},
             intent::BindingId,
-            store::CloseSessionCommand,
         };
         let (service, owner) =
             super::super::permission::tests::support::service_with_pending_requests(

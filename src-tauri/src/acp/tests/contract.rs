@@ -1,17 +1,9 @@
 use serde_json::{Value, json};
 
 use crate::acp::{
-    contract::{
-        ActivityLifecycle, BoundedVec, ClientIntentId, EntityRevision, ItemLifecycle,
-        ProjectGeneration, ProjectionRevision, RequiredText, Residency, RuntimeEpoch,
-        RuntimeEpochState, SafeText, SageAgentSessionId, SageChatId, SageItemId, SageProjectId,
-        SageRootId, SageTurnId, SchemaVersionV1, ServerRequestState, SessionState, TerminalUpdate,
-        ToolState, TurnState, classify_terminal,
-    },
-    intent::{
-        AcpIpcError, ActivateAcpSessionRequest, ActivityProvenanceV1, CancelAcpTurnRequest,
-        CapabilitySnapshotV1, CloseAcpSessionRequest, GetAcpChatPageRequest, IntentError,
-        IntentSnapshot, NormalizedPayload, ProjectionChangedV1, PromptDispatch, SafeResourceRef,
+    ipc::{
+        AcpIpcError, ActivateAcpSessionRequest, CancelAcpTurnRequest, CloseAcpSessionRequest,
+        GetAcpChatPageRequest, IntentError, IntentSnapshot, ProjectionChangedV1, PromptDispatch,
         SendAcpTurnFailure, SendAcpTurnRequest, StagedSelection, StartAcpSessionRequest,
         SteerAcpTurnRequest, validate_base_intent, validate_cancel_intent, validate_session_intent,
         validate_steer_intent,
@@ -19,6 +11,18 @@ use crate::acp::{
     projection::{
         AcpChatPage, ItemContent, ItemOrigin, ItemProjection, SessionProjection, TextRole,
         TurnProjection,
+    },
+};
+use sage_acp_protocol::{
+    contract::{
+        BoundedVec, ClientIntentId, EntityRevision, ProjectGeneration, ProjectionRevision,
+        RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SageChatId, SageItemId,
+        SageProjectId, SageRootId, SageTurnId, SchemaVersionV1,
+    },
+    intent::{ActivityProvenanceV1, CapabilitySnapshotV1, NormalizedPayload, SafeResourceRef},
+    lifecycle::{
+        ActivityLifecycle, ItemLifecycle, Residency, RuntimeEpochState, ServerRequestState,
+        SessionState, TerminalUpdate, ToolState, TurnState, classify_terminal,
     },
 };
 use sage_core::limits::LIMITS;
@@ -190,7 +194,7 @@ fn protocol_contract_turn_transitions_match_the_rust_lifecycle() {
 
 #[test]
 fn protocol_contract_item_kinds_match_the_rust_wire_set() {
-    use crate::acp::contract::ItemKind;
+    use sage_acp_protocol::lifecycle::ItemKind;
     let contract: Value = serde_json::from_str(include_str!(
         "../../../../docs/work-items/ADE-0006A-acp-session-foundation/contracts/protocol-contract-v1.json"
     ))
@@ -296,18 +300,18 @@ fn normalized_payloads_admit_only_canonical_resource_refs() {
     let root_id = SageRootId::parse("root-a").unwrap();
     let resource = SafeResourceRef::new(root_id, "src/main.rs").unwrap();
     let payload = NormalizedPayload::file_summary_only(
-        crate::acp::intent::FileChangeFacts {
-            resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
+        sage_acp_protocol::intent::FileChangeFacts {
+            resource: sage_acp_protocol::intent::SafeResourceLocation::Resource { resource },
             summary: SafeText::new("summary", "one file changed").unwrap(),
             additions: Some(2),
             deletions: Some(1),
-            operation: crate::acp::intent::FileChangeOperation::Updated,
+            operation: sage_acp_protocol::intent::FileChangeOperation::Updated,
         },
         false,
     );
     assert_eq!(
         payload.kind(),
-        crate::acp::contract::ItemKind::FileChangeDiff
+        sage_acp_protocol::lifecycle::ItemKind::FileChangeDiff
     );
     assert!(SafeResourceRef::new(SageRootId::parse("root-a").unwrap(), "/tmp/x").is_err());
     assert!(SafeResourceRef::new(SageRootId::parse("root-a").unwrap(), "C:/tmp/x").is_err());
@@ -338,7 +342,10 @@ fn image_payloads_use_the_image_kind_and_reject_unknown_media_types() {
     let payload =
         crate::acp::image_admit::admit_image_data_url(&format!("data:image/png;base64,{PNG}"))
             .unwrap();
-    assert_eq!(payload.kind(), crate::acp::contract::ItemKind::Image);
+    assert_eq!(
+        payload.kind(),
+        sage_acp_protocol::lifecycle::ItemKind::Image
+    );
     assert_eq!(payload.kind().as_str(), "image");
     let legacy = serde_json::from_value::<NormalizedPayload>(json!({
         "kind": "image",
@@ -350,9 +357,9 @@ fn image_payloads_use_the_image_kind_and_reject_unknown_media_types() {
         "agent"
     );
     let user_image = ItemContent::Image {
-        media_type: crate::acp::intent::ImageMediaType::Png,
+        media_type: sage_acp_protocol::intent::ImageMediaType::Png,
         data_url: SafeText::new("dataUrl", format!("data:image/png;base64,{PNG}")).unwrap(),
-        source: crate::acp::intent::ImageSource::User,
+        source: sage_acp_protocol::intent::ImageSource::User,
     };
     assert_eq!(
         serde_json::to_value(user_image).unwrap()["payload"]["source"],
@@ -468,7 +475,6 @@ fn every_ipc_request_is_closed_and_uses_camel_case() {
         SendAcpTurnRequest::Session { attached_context, staged: None, .. }
             if attached_context.as_slice().is_empty()
     ));
-    // Staged files go only with a send that names them.
     for (staged, expected) in [
         (
             json!({"revision": "r1"}),
@@ -585,18 +591,15 @@ fn exact_intent_validation_rejects_each_stale_or_foreign_component() {
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectGeneration)
     );
-    // A session-neutral change after the read leaves the intent current.
     let mut neutral = cold.clone();
     neutral.projection_revision = ProjectionRevision::new(8).unwrap();
     assert_eq!(validate_session_intent(&activate, &neutral), Ok(()));
-    // A send-relevant change after the read makes it stale.
     stale = neutral.clone();
     stale.intent_revision = ProjectionRevision::new(8).unwrap();
     assert_eq!(
         validate_session_intent(&activate, &stale),
         Err(IntentError::StaleProjectionRevision)
     );
-    // A view ahead of the chat is never current.
     stale = cold.clone();
     stale.projection_revision = ProjectionRevision::new(6).unwrap();
     stale.intent_revision = ProjectionRevision::new(6).unwrap();

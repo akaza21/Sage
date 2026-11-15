@@ -1,5 +1,6 @@
 use super::{HarnessCatalog, SIMULATOR_ID, SIMULATOR_IN_CATALOG, simulator_admission};
-use crate::{domain::HarnessInstallState, harness_discovery::known_harness_spec};
+use crate::harness_discovery::known_harness_spec;
+use sage_domain::harness::HarnessInstallState;
 
 impl HarnessCatalog {
     pub(super) fn codex_install_state(&self) -> HarnessInstallState {

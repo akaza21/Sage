@@ -1,4 +1,4 @@
-use crate::acp::contract::SafeText;
+use sage_acp_protocol::contract::SafeText;
 
 use crate::acp::redaction::text::{
     self, Mode,
@@ -49,7 +49,9 @@ pub(crate) fn sanitize_command_summary(
         Mode::Permission,
     )
     .map_err(|error| match error {
-        crate::acp::contract::ContractError::InvalidLength { .. } => CommandSummaryError::TooLong,
+        sage_acp_protocol::contract::ContractError::InvalidLength { .. } => {
+            CommandSummaryError::TooLong
+        }
         _ => CommandSummaryError::Hidden,
     })?;
     let shown = redact_tokens(&redacted.replace(['\n', '\r'], " "))

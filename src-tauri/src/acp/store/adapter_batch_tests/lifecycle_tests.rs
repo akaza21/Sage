@@ -27,7 +27,7 @@ fn running_correlates_the_send_and_wait_states_preserve_delivery() {
     assert_eq!(mutation.turn_cursor().state(), TurnState::WaitingModel);
     assert_eq!(
         mutation.turn_cursor().delivery_state(),
-        crate::acp::lifecycle::DeliveryState::Correlated
+        sage_acp_protocol::lifecycle::DeliveryState::Correlated
     );
     assert_eq!(mutation.turn_cursor().revision().get(), 3);
     assert_eq!(

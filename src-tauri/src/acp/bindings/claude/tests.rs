@@ -14,14 +14,6 @@ use uuid::Uuid;
 use super::admission::{ClaudeAdmissionUnavailable, ClaudeBindingRegistration};
 use super::*;
 use crate::acp::{
-    contract::{
-        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
-    },
-    intent::{
-        IMAGE_BASE64_MAX, ImageMediaType, NormalizedPayload, SafeResourceRef, ToolCategory,
-        UnavailableResourceReason,
-    },
-    lifecycle::{ItemLifecycle, ToolState, TurnState},
     read_text_file::{
         DiskAllowedState, ReadTextClassification, ReadTextFileService, ReadTextFlushAck,
         ReadTextFlushState, ReadTextOwner,
@@ -30,6 +22,16 @@ use crate::acp::{
     transport::{DeadlineAsyncWriter, FrameReader},
 };
 use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
+use sage_acp_protocol::{
+    contract::{
+        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
+    },
+    intent::{
+        IMAGE_BASE64_MAX, ImageMediaType, NormalizedPayload, SafeResourceRef, ToolCategory,
+        UnavailableResourceReason,
+    },
+    lifecycle::{ItemLifecycle, ToolState, TurnState},
+};
 use sage_core::limits::LIMITS;
 
 struct P02Capture(Vec<u8>);
@@ -213,7 +215,6 @@ fn p02_claude_real_ingress_preflights_routes_service_and_preserves_string_id() {
                 .is_err()
         );
     }
-    // Every immutable runtime and owner-scope field is independently bound.
     let frame = p02_frame(serde_json::from_str(&request).unwrap());
     let mut wrong_binding = expected.clone();
     wrong_binding.binding_digest = [8; 32];
@@ -755,7 +756,7 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
             ..
         } => assert!(matches!(
             locations.as_slice(),
-            [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+            [sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }]
                 if resource.relative_path.as_str() == "src/lib.rs"
         )),
         other => panic!("unexpected event: {other:?}"),
@@ -778,7 +779,7 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
             ..
         } => assert!(matches!(
             locations.as_slice(),
-            [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+            [sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }]
                 if resource.relative_path.as_str() == "src/lib.rs"
         )),
         other => panic!("unexpected event: {other:?}"),
@@ -794,7 +795,8 @@ fn tool_and_diff_normalization_excludes_raw_commands_secrets_and_paths() {
                 },
             ..
         } => {
-            let crate::acp::intent::SafeResourceLocation::Resource { resource } = resource else {
+            let sage_acp_protocol::intent::SafeResourceLocation::Resource { resource } = resource
+            else {
                 panic!("expected mapped resource");
             };
             assert_eq!(resource.relative_path.as_str(), "src/lib.rs");
@@ -995,7 +997,8 @@ fn read_tool_sparse_completion_update_retains_locations() {
         panic!("unexpected events: {completed:?}");
     };
     assert_eq!(label.as_str(), "Read lib.rs");
-    let [crate::acp::intent::SafeResourceLocation::Resource { resource }] = locations.as_slice()
+    let [sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }] =
+        locations.as_slice()
     else {
         panic!("expected one retained resource: {locations:?}");
     };
@@ -1237,7 +1240,7 @@ fn file_tool_locations_reject_over_cap_and_malformed_entries() {
     }
 
     let over_cap = Value::Array(
-        (0..=crate::acp::intent::COMMAND_RESOURCE_LIMIT)
+        (0..=sage_core::limits::COMMAND_RESOURCE_LIMIT)
             .map(|_| json!({"path": r"C:\fixture\root\src\lib.rs"}))
             .collect(),
     );
@@ -1471,8 +1474,6 @@ fn launch_manifest_admits_valid_discovery_shape_and_rejects_contract_drift() {
             .collect(),
         project_root_count: 1,
     };
-    // This discriminates because the validated candidate survives only the
-    // exact Node/adapter contract; each mutation below changes one guard.
     assert!(validate_research_candidate(candidate.clone()).is_ok());
     let mut sdk_mismatch = candidate.clone();
     sdk_mismatch.acp_sdk_version = "1.3.0".into();
@@ -1505,8 +1506,6 @@ fn launch_manifest_admits_valid_discovery_shape_and_rejects_contract_drift() {
 
 #[test]
 fn injectable_discovery_reports_each_admission_refusal_truthfully() {
-    // Each case is a distinct discovery outcome, so this cannot pass if
-    // admission collapses absent, unreadable, and incompatible evidence.
     for (discovery, expected) in [
         (
             ClaudeLaunchDiscovery::AdapterAbsent,

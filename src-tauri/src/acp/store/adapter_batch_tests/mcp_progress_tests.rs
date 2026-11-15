@@ -1,5 +1,6 @@
 use super::*;
-use crate::acp::{intent::ToolExecution, lifecycle::ToolState, projection::ToolPresentation};
+use crate::acp::projection::ToolPresentation;
+use sage_acp_protocol::{intent::ToolExecution, lifecycle::ToolState};
 
 fn mcp_item(owner: &AdapterStoreOwner, progress: &str, now_millis: i64) -> AdapterInboundEvent {
     let payload = NormalizedPayload::ToolCall {

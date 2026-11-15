@@ -1,20 +1,14 @@
-//! Routes ACP `elicitation/create` into the shared question card. An asked
-//! request is published as a permission request carrying the form; the
-//! user's answers reply `accept`, Deny replies `decline`, and a cancelled
-//! Turn replies `cancel`. Every other request (outside a running Turn, for
-//! another session, or a form Sage cannot show) is answered at once.
+//! The user's answers reply `accept`, Deny replies `decline`, and a cancelled Turn replies
+//! `cancel`.
 
 use serde_json::{Value, json};
 
-use crate::{
-    acp::{
-        bindings::adapter::{
-            AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution,
-            EgressToken,
-        },
-        intent::{ExternalId, user_input::UserInputRequest},
-    },
-    acp_protocol::permissions::PermissionDecision,
+use crate::acp::bindings::adapter::{
+    AdapterBatch, AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution, EgressToken,
+};
+use sage_acp_protocol::{
+    intent::{ExternalId, user_input::UserInputRequest},
+    permissions::PermissionDecision,
 };
 
 use super::super::elicitation::{self as codec, Elicitation};
@@ -138,7 +132,6 @@ impl StandardAcpRuntime {
         Some(egress(request_id, intent, reply, result))
     }
 
-    /// The Turn was cancelled under a pending elicitation.
     pub(super) fn cancel_elicitation(
         &mut self,
         request_id: &str,

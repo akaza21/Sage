@@ -5,14 +5,13 @@ use std::sync::{
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    lifecycle::TurnState,
     runtime::{
         CoordinatorActivationJournal, HostCancelIntent, HostError, JournalHandle,
         ProjectIntentAuthority, ProjectionPublisher, SendCoordinator, SessionCoordinator,
         SqliteAdapterBatchJournal,
     },
-    scheduler::RuntimeOwner,
 };
+use sage_acp_protocol::{lifecycle::TurnState, scheduler::RuntimeOwner};
 
 use super::{
     ActiveCloseBeginState, CloseError, CloseFailure, ClosingProcessWrite,
@@ -73,8 +72,8 @@ where
     Idle(Box<CompletedActivationDriverParts<A, CoordinatorActivationJournal, R, T, C>>),
     Prepared {
         turn: Box<PreparedActivationTurn<A, R, T, C>>,
-        prompt: crate::acp::intent::Prompt,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        prompt: crate::acp::transcript_quote::Prompt,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     },
     Active(Box<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>),
     Reusable(
@@ -137,13 +136,13 @@ where
         failure:
             Box<PreparedWriteFailure<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>>,
         owner: RuntimeOwner,
-        turn_id: crate::acp::contract::SageTurnId,
+        turn_id: sage_acp_protocol::contract::SageTurnId,
     },
     BeginSendRetry {
         failure:
             Box<PreparedWriteFailure<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>>,
         owner: RuntimeOwner,
-        turn_id: crate::acp::contract::SageTurnId,
+        turn_id: sage_acp_protocol::contract::SageTurnId,
     },
     BeginCancel {
         failure:
@@ -154,14 +153,14 @@ where
         failure:
             Box<PreparedWriteFailure<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>>,
         owner: RuntimeOwner,
-        turn_id: crate::acp::contract::SageTurnId,
+        turn_id: sage_acp_protocol::contract::SageTurnId,
         observation: crate::acp::store::SendObservation,
     },
     ObserveRetry {
         failure:
             Box<PreparedWriteFailure<PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>>>,
         owner: RuntimeOwner,
-        turn_id: crate::acp::contract::SageTurnId,
+        turn_id: sage_acp_protocol::contract::SageTurnId,
         observation: crate::acp::store::SendObservation,
     },
     Terminal {

@@ -5,9 +5,11 @@ use crate::acp::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
         EgressToken, HarnessAdapter, ResourceMapper,
     },
+    transport::{Frame, request_payload_digest},
+};
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     intent::{CapabilitySnapshotV1, ExternalId},
-    transport::{Frame, request_payload_digest},
 };
 
 use super::{AdapterError, ModelSummary, Operation, Outbound, PiTranslator};
@@ -62,7 +64,7 @@ pub(super) struct TurnIntent {
     thought_id: Option<ExternalId>,
     thought_snapshot: Option<String>,
     thought_redacted_tail: bool,
-    tools: BTreeMap<String, crate::acp::intent::NormalizedPayload>,
+    tools: BTreeMap<String, sage_acp_protocol::intent::NormalizedPayload>,
     tool_snapshot_bytes: usize,
 }
 
@@ -89,7 +91,6 @@ pub(crate) struct PiRuntime {
     pub(super) runtime_epoch: RuntimeEpoch,
     pub(super) session_id: SageAgentSessionId,
     pub(super) external_session: Option<ExternalId>,
-    /// Where Pi keeps this working directory's sessions, from `get_state`.
     session_dir: Option<std::path::PathBuf>,
     pub(super) active_turn: Option<TurnIntent>,
     steering: support::Steering,
@@ -116,19 +117,14 @@ pub(crate) struct PiRuntime {
     pub(super) refresh_thinking_after_model: bool,
     pub(super) initialized: bool,
     poisoned: bool,
-    /// The command id of the native request whose caller waits on its answer.
     pub(super) native_pending: Option<String>,
     pub(super) native_rpc_reply: Option<crate::acp::goal::NativeRpcReply>,
-    /// The session's spend as Pi last reported it; read on demand only.
-    pub(super) usage: std::sync::Arc<crate::acp::usage::UsageCell>,
+    pub(super) usage: std::sync::Arc<sage_acp_protocol::usage::UsageCell>,
     /// A fork under way, while Pi is away from the chat's session.
     fork: Option<support::Fork>,
     /// Unsettled forks and refused copies whose cleanup has not succeeded.
     forks: Vec<support::ForkCopy>,
-    /// The authority to start this runtime's Pi process, until it is used.
     launch: Option<Box<dyn PiLaunch>>,
-    /// Removes a refused fork's saved copy in place of the file system, so a
-    /// test can make the removal fail.
     #[cfg(test)]
     pub(super) remove_file_for_test: fn(&std::path::Path) -> std::io::Result<()>,
 }
@@ -223,11 +219,8 @@ impl PiRuntime {
 }
 
 impl HarnessAdapter for PiRuntime {
-    /// Pi ends each run with `agent_end`, which repeats the whole run and
-    /// can outgrow a frame. Everything Sage needs from it already arrived
-    /// in the streamed events, so an oversized event is read past without
-    /// buffering it rather than ending the session. The translator allows
-    /// this only where such a frame cannot carry anything Sage still needs.
+    /// Pi ends each run with `agent_end`, which repeats the whole run and can outgrow a frame.
+    /// Everything Sage needs from it already arrived in the streamed events.
     fn skips_oversize_frames(&self) -> bool {
         self.translator.skips_oversize_frames()
     }
@@ -251,7 +244,7 @@ impl HarnessAdapter for PiRuntime {
         self.commands_discovered = true;
         Ok(Some(egress))
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.model_session_config()
     }
 
@@ -261,7 +254,7 @@ impl HarnessAdapter for PiRuntime {
 
     fn configure(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.configure_session(intent).map(Some)
     }
@@ -278,7 +271,7 @@ impl HarnessAdapter for PiRuntime {
         self.native_rpc_reply.take()
     }
 
-    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+    fn usage(&self) -> Option<std::sync::Arc<sage_acp_protocol::usage::UsageCell>> {
         Some(std::sync::Arc::clone(&self.usage))
     }
 
@@ -309,7 +302,7 @@ impl HarnessAdapter for PiRuntime {
 
     fn session_control(
         &mut self,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.begin_control(control)
     }

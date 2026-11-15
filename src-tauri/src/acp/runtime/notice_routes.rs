@@ -1,8 +1,8 @@
 use std::collections::VecDeque;
 
-use crate::acp::{
-    contract::{ProjectionRevision, SageAgentSessionId, SageChatId, SageProjectId},
-    intent::{ChildProjectionChangedV1, ProjectionChangedV1},
+use crate::acp::ipc::{ChildProjectionChangedV1, ProjectionChangedV1};
+use sage_acp_protocol::contract::{
+    ProjectionRevision, SageAgentSessionId, SageChatId, SageProjectId,
 };
 
 /// Chat sessions whose last published revision is remembered for child-only

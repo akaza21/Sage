@@ -7,13 +7,13 @@ use serde::Serialize;
 use tauri::State;
 
 use crate::{
-    domain::ResourceRef,
     editor_content::MAX_EDITABLE_BYTES,
     repository::{RepositoryBoundary, ensure_success, repository_boundary},
     repository_workspace::run_git,
     state::AppState,
     workspace::Workspace,
 };
+use sage_domain::resource::ResourceRef;
 
 /// One `ls-files --stage` record: mode, id, stage and a capped path.
 const MAX_INDEX_RECORD_BYTES: usize = 8 * 1024;

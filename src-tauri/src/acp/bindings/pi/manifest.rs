@@ -137,8 +137,6 @@ impl ResearchPiBinding {
 }
 
 impl LaunchAdmission {
-    /// The read-only RPC authority shared by the fixture and the curated
-    /// native launch (prompt and abort, no write tools).
     pub(super) const fn read_only() -> Self {
         Self {
             capabilities: PiBindingCapabilities::read_only_rpc(),

@@ -1,5 +1,5 @@
 use super::{PreviewJobBoundary, PreviewLaunchRecovery, command_line, suspended, wide_z};
-use crate::acp::process::LaunchError;
+use sage_process::error::LaunchError;
 
 /// Builds retained pre-resume Preview authority for the registry regression.
 /// The one-shot fault is local to this recovery; its retry still terminates the

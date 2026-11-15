@@ -2,9 +2,6 @@ use tauri::{Manager, State};
 
 use crate::{
     acp::{
-        contract::{SageChatId, SageProjectId},
-        intent::ExternalId,
-        scheduler::RuntimeOwner,
         service::{ImportLister, ImportedHistory, ListedSessions},
         store::{
             StoreError,
@@ -13,10 +10,15 @@ use crate::{
     },
     chat_fork::{committed_transition, insert_layout_chat, stale},
     chat_lifecycle::{CHAT_TITLE_PREFIX, MAX_CHAT_TITLE_BYTES, canonical_chat_title},
-    domain::{ProjectLayoutRequest, ProjectTransitionResult},
     persistence::Database,
     state::AppState,
 };
+use sage_acp_protocol::{
+    contract::{SageChatId, SageProjectId},
+    intent::ExternalId,
+    scheduler::RuntimeOwner,
+};
+use sage_domain::{chat::ProjectLayoutRequest, project::ProjectTransitionResult};
 
 use sage_core::{
     error::{AppError, AppResult},

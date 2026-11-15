@@ -1,30 +1,22 @@
-//! A session's config while it has no live runtime.
-//!
-//! What a live session reports is kept as its snapshot. A parked or
-//! restarted chat shows that snapshot with the stored choices as current
-//! values, marked as restored, until the resumed runtime reports its own
-//! config. A choice made meanwhile is stored the same way a confirmed one
-//! is, so the restore reapplies it before the next prompt: the runtime is
-//! not started just to change a setting, and the restore stays the one path
-//! that brings a resumed session to its stored choices.
-use crate::acp::{
+use crate::acp::session_config::{
+    SnapshotRecorder, choices,
+    notices::{self, SessionConfigNotice},
+};
+use sage_acp_protocol::{
     contract::SageAgentSessionId,
     scheduler::RuntimeOwner,
-    session_config::{
-        ConfigMutation, SessionConfig, SnapshotRecorder, choices,
-        notices::{self, SessionConfigNotice},
-    },
+    session_config::{ConfigMutation, SessionConfig},
 };
 
 use super::AcpService;
 
-/// Why a choice for a session without a live runtime was not stored.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum QueueError {
-    /// Nothing restored offers this mode or value.
     NotOffered,
     /// The session's runtime reports its config: change it there.
     Live,
+    /// The chat's next send no longer runs the session.
+    Foreign,
     Store,
 }
 
@@ -47,7 +39,6 @@ impl AcpService {
         })
     }
 
-    /// The config a session without a live runtime shows, if any is stored.
     pub(in crate::acp::service) fn restored_session_config(
         &self,
         session: &SageAgentSessionId,
@@ -58,7 +49,6 @@ impl AcpService {
             .flatten()
     }
 
-    /// Only the session's stored choices, for a page with no room for more.
     pub(in crate::acp::service) fn stored_choices_view(
         &self,
         session: &SageAgentSessionId,
@@ -69,8 +59,6 @@ impl AcpService {
             .flatten()
     }
 
-    /// What the composer says about a stored choice the session could not
-    /// take back.
     pub(in crate::acp::service) fn session_config_notice(
         &self,
         session: &SageAgentSessionId,
@@ -92,7 +80,6 @@ impl AcpService {
         choice: &ConfigMutation,
     ) -> Result<(), QueueError> {
         let lane = runtime.and_then(|owner| self.lane_for(owner).zip(Some(owner)));
-        // A runtime that reports its config takes changes through it.
         if lane
             .as_ref()
             .is_some_and(|(lane, owner)| lane.runtime.config.live_snapshot(owner).is_some())
@@ -117,20 +104,24 @@ impl AcpService {
                 .config
                 .rearm_restore(owner, std::slice::from_ref(choice));
         }
-        // The pick settles any notice about its option, in the same write.
+        // Written only while the chat's next send still runs this session.
         let stored = self.database.write_connection().and_then(|mut connection| {
             let transaction = connection.transaction()?;
+            if !crate::acp::store::runs_next_send(&transaction, session)? {
+                return Ok(None);
+            }
             notices::clear(&transaction, session, choice)?;
             let written =
                 choices::record(&transaction, session, choice, sage_core::time::now_millis())?;
             transaction.commit()?;
-            Ok(written)
+            Ok(Some(written))
         });
         // On failure the rearmed restore resets what it holds from what is
         // stored when it runs.
         match stored {
-            Ok(true) => Ok(()),
-            Ok(false) | Err(_) => Err(QueueError::Store),
+            Ok(Some(true)) => Ok(()),
+            Ok(None) => Err(QueueError::Foreign),
+            Ok(Some(false)) | Err(_) => Err(QueueError::Store),
         }
     }
 }

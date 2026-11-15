@@ -4,7 +4,7 @@ use std::path::{Path, PathBuf};
 use uuid::Uuid;
 
 use super::*;
-use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 
 const NAMED_FILES: [&str; 8] = [
     r"vendor\target\bin\codex.exe",
@@ -17,7 +17,6 @@ const NAMED_FILES: [&str; 8] = [
     "README.md",
 ];
 
-/// The named fixtures padded out to the pinned package's file count.
 fn fixture_files() -> Vec<PathBuf> {
     NAMED_FILES
         .iter()

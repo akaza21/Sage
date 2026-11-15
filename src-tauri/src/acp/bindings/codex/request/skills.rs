@@ -43,7 +43,8 @@ impl OutgoingRequest {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{contract::RequiredText, intent::Prompt};
+    use crate::acp::transcript_quote::Prompt;
+    use sage_acp_protocol::contract::RequiredText;
 
     #[test]
     fn a_skill_runs_ahead_of_the_typed_text() {
@@ -63,7 +64,6 @@ mod tests {
                 {"type": "text", "text": "summarise report.pdf"}
             ])
         );
-        // A skill picked with nothing typed after it is the whole input.
         let bare = Prompt::new("prompt", "/pdf").unwrap();
         let request = OutgoingRequest::turn_start(6, &thread, &bare, &message)
             .unwrap()
@@ -74,7 +74,6 @@ mod tests {
             value["params"]["input"],
             json!([{"type": "skill", "name": "pdf", "path": "/skills/pdf/SKILL.md"}])
         );
-        // Text that does not start with the skill's name is not rewritten.
         let other = Prompt::new("prompt", "/pdfx summarise").unwrap();
         assert!(
             OutgoingRequest::turn_start(7, &thread, &other, &message)

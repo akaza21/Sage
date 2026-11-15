@@ -3,8 +3,9 @@ use sage_core::error::{AppError, AppResult};
 
 use crate::{
     acp::service::ChatRuntimeRelease, chat_lifecycle::validate_chat_identifier,
-    domain::ChatDeleteRequest, persistence::Database,
+    persistence::Database,
 };
+use sage_domain::chat::ChatDeleteRequest;
 
 impl Database {
     pub(crate) fn delete_archived_chat(&self, request: &ChatDeleteRequest) -> AppResult<()> {

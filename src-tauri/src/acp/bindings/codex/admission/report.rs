@@ -94,9 +94,7 @@ impl AdmittedCodexBinding {
         self.observed.as_ref()?.manifest.as_ref()
     }
 
-    /// Whether `other` admitted the same installed build: the same launcher,
-    /// reported version and, where launch reads it, package manifest. The
-    /// manifest is compared here rather than folded into the binding digest,
+    /// The manifest is compared here rather than folded into the binding digest,
     /// so chats persisted against an unchanged installation keep resuming.
     pub(crate) fn is_same_installation(&self, other: &Self) -> bool {
         #[cfg(windows)]
@@ -145,7 +143,7 @@ impl AdmittedCodexBinding {
 
     pub(crate) fn capability_ceiling(
         &self,
-    ) -> Result<crate::acp::intent::CapabilitySnapshotV1, CodexAdmissionUnavailable> {
+    ) -> Result<sage_acp_protocol::intent::CapabilitySnapshotV1, CodexAdmissionUnavailable> {
         #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
         if self.is_desktop_fixture() {
             return super::super::degrade::projected_desktop_fixture_capabilities(
@@ -168,7 +166,7 @@ impl AdmittedCodexBinding {
         if self.is_desktop_fixture() {
             return Ok(self
                 .desktop_fixture_case()
-                .is_some_and(crate::acp_protocol::native_cases::native_case_offers_models));
+                .is_some_and(sage_acp_protocol::native_cases::native_case_offers_models));
         }
         if self.is_desktop_fixture() {
             return Ok(false);

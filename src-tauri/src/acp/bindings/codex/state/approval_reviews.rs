@@ -1,12 +1,8 @@
 use super::{CodexAdapter, LIMITS};
 
 impl CodexAdapter {
-    /// Posts at most once per review ID in the active or just-finished Turn.
-    /// Each ledger retains at most `items_per_turn` IDs, each already checked
-    /// to be at most 512 bytes. At capacity, suppress new notices rather than
-    /// evict an ID and let a replay post again. The ledger moves to the Turn
-    /// tombstone on completion and retires with it, leaving the next Turn
-    /// its own empty ledger and full capacity.
+    /// At capacity, suppress new notices rather than evict an ID and let a
+    /// replay post again.
     pub(crate) fn complete_approval_review(&mut self, turn: &str, review: &str) -> bool {
         let reviews = if self
             .active_turn_id

@@ -5,9 +5,9 @@ use crate::acp::{
         codex::CodexBindingRegistration,
         registry::BindingProjectRoot,
     },
-    contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId},
     mcp::McpAdmission,
 };
+use sage_acp_protocol::contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId};
 
 #[test]
 fn non_admitted_browser_version_prepares_a_normal_session_and_releases_guard() {
@@ -141,8 +141,10 @@ impl ResourceMapper for NoResources {
     fn map_existing(
         &self,
         _: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
         panic!("this protocol exchange has no file resources")
     }
 }
@@ -204,10 +206,13 @@ fn assert_runtime_browser_contract(
     ));
     runtime
         .command(AdapterCommand::Prompt {
-            prompt: crate::acp::intent::Prompt::new("prompt", "Say hello").unwrap(),
-            client_message_id: crate::acp::contract::RequiredText::new("client", "browser-degrade")
-                .unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            prompt: crate::acp::transcript_quote::Prompt::new("prompt", "Say hello").unwrap(),
+            client_message_id: sage_acp_protocol::contract::RequiredText::new(
+                "client",
+                "browser-degrade",
+            )
+            .unwrap(),
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let running = runtime
@@ -222,7 +227,7 @@ fn assert_runtime_browser_contract(
         assert!(matches!(running.events(), [AdapterEvent::Turn { .. }]));
     } else {
         assert!(
-            matches!(running.events(), [AdapterEvent::Turn { .. }, AdapterEvent::Error(crate::acp::intent::NormalizedPayload::Error { code, message, retryable:false, .. })]
+            matches!(running.events(), [AdapterEvent::Turn { .. }, AdapterEvent::Error(sage_acp_protocol::intent::NormalizedPayload::Error { code, message, retryable:false, .. })]
             if code.as_str() == "browserMcpUnavailable" && message.as_str().contains("unavailable for this Codex version") && message.as_str().contains("continue chatting"))
         );
     }

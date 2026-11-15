@@ -4,7 +4,7 @@ use super::{
     discovery::{PreviewDiscoveryRequest, PreviewScriptName, PreviewTargetRef},
     lifecycle,
 };
-use crate::acp::contract::{
+use sage_acp_protocol::contract::{
     ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
 };
 

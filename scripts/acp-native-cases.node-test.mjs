@@ -238,7 +238,7 @@ test("curated Codex journeys hydrate Models and Goal before the first turn", () 
 test("generated lost-Steer supports model-enabled and desktop admission", () => {
   const source = readFileSync(
     new URL(
-      "../src-tauri/src/acp_protocol/native_cases/generated_journey_cases.rs",
+      "../crates/sage-acp-protocol/src/native_cases/generated_journey_cases.rs",
       import.meta.url,
     ),
     "utf8",
@@ -425,7 +425,10 @@ test("Codex context meter carries the full pinned token usage shape", () => {
     ),
   );
   const manifest = readFileSync(
-    new URL("../src-tauri/src/acp_protocol/codex_protocol.rs", import.meta.url),
+    new URL(
+      "../crates/sage-acp-protocol/src/codex_protocol.rs",
+      import.meta.url,
+    ),
     "utf8",
   );
   const pinned = (name) =>

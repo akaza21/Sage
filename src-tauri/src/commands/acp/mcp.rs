@@ -8,11 +8,9 @@ use super::{
     *,
 };
 use crate::acp::{
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
-    errors::SessionControlError,
-    intent::AcpUnavailableReason,
-    mcp::inventory::McpInventory,
+    errors::SessionControlError, ipc::AcpUnavailableReason, mcp::inventory::McpInventory,
 };
+use sage_acp_protocol::contract::{RequiredText, RuntimeEpoch, SageAgentSessionId};
 use serde::Deserialize;
 
 /// Names a server of one live runtime.

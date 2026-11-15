@@ -1,15 +1,15 @@
 use super::*;
 use crate::acp::{
-    contract::{RequiredText, SafeText},
     goal::{NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
     runtime::HostError,
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText},
     scheduler::RuntimeOwner,
     session_control::SessionControl,
 };
 
 impl AcpService {
-    /// Carries out a session control on the owner's running session; the
-    /// text says what the harness did, when it says.
     pub(crate) fn control_session(
         &self,
         owner: RuntimeOwner,
@@ -21,10 +21,9 @@ impl AcpService {
         }
     }
 
-    /// Sends a session control and answers with the harness's reply; a
-    /// refusal is an error. A control that abandons at its deadline (see
-    /// `SessionControl::abandons_at_deadline`) is late, not a reason to
-    /// recover the runtime.
+    /// A control that abandons at its deadline (see
+    /// `SessionControl::abandons_at_deadline`) is late, not a reason to recover the
+    /// runtime.
     pub(in crate::acp::service) fn session_control_reply(
         &self,
         owner: RuntimeOwner,
@@ -130,7 +129,8 @@ impl AcpService {
         &self,
         project_id: &str,
         chat_id: &str,
-    ) -> Option<RequiredText<{ crate::acp::intent::session_event::SESSION_TITLE_BYTES }>> {
+    ) -> Option<RequiredText<{ sage_acp_protocol::intent::session_event::SESSION_TITLE_BYTES }>>
+    {
         let stored: String = self
             .database
             .connection()

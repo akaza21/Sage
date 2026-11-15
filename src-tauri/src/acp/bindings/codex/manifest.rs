@@ -6,10 +6,8 @@ use super::{
     installed_role::{SignedInstalledRole, admit_installed_role},
     trust_root::{WinVerifyTrustCatalog, verify_installed_authenticode},
 };
-use crate::acp_protocol::codex_protocol::{
-    PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY, pinned_codex_version, pinned_schema_prefix,
-    pinned_schema_sha256,
-};
+use sage_acp_protocol::codex_protocol::{PINNED_CODEX_VERSION, PINNED_PROTOCOL_IDENTITY};
+use sage_acp_protocol::{pinned_codex_version, pinned_schema_prefix, pinned_schema_sha256};
 
 const MANIFEST_BYTES: usize = 64 * 1024;
 const ARTIFACTS_MAX: usize = 64;
@@ -113,8 +111,6 @@ pub(crate) enum WorkspacePolicy {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-/// A bounded packet whose declared metadata matches Sage's exact lexical policy.
-///
 /// This type has not inspected the physical files. In particular, it does not
 /// prove canonical paths, file hashes, signatures, reparse-point safety, ACLs,
 /// immutability, or launch-time identity.
@@ -196,7 +192,6 @@ pub(crate) enum PacketMetadataError {
     Artifact,
 }
 
-/// Parses and validates packet claims without touching the filesystem.
 pub(crate) fn parse_packet_metadata(
     bytes: &[u8],
 ) -> Result<MetadataValidatedPacket, PacketMetadataError> {

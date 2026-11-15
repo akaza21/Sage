@@ -10,10 +10,12 @@ use std::{
 use super::live_recovery::{LiveHostRecovery, LiveHostRecoveryPhase};
 use super::*;
 use crate::acp::{
-    contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId},
-    intent::BindingId,
     runtime::{DriverMailbox, LiveRunnerHandle},
     store::{ActivateSessionCommand, StartSessionCommand},
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, RuntimeEpoch, SageChatId, SageProjectId},
+    intent::BindingId,
 };
 
 #[test]
@@ -186,7 +188,8 @@ fn cancel_after_runner_failure_recovers_durable_runtime_then_releases_slot() {
         assert!(matches!(
             service.cancel_codex_turn(crate::acp::runtime::HostCancelIntent {
                 owner: owner.clone(),
-                turn_id: crate::acp::contract::SageTurnId::parse("turn-runner-recovery").unwrap(),
+                turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-runner-recovery")
+                    .unwrap(),
                 client_intent_id: ClientIntentId::new(),
                 now_millis: sage_core::time::now_millis(),
             }),
@@ -206,8 +209,14 @@ fn cancel_after_runner_failure_recovers_durable_runtime_then_releases_slot() {
             .iter()
             .find(|session| session.id == owner.session_id)
             .unwrap();
-        assert_eq!(session.state, crate::acp::lifecycle::SessionState::Failed);
-        assert_eq!(session.residency, crate::acp::lifecycle::Residency::Cold);
+        assert_eq!(
+            session.state,
+            sage_acp_protocol::lifecycle::SessionState::Failed
+        );
+        assert_eq!(
+            session.residency,
+            sage_acp_protocol::lifecycle::Residency::Cold
+        );
         service.shutdown_blocking().unwrap();
     });
 }
@@ -291,7 +300,7 @@ async fn ready_runtime_fixture(label: &str) -> (AcpService, RuntimeOwner) {
 
 async fn ready_runtime_fixture_with(
     label: &str,
-    capabilities: crate::acp::intent::CapabilitySnapshotV1,
+    capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1,
 ) -> (AcpService, RuntimeOwner) {
     let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
     let root = std::env::current_dir().unwrap().canonicalize().unwrap();
@@ -303,7 +312,7 @@ async fn ready_runtime_fixture_with(
         database
             .create_chat_with_parent(
                 project_id.as_str(),
-                &crate::domain::ProjectLayoutRequest {
+                &sage_domain::chat::ProjectLayoutRequest {
                     project_id: project_id.as_str().to_owned(),
                     tabs: bootstrap.tabs,
                     active_tab_id: Some(parent.clone()),
@@ -322,8 +331,6 @@ async fn ready_runtime_fixture_with(
     (service, owner)
 }
 
-/// Starts, activates and completes activation of a session for the Chat on
-/// lane 0, so its runtime epoch is running and resumable.
 async fn seat_ready_session(
     service: &AcpService,
     project_id: SageProjectId,
@@ -338,7 +345,7 @@ async fn seat_ready_session_with(
     project_id: SageProjectId,
     chat_id: SageChatId,
     label: &str,
-    capabilities: crate::acp::intent::CapabilitySnapshotV1,
+    capabilities: sage_acp_protocol::intent::CapabilitySnapshotV1,
 ) -> RuntimeOwner {
     let revision = service
         .load_chat_page(project_id.clone(), chat_id.clone(), None)
@@ -389,7 +396,7 @@ async fn seat_ready_session_with(
             runtime_epoch: owner.runtime_epoch,
             binding_digest: "31".repeat(32),
             artifact_digest: "32".repeat(32),
-            external_session_id: crate::acp::intent::ExternalId::new(
+            external_session_id: sage_acp_protocol::intent::ExternalId::new(
                 "session",
                 format!("{label}-external"),
             )
@@ -418,14 +425,14 @@ fn drop_attempts_persistent_recovery_at_most_twice_before_forced_cleanup() {
             owner: RuntimeOwner {
                 project_id: SageProjectId::parse("project-drop").unwrap(),
                 chat_id: SageChatId::parse("chat-drop").unwrap(),
-                session_id: crate::acp::contract::SageAgentSessionId::parse("session-drop")
+                session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-drop")
                     .unwrap(),
                 runtime_epoch: RuntimeEpoch::new(1).unwrap(),
             },
             proof: ZeroProcessProof::confirmed_for_test(RuntimeOwner {
                 project_id: SageProjectId::parse("project-drop").unwrap(),
                 chat_id: SageChatId::parse("chat-drop").unwrap(),
-                session_id: crate::acp::contract::SageAgentSessionId::parse("session-drop")
+                session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-drop")
                     .unwrap(),
                 runtime_epoch: RuntimeEpoch::new(1).unwrap(),
             }),
@@ -532,7 +539,8 @@ fn temporary_disposal_retries_supervisor_shutdown_without_protocol_close() {
     assert_eq!(page.turns.as_slice().len(), 1);
     assert!(matches!(
         page.turns.as_slice()[0].state,
-        crate::acp::lifecycle::TurnState::Interrupted | crate::acp::lifecycle::TurnState::Cancelled
+        sage_acp_protocol::lifecycle::TurnState::Interrupted
+            | sage_acp_protocol::lifecycle::TurnState::Cancelled
     ));
     service
         .database
@@ -910,7 +918,7 @@ fn replacement_park_after_host_timeout_uses_zero_token_recovery() {
         let host = Arc::clone(&host);
         let intent = crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         };
         std::thread::spawn(move || host.prepare_prompt(intent))
     };
@@ -970,7 +978,8 @@ fn unsettled_replacement_park_preserves_its_owner_and_other_admission_capacity()
         .projection_revision;
     let newcomer = RuntimeOwner {
         chat_id: SageChatId::parse("chat-newcomer").unwrap(),
-        session_id: crate::acp::contract::SageAgentSessionId::parse("session-newcomer").unwrap(),
+        session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-newcomer")
+            .unwrap(),
         ..owner.clone()
     };
     let deadline = Instant::now() + Duration::from_secs(5);
@@ -1013,7 +1022,7 @@ fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
         host.activate(owner.clone())?;
         host.send(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .map_err(|failure| failure.error)?;
         Ok::<(), crate::acp::runtime::HostError>(())
@@ -1022,10 +1031,13 @@ fn steer_ack_timeout_keeps_runtime_live_for_an_explicit_retry() {
     service.install_runtime_for_test(owner.clone(), Arc::clone(&host));
     let intent = crate::acp::runtime::HostSteerIntent {
         owner: owner.clone(),
-        turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
-        prompt: crate::acp::intent::Prompt::new("prompt", "Please steer").unwrap(),
-        client_message_id: crate::acp::contract::RequiredText::new("clientMessageId", "queued-one")
-            .unwrap(),
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
+        prompt: crate::acp::transcript_quote::Prompt::new("prompt", "Please steer").unwrap(),
+        client_message_id: sage_acp_protocol::contract::RequiredText::new(
+            "clientMessageId",
+            "queued-one",
+        )
+        .unwrap(),
     };
 
     let error = host.steer(intent.clone()).unwrap_err();
@@ -1189,7 +1201,7 @@ fn effect_unknown_cancel_retains_its_exact_host_without_redispatch() {
     assert!(service.send_codex_turn(prepare_turn(&owner)).is_ok());
     let intent = crate::acp::runtime::HostCancelIntent {
         owner: owner.clone(),
-        turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
         client_intent_id: ClientIntentId::new(),
         now_millis: sage_core::time::now_millis(),
     };
@@ -1348,7 +1360,7 @@ fn close_session(owner: &RuntimeOwner) -> crate::acp::store::CloseSessionCommand
     crate::acp::store::CloseSessionCommand {
         project_id: owner.project_id.clone(),
         chat_id: owner.chat_id.clone(),
-        expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
+        expected_projection_revision: sage_acp_protocol::contract::ProjectionRevision::ZERO,
         client_intent_id: ClientIntentId::new(),
         session_id: owner.session_id.clone(),
         runtime_epoch: owner.runtime_epoch,
@@ -1356,16 +1368,14 @@ fn close_session(owner: &RuntimeOwner) -> crate::acp::store::CloseSessionCommand
     }
 }
 
-/// An app whose first Chat holds an idle, resumable runtime on lane 0 and
-/// whose second Chat stays attached, so the first can be archived.
 fn app_with_idle_runtime(
     label: &str,
 ) -> (crate::state::AppState, RuntimeOwner, std::path::PathBuf) {
     app_with_runtime(label, true)
 }
 
-/// An app whose Chat holds an idle runtime; without `parkable` the runtime
-/// has no shutdown recovery, so a park of it never settles.
+/// Without `parkable` the runtime has no shutdown recovery, so a park of it
+/// never settles.
 fn app_with_runtime(
     label: &str,
     parkable: bool,
@@ -1441,9 +1451,9 @@ fn delete_refuses_a_park_that_cannot_settle_at_once_without_retrying() {
 
 fn layout_of(
     project: &str,
-    snapshot: crate::domain::BootstrapSnapshot,
-) -> crate::domain::ProjectLayoutRequest {
-    crate::domain::ProjectLayoutRequest {
+    snapshot: sage_domain::project::BootstrapSnapshot,
+) -> sage_domain::chat::ProjectLayoutRequest {
+    sage_domain::chat::ProjectLayoutRequest {
         project_id: project.to_owned(),
         tabs: snapshot.tabs,
         active_tab_id: snapshot.active_tab_id,
@@ -1455,8 +1465,8 @@ fn layout_of(
 fn archive_request(
     state: &crate::state::AppState,
     owner: &RuntimeOwner,
-) -> crate::domain::ChatLifecycleRequest {
-    crate::domain::ChatLifecycleRequest {
+) -> sage_domain::chat::ChatLifecycleRequest {
+    sage_domain::chat::ChatLifecycleRequest {
         project_id: owner.project_id.as_str().to_owned(),
         chat_id: owner.chat_id.as_str().to_owned(),
         current_layout: layout_of(
@@ -1466,8 +1476,8 @@ fn archive_request(
     }
 }
 
-fn delete_request(owner: &RuntimeOwner) -> crate::domain::ChatDeleteRequest {
-    crate::domain::ChatDeleteRequest {
+fn delete_request(owner: &RuntimeOwner) -> sage_domain::chat::ChatDeleteRequest {
+    sage_domain::chat::ChatDeleteRequest {
         project_id: owner.project_id.as_str().to_owned(),
         chat_id: owner.chat_id.as_str().to_owned(),
     }
@@ -1532,14 +1542,13 @@ fn archiving_a_chat_after_its_turn_parks_its_runtime_and_it_then_deletes() {
     );
     assert!(state.acp.lane_for(&owner).is_none());
 
-    // Neither a new session nor the parked one starts for an archived Chat.
     let revision = state
         .acp
         .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
         .unwrap()
         .projection_revision;
     let generation =
-        crate::acp::contract::ProjectGeneration::new(archived.transition_epoch).unwrap();
+        sage_acp_protocol::contract::ProjectGeneration::new(archived.transition_epoch).unwrap();
     let started = runtime.block_on(crate::commands::acp::start_acp_session_inner(
         &state,
         crate::acp::ipc::StartAcpSessionRequest {
@@ -1588,8 +1597,6 @@ fn delete_waits_for_a_background_release_still_parking_the_runtime() {
         0,
     ));
     assert!(archived.committed, "{:?}", archived.recovery_error);
-    // A background release holds the lane: delete is refused for it at least
-    // once, then the holder lets go and delete releases the runtime itself.
     state.acp.hold_lane_until_busy_for_test(&owner);
     let deleted = runtime.block_on(crate::chat_archive_commands::delete_chat_inner(
         &state,
@@ -1644,7 +1651,6 @@ fn delete_waits_for_the_harness_to_answer_a_control_then_releases_the_runtime() 
             )
         })
     };
-    // Delete is refused while the harness answers, and keeps asking.
     while state.acp.control_running_refusals_for_test() == 0 {
         assert!(started.elapsed() < Duration::from_secs(2));
         std::thread::yield_now();
@@ -1662,7 +1668,6 @@ fn delete_waits_for_the_harness_to_answer_a_control_then_releases_the_runtime() 
 #[test]
 fn deleting_an_archived_chat_releases_a_runtime_it_still_holds() {
     let (state, owner, root) = app_with_idle_runtime("delete-command");
-    // Archived before archive released runtimes: the epoch is still live.
     state
         .database
         .archive_chat(&archive_request(&state, &owner))
@@ -1710,7 +1715,6 @@ fn archive_refuses_a_running_turn_and_an_archived_chat_takes_no_prompt() {
 
     finish_app(state, root);
 
-    // An archived Chat takes no prompt: the send refuses it before any Turn.
     let (state, owner, root) = app_with_idle_runtime("archived-prompt");
     state
         .database
@@ -1724,13 +1728,13 @@ fn archive_refuses_a_running_turn_and_an_archived_chat_takes_no_prompt() {
         &state,
         crate::acp::ipc::SendAcpTurnRequest::Session {
             project_id: owner.project_id.clone(),
-            project_generation: crate::acp::contract::ProjectGeneration::ZERO,
+            project_generation: sage_acp_protocol::contract::ProjectGeneration::ZERO,
             chat_id: owner.chat_id.clone(),
             expected_projection_revision: page.projection_revision,
             client_intent_id: ClientIntentId::new(),
             session_id: owner.session_id.clone(),
             runtime_epoch: owner.runtime_epoch,
-            prompt: crate::acp::intent::Prompt::new("prompt", "archived").unwrap(),
+            prompt: crate::acp::transcript_quote::Prompt::new("prompt", "archived").unwrap(),
             attached_context: Default::default(),
             staged: None,
         },
@@ -1787,14 +1791,14 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
     );
     assert!(service.lane_at(0).scheduler.active().is_some());
 
-    // Archive the Chat in the store alone: its idle runtime epoch is still
-    // live, which is what refused a delete before archive released it.
-    let layout = |snapshot: crate::domain::BootstrapSnapshot| crate::domain::ProjectLayoutRequest {
-        project_id: owner.project_id.as_str().to_owned(),
-        tabs: snapshot.tabs,
-        active_tab_id: snapshot.active_tab_id,
-        selected_root_id: snapshot.selected_root_id,
-        selected_resource: snapshot.selected_resource,
+    let layout = |snapshot: sage_domain::project::BootstrapSnapshot| {
+        sage_domain::chat::ProjectLayoutRequest {
+            project_id: owner.project_id.as_str().to_owned(),
+            tabs: snapshot.tabs,
+            active_tab_id: snapshot.active_tab_id,
+            selected_root_id: snapshot.selected_root_id,
+            selected_resource: snapshot.selected_resource,
+        }
     };
     service
         .database
@@ -1802,13 +1806,13 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
         .unwrap();
     service
         .database
-        .archive_chat(&crate::domain::ChatLifecycleRequest {
+        .archive_chat(&sage_domain::chat::ChatLifecycleRequest {
             project_id: owner.project_id.as_str().to_owned(),
             chat_id: owner.chat_id.as_str().to_owned(),
             current_layout: layout(service.database.bootstrap_snapshot().unwrap()),
         })
         .unwrap();
-    let delete = crate::domain::ChatDeleteRequest {
+    let delete = sage_domain::chat::ChatDeleteRequest {
         project_id: owner.project_id.as_str().to_owned(),
         chat_id: owner.chat_id.as_str().to_owned(),
     };
@@ -1818,7 +1822,6 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
         "{refused}"
     );
 
-    // A Chat restored before its release claims the lane keeps its runtime.
     assert_eq!(
         service.release_chat_runtime(
             &owner.project_id,
@@ -1829,7 +1832,6 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
         Ok(())
     );
     assert!(service.lane_at(0).scheduler.active().is_some());
-    // The release let go of the lane: it can be claimed again.
     drop(service.claim_lane_activation_for_test(&owner));
 
     assert_eq!(
@@ -1855,7 +1857,6 @@ fn releasing_a_chat_parks_only_its_idle_runtime_and_frees_the_lane() {
         )
         .unwrap();
     assert!(!live, "the parked runtime epoch is no longer live");
-    // Nothing is left to release, and the archived Chat now deletes cleanly.
     assert_eq!(
         service.release_chat_runtime(
             &owner.project_id,
@@ -1887,20 +1888,26 @@ fn assert_recovered_runtime_is_cold(service: &AcpService, owner: &RuntimeOwner) 
         .iter()
         .find(|session| session.id == owner.session_id)
         .unwrap();
-    assert_eq!(session.state, crate::acp::lifecycle::SessionState::Failed);
-    assert_eq!(session.residency, crate::acp::lifecycle::Residency::Cold);
+    assert_eq!(
+        session.state,
+        sage_acp_protocol::lifecycle::SessionState::Failed
+    );
+    assert_eq!(
+        session.residency,
+        sage_acp_protocol::lifecycle::Residency::Cold
+    );
 }
 
 fn prepare_turn(owner: &RuntimeOwner) -> crate::acp::store::PrepareTurnCommand {
     crate::acp::store::PrepareTurnCommand {
         project_id: owner.project_id.clone(),
-        project_generation: crate::acp::contract::ProjectGeneration::new(1).unwrap(),
+        project_generation: sage_acp_protocol::contract::ProjectGeneration::new(1).unwrap(),
         chat_id: owner.chat_id.clone(),
         session_id: owner.session_id.clone(),
         runtime_epoch: owner.runtime_epoch,
-        expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
+        expected_projection_revision: sage_acp_protocol::contract::ProjectionRevision::ZERO,
         client_intent_id: ClientIntentId::new(),
-        prompt: crate::acp::intent::Prompt::new("prompt", "no replay").unwrap(),
+        prompt: crate::acp::transcript_quote::Prompt::new("prompt", "no replay").unwrap(),
         now_millis: sage_core::time::now_millis(),
     }
 }
@@ -1972,10 +1979,10 @@ impl TestRuntime {
     }
 }
 
-fn test_capabilities() -> crate::acp::intent::CapabilitySnapshotV1 {
-    crate::acp::intent::CapabilitySnapshotV1 {
-        schema_version: crate::acp::contract::SchemaVersionV1,
-        protocol_version: crate::acp::contract::RequiredText::new("protocol", "1").unwrap(),
+fn test_capabilities() -> sage_acp_protocol::intent::CapabilitySnapshotV1 {
+    sage_acp_protocol::intent::CapabilitySnapshotV1 {
+        schema_version: sage_acp_protocol::contract::SchemaVersionV1,
+        protocol_version: sage_acp_protocol::contract::RequiredText::new("protocol", "1").unwrap(),
         new_session: true,
         resume_session: false,
         load_session: false,
@@ -2037,7 +2044,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     fn prepare_prompt(
         &mut self,
         _: &crate::acp::runtime::HostPromptIntent,
-    ) -> Result<crate::acp::contract::SageTurnId, crate::acp::runtime::HostError> {
+    ) -> Result<sage_acp_protocol::contract::SageTurnId, crate::acp::runtime::HostError> {
         if let Some(recovery) = &self.blocking_prepare {
             recovery
                 .entered
@@ -2049,7 +2056,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
                 .unwrap()
                 .recv_timeout(Duration::from_secs(1))
                 .map_err(|_| crate::acp::runtime::HostError::RecoveryRequired)?;
-            return crate::acp::contract::SageTurnId::parse("turn-timeout-recovery")
+            return sage_acp_protocol::contract::SageTurnId::parse("turn-timeout-recovery")
                 .map_err(|_| crate::acp::runtime::HostError::Intent);
         }
         let Some((failure, trace)) = &self.script else {
@@ -2059,14 +2066,14 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
         if matches!(failure, OperationFailure::Send) {
             return Err(crate::acp::runtime::HostError::RecoveryRequired);
         }
-        crate::acp::contract::SageTurnId::parse("turn-operation-recovery")
+        sage_acp_protocol::contract::SageTurnId::parse("turn-operation-recovery")
             .map_err(|_| crate::acp::runtime::HostError::Intent)
     }
 
     fn dispatch_prompt(
         &mut self,
         _: &RuntimeOwner,
-        turn: &crate::acp::contract::SageTurnId,
+        turn: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<crate::acp::runtime::PromptWrite, crate::acp::runtime::HostError> {
         if matches!(self.script, Some((OperationFailure::SignIn, _))) {
             return Err(crate::acp::runtime::HostError::SignInRequired);
@@ -2080,7 +2087,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     fn retry_prompt(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<crate::acp::runtime::PromptWrite, crate::acp::runtime::HostError> {
         Err(crate::acp::runtime::HostError::Unavailable)
     }
@@ -2088,7 +2095,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     fn record_delivery_unknown(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), crate::acp::runtime::HostError> {
         Ok(())
     }
@@ -2096,7 +2103,7 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     fn record_retry_exhausted(
         &mut self,
         _: &RuntimeOwner,
-        _: &crate::acp::contract::SageTurnId,
+        _: &sage_acp_protocol::contract::SageTurnId,
     ) -> Result<(), crate::acp::runtime::HostError> {
         Ok(())
     }
@@ -2196,7 +2203,6 @@ impl crate::acp::runtime::RuntimeEngine for TestRuntime {
     }
 }
 
-/// Inserts the durable turn a real prepare would have committed.
 fn insert_sending_turn(service: &AcpService, owner: &RuntimeOwner) {
     service
         .database
@@ -2215,7 +2221,10 @@ fn insert_sending_turn(service: &AcpService, owner: &RuntimeOwner) {
         .unwrap();
 }
 
-fn turn_state(service: &AcpService, owner: &RuntimeOwner) -> crate::acp::lifecycle::TurnState {
+fn turn_state(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+) -> sage_acp_protocol::lifecycle::TurnState {
     service
         .load_chat_page(owner.project_id.clone(), owner.chat_id.clone(), None)
         .unwrap()
@@ -2234,7 +2243,7 @@ fn a_refused_sign_in_prompt_settles_its_turn_and_frees_the_lane() {
     let failure = service
         .send_session_turn(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap_err();
     assert!(matches!(failure.error, CodexSessionError::SignInRequired));
@@ -2242,8 +2251,6 @@ fn a_refused_sign_in_prompt_settles_its_turn_and_frees_the_lane() {
     assert!(turn_state(&service, &owner).is_terminal());
     assert!(service.lane_for(&owner).is_none(), "the lane is free again");
     assert_recovered_runtime_is_cold(&service, &owner);
-    // A late Cancel for the settled turn succeeds instead of reporting a
-    // stale identity.
     assert!(matches!(
         service.cancel_codex_turn(cancel_intent(&owner)),
         Ok(crate::acp::runtime::HostOutcome::CancelQueued)
@@ -2260,9 +2267,9 @@ fn cancel_settles_a_turn_whose_host_failed_closed() {
     assert_eq!(
         host.send(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }),
-        Err(crate::acp::intent::PromptSendError::unknown(
+        Err(crate::acp::prompt_send::PromptSendError::unknown(
             crate::acp::runtime::HostError::SignInRequired
         ))
     );
@@ -2282,7 +2289,7 @@ fn cancel_settles_a_turn_whose_host_failed_closed() {
 fn cancel_intent(owner: &RuntimeOwner) -> crate::acp::runtime::HostCancelIntent {
     crate::acp::runtime::HostCancelIntent {
         owner: owner.clone(),
-        turn_id: crate::acp::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-operation-recovery").unwrap(),
         client_intent_id: ClientIntentId::new(),
         now_millis: sage_core::time::now_millis(),
     }
@@ -2320,7 +2327,7 @@ async fn refused_prompt_recovery_allows_other_async_work_to_progress() {
     let failure = service
         .send_session_turn(crate::acp::runtime::HostPromptIntent {
             command: prepare_turn(&owner),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap_err();
     progress.await.unwrap();
@@ -2330,8 +2337,6 @@ async fn refused_prompt_recovery_allows_other_async_work_to_progress() {
     service.shutdown_blocking().unwrap();
 }
 
-/// Records the completed Turn that makes an idle runtime one eviction could
-/// park.
 fn complete_a_turn(service: &AcpService, owner: &RuntimeOwner) {
     service
         .database
@@ -2381,7 +2386,7 @@ fn idle_runtime_fixture_with(
     completed_turn: bool,
     runtime: TestRuntime,
 ) -> (AcpService, RuntimeOwner) {
-    let capabilities = crate::acp::intent::CapabilitySnapshotV1 {
+    let capabilities = sage_acp_protocol::intent::CapabilitySnapshotV1 {
         resume_session: resumable,
         ..test_capabilities()
     };
@@ -2409,12 +2414,10 @@ fn an_idle_chat_out_of_view_releases_its_runtime_after_two_minutes() {
     let (service, owner) = idle_release_fixture("idle-hidden");
     let start = std::time::Instant::now();
 
-    // Shown, it is kept well past the out-of-view wait.
     service.set_shown_chats([owner.chat_id.clone()]);
     assert_eq!(service.release_idle_runtimes(start + 3 * MINUTE), Some(0));
     assert!(service.lane_for(&owner).is_some());
 
-    // Out of view from now: not yet two minutes, then two minutes.
     service.set_shown_chats([]);
     assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
     assert!(service.lane_for(&owner).is_some());
@@ -2470,9 +2473,7 @@ fn a_lane_held_by_an_activation_keeps_an_idle_chat_runtime() {
         assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(0));
         assert!(service.lane_for(&owner).is_some());
     }
-    // The refused sweep let go of nothing it did not hold.
     drop(service.claim_lane_activation_for_test(&owner));
-    // Once let go, the next sweep releases it.
     assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(1));
     assert!(service.lane_for(&owner).is_none());
     service.shutdown_blocking().unwrap();
@@ -2488,7 +2489,6 @@ fn an_idle_chat_whose_harness_is_answering_a_control_keeps_its_runtime() {
     let (service, owner) = idle_runtime_fixture_with("idle-control", true, true, runtime);
     let start = std::time::Instant::now();
     service.set_shown_chats([]);
-    // A fork is a session control, not a Turn: the scheduler sees no Turn.
     let host = service.host_for(&owner).unwrap();
     let fork = {
         let owner = owner.clone();
@@ -2513,7 +2513,6 @@ fn an_idle_chat_whose_harness_is_answering_a_control_keeps_its_runtime() {
         Ok(crate::acp::goal::NativeRpcReply::Rejected),
         "the control was answered, not cut off"
     );
-    // Once answered, the next sweep releases it.
     assert_eq!(service.release_idle_runtimes(start + 20 * MINUTE), Some(1));
     assert!(service.lane_for(&owner).is_none());
     service.shutdown_blocking().unwrap();
@@ -2525,11 +2524,7 @@ fn an_eviction_park_takes_the_claim_made_when_its_lane_was_chosen() {
     let lane = service.lane_for(&owner).unwrap();
     let host = lane.runtime.for_owner(&owner).unwrap();
     *lane.eviction.lock().unwrap() = Some(host.claim_idle_park().unwrap());
-    // Claimed for the eviction, the runtime takes no new control...
     assert!(host.claim_idle_park().is_none());
-    // ...and its park goes ahead under that claim rather than refusing: the
-    // host shuts down and the park's zero-process recovery releases the lane,
-    // as an activation's reclaim drives it.
     let deadline = crate::acp::service::explicit_close_deadline();
     let parked = lane.park_idle_runtime_for_replacement(deadline);
     assert!(
@@ -2552,7 +2547,6 @@ fn a_chat_shown_again_is_kept_and_sweeping_ends_at_shutdown() {
     let start = std::time::Instant::now();
     service.set_shown_chats([]);
     assert_eq!(service.release_idle_runtimes(start + MINUTE), Some(0));
-    // Coming back before two minutes clears the out-of-view mark.
     service.set_shown_chats([owner.chat_id.clone()]);
     assert_eq!(service.release_idle_runtimes(start + 5 * MINUTE), Some(0));
     assert!(service.lane_for(&owner).is_some());
@@ -2592,7 +2586,6 @@ fn a_chat_shown_again_while_a_sweep_runs_is_kept() {
     let now = start + 3 * MINUTE;
     let due = service.idle_runtimes_due(now);
     assert_eq!(due.len(), 1);
-    // The user opens the Chat while earlier lanes of the sweep are parking.
     service.set_shown_chats([owner.chat_id.clone()]);
     let (index, due_owner, idle_since) = due.into_iter().next().unwrap();
     let deadline = crate::acp::service::explicit_close_deadline();

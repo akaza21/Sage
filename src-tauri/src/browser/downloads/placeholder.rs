@@ -1,17 +1,7 @@
-//! The empty file that reserves a silent download's name during planning.
-//! WebView2 writes elsewhere; Sage retires this claim just before atomic
-//! publication. An absence check here never authorizes a native writer.
-//!
-//! Sage only ever deletes a placeholder through a handle to the file it created, and
-//! only while that file is still empty, so it can never remove a different
-//! file that took the name. On Windows the delete is
-//! `SetFileInformationByHandle(FileDispositionInfo)` on that handle. Unix has
-//! no delete-by-handle, so there an unused placeholder is left in place
-//! rather than removed by name. The download handling itself is WebView2
-//! code and runs on Windows; the Unix build keeps the shared code tested.
-//!
-//! After a crash nothing is deleted automatically: an empty placeholder can
-//! be left behind, never a user's file removed.
+//! Sage only ever deletes a placeholder through a handle to the file it
+//! created, and only while that file is still empty, so it can never remove a
+//! different file that took the name. Unix has no delete-by-handle, so there
+//! an unused placeholder is left in place rather than removed by name.
 
 use std::{
     fs::{File, OpenOptions},
@@ -19,7 +9,6 @@ use std::{
     path::{Path, PathBuf},
 };
 
-/// A reserved name and the open handle of the empty file at it.
 #[derive(Debug)]
 pub(crate) struct Placeholder {
     pub(crate) path: PathBuf,
@@ -34,7 +23,6 @@ impl PartialEq for Placeholder {
 
 impl Eq for Placeholder {}
 
-/// Creates `path` as a new empty file, failing if anything exists there.
 /// On Windows cleanup acquires a writer-excluding lease through this identity.
 /// The native writer uses a separate private staging destination.
 pub(crate) fn create(path: &Path) -> io::Result<Placeholder> {
@@ -89,8 +77,7 @@ impl Placeholder {
         }
     }
 
-    /// Deletes the file through its handle if it is still empty. Returns
-    /// whether it was deleted; anything uncertain keeps the file.
+    /// Returns whether it was deleted; anything uncertain keeps the file.
     pub(crate) fn delete_if_empty(self) -> bool {
         if self
             .file
@@ -218,8 +205,6 @@ mod tests {
         let placeholder = create(&path).unwrap();
         assert!(path.exists());
         let deleted = placeholder.delete_if_empty();
-        // Windows deletes through the handle; Unix, with no such delete,
-        // keeps the file rather than remove it by name.
         assert_eq!(deleted, cfg!(windows));
         assert_eq!(path.exists(), !cfg!(windows));
         std::fs::remove_dir_all(directory).unwrap();

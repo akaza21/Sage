@@ -13,7 +13,6 @@ fn spawns(name: &str) -> bool {
 }
 
 impl SdkBridge {
-    /// A parent tool use that starts a subagent; false for any other tool.
     pub(super) fn spawn(
         &mut self,
         id: &str,
@@ -43,9 +42,7 @@ impl SdkBridge {
         true
     }
 
-    /// A frame from inside a subagent: its finished messages and tool
-    /// results. Its streamed deltas are left out; the finished message
-    /// carries the same text.
+    /// Its streamed deltas are left out; the finished message carries the same text.
     pub(super) fn nested(&mut self, sdk: &Value, inbound: &mut Inbound) {
         let Some(key) = sdk.get("parent_tool_use_id").and_then(Value::as_str) else {
             return;
@@ -137,8 +134,6 @@ impl SdkBridge {
         });
     }
 
-    /// The subagent's `Task` result closes its transcript; tools it never
-    /// reported on end as failed.
     pub(super) fn end_child(&mut self, key: &str, outcome: ChildOutcome, inbound: &mut Inbound) {
         if !self.subagents.remove(key) {
             return;
@@ -166,7 +161,6 @@ impl SdkBridge {
         });
     }
 
-    /// The turn ended: subagents still open stop with it.
     pub(super) fn end_children(&mut self, inbound: &mut Inbound) {
         let open: Vec<_> = self.subagents.iter().cloned().collect();
         for key in open {

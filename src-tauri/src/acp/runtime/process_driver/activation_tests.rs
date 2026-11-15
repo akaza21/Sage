@@ -13,21 +13,24 @@ use crate::acp::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterIdentity,
         AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
+    process::TreeExit,
+    runtime::{
+        ActivationIntent, ActivationJournal, ActivationJournalError, ActivationMode,
+        ActivationPump, ActivationReceipt, ActivationTransport, EgressTransport,
+    },
+    store::CompleteActivationCommand,
+    transport::{Frame, FrameWriteOutcome, OutboundFrame},
+};
+use sage_acp_protocol::{
     contract::{
         ProjectionRevision, RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId,
         SageProjectId, SchemaVersionV1,
     },
     intent::{CapabilitySnapshotV1, ExternalId, SafeResourceRef},
-    process::{LaunchError, TreeExit},
-    runtime::{
-        ActivationIntent, ActivationJournal, ActivationJournalError, ActivationMode,
-        ActivationPump, ActivationReceipt, ActivationTransport, EgressTransport,
-    },
     scheduler::RuntimeOwner,
-    store::CompleteActivationCommand,
-    transport::{Frame, FrameWriteOutcome, OutboundFrame},
 };
 use sage_core::limits::LIMITS;
+use sage_process::error::LaunchError;
 
 use super::*;
 
@@ -102,8 +105,8 @@ impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         _: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
-        Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
     }
 }
 

@@ -219,12 +219,9 @@ fn finish(app: &AppHandle, tab_id: &str, id: u64, decision: Decision, save: bool
         let _ = unsafe { entry.deferral.Complete() };
     }
     if save && configured && recorded && origin_matches {
-        // The saved answer settles the same site's prompts in other tabs.
         for (other, other_tab) in settled {
             finish(app, &other_tab, other, decision, false);
         }
-        // A saved answer applies to the whole site, so every tab's drawer
-        // and Settings > Browser refresh.
         emit_site_settings(app, &app.state::<BrowserState>());
     } else {
         emit_snapshot(app, tab_id);
@@ -291,8 +288,6 @@ pub(crate) fn navigation_settled_native(app: &AppHandle, tab_id: &str, source: O
     deny_stale(app, tab_id, ids);
 }
 
-/// `ContentLoading` for `navigation_id`: a document or an error page
-/// committed. Reports the tab's cleared stale mark, if this commit proves it.
 pub(crate) fn document_committed_native(app: &AppHandle, tab_id: &str, navigation_id: u64) {
     let state = app.state::<BrowserState>();
     let replaced = state

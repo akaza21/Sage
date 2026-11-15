@@ -1,6 +1,6 @@
 use serde_json::Value;
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{BoundedVec, ContractError, RequiredText, SafeText, SchemaVersionV1},
     intent::{CapabilitySnapshotV1, offers_prompt_capability},
 };
@@ -24,7 +24,6 @@ pub(crate) struct ClaudeCapabilityOffer {
     pub fork_session: bool,
     pub prompt: bool,
     pub prompt_resources: bool,
-    /// Standard ACP `promptCapabilities.image`.
     pub prompt_images: bool,
     pub cancel: bool,
     pub models: Vec<ClaudeModel>,

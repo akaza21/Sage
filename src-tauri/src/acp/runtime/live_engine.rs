@@ -1,10 +1,8 @@
-use crate::{
-    acp::{
-        contract::{SageServerRequestId, SageTurnId},
-        scheduler::RuntimeOwner,
-        store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
-    },
-    acp_protocol::permissions::PermissionDecision,
+use crate::acp::store::{AdapterTurnCursor, CloseSessionCommand, SendObservation};
+use sage_acp_protocol::{
+    contract::{SageServerRequestId, SageTurnId},
+    permissions::PermissionDecision,
+    scheduler::RuntimeOwner,
 };
 use std::time::Instant;
 
@@ -39,7 +37,7 @@ pub(crate) trait LiveRuntimePort: Send + 'static {
 
     fn begin_configure_session(
         &mut self,
-        _intent: &crate::acp::session_config::ConfigIntent,
+        _intent: &sage_acp_protocol::session_config::ConfigIntent,
         _deadline: Instant,
         completion: ConfigCompletionSink,
     ) -> Result<(), HostError> {
@@ -184,7 +182,7 @@ impl<P: LiveRuntimePort> RuntimeEngine for LiveRuntimeEngine<P> {
     }
     fn begin_configure_session(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
         deadline: Instant,
         completion: ConfigCompletionSink,
     ) -> Result<(), HostError> {

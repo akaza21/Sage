@@ -1,9 +1,9 @@
 use serde_json::{Map, Value, json};
 
-use crate::acp::{
+use crate::acp::transport::{Frame, OutboundFrame};
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::{SafeResourceRef, UnavailableResourceReason},
-    transport::{Frame, OutboundFrame},
 };
 use sage_core::limits::LIMITS;
 
@@ -83,9 +83,8 @@ pub(crate) fn api_key_account(account: &Map<String, Value>) -> bool {
     account_type(account) == Some("apiKey")
 }
 
-/// Whether an `account/read` result carries the two members Sage reads: the
-/// account (an object or null) and the auth requirement. Other members, such
-/// as workspace routing, are not used and may change between releases.
+/// Other members, such as workspace routing, are not used and may change
+/// between releases.
 pub(crate) fn valid_account_read(result: &Map<String, Value>) -> bool {
     matches!(result.get("account"), Some(Value::Null | Value::Object(_)))
         && result
@@ -93,9 +92,9 @@ pub(crate) fn valid_account_read(result: &Map<String, Value>) -> bool {
             .is_some_and(Value::is_boolean)
 }
 
-/// A ChatGPT sign-in. Sage keeps no identity data from it, so the email,
-/// plan and workspace members are not read: a new plan or member must not
-/// sign the user out of Sage.
+/// Sage keeps no identity data from a ChatGPT sign-in, so the email, plan and
+/// workspace members are not read: a new plan or member must not sign the user
+/// out of Sage.
 pub(crate) fn managed_chatgpt(account: &Map<String, Value>) -> bool {
     account_type(account) == Some("chatgpt")
 }
@@ -104,10 +103,10 @@ fn account_type(account: &Map<String, Value>) -> Option<&str> {
     account.get("type").and_then(Value::as_str)
 }
 
-/// Reads the members of a `model/list` entry that discovery keeps. Members
-/// Sage does not read (tiers, modalities, upgrade copy and so on) are ignored,
-/// so a model the service describes with new metadata is still offered.
-/// Hidden models are skipped, as Codex's own picker does.
+/// Members Sage does not read (tiers, modalities, upgrade copy and so on) are
+/// ignored, so a model the service describes with new metadata is still offered.
+/// Hidden models are skipped, as Codex's own picker does. An unreadable
+/// thinking level list leaves the model without levels.
 pub(super) fn parse_model(
     value: &Value,
 ) -> Result<Option<CodexModelSnapshot>, CodexDiscoveryError> {
@@ -126,6 +125,15 @@ pub(super) fn parse_model(
         name: RequiredText::new("modelName", name.to_owned())
             .map_err(|_| CodexDiscoveryError::ModelCatalog)?,
         is_default,
+        effort_levels: model
+            .get("supportedReasoningEfforts")
+            .and_then(|efforts| {
+                crate::acp::bindings::codex::incoming::parse_reasoning_efforts(efforts).ok()
+            })
+            .unwrap_or_default()
+            .into_iter()
+            .map(|effort| effort.id)
+            .collect(),
     }))
 }
 

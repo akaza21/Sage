@@ -1,4 +1,5 @@
-use crate::acp::{contract::SageTurnId, store::SendObservation};
+use crate::acp::store::SendObservation;
+use sage_acp_protocol::contract::SageTurnId;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum WriteFenceError {

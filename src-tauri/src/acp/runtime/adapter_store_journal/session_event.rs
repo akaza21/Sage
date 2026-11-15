@@ -1,8 +1,8 @@
 use crate::acp::{
-    intent::session_event::SessionScopedEvent,
     runtime::adapter_pump::{PumpIntent, PumpJournalError, SessionScope},
     store::{AdapterInboundEvent, SessionEventCommand},
 };
+use sage_acp_protocol::intent::session_event::SessionScopedEvent;
 
 use super::command::hex;
 

@@ -34,8 +34,6 @@ async fn duplicate_probes_share_the_same_admitted_folder() {
         .await
     });
     start.await.unwrap();
-    // A second physical probe would refuse this folder. Both callers must
-    // instead receive the successful result of the already-running check.
     let second = executor.probe(folder.clone(), |_, _| None);
     let (_, second) = tokio::join!(
         async {
@@ -117,7 +115,6 @@ async fn non_unicode_paths_do_not_share_a_pending_probe() {
 async fn deadline_releases_admission_before_the_os_call_returns() {
     let executor = Arc::new(Executor::new(Duration::from_secs(1)));
     let folder = scratch();
-    // Saturate shared admission with live download leases and one probe.
     let held = (0..MAX_LEASES - 1)
         .map(|index| {
             executor
@@ -143,7 +140,6 @@ async fn deadline_releases_admission_before_the_os_call_returns() {
         "total admission must be bounded"
     );
     assert_eq!(probe.await.unwrap(), None);
-    // This needs the expired probe's slot, while its OS call is still blocked.
     let (done, completion) = tokio::sync::oneshot::channel();
     let output = folder.join("local.txt");
     let path = output.clone();
@@ -188,8 +184,6 @@ async fn reset_probes_cannot_grow_the_number_of_blocked_threads() {
         assert_eq!(probe.await.unwrap(), None);
         releases.push(release);
     }
-    // Expired markers must coalesce, and fresh destinations must fail closed
-    // once physical workers are exhausted, even though admission is now free.
     for index in 0..100 {
         assert_eq!(
             executor
@@ -212,7 +206,6 @@ async fn reset_probes_cannot_grow_the_number_of_blocked_threads() {
     assert_eq!(executor.workers.load(Ordering::Acquire), MAX_LEASES);
     drop(releases);
     drained(&executor).await;
-    // A late successful OS return cannot retain capacity or poison recovery.
     assert_eq!(
         executor.probe(folder.clone(), admit_folder_before).await,
         admit_folder(&folder)

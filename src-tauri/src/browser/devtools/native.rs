@@ -73,10 +73,8 @@ pub(crate) fn capture_page_context(
     })
 }
 
-/// Clears the Agent's act marker, trying every step even after a failure,
-/// and turns the overlay off again unless the tab annotates. Also releases
-/// any developer-mode evaluation results still held (ADR-0009b), since this
-/// runs when the Agent's control of the tab ends.
+/// Also releases any developer-mode evaluation results still held
+/// (ADR-0009b), since this runs when the Agent's control of the tab ends.
 pub(crate) fn clear_agent_highlight(webview: &Webview) {
     let transport = NativeTransport {
         developer: None,
@@ -88,15 +86,12 @@ pub(crate) fn clear_agent_highlight(webview: &Webview) {
     super::cdp_port::release_developer_objects(&transport);
 }
 
-/// Removes the user's Annotate hover outline, outside any Agent permit.
 pub(crate) fn clear_annotate_outline(webview: &Webview) -> Result<(), BrowserFailure> {
     let (method, params) = super::cdp_port::inspect::HIDE_OUTLINE;
     cdp::call(webview, method, params, 4096, Duration::from_secs(1))?;
     Ok(())
 }
 
-/// Turns the user's Annotate hover highlight on or off, outside any Agent
-/// permit.
 pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFailure> {
     let port = NativePort::new(NativeTransport {
         developer: None,
@@ -111,7 +106,6 @@ pub(crate) fn set_annotate(webview: &Webview, on: bool) -> Result<(), BrowserFai
     }
 }
 
-/// Reads the element the user clicked in Annotate and freezes its frame.
 pub(crate) fn pick_element(webview: &Webview, backend_node_id: u64) -> Result<PickedNode, String> {
     NativePort::new(NativeTransport {
         developer: None,
@@ -132,7 +126,6 @@ mod dispatch;
 pub(crate) type NativePort = CdpPort<NativeTransport>;
 pub(crate) type NativeDevtools = DevtoolsCapability<NativePort>;
 
-/// Carries Agent CDP commands to one WebView2 browser tab.
 #[derive(Clone)]
 pub(crate) struct NativeTransport {
     webview: Webview,

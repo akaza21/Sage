@@ -1,11 +1,9 @@
-//! `/mcp` through Codex's app server: the list, a reload and a sign-in.
-
 use super::*;
 use crate::acp::{
     goal::NativeRpcReply,
-    mcp::inventory::{McpAuth, McpConnection},
-    session_control::SessionControl,
+    mcp::inventory::{MAX_LISTED_SERVERS, McpAuth, McpConnection},
 };
+use sage_acp_protocol::session_control::SessionControl;
 
 fn sign_in(name: &str) -> SessionControl {
     SessionControl::SignInMcpServer {
@@ -84,7 +82,6 @@ fn a_sign_in_answers_with_a_native_url_and_a_refusal_with_codexs_reason() {
     };
     assert_eq!(url.as_str(), "https://auth.example.com/authorize?state=x");
 
-    // A URL Sage would not open is no sign-in.
     let (id, _) = sent(&mut runtime, &sign_in("notion"));
     answer(
         &mut runtime,
@@ -132,7 +129,6 @@ fn abandoned_lists_drop_their_late_answers_and_hold_only_further_lists() {
         runtime.abandon_passive_read();
         assert!(!runtime.native_rpc_pending());
     }
-    // Four lists Codex never answered hold back a fifth, but not the rest.
     assert!(
         runtime
             .session_control(&SessionControl::ReadMcpServers)
@@ -144,7 +140,6 @@ fn abandoned_lists_drop_their_late_answers_and_hold_only_further_lists() {
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Controlled(None))
     );
-    // A late answer is dropped, and frees room for a new list.
     answer(
         &mut runtime,
         abandoned[0],
@@ -180,7 +175,6 @@ fn a_list_past_the_frame_bound_is_too_large_and_keeps_the_session() {
     );
     assert!(!runtime.native_rpc_pending());
 
-    // An abandoned list's oversized answer is dropped, then lists resume.
     let (abandoned, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
     runtime.abandon_passive_read();
     assert!(runtime.child_read_pending());
@@ -188,4 +182,127 @@ fn a_list_past_the_frame_bound_is_too_large_and_keeps_the_session() {
     assert_eq!(runtime.take_native_rpc_reply(), None);
     assert!(!runtime.child_read_pending());
     sent(&mut runtime, &SessionControl::ReadMcpServers);
+}
+
+/// What Codex answers for one server with `tools` tools: each tool's schema
+/// comes whole, whatever `detail` asks for.
+fn list_with_tools(id: u64, tools: usize) -> Value {
+    let tools: serde_json::Map<String, Value> = (0..tools)
+        .map(|index| {
+            let name = format!("tool_{index}");
+            let schema = json!({"type":"object","properties":{
+                "path":{"type":"string","description":"Where"},
+                "depth":{"type":"integer","description":"How deep"}
+            },"required":["path"]});
+            (
+                name.clone(),
+                json!({"name":name,"description":"A tool","inputSchema":schema}),
+            )
+        })
+        .collect();
+    json!({"id": id, "result": {"data": [{
+        "name":"big","authStatus":"unsupported","runtimeStatus":"connected",
+        "serverInfo":{"name":"big","title":"Big Server","version":"1.0.0"},
+        "tools":tools,"resources":[],"resourceTemplates":[]
+    }],"nextCursor":null}})
+}
+
+#[test]
+fn a_list_past_the_structural_bounds_still_lists_its_servers() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let (id, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
+    let bulky = frame(list_with_tools(id, 300));
+    assert!(crate::acp::transport::validate_structure(&bulky).is_err());
+    let batch = runtime.discard_invalid_response(&bulky).unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    let Some(NativeRpcReply::McpServers(listed)) = runtime.take_native_rpc_reply() else {
+        panic!("the inventory");
+    };
+    assert_eq!(listed.servers.len(), 1);
+    assert_eq!(listed.servers[0].name, "big");
+    assert_eq!(listed.servers[0].title.as_deref(), Some("Big Server"));
+    assert_eq!(listed.servers[0].tools, 300);
+    assert!(!runtime.native_rpc_pending());
+    assert!(!runtime.child_read_pending());
+}
+
+#[test]
+fn a_long_compact_list_past_the_structural_bounds_lists_the_first_servers_by_name() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let (id, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
+    let named = MAX_LISTED_SERVERS + 36;
+    let entries: Vec<Value> = (0..300_000)
+        .map(|index| match index % 3_000 {
+            0 => json!({"name": format!("s{:03}", named - 1 - index / 3_000),
+                        "runtimeStatus": "connected"}),
+            _ => json!({}),
+        })
+        .collect();
+    let compact = frame(json!({"id": id, "result": {"data": entries, "nextCursor": null}}));
+    assert!(crate::acp::transport::validate_structure(&compact).is_err());
+    runtime.discard_invalid_response(&compact).unwrap();
+    let Some(NativeRpcReply::McpServers(listed)) = runtime.take_native_rpc_reply() else {
+        panic!("the inventory");
+    };
+    assert!(listed.truncated);
+    let names: Vec<_> = listed
+        .servers
+        .iter()
+        .map(|server| server.name.clone())
+        .collect();
+    let first: Vec<_> = (0..MAX_LISTED_SERVERS)
+        .map(|index| format!("s{index:03}"))
+        .collect();
+    assert_eq!(names, first);
+    assert!(!runtime.native_rpc_pending());
+}
+
+#[test]
+fn an_abandoned_lists_unbounded_answer_is_dropped_and_lists_resume() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let (abandoned, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
+    runtime.abandon_passive_read();
+    let batch = runtime
+        .discard_invalid_response(&frame(list_with_tools(abandoned, 300)))
+        .unwrap();
+    assert!(matches!(batch.events(), [AdapterEvent::IgnoredLate]));
+    assert_eq!(runtime.take_native_rpc_reply(), None);
+    assert!(!runtime.child_read_pending());
+    let (id, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
+    answer(&mut runtime, id, list_with_tools(id, 2));
+    let Some(NativeRpcReply::McpServers(listed)) = runtime.take_native_rpc_reply() else {
+        panic!("the inventory");
+    };
+    assert_eq!(listed.servers[0].tools, 2);
+}
+
+#[test]
+fn an_unbounded_answer_that_is_no_list_is_too_large_or_codexs_refusal() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let deep = (0..40).fold(json!("leaf"), |inner, _| json!({ "x": inner }));
+    let (id, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
+    runtime
+        .discard_invalid_response(&frame(
+            json!({"id": id, "result": {"data": "none", "x": deep}}),
+        ))
+        .unwrap();
+    assert_eq!(
+        runtime.take_native_rpc_reply(),
+        Some(NativeRpcReply::TooLarge)
+    );
+    let (id, _) = sent(&mut runtime, &SessionControl::ReadMcpServers);
+    runtime
+        .discard_invalid_response(&frame(json!({"id": id, "error": {
+            "code": -32603, "message": "thread not found", "data": deep
+        }})))
+        .unwrap();
+    let Some(NativeRpcReply::ControlRefused(Some(reason))) = runtime.take_native_rpc_reply() else {
+        panic!("Codex's refusal");
+    };
+    assert_eq!(reason.as_str(), "thread not found");
+    assert!(!runtime.native_rpc_pending());
 }

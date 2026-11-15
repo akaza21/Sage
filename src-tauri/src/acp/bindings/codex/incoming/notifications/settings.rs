@@ -1,12 +1,9 @@
-//! `thread/settings/updated`: Codex changed the thread's settings. The
-//! model and effort refresh the session's model configuration, as the
-//! thread start reports them. Approvals and the sandbox follow Sage's own
-//! access mode, which Sage sends with every turn, so Codex's copy of them
-//! is not adopted.
+//! Approvals and the sandbox follow Sage's own access mode, which Sage sends
+//! with every turn, so Codex's copy of them is not adopted.
 
 use serde_json::{Map, Value};
 
-use crate::acp::contract::RequiredText;
+use sage_acp_protocol::contract::RequiredText;
 
 use super::super::{
     CodexAdapter, IngressDisposition, IngressError,

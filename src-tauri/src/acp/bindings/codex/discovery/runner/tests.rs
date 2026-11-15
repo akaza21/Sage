@@ -8,9 +8,9 @@ use serde_json::{Value, json};
 
 use super::*;
 use crate::acp::{
-    bindings::codex::manifest::parse_packet_metadata, contract::RuntimeEpoch,
-    transport::IncrementalFrameDecoder,
+    bindings::codex::manifest::parse_packet_metadata, transport::IncrementalFrameDecoder,
 };
+use sage_acp_protocol::contract::RuntimeEpoch;
 
 struct ScriptTransport {
     reads: VecDeque<Result<Option<Frame>, CodexDiscoveryRunError>>,
@@ -78,7 +78,6 @@ impl DiscoveryTransport for ScriptTransport {
         if self.drift_at == Some(checkpoint) {
             Err(CodexDiscoveryRunError::Drift)
         } else {
-            // Tests inspect this through an interior-free clone below.
             Ok(())
         }
     }
@@ -284,7 +283,7 @@ fn a_model_list_that_never_answers_expires_its_read_budget_and_tears_down() {
     let mut protocol = protocol();
     let mut transport = ScriptTransport::happy();
     transport.now = admitted;
-    transport.reads.pop_back(); // initialize and account answer; model/list never does.
+    transport.reads.pop_back();
 
     assert_eq!(
         run_discovery_protocol(&mut protocol, &mut transport, 71, deadline),

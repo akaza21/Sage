@@ -1,5 +1,3 @@
-//! Bounded P-02 read coordination for a future admitted ACP adapter pump.
-
 use std::{
     sync::{
         Arc,
@@ -10,15 +8,15 @@ use std::{
 
 use crate::{
     acp::{
-        contract::SageRootId,
         resource_mapper::{ConfiguredResourceRoot, NativeResourceAdmission, NativeResourceMapper},
         runtime::read_text_file::ReadTextRange,
     },
-    domain::ResourceRef,
     persistence::Database,
     workspace::{Workspace, select_text_lines},
 };
+use sage_acp_protocol::contract::SageRootId;
 use sage_core::limits::LIMITS;
+use sage_domain::resource::ResourceRef;
 
 const MAX_EDITABLE_BUFFER_BYTES: usize = 1024 * 1024;
 mod lifecycle;
@@ -61,8 +59,6 @@ impl ReadTextFileService {
         dead_code,
         reason = "P-02 Decision B deferred adapter seam; exercised by conformance tests and not production-admitted"
     )]
-    /// Resolves a pinned ACP absolute path under an owner Project's registered
-    /// roots before beginning the ordinary two-step source handshake.
     pub(crate) fn begin_absolute(
         &self,
         owner: ReadTextOwner,
@@ -278,8 +274,6 @@ impl ReadTextFileService {
         expire_all(&self.state);
         Vec::new()
     }
-    /// Scheduler-facing monotonic expiry seam. This is the same production
-    /// state transition used by the ordinary scheduler, not a test-only jump.
     #[allow(
         dead_code,
         reason = "P-02 Decision B deferred adapter scheduler seam; exercised by conformance tests"

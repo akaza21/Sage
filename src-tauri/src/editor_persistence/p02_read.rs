@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{domain::ResourceRef, persistence::Database};
+use crate::persistence::Database;
+use sage_domain::resource::ResourceRef;
 
 #[cfg(test)]
 static REVISE_AFTER_PREFLIGHT_FOR_TEST: AtomicBool = AtomicBool::new(false);

@@ -1,11 +1,11 @@
 use super::*;
-use crate::acp::contract::{ProjectionRevision, SageChatId, SageProjectId};
 use crate::acp::runtime::{
     ActivationIntent, ActivationJournal, ActivationJournalError, ActivationMode, ActivationPump,
     ActivationReceipt, ActivationTransport,
 };
 use crate::acp::store::CompleteActivationCommand;
 use crate::acp::transport::{FrameWriteOutcome, OutboundFrame};
+use sage_acp_protocol::contract::{ProjectionRevision, SageChatId, SageProjectId};
 
 struct Journal;
 impl ActivationJournal for Journal {
@@ -83,7 +83,7 @@ fn a_fresh_runtime_resumes_the_stopped_chat_through_activation_and_sends_again()
         let next = runtime.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt","Continue").unwrap(),
             client_message_id: RequiredText::new("client","retry").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
         }).unwrap();
         assert_eq!(request_id(&next), 3);
     });

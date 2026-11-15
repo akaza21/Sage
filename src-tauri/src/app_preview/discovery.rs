@@ -6,11 +6,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    acp::contract::{
-        ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
-    },
-    project_registry::RootRecord,
+use crate::project_registry::RootRecord;
+use sage_acp_protocol::contract::{
+    ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
 };
 use sage_core::limits::PREVIEW_LIMITS;
 

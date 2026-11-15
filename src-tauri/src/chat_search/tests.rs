@@ -4,7 +4,8 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use super::{ProjectChatSearchRequest, SearchLimits, search_project_chats};
-use crate::{domain::ProjectLayoutRequest, persistence::Database};
+use crate::persistence::Database;
+use sage_domain::chat::ProjectLayoutRequest;
 
 fn database_with_project() -> (Database, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-chat-search-{}", Uuid::new_v4()));
@@ -258,7 +259,8 @@ fn prompts_stored_by_the_send_path_are_searchable() {
     database
         .append_simulator_turn_for_model(&chat_id, "sage-simulator-default", "first", "answer")
         .unwrap();
-    let prompt = crate::acp::intent::Prompt::new("prompt", "Fix the sidebar needle").unwrap();
+    let prompt =
+        crate::acp::transcript_quote::Prompt::new("prompt", "Fix the sidebar needle").unwrap();
     let payload =
         serde_json::json!({ "kind": "text", "payload": prompt.user_payload() }).to_string();
     assert!(payload.contains("\"attachments\":0"));

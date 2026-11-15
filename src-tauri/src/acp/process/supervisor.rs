@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use crate::project_registry::ProjectRootAuthority;
 use sage_core::limits::LIMITS;
+use sage_process::error::LaunchError;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum EntryPointKind {
@@ -19,42 +20,6 @@ pub(crate) enum EntryPointKind {
 pub(crate) enum RequiredContainment {
     EnforcedTree,
     TrustedCooperativeTree,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum LaunchError {
-    ArgumentLimit,
-    CapacityUnavailable,
-    ContainmentFailure,
-    Deadline,
-    EnvironmentLimit,
-    IdentityMismatch,
-    InvalidAbsolutePath,
-    InvalidArgument,
-    InvalidEnvironment,
-    Io,
-    PlatformUnavailable,
-    StdioLimit,
-}
-
-impl LaunchError {
-    /// The launch step that failed, as the chat names it.
-    pub(crate) fn step(self) -> &'static str {
-        match self {
-            Self::ArgumentLimit | Self::InvalidArgument => "preparing the harness arguments",
-            Self::CapacityUnavailable => "claiming a process slot",
-            Self::ContainmentFailure => "containing the harness process",
-            Self::Deadline => "waiting for the harness process",
-            Self::EnvironmentLimit | Self::InvalidEnvironment => {
-                "preparing the harness environment"
-            }
-            Self::IdentityMismatch => "checking the harness identity",
-            Self::InvalidAbsolutePath => "resolving the harness path",
-            Self::Io => "setting up the harness transport",
-            Self::PlatformUnavailable => "using this platform's process support",
-            Self::StdioLimit => "opening the harness pipes",
-        }
-    }
 }
 
 pub(crate) struct ArtifactExpectation {
@@ -254,6 +219,47 @@ pub(crate) enum TreeExit {
     ContainmentFailure,
     ProtocolFailure,
     ParentShutdown,
+}
+
+/// Sage's first termination request kept apart from the root's own exit.
+/// Waits report the request so callers see Sage's intent; a root that had
+/// already exited when Sage first asked keeps its native status here.
+#[derive(Debug, Clone, Copy, Default)]
+pub(super) struct TerminationRecord {
+    requested: Option<TreeExit>,
+    exited_first: Option<TreeExit>,
+}
+
+impl TerminationRecord {
+    /// Records only the first request. `root_exit` is consulted then, and
+    /// only then, for the root's exit if it has already happened.
+    pub(super) fn request(
+        &mut self,
+        reason: TreeExit,
+        root_exit: impl FnOnce() -> Option<TreeExit>,
+    ) {
+        if self.requested.is_none() {
+            self.exited_first = root_exit();
+            self.requested = Some(reason);
+        }
+    }
+
+    pub(super) fn requested(&self) -> Option<TreeExit> {
+        self.requested
+    }
+
+    /// The root's own exit when no request preceded it. `root_exit` reads
+    /// the current native status and is consulted only while Sage has not
+    /// asked for termination.
+    pub(super) fn exit_before_request(
+        &self,
+        root_exit: impl FnOnce() -> Option<TreeExit>,
+    ) -> Option<TreeExit> {
+        match self.requested {
+            Some(_) => self.exited_first,
+            None => root_exit(),
+        }
+    }
 }
 
 /// Linear evidence minted only after the native supervisor has observed zero

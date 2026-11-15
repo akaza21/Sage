@@ -2,14 +2,12 @@ use sage_core::error::{AppError, AppResult};
 use tauri::State;
 
 use crate::{
-    domain::{
-        MoveChatRequest, PinChatRequest, ProjectLayoutRequest, ProjectTransitionResult,
-        RenameChatRequest,
-    },
-    persistence::Database,
-    preview_lifecycle::on_committed_project_transition_epoch,
-    resource_commands::build_bootstrap_snapshot,
-    state::AppState,
+    persistence::Database, preview_lifecycle::on_committed_project_transition_epoch,
+    resource_commands::build_bootstrap_snapshot, state::AppState,
+};
+use sage_domain::{
+    chat::{MoveChatRequest, PinChatRequest, ProjectLayoutRequest, RenameChatRequest},
+    project::ProjectTransitionResult,
 };
 
 const MAX_TRANSITION_EPOCH: u64 = 9_007_199_254_740_991;
@@ -214,10 +212,10 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{
-        domain::{ProjectLayoutRequest, RenameChatRequest, ResourceRef, WorkbenchTab},
-        persistence::Database,
-        state::AppState,
+    use crate::{persistence::Database, state::AppState};
+    use sage_domain::{
+        chat::{ProjectLayoutRequest, RenameChatRequest, WorkbenchTab},
+        resource::ResourceRef,
     };
 
     #[test]

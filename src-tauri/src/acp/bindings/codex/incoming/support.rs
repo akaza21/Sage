@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{NormalizedPayload, SafeResourceLocation},
 };
@@ -242,9 +242,9 @@ fn sanitize_with_limit(value: &str, maximum: usize, command_output: bool) -> Opt
     Some(output)
 }
 
-/// Classifies one completed command-output token. Callers that receive output
-/// in frames must keep incomplete tokens private until a whitespace boundary,
-/// then pass the complete token and the carried Bearer state here.
+/// Callers that receive output in frames must keep incomplete tokens private
+/// until a whitespace boundary, then pass the complete token and the carried
+/// Bearer state here.
 pub(in crate::acp::bindings::codex) fn command_output_token(
     token: &str,
     redact_next: bool,
@@ -379,7 +379,7 @@ pub(super) fn permission(_: AdapterError) -> IngressError {
     IngressError::PermissionTeardownRequired
 }
 
-pub(super) fn content(_: crate::acp::contract::ContractError) -> IngressError {
+pub(super) fn content(_: sage_acp_protocol::contract::ContractError) -> IngressError {
     IngressError::Content
 }
 

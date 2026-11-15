@@ -11,9 +11,12 @@ use crate::acp::{
             OMP_PACKAGE, OMP_SOURCE_COMMIT, OMP_VERSION, OmpPlatform,
         },
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId, SageServerRequestId},
-    intent::{ExternalId, NormalizedPayload, Prompt, SafeResourceRef},
+    transcript_quote::Prompt,
     transport::IncrementalFrameDecoder,
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId, SageServerRequestId},
+    intent::{ExternalId, NormalizedPayload, SafeResourceRef},
 };
 
 struct Mapper;
@@ -22,7 +25,7 @@ impl ResourceMapper for Mapper {
     fn map_existing(
         &self,
         path: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
         (path == r"C:\fixture\src\lib.rs")
             .then(|| {
                 SafeResourceRef::new(
@@ -31,7 +34,7 @@ impl ResourceMapper for Mapper {
                 )
                 .expect("resource")
             })
-            .ok_or(crate::acp::intent::UnavailableResourceReason::Foreign)
+            .ok_or(sage_acp_protocol::intent::UnavailableResourceReason::Foreign)
     }
 }
 
@@ -182,7 +185,7 @@ fn running(runtime: &mut OmpRuntime) -> Value {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect read-only").expect("prompt"),
             client_message_id: RequiredText::new("client", "client-omp-1").expect("client"),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .expect("prompt");
     deliver(runtime, command)
@@ -343,7 +346,7 @@ fn unresolved_permission_decision_reports_missing_intent() {
     assert!(matches!(
         runtime.command(AdapterCommand::ResolvePermission {
             request_id: SageServerRequestId::parse("request-omp-missing").expect("request"),
-            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
+            decision: sage_acp_protocol::permissions::PermissionDecision::Deny,
         }),
         Err(AdapterRuntimeError::PermissionIntent)
     ));
