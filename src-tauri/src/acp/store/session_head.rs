@@ -141,3 +141,28 @@ pub(crate) fn runs_next_send(
         |row| row.get(0),
     )
 }
+
+/// The session `session` goes on from while it has run no turn: the one its
+/// Chat ran just before it, when that ran on the same binding. A Chat that
+/// changed harness goes on from nothing.
+pub(crate) fn preceding_session(
+    connection: &Connection,
+    session: &SageAgentSessionId,
+) -> Result<Option<SageAgentSessionId>, StoreError> {
+    let row = connection
+        .query_row(
+            "SELECT p.id,p.binding_id=s.binding_id FROM agent_sessions s
+             JOIN agent_sessions p ON p.project_id=s.project_id AND p.chat_id=s.chat_id
+             WHERE s.id=?1 AND p.legacy=0 AND p.ordinal<s.ordinal
+               AND NOT EXISTS(SELECT 1 FROM turns t WHERE t.session_id=s.id)
+             ORDER BY p.ordinal DESC LIMIT 1",
+            [session.as_str()],
+            |row| Ok((row.get::<_, String>(0)?, row.get::<_, bool>(1)?)),
+        )
+        .optional()?;
+    row.filter(|(_, same_binding)| *same_binding)
+        .map(|(id, _)| {
+            SageAgentSessionId::parse(id).map_err(|_| StoreError::Corrupt("preceding session id"))
+        })
+        .transpose()
+}

@@ -122,7 +122,8 @@ fn state_with_unavailable_codex_project() -> (AppState, String, String, std::pat
 }
 
 #[cfg(windows)]
-fn state_with_internal_opencode_registry() -> (AppState, String, String, std::path::PathBuf) {
+pub(crate) fn state_with_internal_opencode_registry()
+-> (AppState, String, String, std::path::PathBuf) {
     let root = std::env::temp_dir().join(format!("sage-opencode-command-{}", Uuid::new_v4()));
     let npm = root.join("npm");
     let shim = npm.join("opencode.cmd");

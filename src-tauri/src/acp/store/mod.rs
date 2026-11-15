@@ -114,7 +114,7 @@ pub(crate) use send::{begin_send, record_send_observation};
 pub(crate) use session_close::{
     FinalizeCloseCommand, close_session, finalize_close_after_zero_process,
 };
-pub(crate) use session_head::{ended_head, runs_next_send};
+pub(crate) use session_head::{ended_head, preceding_session, runs_next_send};
 pub(crate) use session_restart::{RestartSessionCommand, restart_undone_session};
 pub(crate) use session_resume::{
     ResumeEarlierSessionCommand, link_resumed_session, unstarted_continuation,

@@ -66,10 +66,7 @@ pub(super) fn turn_access_mode(
     binding_id: &str,
     session_id: &SageAgentSessionId,
 ) -> Result<SessionAccessMode, AcpIpcError> {
-    let chat = state
-        .settings
-        .chat_access(session_id.as_str())
-        .map_err(|_| access_unreadable())?;
+    let chat = session_chat_access(state, session_id)?;
     let defaults = state
         .settings
         .session_access_modes()
@@ -83,6 +80,73 @@ pub(super) fn turn_access_mode(
     .ok_or_else(|| AcpIpcError::InvalidRequest {
         message: safe_message("Choose a supported access mode before sending."),
     })
+}
+
+/// The chat's own access of `session_id`, after it took over what it
+/// inherits: every read of a session's access, for the composer and for a
+/// prompt alike, goes through here, so both see the same mode.
+pub(super) fn session_chat_access(
+    state: &AppState,
+    session_id: &SageAgentSessionId,
+) -> Result<Option<SessionAccessMode>, AcpIpcError> {
+    carry_chat_access(state, session_id)?;
+    state
+        .settings
+        .chat_access(session_id.as_str())
+        .map_err(|_| access_unreadable())
+}
+
+/// Gives a session that has run no turn the access of the session its chat
+/// ran just before it on the same binding, so the chat's choice outlives a
+/// failed session, a resume on a later harness release and a restart after
+/// an undo. The two live in different stores, so nothing copies them in one
+/// transaction: which session goes on from which is durable with the
+/// sessions themselves, and the copy is made again wherever it is missing,
+/// before any read of the session's access. A session that went on from one
+/// whose copy never happened (Sage stopped during its activation) takes the
+/// access from the session before that, each in between taking it too.
+/// Idempotent: a session that holds a mode of its own keeps it.
+///
+/// The walk goes back through the chat's own sessions, each earlier than the
+/// last, so it ends within the chat's session limit. A walk that does not
+/// (sessions beyond that limit) refuses, so a prompt never runs under a
+/// binding default broader than the chat's choice.
+pub(super) fn carry_chat_access(
+    state: &AppState,
+    session_id: &SageAgentSessionId,
+) -> Result<(), AcpIpcError> {
+    // From `session_id` back to the first session that holds a mode, or that
+    // goes on from none.
+    let mut chain = vec![session_id.clone()];
+    let mut resolved = false;
+    while chain.len() <= sage_core::limits::LIMITS.durable.sessions_per_chat as usize {
+        let last = chain.last().expect("the chain starts with the session");
+        let held = state
+            .settings
+            .chat_access(last.as_str())
+            .map_err(|_| access_unreadable())?;
+        let earlier = match held {
+            Some(_) => None,
+            None => crate::acp::store::preceding_session(&state.database.connection(), last)
+                .map_err(|_| access_unreadable())?,
+        };
+        let Some(earlier) = earlier else {
+            resolved = true;
+            break;
+        };
+        chain.push(earlier);
+    }
+    if !resolved {
+        return Err(access_unreadable());
+    }
+    let now = sage_core::time::now_millis();
+    for pair in chain.windows(2).rev() {
+        state
+            .settings
+            .carry_chat_access(pair[1].as_str(), pair[0].as_str(), now)
+            .map_err(|_| access_unreadable())?;
+    }
+    Ok(())
 }
 
 /// The access a prompt runs under, selected in its live session first.

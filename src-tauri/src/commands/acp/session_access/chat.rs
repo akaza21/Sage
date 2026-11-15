@@ -54,16 +54,14 @@ fn chat_binding(
     Ok(binding_id)
 }
 
-/// The chat's own access mode, if it has one.
+/// The chat's own access mode, if it has one, with what its session
+/// inherits, as a prompt in it would run.
 #[tauri::command]
 pub(crate) fn get_chat_access(
     state: State<'_, AppState>,
     request: ChatAccessRequest,
 ) -> Result<Option<SessionAccessMode>, AcpIpcError> {
-    state
-        .settings
-        .chat_access(request.session_id.as_str())
-        .map_err(|_| access_unreadable())
+    session_chat_access(&state, &request.session_id)
 }
 
 /// Sets a chat's mode when it needs no confirmation. It replaces any
