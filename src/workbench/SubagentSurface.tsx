@@ -24,6 +24,7 @@ import {
 } from "./SubagentResourceRows";
 import {
   childReadFor,
+  MAX_STALE_RETRIES,
   useChildEpoch,
   useChildReads,
   useSettledSubagents,
@@ -34,7 +35,6 @@ export { AgentTaskSubagentSummary } from "./AgentTaskSubagentSummary";
 
 const MAX_CHILD_ACTIVITIES = 32;
 const MAX_VISIBLE_CHILD_ITEMS = 256;
-const MAX_STALE_RETRIES = 3;
 
 type ChildRead = Extract<ChildTranscript, { turns: unknown }>;
 type ReadState = {

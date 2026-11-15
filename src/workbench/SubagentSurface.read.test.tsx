@@ -815,37 +815,29 @@ it.each([
   },
 );
 
-it.each([
-  ["closed", null],
-  ["replaced", "9"],
-])(
-  "stops a child reported running from an ended turn once its runtime is %s, without reading it",
-  async (_name, runtimeEpoch) => {
-    useSubagentPaneStore.setState({ list: true });
-    const page = spawnFromEndedTurn("7");
-    render(
-      <SubagentSurface
-        page={
-          {
-            ...page,
-            sessions: page.sessions.map((session) => ({
-              ...session,
-              runtimeEpoch,
-            })),
-          } as AcpChatPage
-        }
-        projectGeneration="3"
-        itemId="spawn"
-        agentKey="child"
-      />,
-    );
-    const done = screen.getByRole("region", { name: "Done subagents" });
-    expect(within(done).getByText("Stopped")).toBeVisible();
-    expect(done.querySelector("time")).toBeNull();
-    await act(async () => undefined);
-    expect(
-      screen.queryByRole("region", { name: "Active subagents" }),
-    ).toBeNull();
-    expect(readChild).not.toHaveBeenCalled();
-  },
-);
+it("stops a child reported running from an ended turn once its runtime is replaced, without reading it", async () => {
+  useSubagentPaneStore.setState({ list: true });
+  const page = spawnFromEndedTurn("7");
+  render(
+    <SubagentSurface
+      page={
+        {
+          ...page,
+          sessions: page.sessions.map((session) => ({
+            ...session,
+            runtimeEpoch: "9" as RuntimeEpoch,
+          })),
+        } as AcpChatPage
+      }
+      projectGeneration="3"
+      itemId="spawn"
+      agentKey="child"
+    />,
+  );
+  const done = screen.getByRole("region", { name: "Done subagents" });
+  expect(within(done).getByText("Stopped")).toBeVisible();
+  expect(done.querySelector("time")).toBeNull();
+  await act(async () => undefined);
+  expect(screen.queryByRole("region", { name: "Active subagents" })).toBeNull();
+  expect(readChild).not.toHaveBeenCalled();
+});

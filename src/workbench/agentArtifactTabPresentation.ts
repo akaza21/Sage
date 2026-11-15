@@ -16,7 +16,7 @@ type ArtifactTab = { resource?: { relativePath?: string }; title: string };
 const MAX_RESOURCE_TURNS = 128;
 const MAX_RECENT_RESOURCE_ITEMS = 256;
 const MAX_RESOURCE_DETAILS_PER_ITEM = 32;
-const MAX_RESOURCE_ENTRIES = 128;
+export const MAX_RESOURCE_ENTRIES = 128;
 
 export type TaskOutput = {
   label: string;
