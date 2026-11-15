@@ -263,6 +263,21 @@ describe("composer attach from the + menu", () => {
     );
   });
 
+  it("replaces the attach menu with the + menu when + is pressed again", async () => {
+    withSession(true);
+    native.mockResolvedValue(null);
+    renderComposer();
+    await openAttach();
+    expect(screen.getByRole("menu", { name: "Attach" })).toBeInTheDocument();
+    const plus = screen.getByRole("button", { name: "Composer options" });
+    fireEvent.pointerDown(plus);
+    fireEvent.click(plus);
+    expect(
+      await screen.findByRole("menu", { name: "Composer options menu" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "Attach" })).toBeNull();
+  });
+
   it("keeps unavailable images in the attach menu, disabled with their reason", async () => {
     withSession(true);
     native.mockResolvedValue(null);

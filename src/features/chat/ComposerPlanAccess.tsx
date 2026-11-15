@@ -33,7 +33,8 @@ export function ComposerPlanAccess({
       {({ candidates, effective, defaultMode, sessionId, onDraft }) => {
         if (!candidates.some((mode) => mode.id === "plan")) return null;
         const on = effective === "plan";
-        const next = on ? defaultMode : "plan";
+        // A default that is Plan itself leaves the person to pick the mode.
+        const next = !on ? "plan" : defaultMode !== "plan" ? defaultMode : null;
         const description = on ? "Turn plan mode off" : "Turn plan mode on";
         return (
           <button
@@ -43,14 +44,15 @@ export function ComposerPlanAccess({
             aria-label="Plan mode"
             aria-description={description}
             aria-checked={on}
-            disabled={disabled || !next || next === effective}
+            disabled={disabled}
             tabIndex={-1}
             onClick={() => {
               onClose();
-              if (next && CONFIRMED_ACCESS.includes(next)) {
+              if (!next) onOpenAccess();
+              else if (CONFIRMED_ACCESS.includes(next)) {
                 requestAccessConfirmation(next);
                 onOpenAccess();
-              } else if (next) chooseAccess({ sessionId, onDraft }, next);
+              } else chooseAccess({ sessionId, onDraft }, next);
             }}
           >
             <Lightbulb size={14} aria-hidden="true" />

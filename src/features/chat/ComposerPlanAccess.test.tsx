@@ -244,6 +244,54 @@ it("confirms a default that needs confirmation before Plan turns off", async () 
   expect(screen.queryByRole("dialog")).toBeNull();
 });
 
+it("opens the access menu to leave Plan in a draft chat whose default is Plan", async () => {
+  useSessionAccessModeStore.setState({
+    modes: { "governed-binding": "plan" },
+    ready: true,
+    error: null,
+  });
+  renderControls({
+    accessTarget: { bindingId: "governed-binding", draftChatId: "chat-a" },
+  });
+  const on = await planRow();
+  expect(on).toHaveAttribute("aria-checked", "true");
+  expect(on).toBeEnabled();
+  fireEvent.click(on);
+  const menu = await screen.findByRole("menu", { name: "Access mode" });
+  expect(useChatAccessDrafts.getState().drafts["chat-a"]).toBeUndefined();
+  fireEvent.click(
+    within(menu).getByRole("menuitemradio", { name: "Ask each time" }),
+  );
+  expect(useChatAccessDrafts.getState().drafts["chat-a"]).toEqual({
+    bindingId: "governed-binding",
+    mode: "ask",
+  });
+});
+
+it("opens the access menu to leave Plan in a live chat whose default is Plan", async () => {
+  useSessionAccessModeStore.setState({
+    modes: { "governed-binding": "plan" },
+    ready: true,
+    error: null,
+  });
+  renderControls({
+    sessionConfig: live,
+    accessTarget: { bindingId: "governed-binding" },
+  });
+  const on = await planRow();
+  await waitFor(() => expect(on).toHaveAttribute("aria-checked", "true"));
+  expect(on).toBeEnabled();
+  fireEvent.click(on);
+  const menu = await screen.findByRole("menu", { name: "Access mode" });
+  expect(port.set).not.toHaveBeenCalled();
+  fireEvent.click(
+    within(menu).getByRole("menuitemradio", { name: "Ask each time" }),
+  );
+  await waitFor(() =>
+    expect(port.set).toHaveBeenCalledExactlyOnceWith("session-1", "ask"),
+  );
+});
+
 it("offers no access Plan row where access modes do not carry session modes", async () => {
   useWorkbenchStore.setState({
     harnesses: [

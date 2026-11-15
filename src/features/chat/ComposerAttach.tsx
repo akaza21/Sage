@@ -73,6 +73,7 @@ export function ComposerAttach({
           ariaLabel="Attach"
           open
           triggerRef={triggerRef}
+          sharedTrigger
           onDismiss={() => setMenuOpen(false)}
           gap={8}
         >
