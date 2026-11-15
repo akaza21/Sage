@@ -1,8 +1,5 @@
-use crate::acp::{
-    bindings::adapter::{AdapterEvent, AdapterRuntimeError},
-    intent::NormalizedPayload,
-    lifecycle::ItemLifecycle,
-};
+use crate::acp::bindings::adapter::{AdapterEvent, AdapterRuntimeError};
+use sage_acp_protocol::{intent::NormalizedPayload, lifecycle::ItemLifecycle};
 
 use super::super::PiRuntime;
 

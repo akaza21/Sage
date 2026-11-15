@@ -98,7 +98,6 @@ fn slow_picks_release_the_project_guard_and_stale_snapshots_are_not_staged() {
             };
             let transition = async {
                 read_started.await.unwrap();
-                // The guard is free while the picker and reader are blocked.
                 let mut epoch = state.project_transitions.try_lock().unwrap();
                 if switch_during_read {
                     *epoch += 1;
@@ -145,15 +144,12 @@ fn a_closed_tab_releases_its_batch_and_a_reopened_tab_never_inherits_it() {
                 |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .unwrap();
-        // Saving a layout without the tab deletes its chat_tabs row.
         state
             .database
             .connection()
             .execute("DELETE FROM chat_tabs WHERE chat_id=?1", [&fixture.chat])
             .unwrap();
         assert!(fixture.listed().is_none());
-        // Stage, close and reopen with no attachment command in between: the
-        // reopened tab is a new attachment and starts empty.
         state
             .database
             .connection()
@@ -200,7 +196,6 @@ fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
             }))
             .unwrap()
         };
-        // A paste never names a path.
         assert!(
             serde_json::from_value::<StageTextRequest>(serde_json::json!({
                 "owner": {"projectId": "p", "chatId": "c", "projectGeneration": 0},
@@ -227,7 +222,6 @@ fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
         assert_eq!(first.files.len(), 1);
         assert_eq!(first.files[0].name, PASTED_TEXT_NAME);
         assert_eq!(first.files[0].bytes, log.len());
-        // A stale revision never overwrites the batch.
         assert!(stage_text(state, request(None, "x".into())).await.is_err());
         let room = TOTAL_BYTES - log.len();
         assert_eq!(
@@ -255,7 +249,6 @@ fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
                 .as_deref(),
             Some("Attachments exceed the 16-file limit.")
         );
-        // The harness receives the paste as an embedded text resource.
         let resources = state
             .acp
             .file_stages
@@ -271,8 +264,6 @@ fn pasted_text_joins_the_batch_as_a_text_resource_within_the_batch_caps() {
     });
 }
 
-/// A turn in the fixture chat whose prompt payload records `count`, as
-/// every prompt now records one, none included.
 fn turn(fixture: &Fixture, id: &str, intent: &str, ordinal: i64, count: u8, state: &str) {
     let payload = serde_json::json!({"role": "user", "text": "Explain", "attachments": count});
     let payload = serde_json::json!({"kind": "text", "payload": payload});
@@ -286,8 +277,6 @@ fn turn(fixture: &Fixture, id: &str, intent: &str, ordinal: i64, count: u8, stat
     );
 }
 
-/// A turn in the fixture chat whose prompt item holds `payload`, or that
-/// has no prompt item at all.
 fn turn_with_prompt(
     fixture: &Fixture,
     id: &str,
@@ -341,7 +330,6 @@ fn retry_reads_the_durable_attachment_count_of_that_turn_only() {
     );
     assert!(origin("turn-missing", &fixture.chat).is_none());
     assert!(origin("turn-files", "another-chat").is_none());
-    // With nothing held (a restart), a turn that carried files is refused.
     let stages = fixture.state.acp.file_stages.lock().unwrap();
     let refused = stages.selected(
         &fixture.project,
@@ -373,8 +361,6 @@ fn retry_of_a_turn_without_a_readable_prompt_record_is_refused_as_carrying_files
         "failed",
         Some(unreadable.to_string()),
     );
-    // Builds from before the count was recorded never sent prompt files,
-    // so a prompt without a count retries as plain text.
     let uncounted =
         serde_json::json!({"kind": "text", "payload": {"role": "user", "text": "Explain"}});
     turn_with_prompt(
@@ -423,7 +409,6 @@ fn retry_of_a_turn_without_a_readable_prompt_record_is_refused_as_carrying_files
     }
 }
 
-/// Stages a paste and records it as sent by `intent`, as a dispatch does.
 async fn send_paste(fixture: &Fixture, intent: &str) {
     use super::super::Selection;
     let request = serde_json::from_value(serde_json::json!({
@@ -462,12 +447,10 @@ fn kept_sent_files_outlive_a_completed_turn_and_end_with_their_tab() {
         turn(&fixture, "turn-a", "intent-a", 1, 1, "running");
         send_paste(&fixture, "intent-a").await;
         assert_eq!(retry("intent-a"), Ok(1));
-        // A completed turn still offers Retry, which resends its files.
         state.database.connection().execute(
             "UPDATE turns SET state='completed', terminal_at=1 WHERE client_intent_id='intent-a'", [],
         ).unwrap();
         assert_eq!(retry("intent-a"), Ok(1));
-        // Closing the tab ends what was kept for it.
         send_paste(&fixture, "intent-b").await;
         assert_eq!(retry("intent-b"), Ok(1));
         state.database.connection().execute(

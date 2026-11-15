@@ -7,7 +7,8 @@ use sage_core::{
 };
 
 use super::{PersistedEditorBuffer, limits::preflight_dirty_recovery, set_matching_tab_dirty};
-use crate::{domain::ResourceRef, persistence::Database};
+use crate::persistence::Database;
+use sage_domain::resource::ResourceRef;
 
 /// Names one Replace's recovery record: its File, the temporary file it
 /// names and the replaced text's fingerprint. Each change below touches the

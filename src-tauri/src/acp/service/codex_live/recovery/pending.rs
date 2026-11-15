@@ -3,9 +3,9 @@ use std::sync::Arc;
 use crate::acp::{
     process::TreeControl,
     runtime::{CoordinatorActivationJournal, LiveRunnerHandle, RuntimeHost, SessionTreeLease},
-    scheduler::RuntimeOwner,
     store::ActivationAbortCategory,
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::super::{ActivationAbortIntent, CodexActivationDriver, live_recovery::LiveHostRecovery};
 
@@ -101,7 +101,6 @@ pub(in crate::acp::service) enum PendingCodexRecovery {
 }
 
 impl PendingCodexRecovery {
-    /// The exact runtime owner whose authority this recovery retains.
     pub(in crate::acp::service) fn owner(&self) -> Option<RuntimeOwner> {
         match self {
             Self::Activation { recovery } => Some(recovery.owner().clone()),

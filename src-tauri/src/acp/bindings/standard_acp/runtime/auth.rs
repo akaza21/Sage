@@ -1,9 +1,6 @@
 //! ACP sign-in: the agent lists `authMethods` in its `initialize` result and
 //! refuses `session/new` with `auth_required` until the client calls
-//! `authenticate`. Sage authenticates once, with the first method that
-//! needs no input from the user, then opens the session again. Methods that
-//! need input (a terminal login, an environment variable) become a notice
-//! naming each method, since Sage cannot complete them for the user.
+//! `authenticate`.
 
 use serde_json::{Value, json};
 
@@ -45,7 +42,6 @@ impl SignIn {
         self.root = Some(root.to_owned());
     }
 
-    /// Reads the bounded `authMethods` list from an `initialize` response.
     pub(super) fn accept_initialize(&mut self, response: &Value) {
         self.methods = response
             .pointer("/result/authMethods")
@@ -70,7 +66,6 @@ impl SignIn {
             .flatten()
     }
 
-    /// One sentence naming every offered method and what it needs.
     pub(super) fn notice(&self, label: &str) -> String {
         let mut notice = if self.methods.is_empty() {
             format!("{label} needs sign-in and offered no sign-in method.")
@@ -164,7 +159,6 @@ fn bounded(text: &str) -> bool {
 }
 
 impl StandardAcpRuntime {
-    /// `session/new` was refused for sign-in.
     pub(super) fn sign_in_required(&mut self) -> Result<AdapterBatch, AdapterRuntimeError> {
         if let Some(method_id) = self.sign_in.no_input_method().map(|m| m.id.clone()) {
             self.sign_in.attempted = true;

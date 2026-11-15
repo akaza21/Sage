@@ -8,7 +8,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{domain::ResourceRef, workspace::search::MAX_SEARCH_DEPTH};
+use crate::workspace::search::MAX_SEARCH_DEPTH;
+use sage_domain::resource::ResourceRef;
 
 use super::{
     BUILDING, INDEX, IndexInputs, IndexedRoot, LATEST_GENERATION, ProjectIndex, WALKER_WAIT,

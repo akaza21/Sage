@@ -61,7 +61,7 @@ impl RuntimeHost {
     }
     pub(crate) fn configure_session(
         &self,
-        intent: crate::acp::session_config::ConfigIntent,
+        intent: sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<HostOutcome, HostError> {
         yield_to_background_read(
             || {
@@ -77,7 +77,7 @@ impl RuntimeHost {
     /// is reported as `NotDispatched`.
     pub(crate) fn configure_session_until(
         &self,
-        intent: crate::acp::session_config::ConfigIntent,
+        intent: sage_acp_protocol::session_config::ConfigIntent,
         deadline: std::time::Instant,
     ) -> Result<HostOutcome, HostError> {
         yield_to_background_read(

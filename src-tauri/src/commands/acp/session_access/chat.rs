@@ -1,20 +1,27 @@
-//! Stepping down from Full access or Auto while a turn runs attempts to cancel that turn.
-//! Cancellation errors are only logged, so a failure can leave the running turn unchanged.
+//! A chat's own access mode: reading it, choosing a narrower one, and
+//! confirming a permissive one. A narrower choice applies to the live
+//! session at once when no turn is running; stepping down from Full access
+//! or Auto while a turn runs cancels that turn, so nothing keeps running
+//! with access the person just took away.
 
 use super::native_confirm::{self, ConfirmDialog, ConfirmGate, Refusal, Timing};
 use super::*;
-use crate::acp::{bindings::access_policy::lists_mode, contract::ClientIntentId};
+use crate::acp::bindings::access_policy::lists_mode;
+use sage_acp_protocol::contract::ClientIntentId;
 use tauri::Manager;
 
 #[derive(Debug, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ChatAccessChange {
+    /// A turn running with the access the chat stepped down from was
+    /// cancelled; the person is told so.
     pub turn_cancelled: bool,
 }
 
-/// A mode that needs a confirmation must be offered by the bound build; any
-/// other only has to be in the binding's own table, so a chat can always step
-/// down from Full access or Auto, even while its harness is unavailable.
+/// Whether the binding carries `mode` for a chat. A mode that needs a
+/// confirmation must be offered by the bound build; any other only has to
+/// be in the binding's own table, so a chat can always step down from Full
+/// access or Auto, even while its harness is unavailable.
 pub(super) fn carries_mode(
     registry: &crate::acp::bindings::registry::BindingRegistry,
     binding_id: &str,
@@ -27,6 +34,7 @@ pub(super) fn carries_mode(
     }
 }
 
+/// The binding of an existing session that carries `mode`.
 fn chat_binding(
     state: &AppState,
     session_id: &SageAgentSessionId,
@@ -46,19 +54,19 @@ fn chat_binding(
     Ok(binding_id)
 }
 
+/// The chat's own access mode, if it has one, with what its session
+/// inherits, as a prompt in it would run.
 #[tauri::command]
 pub(crate) fn get_chat_access(
     state: State<'_, AppState>,
     request: ChatAccessRequest,
 ) -> Result<Option<SessionAccessMode>, AcpIpcError> {
-    state
-        .settings
-        .chat_access(request.session_id.as_str())
-        .map_err(|_| access_unreadable())
+    session_chat_access(&state, &request.session_id)
 }
 
-/// Reaches the live session under the project transition lock `configure`
-/// takes, off the async runtime.
+/// Sets a chat's mode when it needs no confirmation. It replaces any
+/// permissive mode the chat had, and reaches the live session under the
+/// project transition lock `configure` takes, off the async runtime.
 #[tauri::command]
 pub(crate) async fn set_chat_access(
     app: tauri::AppHandle,
@@ -111,8 +119,9 @@ pub(crate) async fn set_chat_access(
     Ok(change)
 }
 
+/// A live chat session, reached through the ACP service.
 pub(super) trait LiveChatHost: SessionModeHost {
-    /// False when no turn is running.
+    /// Cancels the session's running turn; false when none is running.
     fn cancel_running_turn(&self, owner: &RuntimeOwner) -> Result<bool, AcpIpcError>;
 }
 
@@ -158,6 +167,9 @@ impl LiveChatHost for LiveChat<'_> {
     }
 }
 
+/// Moves a live session to the chat's new mode. After a step-down from a
+/// permissive mode a running turn is cancelled first; the next prompt then
+/// selects the new mode, as it always does.
 pub(super) fn apply_live_chat_access(
     host: &impl LiveChatHost,
     owner: RuntimeOwner,
@@ -192,6 +204,7 @@ pub(super) fn apply_live_chat_access(
     ChatAccessChange::default()
 }
 
+/// Opens the confirmation of a permissive mode and returns its token.
 #[tauri::command]
 pub(crate) fn prepare_chat_access(
     state: State<'_, AppState>,
@@ -217,6 +230,8 @@ pub(crate) fn prepare_chat_access(
     })
 }
 
+/// Spends a confirmation to give the chat a permissive mode, once the person
+/// has also allowed it in a native dialog.
 #[tauri::command]
 pub(crate) async fn grant_chat_access(
     app: tauri::AppHandle,
@@ -237,11 +252,13 @@ pub(crate) async fn grant_chat_access(
 
 fn confirmation_missing() -> AcpIpcError {
     AcpIpcError::Conflict {
-        resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
+        resource: crate::acp::ipc::AcpConflictResource::ConfigRevision,
         message: safe_message("This confirmation is missing, used or expired. Confirm again."),
     }
 }
 
+/// The grant, asking through `dialog`: only for a token that is still
+/// pending, and only when the person allows it there.
 pub(super) async fn grant_confirmed(
     state: &AppState,
     dialog: &impl ConfirmDialog,

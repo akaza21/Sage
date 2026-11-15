@@ -4,7 +4,7 @@ use sage_core::limits::LIMITS;
 
 use super::FixtureError;
 use super::generated_cases::{FROZEN_CASES, FrozenOwner, FrozenPhase};
-use crate::acp_protocol::native_cases::JOURNEY_CASES;
+use sage_acp_protocol::native_cases::JOURNEY_CASES;
 
 const CHARACTERIZATION_CASES: [(&str, &str); 10] = [
     (
@@ -58,7 +58,6 @@ pub(super) struct FixtureInvocation {
     pub(super) harness_args: Vec<String>,
 }
 
-/// Harness arguments one launch may carry, and the bytes of each.
 const MAX_HARNESS_ARGS: usize = 16;
 const MAX_HARNESS_ARG_BYTES: usize = 256;
 

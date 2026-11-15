@@ -15,7 +15,7 @@ fn named_and_unnamed_subagent_states_survive_shared_pump_and_sqlite_reopen() {
         let prompt = adapter.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         adapter.ingest(&codex_frame(serde_json::json!({
             "id":codex_request_id(&prompt),"result":{"turn":{"id":"turn-1"}}

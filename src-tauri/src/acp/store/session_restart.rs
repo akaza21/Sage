@@ -6,7 +6,7 @@
 
 use rusqlite::{OptionalExtension, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{EntityRevision, ProjectionRevision, SageAgentSessionId, SageChatId, SageProjectId},
     lifecycle::SessionState,
 };
@@ -33,7 +33,6 @@ pub(crate) struct RestartSessionCommand {
     pub now_millis: i64,
 }
 
-/// The identity a restarted head keeps from the parked one.
 struct ParkedHead {
     binding_id: String,
     binding_digest: String,

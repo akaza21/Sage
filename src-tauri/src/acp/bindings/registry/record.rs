@@ -2,21 +2,20 @@ use std::sync::Arc;
 
 #[cfg(windows)]
 mod browser_mcp;
+mod models;
 mod undo;
 
-use crate::acp::{
-    bindings::{
-        claude::{AdmittedClaudeBinding, ClaudeBindingRegistration},
-        codex::{AdmittedCodexBinding, CodexBindingRegistration},
-        runtime::RuntimeFactory,
-        standard_acp::{
-            AdmittedStandardAcpBinding, CUSTOM_ACP_POLICY_ID, CustomAcpRegistration,
-            OpenCodeBindingRegistration, StandardAcpBindingSource,
-        },
+use crate::acp::bindings::{
+    claude::{AdmittedClaudeBinding, ClaudeBindingRegistration},
+    codex::{AdmittedCodexBinding, CodexBindingRegistration},
+    runtime::RuntimeFactory,
+    standard_acp::{
+        AdmittedStandardAcpBinding, CUSTOM_ACP_POLICY_ID, CustomAcpRegistration,
+        OpenCodeBindingRegistration, StandardAcpBindingSource,
     },
-    intent::CapabilitySnapshotV1,
 };
-use crate::domain::HarnessCharacterisation;
+use sage_acp_protocol::intent::CapabilitySnapshotV1;
+use sage_domain::harness::{HarnessCharacterisation, ModelOption};
 
 use super::{AuthProvider, ModelProvider, RegistryAdmissionUnavailable, WireIdentity};
 
@@ -35,13 +34,18 @@ type TurnDispatch = fn(
     crate::acp::runtime::HostPromptIntent,
 ) -> Result<
     crate::acp::runtime::HostOutcome,
-    crate::acp::service::PromptSendError<crate::acp::service::CodexSessionError>,
+    crate::acp::prompt_send::PromptSendError<crate::acp::service::CodexSessionError>,
 >;
 type CancelDispatch =
     fn(
         &crate::acp::service::AcpService,
         crate::acp::runtime::HostCancelIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError>;
+/// The config option through which a session that starts on the listed
+/// `model` takes thinking level `effort`, set to it and offering every level
+/// the binding lists for that model; `None` when it does not offer `effort`.
+type LaunchEffort =
+    fn(&ModelOption, &str) -> Option<sage_acp_protocol::session_config::ConfigOption>;
 type CloseDispatch =
     fn(
         &crate::acp::service::AcpService,
@@ -91,13 +95,26 @@ pub(crate) struct BindingRecord {
     pub(super) turn_dispatch: TurnDispatch,
     pub(super) cancel_dispatch: CancelDispatch,
     pub(super) close_dispatch: CloseDispatch,
+    /// How a session takes a thinking level drafted before it started;
+    /// `None` when the binding takes none at start.
+    pub(super) launch_effort: Option<LaunchEffort>,
     pub(crate) model_provider: ModelProvider,
     pub(crate) auth_provider: AuthProvider,
 }
 
 impl BindingRecord {
-    /// The record's fixed id; routing goes through `serves_harness`, which
-    /// also answers for a user-defined agent's own id.
+    /// `None` when the binding lists no models outside a session: Codex lists
+    /// them through account discovery in a project root, and Pi only from
+    /// inside a running session.
+    pub(crate) fn launch_models(&self, probe: bool) -> Option<Vec<ModelOption>> {
+        match &self.admission {
+            Admission::ClaudeSdk(registration) => {
+                super::claude_sdk::launch_models(registration, probe)
+            }
+            _ => None,
+        }
+    }
+
     #[cfg(any(test, all(windows, feature = "acp-fixture", debug_assertions)))]
     pub(crate) fn harness_id(&self) -> &'static str {
         self.harness_id
@@ -135,8 +152,6 @@ impl BindingRecord {
         }
     }
 
-    /// Whether this binding's prompts carry ACP content blocks beyond their
-    /// text (`resource_link`, embedded `resource`), which `@` mentions need.
     pub(crate) fn sends_prompt_blocks(&self) -> bool {
         // The Claude Agent SDK bridge turns an embedded resource into a
         // context text block and a link into an `@path` mention.
@@ -286,8 +301,6 @@ pub(crate) struct BindingIdentity<'a> {
 }
 
 impl AdmittedBindingRecord<'_> {
-    /// The id this admission binds sessions to; a standard ACP binding
-    /// carries its own, which for a user-defined agent is the agent's id.
     pub(crate) fn binding_id(&self) -> &str {
         match &self.binding {
             AdmittedBinding::StandardAcp { binding, .. } => binding.binding_id(),
@@ -337,52 +350,6 @@ impl AdmittedBindingRecord<'_> {
         }
     }
 
-    /// Whether a session may start with `model` though the binding has no
-    /// model discovery (Claude Code: a model its build listed).
-    pub(crate) fn accepts_launch_model(&self, model: &str) -> bool {
-        super::claude_sdk::accepts_launch_model(&self.binding, model)
-    }
-
-    /// The config choice a new session starts with for a thinking level
-    /// chosen before it existed, when the binding lists it for `model`.
-    pub(crate) fn launch_effort_choice(
-        &self,
-        model: Option<&str>,
-        effort: &str,
-    ) -> Option<crate::acp::session_config::ConfigMutation> {
-        super::claude_sdk::launch_effort_choice(&self.binding, model, effort)
-    }
-
-    pub(crate) fn has_model_discovery(&self) -> Result<bool, RegistryAdmissionUnavailable> {
-        match (&self.binding, self.record.model_provider) {
-            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-            (AdmittedBinding::Pi(_), super::ModelProvider::NoAccountModels) => Ok(false),
-            (AdmittedBinding::Codex(binding), super::ModelProvider::CodexAccount) => binding
-                .model_discovery_available()
-                .map_err(RegistryAdmissionUnavailable::Codex),
-            (AdmittedBinding::Codex(binding), super::ModelProvider::NoAccountModels)
-                if binding.is_desktop_fixture() =>
-            {
-                Ok(false)
-            }
-            (
-                AdmittedBinding::Claude(_) | AdmittedBinding::ClaudeSdk(_),
-                super::ModelProvider::ClaudeAdapter,
-            ) => Ok(false),
-            #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-            (AdmittedBinding::Claude(binding), super::ModelProvider::NoAccountModels)
-                if binding.is_fixture() =>
-            {
-                Ok(false)
-            }
-            (AdmittedBinding::StandardAcp { .. }, super::ModelProvider::NoAccountModels) => {
-                Ok(false)
-            }
-            (AdmittedBinding::PiNative(_), super::ModelProvider::NoAccountModels) => Ok(false),
-            _ => Err(RegistryAdmissionUnavailable::Drift),
-        }
-    }
-
     #[cfg(all(test, windows))]
     pub(crate) fn codex_binding(
         &self,
@@ -429,7 +396,7 @@ impl AdmittedBindingRecord<'_> {
         intent: crate::acp::runtime::HostPromptIntent,
     ) -> Result<
         crate::acp::runtime::HostOutcome,
-        crate::acp::service::PromptSendError<crate::acp::service::CodexSessionError>,
+        crate::acp::prompt_send::PromptSendError<crate::acp::service::CodexSessionError>,
     > {
         (self.record.turn_dispatch)(service, intent)
     }

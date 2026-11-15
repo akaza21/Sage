@@ -18,17 +18,15 @@ use windows_sys::Win32::{
     },
 };
 
-use super::native::NativeHandle;
 use crate::{
-    acp::{
-        contract::{ProjectGeneration, SageProjectId, SageRootId},
-        process::{
-            ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, PlatformSupervisor,
-            ProcessDeadlines, RequiredContainment, TreeCapacityPool, TreeExit, TreeLimits,
-        },
+    acp::process::{
+        ArtifactExpectation, BoundedEnvironment, BoundedOsArgs, LaunchSpec, PlatformSupervisor,
+        ProcessDeadlines, RequiredContainment, TreeCapacityPool, TreeExit, TreeLimits,
     },
     project_registry::ProjectRootAuthority,
 };
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
+use sage_process::handle::NativeHandle;
 
 const HELPER: &str = "acp::process::windows::descendant_settlement_tests::non_app_server_child";
 
@@ -197,13 +195,14 @@ fn non_app_server_token_proves_root_exit_and_job_zero_not_descendant_settlement(
         .map(|v| v.parse().unwrap())
         .collect();
     // Open BEFORE releasing the root, then retain this same handle through convergence.
-    let descendant = NativeHandle::new(unsafe {
-        OpenProcess(
+    // SAFETY: the opened handle is new and owned only by this wrapper.
+    let descendant = unsafe {
+        NativeHandle::new(OpenProcess(
             PROCESS_SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION,
             0,
             receipt[0] as u32,
-        )
-    })
+        ))
+    }
     .unwrap();
     let creation = creation_identity(descendant.raw());
     assert_eq!(
@@ -223,7 +222,7 @@ fn non_app_server_token_proves_root_exit_and_job_zero_not_descendant_settlement(
     // The root is held by our handshake: this is ordering, not a timing threshold.
     assert_eq!(
         control.wait_zero_within(Duration::ZERO).err(),
-        Some(crate::acp::process::LaunchError::Deadline)
+        Some(sage_process::error::LaunchError::Deadline)
     );
     assert_ne!(pool.usage(), (0, 0));
     fs::write(directory.join("release-root"), b"release").unwrap();

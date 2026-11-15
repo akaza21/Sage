@@ -1,16 +1,16 @@
-use crate::{
-    acp::{
-        contract::{
-            RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
-            SageTurnId,
-        },
-        intent::{NormalizedPayload, PermissionOptionKind},
-        lifecycle::ServerRequestState,
-        runtime::{HostError, JournalLane},
-        scheduler::RuntimeOwner,
-        store::{RequestStateCommand, StoreMutation},
+use crate::acp::{
+    runtime::{HostError, JournalLane},
+    store::{RequestStateCommand, StoreMutation},
+};
+use sage_acp_protocol::{
+    contract::{
+        RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageServerRequestId,
+        SageTurnId,
     },
-    acp_protocol::permissions::PermissionDecision,
+    intent::{NormalizedPayload, PermissionOptionKind},
+    lifecycle::ServerRequestState,
+    permissions::PermissionDecision,
+    scheduler::RuntimeOwner,
 };
 
 use super::AcpService;
@@ -68,7 +68,6 @@ fn admits(decision: &PermissionDecision, payload: &NormalizedPayload) -> bool {
     }
 }
 
-/// The link an admitted answer agrees to open, for a link request.
 fn link_to_open(payload: &NormalizedPayload) -> Option<String> {
     let NormalizedPayload::PermissionRequest {
         user_input: Some(request),

@@ -1,7 +1,7 @@
 use serde_json::json;
 
 use super::{OutgoingRequest, RequestError, RequestKind};
-use crate::acp::contract::RequiredText;
+use sage_acp_protocol::contract::RequiredText;
 
 impl OutgoingRequest {
     pub(crate) fn thread_revert(

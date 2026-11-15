@@ -167,11 +167,15 @@ pub(super) fn mutation_retained_bytes(mutation: &StoreMutation) -> usize {
         }
         StoreMutation::AdapterInboundBatch(command) => command.retained_bytes(),
         StoreMutation::RecoverAfterRestart { .. } => 0,
-        StoreMutation::RecoverRuntimeAfterZero(command) => session_command_bytes(
-            command.project_id.as_str(),
-            command.chat_id.as_str(),
-            command.session_id.as_str(),
-        ),
+        StoreMutation::RecoverRuntimeAfterZero(command) => {
+            let reason = &command.terminal_reason;
+            session_command_bytes(
+                command.project_id.as_str(),
+                command.chat_id.as_str(),
+                command.session_id.as_str(),
+            ) + reason.message.as_ref().map_or(0, String::len)
+                + reason.remediation.as_ref().map_or(0, String::len)
+        }
     };
     size_of::<StoreMutation>() + heap_utf8
 }

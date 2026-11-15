@@ -1,5 +1,3 @@
-//! Bounded permission-option parsing for Claude ingress.
-
 use super::super::*;
 
 impl ClaudeRuntime {
@@ -45,7 +43,7 @@ impl ClaudeRuntime {
             {
                 let mut payload = payload;
                 if let (
-                    crate::acp::intent::NormalizedPayload::PermissionRequest {
+                    sage_acp_protocol::intent::NormalizedPayload::PermissionRequest {
                         offered_option_kinds,
                         user_input: asked,
                         ..
@@ -55,13 +53,13 @@ impl ClaudeRuntime {
                 {
                     *asked = Some(questions.clone());
                     *offered_option_kinds = Some(
-                        crate::acp::contract::BoundedVec::new(
+                        sage_acp_protocol::contract::BoundedVec::new(
                             "permissionOptionKinds",
-                            vec![crate::acp::intent::PermissionOptionKind::RejectOnce],
+                            vec![sage_acp_protocol::intent::PermissionOptionKind::RejectOnce],
                         )
                         .map_err(|_| AdapterRuntimeError::Frame)?,
                     );
-                } else if let crate::acp::intent::NormalizedPayload::PermissionRequest {
+                } else if let sage_acp_protocol::intent::NormalizedPayload::PermissionRequest {
                     offered_option_kinds,
                     ..
                 } = &mut payload
@@ -74,7 +72,7 @@ impl ClaudeRuntime {
                 }
                 if matches!(
                     payload,
-                    crate::acp::intent::NormalizedPayload::PermissionRequest { .. }
+                    sage_acp_protocol::intent::NormalizedPayload::PermissionRequest { .. }
                 ) {
                     request_event = Some(SharedEvent::PermissionRequest {
                         turn_id: self.turn_identity(active)?,
@@ -105,14 +103,12 @@ impl ClaudeRuntime {
         AdapterBatch::new(published, Vec::new())
     }
 
-    /// The harness withdrew a request the user has not answered: its card
-    /// is cancelled, so a turn may end without it.
     /// The next permission request asks these questions instead of an
     /// approval; it must offer `answer` as its allow-once option, which the
     /// answers are sent back on.
     pub(crate) fn offer_user_input(
         &mut self,
-        request: crate::acp::intent::user_input::UserInputRequest,
+        request: sage_acp_protocol::intent::user_input::UserInputRequest,
     ) {
         self.next_user_input = Some(Box::new(request));
     }
@@ -148,7 +144,7 @@ impl ClaudeRuntime {
         published.push(SharedEvent::PermissionResolved {
             turn_id: self.turn_identity(active)?,
             external_request_id: request_id,
-            state: crate::acp::lifecycle::ServerRequestState::Cancelled,
+            state: sage_acp_protocol::lifecycle::ServerRequestState::Cancelled,
         });
         AdapterBatch::new(published, Vec::new())
     }
@@ -217,18 +213,20 @@ impl ClaudeRuntime {
     }
 }
 
-/// The option kinds the user is offered: only those Sage can answer with an
-/// admitted option. An allow that would also widen the permission mode
-/// (Claude's plan exit) is never offered.
+/// Only admitted permission options are offered; plan exits to auto or bypass are excluded.
 fn offered_kinds(
-    reported: Option<crate::acp::contract::BoundedVec<crate::acp::intent::PermissionOptionKind, 8>>,
+    reported: Option<
+        sage_acp_protocol::contract::BoundedVec<sage_acp_protocol::intent::PermissionOptionKind, 8>,
+    >,
     allow_once: bool,
     allow_always: bool,
 ) -> Result<
-    Option<crate::acp::contract::BoundedVec<crate::acp::intent::PermissionOptionKind, 8>>,
+    Option<
+        sage_acp_protocol::contract::BoundedVec<sage_acp_protocol::intent::PermissionOptionKind, 8>,
+    >,
     AdapterRuntimeError,
 > {
-    use crate::acp::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
+    use sage_acp_protocol::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
     let original = reported.as_ref().map(|kinds| kinds.as_slice().len());
     let mut kinds = reported.map_or_else(Vec::new, |kinds| kinds.as_slice().to_vec());
     kinds.retain(|kind| match kind {
@@ -242,7 +240,7 @@ fn offered_kinds(
     if original.is_none() && kinds.is_empty() {
         return Ok(None);
     }
-    crate::acp::contract::BoundedVec::new("permissionOptionKinds", kinds)
+    sage_acp_protocol::contract::BoundedVec::new("permissionOptionKinds", kinds)
         .map(Some)
         .map_err(|_| AdapterRuntimeError::Frame)
 }
@@ -271,8 +269,8 @@ pub(super) fn permission_allow_option(
             .and_then(Value::as_str)
             .unwrap_or_default()
             .to_ascii_lowercase();
-        // Never an option that also widens the permission mode (Claude's
-        // plan exit offers auto or bypass first) or clears the conversation.
+        // Exclude unadmitted mode switches (including auto and bypass) and options that clear the
+        // conversation.
         if option_id.is_empty()
             || option_id.len() > 64
             || !crate::acp::bindings::claude::option_admitted(&option_id, &kind, switches_mode)

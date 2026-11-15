@@ -1,6 +1,6 @@
-use crate::acp::{
-    contract::{ItemLifecycle, ToolState},
+use sage_acp_protocol::{
     intent::{ExternalId, NormalizedPayload},
+    lifecycle::{ItemLifecycle, ToolState},
 };
 
 #[derive(Clone, PartialEq, Eq)]

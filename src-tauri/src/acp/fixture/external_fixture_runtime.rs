@@ -2,9 +2,8 @@ use std::{path::PathBuf, sync::Arc};
 
 use crate::{
     acp::{
-        contract::{ClientIntentId, ProjectGeneration, RuntimeEpoch, SageChatId, SageProjectId},
         fixture::adapter::FixtureAdapter,
-        intent::{ExternalId, IntentSnapshot, Prompt},
+        ipc::IntentSnapshot,
         process::{StdinEndpoint, StdoutEndpoint, TreeCapacityPool, TreeControl, TreeExit},
         runtime::{
             ActivatedSession, ActivationJournal, BlockingStdoutReader, BoundedThread,
@@ -12,12 +11,17 @@ use crate::{
             DriverMailbox, HostPromptIntent, IdleActivationParts, JournalHandle,
             PreparedProcessWrite, SendCoordinator, SqliteAdapterBatchJournal, SystemDriverClock,
         },
-        scheduler::{RuntimeOwner, Scheduler},
         store::{
             ActivateSessionCommand, CompleteActivationCommand, PrepareTurnCommand, SessionMutation,
         },
+        transcript_quote::Prompt,
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, ProjectGeneration, RuntimeEpoch, SageChatId, SageProjectId},
+    intent::ExternalId,
+    scheduler::{RuntimeOwner, Scheduler},
 };
 
 use super::external_fixture_adapters::{
@@ -221,7 +225,7 @@ pub(super) async fn prepare_external_case(
     };
     let prompt_intent = HostPromptIntent {
         command: prompt_command.clone(),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     };
     let prepared = tokio::time::timeout(
         deadline.operation_before_cleanup(),
@@ -254,7 +258,7 @@ pub(super) async fn prepare_external_case(
         active: PreparedProcessWrite::new(
             running,
             prompt,
-            crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         ),
         journal_cleanup,
         temp_root,

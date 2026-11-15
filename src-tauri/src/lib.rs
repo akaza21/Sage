@@ -1,5 +1,4 @@
 pub mod acp;
-mod acp_protocol;
 pub(crate) mod app_preview_commands;
 mod app_run_events;
 #[cfg_attr(
@@ -24,7 +23,6 @@ mod chat_search_commands;
 #[doc(hidden)]
 pub mod codex_helper_boundary;
 mod commands;
-mod domain;
 mod editor;
 mod editor_content;
 mod editor_coordination;

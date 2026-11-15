@@ -12,7 +12,7 @@ fn attempt_error_kind_survives_durable_decode_and_projection() {
         let payload: NormalizedPayload = serde_json::from_value(wire).unwrap();
         let projected = content(
             payload,
-            crate::acp::lifecycle::ItemLifecycle::Failed,
+            sage_acp_protocol::lifecycle::ItemLifecycle::Failed,
             None,
             None,
             None,
@@ -44,7 +44,7 @@ fn root_collaboration_item_without_activity_loads_from_history() {
     assert!(
         content(
             payload,
-            crate::acp::lifecycle::ItemLifecycle::Completed,
+            sage_acp_protocol::lifecycle::ItemLifecycle::Completed,
             None,
             None,
             None,
@@ -102,7 +102,7 @@ fn plan_projection_tracks_streaming_and_terminal_lifecycle() {
     };
     let streaming = content(
         payload.clone(),
-        crate::acp::lifecycle::ItemLifecycle::Streaming,
+        sage_acp_protocol::lifecycle::ItemLifecycle::Streaming,
         None,
         None,
         None,
@@ -110,7 +110,7 @@ fn plan_projection_tracks_streaming_and_terminal_lifecycle() {
     .unwrap();
     let completed = content(
         payload,
-        crate::acp::lifecycle::ItemLifecycle::Completed,
+        sage_acp_protocol::lifecycle::ItemLifecycle::Completed,
         None,
         None,
         None,
@@ -130,7 +130,7 @@ fn plan_projection_tracks_streaming_and_terminal_lifecycle() {
 
 #[test]
 fn structured_plan_keeps_each_entry_state_and_compaction_is_not_a_tool() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::BoundedVec,
         intent::{NormalizedPlanEntry, NormalizedPlanState},
     };
@@ -152,7 +152,7 @@ fn structured_plan_keeps_each_entry_state_and_compaction_is_not_a_tool() {
     };
     let projected = content(
         plan,
-        crate::acp::lifecycle::ItemLifecycle::Streaming,
+        sage_acp_protocol::lifecycle::ItemLifecycle::Streaming,
         None,
         None,
         None,
@@ -164,7 +164,7 @@ fn structured_plan_keeps_each_entry_state_and_compaction_is_not_a_tool() {
     assert!(matches!(
         content(
             NormalizedPayload::CompactionNotice,
-            crate::acp::lifecycle::ItemLifecycle::Completed,
+            sage_acp_protocol::lifecycle::ItemLifecycle::Completed,
             None,
             None,
             None
@@ -174,16 +174,16 @@ fn structured_plan_keeps_each_entry_state_and_compaction_is_not_a_tool() {
     ));
     assert_eq!(
         NormalizedPayload::CompactionNotice.kind(),
-        crate::acp::lifecycle::ItemKind::CompactionNotice
+        sage_acp_protocol::lifecycle::ItemKind::CompactionNotice
     );
 }
 
-fn file_change(operation: crate::acp::intent::FileChangeOperation) -> ItemContent {
+fn file_change(operation: sage_acp_protocol::intent::FileChangeOperation) -> ItemContent {
     let payload = NormalizedPayload::file_summary_only(
-        crate::acp::intent::FileChangeFacts {
-            resource: crate::acp::intent::SafeResourceLocation::Resource {
-                resource: crate::acp::intent::SafeResourceRef::new(
-                    crate::acp::contract::SageRootId::parse("root-one").unwrap(),
+        sage_acp_protocol::intent::FileChangeFacts {
+            resource: sage_acp_protocol::intent::SafeResourceLocation::Resource {
+                resource: sage_acp_protocol::intent::SafeResourceRef::new(
+                    sage_acp_protocol::contract::SageRootId::parse("root-one").unwrap(),
                     "src/lib.rs",
                 )
                 .unwrap(),
@@ -197,7 +197,7 @@ fn file_change(operation: crate::acp::intent::FileChangeOperation) -> ItemConten
     );
     content(
         payload,
-        crate::acp::lifecycle::ItemLifecycle::Completed,
+        sage_acp_protocol::lifecycle::ItemLifecycle::Completed,
         None,
         None,
         None,
@@ -207,7 +207,7 @@ fn file_change(operation: crate::acp::intent::FileChangeOperation) -> ItemConten
 
 #[test]
 fn a_created_payload_projects_the_created_operation_with_its_counts() {
-    let projected = file_change(crate::acp::intent::FileChangeOperation::Created);
+    let projected = file_change(sage_acp_protocol::intent::FileChangeOperation::Created);
     let ItemContent::FileChangeDiff { changes, .. } = projected else {
         panic!("a file change payload projects a file change");
     };
@@ -218,7 +218,7 @@ fn a_created_payload_projects_the_created_operation_with_its_counts() {
 
 #[test]
 fn an_updated_payload_still_projects_the_updated_operation() {
-    let projected = file_change(crate::acp::intent::FileChangeOperation::Updated);
+    let projected = file_change(sage_acp_protocol::intent::FileChangeOperation::Updated);
     let ItemContent::FileChangeDiff { changes, .. } = projected else {
         panic!("a file change payload projects a file change");
     };
@@ -227,17 +227,17 @@ fn an_updated_payload_still_projects_the_updated_operation() {
 
 #[test]
 fn a_permission_projects_its_tool_category_and_only_a_harness_reason() {
-    use crate::acp::{contract::SageServerRequestId, lifecycle::ServerRequestState};
+    use sage_acp_protocol::{contract::SageServerRequestId, lifecycle::ServerRequestState};
     for reason in [Some("May I retry outside the sandbox?"), None] {
         let projected = content(
             NormalizedPayload::PermissionRequest {
                 user_input: None,
-                category: crate::acp::intent::ToolCategory::Execute,
+                category: sage_acp_protocol::intent::ToolCategory::Execute,
                 summary: SafeText::new("summary", "Run a command").unwrap(),
                 offered_option_kinds: None,
                 reason: reason.map(|value| SafeText::new("reason", value).unwrap()),
             },
-            crate::acp::lifecycle::ItemLifecycle::Streaming,
+            sage_acp_protocol::lifecycle::ItemLifecycle::Streaming,
             None,
             None,
             Some((
@@ -259,7 +259,7 @@ fn a_permission_projects_its_tool_category_and_only_a_harness_reason() {
 
 #[test]
 fn tool_kinds_project_mcp_server_identity_web_search_and_image_view() {
-    use crate::acp::intent::{ToolCategory, ToolExecution};
+    use sage_acp_protocol::intent::{ToolCategory, ToolExecution};
     let tool = |category, execution| {
         let projected = content(
             NormalizedPayload::ToolCall {
@@ -271,7 +271,7 @@ fn tool_kinds_project_mcp_server_identity_web_search_and_image_view() {
                 command_activity: Default::default(),
                 execution,
             },
-            crate::acp::lifecycle::ItemLifecycle::Completed,
+            sage_acp_protocol::lifecycle::ItemLifecycle::Completed,
             None,
             None,
             None,

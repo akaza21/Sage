@@ -1,6 +1,6 @@
 use rusqlite::{Transaction, params};
 
-use crate::acp_protocol::permissions::PermissionIntent;
+use sage_acp_protocol::permissions::PermissionIntent;
 use sage_core::limits::LIMITS;
 
 use super::{
@@ -234,8 +234,8 @@ pub(super) fn verify_pair(
 pub(super) fn append_fact(
     transaction: &Transaction<'_>,
     intent: &PermissionIntent,
-    item_id: &crate::acp::contract::SageItemId,
-    projection: crate::acp::contract::ProjectionRevision,
+    item_id: &sage_acp_protocol::contract::SageItemId,
+    projection: sage_acp_protocol::contract::ProjectionRevision,
     now: i64,
 ) -> Result<(), StoreError> {
     let payload = serde_json::to_string(&serde_json::json!({
@@ -260,10 +260,8 @@ pub(super) fn append_fact(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{
-        contract::SageAgentSessionId,
-        store::extended_tests::{permission, setup},
-    };
+    use crate::acp::store::extended_tests::{permission, setup};
+    use sage_acp_protocol::contract::SageAgentSessionId;
 
     #[test]
     fn resolved_history_uses_durable_capacity_but_not_the_live_request_slots() {

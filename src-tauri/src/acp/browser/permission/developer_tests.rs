@@ -1,5 +1,3 @@
-//! The gate's developer-mode path (ADR-0009b).
-
 use super::*;
 use crate::acp::browser::{
     BrowserCommand, BrowserResult,

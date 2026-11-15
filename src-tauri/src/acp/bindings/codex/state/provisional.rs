@@ -1,4 +1,5 @@
-use crate::acp::{bindings::adapter::PROVISIONAL_TURN_HANDOFF_MILLIS, intent::ExternalId};
+use crate::acp::bindings::adapter::PROVISIONAL_TURN_HANDOFF_MILLIS;
+use sage_acp_protocol::intent::ExternalId;
 
 use super::{
     AdapterError, CodexAdapter, CorrelationMatch, ExternalKind, ProvisionalTurn, ScopedExternalId,

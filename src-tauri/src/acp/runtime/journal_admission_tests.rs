@@ -1,29 +1,28 @@
 use std::sync::{Arc, Mutex};
 
-use crate::{
-    acp::{
-        contract::{
-            ClientIntentId, EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch,
-            SafeText, SageAgentSessionId, SageChatId, SageItemId, SageProjectId,
-            SageServerRequestId, SageTurnId, SchemaVersionV1,
-        },
-        intent::{
-            ActivityProvenanceV1, ActivitySourceKind, BindingId, ExternalId, ModelId,
-            NormalizedPayload,
-        },
-        lifecycle::{
-            ActivityLifecycle, DeliveryState, ItemLifecycle, ServerRequestState, SessionState,
-            TurnState,
-        },
-        projection::ActivityRole,
-        store::{
-            AcpStore, ActivateSessionCommand, ActivityIngressCommand, CloseSessionCommand,
-            CompleteActivationCommand, FailActivationCommand, FinalizeCloseCommand,
-            ItemIngressCommand, RequestStateCommand, StartSessionCommand, StoreCommit, StoreError,
-            StoreMutation, TurnMutationCommand,
-        },
+use crate::acp::{
+    projection::ActivityRole,
+    store::{
+        AcpStore, ActivateSessionCommand, ActivityIngressCommand, CloseSessionCommand,
+        CompleteActivationCommand, FailActivationCommand, FinalizeCloseCommand, ItemIngressCommand,
+        RequestStateCommand, StartSessionCommand, StoreCommit, StoreError, StoreMutation,
+        TurnMutationCommand,
     },
-    acp_protocol::permissions::PermissionIntent,
+};
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch, SafeText,
+        SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageServerRequestId, SageTurnId,
+        SchemaVersionV1,
+    },
+    intent::{
+        ActivityProvenanceV1, ActivitySourceKind, BindingId, ExternalId, ModelId, NormalizedPayload,
+    },
+    lifecycle::{
+        ActivityLifecycle, DeliveryState, ItemLifecycle, ServerRequestState, SessionState,
+        TurnState,
+    },
+    permissions::PermissionIntent,
 };
 
 use super::{JournalHandle, JournalLane};

@@ -1,14 +1,10 @@
-use crate::{
-    acp::{
-        bindings::standard_acp::elicitation::{accepted, refused},
-        intent::user_input::UserInputAnswers,
-        lifecycle::ServerRequestState,
-    },
-    acp_protocol::permissions::PermissionDecision,
+use crate::acp::bindings::standard_acp::elicitation::{accepted, refused};
+use sage_acp_protocol::{
+    intent::user_input::UserInputAnswers, lifecycle::ServerRequestState,
+    permissions::PermissionDecision,
 };
 use sage_core::limits::LIMITS;
 
-/// The Codex server request that asks the user questions.
 pub(in crate::acp::bindings::codex) const USER_INPUT_METHOD: &str = "item/tool/requestUserInput";
 
 use super::{

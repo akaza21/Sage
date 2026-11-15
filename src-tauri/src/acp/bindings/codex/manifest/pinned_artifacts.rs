@@ -1,6 +1,5 @@
-//! Every file of the pinned `@openai/codex` Windows package, with its exact
-//! SHA-256 and byte length. The entrypoint comes first; the byte lengths sum
-//! to the package's declared unpacked size.
+//! The entrypoint comes first; the byte lengths sum to the package's declared
+//! unpacked size.
 
 #[derive(Clone, Copy)]
 pub(super) struct ExpectedArtifact {
@@ -261,7 +260,6 @@ pub(super) const PINNED_ARTIFACTS: [ExpectedArtifact; 47] = [
     ),
 ];
 
-/// Files the pinned release signs with its Authenticode publisher certificate.
 /// The bundled `vcruntime140.dll` carries Microsoft's signature instead, so it
 /// is admitted by its pinned hash alone.
 pub(in crate::acp::bindings::codex) const AUTHENTICODE_SIGNED_FILES: [&str; 30] = [
@@ -297,7 +295,6 @@ pub(in crate::acp::bindings::codex) const AUTHENTICODE_SIGNED_FILES: [&str; 30] 
     r"vendor\x86_64-pc-windows-msvc\codex-resources\voice\bin\z.dll",
 ];
 
-/// Files the pinned release ships without an Authenticode signature.
 pub(in crate::acp::bindings::codex) const AUTHENTICODE_UNSIGNED_FILES: [&str; 1] =
     [r"vendor\x86_64-pc-windows-msvc\codex-path\rg.exe"];
 
@@ -305,8 +302,6 @@ pub(in crate::acp::bindings::codex) const AUTHENTICODE_UNSIGNED_FILES: [&str; 1]
 mod tests {
     use super::*;
 
-    /// The one executable the release bundles with Microsoft's signature, as
-    /// documented on [`AUTHENTICODE_SIGNED_FILES`].
     const MICROSOFT_SIGNED_FILES: [&str; 1] =
         [r"vendor\x86_64-pc-windows-msvc\codex-resources\voice\bin\vcruntime140.dll"];
 

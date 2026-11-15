@@ -4,10 +4,8 @@ use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{
-    domain::ResourceRef, workspace::Workspace, workspace::file_walk::MAX_WORKSPACE_FILES,
-    workspace::path_glob::valid_path_glob,
-};
+use crate::workspace::{Workspace, file_walk::MAX_WORKSPACE_FILES, path_glob::valid_path_glob};
+use sage_domain::resource::ResourceRef;
 
 pub const MAX_QUERY_BYTES: usize = 512;
 pub const MAX_REQUEST_ID_BYTES: usize = 128;

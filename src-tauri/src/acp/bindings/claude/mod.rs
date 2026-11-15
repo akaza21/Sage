@@ -1,9 +1,3 @@
-//! Conservative H3 translation for the pinned public Claude ACP adapter.
-//!
-//! This module does not launch Claude and does not treat MCP, nested transcripts,
-//! or adapter metadata as session-transport authority. Runtime admission remains
-//! blocked until the complete immutable artifact graph is independently reviewed.
-
 mod access_modes;
 mod admission;
 mod auth;

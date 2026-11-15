@@ -1,5 +1,3 @@
-//! The `account/read` members discovery reads.
-
 use super::*;
 
 #[test]

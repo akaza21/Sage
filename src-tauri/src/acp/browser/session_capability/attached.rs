@@ -1,8 +1,6 @@
 use super::*;
 use crate::acp::service::AcpService;
 
-/// State access differs between Wry and the headless fixture; authorization
-/// always runs against the same AcpService and document-revision rules.
 pub(crate) trait BrowserSessionContext: Clone + Send + Sync + 'static {
     fn service(&self) -> &AcpService;
     fn settled_tab(&self, label: &str) -> Result<(String, u64), String>;

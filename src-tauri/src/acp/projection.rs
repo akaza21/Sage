@@ -5,16 +5,19 @@ mod session_activity;
 pub use browser_operation::BrowserOperationProjection;
 pub use session_activity::TurnSessionActivityProjection;
 
-use super::{
+use sage_acp_protocol::{
     contract::*,
     declared_test::CommandActivity,
     intent::{
-        BindingId, COMMAND_RESOURCE_LIMIT, CapabilitySnapshotV1, ImageSource, ModelId, PageCursor,
-        PermissionOptionKind, ToolCategory,
+        BindingId, CapabilitySnapshotV1, ImageSource, ModelId, PageCursor, PermissionOptionKind,
+        SafeResourceLocation, ToolCategory,
+    },
+    lifecycle::{
+        ActivityLifecycle, ItemLifecycle, Residency, ServerRequestState, SessionState, ToolState,
+        TurnState, TurnTerminalReason,
     },
 };
-
-pub use super::intent::{SafeResourceLocation, UnavailableResourceReason};
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -41,7 +44,6 @@ pub enum PermissionRequestSource {
 }
 
 impl PermissionRequestSource {
-    /// The card's heading in the transcript.
     pub fn label(self) -> &'static str {
         match self {
             Self::Browser => "Browser permission",
@@ -138,7 +140,7 @@ pub enum ToolPresentation {
         result_summary: Option<SafeText<16384>>,
         /// Latest status line of a running call; absent once it is terminal.
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        progress: Option<SafeText<{ super::intent::TOOL_PROGRESS_BYTES }>>,
+        progress: Option<SafeText<{ sage_acp_protocol::intent::TOOL_PROGRESS_BYTES }>>,
     },
     Subagent {
         label: SafeText<512>,
@@ -166,7 +168,6 @@ pub enum FileOperation {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum FilePairState {
-    /// An immutable snapshot revision is retained for the narrow read.
     Available,
     /// No pair was admitted (legacy summary, harness without pair evidence,
     /// or unavailable resource). Never fabricated text.
@@ -186,7 +187,7 @@ pub struct FileChangeProjection {
     pub deletions: Option<u32>,
     pub pair_state: FilePairState,
     /// Immutable snapshot revision; zero unless `pair_state == Available`.
-    #[serde(with = "crate::acp_protocol::file_diff::wire_counter")]
+    #[serde(with = "sage_acp_protocol::file_diff::wire_counter")]
     pub snapshot_revision: u64,
     /// Raw UTF-8 byte lengths of the retained pair, when available.
     pub old_bytes: Option<u64>,
@@ -207,7 +208,6 @@ pub enum ItemContent {
         role: TextRole,
         text: SafeText<262144>,
     },
-    /// A message the user steered into the running Turn, at its place.
     UserPrompt {
         text: SafeText<262144>,
     },
@@ -228,7 +228,7 @@ pub enum ItemContent {
         truncated: bool,
     },
     Image {
-        media_type: crate::acp::intent::ImageMediaType,
+        media_type: sage_acp_protocol::intent::ImageMediaType,
         data_url: SafeText<262144>,
         source: ImageSource,
     },
@@ -246,11 +246,11 @@ pub enum ItemContent {
         /// The harness's questions, when it asks the user rather than for
         /// approval. Answers are never projected.
         #[serde(skip_serializing_if = "Option::is_none")]
-        user_input: Option<Box<super::intent::user_input::UserInputRequest>>,
+        user_input: Option<Box<sage_acp_protocol::intent::user_input::UserInputRequest>>,
     },
     Error {
         #[serde(skip_serializing_if = "Option::is_none")]
-        kind: Option<super::intent::ErrorKind>,
+        kind: Option<sage_acp_protocol::intent::ErrorKind>,
         code: SafeText<128>,
         message: SafeText<8192>,
         recoverable: bool,
@@ -319,7 +319,7 @@ pub struct ActivityProjection {
     pub role: ActivityRole,
     pub lifecycle: ActivityLifecycle,
     pub depth: u8,
-    pub provenance: super::intent::ActivityProvenanceV1,
+    pub provenance: sage_acp_protocol::intent::ActivityProvenanceV1,
     pub revision: EntityRevision,
 }
 
@@ -401,23 +401,21 @@ pub struct SessionProjection {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AcpChatPage {
-    pub(crate) session_config: Option<super::session_config::SessionConfigOverlay>,
+    pub(crate) session_config: Option<sage_acp_protocol::session_config::SessionConfigOverlay>,
     /// The current session's last reported config and stored choices, while
     /// it has no live config: shown as restored, applied when it resumes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) restored_session_config:
         Option<super::session_config::choices::RestoredSessionConfig>,
-    /// What the composer says about a stored choice the current session
-    /// could not take back, such as a saved model it no longer offers.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) session_config_notice: Option<super::session_config::notices::SessionConfigNotice>,
     pub(crate) goal: super::goal::GoalState,
     /// The current session's live runtime reports usage limits.
     #[serde(skip_serializing_if = "std::ops::Not::not")]
     pub(crate) usage: bool,
-    /// Notices and live activities of the current session.
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub(crate) session_surface: Option<super::intent::session_event::SessionSurfaceView>,
+    pub(crate) session_surface:
+        Option<sage_acp_protocol::intent::session_event::SessionSurfaceView>,
     pub project_id: SageProjectId,
     pub chat_id: SageChatId,
     pub title: SafeText<8192>,
@@ -426,7 +424,6 @@ pub struct AcpChatPage {
     pub sessions: BoundedVec<SessionProjection, 32>,
     pub turns: BoundedVec<TurnProjection, 20>,
     pub next_cursor: Option<PageCursor>,
-    /// The Chat this one was natively forked from (durable `chat_lineage`).
     #[serde(skip_serializing_if = "Option::is_none")]
     pub(crate) forked_from: Option<SageChatId>,
     /// The parent Turn the fork carries history through, inclusive.
@@ -444,7 +441,7 @@ pub struct AcpChatPage {
     /// The current session's newest notices (at most `SESSION_NOTICES_MAX`),
     /// oldest first, from its durable session surface.
     #[serde(skip_serializing_if = "Vec::is_empty")]
-    pub(crate) session_notices: Vec<super::intent::session_event::SessionNotice>,
+    pub(crate) session_notices: Vec<sage_acp_protocol::intent::session_event::SessionNotice>,
 }
 
 fn is_zero(value: &u64) -> bool {

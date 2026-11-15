@@ -1,9 +1,9 @@
 use super::*;
 use crate::acp::{
-    lifecycle::ToolState,
     projection::{ItemContent, ToolPresentation},
     store::load_chat_page,
 };
+use sage_acp_protocol::lifecycle::ToolState;
 
 fn task_facts(connection: &rusqlite::Connection) -> Vec<(ToolState, String, Option<bool>)> {
     let page = load_chat_page(
@@ -55,7 +55,7 @@ fn claude_task_metadata_and_tool_lifecycle_survive_pump_and_reopen_without_child
             Mapper, Arc::new(ProjectionMailbox::default()), intent).unwrap();
         pump.queue_prompt(Prompt::new("prompt", "Review accessibility.").unwrap(),
             &RequiredText::new("clientMessageId", "turn-one").unwrap(),
-            crate::acp_protocol::access_mode::SessionAccessMode::Ask).unwrap();
+            sage_acp_protocol::access_mode::SessionAccessMode::Ask).unwrap();
         let mut sink = Sink::default();
         pump.flush_one(&mut sink).unwrap();
         let request = sink.last_request_id.unwrap();

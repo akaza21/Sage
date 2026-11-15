@@ -41,10 +41,8 @@ pub(crate) fn installed(version: &str) -> Result<PathBuf, Unavailable> {
     matches_install(&directory, &path).map(|()| path)
 }
 
-/// Sage's resource directory. A development build runs from a Cargo target
-/// directory that other checkouts may share and overwrite, so it reads the
-/// bridge from the checkout it was compiled from, which holds the same bytes it
-/// embeds as [`SOURCE`]. A packaged build reads its own bundled resource.
+/// A development build runs from a Cargo target directory that other checkouts may share and
+/// overwrite, so it reads the bridge from the checkout it was compiled from.
 fn resource_root() -> Option<PathBuf> {
     if tauri::is_dev() {
         return Some(PathBuf::from(env!("CARGO_MANIFEST_DIR")));

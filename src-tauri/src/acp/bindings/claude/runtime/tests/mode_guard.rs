@@ -1,12 +1,8 @@
-//! A turn stays in the permission mode Sage selected for it: plan-exit
-//! options that widen the mode are never picked, and a mode change the turn
-//! was not given cancels it with a notice.
-
 use super::*;
-use crate::acp_protocol::access_mode::SessionAccessMode;
-use crate::{
-    acp::intent::session_event::{SessionNoticeLevel, SessionScopedEvent},
-    acp_protocol::permissions::PermissionDecision,
+use sage_acp_protocol::access_mode::SessionAccessMode;
+use sage_acp_protocol::{
+    intent::session_event::{SessionNoticeLevel, SessionScopedEvent},
+    permissions::PermissionDecision,
 };
 
 const MODES: &str = r#"{"currentModeId":"plan","availableModes":[
@@ -14,7 +10,6 @@ const MODES: &str = r#"{"currentModeId":"plan","availableModes":[
     {"id":"plan","name":"Plan"},{"id":"auto","name":"Auto"},
     {"id":"bypassPermissions","name":"Bypass permissions"}]}"#;
 
-/// A ready session in Claude's plan mode, as the 0.76 adapter starts one.
 fn ready(runtime: &mut ClaudeRuntime) {
     initialize(runtime);
     let egress = runtime
@@ -47,7 +42,6 @@ fn prompt(
     })
 }
 
-/// A turn running in `mode`, which Sage selected before the prompt.
 fn planning(runtime: &mut ClaudeRuntime, mode: SessionAccessMode) {
     ready(runtime);
     let native = crate::acp::bindings::access_policy::session_mode(
@@ -86,7 +80,6 @@ fn mode_update(mode: &str) -> Frame {
     }}))
 }
 
-/// The 0.76 adapter's plan-exit options, in its order.
 fn plan_exit(request: &str, options: Value) -> Frame {
     frame(json!({
         "id":request,"method":"session/request_permission","params":{
@@ -121,7 +114,7 @@ fn answer(
     serde_json::from_slice(reply.frame().payload()).unwrap()
 }
 
-fn offered(batch: &AdapterBatch) -> Vec<crate::acp::intent::PermissionOptionKind> {
+fn offered(batch: &AdapterBatch) -> Vec<sage_acp_protocol::intent::PermissionOptionKind> {
     batch
         .events()
         .iter()
@@ -143,7 +136,7 @@ fn offered(batch: &AdapterBatch) -> Vec<crate::acp::intent::PermissionOptionKind
 
 #[test]
 fn a_plan_exit_never_picks_an_option_that_widens_the_mode() {
-    use crate::acp::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
+    use sage_acp_protocol::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
     let mut runtime = ClaudeRuntime::fixture();
     planning(&mut runtime, SessionAccessMode::Plan);
     // With auto available the adapter offers only auto as the "always"
@@ -167,8 +160,6 @@ fn a_plan_exit_never_picks_an_option_that_widens_the_mode() {
     let reply = answer(&mut runtime, &batch, PermissionDecision::AllowOnce);
     assert_eq!(reply["result"]["outcome"]["optionId"], "exit-plan-default");
 
-    // Where accepting edits is the elevated exit, "always" picks it and
-    // skips the variant that clears the conversation.
     let mut runtime = ClaudeRuntime::fixture();
     planning(&mut runtime, SessionAccessMode::Plan);
     let batch = runtime
@@ -190,7 +181,6 @@ fn a_plan_exit_never_picks_an_option_that_widens_the_mode() {
         reply["result"]["outcome"]["optionId"],
         "exit-plan-accept-edits"
     );
-    // The mode that answer leads to is the turn's to take.
     let batch = runtime
         .ingest(&mode_update("acceptEdits"), &Mapper)
         .unwrap();
@@ -234,8 +224,6 @@ fn a_narrower_mode_change_keeps_the_turn_running() {
 fn a_prompt_is_written_only_while_the_session_is_in_the_turns_mode() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
-    // Sage selected "default", but the session is still in plan mode: a
-    // flip between the select and the prompt stops the prompt.
     assert!(prompt(&mut runtime, SessionAccessMode::Ask).is_err());
     runtime.ingest(&mode_update("default"), &Mapper).unwrap();
     assert!(prompt(&mut runtime, SessionAccessMode::Ask).is_ok());
@@ -243,7 +231,7 @@ fn a_prompt_is_written_only_while_the_session_is_in_the_turns_mode() {
 
 #[test]
 fn a_running_turn_refuses_a_mode_change() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::{SageChatId, SageProjectId},
         scheduler::RuntimeOwner,
         session_config::{ConfigId, ConfigIntent, ConfigMutation},
@@ -284,7 +272,7 @@ fn a_set_option_reply_that_widens_a_running_turn_cancels_it() {
 
 #[test]
 fn a_mode_switch_offered_under_unknown_ids_is_never_allowed() {
-    use crate::acp::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
+    use sage_acp_protocol::intent::PermissionOptionKind::{AllowAlways, AllowOnce};
     let mut runtime = ClaudeRuntime::fixture();
     planning(&mut runtime, SessionAccessMode::Plan);
     let batch = runtime
@@ -310,11 +298,10 @@ fn a_mode_switch_offered_under_unknown_ids_is_never_allowed() {
 /// What the pinned 0.76 adapter does on `session/set_mode`: it restates
 /// the `mode` option in a `config_option_update` before its bare
 /// acknowledgement, and sends `current_mode_update` only when it falls back
-/// from Auto. Sage follows the option, so a prompt in the selected mode is
-/// written without waiting for another report.
+/// from Auto.
 #[test]
 fn a_set_mode_is_followed_by_the_adapters_option_report() {
-    use crate::acp::{
+    use sage_acp_protocol::{
         contract::{SageChatId, SageProjectId},
         scheduler::RuntimeOwner,
         session_config::{ConfigId, ConfigIntent, ConfigMutation},

@@ -1,10 +1,6 @@
-use crate::acp::{
-    bindings::{adapter::ResourceMapper, codex::normalize_transcript_item},
-    contract::SafeText,
-    intent::NormalizedPayload,
-    lifecycle::ItemLifecycle,
-};
-use crate::acp_protocol::codex_protocol::{ChildItem, ChildTextRole, ChildTurn, MAX_ITEMS};
+use crate::acp::bindings::{adapter::ResourceMapper, codex::normalize_transcript_item};
+use sage_acp_protocol::codex_protocol::{ChildItem, ChildTextRole, ChildTurn, MAX_ITEMS};
+use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
 use serde::Serialize;
 use serde_json::Value;
 
@@ -16,15 +12,17 @@ impl<M: ResourceMapper + ?Sized> crate::acp::bindings::codex::ResourceMapper
     fn map_existing(
         &self,
         absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
         self.0.map_existing(absolute_path)
     }
 
     fn map_missing_display(
         &self,
         absolute_path: &str,
-    ) -> Option<crate::acp::intent::SafeResourceRef> {
+    ) -> Option<sage_acp_protocol::intent::SafeResourceRef> {
         self.0.map_missing_display(absolute_path)
     }
 }
@@ -49,7 +47,6 @@ pub(crate) struct NativeTurnsPage {
     pub(crate) next_cursor: Option<String>,
 }
 
-/// A native session started outside Sage, as the import picker lists it.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NativeSessionSummary {
@@ -59,7 +56,6 @@ pub(crate) struct NativeSessionSummary {
     pub(crate) updated_at: i64,
 }
 
-/// One `thread/list` page of importable sessions.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct NativeSessionsPage {
@@ -70,12 +66,10 @@ pub(crate) struct NativeSessionsPage {
 /// Turns asked for per `thread/turns/list` page. Small pages keep one long
 /// Turn from making a page too large; 32 pages still hold `MAX_TURNS`.
 pub(crate) const TURN_PAGE: usize = 4;
-/// Sessions asked for per `thread/list` page.
 pub(crate) const SESSION_PAGE: usize = 25;
 const MAX_CURSOR_BYTES: usize = 1024;
 const MAX_TITLE_CHARS: usize = 200;
 
-/// The `result` of the response to `request_id`, or why there is none.
 fn page_result(wire: &[u8], request_id: u64) -> Result<Value, ChildTranscriptError> {
     if wire.len() > MAX_WIRE_BYTES {
         return Err(ChildTranscriptError::Capacity);

@@ -1,5 +1,3 @@
-//! Codex-specific pre-launch authority proofs.
-//!
 //! These proofs do not admit or launch the Harness. They freeze the exact
 //! configuration and cleared environment that a later native launcher must
 //! consume.

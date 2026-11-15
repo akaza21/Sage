@@ -152,7 +152,7 @@ impl ClaudeRuntime {
                     }
                     PermissionDecision::Deny => {
                         record.reply = PermissionReply::Deny;
-                        let external = crate::acp::intent::ExternalId::new(
+                        let external = sage_acp_protocol::intent::ExternalId::new(
                             "permissionRequest",
                             request_id.as_str(),
                         )
@@ -175,7 +175,7 @@ impl ClaudeRuntime {
 /// text?}` entries the harness binding reads back.
 fn answered(
     wire_id: &Value,
-    answers: &crate::acp::intent::user_input::UserInputAnswers,
+    answers: &sage_acp_protocol::intent::user_input::UserInputAnswers,
 ) -> Result<AdapterEgress, AdapterRuntimeError> {
     let answers: Vec<Value> = answers
         .as_slice()

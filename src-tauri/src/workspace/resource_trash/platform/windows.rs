@@ -15,10 +15,8 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_SHARE_READ, FILE_SHARE_WRITE, GetFileInformationByHandle,
 };
 
-use crate::{
-    domain::{DirectoryListing, TrashResourceKind},
-    workspace::{root_identity_file, root_identity_path},
-};
+use crate::workspace::{root_identity_file, root_identity_path};
+use sage_domain::{file_operations::TrashResourceKind, project::DirectoryListing};
 
 use super::{
     ParentAuthority, ResourceTrashAuthority, ResourceTrashIdentity, TrashIdentityProof,

@@ -4,7 +4,8 @@ use std::path::{Path, PathBuf};
 
 use sha2::{Digest, Sha256};
 
-use super::supervisor::{LaunchError, validate_absolute_normalized};
+use super::supervisor::validate_absolute_normalized;
+use sage_process::error::LaunchError;
 
 pub(crate) const MANIFEST_BYTES_MAX: u64 = 64 * 1024;
 
@@ -141,7 +142,7 @@ fn open_denying_writers(path: &Path) -> Result<File, LaunchError> {
 #[cfg(test)]
 mod tests {
     use super::{MANIFEST_BYTES_MAX, ManifestExpectation};
-    use crate::acp::process::supervisor::LaunchError;
+    use sage_process::error::LaunchError;
     use sha2::{Digest, Sha256};
     use std::path::PathBuf;
 

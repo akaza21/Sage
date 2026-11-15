@@ -7,13 +7,14 @@ use sage_core::error::AppResult;
 use tauri::{Manager, State};
 
 use crate::{
-    acp::{
-        contract::{SageChatId, SageProjectId},
-        service::{ChatRuntimeRelease, explicit_close_deadline},
-    },
+    acp::service::{ChatRuntimeRelease, explicit_close_deadline},
     chat_commands::{execute_chat_transition, failed_transition},
-    domain::{ChatDeleteRequest, ChatLifecycleRequest, ProjectTransitionResult},
     state::AppState,
+};
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
+use sage_domain::{
+    chat::{ChatDeleteRequest, ChatLifecycleRequest},
+    project::ProjectTransitionResult,
 };
 
 /// Archive releases still running after their archive answered. Exit waits

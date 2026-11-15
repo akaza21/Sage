@@ -5,9 +5,10 @@ use sage_core::{
 };
 
 use crate::{
-    chat_lifecycle::validate_chat_identifier, domain::MoveChatRequest, persistence::Database,
+    chat_lifecycle::validate_chat_identifier, persistence::Database,
     workbench_persistence::persist_layout_in,
 };
+use sage_domain::chat::MoveChatRequest;
 
 const MAX_CHATS_PER_PROJECT: i64 = 64;
 

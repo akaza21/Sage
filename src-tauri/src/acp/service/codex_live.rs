@@ -5,7 +5,7 @@ use std::{
 
 use crate::acp::{
     bindings::runtime::NativeRuntime,
-    intent::IntentSnapshot,
+    ipc::IntentSnapshot,
     process::{PlatformSupervisor, StdinEndpoint, TreeCapacityPool, TreeControl, TreeExit},
     resource_mapper::NativeResourceMapper,
     runtime::{
@@ -15,11 +15,11 @@ use crate::acp::{
         LiveRuntimeEngine, ProcessLivePort, ProjectIntentAuthority, RuntimeHost, SendCoordinator,
         SessionTreeLease, SystemDriverClock, ZeroProcessProof,
     },
-    scheduler::RuntimeOwner,
     store::{
         AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory, PrepareTurnCommand,
     },
 };
+use sage_acp_protocol::scheduler::RuntimeOwner;
 use sage_core::limits::LIMITS;
 
 #[cfg(test)]

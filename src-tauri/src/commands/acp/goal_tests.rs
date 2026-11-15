@@ -11,9 +11,7 @@ use std::{
 use crate::{
     acp::{
         background_terminals::{BackgroundTerminal, TerminalAction},
-        contract::{RequiredText, SageTurnId, SchemaVersionV1},
         goal::{GoalSnapshot, GoalState, GoalStatus, NativeRpcIntent, NativeRpcReply},
-        intent::{BindingId, CapabilitySnapshotV1, ExternalId},
         runtime::{
             HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
             NativeRpcCompletionSink, PromptWrite, RuntimeEngine, RuntimeHost,
@@ -24,6 +22,10 @@ use crate::{
         },
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, SageTurnId, SchemaVersionV1},
+    intent::{BindingId, CapabilitySnapshotV1, ExternalId},
 };
 
 struct GoalEngine {
@@ -213,7 +215,7 @@ pub(in crate::commands::acp) fn fixture(
                     schema_version: SchemaVersionV1,
                     protocol_version: RequiredText::new(
                         "protocol",
-                        crate::acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY,
+                        sage_acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY,
                     )
                     .unwrap(),
                     new_session: true,

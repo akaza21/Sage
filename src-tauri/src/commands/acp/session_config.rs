@@ -1,6 +1,6 @@
 use super::*;
-use crate::acp::{
-    bindings::access_policy::governs_session_modes,
+use crate::acp::bindings::access_policy::governs_session_modes;
+use sage_acp_protocol::{
     contract::*,
     session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision, ConfigValue},
 };
@@ -138,12 +138,12 @@ pub(crate) async fn configure(
 /// governed, so a routing failure never opens a direct mode change.
 pub(super) fn refuse_governed_mode_change(
     governed: Option<bool>,
-    live: Option<&crate::acp::session_config::SessionConfigOverlay>,
+    live: Option<&sage_acp_protocol::session_config::SessionConfigOverlay>,
     mutation: &ConfigMutation,
 ) -> Result<(), AcpIpcError> {
     let changes_mode = match live {
         Some(overlay) => overlay.config.changes_mode(mutation),
-        None => crate::acp::session_config::SessionConfig::may_change_mode(mutation),
+        None => sage_acp_protocol::session_config::SessionConfig::may_change_mode(mutation),
     };
     if governed.unwrap_or(true) && changes_mode {
         return Err(AcpIpcError::InvalidRequest {
@@ -153,6 +153,7 @@ pub(super) fn refuse_governed_mode_change(
     Ok(())
 }
 
+/// A mode or option value for a session with no live runtime.
 #[derive(Deserialize)]
 #[serde(untagged, deny_unknown_fields)]
 pub(crate) enum QueuedChoice {
@@ -176,6 +177,10 @@ pub(crate) struct QueueSessionConfigChoiceRequest {
     pub session_id: SageAgentSessionId,
     pub choice: QueuedChoice,
 }
+/// Stores a choice made while the chat's session has no live runtime. The
+/// composer shows it as restored, and the restore applies it before the
+/// next prompt of that session, or of the one a send starts from it, as it
+/// does every stored choice.
 #[tauri::command]
 pub(crate) async fn queue_acp_session_config_choice(
     state: State<'_, AppState>,
@@ -196,17 +201,32 @@ pub(crate) async fn queue_acp_session_config_choice(
         &snapshot,
     )
     .map_err(intent_error)?;
-    if snapshot.session_id.as_ref() != Some(&request.session_id) {
+    // The choice is for the session the chat's next send runs: its head, or
+    // with none the session it ran last, which a started session goes on from.
+    let target = match snapshot.session_id.clone() {
+        Some(head) => Some(head),
+        None => crate::acp::store::ended_head(
+            &state.database.connection(),
+            request.project_id.as_str(),
+            request.chat_id.as_str(),
+        )
+        .map_err(store_error)?
+        .map(|ended| ended.session_id),
+    };
+    if target.as_ref() != Some(&request.session_id) {
         return Err(intent_error(IntentError::ForeignSession));
     }
-    let runtime = snapshot
-        .runtime_epoch
-        .map(|runtime_epoch| crate::acp::scheduler::RuntimeOwner {
-            project_id: request.project_id.clone(),
-            chat_id: request.chat_id.clone(),
-            session_id: request.session_id.clone(),
-            runtime_epoch,
-        });
+    // A live runtime that has not reported its config yet takes the choice
+    // once it has, as a parked session does on resume.
+    let runtime =
+        snapshot
+            .runtime_epoch
+            .map(|runtime_epoch| sage_acp_protocol::scheduler::RuntimeOwner {
+                project_id: request.project_id.clone(),
+                chat_id: request.chat_id.clone(),
+                session_id: request.session_id.clone(),
+                runtime_epoch,
+            });
     let choice = match request.choice {
         QueuedChoice::Mode { mode_id } => ConfigMutation::Mode(mode_id),
         QueuedChoice::Option { config_id, value } => ConfigMutation::Option { config_id, value },
@@ -223,10 +243,11 @@ pub(crate) async fn queue_acp_session_config_choice(
         .map_err(|error| match error {
             crate::acp::service::QueueError::NotOffered | crate::acp::service::QueueError::Live => {
                 AcpIpcError::Conflict {
-                    resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
+                    resource: crate::acp::ipc::AcpConflictResource::ConfigRevision,
                     message: safe_message("The session configuration changed; reload and retry."),
                 }
             }
+            crate::acp::service::QueueError::Foreign => intent_error(IntentError::ForeignSession),
             crate::acp::service::QueueError::Store => AcpIpcError::RecoveryRequired {
                 message: safe_message("The session configuration choice could not be saved."),
             },
@@ -237,7 +258,7 @@ pub(crate) async fn queue_acp_session_config_choice(
 pub(super) fn map_config_error(error: crate::acp::runtime::HostError) -> AcpIpcError {
     match error {
         crate::acp::runtime::HostError::Intent => AcpIpcError::Conflict {
-            resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
+            resource: crate::acp::ipc::AcpConflictResource::ConfigRevision,
             message: safe_message("The live session configuration changed; reload and retry."),
         },
         crate::acp::runtime::HostError::ConfigMutationRejected => AcpIpcError::Rejected {

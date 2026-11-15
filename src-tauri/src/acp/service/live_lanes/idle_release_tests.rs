@@ -25,11 +25,9 @@ fn a_hidden_chat_is_due_once_both_idle_and_out_of_view_for_the_short_wait() {
         shown: Some(HashSet::new()),
         ..View::default()
     };
-    // Idle long enough, but first seen out of view only now.
     assert!(!view.due(&chat("b"), start, start + 3 * MINUTE));
     assert!(!view.due(&chat("b"), start, start + 4 * MINUTE));
     assert!(view.due(&chat("b"), start, start + 5 * MINUTE));
-    // Out of view long enough, but a Turn just ended.
     let turn_ended = start + 4 * MINUTE;
     assert!(!view.due(&chat("b"), turn_ended, start + 5 * MINUTE));
     assert!(view.due(&chat("b"), turn_ended, turn_ended + HIDDEN_IDLE));

@@ -1,7 +1,6 @@
 use super::{AdapterError, CodexAdapter, RequestKind};
 use crate::acp::bindings::codex::request::OutgoingRequest;
 
-/// Reads whose callers gave up but which Codex may still answer.
 const MAX_ABANDONED_READS: usize = 4;
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -31,8 +30,6 @@ impl CodexAdapter {
         self.rate_limits_read_id().is_some()
     }
 
-    /// Stops waiting for a read whose caller gave up; its late answer is
-    /// discarded by `take_rate_limits_tombstone`.
     pub(crate) fn abandon_rate_limits_read(&mut self) {
         if let Some(id) = self.rate_limits_read_id() {
             self.take_pending(id);
@@ -41,7 +38,6 @@ impl CodexAdapter {
         }
     }
 
-    /// A pushed snapshot shows Codex is answering again.
     pub(crate) fn rate_limits_pushed(&mut self) {
         self.rate_limits_abandoned.blocking = false;
     }

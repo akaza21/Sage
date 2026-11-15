@@ -38,8 +38,7 @@ use tauri::State;
 use crate::{
     acp::{
         attached_context::AttachedContexts,
-        contract::{ProjectGeneration, SageChatId, SageProjectId},
-        intent::{
+        ipc::{
             AcpChatPage, AcpFileSnapshotResponse, AcpIpcError, AcpMutationResponse,
             ActivateAcpSessionRequest, CancelAcpTurnRequest, CloseAcpSessionRequest,
             GetAcpChatPageRequest, GetAcpFileSnapshotRequest, IntentError, IntentSnapshot,
@@ -48,13 +47,16 @@ use crate::{
             validate_session_intent, validate_steer_intent,
         },
         runtime::{HostCancelIntent, HostSteerIntent},
-        scheduler::RuntimeOwner,
         store::{
             ActivateSessionCommand, CloseSessionCommand, PrepareTurnCommand, StartSessionCommand,
             read_snapshot,
         },
     },
     state::{ActiveProjectContext, ActiveProjectError, AppState},
+};
+use sage_acp_protocol::{
+    contract::{ProjectGeneration, SageChatId, SageProjectId},
+    scheduler::RuntimeOwner,
 };
 
 #[tauri::command]
@@ -268,7 +270,7 @@ fn validate_attached_context(
     state: &AppState,
     project_id: &SageProjectId,
     chat_id: &SageChatId,
-    expected_revision: crate::acp::contract::ProjectionRevision,
+    expected_revision: sage_acp_protocol::contract::ProjectionRevision,
     contexts: &AttachedContexts,
 ) -> Result<(), AcpIpcError> {
     if contexts.as_slice().iter().all(|context| {
@@ -295,7 +297,9 @@ fn validate_attached_context(
     }
     let roots = roots
         .into_iter()
-        .map(|root| crate::acp::contract::SageRootId::parse(root).map_err(|_| internal_error()))
+        .map(|root| {
+            sage_acp_protocol::contract::SageRootId::parse(root).map_err(|_| internal_error())
+        })
         .collect::<Result<Vec<_>, _>>()?;
     for context in contexts.as_slice() {
         let crate::acp::attached_context::AttachedContext::DiffLineComment(context) = context
@@ -312,23 +316,23 @@ fn validate_attached_context(
             crate::acp::service::verify_current_owner(&connection, expected_revision, reference)
                 .and_then(|()| read_snapshot(&connection, reference, &roots))
                 .map_err(|error| match error {
-                    crate::acp_protocol::file_diff::SnapshotReadError::Stale
-                    | crate::acp_protocol::file_diff::SnapshotReadError::Unavailable => {
+                    sage_acp_protocol::file_diff::SnapshotReadError::Stale
+                    | sage_acp_protocol::file_diff::SnapshotReadError::Unavailable => {
                         AcpIpcError::Conflict {
-                            resource: crate::acp::intent::AcpConflictResource::Session,
+                            resource: crate::acp::ipc::AcpConflictResource::Session,
                             message: safe_message(
                                 "Attached context belongs to an unavailable file snapshot.",
                             ),
                         }
                     }
-                    crate::acp_protocol::file_diff::SnapshotReadError::Forbidden => {
+                    sage_acp_protocol::file_diff::SnapshotReadError::Forbidden => {
                         AcpIpcError::InvalidRequest {
                             message: safe_message(
                                 "Attached context is not available to the current owner.",
                             ),
                         }
                     }
-                    crate::acp_protocol::file_diff::SnapshotReadError::Corrupt => {
+                    sage_acp_protocol::file_diff::SnapshotReadError::Corrupt => {
                         AcpIpcError::RecoveryRequired {
                             message: safe_message("Attached context failed its integrity check."),
                         }

@@ -1,24 +1,12 @@
-//! Continues a Chat in a new head session when its parked head cannot go on
-//! as it is: one started by an earlier release of its harness resumes in a
-//! new session linked to it, and one whose only native history was undone
-//! restarts in a fresh session.
-
 use crate::acp::{
     bindings::{claude::sdk::CLAUDE_SDK_BINDING_ID, release_version::ReleaseVersion},
-    contract::SafeText,
     store::ActivateSessionCommand,
 };
+use sage_acp_protocol::contract::SafeText;
 
 use super::{super::AcpService, CodexSessionError, DurableSession, load_durable_session};
 
 impl AcpService {
-    /// Continues a Chat whose parked head session was started by an earlier
-    /// release of its harness (a new head session on the updated binding
-    /// links to it) or holds only an undone Turn in its native thread (a
-    /// fresh head session replaces it). The activation is redirected to the
-    /// new session's first epoch, also when a retry names the earlier
-    /// session after a refused activation. Any other activation passes
-    /// through unchanged.
     pub(in crate::acp::service) fn continue_head_session(
         &self,
         admitted: &crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
@@ -97,8 +85,6 @@ impl AcpService {
     }
 }
 
-/// A store failure surfaces as the session coordination error it would be
-/// on the journal path.
 pub(in crate::acp::service) fn store_error(
     error: crate::acp::store::StoreError,
 ) -> CodexSessionError {
@@ -108,11 +94,10 @@ pub(in crate::acp::service) fn store_error(
     .into()
 }
 
-/// The first runtime epoch a session has not used yet.
 pub(in crate::acp::service) fn next_runtime_epoch(
     database: &crate::persistence::Database,
-    session: &crate::acp::contract::SageAgentSessionId,
-) -> Result<crate::acp::contract::RuntimeEpoch, CodexSessionError> {
+    session: &sage_acp_protocol::contract::SageAgentSessionId,
+) -> Result<sage_acp_protocol::contract::RuntimeEpoch, CodexSessionError> {
     let latest: i64 = database
         .connection()
         .query_row(
@@ -124,12 +109,12 @@ pub(in crate::acp::service) fn next_runtime_epoch(
     latest
         .checked_add(1)
         .and_then(|next| u64::try_from(next).ok())
-        .and_then(|next| crate::acp::contract::RuntimeEpoch::new(next).ok())
+        .and_then(|next| sage_acp_protocol::contract::RuntimeEpoch::new(next).ok())
         .ok_or(CodexSessionError::Intent)
 }
 
-/// Whether the admitted build can resume a native session. Linking a
-/// session it cannot resume would only defer the refusal to activation.
+/// Linking a session the admitted build cannot resume would only defer the
+/// refusal to activation.
 fn resumes_sessions(
     admitted: &crate::acp::bindings::registry::AdmittedBindingRecord<'_>,
 ) -> Result<bool, CodexSessionError> {
@@ -139,11 +124,9 @@ fn resumes_sessions(
         .map_err(|error| CodexSessionError::Binding(error.into()))
 }
 
-/// Whether a parked session's native session was started by an earlier
-/// release of the same binding than the admitted one, which resumes it in a
-/// new linked session. A later, equal or unreadable version never
-/// qualifies, so a downgrade or a different build of the same release is
-/// still refused. Claude Code SDK sessions follow the CLI in place instead.
+/// A later, equal or unreadable version never qualifies, so a downgrade or a
+/// different build of the same release is still refused. Claude Code SDK
+/// sessions follow the CLI in place instead.
 pub(super) fn continues_on_later_release(
     session: &DurableSession,
     binding_id: &str,
@@ -160,12 +143,10 @@ pub(super) fn continues_on_later_release(
         && session.external_session_id.is_some()
 }
 
-/// Whether a parked session's native thread holds nothing before a Turn the
-/// user undid, so the Chat goes on in a fresh native session.
 pub(super) fn restarts_after_undo(
     database: &crate::persistence::Database,
     session: &DurableSession,
-    session_id: &crate::acp::contract::SageAgentSessionId,
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
 ) -> Result<bool, CodexSessionError> {
     if session.state != "ready" || session.residency != "cold" {
         return Ok(false);
@@ -176,9 +157,8 @@ pub(super) fn restarts_after_undo(
     Ok(rewind.is_some_and(|rewind| rewind.thread == crate::acp::store::UndoneThread::Restart))
 }
 
-/// Whether `earlier` is a strictly lower release than `later`. Unreadable
-/// versions and prereleases on either side are never ordered, so a chat only
-/// moves between final releases.
+/// Unreadable versions and prereleases on either side are never ordered, so a
+/// chat only moves between final releases.
 fn precedes(earlier: &str, later: &str) -> bool {
     matches!(
         (ReleaseVersion::parse(earlier), ReleaseVersion::parse(later)),

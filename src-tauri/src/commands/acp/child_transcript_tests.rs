@@ -1,7 +1,7 @@
 use super::*;
-use crate::acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY;
+use sage_acp_protocol::codex_protocol::OBSERVED_PROTOCOL_IDENTITY;
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
-use crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
+use sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
 use sha2::Digest;
 use std::{
     collections::VecDeque,
@@ -16,9 +16,7 @@ use std::{
 use crate::{
     acp::{
         bindings::codex::{NativeTurnsPage, test_transcript::child_read as child_read_for_test},
-        contract::{ClientIntentId, RequiredText, SafeText, SageTurnId, SchemaVersionV1},
         goal::{GoalState, NativeRead, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
-        intent::{BindingId, CapabilitySnapshotV1},
         runtime::{
             HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
             NativeRpcCompletionSink, PromptWrite, RuntimeEngine, RuntimeHost,
@@ -29,6 +27,10 @@ use crate::{
         },
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, RequiredText, SafeText, SageTurnId, SchemaVersionV1},
+    intent::{BindingId, CapabilitySnapshotV1},
 };
 
 struct ChildEngine {
@@ -291,7 +293,7 @@ async fn child_ipc_journey(
             "INSERT INTO turns(id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,state,delivery_state,revision,created_at,updated_at) VALUES('turn-one',?1,?2,?3,1,0,'intent-one','running','correlated',0,1,1)",
             rusqlite::params![project_id.as_str(), chat_id.as_str(), session.session_id.as_str()],
         ).unwrap();
-        let payload = crate::acp::intent::NormalizedPayload::Collaboration {
+        let payload = sage_acp_protocol::intent::NormalizedPayload::Collaboration {
             label: SafeText::new("label", "Worker").unwrap(),
             message: None,
             receiver_labels: Default::default(),
@@ -392,7 +394,7 @@ async fn child_ipc_journey(
         assert!(matches!(
             get_acp_child_transcript_inner(&state, request.clone()).await,
             Err(AcpIpcError::Conflict {
-                resource: crate::acp::intent::AcpConflictResource::ProjectGeneration,
+                resource: crate::acp::ipc::AcpConflictResource::ProjectGeneration,
                 ..
             })
         ));
@@ -432,7 +434,7 @@ async fn child_ipc_journey(
     assert!(matches!(
         get_acp_child_transcript_inner(&state, foreign_session).await,
         Err(AcpIpcError::Conflict {
-            resource: crate::acp::intent::AcpConflictResource::Session,
+            resource: crate::acp::ipc::AcpConflictResource::Session,
             ..
         })
     ));
@@ -441,7 +443,7 @@ async fn child_ipc_journey(
     assert!(matches!(
         get_acp_child_transcript_inner(&state, foreign_epoch).await,
         Err(AcpIpcError::Conflict {
-            resource: crate::acp::intent::AcpConflictResource::RuntimeEpoch,
+            resource: crate::acp::ipc::AcpConflictResource::RuntimeEpoch,
             ..
         })
     ));
@@ -477,7 +479,7 @@ async fn child_ipc_journey(
         assert!(matches!(
             get_acp_child_transcript_inner(&state, request.clone()).await,
             Err(AcpIpcError::Conflict {
-                resource: crate::acp::intent::AcpConflictResource::ProjectGeneration,
+                resource: crate::acp::ipc::AcpConflictResource::ProjectGeneration,
                 ..
             })
         ));

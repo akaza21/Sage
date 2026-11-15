@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::intent::session_event::{
+use sage_acp_protocol::intent::session_event::{
     SESSION_NOTICES_MAX, SessionActivityState, SessionNoticeLevel, SessionScopedEvent,
     SessionSurface,
     fixtures::{activity as activity_fixture, notice as notice_fixture, title},
@@ -175,7 +175,8 @@ fn live_activity_and_model_are_stored_for_the_reporting_epoch() {
                 session(SessionScopedEvent::Activity(activity), 6),
                 session(
                     SessionScopedEvent::TurnModel {
-                        model_id: crate::acp::intent::ModelId::new("modelId", "rerouted").unwrap(),
+                        model_id: sage_acp_protocol::intent::ModelId::new("modelId", "rerouted")
+                            .unwrap(),
                     },
                     6,
                 ),

@@ -12,7 +12,6 @@ const TOOLS: [&str; 8] = [
     "readNetwork",
 ];
 
-/// The browser tools, with the developer-mode `cdp` tool when `developer`.
 pub(super) fn tools(developer: bool) -> Vec<Value> {
     TOOLS.into_iter().chain(developer.then_some("cdp"))
         .map(|name| {

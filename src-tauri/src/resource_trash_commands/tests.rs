@@ -4,16 +4,17 @@ use uuid::Uuid;
 
 use super::*;
 use crate::{
-    domain::{
-        ProjectLayoutRequest, ResourceRef, ResourceTrashOutcome, TrashProjectResourceRequest,
-        TrashResourceKind, WorkbenchTab,
-    },
     persistence::Database,
     state::AppState,
     workspace::{
         Workspace,
         resource_trash::{ResourceTrashCommit, ResourceTrashIdentity, ResourceTrashMarker},
     },
+};
+use sage_domain::{
+    chat::{ProjectLayoutRequest, WorkbenchTab},
+    file_operations::{ResourceTrashOutcome, TrashProjectResourceRequest, TrashResourceKind},
+    resource::ResourceRef,
 };
 
 fn trash_with_fixture(

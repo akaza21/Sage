@@ -1,10 +1,9 @@
 use super::*;
 use crate::acp::{
-    intent::CapabilitySnapshotV1,
-    lifecycle::ToolState,
     projection::{ItemContent, ToolPresentation},
     store::load_chat_page,
 };
+use sage_acp_protocol::{intent::CapabilitySnapshotV1, lifecycle::ToolState};
 
 fn command_fact(
     database: &Database,
@@ -108,7 +107,7 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
                 Mapper, Arc::new(ProjectionMailbox::default()), intent).unwrap();
             pump.queue_prompt(Prompt::new("prompt", "Inspect the build command.").unwrap(),
                 &RequiredText::new("clientMessageId", "turn-one").unwrap(),
-                crate::acp_protocol::access_mode::SessionAccessMode::Ask).unwrap();
+                sage_acp_protocol::access_mode::SessionAccessMode::Ask).unwrap();
             let mut sink = Sink::default();
             pump.flush_one(&mut sink).unwrap();
             let request = sink.last_request_id.unwrap();

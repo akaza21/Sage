@@ -1,28 +1,14 @@
-//! Tabs an Agent-driven tab opens. A popup, a `target=_blank` link or a
-//! `window.open` from a tab the Agent drives joins that tab's attachment:
-//! it becomes an Agent tab of the same chat and session, with presence and
-//! Take over controls, under the same authority and revocation rules, and it
-//! starts under user control when the user holds the opener. Only children
-//! the browser recorded for a live Agent-attached opener join, and only
-//! while that session's turn runs (`turn_running`); a tab the user opens
-//! never does. A joined tab is capped apart from `openTab`'s tabs, at
-//! `MAX_POPUP_TABS_PER_SESSION`, is never the implicit default tab, and
-//! follows its opener on Take over, Hand back and Stop.
-
 use super::*;
 use std::time::{Duration, Instant};
 
-/// How long after an Agent action on the opener a popup may still join.
 pub(crate) const AGENT_ACTION_WINDOW: Duration = Duration::from_secs(2);
 
-/// Agent actions on one tab: how many run now, and when the last ended.
 #[derive(Default)]
 pub(crate) struct AgentActivity {
     in_flight: u32,
     ended: Option<Instant>,
 }
 
-/// An Agent click, key or navigation running on a tab; dropping it ends it.
 pub(crate) struct AgentAction<'a> {
     registry: &'a BrowserAttachments,
     label: String,
@@ -39,14 +25,12 @@ impl Drop for AgentAction<'_> {
     }
 }
 
-/// Children waiting for their first settled page, by child label.
 pub(crate) const MAX_POPUP_CHILDREN: usize = 16;
 
 /// Whether `session` of the chat has a current owner whose turn runs.
 pub(crate) type TurnRunning<'a> = &'a dyn Fn(&SageProjectId, &SageChatId, &str) -> bool;
 
 impl BrowserAttachments {
-    /// Marks an Agent action that may open a popup as running on `label`.
     pub(crate) fn begin_agent_action(&self, label: &str) -> AgentAction<'_> {
         if let Ok(mut actions) = self.agent_actions.lock() {
             let activity = actions.entry(label.to_owned()).or_default();
@@ -72,7 +56,6 @@ impl BrowserAttachments {
         })
     }
 
-    /// The popups that joined `opener`.
     pub(crate) fn joined_popups(&self, opener: &str) -> Vec<String> {
         self.agent_entries.lock().map_or_else(
             |_| Vec::new(),
@@ -86,8 +69,6 @@ impl BrowserAttachments {
         )
     }
 
-    /// Stops the popups that joined `opener` and forgets those still
-    /// waiting, once the opener's attachment ended.
     pub(super) fn drop_joined_popups(&self, opener: &str) {
         self.forget_popups(opener);
         if let Ok(mut entries) = self.agent_entries.lock() {
@@ -102,8 +83,6 @@ impl BrowserAttachments {
         }
     }
 
-    /// Records `child` as opened by the Agent-driven `opener` and joins it
-    /// now when its page has already settled. Returns whether it joined.
     pub(crate) fn adopt_popup(
         &self,
         opener: &str,
@@ -126,8 +105,6 @@ impl BrowserAttachments {
         settled.is_some_and(|(url, revision)| self.join_popup(child, url, revision, turn_running))
     }
 
-    /// Joins a recorded child to its opener's attachment once the child
-    /// shows a settled page. Returns whether it joined.
     pub(crate) fn join_popup(
         &self,
         child: &str,
@@ -181,8 +158,7 @@ impl BrowserAttachments {
         {
             lease.set_user_control(true);
         }
-        // A navigation that failed admission keeps the child waiting for
-        // its next settled page.
+        // Keep children on non-HTTP(S) pages waiting for a later settled page.
         if joined
             || url::Url::parse(url).is_ok_and(|parsed| matches!(parsed.scheme(), "http" | "https"))
         {
@@ -191,7 +167,6 @@ impl BrowserAttachments {
         joined
     }
 
-    /// Drops children of or as `label`, which stopped or closed.
     pub(super) fn forget_popups(&self, label: &str) {
         if let Ok(mut children) = self.popup_children.lock() {
             children.retain(|child, opener| child != label && opener != label);
@@ -205,7 +180,6 @@ impl BrowserAttachments {
         }
     }
 
-    /// The live Agent attachment on `opener` and the session that drives it.
     fn opener_lease(
         &self,
         opener: &str,
@@ -318,7 +292,6 @@ mod tests {
             .unwrap();
         assert!(!old_opener.is_live());
         assert!(registry.agent_control("browser-9").is_none());
-        // A join that captured the old opener before replacement cannot land.
         assert!(
             registry
                 .attach_agent_tab(
@@ -369,7 +342,6 @@ mod tests {
         );
     }
 
-    /// The user attached `browser-7` and the Agent has used it.
     fn driven_opener() -> BrowserAttachments {
         let registry = BrowserAttachments::default();
         let (project, chat) = ids();
@@ -384,7 +356,6 @@ mod tests {
             .unwrap();
         let lease = registry.resolve(&project, &chat).unwrap();
         assert!(lease.authority_for(&scope(7)).is_some());
-        // The Agent just clicked on it.
         drop(registry.begin_agent_action("browser-7"));
         registry
     }
@@ -415,7 +386,6 @@ mod tests {
             .agent_resolve(&project, &chat, "session-1", 9)
             .unwrap();
         assert!(child.authority_for(&scope(9)).is_some());
-        // Stop on the child ends its attachment like any Agent tab.
         registry.revoke_tab("browser-9");
         assert_eq!(registry.agent_control("browser-9"), None);
     }
@@ -426,7 +396,6 @@ mod tests {
         assert!(!registry.adopt_popup("browser-7", "browser-9", PAGE, &ended));
         assert_eq!(registry.agent_control("browser-9"), None);
 
-        // Recorded while the turn ran, settled after it ended.
         let registry = driven_opener();
         assert!(!registry.adopt_popup("browser-7", "browser-9", None, &running));
         assert!(!registry.join_popup("browser-9", "https://example.com/next", 3, &ended));
@@ -461,7 +430,6 @@ mod tests {
             Some(8)
         );
         assert_eq!(registry.agent_count(&project, &chat, "session-1"), 1);
-        // openTab still has its full cap.
         for number in 20..20 + MAX_AGENT_TABS_PER_SESSION as u64 - 1 {
             registry
                 .attach_agent(
@@ -507,7 +475,6 @@ mod tests {
         assert!(registry.agent_control("browser-9").unwrap().user_control);
         assert!(registry.hand_back("browser-7"));
 
-        // Grandchildren follow the first opener.
         let child = registry
             .agent_resolve(&project, &chat, "session-1", 9)
             .unwrap();
@@ -536,7 +503,6 @@ mod tests {
             .unwrap();
         assert!(registry.take_over("browser-8"));
         assert!(registry.chat_under_user_control(&project, &chat));
-        // The call on browser-7 was denied: browser-7 itself is not held.
         assert!(!registry.agent_control("browser-7").unwrap().user_control);
         let generation = registry.hand_back_generation(&project, &chat);
         registry.revoke_tab("browser-8");
@@ -550,13 +516,11 @@ mod tests {
 
     #[test]
     fn no_scope_widening_for_unattached_or_unused_openers_or_stopped_ones() {
-        // An opener with no attachment: the user's own browsing.
         let registry = BrowserAttachments::default();
         let page = Some(("https://a.example/", 1));
         assert!(!registry.adopt_popup("browser-7", "browser-9", page, &running));
         assert_eq!(registry.agent_control("browser-9"), None);
 
-        // Attached, but no Agent session has used it yet.
         let (project, chat) = ids();
         registry
             .attach(project, chat, "browser-7", "https://example.com/", 1)
@@ -564,7 +528,6 @@ mod tests {
         assert!(!registry.adopt_popup("browser-7", "browser-9", page, &running));
         assert_eq!(registry.agent_control("browser-9"), None);
 
-        // Stop on the opener drops a child still waiting for its page.
         let registry = driven_opener();
         registry.adopt_popup("browser-7", "browser-9", None, &running);
         registry.revoke_tab("browser-7");
@@ -625,7 +588,6 @@ mod tests {
 
     #[test]
     fn detaching_the_opener_stops_its_children_and_forgets_waiting_ones() {
-        // The user detaches the opener they attached.
         let registry = driven_opener();
         let (project, chat) = ids();
         assert!(registry.adopt_popup("browser-7", "browser-9", PAGE, &running));
@@ -642,7 +604,6 @@ mod tests {
         assert!(!registry.join_popup("browser-10", "https://example.com/", 1, &running));
         assert_eq!(registry.agent_control("browser-10"), None);
 
-        // An Agent tab that opened a popup is detached.
         let registry = BrowserAttachments::default();
         registry
             .attach_agent(
@@ -697,7 +658,6 @@ mod tests {
         assert!(registry.agent_acted_recently("browser-7", now + AGENT_ACTION_WINDOW * 2));
         drop(action);
 
-        // No Agent action on the opener at all.
         let registry = BrowserAttachments::default();
         let (project, chat) = ids();
         registry

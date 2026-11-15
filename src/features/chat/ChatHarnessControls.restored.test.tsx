@@ -13,6 +13,7 @@ import { ChatHarnessControls } from "./ChatHarnessControls";
 import {
   PENDING_NOTE,
   RESTORED_NOTE,
+  START_NOTE,
   restoredSessionConfigView,
   withSessionConfigNotice,
 } from "./restoredSessionConfigView";
@@ -172,6 +173,31 @@ it("views the restored config only for the session the selection continues", () 
       null,
     ),
   ).toBeNull();
+});
+
+it("offers a chat whose last session failed that session's config for the session its next send starts", () => {
+  const failed = {
+    id: "session-1",
+    bindingId: "fixture",
+    modelId: null,
+    state: "failed",
+    residency: "cold",
+    runtimeEpoch: null,
+    legacy: false,
+  };
+  const page = (awaiting: "start" | "resume") =>
+    coldPage({
+      currentSessionId: null,
+      sessions: [failed] as never,
+      restoredSessionConfig: { ...restored!, awaiting },
+    });
+  const view = restoredSessionConfigView(page("start"), "fixture", null);
+  expect(view?.restored).toBe(START_NOTE);
+  expect(
+    view?.configOptions.find((option) => option.id === "effort"),
+  ).toMatchObject({ currentValue: "high" });
+  expect(restoredSessionConfigView(page("start"), "other", null)).toBeNull();
+  expect(restoredSessionConfigView(page("resume"), "fixture", null)).toBeNull();
 });
 
 it("shows a cold chat's stored model and effort as restored, and a pick goes to the stored choice", async () => {

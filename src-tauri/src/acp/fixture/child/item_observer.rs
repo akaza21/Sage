@@ -4,11 +4,14 @@ use crate::acp::{
     bindings::adapter::{
         AdapterCommand, AdapterEvent, EgressResolution, HarnessAdapter, ResourceMapper,
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     fixture::adapter::FixtureAdapter,
-    intent::{ExternalId, Prompt, SafeResourceRef, UnavailableResourceReason},
-    lifecycle::{ItemLifecycle, ToolState},
+    transcript_quote::Prompt,
     transport::{Frame, IncrementalFrameDecoder, validate_structure},
+};
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+    intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
+    lifecycle::{ItemLifecycle, ToolState},
 };
 
 use super::super::{generated_cases::FrozenCase, wire};
@@ -75,7 +78,7 @@ fn ready_adapter() -> FixtureAdapter {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "read only").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     adapter

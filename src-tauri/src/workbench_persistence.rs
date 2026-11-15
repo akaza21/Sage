@@ -10,9 +10,6 @@ use serde_json::json;
 use crate::{
     chat_archive::archived_chats_in,
     chat_lifecycle::{attach_chat_tab_in, durable_chat_title_in},
-    domain::{
-        BootstrapSnapshot, ProjectLayoutRequest, ProjectRepositoryStatus, ProjectSwitchRequest,
-    },
     harnesses::HarnessCatalog,
     persistence::Database,
     project_registry::MAX_PROJECTS,
@@ -20,6 +17,11 @@ use crate::{
         restore_layout, validate_layout_tab_repository, validate_resource_for_project,
         validate_root_membership, validate_tab_projection,
     },
+};
+use sage_domain::{
+    chat::ProjectLayoutRequest,
+    project::{BootstrapSnapshot, ProjectSwitchRequest},
+    repository::ProjectRepositoryStatus,
 };
 
 use self::bootstrap::{

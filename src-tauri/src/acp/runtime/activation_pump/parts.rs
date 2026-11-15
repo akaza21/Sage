@@ -1,8 +1,8 @@
 use crate::acp::{
     bindings::adapter::{AdapterBatch, AdapterRuntimeError, HarnessAdapter, ResourceMapper},
-    intent::session_event::PendingSessionEvents,
     transport::Frame,
 };
+use sage_acp_protocol::intent::session_event::PendingSessionEvents;
 use sage_core::limits::LIMITS;
 
 use super::ActivatedSession;
@@ -86,7 +86,7 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
 
     pub(crate) fn validate_command_prompt(
         &self,
-        prompt: &crate::acp::intent::Prompt,
+        prompt: &crate::acp::transcript_quote::Prompt,
     ) -> Result<(), crate::acp::runtime::HostError> {
         if let Some(revision) = prompt.command_revision {
             self.adapter
@@ -179,7 +179,7 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn write_control(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<(), crate::acp::runtime::HostError> {
         crate::acp::runtime::adapter_pump::session_config::write_control(
             &mut self.adapter,
@@ -201,7 +201,7 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn write_release_fork(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,
-        fork: &crate::acp::intent::ExternalId,
+        fork: &sage_acp_protocol::intent::ExternalId,
         committed: bool,
     ) -> Result<(), crate::acp::runtime::HostError> {
         crate::acp::runtime::adapter_pump::session_config::write_release_fork(
@@ -229,7 +229,7 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
     pub(crate) fn write_session_config(
         &mut self,
         transport: &mut impl crate::acp::runtime::EgressTransport,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<(), crate::acp::runtime::HostError> {
         crate::acp::runtime::adapter_pump::session_config::write_config(
             &mut self.adapter,

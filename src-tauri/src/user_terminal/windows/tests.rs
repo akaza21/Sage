@@ -6,7 +6,7 @@ use windows_sys::Win32::System::JobObjects::IsProcessInJob;
 use windows_sys::Win32::System::Threading::GetExitCodeProcess;
 
 type SuspendedConPty = (
-    TerminalJobBoundary,
+    JobBoundary,
     PROCESS_INFORMATION,
     bool,
     PseudoConsole,
@@ -40,7 +40,7 @@ fn launch_suspended_conpty_with(
     let pseudo = PseudoConsole(pseudo);
     drop(input_read);
     drop(output_write);
-    let job = TerminalJobBoundary::create(DESCENDANT_LIMIT).unwrap();
+    let job = JobBoundary::create(DESCENDANT_LIMIT).unwrap();
     let attributes = AttributeList::new(pseudo.0).unwrap();
     let mut startup = STARTUPINFOEXW::default();
     startup.StartupInfo.cb = size_of::<STARTUPINFOEXW>() as u32;
@@ -78,7 +78,7 @@ fn shell() -> (PathBuf, Vec<u16>) {
     (shell, application)
 }
 
-fn member(job: &TerminalJobBoundary, process: HANDLE) -> bool {
+fn member(job: &JobBoundary, process: HANDLE) -> bool {
     let mut member = 0;
     assert_ne!(
         unsafe { IsProcessInJob(process, job.raw(), &mut member) },
@@ -94,7 +94,8 @@ fn shell_is_job_member_before_first_resume() {
         launch_suspended_conpty(&application, &application);
     assert!(created);
     assert!(!member(&job, info.hProcess));
-    job.assign(info.hProcess).unwrap();
+    // SAFETY: the suspended child's handle is live and owned by this test.
+    unsafe { job.assign(info.hProcess) }.unwrap();
     assert!(member(&job, info.hProcess));
     let _ = unsafe { TerminateProcess(info.hProcess, 1) };
     assert_eq!(
@@ -128,7 +129,8 @@ fn contained_conpty_echo_and_zero_members_after_close() {
     let (job, info, created, pseudo, input, output) =
         launch_suspended_conpty(&application, &command);
     assert!(created);
-    job.assign(info.hProcess).unwrap();
+    // SAFETY: the suspended child's handle is live and owned by this test.
+    unsafe { job.assign(info.hProcess) }.unwrap();
     assert!(member(&job, info.hProcess));
     assert_ne!(unsafe { ResumeThread(info.hThread) }, u32::MAX);
     assert_eq!(
@@ -161,7 +163,8 @@ fn writing_after_shell_exit_reports_session_ended() {
     let (job, info, created, pseudo, input, output) =
         launch_suspended_conpty(&application, &command);
     assert!(created);
-    job.assign(info.hProcess).unwrap();
+    // SAFETY: the suspended child's handle is live and owned by this test.
+    unsafe { job.assign(info.hProcess) }.unwrap();
     assert!(member(&job, info.hProcess));
     assert_ne!(unsafe { ResumeThread(info.hThread) }, u32::MAX);
     assert_eq!(
@@ -527,7 +530,8 @@ fn a_process_on_the_conpty_receives_exactly_the_allowlisted_environment() {
         let _ = output.into_file().read_to_end(&mut bytes);
         bytes
     });
-    job.assign(info.hProcess).unwrap();
+    // SAFETY: the suspended child's handle is live and owned by this test.
+    unsafe { job.assign(info.hProcess) }.unwrap();
     assert_ne!(unsafe { ResumeThread(info.hThread) }, u32::MAX);
     assert_eq!(
         unsafe { WaitForSingleObject(info.hProcess, DEADLINE.as_millis() as u32) },
@@ -590,9 +594,9 @@ fn a_process_on_the_conpty_receives_exactly_the_allowlisted_environment() {
     let project = temp.join("project");
     std::fs::create_dir(&project).unwrap();
     let root = ProjectRootAuthority::for_test(
-        crate::acp::contract::SageProjectId::parse("project-terminal-environment").unwrap(),
-        crate::acp::contract::ProjectGeneration::ZERO,
-        crate::acp::contract::SageRootId::parse("root-terminal-environment").unwrap(),
+        sage_acp_protocol::contract::SageProjectId::parse("project-terminal-environment").unwrap(),
+        sage_acp_protocol::contract::ProjectGeneration::ZERO,
+        sage_acp_protocol::contract::SageRootId::parse("root-terminal-environment").unwrap(),
         &project.canonicalize().unwrap(),
     )
     .unwrap();

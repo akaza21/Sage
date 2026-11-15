@@ -9,12 +9,8 @@ use crate::acp::{
     bindings::adapter::{
         AdapterCommand, AdapterEvent, EgressResolution, HarnessAdapter, ResourceMapper,
     },
-    contract::{
-        RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
-    },
     fixture::{adapter::FixtureAdapter, generated_cases::FrozenCase, wire},
-    intent::{ExternalId, ProjectionChangedV1, Prompt, SafeResourceRef, UnavailableResourceReason},
-    lifecycle::TurnState,
+    ipc::ProjectionChangedV1,
     runtime::{
         NotificationError, NotificationSink, NotificationSinkFuture, ProjectionNotifier,
         PublishOutcome,
@@ -23,7 +19,15 @@ use crate::acp::{
         AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner,
         apply_adapter_inbound_batch,
     },
+    transcript_quote::Prompt,
     transport::{Frame, IncrementalFrameDecoder, validate_structure},
+};
+use sage_acp_protocol::{
+    contract::{
+        RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
+    },
+    intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
+    lifecycle::TurnState,
 };
 
 pub(crate) const CASE_IDS: &[&str] = &["stale-project-generation-completion"];
@@ -111,7 +115,7 @@ fn ready_adapter() -> FixtureAdapter {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "read only").unwrap(),
             client_message_id: RequiredText::new("message", "message-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     adapter

@@ -1,9 +1,9 @@
 use super::PiRuntime;
-use crate::acp::{
-    bindings::{
-        adapter::{AdapterEvent, AdapterRuntimeError},
-        pi::AdapterError,
-    },
+use crate::acp::bindings::{
+    adapter::{AdapterEvent, AdapterRuntimeError},
+    pi::AdapterError,
+};
+use sage_acp_protocol::{
     contract::SafeText,
     intent::{ErrorKind, NormalizedPayload},
     lifecycle::{ItemLifecycle, TurnTerminalReason},

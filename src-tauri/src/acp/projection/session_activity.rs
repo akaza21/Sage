@@ -1,6 +1,6 @@
 use serde::Serialize;
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::RequiredText,
     intent::session_event::{
         SESSION_ACTIVITY_KIND_BYTES, SESSION_ACTIVITY_LABEL_BYTES, SESSION_ACTIVITY_PROGRESS_BYTES,
@@ -8,8 +8,7 @@ use crate::acp::{
     },
 };
 
-/// A session activity row (a hook run, say) in the work list of the Turn
-/// that owns it. The harness's own row identity stays native.
+/// The harness's own row identity stays native.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct TurnSessionActivityProjection {

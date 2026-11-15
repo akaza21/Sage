@@ -1,7 +1,4 @@
-//! `/mcp`: listing the thread's MCP servers, reloading their configuration
-//! and starting a server's OAuth sign-in. One runs at a time, between
-//! Turns or during one, and none starts a Turn.
-
+use serde::Deserialize;
 use serde_json::{Map, Value};
 
 use super::{AdapterError, CodexAdapter, RequestKind};
@@ -11,15 +8,12 @@ use super::{AdapterError, CodexAdapter, RequestKind};
 const MAX_ABANDONED_LISTS: usize = 4;
 use crate::acp::{
     bindings::codex::request::OutgoingRequest,
-    contract::SafeText,
     goal::NativeRpcReply,
-    mcp::inventory::{McpAuthUrl, McpInventory},
-    session_control::SessionControl,
+    mcp::inventory::{CodexMcpPage, McpAuthUrl, McpInventory},
 };
+use sage_acp_protocol::{contract::SafeText, session_control::SessionControl};
 
 impl CodexAdapter {
-    /// The request for an MCP session control; any other control is not
-    /// one of these.
     pub(crate) fn mcp_request(
         &mut self,
         id: u64,
@@ -54,8 +48,6 @@ impl CodexAdapter {
         self.pending.iter().any(|(_, kind)| is_mcp(*kind))
     }
 
-    /// Stops waiting for a list whose caller gave up; its late answer is
-    /// dropped by `take_mcp_tombstone`.
     pub(crate) fn abandon_mcp_read(&mut self) {
         let read = self
             .pending
@@ -68,23 +60,27 @@ impl CodexAdapter {
         }
     }
 
-    /// A list is on its way, answered or abandoned. Its answer can pass the
-    /// frame bound, since Codex sends every tool's schema with it.
+    /// An MCP list answer can exceed the frame and structural bounds
+    /// because Codex includes every tool's schema.
     pub(super) fn mcp_list_awaited(&self) -> bool {
         !self.mcp_read_tombstones.is_empty() || self.awaits(RequestKind::McpList)
+    }
+
+    pub(crate) fn take_mcp_list_answer(&mut self, id: u64) -> Option<McpListAnswer> {
+        if self.take_mcp_tombstone(id) {
+            return Some(McpListAnswer::Abandoned);
+        }
+        if self.pending_kind(id) != Some(RequestKind::McpList) {
+            return None;
+        }
+        self.take_pending(id);
+        Some(McpListAnswer::Awaited)
     }
 
     /// A list answer past the frame bound: `true` when it was the awaited
     /// list, which is then over. An abandoned one is simply dropped.
     pub(crate) fn mcp_list_oversized(&mut self, id: u64) -> bool {
-        if self.take_mcp_tombstone(id) {
-            return false;
-        }
-        if self.pending_kind(id) != Some(RequestKind::McpList) {
-            return false;
-        }
-        self.take_pending(id);
-        true
+        self.take_mcp_list_answer(id) == Some(McpListAnswer::Awaited)
     }
 
     pub(crate) fn take_mcp_tombstone(&mut self, id: u64) -> bool {
@@ -93,8 +89,6 @@ impl CodexAdapter {
         self.mcp_read_tombstones.len() != before
     }
 
-    /// Codex answered an MCP request: a list becomes the inventory, a
-    /// sign-in its authorization URL, and a refusal carries Codex's reason.
     pub(crate) fn complete_mcp(
         &mut self,
         id: u64,
@@ -104,13 +98,20 @@ impl CodexAdapter {
         let removed = self.take_pending(id);
         debug_assert_eq!(removed, Some(kind));
         if let Some(error) = response.get("error") {
-            return NativeRpcReply::ControlRefused(reason(error));
+            return NativeRpcReply::ControlRefused(
+                error
+                    .get("message")
+                    .and_then(Value::as_str)
+                    .and_then(reason),
+            );
         }
-        let result = response.get("result").and_then(Value::as_object);
+        let result = response.get("result");
         match kind {
             RequestKind::McpList => result
-                .and_then(McpInventory::from_codex)
-                .map_or(NativeRpcReply::Rejected, NativeRpcReply::McpServers),
+                .and_then(|result| CodexMcpPage::deserialize(result).ok())
+                .map_or(NativeRpcReply::Rejected, |page| {
+                    NativeRpcReply::McpServers(McpInventory::from_codex(page))
+                }),
             RequestKind::McpSignIn => result
                 .and_then(|result| result.get("authorizationUrl"))
                 .and_then(Value::as_str)
@@ -121,6 +122,35 @@ impl CodexAdapter {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum McpListAnswer {
+    Awaited,
+    Abandoned,
+}
+
+/// The awaited list's answer past the structural bounds the rest of the
+/// wire keeps, read again without its tools' schemas.
+pub(crate) fn unbounded_mcp_list(frame: &[u8]) -> NativeRpcReply {
+    #[derive(Deserialize)]
+    struct Answer {
+        result: Option<CodexMcpPage>,
+        error: Option<AnswerError>,
+    }
+    #[derive(Deserialize)]
+    struct AnswerError {
+        message: Option<String>,
+    }
+    match serde_json::from_slice::<Answer>(frame) {
+        Ok(Answer {
+            error: Some(error), ..
+        }) => NativeRpcReply::ControlRefused(error.message.as_deref().and_then(reason)),
+        Ok(Answer {
+            result: Some(page), ..
+        }) => NativeRpcReply::McpServers(McpInventory::from_codex(page)),
+        _ => NativeRpcReply::TooLarge,
+    }
+}
+
 fn is_mcp(kind: RequestKind) -> bool {
     matches!(
         kind,
@@ -128,9 +158,7 @@ fn is_mcp(kind: RequestKind) -> bool {
     )
 }
 
-/// Codex's reason, as one clipped line.
-fn reason(error: &Value) -> Option<SafeText<512>> {
-    let message = error.get("message").and_then(Value::as_str)?;
+fn reason(message: &str) -> Option<SafeText<512>> {
     let mut line: String = message
         .chars()
         .map(|c| if c.is_control() { ' ' } else { c })

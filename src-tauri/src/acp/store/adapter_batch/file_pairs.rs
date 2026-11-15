@@ -1,7 +1,7 @@
 use rusqlite::Transaction;
 
 use super::{AdapterInboundEvent, AdapterStoreOwner, StoreError};
-use crate::acp::intent::NormalizedPayload;
+use sage_acp_protocol::intent::NormalizedPayload;
 
 /// A pair's pending metadata is never published on its own. Both events must
 /// be adjacent and owner/key matched in the same already-bounded batch.

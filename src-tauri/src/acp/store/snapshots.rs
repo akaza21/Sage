@@ -2,14 +2,13 @@
 //! become one item update in the adapter transaction; no half-pair is published.
 
 use super::{ItemIngressCommand, MutationDisposition, StoreError};
-use crate::{
-    acp::{
-        contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
-        intent::{ExternalId, NormalizedPayload},
-    },
-    acp_protocol::file_diff::{DIFFS_PER_TURN, PairAdmission, admit_pair},
-};
 use rusqlite::Transaction;
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
+    file_diff::{PairAdmission, admit_pair},
+    intent::{ExternalId, NormalizedPayload},
+};
+use sage_core::limits::DIFFS_PER_TURN;
 
 mod read;
 mod rows;
@@ -62,7 +61,7 @@ pub(super) fn apply_pair_in(
     let existing = rows::lookup(transaction, item)?;
     let mut command = item.clone();
     let summary_only = NormalizedPayload::file_summary_only(
-        crate::acp::intent::FileChangeFacts {
+        sage_acp_protocol::intent::FileChangeFacts {
             resource: resource.clone(),
             summary: summary.clone(),
             additions: *additions,
@@ -93,7 +92,7 @@ pub(super) fn apply_pair_in(
         None => rows::next_revision(transaction, existing.as_ref())?,
     };
     command.payload = NormalizedPayload::file_admitted(
-        crate::acp::intent::FileChangeFacts {
+        sage_acp_protocol::intent::FileChangeFacts {
             resource: resource.clone(),
             summary: summary.clone(),
             additions: *additions,

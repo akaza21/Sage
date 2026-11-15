@@ -6,9 +6,9 @@ use crate::acp::{
         manifest::{MetadataValidatedPacket, Platform},
         state::CodexAdapter,
     },
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
     transport::{Frame, OutboundFrame},
 };
+use sage_acp_protocol::contract::{RequiredText, RuntimeEpoch, SageAgentSessionId};
 
 use super::schema::{
     NoResources, api_key_account, json_request, managed_chatgpt, parse_cursor, parse_model,
@@ -305,6 +305,11 @@ impl CodexDiscoveryProtocol {
             page_bytes = page_bytes
                 .checked_add(model.id.as_str().len())
                 .and_then(|bytes| bytes.checked_add(model.name.as_str().len()))
+                .and_then(|bytes| {
+                    model.effort_levels.iter().try_fold(bytes, |bytes, level| {
+                        bytes.checked_add(level.as_str().len())
+                    })
+                })
                 .ok_or(CodexDiscoveryError::ModelCatalog)?;
             if model.is_default {
                 if self.default_model_id.is_some() || page_default.is_some() {

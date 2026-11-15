@@ -5,7 +5,9 @@ use std::sync::{
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::domain::{DirectoryListing, ResourceRef, TrashResourceKind};
+use sage_domain::{
+    file_operations::TrashResourceKind, project::DirectoryListing, resource::ResourceRef,
+};
 
 use super::Workspace;
 

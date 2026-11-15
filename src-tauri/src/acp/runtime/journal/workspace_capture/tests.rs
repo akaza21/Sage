@@ -1,8 +1,7 @@
 use super::*;
-use crate::acp::{
-    contract::*,
-    store::{StoreCommit, TurnMutationCommand},
-};
+use crate::acp::store::{StoreCommit, TurnMutationCommand};
+use sage_acp_protocol::contract::*;
+use sage_acp_protocol::lifecycle::{DeliveryState, TurnState};
 use std::sync::mpsc::sync_channel;
 
 struct RecordingStore(std::sync::mpsc::SyncSender<String>);

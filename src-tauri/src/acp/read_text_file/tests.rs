@@ -9,10 +9,9 @@ use uuid::Uuid;
 
 use super::terminal::MAX_PENDING_READS;
 use super::*;
-use crate::acp::{
-    contract::{ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
-    runtime::read_text_file::ReadTextRequestId,
-    transport::DeadlineAsyncWriter,
+use crate::acp::{runtime::read_text_file::ReadTextRequestId, transport::DeadlineAsyncWriter};
+use sage_acp_protocol::contract::{
+    ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId,
 };
 
 struct Capture(Vec<u8>);

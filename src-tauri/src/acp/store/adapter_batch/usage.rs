@@ -1,9 +1,7 @@
 use rusqlite::{OptionalExtension, ToSql, Transaction, params_from_iter};
 
-use crate::acp::{
-    contract::EntityRevision,
-    store::{StoreError, next_projection_revision},
-};
+use crate::acp::store::{StoreError, next_projection_revision};
+use sage_acp_protocol::contract::EntityRevision;
 
 use super::{AdapterStoreOwner, TurnUsageSnapshotCommand};
 

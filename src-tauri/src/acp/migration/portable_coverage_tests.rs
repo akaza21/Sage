@@ -1,5 +1,3 @@
-//! Portable coverage for operations which do not require Windows' identity-bound deletion.
-
 use std::{fs, path::PathBuf, time::Duration};
 
 use rusqlite::{Connection, backup::Backup, params};
@@ -194,7 +192,6 @@ fn v4_history_migrates_to_v5_keeping_its_rows_and_enforcing_the_session_constrai
         };
         failure.extended_code
     };
-    // Chat ordinals are unique per project.
     assert_eq!(
         rejected(
             "INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at)
@@ -202,7 +199,6 @@ fn v4_history_migrates_to_v5_keeping_its_rows_and_enforcing_the_session_constrai
         ),
         rusqlite::ffi::SQLITE_CONSTRAINT_UNIQUE
     );
-    // A chat belongs to an existing project.
     assert_eq!(
         rejected(
             "INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at)
@@ -210,7 +206,6 @@ fn v4_history_migrates_to_v5_keeping_its_rows_and_enforcing_the_session_constrai
         ),
         rusqlite::ffi::SQLITE_CONSTRAINT_FOREIGNKEY
     );
-    // Titles are bounded and non-empty.
     assert_eq!(
         rejected(
             "INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at)
@@ -218,7 +213,6 @@ fn v4_history_migrates_to_v5_keeping_its_rows_and_enforcing_the_session_constrai
         ),
         rusqlite::ffi::SQLITE_CONSTRAINT_CHECK
     );
-    // A legacy session can only be closed and cold.
     assert_eq!(
         rejected(&format!(
             "INSERT INTO agent_sessions(
@@ -232,14 +226,12 @@ fn v4_history_migrates_to_v5_keeping_its_rows_and_enforcing_the_session_constrai
         )),
         rusqlite::ffi::SQLITE_CONSTRAINT_CHECK
     );
-    // The migrated legacy session is terminal and immutable.
     assert_eq!(
         rejected(
             "UPDATE agent_sessions SET state='active', residency='hot', terminal_at=NULL WHERE id='session-a'"
         ),
         rusqlite::ffi::SQLITE_CONSTRAINT_TRIGGER
     );
-    // Migrated history cannot be deleted.
     for delete in [
         "DELETE FROM items WHERE id='event-1'",
         "DELETE FROM agent_sessions WHERE id='session-a'",

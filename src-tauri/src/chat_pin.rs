@@ -4,9 +4,8 @@ use sage_core::{
     time::now_millis,
 };
 
-use crate::{
-    chat_lifecycle::validate_chat_identifier, domain::PinChatRequest, persistence::Database,
-};
+use crate::{chat_lifecycle::validate_chat_identifier, persistence::Database};
+use sage_domain::chat::PinChatRequest;
 
 impl Database {
     pub(crate) fn pin_chat(&self, request: &PinChatRequest) -> AppResult<()> {

@@ -1,9 +1,5 @@
 //! The numeric limit ledger is the authoritative contract; the Rust bounds
-//! must carry exactly its values. Limits with an exact/plus-one fixture pair
-//! are also executed through their production bound in
-//! `acp::fixture::ledger_limit_tests`; this check covers every section,
-//! including the deadlines, durable, migration and fixture limits that have
-//! no pair.
+//! must carry exactly its values.
 
 use std::{fs, path::PathBuf};
 

@@ -1,15 +1,9 @@
-//! Codex `item/tool/requestUserInput` journeys against the harness-neutral
-//! question contract: single choice, free-text "other", secret, cancel,
-//! interrupt and harness withdrawal.
-
 use serde_json::{Value, json};
 
-use crate::{
-    acp::{
-        intent::{NormalizedPayload, user_input::UserInputAnswers},
-        lifecycle::ServerRequestState,
-    },
-    acp_protocol::permissions::PermissionDecision,
+use sage_acp_protocol::{
+    intent::{NormalizedPayload, user_input::UserInputAnswers},
+    lifecycle::ServerRequestState,
+    permissions::PermissionDecision,
 };
 
 use super::IncomingEvent;
@@ -25,8 +19,6 @@ fn ask(adapter: &mut CodexAdapter, id: u64, auto_resolution_ms: Option<u64>) -> 
     )
 }
 
-/// Asks the three standard questions with the given `isBlocking` and
-/// `autoResolutionMs` fields.
 fn ask_timed(adapter: &mut CodexAdapter, id: u64, timing: Value) -> NormalizedPayload {
     let mut frame = json!({"id": id, "method": "item/tool/requestUserInput", "params": {
         "threadId": "thread-1", "turnId": "turn-1", "itemId": format!("call-{id}"),
@@ -89,7 +81,7 @@ fn a_question_request_projects_bounded_questions_that_only_answers_or_cancel_res
     assert_eq!(request.auto_resolution_window_ms(), Some(30_000));
     assert_eq!(
         offered_option_kinds.unwrap().as_slice(),
-        [crate::acp::intent::PermissionOptionKind::RejectOnce]
+        [sage_acp_protocol::intent::PermissionOptionKind::RejectOnce]
     );
     for wrong in [
         PermissionDecision::AllowOnce,

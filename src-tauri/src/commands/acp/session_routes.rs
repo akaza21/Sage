@@ -31,15 +31,25 @@ pub(crate) async fn start_acp_session_inner(
     let project_root = admitted
         .project_root(&state.database, &transition)
         .map_err(|_| root_unavailable())?;
-    // A thinking level chosen before the session existed is kept only when
-    // this binding lists it for the chosen model; the composer shows any
-    // other level as Default, which is what the session then starts with.
-    let effort_choice = request.effort.as_ref().and_then(|effort| {
-        admitted.launch_effort_choice(
-            request.model_id.as_ref().map(|model| model.as_str()),
-            effort.as_str(),
-        )
-    });
+    // A thinking level chosen before the session existed starts the session
+    // only when this binding lists it for the chosen model; no `effort` is
+    // the harness's default. A level the binding does not list, or one it
+    // cannot be checked against (account discovery for another root, or one
+    // that went stale), starts nothing, rather than being dropped unseen.
+    let effort_choice = match &request.effort {
+        Some(effort) => {
+            let model = state
+                .acp
+                .launch_model(&admitted, &project_root, request.model_id.as_ref())
+                .ok_or_else(effort_unconfirmed)?;
+            Some(
+                admitted
+                    .launch_effort_choice(&model, effort.as_str())
+                    .ok_or_else(effort_not_offered)?,
+            )
+        }
+        None => None,
+    };
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
     let started = state
@@ -61,10 +71,11 @@ pub(crate) async fn start_acp_session_inner(
         )
         .await
         .map_err(session_error)?;
-    if let Some(choice) = effort_choice
+    session_access::carry_chat_access(state, &started.session_id)?;
+    if let Some(effort) = effort_choice
         && !state
             .acp
-            .remember_start_choice(&started.session_id, &choice)
+            .remember_start_choice(&started.session_id, &effort.choice, &effort.offered)
     {
         return Err(AcpIpcError::Internal {
             message: safe_message("The chosen thinking level could not be kept. Send again."),
@@ -93,7 +104,7 @@ pub(crate) async fn activate_acp_session_inner(
             .database
             .selected_project_root_authority(&transition)
             .map_err(|_| AcpIpcError::Unavailable {
-                reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
+                reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
                 message: safe_message(
                     "The selected project root is unavailable or changed; reselect it and retry.",
                 ),
@@ -107,9 +118,14 @@ pub(crate) async fn activate_acp_session_inner(
     let project_root = admitted
         .project_root(&state.database, &transition)
         .map_err(|_| binding_unavailable())?;
+    // The session takes over the chat's access before it runs; one the
+    // activation goes on in instead (a resume on a later harness release
+    // links a new session) takes it once activated. A read of either's
+    // access takes it over first too, should either copy not be made.
+    session_access::carry_chat_access(state, &request.session_id)?;
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
-    state
+    let owner = state
         .acp
         .activate_session(
             admitted,
@@ -127,20 +143,39 @@ pub(crate) async fn activate_acp_session_inner(
         )
         .await
         .map_err(session_error)?;
+    session_access::carry_chat_access(state, &owner.session_id)?;
     mutation_response(state, project_id, chat_id)
+}
+
+fn effort_unconfirmed() -> AcpIpcError {
+    AcpIpcError::Unavailable {
+        reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
+        message: safe_message(
+            "The chosen thinking level could not be confirmed. Select the harness again to refresh its models, then send.",
+        ),
+    }
+}
+
+fn effort_not_offered() -> AcpIpcError {
+    AcpIpcError::Unavailable {
+        reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
+        message: safe_message(
+            "The chosen thinking level is not offered for this model any more. Choose another level, then send.",
+        ),
+    }
 }
 
 fn root_unavailable() -> AcpIpcError {
     AcpIpcError::Unavailable {
-        reason: crate::acp::intent::AcpUnavailableReason::CapabilityUnavailable,
+        reason: crate::acp::ipc::AcpUnavailableReason::CapabilityUnavailable,
         message: safe_message("Codex beta requires one unchanged Project root."),
     }
 }
 
 pub(super) fn durable_binding_id(
     state: &AppState,
-    session_id: &crate::acp::contract::SageAgentSessionId,
-) -> Result<crate::acp::intent::BindingId, crate::acp::store::StoreError> {
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
+) -> Result<sage_acp_protocol::intent::BindingId, crate::acp::store::StoreError> {
     let binding_id: String = state
         .database
         .connection()
@@ -150,7 +185,7 @@ pub(super) fn durable_binding_id(
             |row| row.get(0),
         )
         .map_err(crate::acp::store::StoreError::Database)?;
-    crate::acp::intent::BindingId::new("bindingId", binding_id)
+    sage_acp_protocol::intent::BindingId::new("bindingId", binding_id)
         .map_err(|_| crate::acp::store::StoreError::Corrupt("session binding identity"))
 }
 
@@ -176,10 +211,11 @@ pub(super) fn refuse_archived_chat(
 
 pub(super) fn session_capabilities(
     state: &AppState,
-    project_id: &crate::acp::contract::SageProjectId,
-    chat_id: &crate::acp::contract::SageChatId,
-    session_id: &crate::acp::contract::SageAgentSessionId,
-) -> Result<Option<crate::acp::intent::CapabilitySnapshotV1>, crate::acp::store::StoreError> {
+    project_id: &sage_acp_protocol::contract::SageProjectId,
+    chat_id: &sage_acp_protocol::contract::SageChatId,
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
+) -> Result<Option<sage_acp_protocol::intent::CapabilitySnapshotV1>, crate::acp::store::StoreError>
+{
     use rusqlite::OptionalExtension;
     let capabilities: Option<String> = state
         .database
@@ -200,13 +236,13 @@ pub(super) fn session_capabilities(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{
+    use crate::acp::store::{
+        ActivateSessionCommand, CompleteActivationCommand, StartSessionCommand, activate_session,
+        complete_activation, start_session,
+    };
+    use sage_acp_protocol::{
         contract::{ClientIntentId, RequiredText, RuntimeEpoch, SageChatId, SageProjectId},
         intent::{BindingId, CapabilitySnapshotV1, ExternalId},
-        store::{
-            ActivateSessionCommand, CompleteActivationCommand, StartSessionCommand,
-            activate_session, complete_activation, start_session,
-        },
     };
 
     #[test]

@@ -1,13 +1,15 @@
 use crate::acp::{
+    projection::ActivityRole,
+    transcript_quote::Prompt,
+    transport::{Frame, OutboundFrame},
+};
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
     intent::{
         ActivityProvenanceV1, CapabilitySnapshotV1, ExternalId, ModelId, NormalizedPayload,
-        PageCursor, Prompt, SafeResourceRef, UnavailableResourceReason,
-        session_event::SessionScopedEvent,
+        PageCursor, SafeResourceRef, UnavailableResourceReason, session_event::SessionScopedEvent,
     },
     lifecycle::{ActivityLifecycle, ItemLifecycle, ToolState, TurnState, TurnTerminalReason},
-    projection::ActivityRole,
-    transport::{Frame, OutboundFrame},
 };
 use sage_core::limits::LIMITS;
 
@@ -45,7 +47,7 @@ pub(crate) enum AdapterCommand {
     Prompt {
         prompt: Prompt,
         client_message_id: RequiredText<512>,
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     },
     Steer {
         prompt: Prompt,
@@ -54,7 +56,7 @@ pub(crate) enum AdapterCommand {
     Cancel,
     ResolvePermission {
         request_id: SageServerRequestId,
-        decision: crate::acp_protocol::permissions::PermissionDecision,
+        decision: sage_acp_protocol::permissions::PermissionDecision,
     },
 }
 
@@ -68,7 +70,6 @@ pub(crate) trait ResourceMapper {
         None
     }
 
-    /// Optional bounded UTF-8 context for reconstructing a reported edit.
     /// Callers must validate the patch against it before retaining a snapshot.
     fn read_diff_context(&self, _resource: &SafeResourceRef) -> Option<String> {
         None
@@ -118,7 +119,7 @@ pub(crate) enum AdapterEvent {
     TerminalReason {
         id: AdapterIdentity,
         reason: TurnTerminalReason,
-        message: Option<crate::acp::contract::SafeText<8192>>,
+        message: Option<sage_acp_protocol::contract::SafeText<8192>>,
     },
     Item {
         id: AdapterIdentity,
@@ -136,7 +137,7 @@ pub(crate) enum AdapterEvent {
         child_thread_id: ExternalId,
         child_turn_id: ExternalId,
         item_id: ExternalId,
-        role: Option<crate::acp_protocol::codex_protocol::ChildTextRole>,
+        role: Option<sage_acp_protocol::codex_protocol::ChildTextRole>,
         lifecycle: ItemLifecycle,
         tool_state: Option<ToolState>,
         payload: NormalizedPayload,
@@ -175,7 +176,7 @@ pub(crate) enum AdapterEvent {
     PermissionResolved {
         turn_id: AdapterIdentity,
         external_request_id: ExternalId,
-        state: crate::acp::lifecycle::ServerRequestState,
+        state: sage_acp_protocol::lifecycle::ServerRequestState,
     },
     Acknowledged,
     SteerResponse {

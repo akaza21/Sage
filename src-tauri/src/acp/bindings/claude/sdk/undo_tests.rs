@@ -1,16 +1,18 @@
-//! Real transcript files and SQLite transitions across the undo boundary.
 use super::{
     launch::SessionLaunch,
     transcript::{self, TranscriptError},
 };
 use crate::acp::{
+    store::{self, StoreError, TurnUndoneCommand, turn_undo::fixture::Fixture},
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SageAgentSessionId,
         SageTurnId,
     },
-    intent::{ExternalId, Prompt},
+    intent::ExternalId,
     lifecycle::TurnState,
-    store::{self, StoreError, TurnUndoneCommand, turn_undo::fixture::Fixture},
 };
 use std::{io::Write, path::PathBuf};
 
@@ -56,7 +58,7 @@ impl Chat {
     /// Uses the same transcript resolver and durable admission as the service;
     /// completion below represents the harness's successful control response.
     fn stage(&self, turn: &str) -> Result<TurnUndoneCommand, String> {
-        let owner = crate::acp::scheduler::RuntimeOwner {
+        let owner = sage_acp_protocol::scheduler::RuntimeOwner {
             project_id: self.fixture.project.clone(),
             chat_id: self.fixture.chat.clone(),
             session_id: SageAgentSessionId::parse("session-a").unwrap(),
@@ -183,7 +185,6 @@ fn undo_on_an_unreadable_transcript_fails_and_keeps_the_turn() {
     );
     assert_eq!(chat.fixture.page_turns(), [LAST, FIRST]);
     assert!(chat.fixture.pending().is_none());
-    // Missing parent links cannot be mistaken for a proven first prompt.
     std::fs::write(
         &chat.transcript,
         serde_json::json!({"type":"user",

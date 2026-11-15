@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
-    bindings::codex::state::{ExternalKind, PlanEntries},
+use crate::acp::bindings::codex::state::{ExternalKind, PlanEntries};
+use sage_acp_protocol::{
     contract::{BoundedVec, SafeText},
     intent::{NormalizedPayload, NormalizedPlanEntry, NormalizedPlanState},
     lifecycle::ItemLifecycle,

@@ -1,9 +1,7 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::{
-    acp::contract::{EntityRevision, SageItemId, SageTurnId},
-    persistence::Database,
-};
+use crate::persistence::Database;
+use sage_acp_protocol::contract::{EntityRevision, SageItemId, SageTurnId};
 use sage_core::limits::LIMITS;
 
 use super::{

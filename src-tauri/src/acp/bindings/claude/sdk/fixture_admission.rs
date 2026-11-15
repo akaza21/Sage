@@ -1,7 +1,3 @@
-//! Desktop fixture admission: a `claude-sdk-*` replay case stands in for
-//! the Claude Code CLI, so the real app drives the SDK binding without the
-//! owner's Claude Code profile.
-
 use std::ffi::OsString;
 
 use super::*;
@@ -31,7 +27,7 @@ impl AdmittedClaudeSdkBinding {
     fn admit_fixture(
         selection: crate::launch_profile::FixtureSelection,
     ) -> Result<Self, AdapterRuntimeError> {
-        if !crate::acp_protocol::native_cases::native_case_matches(&selection.case, "claude-sdk") {
+        if !sage_acp_protocol::native_cases::native_case_matches(&selection.case, "claude-sdk") {
             return Err(AdapterRuntimeError::LaunchUnavailable);
         }
         selection
@@ -56,7 +52,6 @@ impl AdmittedClaudeSdkBinding {
         })
     }
 
-    /// The replay child, confined to the fixture profile and project.
     pub(super) fn fixture_launch(
         &self,
         selection: &crate::launch_profile::FixtureSelection,

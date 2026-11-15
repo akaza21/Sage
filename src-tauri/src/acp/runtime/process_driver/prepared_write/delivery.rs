@@ -1,4 +1,5 @@
-use crate::acp::{contract::SageTurnId, intent::Prompt, store::SendObservation};
+use crate::acp::{store::SendObservation, transcript_quote::Prompt};
+use sage_acp_protocol::contract::SageTurnId;
 
 use super::super::{WriteFence, WriteFenceError};
 

@@ -6,10 +6,8 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{
-    acp::bindings::release_version::ReleaseVersion, domain::HarnessUpdate,
-    harness_discovery::PublishedRelease,
-};
+use crate::{acp::bindings::release_version::ReleaseVersion, harness_discovery::PublishedRelease};
+use sage_domain::harness::HarnessUpdate;
 
 /// How long one update check stands before a refresh checks again.
 const CHECK_INTERVAL: Duration = Duration::from_secs(6 * 60 * 60);

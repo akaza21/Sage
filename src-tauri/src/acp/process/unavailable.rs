@@ -1,13 +1,12 @@
 use super::TreeCapacityLease;
 use super::platform::LaunchFailure;
-use super::supervisor::{
-    LaunchError, LaunchFailureTracker, LaunchSpec, TreeExit, ZeroProcessToken,
-};
+use super::supervisor::{LaunchFailureTracker, LaunchSpec, TreeExit, ZeroProcessToken};
 use crate::acp::{
     process::ProcessIdentityReceipt,
     redaction::{SafeDiagnostic, SafeStderrDiagnostic},
     transport::{Frame, FrameError, FrameWriteOutcome, OutboundFrame},
 };
+use sage_process::error::LaunchError;
 
 /// Placeholder authority for platforms that have not proved an enforced tree.
 /// It cannot be constructed through the product launch path.
@@ -140,6 +139,22 @@ impl TreeControl {
 
     pub(crate) fn native_exit_code_if_exited(&self) -> Result<Option<i32>, LaunchError> {
         Err(LaunchError::PlatformUnavailable)
+    }
+
+    pub(crate) fn exit_before_termination(&self) -> Result<Option<TreeExit>, LaunchError> {
+        Err(LaunchError::PlatformUnavailable)
+    }
+
+    pub(crate) fn stderr_watermark(&self) -> Option<u64> {
+        None
+    }
+
+    pub(crate) fn harness_error(
+        &self,
+        _deadline: std::time::Instant,
+        _watermark: u64,
+    ) -> Option<String> {
+        None
     }
 }
 

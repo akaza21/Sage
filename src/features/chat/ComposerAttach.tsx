@@ -1,8 +1,9 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type RefObject } from "react";
 
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
 import { MenuPopover } from "../../ui/MenuPopover";
+import type { ImageAction } from "./useComposerImageInput";
 
 /**
  * Why files cannot be staged for this chat's next message, or null. Native
@@ -31,16 +32,19 @@ function refusal(chatId: string): string | null {
 export function ComposerAttach({
   chatId,
   presses,
-  triggerId,
+  triggerRef,
   imageAction,
   onPick,
 }: {
   chatId: string;
   /** Presses of the attach button so far; each is taken once. */
   presses: number;
-  /** The attach button, which anchors the menu. */
-  triggerId: string;
-  imageAction?: { disabled: boolean; onChoose: () => void };
+  /**
+   * The attach button, which anchors the menu. It is set before this part
+   * mounts, so the menu is placed from its first commit.
+   */
+  triggerRef: RefObject<HTMLButtonElement | null>;
+  imageAction?: ImageAction;
   /** Asks the batch's owner for native's file dialog. */
   onPick: () => void;
 }) {
@@ -61,7 +65,7 @@ export function ComposerAttach({
   if (presses !== taken) {
     setTaken(presses);
     const refused = refusal(chatId);
-    if (imageAction) setMenuOpen(true);
+    if (imageAction && !imageAction.reason) setMenuOpen(true);
     else if (refused) setNotice(refused);
     else setPicks((count) => count + 1);
   }
@@ -71,13 +75,6 @@ export function ComposerAttach({
     picked.current = picks;
     onPick();
   }, [onPick, picks]);
-  // The menu anchors on the attach button.
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  useLayoutEffect(() => {
-    triggerRef.current = document.getElementById(
-      triggerId,
-    ) as HTMLButtonElement | null;
-  });
   const refused = menuOpen ? refusal(chatId) : null;
   return (
     <>

@@ -2,16 +2,16 @@ use rusqlite::params;
 
 use super::*;
 use crate::{
-    acp::{
-        contract::{ClientIntentId, RuntimeEpoch},
-        intent::{ExternalId, NormalizedPayload, ToolCategory},
-        store::{
-            AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory,
-            CompleteActivationCommand, abort_activation, activate_session, complete_activation,
-            load_chat_page,
-        },
+    acp::store::{
+        AbortActivationCommand, ActivateSessionCommand, ActivationAbortCategory,
+        CompleteActivationCommand, abort_activation, activate_session, complete_activation,
+        load_chat_page,
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, RuntimeEpoch},
+    intent::{ExternalId, NormalizedPayload, ToolCategory},
 };
 
 const EARLIER_DIGEST: &str = "e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1e1";
@@ -32,8 +32,6 @@ impl Drop for Fixture {
 }
 
 impl Fixture {
-    /// A Chat whose parked head session was bound by an earlier release,
-    /// with one completed Turn on its native thread.
     fn new() -> Self {
         let root = std::env::temp_dir().join(format!("sage-resume-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
@@ -111,7 +109,7 @@ impl Fixture {
                 binding_digest: CURRENT_DIGEST.into(),
                 harness_version: SafeText::new(
                     "harnessVersion",
-                    crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
+                    sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION,
                 )
                 .unwrap(),
                 now_millis: 10,
@@ -149,7 +147,7 @@ impl Fixture {
                 artifact_digest: ARTIFACT_DIGEST.into(),
                 external_session_id: ExternalId::new("externalSessionId", thread).unwrap(),
                 capabilities_json: capabilities(
-                    crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY,
+                    sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY,
                 ),
                 now_millis: 30,
             },
@@ -169,7 +167,6 @@ impl Fixture {
             .unwrap()
     }
 
-    /// The earlier session is closed with its identity and thread unchanged.
     fn earlier_keeps_its_identity(&self) {
         assert_eq!(
             self.session_row("session-earlier"),
@@ -183,7 +180,6 @@ impl Fixture {
     }
 }
 
-/// The canonical capability snapshot of a negotiated session.
 fn capabilities(protocol: &str) -> String {
     PENDING_CAPABILITIES_JSON.replace("\"pending\"", &format!("\"{protocol}\""))
 }
@@ -193,6 +189,13 @@ fn an_earlier_session_continues_in_a_linked_head_that_fills_the_same_thread() {
     let fixture = Fixture::new();
     let linked = fixture.link().unwrap();
     assert_eq!(linked.disposition, MutationDisposition::Applied);
+    assert_eq!(
+        crate::acp::store::preceding_session(&fixture.database.connection(), &linked.session_id)
+            .unwrap()
+            .as_ref()
+            .map(SageAgentSessionId::as_str),
+        Some("session-earlier")
+    );
     let id = linked.session_id.as_str();
     assert_eq!(
         fixture.session_row(id),
@@ -334,7 +337,6 @@ fn history_spans_the_earlier_and_the_linked_session() {
         .iter()
         .map(|turn| (turn.id.as_str(), turn.session_id.as_str()))
         .collect();
-    // The page lists the newest session's Turns first.
     assert_eq!(
         turns,
         [
@@ -347,7 +349,7 @@ fn history_spans_the_earlier_and_the_linked_session() {
         [item] if matches!(
             item.content,
             crate::acp::projection::ItemContent::PermissionRequest {
-                state: crate::acp::lifecycle::ServerRequestState::ResolvedDeclined,
+                state: sage_acp_protocol::lifecycle::ServerRequestState::ResolvedDeclined,
                 ..
             }
         )
@@ -360,7 +362,7 @@ fn a_resume_link_names_an_earlier_native_session_of_the_same_chat_and_never_chan
     let snapshot = fixture.database.bootstrap_snapshot().unwrap();
     let other_chat = fixture
         .database
-        .create_chat(&crate::domain::ProjectLayoutRequest {
+        .create_chat(&sage_domain::chat::ProjectLayoutRequest {
             project_id: fixture.project.as_str().to_owned(),
             tabs: snapshot.tabs,
             active_tab_id: snapshot.active_tab_id,

@@ -1,5 +1,3 @@
-//! Sanitized P-02 receipt construction and owner keys.
-
 use super::*;
 
 pub(crate) fn receipt(

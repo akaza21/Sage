@@ -75,8 +75,10 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::domain::{FileChange, GitFileMutationAction, ResourceRef};
     use crate::workspace::Workspace;
+    use sage_domain::{
+        file_operations::GitFileMutationAction, repository::FileChange, resource::ResourceRef,
+    };
 
     fn git(root: &Path, args: &[&str]) {
         assert!(

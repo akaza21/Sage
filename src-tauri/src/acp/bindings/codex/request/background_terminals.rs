@@ -1,14 +1,11 @@
 use serde_json::json;
 
-use crate::acp::{
-    background_terminals::{MAX_BACKGROUND_TERMINALS, TerminalAction},
-    contract::RequiredText,
-};
+use crate::acp::background_terminals::{MAX_BACKGROUND_TERMINALS, TerminalAction};
+use sage_acp_protocol::contract::RequiredText;
 
 use super::{OutgoingRequest, RequestError, RequestKind};
 
 impl OutgoingRequest {
-    /// One bounded page of background terminals, or a stop of one or all.
     pub(crate) fn background_terminals(
         id: u64,
         thread_id: &RequiredText<512>,

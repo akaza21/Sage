@@ -121,8 +121,6 @@ impl StandardAcpHandshake {
         Ok(session_id)
     }
 
-    /// After the agent refused `session/new` for sign-in and the client
-    /// authenticated, the next `session/new` carries request id `id`.
     pub(crate) fn reopen_session_as(&mut self, id: u64) -> Result<(), StandardAcpHandshakeError> {
         if self.stage != Stage::Ready || id <= self.session_request_id {
             return Err(StandardAcpHandshakeError::Operation);

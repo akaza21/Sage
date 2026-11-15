@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
         ExternalId, NormalizedPayload, NormalizedPlanEntry, NormalizedPlanState,

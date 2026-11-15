@@ -3,7 +3,7 @@
 //! the turn first and goes to the new runtime.
 
 use super::*;
-use crate::acp::{intent::AcpConflictResource, service::UndoneRelaunchError};
+use crate::acp::{ipc::AcpConflictResource, service::UndoneRelaunchError};
 
 /// Runs under the project transition lock `transition`, as an activation does.
 pub(super) async fn relaunch_undone(
@@ -56,6 +56,7 @@ pub(super) async fn relaunch_undone(
             }
             UndoneRelaunchError::Activation(error) => session_error(error),
         })?;
+    super::super::session_access::carry_chat_access(state, &relaunched.session_id)?;
     // The park and the activation moved the page on; the prompt was
     // validated against the page the user saw just before them.
     let snapshot = state

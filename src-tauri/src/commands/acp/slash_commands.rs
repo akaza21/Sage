@@ -1,10 +1,10 @@
 use super::*;
 use crate::acp::{
-    contract::RequiredText,
-    intent::Prompt,
     session_action::SessionAction,
     slash_commands::{AvailableCommand, CommandDispatch, CommandList, CommandMark},
+    transcript_quote::Prompt,
 };
+use sage_acp_protocol::contract::RequiredText;
 use serde::Deserialize;
 
 #[derive(Deserialize)]

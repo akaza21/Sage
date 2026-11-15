@@ -1,16 +1,13 @@
 use super::*;
-use crate::acp::{
-    browser::{
-        BrowserCapability, BrowserCommand, BrowserFailure, BrowserRequest, BrowserResult,
-        BrowserScope,
-        attachment::BrowserAttachments,
-        permission::{
-            BrowserCapabilityDispatch, BrowserDispatchPermit, BrowserPermissionChoice,
-            BrowserPermissionGate, BrowserPermissionPrompt, PendingBrowserResult,
-        },
+use crate::acp::browser::{
+    BrowserCapability, BrowserCommand, BrowserFailure, BrowserRequest, BrowserResult, BrowserScope,
+    attachment::BrowserAttachments,
+    permission::{
+        BrowserCapabilityDispatch, BrowserDispatchPermit, BrowserPermissionChoice,
+        BrowserPermissionGate, BrowserPermissionPrompt, PendingBrowserResult,
     },
-    contract::{SageChatId, SageProjectId},
 };
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 
 #[test]

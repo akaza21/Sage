@@ -39,7 +39,6 @@ fn launch_is_read_only_by_construction() {
         ["--mode", "rpc", "--tools", "read"]
     );
     assert!(PI_READ_ONLY_ARGS.contains(&"--no-extensions"));
-    // Templates, skills and saved sessions load as in Pi's own CLI.
     for loaded in ["--no-skills", "--no-prompt-templates", "--no-session"] {
         assert!(!PI_READ_ONLY_ARGS.contains(&loaded), "{loaded}");
     }
@@ -58,8 +57,6 @@ fn bridge_launch_registers_its_tools_without_enabling_builtin_writers() {
     );
     let bridge = PathBuf::from("bridge").join("extension.mjs");
     let args = pi_launch_args(Some(bridge.clone()));
-    // Pi's --tools allowlist also filters extension tools, which would leave
-    // the bridge's write, edit and bash unregistered.
     assert!(!args.iter().any(|arg| arg == "--tools"));
     assert!(args.iter().any(|arg| arg == "--no-builtin-tools"));
     for disabled in ["--no-extensions", "--no-themes"] {

@@ -1,4 +1,5 @@
-use crate::acp::{contract::RequiredText, goal::NativeRead};
+use crate::acp::goal::NativeRead;
+use sage_acp_protocol::contract::RequiredText;
 
 use super::{AdapterError, CodexAdapter};
 use crate::acp::bindings::codex::request::OutgoingRequest;
@@ -17,7 +18,7 @@ impl CodexAdapter {
     #[cfg(test)]
     pub(crate) fn learn_child_for_test(&mut self, child: &str) {
         self.child_threads
-            .push(crate::acp::contract::SafeText::new("child", child).unwrap());
+            .push(sage_acp_protocol::contract::SafeText::new("child", child).unwrap());
     }
     pub(crate) fn child_read_pending(&self) -> bool {
         self.pending_read.is_some()
@@ -154,8 +155,6 @@ impl CodexAdapter {
         self.child_read_tombstone.is_some() || !self.abandoned_reads.is_empty()
     }
 
-    /// Stops waiting for a read whose caller gave up, when the read abandons
-    /// at its deadline; its late answer is dropped by `take_abandoned_read`.
     pub(crate) fn abandon_native_read(&mut self) {
         let Some(id) = self
             .read_scope()
@@ -170,7 +169,6 @@ impl CodexAdapter {
         self.abandoned_reads.push(id);
     }
 
-    /// Whether `id` answers an abandoned read, which is then over.
     pub(crate) fn take_abandoned_read(&mut self, id: u64) -> bool {
         let before = self.abandoned_reads.len();
         self.abandoned_reads.retain(|dead| *dead != id);

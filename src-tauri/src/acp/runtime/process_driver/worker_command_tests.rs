@@ -3,9 +3,9 @@ use std::{
     time::Instant,
 };
 
-use crate::acp::{
+use crate::acp::runtime::{ConfigCompletionSink, LiveRuntimePort};
+use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
-    runtime::{ConfigCompletionSink, LiveRuntimePort},
     session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigRevision},
 };
 use sage_core::limits::LIMITS;
@@ -104,8 +104,11 @@ fn worker_commands_use_the_frozen_operation_deadlines() {
 fn a_prompt_with_the_largest_admitted_images_queues_while_harness_output_fills_the_lane() {
     use crate::acp::{
         attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
+        transcript_quote::Prompt,
+    };
+    use sage_acp_protocol::{
         contract::{ClientIntentId, ProjectGeneration, ProjectionRevision},
-        intent::{ImageMediaType, Prompt},
+        intent::ImageMediaType,
     };
     use sage_core::limits::{IMAGE_PREVIEW_BYTES, PROMPT_IMAGE_TOTAL_BYTES};
     let mailbox = DriverMailbox::new().unwrap();
@@ -138,7 +141,7 @@ fn a_prompt_with_the_largest_admitted_images_queues_while_harness_output_fills_t
             prompt,
             now_millis: sage_core::time::now_millis(),
         },
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     };
     assert!(
         mailbox

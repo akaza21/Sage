@@ -2,7 +2,6 @@ use super::*;
 use crate::acp::slash_commands::{CommandMark, CommandSource};
 use serde_json::json;
 
-/// Ends the fixture's Turn and prepares the next with this prompt.
 fn prepare(fixture: &mut Fixture, prompt: Prompt, intent: &str) {
     let owner = fixture.owner.clone();
     apply_adapter_inbound_batch(

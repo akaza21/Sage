@@ -2,7 +2,7 @@
 
 use rusqlite::{OptionalExtension, params};
 
-use crate::acp::contract::{
+use sage_acp_protocol::contract::{
     EntityRevision, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
 };
 
@@ -111,7 +111,7 @@ mod tests {
     use rusqlite::params;
 
     use super::*;
-    use crate::acp::contract::{EntityRevision, SageChatId, SageProjectId, SageTurnId};
+    use sage_acp_protocol::contract::{EntityRevision, SageChatId, SageProjectId, SageTurnId};
 
     #[test]
     fn accept_disposition_records_a_durable_checkpoint_for_the_turn_revision() {

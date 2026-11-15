@@ -2,18 +2,16 @@ use std::time::Instant;
 
 use crate::{
     acp::{
-        contract::SageTurnId,
-        lifecycle::DeliveryState,
         recovery::recover_after_restart,
         runtime::{
             BoundedThread, DriverError, HostCancelIntent, HostError, HostOutcome, HostPromptIntent,
             HostState, LiveRuntimeEngine, LiveRuntimePort, LiveWrite, RuntimeHost,
         },
-        scheduler::RuntimeOwner,
         store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
     },
     persistence::Database,
 };
+use sage_acp_protocol::{contract::SageTurnId, lifecycle::DeliveryState, scheduler::RuntimeOwner};
 
 use super::{
     external_fixture_adapters::{ExternalCase, send_started},

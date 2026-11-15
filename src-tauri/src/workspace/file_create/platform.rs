@@ -25,7 +25,7 @@ pub(super) struct ParentAuthority<'a> {
 
 pub(super) struct DirectoryCreateObservation {
     pub(super) warning: Option<String>,
-    pub(super) listing: Option<AppResult<crate::domain::DirectoryListing>>,
+    pub(super) listing: Option<AppResult<sage_domain::project::DirectoryListing>>,
     pub(super) resource_confirmed: bool,
     _guards: Vec<std::fs::File>,
 }
@@ -111,13 +111,13 @@ pub(super) fn create_new<B, S, L>(
     list_after: L,
 ) -> AppResult<(
     Option<String>,
-    AppResult<crate::domain::DirectoryListing>,
+    AppResult<sage_domain::project::DirectoryListing>,
     bool,
 )>
 where
     B: FnOnce(&Path) -> std::io::Result<()>,
     S: FnOnce(&File) -> std::io::Result<()>,
-    L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
+    L: FnOnce() -> AppResult<sage_domain::project::DirectoryListing>,
 {
     let directory = open_parent(root, expected_root, parent)?;
     before_create(&root.join(parent))?;
@@ -169,7 +169,7 @@ where
     B: FnOnce(&Path) -> std::io::Result<()>,
     C: FnOnce(),
     S: FnOnce(&File) -> std::io::Result<()>,
-    L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
+    L: FnOnce() -> AppResult<sage_domain::project::DirectoryListing>,
 {
     let directory = open_parent(parent.root, parent.expected_root, parent.relative_path)?;
     before_create(&parent.root.join(parent.relative_path))?;
@@ -299,13 +299,13 @@ mod windows {
         list_after: L,
     ) -> AppResult<(
         Option<String>,
-        AppResult<crate::domain::DirectoryListing>,
+        AppResult<sage_domain::project::DirectoryListing>,
         bool,
     )>
     where
         B: FnOnce(&Path) -> std::io::Result<()>,
         S: FnOnce(&File) -> std::io::Result<()>,
-        L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
+        L: FnOnce() -> AppResult<sage_domain::project::DirectoryListing>,
     {
         let (guards, directory) = open_parent(root, expected_root, parent)?;
         before_create(&directory)?;
@@ -334,7 +334,7 @@ mod windows {
         B: FnOnce(&Path) -> std::io::Result<()>,
         C: FnOnce(),
         S: FnOnce(&File) -> std::io::Result<()>,
-        L: FnOnce() -> AppResult<crate::domain::DirectoryListing>,
+        L: FnOnce() -> AppResult<sage_domain::project::DirectoryListing>,
     {
         let (guards, directory) =
             open_parent(parent.root, parent.expected_root, parent.relative_path)?;
@@ -378,13 +378,13 @@ pub(super) fn create_new<B, S, L>(
     _list_after: L,
 ) -> sage_core::error::AppResult<(
     Option<String>,
-    sage_core::error::AppResult<crate::domain::DirectoryListing>,
+    sage_core::error::AppResult<sage_domain::project::DirectoryListing>,
     bool,
 )>
 where
     B: FnOnce(&std::path::Path) -> std::io::Result<()>,
     S: FnOnce(&std::fs::File) -> std::io::Result<()>,
-    L: FnOnce() -> sage_core::error::AppResult<crate::domain::DirectoryListing>,
+    L: FnOnce() -> sage_core::error::AppResult<sage_domain::project::DirectoryListing>,
 {
     Err(sage_core::error::AppError::InvalidRequest(
         "safe file creation is unavailable on this platform".into(),
@@ -404,7 +404,7 @@ where
     B: FnOnce(&std::path::Path) -> std::io::Result<()>,
     C: FnOnce(),
     S: FnOnce(&std::fs::File) -> std::io::Result<()>,
-    L: FnOnce() -> sage_core::error::AppResult<crate::domain::DirectoryListing>,
+    L: FnOnce() -> sage_core::error::AppResult<sage_domain::project::DirectoryListing>,
 {
     Err(sage_core::error::AppError::InvalidRequest(
         "safe folder creation is unavailable on this platform".into(),

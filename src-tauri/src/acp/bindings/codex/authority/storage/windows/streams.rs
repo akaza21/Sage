@@ -155,7 +155,6 @@ mod tests {
             Err(StateAuthorityError::Stream)
         );
         let file = std::fs::File::open(std::env::current_exe().unwrap()).unwrap();
-        // An access or I/O failure must never fall back to a capability claim.
         assert_eq!(
             unsupported_stream_query(&file, windows_sys::Win32::Foundation::ERROR_ACCESS_DENIED),
             Err(StateAuthorityError::Stream)

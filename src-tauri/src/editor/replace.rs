@@ -8,7 +8,6 @@ use super::{
     normalized_resource,
 };
 use crate::{
-    domain::ResourceRef,
     editor_content::{
         detect_line_ending, fingerprint, materialize_content, reject_oversized_materialized,
         reject_unsupported_content,
@@ -17,6 +16,7 @@ use crate::{
     persistence::Database,
     workspace::{Workspace, directory_skip::protected_workspace_name},
 };
+use sage_domain::resource::ResourceRef;
 
 /// `content` has `\n` line ends; `line_ending` is the File's own, restored on write.
 pub struct ReplaceSource {

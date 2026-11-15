@@ -1,14 +1,8 @@
-//! Claude Code's subagents as child transcripts: the parent turn shows one
-//! collaboration row per subagent, and the subagent's own messages fill the
-//! child transcript Sage stores for that row.
-
-use crate::{
-    acp::{
-        contract::{BoundedVec, SafeText},
-        intent::NormalizedPayload,
-        lifecycle::ItemLifecycle,
-    },
-    acp_protocol::codex_protocol::ChildTextRole,
+use sage_acp_protocol::{
+    codex_protocol::ChildTextRole,
+    contract::{BoundedVec, SafeText},
+    intent::NormalizedPayload,
+    lifecycle::ItemLifecycle,
 };
 
 use super::*;
@@ -43,12 +37,9 @@ pub(crate) enum ChildOutcome {
     Stopped,
 }
 
-/// One translator per open subagent, so its rows never mix with the
-/// parent's, with the row that announced it.
 #[derive(Default)]
 pub(crate) struct Children(BTreeMap<String, (ClaudeTranslator, Row)>);
 
-/// What the parent's row for a subagent shows besides its state.
 #[derive(Clone)]
 struct Row {
     label: String,
@@ -57,8 +48,6 @@ struct Row {
 }
 
 impl ClaudeRuntime {
-    /// The shared events for one subagent fact; none outside a running turn,
-    /// for a subagent Sage does not follow, or for a frame it cannot show.
     pub(crate) fn child_event(
         &self,
         children: &mut Children,
@@ -151,8 +140,6 @@ impl ClaudeRuntime {
         Ok(events)
     }
 
-    /// The parent's collaboration row for a subagent; its key names the
-    /// child transcript.
     fn child_row(
         &self,
         active: &ActiveSession,
@@ -215,7 +202,7 @@ fn live(
     item: &str,
     role: Option<ChildTextRole>,
     lifecycle: ItemLifecycle,
-    tool_state: Option<crate::acp::lifecycle::ToolState>,
+    tool_state: Option<sage_acp_protocol::lifecycle::ToolState>,
     payload: NormalizedPayload,
 ) -> Result<SharedEvent, AdapterRuntimeError> {
     let child = ExternalId::new("childThreadId", key).map_err(frame)?;

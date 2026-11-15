@@ -90,8 +90,6 @@ impl BrowserHistory {
         }
     }
 
-    /// The navigation never committed (download, cancel): the cursor stays
-    /// where it was and a traversal it carried is dropped without failing.
     pub(super) fn abandon(&mut self, navigation_id: u64) {
         if self.active.is_some_and(|(id, _, _)| id == navigation_id) {
             self.active = None;

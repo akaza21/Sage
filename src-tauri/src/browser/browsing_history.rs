@@ -1,7 +1,3 @@
-//! Global browsing history (BF-7c): every page a browser tab commits, kept
-//! across launches in its own SQLite file next to Sage's other durable
-//! stores, for the History page to search and prune.
-//!
 //! Recording happens on WebView2's UI thread, so it must never touch the
 //! disk there. A tab's commit only hands a small message to a bounded
 //! queue; one worker thread, started on first use, owns the database and
@@ -29,15 +25,11 @@ mod writer;
 pub(crate) use store::{Cursor, MAX_PAGE, MAX_REMOVE, MAX_SEARCH_CHARS, VisitPage};
 use writer::{Write, Writer};
 
-/// The history file, in the launch profile's durable directory.
 pub(crate) const FILE_NAME: &str = "browsing-history.db";
-/// Pending messages the worker may lag behind by before visits are dropped.
+/// Visits past this many pending messages are dropped, never waited on.
 const QUEUE: usize = 256;
-/// The most queued writes one transaction takes.
 const MAX_BATCH: usize = 64;
-/// How long a reader waits for the worker before giving up.
 const REPLY_TIMEOUT: Duration = Duration::from_secs(10);
-/// Release SQLite's page and statement caches once browsing activity is quiet.
 const IDLE_TIMEOUT: Duration = Duration::from_secs(30);
 const UNAVAILABLE: &str = "browsing history is unavailable";
 
@@ -48,7 +40,7 @@ enum Request {
     Read(Read),
 }
 
-/// A request that answers, applied after every write queued before it.
+/// Applied after every write queued before it.
 enum Read {
     Page {
         search: String,
@@ -74,9 +66,6 @@ struct Shared {
     stopped: AtomicBool,
 }
 
-/// The handle tabs record into and commands read through. Cloning shares
-/// one queue and one worker. The default handle records nothing, for tab
-/// tests that do not concern history.
 #[derive(Clone, Default)]
 pub(crate) struct BrowsingHistory(Option<Arc<Shared>>);
 
@@ -95,16 +84,12 @@ impl BrowsingHistory {
         Self::open(PathBuf::from(":memory:"))
     }
 
-    /// Tab `tab` visited `url`, titled `title` when the page already has
-    /// one. Never blocks; false when the visit was not queued, so the
-    /// tab's later titles and same-document changes must not name it.
+    /// Never blocks; false when the visit was not queued, so the tab's later
+    /// titles and same-document changes must not name it.
     pub(super) fn record_visit(&self, tab: &str, url: &str, title: Option<&str>) -> bool {
         self.record(tab, url, title, false)
     }
 
-    /// Tab `tab` moved within the document of its latest queued visit to
-    /// `url` (pushState, fragment), still titled `title`. Never blocks;
-    /// false when it was not queued.
     pub(super) fn record_same_document(&self, tab: &str, url: &str, title: Option<&str>) -> bool {
         self.record(tab, url, title, true)
     }
@@ -119,8 +104,6 @@ impl BrowsingHistory {
         })
     }
 
-    /// Tab `tab`'s page reported `title`; it names that tab's latest
-    /// queued visit. Never blocks.
     pub(super) fn record_title(&self, tab: &str, title: &str) {
         self.write(Write::Title {
             tab: tab.to_owned(),
@@ -128,7 +111,6 @@ impl BrowsingHistory {
         });
     }
 
-    /// Queues `write` without waiting; false when it was dropped.
     fn write(&self, write: Write) -> bool {
         let Some(shared) = &self.0 else {
             return false;
@@ -150,8 +132,7 @@ impl BrowsingHistory {
         false
     }
 
-    /// Newest-first visits whose URL or title contains `search`. Blocks
-    /// until the worker answers; call it off the UI thread.
+    /// Blocks until the worker answers; call it off the UI thread.
     pub(crate) fn page(
         &self,
         search: String,
@@ -166,18 +147,17 @@ impl BrowsingHistory {
         })
     }
 
-    /// Removes the named visits. Blocks; call it off the UI thread.
+    /// Blocks; call it off the UI thread.
     pub(crate) fn remove(&self, ids: Vec<i64>) -> Result<usize, String> {
         self.ask(|reply| Read::Remove { ids, reply })
     }
 
-    /// Removes visits with `from <= visited_at < to`, after every visit
-    /// recorded before this call. Blocks; call it off the UI thread.
+    /// Removes visits in `[from, to)`, after every visit recorded before this
+    /// call. Blocks; call it off the UI thread.
     pub(crate) fn remove_range(&self, from: i64, to: i64) -> Result<usize, String> {
         self.ask(|reply| Read::RemoveRange { from, to, reply })
     }
 
-    /// Removes every visit recorded so far.
     pub(crate) fn clear(&self) -> Result<usize, String> {
         self.remove_range(i64::MIN, i64::MAX)
     }
@@ -224,8 +204,6 @@ fn now_ms() -> i64 {
         })
 }
 
-/// The worker: drains the queue in order, batching consecutive writes into
-/// one transaction. It ends when every handle is gone.
 fn run(path: &std::path::Path, receiver: &Receiver<Request>) {
     let mut connection: Option<Connection> = None;
     let mut writer = Writer::default();
