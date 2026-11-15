@@ -72,7 +72,7 @@ export async function uploadChatImages(
       await removeChatImage(intent, image.artifactId);
       throw new Error("Chat changed before the image could be attached.");
     }
-    const thumbnail = await createImageThumbnail(file, image);
+    const thumbnail = await createImageThumbnail(file);
     if (thumbnail) onPreview(image.artifactId, thumbnail);
   }
 }

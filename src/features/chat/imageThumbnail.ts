@@ -1,46 +1,42 @@
-import type { ImageAttachedContext } from "../../domain/attachedContext";
-
 // Twice the 24px chip tile, so the preview stays sharp on high-DPI screens.
 export const IMAGE_THUMBNAIL_EDGE_PX = 48;
-// The decode is bounded on its long edge, not its short one, so an extreme
-// aspect ratio cannot blow the intermediate bitmap up past this square.
-const DECODE_EDGE_PX = IMAGE_THUMBNAIL_EDGE_PX * 8;
 
-export async function createImageThumbnail(
-  file: Blob,
-  image: Pick<ImageAttachedContext, "width" | "height">,
-): Promise<Blob | null> {
+// An <img> reports its size after any EXIF rotation and without decoding the
+// pixels, so the crop below is exact and the only bitmap allocated is the
+// thumbnail itself, whatever the source's orientation or aspect ratio.
+async function loadImage(file: Blob): Promise<HTMLImageElement> {
+  const url = URL.createObjectURL(file);
+  try {
+    const image = new Image();
+    await new Promise((resolve, reject) => {
+      image.onload = resolve;
+      image.onerror = reject;
+      image.src = url;
+    });
+    return image;
+  } finally {
+    URL.revokeObjectURL(url);
+  }
+}
+
+export async function createImageThumbnail(file: Blob): Promise<Blob | null> {
   const edge = IMAGE_THUMBNAIL_EDGE_PX;
-  const longEdge = Math.min(
-    DECODE_EDGE_PX,
-    Math.max(image.width, image.height),
-  );
   let bitmap: ImageBitmap | undefined;
   try {
-    bitmap = await createImageBitmap(file, {
-      ...(image.width >= image.height
-        ? { resizeWidth: longEdge }
-        : { resizeHeight: longEdge }),
-      resizeQuality: "high",
-    });
+    const image = await loadImage(file);
+    const side = Math.min(image.naturalWidth, image.naturalHeight);
+    bitmap = await createImageBitmap(
+      image,
+      (image.naturalWidth - side) / 2,
+      (image.naturalHeight - side) / 2,
+      side,
+      side,
+      { resizeWidth: edge, resizeHeight: edge, resizeQuality: "high" },
+    );
     const canvas = document.createElement("canvas");
     canvas.width = edge;
     canvas.height = edge;
-    const context = canvas.getContext("2d");
-    if (!context) return null;
-    context.imageSmoothingQuality = "high";
-    const side = Math.min(bitmap.width, bitmap.height);
-    context.drawImage(
-      bitmap,
-      (bitmap.width - side) / 2,
-      (bitmap.height - side) / 2,
-      side,
-      side,
-      0,
-      0,
-      edge,
-      edge,
-    );
+    canvas.getContext("2d")!.drawImage(bitmap, 0, 0);
     return await new Promise<Blob | null>((resolve) =>
       canvas.toBlob(resolve, "image/png"),
     );
