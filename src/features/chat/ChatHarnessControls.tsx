@@ -35,7 +35,7 @@ import type { DraftEffort } from "./DraftEffortControl";
 import { composerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModelState";
 import { ProjectScopeChip } from "./ProjectScopeChip";
-import { governedPlanMode } from "../../domain/sessionAccessMode";
+import { usePlanAccess } from "./usePlanAccess";
 import {
   harnessPickerCandidates,
   useComposerPopovers,
@@ -117,7 +117,7 @@ export function ChatHarnessControls({
     toggle,
     dismiss,
     setHarnessOpen,
-  } = useComposerPopovers(turnBusy || projectTransitioning);
+  } = useComposerPopovers(projectTransitioning, turnBusy);
   const globalSelectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
   );
@@ -128,6 +128,15 @@ export function ChatHarnessControls({
   const accessHarness = accessBindingId
     ? harnesses.find((harness) => harness.bindingId === accessBindingId)
     : selectedHarness;
+  const { planAccess, confirmation } = usePlanAccess({
+    harness: accessHarness,
+    available: availableBinding,
+    draftChatId,
+    endedPage,
+    sessionConfig,
+    accessOpen: active === "access",
+    openAccess: () => toggle("access"),
+  });
   const modelIdentity = selectedHarness?.accountModelDiscovery
     ? null
     : harnessModelIdentity(selectedHarness);
@@ -232,23 +241,13 @@ export function ChatHarnessControls({
     canSelectEffort,
     active !== null && active !== "options",
   );
-  const planAccess =
-    availableBinding &&
-    accessHarness?.bindingId &&
-    governedPlanMode(accessHarness.accessModes) &&
-    (draftChatId || (sessionConfig && !sessionConfig.removed))
-      ? {
-          bindingId: accessHarness.bindingId,
-          chatId: draftChatId,
-          endedPage,
-          sessionConfig,
-          capabilities: accessHarness.accessModes,
-          onOpenAccess: () => toggle("access"),
-        }
-      : undefined;
   const projectAction =
     projectName && hasProjects ? (
-      <ProjectScopeChip projectName={projectName} menuItem />
+      <ProjectScopeChip
+        projectName={projectName}
+        menuItem
+        disabled={turnBusy}
+      />
     ) : undefined;
   // "+" is always the row's first control, as in Codex, so the toolbar keeps
   // the same shape in every chat; it is disabled while it has nothing to offer.
@@ -286,9 +285,7 @@ export function ChatHarnessControls({
           aria-haspopup="menu"
           aria-expanded={active === "options"}
           disabled={
-            turnBusy ||
-            projectTransitioning ||
-            (!hasActions && active !== "options")
+            projectTransitioning || (!hasActions && active !== "options")
           }
           onClick={() => toggle("options")}
         >
@@ -300,6 +297,7 @@ export function ChatHarnessControls({
             harnessName={accessHarness.name}
             chatId={draftChatId}
             endedPage={endedPage}
+            confirmation={confirmation}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}

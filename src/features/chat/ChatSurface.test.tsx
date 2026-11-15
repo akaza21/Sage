@@ -5637,7 +5637,7 @@ describe("ChatSurface composer context", () => {
     );
     expect(useWorkbenchStore.getState().composerText).toBe(sentDraft);
   });
-  it("omits an inert plus action when no context chips are attached", () => {
+  it("omits an inert plus action when no context chips are attached", async () => {
     const chatId = "chat-empty-context";
     hooks.page = { ...projection(), chatId: chatId as never };
     useWorkbenchStore.setState({
@@ -5659,9 +5659,11 @@ describe("ChatSurface composer context", () => {
 
     expect(document.querySelector(".composer__attachment-row")).toBeNull();
     expect(screen.queryByLabelText("Composer actions")).toBeNull();
+    // The running turn leaves "+" for attaching to a queued follow-up.
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
     expect(
-      screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
+      await screen.findByRole("menuitem", { name: "Files and folders" }),
+    ).toBeInTheDocument();
   });
 
   it("shows Working for nonterminal ACP turns but hides it during project transition", async () => {

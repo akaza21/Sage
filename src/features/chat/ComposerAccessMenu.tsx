@@ -15,9 +15,7 @@ import { ModalDialog } from "../../ui/ModalDialog";
 import { CHAT_ACCESS_ICONS as ICONS } from "./chatAccessIcons";
 import {
   chooseAccess,
-  clearAccessConfirmation,
   CONFIRMED_ACCESS as CONFIRMED,
-  requestedAccessConfirmation,
 } from "./chatAccessChoice";
 
 const FULL_ACCESS: SessionAccessMode = "fullAccess";
@@ -35,6 +33,7 @@ export default function ComposerAccessMenu({
   effective,
   sessionId,
   harnessName,
+  confirmation: confirm,
   onDraft,
   onDismiss,
 }: {
@@ -45,6 +44,8 @@ export default function ComposerAccessMenu({
   /** The live chat a choice applies to; null before its session starts. */
   sessionId?: string;
   harnessName: string;
+  /** Opens on this mode's confirmation, as Plan turning off asks. */
+  confirmation?: SessionAccessMode | null;
   /**
    * Holds a choice made before the session starts; it is applied, through
    * the same commands, before the chat's first prompt is dispatched.
@@ -52,15 +53,10 @@ export default function ComposerAccessMenu({
   onDraft?: (mode: SessionAccessMode) => void;
   onDismiss: () => void;
 }) {
-  // Plan mode turning off opens the menu on its default's confirmation.
   const [confirmation, setConfirmation] =
     useState<SessionAccessModeCapability | null>(
-      () =>
-        candidates.find(
-          (candidate) => candidate.id === requestedAccessConfirmation(),
-        ) ?? null,
+      () => candidates.find((candidate) => candidate.id === confirm) ?? null,
     );
-  useEffect(() => clearAccessConfirmation(), []);
   const [token, setToken] = useState<string | null>(null);
   const [closing, setClosing] = useState(false);
   const permissive =

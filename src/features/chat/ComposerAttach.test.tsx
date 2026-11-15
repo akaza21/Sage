@@ -14,6 +14,7 @@ import {
   clearAcpProjectionRegistry,
 } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
+import { decodeSessionConfig } from "../../domain/acpSessionConfig";
 import {
   agentSessionFixture,
   capabilitySetFixture,
@@ -261,6 +262,52 @@ describe("composer attach from the + menu", () => {
       "stage_prompt_files",
       expect.anything(),
     );
+  });
+
+  it("keeps attaching open for a queued follow-up while a turn runs", async () => {
+    withSession(true);
+    native.mockResolvedValue(null);
+    renderComposer({
+      activeTurn: true,
+      queueAvailable: true,
+      imageInputAvailable: true,
+      onAddImages: vi.fn(),
+      sessionConfig: decodeSessionConfig({
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: {
+          currentModeId: "default",
+          availableModes: [
+            { id: "default", name: "Default" },
+            { id: "review", name: "Review" },
+          ],
+        },
+        configOptions: [],
+      }),
+    });
+    expect(
+      screen.getByRole("button", { name: "Composer options" }),
+    ).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    await settleLazyModules();
+    // Changing the running session waits; attaching does not.
+    expect(
+      screen.getByRole("menuitemradio", { name: "Review" }),
+    ).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Files and folders" }),
+      );
+    });
+    await settleLazyModules();
+    const menu = screen.getByRole("menu", { name: "Attach" });
+    expect(
+      within(menu).getByRole("menuitem", { name: "Files…" }),
+    ).toBeEnabled();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Images…" }),
+    ).toBeEnabled();
   });
 
   it("replaces the attach menu with the + menu when + is pressed again", async () => {

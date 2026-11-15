@@ -1600,10 +1600,11 @@ describe("composer permission mode picker", () => {
       ],
     });
     renderControls({ projectName: "Alpha", turnBusy: true });
-    expect(
-      screen.queryByRole("button", { name: "Composer options" }),
-    ).toBeDisabled();
     expect(screen.queryByRole("button", { name: "Project: Alpha" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    expect(
+      await screen.findByRole("menuitem", { name: "Work in a project" }),
+    ).toBeDisabled();
   });
 
   it("moves focus into the action menu and restores it on Escape", async () => {
