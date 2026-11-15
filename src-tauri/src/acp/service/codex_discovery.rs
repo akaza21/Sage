@@ -26,6 +26,7 @@ pub(crate) struct PreparedCodexDiscovery {
     operation: Option<PreparedCodexOperation>,
     deadline: CodexDiscoveryDeadline,
     invalidation_epoch: u64,
+    catalog_generation: u64,
     flight: Arc<DiscoveryFlight>,
     owns_flight: bool,
     completed: bool,
@@ -73,6 +74,7 @@ impl CodexDiscoveryManager {
         deadline.ensure_operation()?;
         validate_scope(&request, &project_root)?;
         let invalidation_epoch = self.gate.current_epoch();
+        let catalog_generation = self.registration.model_catalog().generation();
         let key = DiscoveryFlightKey {
             project_id: request.project_id.clone(),
             project_generation: request.project_generation,
@@ -94,6 +96,7 @@ impl CodexDiscoveryManager {
                 operation: None,
                 deadline,
                 invalidation_epoch,
+                catalog_generation,
                 flight: Arc::clone(existing),
                 owns_flight: false,
                 completed: false,
@@ -108,6 +111,7 @@ impl CodexDiscoveryManager {
             operation: Some(operation),
             deadline,
             invalidation_epoch,
+            catalog_generation,
             flight: active_flight,
             owns_flight: true,
             completed: false,
@@ -267,6 +271,7 @@ impl CodexDiscoveryManager {
         prepared.deadline.ensure_total()?;
         self.publish(
             operation_epoch,
+            prepared.catalog_generation,
             CacheKey {
                 scope,
                 runtime_epoch,
@@ -281,10 +286,11 @@ impl CodexDiscoveryManager {
         self.cache.clear();
     }
 
-    /// Called when the account changes, so its catalog is not offered again.
+    /// Called when the account changes: a discovery prepared before now can
+    /// no longer publish its catalog.
     pub(crate) fn forget_snapshot(&self) {
+        self.registration.model_catalog().forget();
         self.cache.clear();
-        self.registration.forget_models();
     }
 
     pub(super) fn launch_model(
@@ -340,19 +346,20 @@ impl CodexDiscoveryManager {
     fn publish(
         &self,
         expected_invalidation_epoch: u64,
+        catalog_generation: u64,
         key: CacheKey,
         response: CodexDiscoveryResponse,
     ) -> Result<(), CodexDiscoveryRunError> {
         let binding_digest = key.scope.binding_digest;
         let models = launchable_models(&response);
+        let catalog = self.registration.model_catalog();
         self.cache.publish_if_current(key, response, || {
             self.gate.is_current(expected_invalidation_epoch)
-        })?;
-        match models {
-            Some(models) => self.registration.remember_models(binding_digest, models),
-            None => self.registration.forget_models(),
-        }
-        Ok(())
+                && match models {
+                    Some(models) => catalog.refresh(catalog_generation, binding_digest, models),
+                    None => catalog.generation() == catalog_generation,
+                }
+        })
     }
 
     fn clear_flight(&self, completed: &Arc<DiscoveryFlight>) {
@@ -597,6 +604,7 @@ mod tests {
         manager
             .publish(
                 manager.gate.current_epoch(),
+                manager.registration.model_catalog().generation(),
                 CacheKey {
                     scope: scope.clone(),
                     runtime_epoch,
@@ -619,6 +627,7 @@ mod tests {
         manager
             .publish(
                 manager.gate.current_epoch(),
+                manager.registration.model_catalog().generation(),
                 CacheKey {
                     scope: scope.clone(),
                     runtime_epoch,
@@ -635,6 +644,59 @@ mod tests {
     }
 
     #[test]
+    fn an_account_change_after_discovery_began_keeps_its_catalog_out() {
+        let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
+        let catalog = manager.registration.model_catalog();
+        let scope = scope();
+        let runtime_epoch = RuntimeEpoch::new(16).unwrap();
+        let publish = |generation, account| {
+            let mut listed = response(&scope, runtime_epoch);
+            listed.account = account;
+            listed.models[0].effort_levels = ["low", "ultra"]
+                .map(|level| RequiredText::new("effort", level).unwrap())
+                .to_vec();
+            manager.publish(
+                manager.gate.current_epoch(),
+                generation,
+                CacheKey {
+                    scope: scope.clone(),
+                    runtime_epoch,
+                },
+                listed,
+            )
+        };
+        let began = catalog.generation();
+
+        manager.forget_snapshot();
+
+        assert_eq!(
+            publish(began, CodexDiscoveryAccount::ManagedChatgpt).unwrap_err(),
+            CodexDiscoveryRunError::Drift
+        );
+        assert!(manager.cache.response_for(&scope).unwrap().is_none());
+        assert!(catalog.known(scope.binding_digest).is_none());
+
+        publish(catalog.generation(), CodexDiscoveryAccount::ManagedChatgpt).unwrap();
+        let listed = serde_json::to_value(catalog.known(scope.binding_digest)).unwrap();
+        assert_eq!(
+            listed,
+            serde_json::json!([{
+                "id": "gpt-cache",
+                "name": "GPT Cache",
+                "description": null,
+                "isDefault": true,
+                "effortLevels": ["low", "ultra"]
+            }])
+        );
+        publish(catalog.generation(), CodexDiscoveryAccount::SignedOut).unwrap();
+        assert_eq!(
+            serde_json::to_value(catalog.known(scope.binding_digest)).unwrap(),
+            listed
+        );
+        assert!(catalog.known([6; 32]).is_none());
+    }
+
+    #[test]
     fn invalidation_between_discovery_and_publish_cannot_reinsert_a_stale_snapshot() {
         let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
         let scope = scope();
@@ -646,6 +708,7 @@ mod tests {
             manager
                 .publish(
                     stale_epoch,
+                    manager.registration.model_catalog().generation(),
                     CacheKey {
                         scope: scope.clone(),
                         runtime_epoch,
@@ -694,6 +757,7 @@ mod tests {
         mismatched
             .publish(
                 mismatched.gate.current_epoch(),
+                mismatched.registration.model_catalog().generation(),
                 CacheKey {
                     scope: cache_scope.clone(),
                     runtime_epoch,
@@ -753,6 +817,7 @@ mod tests {
         mismatched
             .publish(
                 mismatched.gate.current_epoch(),
+                mismatched.registration.model_catalog().generation(),
                 CacheKey {
                     scope: unrelated_scope.clone(),
                     runtime_epoch: unrelated_epoch,
@@ -779,6 +844,7 @@ mod tests {
         matching
             .publish(
                 matching.gate.current_epoch(),
+                matching.registration.model_catalog().generation(),
                 CacheKey {
                     scope: stale_scope.clone(),
                     runtime_epoch: stale_epoch,
@@ -978,6 +1044,7 @@ mod tests {
         manager
             .publish(
                 manager.gate.current_epoch(),
+                manager.registration.model_catalog().generation(),
                 CacheKey {
                     scope: scope.clone(),
                     runtime_epoch,
@@ -1124,70 +1191,5 @@ mod tests {
         ))
         .unwrap();
         CodexDiscoveryProtocol::new(&packet, [9; 32], RuntimeEpoch::new(71).unwrap())
-    }
-
-    #[test]
-    fn a_published_catalog_lists_before_any_session_until_the_account_changes() {
-        let executable = std::env::temp_dir().join(format!(
-            "sage-codex-known-models-{}.bin",
-            uuid::Uuid::new_v4()
-        ));
-        fs::write(&executable, b"observed-codex").unwrap();
-        let registration = CodexBindingRegistration::unavailable_for_test();
-        let binding = registration
-            .authenticate_observed_for_test(executable.clone(), "codex-cli 0.167.1".into())
-            .unwrap();
-        let manager = CodexDiscoveryManager::new(registration.clone());
-        let scope = CacheScope {
-            binding_digest: binding.binding_digest(),
-            ..scope()
-        };
-        let runtime_epoch = RuntimeEpoch::new(15).unwrap();
-        let publish = |account| {
-            let mut listed = response(&scope, runtime_epoch);
-            listed.account = account;
-            listed.models[0].effort_levels = ["low", "xhigh", "ultra"]
-                .map(|level| RequiredText::new("effort", level).unwrap())
-                .to_vec();
-            manager
-                .publish(
-                    manager.gate.current_epoch(),
-                    CacheKey {
-                        scope: scope.clone(),
-                        runtime_epoch,
-                    },
-                    listed,
-                )
-                .unwrap();
-        };
-        let known = || serde_json::to_value(registration.known_models()).unwrap();
-        let listed = serde_json::to_value(Some(vec![sage_domain::harness::ModelOption {
-            id: "gpt-cache".into(),
-            name: "GPT Cache".into(),
-            description: None,
-            is_default: Some(true),
-            context_window: None,
-            effort_levels: Some(vec!["low".into(), "xhigh".into(), "ultra".into()]),
-        }]))
-        .unwrap();
-        assert!(registration.known_models().is_none());
-
-        publish(CodexDiscoveryAccount::ManagedChatgpt);
-        assert_eq!(known(), listed);
-        manager.invalidate();
-        assert_eq!(known(), listed);
-
-        manager.forget_snapshot();
-        assert!(registration.known_models().is_none());
-
-        publish(CodexDiscoveryAccount::ApiKey);
-        publish(CodexDiscoveryAccount::SignedOut);
-        assert!(registration.known_models().is_none());
-
-        publish(CodexDiscoveryAccount::ManagedChatgpt);
-        fs::write(&executable, b"updated-codex").unwrap();
-        assert!(registration.refresh().is_err());
-        assert!(registration.known_models().is_none());
-        fs::remove_file(executable).unwrap();
     }
 }

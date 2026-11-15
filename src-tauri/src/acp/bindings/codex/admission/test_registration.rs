@@ -8,7 +8,7 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Unavailable(
                     CodexAdmissionUnavailable::IndependentAdmission,
                 )),
-                models: Mutex::default(),
+                models: Default::default(),
                 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
                 fixture_only: false,
             }),
@@ -37,7 +37,7 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
                     authenticate_tests::admitted_binding_fixture(),
                 ))),
-                models: Mutex::default(),
+                models: Default::default(),
                 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
                 fixture_only: false,
             }),
@@ -51,7 +51,7 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
                     authenticate_tests::admitted_journey_binding_fixture(case_ids),
                 ))),
-                models: Mutex::default(),
+                models: Default::default(),
                 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
                 fixture_only: false,
             }),
@@ -67,7 +67,7 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Admitted(Arc::new(
                     authenticate_tests::admitted_observed_steer_journey_fixture(case_ids),
                 ))),
-                models: Mutex::default(),
+                models: Default::default(),
                 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
                 fixture_only: false,
             }),

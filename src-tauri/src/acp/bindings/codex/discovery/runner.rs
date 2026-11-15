@@ -41,6 +41,13 @@ impl CodexDiscoveryDeadline {
         )
     }
 
+    pub(crate) fn starting_now(
+        operation: Duration,
+        cleanup: Duration,
+    ) -> Result<Self, CodexDiscoveryRunError> {
+        Self::from_budgets(Instant::now(), operation, cleanup)
+    }
+
     fn from_budgets(
         admitted: Instant,
         operation: Duration,
@@ -106,7 +113,7 @@ impl CodexDiscoveryDeadline {
 
     #[cfg(test)]
     pub(crate) fn for_test(operation: Duration, cleanup: Duration) -> Self {
-        Self::from_budgets(Instant::now(), operation, cleanup).expect("bounded test deadline")
+        Self::starting_now(operation, cleanup).expect("bounded test deadline")
     }
 }
 
@@ -170,6 +177,11 @@ impl DiscoveryZeroProcess {
         Self {
             runtime_epoch: token.runtime_epoch(),
         }
+    }
+
+    /// A probe the caller spawned and has waited for.
+    pub(crate) fn reaped(runtime_epoch: u64) -> Self {
+        Self { runtime_epoch }
     }
 
     pub(crate) fn runtime_epoch(&self) -> u64 {

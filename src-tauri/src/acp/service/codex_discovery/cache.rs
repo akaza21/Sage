@@ -278,8 +278,8 @@ pub(super) fn response_from(
     }
 }
 
-/// The models a discovery listed, as a session of the account can start on
-/// them; `None` when the account cannot start one.
+/// The models a signed-in discovery listed; `None` when the account cannot
+/// start a session.
 pub(super) fn launchable_models(
     response: &CodexDiscoveryResponse,
 ) -> Option<Vec<sage_domain::harness::ModelOption>> {
@@ -288,18 +288,10 @@ pub(super) fn launchable_models(
 }
 
 fn model_option(model: &CodexDiscoveryModel) -> sage_domain::harness::ModelOption {
-    sage_domain::harness::ModelOption {
-        id: model.id.as_str().to_owned(),
-        name: model.name.as_str().to_owned(),
-        description: None,
-        is_default: Some(model.is_default),
-        context_window: None,
-        effort_levels: (!model.effort_levels.is_empty()).then(|| {
-            model
-                .effort_levels
-                .iter()
-                .map(|level| level.as_str().to_owned())
-                .collect()
-        }),
-    }
+    crate::acp::bindings::codex::listed_model(
+        model.id.as_str(),
+        model.name.as_str(),
+        model.is_default,
+        model.effort_levels.iter().map(|level| level.as_str()),
+    )
 }

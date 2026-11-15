@@ -34,6 +34,7 @@ import {
   resetWorkbenchPortsForTests,
 } from "../../ports/workbenchRuntime";
 import { PickerOption } from "../../ui/PickerOption";
+import { desktop } from "../../services/desktop";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 
 beforeAll(() => preloadSearchablePicker());
@@ -275,7 +276,7 @@ it("holds a thinking level chosen before the first session for the listed model"
   useChatEffortDraft.setState({ draft: null });
 });
 
-it("lists an account-discovery harness's models and thinking levels in a chat the global selection left", async () => {
+it("lists a restored chat's harness models and thinking levels when the workbench selected another harness", async () => {
   const codex = {
     id: "codex",
     name: "Codex",
@@ -287,7 +288,7 @@ it("lists an account-discovery harness's models and thinking levels in a chat th
     bindingId: "codex-app-server",
     version: "0.167.1",
   };
-  rememberHarnessModels(harnessModelIdentity(codex), [
+  const listed = vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([
     {
       id: "gpt-x",
       name: "GPT-X",
@@ -313,6 +314,7 @@ it("lists an account-discovery harness's models and thinking levels in a chat th
   expect(
     await screen.findByRole("option", { name: /GPT-X/ }),
   ).toBeInTheDocument();
+  expect(listed).toHaveBeenCalledExactlyOnceWith("codex");
 });
 
 it("shows a held thinking level the model no longer lists as held, not as Default", async () => {

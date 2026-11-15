@@ -1209,7 +1209,7 @@ mod tests {
     }
 
     #[test]
-    fn catalog_lists_the_codex_models_its_account_discovery_read_before_a_session() {
+    fn catalog_lists_the_models_the_admitted_codex_build_listed() {
         let executable = std::env::temp_dir().join(format!(
             "sage-codex-catalog-models-{}.bin",
             uuid::Uuid::new_v4()
@@ -1224,28 +1224,35 @@ mod tests {
             CodexHostPresence::Present,
         )
         .settled_for_test();
-        let model = ModelOption {
-            id: "gpt-6.1-sol".into(),
-            name: "GPT-6.1-Sol".into(),
-            description: None,
-            is_default: Some(true),
-            context_window: None,
-            effort_levels: Some(vec!["low".into(), "max".into(), "ultra".into()]),
+        let listed = registration.model_catalog();
+        let model = || {
+            vec![crate::acp::bindings::codex::listed_model(
+                "gpt-6.1-sol",
+                "GPT-6.1-Sol",
+                true,
+                ["low", "max", "ultra"].into_iter(),
+            )]
         };
-        assert!(catalog.models("codex").unwrap().is_empty());
-
-        registration.remember_models([0; 32], vec![model.clone()]);
         assert!(catalog.known_models("codex").unwrap().is_empty());
 
-        registration.remember_models(binding.binding_digest(), vec![model.clone()]);
-        let listed = serde_json::to_value(vec![model]).unwrap();
+        listed.refresh(listed.generation(), [0; 32], model());
+        assert!(catalog.known_models("codex").unwrap().is_empty());
+
+        listed.refresh(listed.generation(), binding.binding_digest(), model());
+        let expected = serde_json::json!([{
+            "id": "gpt-6.1-sol",
+            "name": "GPT-6.1-Sol",
+            "description": null,
+            "isDefault": true,
+            "effortLevels": ["low", "max", "ultra"]
+        }]);
         assert_eq!(
             serde_json::to_value(catalog.models("codex").unwrap()).unwrap(),
-            listed
+            expected
         );
         assert_eq!(
             serde_json::to_value(catalog.known_models("codex").unwrap()).unwrap(),
-            listed
+            expected
         );
         std::fs::remove_file(executable).unwrap();
     }
