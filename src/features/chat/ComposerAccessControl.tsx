@@ -31,6 +31,8 @@ export interface ComposerAccessControlProps {
   harnessName: string;
   value?: SessionAccessMode | null;
   onChange?: (value: SessionAccessMode) => void;
+  /** The mode the access menu opens on confirming, as Plan turning off asks. */
+  confirmation?: SessionAccessMode | null;
   /** The chat whose access is drafted; given only while its next send starts a session. */
   chatId?: string;
   /** The chat while it has no head: its last session hands its access on. */

@@ -1,17 +1,15 @@
 import { Lightbulb } from "../../ui/leanIconNodesLazy";
 import { ChatAccessView } from "./ChatAccessView";
-import {
-  chooseAccess,
-  CONFIRMED_ACCESS,
-  requestAccessConfirmation,
-} from "./chatAccessChoice";
+import type { SessionAccessMode } from "../../domain/sessionAccessMode";
+import { chooseAccess, CONFIRMED_ACCESS } from "./chatAccessChoice";
 import type { ComposerAccessControlProps } from "./ComposerAccessControl";
 
 export type PlanAccessTarget = Pick<
   ComposerAccessControlProps,
   "bindingId" | "chatId" | "endedPage" | "sessionConfig" | "capabilities"
 > & {
-  onOpenAccess: () => void;
+  /** Opens the access menu, on `confirm`'s confirmation when given. */
+  onOpenAccess: (confirm?: SessionAccessMode) => void;
 };
 
 /**
@@ -49,10 +47,8 @@ export function ComposerPlanAccess({
             onClick={() => {
               onClose();
               if (!next) onOpenAccess();
-              else if (CONFIRMED_ACCESS.includes(next)) {
-                requestAccessConfirmation(next);
-                onOpenAccess();
-              } else chooseAccess({ sessionId, onDraft }, next);
+              else if (CONFIRMED_ACCESS.includes(next)) onOpenAccess(next);
+              else chooseAccess({ sessionId, onDraft }, next);
             }}
           >
             <Lightbulb size={14} aria-hidden="true" />

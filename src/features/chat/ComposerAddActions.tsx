@@ -193,6 +193,7 @@ export function ComposerAddActions({
           className="menu-item composer__add-action"
           aria-label="Goal"
           aria-description="Set a goal to keep pursuing"
+          disabled={disabled}
           tabIndex={-1}
           onClick={() => {
             onClose();
@@ -267,6 +268,7 @@ export function ComposerAddActions({
           className="menu-item composer__add-action"
           aria-label="Compact context"
           aria-description="Summarize earlier turns to free context"
+          disabled={disabled}
           tabIndex={-1}
           onClick={() => {
             onClose();
@@ -284,6 +286,7 @@ export function ComposerAddActions({
           type="button"
           role="menuitem"
           className="menu-item"
+          disabled={disabled}
           tabIndex={-1}
           onClick={onOpenEffort}
           data-overflow-control="effort"

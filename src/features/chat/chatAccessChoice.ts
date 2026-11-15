@@ -10,20 +10,6 @@ export const CONFIRMED_ACCESS: readonly SessionAccessMode[] = [
   ...PERMISSIVE_ACCESS,
 ];
 
-let requested: SessionAccessMode | null = null;
-
-export function requestAccessConfirmation(mode: SessionAccessMode) {
-  requested = mode;
-}
-
-export function requestedAccessConfirmation() {
-  return requested;
-}
-
-export function clearAccessConfirmation() {
-  requested = null;
-}
-
 export function chooseAccess(
   { sessionId, onDraft }: Pick<AccessView, "sessionId" | "onDraft">,
   mode: SessionAccessMode,
