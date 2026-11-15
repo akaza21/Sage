@@ -1,4 +1,5 @@
 use super::*;
+use crate::image_artifacts::thumbnail::square_thumbnail;
 
 fn png_of(
     width: u32,
@@ -369,4 +370,63 @@ fn a_normalized_image_allocates_only_its_length() {
     ] {
         assert_eq!(encoded.capacity(), encoded.len());
     }
+}
+
+fn thumbnail_of(media_type: ImageMediaType, bytes: &[u8]) -> Raster {
+    decode(
+        ImageMediaType::Png,
+        &square_thumbnail(media_type, bytes, 48).unwrap(),
+    )
+    .unwrap()
+}
+
+#[test]
+fn a_thumbnail_is_the_centre_square_not_the_whole_image_squeezed() {
+    let thirds = (0..100)
+        .flat_map(|_| {
+            (0..300).map(|x| match x / 100 {
+                0 => [255, 0, 0],
+                1 => [0, 255, 0],
+                _ => [0, 0, 255],
+            })
+        })
+        .flatten()
+        .collect::<Vec<_>>();
+    let wide = png_of(300, 100, png::ColorType::Rgb, png::BitDepth::Eight, &thirds);
+
+    let thumbnail = thumbnail_of(ImageMediaType::Png, &wide);
+
+    assert_eq!((thumbnail.width, thumbnail.height), (48, 48));
+    for (x, y) in [(0, 0), (47, 0), (0, 47), (47, 47), (24, 24)] {
+        assert_eq!(pixel(&thumbnail, x, y), [0, 255, 0, 255], "at {x},{y}");
+    }
+}
+
+#[test]
+fn a_thumbnail_of_an_exif_rotated_photo_is_upright() {
+    let jpeg = oriented_jpeg(300, 100, 6);
+
+    let thumbnail = thumbnail_of(ImageMediaType::Jpeg, &jpeg);
+
+    assert_eq!((thumbnail.width, thumbnail.height), (48, 48));
+    // Rotated 90 degrees clockwise: the stored left half is now on top.
+    let top = pixel(&thumbnail, 24, 8);
+    let bottom = pixel(&thumbnail, 24, 40);
+    assert!(top[0] > 150 && top[2] < 100, "{top:?}");
+    assert!(bottom[2] > 150 && bottom[0] < 100, "{bottom:?}");
+}
+
+#[test]
+fn a_thumbnail_never_upscales_a_small_image() {
+    let small = png_of(
+        10,
+        4,
+        png::ColorType::Rgba,
+        png::BitDepth::Eight,
+        &[128; 10 * 4 * 4],
+    );
+
+    let thumbnail = thumbnail_of(ImageMediaType::Png, &small);
+
+    assert_eq!((thumbnail.width, thumbnail.height), (4, 4));
 }

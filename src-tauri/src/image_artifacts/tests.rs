@@ -5,7 +5,7 @@ use sage_acp_protocol::intent::ImageMediaType;
 
 use super::{
     commands::{UploadChatImageRequest, upload_image_payload},
-    store::{ingest_image, remove_pending_image},
+    store::{ingest_image, read_image_thumbnail, remove_pending_image},
     verify_image_reference,
 };
 
@@ -67,7 +67,7 @@ fn admitted_png_is_retrievable_only_by_its_chat_owner() {
 }
 
 #[test]
-fn png_larger_than_thumbnail_cap_keeps_full_image_and_bounded_preview() {
+fn a_large_png_keeps_its_full_image_and_its_owner_reads_a_chip_thumbnail() {
     let directory = std::env::temp_dir().join(format!("sage-image-large-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir(&directory).unwrap();
     let database = Database::open(&directory.join("sage.db")).unwrap();
@@ -107,13 +107,24 @@ fn png_larger_than_thumbnail_cap_keeps_full_image_and_bounded_preview() {
         verify_image_reference(&connection, root, "p", "c", &image).unwrap(),
         bytes
     );
-    let thumbnail = std::fs::read(root.join(format!("{}.thumb", image.artifact_id))).unwrap();
-    assert!(thumbnail.len() <= 262_144);
-    assert!(
-        png::Decoder::new(std::io::Cursor::new(thumbnail))
-            .read_info()
-            .is_ok()
-    );
+    let thumbnail = read_image_thumbnail(&connection, root, "p", "c", &image.artifact_id).unwrap();
+    let thumbnail = png::Decoder::new(std::io::Cursor::new(thumbnail))
+        .read_info()
+        .unwrap();
+    assert_eq!((thumbnail.info().width, thumbnail.info().height), (48, 48));
+    assert!(read_image_thumbnail(&connection, root, "p", "other", &image.artifact_id).is_err());
+    for (lifecycle, queue_id) in [("queued", Some("q")), ("retired", None)] {
+        connection
+            .execute(
+                "UPDATE chat_image_artifacts SET lifecycle=?1, queue_id=?2 WHERE id=?3",
+                rusqlite::params![lifecycle, queue_id, image.artifact_id],
+            )
+            .unwrap();
+        assert!(
+            read_image_thumbnail(&connection, root, "p", "c", &image.artifact_id).is_err(),
+            "{lifecycle} image has no chip"
+        );
+    }
     drop(connection);
     drop(database);
     std::fs::remove_dir_all(directory).unwrap();
