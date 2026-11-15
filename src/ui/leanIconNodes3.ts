@@ -1,5 +1,25 @@
 import { lucideIcon as leanIcon } from "./leanIconCore";
-export { Ellipsis as MoreHorizontal } from "./leanIconNodes1";
+export const Globe2 = leanIcon("earth", [
+  "M21.54 15H17a2 2 0 0 0-2 2v4.54",
+  "M7 3.34V5a3 3 0 0 0 3 3a2 2 0 0 1 2 2c0 1.1.9 2 2 2a2 2 0 0 0 2-2c0-1.1.9-2 2-2h3.17",
+  "M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05",
+  ["circle", { cx: "12", cy: "12", r: "10" }],
+]);
+export const Hand = leanIcon("hand", [
+  "M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2",
+  "M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2",
+  "M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8",
+  "M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15",
+]);
+export const History = leanIcon("rotate-ccw-clock", [
+  "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
+  "M3 3v5h5",
+  "M12 7v5l4 2",
+]);
+export const Home = leanIcon("house", [
+  "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8",
+  "M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
+]);
 export const Image = leanIcon("image", [
   ["rect", { width: "18", height: "18", x: "3", y: "3", rx: "2", ry: "2" }],
   ["circle", { cx: "9", cy: "9", r: "2" }],
@@ -28,6 +48,10 @@ export const ListTree = leanIcon("list-tree", [
 ]);
 export const LoaderCircle = leanIcon("loader-circle", [
   "M21 12a9 9 0 1 1-6.219-8.56",
+]);
+export const Lock = leanIcon("lock", [
+  ["rect", { width: "18", height: "11", x: "3", y: "11", rx: "2", ry: "2" }],
+  "M7 11V7a5 5 0 0 1 10 0v4",
 ]);
 export const Maximize2 = leanIcon("maximize2 lucide-maximize-2", [
   "M15 3h6v6",
@@ -83,18 +107,3 @@ export const Pencil = leanIcon("pencil", [
   "M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z",
   "m15 5 4 4",
 ]);
-export const Pin = leanIcon("pin", [
-  "M12 17v5",
-  "M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z",
-]);
-export const PinOff = leanIcon("pin-off", [
-  "M12 17v5",
-  "M15 9.34V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H7.89",
-  "m2 2 20 20",
-  "M9 9v1.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h11",
-]);
-
-export const Command = leanIcon("command", [
-  "M15 6v12a3 3 0 1 0 3-3H6a3 3 0 1 0 3 3V6a3 3 0 1 0-3 3h12a3 3 0 1 0-3-3",
-]);
-export const Plus = leanIcon("plus", ["M5 12h14", "M12 5v14"]);

@@ -1,4 +1,13 @@
 import { lucideIcon as leanIcon } from "./leanIconCore";
+export const Copy = leanIcon("copy", [
+  ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" }],
+  "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",
+]);
+export const Ellipsis = leanIcon("ellipsis", [
+  ["circle", { cx: "12", cy: "12", r: "1" }],
+  ["circle", { cx: "19", cy: "12", r: "1" }],
+  ["circle", { cx: "5", cy: "12", r: "1" }],
+]);
 export const Eye = leanIcon("eye", [
   "M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0",
   ["circle", { cx: "12", cy: "12", r: "3" }],
@@ -50,11 +59,6 @@ export const FilePlus2 = leanIcon("file-plus-corner", [
   "M14 19h6",
   "M17 16v6",
 ]);
-export const Files = leanIcon("files", [
-  "M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8",
-  "M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z",
-  "M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1",
-]);
 export const FileSearch = leanIcon("file-search", [
   "M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z",
   "M14 2v5a1 1 0 0 0 1 1h5",
@@ -80,6 +84,11 @@ export const FileText = leanIcon("file-text", [
   "M10 9H8",
   "M16 13H8",
   "M16 17H8",
+]);
+export const Files = leanIcon("files", [
+  "M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8",
+  "M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z",
+  "M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1",
 ]);
 export const Folder = leanIcon("folder", [
   "M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z",
@@ -110,24 +119,4 @@ export const Globe = leanIcon("globe", [
   "M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20",
   "M2 12h20",
 ]);
-export const Globe2 = leanIcon("earth", [
-  "M21.54 15H17a2 2 0 0 0-2 2v4.54",
-  "M7 3.34V5a3 3 0 0 0 3 3a2 2 0 0 1 2 2c0 1.1.9 2 2 2a2 2 0 0 0 2-2c0-1.1.9-2 2-2h3.17",
-  "M11 21.95V18a2 2 0 0 0-2-2a2 2 0 0 1-2-2v-1a2 2 0 0 0-2-2H2.05",
-  ["circle", { cx: "12", cy: "12", r: "10" }],
-]);
-export const Hand = leanIcon("hand", [
-  "M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2",
-  "M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2",
-  "M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8",
-  "M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15",
-]);
-export const History = leanIcon("rotate-ccw-clock", [
-  "M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8",
-  "M3 3v5h5",
-  "M12 7v5l4 2",
-]);
-export const Home = leanIcon("house", [
-  "M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8",
-  "M3 10a2 2 0 0 1 .709-1.528l7-6a2 2 0 0 1 2.582 0l7 6A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z",
-]);
+export { Ellipsis as MoreHorizontal };
