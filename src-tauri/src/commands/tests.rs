@@ -70,6 +70,9 @@ use std::sync::Mutex;
 #[cfg(windows)]
 mod attached_context;
 
+#[cfg(windows)]
+mod launch_effort;
+
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 mod slash_command_journey;
 

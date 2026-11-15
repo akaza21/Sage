@@ -42,8 +42,10 @@ type CancelDispatch =
         crate::acp::runtime::HostCancelIntent,
     ) -> Result<crate::acp::runtime::HostOutcome, crate::acp::service::CodexSessionError>;
 /// The config option through which a session that starts on the listed
-/// `model` takes thinking level `effort`, when the binding offers it then.
-type LaunchEffort = fn(&ModelOption, &str) -> Option<&'static str>;
+/// `model` takes thinking level `effort`, set to it and offering every level
+/// the binding lists for that model; `None` when it does not offer `effort`.
+type LaunchEffort =
+    fn(&ModelOption, &str) -> Option<sage_acp_protocol::session_config::ConfigOption>;
 type CloseDispatch =
     fn(
         &crate::acp::service::AcpService,

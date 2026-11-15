@@ -1,4 +1,4 @@
-import type { RefObject } from "react";
+import { useMemo, type RefObject } from "react";
 import type { PromptPick } from "../../ports/promptAttachments";
 import type * as AttachChunk from "./ComposerAttach";
 import type * as MentionChunk from "./ComposerMentionController";
@@ -41,6 +41,16 @@ export function ComposerFileParts({
   /** The field cannot be edited. */
   disabled: boolean;
 }) {
+  // The anchor belongs to the toolbar: it is looked up whenever the menu
+  // reads it, so the menu is placed from its first commit.
+  const anchor = useMemo(
+    () => ({
+      get current() {
+        return document.getElementById(attachAnchorId);
+      },
+    }),
+    [attachAnchorId],
+  );
   return (
     <>
       {files.mentionArmed && !hidden ? (
@@ -59,7 +69,7 @@ export function ComposerFileParts({
           part="ComposerAttach"
           chatId={chatId}
           presses={files.attachPresses}
-          triggerId={attachAnchorId}
+          triggerRef={anchor}
           imageAction={imageAction}
           onPick={onPickFiles}
         />

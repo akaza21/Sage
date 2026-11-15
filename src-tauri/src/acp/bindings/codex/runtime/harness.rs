@@ -210,6 +210,7 @@ impl HarnessAdapter for CodexRuntime {
             }
             AdapterCommand::NewSession { native_root, model } => {
                 self.reset_session_model(model.clone());
+                self.begin_new_thread();
                 let config = self
                     .mcp
                     .codex_config()

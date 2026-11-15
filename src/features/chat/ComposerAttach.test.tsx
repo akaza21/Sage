@@ -310,3 +310,28 @@ describe("composer attach from the + menu", () => {
     );
   });
 });
+
+describe("composer attach in a chat with no session yet", () => {
+  it("opens a visible menu whose Files item asks native for the file pick", async () => {
+    // A new chat: images are a draft action, so the press opens the menu.
+    acpProjectionStoreFor("chat-a").setState({
+      page: { currentSessionId: null, sessions: [] } as never,
+    });
+    native.mockImplementation(async (command: string) =>
+      command === "stage_prompt_files" ? staged("r1", ["a.md"]) : null,
+    );
+    renderComposer({ imageInputAvailable: true, onAddImages: vi.fn() });
+    await openAttach();
+    const menu = await screen.findByRole("menu", { name: "Attach" });
+    expect(
+      menu.closest<HTMLElement>(".menu-popover")?.style.visibility,
+    ).not.toBe("hidden");
+    await act(async () => {
+      fireEvent.click(within(menu).getByRole("menuitem", { name: /^Files/u }));
+    });
+    expect(await screen.findByText("a.md · 2 KB")).toBeInTheDocument();
+    expect(native).toHaveBeenCalledWith("stage_prompt_files", {
+      request: { owner, pick: "files", expectedRevision: null },
+    });
+  });
+});

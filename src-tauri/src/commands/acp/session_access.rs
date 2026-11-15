@@ -66,10 +66,7 @@ pub(super) fn turn_access_mode(
     binding_id: &str,
     session_id: &SageAgentSessionId,
 ) -> Result<SessionAccessMode, AcpIpcError> {
-    let chat = state
-        .settings
-        .chat_access(session_id.as_str())
-        .map_err(|_| access_unreadable())?;
+    let chat = session_chat_access(state, session_id)?;
     let defaults = state
         .settings
         .session_access_modes()
@@ -85,29 +82,63 @@ pub(super) fn turn_access_mode(
     })
 }
 
+/// How many sessions back a chat's access is followed through sessions
+/// that ran no turn (failed or interrupted starts, resumes and restarts).
+/// A chat makes one such session per attempt, so this bounds the walk
+/// without limiting any real chat.
+const CARRIED_SESSIONS: usize = 16;
+
+/// The chat's own access of `session_id`, after it took over what it
+/// inherits: every read of a session's access, for the composer and for a
+/// prompt alike, goes through here, so both see the same mode.
+pub(super) fn session_chat_access(
+    state: &AppState,
+    session_id: &SageAgentSessionId,
+) -> Result<Option<SessionAccessMode>, AcpIpcError> {
+    carry_chat_access(state, session_id)?;
+    state
+        .settings
+        .chat_access(session_id.as_str())
+        .map_err(|_| access_unreadable())
+}
+
 /// Gives a session that has run no turn the access of the session its chat
 /// ran just before it on the same binding, so the chat's choice outlives a
 /// failed session, a resume on a later harness release and a restart after
-/// an undo. Called on every start and activation, before a prompt reads the
-/// session's access, so a retry after a refused activation still carries it.
+/// an undo. The two live in different stores, so nothing copies them in one
+/// transaction: which session goes on from which is durable with the
+/// sessions themselves, and the copy is made again wherever it is missing,
+/// before any read of the session's access. A session that went on from one
+/// whose copy never happened (Sage stopped during its activation) takes the
+/// access from the session before that, each in between taking it too.
+/// Idempotent: a session that holds a mode of its own keeps it.
 pub(super) fn carry_chat_access(
     state: &AppState,
     session_id: &SageAgentSessionId,
 ) -> Result<(), AcpIpcError> {
-    let Some(earlier) =
-        crate::acp::store::preceding_session(&state.database.connection(), session_id)
-            .map_err(|_| access_unreadable())?
-    else {
-        return Ok(());
-    };
-    state
-        .settings
-        .carry_chat_access(
-            earlier.as_str(),
-            session_id.as_str(),
-            sage_core::time::now_millis(),
-        )
-        .map_err(|_| access_unreadable())?;
+    // From `session_id` back to the first session that holds a mode.
+    let mut chain = vec![session_id.clone()];
+    while chain.len() <= CARRIED_SESSIONS {
+        let last = chain.last().expect("the chain starts with the session");
+        let held = state
+            .settings
+            .chat_access(last.as_str())
+            .map_err(|_| access_unreadable())?;
+        if held.is_some() {
+            break;
+        }
+        let earlier = crate::acp::store::preceding_session(&state.database.connection(), last)
+            .map_err(|_| access_unreadable())?;
+        let Some(earlier) = earlier else { break };
+        chain.push(earlier);
+    }
+    let now = sage_core::time::now_millis();
+    for pair in chain.windows(2).rev() {
+        state
+            .settings
+            .carry_chat_access(pair[1].as_str(), pair[0].as_str(), now)
+            .map_err(|_| access_unreadable())?;
+    }
     Ok(())
 }
 

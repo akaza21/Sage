@@ -49,6 +49,7 @@ pub(crate) struct CodexRuntime {
     reported_model_id: Option<sage_acp_protocol::intent::ModelId>,
     selected_model: Option<super::incoming::ModelDescriptor>,
     selected_effort: Option<sage_acp_protocol::contract::RequiredText<512>>,
+    launch_effort: model_config::LaunchEffort,
     model_catalog: model_config::ModelCatalog,
     model_list_requested: bool,
     model_catalog_idle_only: bool,
@@ -232,7 +233,7 @@ impl CodexRuntime {
             } => (
                 {
                     self.snapshots.clear();
-                    self.adopt_reported_settings(current_model, current_effort);
+                    self.adopt_ready_settings(current_model, current_effort);
                     AdapterEvent::SessionReady {
                         id: identity(id),
                         loaded: false,

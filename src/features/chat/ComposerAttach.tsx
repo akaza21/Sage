@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from "react";
+import { useId, useState, type RefObject } from "react";
 
 import type { PromptPick } from "../../ports/promptAttachments";
 import { MenuPopover } from "../../ui/MenuPopover";
@@ -18,14 +18,15 @@ const PICKS = [
 export function ComposerAttach({
   chatId,
   presses,
-  triggerId,
+  triggerRef,
   imageAction,
   onPick,
 }: {
   chatId: string;
   /** Presses of Files and folders so far; each is taken once. */
   presses: number;
-  triggerId: string;
+  /** The control the menu anchors on, readable from this part's first commit. */
+  triggerRef: RefObject<HTMLElement | null>;
   imageAction?: ImageAction;
   onPick: (pick: PromptPick) => void;
 }) {
@@ -46,16 +47,6 @@ export function ComposerAttach({
     if (refused && !imagesOffered(imageAction)) setNotice(refused);
     else setMenuOpen(true);
   }
-  // The anchor belongs to the toolbar, so it is looked up when the menu
-  // places itself rather than when this part renders.
-  const triggerRef = useMemo(
-    () => ({
-      get current() {
-        return document.getElementById(triggerId);
-      },
-    }),
-    [triggerId],
-  );
   const refused = menuOpen ? refusal(chatId) : null;
   const close = () => {
     setMenuOpen(false);
