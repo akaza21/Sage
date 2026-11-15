@@ -147,8 +147,9 @@ pub(super) fn unsent() -> TurnTerminalOutcome {
 }
 
 /// Records why recovery ended a turn whose runtime was lost. An error the
-/// harness already reported on the turn stays its message. The reason keeps
-/// a bounded copy of it, because the error item can fall outside the newest
+/// harness already reported as the turn's own failure stays its message:
+/// an error item without a kind, so never a retried attempt or a notice. The
+/// reason keeps a bounded copy, because the item can fall outside the newest
 /// page of history that a reopened chat loads.
 pub(super) fn record_recovered_in(
     transaction: &Transaction<'_>,
@@ -162,7 +163,7 @@ pub(super) fn record_recovered_in(
                          THEN json_extract(payload_json,'$.payload.message') END
              FROM items WHERE session_id=?1 AND runtime_epoch=?2 AND turn_id=?3
                AND kind='error'
-               AND COALESCE(json_extract(payload_json,'$.payload.kind'),'')<>'attempt'
+               AND json_extract(payload_json,'$.payload.kind') IS NULL
              ORDER BY ordinal DESC LIMIT 1",
             params![owner.session_id, owner.runtime_epoch, owner.turn_id],
             |row| row.get::<_, Option<String>>(0),

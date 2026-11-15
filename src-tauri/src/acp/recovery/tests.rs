@@ -570,3 +570,27 @@ fn a_harness_error_after_its_startup_log_reaches_the_failed_turn() {
         )
     );
 }
+
+#[test]
+fn a_notice_on_the_turn_never_becomes_the_runtime_loss_message() {
+    let mut connection = recovery_connection();
+    add_error_item(
+        &connection,
+        0,
+        r#"{"kind":"error","payload":{"kind":"notice","code":"browserMcpUnavailable","message":"Browser tools are unavailable for this Codex version. You can continue chatting without browser tools.","retryable":false}}"#,
+    );
+    let lost = TurnTerminalOutcome {
+        reason: TurnTerminalReason::HarnessExited,
+        message: Some("harness process exited with code 1".to_owned()),
+        remediation: None,
+    };
+    recover_runtime_after_zero_process(&mut connection, zero_process_command(lost)).unwrap();
+    assert_eq!(
+        turn_outcome(&connection),
+        (
+            "failed".to_owned(),
+            "harnessExited".to_owned(),
+            Some("harness process exited with code 1".to_owned())
+        )
+    );
+}

@@ -131,7 +131,7 @@ impl CodexRuntime {
                     if let Some(message) = browser_notice {
                         batch.push_event(AdapterEvent::Error(
                             sage_acp_protocol::intent::NormalizedPayload::Error {
-                                kind: None,
+                                kind: Some(sage_acp_protocol::intent::ErrorKind::Notice),
                                 code: sage_acp_protocol::contract::SafeText::new(
                                     "code",
                                     "browserMcpUnavailable",
