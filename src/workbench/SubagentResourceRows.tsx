@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem } from "../domain/acpProjection";
@@ -137,7 +137,7 @@ export function SubagentList({
   const agents = useSettledSubagents(
     page,
     projectGeneration,
-    projectTaskResources(page, page.chatId).recentAgents,
+    useMemo(() => projectTaskResources(page, page.chatId).recentAgents, [page]),
     useChildEpoch(page),
   );
   const times = subagentTimes(page, agents);

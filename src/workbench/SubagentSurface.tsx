@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem } from "../domain/acp";
 import { ItemView } from "../features/chat/acp/TurnActivityItem";
@@ -24,13 +24,10 @@ import {
 } from "./SubagentResourceRows";
 import {
   childReadFor,
-  childRefresh,
-  claimChildRead,
-  noteChildSettlement,
-  readChildTranscript,
-  scheduleChildRefresh,
   useChildEpoch,
+  useChildReads,
   useSettledSubagents,
+  type ChildReadResult,
 } from "./subagentLiveness";
 
 export { AgentTaskSubagentSummary } from "./AgentTaskSubagentSummary";
@@ -100,42 +97,37 @@ function SubagentChild({
     candidate.items.some((item) => item.id === itemId),
   );
   const item = turn?.items.find((candidate) => candidate.id === itemId);
-  const sessionId = turn?.sessionId;
-  const runtimeEpoch = turn?.runtimeEpoch;
   const keys =
     item?.kind === "collaboration" ? (item.payload.agentKeys ?? []) : [];
   const superseded =
     !!turn &&
     page.currentSessionId !== undefined &&
     page.currentSessionId !== turn.sessionId;
-  const childRead = childReadFor(page, projectGeneration, itemId, agentKey);
+  const childRead = useMemo(
+    () => childReadFor(page, projectGeneration, itemId, agentKey),
+    [page, projectGeneration, itemId, agentKey],
+  );
   const canRead = !!childRead;
   const identity = childRead?.identity ?? "";
   const epoch = useChildEpoch(page);
-  const recent = agentKey
-    ? projectTaskResources(page, page.chatId).recentAgents
-    : [];
+  const recent = useMemo(
+    () =>
+      agentKey ? projectTaskResources(page, page.chatId).recentAgents : [],
+    [page, agentKey],
+  );
   const invocation =
     agentKey && !superseded ? invocationOf(page, itemId, agentKey) : null;
   const reported = invocation
     ? recent.find((agent) => agent.id === invocation)
     : undefined;
-  // While this view reads its child, other views take its result instead;
-  // claimed before the shared watcher below first runs.
-  useEffect(
-    () => (canRead ? claimChildRead(identity) : undefined),
-    [canRead, identity],
-  );
   const [observed] = useSettledSubagents(
     page,
     projectGeneration,
-    reported ? [reported] : [],
+    useMemo(() => (reported ? [reported] : []), [reported]),
     epoch,
   );
   const live = liveAgent(observed?.status);
-  const unconfirmedIn = observed?.unconfirmed?.turnId;
   const [read, setRead] = useState<ReadState | null>(null);
-  const sync = useRef(childRefresh());
   const current = read?.key === identity ? read : null;
   const good = current?.good;
   const settled =
@@ -148,94 +140,31 @@ function SubagentChild({
     current.value.kind === "stale"
       ? Math.min(current.stale, MAX_STALE_RETRIES)
       : 0;
-  useEffect(() => {
-    if (
-      epoch === null ||
-      !canRead ||
-      settled ||
-      staleRetry >= MAX_STALE_RETRIES ||
-      !sessionId ||
-      !runtimeEpoch ||
-      !projectGeneration ||
-      !agentKey
-    )
-      return;
-    const state = sync.current;
-    const fresh = state.identity !== identity;
-    state.identity = identity;
-    // Throttled to about once a second (scheduleChildRefresh), never
-    // beside another read. A
-    // user config, goal or fork command that meets a read in flight waits
-    // for it in Rust (RuntimeHost::native_rpc), so reads cannot starve it.
-    const schedule = () => scheduleChildRefresh(state);
-    state.send = () => {
-      state.timer = undefined;
-      if (state.inFlight) {
-        state.again = true;
-        return;
-      }
-      state.inFlight = true;
-      state.startedAt = performance.now();
-      void readChildTranscript({
-        identity,
-        request: {
-          projectId: page.projectId,
-          projectGeneration,
-          chatId: page.chatId,
-          sessionId,
-          runtimeEpoch,
-          itemId,
-          agentKey,
-        },
-      }).then((value) => {
-        state.inFlight = false;
-        if (state.identity === identity)
-          setRead((previous) => {
-            const prior = previous?.key === identity ? previous : null;
-            const stale = typeof value === "object" && value.kind === "stale";
-            return {
-              key: identity,
-              value,
-              // A failure never replaces the last full read.
-              good:
-                typeof value === "object" && "turns" in value
-                  ? value
-                  : prior?.good,
-              stale: stale ? (prior?.stale ?? 0) + 1 : 0,
-            };
-          });
-        if (state.again) {
-          state.again = false;
-          if (state.identity === identity) schedule();
-          else state.send();
-        }
-      });
-    };
-    if (fresh) state.send();
-    else schedule();
-    return () => {
-      clearTimeout(state.timer);
-      state.timer = undefined;
-      state.send = () => undefined;
-    };
-  }, [
-    identity,
+  // Throttled to about once a second and never beside another read of
+  // this child, shared with every other view of it.
+  useChildReads(
+    childRead,
     epoch,
-    settled,
-    staleRetry,
-    canRead,
-    page.projectId,
-    page.chatId,
-    projectGeneration,
-    sessionId,
-    runtimeEpoch,
-    itemId,
-    agentKey,
-  ]);
-  useEffect(() => {
-    if (good && unconfirmedIn)
-      noteChildSettlement(identity, unconfirmedIn, good.turns);
-  }, [good, identity, unconfirmedIn]);
+    !settled && staleRetry < MAX_STALE_RETRIES,
+    useCallback(
+      (value: ChildReadResult) =>
+        setRead((previous) => {
+          const prior = previous?.key === identity ? previous : null;
+          const stale = typeof value === "object" && value.kind === "stale";
+          return {
+            key: identity,
+            value,
+            // A failure never replaces the last full read.
+            good:
+              typeof value === "object" && "turns" in value
+                ? value
+                : prior?.good,
+            stale: stale ? (prior?.stale ?? 0) + 1 : 0,
+          };
+        }),
+      [identity],
+    ),
+  );
   const now = useNow(live);
   if (!turn || item?.kind !== "collaboration") return null;
 

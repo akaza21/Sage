@@ -23,6 +23,7 @@ import type { AcpChatPage, AcpItem, TurnProjection } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import { useAgentChangesState } from "./agentChangesState";
+import { resetSubagentLiveness } from "./subagentLiveness";
 
 const readChild = vi.hoisted(() => vi.fn());
 vi.mock("../services/acpChildTranscript", () => ({
@@ -616,6 +617,7 @@ it("keeps Task lifecycle metadata readable without a child selection or transcri
 });
 
 afterEach(() => {
+  resetSubagentLiveness();
   cleanup();
   useSubagentPaneStore.getState().clear();
   useAgentChangesState.getState().close();
@@ -861,13 +863,11 @@ it.each([
   "counts a child still running at its ended spawn turn by its %s transcript",
   async (status, working, done, shown) => {
     const page = acpProjectionStoreFor(tab.id).getState().page!;
-    // Settled children are remembered per read identity, so each case
-    // spawns its own child.
-    const key = `private-reviewer-${status}`;
+    const key = "private-reviewer";
     replaceItems(
       [
         collaboration(
-          `spawn-${status}`,
+          "spawn-reviewer",
           0,
           "spawnAgent",
           [key],

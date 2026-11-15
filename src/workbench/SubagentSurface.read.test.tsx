@@ -15,6 +15,7 @@ import type {
 } from "../domain/acp";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import { SubagentSurface } from "./SubagentSurface";
+import { resetSubagentLiveness } from "./subagentLiveness";
 
 const readChild = vi.hoisted(() => vi.fn());
 const desktop = vi.hoisted(() => ({ runtime: false }));
@@ -55,6 +56,7 @@ afterEach(() => {
   subscribeGate.wait = null;
   desktop.runtime = false;
   useSubagentPaneStore.setState({ list: false });
+  resetSubagentLiveness();
 });
 
 function childPage(): AcpChatPage {
@@ -772,8 +774,7 @@ it.each([
     render(
       <SubagentSurface
         page={spawnFromEndedTurn("7")}
-        // Settled children are remembered per read identity across views.
-        projectGeneration={status}
+        projectGeneration="3"
         itemId="spawn"
         agentKey="child"
       />,
@@ -811,7 +812,7 @@ it.each([
     const { container } = render(
       <SubagentSurface
         page={spawnFromEndedTurn("7", turnState)}
-        projectGeneration={turnState}
+        projectGeneration="3"
         itemId="spawn"
         agentKey="child"
       />,
@@ -825,5 +826,40 @@ it.each([
     } else expect(header).toBeNull();
     // The view's own read settles it; nothing reads the child a second time.
     expect(readChild).toHaveBeenCalledTimes(1);
+  },
+);
+
+it.each([
+  ["closed", null],
+  ["replaced", "9"],
+])(
+  "stops a child reported running from an ended turn once its runtime is %s, without reading it",
+  async (_name, runtimeEpoch) => {
+    useSubagentPaneStore.setState({ list: true });
+    const page = spawnFromEndedTurn("7");
+    render(
+      <SubagentSurface
+        page={
+          {
+            ...page,
+            sessions: page.sessions.map((session) => ({
+              ...session,
+              runtimeEpoch,
+            })),
+          } as AcpChatPage
+        }
+        projectGeneration="3"
+        itemId="spawn"
+        agentKey="child"
+      />,
+    );
+    const done = screen.getByRole("region", { name: "Done subagents" });
+    expect(within(done).getByText("Stopped")).toBeVisible();
+    expect(done.querySelector("time")).toBeNull();
+    await act(async () => undefined);
+    expect(
+      screen.queryByRole("region", { name: "Active subagents" }),
+    ).toBeNull();
+    expect(readChild).not.toHaveBeenCalled();
   },
 );
