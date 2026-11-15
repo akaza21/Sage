@@ -1,5 +1,3 @@
-//! A long parked chat whose history nearly fills its page still loads with
-//! its restored config and notice: history yields the room they need.
 use rusqlite::params;
 use sha2::{Digest, Sha256};
 
@@ -7,12 +5,10 @@ use super::restore_tests::{option, owner, start};
 use super::stored_tests::seed_chat;
 use super::*;
 use crate::{
-    acp::session_config::{
-        ConfigId,
-        notices::{self, NoticeReason, SessionConfigNotice},
-    },
+    acp::session_config::notices::{self, NoticeReason, SessionConfigNotice},
     persistence::Database,
 };
+use sage_acp_protocol::session_config::ConfigId;
 
 const ITEMS: usize = 9;
 const ITEM_TEXT: usize = 220_000;
@@ -38,7 +34,6 @@ fn write_item(connection: &rusqlite::Connection, index: usize, text_len: usize) 
         .unwrap();
 }
 
-/// The page's history alone, with no room kept for anything else.
 fn bare_page(service: &AcpService) -> AcpChatPage {
     let first = owner(1);
     crate::acp::store::load_chat_page(
@@ -62,8 +57,6 @@ fn items(page: &AcpChatPage) -> usize {
         .sum()
 }
 
-/// A parked chat with a restored config, the largest notice there is, and
-/// one turn of `ITEMS` large items plus a last one of `last_len` characters.
 /// Terminal items cannot be rewritten, so each size gets a chat of its own.
 fn parked_chat(last_len: usize) -> AcpService {
     let service =
@@ -136,8 +129,6 @@ fn a_nearly_full_history_yields_room_for_the_restored_config_and_its_notice() {
     let page = service
         .load_chat_page(first.project_id.clone(), first.chat_id.clone(), None)
         .unwrap();
-    // The full restored config and the notice are shown; history gave up
-    // its last item to a later page to make room.
     let restored = page.restored_session_config.as_ref().unwrap();
     assert_eq!(
         restored.config.config_options.as_slice()[0].name.as_str(),

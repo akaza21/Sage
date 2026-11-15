@@ -57,7 +57,7 @@ fn a_committed_decline_reaches_the_durable_card_before_the_turn_ends() {
     let deny = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: request,
-            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
+            decision: sage_acp_protocol::permissions::PermissionDecision::Deny,
         })
         .expect("deny");
     assert!(deny.token().is_mandatory());
@@ -132,7 +132,7 @@ fn deny_outstanding(runtime: &mut ClaudeRuntime, batch: &AdapterBatch) {
     let deny = runtime
         .command(AdapterCommand::ResolvePermission {
             request_id: request,
-            decision: crate::acp_protocol::permissions::PermissionDecision::Deny,
+            decision: sage_acp_protocol::permissions::PermissionDecision::Deny,
         })
         .expect("deny");
     let token = deny.into_token();

@@ -95,8 +95,8 @@ where
         let command = CloseSessionCommand {
             project_id: parts.owner.project_id.clone(),
             chat_id: parts.owner.chat_id.clone(),
-            expected_projection_revision: crate::acp::contract::ProjectionRevision::ZERO,
-            client_intent_id: crate::acp::contract::ClientIntentId::new(),
+            expected_projection_revision: sage_acp_protocol::contract::ProjectionRevision::ZERO,
+            client_intent_id: sage_acp_protocol::contract::ClientIntentId::new(),
             session_id: parts.owner.session_id.clone(),
             runtime_epoch: parts.owner.runtime_epoch,
             now_millis: sage_core::time::now_millis(),
@@ -157,7 +157,7 @@ where
     C: ProcessTreeControl,
     C::ZeroProof: CoordinatorZeroToken,
 {
-    pub(crate) fn owner(&self) -> &crate::acp::scheduler::RuntimeOwner {
+    pub(crate) fn owner(&self) -> &sage_acp_protocol::scheduler::RuntimeOwner {
         &self.candidate.parts.owner
     }
 
@@ -203,7 +203,7 @@ where
         &self.receipt
     }
 
-    pub(crate) fn owner(&self) -> &crate::acp::scheduler::RuntimeOwner {
+    pub(crate) fn owner(&self) -> &sage_acp_protocol::scheduler::RuntimeOwner {
         &self.candidate.parts.owner
     }
 
@@ -234,7 +234,7 @@ where
         };
         if !matches!(
             self.candidate.parts.terminal_cursor().state(),
-            crate::acp::lifecycle::TurnState::Completed
+            sage_acp_protocol::lifecycle::TurnState::Completed
         ) {
             return Ok(());
         }
@@ -242,7 +242,8 @@ where
             self.proof = Some(ReusableProof::Validated(proof));
             return Err(failure(self, CloseError::Driver(DriverError::Tree)));
         };
-        let Ok(exit_kind) = crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
+        let Ok(exit_kind) =
+            sage_acp_protocol::contract::RequiredText::new("exitKind", "hostShutdown")
         else {
             self.proof = Some(ReusableProof::Validated(proof));
             return Err(failure(self, CloseError::Proof));

@@ -6,10 +6,10 @@ mod tab_repository;
 use sage_core::error::{AppError, AppResult};
 
 use crate::{
-    domain::{RepositoryRef, ResourceRef, WorkbenchTab},
     project_registry::RootRecord,
     workspace::{Workspace, validate_contract_path},
 };
+use sage_domain::{chat::WorkbenchTab, repository::RepositoryRef, resource::ResourceRef};
 
 pub use tab_repository::{
     validate_layout_tab_repository, validate_root_membership, validate_tab_repository,
@@ -566,7 +566,7 @@ mod tests {
         assert!(
             fixture
                 .database
-                .persist_project_layout(&crate::domain::ProjectLayoutRequest {
+                .persist_project_layout(&sage_domain::chat::ProjectLayoutRequest {
                     project_id: fixture.project_id.clone(),
                     tabs: snapshot.tabs,
                     active_tab_id: snapshot.active_tab_id,
@@ -603,7 +603,7 @@ mod tests {
         });
         fixture
             .database
-            .persist_project_layout(&crate::domain::ProjectLayoutRequest {
+            .persist_project_layout(&sage_domain::chat::ProjectLayoutRequest {
                 project_id: fixture.project_id.clone(),
                 tabs: snapshot.tabs,
                 active_tab_id: Some("diff:nested".into()),
@@ -636,7 +636,7 @@ mod tests {
         snapshot.tabs.push(tab);
         fixture
             .database
-            .persist_project_layout(&crate::domain::ProjectLayoutRequest {
+            .persist_project_layout(&sage_domain::chat::ProjectLayoutRequest {
                 project_id: fixture.project_id.clone(),
                 tabs: snapshot.tabs,
                 active_tab_id: snapshot.active_tab_id,
@@ -881,7 +881,7 @@ mod tests {
         });
         fixture
             .database
-            .persist_project_layout(&crate::domain::ProjectLayoutRequest {
+            .persist_project_layout(&sage_domain::chat::ProjectLayoutRequest {
                 project_id: fixture.project_id.clone(),
                 tabs: snapshot.tabs,
                 active_tab_id: snapshot.active_tab_id,

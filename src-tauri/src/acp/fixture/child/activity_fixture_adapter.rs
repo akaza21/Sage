@@ -4,14 +4,16 @@ use crate::acp::{
         AdapterIdentity, AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter,
         ResourceMapper,
     },
+    projection::ActivityRole,
+    transport::{Frame, OutboundFrame},
+};
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SafeText, SageAgentSessionId, SchemaVersionV1},
     intent::{
         ActivityProvenanceV1, ActivitySourceKind, CapabilitySnapshotV1, ExternalId,
         NormalizedPayload, ToolCategory,
     },
     lifecycle::{ActivityLifecycle, ItemLifecycle, ToolState},
-    projection::ActivityRole,
-    transport::{Frame, OutboundFrame},
 };
 
 pub(in crate::acp::fixture) struct ActivityFixtureAdapter {

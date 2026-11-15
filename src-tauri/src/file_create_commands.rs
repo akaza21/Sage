@@ -5,14 +5,10 @@ use std::sync::{
 };
 use tauri::State;
 
-use crate::{
-    domain::{
-        CreateProjectFileRequest, CreateProjectFileResult, CreateProjectFolderRequest,
-        CreateProjectFolderResult, FileCreationOutcome,
-    },
-    persistence::Database,
-    state::AppState,
-    workspace::Workspace,
+use crate::{persistence::Database, state::AppState, workspace::Workspace};
+use sage_domain::file_operations::{
+    CreateProjectFileRequest, CreateProjectFileResult, CreateProjectFolderRequest,
+    CreateProjectFolderResult, FileCreationOutcome,
 };
 
 const MAX_JAVASCRIPT_SAFE_INTEGER: u64 = 9_007_199_254_740_991;

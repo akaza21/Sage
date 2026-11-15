@@ -1,7 +1,7 @@
 use super::*;
 use crate::acp::{
     bindings::codex::{CodexDiscoveryDeadline, CodexDiscoveryRunError},
-    intent::{AcpUnavailableReason, CodexDiscoveryResponse, GetCodexDiscoveryRequest},
+    ipc::{AcpUnavailableReason, CodexDiscoveryResponse, GetCodexDiscoveryRequest},
 };
 
 #[tauri::command]

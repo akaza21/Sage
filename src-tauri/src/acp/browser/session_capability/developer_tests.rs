@@ -2,8 +2,8 @@ use super::*;
 use crate::acp::browser::{
     BrowserCommand, BrowserFailure, BrowserRequest, BrowserScope, attachment::BrowserAttachments,
 };
-use crate::acp::contract::{SageChatId, SageProjectId};
 use rusqlite::Connection;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 use serde_json::json;
 
 fn fixture() -> (

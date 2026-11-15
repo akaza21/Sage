@@ -1,7 +1,6 @@
 use super::super::BrowserTabs;
 use std::sync::Mutex;
 
-/// Uses the production document/metadata state machine without a Wry Webview.
 pub(crate) struct BrowserDocumentFixture(Mutex<BrowserTabs<usize>>);
 
 impl BrowserDocumentFixture {

@@ -1,12 +1,3 @@
-//! Claude Code's Agent SDK protocol for native replay cases.
-//!
-//! The child answers every control request the SDK binding sends (initialize,
-//! settings, mode, model, effort, interrupt, withdrawing a queued message)
-//! and waits for the client frame a step names. Turn output is replayed
-//! verbatim from `claudeSdkNative` steps; a message sent while a run works
-//! is reported by `claudeSdkLifecycle` steps under the id the client gave it,
-//! as Claude Code reports its queued input.
-
 use std::io::{Read, Write};
 
 use serde_json::{Value, json};
@@ -20,8 +11,6 @@ const SESSION: &str = "fixture-session";
 
 #[derive(Default)]
 pub(super) struct SdkWireState {
-    /// The message sent while a run works, from its arrival until Claude
-    /// Code reports it finished or withdrawn.
     follow_up: Option<FollowUp>,
     lifecycle_events: u64,
     /// The session the launch flags opened, when the launch named one.
@@ -34,8 +23,6 @@ pub(super) struct SdkWireState {
 }
 
 impl SdkWireState {
-    /// The state of a launch with `harness_args`: Claude Code's session
-    /// flags, read from the profile and project it was launched in.
     pub(super) fn launched(harness_args: &[String]) -> Result<Self, FixtureError> {
         if harness_args.is_empty() {
             return Ok(Self::default());
@@ -45,8 +32,6 @@ impl SdkWireState {
         Self::opened(harness_args, std::path::Path::new(&config), &cwd)
     }
 
-    /// The state of a launch whose session flags open a session in profile
-    /// `config`, working in `cwd`.
     pub(super) fn opened(
         harness_args: &[String],
         config: &std::path::Path,
@@ -80,7 +65,6 @@ pub(super) fn await_request(
         .as_str()
         .ok_or(FixtureError::InvalidArguments)?;
     let prompt_text = step.get("promptText").and_then(Value::as_str);
-    // Only a launch can be one the case expects again.
     if (prompt_text.is_some() && kind != "claudeSdkPrompt")
         || step
             .get("relaunch")
@@ -92,7 +76,6 @@ pub(super) fn await_request(
         "claudeSdkInitialize" => "initialize",
         "claudeSdkSettings" => "get_settings",
         "claudeSdkInterrupt" => "interrupt",
-        // A prompt starts a run; a follow-up arrives while one works.
         "claudeSdkPrompt" | "claudeSdkFollowUp" => "user",
         "claudeSdkPermission" => "control_response",
         "claudeSdkIdle" => "idle",
@@ -165,7 +148,6 @@ fn receive(
     Ok(())
 }
 
-/// Answers one control request and names its subtype.
 fn answer(
     frame: &Value,
     state: &mut WireState,

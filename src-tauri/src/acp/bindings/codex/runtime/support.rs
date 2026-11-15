@@ -7,9 +7,9 @@ use crate::acp::{
         AdapterBatch, AdapterEgress, AdapterEvent, AdapterIdentity, AdapterModel,
         AdapterRuntimeError, EgressToken, ResourceMapper,
     },
-    intent::ExternalId,
     transport::OutboundFrame,
 };
+use sage_acp_protocol::intent::ExternalId;
 use sage_core::limits::LIMITS;
 
 impl super::CodexRuntime {
@@ -69,19 +69,24 @@ impl super::super::ResourceMapper for MapperBridge<'_> {
     fn map_existing(
         &self,
         absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
         self.0.map_existing(absolute_path)
     }
 
     fn map_missing_display(
         &self,
         absolute_path: &str,
-    ) -> Option<crate::acp::intent::SafeResourceRef> {
+    ) -> Option<sage_acp_protocol::intent::SafeResourceRef> {
         self.0.map_missing_display(absolute_path)
     }
 
-    fn read_diff_context(&self, resource: &crate::acp::intent::SafeResourceRef) -> Option<String> {
+    fn read_diff_context(
+        &self,
+        resource: &sage_acp_protocol::intent::SafeResourceRef,
+    ) -> Option<String> {
         self.0.read_diff_context(resource)
     }
 }
@@ -141,37 +146,22 @@ pub(super) fn model_values(
     Ok(output)
 }
 
-/// The thinking level `model` takes, at `current`, when it advertises any.
 pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<serde_json::Value> {
     if model.supported_efforts.is_empty() {
         return None;
     }
-    let options: Vec<_> = model
-        .supported_efforts
-        .iter()
-        .map(|effort| {
-            let name = effort.id.as_str();
-            let mut chars = name.chars();
-            let label = chars
-                .next()
-                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
-                .unwrap_or_default();
-            serde_json::json!({
-                "value":name,
-                "name":label,
-                "description":effort.description
-            })
-        })
-        .collect();
+    let mut option = effort_select(
+        model
+            .supported_efforts
+            .iter()
+            .map(|effort| (effort.id.as_str(), Some(effort.description.as_str()))),
+        current,
+    );
     let default = model.default_effort.as_ref().filter(|default| {
         model
             .supported_efforts
             .iter()
             .any(|effort| effort.id == **default)
-    });
-    let mut option = serde_json::json!({
-        "id":"effort", "name":"Thinking level", "category":"effort", "type":"select",
-        "currentValue":current, "options":options
     });
     if let Some(default) = default {
         option["defaultValue"] = serde_json::json!(default);
@@ -179,13 +169,37 @@ pub(super) fn effort_option(model: &ModelDescriptor, current: &str) -> Option<se
     Some(option)
 }
 
-/// The thread's model, `current`, as a choice among the listed models. A
-/// model Codex did not list (one its picker hides) is still the thread's, so
-/// it is offered first, named by its id: the composer then shows what the
-/// thread runs and can move it to a listed model.
+/// The thread's thinking level option offering `levels` (each with its
+/// description, when known), set to `current`.
+pub(super) fn effort_select<'a>(
+    levels: impl Iterator<Item = (&'a str, Option<&'a str>)>,
+    current: &str,
+) -> serde_json::Value {
+    let options: Vec<_> = levels
+        .map(|(name, description)| {
+            let mut chars = name.chars();
+            let label = chars
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + chars.as_str())
+                .unwrap_or_default();
+            let mut choice = serde_json::json!({"value":name, "name":label});
+            if let Some(description) = description {
+                choice["description"] = serde_json::json!(description);
+            }
+            choice
+        })
+        .collect();
+    serde_json::json!({
+        "id":super::model_config::EFFORT_CONFIG_ID, "name":"Thinking level", "category":"effort", "type":"select",
+        "currentValue":current, "options":options
+    })
+}
+
+/// A model Codex did not list (one its picker hides) is still the thread's,
+/// so it is offered first, named by its id.
 pub(super) fn model_option(
     catalog: &[ModelDescriptor],
-    current: &crate::acp::intent::ModelId,
+    current: &sage_acp_protocol::intent::ModelId,
 ) -> serde_json::Value {
     let choice = |id: &str, name: &str| serde_json::json!({"value":id,"name":name});
     let unlisted = (!catalog.iter().any(|model| model.id == *current))
@@ -207,9 +221,9 @@ pub(super) fn model_option(
 /// `base` with each of `options`, in order, that still fits beside the ones
 /// before it, so an option over the config's bounds drops only itself.
 pub(super) fn thread_config(
-    base: crate::acp::session_config::SessionConfig,
+    base: sage_acp_protocol::session_config::SessionConfig,
     options: impl IntoIterator<Item = serde_json::Value>,
-) -> crate::acp::session_config::SessionConfig {
+) -> sage_acp_protocol::session_config::SessionConfig {
     let Ok(mut wire) = serde_json::to_value(&base) else {
         return base;
     };
@@ -218,9 +232,11 @@ pub(super) fn thread_config(
     for option in options {
         kept.push(option);
         wire["configOptions"] = serde_json::Value::from(kept.clone());
-        match serde_json::from_value::<crate::acp::session_config::SessionConfig>(wire.clone())
-            .ok()
-            .filter(|candidate| candidate.validate().is_ok())
+        match serde_json::from_value::<sage_acp_protocol::session_config::SessionConfig>(
+            wire.clone(),
+        )
+        .ok()
+        .filter(|candidate| candidate.validate().is_ok())
         {
             Some(candidate) => config = candidate,
             None => {

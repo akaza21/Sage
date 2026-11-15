@@ -4,7 +4,7 @@ use serde_json::{Value, json};
 
 use super::profile::{StandardAcpProfile, profile_for};
 use super::translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator};
-use crate::acp::intent::{
+use sage_acp_protocol::intent::{
     FileChangeOperation, NormalizedPayload, SafeResourceLocation, SafeResourceRef,
     UnavailableResourceReason,
 };
@@ -27,7 +27,7 @@ impl ResourceMapper for DeletedFileResources {
 
     fn map_missing_display(&self, _absolute_path: &str) -> Option<SafeResourceRef> {
         SafeResourceRef::new(
-            crate::acp::contract::SageRootId::parse("fixture-root").unwrap(),
+            sage_acp_protocol::contract::SageRootId::parse("fixture-root").unwrap(),
             "src/deleted.ts",
         )
         .ok()
@@ -40,7 +40,7 @@ impl ResourceMapper for NewFileResources {
         _absolute_path: &str,
     ) -> Result<SafeResourceRef, UnavailableResourceReason> {
         SafeResourceRef::new(
-            crate::acp::contract::SageRootId::parse("fixture-root").expect("root"),
+            sage_acp_protocol::contract::SageRootId::parse("fixture-root").expect("root"),
             "src/new.ts",
         )
         .map_err(|_| UnavailableResourceReason::Unsupported)
@@ -287,7 +287,7 @@ fn write_location_names_the_new_file_without_a_typed_diff() {
     assert!(events.iter().any(|event| matches!(
         event,
         AdapterEvent::Item {
-            payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, label, .. },
+            payload: NormalizedPayload::ToolCall { category: sage_acp_protocol::intent::ToolCategory::Edit, label, .. },
             ..
         } if label.as_str() == "Created src/new.ts"
     )));
@@ -310,7 +310,7 @@ fn write_without_a_file_stays_other_activity() {
     assert!(events.iter().any(|event| matches!(
         event,
         AdapterEvent::Item {
-            payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Other, label, .. },
+            payload: NormalizedPayload::ToolCall { category: sage_acp_protocol::intent::ToolCategory::Other, label, .. },
             ..
         } if label.as_str() == "Write generic content"
     )));

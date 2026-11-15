@@ -4,20 +4,16 @@ use std::{ffi::OsStr, fs};
 
 #[cfg(windows)]
 use crate::{
-    acp::{
-        bindings::standard_acp::OpenCodeBindingRegistration,
-        contract::{
-            ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
-        },
-        process::RequiredContainment,
-    },
+    acp::{bindings::standard_acp::OpenCodeBindingRegistration, process::RequiredContainment},
     project_registry::ProjectRootAuthority,
+};
+#[cfg(windows)]
+use sage_acp_protocol::contract::{
+    ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId,
 };
 
 #[test]
 fn registry_resolves_claude_record_only_when_injectable_admission_is_present() {
-    // This discriminates because the registry must route the Claude binding
-    // and invoke its real registration, rather than merely cataloguing an ID.
     let registry = BindingRegistry::default();
     assert!(
         matches!(registry.route(CLAUDE_BINDING_ID), Ok(record) if record.harness_id() == "claude-code")

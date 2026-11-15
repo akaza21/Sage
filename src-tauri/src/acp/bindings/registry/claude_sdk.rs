@@ -1,14 +1,10 @@
-//! Curated registry record for Claude Code over its Agent SDK protocol.
-
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::{
-        claude::sdk::{
-            CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration, ClaudeSdkRuntimeFactory,
-        },
-        runtime::RuntimeFactory,
-    },
+use crate::acp::bindings::{
+    claude::sdk::{CLAUDE_SDK_BINDING_ID, ClaudeSdkBindingRegistration, ClaudeSdkRuntimeFactory},
+    runtime::RuntimeFactory,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };
@@ -31,13 +27,12 @@ pub(super) fn record(registration: Arc<ClaudeSdkBindingRegistration>) -> Binding
         turn_dispatch: crate::acp::service::AcpService::send_session_turn,
         cancel_dispatch: crate::acp::service::AcpService::cancel_session_turn,
         close_dispatch: crate::acp::service::AcpService::close_session,
+        launch_effort: Some(crate::acp::bindings::claude::sdk::launch_effort_option),
         model_provider: ModelProvider::ClaudeAdapter,
         auth_provider: AuthProvider::Claude,
     }
 }
 
-/// A desktop fixture record: the replay case stands in for Claude Code and
-/// no Claude sign-in is consulted.
 #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
 pub(super) fn fixture_record(
     selection: crate::launch_profile::FixtureSelection,
@@ -62,9 +57,6 @@ fn launch_factory(
     Box::new(ClaudeSdkRuntimeFactory { binding, root })
 }
 
-/// What the SDK protocol carries today: new and resumed sessions, prompts
-/// with attachments, cancel, and subagent transcripts. Closing ends the
-/// process; fork arrives with its own stage.
 fn capabilities(
     binding: &AdmittedBinding,
 ) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
@@ -105,39 +97,17 @@ fn ceiling() -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {
     })
 }
 
-/// Whether a binding without model discovery can start a session with
-/// `model`: Claude Code takes a model its build listed before the session.
-pub(super) fn accepts_launch_model(binding: &AdmittedBinding, model: &str) -> bool {
-    match binding {
-        AdmittedBinding::ClaudeSdk(binding) => {
-            crate::acp::bindings::claude::sdk::offers_model(binding, model)
-        }
-        _ => false,
+pub(super) fn launch_models(
+    registration: &ClaudeSdkBindingRegistration,
+    probe: bool,
+) -> Option<Vec<sage_domain::harness::ModelOption>> {
+    use crate::acp::bindings::claude::sdk;
+    let binding = registration.admitted()?;
+    if probe {
+        sdk::probed_models(&binding)
+    } else {
+        sdk::known_models(&binding)
     }
-}
-
-/// The config choice a new session of this binding starts with for a
-/// thinking level chosen before it existed, when the binding lists that
-/// level for `model` (Claude Code's own default when none is named).
-pub(super) fn launch_effort_choice(
-    binding: &AdmittedBinding,
-    model: Option<&str>,
-    effort: &str,
-) -> Option<crate::acp::session_config::ConfigMutation> {
-    use crate::acp::{
-        bindings::claude::sdk,
-        session_config::{ConfigId, ConfigMutation, ConfigValue},
-    };
-    let AdmittedBinding::ClaudeSdk(binding) = binding else {
-        return None;
-    };
-    sdk::offers_effort(binding, model.unwrap_or("default"), effort).then_some(())?;
-    Some(ConfigMutation::Option {
-        config_id: ConfigId::new("configId", sdk::EFFORT_CONFIG_ID).ok()?,
-        value: ConfigValue::Select {
-            value: ConfigId::new("value", effort).ok()?,
-        },
-    })
 }
 
 #[cfg(test)]

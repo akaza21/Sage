@@ -283,12 +283,24 @@ impl CodexDiscoveryManager {
         self.cache.clear();
     }
 
+    pub(super) fn launch_model(
+        &self,
+        project_root: &CodexProjectRootAuthority,
+        binding_id: &sage_acp_protocol::intent::BindingId,
+        binding_digest: [u8; 32],
+        model_id: Option<&sage_acp_protocol::intent::ModelId>,
+    ) -> Option<sage_domain::harness::ModelOption> {
+        project_root.revalidate().ok()?;
+        self.cache
+            .launch_model(project_root, binding_id, binding_digest, model_id)
+    }
+
     pub(super) fn validate_session_model(
         &self,
         project_root: &CodexProjectRootAuthority,
-        binding_id: &crate::acp::intent::BindingId,
+        binding_id: &sage_acp_protocol::intent::BindingId,
         binding_digest: [u8; 32],
-        model_id: Option<&crate::acp::intent::ModelId>,
+        model_id: Option<&sage_acp_protocol::intent::ModelId>,
     ) -> Result<(), CodexDiscoveryRunError> {
         project_root
             .revalidate()
@@ -350,7 +362,7 @@ impl CodexDiscoveryManager {
         &self,
         project_root: &CodexProjectRootAuthority,
         binding_digest: [u8; 32],
-        model: Option<crate::acp::intent::ModelId>,
+        model: Option<sage_acp_protocol::intent::ModelId>,
     ) {
         self.seed_session_validation_for_binding_for_test(
             project_root,
@@ -366,10 +378,28 @@ impl CodexDiscoveryManager {
         project_root: &CodexProjectRootAuthority,
         binding_digest: [u8; 32],
         binding_id: &str,
-        model: Option<crate::acp::intent::ModelId>,
+        model: Option<sage_acp_protocol::intent::ModelId>,
     ) {
         self.cache
-            .seed_session_validation(project_root, binding_digest, binding_id, model);
+            .seed_session_validation(project_root, binding_digest, binding_id, model, &[]);
+    }
+
+    /// Lists `model` as the Codex account default, with `effort_levels`.
+    #[cfg(all(test, windows))]
+    pub(crate) fn seed_session_catalog_for_test(
+        &self,
+        project_root: &CodexProjectRootAuthority,
+        binding_digest: [u8; 32],
+        model: sage_acp_protocol::intent::ModelId,
+        effort_levels: &[&str],
+    ) {
+        self.cache.seed_session_validation(
+            project_root,
+            binding_digest,
+            crate::acp::bindings::codex::CODEX_BINDING_ID,
+            Some(model),
+            effort_levels,
+        );
     }
 }
 
@@ -384,12 +414,14 @@ mod tests {
             DiscoveryZeroProcess, RevalidationCheckpoint, parse_packet_metadata,
             run_discovery_protocol, startup_codex_binding_registration,
         },
-        contract::{ProjectGeneration, RequiredText, RuntimeEpoch, SageProjectId, SageRootId},
-        intent::{BindingId, ModelId},
         ipc::{CodexDiscoveryAccount, CodexDiscoveryModel},
         transport::{Frame, FrameWriteOutcome, OutboundFrame},
     };
     use crate::project_registry::ProjectRootAuthority;
+    use sage_acp_protocol::{
+        contract::{ProjectGeneration, RequiredText, RuntimeEpoch, SageProjectId, SageRootId},
+        intent::{BindingId, ModelId},
+    };
     use std::fs;
     use std::{
         sync::{
@@ -499,6 +531,7 @@ mod tests {
                 id: model_id.clone(),
                 name: RequiredText::new("modelName", "GPT Cache").unwrap(),
                 is_default: true,
+                effort_levels: Vec::new(),
             }],
             default_model_id: Some(model_id),
         }
@@ -889,7 +922,6 @@ mod tests {
         let (manager, owner, mut joined) =
             admitted_joined_flight("joined-expired", CodexDiscoveryDeadline::new().unwrap());
         assert!(manager.discover(owner).is_ok());
-        // The owner has completed; only the joined caller's own deadline is expired.
         joined.deadline = CodexDiscoveryDeadline::for_test(Duration::ZERO, Duration::ZERO);
         assert_eq!(
             joined.deadline.ensure_total(),

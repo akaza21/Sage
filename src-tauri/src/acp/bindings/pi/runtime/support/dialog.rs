@@ -2,10 +2,12 @@ use crate::acp::{
     bindings::adapter::{
         AdapterEgress, AdapterEvent, AdapterRuntimeError, EgressResolution, EgressToken,
     },
+    transport::OutboundFrame,
+};
+use sage_acp_protocol::{
     contract::SafeText,
     intent::NormalizedPayload,
     lifecycle::{ItemLifecycle, ServerRequestState},
-    transport::OutboundFrame,
 };
 use sage_core::limits::LIMITS;
 
@@ -86,7 +88,6 @@ impl PiRuntime {
         ))
     }
 
-    /// Pi dropped a timed dialog without a word; its card goes too.
     pub(super) fn expire_dialog(
         &mut self,
         id: String,

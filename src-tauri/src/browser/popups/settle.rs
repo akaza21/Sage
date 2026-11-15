@@ -3,9 +3,8 @@
 //! the real args and deferral.
 #![cfg_attr(not(windows), allow(dead_code))]
 
-/// One deferred popup request. `complete` must be called exactly once.
+/// `complete` must be called exactly once.
 pub(crate) trait NewWindowRequest {
-    /// `SetNewWindow` with the child tab's `CoreWebView2`.
     fn set_new_window(&mut self) -> Result<(), String>;
     fn set_handled(&mut self) -> Result<(), String>;
     fn complete(&mut self) -> Result<(), String>;
@@ -13,7 +12,6 @@ pub(crate) trait NewWindowRequest {
 
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum Settlement {
-    /// The child tab hosts the popup and keeps `window.opener`.
     Attached,
     /// WebView2 never received a child: the popup was denied and the caller
     /// closes any created tab and falls back to the intent path.
@@ -24,9 +22,8 @@ pub(crate) enum Settlement {
     Abandoned(String),
 }
 
-/// Settles a deferred request after the child tab was prepared (created,
-/// hidden, linked and hooked). `SetNewWindow` is the last fallible step that
-/// can still fall back; the deferral is completed exactly once on every path.
+/// `SetNewWindow` is the last fallible step that can still fall back; the
+/// deferral is completed exactly once on every path.
 pub(crate) fn settle(
     request: &mut impl NewWindowRequest,
     prepared: Result<(), String>,

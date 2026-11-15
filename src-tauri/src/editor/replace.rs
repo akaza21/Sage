@@ -11,7 +11,6 @@ use super::{
     normalized_resource,
 };
 use crate::{
-    domain::ResourceRef,
     editor_content::{
         detect_line_ending, fingerprint, materialize_content, reject_oversized_materialized,
         reject_unsupported_content,
@@ -20,6 +19,7 @@ use crate::{
     persistence::Database,
     workspace::{Workspace, directory_skip::protected_workspace_name},
 };
+use sage_domain::resource::ResourceRef;
 
 /// A File as a Replace reads it: its fingerprint and its text with `\n`
 /// line ends.

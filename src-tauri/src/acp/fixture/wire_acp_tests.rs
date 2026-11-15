@@ -145,8 +145,7 @@ fn claude_slash_commands_case_advertises_three_commands_and_checks_each_prompt()
         .collect();
     assert_eq!(finished, [3, 4, 5]);
 
-    // A prompt in the wrong order, or freehand text, is refused.
-    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
+    let case = sage_acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == "claude-slash-commands")
         .unwrap();
@@ -167,7 +166,7 @@ fn claude_slash_commands_case_advertises_three_commands_and_checks_each_prompt()
 }
 
 fn journey(id: &str) -> Vec<Value> {
-    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
+    let case = sage_acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == id)
         .unwrap_or_else(|| panic!("missing {id}"));
@@ -212,7 +211,6 @@ fn the_claude_config_journey_resumes_in_the_defaults_and_answers_each_change() {
     let initialize = &reply(1)["result"];
     assert!(initialize["agentCapabilities"]["sessionCapabilities"]["resume"].is_object());
     assert_eq!(initialize["models"].as_array().unwrap().len(), 2);
-    // A resumed session reports the adapter's defaults again.
     let resumed = &reply(2)["result"];
     assert_eq!(resumed["sessionId"], session);
     assert_eq!(resumed["modes"]["currentModeId"], "default");
@@ -268,8 +266,6 @@ fn the_claude_config_journey_also_opens_a_new_session_and_refuses_a_foreign_resu
 
 #[test]
 fn the_codex_config_journey_starts_or_resumes_the_same_thread() {
-    // Opened without a model the thread runs the default; resumed with the
-    // second model it runs that one. Either way at the Medium default effort.
     for (open, model, runs) in [
         ("thread/start", Value::Null, "fixture-model"),
         (
@@ -318,7 +314,7 @@ fn the_codex_config_journey_starts_or_resumes_the_same_thread() {
 
 #[test]
 fn launch_rules_follow_what_each_case_waits_for() {
-    use crate::acp_protocol::native_cases::{native_case_lists_models, native_case_spans_restart};
+    use sage_acp_protocol::native_cases::{native_case_lists_models, native_case_spans_restart};
     for case in [
         "codex-config-resume",
         "codex-model-menu",
@@ -334,7 +330,6 @@ fn launch_rules_follow_what_each_case_waits_for() {
     ] {
         assert!(!native_case_lists_models(case), "{case}");
     }
-    // A Claude Code fork opens its fork chat as a second launch.
     for case in [
         "claude-config-resume",
         "codex-config-resume",

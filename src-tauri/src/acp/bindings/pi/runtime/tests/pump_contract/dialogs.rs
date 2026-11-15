@@ -1,8 +1,7 @@
 use super::*;
-use crate::acp::lifecycle::ItemLifecycle;
 use crate::acp::runtime::EgressTransport;
+use sage_acp_protocol::lifecycle::ItemLifecycle;
 
-/// A dialog Sage cannot show: no title to ask, and nothing to choose.
 pub(super) fn dialog(id: &str, method: &str) -> Value {
     json!({"type":"extension_ui_request","id":id,"method":method,"options":[]})
 }

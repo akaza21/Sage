@@ -1,8 +1,3 @@
-//! Annotate's pick (M1b): a click in inspect mode names the element, the
-//! element is read in the isolated world and the accessibility tree, the
-//! page never sees the click, its main world sees nothing, and no form value
-//! reaches the item.
-
 use base64::{Engine, engine::general_purpose::STANDARD};
 use std::io::Cursor;
 
@@ -64,7 +59,6 @@ fn a_click_in_annotate_picks_the_element_without_reaching_the_page() {
         .port_mut()
         .pick_element(backend)
         .expect("pick the clicked element");
-    // The isolated world reads the real page, not the main world's lies.
     assert_eq!(picked.page.selector, "#press");
     assert_eq!(picked.page.positional, "html > body > button");
     assert_eq!(picked.page.text, "Press me");
@@ -84,7 +78,6 @@ fn a_click_in_annotate_picks_the_element_without_reaching_the_page() {
         jpeg_size(&picked.frame.jpeg_base64),
         (picked.frame.width, picked.frame.height)
     );
-    // The frame is the whole webview, scrollbar included.
     assert_eq!(
         f64::from(picked.frame.width),
         (viewport.width * viewport.scale).round()
@@ -104,7 +97,6 @@ fn a_click_in_annotate_picks_the_element_without_reaching_the_page() {
         })
     );
 
-    // Picking paused hovering; resuming brings it back.
     mouse(&mut lane, "mouseMoved", x + 1.0, y);
     assert!(overlay_event(&mut lane, "Overlay.nodeHighlightRequested").is_none());
     lane.capability.port_mut().start_inspect().unwrap();
@@ -169,8 +161,6 @@ fn a_pick_never_reads_form_values_or_hidden_inputs() {
 const SHIP_CANARY: &str = "CANARY-SHIP-2a7c58";
 const SELECT_CANARY: &str = "CANARY-SELECT-4e8a13";
 
-/// Picks `selector` on the open page: what the page reported, the frame
-/// and the item.
 fn item_of(lane: &mut Lane, selector: &str) -> (PageElement, Frame, element::BrowserElement) {
     lane.capability.port_mut().start_inspect().unwrap();
     let backend = backend_of(lane, selector);
@@ -216,8 +206,7 @@ fn text_the_user_cannot_see_never_reaches_the_item() {
     assert_eq!(item.text, "Visible words");
 }
 
-/// Where the red block is in a frame, in image pixels: left, top, right,
-/// bottom.
+/// In image pixels: left, top, right, bottom.
 fn red_box(frame: &Frame) -> (f64, f64, f64, f64) {
     let bytes = STANDARD.decode(&frame.jpeg_base64).expect("frame base64");
     let mut decoder = jpeg_decoder::Decoder::new(Cursor::new(bytes));
@@ -235,10 +224,6 @@ fn red_box(frame: &Frame) -> (f64, f64, f64, f64) {
     (left as f64, top as f64, right as f64, bottom as f64)
 }
 
-/// The chrome draws the frame over the whole page area and places the
-/// outline at the element's share of the viewport. Under display scaling,
-/// pinch zoom and scrolling, that outline must sit on the element in the
-/// picture: within 1 CSS px on every side.
 #[test]
 fn the_outline_lands_on_the_element_in_the_frozen_frame() {
     let mut lane = Lane::open("/annotate.html");

@@ -6,11 +6,11 @@ use serde::{Deserialize, Serialize};
 use tauri::State;
 
 use crate::{
-    domain::ResourceRef,
     settings_store::EditorValue,
     state::AppState,
     workspace::{Workspace, ignore_rules::global_excludes_path},
 };
+use sage_domain::resource::ResourceRef;
 
 use super::{
     IndexInputs, Ticket,

@@ -12,8 +12,6 @@ use crate::acp::{
 };
 
 impl CodexRuntime {
-    /// Freezes the supervisor contract from the authority retained by this
-    /// exact runtime. Metadata-only adapters cannot construct this value.
     pub(crate) fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
         self.launch_authority.revalidate()?;
         let binding = self.launch_authority.binding()?;

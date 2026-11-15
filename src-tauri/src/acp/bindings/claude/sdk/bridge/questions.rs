@@ -5,7 +5,7 @@
 
 use serde_json::{Map, Value, json};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::user_input::{
         USER_INPUT_MAX_OPTIONS, USER_INPUT_MAX_QUESTIONS, UserInputOption, UserInputQuestion,

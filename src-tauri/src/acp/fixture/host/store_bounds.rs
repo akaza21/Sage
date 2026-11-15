@@ -2,19 +2,21 @@ use serde_json::{Value, json};
 use sha2::{Digest, Sha256};
 
 use crate::acp::{
-    contract::{
-        RequiredText, RuntimeEpoch, SafeText, SageChatId, SageItemId, SageProjectId,
-        SchemaVersionV1,
-    },
     fixture::generated_cases::FrozenCase,
-    intent::{ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload},
-    lifecycle::{ActivityLifecycle, ItemLifecycle},
     projection::ActivityRole,
     runtime::{NormalizerInput, normalize},
     store::{
         ActivityIngressCommand, ItemIngressCommand, StoreError, apply_activity_ingress,
         apply_item_ingress, load_chat_page,
     },
+};
+use sage_acp_protocol::{
+    contract::{
+        RequiredText, RuntimeEpoch, SafeText, SageChatId, SageItemId, SageProjectId,
+        SchemaVersionV1,
+    },
+    intent::{ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload},
+    lifecycle::{ActivityLifecycle, ItemLifecycle},
 };
 
 use super::schema_seed::{
@@ -100,8 +102,8 @@ fn child_activity_command(depth: u8, parent_item: &str) -> ActivityIngressComman
     ActivityIngressCommand {
         project_id: SageProjectId::parse("project-a").unwrap(),
         chat_id: SageChatId::parse("chat-a").unwrap(),
-        session_id: crate::acp::contract::SageAgentSessionId::parse("session-a").unwrap(),
-        turn_id: crate::acp::contract::SageTurnId::parse("turn-a").unwrap(),
+        session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-a").unwrap(),
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-a").unwrap(),
         runtime_epoch: RuntimeEpoch::new(2).unwrap(),
         external_activity_id: ExternalId::new("activity", format!("child-depth-{depth}")).unwrap(),
         activity_kind: RequiredText::new("activityKind", "subagent").unwrap(),
@@ -141,8 +143,9 @@ fn item_bound(id: &str, step: &Value) -> Value {
         let command = ItemIngressCommand {
             project_id: SageProjectId::parse("project-a").unwrap(),
             chat_id: SageChatId::parse("chat-a").unwrap(),
-            session_id: crate::acp::contract::SageAgentSessionId::parse("session-a").unwrap(),
-            turn_id: crate::acp::contract::SageTurnId::parse("turn-a").unwrap(),
+            session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-a")
+                .unwrap(),
+            turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-a").unwrap(),
             runtime_epoch: RuntimeEpoch::new(1).unwrap(),
             external_item_id: ExternalId::new("item", format!("fixture-item-{index}")).unwrap(),
             activity_id: None,
@@ -239,8 +242,9 @@ fn activity_group_bound(step: &Value) -> Value {
         let command = ActivityIngressCommand {
             project_id: SageProjectId::parse("project-a").unwrap(),
             chat_id: SageChatId::parse("chat-a").unwrap(),
-            session_id: crate::acp::contract::SageAgentSessionId::parse("session-a").unwrap(),
-            turn_id: crate::acp::contract::SageTurnId::parse("turn-a").unwrap(),
+            session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-a")
+                .unwrap(),
+            turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-a").unwrap(),
             runtime_epoch: RuntimeEpoch::new(2).unwrap(),
             external_activity_id: ExternalId::new("activity", format!("activity-{index}")).unwrap(),
             activity_kind: RequiredText::new("activityKind", "subagent").unwrap(),

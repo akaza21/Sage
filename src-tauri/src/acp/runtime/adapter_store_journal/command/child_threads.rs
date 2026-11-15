@@ -1,8 +1,8 @@
 use crate::acp::{
-    intent::NormalizedPayload,
     runtime::adapter_pump::{DurableAdapterEvent, PumpIntent, PumpJournalError},
     store::{AdapterInboundEvent, ItemIngressCommand},
 };
+use sage_acp_protocol::intent::NormalizedPayload;
 
 use super::{scope_heap_bytes, verify_payload, verify_scope};
 

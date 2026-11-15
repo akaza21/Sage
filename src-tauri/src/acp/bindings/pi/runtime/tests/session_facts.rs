@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::intent::session_event::{SessionNoticeLevel, SessionScopedEvent};
+use sage_acp_protocol::intent::session_event::{SessionNoticeLevel, SessionScopedEvent};
 
 fn session_event(runtime: &mut PiRuntime, value: Value) -> Option<SessionScopedEvent> {
     match runtime.ingest(&frame(value), &Mapper).unwrap().events() {

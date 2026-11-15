@@ -51,7 +51,10 @@ fn queued_steer_overtaken_by_cancel_never_writes() {
             transport: CancelTransport {
                 writes: Arc::clone(&writes),
             },
-            control: NoChildProcessControl { zero_checks },
+            control: NoChildProcessControl {
+                zero_checks,
+                harness_error: None,
+            },
             owner: owner.clone(),
             clock: Arc::new(SystemDriverClock),
         };
@@ -92,7 +95,7 @@ fn queued_steer_overtaken_by_cancel_never_writes() {
                     prompt: Prompt::new("prompt", "start").unwrap(),
                     now_millis: now_millis + 3,
                 },
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             }))
             .unwrap();
         state = handle_next(state, &context).await;

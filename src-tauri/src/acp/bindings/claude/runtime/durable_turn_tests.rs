@@ -3,17 +3,17 @@ use super::*;
 use crate::{
     acp::{
         bindings::adapter::{AdapterCommand, EgressResolution, HarnessAdapter},
-        contract::{SageChatId, SageProjectId, SageTurnId},
-        intent::Prompt,
         runtime::{
             ActiveTurnIntent, AdapterPump, EgressTransport, JournalHandle, ProjectionMailbox,
             SessionPumpIntent, SqliteAdapterBatchJournal,
         },
         store::DatabaseAcpStore,
+        transcript_quote::Prompt,
         transport::FrameWriteOutcome,
     },
     persistence::Database,
 };
+use sage_acp_protocol::contract::{SageChatId, SageProjectId, SageTurnId};
 
 use super::tests::{Mapper, frame, initialize, request_id};
 
@@ -169,7 +169,7 @@ async fn drive_turn<J: crate::acp::runtime::AdapterBatchJournal>(
     pump.queue_prompt(
         Prompt::new("prompt", "Reply with the single word ok.").expect("prompt"),
         &RequiredText::new("clientMessageId", turn_id.to_owned()).expect("client message id"),
-        crate::acp_protocol::access_mode::SessionAccessMode::Ask,
+        sage_acp_protocol::access_mode::SessionAccessMode::Ask,
     )
     .expect("prompt queued");
     let mut sink = Sink::default();

@@ -3,15 +3,18 @@ use std::sync::Arc;
 #[cfg(any(test, all(windows, feature = "acp-fixture")))]
 use crate::acp::store::FailActivationCommand;
 use crate::acp::{
-    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
-    intent::ProjectionChangedV1,
+    ipc::ProjectionChangedV1,
     process::ZeroProcessToken,
-    scheduler::{RuntimeOwner, Scheduler, SchedulerError, TreeLease},
     store::{
         ActivateSessionCommand, CloseSessionCommand, CompleteActivationCommand,
         FinalizeCloseCommand, ParkSessionCommand, RecoverRuntimeCommand, SessionMutation,
         StartSessionCommand, StoreCommit, StoreError, StoreMutation, StoreMutationResult,
     },
+};
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId},
+    lifecycle::TurnTerminalOutcome,
+    scheduler::{RuntimeOwner, Scheduler, SchedulerError, TreeLease},
 };
 
 use super::{
@@ -312,17 +315,19 @@ mod tests {
     use std::{collections::VecDeque, sync::Mutex};
 
     use crate::acp::{
+        runtime::ProjectionMailbox,
+        store::{
+            AbortActivationCommand, AcpStore, ActivationAbortCategory, MutationDisposition,
+            StoreCommit,
+        },
+    };
+    use sage_acp_protocol::{
         contract::{
             ClientIntentId, EntityRevision, ProjectionRevision, RequiredText, RuntimeEpoch,
             SafeText, SageTurnId,
         },
         intent::{BindingId, ExternalId, ModelId},
         lifecycle::SessionState,
-        runtime::ProjectionMailbox,
-        store::{
-            AbortActivationCommand, AcpStore, ActivationAbortCategory, MutationDisposition,
-            StoreCommit,
-        },
     };
 
     use super::*;
@@ -812,7 +817,7 @@ mod tests {
 
             let (error, proof) = h
                 .coordinator
-                .recover_runtime_after_zero_process_retained(owner("one", 1), proof)
+                .recover_runtime_after_zero_process_retained(owner("one", 1), proof, lost())
                 .unwrap_err();
             assert!(matches!(
                 error,
@@ -821,7 +826,7 @@ mod tests {
             assert!(h.scheduler.active().unwrap().turn_reserved);
 
             h.coordinator
-                .recover_runtime_after_zero_process_retained(owner("one", 1), proof)
+                .recover_runtime_after_zero_process_retained(owner("one", 1), proof, lost())
                 .unwrap();
             assert!(h.scheduler.active().is_none());
             assert_eq!(h.mailbox.take().unwrap().projection_revision, revision(4));
@@ -862,14 +867,14 @@ mod tests {
 
             let (error, proof) = h
                 .coordinator
-                .recover_runtime_after_zero_process_retained(owner("one", 1), proof)
+                .recover_runtime_after_zero_process_retained(owner("one", 1), proof, lost())
                 .unwrap_err();
             assert!(matches!(error, SessionCoordinatorError::BootstrapRequired));
             assert!(h.scheduler.active().is_some());
             h.mailbox.take();
 
             h.coordinator
-                .recover_runtime_after_zero_process_retained(owner("one", 1), proof)
+                .recover_runtime_after_zero_process_retained(owner("one", 1), proof, lost())
                 .unwrap();
             assert!(h.scheduler.active().is_none());
             assert_eq!(h.mailbox.take().unwrap().projection_revision, revision(4));
@@ -878,12 +883,17 @@ mod tests {
                 .recover_runtime_after_zero_process_retained(
                     owner("one", 1),
                     ZeroProcessProof::confirmed(owner("one", 1)),
+                    lost(),
                 )
                 .unwrap();
             assert!(h.scheduler.active().is_none());
             assert_eq!(h.mailbox.take().unwrap().projection_revision, revision(4));
             h.finish().await;
         });
+    }
+
+    fn lost() -> TurnTerminalOutcome {
+        sage_acp_protocol::lifecycle::TurnTerminalReason::HarnessExited.into()
     }
 
     fn runtime() -> tokio::runtime::Runtime {

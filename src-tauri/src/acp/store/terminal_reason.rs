@@ -1,6 +1,10 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::{lifecycle::TurnTerminalReason, projection::TurnTerminalReasonProjection};
+use crate::acp::projection::TurnTerminalReasonProjection;
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
+    lifecycle::{TurnTerminalOutcome, TurnTerminalReason},
+};
 
 use super::{AdapterStoreOwner, StoreError, TurnMutationCommand, history::TurnRow};
 
@@ -12,6 +16,24 @@ pub(super) struct TerminalReasonOwner<'a> {
     session_id: &'a str,
     turn_id: &'a str,
     runtime_epoch: i64,
+}
+
+impl<'a> TerminalReasonOwner<'a> {
+    pub(super) fn new(
+        project: &'a SageProjectId,
+        chat: &'a SageChatId,
+        session: &'a SageAgentSessionId,
+        turn: &'a SageTurnId,
+        epoch: RuntimeEpoch,
+    ) -> Self {
+        Self {
+            project_id: project.as_str(),
+            chat_id: chat.as_str(),
+            session_id: session.as_str(),
+            turn_id: turn.as_str(),
+            runtime_epoch: epoch.get() as i64,
+        }
+    }
 }
 
 impl<'a> From<&'a TurnMutationCommand> for TerminalReasonOwner<'a> {
@@ -90,6 +112,72 @@ pub(super) fn record_in(
         ],
     )?;
     Ok(changed == 1)
+}
+
+/// A reason recovery can always record: blank text is dropped and longer
+/// text is cut at a character boundary to the column limit.
+pub(crate) fn recordable(outcome: TurnTerminalOutcome) -> TurnTerminalOutcome {
+    TurnTerminalOutcome {
+        reason: outcome.reason,
+        message: recordable_text(outcome.message),
+        remediation: recordable_text(outcome.remediation),
+    }
+}
+
+fn recordable_text(value: Option<String>) -> Option<String> {
+    let mut value = value.filter(|value| !value.trim().is_empty())?;
+    let mut end = MESSAGE_LIMIT as usize;
+    if value.len() > end {
+        while !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        value.truncate(end);
+    }
+    Some(value)
+}
+
+/// Why recovery cancelled a message that was still queued: the runtime that
+/// would have sent it is gone, and its exit belongs to the turn before.
+pub(super) fn unsent() -> TurnTerminalOutcome {
+    TurnTerminalOutcome {
+        reason: TurnTerminalReason::Other,
+        message: Some("harness process stopped before this message was sent".to_owned()),
+        remediation: None,
+    }
+}
+
+/// Records why recovery ended a turn whose runtime was lost. An error the
+/// harness already reported on the turn stays its message. The reason keeps
+/// a bounded copy of it, because the error item can fall outside the newest
+/// page of history that a reopened chat loads.
+pub(super) fn record_recovered_in(
+    transaction: &Transaction<'_>,
+    owner: TerminalReasonOwner<'_>,
+    outcome: &TurnTerminalOutcome,
+    now_millis: i64,
+) -> Result<bool, StoreError> {
+    let harness_error: Option<String> = transaction
+        .query_row(
+            "SELECT CASE WHEN json_type(payload_json,'$.payload.message')='text'
+                         THEN json_extract(payload_json,'$.payload.message') END
+             FROM items WHERE session_id=?1 AND runtime_epoch=?2 AND turn_id=?3
+               AND kind='error'
+               AND COALESCE(json_extract(payload_json,'$.payload.kind'),'')<>'attempt'
+             ORDER BY ordinal DESC LIMIT 1",
+            params![owner.session_id, owner.runtime_epoch, owner.turn_id],
+            |row| row.get::<_, Option<String>>(0),
+        )
+        .optional()?
+        .flatten();
+    let message = recordable_text(harness_error).or_else(|| outcome.message.clone());
+    record_in(
+        transaction,
+        owner,
+        outcome.reason,
+        message.as_deref(),
+        outcome.remediation.as_deref(),
+        now_millis,
+    )
 }
 
 fn bounded(value: Option<&str>, resource: &'static str) -> Result<(), StoreError> {

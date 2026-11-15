@@ -1,5 +1,3 @@
-//! Messages sent while Claude is working.
-//!
 //! Claude Code queues a `user` message that arrives mid-run and reports it
 //! by `command_lifecycle` frames under the message's `uuid`: `queued`, then
 //! `started` when a run takes it up (at the next tool boundary of the
@@ -14,8 +12,6 @@ use serde_json::{Value, json};
 use super::{BridgeError, Inbound, MAX_PENDING, Pending, SdkBridge};
 
 impl SdkBridge {
-    /// The `user` frame for a message sent into the running turn, and the
-    /// id Claude Code reports it by.
     pub(in crate::acp::bindings::claude::sdk) fn steer(
         &mut self,
         text: &str,
@@ -38,9 +34,7 @@ impl SdkBridge {
         Ok((user, uuid))
     }
 
-    /// Claude Code never received the message.
-    /// A write fails before Sage reads anything more, so no run's end can
-    /// be held for it.
+    /// A write fails before Sage reads anything more, so no run's end can be held for it.
     pub(super) fn unsteer(&mut self, uuid: &str) {
         self.steers.retain(|steer| steer != uuid);
     }
@@ -59,9 +53,8 @@ impl SdkBridge {
 
     /// Claude Code's reply to a withdrawal, whatever it was: the message no
     /// longer waits on Sage, and the stop moves on.
-    /// A stop whose turn already ended goes no further, so a late reply
-    /// never interrupts the next turn. With nothing left to run and a run's
-    /// end held, Claude Code is idle: that end closes the turn as cancelled.
+    /// A stop whose turn already ended goes no further, so a late reply never interrupts the next
+    /// turn.
     pub(super) fn withdrawn(&mut self, uuid: &str, inbound: &mut Inbound) {
         if self.steers.iter().any(|steer| steer == uuid) {
             self.steers.retain(|steer| steer != uuid);
@@ -77,8 +70,6 @@ impl SdkBridge {
         }
     }
 
-    /// A `command_lifecycle` frame. Only Sage's own mid-turn messages are
-    /// tracked; a prompt's own lifecycle says nothing `result` does not.
     pub(super) fn lifecycle(&mut self, sdk: &Value, inbound: &mut Inbound) {
         let Some(uuid) = sdk.get("command_uuid").and_then(Value::as_str) else {
             return;
@@ -107,10 +98,8 @@ impl SdkBridge {
         }
     }
 
-    /// A run ended while messages wait: the turn goes on with them. While
-    /// stopping, a message still waits only until its withdrawal is
-    /// answered; if Claude Code took it up first, the interrupt that
-    /// follows ends that run.
+    /// While stopping, a message still waits only until its withdrawal is answered; if Claude Code
+    /// took it up first, the interrupt that follows ends that run.
     pub(super) fn holds_result(&mut self, sdk: &Value) -> bool {
         if self.steers.is_empty() {
             return false;
@@ -119,7 +108,6 @@ impl SdkBridge {
         true
     }
 
-    /// The held end of the turn, once nothing more will run in it.
     fn release_held(&mut self) -> Option<Value> {
         if self.steers.is_empty() {
             self.held.take()
@@ -128,7 +116,6 @@ impl SdkBridge {
         }
     }
 
-    /// The turn ended: messages still waiting were not taken up.
     pub(super) fn end_steers(&mut self, inbound: &mut Inbound) {
         self.held = None;
         for uuid in std::mem::take(&mut self.steers) {

@@ -1,9 +1,7 @@
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    acp_protocol::file_diff::DiffRef,
-    domain::{ResourceRef, WorkbenchTab},
-};
+use sage_acp_protocol::file_diff::DiffRef;
+use sage_domain::{chat::WorkbenchTab, resource::ResourceRef};
 
 const FORBIDDEN_SNAPSHOT_KEYS: &[&str] = &[
     "oldText",
@@ -49,10 +47,10 @@ fn validate_owned_ref(project_id: &str, reference: &DiffRef) -> AppResult<()> {
         invalid(format!(
             "persisted snapshot reference is {}: {}",
             match error {
-                crate::acp_protocol::file_diff::SnapshotReadError::Unavailable => "unavailable",
-                crate::acp_protocol::file_diff::SnapshotReadError::Stale => "stale",
-                crate::acp_protocol::file_diff::SnapshotReadError::Corrupt => "corrupt",
-                crate::acp_protocol::file_diff::SnapshotReadError::Forbidden => "forbidden",
+                sage_acp_protocol::file_diff::SnapshotReadError::Unavailable => "unavailable",
+                sage_acp_protocol::file_diff::SnapshotReadError::Stale => "stale",
+                sage_acp_protocol::file_diff::SnapshotReadError::Corrupt => "corrupt",
+                sage_acp_protocol::file_diff::SnapshotReadError::Forbidden => "forbidden",
             },
             error.message()
         ))
@@ -90,7 +88,7 @@ pub fn parse_diff_ref_from_metadata(
     project_id: &str,
     kind: &str,
     resource: Option<&ResourceRef>,
-    repository: Option<&crate::domain::RepositoryRef>,
+    repository: Option<&sage_domain::repository::RepositoryRef>,
     object: &serde_json::Map<String, serde_json::Value>,
 ) -> AppResult<Option<DiffRef>> {
     for key in FORBIDDEN_SNAPSHOT_KEYS {
@@ -124,7 +122,7 @@ pub fn parse_diff_ref_from_metadata(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain::{RepositoryRef, ResourceRef, WorkbenchTab};
+    use sage_domain::{chat::WorkbenchTab, repository::RepositoryRef, resource::ResourceRef};
     use std::{fs, path::Path};
     use uuid::Uuid;
 
@@ -280,7 +278,7 @@ mod tests {
         tab.id = "diff:snapshot:roundtrip".into();
         snapshot.tabs.push(tab.clone());
         database
-            .persist_project_layout(&crate::domain::ProjectLayoutRequest {
+            .persist_project_layout(&sage_domain::chat::ProjectLayoutRequest {
                 project_id: project.id.clone(),
                 tabs: snapshot.tabs,
                 active_tab_id: snapshot.active_tab_id,

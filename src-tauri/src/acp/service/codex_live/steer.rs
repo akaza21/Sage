@@ -1,7 +1,5 @@
-use crate::acp::{
-    intent::BindingId,
-    runtime::{HostOutcome, HostSteerIntent},
-};
+use crate::acp::runtime::{HostOutcome, HostSteerIntent};
+use sage_acp_protocol::intent::BindingId;
 
 use super::live_recovery::LiveHostRecoveryPhase;
 use super::{CodexSessionError, map_slot_error};

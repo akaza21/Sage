@@ -24,7 +24,6 @@ pub struct BrowserMcpServer<P: BrowserCapability> {
     connected: bool,
     accepted_connections: u8,
     operation_observer: Option<Box<dyn BrowserOperationObserver + Send>>,
-    /// Lists the developer-mode `cdp` tool while this answers true.
     developer_tools: Option<Box<dyn Fn() -> bool + Send>>,
 }
 
@@ -122,7 +121,6 @@ impl<P: BrowserCapability> BrowserMcpServer<P> {
         self.operation_observer = Some(observer);
     }
 
-    /// Offers the `cdp` tool whenever `enabled` holds when tools are listed.
     /// A call is still admitted only by the permission gate.
     pub fn set_developer_tools(&mut self, enabled: Box<dyn Fn() -> bool + Send>) {
         self.developer_tools = Some(enabled);

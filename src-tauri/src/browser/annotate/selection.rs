@@ -1,7 +1,5 @@
-//! The element waiting for the user's comment (M1b). While it waits the live
-//! page is hidden and the chrome draws the badge and the comment box over a
-//! frozen frame of it: the page is a native child view above Sage's UI, so
-//! nothing Sage draws can sit on the live page.
+//! The live page is a native child view above Sage's UI, so nothing Sage draws
+//! can sit on it; the chrome draws over a frozen frame of it instead.
 
 use serde::Serialize;
 use tauri::{AppHandle, Manager};
@@ -12,7 +10,6 @@ use super::{
     emit,
 };
 
-/// What the webview showed when the element was picked, as a JPEG.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct Frame {
@@ -21,7 +18,6 @@ pub(crate) struct Frame {
     pub height: u32,
 }
 
-/// A picked element, the viewport it was picked in and the frozen frame.
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct Selection {
     pub picked: Picked,
@@ -29,12 +25,9 @@ pub(crate) struct Selection {
     pub frame: Frame,
 }
 
-/// What the chrome needs to draw the badge and place the comment box.
 #[derive(Clone, Debug, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct SelectionView {
-    /// What the comment box calls the element: its accessible name, or a
-    /// plain word for its role.
     label: String,
     #[serde(rename = "box")]
     bounds: ElementBox,
@@ -51,8 +44,6 @@ impl Selection {
     }
 }
 
-/// The element's accessible name, or a plain word for its role; never one of
-/// Chromium's internal role names such as `LabelText`.
 pub(crate) fn label(role: &str, name: &str) -> String {
     let name = name.trim();
     if !name.is_empty() {
@@ -78,10 +69,8 @@ pub(crate) fn label(role: &str, name: &str) -> String {
     .to_owned()
 }
 
-/// Escape inside the page: with an element waiting it drops the element and
-/// Annotate stays on; otherwise Annotate turns off. The chrome follows the
-/// same rule. Runs on its own thread, as the page's key handler is on the
-/// main thread that the overlay needs.
+/// Runs on its own thread, as the page's key handler is on the main thread
+/// that the overlay needs.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub(crate) fn escape(app: &AppHandle, label: &str) {
     let app = app.clone();
@@ -98,7 +87,6 @@ pub(crate) fn escape(app: &AppHandle, label: &str) {
 }
 
 impl AnnotateMode {
-    /// Escape's rule: cancel a waiting element, else leave Annotate.
     pub(super) fn escape(
         &mut self,
         overlay: &impl InspectOverlay,
@@ -112,9 +100,6 @@ impl AnnotateMode {
         }
     }
 
-    /// Picks the element Chromium reported for a click on `label`. A click
-    /// while another element waits, or after Annotate ended, is ignored. A
-    /// failed pick keeps Annotate on and tells the chrome why.
     pub(super) fn pick(
         &mut self,
         overlay: &impl InspectOverlay,
@@ -137,8 +122,6 @@ impl AnnotateMode {
         (vec![announced], Ok(()))
     }
 
-    /// Drops the waiting element and resumes hovering. A covered page stays
-    /// hidden and leaves keyboard focus in the chrome.
     pub(super) fn cancel(
         &mut self,
         overlay: &impl InspectOverlay,
@@ -157,9 +140,8 @@ impl AnnotateMode {
         (vec![self.resumed(label, &released)], released)
     }
 
-    /// Numbers and comments the waiting element. The element keeps waiting:
-    /// the chrome cancels the wait once the composer took the item, so an
-    /// item the composer refuses can be sent again or dropped.
+    /// The element keeps waiting: the chrome cancels the wait once the composer
+    /// took the item, so an item the composer refuses can be sent again.
     pub(super) fn confirm(
         &self,
         label: &str,
@@ -179,7 +161,6 @@ impl AnnotateMode {
         )
     }
 
-    /// The frozen frame of the waiting element on `label`.
     pub(super) fn frame(&self, label: &str) -> Result<Frame, String> {
         self.pending
             .as_ref()

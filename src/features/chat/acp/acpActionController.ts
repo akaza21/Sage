@@ -297,6 +297,7 @@ export function createAcpActionController(dependencies: AcpActionDependencies) {
             modelId,
             ...chatAccessDraftPort.effort?.(captured.scope, bindingId, modelId),
           });
+          chatAccessDraftPort.spendEffort?.(captured.scope.chatId);
           const applied = apply(captured, started);
           if (!applied) return "ignoredStale";
           page = applied;

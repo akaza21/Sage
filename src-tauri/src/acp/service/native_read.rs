@@ -1,23 +1,18 @@
-//! Paged native reads: a child's transcript, the history of a session to
-//! import and the list of importable sessions. Each page is one native RPC
-//! on the owner's live runtime, and a read follows at most `MAX_PAGES`.
-
 use std::sync::Arc;
 
-use crate::{
-    acp::{
-        goal::{NativeRead, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
-        runtime::{HostError, RuntimeHost},
-        scheduler::RuntimeOwner,
-    },
-    acp_protocol::codex_protocol::{ChildTurn, MAX_ITEMS, MAX_TURNS},
+use crate::acp::{
+    goal::{NativeRead, NativeRpcIntent, NativeRpcReply, NativeRpcRequest},
+    runtime::{HostError, RuntimeHost},
+};
+use sage_acp_protocol::{
+    codex_protocol::{ChildTurn, MAX_ITEMS, MAX_TURNS},
+    scheduler::RuntimeOwner,
 };
 
 use super::AcpService;
 
 const MAX_PAGES: usize = 32;
 
-/// Why a paged native read returned nothing.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
 pub(crate) enum NativeReadError {
     #[error("The harness declined to read this session.")]
@@ -151,10 +146,8 @@ fn page_reply(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        acp::{bindings::codex::NativeTurnsPage, lifecycle::ItemLifecycle},
-        acp_protocol::codex_protocol::ChildItem,
-    };
+    use crate::acp::bindings::codex::NativeTurnsPage;
+    use sage_acp_protocol::{codex_protocol::ChildItem, lifecycle::ItemLifecycle};
 
     fn turn(id: usize, items: usize) -> ChildTurn {
         let item = ChildItem {
@@ -163,8 +156,8 @@ mod tests {
             observed_sequence: None,
             lifecycle: ItemLifecycle::Completed,
             tool_state: None,
-            payload: crate::acp::intent::NormalizedPayload::Text {
-                text: crate::acp::contract::SafeText::new("text", "x").unwrap(),
+            payload: sage_acp_protocol::intent::NormalizedPayload::Text {
+                text: sage_acp_protocol::contract::SafeText::new("text", "x").unwrap(),
             },
         };
         ChildTurn {

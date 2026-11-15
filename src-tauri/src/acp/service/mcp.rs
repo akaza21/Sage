@@ -1,17 +1,13 @@
-//! `/mcp`: the MCP servers of a chat's running session, as its harness
-//! reports them, and what the user can ask of them.
-
 use super::*;
 use crate::acp::{
-    contract::SafeText,
     goal::NativeRpcReply,
     mcp::inventory::{McpAuthUrl, McpInventory},
-    scheduler::RuntimeOwner,
-    session_control::SessionControl,
+};
+use sage_acp_protocol::{
+    contract::SafeText, scheduler::RuntimeOwner, session_control::SessionControl,
 };
 
 impl AcpService {
-    /// The session's MCP servers as its harness reports them now.
     pub(crate) fn read_mcp_servers(
         &self,
         owner: RuntimeOwner,
@@ -29,8 +25,6 @@ impl AcpService {
         }
     }
 
-    /// Has the harness read its MCP configuration again, then lists the
-    /// servers as they stand after it.
     pub(crate) fn reload_mcp_servers(
         &self,
         owner: RuntimeOwner,
@@ -42,12 +36,10 @@ impl AcpService {
         )
     }
 
-    /// Has the harness connect the named server again, then lists the
-    /// servers as they stand after it.
     pub(crate) fn reconnect_mcp_server(
         &self,
         owner: RuntimeOwner,
-        name: crate::acp::contract::RequiredText<128>,
+        name: sage_acp_protocol::contract::RequiredText<128>,
     ) -> Result<McpInventory, SessionControlError> {
         self.change_then_read(
             owner,
@@ -56,8 +48,7 @@ impl AcpService {
         )
     }
 
-    /// A control that changes the servers, then the list after it. A list
-    /// that misses its deadline is reported as late, not as the change
+    /// A list that misses its deadline is reported as late, not as the change
     /// failing; a change that misses its deadline is late itself.
     fn change_then_read(
         &self,
@@ -83,7 +74,7 @@ impl AcpService {
     pub(crate) fn sign_in_mcp_server(
         &self,
         owner: RuntimeOwner,
-        name: crate::acp::contract::RequiredText<128>,
+        name: sage_acp_protocol::contract::RequiredText<128>,
     ) -> Result<McpAuthUrl, SessionControlError> {
         match self.session_control_reply(owner, SessionControl::SignInMcpServer { name })? {
             NativeRpcReply::McpSignIn(url) => Ok(url),

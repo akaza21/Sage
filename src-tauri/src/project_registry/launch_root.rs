@@ -5,10 +5,8 @@ use std::{
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    acp::contract::{ProjectGeneration, SageProjectId, SageRootId},
-    workspace::{RootIdentity, Workspace, root_identity_path},
-};
+use crate::workspace::{RootIdentity, Workspace, root_identity_path};
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 
 /// A retained, project-qualified authority for exactly one registered root.
 /// It has no path-based production constructor and is intentionally not Clone.

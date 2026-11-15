@@ -1,16 +1,14 @@
-//! Curated registry record for the production, read-only Pi binding .
-
 use std::sync::Arc;
 
-use crate::acp::{
-    bindings::{
-        pi::{
-            PI_VERSION,
-            native_admission::{PI_BINDING_ID, PiBindingRegistration},
-            native_runtime::PiNativeRuntimeFactory,
-        },
-        runtime::RuntimeFactory,
+use crate::acp::bindings::{
+    pi::{
+        PI_VERSION,
+        native_admission::{PI_BINDING_ID, PiBindingRegistration},
+        native_runtime::PiNativeRuntimeFactory,
     },
+    runtime::RuntimeFactory,
+};
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };
@@ -33,6 +31,7 @@ pub(super) fn record(registration: Arc<PiBindingRegistration>) -> BindingRecord 
         turn_dispatch: crate::acp::service::AcpService::send_session_turn,
         cancel_dispatch: crate::acp::service::AcpService::cancel_session_turn,
         close_dispatch: crate::acp::service::AcpService::close_session,
+        launch_effort: None,
         model_provider: ModelProvider::NoAccountModels,
         auth_provider: AuthProvider::None,
     }
@@ -49,8 +48,6 @@ fn launch_factory(
     Box::new(PiNativeRuntimeFactory { binding, root, mcp })
 }
 
-/// The truthful ceiling: prompt, cancel, steer, resume, fork through Pi's
-/// `clone`, and Pi's own compaction; no load, close, or child projection.
 fn capabilities(
     binding: &AdmittedBinding,
 ) -> Result<CapabilitySnapshotV1, RegistryAdmissionUnavailable> {

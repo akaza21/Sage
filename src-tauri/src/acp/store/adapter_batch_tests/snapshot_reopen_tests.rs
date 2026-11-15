@@ -1,15 +1,16 @@
 use super::*;
-use crate::{
-    acp::{
-        contract::{
-            ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageChatId,
-            SageProjectId, SageRootId,
-        },
-        intent::{BindingId, SafeResourceLocation, SafeResourceRef},
+use crate::persistence::Database;
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, ProjectGeneration, ProjectionRevision, RuntimeEpoch, SageChatId,
+        SageProjectId, SageRootId,
     },
-    acp_protocol::file_diff::{SnapshotReadError, pair_digest},
-    domain::{ProjectLayoutRequest, ResourceRef, WorkbenchTab},
-    persistence::Database,
+    file_diff::{SnapshotReadError, pair_digest},
+    intent::{BindingId, SafeResourceLocation, SafeResourceRef},
+};
+use sage_domain::{
+    chat::{ProjectLayoutRequest, WorkbenchTab},
+    resource::ResourceRef,
 };
 use std::{fs, path::PathBuf};
 use uuid::Uuid;
@@ -32,14 +33,14 @@ fn reopen_pair_batch_for_root(
 ) -> AdapterInboundBatchCommand {
     let mut metadata = item(owner, key);
     metadata.payload = NormalizedPayload::file_admitted(
-        crate::acp::intent::FileChangeFacts {
+        sage_acp_protocol::intent::FileChangeFacts {
             resource: SafeResourceLocation::Resource {
                 resource: SafeResourceRef::new(root_id.clone(), "src/lib.rs").unwrap(),
             },
             summary: SafeText::new("summary", "File changed").unwrap(),
             additions: Some(1),
             deletions: Some(1),
-            operation: crate::acp::intent::FileChangeOperation::Updated,
+            operation: sage_acp_protocol::intent::FileChangeOperation::Updated,
         },
         0,
         (old.len() as u64, new.len() as u64),
@@ -87,8 +88,8 @@ fn reopen_reference_in(
     revision: u64,
     old: &str,
     new: &str,
-) -> crate::acp_protocol::file_diff::DiffRef {
-    crate::acp_protocol::file_diff::DiffRef {
+) -> sage_acp_protocol::file_diff::DiffRef {
+    sage_acp_protocol::file_diff::DiffRef {
         project_id: owner.project_id.as_str().into(),
         chat_id: owner.chat_id.as_str().into(),
         session_id: owner.session_id.as_str().into(),
@@ -158,7 +159,7 @@ fn reopen_reference(
     revision: u64,
     old: &str,
     new: &str,
-) -> crate::acp_protocol::file_diff::DiffRef {
+) -> sage_acp_protocol::file_diff::DiffRef {
     reopen_reference_in(
         &fixture.owner,
         &fixture.connection,
@@ -428,8 +429,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
     assert!(read_snapshot(&fixture.connection, &valid, &roots).is_ok());
     let usage_before = reopen_usage(&fixture);
 
-    // Missing pair after compaction releases only its bytes and reads as
-    // unavailable; the failed read itself never mutates usage or Git/disk.
     fixture
         .connection
         .execute("DELETE FROM acp_file_change_snapshots", [])
@@ -443,7 +442,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
     let reread_usage = reopen_usage(&fixture);
     assert_eq!(usage_after_delete, reread_usage);
 
-    // Restore one row for the remaining corruption classes.
     apply_adapter_inbound_batch(
         &mut fixture.connection,
         reopen_pair_batch(&fixture.owner, "reopen-file", "old", "second"),
@@ -452,7 +450,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
     let second = reopen_reference(&fixture, 2, "old", "second");
     let usage_second = reopen_usage(&fixture);
 
-    // Owner mismatch is stale, never the new bytes.
     let mut forged = second.clone();
     forged.chat_id = "other".into();
     assert_eq!(
@@ -460,8 +457,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
         Err(SnapshotReadError::Stale)
     );
 
-    // Raw-length mismatch cannot be stored: the durable CHECK rejects it
-    // fail-closed without mutating usage.
     assert!(
         fixture
             .connection
@@ -480,7 +475,6 @@ fn snapshot_corruption_classes_fail_closed_without_mutating_usage() {
         .unwrap_or(());
     assert_eq!(reopen_usage(&fixture), usage_second);
 
-    // Invalid UTF-8 and digest mismatch are corrupt.
     fixture
         .connection
         .execute_batch(
@@ -539,14 +533,12 @@ fn new_pair_shares_aggregate_accounting_without_double_charge() {
     )
     .unwrap();
     let usage_once = reopen_usage(&fixture);
-    // Retransmission of identical bytes is idempotent and does not double charge.
     apply_adapter_inbound_batch(
         &mut fixture.connection,
         reopen_pair_batch(&fixture.owner, "reopen-file", "old", "new"),
     )
     .unwrap();
     assert_eq!(reopen_usage(&fixture), usage_once);
-    // Evolving content charges only its delta once and reconciles across ledgers.
     apply_adapter_inbound_batch(
         &mut fixture.connection,
         reopen_pair_batch(&fixture.owner, "reopen-file", "old", "evolved"),
@@ -571,7 +563,6 @@ fn new_pair_shares_aggregate_accounting_without_double_charge() {
         )
         .unwrap();
     assert_eq!(session, (reconciled.0, reconciled.0 + reconciled.1));
-    // Exact-fit then +1 with facts still respects the shared turn ledger.
     let used: i64 = fixture
         .connection
         .query_row(

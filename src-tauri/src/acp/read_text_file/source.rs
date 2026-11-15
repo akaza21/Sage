@@ -1,5 +1,3 @@
-//! Bounded post-classification source selection.
-
 use crate::acp::runtime::read_text_file::read_disk_text_file;
 
 use super::*;

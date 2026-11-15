@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::contract::ToolState;
+use sage_acp_protocol::lifecycle::ToolState;
 
 use super::super::{OmpTranslator, TranslationError};
 use super::tool_snapshots::CommandPatch;

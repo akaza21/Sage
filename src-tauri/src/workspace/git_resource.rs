@@ -2,7 +2,7 @@ use std::{fs, path::Path};
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::domain::{RepositoryRef, ResourceRef};
+use sage_domain::{repository::RepositoryRef, resource::ResourceRef};
 
 use super::{Workspace, canonical_contract_relative, join_contract_path, validate_relative_path};
 

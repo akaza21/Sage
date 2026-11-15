@@ -1,6 +1,3 @@
-//! A harness's ACP command list, and the binding's own commands that join
-//! it: rows that open a panel in the chat instead of sending a prompt.
-
 use crate::acp::{
     bindings::adapter::AdapterRuntimeError,
     slash_commands::{
@@ -20,12 +17,9 @@ pub(crate) fn update_commands(
     update_commands_with(value, session, commands, &[])
 }
 
-/// An `available_commands_update` for `session`, with the binding's own
-/// `first` rows ahead of the harness's. A `first` row that is also one of
-/// the harness's own built-ins keeps the harness's description and aliases,
-/// so the menu describes the command as the harness does; its route and
-/// input stay the binding's. A skill or plugin of that name is not the same
-/// command, so the binding's row stays as it is.
+/// A `first` row that is also one of the harness's own built-ins keeps the harness's
+/// description and aliases; its route and input stay the binding's. A skill or plugin of that
+/// name is not the same command, so the binding's row stays as it is.
 pub(crate) fn update_commands_with(
     value: &Value,
     session: &str,
@@ -70,7 +64,6 @@ pub(crate) fn update_commands_with(
     Ok(true)
 }
 
-/// A built-in row that opens `panel` and sends nothing.
 pub(crate) fn panel(
     name: &str,
     description: &str,
@@ -85,8 +78,6 @@ pub(crate) fn panel(
     )
 }
 
-/// The first command of each name, ending at the first command past the
-/// shared count or byte bound.
 pub(crate) fn first_listed(
     commands: impl IntoIterator<Item = AvailableCommand>,
 ) -> Vec<AvailableCommand> {

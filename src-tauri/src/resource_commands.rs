@@ -1,11 +1,6 @@
 use tauri::{AppHandle, Manager, State};
 
 use crate::{
-    domain::{
-        BootstrapSnapshot, BufferSnapshotAck, BufferSnapshotRequest, DirectoryListing,
-        EditorDocument, EditorSaveResult, FileDiff, ProjectRepositoryStatus, ResourceRef, TextFile,
-        WorkbenchTab,
-    },
     editor,
     editor_coordination::EditorOperationKind,
     repository,
@@ -15,6 +10,16 @@ use crate::{
         validate_tab_projection,
     },
     workspace::Workspace,
+};
+use sage_domain::{
+    chat::WorkbenchTab,
+    editor::{
+        BufferSnapshotAck, BufferSnapshotRequest, EditorDocument, EditorSaveResult, FileDiff,
+        TextFile,
+    },
+    project::{BootstrapSnapshot, DirectoryListing},
+    repository::ProjectRepositoryStatus,
+    resource::ResourceRef,
 };
 
 #[tauri::command]
@@ -320,7 +325,7 @@ pub async fn snapshot_editor_buffer(
 #[tauri::command]
 pub async fn rebase_editor_buffer(
     state: State<'_, AppState>,
-    request: crate::domain::BufferRebaseRequest,
+    request: sage_domain::editor::BufferRebaseRequest,
 ) -> Result<EditorSaveResult, String> {
     let resource = request.resource.clone();
     run_editor_operation(
@@ -402,7 +407,8 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{domain::RecoveredEditorBuffer, persistence::Database};
+    use crate::persistence::Database;
+    use sage_domain::editor::RecoveredEditorBuffer;
 
     fn snapshot() -> (std::path::PathBuf, BootstrapSnapshot, String) {
         let root = std::env::temp_dir().join(format!("sage-recovery-tabs-{}", Uuid::new_v4()));
@@ -566,7 +572,7 @@ mod tests {
             });
         }
         database
-            .persist_project_layout(&crate::domain::ProjectLayoutRequest {
+            .persist_project_layout(&sage_domain::chat::ProjectLayoutRequest {
                 project_id: project.id.clone(),
                 tabs,
                 active_tab_id: initial.active_tab_id,

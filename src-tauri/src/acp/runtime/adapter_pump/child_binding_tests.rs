@@ -23,7 +23,7 @@ fn generated_child_opened_journey_admits_owner_and_reads_after_parent_completion
         let prompt = adapter.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         adapter.ingest(&codex_frame(serde_json::json!({"id":codex_request_id(&prompt),
             "result":{"turn":{"id":native_turn}}})), &Mapper).unwrap();
@@ -58,7 +58,7 @@ fn generated_child_opened_journey_admits_owner_and_reads_after_parent_completion
             "SELECT COUNT(*) FROM items WHERE turn_id='turn-one' AND kind='collaboration'", [], |row| row.get(0)).unwrap();
         assert_eq!(observations, 2);
         let scope = crate::acp::store::child_transcript::ChildTranscriptScope {
-            owner: crate::acp::scheduler::RuntimeOwner {
+            owner: sage_acp_protocol::scheduler::RuntimeOwner {
                 project_id: SageProjectId::parse("project-one").unwrap(), chat_id: SageChatId::parse("chat-one").unwrap(),
                 session_id: session("one"), runtime_epoch: RuntimeEpoch::new(1).unwrap(),
             }, item_id, child_thread_id: "fixture-child-1".into(), parent_thread_id: parent.into(),
@@ -98,7 +98,7 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         let prompt = adapter.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         let prompt_id = codex_request_id(&prompt);
         adapter.ingest(&codex_frame(serde_json::json!({
@@ -185,7 +185,7 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
             [], |row| row.get(0),
         ).unwrap();
         let scope = crate::acp::store::child_transcript::ChildTranscriptScope {
-            owner: crate::acp::scheduler::RuntimeOwner {
+            owner: sage_acp_protocol::scheduler::RuntimeOwner {
                 project_id: SageProjectId::parse("project-one").unwrap(),
                 chat_id: SageChatId::parse("chat-one").unwrap(),
                 session_id: session("one"),
@@ -203,10 +203,10 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         assert_eq!(snapshot.turns[0].status, "completed");
         assert_eq!(snapshot.turns[0].items[3].id, "late-command");
         assert!(snapshot.turns[0].items[..4].iter().all(|item| item.role.is_none()));
-        assert_eq!(snapshot.turns[0].items[4].role, Some(crate::acp_protocol::codex_protocol::ChildTextRole::Assistant));
-        assert_eq!(snapshot.turns[0].items[5].role, Some(crate::acp_protocol::codex_protocol::ChildTextRole::User));
+        assert_eq!(snapshot.turns[0].items[4].role, Some(sage_acp_protocol::codex_protocol::ChildTextRole::Assistant));
+        assert_eq!(snapshot.turns[0].items[5].role, Some(sage_acp_protocol::codex_protocol::ChildTextRole::User));
         assert!(matches!(snapshot.turns[0].items[0].payload,
-            crate::acp::intent::NormalizedPayload::ToolCall { .. }));
+            sage_acp_protocol::intent::NormalizedPayload::ToolCall { .. }));
         let mut read_wire: serde_json::Value = serde_json::from_str(include_str!(
             "fixtures/cp18d_child_read.json"
         )).unwrap();
@@ -225,15 +225,15 @@ fn synthetic_child_command_survives_pump_store_and_reopen_without_parent_mutatio
         assert_eq!(merged.turns[0].items.iter().map(|item| item.id.as_str()).collect::<Vec<_>>(),
             ["command-one", "file-one", "reason-one", "late-command", "item-1", "user-1"]);
         assert_eq!(merged.turns.iter().map(|turn| turn.items.len()).sum::<usize>(), 6);
-        assert_eq!(merged.turns[0].items[4].role, Some(crate::acp_protocol::codex_protocol::ChildTextRole::Assistant));
+        assert_eq!(merged.turns[0].items[4].role, Some(sage_acp_protocol::codex_protocol::ChildTextRole::Assistant));
         assert!(merged.turns.iter().flat_map(|turn| &turn.items).any(|item|
-            matches!(item.payload, crate::acp::intent::NormalizedPayload::ToolCall { .. })));
+            matches!(item.payload, sage_acp_protocol::intent::NormalizedPayload::ToolCall { .. })));
         assert!(merged.turns.iter().flat_map(|turn| &turn.items).any(|item|
-            matches!(item.payload, crate::acp::intent::NormalizedPayload::Text { .. })));
+            matches!(item.payload, sage_acp_protocol::intent::NormalizedPayload::Text { .. })));
         assert!(merged.turns.iter().flat_map(|turn| &turn.items).any(|item|
-            matches!(item.payload, crate::acp::intent::NormalizedPayload::ThoughtSummary { .. })));
+            matches!(item.payload, sage_acp_protocol::intent::NormalizedPayload::ThoughtSummary { .. })));
         assert!(merged.turns.iter().flat_map(|turn| &turn.items).any(|item|
-            matches!(item.payload, crate::acp::intent::NormalizedPayload::FileChangeDiff { .. })));
+            matches!(item.payload, sage_acp_protocol::intent::NormalizedPayload::FileChangeDiff { .. })));
         read_wire["result"]["thread"]["turns"][0]["items"].as_array_mut().unwrap().push(
             serde_json::json!({"id":"command-one","type":"commandExecution",
                 "status":"inProgress","command":"rg TODO src"})
@@ -274,7 +274,7 @@ fn an_idle_child_item_publishes_its_epoch_without_moving_the_revision() {
         let prompt = adapter.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         let prompt_id = codex_request_id(&prompt);
         adapter.ingest(&codex_frame(serde_json::json!({

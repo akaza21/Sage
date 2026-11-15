@@ -46,7 +46,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         }
         self.resolve_permission(
             &intent.request_id,
-            crate::acp_protocol::permissions::PermissionDecision::Deny,
+            sage_acp_protocol::permissions::PermissionDecision::Deny,
             now_millis,
         )
         .await?;

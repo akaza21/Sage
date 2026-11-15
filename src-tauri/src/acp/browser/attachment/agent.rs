@@ -13,8 +13,6 @@ impl BrowserAttachments {
         self.attach_agent_tab(project, chat, session, tab_label, url, revision, None)
     }
 
-    /// Attaches an Agent tab; `opener` names the Agent-driven tab a joined
-    /// popup came from, which caps it separately from `openTab`'s tabs.
     #[allow(clippy::too_many_arguments)]
     pub(super) fn attach_agent_tab(
         &self,
@@ -158,7 +156,6 @@ impl BrowserAttachments {
             .lock()
             .ok()?
             .iter()
-            // A joined popup is never the implicit default tab.
             .filter(|((p, c, s, _), lease)| {
                 p == project
                     && c == chat

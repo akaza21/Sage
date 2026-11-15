@@ -9,7 +9,7 @@ pub(in crate::acp::fixture) fn replay_native_before(
     requests: &str,
     before_kind: &str,
 ) -> Vec<Value> {
-    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
+    let case = sage_acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == case_id)
         .unwrap();

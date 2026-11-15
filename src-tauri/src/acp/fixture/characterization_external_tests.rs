@@ -2,20 +2,18 @@ use std::time::Instant;
 
 use crate::{
     acp::{
-        contract::{ClientIntentId, ProjectGeneration, RuntimeEpoch, SageChatId, SageProjectId},
-        intent::{
-            ActivateAcpSessionRequest, BindingId, CancelAcpTurnRequest, CloseAcpSessionRequest,
-            GetAcpChatPageRequest, Prompt, SendAcpTurnRequest, StartAcpSessionRequest,
+        ipc::{
+            ActivateAcpSessionRequest, CancelAcpTurnRequest, CloseAcpSessionRequest,
+            GetAcpChatPageRequest, SendAcpTurnRequest, StartAcpSessionRequest,
         },
-        lifecycle::TurnState,
         process::TreeCapacityPool,
         projection::{ItemContent, TextRole},
         runtime::HostState,
-        scheduler::RuntimeOwner,
         service::{
             CHARACTERIZATION_BINDING_ID, CharacterizationArtifact, CharacterizationBinding,
             CharacterizationCase, CharacterizationError,
         },
+        transcript_quote::Prompt,
     },
     commands::acp::{
         activate_acp_session_inner, cancel_acp_turn_inner, close_acp_session_inner,
@@ -23,6 +21,12 @@ use crate::{
     },
     persistence::Database,
     state::AppState,
+};
+use sage_acp_protocol::{
+    contract::{ClientIntentId, ProjectGeneration, RuntimeEpoch, SageChatId, SageProjectId},
+    intent::BindingId,
+    lifecycle::TurnState,
+    scheduler::RuntimeOwner,
 };
 
 use super::{

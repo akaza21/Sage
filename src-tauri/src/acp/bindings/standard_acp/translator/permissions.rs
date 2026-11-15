@@ -1,7 +1,7 @@
 use serde_json::{Map, Value};
 use sha2::{Digest, Sha256};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{RequiredText, SafeText},
     intent::{NormalizedPayload, ToolCategory},
     lifecycle::{ItemLifecycle, ToolState},

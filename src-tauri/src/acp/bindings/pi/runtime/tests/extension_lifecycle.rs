@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::lifecycle::TurnState;
+use sage_acp_protocol::lifecycle::TurnState;
 
 fn extension_runtime() -> PiRuntime {
     let mut runtime = fixture_runtime(1);
@@ -28,7 +28,7 @@ fn extension_command(runtime: &PiRuntime, client: &str) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt,
         client_message_id: RequiredText::new("client", client).unwrap(),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 
@@ -108,7 +108,6 @@ fn extension_acknowledgment_at_each_model_boundary_preserves_settlement() {
         if ack_after == 1 {
             assert_no_terminal(&reply(&mut runtime, &send, true));
         }
-        // An ended model cycle may continue before the definitive settlement.
         event(&mut runtime, "agent_start");
         event(&mut runtime, "agent_end");
         assert_terminal(&event(&mut runtime, "agent_settled"), TurnState::Completed);
@@ -344,7 +343,6 @@ fn failed_extension_acknowledgment_waits_for_model_settlement_before_reuse() {
             );
             assert_no_terminal(&reply(&mut runtime, &first, false));
             if ack_after_end {
-                // A continuation must not erase the failed RPC outcome.
                 event(&mut runtime, "agent_start");
             }
             assert_text(&mut runtime, "old output", "extension-a");
@@ -414,7 +412,7 @@ fn pending_session_reset_blocks_prompts_until_response_or_delivery_rollback() {
         let prompt = || AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect after reset").unwrap(),
             client_message_id: RequiredText::new("client", "after-reset").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         };
         assert!(
             runtime.command(prompt()).is_err(),

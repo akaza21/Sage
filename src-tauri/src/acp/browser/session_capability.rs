@@ -16,7 +16,6 @@ use crate::{
                 BrowserPermissionGate, PendingBrowserResult,
             },
         },
-        contract::{SageAgentSessionId, SageChatId, SageProjectId},
         service::browser_permission::{BrowserPermissionOwner, ServiceBrowserPermissionDecider},
     },
     browser::{
@@ -25,6 +24,7 @@ use crate::{
     },
     state::AppState,
 };
+use sage_acp_protocol::contract::{SageAgentSessionId, SageChatId, SageProjectId};
 
 pub(crate) struct SessionBrowserCapability {
     app: AppHandle,
@@ -290,7 +290,6 @@ impl BrowserCapability for SessionBrowserCapability {
         developer::audit_refused(&self.app.state::<AppState>().settings, request, failure);
     }
 
-    /// Take over pauses the call and Hand back resumes it (`pause.rs`).
     fn perform(&mut self, request: &BrowserRequest) -> Result<BrowserResult, BrowserFailure> {
         let app = self.app.clone();
         let (project, chat, session) = (

@@ -4,12 +4,12 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::acp::{
+use crate::acp::transport::{QueueError, ReservedQueue};
+use sage_acp_protocol::{
     contract::{
         RequiredText, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId,
     },
     scheduler::RuntimeOwner,
-    transport::{QueueError, ReservedQueue},
 };
 use sage_core::limits::LIMITS;
 
@@ -19,7 +19,7 @@ mod queue;
 use queue::{ReceiveMode, map_queue, pop_driver_message, reader_chunk_limit};
 
 pub(crate) struct PromptIntent {
-    pub(crate) prompt: crate::acp::intent::Prompt,
+    pub(crate) prompt: crate::acp::transcript_quote::Prompt,
     pub(crate) client_message_id: RequiredText<512>,
     pub(crate) reply: mpsc::SyncSender<Result<DriverProgress, DriverError>>,
 }
@@ -206,7 +206,7 @@ impl DriverMailbox {
     #[cfg(test)]
     pub(crate) fn submit_prompt(
         &self,
-        prompt: crate::acp::intent::Prompt,
+        prompt: crate::acp::transcript_quote::Prompt,
         client_message_id: RequiredText<512>,
     ) -> Result<mpsc::Receiver<Result<DriverProgress, DriverError>>, MailboxError> {
         let (reply, response) = mpsc::sync_channel(1);

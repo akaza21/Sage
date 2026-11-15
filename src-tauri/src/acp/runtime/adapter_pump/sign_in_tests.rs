@@ -36,7 +36,7 @@ fn goal_active_response_mismatch_reaches_sqlite_only_after_client_verification()
         let prompt = codex.command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "Inspect only").unwrap(),
             client_message_id: message(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }).unwrap();
         let intent = session_intent().bind_turn(ActiveTurnIntent {
             turn_id: turn("one"), external_turn_id: None, client_message_id: message(),
@@ -141,7 +141,7 @@ fn a_sign_in_refusal_fails_the_durable_turn_through_the_migrated_store() {
         assert_eq!(
             page.turns.as_slice()[0].terminal_reason,
             Some(crate::acp::projection::TurnTerminalReasonProjection {
-                kind: crate::acp::lifecycle::TurnTerminalReason::AuthRequired,
+                kind: sage_acp_protocol::lifecycle::TurnTerminalReason::AuthRequired,
                 message: Some("authentication required".to_owned()),
                 remediation: Some("Sign in with your Claude account".to_owned()),
             })

@@ -28,7 +28,6 @@ const DEFAULT_CHROMIUM: &str = "/opt/pw-browsers/chromium";
 const FRAME_BYTES: usize = 16 * 1024 * 1024;
 const PENDING_RESPONSES: usize = 16;
 const DOCUMENTS: usize = 64;
-/// Overlay events kept for the Annotate checks; the oldest go first.
 const OVERLAY_EVENTS: usize = 64;
 const SETUP_TIMEOUT: Duration = Duration::from_secs(20);
 
@@ -48,8 +47,6 @@ pub(super) struct Chromium {
     issued: AtomicBool,
     /// This lane pins native density to 1; overrides belong to its page session.
     capture_scale: Mutex<f64>,
-    /// How many times each command method was sent to the page, with or
-    /// without the dispatch permit.
     calls: Mutex<HashMap<String, usize>>,
     /// A stamp, or `Unavailable`, reported in place of the real one: WebView2
     /// reports a new document only after its navigation events arrive, and
@@ -150,16 +147,10 @@ impl Chromium {
         chromium
     }
 
-    /// Starts a new dispatch, so `issued` reports only this command's calls,
-    /// as the WebView2 transport's per-dispatch flag does.
     pub(super) fn begin_dispatch(&self) {
         self.issued.store(false, Ordering::Release);
     }
 
-    /// How many commands named `method` this transport has sent to the page,
-    /// through `call` or `observe`.
-    /// How many times the frame reader released developer mode's object
-    /// group when an evaluation's answer arrived.
     pub(super) fn completion_releases(&self) -> usize {
         self.wire.late_releases.load(Ordering::SeqCst)
     }
@@ -183,7 +174,6 @@ impl Chromium {
         Ok(())
     }
 
-    /// Takes the `Overlay.*` events Chromium sent since the last take.
     pub(super) fn take_overlay_events(&self) -> Vec<Value> {
         self.overlay_events
             .lock()
@@ -192,7 +182,6 @@ impl Chromium {
             .collect()
     }
 
-    /// Keeps reporting `stamp` until released with `None`.
     pub(super) fn hold_stamp(&self, stamp: Option<Result<DocumentStamp, BrowserFailure>>) {
         *self.held_stamp.lock().expect("held stamp") = stamp;
     }
@@ -273,7 +262,6 @@ impl Chromium {
         }
     }
 
-    /// The main frame's loader id and URL.
     fn frame(&self) -> Result<(String, String), BrowserFailure> {
         // A page can grow its frame tree past any small cap; the test
         // transport reads it whole, as WebView2 keeps the stamp natively.
@@ -291,7 +279,6 @@ impl Chromium {
         }
     }
 
-    /// Numbers each distinct main-frame document in the order first seen.
     fn document_stamp(&self, loader: String) -> Result<DocumentStamp, BrowserFailure> {
         let mut documents = self
             .documents
@@ -404,9 +391,6 @@ impl Drop for Chromium {
     }
 }
 
-/// Splits Chromium's output into frames and forwards command responses;
-/// `Overlay.*` events are kept, others dropped. A frame over `FRAME_BYTES`
-/// ends the link.
 fn read_frames(
     mut events: ChildStdout,
     responses: SyncSender<Value>,

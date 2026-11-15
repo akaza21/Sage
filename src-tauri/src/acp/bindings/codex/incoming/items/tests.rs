@@ -1,6 +1,6 @@
 use serde_json::json;
 
-use crate::acp::intent::{
+use sage_acp_protocol::intent::{
     IMAGE_BASE64_MAX, ImageMediaType, SafeResourceRef, UnavailableResourceReason,
 };
 
@@ -24,7 +24,7 @@ struct MappedResource;
 impl ResourceMapper for MappedResource {
     fn map_existing(&self, _: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
         SafeResourceRef::new(
-            crate::acp::contract::SageRootId::parse("fixture-root").expect("root"),
+            sage_acp_protocol::contract::SageRootId::parse("fixture-root").expect("root"),
             "package.json",
         )
         .map_err(|_| UnavailableResourceReason::Unsupported)
@@ -36,7 +36,7 @@ struct CreatedResource;
 impl ResourceMapper for CreatedResource {
     fn map_existing(&self, _: &str) -> Result<SafeResourceRef, UnavailableResourceReason> {
         SafeResourceRef::new(
-            crate::acp::contract::SageRootId::parse("fixture-root").expect("root"),
+            sage_acp_protocol::contract::SageRootId::parse("fixture-root").expect("root"),
             "src/new.ts",
         )
         .map_err(|_| UnavailableResourceReason::Unsupported)
@@ -60,7 +60,10 @@ fn codex_added_file_projects_created_with_a_safe_relative_name() {
     else {
         panic!("expected file change");
     };
-    assert_eq!(operation, crate::acp::intent::FileChangeOperation::Created);
+    assert_eq!(
+        operation,
+        sage_acp_protocol::intent::FileChangeOperation::Created
+    );
     assert_eq!(
         summary.as_str(),
         fixture["expected"]["summary"].as_str().unwrap()
@@ -76,12 +79,12 @@ fn codex_unmapped_changes_keep_the_operation_without_exposing_a_path() {
     for (kind, expected_operation, expected_summary) in [
         (
             "add",
-            crate::acp::intent::FileChangeOperation::Created,
+            sage_acp_protocol::intent::FileChangeOperation::Created,
             "Created file",
         ),
         (
             "delete",
-            crate::acp::intent::FileChangeOperation::Deleted,
+            sage_acp_protocol::intent::FileChangeOperation::Deleted,
             "Deleted file",
         ),
     ] {
@@ -282,7 +285,7 @@ fn image_view_is_its_own_kind_that_keeps_its_clickable_path() {
     assert_eq!(category, ToolCategory::ImageView);
     assert_eq!(label.as_str(), "Viewed an image");
     assert!(
-        matches!(locations.as_slice(), [crate::acp::intent::SafeResourceLocation::Resource { resource }]
+        matches!(locations.as_slice(), [sage_acp_protocol::intent::SafeResourceLocation::Resource { resource }]
             if resource.relative_path.as_str() == "package.json")
     );
 }

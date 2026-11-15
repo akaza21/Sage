@@ -43,8 +43,6 @@ impl ConfiguredCodexSourceRoot {
     }
 }
 
-/// Proof that one exact package closure was physically inspected.
-///
 /// Known nodes remain open and the directory namespace matched across two
 /// bounded observations, but the namespace is not frozen and can change after
 /// the final observation. This proof therefore grants no admission or launch
@@ -103,7 +101,7 @@ impl PhysicallyInspectedPackage {
             package_root: PathBuf::from(r"C:\Foreign\Codex\package"),
             codex_home: PathBuf::from(format!(
                 r"C:\SageHarnesses\CodexState\{}",
-                crate::acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
+                sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY
             )),
             artifact_count: EXPECTED_FILE_COUNT,
             byte_len: super::manifest::PINNED_PACKAGE_UNPACKED_BYTES,
@@ -320,7 +318,7 @@ pub(super) mod portable_tests {
         .unwrap();
         let root = ConfiguredManagedPackageRoot::new(PathBuf::from(format!(
             r"C:\SageHarnesses\Codex\{}\package",
-            crate::acp_protocol::codex_protocol::PINNED_CODEX_VERSION
+            sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION
         )))
         .unwrap();
         assert_eq!(

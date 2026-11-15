@@ -1,4 +1,3 @@
-//! The MCP servers a harness reports for its session: what `/mcp` shows.
 //! Everything is bounded and cleaned here, so the WebView receives only
 //! short plain text, counts and closed sets of states. Authorization URLs
 //! stay native.
@@ -6,7 +5,13 @@
 use serde::Serialize;
 use serde_json::{Map, Value};
 
-/// The most servers one read lists; more are counted, not listed.
+#[path = "codex_page.rs"]
+mod codex_page;
+
+pub(crate) use codex_page::CodexMcpPage;
+use codex_page::{CodexServerStatus, Text};
+
+/// Additional servers set the truncated flag instead of being listed.
 pub(crate) const MAX_LISTED_SERVERS: usize = 64;
 const MAX_NAME_BYTES: usize = 128;
 const MAX_TITLE_BYTES: usize = 256;
@@ -14,7 +19,6 @@ const MAX_ERROR_BYTES: usize = 512;
 const MAX_ORIGIN_BYTES: usize = 256;
 const MAX_AUTH_URL_BYTES: usize = 4096;
 
-/// Whether the session reached the server.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum McpConnection {
@@ -29,7 +33,6 @@ pub(crate) enum McpConnection {
     Unknown,
 }
 
-/// How the server authenticates.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) enum McpAuth {
@@ -60,15 +63,12 @@ pub(crate) struct McpServer {
     pub(crate) origin: Option<String>,
 }
 
-/// What the user can ask of the listed servers through this harness.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct McpActions {
-    /// Read the whole MCP configuration again.
     pub(crate) reload: bool,
     /// Open a server's sign-in page, which Sage can do on this system.
     pub(crate) sign_in: bool,
-    /// Connect one server again.
     pub(crate) reconnect: bool,
 }
 
@@ -76,30 +76,21 @@ pub(crate) struct McpActions {
 #[serde(rename_all = "camelCase")]
 pub(crate) struct McpInventory {
     pub(crate) servers: Vec<McpServer>,
-    /// The harness listed more servers than are shown.
     pub(crate) truncated: bool,
     pub(crate) actions: McpActions,
 }
 
 impl McpInventory {
     /// A Codex `mcpServerStatus/list` result. A server without a usable
-    /// name is left out; `None` when the result has no server list.
-    pub(crate) fn from_codex(result: &Map<String, Value>) -> Option<Self> {
-        let data = result.get("data")?.as_array()?;
-        let servers: Vec<McpServer> = data
-            .iter()
-            .filter_map(Value::as_object)
-            .filter_map(codex_server)
-            .collect();
-        let more = result
-            .get("nextCursor")
-            .is_some_and(|cursor| !cursor.is_null());
+    /// name is left out.
+    pub(crate) fn from_codex(page: CodexMcpPage) -> Self {
+        let more = page.has_more();
         let actions = McpActions {
             reload: true,
             sign_in: crate::system_browser::available(),
             reconnect: false,
         };
-        Some(Self::listed(servers, more, actions))
+        Self::listed(page.servers, more, actions)
     }
 
     /// A Claude Code `mcp_status` reply. Its server configuration (URLs,
@@ -120,16 +111,48 @@ impl McpInventory {
         Some(Self::listed(servers, false, actions))
     }
 
-    /// The first servers by name, and whether any were left out.
-    fn listed(mut servers: Vec<McpServer>, more: bool, actions: McpActions) -> Self {
-        let truncated = more || servers.len() > MAX_LISTED_SERVERS;
-        servers.sort_by(|left, right| left.name.cmp(&right.name));
-        servers.truncate(MAX_LISTED_SERVERS);
+    fn listed(selection: ServerSelection, more: bool, actions: McpActions) -> Self {
         Self {
-            servers,
-            truncated,
+            servers: selection.servers,
+            truncated: more || selection.truncated,
             actions,
         }
+    }
+}
+
+/// The first [`MAX_LISTED_SERVERS`] servers by name, chosen as they are
+/// read, so a list of any length never holds more. Servers with the same
+/// name keep the order they arrived in.
+#[derive(Debug, Default)]
+pub(crate) struct ServerSelection {
+    servers: Vec<McpServer>,
+    truncated: bool,
+}
+
+impl ServerSelection {
+    fn offer(&mut self, server: McpServer) {
+        let at = self
+            .servers
+            .partition_point(|kept| kept.name <= server.name);
+        if at >= MAX_LISTED_SERVERS {
+            self.truncated = true;
+            return;
+        }
+        if self.servers.len() == MAX_LISTED_SERVERS {
+            self.servers.pop();
+            self.truncated = true;
+        }
+        self.servers.insert(at, server);
+    }
+}
+
+impl FromIterator<McpServer> for ServerSelection {
+    fn from_iter<I: IntoIterator<Item = McpServer>>(servers: I) -> Self {
+        let mut selection = Self::default();
+        for server in servers {
+            selection.offer(server);
+        }
+        selection
     }
 }
 
@@ -137,7 +160,11 @@ impl McpInventory {
 /// a cleaned name would act on no server.
 fn exact_name(server: &Map<String, Value>) -> Option<String> {
     let name = server.get("name")?.as_str()?;
-    (clean(name, MAX_NAME_BYTES).as_deref() == Some(name)).then(|| name.to_owned())
+    is_exact_name(name).then(|| name.to_owned())
+}
+
+fn is_exact_name(name: &str) -> bool {
+    clean(name, MAX_NAME_BYTES).as_deref() == Some(name)
 }
 
 fn claude_server(server: &Map<String, Value>) -> Option<McpServer> {
@@ -188,26 +215,14 @@ fn claude_server(server: &Map<String, Value>) -> Option<McpServer> {
     })
 }
 
-fn codex_server(server: &Map<String, Value>) -> Option<McpServer> {
-    let name = exact_name(server)?;
-    let info = server.get("serverInfo").and_then(Value::as_object);
-    let text = |key: &str, max| {
-        info.and_then(|info| info.get(key))
-            .and_then(Value::as_str)
-            .and_then(|value| clean(value, max))
-    };
-    let count = |key: &str| {
-        let length = match server.get(key) {
-            Some(Value::Object(map)) => map.len(),
-            Some(Value::Array(list)) => list.len(),
-            _ => 0,
-        };
-        u32::try_from(length).unwrap_or(u32::MAX)
-    };
+fn codex_server(server: CodexServerStatus) -> Option<McpServer> {
+    let name = server.name.0.filter(|name| is_exact_name(name))?;
+    let info = server.server_info.0.unwrap_or_default();
+    let text = |value: Text, max| value.0.and_then(|value| clean(&value, max));
     Some(McpServer {
-        title: text("title", MAX_TITLE_BYTES).filter(|title| *title != name),
-        version: text("version", MAX_NAME_BYTES),
-        connection: match server.get("runtimeStatus").and_then(Value::as_str) {
+        title: text(info.title, MAX_TITLE_BYTES).filter(|title| *title != name),
+        version: text(info.version, MAX_NAME_BYTES),
+        connection: match server.runtime_status.0.as_deref() {
             Some("notStarted") => McpConnection::NotStarted,
             Some("starting") => McpConnection::Starting,
             Some("connected") => McpConnection::Connected,
@@ -217,23 +232,17 @@ fn codex_server(server: &Map<String, Value>) -> Option<McpServer> {
             Some("disabled") => McpConnection::Disabled,
             _ => McpConnection::Unknown,
         },
-        auth: match server.get("authStatus").and_then(Value::as_str) {
+        auth: match server.auth_status.0.as_deref() {
             Some("oAuth") => McpAuth::OAuth,
             Some("bearerToken") => McpAuth::Token,
             Some("notLoggedIn") => McpAuth::SignedOut,
             Some("unsupported") => McpAuth::None,
             _ => McpAuth::Unknown,
         },
-        tools: count("tools"),
-        resources: count("resources"),
-        error: server
-            .get("toolsError")
-            .and_then(Value::as_str)
-            .and_then(|error| clean(error, MAX_ERROR_BYTES)),
-        origin: server
-            .get("httpOrigin")
-            .and_then(Value::as_str)
-            .and_then(origin),
+        tools: server.tools.0,
+        resources: server.resources.0,
+        error: text(server.tools_error, MAX_ERROR_BYTES),
+        origin: server.http_origin.0.as_deref().and_then(origin),
         name,
     })
 }

@@ -31,6 +31,7 @@ interface AccessSelectionProps {
   children: (view: AccessView) => ReactNode;
 }
 
+/** The access menu's anchor, as the composer's trigger holds it. */
 export interface AccessMenuAnchor {
   id: string;
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -38,7 +39,10 @@ export interface AccessMenuAnchor {
   onDismiss: () => void;
 }
 
-// The trigger stays the composer's own, so this chunk's load never remounts it.
+/**
+ * Hands the composer's trigger what it shows, when that changes. The trigger
+ * stays the composer's own, so it is never remounted as this chunk loads.
+ */
 function ReportView({
   view,
   onView,
@@ -50,7 +54,8 @@ function ReportView({
   const shown = [view.effective, view.tone]
     .concat(view.candidates.map(({ id, label }) => id + label))
     .join("\n");
-  // Reports when `shown` changes, always with the newest view.
+  // The newest view is kept first, so a report always hands it over; a
+  // report is made only when what the trigger shows has changed.
   useLayoutEffect(() => {
     latest.current = view;
   });
@@ -59,11 +64,17 @@ function ReportView({
   return null;
 }
 
+/**
+ * A chat's own access, and its menu: its live session's, or before the
+ * session exists the access drafted for it. Loaded on demand, so the chat
+ * path carries none of it.
+ */
 export default function ChatAccessSelection({
   bindingId,
   capabilities,
   sessionConfig: session,
   chatId,
+  endedSession,
   id,
   triggerRef,
   open,
@@ -74,6 +85,7 @@ export default function ChatAccessSelection({
     onView: (view: AccessView | null) => void;
   }) {
   const props = { bindingId, capabilities };
+  // The harness defaults' own load error shows with the chat's access.
   const error = useSessionAccessModeStore((state) => state.error);
   const withMenu = (view: AccessView) => (
     <>
@@ -109,17 +121,29 @@ export default function ChatAccessSelection({
       ) : null}
     </>
   );
-  return session && !session.removed ? (
+  // A chat with no head drafts the access of the session its next send
+  // starts, even while it shows its last session's config; a removed session
+  // is past, and its chat drafts too.
+  return session && !session.removed && !chatId ? (
     <LiveChatAccess session={session} error={error} {...props}>
       {withMenu}
     </LiveChatAccess>
   ) : (
-    <ChatAccessDraftSelection chatId={chatId} error={error} {...props}>
+    <ChatAccessDraftSelection
+      chatId={chatId}
+      endedSession={endedSession}
+      error={error}
+      {...props}
+    >
       {withMenu}
     </ChatAccessDraftSelection>
   );
 }
 
+/**
+ * A live chat's access: its own mode when it has one the session offers,
+ * else its harness default.
+ */
 function LiveChatAccess({
   bindingId,
   capabilities,

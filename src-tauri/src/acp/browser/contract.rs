@@ -14,7 +14,6 @@ pub enum BrowserFailure {
     OutcomeUnknown,
     Denied,
     NoAttachment,
-    /// The user took over the tab; the Agent waits until they hand it back.
     UserControl,
 }
 
@@ -70,7 +69,6 @@ pub enum BrowserCommand {
         cursor: Option<u64>,
         limit: usize,
     },
-    /// Developer mode (ADR-0009b): one raw CDP command on the tab.
     Cdp {
         method: String,
         #[serde(default)]

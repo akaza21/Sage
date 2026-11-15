@@ -93,7 +93,6 @@ const CHROME_CSV: &str = "name,url,username,password,note\n\
     example.com,https://example.com/login,ada,first-secret,\n\
     shop,https://shop.example:8443/,grace,second-secret,\n";
 
-/// A later export: other passwords, and a different length.
 const NEWER_CSV: &str = "name,url,username,password,note\n\
     example.com,https://example.com/login,ada,a-much-newer-secret,\n";
 
@@ -327,7 +326,6 @@ fn a_csv_saved_over_the_imported_one_is_not_deleted() {
     let state = state(&scratch.0.join("profile"), 1);
     let csv = scratch.csv("passwords.csv", CHROME_CSV);
     import(&state, csv.clone());
-    // A later export saved under the same name replaces the imported file.
     let moved = scratch.0.join("held.csv");
     fs::rename(&csv, &moved).unwrap();
     let newer = scratch.csv("newer.csv", NEWER_CSV);
@@ -337,7 +335,6 @@ fn a_csv_saved_over_the_imported_one_is_not_deleted() {
         Err(VaultError::ImportedFileChanged)
     ));
     assert_eq!(fs::read_to_string(&csv).unwrap(), NEWER_CSV);
-    // The imported file itself, moved back under its name, is still deleted.
     fs::rename(&moved, &csv).unwrap();
     state.delete_imported_file().unwrap();
     assert!(!csv.exists());
@@ -350,7 +347,6 @@ fn a_csv_rewritten_in_place_after_import_is_not_deleted() {
     let state = state(&scratch.0.join("profile"), 1);
     let csv = scratch.csv("passwords.csv", CHROME_CSV);
     import(&state, csv.clone());
-    // The same file, truncated and written again with other passwords.
     fs::write(&csv, NEWER_CSV).unwrap();
     assert!(matches!(
         state.delete_imported_file(),
@@ -441,7 +437,6 @@ fn a_cancelled_merge_saves_nothing() {
     assert_eq!(store.page("").unwrap().total, 0);
 }
 
-/// Cancels once `remaining` more rows have been checked.
 struct CancelAfter(AtomicUsize);
 
 impl Cancellation for CancelAfter {
@@ -515,7 +510,6 @@ fn a_cancel_sent_while_the_file_is_being_chosen_stops_that_import() {
     ));
     drop(run);
     assert_eq!(ready(state.overview("").unwrap()).total, 0);
-    // The cancel belonged to that import alone.
     assert_eq!(import(&state, csv).added, 2);
 }
 
@@ -625,7 +619,6 @@ fn cancellation_during_commit_reports_too_late_and_keeps_the_saved_password() {
             "saved"
         );
         assert!(!accepted, "a durable commit cannot acknowledge rollback");
-        // Even before the import reply is delivered, Cancel must say too late.
         assert!(!state.cancel_import());
     });
 }
@@ -666,19 +659,14 @@ fn an_idle_vault_closes_and_reopens_on_its_next_use() {
     let state = state(&scratch.0.join("profile"), 1);
     import(&state, scratch.csv("passwords.csv", CHROME_CSV));
     let ada = ready(state.overview("ada").unwrap()).entries.remove(0);
-    // Used a moment ago: the database and the unwrapped key stay open.
     assert!(!state.close_if_idle_after(Duration::from_secs(1)));
     assert!(state.is_open());
-    // Unused for the idle period: both are released.
     assert!(state.close_if_idle_after(IDLE_AFTER));
     assert!(!state.is_open());
     assert_eq!(state.password(&ada.id).unwrap().expose(), "first-secret");
     assert!(state.is_open());
 }
 
-/// Another Sage process on the same profile deletes everything and imports
-/// again under a new key. This process's next import must seal with that
-/// new key, so every saved password still opens afterwards.
 #[test]
 fn an_import_after_another_process_re_keys_the_vault_uses_the_new_key() {
     let scratch = Scratch::new();

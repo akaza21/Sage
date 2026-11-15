@@ -1,6 +1,7 @@
 use std::sync::{Arc, Mutex};
 
-use crate::acp::{runtime::RuntimeHost, scheduler::RuntimeOwner};
+use crate::acp::runtime::RuntimeHost;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 mod access;
 mod recovery;
@@ -50,7 +51,7 @@ pub(crate) struct RuntimeSlot {
     pub(crate) config: Arc<crate::acp::session_config::ConfigChannel>,
     pub(crate) commands: Arc<crate::acp::slash_commands::CommandChannel>,
     pub(crate) goal: Arc<crate::acp::goal::GoalChannel>,
-    pub(crate) usage: Arc<crate::acp::usage::UsageChannel>,
+    pub(crate) usage: Arc<sage_acp_protocol::usage::UsageChannel>,
 }
 
 impl RuntimeSlot {

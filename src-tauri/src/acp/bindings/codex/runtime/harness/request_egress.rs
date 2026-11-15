@@ -4,8 +4,6 @@ use super::super::super::request::RequestKind;
 use super::super::{CodexRuntime, support::map_adapter};
 
 impl CodexRuntime {
-    /// Settles one of Sage's own requests once its frame's delivery is
-    /// known; a request that was never written is withdrawn.
     pub(super) fn resolve_request_egress(
         &mut self,
         request_id: u64,
@@ -31,7 +29,6 @@ impl CodexRuntime {
             if kind.is_some_and(RequestKind::starts_turn) {
                 self.snapshots.clear();
             }
-            // The catalogue is read as far as it will be.
             if kind == Some(RequestKind::Models) {
                 self.refresh_model_config();
             }

@@ -25,7 +25,7 @@ where
         .turn
         .driver
         .latest_durable_turn_cursor()
-        .filter(|cursor| cursor.state() == crate::acp::lifecycle::TurnState::Completed)
+        .filter(|cursor| cursor.state() == sage_acp_protocol::lifecycle::TurnState::Completed)
         .cloned()
     else {
         envelope.reject(HostError::State);
@@ -72,7 +72,9 @@ where
                 .turn
                 .driver
                 .latest_durable_turn_cursor()
-                .is_some_and(|cursor| cursor.state() == crate::acp::lifecycle::TurnState::Completed)
+                .is_some_and(|cursor| {
+                    cursor.state() == sage_acp_protocol::lifecycle::TurnState::Completed
+                })
             {
                 envelope.respond(Ok(WorkerReply::Zero(receipt)));
                 return FirstTurnWorkerState::Active(Box::new(active));
@@ -85,7 +87,8 @@ where
                 envelope.reject(HostError::RecoveryRequired);
                 return FirstTurnWorkerState::Active(Box::new(active));
             };
-            let Ok(exit_kind) = crate::acp::contract::RequiredText::new("exitKind", "hostShutdown")
+            let Ok(exit_kind) =
+                sage_acp_protocol::contract::RequiredText::new("exitKind", "hostShutdown")
             else {
                 envelope.reject(HostError::RecoveryRequired);
                 return FirstTurnWorkerState::Active(Box::new(active));

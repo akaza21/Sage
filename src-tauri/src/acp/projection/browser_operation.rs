@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 
-use crate::acp::contract::{SageAgentSessionId, SageChatId, SageProjectId, SageTurnId};
+use sage_acp_protocol::contract::{SageAgentSessionId, SageChatId, SageProjectId, SageTurnId};
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

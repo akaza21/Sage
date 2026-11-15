@@ -1,18 +1,13 @@
-//! Keeps a chat's session config choices across park, restart and fork.
-//!
-//! Every binding exposes its config through the same seam: the runtime
-//! publishes what the session reports into the lane's `ConfigChannel`, and a
-//! change goes through `AcpService::configure_session` to the binding's
-//! `HarnessAdapter::configure`. So the choices are stored here, and
-//! reapplied here through that same path, with no harness branch.
 use std::time::{Duration, Instant};
 
 use crate::acp::{
     runtime::HostError,
+    session_config::{choices, notices::NoticeReason},
+};
+use sage_acp_protocol::{
     scheduler::RuntimeOwner,
     session_config::{
-        ConfigIntent, ConfigMutation, SessionConfig, SessionConfigOverlay, choices,
-        notices::NoticeReason, reported::current_value,
+        ConfigIntent, ConfigMutation, SessionConfig, SessionConfigOverlay, reported::current_value,
     },
 };
 use sage_core::limits::LIMITS;
@@ -20,16 +15,12 @@ use sage_core::limits::LIMITS;
 use super::AcpService;
 use crate::acp::bindings::access_policy::governs_session_modes;
 
-/// What one stored choice needs against the options the session reports now.
 #[derive(Debug, PartialEq, Eq)]
 enum Step {
-    /// The session already runs with the stored value.
     Keep,
-    /// The value is still offered and differs: send it.
     Apply,
     /// The option is offered but the value is not: store the session's value.
     Fallback(ConfigMutation),
-    /// The session no longer offers the option at all.
     Forget,
     /// The session takes the option but has not said its value yet: the
     /// stored one is kept for when it does.
@@ -83,8 +74,6 @@ fn priority(config: &SessionConfig, choice: &ConfigMutation) -> u8 {
     }
 }
 
-/// Whether the session reports what the stored choices need: its modes when
-/// a mode is stored, its options when an option is stored.
 fn ready(config: &SessionConfig, stored: &[ConfigMutation]) -> bool {
     let options = !config.config_options.as_slice().is_empty();
     let modes = config.modes.is_some();
@@ -95,8 +84,6 @@ fn ready(config: &SessionConfig, stored: &[ConfigMutation]) -> bool {
         })
 }
 
-/// When one restore change must be answered: the per-request timeout any
-/// config change gets, from when it is sent.
 fn send_deadline() -> Instant {
     let now = Instant::now();
     let deadline = now + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
@@ -122,25 +109,12 @@ fn needs_recovery(error: &HostError) -> bool {
 }
 
 impl AcpService {
-    /// Reapplies the session's stored choices to a new runtime, once the
-    /// session reports the modes and options they need. Each stored value
-    /// that differs and is still offered is sent through the same config path
-    /// the composer uses. A value the session no longer offers, or one the
-    /// harness refuses, falls back to the session's value, and the stored
-    /// value is updated to match. A new session stores the mode it starts in.
-    ///
-    /// Each change gets the whole per-request timeout any config change
-    /// gets, from when it is sent, and the restore starts no new change once
-    /// one such timeout has passed since it began. What is left then, or a
-    /// change that could not be sent in time, is restored before the next
-    /// prompt, and until then what the harness reports for those choices
-    /// does not replace them. `Err` means a change left the runtime needing
-    /// recovery; its choice stays stored for the resumed runtime.
-    ///
-    /// When there are stored choices, a session still reading the options
-    /// they need (a catalogue asked for as activation handed off) is waited
-    /// for within the same budget, so the prompt that follows does not go
-    /// out ahead of them. With none stored nothing waits.
+    /// Each change gets the whole per-request timeout from when it is sent, and the
+    /// restore starts no new change once one such timeout has passed since it
+    /// began; the rest is restored before the next prompt. A session still reading
+    /// the options stored choices need is waited for within the same budget, so the
+    /// prompt that follows does not go out ahead of them. `Err` means a change left
+    /// the runtime needing recovery; its choice stays stored for the resumed runtime.
     pub(crate) fn restore_session_config(&self, owner: &RuntimeOwner) -> Result<(), HostError> {
         let budget = Instant::now() + Duration::from_millis(LIMITS.deadlines_ms.ordinary_rpc);
         if let Some(lane) = self.lane_for(owner)
@@ -152,7 +126,6 @@ impl AcpService {
         self.restore_until(owner, || Instant::now() >= budget)
     }
 
-    /// The restore, starting changes until `out_of_time`.
     pub(super) fn restore_until(
         &self,
         owner: &RuntimeOwner,
@@ -214,7 +187,6 @@ impl AcpService {
         for choice in stored {
             match step(&overlay.config, &choice) {
                 Step::Keep => {}
-                // Still held, and tried again before the next prompt.
                 Step::Hold => {
                     held_back = true;
                     continue;
@@ -268,7 +240,6 @@ impl AcpService {
             .unwrap_or(true)
     }
 
-    /// Sends one stored value, retrying once if another change raced it.
     fn apply_stored(
         &self,
         owner: &RuntimeOwner,
@@ -330,15 +301,12 @@ impl AcpService {
 }
 
 enum Applied {
-    /// The harness answered; this is the session's config after it.
     Sent(Box<SessionConfigOverlay>),
     /// Not sent now; tried again before the next prompt.
     Deferred,
-    /// The runtime is gone.
     Gone,
 }
 
-/// Rearms a restore that stops before its last choice.
 struct Unfinished<'a> {
     config: &'a crate::acp::session_config::ConfigChannel,
     owner: &'a RuntimeOwner,
@@ -356,7 +324,7 @@ impl Drop for Unfinished<'_> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::session_config::{ConfigId, ConfigValue};
+    use sage_acp_protocol::session_config::{ConfigId, ConfigValue};
     use serde_json::json;
 
     fn config() -> SessionConfig {
@@ -453,7 +421,7 @@ mod tests {
     #[test]
     fn a_stored_option_whose_value_the_session_has_not_reported_is_held() {
         let config = SessionConfig {
-            unreported: crate::acp::contract::BoundedVec::new(
+            unreported: sage_acp_protocol::contract::BoundedVec::new(
                 "unreported",
                 vec![ConfigId::new("configId", "depth").unwrap()],
             )
@@ -461,7 +429,6 @@ mod tests {
             ..config()
         };
         assert_eq!(step(&config, &option("depth", select("deep"))), Step::Hold);
-        // An option the session does not take at all is still forgotten.
         assert_eq!(step(&config, &option("model", select("a"))), Step::Forget);
     }
 

@@ -1,9 +1,7 @@
 use std::{future::Future, pin::Pin, sync::Arc};
 
-use crate::acp::{
-    lifecycle::ServerRequestState,
-    store::{RequestStateCommand, StoreError, StoreMutation, StoreMutationResult},
-};
+use crate::acp::store::{RequestStateCommand, StoreError, StoreMutation, StoreMutationResult};
+use sage_acp_protocol::lifecycle::ServerRequestState;
 
 use super::{
     adapter_pump::{
@@ -91,8 +89,8 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
                 matches!(
                     event,
                     DurableAdapterEvent::Turn {
-                        state: crate::acp::lifecycle::TurnState::Cancelled
-                            | crate::acp::lifecycle::TurnState::Interrupted,
+                        state: sage_acp_protocol::lifecycle::TurnState::Cancelled
+                            | sage_acp_protocol::lifecycle::TurnState::Interrupted,
                         ..
                     }
                 )
@@ -133,8 +131,8 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
                 && applied
                 && matches!(
                     cursor.state(),
-                    crate::acp::lifecycle::TurnState::Cancelled
-                        | crate::acp::lifecycle::TurnState::Interrupted
+                    sage_acp_protocol::lifecycle::TurnState::Cancelled
+                        | sage_acp_protocol::lifecycle::TurnState::Interrupted
                 )
                 && let Some(observation) = &self.characterization_observation
             {
@@ -163,13 +161,17 @@ impl AdapterBatchJournal for SqliteAdapterBatchJournal {
 
     fn transition_permission<'a>(
         &'a mut self,
-        intent: &'a crate::acp_protocol::permissions::PermissionIntent,
+        intent: &'a sage_acp_protocol::permissions::PermissionIntent,
         state: ServerRequestState,
         now_millis: i64,
     ) -> Pin<
         Box<
-            dyn Future<Output = Result<crate::acp::contract::ProjectionRevision, PumpJournalError>>
-                + Send
+            dyn Future<
+                    Output = Result<
+                        sage_acp_protocol::contract::ProjectionRevision,
+                        PumpJournalError,
+                    >,
+                > + Send
                 + 'a,
         >,
     > {

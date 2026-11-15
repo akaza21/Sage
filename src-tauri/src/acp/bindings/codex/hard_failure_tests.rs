@@ -3,9 +3,10 @@ use sage_test_support::test_diagnostics::capture_diagnostics;
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
 use serde_json::{Value, json};
 
-use crate::acp::{
+use crate::acp::transcript_quote::Prompt;
+use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
-    intent::{NormalizedPayload, Prompt, SafeResourceRef, UnavailableResourceReason},
+    intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
     lifecycle::{ItemLifecycle, ServerRequestState},
 };
 

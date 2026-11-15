@@ -40,7 +40,20 @@ export function safeCodexDiscovery(
     if (!isRecord(candidate)) return null;
     const id = safeIdentifier(candidate.id);
     const name = safeIdentifier(candidate.name);
-    if (!id || !name || typeof candidate.isDefault !== "boolean" || ids.has(id))
+    const effortLevels =
+      candidate.effortLevels === undefined
+        ? []
+        : Array.isArray(candidate.effortLevels)
+          ? candidate.effortLevels.map((level) => safeIdentifier(level))
+          : null;
+    if (
+      !id ||
+      !name ||
+      typeof candidate.isDefault !== "boolean" ||
+      ids.has(id) ||
+      !effortLevels ||
+      effortLevels.some((level) => !level)
+    )
       return null;
     ids.add(id);
     defaults += Number(candidate.isDefault);
@@ -48,6 +61,9 @@ export function safeCodexDiscovery(
       id: id as CodexDiscoveryModel["id"],
       name,
       isDefault: candidate.isDefault,
+      ...(effortLevels.length > 0
+        ? { effortLevels: effortLevels as string[] }
+        : {}),
     });
   }
   const defaultModelId =

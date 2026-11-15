@@ -63,10 +63,8 @@ impl AuthFrameRouter {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::{
-        bindings::codex::parse_packet_metadata, contract::RuntimeEpoch,
-        transport::IncrementalFrameDecoder,
-    };
+    use crate::acp::{bindings::codex::parse_packet_metadata, transport::IncrementalFrameDecoder};
+    use sage_acp_protocol::contract::RuntimeEpoch;
     use serde_json::json;
 
     #[test]

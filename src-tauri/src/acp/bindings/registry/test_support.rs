@@ -42,10 +42,10 @@ pub(super) fn turn_dispatch(
     _: crate::acp::runtime::HostPromptIntent,
 ) -> Result<
     crate::acp::runtime::HostOutcome,
-    crate::acp::service::PromptSendError<crate::acp::service::CodexSessionError>,
+    crate::acp::prompt_send::PromptSendError<crate::acp::service::CodexSessionError>,
 > {
     TEST_TURN_DISPATCHED.store(true, Ordering::Release);
-    Err(crate::acp::service::PromptSendError::unknown(
+    Err(crate::acp::prompt_send::PromptSendError::unknown(
         crate::acp::service::CodexSessionError::Intent,
     ))
 }
@@ -71,8 +71,8 @@ struct TestRuntimeFactory(CodexRuntimeFactory);
 impl RuntimeFactory for TestRuntimeFactory {
     fn construct(
         self: Box<Self>,
-        runtime_epoch: crate::acp::contract::RuntimeEpoch,
-        session_id: crate::acp::contract::SageAgentSessionId,
+        runtime_epoch: sage_acp_protocol::contract::RuntimeEpoch,
+        session_id: sage_acp_protocol::contract::SageAgentSessionId,
     ) -> Result<
         crate::acp::bindings::runtime::NativeRuntime,
         crate::acp::bindings::adapter::AdapterRuntimeError,

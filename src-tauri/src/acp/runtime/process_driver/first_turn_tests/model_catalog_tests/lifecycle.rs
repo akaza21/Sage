@@ -78,6 +78,7 @@ async fn run_catalog_page_crossing_turn(
         transport: CatalogTransport::new(&writes, Arc::clone(&mailbox), None),
         control: NoChildProcessControl {
             zero_checks: Arc::new(AtomicUsize::new(0)),
+            harness_error: None,
         },
         owner: fixture.owner.clone(),
         clock: Arc::new(SystemDriverClock),
@@ -177,7 +178,7 @@ async fn run_catalog_page_crossing_turn(
                 prompt: Prompt::new("prompt", "fast turn").unwrap(),
                 now_millis: fixture.now_millis + 3,
             },
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         }))
         .unwrap();
     let ControlMessage::Worker(envelope) = mailbox

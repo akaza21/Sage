@@ -1,19 +1,17 @@
-//! Developer mode (ADR-0009b): the checks a raw CDP command passes before it
-//! may reach the attached tab, and the seam through which the gate reads the
-//! Settings switch, the per-session grant and the audit log.
-//!
 //! Default deny: only the methods in `ALLOWED`, each with only its listed
 //! top-level parameters, are sent. Every one of them runs in the main
 //! frame's default execution context (where the same-origin policy keeps
 //! cross-origin iframes out) or navigates or captures the tab, and none
-//! enables a domain. Native raw calls use a grant-owned session detached on
-//! revocation, sleep and timeout. The `DOM` domain is left out because its
-//! node ids reach same-process iframe documents and it enables itself;
+//! enables a domain. Native raw calls use a tab-owned privileged session;
+//! losing its last live grant, sleep and timeout detach it. The `DOM` domain
+//! is left out because its node ids reach same-process iframe documents and
+//! it enables itself;
 //! cookie commands are left out because they hand over `HttpOnly` session
 //! tokens that page script cannot read. Frame and context ids are never
 //! accepted, and neither is a remote `objectId`: it encodes the execution
 //! context it belongs to, so a hand-built one could name an iframe's
-//! context. Results come back by value or as previews.
+//! context. Results are serialized within a byte budget; remote object
+//! handles are not exposed.
 
 use serde_json::{Map, Value};
 
@@ -58,12 +56,10 @@ pub fn releases_on_completion(method: &str, params: &str) -> bool {
             .is_ok_and(|params| params["objectGroup"] == DEVELOPER_OBJECT_GROUP)
 }
 
-/// Params for `Runtime.releaseObjectGroup` on developer mode's group.
 pub fn release_params() -> String {
     serde_json::json!({ "objectGroup": DEVELOPER_OBJECT_GROUP }).to_string()
 }
 
-/// Every method developer mode sends, with the parameters it may carry.
 const ALLOWED: &[(&str, &[&str])] = &[
     ("Runtime.evaluate", EVALUATE),
     ("Runtime.getHeapUsage", &[]),
@@ -89,12 +85,10 @@ const ALLOWED: &[(&str, &[&str])] = &[
     ),
 ];
 
-/// Capability text and schemas use the same source as command admission.
 pub fn allowed_methods() -> Vec<&'static str> {
     ALLOWED.iter().map(|(method, _)| *method).collect()
 }
 
-/// Accepts `Domain.command`, both ASCII alphanumeric and non-empty.
 pub fn admit_method_shape(method: &str) -> Result<(), BrowserFailure> {
     let valid_part =
         |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_alphanumeric());
@@ -109,9 +103,7 @@ pub fn admit_method_shape(method: &str) -> Result<(), BrowserFailure> {
 }
 
 /// Refuses any method not in `ALLOWED` and any parameter not listed for
-/// it. The caller has already checked the method's shape. `origin` is the
-/// granted origin; no listed method takes an origin-bearing parameter
-/// today, so none needs binding to it.
+/// it. The caller has already checked the method's shape.
 pub fn admit_command(
     method: &str,
     params: &Map<String, Value>,
@@ -129,7 +121,6 @@ pub fn admit_command(
     Ok(())
 }
 
-/// How one developer-mode call ended, as the audit log records it.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CdpAuditOutcome {
     Granted,
@@ -178,13 +169,8 @@ pub struct CdpAuditEntry {
     pub outcome: CdpAuditOutcome,
 }
 
-/// What the permission gate needs to admit an elevated command. Grants are
-/// held in memory by the attachment and end on Stop, Take over, detach,
-/// tab close, a cross-origin commit and the switch going off.
 pub trait DeveloperModePolicy: Send + Sync {
-    /// Whether Settings › Browser › Developer mode is on.
     fn enabled(&self) -> bool;
-    /// Whether `session` holds a live grant for `origin` on this tab.
     fn granted(&self, session: &str, origin: &str) -> bool;
     /// Records a grant the user just approved; false when the attachment
     /// can no longer hold one.

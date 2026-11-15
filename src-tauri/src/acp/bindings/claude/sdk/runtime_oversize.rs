@@ -1,5 +1,3 @@
-//! Claude Code frames past the structure limits sized for ACP frames.
-
 use serde_json::Value;
 
 use super::{ClaudeSdkRuntime, SdkBridge, sdk_frame};
@@ -22,15 +20,15 @@ impl ResourceMapper for NoResources {
     fn map_existing(
         &self,
         _absolute_path: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
-        Err(crate::acp::intent::UnavailableResourceReason::Foreign)
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Foreign)
     }
 }
 
 impl ClaudeSdkRuntime {
-    /// A frame too large to read whole, kept as far as Sage needs it (see
-    /// `discard_invalid_response`).
     pub(super) fn ingest_oversize(
         &mut self,
         frame: &Frame,

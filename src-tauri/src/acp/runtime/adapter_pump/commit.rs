@@ -155,7 +155,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         let disposition = self
             .publisher
             .publish_committed_with(
-                crate::acp::intent::ProjectionChangedV1 {
+                crate::acp::ipc::ProjectionChangedV1 {
                     project_id: self.intent.project_id.clone(),
                     chat_id: self.intent.chat_id.clone(),
                     session_id: self.intent.session_id.clone(),

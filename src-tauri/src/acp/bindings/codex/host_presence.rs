@@ -1,8 +1,4 @@
-//! Fail-closed host presence for the Codex catalog.
-//!
-//! A present file is not launch, discovery, or admission authority. Full
-//! harness discovery lives in `crate::harness_discovery`; this compatibility
-//! projection intentionally retains the existing PATH-only result and callers.
+//! A present file is not launch, discovery, or admission authority.
 
 use std::path::{Path, PathBuf};
 
@@ -27,8 +23,7 @@ pub(crate) fn expected_codex_basename() -> &'static str {
 }
 
 pub(crate) fn observe_codex_host_presence() -> CodexHostPresence {
-    // The shared discovery probe additionally considers known roots and executes
-    // `--version`. This legacy projection intentionally remains PATH-only and
+    // This legacy projection intentionally remains PATH-only and
     // side-effect-free for its existing install-state callers.
     observe_codex_host_presence_among(&path_candidates_for_basename(expected_codex_basename()))
 }

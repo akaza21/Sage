@@ -259,8 +259,14 @@ export function createAcpSessionActions(
 
   type Mutation =
     { modeId: string } | { configId: string; value: AcpConfigValue };
-  // A choice on a session with no live config is stored, not sent: the restore
-  // applies it before the next prompt, so no runtime starts for it.
+  /**
+   * A session with no live config (no runtime, or a live runtime that has
+   * not reported yet) shows its restored config, as does a chat with no
+   * current session for its last one. A choice on it is stored, not sent:
+   * the restore applies it before the next prompt of that session, or of the
+   * one the next send starts from it, as it does every stored choice, so no
+   * runtime starts for it.
+   */
   const queue = (
     captured: AcpActionContext,
     sessionId: string,
@@ -269,7 +275,14 @@ export function createAcpSessionActions(
     dependencies.enqueue(captured, "mode", async (updateState) => {
       const context = dependencies.getContext();
       if (!dependencies.sameScope(context, captured)) return "ignoredStale";
-      const session = currentSession(context.page);
+      const restored = context.page.restoredSessionConfig;
+      const session =
+        currentSession(context.page) ??
+        (restored?.awaiting === "start"
+          ? context.page.sessions.find(
+              (candidate) => candidate.id === restored.sageAgentSessionId,
+            )
+          : undefined);
       if (!session || session.id !== sessionId || context.page.sessionConfig)
         return "ignoredStale";
       try {

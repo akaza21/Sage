@@ -76,8 +76,8 @@ async fn run(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::contract::{RuntimeEpoch, SageAgentSessionId};
     use crate::commands::acp::goal::integration_tests::fixture;
+    use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
     use std::sync::atomic::Ordering;
 
     #[tokio::test]

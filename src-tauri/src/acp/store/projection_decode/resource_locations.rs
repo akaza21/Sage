@@ -1,4 +1,4 @@
-use crate::acp::{
+use sage_acp_protocol::{
     contract::SageRootId,
     intent::{NormalizedPayload, SafeResourceLocation, UnavailableResourceReason},
 };

@@ -1,5 +1,5 @@
-use crate::acp::{
-    bindings::runtime::RuntimeFactory,
+use crate::acp::bindings::runtime::RuntimeFactory;
+use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::CapabilitySnapshotV1,
 };

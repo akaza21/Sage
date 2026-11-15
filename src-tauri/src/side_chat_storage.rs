@@ -65,7 +65,7 @@ pub(crate) fn refuse_parent_removal(
 
 pub(crate) fn validate_layout(
     connection: &rusqlite::Connection,
-    layout: &crate::domain::ProjectLayoutRequest,
+    layout: &sage_domain::chat::ProjectLayoutRequest,
 ) -> AppResult<()> {
     let rows = connection.prepare("SELECT id,json_extract(metadata_json,'$.parentChatId') FROM workbench_tabs WHERE project_id=?1 AND id IN (SELECT id FROM workbench_tabs WHERE json_extract(metadata_json,'$.ephemeral')=1) LIMIT 9")?
         .query_map([&layout.project_id], |row| Ok((row.get::<_,String>(0)?,row.get::<_,String>(1)?)))?
@@ -144,7 +144,7 @@ mod tests {
         let snapshot = database.bootstrap_snapshot().unwrap();
         let project = snapshot.project.as_ref().unwrap().id.clone();
         let parent = snapshot.active_tab_id.clone().unwrap();
-        let layout = crate::domain::ProjectLayoutRequest {
+        let layout = sage_domain::chat::ProjectLayoutRequest {
             project_id: project.clone(),
             tabs: snapshot.tabs,
             active_tab_id: Some(parent.clone()),
@@ -210,7 +210,7 @@ mod tests {
                 .execute("DELETE FROM chats WHERE id=?1", [&parent])
                 .is_err()
         );
-        let layout = crate::domain::ProjectLayoutRequest {
+        let layout = sage_domain::chat::ProjectLayoutRequest {
             active_tab_id: Some(parent.clone()),
             ..layout
         };

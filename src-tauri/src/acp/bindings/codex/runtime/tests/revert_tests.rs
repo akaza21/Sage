@@ -1,7 +1,6 @@
-//! Undo of the latest Turn through `thread/revert`.
-
 use super::*;
-use crate::acp::{contract::SageTurnId, goal::NativeRpcReply, session_control::SessionControl};
+use crate::acp::goal::NativeRpcReply;
+use sage_acp_protocol::{contract::SageTurnId, session_control::SessionControl};
 
 const TURN: &str = "turn-6f9619ff-8b86-d011-b42d-00cf4fc964ff";
 
@@ -15,7 +14,7 @@ fn prompt_command(turn: &str) -> AdapterCommand {
     AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
         client_message_id: RequiredText::new("client", turn).expect("client"),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     }
 }
 
@@ -35,7 +34,6 @@ fn run_turn(runtime: &mut CodexRuntime, sage: &str, codex: &str) {
     ] {
         runtime.ingest(&frame(frame_value), &Mapper).expect("turn");
     }
-    // Undo waits for the Turn to finish.
     assert!(runtime.session_control(&undo(sage)).is_err());
     runtime
         .ingest(
@@ -62,7 +60,6 @@ fn undo_reverts_the_thread_before_the_latest_turn_once() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     finished_turn(&mut runtime);
-    // Only the latest Turn, by the id Sage sent it with.
     assert!(
         runtime
             .session_control(&undo("turn-00000000-0000-4000-8000-000000000000"))
@@ -94,8 +91,6 @@ fn undo_reverts_the_thread_before_the_latest_turn_once() {
         runtime.session_control(&undo(TURN)).is_err(),
         "the Turn is already gone"
     );
-    // Asked again, the revert is confirmed without another request, so an
-    // undo Sage could not record is recorded on retry.
     assert!(!runtime.answered_control(&undo("turn-00000000-0000-4000-8000-000000000000")));
     assert!(runtime.answered_control(&undo(TURN)));
     assert_eq!(
@@ -169,7 +164,6 @@ fn a_turn_sent_during_an_undo_runs_and_can_itself_be_undone() {
         runtime.take_native_rpc_reply(),
         Some(NativeRpcReply::Controlled(None))
     );
-    // The undo removed the first turn, not the one that ran meanwhile.
     let egress = runtime.session_control(&undo(NEXT)).expect("undo next");
     let request: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
     assert_eq!(request["params"]["beforeTurnId"], "turn-2");

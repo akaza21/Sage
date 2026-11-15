@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use crate::acp::contract::ContractError;
+use sage_acp_protocol::contract::ContractError;
 
 #[path = "command.rs"]
 pub(crate) mod command;

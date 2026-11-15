@@ -1,9 +1,6 @@
-//! Native-lane diagnostics (Windows, `native-lane` only): the preflight that
-//! runs once the event loop is ready and before any case, the webview probe
-//! that attributes a dropped tab, and the logger that surfaces Tauri's and
-//! wry's own creation errors (`tauri-runtime-wry` reports a failed child
-//! webview only through `log::error!`). Win32 calls are declared here rather
-//! than widening the reviewed `windows-sys` feature set.
+//! `tauri-runtime-wry` reports a failed child webview only through
+//! `log::error!`. Win32 calls are declared here rather than widening the
+//! reviewed `windows-sys` feature set.
 
 use std::{
     ffi::c_void,
@@ -24,7 +21,7 @@ const DESKTOP_SWITCHDESKTOP: u32 = 0x0100;
 const WTS_SESSION_INFO_EX: i32 = 25;
 const WTS_SESSIONSTATE_LOCK: i32 = 0;
 
-/// The preflight. `Err` is the text after `PREFLIGHT FAIL: `.
+/// `Err` is the text after `PREFLIGHT FAIL: `.
 pub(super) fn preflight(app: &AppHandle, folders: &[(&str, &Path)]) -> Result<(), String> {
     say(&format!("WebView2 runtime: {}", runtime_version()));
     let session = Session::read();
@@ -60,9 +57,8 @@ pub(super) fn preflight(app: &AppHandle, folders: &[(&str, &Path)]) -> Result<()
         .map_err(|error| format!("WebView2 did not start ({error})"))
 }
 
-/// Whether the runtime still runs closures on `webview`, and its WebView2
-/// browser process. A closure dropped unrun means the runtime holds no such
-/// webview (its creation failed or it was closed).
+/// A closure dropped unrun means the runtime holds no such webview (its
+/// creation failed or it was closed).
 pub(super) fn probe(webview: &Webview) -> Result<u32, String> {
     let (sender, receiver) = mpsc::sync_channel(1);
     webview
@@ -97,7 +93,6 @@ pub(super) fn describe(probe: &Result<u32, String>) -> String {
     }
 }
 
-/// Every webview Tauri still manages, with what the runtime says of each.
 pub(super) fn webviews(app: &AppHandle) -> String {
     let mut webviews: Vec<_> = app.webviews().into_iter().collect();
     webviews.sort_by(|left, right| left.0.cmp(&right.0));

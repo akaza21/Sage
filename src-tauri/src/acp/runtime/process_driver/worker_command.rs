@@ -3,18 +3,18 @@ use std::{
     time::{Duration, Instant},
 };
 
-use crate::{
-    acp::{
-        contract::{SageServerRequestId, SageTurnId},
-        process::TreeExit,
-        runtime::{
-            ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
-            LiveWrite, NativeRpcCompletionSink, SteerCompletionSink,
-        },
-        scheduler::RuntimeOwner,
-        store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+use crate::acp::{
+    process::TreeExit,
+    runtime::{
+        ConfigCompletionSink, HostCancelIntent, HostError, HostPromptIntent, HostSteerIntent,
+        LiveWrite, NativeRpcCompletionSink, SteerCompletionSink,
     },
-    acp_protocol::permissions::PermissionDecision,
+    store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+};
+use sage_acp_protocol::{
+    contract::{SageServerRequestId, SageTurnId},
+    permissions::PermissionDecision,
+    scheduler::RuntimeOwner,
 };
 
 use super::{ControlMessage, DriverMailbox, MailboxError, WorkerZeroProof};
@@ -25,7 +25,7 @@ use support::{close_bytes, map_mailbox, owner_bytes};
 
 pub(crate) enum WorkerCommand {
     ConfigureSession {
-        intent: crate::acp::session_config::ConfigIntent,
+        intent: sage_acp_protocol::session_config::ConfigIntent,
         completion: ConfigCompletionSink,
     },
     NativeRpc {

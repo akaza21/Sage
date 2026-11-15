@@ -2,7 +2,11 @@ use std::collections::HashMap;
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::domain::{DiffHunk, DiffLine, FileChange, FileDiff, ResourceRef};
+use sage_domain::{
+    editor::{DiffHunk, DiffLine, FileDiff},
+    repository::FileChange,
+    resource::ResourceRef,
+};
 
 const MAX_CHANGES: usize = 300;
 pub const MAX_DIFF_LINES: usize = 1_200;

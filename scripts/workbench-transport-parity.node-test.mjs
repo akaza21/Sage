@@ -66,12 +66,12 @@ test("workbench contracts split into owned modules with compatibility re-exports
     "src/domain/repository.ts",
     "src/domain/chat.ts",
     "src/domain/harness.ts",
-    "src-tauri/src/domain/resource.rs",
-    "src-tauri/src/domain/project.rs",
-    "src-tauri/src/domain/editor.rs",
-    "src-tauri/src/domain/repository.rs",
-    "src-tauri/src/domain/chat.rs",
-    "src-tauri/src/domain/harness.rs",
+    "crates/sage-domain/src/resource.rs",
+    "crates/sage-domain/src/project.rs",
+    "crates/sage-domain/src/editor.rs",
+    "crates/sage-domain/src/repository.rs",
+    "crates/sage-domain/src/chat.rs",
+    "crates/sage-domain/src/harness.rs",
   ];
   for (const relative of required) {
     const source = await readFile(path.join(root, relative), "utf8");

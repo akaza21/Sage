@@ -1,5 +1,3 @@
-//! Launchable Pi runtime with read-only fallback and optional curated bridge.
-
 use std::sync::Arc;
 
 use crate::acp::{
@@ -7,9 +5,9 @@ use crate::acp::{
         adapter::AdapterRuntimeError,
         runtime::{NativeRuntime, RuntimeFactory},
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
     process::LaunchSpec,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 use super::{PiLaunch, PiRuntime, native_admission::AdmittedPiBinding};
 
@@ -46,7 +44,6 @@ impl RuntimeFactory for PiNativeRuntimeFactory {
     }
 }
 
-/// The installed Pi release, launched in the chat's project root.
 struct InstalledPi {
     binding: Arc<AdmittedPiBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,

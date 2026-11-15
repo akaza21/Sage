@@ -1,6 +1,5 @@
-use super::super::supervisor::LaunchError;
-use super::job::JobBoundary;
-use super::native::{AttributeList, NativeHandle, StdioSet};
+use super::native::{AttributeList, StdioSet};
+use sage_process::{error::LaunchError, handle::NativeHandle, job::JobBoundary};
 use std::mem::size_of;
 use std::ptr::null;
 use std::time::Instant;
@@ -72,14 +71,16 @@ impl SuspendedLaunch {
         {
             return Err(LaunchError::Io.into());
         }
-        let process = match NativeHandle::new(info.hProcess) {
+        // SAFETY: CreateProcessW returned these new handles to this caller only.
+        let process = match unsafe { NativeHandle::new(info.hProcess) } {
             Ok(process) => process,
             Err(error) => {
                 close_unowned_thread(info.hThread);
                 return Err(error.into());
             }
         };
-        let thread = match NativeHandle::new(info.hThread) {
+        // SAFETY: as above; the thread handle is owned by nothing else.
+        let thread = match unsafe { NativeHandle::new(info.hThread) } {
             Ok(thread) => thread,
             Err(error) => {
                 return Err(SuspendedCreateFailure::Retained {

@@ -1,6 +1,6 @@
 use rusqlite::{Transaction, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{SageActivityId, SageItemId},
     intent::ExternalId,
 };

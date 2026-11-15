@@ -1,17 +1,6 @@
-//! Cross-harness render parity (docs/harness-render-contract.md).
-//!
-//! One scenario set is driven through each harness's real binding, committed
-//! through the store's adapter batch apply, read back through the chat page
-//! projection, and compared
-//! with the single canonical projection in the shared fixture the chat view
-//! test renders. A harness that cannot produce a scenario is listed as not
-//! applicable; a known divergence is pinned with the exact fields the binding
-//! emits differently today, so fixing it or diverging further fails until the
-//! owning thread updates the fixture.
-
 use serde_json::Value;
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::SageRootId,
     intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
     lifecycle::{ItemLifecycle, ToolState, TurnState},
@@ -31,7 +20,6 @@ pub(super) const ROOT: &str = r"C:\repo";
 pub(super) const FILE: &str = r"C:\repo\src\lib.rs";
 pub(super) const OLD_TEXT: &str = "pub fn answer() -> u32 {\n    41\n}\n";
 pub(super) const NEW_TEXT: &str = "pub fn answer() -> u32 {\n    42\n}\n";
-/// The message every steering scenario sends into the running turn.
 pub(super) const STEER: &str = "Use main.rs instead.";
 pub(super) const STEER_CLIENT_ID: &str = "steer-1";
 
@@ -72,7 +60,6 @@ const HARNESSES: [(&str, Driver); 4] = [
     ("acp", acp::generic),
 ];
 
-/// What a binding hands the store, stripped of its identity envelope.
 #[derive(Debug)]
 pub(super) enum Fact {
     Item {
@@ -92,8 +79,7 @@ pub(super) enum Fact {
     UserCancel,
 }
 
-/// A native runtime's event, stripped of its identity envelope. Permission
-/// cards need durable request facts this suite does not drive.
+/// Permission cards need durable request facts this suite does not drive.
 pub(super) fn adapter_fact(event: crate::acp::bindings::adapter::AdapterEvent) -> Option<Fact> {
     use crate::acp::bindings::adapter::AdapterEvent;
     Some(match event {
@@ -128,8 +114,8 @@ pub(super) fn adapter_fact(event: crate::acp::bindings::adapter::AdapterEvent) -
 /// (`runtime/adapter_pump/steer.rs`). No binding emits the steered message.
 pub(super) fn steered_message() -> Fact {
     let (id, payload) = crate::acp::runtime::steered_prompt_item(
-        &crate::acp::intent::Prompt::new("prompt", STEER).unwrap(),
-        &crate::acp::contract::RequiredText::new("client", STEER_CLIENT_ID).unwrap(),
+        &crate::acp::transcript_quote::Prompt::new("prompt", STEER).unwrap(),
+        &sage_acp_protocol::contract::RequiredText::new("client", STEER_CLIENT_ID).unwrap(),
     )
     .unwrap();
     Fact::Item {
@@ -140,7 +126,6 @@ pub(super) fn steered_message() -> Fact {
     }
 }
 
-/// Maps paths under one project root, `root-1`.
 pub(super) struct Mapper(pub(super) String);
 
 impl Mapper {
@@ -321,11 +306,10 @@ fn parity_fixture_lists_only_known_scenarios_harnesses_and_owners() {
     }
 }
 
-/// The store, not this suite, decides which sequences commit: a binding that
-/// emits any of these fails the parity suite.
 #[test]
 fn the_store_refuses_sequences_no_binding_may_emit() {
-    use crate::acp::{contract::SafeText, store::StoreError};
+    use crate::acp::store::StoreError;
+    use sage_acp_protocol::contract::SafeText;
     let text = |lifecycle| Fact::Item {
         key: "message-1".into(),
         lifecycle,
@@ -408,8 +392,6 @@ fn the_store_refuses_sequences_no_binding_may_emit() {
     );
 }
 
-/// A retried steer or a repeated accept journals the same item again; the
-/// store keeps the one bubble.
 #[test]
 fn a_repeated_steer_accept_keeps_one_user_bubble() {
     let projected = store::project(vec![

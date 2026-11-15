@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::{
+use sage_acp_protocol::{
     intent::session_event::{SessionActivityState, SessionScopedEvent},
     lifecycle::ToolState,
 };

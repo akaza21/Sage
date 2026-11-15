@@ -38,9 +38,8 @@ pub(crate) enum ClaudeAdmissionUnavailable {
     Drift,
 }
 
-/// Native-only authority obtained from discovery. Refresh creates a new
-/// candidate, so a package update is adopted rather than treated as a scalar
-/// artifact pin; a live candidate still hashes both files before every launch.
+/// Refresh creates a new candidate, so a package update is adopted rather than treated as a
+/// scalar artifact pin; a live candidate still hashes both files before every launch.
 #[derive(Debug)]
 pub(crate) struct AdmittedClaudeBinding {
     candidate: super::AdmittedCandidate,

@@ -6,15 +6,14 @@ use crate::acp::{
         codex::{AdmittedCodexBinding, CodexProjectRootAuthority},
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
-    contract::{RuntimeEpoch, SageAgentSessionId},
     process::LaunchSpec,
 };
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 
 use super::CodexRuntime;
 
-/// Consumes the same admitted binding and single-root authority as the concrete
-/// constructor. Only an admitted binding can supply factory authority; model
-/// validation remains with the existing caller.
+/// Only an admitted binding can supply factory authority; model validation
+/// remains with the existing caller.
 pub(crate) struct CodexRuntimeFactory {
     binding: Arc<AdmittedCodexBinding>,
     project_root: CodexProjectRootAuthority,
@@ -60,6 +59,13 @@ impl RuntimeFactory for CodexRuntimeFactory {
 }
 
 impl LaunchableRuntime for CodexRuntime {
+    fn bind_launch_choices(
+        &mut self,
+        choices: &[sage_acp_protocol::session_config::ConfigMutation],
+    ) {
+        self.bind_launch_effort(choices);
+    }
+
     fn launch_spec(&mut self) -> Result<LaunchSpec, AdapterRuntimeError> {
         CodexRuntime::launch_spec(self)
     }

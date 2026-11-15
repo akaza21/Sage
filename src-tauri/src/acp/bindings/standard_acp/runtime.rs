@@ -1,9 +1,3 @@
-//! The standard ACP runtime: one profile-driven runtime for every agent
-//! that speaks plain ACP over stdio. A [`StandardAcpProfile`] carries what
-//! differs between agents (labels, the session mode to pin, the launch
-//! policy, whether elicitation is offered); a [`StandardAcpBindingSource`]
-//! re-proves the admitted binding before launch.
-
 mod auth;
 mod commands;
 mod elicitation;
@@ -21,12 +15,14 @@ use serde_json::Value;
 
 use crate::acp::{
     bindings::adapter::{AdapterEgress, AdapterRuntimeError, RefusalDetail},
-    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
-    intent::{CapabilitySnapshotV1, ExternalId},
     mcp::McpAdmission,
     transport::OutboundFrame,
 };
 use crate::project_registry::ProjectRootAuthority;
+use sage_acp_protocol::{
+    contract::{RequiredText, RuntimeEpoch, SageAgentSessionId},
+    intent::{CapabilitySnapshotV1, ExternalId},
+};
 
 use super::{
     StandardAcpHandshake, StandardAcpProfile,
@@ -73,16 +69,16 @@ struct TurnIntent {
     external_id: ExternalId,
     client_message_id: RequiredText<512>,
     request_id: u64,
-    access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+    access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
 }
 
 struct DeferredPrompt {
-    prompt: crate::acp::intent::Prompt,
+    prompt: crate::acp::transcript_quote::Prompt,
     client_message_id: RequiredText<512>,
     mode_id: String,
     request_id: u64,
     cancelled: bool,
-    access_mode: crate::acp_protocol::access_mode::SessionAccessMode,
+    access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
 }
 
 struct PermissionIntent {

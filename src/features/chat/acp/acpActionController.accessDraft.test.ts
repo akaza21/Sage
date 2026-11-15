@@ -71,6 +71,7 @@ function page(revision: string, current: AgentSessionProjection | null) {
   } satisfies AcpChatPage;
 }
 
+/** A brand-new chat whose first message starts its session. */
 function newChat() {
   let current: AcpChatPage = page("1", null);
   const order: string[] = [];
@@ -133,6 +134,7 @@ describe("access drafted before a chat's session starts", () => {
       "access session-new workspaceWrite",
       "send",
     ]);
+    // Spent once: the session's own access menu takes over from here.
     expect(useChatAccessDrafts.getState().drafts).toEqual({});
     expect(useChatAccessStore.getState().modes).toEqual({
       "session-new": "workspaceWrite",
@@ -204,7 +206,20 @@ describe("a thinking level drafted before a chat's session starts", () => {
     expect(test.commands.startSession).toHaveBeenCalledWith(
       expect.objectContaining({ bindingId, modelId, effort: "high" }),
     );
-    expect(useChatEffortDraft.getState().draft?.effort).toBe("high");
+    expect(useChatEffortDraft.getState().draft).toBeNull();
+  });
+
+  it("sends no level for Default, which the harness then chooses", async () => {
+    useChatEffortDraft.setState({
+      draft: { chatId: scope.chatId, bindingId, modelId, effort: "default" },
+    });
+    const test = newChat();
+
+    await test.controller.submit("hello", [], bindingId, modelId);
+
+    expect(test.commands.startSession).toHaveBeenCalledWith(
+      expect.not.objectContaining({ effort: expect.anything() }),
+    );
   });
 
   it("is not sent for another model", async () => {
