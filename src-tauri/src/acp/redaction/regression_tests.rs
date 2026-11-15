@@ -450,6 +450,84 @@ fn prose_paths_never_carry_secrets_into_view() {
 }
 
 #[test]
+fn secret_keys_after_a_backslash_are_redacted_in_every_mode() {
+    for key in [
+        r"C:\keys\token=",
+        r"C:\keys\token:",
+        r"/srv/x\token=",
+        r"\\host\share\token=",
+        r"foo\token=",
+        r"C:\app\tmp\password=",
+        r"C:\app\new\api_key:",
+    ] {
+        let input = format!("see {key}abc123secret ok");
+        for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+            let shown = redact("text", &input, 4096, mode).unwrap();
+            assert!(!shown.contains("abc123secret"), "{mode:?}: {shown}");
+            assert!(
+                shown.starts_with("see ") && shown.ends_with("] ok"),
+                "{mode:?}: {shown}"
+            );
+        }
+    }
+}
+
+#[test]
+fn provider_tokens_signed_urls_and_path_credentials_are_redacted() {
+    // Built at run time so the fakes do not trip repository secret scanning.
+    let gitlab = format!("glpat-{}", "xR4tQ9vLm2".repeat(2));
+    let github = format!(
+        "github_pat_{}_{}",
+        "11AAAAAAA0abcdefghijkl",
+        "MNOPQRSTUVWXYZ0123456789".repeat(2)
+    );
+    let google = format!("AIza{}", "Sy0_-9xQ".repeat(5));
+    let npm = format!("npm_{}", "a1B2c3D4e5F6".repeat(3));
+    for secret in [
+        gitlab.as_str(),
+        github.as_str(),
+        google.as_str(),
+        npm.as_str(),
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiJhbGljZSJ9.c2lnbmF0dXJlLWZha2UtMTIz",
+        "https://store.example.test/x.zip?sv=2024-01-01&sig=Zm9vYmFyc2lnbmF0dXJl",
+        "https://bucket.s3.example.test/x?X-Amz-Expires=60&X-Amz-Signature=0a1b2c3d4e5f",
+        "https://storage.example.test/x?X-Goog-Signature=0a1b2c3d4e5f&X-Goog-Expires=60",
+        "/srv/u:hunter2@db/x",
+    ] {
+        for wrapped in [
+            format!("found {secret} here"),
+            format!("cache at /srv/cache/{secret}/data here"),
+        ] {
+            for mode in [Mode::Prose, Mode::CommandOutput] {
+                let shown = redact("text", &wrapped, 4096, mode).unwrap();
+                assert!(shown.contains("[redacted]"), "{mode:?}: {shown}");
+                assert!(shown.ends_with(" here"), "{mode:?}: {shown}");
+                for part in [
+                    "xR4tQ9", "MNOPQRS", "Sy0_-9xQ", "a1B2c3", "c2lnbmF0", "Zm9vYmFy", "0a1b2c3d",
+                    "hunter2",
+                ] {
+                    assert!(!shown.contains(part), "{mode:?}: {shown}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn token_shaped_words_without_secrets_stay_in_prose() {
+    for input in [
+        "run npm_install, glpat-short, github_pat_ docs and AIza keys",
+        "the eyJ prefix and eyJhbGciOiJIUzI1NiJ9 alone are headers",
+        "pin nginx:1.25@sha256:0a1b2c3d4e5f and mail mailto:alice@example.test",
+        "push to git@github.com:org/repo.git as alice@example.test at 10:30",
+        "the design=final signature=pending Sig: done",
+        r"C:\keys\keyboard=US and /srv/notes:today",
+    ] {
+        assert_eq!(redact("text", input, 4096, Mode::Prose).unwrap(), input);
+    }
+}
+
+#[test]
 fn tool_prose_keeps_paths_private() {
     let input = r"read D:\SageWork\main-build\target and /var/log/sage/run.log";
     assert_eq!(

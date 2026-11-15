@@ -24,14 +24,14 @@ pub(crate) mod secrets;
 pub(crate) mod shell;
 #[path = "spans.rs"]
 pub(crate) mod spans;
+#[path = "tokens.rs"]
+mod tokens;
 #[path = "values.rs"]
 pub(crate) mod values;
 
 pub(crate) use paths::PathMode as Mode;
 use prose::ProsePaths;
 
-/// In `Mode::Prose` absolute paths stay visible, with the home folder
-/// shortened to `~`; every other mode keeps them private.
 pub(crate) fn redact(
     field: &'static str,
     input: &str,

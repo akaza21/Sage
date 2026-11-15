@@ -7,6 +7,10 @@ pub(super) const PUBLIC_BASE64_CASES: &[&str] = &[
 ];
 
 pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
+    let root_in_prose = crate::acp::redaction::text::home::HomePrefix::current()
+        .map_or(std::borrow::Cow::Borrowed("/root"), |home| {
+            home.shorten("/root")
+        });
     let oversized_payload = "A".repeat(8193);
     let oversized_then_credential =
         format!(r#"{{"image/png":"{oversized_payload}","message":"Bearer embedded-canary"}}"#);
@@ -43,7 +47,7 @@ pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
         ("(/review).", &["/review"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["(/review)."])]),
         ("/home/u/x", &["/home/u/x"], &[], Tail::All, Permission::Hide, &[(Mode::Diagnostic, &["/home/u/x"], &["[path]"]), (Mode::Prose, &[], &["/home/u/x"])]),
         ("`/a/b`", &["/a/b"], &[], Tail::All, Permission::Hide, &[(Mode::Diagnostic, &["/a/b"], &["[path]"]), (Mode::Prose, &[], &["`/a/b`"])]),
-        ("/root", &["/root"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &[])]),
+        ("/root", &["/root"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &[root_in_prose.as_ref()])]),
         ("/Users", &["/Users"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["/Users"])]),
         ("/alice", &["/alice"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["/alice"])]),
         ("x=/home", &["/home"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["x=/home"])]),
@@ -77,8 +81,8 @@ pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
         ("your home /Users/jane is ready", &["/Users/jane"], &["your home", "is ready"], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["your home /Users/jane is ready"])]),
         ("code=query-canary", &[], &["code=query-canary"], Tail::All, Permission::Show, &[(Mode::Diagnostic, &["query-canary"], &["[redacted]"])]),
         ("https://host/callback?code=query-canary&state=state-canary", &[], &["https://host/callback?code=query-canary&state=state-canary"], Tail::All, Permission::Show, &[(Mode::Diagnostic, &["query-canary", "state-canary"], &["[redacted]"])]),
-        ("https://host/file?sig=signature-canary", &[], &["https://host/file?sig=signature-canary"], Tail::All, Permission::Show, &[(Mode::Diagnostic, &["signature-canary"], &["[redacted]"])]),
-        ("https://host/file?X-Amz-Signature=signature-canary", &[], &["https://host/file?X-Amz-Signature=signature-canary"], Tail::All, Permission::Show, &[(Mode::Diagnostic, &["signature-canary"], &["[redacted]"])]),
+        ("https://host/file?sig=signature-canary", &["signature-canary"], &["[redacted]"], Tail::All, Permission::Show, &[]),
+        ("https://host/file?X-Amz-Signature=signature-canary", &["signature-canary"], &["[redacted]"], Tail::All, Permission::Show, &[]),
         ("Credentials: credential-canary", &[], &["Credentials: credential-canary"], Tail::All, Permission::Show, &[(Mode::Diagnostic, &["credential-canary"], &["Credentials:"])]),
         ("Passwords: password-canary", &[], &["Passwords: password-canary"], Tail::All, Permission::Show, &[(Mode::Diagnostic, &["password-canary"], &["Passwords:"])]),
         ("left == right", &[], &["left == right"], Tail::All, Permission::Show, &[]),
@@ -106,7 +110,7 @@ pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
         (r#"{"a":"b"},Authorization:Basic private-token"#, &["private-token"], &[r#""a":"b""#], Tail::All, Permission::Show, &[]),
         (r#"{"a":"b"},"password"={"c":"d"}"#, &[r#"{"c":"d"}"#], &[r#""a":"b""#], Tail::All, Permission::Show, &[]),
         (r#"{"a":"b"},password={"c":"d"}"#, &[r#"{"c":"d"}"#], &[r#""a":"b""#], Tail::All, Permission::Show, &[]),
-        (r#"{"files":{"/home/alice/.ssh/private_key":"denied"}}"#, &["/home/alice/.ssh/private_key"], &["files"], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["/home/alice/.ssh/private_key", "files"]), (Mode::CommandOutput, &["/home/alice/.ssh/private_key"], &["[redacted]"])]),
+        (r#"{"files":{"/home/alice/.ssh/private_key":"denied"}}"#, &["/home/alice/.ssh/private_key"], &["files"], Tail::All, Permission::Hide, &[(Mode::Prose, &["/home/alice/.ssh/private_key"], &["[redacted]"]), (Mode::CommandOutput, &["/home/alice/.ssh/private_key"], &["[redacted]"])]),
         (r"C:\Users\John van Smith\.ssh\id failed", &["John", "van", "Smith"], &["failed"], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &[r"C:\Users\John van Smith\.ssh\id failed"])]),
        (r#"password={"a":"b"}"#, &[r#"{"a":"b"}"#], &[], Tail::All, Permission::Show, &[]),
         (r#"token:{"value":"abc"}"#, &["abc"], &[], Tail::All, Permission::Show, &[]),

@@ -3,6 +3,7 @@ use super::{
     secrets::{REDACTED, SecretContext, append},
 };
 use sage_acp_protocol::contract::ContractError;
+use std::borrow::Cow;
 
 /// How prose shows absolute paths. Messages show them as written, with the
 /// home folder shortened to `~`; tool content keeps them private like command
@@ -20,12 +21,13 @@ pub(crate) fn redact_prose(
     path_display: ProsePaths,
 ) -> Result<String, ContractError> {
     let output = redact_secrets(field, input, maximum_output, path_display)?;
-    let home = super::home::HomePrefix::current().filter(|_| path_display == ProsePaths::Shown);
-    let shortened = home.and_then(|home| match home.shorten(&output) {
-        std::borrow::Cow::Owned(shortened) => Some(shortened),
-        std::borrow::Cow::Borrowed(_) => None,
-    });
-    Ok(shortened.unwrap_or(output))
+    if path_display == ProsePaths::Shown
+        && let Some(home) = super::home::HomePrefix::current()
+        && let Cow::Owned(shortened) = home.shorten(&output)
+    {
+        return Ok(shortened);
+    }
+    Ok(output)
 }
 
 fn redact_secrets(

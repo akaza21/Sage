@@ -20,29 +20,29 @@ pub(crate) struct HomePrefix {
 }
 
 impl HomePrefix {
-    /// `None` for a relative path or a filesystem root, which would turn
-    /// every absolute path into `~`.
+    /// A drive-letter or POSIX home. `None` for a relative or UNC path, or a
+    /// filesystem root, which would turn every absolute path into `~`.
     pub(crate) fn new(path: &str) -> Option<Self> {
         let bytes = path.as_bytes();
-        let drive = bytes.len() >= 3
+        let windows = bytes.len() >= 3
             && bytes[0].is_ascii_alphabetic()
             && bytes[1] == b':'
             && matches!(bytes[2], b'\\' | b'/');
-        let unc = path.starts_with("\\\\");
-        let windows = drive || unc;
         if !windows && !path.starts_with('/') {
             return None;
         }
         let trimmed =
             path.trim_end_matches(|character| character == '/' || (windows && character == '\\'));
-        let root = if drive { 2 } else { usize::from(!unc) };
+        let root = if windows { 2 } else { 0 };
         if trimmed.len() <= root || trimmed.contains('\0') {
             return None;
         }
-        Some(Self {
-            path: trimmed.to_owned(),
-            windows,
-        })
+        let path = if windows {
+            trimmed.replace('/', "\\")
+        } else {
+            trimmed.to_owned()
+        };
+        Some(Self { path, windows })
     }
 
     /// The home folder of the user Sage runs as, read once.
@@ -101,17 +101,21 @@ impl HomePrefix {
         Cow::Owned(output)
     }
 
-    /// Resolves a `~` path, as `shorten` writes it, back under the home folder.
+    /// Resolves a `~` path, as `shorten` writes it, back under the home folder,
+    /// written with the home folder's own separator throughout.
     pub(crate) fn expand(&self, path: &str) -> Option<PathBuf> {
         let rest = path.strip_prefix(TILDE)?;
-        if rest.is_empty() {
-            return Some(PathBuf::from(&self.path));
+        let separator = if self.windows { '\\' } else { '/' };
+        let is_separator = |character: char| character == '/' || character == separator;
+        if !rest.is_empty() && !rest.starts_with(is_separator) {
+            return None;
         }
-        let separator = rest
-            .chars()
-            .next()
-            .filter(|character| *character == '/' || (self.windows && *character == '\\'))?;
-        Some(Path::new(&self.path).join(rest.trim_start_matches(separator)))
+        let mut expanded = self.path.clone();
+        for name in rest.split(is_separator).filter(|name| !name.is_empty()) {
+            expanded.push(separator);
+            expanded.push_str(name);
+        }
+        Some(PathBuf::from(expanded))
     }
 
     fn match_len(&self, text: &[u8]) -> Option<usize> {
@@ -148,7 +152,7 @@ impl HomePrefix {
     }
 
     fn file_url_start(&self, bytes: &[u8], index: usize) -> Option<usize> {
-        let scheme: &[u8] = if self.windows && !self.path.starts_with("\\\\") {
+        let scheme: &[u8] = if self.windows {
             b"file:///"
         } else {
             b"file://"
@@ -236,8 +240,17 @@ mod tests {
     }
 
     #[test]
-    fn roots_and_relative_paths_are_not_homes() {
-        for home in ["", "/", "//", r"C:\", "C:/", "home/alice", "~"] {
+    fn roots_relative_and_unc_paths_are_not_homes() {
+        for home in [
+            "",
+            "/",
+            "//",
+            r"C:\",
+            "C:/",
+            "home/alice",
+            "~",
+            r"\\server\share\alice",
+        ] {
             assert_eq!(HomePrefix::new(home), None, "{home}");
         }
     }
@@ -253,10 +266,16 @@ mod tests {
         assert_eq!(posix.expand(r"~\proj"), None);
         assert_eq!(posix.expand("~bob/proj"), None);
         assert_eq!(posix.expand("proj/a.rs"), None);
-        let windows = HomePrefix::new(r"C:\Users\alice").unwrap();
-        assert_eq!(
-            windows.expand(r"~\proj\a.rs"),
-            Some(Path::new(r"C:\Users\alice").join(r"proj\a.rs"))
-        );
+        for home in [r"C:\Users\alice", "C:/Users/alice/"] {
+            let windows = HomePrefix::new(home).unwrap();
+            for shortened in [r"~\proj\x.rs", "~/proj/x.rs", r"~/proj\x.rs"] {
+                assert_eq!(
+                    windows.expand(shortened),
+                    Some(PathBuf::from(r"C:\Users\alice\proj\x.rs")),
+                    "{home} {shortened}"
+                );
+            }
+            assert_eq!(windows.expand("~"), Some(PathBuf::from(r"C:\Users\alice")));
+        }
     }
 }

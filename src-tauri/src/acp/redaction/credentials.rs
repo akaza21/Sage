@@ -13,10 +13,17 @@ const SECRET_PARTS: &[&str] = &[
     "sessionid",
 ];
 
+/// A key is judged both as written and with JSON escapes decoded: an escaped
+/// `\u0074oken` names a token, while the `\t` in a path such as
+/// `C:\keys\token` is only a separator.
 pub(crate) fn sensitive_key(key: &str) -> bool {
     let key = key.trim_matches(['-', '\'', '"', '\x60', '{', '}', ':', '\\']);
     let key = key.strip_prefix("$env:").unwrap_or(key);
     let decoded = decode_key(key, false);
+    sensitive_key_text(&decoded) || (decoded != key && sensitive_key_text(key))
+}
+
+fn sensitive_key_text(decoded: &str) -> bool {
     let lower = decoded.to_ascii_lowercase();
     let normalized: String = lower
         .chars()
@@ -31,6 +38,9 @@ pub(crate) fn sensitive_key(key: &str) -> bool {
             | "awsaccesskeyid"
             | "authorization"
             | "proxyauthorization"
+            | "sig"
+            | "xamzsignature"
+            | "xgoogsignature"
     ) || SECRET_PARTS.iter().any(|part| normalized.contains(part))
         || normalized
             .match_indices("secret")
@@ -106,7 +116,7 @@ fn sensitive_token_key(key: &str) -> bool {
 pub(crate) fn sensitive_assignment(key: &str, separator: char, value: &str) -> bool {
     let bare = key.trim_matches(['-', '\'', '"', '\x60', '{', '}', '\\']);
     if separator == ':' {
-        if ["passwords", "credentials"]
+        if ["passwords", "credentials", "sig"]
             .iter()
             .any(|part| bare.eq_ignore_ascii_case(part))
         {
@@ -151,18 +161,30 @@ pub(crate) fn is_sensitive_prose_flag(input: &str) -> bool {
 pub(crate) fn is_sensitive_prose_token(input: &str) -> bool {
     let token = input.trim_matches(['"', '\'', '\x60', '(', ')', '[', ']', '{', '}', ',', ';']);
     let assigned = token.split(['?', '&']).any(|part| {
-        part.split_once('=')
-            .or_else(|| part.split_once(':'))
-            .is_some_and(|(key, value)| {
-                !value.is_empty()
-                    && sensitive_assignment(key, if part.contains('=') { '=' } else { ':' }, value)
-            })
+        assigned_parts(part).any(|(key, separator, value)| {
+            !value.is_empty() && sensitive_assignment(key, separator, value)
+        })
     });
     assigned
         || inline_auth(token)
         || attached_short_value(token)
         || url_userinfo(token).is_some()
         || contains_token(token)
+}
+
+/// Every `key=value` or `key:value` reading of a token. A key starts after the
+/// previous separator or `/`, so `C:\keys\token=…` and `/srv/x\token=…` are
+/// judged by their last name and each byte joins at most one key.
+fn assigned_parts(part: &str) -> impl Iterator<Item = (&str, char, &str)> {
+    let mut key_start = 0;
+    part.char_indices().filter_map(move |(index, character)| {
+        if !matches!(character, '=' | ':' | '/') {
+            return None;
+        }
+        let key = &part[key_start..index];
+        key_start = index + 1;
+        (character != '/').then(|| (key, character, &part[index + 1..]))
+    })
 }
 
 /// Longest AWS access key tail `contains_token` inspects after a prefix: the
@@ -194,6 +216,9 @@ pub(crate) fn contains_token(value: &str) -> bool {
                 return true;
             }
             continue;
+        }
+        if super::tokens::provider_token_at(rest) {
+            return true;
         }
         let prefix = if rest.len() >= 3 && rest[..3].eq_ignore_ascii_case(b"sk-") {
             3
@@ -258,13 +283,17 @@ pub(crate) mod work {
     }
 }
 
+/// The byte span of credentials before an `@`: a URL's userinfo, or a
+/// `user:password@host` segment of a path such as `/srv/u:pw@db/x`.
 pub(crate) fn url_userinfo(token: &str) -> Option<(usize, usize)> {
-    let start = ["://", r":\/\/"]
+    let url = ["://", r":\/\/"]
         .iter()
-        .find_map(|delimiter| token.find(delimiter).map(|index| index + delimiter.len()))?;
-    let authority = token[start..].split(['/', '?', '#']).next()?;
-    let end = start + authority.rfind('@')?;
-    Some((start, end))
+        .find_map(|delimiter| token.find(delimiter).map(|index| index + delimiter.len()))
+        .and_then(|start| {
+            let authority = token[start..].split(['/', '?', '#']).next()?;
+            Some((start, start + authority.rfind('@')?))
+        });
+    url.or_else(|| super::tokens::segment_userinfo(token))
 }
 
 pub(crate) fn decode_key(key: &str, escaped: bool) -> String {
