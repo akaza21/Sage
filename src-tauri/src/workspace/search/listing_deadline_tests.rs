@@ -130,8 +130,6 @@ fn listing_deadline_bounds_continuation_replay() {
             Duration::from_secs(2),
             "replay listing did not stop at the phase deadline with {threads} threads"
         );
-        // A replay that cannot reach its cursor retains the existing stale
-        // continuation response rather than inventing a completed page.
         assert!(
             error
                 .to_string()

@@ -348,7 +348,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         missingBindingNotice={useNativeAcp && !availableBinding}
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
-        // A side chat belongs to its parent's project and cannot switch it.
         project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
         newChat={newChat}
         usage={usage}

@@ -2,7 +2,6 @@ import type { AcpItem, TurnProjection } from "../../../domain/acp";
 import { turnCommand } from "../../../domain/acpCommand";
 import { ItemView } from "./TurnActivityItem";
 
-/** A Turn's prompt; one that ran a command shows it as that command. */
 export function TurnPrompts({
   items,
   turn,

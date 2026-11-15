@@ -88,7 +88,6 @@ describe("EditorAdapter", () => {
     expect(editable.container.querySelector(".cm-foldGutter")).toBeNull();
     editable.unmount();
 
-    // The Agent artifact pane shows Files read-only.
     const readOnly = render(
       <EditorAdapter
         ariaLabel="Edit main.ts"

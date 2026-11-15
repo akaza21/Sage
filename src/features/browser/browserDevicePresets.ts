@@ -17,7 +17,6 @@ export function devicePreset(id: string): BrowserDevicePreset | undefined {
   return DEVICE_PRESETS.find((preset) => preset.id === id);
 }
 
-/** Switching presets keeps the orientation; Responsive keeps the size. */
 export function selectDevicePreset(
   current: BrowserDeviceSize,
   id: string,

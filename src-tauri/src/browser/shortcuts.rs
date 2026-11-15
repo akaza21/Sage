@@ -19,7 +19,6 @@ pub(super) enum BrowserShortcut {
     CloseTab,
     History,
     Stop,
-    /// Handled in Rust; never sent to the chrome.
     LeaveAnnotate,
 }
 
@@ -166,9 +165,8 @@ pub(super) async fn register_native(app: AppHandle, webview: Webview) -> Result<
     .map_err(|error| error.to_string())?
 }
 
-/// Keeps Annotate on through every page zoom: Sage's zoom controls and
-/// shortcuts set the zoom factor, and Ctrl+wheel changes it in WebView2
-/// itself, so this one event covers them all.
+/// Ctrl+wheel changes the zoom in WebView2 itself, so this one event covers
+/// every page zoom.
 #[cfg(windows)]
 fn watch_zoom(
     controller: &webview2_com_sys::Microsoft::Web::WebView2::Win32::ICoreWebView2Controller,
@@ -318,7 +316,6 @@ mod tests {
         ] {
             assert_eq!(shortcut_for(modified), None);
         }
-        // Other keys still reach the page or their own shortcut.
         assert_eq!(
             shortcut_for(KeyChord {
                 key: b'A' as u32,

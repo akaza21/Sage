@@ -28,7 +28,6 @@ import { recentFiles } from "./quickOpenState";
 import { ShortcutKeys } from "./ShortcutKeys";
 import "./quick-open.css";
 
-/** While the index is being refreshed, the same query is asked again. */
 const REFRESH_RETRY_MS = 150;
 const MAX_REFRESH_RETRIES = 40;
 /** How long a command has to move the focus before the box puts it back. */
@@ -36,7 +35,6 @@ const COMMAND_FOCUS_GRACE_MS = 150;
 /** "Indexing…" shows only if the first answer takes longer than this. */
 const INDEXING_DELAY_MS = 120;
 
-/** An answer or a failure, with the request it answers. */
 type Answer = QuickOpenResponse & { key: string };
 type Failure = { key: string; message: string };
 
@@ -66,7 +64,6 @@ function Highlighted({
   );
 }
 
-/** Back to `previous`, or to the editor when that is gone. */
 function focusBack(previous: Element | null) {
   const target =
     previous instanceof HTMLElement &&
@@ -87,7 +84,7 @@ export default function QuickOpen({
   seed = "",
   onClose,
 }: {
-  /** What the box starts with: ">" lists commands. */
+  /** ">" lists commands. */
   seed?: string;
   onClose: () => void;
 }) {
@@ -103,20 +100,16 @@ export default function QuickOpen({
   const [session] = useState(() => nextQuickOpenStamp());
   const returnFocus = useRef<Element | null>(document.activeElement);
   const closed = useRef(false);
-  /** A File was confirmed before the current query's answer arrived. */
   const pendingEnter = useRef(false);
   const list = useRef<HTMLUListElement | null>(null);
   const projectId = project?.id ?? null;
-  // ">" lists the editor's commands instead of Files (ED-2a).
   const commandMode = text.startsWith(">");
   const commands = commandMode
     ? filterCommands(paletteCommands(usesMetaModifier()), text.slice(1))
     : [];
   const { query, line, column } = parseQuickOpenInput(commandMode ? "" : text);
-  // `:12` alone goes to a line of the active File; nothing is asked.
   const bareLine = query === "" && line !== null;
   const key = projectId ? requestKey(projectId, epoch, query) : "";
-  // A failure counts only for the request it answered.
   const error = failure?.key === key ? failure.message : null;
 
   const close = (restoreFocus: boolean) => {
@@ -236,7 +229,6 @@ export default function QuickOpen({
   const itemKeys = commandMode
     ? commands.map((command) => command.id)
     : results.map(matchKey);
-  // The selection follows its File when a refreshed answer reorders the list.
   const {
     activeIndex: active,
     activeId: activeKey,
@@ -253,8 +245,6 @@ export default function QuickOpen({
 
   const confirmFile = (match: QuickOpenMatch | undefined) => {
     if (bareLine || answer?.key === key) open(match);
-    // The list on screen answers an earlier request: open the first match
-    // for this one once it arrives.
     else if (!error) pendingEnter.current = true;
   };
 
@@ -264,7 +254,6 @@ export default function QuickOpen({
     if (event.nativeEvent.isComposing || event.nativeEvent.keyCode === 229) {
       return;
     }
-    // The chords that open the box switch it between Files and commands.
     const apple = usesMetaModifier();
     const files = matchesPlatformChord(
       keymapBinding("quickOpen"),
@@ -358,7 +347,6 @@ export default function QuickOpen({
           onChange={(event) => {
             const next = event.target.value;
             setText(next);
-            // Typing a :line suffix keeps the chosen File.
             if (parseQuickOpenInput(next).query !== query) setSelectedKey(null);
             pendingEnter.current = false;
           }}

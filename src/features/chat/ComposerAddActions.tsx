@@ -31,7 +31,6 @@ import {
   type PlanAccessTarget,
 } from "./ComposerPlanAccess";
 
-/** The "+" menu's own actions; each is offered only while present. */
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,
   "onAttachFiles" | "attachRefusalChatId" | "onOpenGoal" | "onCompact"
@@ -48,7 +47,6 @@ export function ComposerOptionsMenu({
   accessModes,
   ...given
 }: ComponentProps<typeof ComposerAddActions> & {
-  /** The harness's access modes; those carrying session modes own them. */
   accessModes?: readonly SessionAccessModeCapability[];
   id: string;
   selectionKey: string;
@@ -130,7 +128,6 @@ export function ComposerAddActions({
   onAttachFiles?: () => void;
   attachRefusalChatId?: string;
   onOpenGoal?: () => void;
-  /** Present only while the session can compact its context. */
   onCompact?: () => void;
   onOpenEffort?: () => void;
   onClose: () => void;
@@ -146,7 +143,6 @@ export function ComposerAddActions({
       ? attachRefusal(attachRefusalChatId)
       : null;
   const { launch, chatAvailable } = useContext(AgentToolsContext);
-  // The picker lists through the launching Chat's own session.
   const importable = useStore(
     acpProjectionStoreFor(usePinnedAgentChatOwner()),
     ({ page }) =>
@@ -244,7 +240,6 @@ export function ComposerAddActions({
                 tabIndex={-1}
                 onClick={() => {
                   onClose();
-                  // Modes are exclusive; choosing the current one sends nothing.
                   if (!selected) void onSetSessionMode(mode.id);
                 }}
               >

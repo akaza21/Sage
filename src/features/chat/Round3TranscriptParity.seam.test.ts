@@ -59,7 +59,6 @@ it("reserves find space below header actions at every pane width (R3-05)", () =>
   expect(css).toMatch(
     /\.chat-surface--agent:has\(> \.chat-find\)\s*\{[^}]*grid-template:\s*"find" auto\s*"notice" auto\s*"transcript" minmax\(0, 1fr\)\s*"composer" fit-content\(60%\)\s*\/ minmax\(0, 1fr\);/s,
   );
-  // The 314 px find box never widens the column past a narrow pane.
   expect(css).toMatch(
     /\.chat-surface--agent > \.chat-find\s*\{[^}]*grid-area:\s*find;/s,
   );

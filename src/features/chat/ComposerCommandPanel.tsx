@@ -22,7 +22,6 @@ const Usage = lazyParts<typeof LimitsChunk>(
   () => import("./ComposerUsageLimits"),
 );
 
-/** The chat's running session, as the native reads name it. */
 function liveRequest(
   boundChatId: string | undefined,
   page: AcpChatPage | null,
@@ -39,7 +38,6 @@ function liveRequest(
   };
 }
 
-/** What `/status` and `/mcp` open beside the composer. */
 export function ComposerCommandPanel({
   kind,
   boundChatId,
@@ -56,8 +54,7 @@ export function ComposerCommandPanel({
     acpProjectionStoreFor(boundChatId),
     (state) => state.page,
   );
-  // Read once per opening: a session that changes closes nothing, but a
-  // new runtime is named by the next opening.
+  // Keep the runtime captured at open; reopening picks a new one.
   const [request] = useState(() => liveRequest(boundChatId, page));
   return (
     <MenuPopover

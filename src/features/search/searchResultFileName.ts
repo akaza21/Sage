@@ -1,4 +1,3 @@
-/** The File name a Search result heading shows for `relativePath`. */
 export function searchResultFileName(relativePath: string): string {
   const normalized = relativePath.replaceAll("\\", "/").trim();
   if (!normalized) {

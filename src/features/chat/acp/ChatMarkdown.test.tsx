@@ -45,10 +45,8 @@ describe("ChatMarkdown stream fade", () => {
     };
     try {
       const view = render(<ChatMarkdown text={"one\n\ntwo"} streaming />);
-      // Only the stream fade of the remounted answer is settled.
       expect(finished).toEqual(["acp-stream-in"]);
       view.rerender(<ChatMarkdown text={"one\n\ntwo\n\nthree"} streaming />);
-      // Appending a block after mount settles nothing.
       expect(finished).toEqual(["acp-stream-in"]);
     } finally {
       Element.prototype.getAnimations = original;

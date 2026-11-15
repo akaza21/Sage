@@ -25,10 +25,8 @@ use super::{
 
 const ERROR_NOTIFY_ENUM_DIR: i32 = 1022;
 
-/// The record buffer of one `ReadDirectoryChangesW` call. A build writes
-/// hundreds of records between two reads, and a full buffer loses them all
-/// (one resync), so it is 64 KiB: the largest size the call accepts for a
-/// folder on a network share.
+/// A full buffer loses every record (one resync), so this is 64 KiB: the
+/// largest size `ReadDirectoryChangesW` accepts for a folder on a network share.
 const NOTIFY_BUFFER_BYTES: usize = 64 * 1024;
 
 /// The call needs a DWORD-aligned buffer.

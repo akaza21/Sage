@@ -58,7 +58,6 @@ export function ComposerMcpServers({
           },
           (error: unknown) => {
             const message = errorMessage(error);
-            // A list already shown stays; the failure is a notice.
             setLoad((shown) =>
               shown.kind === "ready" ? shown : { kind: "error" },
             );
@@ -126,7 +125,6 @@ export function ComposerMcpServers({
             {busy === "reload" ? "Reloading…" : "Reload"}
           </button>
         ) : load.kind === "error" ? (
-          // No list arrived, so there is nothing to reload or reconnect yet.
           <button
             type="button"
             className="button button--compact"

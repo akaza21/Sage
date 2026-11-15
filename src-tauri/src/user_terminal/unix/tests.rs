@@ -71,7 +71,6 @@ fn alive(pid: libc::pid_t) -> bool {
     }
 }
 
-/// Starts a background job that prints its pid, and returns that pid.
 fn start_job(process: &mut UnixPtyProcess, output: &TerminalOutputSink, job: &str) -> libc::pid_t {
     // `$!` ends the line: an interactive bash (macOS `/bin/sh`) would read
     // `!"` as a history event, but never a `!` before a newline.
@@ -97,7 +96,6 @@ fn assert_ended(pid: libc::pid_t) {
     }
 }
 
-/// Set in the copy of the test binary that the PTY environment test starts.
 const HOST_SET_MARKER: &str = "SAGE_PTY_TEST_HOST_ENVIRONMENT";
 const RUNTIME_DIR: &str = "/run/user/4242";
 
@@ -175,7 +173,6 @@ fn close_ends_background_jobs_and_reports_ended_input_after_exit() {
     process.terminate().unwrap();
     assert_ended(job);
     assert!(session::members(process.session).unwrap().is_empty());
-    // A second close is a no-op.
     process.terminate().unwrap();
 
     let (mut exiting, _) = start(&root);
@@ -193,7 +190,6 @@ fn close_kills_a_job_that_ignores_hangup() {
     let job = start_job(&mut process, &output, "(trap '' HUP; exec sleep 600)");
     let started = Instant::now();
     process.terminate().unwrap();
-    // Only the SIGKILL sweeps, after the hangup grace, can end it.
     assert!(started.elapsed() >= HANGUP_GRACE);
     assert_ended(job);
     std::fs::remove_dir_all(root).unwrap();

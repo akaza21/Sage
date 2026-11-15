@@ -13,11 +13,6 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
 }: {
   harness: HarnessDefinition | null;
 }) {
-  // Dismissal is disposable pane state. A remounted pane explains the build
-  // again; no durable preference or protocol admission decision is changed.
-  // The build and the update are dismissed apart, so a check that finds an
-  // update never brings back a dismissed build explanation, and a later
-  // release is announced again.
   const [dismissed, setDismissed] = useState<readonly string[]>([]);
   const update = harness?.update;
   const build = JSON.stringify([
@@ -27,7 +22,6 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
   ]);
   const release = JSON.stringify([harness?.id, update?.latestVersion]);
   if (harness?.transport !== "acp") return null;
-  // The exact command, when Sage knows who owns the install.
   const howToUpdate = update ? (
     <>
       Run <code>{update.command}</code>, then refresh discovery in Settings.
@@ -38,8 +32,6 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
   if (harness.installState !== "available") {
     return (
       <div className="composer__notice" role="status">
-        {/* Explained here, off the first-chat path; the picker keeps the
-            short reason. */}
         {harness.unavailableReason === "versionTooOld" ? (
           <>This version is too old for Sage. {howToUpdate}</>
         ) : (

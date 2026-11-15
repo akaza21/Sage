@@ -18,7 +18,6 @@ function invokeDesktop(command: string, args: Record<string, unknown>) {
 
 let invoke: QuickOpenInvoke = invokeDesktop;
 
-/** Replaces the native command, for the browser runtime's test fixtures. */
 export function setQuickOpenInvoke(next: QuickOpenInvoke | null) {
   invoke = next ?? invokeDesktop;
 }

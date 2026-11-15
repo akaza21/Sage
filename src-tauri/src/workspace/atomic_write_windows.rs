@@ -130,7 +130,6 @@ fn already_contains(path: &Path, bytes: &[u8]) -> io::Result<bool> {
     Ok(existing == bytes)
 }
 
-/// What the final rename may do with a file already at the target name.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub(crate) enum Existing {
     Replace,
@@ -194,7 +193,6 @@ pub(crate) fn atomic_write(
     atomic_write_checked(root, identity, path, bytes, Existing::Replace, || Ok(()))
 }
 
-/// Writes through a temporary sibling while the parent chain is held.
 /// `verify` runs after the temporary file is durable and immediately before
 /// the rename, so a caller can re-check that the target is still what it
 /// approved.

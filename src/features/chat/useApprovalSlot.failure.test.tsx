@@ -86,7 +86,6 @@ it("keeps Deny and Stop while the card loads, and restores the composer when its
   expect(cancel).toHaveBeenCalledOnce();
   const deny = screen.getByRole("button", { name: "Deny" });
   fireEvent.click(deny);
-  // In flight: a second press sends nothing more.
   expect(deny).toBeDisabled();
   fireEvent.click(deny);
   expect(resolve).toHaveBeenCalledOnce();

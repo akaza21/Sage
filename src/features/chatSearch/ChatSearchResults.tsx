@@ -13,11 +13,6 @@ import type {
   ChatSearchScope,
 } from "./chatSearchScope";
 
-/**
- * The results listbox of the Search chats combobox. The query field keeps
- * the focus and names the active row with aria-activedescendant; rows take
- * pointer picks without taking the focus.
- */
 export function ChatSearchResults({
   response,
   error,
@@ -66,8 +61,6 @@ export function ChatSearchResults({
                   (isChatSearchFanout(scope.searchProjectId) ||
                     result.projectId !== scope.activeProjectId);
                 const title = chatDisplayTitle(result.title);
-                // Attached is the usual case; only Archived and another
-                // folder tell one row from the next.
                 const details = [
                   showFolder ? folderName : null,
                   result.attached ? null : "Archived",

@@ -19,7 +19,6 @@ import {
   capabilitySetFixture,
 } from "../../domain/acpProjection.fixture";
 
-// Holds the Goal chunk's import until the test lets it finish.
 const chunk = vi.hoisted(() => {
   let release = () => undefined as void;
   const gate = new Promise<void>((resolve) => (release = resolve));

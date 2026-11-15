@@ -191,7 +191,6 @@ describe("createFindWorkerClient", () => {
     expect(FakeWorker.spawned).toHaveLength(1);
     expect(worker().terminated).toBe(false);
 
-    // The deadline still covers the waiting request's own run.
     const slow = client.run(request);
     const queued = client.run(request);
     vi.advanceTimersByTime(REGEX_FIND_TIMEOUT_MS);

@@ -15,9 +15,7 @@ export function AnswerActions({
 }: {
   text: string;
   createdAt?: number;
-  /** The native Chat whose answer this is: its row gets the "…" menu. */
   page?: AcpChatPage | null;
-  /** Only the latest answer can fork; its menu then offers the branch. */
   forkable?: boolean;
   children?: ReactNode;
 }) {

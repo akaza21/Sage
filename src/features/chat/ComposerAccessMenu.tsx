@@ -41,15 +41,9 @@ export default function ComposerAccessMenu({
   triggerRef: RefObject<HTMLButtonElement | null>;
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
-  /** The live chat a choice applies to; null before its session starts. */
   sessionId?: string;
   harnessName: string;
-  /** Opens on this mode's confirmation, as Plan turning off asks. */
   confirmation?: SessionAccessMode | null;
-  /**
-   * Holds a choice made before the session starts; it is applied, through
-   * the same commands, before the chat's first prompt is dispatched.
-   */
   onDraft?: (mode: SessionAccessMode) => void;
   onDismiss: () => void;
 }) {
@@ -86,7 +80,6 @@ export default function ComposerAccessMenu({
   const close = () => setClosing(true);
   const choose = (mode: SessionAccessMode) =>
     chooseAccess({ sessionId, onDraft }, mode);
-  // Without a session or a draft to hold it, a choice has nowhere to go.
   const selectable = !!sessionId || !!onDraft;
   if (closing) return null;
   if (confirmation && !candidates.includes(confirmation)) setConfirmation(null);
@@ -124,8 +117,8 @@ export default function ComposerAccessMenu({
             type="button"
             disabled={permissive !== null && !!sessionId && token === null}
             onClick={() => {
-              // A drafted permissive mode is confirmed natively once the
-              // session it is given to has started.
+              // A drafted permissive mode is confirmed natively once its
+              // session has started, before the first prompt.
               if (!permissive || !sessionId) choose(confirmation.id);
               else if (token)
                 void grantChatAccess(sessionId, permissive, token);

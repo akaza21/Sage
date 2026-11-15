@@ -1,28 +1,20 @@
-//! Settling a tab when its native navigation completes. See `outcome` for
-//! how a completion is classified.
-
 use std::collections::VecDeque;
 
 use super::outcome::{Commit, Completion, Outcome, Settled, classify, failure_reason};
 use crate::browser::{BrowserTabs, admit_url};
 
-/// Native navigation events remembered per tab for diagnosis (ids, flags and
-/// statuses only; no URLs).
+/// Trace entries hold ids, flags and statuses only; no URLs.
 const MAX_TRACE: usize = 16;
 
-/// What the tab showed before a navigation started, so a navigation that
-/// never commits (a download, a cancel, a Stop) can put it back.
 struct PageRestore {
     title: Option<String>,
     favicon: Option<String>,
     error: Option<&'static str>,
 }
 
-/// Evidence gathered while one navigation loads.
 #[derive(Default)]
 pub(in crate::browser) struct NavigationEvidence {
     restore: Option<PageRestore>,
-    /// `ContentLoading` for this navigation id: a document committed.
     commit: Option<Commit>,
     /// A navigation this one superseded (or a Back/Forward attempt this
     /// retry follows) already committed: the page changed since the last
@@ -31,7 +23,6 @@ pub(in crate::browser) struct NavigationEvidence {
     /// The admitted URL on screen while the tab reports a failure; kept
     /// across settles so a later abandon compares against it.
     shown_failure: Option<String>,
-    /// Bounded event trace; kept across settles.
     trace: VecDeque<String>,
 }
 
@@ -45,9 +36,9 @@ impl NavigationEvidence {
 }
 
 impl<T> BrowserTabs<T> {
-    /// Called by `start_navigation` before it clears the page chrome. A
-    /// navigation that supersedes one still loading keeps the first restore
-    /// record; everything else is per navigation.
+    /// Call before changing `loading` or clearing page chrome, so an abandoned navigation can
+    /// restore it. A navigation that supersedes one still loading keeps the first restore
+    /// record, unless the superseded one already committed: then none is kept.
     pub(in crate::browser) fn begin_evidence(&mut self, label: &str, id: u64) {
         if let Some(tab) = self.entries.get_mut(label) {
             let page_changed = if tab.loading {
@@ -56,7 +47,6 @@ impl<T> BrowserTabs<T> {
                 None
             };
             let restore = if tab.loading {
-                // Nothing to restore once a superseded navigation committed.
                 tab.evidence
                     .restore
                     .take()
@@ -82,7 +72,6 @@ impl<T> BrowserTabs<T> {
         }
     }
 
-    /// `ContentLoading` for `id`: a new document (or error page) committed.
     pub(in crate::browser) fn note_content_loading(&mut self, label: &str, id: u64, error: bool) {
         if let Some(tab) = self.entries.get_mut(label) {
             let current = tab.loading && tab.navigation_id == Some(id);
@@ -100,9 +89,6 @@ impl<T> BrowserTabs<T> {
         }
     }
 
-    /// `DownloadStarting` on this tab (allowed or denied). Diagnostic only:
-    /// a navigation that became a download commits nothing, which the
-    /// missing `ContentLoading` already says.
     pub(in crate::browser) fn note_download(&mut self, label: &str) {
         if let Some(tab) = self.entries.get_mut(label) {
             let event = format!(
@@ -154,7 +140,6 @@ impl<T> BrowserTabs<T> {
             outcome = shown.map_or(Outcome::Failed(reason), Outcome::Committed);
         }
         let settled = match outcome {
-            // A failure that moved the screen is not a visit.
             Outcome::Committed(url) => self
                 .commit_navigation(
                     label,
@@ -220,10 +205,8 @@ impl<T> BrowserTabs<T> {
         true
     }
 
-    /// Nothing committed: the tab returns to the page it showed before,
-    /// with its history cursor and chrome. A same-document change the page
-    /// made while the navigation was pending (hash, pushState), which
-    /// `source_changed` deliberately ignored, is adopted as one now.
+    /// A same-document change the page made while the navigation was pending,
+    /// which `source_changed` deliberately ignored, is adopted as one now.
     fn abandon_navigation(&mut self, label: &str, navigation_id: u64, source: Option<&str>) {
         let Some(tab) = self.entries.get_mut(label) else {
             return;

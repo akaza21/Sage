@@ -1,7 +1,5 @@
 use super::*;
 
-// Session close and native end commands.
-
 pub(crate) async fn close_acp_session_inner(
     state: &AppState,
     request: CloseAcpSessionRequest,

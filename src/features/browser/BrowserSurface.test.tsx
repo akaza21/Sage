@@ -63,7 +63,6 @@ const attachBrowserTab = vi.fn(
 const detachBrowserTab = vi.fn(
   async (_projectId: string, _chatId: string) => undefined,
 );
-/** The tab's Agent attachment as Rust holds it. */
 let rustAgentControl: {
   projectId: string;
   chatId: string;
@@ -697,7 +696,6 @@ it("takes over the tab until the user hands it back", async () => {
   expect(
     await screen.findByText("You're in control · Research chat"),
   ).toBeInTheDocument();
-  // A reloaded chrome reads user control back from Rust.
   view.unmount();
   render(<BrowserSurface tab={tab} />);
   expect(
@@ -831,7 +829,6 @@ it("covers the native page while a toolbar popover is open, even across a resize
   await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith(tab.id));
   fireEvent.click(screen.getByRole("button", { name: "More options" }));
   await waitFor(() => expect(positionBrowser).toHaveBeenCalled());
-  // A real hide ends Annotate; a popover opening or closing must not.
   expect(hideBrowser).not.toHaveBeenCalled();
 });
 
@@ -927,7 +924,6 @@ it("still hides the native page for real on unmount or a tab switch while a popo
   view.rerender(<BrowserSurface tab={{ ...tab, id: "browser-2" }} />);
   expect(hideBrowser).toHaveBeenCalledWith(tab.id);
 
-  // The menu stays open in the new tab, which is covered from the start.
   expect(screen.getByRole("menu")).toBeInTheDocument();
   await waitFor(() => expect(coverBrowser).toHaveBeenCalledWith("browser-2"));
   hideBrowser.mockClear();
@@ -965,8 +961,6 @@ it("hides the native page under History and opens a chosen visit in this tab", a
   fireEvent.click(screen.getByRole("menuitem", { name: "History" }));
   const history = await screen.findByRole("region", { name: "History" });
   positionBrowser.mockClear();
-  // History stays up indefinitely, so the page hides for real (ending
-  // Annotate, as a tab switch does) rather than being briefly covered.
   await waitFor(() => expect(hideBrowser).toHaveBeenCalledWith(tab.id));
   expect(positionBrowser).not.toHaveBeenCalled();
   expect(browserHistoryPage).toHaveBeenCalledWith({
@@ -1031,8 +1025,6 @@ it("shows a failed attach in the surface's error row and clears it on a successf
   expect(error).toHaveTextContent(
     "Could not attach this tab to the selected chat.",
   );
-  // The row sits in the surface's layout between the toolbar and the page,
-  // not inside the toolbar, so it pushes the native page down.
   expect(error.closest(".browser-surface__toolbar")).toBeNull();
   const toolbar = view.container.querySelector(".browser-surface__toolbar")!;
   expect(

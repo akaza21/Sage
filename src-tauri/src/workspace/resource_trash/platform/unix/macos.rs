@@ -1,10 +1,6 @@
-//! The macOS system Trash through `NSFileManager`, the call Finder-aware apps
-//! (and VS Code, through Electron) use. It records where the item came from,
-//! so Finder can offer Put Back, and moves the item within its volume, so it
-//! keeps its inode. The call takes a path, so the visible path is re-proven
-//! just before it and the item that arrived in the Trash is checked against
-//! the held source just after it. A different item is reported, not moved:
-//! Finder's Put Back returns it to where it really came from.
+//! `NSFileManager` takes a path, so the visible path is re-proven just before
+//! the call and the item that arrived in the Trash is checked against the held
+//! source just after it.
 
 use std::{
     ffi::{CStr, CString},
@@ -20,7 +16,6 @@ use crate::workspace::root_identity_metadata;
 
 use super::{ResourceTrashAuthority, verify_visible_source};
 
-/// Trashes `path` and returns where the item went, or the system's reason.
 fn trash_path(path: &str) -> Result<Option<CString>, String> {
     autoreleasepool(|_| {
         let url = NSURL::fileURLWithPath(&NSString::from_str(path));

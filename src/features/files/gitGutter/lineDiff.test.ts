@@ -4,7 +4,6 @@ import { diffLines, type LineChange } from "./lineDiff";
 
 const lines = (text: string) => text.split("\n");
 
-/** Rebuilds `current` from `base` and the changes, proving the script valid. */
 function apply(
   base: readonly string[],
   current: readonly string[],
@@ -13,7 +12,6 @@ function apply(
   const out: string[] = [];
   let cursor = 0;
   for (const change of changes) {
-    // The same number of unchanged lines precedes the change on both sides.
     expect(change.baseStart - cursor).toBe(change.start - out.length);
     out.push(...base.slice(cursor, change.baseStart));
     out.push(...current.slice(change.start, change.end));

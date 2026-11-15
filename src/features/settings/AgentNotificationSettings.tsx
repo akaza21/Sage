@@ -15,7 +15,6 @@ const PREFERENCES: readonly {
   { value: "off", label: "Off" },
 ];
 
-/** The saved native turn-notice preference, read once per mount. */
 export default function AgentNotificationSettings() {
   const native = isTauriRuntime();
   const [preference, setPreference] = useState<NotificationPreference | null>(

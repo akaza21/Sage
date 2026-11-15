@@ -42,10 +42,6 @@ const AnnotationTrash = leanIcon("annotation-trash", [
 const HIDE_DELAY_MS = 150;
 const CARD_WIDTH = 342;
 
-/**
- * "{n} annotation(s)" chip with its hover card. A draft chip (onDelete given)
- * offers remove-all, edit and delete; a sent chip is read-only.
- */
 export function AnnotationChip({
   quotes,
   chatId,
@@ -79,7 +75,7 @@ export function AnnotationChip({
     cancelHide();
     timer.current = setTimeout(() => setOpen(false), HIDE_DELAY_MS);
   };
-  /** Escape returns focus to the chip without reopening the card. */
+  // Escape returns focus to the chip without reopening the card.
   const returning = useRef(false);
   const closeToTrigger = () => {
     returning.current = true;
@@ -272,7 +268,6 @@ export function AnnotationChip({
   );
 }
 
-/** Read-only chip above a sent user bubble; the turn's contexts are filtered here. */
 export function SentAnnotations({
   contexts,
   chatId,
@@ -283,7 +278,6 @@ export function SentAnnotations({
   return (
     <>
       <AnnotationChip
-        // A side chat's sent quotes are selections, as in its composer.
         selection={isSideChatId(chatId)}
         quotes={contexts.filter(isTranscriptQuote)}
       />
@@ -292,7 +286,6 @@ export function SentAnnotations({
   );
 }
 
-/** The aggregated "{n} annotation(s)" / "{n} selection(s)" row above the textarea. */
 export function ComposerAnnotations({
   contexts,
   disabled,

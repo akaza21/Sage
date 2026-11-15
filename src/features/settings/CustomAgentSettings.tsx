@@ -33,7 +33,6 @@ export function draftArguments(text: string): string[] {
     .filter(Boolean);
 }
 
-/** Variable names separated by commas, spaces or lines. */
 export function draftEnvironmentNames(text: string): string[] {
   return text
     .split(/[\s,]+/u)

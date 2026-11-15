@@ -1,6 +1,5 @@
 import type { TurnProjection } from "../../domain/acp";
 
-/** Whether a Turn has work for its Worked row beyond its final answer. */
 export function turnHasActivities(
   turn: TurnProjection,
   workingItemCount: number,

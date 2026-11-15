@@ -1,15 +1,7 @@
 import { useCallback, useMemo, useRef } from "react";
 import { useToolbarOverflow } from "../../ui/useToolbarOverflow";
 
-/**
- * The toolbar's compaction steps, lowest priority first, as data-fit tokens
- * that chat-container-controls.css keys on. A disabled placeholder goes first,
- * then the context meter beside the send action, as Codex drops it from a
- * narrow composer before any control loses its label.
- * Effort gives way before the session's own controls, so access and harness
- * keep their labels while it is an icon, and the model name goes last: it
- * truncates to a readable prefix before it gives way to its icon.
- */
+// Lowest priority first; chat-container-controls.css keys on these data-fit tokens.
 const TOOLBAR_STEPS = [
   "placeholder",
   "context",
@@ -24,11 +16,6 @@ const TOOLBAR_STEPS = [
   "wrap",
 ] as const;
 
-/**
- * Fits the composer toolbar's controls row. Effort moves into the options
- * menu only when there is a menu item to take its place; while a popover
- * from the row is open, the row keeps its steps.
- */
 export function useComposerToolbarFit(
   canSelectEffort: boolean,
   paused: boolean,

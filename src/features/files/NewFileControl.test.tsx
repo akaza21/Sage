@@ -53,7 +53,6 @@ async function createWith(after: ActiveEditorState | null) {
 describe("New File focus", () => {
   it("hands focus to the editor of the File it opened", async () => {
     const trigger = await createWith(ready(created));
-    // The request module loads lazily.
     await waitFor(() =>
       expect(focusRequest.takeEditorFocusRequest(created)).toBe(true),
     );

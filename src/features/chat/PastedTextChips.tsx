@@ -5,7 +5,6 @@ import { stagedItemLabel } from "./composerPasteText";
 import type { StagedPromptItem } from "./pastedTextTypes";
 import "../../styles/composer-paste.css";
 
-/** Staged pasted text and files, with a preview of pasted text. */
 export function PastedTextChips({
   items,
   disabled,
@@ -51,7 +50,7 @@ export function PastedTextChips({
                 disabled={disabled}
                 onClick={(event) => {
                   if (open) setPreviewId(null);
-                  // The chip is going away; keep focus in the composer.
+                  // Return focus to the composer before removing the focused chip.
                   event.currentTarget
                     .closest("form")
                     ?.querySelector("textarea")

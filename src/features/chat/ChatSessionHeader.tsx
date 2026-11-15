@@ -34,8 +34,6 @@ export function ChatSessionHeader({
         hidden={projectTransitioning}
       />
       <div className="session-controls">
-        {/* Side chats render only under Agent chrome, so this header never
-                belongs to one. */}
         <ChatHandoffControl
           acpPage={page}
           messages={messages}

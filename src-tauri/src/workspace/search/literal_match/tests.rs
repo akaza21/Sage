@@ -69,7 +69,6 @@ fn reference_find(line: &str, query: &str, case_sensitive: bool) -> Option<(usiz
     ))
 }
 
-/// Every match of the matcher before EP-09.
 fn reference_matches(
     line: &str,
     query: &str,
@@ -91,7 +90,6 @@ fn reference_matches(
     matches
 }
 
-/// A small deterministic generator, so a failure always reproduces.
 struct Pieces(u64);
 
 impl Pieces {
@@ -134,7 +132,6 @@ fn matches_the_reference_matcher_on_mixed_text() {
     }
 }
 
-/// Windows of a few bytes put window edges inside and between matches.
 #[test]
 fn folding_window_by_window_matches_folding_whole_lines() {
     let mut pieces = Pieces(0x2545_F491_4F6C_DD1D);
@@ -193,7 +190,6 @@ fn the_file_check_never_passes_over_a_file_with_a_match() {
             }
         }
     }
-    // The check has to pass files over, or it saves nothing.
     assert!(skipped > 5_000, "only {skipped} files passed over");
 }
 
@@ -216,14 +212,11 @@ pub(super) fn record_folded_bytes(bytes: usize) {
     FOLDED_BYTES.with(|work| work.set(work.get() + bytes));
 }
 
-/// The worst case for a naive search: a near miss at every position. Count
-/// bytes actually folded, including overlap, rather than shared-runner time.
-/// memmem supplies linear substring search; this guards the folding around it
-/// against repeatedly processing a candidate or the remaining suffix.
+/// Counts bytes folded, including overlap, rather than shared-runner time:
+/// memmem is linear, and this guards the folding around it against
+/// repeatedly processing a candidate or the remaining suffix.
 #[test]
 fn near_misses_cost_linear_time() {
-    // Doubling both text and query exposes quadratic candidate-by-candidate
-    // folding. The large case also crosses many production window boundaries.
     for (length, prefix) in [(1024, 255), (2048, 511), (2 * 1024 * 1024, 511)] {
         let content = "a".repeat(length);
         let query = format!("{}b", "a".repeat(prefix));

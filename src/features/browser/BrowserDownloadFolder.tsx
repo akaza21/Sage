@@ -18,10 +18,6 @@ function errorText(error: unknown, fallback: string): string {
   return typeof error === "string" && error.length > 0 ? error : fallback;
 }
 
-/**
- * Settings > Browser > Downloads: the folder silent downloads save to, with
- * Change (a native folder picker) and Reset (ask on the next download).
- */
 export function BrowserDownloadFolder() {
   const [folder, setFolder] = useState<Folder | null>(null);
   const [loaded, setLoaded] = useState(false);

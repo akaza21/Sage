@@ -51,7 +51,6 @@ function turn(items: AcpItem[]) {
   return { id: "turn-1", items } as unknown as TurnProjection;
 }
 
-/** A pane shaped like ChatSurface: transcript, find bar, slot, composer. */
 function Pane({
   items,
   focused = true,
@@ -91,7 +90,6 @@ const allow = () => screen.getByRole("button", { name: /Allow once/ });
 const announced = () =>
   screen.findByText("Approval needed: Allow this command?");
 
-/** Start idle (no recent key) with focus on `focus()`, then raise the card. */
 async function raiseWith(focus: () => HTMLElement) {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(100_000);

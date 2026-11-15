@@ -100,7 +100,6 @@ it("offers an icon-only, named jump button that follows the latest turn", async 
 it("does not offer jump to latest while already following the transcript", async () => {
   await renderTranscript(page("completed"));
   expect(screen.queryByRole("button", { name: "Jump to latest" })).toBeNull();
-  // It stays mounted but hidden so CSS can fade it out (Codex s2/f0048).
   const jump = document.querySelector<HTMLButtonElement>(".chat-follow-end");
   expect(jump).not.toBeNull();
   expect(jump).toHaveAttribute("hidden");
@@ -117,10 +116,8 @@ it("shows three bouncing dots and a new-activity name while follow is paused", a
     name: "New activity below. Jump to latest",
   });
   expect(pill).not.toHaveAttribute("hidden");
-  // The mode is a data attribute (N2) and the tooltip says the same as the name.
   expect(pill).toHaveAttribute("data-mode", "activity");
   expect(pill).toHaveAttribute("title", "New activity below. Jump to latest");
-  // CSS turns the hidden arrow into the middle dot and draws the outer two.
   expect(pill.textContent).toBe("");
   expect(pill.querySelectorAll('svg[aria-hidden="true"]')).toHaveLength(1);
   fireEvent.click(pill);
@@ -140,7 +137,6 @@ function retryPage() {
   return next;
 }
 
-/** Copy buttons of the latest-answer footer, not of an earlier Turn's row. */
 const footerCopies = () =>
   screen
     .queryAllByRole("button", { name: "Copy" })
@@ -374,7 +370,6 @@ describe("ChatTranscript answer actions", () => {
         },
       ];
       await renderTranscript(next);
-      // Every earlier answer keeps its own row (Codex s2/f0149).
       const [copy] = screen.getAllByRole("button", { name: "Copy" });
       expect(copy.closest(".acp-turn")).toHaveAttribute(
         "data-turn-id",

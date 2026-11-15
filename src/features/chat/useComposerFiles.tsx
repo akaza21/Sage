@@ -2,11 +2,6 @@ import { useState, type ComponentProps } from "react";
 import { ComposerFileParts } from "./ComposerFileContext";
 import { imagesOffered } from "./useComposerImageInput";
 
-/**
- * The composer's file context: the `@` picker arms with the draft's first
- * `@`, the attach menu with the first Files and folders press. Presses are
- * counted so the loaded attach part takes each one once.
- */
 export function useComposerFileContext(text: string) {
   const [mentionArmed, setMentionArmed] = useState(false);
   if (!mentionArmed && text.includes("@")) setMentionArmed(true);
@@ -18,12 +13,6 @@ export function useComposerFileContext(text: string) {
   };
 }
 
-/**
- * The composer's file context, ready to place: the `@` picker and attach
- * menu beside the field, and the "+" menu's Files and folders action while
- * a binding is usable. Picked files join the staged batch the paste part
- * owns and shows.
- */
 export function useComposerFiles({
   attachable,
   ...parts

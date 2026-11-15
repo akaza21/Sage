@@ -1,4 +1,3 @@
-/** Child blocks retain source order through parsing, presentation and text navigation. */
 export type MarkdownBlock =
   | { kind: "rule" }
   | { kind: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }

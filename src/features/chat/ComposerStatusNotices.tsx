@@ -7,7 +7,6 @@ const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
   () => import("./ClaudeAuthActions"),
 );
 
-// Discovery phases that already explain a missing binding themselves.
 const EXPLAINED_PHASES: readonly HarnessDiscoveryPhase[] = [
   "checking",
   "signInRequired",
@@ -16,7 +15,6 @@ const EXPLAINED_PHASES: readonly HarnessDiscoveryPhase[] = [
   "error",
 ];
 
-/** The composer's errors and notices, above its field. */
 export function ComposerStatusNotices({
   workbenchError,
   chatError,

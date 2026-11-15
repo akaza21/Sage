@@ -1,7 +1,3 @@
-//! Reading Files ahead on worker threads must not change any response: the
-//! same tree, query and limits give byte-for-byte the same matches, reports,
-//! limit reasons and continuation tokens with one thread as with four.
-
 use std::{fs, path::Path, time::Duration};
 
 use uuid::Uuid;
@@ -129,8 +125,6 @@ fn four_threads_answer_exactly_as_one_does() {
     fs::remove_dir_all(path).unwrap();
 }
 
-/// Folders too large to list or read ahead in one piece are left, wholly or
-/// in part, to the walk.
 #[test]
 fn large_folders_answer_exactly_as_one_does() {
     let path = std::env::temp_dir().join(format!("sage-search-large-{}", Uuid::new_v4()));
@@ -166,8 +160,6 @@ fn large_folders_answer_exactly_as_one_does() {
     fs::remove_dir_all(path).unwrap();
 }
 
-/// Time running out partway: the walk stops at the same entry with the same
-/// matches whether or not Files were read ahead, however far ahead they were.
 #[test]
 fn a_time_limit_stops_four_threads_where_it_stops_one() {
     let path = tree();
@@ -187,7 +179,6 @@ fn a_time_limit_stops_four_threads_where_it_stops_one() {
             stopped_with_matches += 1;
         }
     }
-    // The limit has to land partway through, with some matches found.
     assert!(stopped_with_matches > 200, "{stopped_with_matches}");
     fs::remove_dir_all(path).unwrap();
 }
@@ -200,8 +191,6 @@ fn assert_same_answers(path: &Path, cases: &[(&str, SearchLimits)]) {
                 let one = search(path, 1, *limits, query, token.clone());
                 let four = search(path, 4, *limits, query, token.clone());
                 assert_eq!(one, four, "{label}, query {query}, page {page}");
-                // A page can only end where a stale continuation is refused,
-                // which both engines must agree on too.
                 let Ok(one) = one else {
                     break;
                 };
@@ -214,8 +203,6 @@ fn assert_same_answers(path: &Path, cases: &[(&str, SearchLimits)]) {
     }
 }
 
-/// One line with more matches than a page holds: every page continues on
-/// the same line, with no match repeated or missed.
 #[test]
 fn a_line_with_more_matches_than_a_page_pages_through_all_of_them() {
     let path = std::env::temp_dir().join(format!("sage-search-dense-{}", Uuid::new_v4()));
@@ -254,11 +241,8 @@ fn a_line_with_more_matches_than_a_page_pages_through_all_of_them() {
     fs::remove_dir_all(path).unwrap();
 }
 
-/// Where reading each entry's file type is slow, read-ahead must not hold a
-/// folder's listing back until every entry is checked: the time limit would
-/// then land before the walk reached a File one thread reads first. Time
-/// moves only as file types are read, and the page ends at its first match,
-/// so a correct search reads at most two file types (the walk's and a
+/// Time moves only as file types are read, and the page ends at its first
+/// match, so a correct search reads at most two file types (the walk's and a
 /// worker's) whichever thread runs first.
 #[test]
 fn slow_file_types_keep_the_first_match_before_the_time_limit() {

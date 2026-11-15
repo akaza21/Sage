@@ -99,7 +99,6 @@ describe("composer paste sizing", () => {
         session: { capabilities: { promptResources: true } },
       }),
     ).toBeNull();
-    // A chat with no session yet is asked at send time.
     expect(
       pasteAttachmentRefusal({
         nativeAcp: true,

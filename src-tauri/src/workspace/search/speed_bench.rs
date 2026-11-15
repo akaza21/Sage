@@ -37,7 +37,6 @@ fn time(label: &str, limits: &SearchLimits, query: &str, case_sensitive: bool, p
         let mut response = engine.search(search, root(path)).unwrap();
         samples.push(started.elapsed().as_millis());
         response.elapsed_ms = 0;
-        // Compares answers across builds: everything but the timing.
         let mut hasher = std::hash::DefaultHasher::new();
         std::hash::Hash::hash(&format!("{response:?}"), &mut hasher);
         let digest = std::hash::Hasher::finish(&hasher);
@@ -50,7 +49,6 @@ fn time(label: &str, limits: &SearchLimits, query: &str, case_sensitive: bool, p
         );
     }
     samples.sort_unstable();
-    // The process's peak resident memory so far, for the memory budget.
     let peak = std::fs::read_to_string("/proc/self/status")
         .ok()
         .and_then(|status| {
@@ -102,8 +100,6 @@ fn speed_bench() {
     }
 }
 
-/// Manual timing of the worst inputs for case-insensitive matching: long
-/// single-line Files of one repeated character.
 /// `cargo test --release --lib repetitive_bench -- --ignored --nocapture`
 #[test]
 #[ignore = "manual benchmark"]

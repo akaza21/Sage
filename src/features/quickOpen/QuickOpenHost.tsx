@@ -11,14 +11,10 @@ import {
 } from "./quickOpenState";
 
 const loadQuickOpen = () => import("./QuickOpen");
-/**
- * Fetches the chunk once the window is idle. The first open then only waits
- * a microtask for the already-loaded module, not for the network or disk.
- */
+/** Idle preloading avoids a cold import when Quick Open opens later. */
 const preloadWhenIdle = () =>
   whenIdle(() => void loadQuickOpen().catch(() => undefined));
 
-/** Mounts Quick Open while it is open and keeps its recent Files. */
 export function QuickOpenHost() {
   const open = useQuickOpenStore((state) => state.open);
   const opening = useQuickOpenStore((state) => state.opening);

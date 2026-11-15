@@ -1,7 +1,3 @@
-//! The device toolbar (BF-7a): the exact CDP calls `browser::device` builds
-//! reach the page as the emulated viewport, scale factor, touch, orientation
-//! and user agent, survive a navigation, and reset to the engine's own values.
-
 use std::time::Duration;
 
 use serde_json::{Value, json};
@@ -42,7 +38,6 @@ fn device_presets_reach_the_page_survive_navigation_and_reset() {
     assert_eq!(responsive["agent"], engine["agent"]);
     assert_eq!(responsive["touch"], json!(0));
 
-    // Drawn at half size, the page still lays out at the emulated size.
     apply(
         &mut lane,
         Some(json!({"preset": "responsive", "width": 500, "height": 700, "scalePercent": 50})),
@@ -90,7 +85,6 @@ fn device_presets_reach_the_page_survive_navigation_and_reset() {
     assert_eq!(iphone["platform"], json!("iPhone"));
     assert!(iphone["agent"].as_str().unwrap().contains("iPhone OS"));
 
-    // The user's screenshot of that tall layout scales down to fit.
     let port = lane.capability.port_mut();
     let revision = port.stamp().expect("stamp").generation.to_string();
     let (shot_width, shot_height, _) = port.capture_user_png(&revision).expect("screenshot");

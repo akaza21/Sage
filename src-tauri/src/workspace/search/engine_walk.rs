@@ -22,8 +22,6 @@ use super::{
     },
 };
 
-/// An entry of the folder being walked: listed by the walk itself, or
-/// borrowed from a listing read ahead.
 enum FolderEntry<'a> {
     Listed(Box<DirEntry>),
     ReadAhead(&'a DirEntry),
@@ -99,7 +97,6 @@ impl SearchEngine {
                 depth: 0,
                 parent_rules: FolderChain::default(),
             }]);
-            // Folders are numbered in the order they were queued.
             let mut front = 0_u64;
 
             loop {
@@ -143,7 +140,6 @@ impl SearchEngine {
                     ),
                     None => (None, None),
                 };
-                // Only whether an entry failed to list matters, not why.
                 let read_directory: Box<dyn Iterator<Item = Result<FolderEntry<'_>, ()>>> =
                     match &listed_ahead {
                         Some(entries) => {
@@ -269,8 +265,6 @@ impl SearchEngine {
                         counters.skipped_files += 1;
                         continue;
                     }
-                    // Excluded and ignored folders are not entered, so their
-                    // contents stay out as in VS Code and Git.
                     if excluded.matches(&child_relative)
                         || rules.is_ignored(&folder_rules, &child_relative, file_type.is_dir())
                     {

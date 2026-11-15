@@ -6,18 +6,13 @@ import { contentText, type EditorContent } from "../files/editorContent";
 import { outlineAvailability } from "./outlineAvailability";
 import { type SyntaxOutline } from "./syntaxOutline";
 
-/** Typing settles before the document is reparsed for the Outline. */
 const OUTLINE_SETTLE_MS = 200;
 
 export type ActiveOutline =
   | { resource: ResourceRef; status: "ready"; outline: SyntaxOutline }
   | { resource: ResourceRef; status: "reading" | "unsupported" | "too-large" };
 
-/**
- * Outline of the active File, rebuilt from its syntax tree once edits settle.
- * The store is read through a subscription, not a selector, so keystrokes do
- * not re-render the Outline; it commits only when a new Outline is ready.
- */
+/** Read through a subscription, not a selector, so keystrokes do not re-render the Outline. */
 export function useSyntaxOutline(): ActiveOutline | null {
   const [active, setActive] = useState<ActiveOutline | null>(null);
 
@@ -61,7 +56,6 @@ export function useSyntaxOutline(): ActiveOutline | null {
         setActive({ resource, status: availability });
         return;
       }
-      // While typing the last Outline stays; a new File says it is reading.
       if (resourceChanged) setActive({ resource, status: "reading" });
       else {
         setActive((previous) =>

@@ -122,8 +122,6 @@ describe("bounded table admission", () => {
     },
   );
 
-  // CommonMark has no table extension. Its existing block examples protect
-  // table rejection, paragraph interruption and container ownership as well.
   it.each(commonmark.examples)(
     "matches stock for CommonMark example $example",
     ({ markdown }) => {

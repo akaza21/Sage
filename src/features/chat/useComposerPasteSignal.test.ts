@@ -6,7 +6,6 @@ import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { PROMPT_ATTACHMENT_TOTAL_BYTES } from "../../ports/promptAttachments";
 import { useComposerPasteSignal } from "./useComposerPasteSignal";
 
-/** A paste event into an empty field; records whether it was prevented. */
 function pasteEvent(text: string) {
   const event = {
     prevented: false,
@@ -52,7 +51,6 @@ describe("composer paste signal", () => {
     const huge = "z".repeat(PROMPT_ATTACHMENT_TOTAL_BYTES + 1);
     expect(paste(huge)).toBe(true);
     expect(result.current.seq).toBe(1);
-    // Refused when made: its text is never held for the paste part.
     expect(result.current.take()).toEqual([
       { kind: "overLimit", bytes: huge.length },
     ]);
@@ -66,7 +64,6 @@ describe("composer paste signal", () => {
       { kind: "paste", paste: { before: "", value: overCap, after: "" } },
       { kind: "pending" },
     ]);
-    // Once taken, the next paste is held again.
     expect(paste(overCap)).toBe(true);
     expect(result.current.take()).toEqual([
       { kind: "paste", paste: { before: "", value: overCap, after: "" } },
@@ -103,9 +100,7 @@ describe("composer paste signal", () => {
   it("never encodes an edit whose length alone puts it over the cap", () => {
     const { edit } = setup();
     const encode = vi.spyOn(TextEncoder.prototype, "encode");
-    // Its UTF-16 length is a lower bound on its UTF-8 size.
     expect(edit(`${overCap}é`)).toBe(true);
-    // Nor text whose upper bound (3 bytes per unit) fits.
     expect(edit("é".repeat(Math.floor(MAX_CHAT_COMPOSER_BYTES / 3)))).toBe(
       false,
     );

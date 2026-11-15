@@ -182,13 +182,11 @@
   stroke-width: 1.5;
 }
 
-/* The open "…" keeps a pressed fill and white dots under its menu (s2/f0053). */
 .chat-transcript-actions > button[aria-expanded="true"] {
   color: var(--color-text-emphasis);
   background: var(--color-surface-hover);
 }
 
-/* The answer's own time, muted, on row hover or focus (s2/f0093). */
 .chat-transcript-actions__time {
   margin-left: var(--space-1);
   color: var(--color-text-muted);
@@ -203,11 +201,6 @@
   opacity: 1;
 }
 
-/*
- * Hovering the answer itself shows its time too (s2/f0093: the pointer is
- * on the answer text, not the row). An earlier or inherited answer's row is
- * inside its Turn; the latest answer's row is the footer after the last one.
- */
 .chat-fork-turn:hover .chat-transcript-actions__time,
 .message-list__content:has(
     > .acp-chat-projection > .acp-virtual-turns > [data-last-turn]:hover

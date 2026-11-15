@@ -1,9 +1,3 @@
-/**
- * The paste part's notices, under the one id the field names in
- * aria-describedby: transient notices in a polite live region, and apart
- * from it the standing reason a send is held. Each is empty while it has
- * nothing to say.
- */
 export function ComposerPasteNotices({
   id,
   notice,
