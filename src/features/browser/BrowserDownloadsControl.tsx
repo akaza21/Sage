@@ -1,4 +1,4 @@
-import { Download } from "../../ui/leanIcons";
+import { Download } from "../../ui/leanIconNodesLazy";
 
 import {
   lazy,

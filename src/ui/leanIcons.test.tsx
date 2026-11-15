@@ -3,7 +3,10 @@ import { createRef } from "react";
 import { render } from "@testing-library/react";
 import * as Lucide from "lucide-react";
 import { expect, it } from "vitest";
-import * as Lean from "./leanIcons";
+import * as LeanBarrel from "./leanIcons";
+import * as LeanLazy from "./leanIconNodesLazy";
+
+const Lean = { ...LeanBarrel, ...LeanLazy };
 
 it.each(["MoreHorizontal", "TriangleAlert", "XCircle"] as const)(
   "preserves SVG refs and children for %s",

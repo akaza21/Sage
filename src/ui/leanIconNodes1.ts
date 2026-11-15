@@ -72,7 +72,6 @@ export const CaseSensitive = leanIcon("case-sensitive", [
 ]);
 export const Check = leanIcon("check", ["M20 6 9 17l-5-5"]);
 export const ChevronDown = leanIcon("chevron-down", ["m6 9 6 6 6-6"]);
-export const ChevronLeft = leanIcon("chevron-left", ["m15 18-6-6 6-6"]);
 export const ChevronRight = leanIcon("chevron-right", ["m9 18 6-6-6-6"]);
 export const ChevronsUpDown = leanIcon("chevrons-up-down", [
   "m7 15 5 5 5-5",
@@ -95,11 +94,6 @@ export const CircleX = leanIcon("circle-x", [
 export const Copy = leanIcon("copy", [
   ["rect", { width: "14", height: "14", x: "8", y: "8", rx: "2", ry: "2" }],
   "M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2",
-]);
-export const Download = leanIcon("download", [
-  "M12 15V3",
-  "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4",
-  "m7 10 5 5 5-5",
 ]);
 export const Ellipsis = leanIcon("ellipsis", [
   ["circle", { cx: "12", cy: "12", r: "1" }],

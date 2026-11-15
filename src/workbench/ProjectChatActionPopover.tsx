@@ -3,12 +3,12 @@ import {
   ArrowLeft,
   ArrowRightLeft,
   Folder,
-  FolderInput,
   Laptop,
   Pencil,
   Pin,
   PinOff,
 } from "../ui/leanIcons";
+import { FolderInput } from "../ui/leanIconNodesLazy";
 import { useContext, useState, type RefObject } from "react";
 import { MenuPopover } from "../ui/MenuPopover";
 import { AgentHeaderMenuContext } from "./AgentToolsProvider";

@@ -7,7 +7,7 @@ import {
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
 import { ACCESS_ICONS } from "./composerAccessIcons";
-import type { EndedSession } from "./endedSession";
+import type { EndedPage } from "./endedSession";
 // A chat's own access (live or drafted), its menu, errors, modes and icons
 // load off the chat path. The chunk reports what the trigger shows; until
 // then it shows the default, and the same trigger stays mounted throughout.
@@ -31,8 +31,8 @@ export interface ComposerAccessControlProps {
   harnessName: string;
   /** The chat whose access is drafted; given only while its next send starts a session. */
   chatId?: string;
-  /** The session whose access the session the next send starts takes. */
-  endedSession?: EndedSession;
+  /** The chat while it has no head: its last session hands its access on. */
+  endedPage?: EndedPage;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
   /** The live chat a choice applies to; without one nothing can change. */
   sessionConfig?: AcpSessionConfig | null;

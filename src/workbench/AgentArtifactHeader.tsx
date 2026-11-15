@@ -1,12 +1,11 @@
 import {
-  ChevronLeft,
   Copy,
   FileDiff,
-  SquareArrowOutUpRight,
   Check,
   ChevronDown,
   ChevronRight,
 } from "../ui/leanIcons";
+import { ChevronLeft, SquareArrowOutUpRight } from "../ui/leanIconNodesLazy";
 
 import { lazy, Suspense, useEffect, useId, useRef, useState } from "react";
 

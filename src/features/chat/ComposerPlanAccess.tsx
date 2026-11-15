@@ -1,4 +1,4 @@
-import { Lightbulb } from "../../ui/leanIcons";
+import { Lightbulb } from "../../ui/leanIconNodesLazy";
 import { ChatAccessView } from "./ChatAccessView";
 import {
   chooseAccess,
@@ -9,7 +9,7 @@ import type { ComposerAccessControlProps } from "./ComposerAccessControl";
 
 export type PlanAccessTarget = Pick<
   ComposerAccessControlProps,
-  "bindingId" | "chatId" | "endedSession" | "sessionConfig" | "capabilities"
+  "bindingId" | "chatId" | "endedPage" | "sessionConfig" | "capabilities"
 > & {
   onOpenAccess: () => void;
 };

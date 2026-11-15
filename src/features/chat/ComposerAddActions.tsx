@@ -1,4 +1,5 @@
-import { Check, Lightbulb, Paperclip, Target } from "../../ui/leanIcons";
+import { Check } from "../../ui/leanIcons";
+import { Lightbulb, Paperclip, Target } from "../../ui/leanIconNodesLazy";
 import {
   useContext,
   useLayoutEffect,

@@ -25,13 +25,10 @@ interface AccessSelectionProps {
 export function ChatAccessView({
   sessionConfig: session,
   chatId,
-  endedSession,
+  endedPage,
   ...props
 }: AccessSelectionProps &
-  Pick<
-    ComposerAccessControlProps,
-    "sessionConfig" | "chatId" | "endedSession"
-  >) {
+  Pick<ComposerAccessControlProps, "sessionConfig" | "chatId" | "endedPage">) {
   // A chat with no head drafts the access of the session its next send
   // starts, even while it shows its last session's config; a removed session
   // is past, and its chat drafts too.
@@ -40,7 +37,7 @@ export function ChatAccessView({
   ) : (
     <ChatAccessDraftSelection
       chatId={chatId}
-      endedSession={endedSession}
+      endedPage={endedPage}
       {...props}
     />
   );

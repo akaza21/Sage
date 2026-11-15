@@ -35,7 +35,7 @@ import type { DraftEffort } from "./DraftEffortControl";
 import { composerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModelState";
 import { ProjectScopeChip } from "./ProjectScopeChip";
-import { governedPlanMode } from "../../domain/governedSessionModes";
+import { governedPlanMode } from "../../domain/sessionAccessMode";
 import {
   harnessPickerCandidates,
   useComposerPopovers,
@@ -78,7 +78,7 @@ interface Props {
 export function ChatHarnessControls({
   contextUsage,
   usageRequest,
-  accessTarget: { bindingId: accessBindingId, draftChatId, endedSession } = {},
+  accessTarget: { bindingId: accessBindingId, draftChatId, endedPage } = {},
   addActions = {},
   optionsTriggerId,
   availableBinding,
@@ -240,7 +240,7 @@ export function ChatHarnessControls({
       ? {
           bindingId: accessHarness.bindingId,
           chatId: draftChatId,
-          endedSession,
+          endedPage,
           sessionConfig,
           capabilities: accessHarness.accessModes,
           onOpenAccess: () => toggle("access"),
@@ -299,7 +299,7 @@ export function ChatHarnessControls({
             bindingId={accessHarness.bindingId}
             harnessName={accessHarness.name}
             chatId={draftChatId}
-            endedSession={endedSession}
+            endedPage={endedPage}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}

@@ -1,9 +1,5 @@
-import {
-  CircleAlert,
-  Lightbulb,
-  Pencil,
-  ShieldCheck,
-} from "../../ui/leanIcons";
+import { CircleAlert, Pencil, ShieldCheck } from "../../ui/leanIcons";
+import { Lightbulb } from "../../ui/leanIconNodesLazy";
 import type { SessionAccessMode } from "../../domain/sessionAccessMode";
 import { ACCESS_ICONS } from "./composerAccessIcons";
 
