@@ -160,6 +160,39 @@ it("keeps showing the same thumbnail when a failed removal restores the image", 
   expect(transfer.read).toHaveBeenCalledTimes(1);
 });
 
+it("releases the thumbnail when a failed removal cannot restore the image because a send started", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  attachInStore();
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  let refuse!: (error: Error) => void;
+  transfer.remove.mockReturnValue(
+    new Promise<void>((_, reject) => {
+      refuse = reject;
+    }),
+  );
+  const view = renderAttachments();
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
+  );
+
+  act(() => view.result.current.removeAttachedContext(image));
+  view.rerender({ contexts: [] });
+  await waitFor(() => expect(transfer.remove).toHaveBeenCalled());
+  useWorkbenchStore.setState((state) => ({
+    chatUiById: {
+      "chat-a": { ...state.chatUiById["chat-a"]!, sending: true },
+    },
+  }));
+  await act(async () => refuse(new Error("disk busy")));
+
+  expect(
+    useWorkbenchStore.getState().chatUiById["chat-a"]!.attachedContext,
+  ).toEqual([]);
+  expect(urls.revoke).toHaveBeenCalledWith("blob:thumbnail-1");
+  expect(view.result.current.imagePreviews).toEqual({});
+});
+
 it("releases a removed image's thumbnail once native code retires it", async () => {
   const urls = stubObjectUrls();
   seedChat();

@@ -18,7 +18,7 @@ use sage_core::limits::{
 /// A stored full image is read back within the store bound.
 const FULL_LIMIT: u64 = STORED_IMAGE_BYTES as u64;
 /// A chip thumbnail is read back within this bound.
-pub(super) const THUMBNAIL_LIMIT: u64 = 64 * 1024;
+const THUMBNAIL_LIMIT: u64 = 64 * 1024;
 
 pub(crate) fn ingest_image(
     connection: &Connection,
@@ -203,8 +203,9 @@ pub(crate) fn remove_pending_image(
     Ok(())
 }
 
-/// The chip thumbnail of an image still attached to, queued in or being sent
-/// by `chat_id`.
+/// The chip thumbnail of an image attached to `chat_id`'s composer. Only a
+/// pending image has a chip, and startup drops every pending image, so each
+/// thumbnail read here was written by this build's store.
 pub(crate) fn read_image_thumbnail(
     connection: &Connection,
     root: &Path,
@@ -220,8 +221,7 @@ pub(crate) fn read_image_thumbnail(
     let row: Option<(i64, String)> = connection
         .query_row(
             "SELECT thumbnail_bytes,thumbnail_sha256 FROM chat_image_artifacts
-             WHERE id=?1 AND project_id=?2 AND chat_id=?3
-             AND lifecycle IN ('pending','queued','inFlight')",
+             WHERE id=?1 AND project_id=?2 AND chat_id=?3 AND lifecycle='pending'",
             params![artifact_id, project_id, chat_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )

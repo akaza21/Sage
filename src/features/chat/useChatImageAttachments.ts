@@ -133,7 +133,10 @@ export function useChatImageAttachments(
       })
       .catch(() => {
         removing.current.delete(id);
-        useWorkbenchStore.getState().attachChatContext(intent, image);
+        if (!useWorkbenchStore.getState().attachChatContext(intent, image)) {
+          release(id);
+          publish();
+        }
         useWorkbenchStore.getState().setChatActionState(intent, {
           sending: false,
           error: "Could not retire the removed image.",
