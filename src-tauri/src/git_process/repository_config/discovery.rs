@@ -1,15 +1,12 @@
-//! Where Git found the repository: the `.git` entries on the discovery path
-//! and the locations `rev-parse` reports.
-
 use std::path::{Path, PathBuf};
 
 use sage_core::error::{AppError, AppResult};
 
 use super::{Fingerprint, GitOutput, paths};
 
-/// Keeps the `.git` entries from the root up to the one Git used. The verdict
-/// is cacheable only when every entry below that one is missing, because an
-/// existing entry Git skipped could later become the repository it opens.
+/// The verdict is cacheable only when every entry below the one Git used is
+/// missing, because an existing entry Git skipped could later become the
+/// repository it opens.
 pub(super) fn discovery_path(
     ancestors: Vec<(PathBuf, Fingerprint)>,
     git_dir: &Path,
@@ -26,7 +23,6 @@ pub(super) fn discovery_path(
             return (watched, false);
         }
     }
-    // Git opened a repository that no `.git` entry on the path names.
     (watched, false)
 }
 

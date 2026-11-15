@@ -68,11 +68,7 @@ pub fn deliver_workspace_notify_action(
     watch.session.classify(root_id, relative, action)
 }
 
-/// The delivery of one watched root's records. Each record is weighed by the
-/// root's relevance filter, classified against the live watch and queued for
-/// the watch's next batch; a record inside an ignored folder is queued as
-/// one notice for that folder. Lost records always pass, and make the filter
-/// reload.
+/// Lost records always pass, and make the filter reload.
 pub(super) fn root_delivery(
     project_id: String,
     generation: u32,
@@ -93,8 +89,7 @@ pub(super) fn root_delivery(
         if let Ok(excludes) = excludes.try_recv() {
             relevance = NoticeRelevance::new(&root_path).with_excludes(excludes);
         }
-        // Retain the exact operand before Explorer folds it to its ignored
-        // ancestor. The matcher supplies no Git relevance verdict.
+        // Git judges the original path, captured before Explorer folds it.
         let original = relative.clone();
         let directory = root_path.join(&relative).is_dir();
         let moved = matches!(super::kind_for_action(action), Some("created" | "deleted"));

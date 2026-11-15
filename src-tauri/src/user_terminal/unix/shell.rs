@@ -1,5 +1,4 @@
-//! The login shell and the environment it starts with. Nothing here comes
-//! from the WebView, and an unusable value fails closed.
+//! Nothing here comes from the WebView, and an unusable value fails closed.
 
 use std::{
     ffi::OsString,
@@ -19,8 +18,6 @@ pub(super) struct LoginShell {
     pub(super) executable: PathBuf,
 }
 
-/// The user's login shell from `SHELL`: absolute, an executable file and,
-/// where the host keeps `/etc/shells`, listed there.
 pub(super) fn login_shell() -> Result<LoginShell, TerminalError> {
     let declared = PathBuf::from(std::env::var_os("SHELL").ok_or(TerminalError::Backend)?);
     if !declared.is_absolute() {
@@ -35,7 +32,6 @@ pub(super) fn login_shell() -> Result<LoginShell, TerminalError> {
     }
     match std::fs::read_to_string("/etc/shells") {
         Ok(listed) if listed_shell(&listed, &declared, &executable) => {}
-        // Only a host without the list skips the check.
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         _ => return Err(TerminalError::Backend),
     }
@@ -56,7 +52,6 @@ pub(super) fn listed_shell(listed: &str, declared: &Path, executable: &Path) -> 
         })
 }
 
-/// The host variables passed through on every platform.
 const HOST_VARIABLES: [&str; 9] = [
     "HOME",
     "USER",
@@ -84,10 +79,8 @@ pub(super) const SESSION_VARIABLES: [&str; 7] = [
     "XDG_CURRENT_DESKTOP",
 ];
 
-/// A bounded allowlist of the host environment, plus the terminal type the
-/// renderer emulates. SSH_AUTH_SOCK is kept so `git` over SSH works as it does
-/// in the user's own terminal, and on Linux the desktop session's variables
-/// are kept so programs started there can reach the display and session bus.
+/// SSH_AUTH_SOCK is kept so `git` over SSH works as it does in the user's own
+/// terminal.
 pub(super) fn environment(shell: &Path) -> Result<Vec<(&'static str, OsString)>, TerminalError> {
     environment_from(shell, |name| std::env::var_os(name))
 }

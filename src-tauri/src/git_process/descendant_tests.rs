@@ -147,9 +147,6 @@ fn inherited_stdio_keeps_mutation_admission_after_proxy_exit() {
     });
 }
 
-/// The same parked backend on Windows: once Sage holds the Git tree in a job,
-/// losing the proxy no longer leaves the backend behind. Sage terminates the
-/// whole tree, proves it, and the backend never stages anything.
 #[cfg(windows)]
 #[test]
 fn a_killed_proxy_takes_its_parked_backend_with_it_on_windows() {
@@ -204,8 +201,6 @@ fn a_killed_proxy_takes_its_parked_backend_with_it_on_windows() {
         sage_test_support::test_wait::until("the Git tree's exit to be confirmed", || {
             harness.observation().unconfirmed_exits == 0
         });
-        // Job accounting reached zero, so the parked backend is gone and can
-        // never stage the File.
         let staged = run_git_with_policy(
             &root,
             &["diff", "--cached", "--name-only"],

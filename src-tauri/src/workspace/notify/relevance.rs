@@ -1,7 +1,3 @@
-//! Shapes Explorer/Search notices only. Ignored descendants fold into a
-//! bounded folder notice; Git relevance is decided separately by Git for
-//! each throttle window, using the original paths.
-
 use std::{
     collections::HashMap,
     ffi::OsStr,
@@ -20,29 +16,25 @@ const MAX_CACHED_FOLDER_BYTES: usize = 1024 * 1024;
 
 const REPOSITORY_EXCLUDE: &str = ".git/info/exclude";
 
-/// What one record means to the WebView.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Relevance {
-    /// Deliver the record as it is.
     Keep,
-    /// Deliver nothing.
     Drop,
     /// Exclusion rules changed outside any skipped or ignored folder.
     Resync,
-    /// Something changed inside this ignored folder, the topmost one above
-    /// the record.
+    /// The topmost ignored folder above the record.
     IgnoredBelow(String),
 }
 
-/// The relevance filter of one watched root.
 pub(super) struct NoticeRelevance {
     root: PathBuf,
     excludes: Option<PathBuf>,
     /// Only global and root matchers survive a record, a fixed number of
     /// individually size-capped rule files, independent of the folder count.
     rules: Option<(IgnoreRules, FolderChain)>,
-    /// Whether listing rules ignore each decided folder. Descendant matchers live only
-    /// while deciding a cache miss, so siblings cannot retain rule chains.
+    /// Whether listing rules ignore each decided folder. Descendant matchers
+    /// live only while deciding a cache miss, so siblings cannot retain rule
+    /// chains.
     folders: HashMap<String, bool>,
     folder_bytes: usize,
 }
@@ -63,8 +55,6 @@ impl NoticeRelevance {
         self
     }
 
-    /// What the record for `relative` (a root-relative path with `/`
-    /// separators) with the watcher's `action` means to the WebView.
     pub(super) fn classify(&mut self, relative: &str, action: u32) -> Relevance {
         if let Some(repository) = repository_of_exclude(relative) {
             if !skipped(repository) && self.ignored_folder(repository).is_none() {
@@ -93,16 +83,13 @@ impl NoticeRelevance {
         Relevance::Keep
     }
 
-    /// Drops the rules and every cached decision; the next record reloads
-    /// them. Lost records may have hidden an ignore-file change.
+    /// Lost records may have hidden an ignore-file change.
     pub(super) fn forget(&mut self) {
         self.rules = None;
         self.folders.clear();
         self.folder_bytes = 0;
     }
 
-    /// The topmost folder at or above `folder` that listing rules ignore, deciding
-    /// from the top down.
     fn ignored_folder<'a>(&mut self, folder: &'a str) -> Option<&'a str> {
         if folder.is_empty() {
             return None;
@@ -172,7 +159,6 @@ impl NoticeRelevance {
     }
 }
 
-/// Whether `folder` or a folder above it is `.git` or `node_modules`.
 fn skipped(folder: &str) -> bool {
     !folder.is_empty()
         && folder
@@ -180,8 +166,7 @@ fn skipped(folder: &str) -> bool {
             .any(|name| skip_workspace_directory_name(OsStr::new(name)))
 }
 
-/// The folder holding the repository whose `info/exclude` `relative` names
-/// (empty for the root's own).
+/// The folder holding the repository; empty for the root's own.
 fn repository_of_exclude(relative: &str) -> Option<&str> {
     let split = relative.len().checked_sub(REPOSITORY_EXCLUDE.len())?;
     if !relative.is_char_boundary(split)
@@ -195,7 +180,6 @@ fn repository_of_exclude(relative: &str) -> Option<&str> {
     }
 }
 
-/// Whether the last name of `relative` is `name`, in any case.
 fn is_named(relative: &str, name: &str) -> bool {
     relative
         .rsplit('/')

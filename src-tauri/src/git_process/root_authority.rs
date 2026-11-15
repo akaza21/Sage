@@ -32,8 +32,6 @@ impl GitRootAuthority {
         Ok(authority)
     }
 
-    /// Duplicates the retained root handle so a second Git process can bind to
-    /// the same identity-checked directory.
     pub(super) fn try_clone(&self) -> AppResult<Self> {
         Ok(Self {
             directory: self.directory.try_clone()?,
@@ -42,7 +40,6 @@ impl GitRootAuthority {
         })
     }
 
-    /// Whether the root is held against rename for an admitted repository.
     pub(super) fn anchors_repository(&self) -> bool {
         #[cfg(windows)]
         {
@@ -54,8 +51,6 @@ impl GitRootAuthority {
         }
     }
 
-    /// Fails when `root` no longer names the retained directory, so a root
-    /// that was moved or replaced after admission is refused before the spawn.
     pub(super) fn ensure_names(&self, root: &Path) -> AppResult<()> {
         if crate::workspace::root_identity_path(root)? == directory_identity(&self.directory)? {
             Ok(())

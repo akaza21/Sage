@@ -1,5 +1,3 @@
-//! IPC: a terminal turn's workspace (Git) changes.
-
 use rusqlite::OptionalExtension;
 
 use super::*;
@@ -36,7 +34,6 @@ pub struct TurnWorkspaceChangesResponse {
     changes: Vec<TurnWorkspaceChange>,
 }
 
-/// Captures the workspace mark a prompt's turn is later diffed against.
 pub(super) async fn mark_before_prompt(
     state: &AppState,
     transition: crate::state::ActiveProjectContext<'_>,
@@ -151,7 +148,6 @@ pub async fn get_acp_turn_workspace_changes(
         .database
         .connection()
         .query_row(
-            // An undone Turn's changes are no longer the chat's to show.
             concat!(
                 "SELECT t.client_intent_id,t.session_id FROM turns t
                  WHERE t.project_id=?1 AND t.chat_id=?2 AND t.id=?3 AND t.terminal_at IS NOT NULL AND ",

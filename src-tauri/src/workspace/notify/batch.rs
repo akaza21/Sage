@@ -1,14 +1,3 @@
-//! Coalesces a watch's notices into one WebView event per short window.
-//!
-//! Watcher threads push accepted notices; one emitter thread per watch
-//! sends them as a single batch once the window that the first notice opened
-//! has passed. Within a batch a path appears once per meaning (its own
-//! change, or a change inside it when it is an ignored folder), with its
-//! latest kind. A batch never holds more than [`MAX_BATCH_NOTICES`] entries,
-//! resyncs included: when one more would pass that, the root holding the
-//! most paths is sent as one resync notice in their place, as a lost
-//! watcher queue is, and the WebView reloads that root's listings.
-
 use std::{
     collections::HashMap,
     sync::{
@@ -32,8 +21,7 @@ pub(super) const NOTICE_BATCH_WINDOW: Duration = Duration::from_millis(100);
 /// equal). A folder refresh per notice is the WebView's cost, and a root
 /// with more changes than this in 100 ms is cheaper to resync once.
 pub(super) const MAX_BATCH_NOTICES: usize = 256;
-/// How often an idle emitter checks whether its watch was cancelled, which
-/// matches the watcher threads' own wait.
+/// Matches the watcher threads' own wait.
 const CANCEL_CHECK: Duration = Duration::from_millis(100);
 
 // A full batch spreads its paths over at most MAX_ROOTS roots, so its
@@ -43,7 +31,6 @@ const _: () = assert!(MAX_ROOTS * 2 <= MAX_BATCH_NOTICES);
 const RESYNC_KIND: &str = "resync";
 const IGNORED_KIND: &str = "ignored";
 
-/// The payload of one WebView event.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct WorkspaceNotifyBatch {
     pub notices: Vec<WorkspaceNotifyNotice>,
@@ -61,12 +48,10 @@ fn path_key(notice: &WorkspaceNotifyNotice) -> PathKey {
     )
 }
 
-/// Notices gathered since the last event.
 #[derive(Debug, Default)]
 pub(super) struct NoticeBatch {
     git_windows: HashMap<String, GitWindow>,
     notices: Vec<WorkspaceNotifyNotice>,
-    /// Each queued notice's index.
     index: HashMap<PathKey, usize>,
     /// The resync notice of each root that overflowed or lost records. Its
     /// paths are dropped, since the resync reloads every listing they touch.
@@ -134,7 +119,6 @@ impl NoticeBatch {
         }
     }
 
-    /// The batch to send, leaving this one empty.
     pub(super) fn take(&mut self) -> WorkspaceNotifyBatch {
         self.index.clear();
         let mut notices = std::mem::take(&mut self.notices);
@@ -146,7 +130,6 @@ impl NoticeBatch {
         self.resyncs.iter().any(|resync| resync.root_id == root_id)
     }
 
-    /// The root with the most queued paths.
     fn fullest_root(&self) -> Option<String> {
         let mut counts = HashMap::<&str, usize>::new();
         for queued in &self.notices {
@@ -158,7 +141,6 @@ impl NoticeBatch {
             .map(|(root, _)| root.to_string())
     }
 
-    /// Replaces the root's queued paths with one resync notice.
     fn resync(&mut self, mut notice: WorkspaceNotifyNotice) {
         notice.relative_path = OVERFLOW_RELATIVE_PATH.to_string();
         notice.kind = RESYNC_KIND.to_string();
@@ -175,7 +157,6 @@ impl NoticeBatch {
     }
 }
 
-/// A watch's batch, shared by its watcher threads and its emitter.
 #[derive(Default)]
 pub(super) struct NoticeSink {
     batch: Mutex<NoticeBatch>,
@@ -206,9 +187,7 @@ impl NoticeSink {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
-    /// Sends one batch per window that held notices, until `cancelled`. A
-    /// window opens with its first notice and lasts as long as `window`
-    /// blocks.
+    /// A window opens with its first notice and lasts as long as `window` blocks.
     pub(super) fn run_emitter(
         &self,
         cancelled: &AtomicBool,
@@ -245,7 +224,6 @@ impl NoticeSink {
     }
 }
 
-/// Starts the emitter of one watch, which ends when the watch is cancelled.
 pub(super) fn spawn_notice_emitter(
     sink: Arc<NoticeSink>,
     cancelled: Arc<AtomicBool>,

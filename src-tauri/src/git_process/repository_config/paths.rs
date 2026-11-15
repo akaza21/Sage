@@ -1,7 +1,3 @@
-//! Reading the paths Git data files name, exactly as Git reads them, and
-//! refusing any path Git and the filesystem calls here could resolve to
-//! different entries.
-
 use std::path::{Path, PathBuf};
 
 /// The path a `gitdir:` file names, read as Git's `read_gitfile` reads it:
@@ -24,7 +20,6 @@ pub(super) fn commondir_path(bytes: &[u8]) -> Option<&str> {
     std::str::from_utf8(&bytes[..end]).ok()
 }
 
-/// Splits a path on the separators Git uses: `/`, and on Windows also `\`.
 pub(super) fn split(path: &str) -> Vec<&str> {
     #[cfg(windows)]
     return path.split(['/', '\\']).collect();
@@ -32,18 +27,14 @@ pub(super) fn split(path: &str) -> Vec<&str> {
     return path.split('/').collect();
 }
 
-/// Paths longer than this, or with more components, are refused.
 const MAX_PATH_BYTES: usize = 4096;
 const MAX_PATH_COMPONENTS: usize = 64;
 
 /// The paths the operating system walks to reach `target`, as Git reaches
-/// it: joined to `base` as written unless absolute, never normalised here,
-/// one entry per component and the full path last. Git and the filesystem
-/// calls here then resolve every `..`, symlink and junction the same way:
-/// lexically through Win32 on Windows, physically elsewhere. Each component
-/// is validated as it is added: every name other than `.` and `..` must pass
-/// [`ambiguous_component`], and a path over [`MAX_PATH_BYTES`] or
-/// [`MAX_PATH_COMPONENTS`] fails closed.
+/// it: joined to `base` as written unless absolute, never normalised here.
+/// Git and the filesystem calls here then resolve every `..`, symlink and
+/// junction the same way: lexically through Win32 on Windows, physically
+/// elsewhere.
 pub(super) fn written_prefixes(base: &Path, target: &str) -> Option<Vec<PathBuf>> {
     if target.len() > MAX_PATH_BYTES {
         return None;
@@ -67,11 +58,10 @@ pub(super) fn written_prefixes(base: &Path, target: &str) -> Option<Vec<PathBuf>
     (!prefixes.is_empty()).then_some(prefixes)
 }
 
-/// Where a path Git reads starts.
 #[derive(Debug, PartialEq, Eq)]
 enum Start<'a> {
     Relative,
-    /// An absolute path: the root it starts at, and the rest.
+    /// The root it starts at, and the rest.
     Absolute(PathBuf, &'a str),
     /// A path Git and the filesystem calls here could start differently;
     /// only Windows has such starts (a current-drive root, say).
@@ -175,9 +165,6 @@ pub(super) fn ambiguous_component(part: &str) -> bool {
             .any(|c| c.is_control() || matches!(c, '\\' | ':') || ignorable(c))
 }
 
-/// `CON`, `PRN`, `AUX`, `NUL`, `COM0`-`COM9`, `LPT0`-`LPT9` (and their
-/// superscript-digit forms), `CONIN$` and `CONOUT$`, with or without an
-/// extension, in any case.
 pub(super) fn reserved_device_name(part: &str) -> bool {
     let stem = part.split('.').next().unwrap_or(part).to_ascii_uppercase();
     match stem.as_str() {
