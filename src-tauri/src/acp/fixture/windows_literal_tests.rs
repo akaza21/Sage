@@ -16,10 +16,10 @@ use windows_sys::Win32::Storage::FileSystem::{
 };
 
 use crate::acp::{
-    contract::RuntimeEpoch,
     process::{RunningTree, TreeCapacityPool, TreeControl, TreeExit},
     transport::{FrameWriteOutcome, OutboundFrame},
 };
+use sage_acp_protocol::contract::RuntimeEpoch;
 
 use super::{
     external_fixture_adapters::{fixture_artifact, launch_spec},

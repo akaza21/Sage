@@ -1,11 +1,9 @@
-//! `mcpServer/elicitation/request`: an MCP server, relayed by Codex, asks
-//! the user to fill a form or open a link. It is shown on the shared
-//! question card and answered `accept` (with typed content for a form),
-//! `decline` or `cancel`, exactly as ACP `elicitation/create` is.
+//! MCP elicitations are answered `accept` (with typed form content), `decline`
+//! or `cancel`, as ACP `elicitation/create` requests are.
 
 use serde_json::{Map, Value};
 
-use crate::acp::{bindings::standard_acp::elicitation::refused, intent::user_input::form};
+use crate::acp::{bindings::standard_acp::elicitation::refused, elicitation_form};
 
 use super::super::{
     IncomingEvent, IngressDisposition, IngressError, record_unprojected,
@@ -22,7 +20,6 @@ pub(super) fn request(
     params: &Map<String, Value>,
 ) -> Result<IngressDisposition, IngressError> {
     let id = object.get("id").ok_or(IngressError::Malformed)?;
-    // Before a thread is bound there is no Turn to hold the card either.
     if adapter.bound_thread_id().is_none() {
         return answer_now(id, refused(false));
     }
@@ -52,12 +49,12 @@ pub(super) fn request(
         Some("form") => params.get("requestedSchema").and_then(|schema| {
             let mut schema = schema.clone();
             strip_nulls(&mut schema);
-            form::form_request(&schema)
+            elicitation_form::form_request(&schema)
         }),
         Some("url") => params
             .get("url")
             .and_then(Value::as_str)
-            .and_then(form::url_request),
+            .and_then(elicitation_form::url_request),
         _ => None,
     };
     let message = params
@@ -70,7 +67,8 @@ pub(super) fn request(
         } else {
             "Answer an MCP server's questions"
         };
-        let payload = form::question_payload(summary, message.as_deref(), request.clone())?;
+        let payload =
+            elicitation_form::question_payload(summary, message.as_deref(), request.clone())?;
         Some((payload, request))
     });
     // A form or link Sage cannot show exactly is declined, not guessed at.

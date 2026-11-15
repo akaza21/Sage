@@ -9,6 +9,8 @@ use std::{
     process::{ChildStdin, ChildStdout},
 };
 
+use sage_process::error::LaunchError;
+
 use crate::acp::transport::{
     Frame, FrameError, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame,
 };
@@ -52,11 +54,11 @@ pub(crate) struct StdoutEndpoint {
 }
 
 impl StdoutEndpoint {
-    pub(crate) fn read(&mut self, target: &mut [u8]) -> Result<usize, super::LaunchError> {
+    pub(crate) fn read(&mut self, target: &mut [u8]) -> Result<usize, LaunchError> {
         if target.len() as u64 > sage_core::limits::LIMITS.wire.frame_bytes {
-            return Err(super::LaunchError::StdioLimit);
+            return Err(LaunchError::StdioLimit);
         }
-        self.stdout.read(target).map_err(|_| super::LaunchError::Io)
+        self.stdout.read(target).map_err(|_| LaunchError::Io)
     }
 
     pub(crate) fn read_frame(&mut self) -> Result<Option<Frame>, FrameError> {
@@ -101,6 +103,17 @@ impl RunningTree {
 
 #[cfg(test)]
 pub(crate) fn launch_fixture_for_test(runtime_epoch: u64) -> RunningTree {
+    launch_shell_for_test(runtime_epoch, "exec sleep 30")
+}
+
+/// A root that exits by itself with `code`, without Sage asking it to.
+#[cfg(test)]
+pub(crate) fn launch_exiting_for_test(runtime_epoch: u64, code: u8) -> RunningTree {
+    launch_shell_for_test(runtime_epoch, &format!("exit {code}"))
+}
+
+#[cfg(test)]
+fn launch_shell_for_test(runtime_epoch: u64, script: &str) -> RunningTree {
     use std::{ffi::OsString, fs::File, io::Read};
 
     use sha2::{Digest, Sha256};
@@ -119,9 +132,9 @@ pub(crate) fn launch_fixture_for_test(runtime_epoch: u64) -> RunningTree {
         digest.update(&chunk[..read]);
     }
     let project_root = crate::project_registry::ProjectRootAuthority::for_test(
-        crate::acp::contract::SageProjectId::parse("project-process-fixture").unwrap(),
-        crate::acp::contract::ProjectGeneration::ZERO,
-        crate::acp::contract::SageRootId::parse("root-process-fixture").unwrap(),
+        sage_acp_protocol::contract::SageProjectId::parse("project-process-fixture").unwrap(),
+        sage_acp_protocol::contract::ProjectGeneration::ZERO,
+        sage_acp_protocol::contract::SageRootId::parse("root-process-fixture").unwrap(),
         &std::env::current_dir().unwrap(),
     )
     .unwrap();
@@ -135,11 +148,8 @@ pub(crate) fn launch_fixture_for_test(runtime_epoch: u64) -> RunningTree {
             byte_len,
         )
         .unwrap(),
-        fixed_args: super::BoundedOsArgs::new(vec![
-            OsString::from("-c"),
-            OsString::from("exec sleep 30"),
-        ])
-        .unwrap(),
+        fixed_args: super::BoundedOsArgs::new(vec![OsString::from("-c"), OsString::from(script)])
+            .unwrap(),
         environment: super::BoundedEnvironment::new(Vec::new()).unwrap(),
         project_root,
         required_guarantee: super::RequiredContainment::TrustedCooperativeTree,

@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::lifecycle::ItemLifecycle;
+use sage_acp_protocol::lifecycle::ItemLifecycle;
 
 #[cfg(windows)]
 struct TempRoot(std::path::PathBuf);
@@ -12,7 +12,7 @@ impl ResourceMapper for LiveMapper {
     fn map_existing(
         &self,
         absolute_path: &str,
-    ) -> Result<SafeResourceRef, crate::acp::intent::UnavailableResourceReason> {
+    ) -> Result<SafeResourceRef, sage_acp_protocol::intent::UnavailableResourceReason> {
         crate::acp::bindings::adapter::ResourceMapper::map_existing(&self.0, absolute_path)
     }
 
@@ -97,11 +97,11 @@ fn completed_file_change_notification_has_journal_compatible_shape() {
         [
             IncomingEvent::Item {
                 payload: NormalizedPayload::ToolCall {
-                    category: crate::acp::intent::ToolCategory::Edit,
+                    category: sage_acp_protocol::intent::ToolCategory::Edit,
                     label,
                     ..
                 },
-                tool_state: Some(crate::acp::lifecycle::ToolState::Completed),
+                tool_state: Some(sage_acp_protocol::lifecycle::ToolState::Completed),
                 lifecycle: ItemLifecycle::Completed,
                 ..
             },
@@ -226,14 +226,14 @@ fn created_file_becomes_openable_when_completed_after_disk_write() {
         panic!("expected completed file change");
     };
     assert!(matches!(completed.as_slice(), [IncomingEvent::Item {
-        payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
+        payload: NormalizedPayload::ToolCall { category: sage_acp_protocol::intent::ToolCategory::Edit, .. },
         ..
     }, IncomingEvent::Item {
         lifecycle: ItemLifecycle::Completed,
         tool_state: None,
         payload: NormalizedPayload::FileChangeDiff {
-            resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
-            operation: crate::acp::intent::FileChangeOperation::Created,
+            resource: sage_acp_protocol::intent::SafeResourceLocation::Resource { resource },
+            operation: sage_acp_protocol::intent::FileChangeOperation::Created,
             pair_available: true,
             additions: Some(1),
             deletions: Some(0),
@@ -283,13 +283,13 @@ fn modified_file_binds_only_its_final_existing_location() {
         panic!("completed notification");
     };
     assert!(matches!(completed.as_slice(), [IncomingEvent::Item {
-        payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
+        payload: NormalizedPayload::ToolCall { category: sage_acp_protocol::intent::ToolCategory::Edit, .. },
         ..
     }, IncomingEvent::Item {
         lifecycle: ItemLifecycle::Completed,
         payload: NormalizedPayload::FileChangeDiff {
-            resource: crate::acp::intent::SafeResourceLocation::Resource { resource },
-            operation: crate::acp::intent::FileChangeOperation::Updated,
+            resource: sage_acp_protocol::intent::SafeResourceLocation::Resource { resource },
+            operation: sage_acp_protocol::intent::FileChangeOperation::Updated,
             ..
         },
         ..
@@ -340,17 +340,17 @@ fn deleted_file_settles_without_an_openable_location() {
     assert!(matches!(
         completed.as_slice(),
         [IncomingEvent::Item {
-            payload: NormalizedPayload::ToolCall { category: crate::acp::intent::ToolCategory::Edit, .. },
+            payload: NormalizedPayload::ToolCall { category: sage_acp_protocol::intent::ToolCategory::Edit, .. },
             ..
         }, IncomingEvent::Item {
             lifecycle: ItemLifecycle::Completed,
             payload: NormalizedPayload::FileChangeDiff {
-                resource: crate::acp::intent::SafeResourceLocation::Unavailable {
-                    reason: crate::acp::intent::UnavailableResourceReason::Missing,
+                resource: sage_acp_protocol::intent::SafeResourceLocation::Unavailable {
+                    reason: sage_acp_protocol::intent::UnavailableResourceReason::Missing,
                     display_resource: Some(display),
                     ..
                 },
-                operation: crate::acp::intent::FileChangeOperation::Deleted,
+                operation: sage_acp_protocol::intent::FileChangeOperation::Deleted,
                 ..
             },
             ..

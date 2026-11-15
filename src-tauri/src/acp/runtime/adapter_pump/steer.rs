@@ -5,13 +5,13 @@
 use sha2::{Digest, Sha256};
 
 use super::{coalescer::NormalizedFact, payload::payload_measure, *};
-use crate::acp::contract::{ContractError, SafeText};
+use sage_acp_protocol::contract::{ContractError, SafeText};
 
 /// The steered message's durable identity and payload. The identity derives
 /// from the client message id alone, so a retried steer or a repeated accept
 /// lands on the one stored item instead of adding a second.
 pub(crate) fn steered_prompt_item(
-    prompt: &crate::acp::intent::Prompt,
+    prompt: &crate::acp::transcript_quote::Prompt,
     client_message_id: &RequiredText<512>,
 ) -> Result<(ExternalId, NormalizedPayload), ContractError> {
     let digest = Sha256::digest(client_message_id.as_str().as_bytes());

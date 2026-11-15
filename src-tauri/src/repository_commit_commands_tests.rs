@@ -279,7 +279,7 @@ fn effect_unknown_recovery_never_projects_a_replacement_root_identity() {
 
     assert_eq!(
         result.error.as_ref().unwrap().kind,
-        crate::domain::GitFileMutationErrorKind::EffectUnknown
+        sage_domain::file_operations::GitFileMutationErrorKind::EffectUnknown
     );
     let recovered = result
         .repositories
@@ -348,7 +348,7 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
 
     let public = commit_command_error(error);
     let message = match public {
-        crate::domain::GitFileMutationCommandError::Failed { message } => message,
+        sage_domain::file_operations::GitFileMutationCommandError::Failed { message } => message,
         _ => panic!("ordinary Git failure must remain a failed command"),
     };
     assert!(message.len() <= 512);
@@ -519,7 +519,7 @@ fn timeout_returns_effect_unknown_with_an_authoritative_all_root_projection() {
     assert_eq!(result.root_id, root_id);
     assert_eq!(
         result.error.as_ref().unwrap().kind,
-        crate::domain::GitFileMutationErrorKind::EffectUnknown
+        sage_domain::file_operations::GitFileMutationErrorKind::EffectUnknown
     );
     assert_eq!(result.repositories.roots.len(), 2);
     assert!(matches!(

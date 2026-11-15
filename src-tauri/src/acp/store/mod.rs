@@ -47,15 +47,15 @@ pub(crate) mod turn_undo;
 
 use serde::{Deserialize, Serialize};
 
+use crate::acp::transcript_quote::Prompt;
 #[cfg(test)]
-use crate::acp::lifecycle::SessionState;
-use crate::acp::{
+use sage_acp_protocol::lifecycle::SessionState;
+use sage_acp_protocol::{
     contract::{
         ClientIntentId, EntityRevision, ProjectGeneration, ProjectionRevision, RuntimeEpoch,
         SageAgentSessionId, SageChatId, SageItemId, SageProjectId, SageServerRequestId, SageTurnId,
     },
-    intent::Prompt,
-    lifecycle::{DeliveryState, ServerRequestState, TurnState},
+    lifecycle::{DeliveryState, ServerRequestState, TurnState, TurnTerminalOutcome},
 };
 
 type StartDuplicateRow = (
@@ -94,9 +94,9 @@ pub(crate) use history::load_chat_page_reserving;
 
 pub(crate) fn load_chat_page(
     connection: &rusqlite::Connection,
-    project_id: crate::acp::contract::SageProjectId,
-    chat_id: crate::acp::contract::SageChatId,
-    cursor: Option<crate::acp::intent::PageCursor>,
+    project_id: sage_acp_protocol::contract::SageProjectId,
+    chat_id: sage_acp_protocol::contract::SageChatId,
+    cursor: Option<sage_acp_protocol::intent::PageCursor>,
 ) -> Result<crate::acp::projection::AcpChatPage, StoreError> {
     load_chat_page_reserving(connection, project_id, chat_id, cursor, 0)
 }
@@ -114,6 +114,7 @@ pub(crate) use send::{begin_send, record_send_observation};
 pub(crate) use session_close::{
     FinalizeCloseCommand, close_session, finalize_close_after_zero_process,
 };
+pub(crate) use session_head::{ended_head, preceding_session, runs_next_send};
 pub(crate) use session_restart::{RestartSessionCommand, restart_undone_session};
 pub(crate) use session_resume::{
     ResumeEarlierSessionCommand, link_resumed_session, unstarted_continuation,
@@ -127,6 +128,7 @@ pub(crate) use snapshots::{FilePairCommand, read_snapshot};
 #[cfg(test)]
 pub(crate) use terminal::apply_session_terminal;
 pub(crate) use terminal::apply_turn_terminal;
+pub(crate) use terminal_reason::recordable as recordable_terminal_reason;
 pub(crate) use terminalize::{terminalize_epoch, terminalize_recovery_epoch};
 pub(crate) use turn_undo::{
     TurnUndoneCommand, UndoneThread, pending_thread_rewind, record_turn_undone,
@@ -175,6 +177,7 @@ pub(crate) struct RecoverRuntimeCommand {
     pub chat_id: SageChatId,
     pub session_id: SageAgentSessionId,
     pub runtime_epoch: RuntimeEpoch,
+    pub terminal_reason: TurnTerminalOutcome,
     pub now_millis: i64,
 }
 
@@ -407,6 +410,8 @@ fn mutation_shape(mutation: &StoreMutation) -> (&str, &str, bool) {
     }
 }
 
+#[cfg(test)]
+mod activation_resume_tests;
 #[cfg(test)]
 mod adapter_batch_tests;
 #[cfg(test)]

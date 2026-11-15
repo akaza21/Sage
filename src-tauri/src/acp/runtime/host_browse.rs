@@ -4,8 +4,8 @@ use std::collections::BTreeMap;
 use serde_json::{Map, Value, json};
 use url::Url;
 
-use crate::acp::contract::SafeText;
-use crate::acp::intent::NormalizedPayload;
+use sage_acp_protocol::contract::SafeText;
+use sage_acp_protocol::intent::NormalizedPayload;
 
 pub(crate) const CURATED_APPLY_FILE_TOOL_NAME: &str = "sage.apply_file";
 pub(crate) const CURATED_BROWSE_TOOL_NAME: &str = "_sage/browse";
@@ -133,10 +133,10 @@ pub(crate) fn browse_tool_summary(
 
 pub(crate) fn browse_tool_payload(
     href: &str,
-) -> Result<NormalizedPayload, crate::acp::contract::ContractError> {
+) -> Result<NormalizedPayload, sage_acp_protocol::contract::ContractError> {
     Ok(NormalizedPayload::ToolCall {
         execution: Default::default(),
-        category: crate::acp::intent::ToolCategory::Fetch,
+        category: sage_acp_protocol::intent::ToolCategory::Fetch,
         label: SafeText::new("toolLabel", CURATED_BROWSE_TOOL_NAME)?,
         input_summary: Some(SafeText::new("toolInput", href)?),
         output_summary: None,

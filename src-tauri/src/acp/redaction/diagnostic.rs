@@ -38,8 +38,6 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
     let mut output = String::with_capacity(value.len());
     // redact_next consumes the value after a key, separator, or auth scheme.
     // separator_key permits a standalone ':'/'=' after a sensitive key.
-    // Each iteration resets both flags from the consumed token; quoted values
-    // and path continuations advance remaining as one bounded unit.
     let mut redact_next = false;
     let mut separator_key = false;
     let mut separator_colon_key = false;

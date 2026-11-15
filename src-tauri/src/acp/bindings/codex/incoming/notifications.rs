@@ -1,6 +1,6 @@
 use serde_json::{Map, Value};
 
-use crate::acp::lifecycle::{ItemLifecycle, ServerRequestState, TurnState};
+use sage_acp_protocol::lifecycle::{ItemLifecycle, ServerRequestState, TurnState};
 
 use super::super::state::{AdapterError, ExternalKind, TurnStartFailure, TurnStartedRejection};
 use super::{
@@ -40,7 +40,7 @@ pub(super) fn notification<M: ResourceMapper>(
     method: &str,
     params: &Map<String, Value>,
     mapper: &M,
-    declarations: &crate::acp::declared_test::DeclaredTestCommands,
+    declarations: &sage_acp_protocol::declared_test::DeclaredTestCommands,
 ) -> Result<IngressDisposition, IngressError> {
     match method {
         "thread/started" => {
@@ -61,8 +61,6 @@ pub(super) fn notification<M: ResourceMapper>(
                 _ => Err(IngressError::Malformed),
             }
         }
-        // Skills changed on disk: the `/` menu reads them again while idle.
-        // The payload is discarded and touches no Turn or session state.
         "skills/changed" => {
             adapter.skills_changed();
             Ok(IngressDisposition::IgnoredLate)

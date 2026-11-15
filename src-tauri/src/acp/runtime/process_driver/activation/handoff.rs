@@ -4,9 +4,10 @@ use std::time::Instant;
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    process::{LaunchError, TreeExit, ZeroProcessToken},
+    process::{TreeExit, ZeroProcessToken},
     runtime::{ActivationJournal, ActivationTransport},
 };
+use sage_process::error::LaunchError;
 
 use super::{ActivationDriverError, ActivationProcessDriver, State};
 use crate::acp::runtime::process_driver::{

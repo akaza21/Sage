@@ -21,11 +21,9 @@ fn prepare_commits_turn_user_item_and_send_intent_atomically() {
 
 #[test]
 fn prepare_records_sent_images_as_user_items_right_after_the_prompt() {
-    use crate::acp::{
-        attached_context::files::images::{ImagePreview, PromptImage, PromptImages},
-        intent::{ImageMediaType, ImageSource, NormalizedPayload},
-    };
+    use crate::acp::attached_context::files::images::{ImagePreview, PromptImage, PromptImages};
     use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use sage_acp_protocol::intent::{ImageMediaType, ImageSource, NormalizedPayload};
     const PNG: &[u8] = b"\x89PNG\r\n\x1a\nsent-image";
     const THUMB: &[u8] = b"\x89PNG\r\n\x1a\nthumbnail";
     let mut connection = setup();

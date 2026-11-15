@@ -6,9 +6,10 @@ use sha2::{Digest, Sha256};
 use uuid::Uuid;
 
 use crate::{
-    acp::{intent::ImageMediaType, migration},
+    acp::migration,
     image_attachment::{ImageAttachedContext, ImageAttachmentKind, MAX_OUTGOING_IMAGE_BYTES},
 };
+use sage_acp_protocol::intent::ImageMediaType;
 use sage_core::limits::{
     IMAGE_UPLOAD_BYTES, STORED_IMAGE_BYTES, STORED_IMAGE_EDGE_PX, STORED_IMAGE_PIXELS,
     STORED_THUMBNAIL_EDGE_PX,

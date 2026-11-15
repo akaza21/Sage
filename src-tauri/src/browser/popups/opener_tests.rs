@@ -103,7 +103,6 @@ fn native_reservation_is_bounded_hidden_and_reuses_opener_cleanup() {
         !requests.native_opened(https.id, "browser-3", t0()),
         "closed opener drops in-flight popup"
     );
-    // The quarantined child keeps one of the bounded entries until cleanup.
     for filled in 1..MAX_PENDING_POPUPS {
         assert!(
             requests
@@ -281,7 +280,6 @@ fn a_blank_child_whose_first_real_navigation_is_refused_is_abandoned() {
         );
         requests.forget_child("browser-3");
     }
-    // `window.open('')` then an HTTP(S) location keeps its tab.
     let blank = requests
         .reserve_native(&tabs, "browser-1", "about:blank")
         .unwrap();
@@ -294,7 +292,6 @@ fn a_blank_child_whose_first_real_navigation_is_refused_is_abandoned() {
         requests.admit_navigation("browser-4", "javascript:void(0)"),
         NavigationVerdict::Deny
     );
-    // Ordinary tabs never hold the grant.
     assert_eq!(
         requests.admit_navigation("browser-1", "javascript:void(0)"),
         NavigationVerdict::Deny

@@ -43,8 +43,6 @@ impl LaunchableRuntime for StandardAcpRuntime {
     }
 }
 
-/// The child's environment: the platform baseline, the profile's and the
-/// user's passthrough names, and any variable the profile's policy pins.
 pub(super) fn launch_environment(
     profile: &StandardAcpProfile,
     extension: &StandardAcpLaunchExtension,

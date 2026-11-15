@@ -1,9 +1,7 @@
 use super::*;
-use crate::acp::{
-    contract::{SageChatId, SageProjectId, SageTurnId},
-    store::{ItemIngressCommand, apply_item_ingress},
-};
+use crate::acp::store::{ItemIngressCommand, apply_item_ingress};
 use rusqlite::params;
+use sage_acp_protocol::contract::{SageChatId, SageProjectId, SageTurnId};
 use sha2::{Digest, Sha256};
 use std::collections::BTreeSet;
 
@@ -68,7 +66,7 @@ fn pi_consecutive_turn_items_and_images_ingest_without_identity_conflicts() {
             .command(AdapterCommand::Prompt {
                 prompt: Prompt::new("prompt", "Inspect read-only").unwrap(),
                 client_message_id: RequiredText::new("client", client.as_str()).unwrap(),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .unwrap();
         let prompt = deliver(&mut runtime, prompt);
@@ -166,7 +164,10 @@ fn pi_consecutive_turn_items_and_images_ingest_without_identity_conflicts() {
                     )
                     .expect("distinct durable item identity across turns");
                     if let NormalizedPayload::Image { .. } = payload {
-                        assert_eq!(*lifecycle, crate::acp::lifecycle::ItemLifecycle::Completed);
+                        assert_eq!(
+                            *lifecycle,
+                            sage_acp_protocol::lifecycle::ItemLifecycle::Completed
+                        );
                         images.push(mutation.item_id.as_str().to_owned());
                     }
                     if lifecycle.is_terminal()

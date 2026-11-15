@@ -9,30 +9,34 @@ use uuid::Uuid;
 use crate::{
     acp::{
         bindings::adapter::{AdapterCommand, EgressResolution, HarnessAdapter},
-        contract::{
-            ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SageChatId,
-            SageProjectId, SchemaVersionV1,
-        },
         fixture::{
             adapter::FixtureAdapter,
             generated_cases::FrozenCase,
             test_support::{FixtureDeadline, JournalCleanup},
         },
-        intent::{CapabilitySnapshotV1, ExternalId, IntentSnapshot, ProjectionChangedV1, Prompt},
-        lifecycle::DeliveryState,
+        ipc::{IntentSnapshot, ProjectionChangedV1},
         recovery::recover_after_restart,
         runtime::{
             JournalHandle, PrepareDispatch, ProjectIntentAuthority, ProjectionPublishError,
             ProjectionPublishStatus, ProjectionPublisher, SendCoordinator, SessionCoordinator,
         },
-        scheduler::Scheduler,
         store::{
             ActivateSessionCommand, CompleteActivationCommand, DatabaseAcpStore,
             PrepareTurnCommand, SendObservation, StartSessionCommand, load_chat_page,
         },
+        transcript_quote::Prompt,
         transport::FrameWriteOutcome,
     },
     persistence::Database,
+};
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SageChatId, SageProjectId,
+        SchemaVersionV1,
+    },
+    intent::{CapabilitySnapshotV1, ExternalId},
+    lifecycle::DeliveryState,
+    scheduler::Scheduler,
 };
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &["send-partial-write-failure"];
@@ -198,7 +202,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
                     dispatch.turn_id().as_str().to_owned(),
                 )
                 .unwrap(),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .unwrap();
         adapter

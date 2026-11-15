@@ -5,12 +5,12 @@
 use super::*;
 use crate::{
     acp::{
-        contract::SageAgentSessionId,
-        intent::{BindingId, Prompt},
         prompt_mentions::{MentionRoot, Mentions, mention_tokens, resolve},
+        transcript_quote::Prompt,
     },
     workspace::Workspace,
 };
+use sage_acp_protocol::{contract::SageAgentSessionId, intent::BindingId};
 
 /// The `@` tokens of `typed`, the person's own text: never attached context,
 /// which may quote untrusted pages.

@@ -1,5 +1,3 @@
-//! Source-owned Codex App Server adapter packet.
-//!
 //! This module deliberately has no launcher. A validated candidate remains
 //! unavailable until a separately admitted native artifact is supplied.
 
@@ -81,7 +79,9 @@ pub(crate) use provisioning::{
 pub(crate) use reproduction::{
     ReproductionError, bind_reproduced_package, parse_reproduction_requirements,
 };
-pub(crate) use runtime::{CodexRuntime, CodexRuntimeFactory, authority::CodexProjectRootAuthority};
+pub(crate) use runtime::{
+    CodexRuntime, CodexRuntimeFactory, authority::CodexProjectRootAuthority, launch_effort_option,
+};
 pub(crate) use state::CodexAdapter;
 
 #[cfg(test)]

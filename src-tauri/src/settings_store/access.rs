@@ -4,7 +4,7 @@ use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
 
 use super::SettingsStore;
-use crate::acp_protocol::access_mode::SessionAccessMode;
+use sage_acp_protocol::access_mode::SessionAccessMode;
 
 pub type SessionAccessModes = BTreeMap<String, SessionAccessMode>;
 
@@ -173,7 +173,7 @@ fn validate(modes: &SessionAccessModes) -> AppResult<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp_protocol::access_mode::SessionAccessMode::{
+    use sage_acp_protocol::access_mode::SessionAccessMode::{
         AcceptEdits, Ask, Auto, FullAccess, Plan, ReadOnly, WorkspaceWrite,
     };
 

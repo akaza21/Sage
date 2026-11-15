@@ -10,7 +10,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentSessionFactsTurnIndex
         | SchemaClass::CurrentOperationTerminalIndex
         | SchemaClass::CurrentTurnUndoIntentIndexes
-        | SchemaClass::CurrentImportedHistory => return Ok(()),
+        | SchemaClass::CurrentImportedHistory
+        | SchemaClass::CurrentSessionCapabilities => return Ok(()),
         SchemaClass::CurrentV22 => {}
         _ => return invalid("session config choices require exact schema v22"),
     }
@@ -67,7 +68,6 @@ mod tests {
                 .execute("UPDATE acp_session_config_notices SET reason='other'", [])
                 .is_err()
         );
-        // Oversized values and unknown kinds are refused by the schema itself.
         assert!(
             connection
                 .execute(
@@ -84,8 +84,6 @@ mod tests {
                 )
                 .is_err()
         );
-        // Temporary chat cleanup lifts the history guard, then deletes the
-        // session; its choices go with it.
         connection
             .execute_batch(
                 "DROP TRIGGER deny_agent_session_delete;

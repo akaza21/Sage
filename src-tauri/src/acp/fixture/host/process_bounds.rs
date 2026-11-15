@@ -4,8 +4,9 @@ use serde_json::{Value, json};
 
 use crate::acp::{
     fixture::generated_cases::FrozenCase,
-    process::{BoundedEnvironment, BoundedOsArgs, LaunchError},
+    process::{BoundedEnvironment, BoundedOsArgs},
 };
+use sage_process::error::LaunchError;
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &[
     "process-arguments-32",

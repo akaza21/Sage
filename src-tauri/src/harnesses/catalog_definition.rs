@@ -1,4 +1,4 @@
-use crate::domain::{HarnessDefinition, HarnessTransport};
+use sage_domain::harness::{HarnessDefinition, HarnessTransport};
 
 pub(super) fn annotate_binding(
     definition: &mut HarnessDefinition,

@@ -1,18 +1,17 @@
 use super::{extended_tests::*, *};
-use crate::{
-    acp::{
-        contract::{
-            ClientIntentId, EntityRevision, ProjectGeneration, RequiredText, SafeText,
-            SchemaVersionV1,
-        },
-        intent::{
-            ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload, Prompt,
-            ToolCategory,
-        },
-        lifecycle::{ActivityLifecycle, ItemLifecycle, TurnState},
-        projection::{ActivityRole, ItemContent},
+use crate::acp::{
+    projection::{ActivityRole, ItemContent},
+    transcript_quote::Prompt,
+};
+use sage_acp_protocol::{
+    contract::{
+        ClientIntentId, EntityRevision, ProjectGeneration, RequiredText, SafeText, SchemaVersionV1,
     },
-    acp_protocol::permissions::PermissionIntent,
+    intent::{
+        ActivityProvenanceV1, ActivitySourceKind, ExternalId, NormalizedPayload, ToolCategory,
+    },
+    lifecycle::{ActivityLifecycle, ItemLifecycle, TurnState},
+    permissions::PermissionIntent,
 };
 use sage_core::limits::LIMITS;
 

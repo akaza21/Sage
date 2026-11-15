@@ -1,7 +1,3 @@
-//! Back, forward, reload and stop for a browser tab, the user's take over
-//! and hand back of Agent control, and the Annotate actions, which answer
-//! with a value.
-
 #[cfg(windows)]
 use std::{sync::mpsc, time::Duration};
 
@@ -34,8 +30,6 @@ pub(crate) async fn browser_control(
     history_control(state, tab_id, action).await.map(|()| None)
 }
 
-/// Rust owns who controls a tab; the chrome shows what this answers: the
-/// tab's live Agent attachment and whether the user took it over, or null.
 /// `take` takes over (`Some(true)`) or hands back (`Some(false)`) first.
 /// Handing back a tab whose attachment ended is not an error.
 fn agent_control(

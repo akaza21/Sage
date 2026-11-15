@@ -102,7 +102,6 @@ impl BrowserCapabilityDispatch for PendingEvaluation {
 
 #[test]
 fn user_attach_keeps_the_agent_grant_and_pending_evaluation_visible_until_revoke() {
-    // A command deadline ends its work, not the session/origin approval.
     for (outcome, revoke_pending) in [
         (
             Ok(BrowserResult::Cdp {

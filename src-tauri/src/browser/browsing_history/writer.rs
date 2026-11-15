@@ -1,33 +1,24 @@
-//! Applies queued visits and titles on the worker thread. It remembers the
-//! latest visit row of each recent tab, so a title lands on the visit its
-//! own tab made, and a burst of same-document URL changes (a page calling
-//! `replaceState` as it scrolls, say) folds into one row instead of
-//! flooding the store.
-
 use std::collections::VecDeque;
 
 use rusqlite::Connection;
 
 use super::store;
 
-/// Recent tabs whose latest visit is remembered. Browser tabs are capped
-/// at eight; the rest covers tabs that closed recently.
+/// Browser tabs are capped at eight; the rest covers tabs that closed
+/// recently.
 const MAX_TABS_TRACKED: usize = 32;
-/// A same-document change this soon after its tab's last visit replaces
-/// that visit's URL rather than adding a row.
+/// Folding keeps a page calling `replaceState` as it scrolls from flooding history.
 pub(super) const SAME_DOCUMENT_FOLD_MS: i64 = 5_000;
-/// Inserted visits between prunes. The count prune walks the time index,
-/// so it runs on the first write of a session and then periodically.
+/// The count prune walks the time index, so it runs on the first write of a
+/// session and then periodically.
 pub(super) const PRUNE_EVERY: usize = 256;
 
-/// A write the worker applies in order.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(super) enum Write {
     Visit {
         tab: String,
         url: String,
-        /// The tab's title when the URL changed within its document;
-        /// a new document reports its title later.
+        /// `None` for a new document, which reports its title later.
         title: Option<String>,
         visited_at: i64,
         same_document: bool,
@@ -48,7 +39,7 @@ struct LastVisit {
 #[derive(Clone, Default)]
 pub(super) struct Writer {
     last: VecDeque<LastVisit>,
-    /// Visits inserted since the last prune; `None` before the first.
+    /// `None` before the first prune.
     since_prune: Option<usize>,
 }
 
@@ -63,8 +54,6 @@ impl Writer {
         }
     }
 
-    /// Writes a batch in one transaction and prunes when due. `now` is the
-    /// current time, for the age bound.
     pub(super) fn apply(
         &mut self,
         connection: &mut Connection,

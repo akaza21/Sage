@@ -10,7 +10,7 @@ use super::{
     profile::{StandardAcpProfile, profile_for},
     translator::{AdapterEvent, PromptTerminal, ResourceMapper, StandardAcpTranslator},
 };
-use crate::acp::intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason};
+use sage_acp_protocol::intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason};
 
 const UNASSERTED_EXPECTED_KEYS: &[&str] = &["updateMode"];
 

@@ -6,10 +6,13 @@ mod handoff;
 
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    runtime::{ActivationFlush, ActivationJournal, ActivationPump, ActivationPumpError},
-    scheduler::RuntimeOwner,
+    runtime::{
+        ActivationFlush, ActivationJournal, ActivationPump, ActivationPumpError,
+        ActivationStartupStep,
+    },
 };
 use diagnostic::safe_frame_diagnostic;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::types::tree_exit;
 use super::{
@@ -39,15 +42,6 @@ pub(crate) enum ActivationDriverError {
     NotReusable,
     #[error("zero-process convergence is not yet proven")]
     Tree,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) enum ActivationStartupStep {
-    Initialize,
-    SessionNew,
-    SessionResume,
-    SessionLoad,
-    ReadyHandoff,
 }
 
 pub(crate) struct ActivationProcessDriver<A, J, R, T, C>
@@ -107,7 +101,7 @@ where
         clock: Arc<dyn DriverClock>,
     ) -> RetainedActivationDriverConstruction<A, J, R, T, C> {
         if pump.runtime_owner() != owner
-            || owner.runtime_epoch == crate::acp::contract::RuntimeEpoch::ZERO
+            || owner.runtime_epoch == sage_acp_protocol::contract::RuntimeEpoch::ZERO
         {
             return Err(Box::new((
                 pump,
@@ -147,13 +141,7 @@ where
     }
 
     pub(crate) fn startup_step(&self) -> ActivationStartupStep {
-        match self.pump.startup_phase() {
-            "initialize" => ActivationStartupStep::Initialize,
-            "session/new" => ActivationStartupStep::SessionNew,
-            "session/resume" => ActivationStartupStep::SessionResume,
-            "session/load" => ActivationStartupStep::SessionLoad,
-            _ => ActivationStartupStep::ReadyHandoff,
-        }
+        self.pump.startup_step()
     }
 
     pub(crate) fn log_startup_failure(
@@ -164,7 +152,7 @@ where
         tracing::warn!(
             activation_checkpoint = checkpoint,
             activation_stage = "activation",
-            activation_phase = self.pump.startup_phase(),
+            activation_phase = self.pump.startup_step().as_str(),
             ?error,
             "ACP activation failed closed"
         );
@@ -384,7 +372,7 @@ where
         tracing::warn!(
             activation_checkpoint = checkpoint,
             activation_stage = "activation",
-            activation_phase = self.pump.startup_phase(),
+            activation_phase = self.pump.startup_step().as_str(),
             ?error,
             ?json_rpc_method,
             %frame_json,

@@ -36,7 +36,6 @@ fn a_new_chat_is_keyed_by_its_session_file_and_reopens_it_directly() {
             model: None,
         })
         .unwrap();
-    // Pi opened a fresh session at launch; the chat takes it by its file's name.
     let value = deliver(&mut runtime, session);
     assert_eq!(value["type"], "get_state");
     let batch = runtime
@@ -52,7 +51,6 @@ fn a_new_chat_is_keyed_by_its_session_file_and_reopens_it_directly() {
         matches!(batch.events(), [AdapterEvent::SessionReady { id, loaded: false }]
         if id.external_id.as_str() == key)
     );
-    // Pi saved the chat; a later process reopens that file by its name.
     std::fs::write(&file, "{}\n").unwrap();
     let mut later = launched_in(&dir);
     let switch = resume(&mut later, key).unwrap();
@@ -80,7 +78,6 @@ fn a_saved_chat_reopens_from_pis_session_file() {
         matches!(batch.events(), [AdapterEvent::SessionReady { id: ready, loaded: false }]
         if ready.external_id.as_str() == id)
     );
-    // The reopened chat takes prompts like a new one.
     running(&mut runtime);
     std::fs::remove_dir_all(dir).unwrap();
 }

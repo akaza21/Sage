@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue};
+use sage_acp_protocol::session_config::{ConfigId, ConfigIntent, ConfigMutation, ConfigValue};
 
 pub(super) fn intent(id: &str, value: &str) -> ConfigIntent {
     ConfigIntent {

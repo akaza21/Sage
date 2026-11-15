@@ -1,10 +1,6 @@
-//! The session's mode, model and effort as ACP session config.
-//!
-//! Claude Code reports its models (with each model's effort levels) and the
-//! starting permission mode in the `initialize` reply, and the effective model
-//! and effort in `get_settings`. Sage's config overlay reads ACP `modes` and
-//! `configOptions`, so this module presents those facts in that shape and
-//! keeps the user's current selections.
+//! Claude Code reports its models (with each model's effort levels) and the starting
+//! permission mode in the `initialize` reply, and the effective model and effort in
+//! `get_settings`.
 
 use serde_json::{Value, json};
 
@@ -53,9 +49,7 @@ pub(super) struct SessionSettings {
 }
 
 impl SessionSettings {
-    /// Reads the `initialize` reply. The launch model, when Sage chose one,
-    /// is the current model; otherwise Claude Code's default. A starting
-    /// mode outside the picker is refused rather than shown as another.
+    /// A starting mode outside the picker is refused rather than shown as another.
     pub(super) fn from_initialize(reply: &Value, launch_model: Option<&str>) -> Option<Self> {
         let mut models = reply
             .get("models")
@@ -95,7 +89,6 @@ impl SessionSettings {
         effort == DEFAULT || self.effort_levels().any(|level| level == effort)
     }
 
-    /// Selecting a model resets effort when the new model lacks the level.
     pub(super) fn select_model(&mut self, model: &str) {
         self.model = model.to_owned();
         if !self.has_effort(&self.effort.clone()) {
@@ -103,8 +96,7 @@ impl SessionSettings {
         }
     }
 
-    /// The `effortLevel` flag setting for an effort selection; `default`
-    /// clears the override.
+    /// `default` clears the override.
     pub(super) fn effort_setting(effort: &str) -> Value {
         if effort == DEFAULT {
             Value::Null
@@ -113,7 +105,6 @@ impl SessionSettings {
         }
     }
 
-    /// The ACP `session/new` result for `session_id`.
     pub(super) fn session_result(&self, session_id: &str) -> Value {
         json!({
             "sessionId": session_id,
@@ -136,9 +127,6 @@ impl SessionSettings {
                 "description": model.get("description").and_then(Value::as_str).unwrap_or_default(),
             }))
         });
-        let efforts = std::iter::once(DEFAULT)
-            .chain(self.effort_levels())
-            .map(|level| json!({"value": level, "name": capitalized(level)}));
         let mut options = vec![
             json!({
                 "id": MODE_ID, "name": "Mode", "description": "Session permission mode",
@@ -154,12 +142,7 @@ impl SessionSettings {
             }),
         ];
         if self.effort_levels().next().is_some() {
-            options.push(json!({
-                "id": EFFORT_ID, "name": "Effort",
-                "description": "Available effort levels for this model",
-                "category": "thought_level", "type": "select", "currentValue": self.effort,
-                "options": efforts.collect::<Vec<_>>(),
-            }));
+            options.push(effort_option(self.effort_levels(), &self.effort));
         }
         options.into()
     }
@@ -179,6 +162,19 @@ impl SessionSettings {
             .flatten()
             .filter_map(Value::as_str)
     }
+}
+
+/// The session's effort option: Default, then `levels`, set to `current`.
+pub(super) fn effort_option<'a>(levels: impl Iterator<Item = &'a str>, current: &str) -> Value {
+    let efforts = std::iter::once(DEFAULT)
+        .chain(levels)
+        .map(|level| json!({"value": level, "name": capitalized(level)}));
+    json!({
+        "id": EFFORT_ID, "name": "Effort",
+        "description": "Available effort levels for this model",
+        "category": "thought_level", "type": "select", "currentValue": current,
+        "options": efforts.collect::<Vec<_>>(),
+    })
 }
 
 fn capitalized(value: &str) -> String {

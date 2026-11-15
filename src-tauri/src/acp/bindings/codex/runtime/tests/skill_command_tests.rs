@@ -10,8 +10,6 @@ fn skill(name: &str, enabled: bool) -> Value {
         "path":format!(r"C:\skills\{name}\SKILL.md"),"scope":"user"})
 }
 
-/// The listed skills; Codex's own commands come first and are checked
-/// on their own.
 fn listed(runtime: &CodexRuntime) -> Vec<String> {
     let list = runtime.available_commands().snapshot();
     list.commands
@@ -42,7 +40,6 @@ fn read_skills(runtime: &mut CodexRuntime, skills: Value) {
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::Queued)
         .unwrap();
-    // One read at a time.
     assert!(runtime.discover_commands().unwrap().is_none());
     let batch = runtime
         .ingest(&skills_reply(wire["id"].as_u64().unwrap(), skills), &Mapper)
@@ -78,7 +75,6 @@ fn enabled_skills_list_as_commands_and_are_read_again_when_codex_says_they_chang
         .collect();
     assert_eq!(skills[0].description, "Read PDFs");
     assert_eq!(skills[1].description, "lint in full");
-    // Nothing more to read until Codex says the skills changed.
     assert!(runtime.discover_commands().unwrap().is_none());
     runtime
         .ingest(
@@ -104,7 +100,7 @@ fn a_listed_skill_runs_with_the_skill_attached() {
             .command(AdapterCommand::Prompt {
                 prompt,
                 client_message_id: RequiredText::new("client", "client-1").unwrap(),
-                access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+                access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
             })
             .unwrap();
         let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -131,7 +127,7 @@ fn typed_text_naming_a_skill_is_only_text() {
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "/pdf summarise it").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -147,11 +143,9 @@ fn a_refused_skills_read_is_tried_once_more_then_waits_for_a_change() {
     ready(&mut runtime);
     refuse_read(&mut runtime);
     assert!(listed(&runtime).is_empty());
-    // One more read at the next idle moment, in case the failure passed.
     refuse_read(&mut runtime);
     assert!(listed(&runtime).is_empty());
     assert!(runtime.discover_commands().unwrap().is_none());
-    // A change is read again, and a good read restores the retry.
     skills_changed(&mut runtime);
     read_skills(&mut runtime, json!([skill("pdf", true)]));
     assert_eq!(listed(&runtime), ["pdf"]);
@@ -176,11 +170,9 @@ fn an_unchanged_reread_keeps_the_revision_and_a_refused_one_empties_the_list() {
     ready(&mut runtime);
     read_skills(&mut runtime, json!([skill("pdf", true)]));
     let revision = runtime.available_commands().snapshot().revision;
-    // A pick made from the shown list still runs after an equal re-read.
     skills_changed(&mut runtime);
     read_skills(&mut runtime, json!([skill("pdf", true)]));
     assert_eq!(runtime.available_commands().snapshot().revision, revision);
-    // A refused re-read drops the list: a listed path may no longer exist.
     skills_changed(&mut runtime);
     let egress = runtime.discover_commands().unwrap().expect("skills/list");
     let id = request_id(&egress);
@@ -208,17 +200,15 @@ fn an_oversized_skills_reply_is_a_refused_read_not_a_broken_session() {
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::Queued)
         .unwrap();
-    // The pump decodes oversize replies recoverably while the read is out.
     assert!(runtime.child_read_pending());
     runtime.accept_oversized_response(id).unwrap();
     assert!(!runtime.child_read_pending());
     assert!(listed(&runtime).is_empty());
-    // The session still runs prompts.
     runtime
         .command(AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "hello").unwrap(),
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
 }
@@ -237,10 +227,8 @@ fn a_long_catalogue_lists_the_skills_that_fit_the_byte_bound() {
         .collect();
     read_skills(&mut runtime, Value::Array(skills));
     let list = runtime.available_commands().snapshot();
-    // The bound counts each skill's path as well as its text.
     let bytes: usize = list.commands.iter().map(|c| c.listed_bytes()).sum();
     let next = 1000 + "skill-399".len() + r"C:\skills\skill-399\SKILL.md".len();
-    // Every skill that fits is listed, in order; the next one would not fit.
     assert!(bytes <= MAX_COMMAND_BYTES);
     assert!(bytes + next > MAX_COMMAND_BYTES);
     let skills = listed(&runtime);
@@ -265,10 +253,9 @@ fn a_skills_read_that_never_left_is_wanted_again() {
 fn an_oversized_skills_reply_tells_the_menu_the_list_changed() {
     use crate::acp::{
         bindings::runtime::NativeRuntime,
-        contract::SageChatId,
-        scheduler::RuntimeOwner,
         slash_commands::{CommandChannel, CommandsChangedV1},
     };
+    use sage_acp_protocol::{contract::SageChatId, scheduler::RuntimeOwner};
     use std::sync::{Arc, Mutex};
     let mut codex = fixture_runtime();
     ready(&mut codex);
@@ -326,12 +313,10 @@ fn codex_lists_its_own_commands_for_the_methods_this_session_negotiated() {
             ("mcp", CommandSource::Builtin, false),
         ]
     );
-    // The panel a command opens is the only route the WebView learns.
     let listed = serde_json::to_value(&list.commands).unwrap();
     assert_eq!(listed[0].get("panel"), None);
     assert_eq!(listed[2]["panel"], "status");
     assert_eq!(listed[3]["panel"], "mcp");
-    // Codex's own command keeps its name over a skill that shares it.
     read_skills(
         &mut runtime,
         json!([skill("review", true), skill("pdf", true)]),
@@ -357,7 +342,7 @@ fn a_listed_review_runs_review_start_with_the_target_it_names() {
         .command(AdapterCommand::Prompt {
             prompt,
             client_message_id: RequiredText::new("client", "client-1").unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         })
         .unwrap();
     let wire: Value = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -384,7 +369,6 @@ fn a_changed_skills_read_skips_the_cache_until_one_succeeds() {
     read_skills(&mut runtime, json!([]));
     skills_changed(&mut runtime);
     assert_eq!(params(&mut runtime)["forceReload"], true);
-    // The read that retries a refused one still skips the cache.
     refuse_read(&mut runtime);
     assert_eq!(params(&mut runtime)["forceReload"], true);
     read_skills(&mut runtime, json!([]));
@@ -405,8 +389,6 @@ fn a_change_during_a_read_keeps_the_next_read_off_the_cache() {
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::Queued)
         .unwrap();
-    // Codex changes the skills again while that read is out, then answers
-    // it with what may be the list from before.
     skills_changed(&mut runtime);
     runtime
         .ingest(&skills_reply(id, json!([])), &Mapper)
@@ -425,7 +407,6 @@ fn a_read_that_never_left_keeps_the_one_retry_spent() {
     runtime
         .resolve_egress(egress.into_token(), EgressResolution::QueueRejected)
         .unwrap();
-    // The unsent retry goes out again, and its refusal is the last.
     refuse_read(&mut runtime);
     assert!(runtime.discover_commands().unwrap().is_none());
 }

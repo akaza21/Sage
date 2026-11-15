@@ -1,6 +1,6 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{EntityRevision, SageAgentSessionId, SageChatId, SageProjectId, SageTurnId},
     lifecycle::TurnState,
 };
@@ -23,7 +23,6 @@ pub(crate) fn begin_cancel(
     Ok(mutation)
 }
 
-/// Whether the turn has settled, read from its own row rather than a chat page.
 /// A turn missing from the session reads as not terminal.
 pub(crate) fn turn_is_terminal(
     connection: &rusqlite::Connection,

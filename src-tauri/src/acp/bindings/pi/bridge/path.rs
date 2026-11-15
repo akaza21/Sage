@@ -10,7 +10,6 @@ use std::path::{Component, Path, PathBuf};
 /// The approval prompt names the path in full, so it must fit the summary.
 pub(crate) const MAX_DISPLAY_PATH_BYTES: usize = 480;
 
-/// Normalises a requested path to `/`-separated relative form and admits it.
 pub(crate) fn admit_requested(workspace: &Workspace, requested: &str) -> Result<String, Refusal> {
     if !cfg!(windows) && requested.contains('\\') {
         // A literal backslash would name a different file on Unix.
@@ -23,7 +22,6 @@ pub(crate) fn admit_requested(workspace: &Workspace, requested: &str) -> Result<
     } else {
         path
     };
-    // A leading `./` names the same workspace path; every other component must be a name.
     let relative: PathBuf = relative
         .components()
         .filter(|part| *part != Component::CurDir)

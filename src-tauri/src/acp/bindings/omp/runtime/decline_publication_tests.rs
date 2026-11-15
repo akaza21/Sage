@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::lifecycle::ToolState;
+use sage_acp_protocol::lifecycle::ToolState;
 
 #[test]
 fn a_committed_decline_reaches_the_durable_card_before_the_turn_ends() {
@@ -75,7 +75,7 @@ fn a_declined_card_keeps_the_label_and_kind_the_permission_surface_showed() {
             AdapterEvent::Item {
                 tool_state: Some(ToolState::Declined),
                 payload:
-                    crate::acp::intent::NormalizedPayload::ToolCall {
+                    sage_acp_protocol::intent::NormalizedPayload::ToolCall {
                         label, category, ..
                     },
                 ..
@@ -89,7 +89,7 @@ fn a_declined_card_keeps_the_label_and_kind_the_permission_surface_showed() {
     );
     assert_eq!(
         card.1,
-        crate::acp::intent::ToolCategory::Execute,
+        sage_acp_protocol::intent::ToolCategory::Execute,
         "the declined card keeps its kind"
     );
 }
@@ -141,7 +141,7 @@ fn a_declined_card_keeps_the_locations_the_tool_reported() {
         .find_map(|event| match event {
             AdapterEvent::Item {
                 tool_state: Some(ToolState::Declined),
-                payload: crate::acp::intent::NormalizedPayload::ToolCall { locations, .. },
+                payload: sage_acp_protocol::intent::NormalizedPayload::ToolCall { locations, .. },
                 ..
             } => Some(locations.as_slice().len()),
             _ => None,

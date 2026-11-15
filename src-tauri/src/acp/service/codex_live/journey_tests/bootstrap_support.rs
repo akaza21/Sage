@@ -7,13 +7,13 @@ use crate::acp::{
             AttachedSessionCapability, AttachedTabFactory, BrowserSessionContext,
         },
     },
-    contract::SageServerRequestId,
     runtime::{BoundedThread, JournalHandle, SessionCoordinator},
     store::{
         AcpStore, DatabaseAcpStore, StoreCommit, StoreError, StoreMutation, StoreMutationResult,
     },
 };
 use crate::browser::state_query::bootstrap_fixture::BrowserDocumentFixture;
+use sage_acp_protocol::contract::SageServerRequestId;
 use std::sync::{Arc, Mutex, mpsc};
 use std::time::Duration;
 
@@ -133,7 +133,7 @@ pub(super) fn install_store(service: &mut AcpService, store: impl AcpStore + 'st
         BoundedThread::spawn("bootstrap-causal-journal", move || runner.run_blocking()).unwrap();
     service.session_starts = SessionCoordinator::new(
         journal.clone(),
-        crate::acp::scheduler::Scheduler::new(),
+        sage_acp_protocol::scheduler::Scheduler::new(),
         service.publisher.clone(),
     );
     service.lanes = (0..crate::acp::service::LIVE_RUNTIME_LANES)
@@ -147,7 +147,7 @@ pub(super) fn install_store(service: &mut AcpService, store: impl AcpStore + 'st
 pub(super) struct Context {
     pub(super) setup: Arc<FixtureSetup>,
     pub(super) document: Arc<BrowserDocumentFixture>,
-    pub(super) session: crate::acp::contract::SageAgentSessionId,
+    pub(super) session: sage_acp_protocol::contract::SageAgentSessionId,
 }
 impl BrowserSessionContext for Context {
     fn service(&self) -> &AcpService {

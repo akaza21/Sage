@@ -187,9 +187,6 @@ impl CodexBindingRegistration {
         }
     }
 
-    /// Authenticode can identify the installed role, but this workstation's
-    /// curated evidence records it as observation-only. If independent launch
-    /// admission cannot proceed, retain that more precise fail-closed state.
     pub(super) fn refuse_independent_launch_after_workstation_authenticode_observation(
         &self,
     ) -> CodexAdmissionUnavailable {

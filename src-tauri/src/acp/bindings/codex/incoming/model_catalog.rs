@@ -2,7 +2,7 @@ use super::{
     IngressError, ModelDescriptor, ReasoningEffort,
     support::{content, text},
 };
-use crate::acp::contract::RequiredText;
+use sage_acp_protocol::contract::RequiredText;
 use sage_core::limits::LIMITS;
 use serde_json::{Map, Value};
 

@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::contract::{SageChatId, SageProjectId};
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 #[derive(Debug)]
 pub(super) struct InFlight {

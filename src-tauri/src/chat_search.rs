@@ -11,10 +11,8 @@ use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
-use crate::{
-    acp::{intent::NormalizedPayload, store::decode_payload},
-    persistence::Database,
-};
+use crate::{acp::store::decode_payload, persistence::Database};
+use sage_acp_protocol::intent::NormalizedPayload;
 
 pub const MAX_CHAT_SEARCH_QUERY_BYTES: usize = 256;
 pub const MAX_CHAT_SEARCH_RESULTS: usize = 64;

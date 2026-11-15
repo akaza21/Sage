@@ -1,16 +1,18 @@
 use super::*;
 use crate::acp::{
-    contract::{SageChatId, SageProjectId, SageTurnId},
-    intent::ProjectionChangedV1,
+    ipc::ProjectionChangedV1,
     runtime::{
         ActivatedSession, ActiveTurnIntent, AdapterPump, CompletedActivationDriverParts,
         EgressTransport, IdleActivationParts, JournalHandle, ProjectionPublishError,
         ProjectionPublishStatus, ProjectionPublisher, PumpIntent, SessionPumpIntent,
         SqliteAdapterBatchJournal, StdinTransport, SystemDriverClock,
     },
-    scheduler::RuntimeOwner,
     store::DatabaseAcpStore,
     transport::{FrameWriteOutcome, OutboundFrame},
+};
+use sage_acp_protocol::{
+    contract::{SageChatId, SageProjectId, SageTurnId},
+    scheduler::RuntimeOwner,
 };
 use std::sync::{Arc, Mutex};
 
@@ -27,7 +29,7 @@ impl HarnessAdapter for ObservedPi {
     fn capabilities(&self) -> Option<CapabilitySnapshotV1> {
         self.inner.capabilities()
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.inner.session_config()
     }
     fn config_pending(&self) -> bool {
@@ -35,7 +37,7 @@ impl HarnessAdapter for ObservedPi {
     }
     fn configure(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.inner.configure(intent)
     }
@@ -339,7 +341,7 @@ pub(super) async fn start_turn<A: HarnessAdapter>(
     pump.queue_command(AdapterCommand::Prompt {
         prompt: Prompt::new("prompt", "Inspect").unwrap(),
         client_message_id: RequiredText::new("client", format!("turn-pump-{ordinal}")).unwrap(),
-        access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
     })
     .unwrap();
     let mut transport = Capture::default();

@@ -1,6 +1,6 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 
-use crate::acp::{
+use sage_acp_protocol::{
     intent::{ExternalId, NormalizedPayload},
     lifecycle::ItemLifecycle,
 };

@@ -1,8 +1,6 @@
 use super::*;
-use crate::acp::{
-    bindings::{adapter::HarnessAdapter, registry::BindingRegistry},
-    contract::{RuntimeEpoch, SageAgentSessionId},
-};
+use crate::acp::bindings::{adapter::HarnessAdapter, registry::BindingRegistry};
+use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
 use std::fs;
 
 #[test]
@@ -30,8 +28,6 @@ fn fixture_registry_isolated_and_native_activation_revalidates_without_consuming
         artifact_bytes: 17,
         case: "pi-turn-completed".into(),
     };
-    // The production registry routes pi-rpc to the curated native binding,
-    // which stays unadmitted until discovery finds an installed Pi.
     assert!(BindingRegistry::default().resolve("pi-rpc").is_err());
     let registry = BindingRegistry::desktop_pi_fixture(selection.clone()).unwrap();
     let catalog = crate::harnesses::HarnessCatalog::with_registry(std::sync::Arc::new(registry));
@@ -66,9 +62,9 @@ fn fixture_registry_isolated_and_native_activation_revalidates_without_consuming
     );
     let root = |path: &std::path::Path| {
         crate::project_registry::ProjectRootAuthority::for_test(
-            crate::acp::contract::SageProjectId::parse("fixture-project").unwrap(),
-            crate::acp::contract::ProjectGeneration::ZERO,
-            crate::acp::contract::SageRootId::parse("fixture-root").unwrap(),
+            sage_acp_protocol::contract::SageProjectId::parse("fixture-project").unwrap(),
+            sage_acp_protocol::contract::ProjectGeneration::ZERO,
+            sage_acp_protocol::contract::SageRootId::parse("fixture-root").unwrap(),
             path,
         )
         .unwrap()
@@ -133,7 +129,6 @@ fn assert_native_activation(
     selection: &crate::launch_profile::FixtureSelection,
 ) {
     use crate::acp::{
-        contract::{ProjectionRevision, SageChatId, SageProjectId},
         runtime::{
             ActivationFlush, ActivationIntent, ActivationJournal, ActivationJournalError,
             ActivationMode, ActivationPump, ActivationReceipt, ActivationTransport,
@@ -141,6 +136,7 @@ fn assert_native_activation(
         store::CompleteActivationCommand,
         transport::{FrameWriteOutcome, OutboundFrame},
     };
+    use sage_acp_protocol::contract::{ProjectionRevision, SageChatId, SageProjectId};
 
     struct Journal(Option<CompleteActivationCommand>);
     impl ActivationJournal for Journal {
@@ -179,14 +175,14 @@ fn assert_native_activation(
             &self,
             _: &str,
         ) -> Result<
-            crate::acp::intent::SafeResourceRef,
-            crate::acp::intent::UnavailableResourceReason,
+            sage_acp_protocol::intent::SafeResourceRef,
+            sage_acp_protocol::intent::UnavailableResourceReason,
         > {
-            Err(crate::acp::intent::UnavailableResourceReason::Unsupported)
+            Err(sage_acp_protocol::intent::UnavailableResourceReason::Unsupported)
         }
     }
 
-    let owner = crate::acp::scheduler::RuntimeOwner {
+    let owner = sage_acp_protocol::scheduler::RuntimeOwner {
         project_id: SageProjectId::parse("fixture-project").unwrap(),
         chat_id: SageChatId::parse("fixture-chat").unwrap(),
         session_id: SageAgentSessionId::parse("fixture-native-session").unwrap(),

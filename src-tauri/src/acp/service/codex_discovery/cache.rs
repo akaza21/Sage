@@ -5,12 +5,14 @@ use crate::acp::{
         CodexAccountSnapshot, CodexDiscoveryContent, CodexDiscoveryRunError,
         CodexProjectRootAuthority,
     },
-    contract::{ProjectGeneration, RuntimeEpoch, SageProjectId, SageRootId},
-    intent::{BindingId, ModelId},
     ipc::{
         CodexDiscoveryAccount, CodexDiscoveryModel, CodexDiscoveryResponse,
         GetCodexDiscoveryRequest,
     },
+};
+use sage_acp_protocol::{
+    contract::{ProjectGeneration, RuntimeEpoch, SageProjectId, SageRootId},
+    intent::{BindingId, ModelId},
 };
 
 #[derive(Clone, PartialEq, Eq)]
@@ -91,6 +93,41 @@ impl DiscoveryCache {
             .validate_session_model(project_root, binding_id, binding_digest, model_id)
     }
 
+    /// The listed model a session of this root starts on, with the thinking
+    /// levels the discovery listed for it: `model`, or the account's default
+    /// when none is named.
+    pub(super) fn launch_model(
+        &self,
+        project_root: &CodexProjectRootAuthority,
+        binding_id: &BindingId,
+        binding_digest: [u8; 32],
+        model_id: Option<&ModelId>,
+    ) -> Option<sage_domain::harness::ModelOption> {
+        let guard = self.entry.lock().ok()?;
+        let cached = guard.as_ref()?;
+        cached
+            .validate_session_model(project_root, binding_id, binding_digest, model_id)
+            .ok()?;
+        let model = cached.response.models.iter().find(|entry| match model_id {
+            Some(model) => &entry.id == model,
+            None => entry.is_default,
+        })?;
+        Some(sage_domain::harness::ModelOption {
+            id: model.id.as_str().to_owned(),
+            name: model.name.as_str().to_owned(),
+            description: None,
+            is_default: Some(model.is_default),
+            context_window: None,
+            effort_levels: (!model.effort_levels.is_empty()).then(|| {
+                model
+                    .effort_levels
+                    .iter()
+                    .map(|level| level.as_str().to_owned())
+                    .collect()
+            }),
+        })
+    }
+
     pub(super) fn publish_if_current(
         &self,
         key: CacheKey,
@@ -115,11 +152,10 @@ impl DiscoveryCache {
         binding_digest: [u8; 32],
         binding_id: &str,
         model: Option<ModelId>,
+        effort_levels: &[&str],
     ) {
-        use crate::acp::{
-            contract::{RequiredText, RuntimeEpoch},
-            ipc::{CodexDiscoveryAccount, CodexDiscoveryModel},
-        };
+        use crate::acp::ipc::{CodexDiscoveryAccount, CodexDiscoveryModel};
+        use sage_acp_protocol::contract::{RequiredText, RuntimeEpoch};
 
         let scope = CacheScope {
             project_id: project_root.project_id().clone(),
@@ -135,6 +171,10 @@ impl DiscoveryCache {
                     id,
                     name: RequiredText::new("modelName", "Codex test model").unwrap(),
                     is_default: true,
+                    effort_levels: effort_levels
+                        .iter()
+                        .map(|level| RequiredText::new("effort", *level).unwrap())
+                        .collect(),
                 }]
             })
             .unwrap_or_default();
@@ -244,6 +284,7 @@ pub(super) fn response_from(
                 id: model.id.clone(),
                 name: model.name.clone(),
                 is_default: model.is_default,
+                effort_levels: model.effort_levels.clone(),
             })
             .collect(),
         default_model_id: content.default_model_id.clone(),

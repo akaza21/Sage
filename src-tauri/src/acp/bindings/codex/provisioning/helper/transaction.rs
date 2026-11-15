@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use super::{AuthenticatedHelperRequest, ElevatedHelperError, constant_time_equal};
 use serde::{Deserialize, Serialize};
 
-use crate::acp_protocol::codex_protocol::pinned_codex_version;
+use sage_acp_protocol::pinned_codex_version;
 
 mod remove;
 mod update;

@@ -73,10 +73,10 @@ fn codex_menu_negotiates_confirmed_model_and_effort_with_complete_catalog() {
         model["supportedReasoningEfforts"]
     );
     assert!(output.len() < 1_024);
-    use crate::acp::{
-        bindings::codex::{CodexAdapter, IncomingEvent, IngressDisposition, parse_packet_metadata},
-        contract::{RuntimeEpoch, SageAgentSessionId},
+    use crate::acp::bindings::codex::{
+        CodexAdapter, IncomingEvent, IngressDisposition, parse_packet_metadata,
     };
+    use sage_acp_protocol::contract::{RuntimeEpoch, SageAgentSessionId};
     for case_id in ["codex-model-menu", "codex-effort-menu"] {
         let frames = capture::replay_native_before(
             case_id,
@@ -162,9 +162,11 @@ impl crate::acp::bindings::codex::ResourceMapper for NoCodexResources {
     fn map_existing(
         &self,
         _: &str,
-    ) -> Result<crate::acp::intent::SafeResourceRef, crate::acp::intent::UnavailableResourceReason>
-    {
-        Err(crate::acp::intent::UnavailableResourceReason::Foreign)
+    ) -> Result<
+        sage_acp_protocol::intent::SafeResourceRef,
+        sage_acp_protocol::intent::UnavailableResourceReason,
+    > {
+        Err(sage_acp_protocol::intent::UnavailableResourceReason::Foreign)
     }
 }
 
@@ -318,7 +320,7 @@ fn codex_child_read_rejects_foreign_identity_and_bounds_waits() {
 
 #[test]
 fn long_transcript_journey_fills_more_than_a_history_page_and_paces_within_budget() {
-    let case = crate::acp_protocol::native_cases::JOURNEY_CASES
+    let case = sage_acp_protocol::native_cases::JOURNEY_CASES
         .iter()
         .find(|case| case.id == "codex-long-transcript-stream")
         .unwrap();

@@ -4,7 +4,6 @@ use sage_core::limits::LIMITS;
 
 use super::OutboundFrame;
 
-/// Hard cap for one reserved control-lane message.
 const CONTROL_MESSAGE_BYTES: usize = 32 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -60,7 +59,6 @@ impl<T> BoundedQueue<T> {
         self.push(bytes, false, build)
     }
 
-    /// Queues the one reserved item, in FIFO order with ordinary items.
     pub(crate) fn try_push_reserved_with(
         &mut self,
         bytes: usize,
@@ -171,14 +169,11 @@ impl<T> ReservedQueue<T> {
         self.data.try_push_with(bytes, build)
     }
 
-    /// Adds a reserve for one prompt frame beside the data lane.
     pub(crate) fn with_prompt_reserve(mut self, bytes: usize) -> Self {
         self.data.reserve_limit = bytes;
         self
     }
 
-    /// A prompt frame queues in data order but against its own reserve, so
-    /// queued data never refuses it and it never refuses queued data.
     pub(crate) fn try_push_prompt_with(
         &mut self,
         bytes: usize,

@@ -86,8 +86,6 @@ impl CodexOperationGate {
         (settlements, result)
     }
 
-    /// Invalidates the admitted binding: every running operation, ephemeral
-    /// or live, is asked to stop.
     fn invalidate_active(&self) -> (Vec<Settlement>, Result<(), CodexDiscoveryRunError>) {
         let cancellations: Vec<_> = match self.active.lock() {
             Ok(mut active) => {

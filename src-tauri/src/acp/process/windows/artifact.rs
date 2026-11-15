@@ -17,8 +17,9 @@ use windows_sys::Win32::Storage::FileSystem::{
 use windows_sys::Win32::System::Threading::QueryFullProcessImageNameW;
 
 use super::super::manifest::{ManifestExpectation, ManifestGuard};
-use super::super::supervisor::{EntryPointKind, LaunchError, LaunchSpec};
+use super::super::supervisor::{EntryPointKind, LaunchSpec};
 use super::MAX_WINDOWS_WIDE;
+use sage_process::error::LaunchError;
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 struct FileIdentity {

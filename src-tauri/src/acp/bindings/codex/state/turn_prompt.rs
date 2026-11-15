@@ -1,14 +1,11 @@
-use crate::{
-    acp::{
-        bindings::codex::{
-            request::OutgoingRequest,
-            turn_policy::{TurnPolicySurface, TurnSettings},
-        },
-        contract::RequiredText,
-        intent::Prompt,
+use crate::acp::{
+    bindings::codex::{
+        request::OutgoingRequest,
+        turn_policy::{TurnPolicySurface, TurnSettings},
     },
-    acp_protocol::access_mode::SessionAccessMode,
+    transcript_quote::Prompt,
 };
+use sage_acp_protocol::{access_mode::SessionAccessMode, contract::RequiredText};
 
 use super::{AdapterError, CodexAdapter};
 
@@ -99,7 +96,6 @@ impl CodexAdapter {
                 settings,
             )?,
         };
-        // A listed skill runs attached; its typed text follows it.
         let request = match self.skill_input(prompt) {
             Some((name, path)) if prompt.action.is_none() => request.with_skill(&name, &path)?,
             _ => request,

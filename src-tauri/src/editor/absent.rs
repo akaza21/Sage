@@ -19,10 +19,6 @@ use super::{
     normalized_resource, open_document,
 };
 use crate::{
-    domain::{
-        BufferRebaseRequest, BufferSnapshotRequest, DocumentVersion, EditorBufferVersion,
-        EditorConflict, EditorDocument, EditorSaveResult, ResourceRef,
-    },
     editor_content::{
         canonicalize_editor_content, fingerprint, materialize_content,
         reject_oversized_materialized, reject_unsupported_content, validate_line_ending,
@@ -30,6 +26,13 @@ use crate::{
     editor_persistence::PersistedEditorBuffer,
     persistence::Database,
     workspace::{Workspace, file_create::admit_created_path},
+};
+use sage_domain::{
+    editor::{
+        BufferRebaseRequest, BufferSnapshotRequest, DocumentVersion, EditorBufferVersion,
+        EditorConflict, EditorDocument, EditorSaveResult,
+    },
+    resource::ResourceRef,
 };
 
 /// Files this process opened in the editor, by project and canonical path,

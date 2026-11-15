@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::session_config::{ConfigId, ConfigIntent, ConfigMutation, SessionConfig};
+use sage_acp_protocol::session_config::{ConfigId, ConfigIntent, ConfigMutation, SessionConfig};
 
 impl ClaudeRuntime {
     pub(super) fn configure_session(
@@ -101,8 +101,6 @@ impl ClaudeRuntime {
             .and_then(|active| active.config.current_mode())
             .map(str::to_owned)
     }
-    /// Applies a mode or config update. A mode change the running turn was
-    /// not given cancels that turn (`mode_guard.rs`).
     pub(super) fn config_notification(
         &mut self,
         value: &Value,

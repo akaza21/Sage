@@ -1,8 +1,8 @@
 use rusqlite::{Connection, TransactionBehavior, params};
 
-use crate::acp::scheduler::RuntimeOwner;
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
-use crate::acp_protocol::codex_protocol::{ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES};
+use sage_acp_protocol::codex_protocol::{ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES};
 
 mod live;
 pub(crate) use live::persist_live_item_in;
@@ -27,7 +27,7 @@ pub(crate) fn load_spawn_model(
     owner: &RuntimeOwner,
     child_thread_id: &str,
 ) -> Result<Option<SpawnModel>, ChildTranscriptStoreError> {
-    use crate::acp::intent::NormalizedPayload;
+    use sage_acp_protocol::intent::NormalizedPayload;
     let mut statement = connection.prepare(
         "SELECT payload_json,payload_digest FROM items
          WHERE project_id=?1 AND chat_id=?2 AND session_id=?3 AND runtime_epoch=?4

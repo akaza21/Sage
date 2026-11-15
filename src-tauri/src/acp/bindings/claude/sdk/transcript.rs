@@ -1,8 +1,6 @@
-//! Reading Claude Code's saved transcripts: one JSON entry per line, each
-//! message linked by `parentUuid` to the one it follows. A resumed session
-//! appends to its transcript, so a thread cut by `--resume-session-at`
-//! leaves its abandoned branch in the file; only the parent chain says
-//! which reply a prompt followed.
+//! A resumed session appends to its transcript, so a thread cut by `--resume-session-at`
+//! leaves its abandoned branch in the file; only the parent chain says which reply a prompt
+//! followed.
 
 use std::{
     collections::HashMap,
@@ -22,7 +20,6 @@ const MAX_HOPS: usize = 16;
 pub(super) const MAX_ENTRIES: usize = 200_000;
 /// Tool results can be large; no single JSONL entry may exceed 8 MiB.
 pub(super) const MAX_LINE_BYTES: usize = 8 * 1024 * 1024;
-/// One transcript pass reads at most 64 MiB, including invalid entries.
 pub(super) const MAX_TOTAL_BYTES: u64 = 64 * 1024 * 1024;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, thiserror::Error)]
@@ -39,9 +36,7 @@ pub(crate) enum TranscriptError {
     ParentChain,
 }
 
-/// The fields of a transcript entry Sage reads; the rest of the line,
-/// message content included, is skipped without being kept. Ids and types
-/// carry no escapes, so they borrow from the line.
+/// Ids and types carry no escapes, so they borrow from the line.
 #[derive(Deserialize)]
 struct Entry<'a> {
     #[serde(rename = "type", default)]
@@ -83,8 +78,6 @@ impl Entry<'_> {
     }
 }
 
-/// A session's transcript: Claude Code keeps each project's sessions in
-/// their own directory under `projects`.
 pub(super) fn transcript(config: &Path, session: &str) -> Option<PathBuf> {
     if !is_uuid(session) {
         return None;
@@ -110,7 +103,6 @@ fn parse_uuid(value: &str) -> Option<Uuid> {
         .filter(|parsed| parsed.hyphenated().to_string() == value)
 }
 
-/// The id of the transcript's last assistant message in the main thread.
 pub(super) fn last_reply(path: &Path) -> Option<String> {
     let mut last = None;
     for_each_entry(path, |entry| {
@@ -187,8 +179,6 @@ pub(super) fn cut_at(path: &Path, prompt: &str) -> Result<Option<String>, Transc
     Err(TranscriptError::ParentChain)
 }
 
-/// The bounded reader admits every physical entry, including malformed,
-/// duplicate and UUID-less entries. It never allocates an unbounded line.
 fn for_each_entry(
     path: &Path,
     mut visit: impl FnMut(Entry<'_>) -> bool,
@@ -233,7 +223,6 @@ fn for_each_entry(
     }
 }
 
-/// Revalidate a staged target on every launch; never silently resume past it.
 pub(super) fn validate_cut(path: &Path, at: &str) -> Result<(), TranscriptError> {
     let at = parse_uuid(at).ok_or(TranscriptError::ParentChain)?;
     let mut found = false;

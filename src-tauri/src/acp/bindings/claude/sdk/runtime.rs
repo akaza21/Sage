@@ -1,9 +1,3 @@
-//! The launchable Claude Code runtime over the SDK protocol.
-//!
-//! Claude's session state machine (permissions, config, turns, auth) runs
-//! unchanged on ACP frames; this runtime owns the CLI launch and passes every
-//! frame through the bridge in both directions.
-
 use std::sync::Arc;
 
 use serde_json::Value;
@@ -26,11 +20,13 @@ use crate::acp::{
         },
         runtime::{LaunchableRuntime, NativeRuntime, RuntimeFactory},
     },
-    contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
-    intent::CapabilitySnapshotV1,
     process::LaunchSpec,
     runtime::ActivationMode,
     transport::{Frame, OutboundFrame, request_value_digest},
+};
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
+    intent::CapabilitySnapshotV1,
 };
 
 pub(crate) struct ClaudeSdkRuntimeFactory {
@@ -71,11 +67,8 @@ struct ClaudeSdkRuntime {
     session: ClaudeRuntime,
     bridge: Option<SdkBridge>,
     children: Children,
-    /// The reply to a session control, until the host takes it.
     native: Option<crate::acp::goal::NativeRpcReply>,
-    /// The plan's usage limits as last read, lent to the runtime lane.
-    usage: Arc<crate::acp::usage::UsageCell>,
-    /// Written frames whose delivery is still open, with what they started.
+    usage: Arc<sage_acp_protocol::usage::UsageCell>,
     sent: Vec<(EgressToken, Sent)>,
     steering: Steering,
     launch: Option<SessionLaunch>,
@@ -89,9 +82,8 @@ impl ClaudeSdkRuntime {
         self.bridge.as_mut().ok_or(AdapterRuntimeError::Operation)
     }
 
-    /// Rewrites one ACP egress as its SDK frame, keeping its delivery token.
-    /// A frame Claude Code has no equivalent for is refused as never
-    /// queued, so the session rolls back what the egress began.
+    /// A frame Claude Code has no equivalent for is refused as never queued, so the session rolls
+    /// back what the egress began.
     fn outbound(&mut self, egress: AdapterEgress) -> Result<AdapterEgress, AdapterRuntimeError> {
         let sdk = serde_json::from_slice::<Value>(egress.frame().payload())
             .map_err(|_| AdapterRuntimeError::Frame)
@@ -125,7 +117,6 @@ impl ClaudeSdkRuntime {
         Ok(AdapterEgress::new(frame, token))
     }
 
-    /// One SDK frame through the bridge, its ACP frames through the session.
     fn ingest_sdk(
         &mut self,
         sdk: Value,
@@ -242,7 +233,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     fn available_commands(&self) -> Arc<crate::acp::slash_commands::CommandState> {
         self.session.available_commands()
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         self.session.session_config()
     }
     fn refusal_detail(&self) -> Option<RefusalDetail> {
@@ -253,7 +244,7 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
     fn configure(
         &mut self,
-        intent: &crate::acp::session_config::ConfigIntent,
+        intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.session
             .configure(intent)?
@@ -265,35 +256,36 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
     fn session_control(
         &mut self,
-        control: &crate::acp::session_control::SessionControl,
+        control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.control_request(control)
     }
-    /// A fork of this session through its latest reply, as Claude Code
-    /// saved it.
     fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.fork_egress()
     }
     /// Claude Code holds nothing for a fork until its chat launches.
     fn release_fork(
         &mut self,
-        _fork: &crate::acp::intent::ExternalId,
+        _fork: &sage_acp_protocol::intent::ExternalId,
         _committed: bool,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         self.native = Some(crate::acp::goal::NativeRpcReply::Released);
         Ok(None)
     }
-    fn defer_fork_release(&mut self, _fork: &crate::acp::intent::ExternalId, _done: bool) -> bool {
+    fn defer_fork_release(
+        &mut self,
+        _fork: &sage_acp_protocol::intent::ExternalId,
+        _done: bool,
+    ) -> bool {
         self.native = Some(crate::acp::goal::NativeRpcReply::Released);
         true
     }
-    fn usage(&self) -> Option<Arc<crate::acp::usage::UsageCell>> {
+    fn usage(&self) -> Option<Arc<sage_acp_protocol::usage::UsageCell>> {
         Some(Arc::clone(&self.usage))
     }
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.usage_request()
     }
-    /// A passive read whose caller gave up: a usage or MCP read.
     fn abandon_passive_read(&mut self) {
         self.abandon_passive_requests();
     }
@@ -357,13 +349,11 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.ingest_sdk(sdk, resources)
     }
 
-    /// Claude Code's own output can exceed the structure limits sized for
-    /// ACP frames: an edit's result carries its whole patch in
-    /// `tool_use_result`, which Sage never reads. Such a frame is read
-    /// without those fields. Still out of bounds, a turn's end or a reply to
-    /// Sage keeps only what ends it, a control request is refused so Claude
-    /// Code is not left waiting, and anything else is dropped (an unfinished
-    /// tool row ends as failed with the turn).
+    /// Claude Code's own output can exceed the structure limits sized for ACP frames: an edit's
+    /// result carries its whole patch in `tool_use_result`, which Sage never reads. Such a frame is
+    /// read without those fields. Still out of bounds, a turn's end or a reply to Sage keeps only
+    /// what ends it, a control request is refused so Claude Code is not left waiting, and anything
+    /// else is dropped (an unfinished tool row ends as failed with the turn).
     fn discard_invalid_response(
         &mut self,
         frame: &Frame,

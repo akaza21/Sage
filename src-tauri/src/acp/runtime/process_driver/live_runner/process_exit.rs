@@ -42,8 +42,8 @@ where
     if !active.turn.dispatch.is_terminal()
         || (matches!(
             active.turn.dispatch.state(),
-            crate::acp::lifecycle::TurnState::DeliveryUnknown
-                | crate::acp::lifecycle::TurnState::Interrupted
+            sage_acp_protocol::lifecycle::TurnState::DeliveryUnknown
+                | sage_acp_protocol::lifecycle::TurnState::Interrupted
         ) && active.turn.driver.terminal_outcome().is_some())
     {
         active = match active

@@ -76,7 +76,6 @@ pub(crate) enum AdapterRuntimeError {
     EgressIntent,
 }
 
-/// An optional frame a command may need to write.
 pub(crate) type AdapterOptionalEgress = Result<Option<AdapterEgress>, AdapterRuntimeError>;
 
 pub(crate) trait HarnessAdapter {
@@ -122,24 +121,20 @@ pub(crate) trait HarnessAdapter {
     fn child_read_pending(&self) -> bool {
         false
     }
-    /// Writes one page of a paged native read.
     fn native_read(
         &mut self,
         _read: &crate::acp::goal::NativeRead,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    /// Requests a native fork of the bound session through its latest turn.
     /// Harnesses without a characterised fork method fail closed.
     fn fork_session(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    /// Lets go of a native fork this runtime created once its fork Chat is
-    /// committed (`committed`) or refused. `Ok(None)` means the harness holds
-    /// nothing to release, and the reply is already available.
+    /// `Ok(None)` means the harness holds nothing to release, and the reply is already available.
     fn release_fork(
         &mut self,
-        _fork: &crate::acp::intent::ExternalId,
+        _fork: &sage_acp_protocol::intent::ExternalId,
         _committed: bool,
     ) -> AdapterOptionalEgress {
         Err(AdapterRuntimeError::UnsupportedCommand)
@@ -148,7 +143,7 @@ pub(crate) trait HarnessAdapter {
     /// answer the RPC now. False when the harness cannot defer it.
     fn defer_fork_release(
         &mut self,
-        _fork: &crate::acp::intent::ExternalId,
+        _fork: &sage_acp_protocol::intent::ExternalId,
         _committed: bool,
     ) -> bool {
         false
@@ -178,30 +173,28 @@ pub(crate) trait HarnessAdapter {
     /// without writing a frame: the answer waits in the native RPC reply.
     /// A control done once, such as an undo whose outcome Sage could not
     /// record, may then be confirmed again.
-    fn answered_control(&mut self, _control: &crate::acp::session_control::SessionControl) -> bool {
+    fn answered_control(
+        &mut self,
+        _control: &sage_acp_protocol::session_control::SessionControl,
+    ) -> bool {
         false
     }
-    /// The frame for a session control; harnesses without one refuse it.
     fn session_control(
         &mut self,
-        _control: &crate::acp::session_control::SessionControl,
+        _control: &sage_acp_protocol::session_control::SessionControl,
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
     fn take_native_rpc_reply(&mut self) -> Option<crate::acp::goal::NativeRpcReply> {
         None
     }
-    /// The usage-limit snapshot this binding keeps; `None` when it reports none.
-    fn usage(&self) -> Option<std::sync::Arc<crate::acp::usage::UsageCell>> {
+    fn usage(&self) -> Option<std::sync::Arc<sage_acp_protocol::usage::UsageCell>> {
         None
     }
     fn read_usage(&mut self) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    /// Stops waiting for a passive read (usage, a terminal listing, or any
-    /// other read that abandons at its deadline) whose caller gave up.
     fn abandon_passive_read(&mut self) {}
-    /// Lists or stops the commands the harness left running.
     fn background_terminals(
         &mut self,
         _action: &crate::acp::background_terminals::TerminalAction,
@@ -214,7 +207,7 @@ pub(crate) trait HarnessAdapter {
     ) -> Result<AdapterEgress, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
-    fn session_config(&self) -> Option<crate::acp::session_config::SessionConfig> {
+    fn session_config(&self) -> Option<sage_acp_protocol::session_config::SessionConfig> {
         None
     }
     fn refusal_detail(&self) -> Option<RefusalDetail> {
@@ -225,7 +218,7 @@ pub(crate) trait HarnessAdapter {
     }
     fn configure(
         &mut self,
-        _intent: &crate::acp::session_config::ConfigIntent,
+        _intent: &sage_acp_protocol::session_config::ConfigIntent,
     ) -> Result<Option<AdapterEgress>, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }

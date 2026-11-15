@@ -102,9 +102,9 @@ impl SpawnTimingReceipt {
         frequency_hz: u64,
         spawn_started_tick: u64,
         process_ready_tick: u64,
-    ) -> Result<Self, super::supervisor::LaunchError> {
+    ) -> Result<Self, sage_process::error::LaunchError> {
         if frequency_hz == 0 || process_ready_tick < spawn_started_tick {
-            return Err(super::supervisor::LaunchError::ContainmentFailure);
+            return Err(sage_process::error::LaunchError::ContainmentFailure);
         }
         Ok(Self {
             frequency_hz,

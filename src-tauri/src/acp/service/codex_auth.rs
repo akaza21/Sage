@@ -298,12 +298,14 @@ mod tests {
     use crate::{
         acp::{
             bindings::codex::{CodexDiscoveryDeadline, startup_codex_binding_registration},
-            contract::{ProjectGeneration, SageProjectId, SageRootId},
-            intent::BindingId,
             ipc::GetCodexDiscoveryRequest,
             service::codex_discovery::CodexDiscoveryManager,
         },
         project_registry::ProjectRootAuthority,
+    };
+    use sage_acp_protocol::{
+        contract::{ProjectGeneration, SageProjectId, SageRootId},
+        intent::BindingId,
     };
     use std::path::Path;
 

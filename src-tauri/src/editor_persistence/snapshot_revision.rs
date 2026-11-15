@@ -3,7 +3,7 @@
 use rusqlite::{OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
 
-use crate::domain::{BufferSnapshotAck, BufferSnapshotRequest};
+use sage_domain::editor::{BufferSnapshotAck, BufferSnapshotRequest};
 
 /// Whether a buffer is stored for the snapshot's File, and the answer when
 /// that buffer already settles the snapshot: an older revision is not

@@ -91,7 +91,7 @@ impl Fixture {
 
     fn add_chat_scope(&self) -> TerminalScope {
         let snapshot = self.state.database.bootstrap_snapshot().unwrap();
-        let layout = crate::domain::ProjectLayoutRequest {
+        let layout = sage_domain::chat::ProjectLayoutRequest {
             project_id: self.scope.project.as_str().to_owned(),
             tabs: snapshot.tabs,
             active_tab_id: snapshot.active_tab_id,
@@ -421,7 +421,7 @@ fn sixteen_sessions_per_project_admit_exact_limit_and_reject_plus_one_before_spa
         let mut scopes = vec![fixture.scope.clone()];
         for _ in 0..4 {
             let snapshot = fixture.state.database.bootstrap_snapshot().unwrap();
-            let layout = crate::domain::ProjectLayoutRequest {
+            let layout = sage_domain::chat::ProjectLayoutRequest {
                 project_id: fixture.scope.project.as_str().to_owned(),
                 tabs: snapshot.tabs,
                 active_tab_id: snapshot.active_tab_id,

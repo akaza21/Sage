@@ -1,10 +1,5 @@
-//! Tool approvals: Claude Code's `can_use_tool` requests as ACP permission
-//! requests, and the user's decisions back as control responses.
-//!
-//! The session holds a card for every approval until the user's answer is
-//! written. A request Claude Code withdraws (`control_cancel_request`) or a
-//! turn outlives has its card cancelled. Requests outside a turn or beyond
-//! the session's card limit are declined here, before the session sees them.
+//! Requests outside a turn or beyond the session's card limit are declined here, before the
+//! session sees them.
 
 use serde_json::{Value, json};
 
@@ -18,8 +13,6 @@ const ALLOW_ALWAYS: &str = "allow_always";
 /// which Sage's mode guard admits for the rest of the turn.
 const ALLOW_EDITS: &str = "allow-always-accept-edits";
 const REJECT: &str = "reject";
-/// Leaving plan mode, as the plan-exit options Sage's mode guard admits:
-/// back to asking before edits, or into accepting them.
 const EXIT_PLAN: [(&str, &str, &str, &str); 2] = [
     (
         "exit-plan-default",
@@ -146,7 +139,6 @@ impl SdkBridge {
         Ok(())
     }
 
-    /// Claude Code withdrew a request: its card is cancelled.
     pub(super) fn withdraw(&mut self, request_id: &str, inbound: &mut Inbound) {
         self.permissions.retain(|wire, permission| {
             let keep = permission.request_id != request_id;
@@ -157,15 +149,12 @@ impl SdkBridge {
         });
     }
 
-    /// The turn ended: cards still open are cancelled.
     pub(super) fn withdraw_open(&mut self, inbound: &mut Inbound) {
         inbound
             .withdrawn
             .extend(std::mem::take(&mut self.permissions).into_keys());
     }
 
-    /// A decision on a `can_use_tool` request. Allow keeps the tool's input;
-    /// allow-always also adds Claude Code's suggested permission rules.
     pub(super) fn permission_reply(
         &mut self,
         id: &Value,
@@ -201,7 +190,6 @@ impl SdkBridge {
                 "updatedInput": permission.input,
                 "updatedPermissions": permission.suggestions.unwrap_or_else(|| json!([])),
             }),
-            // Approving the plan leaves plan mode for the mode the user chose.
             Some(option) => match EXIT_PLAN.iter().find(|(id, ..)| *id == option) {
                 Some((.., mode)) => json!({
                     "behavior": "allow",

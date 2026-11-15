@@ -14,7 +14,7 @@ fn protocol() -> CodexAuthProtocol {
     CodexAuthProtocol::new(
         &packet,
         [9; 32],
-        crate::acp::contract::RuntimeEpoch::new(73).unwrap(),
+        sage_acp_protocol::contract::RuntimeEpoch::new(73).unwrap(),
     )
 }
 

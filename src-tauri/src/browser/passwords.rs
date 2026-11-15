@@ -1,9 +1,7 @@
-//! Saved browser passwords (BF-7b-1). Sage keeps its own vault rather than
-//! the engine's password manager: each password is sealed with AES-256-GCM
-//! under a random vault key, and that key is stored only wrapped by the OS
-//! (DPAPI on Windows). macOS and Linux report the vault as unsupported until
-//! their key stores are proven. No reply but Reveal carries a password, and
-//! Reveal and Copy first ask the OS to confirm the user.
+//! Sage keeps its own vault rather than the engine's password manager: each
+//! password is sealed with AES-256-GCM under a random vault key, stored only
+//! wrapped by the OS. No reply but Reveal carries a password, and Reveal and
+//! Copy first ask the OS to confirm the user.
 
 mod cipher;
 mod clipboard;
@@ -29,9 +27,7 @@ mod vault_lock;
 pub(super) use engine::disable_engine_password_manager;
 pub(crate) use state::PasswordsState;
 
-/// The longest username Sage stores, in UTF-8 bytes.
 const MAX_USERNAME_BYTES: usize = 4 * 1024;
-/// The longest password Sage stores, in UTF-8 bytes.
 const MAX_PASSWORD_BYTES: usize = 1024;
 
 #[derive(Debug, thiserror::Error)]
@@ -72,8 +68,6 @@ pub(crate) enum VaultError {
 
 type VaultResult<T> = Result<T, VaultError>;
 
-/// Whether the operation that owns this signal was cancelled. Long imports
-/// check it between reads and between rows.
 trait Cancellation {
     fn cancelled(&self) -> bool;
 

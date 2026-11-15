@@ -10,12 +10,14 @@ use serde_json::{Value, json};
 use uuid::Uuid;
 
 use crate::acp::{
-    contract::{RuntimeEpoch, SafeText, SageChatId, SageProjectId},
     fixture::generated_cases::FrozenCase,
-    intent::{ExternalId, NormalizedPayload},
-    lifecycle::ItemLifecycle,
     redaction::{DiagnosticCode, SafeDiagnostic, SensitiveBytes, StderrRing},
     store::{ItemIngressCommand, apply_item_ingress, load_chat_page},
+};
+use sage_acp_protocol::{
+    contract::{RuntimeEpoch, SafeText, SageChatId, SageProjectId},
+    intent::{ExternalId, NormalizedPayload},
+    lifecycle::ItemLifecycle,
 };
 use sage_core::limits::LIMITS;
 
@@ -146,8 +148,9 @@ fn persist_diagnostic(
         ItemIngressCommand {
             project_id: SageProjectId::parse("project-a").unwrap(),
             chat_id: SageChatId::parse("chat-a").unwrap(),
-            session_id: crate::acp::contract::SageAgentSessionId::parse("session-a").unwrap(),
-            turn_id: crate::acp::contract::SageTurnId::parse("turn-a").unwrap(),
+            session_id: sage_acp_protocol::contract::SageAgentSessionId::parse("session-a")
+                .unwrap(),
+            turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-a").unwrap(),
             runtime_epoch: RuntimeEpoch::new(1).unwrap(),
             external_item_id: ExternalId::new("item", format!("redaction-{sink}-{index}")).unwrap(),
             activity_id: None,

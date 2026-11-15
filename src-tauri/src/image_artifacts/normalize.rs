@@ -8,7 +8,7 @@ use std::io::Cursor;
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::acp::intent::ImageMediaType;
+use sage_acp_protocol::intent::ImageMediaType;
 use sage_core::limits::{
     IMAGE_PREVIEW_BYTES, IMAGE_PREVIEW_EDGE_PX, IMAGE_UPLOAD_BYTES, IMAGE_UPLOAD_EDGE_PX,
     IMAGE_UPLOAD_PIXELS, PNG_DECODER_ROW_BYTES, PROMPT_IMAGE_EDGE_PX, PROMPT_IMAGE_JPEG_QUALITY,

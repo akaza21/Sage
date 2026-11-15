@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::session_config::ConfigIntent;
+use sage_acp_protocol::session_config::ConfigIntent;
 
 impl<A, R, T, C> FirstTurnWorkerState<A, R, T, C>
 where

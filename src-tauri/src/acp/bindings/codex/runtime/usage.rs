@@ -2,8 +2,6 @@ use super::CodexRuntime;
 use crate::acp::{bindings::codex::incoming::IngressDisposition, goal::NativeRpcReply};
 
 impl CodexRuntime {
-    /// Keeps the account's limit buckets and publishes them as the neutral
-    /// usage snapshot; a read also answers its native RPC.
     pub(super) fn apply_usage(&mut self, disposition: IngressDisposition) {
         match disposition {
             IngressDisposition::UsageUpdated(bucket) => {

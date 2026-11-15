@@ -25,8 +25,6 @@ fn the_probe_admits_repeats_of_the_finished_terminal() {
     assert!(runtime.frames_repeat_terminal(&[interrupted(), interrupted()], &Mapper));
 }
 
-/// The trial read of a frame the real read reports must report nothing, and
-/// must leave the thread reporting again for the real read after the handoff.
 /// The real read is checked through the reporting gate rather than a second
 /// log capture, because the shared capture can miss events under load (#137).
 #[test]
@@ -59,9 +57,6 @@ fn a_panicking_trial_read_reopens_the_gate() {
     assert!(reports_diagnostics());
 }
 
-/// Only a repeated Turn terminal proves the stream is past the Turn. A
-/// repeated item terminal also reads as a no-op duplicate, but it is not a
-/// Turn boundary, so the probe must refuse it and leave recovery to the read.
 #[test]
 fn a_repeated_item_terminal_is_not_a_turn_terminal() {
     let mut runtime = fixture_runtime();

@@ -3,11 +3,10 @@ use std::path::PathBuf;
 
 use uuid::Uuid;
 
-use crate::{
-    acp::contract::{ProjectGeneration, SageProjectId, SageRootId},
-    project_registry::ProjectRootAuthority,
-};
+use crate::project_registry::ProjectRootAuthority;
+use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 use sage_core::limits::LIMITS;
+use sage_process::error::LaunchError;
 
 use super::supervisor::LaunchFailureTracker;
 use super::*;
@@ -619,7 +618,7 @@ fn windows_stderr_stdout_and_cancel_are_independent() {
 fn windows_job_convergence_never_reopens_process_ids() {
     assert!(!include_str!("windows.rs").contains("OpenProcess"));
     assert!(!include_str!("windows/authority.rs").contains("OpenProcess"));
-    assert!(!include_str!("windows/job.rs").contains("ProcessIdList"));
+    assert!(!include_str!("../../../../crates/sage-process/src/job.rs").contains("ProcessIdList"));
 }
 
 #[cfg(windows)]

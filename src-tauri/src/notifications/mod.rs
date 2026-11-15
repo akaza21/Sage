@@ -10,7 +10,7 @@ mod receipts;
 mod visibility;
 
 use crate::{
-    acp::intent::ProjectionChangedV1, settings_store::NotificationPreference, state::AppState,
+    acp::ipc::ProjectionChangedV1, settings_store::NotificationPreference, state::AppState,
 };
 pub use commands::*;
 use receipts::Event;

@@ -2,7 +2,7 @@ use rusqlite::{Transaction, params};
 
 use sage_core::limits::LIMITS;
 
-use crate::acp::contract::{ProjectionRevision, SageItemId};
+use sage_acp_protocol::contract::{ProjectionRevision, SageItemId};
 
 use super::{
     ItemIngressCommand, StoreError,

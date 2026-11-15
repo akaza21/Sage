@@ -19,6 +19,7 @@ import { terminalTurnStates, type OpenResourceTarget } from "./acp";
 import { currentChatUsage } from "./acp/chatUsage";
 import { currentNonterminalTurn } from "./acp/currentNonterminalTurn";
 import { composerDisabledReason, sizeReason } from "./composerDisabledReason";
+import { useEndedSession } from "./endedSession";
 import { composerImageAvailability } from "./useComposerImageInput";
 
 type SurfaceHarness = Pick<
@@ -155,7 +156,7 @@ export function useChatSurfaceModel({
       harnessAvailable,
       availableBinding,
       harnessStatus,
-      imageInput: composerImageAvailability(!!useNativeAcp, selectedSession),
+      imageInput: composerImageAvailability(selectedSession, page, bindingId),
     };
   }, [discoveryPhase, harnesses, page, selectedHarnessId, selectedModelId]);
   const accessBindingId = model.selectedSession?.bindingId ?? model.bindingId;
@@ -359,10 +360,13 @@ export function useChatSurfaceModel({
   );
   return {
     ...model,
-    // A chat with no session at all drafts its access for its first one.
+    // Access and effort are drafted for the session the next send starts,
+    // which it does only when the chat has no head: a head on another
+    // binding or model refuses a start.
     accessTarget: {
       bindingId: accessBindingId,
-      draftChatId: page?.sessions.length === 0 ? page.chatId : undefined,
+      draftChatId: page && !page.currentSessionId ? page.chatId : undefined,
+      endedSession: useEndedSession(page),
     },
     foregroundError: acpActions.error ?? chatError,
     // The sign-in sentence renders lazily in the composer, off the chat path.

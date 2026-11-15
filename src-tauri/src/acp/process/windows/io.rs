@@ -11,7 +11,7 @@ use crate::acp::transport::{
 };
 use sage_core::limits::LIMITS;
 
-use super::super::supervisor::LaunchError;
+use sage_process::error::LaunchError;
 
 /// Independently owned stdin authority. Blocking writes never hold the tree
 /// control lock, so cancellation can always dispatch concurrently.
@@ -131,6 +131,23 @@ impl StderrDrain {
         self.ring
             .lock()
             .map(|ring| ring.safe_diagnostic())
+            .map_err(|_| LaunchError::ContainmentFailure)
+    }
+
+    pub(super) fn diagnostic_since(
+        &self,
+        watermark: u64,
+    ) -> Result<SafeStderrDiagnostic, LaunchError> {
+        self.ring
+            .lock()
+            .map(|ring| ring.safe_diagnostic_since(watermark))
+            .map_err(|_| LaunchError::ContainmentFailure)
+    }
+
+    pub(super) fn watermark(&self) -> Result<u64, LaunchError> {
+        self.ring
+            .lock()
+            .map(|ring| ring.watermark())
             .map_err(|_| LaunchError::ContainmentFailure)
     }
 

@@ -1,21 +1,17 @@
-//! Lists a Project's native sessions started outside Sage and reads the
-//! history of one to import, on the Project's lister runtime (see
-//! `store::native_import::import_lister`). Nothing durable changes here.
-
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    acp::{
-        bindings::codex::NativeSessionsPage,
-        contract::{RuntimeEpoch, SageAgentSessionId, SageProjectId},
-        goal::{NativeRead, NativeRpcReply},
-        runtime::RuntimeHost,
-        scheduler::RuntimeOwner,
-        store::native_import::{held_threads, import_lister, imported_threads},
-    },
-    acp_protocol::codex_protocol::{ChildTurn, MAX_SNAPSHOT_BYTES},
+use crate::acp::{
+    bindings::codex::NativeSessionsPage,
+    goal::{NativeRead, NativeRpcReply},
+    runtime::RuntimeHost,
+    store::native_import::{held_threads, import_lister, imported_threads},
+};
+use sage_acp_protocol::{
+    codex_protocol::{ChildTurn, MAX_SNAPSHOT_BYTES},
+    contract::{RuntimeEpoch, SageAgentSessionId, SageProjectId},
+    scheduler::RuntimeOwner,
 };
 
 use super::{AcpService, native_read::NativeReadError};
@@ -31,7 +27,6 @@ pub(crate) struct ImportedHistory {
 }
 
 impl ImportedHistory {
-    /// Drops the oldest Turns until the encoded history fits the bound.
     fn encode_within_bounds(mut self) -> Option<String> {
         let sizes: Vec<usize> = self
             .turns
@@ -67,7 +62,6 @@ pub(crate) struct ImportLister {
     pub(crate) runtime_epoch: RuntimeEpoch,
 }
 
-/// One page of importable sessions and the runtime that listed it.
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub(crate) struct ListedSessions {
@@ -92,8 +86,6 @@ impl AcpService {
         Ok((owner, host))
     }
 
-    /// One page of the Project's importable sessions not yet imported, on
-    /// the runtime that listed the earlier pages, if any.
     pub(crate) fn list_importable_sessions(
         &self,
         project: &SageProjectId,
@@ -129,8 +121,6 @@ impl AcpService {
         }
     }
 
-    /// Reads a session `lister` listed for import, and returns its history
-    /// encoded with the lister whose binding will resume the session.
     pub(crate) fn read_import_history(
         &self,
         project: &SageProjectId,
@@ -161,7 +151,7 @@ impl AcpService {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{acp::lifecycle::ItemLifecycle, acp_protocol::codex_protocol::ChildItem};
+    use sage_acp_protocol::{codex_protocol::ChildItem, lifecycle::ItemLifecycle};
 
     fn turn(id: &str, text_bytes: usize) -> ChildTurn {
         ChildTurn {
@@ -173,9 +163,12 @@ mod tests {
                 observed_sequence: None,
                 lifecycle: ItemLifecycle::Completed,
                 tool_state: None,
-                payload: crate::acp::intent::NormalizedPayload::Text {
-                    text: crate::acp::contract::SafeText::new("text", "x".repeat(text_bytes))
-                        .unwrap(),
+                payload: sage_acp_protocol::intent::NormalizedPayload::Text {
+                    text: sage_acp_protocol::contract::SafeText::new(
+                        "text",
+                        "x".repeat(text_bytes),
+                    )
+                    .unwrap(),
                 },
             }],
         }

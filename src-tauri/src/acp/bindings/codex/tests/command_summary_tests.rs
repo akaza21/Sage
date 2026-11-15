@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::{intent::ToolCategory, lifecycle::ItemLifecycle};
+use sage_acp_protocol::{intent::ToolCategory, lifecycle::ItemLifecycle};
 
 #[test]
 fn unresolved_read_summaries_preserve_completion_at_the_byte_limit() {

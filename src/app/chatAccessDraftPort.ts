@@ -19,4 +19,6 @@ export const chatAccessDraftPort: {
     bindingId: string,
     modelId: string | null,
   ) => { effort?: string };
+  /** Lets go of the chat's thinking level draft once a session started with it. */
+  spendEffort?: (chatId: string) => void;
 } = {};

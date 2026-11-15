@@ -11,15 +11,19 @@ export const RESTORED_NOTE =
 /** Said of a stored value while a live session has not reported its own. */
 export const PENDING_NOTE =
   "Saved for this chat; applied once the session reports its settings.";
+/** Said of a restored value while the chat has no current session. */
+export const START_NOTE =
+  "Restored from this chat's last session; applied to the session your next message starts.";
 
 /**
- * What the composer shows for a chat whose current session has no live
- * config yet: the config it last reported with its stored choices, marked
- * restored. It needs the session to be the one the composer would continue,
- * the same harness binding and requested model, and gives way to the live
- * config as soon as the resumed runtime reports one. It carries no runtime
- * epoch or revision: a choice made on it is stored for the session's next
- * runtime instead of being sent to one.
+ * What the composer shows for a chat whose next send runs a session with no
+ * live config yet: the current session, or with none the chat's last
+ * session, which the started one goes on from. It shows the config that
+ * session last reported with its stored choices, marked restored. It needs
+ * the session to be on the selected harness binding and requested model,
+ * and gives way to the live config as soon as a runtime reports one. It
+ * carries no runtime epoch or revision: a choice made on it is stored for
+ * the next runtime instead of being sent to one.
  */
 export function restoredSessionConfigView(
   page: AcpChatPage | null | undefined,
@@ -30,8 +34,10 @@ export function restoredSessionConfigView(
   if (!page || !restored || page.sessionConfig) return null;
   const session = page.sessions.find(
     (candidate) =>
-      candidate.id === page.currentSessionId &&
-      candidate.id === restored.sageAgentSessionId,
+      candidate.id === restored.sageAgentSessionId &&
+      (page.currentSessionId
+        ? candidate.id === page.currentSessionId
+        : restored.awaiting === "start"),
   );
   if (
     !session ||
@@ -45,7 +51,12 @@ export function restoredSessionConfigView(
     ...config,
     runtimeEpoch: "",
     configRevision: "",
-    restored: awaiting === "report" ? PENDING_NOTE : RESTORED_NOTE,
+    restored:
+      awaiting === "report"
+        ? PENDING_NOTE
+        : awaiting === "start"
+          ? START_NOTE
+          : RESTORED_NOTE,
   };
 }
 

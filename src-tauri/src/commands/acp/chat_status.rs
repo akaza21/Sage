@@ -2,10 +2,8 @@
 use rusqlite::{Connection, OptionalExtension, params};
 
 use super::*;
-use crate::acp::{
-    contract::{SafeText, TurnState},
-    store::StoreError,
-};
+use crate::acp::store::StoreError;
+use sage_acp_protocol::{contract::SafeText, lifecycle::TurnState};
 
 #[derive(Debug, Clone, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -208,7 +206,7 @@ mod tests {
             assert!(matches!(
                 get_acp_chat_status_inner(&state, request.clone()).await,
                 Err(AcpIpcError::Conflict {
-                    resource: crate::acp::intent::AcpConflictResource::ProjectGeneration,
+                    resource: crate::acp::ipc::AcpConflictResource::ProjectGeneration,
                     ..
                 })
             ));

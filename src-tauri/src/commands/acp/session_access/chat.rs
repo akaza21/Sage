@@ -6,7 +6,8 @@
 
 use super::native_confirm::{self, ConfirmDialog, ConfirmGate, Refusal, Timing};
 use super::*;
-use crate::acp::{bindings::access_policy::lists_mode, contract::ClientIntentId};
+use crate::acp::bindings::access_policy::lists_mode;
+use sage_acp_protocol::contract::ClientIntentId;
 use tauri::Manager;
 
 #[derive(Debug, Default, PartialEq, Eq, Serialize)]
@@ -53,16 +54,14 @@ fn chat_binding(
     Ok(binding_id)
 }
 
-/// The chat's own access mode, if it has one.
+/// The chat's own access mode, if it has one, with what its session
+/// inherits, as a prompt in it would run.
 #[tauri::command]
 pub(crate) fn get_chat_access(
     state: State<'_, AppState>,
     request: ChatAccessRequest,
 ) -> Result<Option<SessionAccessMode>, AcpIpcError> {
-    state
-        .settings
-        .chat_access(request.session_id.as_str())
-        .map_err(|_| access_unreadable())
+    session_chat_access(&state, &request.session_id)
 }
 
 /// Sets a chat's mode when it needs no confirmation. It replaces any
@@ -253,7 +252,7 @@ pub(crate) async fn grant_chat_access(
 
 fn confirmation_missing() -> AcpIpcError {
     AcpIpcError::Conflict {
-        resource: crate::acp::intent::AcpConflictResource::ConfigRevision,
+        resource: crate::acp::ipc::AcpConflictResource::ConfigRevision,
         message: safe_message("This confirmation is missing, used or expired. Confirm again."),
     }
 }

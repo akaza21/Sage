@@ -1,12 +1,9 @@
-//! The plan's usage limits, read with Claude Code's `get_usage` control
-//! request: each window's share used and when it resets, as Claude Code's
-//! `/usage` reports them.
-
 use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
 use super::Inbound;
-use crate::acp::{goal::NativeRpcReply, usage::UsageSnapshot};
+use crate::acp::goal::NativeRpcReply;
+use sage_acp_protocol::usage::UsageSnapshot;
 
 const FIVE_HOURS: i64 = 5 * 60;
 const SEVEN_DAYS: i64 = 7 * 24 * 60;
@@ -21,7 +18,6 @@ const WINDOWS: [(&str, Option<&str>, i64, bool); 4] = [
     ("seven_day_sonnet", Some("Sonnet"), SEVEN_DAYS, false),
 ];
 
-/// What a usage read learned about the account.
 #[derive(Debug, Clone, PartialEq)]
 pub(in crate::acp::bindings::claude::sdk) enum UsageReply {
     Limits(UsageSnapshot),
@@ -35,8 +31,7 @@ pub(super) fn read_request() -> Value {
     json!({"subtype": "get_usage", "skip_behaviors": true})
 }
 
-/// Claude Code's reply as the read's native answer. A failed or unreadable
-/// reply is refused and leaves the last snapshot standing.
+/// A failed or unreadable reply is refused and leaves the last snapshot standing.
 pub(super) fn answered(reply: Option<&Value>, inbound: &mut Inbound) {
     let usage = reply.and_then(usage_reply);
     inbound.native = Some(if usage.is_some() {
@@ -101,7 +96,7 @@ fn limits(reply: &Value) -> Option<UsageSnapshot> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::acp::usage::UsageWindow;
+    use sage_acp_protocol::usage::UsageWindow;
 
     fn window(label: Option<&str>, used: u8, minutes: u32, at: Option<i64>) -> UsageWindow {
         UsageWindow {
@@ -138,7 +133,6 @@ mod tests {
             panic!("limits");
         };
         assert_eq!(snapshot.plan.as_deref(), Some("Max"));
-        // Nearly used, and one model at its cap, still leave the plan open.
         assert!(!snapshot.limit_reached);
         assert_eq!(
             snapshot.windows,

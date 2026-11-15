@@ -1,9 +1,7 @@
 //! Names that hold credentials. They are never attached, even when no ignore
 //! rule excludes them (a home folder has no repository to supply rules).
 
-/// Folders whose whole content is credential material.
 const FOLDERS: &[&str] = &[".ssh", ".gnupg", ".aws", ".azure", ".kube", ".docker"];
-/// Exact file names of credential stores.
 const FILES: &[&str] = &[
     ".netrc",
     "_netrc",
@@ -17,10 +15,8 @@ const FILES: &[&str] = &[
     "id_ecdsa",
     "id_ed25519",
 ];
-/// Extensions of private keys, certificates with keys and key stores.
 const EXTENSIONS: &[&str] = &["pem", "key", "p12", "pfx", "jks", "keystore", "kdbx", "ppk"];
 
-/// Whether `name`, one path component, is a credential folder or file.
 /// Matching ignores ASCII case, as the file systems that matter here do.
 pub(crate) fn is_secret(name: &str, is_dir: bool) -> bool {
     let name = name.to_ascii_lowercase();
@@ -35,8 +31,6 @@ pub(crate) fn is_secret(name: &str, is_dir: bool) -> bool {
             .is_some_and(|(stem, ext)| !stem.is_empty() && EXTENSIONS.contains(&ext))
 }
 
-/// Whether any component of `path` names a credential folder, or its final
-/// component a credential file.
 pub(crate) fn path_is_secret(path: &std::path::Path, is_dir: bool) -> bool {
     let mut components = path.components().filter_map(|c| match c {
         std::path::Component::Normal(name) => name.to_str(),

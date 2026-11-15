@@ -1,9 +1,6 @@
-//! `item/tool/requestUserInput` (Codex `ToolRequestUserInputParams`) mapped
-//! onto the harness-neutral `UserInputRequest`.
-
 use serde_json::{Map, Value, json};
 
-use crate::acp::{
+use sage_acp_protocol::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
         NormalizedPayload, PermissionOptionKind, ToolCategory,

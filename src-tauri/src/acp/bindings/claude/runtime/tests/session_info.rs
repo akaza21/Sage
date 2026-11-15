@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::intent::session_event::SessionScopedEvent;
+use sage_acp_protocol::intent::session_event::SessionScopedEvent;
 
 fn session_info(
     runtime: &mut ClaudeRuntime,

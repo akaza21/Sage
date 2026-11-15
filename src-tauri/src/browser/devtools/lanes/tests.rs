@@ -1,15 +1,13 @@
 use super::*;
-use crate::acp::{
-    browser::{
-        BrowserAction, BrowserCapability, BrowserCommand, BrowserRequest, BrowserResult,
-        ViewportRegion, WaitCondition, attachment::BrowserAttachments,
-    },
-    contract::{SageChatId, SageProjectId},
+use crate::acp::browser::{
+    BrowserAction, BrowserCapability, BrowserCommand, BrowserRequest, BrowserResult,
+    ViewportRegion, WaitCondition, attachment::BrowserAttachments,
 };
 use crate::browser::devtools::{
     capability::{DevtoolsCapability, DevtoolsPort},
     snapshot::{DocumentStamp, NativeNode},
 };
+use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
 #[derive(Clone)]
 struct Page(u64);

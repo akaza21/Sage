@@ -1,5 +1,5 @@
 use super::*;
-use crate::acp::intent::session_event::{
+use sage_acp_protocol::intent::session_event::{
     PendingSessionEvents, SessionNoticeLevel, SessionScopedEvent,
     fixtures::{notice as notice_fixture, title},
 };

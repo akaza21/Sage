@@ -2,10 +2,10 @@ use std::collections::BTreeMap;
 
 use rusqlite::params_from_iter;
 
-use crate::acp::{
+use crate::acp::projection::{ActivityProjection, ActivityRole};
+use sage_acp_protocol::{
     contract::{EntityRevision, SageActivityId, SageItemId, SageTurnId},
     intent::ActivityProvenanceV1,
-    projection::{ActivityProjection, ActivityRole},
 };
 use sage_core::limits::LIMITS;
 
@@ -133,12 +133,10 @@ mod tests {
     use rusqlite::params;
 
     use crate::{
-        acp::{
-            contract::{SageChatId, SageProjectId},
-            store::{facts::hex_digest, load_chat_page},
-        },
+        acp::store::{facts::hex_digest, load_chat_page},
         persistence::Database,
     };
+    use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 
     const CAPABILITIES: &str = "{\"schemaVersion\":1,\"protocolVersion\":\"pending\",\"newSession\":false,\"resumeSession\":false,\"loadSession\":false,\"closeSession\":false,\"prompt\":false,\"cancel\":false,\"nativeSessionFork\":false,\"activeTurnSteer\":false,\"childConversationProjection\":false,\"childTranscriptRead\":false,\"collaborationEventProjection\":false,\"multiRootExtensionSchemaId\":null,\"modelCount\":0,\"configCount\":0}";
     const PROVENANCE: &str = "{\"schemaVersion\":1,\"sourceKind\":\"collaboration\",\"externalKind\":\"subagent\",\"extensionSchemaId\":null,\"safeLabel\":\"Worker\"}";
@@ -188,7 +186,7 @@ mod tests {
 
     fn activity_count(
         database: &Database,
-        cursor: Option<crate::acp::intent::PageCursor>,
+        cursor: Option<sage_acp_protocol::intent::PageCursor>,
     ) -> (usize, bool) {
         let connection = database.connection();
         let page = load_chat_page(

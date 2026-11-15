@@ -29,9 +29,7 @@ pub(crate) fn launch_environment(
     Some(entries)
 }
 
-/// Adds the named variables a user-defined agent passes through, when set
-/// and not already present. Only names are configured; values are read at
-/// launch and never stored.
+/// Only names are configured; values are read at launch and never stored.
 pub(crate) fn extend_passthrough(
     entries: &mut Vec<(OsString, OsString)>,
     names: &[String],

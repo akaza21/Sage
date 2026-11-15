@@ -1,4 +1,4 @@
-use crate::acp::contract::SafeText;
+use sage_acp_protocol::contract::SafeText;
 
 const REFUSAL_DETAIL_CHARS: usize = 512;
 

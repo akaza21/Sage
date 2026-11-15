@@ -1,14 +1,15 @@
-use crate::acp::{
-    bindings::adapter::{
-        AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError, ResourceMapper,
-    },
+use crate::acp::bindings::adapter::{
+    AdapterEvent, AdapterIdentity, AdapterModel, AdapterRuntimeError, ResourceMapper,
+};
+use sage_acp_protocol::{
     contract::{BoundedVec, RequiredText, SafeText},
     intent::{
-        COMMAND_RESOURCE_LIMIT, ExternalId, NormalizedPayload, SafeResourceLocation, ToolCategory,
+        ExternalId, NormalizedPayload, SafeResourceLocation, ToolCategory,
         session_event::SessionScopedEvent,
     },
     lifecycle::{ItemLifecycle, ToolState},
 };
+use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
 use super::super::PiRuntime;
@@ -364,8 +365,6 @@ pub(super) fn tool_start_payload(
     })
 }
 
-/// Pi's built-in tools read as verb plus workspace path, like every harness;
-/// extension tools keep the name their author gave them.
 fn tool_label(name: &str, path: Option<&str>) -> String {
     let (verb, target) = match name {
         "read" => ("Read", "a file"),

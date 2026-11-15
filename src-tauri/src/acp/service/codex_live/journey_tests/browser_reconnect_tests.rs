@@ -216,8 +216,6 @@ fn browser_take_over_stop_then_next_turn_reconnects() {
         assert!(old_permission());
         assert!(setup.service.take_over_browser_tab("browser-1"));
         assert!(!old_permission());
-        // Tab Stop revokes browser authority; Chat Stop cancels the turn.
-        // Exercise both boundaries before resuming the same session.
         setup.service.revoke_browser_tab("browser-1");
         setup
             .service
@@ -243,7 +241,6 @@ fn browser_take_over_stop_then_next_turn_reconnects() {
         };
         attach();
         setup.activate(&resumed).await.unwrap();
-        // This observation is from the actual activation commit, not Ready.
         assert_eq!(
             observed.recv_timeout(bootstrap_support::WAIT).unwrap(),
             (BrowserMcpSessionState::Live, true),

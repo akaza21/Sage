@@ -1,8 +1,6 @@
-//! A restarted Codex chat's first prompt, through the real Codex binding: its
-//! model and effort choices are thread settings that only a `turn/start`
-//! carries, and the options that offer them come from `model/list`, which the
-//! runtime asks for as activation hands off. The prompt must not go out ahead
-//! of them.
+//! Codex model and effort choices are thread settings that only a `turn/start`
+//! carries, and the options that offer them come from `model/list`. The prompt
+//! must not go out ahead of them.
 use std::sync::{Arc, Mutex};
 
 use serde_json::{Value, json};
@@ -18,17 +16,21 @@ use crate::acp::{
         },
         runtime::NativeRuntime,
     },
-    contract::{RequiredText, SageTurnId},
-    intent::{ExternalId, Prompt, SafeResourceRef, UnavailableResourceReason},
     runtime::{
         ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostPromptIntent,
         PromptWrite, RuntimeEngine, RuntimeHost,
     },
-    session_config::{ConfigChannel, ConfigMutation, choices},
+    session_config::{ConfigChannel, choices},
     store::AdapterTurnCursor,
+    transcript_quote::Prompt,
     transport::{Frame, IncrementalFrameDecoder},
 };
 use crate::persistence::Database;
+use sage_acp_protocol::{
+    contract::{RequiredText, SageTurnId},
+    intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
+    session_config::ConfigMutation,
+};
 
 struct Mapper;
 
@@ -47,7 +49,6 @@ fn frame(value: &Value) -> Frame {
         .unwrap()
 }
 
-/// Writes `command` and returns the request it put on the wire.
 fn send(runtime: &mut NativeRuntime, command: AdapterCommand) -> Value {
     let egress = runtime.command(command).unwrap();
     let request = serde_json::from_slice(egress.frame().payload()).unwrap();
@@ -57,19 +58,18 @@ fn send(runtime: &mut NativeRuntime, command: AdapterCommand) -> Value {
     request
 }
 
-/// The Codex runtime of a resumed thread that runs `fixture-model` at
-/// `effort`, as Codex reports it, publishing its config to `channel` as a
-/// live runtime does.
-fn resumed(
+/// A Codex runtime that learned `launch_choices` and is initialized.
+fn initialized(
     owner: &RuntimeOwner,
     channel: Arc<ConfigChannel>,
-    effort: Option<&str>,
+    launch_choices: &[ConfigMutation],
 ) -> NativeRuntime {
     let mut runtime = NativeRuntime::new(CodexRuntime::fixture_with_identity(
         Platform::WindowsX86_64,
         [3; 32],
         owner.session_id.clone(),
     ));
+    runtime.bind_launch_choices(launch_choices);
     runtime.attach_config(owner.clone(), channel);
     let initialize = send(&mut runtime, AdapterCommand::Initialize);
     let batch = runtime
@@ -86,6 +86,15 @@ fn resumed(
             .resolve_egress(egress.token().clone(), EgressResolution::Written)
             .unwrap();
     }
+    runtime
+}
+
+fn resumed(
+    owner: &RuntimeOwner,
+    channel: Arc<ConfigChannel>,
+    effort: Option<&str>,
+) -> NativeRuntime {
+    let mut runtime = initialized(owner, channel, &[]);
     let resume = send(
         &mut runtime,
         AdapterCommand::ResumeSession {
@@ -190,7 +199,6 @@ impl RuntimeEngine for CodexEngine {
     }
 }
 
-/// What sending a prompt does: restore, then write the `turn/start`.
 fn prompt(
     service: &AcpService,
     owner: &RuntimeOwner,
@@ -203,12 +211,11 @@ fn prompt(
         AdapterCommand::Prompt {
             prompt: Prompt::new("prompt", "continue").unwrap(),
             client_message_id: RequiredText::new("client", client).unwrap(),
-            access_mode: crate::acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
         },
     )
 }
 
-/// Codex runs the Turn `turn_start` asked for, `turn`, to completion.
 fn complete(runtime: &Mutex<NativeRuntime>, turn_start: &Value, turn: &str) {
     let mut runtime = runtime.lock().unwrap();
     for frame_value in [
@@ -222,7 +229,6 @@ fn complete(runtime: &Mutex<NativeRuntime>, turn_start: &Value, turn: &str) {
     }
 }
 
-/// Stores `choices` for the session, as an earlier launch confirmed them.
 fn store(service: &AcpService, owner: &RuntimeOwner, choices: &[ConfigMutation]) {
     let connection = service.database.connection();
     for (at, choice) in choices.iter().enumerate() {
@@ -230,8 +236,6 @@ fn store(service: &AcpService, owner: &RuntimeOwner, choices: &[ConfigMutation])
     }
 }
 
-/// Starts `runtime` as the session's live runtime and asks for the
-/// catalogue as activation hands off; returns the `model/list` request id.
 fn go_live(
     service: &AcpService,
     owner: &RuntimeOwner,
@@ -240,7 +244,6 @@ fn go_live(
     go_live_writing(service, owner, runtime, EgressResolution::Written)
 }
 
-/// `go_live`, with the `model/list` write ending as `write`.
 fn go_live_writing(
     service: &AcpService,
     owner: &RuntimeOwner,
@@ -302,7 +305,6 @@ fn the_first_prompt_after_a_restart_carries_the_restored_model_and_effort() {
     assert_eq!(turn_start["method"], "turn/start");
     assert_eq!(turn_start["params"]["model"], "fixture-model-deep");
     assert_eq!(turn_start["params"]["effort"], "high");
-    // Both choices were restored, so neither was replaced in the store.
     let stored = choices::load(&service.database.connection(), &owner.session_id).unwrap();
     assert!(stored.contains(&option("model", "fixture-model-deep")));
     assert!(stored.contains(&option("effort", "high")));
@@ -318,7 +320,6 @@ fn a_stored_effort_waits_for_codex_to_report_the_thread_effort() {
     store(&service, &owner, &[option("effort", "high")]);
     let slot = &service.lane_at(0).runtime;
     slot.reserve_start(owner.clone()).unwrap();
-    // Codex resumes the thread without saying its effort.
     let runtime = Arc::new(Mutex::new(resumed(&owner, Arc::clone(&slot.config), None)));
     let list = go_live(&service, &owner, &runtime);
     runtime
@@ -326,8 +327,6 @@ fn a_stored_effort_waits_for_codex_to_report_the_thread_effort() {
         .unwrap()
         .ingest(&frame(&catalogue(&list)), &Mapper)
         .unwrap();
-    // The thread shows no thinking level, and the stored one is neither sent
-    // nor forgotten.
     let first = prompt(&service, &owner, &runtime, "unreported");
     assert!(first["params"].get("effort").is_none());
     let stored = |service: &AcpService| {
@@ -335,8 +334,6 @@ fn a_stored_effort_waits_for_codex_to_report_the_thread_effort() {
     };
     assert_eq!(stored(&service), [option("effort", "high")]);
     complete(&runtime, &first, "turn-1");
-    // Codex then reports the thread's effort; the next prompt restores the
-    // stored one over it.
     runtime
         .lock()
         .unwrap()
@@ -350,6 +347,101 @@ fn a_stored_effort_waits_for_codex_to_report_the_thread_effort() {
     let next = prompt(&service, &owner, &runtime, "reported");
     assert_eq!(next["params"]["effort"], "high");
     assert_eq!(stored(&service), [option("effort", "high")]);
+    service.shutdown_blocking().unwrap();
+}
+
+/// A new thread on the account's default model, which Codex answers without
+/// a thinking level when its config sets none. The runtime learned the
+/// session's stored choices first, as activation hands them over.
+fn started(
+    service: &AcpService,
+    owner: &RuntimeOwner,
+    channel: Arc<ConfigChannel>,
+) -> NativeRuntime {
+    let mut runtime = initialized(owner, channel, &service.launch_choices(&owner.session_id));
+    let start = send(
+        &mut runtime,
+        AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        },
+    );
+    runtime
+        .ingest(
+            &frame(&json!({"id":start["id"],"result":{
+                "thread":{"id":"thread-1"},"model":"fixture-model","reasoningEffort":null
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    runtime
+}
+
+#[test]
+fn a_new_threads_first_prompt_carries_the_level_chosen_before_the_session_existed() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    let owner = owner(1);
+    store(&service, &owner, &[option("effort", "high")]);
+    let slot = &service.lane_at(0).runtime;
+    slot.reserve_start(owner.clone()).unwrap();
+    slot.config.mark_new_session(&owner);
+    let runtime = Arc::new(Mutex::new(started(
+        &service,
+        &owner,
+        Arc::clone(&slot.config),
+    )));
+    let list = go_live(&service, &owner, &runtime);
+    runtime
+        .lock()
+        .unwrap()
+        .ingest(&frame(&catalogue(&list)), &Mapper)
+        .unwrap();
+    let first = prompt(&service, &owner, &runtime, "first");
+    assert_eq!(first["method"], "turn/start");
+    assert_eq!(first["params"]["effort"], "high");
+    let config = serde_json::to_value(slot.config.live_snapshot(&owner).unwrap().config).unwrap();
+    let effort = config["configOptions"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|option| option["id"] == "effort")
+        .cloned()
+        .unwrap();
+    assert_eq!(effort["currentValue"], "high");
+    assert_eq!(
+        choices::load(&service.database.connection(), &owner.session_id).unwrap(),
+        [option("effort", "high")]
+    );
+    service.shutdown_blocking().unwrap();
+}
+
+#[test]
+fn a_level_the_catalogue_no_longer_offers_is_not_sent_on_a_new_threads_first_prompt() {
+    let service =
+        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+    seed(&service);
+    let owner = owner(1);
+    // Taken over from the chat's last session, before the catalogue dropped it.
+    store(&service, &owner, &[option("effort", "xhigh")]);
+    let slot = &service.lane_at(0).runtime;
+    slot.reserve_start(owner.clone()).unwrap();
+    slot.config.mark_new_session(&owner);
+    let runtime = Arc::new(Mutex::new(started(
+        &service,
+        &owner,
+        Arc::clone(&slot.config),
+    )));
+    let list = go_live(&service, &owner, &runtime);
+    runtime
+        .lock()
+        .unwrap()
+        .ingest(&frame(&catalogue(&list)), &Mapper)
+        .unwrap();
+    let first = prompt(&service, &owner, &runtime, "first");
+    assert_eq!(first["method"], "turn/start");
+    assert!(first["params"].get("effort").is_none(), "{first}");
     service.shutdown_blocking().unwrap();
 }
 
@@ -376,7 +468,6 @@ fn activation_with_no_stored_choices_does_not_wait_for_the_model_list() {
         Arc::clone(&slot.config),
         Some("medium"),
     )));
-    // `model/list` is written and never answered.
     go_live(&service, &owner, &runtime);
     assert!(runtime.lock().unwrap().config_hydrating());
     assert!(restore_share(&service, &owner) < 0.5);
@@ -402,16 +493,12 @@ fn a_rejected_model_list_write_ends_hydration() {
     )));
     go_live_writing(&service, &owner, &runtime, EgressResolution::QueueRejected);
     assert!(!runtime.lock().unwrap().config_hydrating());
-    // Nothing more is coming, so neither activation nor a send waits, and
-    // the thread's own model is offered.
     assert!(restore_share(&service, &owner) < 0.5);
     let config = serde_json::to_value(slot.config.live_snapshot(&owner).unwrap().config).unwrap();
     assert_eq!(config["configOptions"][0]["category"], "model");
     assert_eq!(config["configOptions"][0]["currentValue"], "fixture-model");
     let turn_start = prompt(&service, &owner, &runtime, "after-rejection");
     assert_eq!(turn_start["method"], "turn/start");
-    // No page listed the model, so its effort cannot be offered; the stored
-    // one is kept for when it can.
     assert_eq!(
         choices::load(&service.database.connection(), &owner.session_id).unwrap(),
         [option("effort", "high")]

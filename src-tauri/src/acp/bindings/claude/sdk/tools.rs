@@ -1,8 +1,5 @@
-//! Claude Code tool uses as ACP tool-call fields.
-//!
-//! Claude names its built-in tools and their input fields; this table is the
-//! only place that knows them. Unknown and MCP tools keep their raw input and
-//! a neutral kind so the shared translator still renders them.
+//! Unknown and MCP tools keep their raw input and a neutral kind so the shared translator still
+//! renders them.
 
 use serde_json::{Map, Value, json};
 
@@ -89,7 +86,6 @@ pub(super) fn tool_fields(name: &str, input: &Value) -> Map<String, Value> {
     fields
 }
 
-/// `TodoWrite` input as ACP plan entries, or `None` for any other tool.
 pub(super) fn plan_entries(name: &str, input: &Value) -> Option<Value> {
     if name != "TodoWrite" {
         return None;
@@ -110,7 +106,6 @@ pub(super) fn plan_entries(name: &str, input: &Value) -> Option<Value> {
     Some(entries.into())
 }
 
-/// A `tool_result` block's text, joined across its text parts.
 pub(super) fn result_text(content: Option<&Value>) -> Option<String> {
     match content? {
         Value::String(text) => Some(text.clone()),
@@ -147,7 +142,6 @@ fn diff(path: Option<&str>, old_text: Option<&str>, new_text: Option<&str>) -> V
     }
 }
 
-/// `mcp__server__tool` reads as `server: tool`.
 fn mcp_title(name: &str) -> String {
     name.strip_prefix("mcp__")
         .and_then(|rest| rest.split_once("__"))

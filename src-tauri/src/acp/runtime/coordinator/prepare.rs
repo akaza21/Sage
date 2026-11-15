@@ -97,8 +97,8 @@ pub(super) fn build_active_dispatch(
             expected_revision: prepared.turn_revision,
             now_millis: command.now_millis,
         },
-        accepted_state: crate::acp::lifecycle::TurnState::Queued,
-        accepted_delivery: crate::acp::lifecycle::DeliveryState::NotWritten,
+        accepted_state: sage_acp_protocol::lifecycle::TurnState::Queued,
+        accepted_delivery: sage_acp_protocol::lifecycle::DeliveryState::NotWritten,
         accepted_projection_revision: prepared.projection_revision,
         projection_retry_pending: false,
         attempts: 0,
@@ -119,10 +119,10 @@ pub(super) fn one_prepared(commit: StoreCommit) -> Result<PreparedTurn, Coordina
 
 pub(super) fn publish(
     publisher: &Arc<dyn ProjectionPublisher>,
-    project_id: &crate::acp::contract::SageProjectId,
-    chat_id: &crate::acp::contract::SageChatId,
-    session_id: &crate::acp::contract::SageAgentSessionId,
-    projection_revision: crate::acp::contract::ProjectionRevision,
+    project_id: &sage_acp_protocol::contract::SageProjectId,
+    chat_id: &sage_acp_protocol::contract::SageChatId,
+    session_id: &sage_acp_protocol::contract::SageAgentSessionId,
+    projection_revision: sage_acp_protocol::contract::ProjectionRevision,
 ) -> Result<(), CoordinatorError> {
     let disposition = publisher.publish_committed(ProjectionChangedV1 {
         project_id: project_id.clone(),

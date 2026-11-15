@@ -1,5 +1,3 @@
-//! Sealed, deadline-bounded physical egress for the P-02 response.
-
 use std::{
     io,
     num::NonZeroUsize,
@@ -68,8 +66,6 @@ pub(crate) trait P02Egress: private::Sealed {
     fn poll_flush(&mut self, cx: &mut Context<'_>) -> Poll<io::Result<()>>;
 }
 
-/// The sole production P-02 egress implementation.  It keeps no queue and
-/// lends its underlying asynchronous writer directly to each physical poll.
 #[allow(dead_code, reason = "P-02 sealed adapter egress entrypoint")]
 pub(crate) struct DeadlineAsyncWriter<W> {
     output: W,
