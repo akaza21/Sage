@@ -254,7 +254,7 @@ fn diagnostic_home_paths_keep_adjacent_command_operators() {
 
 #[test]
 fn repeated_invalid_aws_prefixes_have_linear_bounded_work() {
-    use super::credentials::{AWS_KEY_TAIL_SCAN, work};
+    use super::tokens::{AWS_KEY_TAIL_SCAN, work};
     // Count the scanner's work instead of timing it: every byte position is
     // visited once and each AWS prefix inspects a bounded tail, so the
     // work is linear in the input whatever the runner's load.

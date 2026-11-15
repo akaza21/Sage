@@ -174,7 +174,12 @@ fn union_canaries_cover_every_mode() {
         (r"\/c\/Users\/Jane Doe\/x", &["Jane", "Doe"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &[r"\/c\/Users\/Jane Doe\/x"])]),
     ];
     let mut failures = Vec::new();
-    data::diagnostic_cases(|cases| {
+    // Prose shortens the home folder, so `/root` reads `~` where it is the home.
+    let root_in_prose = super::home::HomePrefix::current()
+        .map_or(std::borrow::Cow::Borrowed("/root"), |home| {
+            home.shorten("/root")
+        });
+    data::diagnostic_cases(&root_in_prose, |cases| {
         for mode in [
             Mode::Prose,
             Mode::CommandOutput,

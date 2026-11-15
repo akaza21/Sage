@@ -6,11 +6,7 @@ pub(super) const PUBLIC_BASE64_CASES: &[&str] = &[
     r#"{"image":"/9j/4AAQSkZJRgAB"}"#,
 ];
 
-pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
-    let root_in_prose = crate::acp::redaction::text::home::HomePrefix::current()
-        .map_or(std::borrow::Cow::Borrowed("/root"), |home| {
-            home.shorten("/root")
-        });
+pub(super) fn diagnostic_cases(root_in_prose: &str, check: impl FnOnce(&[Case<'_>])) {
     let oversized_payload = "A".repeat(8193);
     let oversized_then_credential =
         format!(r#"{{"image/png":"{oversized_payload}","message":"Bearer embedded-canary"}}"#);
@@ -47,7 +43,7 @@ pub(super) fn diagnostic_cases(check: impl FnOnce(&[Case<'_>])) {
         ("(/review).", &["/review"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["(/review)."])]),
         ("/home/u/x", &["/home/u/x"], &[], Tail::All, Permission::Hide, &[(Mode::Diagnostic, &["/home/u/x"], &["[path]"]), (Mode::Prose, &[], &["/home/u/x"])]),
         ("`/a/b`", &["/a/b"], &[], Tail::All, Permission::Hide, &[(Mode::Diagnostic, &["/a/b"], &["[path]"]), (Mode::Prose, &[], &["`/a/b`"])]),
-        ("/root", &["/root"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &[root_in_prose.as_ref()])]),
+        ("/root", &["/root"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &[root_in_prose])]),
         ("/Users", &["/Users"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["/Users"])]),
         ("/alice", &["/alice"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["/alice"])]),
         ("x=/home", &["/home"], &[], Tail::All, Permission::Hide, &[(Mode::Prose, &[], &["x=/home"])]),

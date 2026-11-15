@@ -1,4 +1,5 @@
 use super::Mode;
+pub(crate) use super::tokens::contains_token;
 
 const SECRET_PARTS: &[&str] = &[
     "password",
@@ -185,102 +186,6 @@ fn assigned_parts(part: &str) -> impl Iterator<Item = (&str, char, &str)> {
         key_start = index + 1;
         (character != '/').then(|| (key, character, &part[index + 1..]))
     })
-}
-
-/// Longest AWS access key tail `contains_token` inspects after a prefix: the
-/// 16 key characters plus one to reject a longer run.
-pub(crate) const AWS_KEY_TAIL_SCAN: usize = 17;
-
-pub(crate) fn contains_token(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    for index in 0..bytes.len() {
-        work::record(|work| work.positions += 1);
-        if index > 0 && bytes[index - 1].is_ascii_alphabetic() {
-            continue;
-        }
-        let rest = &bytes[index..];
-        if rest.starts_with(b"AKIA") || rest.starts_with(b"ASIA") {
-            work::record(|work| work.aws_prefixes += 1);
-            let tail = rest[4..]
-                .iter()
-                .take(AWS_KEY_TAIL_SCAN)
-                .inspect(|_| work::record(|work| work.aws_tail_bytes += 1))
-                .take_while(|byte| byte.is_ascii_alphanumeric());
-            let (length, uppercase) = tail.fold((0usize, true), |(length, uppercase), byte| {
-                (
-                    length + 1,
-                    uppercase && (byte.is_ascii_uppercase() || byte.is_ascii_digit()),
-                )
-            });
-            if length == 16 && uppercase {
-                return true;
-            }
-            continue;
-        }
-        if super::tokens::provider_token_at(rest) {
-            return true;
-        }
-        let prefix = if rest.len() >= 3 && rest[..3].eq_ignore_ascii_case(b"sk-") {
-            3
-        } else if rest.len() >= 4 && rest[..4].eq_ignore_ascii_case(b"ghp_") {
-            4
-        } else if rest.len() >= 5
-            && rest[..3].eq_ignore_ascii_case(b"xox")
-            && rest[3].is_ascii_alphabetic()
-            && rest[4] == b'-'
-        {
-            5
-        } else {
-            continue;
-        };
-        let tail = rest[prefix..]
-            .iter()
-            .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
-        let (length, alphanumeric) = tail.fold((0usize, false), |(length, alphanumeric), byte| {
-            (length + 1, alphanumeric || byte.is_ascii_alphanumeric())
-        });
-        if length >= 3 && alphanumeric {
-            return true;
-        }
-    }
-    false
-}
-
-/// Test-only accounting of the work `contains_token` does on this thread, so
-/// tests can bound it by input size instead of by wall-clock time.
-pub(crate) mod work {
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub(crate) struct ContainsTokenWork {
-        /// Outer-loop byte positions visited.
-        pub(crate) positions: usize,
-        pub(crate) aws_prefixes: usize,
-        pub(crate) aws_tail_bytes: usize,
-    }
-
-    #[cfg(test)]
-    thread_local! {
-        static WORK: std::cell::Cell<ContainsTokenWork> =
-            const { std::cell::Cell::new(ContainsTokenWork { positions: 0, aws_prefixes: 0, aws_tail_bytes: 0 }) };
-    }
-
-    #[cfg(test)]
-    pub(crate) fn record(update: impl FnOnce(&mut ContainsTokenWork)) {
-        WORK.with(|cell| {
-            let mut work = cell.get();
-            update(&mut work);
-            cell.set(work);
-        });
-    }
-
-    #[cfg(not(test))]
-    #[inline(always)]
-    pub(crate) fn record(_update: impl FnOnce(&mut ContainsTokenWork)) {}
-
-    /// Returns the work recorded on this thread since the last call.
-    #[cfg(test)]
-    pub(crate) fn take() -> ContainsTokenWork {
-        WORK.with(std::cell::Cell::take)
-    }
 }
 
 /// The byte span of credentials before an `@`: a URL's userinfo, or a
