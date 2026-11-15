@@ -1,3 +1,4 @@
+import { useWorkbenchStore } from "../app/store";
 import { createContext } from "react";
 
 export const agentRailSectionSelectors = {
@@ -7,16 +8,11 @@ export const agentRailSectionSelectors = {
 } as const;
 
 export function navigateAgentHome() {
-  const pane = document.querySelector<HTMLElement>(".agent-chat-pane--focused");
-  const unavailable = '[hidden], [inert], [aria-hidden="true"]';
-  if (!pane || pane.closest(unavailable)) return;
-  const composer = pane.querySelector<HTMLTextAreaElement>(
-    ".composer textarea:not(:disabled)",
-  );
-  if (composer && !composer.closest(unavailable)) {
-    composer.focus();
-    if (document.activeElement === composer) return;
-  }
-  pane.focus();
+  const state = useWorkbenchStore.getState();
+  if (!state.project) return;
+  void state.openNewChatDraft();
+  document
+    .querySelector<HTMLTextAreaElement>("[data-new-chat-draft] textarea")
+    ?.focus();
 }
 export const AgentHomeNavigationContext = createContext(navigateAgentHome);

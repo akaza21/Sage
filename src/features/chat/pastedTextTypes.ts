@@ -1,3 +1,5 @@
+import type { PromptPick } from "../../ports/promptAttachments";
+
 export interface StagedSummary {
   /** The batch revision the next send names; null when nothing is staged. */
   revision: string | null;
@@ -14,7 +16,7 @@ export interface HeldPaste {
 // Notices keep at most a size, a lower bound in UTF-8 bytes.
 export type HeldInput =
   | { kind: "paste"; paste: HeldPaste }
-  | { kind: "pick" }
+  | { kind: "pick"; pick: PromptPick }
   | { kind: "overLimit"; bytes: number }
   | { kind: "pending" }
   | { kind: "edit"; bytes: number };

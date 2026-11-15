@@ -1,10 +1,5 @@
-import {
-  Command,
-  FileDiff,
-  Info,
-  ListChecks,
-  ListFilter,
-} from "../../ui/leanIcons";
+import { Command, FileDiff, Info } from "../../ui/leanIcons";
+import { ListChecks, ListFilter } from "../../ui/leanIconNodesLazy";
 
 const iconProps = { size: 14, "aria-hidden": true } as const;
 

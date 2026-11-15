@@ -1,12 +1,11 @@
 import { useEffect, useId, useRef, useState } from "react";
 import {
-  CirclePlus,
   FileDiff,
   FileText,
-  Folders,
   MoreHorizontal,
   TerminalSquare,
 } from "../../ui/leanIcons";
+import { CirclePlus, Folders } from "../../ui/leanIconNodesLazy";
 import { formatKeymapChords, keymapBinding } from "../../domain/keymapRegistry";
 import type { AgentTool } from "../../workbench/AgentToolsProvider";
 import { MenuPopover } from "../../ui/MenuPopover";

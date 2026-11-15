@@ -50,6 +50,8 @@ export interface ChatOwnershipIntent {
   chatId: string;
   projectGeneration: number;
   transitionEpoch: number;
+  /** The new-chat draft handing off to the chat it owns. */
+  draft?: object;
 }
 
 export function validateChatComposerText(text: string) {

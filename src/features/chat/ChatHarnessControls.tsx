@@ -1,21 +1,15 @@
+import type { ChatHarnessControlsProps } from "./chatHarnessControlsProps";
 import { IconButton } from "../../ui/IconButton";
 import { Plus } from "../../ui/leanIcons";
 
-import { useState, type ComponentProps, type ReactNode } from "react";
-import type { ChatUsage } from "./acp/chatUsage";
+import { useState } from "react";
 import { ComposerContext } from "./ComposerContext";
-import type { ComposerAccessTarget } from "./chatComposerRegionProps";
 
 import {
   cachedHarnessModels,
   harnessModelIdentity,
 } from "../../app/harnessModelCache";
-import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
 import { useWorkbenchStore } from "../../app/store";
-import type {
-  AcpConfigValue,
-  AcpSessionConfig,
-} from "../../domain/acpSessionConfig";
 import {
   selectedConfigChoice,
   sessionConfigControls,
@@ -27,7 +21,6 @@ import { ComposerHarnessPicker } from "./ComposerHarnessPicker";
 import { composerOptionLabel } from "./composerChrome";
 import { useComposerToolbarFit } from "./useComposerToolbarFit";
 import { formatContextWindow } from "./composerModelContext";
-import type { ComposerMenuActions } from "./ComposerAddActions";
 import { ComposerOptionsPart } from "./lazyParts";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 import { ComposerModelControls } from "./ComposerModelControls";
@@ -35,6 +28,7 @@ import type { DraftEffort } from "./DraftEffortControl";
 import { composerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModelState";
 import { ProjectScopeChip } from "./ProjectScopeChip";
+import { usePlanAccess } from "./usePlanAccess";
 import {
   harnessPickerCandidates,
   useComposerPopovers,
@@ -42,43 +36,13 @@ import {
 import { useComposerModelSelection } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 
-interface Props {
-  contextUsage?: ChatUsage | null;
-  usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
-  accessTarget?: ComposerAccessTarget;
-  addActions?: ComposerMenuActions;
-  attachSlot?: ReactNode;
-  availableBinding: boolean;
-  canPrompt: boolean;
-  discoveryPhase: HarnessDiscoveryPhase;
-  modelLabelScope: string;
-  inheritScope?: string;
-  sessionHarnessId: string | null;
-  sessionModelId: string | null;
-  selectedHarnessId: string | null;
-  selectedModelId: string | null;
-  projectName: string | null;
-  turnBusy: boolean;
-  sessionConfig: AcpSessionConfig | null;
-  modePending: boolean;
-  modeError: string | null;
-  focused: boolean;
-  onSetSessionMode: (modeId: string) => Promise<unknown>;
-  onSetSessionConfigOption: (
-    configId: string,
-    value: AcpConfigValue,
-  ) => Promise<unknown>;
-  onSelectHarness: (harnessId: string) => Promise<void>;
-  onSelectModel: (modelId: string) => void;
-  onModeRemoved: () => void;
-}
-
 export function ChatHarnessControls({
+  draftPickers,
   contextUsage,
   usageRequest,
-  accessTarget: { bindingId: accessBindingId, draftChatId, endedSession } = {},
+  accessTarget: { bindingId: accessBindingId, draftChatId, endedPage } = {},
   addActions = {},
-  attachSlot,
+  optionsTriggerId,
   availableBinding,
   canPrompt,
   modelLabelScope,
@@ -98,9 +62,10 @@ export function ChatHarnessControls({
   onSelectHarness,
   onSelectModel,
   onModeRemoved,
-}: Props) {
+}: ChatHarnessControlsProps) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
+  const hasProjects = useWorkbenchStore((state) => state.projects.length > 0);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -114,7 +79,7 @@ export function ChatHarnessControls({
     toggle,
     dismiss,
     setHarnessOpen,
-  } = useComposerPopovers(turnBusy || projectTransitioning);
+  } = useComposerPopovers(projectTransitioning, turnBusy);
   const globalSelectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
   );
@@ -125,6 +90,15 @@ export function ChatHarnessControls({
   const accessHarness = accessBindingId
     ? harnesses.find((harness) => harness.bindingId === accessBindingId)
     : selectedHarness;
+  const { planAccess, confirmation } = usePlanAccess({
+    harness: accessHarness,
+    available: availableBinding,
+    draftChatId,
+    endedPage,
+    sessionConfig,
+    accessOpen: active === "access",
+    openAccess: () => toggle("access"),
+  });
   const modelIdentity = selectedHarness?.accountModelDiscovery
     ? null
     : harnessModelIdentity(selectedHarness);
@@ -132,6 +106,9 @@ export function ChatHarnessControls({
     selectedHarnessId === globalSelectedHarnessId
       ? globalModels
       : (cachedHarnessModels(modelIdentity) ?? []);
+  // Effort levels are known only once a session runs the selected harness and
+  // model; until then effort shows as unavailable, however the selection and
+  // the session were reached.
   // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
     !!sessionConfig?.restored ||
@@ -159,6 +136,8 @@ export function ChatHarnessControls({
     models,
     selectedSessionConfig?.confirmedModel,
   );
+  // A side chat or fork shows its parent's confirmed model and effort until
+  // its own session confirms them; nothing else is ever invented.
   const inherited = useInheritedComposerModel(inheritScope);
   const inheriting =
     !confirmedModelLabel &&
@@ -166,9 +145,6 @@ export function ChatHarnessControls({
     (!inherited?.id || inherited.id === selectedModelId)
       ? inherited
       : undefined;
-  const modelLabel = composerModelName(
-    confirmedModelLabel ?? inheriting?.model ?? "Model",
-  );
   const confirmedEffort = selectedSessionConfig?.confirmedEffort;
   const effortName =
     composerOptionLabel(effortOption) ?? confirmedEffort ?? inheriting?.effort;
@@ -184,24 +160,34 @@ export function ChatHarnessControls({
     confirmedModelLabel,
     selectedModelId,
   );
+  const currentModel = models.find((model) => model.id === currentModelId);
+  const modelLabel = composerModelName(
+    confirmedModelLabel ??
+      inheriting?.model ??
+      (draftPickers ? currentModel?.name : null) ??
+      "Model",
+  );
   // While the next send starts a session (`draftChatId` is set only then),
   // the levels the harness lists for the selected model can be chosen.
   const draft = {
     chatId: draftChatId,
     bindingId: selectedHarness?.bindingId,
     modelId: currentModelId,
-    levels: effortOption
-      ? undefined
-      : models.find((model) => model.id === currentModelId)?.effortLevels,
+    levels: effortOption ? undefined : currentModel?.effortLevels,
   };
   const draftEffort =
-    draft.chatId && draft.bindingId && draft.modelId && draft.levels?.length
-      ? (draft as DraftEffort)
+    (draft.chatId || draftPickers) &&
+    draft.bindingId &&
+    draft.modelId &&
+    draft.levels?.length
+      ? ({
+          ...draft,
+          value: draftPickers?.effort,
+          onChange: draftPickers?.onEffortChange,
+        } as DraftEffort)
       : undefined;
 
-  const contextWindow = formatContextWindow(
-    models.find((model) => model.id === currentModelId)?.contextWindow,
-  );
+  const contextWindow = formatContextWindow(currentModel?.contextWindow);
   const chooseModel = (modelId: string) => {
     const changed = modelId !== unchangedModelId;
     if (changed && modelOption?.type === "select")
@@ -220,18 +206,25 @@ export function ChatHarnessControls({
   const modeOptions = sessionModeActions(selectedSessionConfig);
   const otherOptions = sessionConfigControls(selectedSessionConfig, "other");
   const canSelectEffort = !!selectedConfigChoice(effortOption) || !!draftEffort;
-  const { controls, effortInMenu, projectInMenu, contextVisible } =
-    useComposerToolbarFit(
-      canSelectEffort,
-      Boolean(projectName),
-      active !== null && active !== "options",
-    );
+  const { controls, effortInMenu, contextVisible } = useComposerToolbarFit(
+    !draftPickers && canSelectEffort,
+    active !== null && active !== "options",
+  );
+  const projectAction =
+    projectName && hasProjects ? (
+      <ProjectScopeChip
+        projectName={projectName}
+        menuItem
+        disabled={turnBusy}
+      />
+    ) : undefined;
   // "+" is always the row's first control, as in Codex, so the toolbar keeps
   // the same shape in every chat; it is disabled while it has nothing to offer.
   const hasActions = Boolean(
     Object.values(addActions).some(Boolean) ||
+    planAccess ||
     effortInMenu ||
-    projectInMenu ||
+    projectAction ||
     modeOptions.length > 0 ||
     otherOptions.some((option) => option.type !== "unsupported"),
   );
@@ -251,29 +244,33 @@ export function ChatHarnessControls({
           }
         }}
       >
-        <IconButton
-          ref={optionsTriggerRef}
-          className="composer__plus"
-          aria-label="Composer options"
-          title={hasActions ? undefined : "No options for this harness"}
-          aria-controls={optionsId}
-          aria-haspopup="menu"
-          aria-expanded={active === "options"}
-          disabled={
-            turnBusy ||
-            projectTransitioning ||
-            (!hasActions && active !== "options")
-          }
-          onClick={() => toggle("options")}
-        >
-          <Plus size={16} aria-hidden="true" />
-        </IconButton>
-        {attachSlot}
+        {!draftPickers ? (
+          <IconButton
+            ref={optionsTriggerRef}
+            id={optionsTriggerId}
+            className="composer__plus"
+            aria-label="Composer options"
+            title={hasActions ? undefined : "No options for this harness"}
+            aria-controls={optionsId}
+            aria-haspopup="menu"
+            aria-expanded={active === "options"}
+            disabled={
+              projectTransitioning || (!hasActions && active !== "options")
+            }
+            onClick={() => toggle("options")}
+          >
+            <Plus size={16} aria-hidden="true" />
+          </IconButton>
+        ) : null}
         {availableBinding && accessHarness?.bindingId ? (
           <ComposerAccessControl
             bindingId={accessHarness.bindingId}
+            harnessName={accessHarness.name}
             chatId={draftChatId}
-            endedSession={endedSession}
+            endedPage={endedPage}
+            value={draftPickers?.access}
+            onChange={draftPickers?.onAccessChange}
+            confirmation={confirmation}
             capabilities={accessHarness.accessModes}
             sessionConfig={sessionConfig}
             disabled={turnBusy || projectTransitioning}
@@ -313,6 +310,7 @@ export function ChatHarnessControls({
           restored={selectedSessionConfig?.restored}
           notice={selectedSessionConfig?.notice}
           awaitingSession={
+            !draftPickers &&
             !sessionOwnsSelection &&
             selectedHarnessId !== null &&
             availableBinding
@@ -328,24 +326,6 @@ export function ChatHarnessControls({
           onSelectModel={chooseModel}
           onSetOption={onSetSessionConfigOption}
         />
-        {projectName && projectInMenu ? (
-          <span
-            className="project-scope"
-            data-overflow-control="project"
-            data-suspended
-          />
-        ) : projectName ? (
-          <ProjectScopeChip
-            projectName={projectName}
-            disabled={projectTransitioning || turnBusy}
-            popoverPlacement="above-end"
-            open={active === "project"}
-            onOpenChange={(open) => {
-              if (open && active !== "project") toggle("project");
-              else if (!open && active === "project") dismiss();
-            }}
-          />
-        ) : null}
         {active === "options" ? (
           <ComposerOptionsPart
             part="ComposerOptionsMenu"
@@ -363,11 +343,8 @@ export function ChatHarnessControls({
             onModeRemoved={onModeRemoved}
             triggerRef={optionsTriggerRef}
             onDismiss={dismiss}
-            projectAction={
-              projectInMenu && projectName ? (
-                <ProjectScopeChip projectName={projectName} menuItem />
-              ) : undefined
-            }
+            projectAction={projectAction}
+            planAccess={planAccess}
             sessionConfig={selectedSessionConfig}
             pending={modePending}
             disabled={turnBusy || projectTransitioning}

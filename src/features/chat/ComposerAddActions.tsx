@@ -1,4 +1,5 @@
-import { Check, Sparkles, Target } from "../../ui/leanIcons";
+import { Check } from "../../ui/leanIcons";
+import { Lightbulb, Paperclip, Target } from "../../ui/leanIconNodesLazy";
 import {
   useContext,
   useLayoutEffect,
@@ -13,6 +14,7 @@ import type {
   AcpSessionConfig,
 } from "../../domain/acpSessionConfig";
 import { ChatSessionConfigControls } from "./ChatSessionConfigControls";
+import { attachRefusal } from "./composerAttachRefusal";
 import {
   sessionConfigControls,
   sessionModeActions,
@@ -24,10 +26,14 @@ import { AgentToolsContext } from "../../workbench/AgentToolsProvider";
 import { useStore } from "zustand";
 import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
 import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
+import {
+  ComposerPlanAccess,
+  type PlanAccessTarget,
+} from "./ComposerPlanAccess";
 
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,
-  "imageAction" | "onOpenGoal" | "onCompact"
+  "onAttachFiles" | "attachRefusalChatId" | "onOpenGoal" | "onCompact"
 >;
 
 export function ComposerOptionsMenu({
@@ -57,7 +63,8 @@ export function ComposerOptionsMenu({
   const actionsKey = JSON.stringify([
     selectionKey,
     actions.sessionConfig?.sageAgentSessionId,
-    Boolean(actions.imageAction),
+    Boolean(actions.onAttachFiles),
+    Boolean(actions.planAccess),
     Boolean(actions.onOpenGoal),
     Boolean(actions.onCompact),
     canSelectEffort,
@@ -85,6 +92,7 @@ export function ComposerOptionsMenu({
       id={id}
       className="composer__popover composer__options"
       ariaLabel="Composer options menu"
+      initialFocus="selected"
       focusKey="options"
       restoreFocusOnTab
       open
@@ -100,9 +108,11 @@ export function ComposerOptionsMenu({
 export function ComposerAddActions({
   sessionConfig,
   projectAction,
+  planAccess,
   pending,
   disabled,
-  imageAction,
+  onAttachFiles,
+  attachRefusalChatId,
   onOpenGoal,
   onCompact,
   onOpenEffort,
@@ -112,9 +122,11 @@ export function ComposerAddActions({
 }: {
   sessionConfig: AcpSessionConfig | null;
   projectAction?: ReactNode;
+  planAccess?: PlanAccessTarget;
   pending: boolean;
   disabled: boolean;
-  imageAction?: { disabled: boolean; onChoose: () => void };
+  onAttachFiles?: () => void;
+  attachRefusalChatId?: string;
   onOpenGoal?: () => void;
   onCompact?: () => void;
   onOpenEffort?: () => void;
@@ -126,6 +138,10 @@ export function ComposerAddActions({
   ) => Promise<unknown>;
 }) {
   const modes = sessionModeActions(sessionConfig);
+  const attachRefused =
+    onAttachFiles && attachRefusalChatId !== undefined
+      ? attachRefusal(attachRefusalChatId)
+      : null;
   const { launch, chatAvailable } = useContext(AgentToolsContext);
   const importable = useStore(
     acpProjectionStoreFor(usePinnedAgentChatOwner()),
@@ -141,29 +157,39 @@ export function ComposerAddActions({
       <p className="menu-group-label composer__add-heading" aria-hidden="true">
         Add
       </p>
-      {projectAction}
-      {imageAction ? (
+      {onAttachFiles ? (
         <button
           type="button"
           role="menuitem"
-          className="menu-item"
-          disabled={imageAction.disabled}
+          className="menu-item composer__add-action"
+          aria-label="Files and folders"
+          aria-description={attachRefused ?? undefined}
+          aria-disabled={attachRefused !== null}
           tabIndex={-1}
           onClick={() => {
-            imageAction.onChoose();
+            if (attachRefused !== null) return;
             onClose();
+            onAttachFiles();
           }}
         >
-          Add images
+          <Paperclip size={14} aria-hidden="true" />
+          <span>Files and folders</span>
+          {attachRefused ? (
+            <span className="composer__action-description">
+              {attachRefused}
+            </span>
+          ) : null}
         </button>
       ) : null}
+      {projectAction}
       {onOpenGoal ? (
         <button
           type="button"
           role="menuitem"
           className="menu-item composer__add-action"
           aria-label="Goal"
-          aria-description="View the current goal"
+          aria-description="Set a goal to keep pursuing"
+          disabled={disabled}
           tabIndex={-1}
           onClick={() => {
             onClose();
@@ -173,65 +199,17 @@ export function ComposerAddActions({
           <Target size={14} aria-hidden="true" />
           <span>Goal</span>
           <span className="composer__action-description">
-            View the current goal
+            Set a goal to keep pursuing
           </span>
         </button>
       ) : null}
-      {onCompact ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-item composer__add-action"
-          aria-label="Compact context"
-          aria-description="Summarize earlier turns to free context"
-          tabIndex={-1}
-          onClick={() => {
-            onClose();
-            onCompact();
-          }}
-        >
-          <span>Compact context</span>
-          <span className="composer__action-description">
-            Summarize earlier turns to free context
-          </span>
-        </button>
+      {planAccess ? (
+        <ComposerPlanAccess
+          target={planAccess}
+          disabled={disabled}
+          onClose={onClose}
+        />
       ) : null}
-      {chatAvailable && importable ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-item"
-          tabIndex={-1}
-          onClick={() => {
-            onClose();
-            launch("sessionImport");
-          }}
-        >
-          Open a Codex CLI session
-        </button>
-      ) : null}
-      {onOpenEffort ? (
-        <button
-          type="button"
-          role="menuitem"
-          className="menu-item"
-          tabIndex={-1}
-          onClick={onOpenEffort}
-          data-overflow-control="effort"
-        >
-          Thinking level
-        </button>
-      ) : null}
-      <ChatSessionConfigControls
-        sessionConfig={sessionConfig}
-        group="other"
-        pending={pending}
-        disabled={disabled}
-        onSetSessionConfigOption={(id, value) => {
-          onClose();
-          return onSetSessionConfigOption(id, value);
-        }}
-      />
       {modes.length ? (
         <div
           role="group"
@@ -247,7 +225,7 @@ export function ComposerAddActions({
             const description = plan
               ? selected
                 ? "Plan mode is on"
-                : "Plan mode is off"
+                : "Turn plan mode on"
               : mode.description || undefined;
             return (
               <button
@@ -265,7 +243,7 @@ export function ComposerAddActions({
                   if (!selected) void onSetSessionMode(mode.id);
                 }}
               >
-                {plan ? <Sparkles size={14} aria-hidden="true" /> : null}
+                {plan ? <Lightbulb size={14} aria-hidden="true" /> : null}
                 <span>{label}</span>
                 {description ? (
                   <span className="composer__action-description">
@@ -278,6 +256,63 @@ export function ComposerAddActions({
           })}
         </div>
       ) : null}
+      {onCompact ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-item composer__add-action"
+          aria-label="Compact context"
+          aria-description="Summarize earlier turns to free context"
+          disabled={disabled}
+          tabIndex={-1}
+          onClick={() => {
+            onClose();
+            onCompact();
+          }}
+        >
+          <span>Compact context</span>
+          <span className="composer__action-description">
+            Summarize earlier turns to free context
+          </span>
+        </button>
+      ) : null}
+      {onOpenEffort ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-item"
+          disabled={disabled}
+          tabIndex={-1}
+          onClick={onOpenEffort}
+          data-overflow-control="effort"
+        >
+          Thinking level
+        </button>
+      ) : null}
+      {chatAvailable && importable ? (
+        <button
+          type="button"
+          role="menuitem"
+          className="menu-item"
+          tabIndex={-1}
+          onClick={() => {
+            onClose();
+            launch("sessionImport");
+          }}
+        >
+          Open a Codex CLI session
+        </button>
+      ) : null}
+      <ChatSessionConfigControls
+        sessionConfig={sessionConfig}
+        group="other"
+        pending={pending}
+        disabled={disabled}
+        onSetSessionConfigOption={(id, value) => {
+          onClose();
+          return onSetSessionConfigOption(id, value);
+        }}
+      />
     </>
   );
 }

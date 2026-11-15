@@ -6,11 +6,9 @@ const TOOLBAR_STEPS = [
   "placeholder",
   "context",
   "capacity",
-  "project",
   "effort",
   "access",
   "harness",
-  "project-menu",
   "effort-menu",
   "model-shrink",
   "model",
@@ -20,20 +18,15 @@ const TOOLBAR_STEPS = [
 
 export function useComposerToolbarFit(
   canSelectEffort: boolean,
-  hasProject: boolean,
   paused: boolean,
 ) {
   const controls = useRef<HTMLDivElement>(null);
   const steps = useMemo(
     () =>
-      TOOLBAR_STEPS.filter(
-        (step) =>
-          (step !== "effort-menu" || canSelectEffort) &&
-          (step !== "project-menu" || hasProject),
-      ),
-    [canSelectEffort, hasProject],
+      TOOLBAR_STEPS.filter((step) => step !== "effort-menu" || canSelectEffort),
+    [canSelectEffort],
   );
-  const widths = useRef({ project: [0, 0], effort: [0, 0] });
+  const widths = useRef({ effort: [0, 0] });
   const tier = useToolbarOverflow(
     useCallback(() => {
       const row = controls.current;
@@ -84,7 +77,6 @@ export function useComposerToolbarFit(
   return {
     controls,
     effortInMenu: taken.includes("effort-menu"),
-    projectInMenu: taken.includes("project-menu"),
     contextVisible: tier >= 0 && !taken.includes("context"),
   };
 }

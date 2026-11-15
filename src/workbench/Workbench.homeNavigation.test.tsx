@@ -103,9 +103,14 @@ it("restores Files with collapsed navigation when split space returns and lets n
   expect(composer).toBeVisible();
 });
 
-it.each([false, true])(
-  "Home dismisses a nonmodal resource overlay before focusing Chat; collapsed=%s",
-  async (collapsed) => {
+it.each([
+  { collapsed: false, entry: "Home" },
+  { collapsed: true, entry: "Home" },
+  { collapsed: false, entry: "shortcut" },
+  { collapsed: true, entry: "shortcut" },
+])(
+  "$entry dismisses the resource overlay before focusing the draft; collapsed=$collapsed",
+  async ({ collapsed, entry }) => {
     vi.stubGlobal("innerWidth", 700);
     const before = await ports.project.getBootstrapSnapshot();
     const create = vi.spyOn(ports.chat, "createChat");
@@ -125,17 +130,23 @@ it.each([false, true])(
     const resources = screen.getByRole("dialog", { name: "Agent artifacts" });
     expect(resources).not.toHaveAttribute("aria-modal");
     expect(composer.closest(".center-region")).toHaveAttribute("inert");
-    const home = screen.getByRole("button", { name: "Home" });
+    const home = await screen.findByRole("button", { name: "Home" });
     expect(home.closest("aside")).not.toHaveAttribute("inert");
     home.focus();
-    fireEvent.click(home);
+    if (entry === "shortcut")
+      fireEvent.keyDown(window, { key: "n", ctrlKey: true });
+    else fireEvent.click(screen.getByRole("button", { name: entry }));
     await settleLazyModules();
     expect(
       screen.queryByRole("dialog", { name: "Agent artifacts" }),
     ).toBeNull();
-    expect(composer.closest(".center-region")).not.toHaveAttribute("inert");
-    expect(composer).toHaveFocus();
-    expect(composer).toHaveValue("Overlay draft");
+    expect(composer).not.toBeInTheDocument();
+    const draft = screen.getByRole("combobox", { name: "Message agent" });
+    expect(draft).toHaveFocus();
+    expect(draft).toHaveValue("");
+    expect(
+      screen.getByRole("heading", { name: "What should we work on?" }),
+    ).toBeVisible();
     expect(await ports.project.getBootstrapSnapshot()).toEqual(before);
     expect(create).not.toHaveBeenCalled();
   },
@@ -264,9 +275,10 @@ it.each(["approval", "disabled"] as const)(
     home.focus();
     fireEvent.click(home);
     await settleLazyModules();
-    expect(pane).toBeVisible();
-    expect(pane).toHaveFocus();
-    expect(pane).toHaveAttribute("tabindex", "-1");
+    expect(pane).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Message agent" }),
+    ).toHaveFocus();
     expect(useWorkbenchStore.getState().activeTabId).toBe(chatId);
     expect(useWorkbenchStore.getState().chatUiById[chatId]?.composerText).toBe(
       "Preserved draft",
@@ -334,16 +346,17 @@ it.each(["parent", "side"] as const)(
     home.focus();
     fireEvent.click(home);
     await settleLazyModules();
-    expect(focused).toHaveFocus();
-    expect(focused).toHaveClass("agent-chat-pane--focused");
-    expect(useWorkbenchStore.getState().activeTabId).toBe(focusedId);
-    expect(useSideChatState.getState().pairedId).toBe(sideId);
+    expect(focused).not.toBeInTheDocument();
+    expect(other).not.toBeInTheDocument();
     expect(
-      within(panes[0]!).getByRole("combobox", { name: "Message agent" }),
-    ).toHaveValue("Parent draft");
+      screen.getByRole("combobox", { name: "Message agent" }),
+    ).toHaveFocus();
     expect(
-      within(panes[1]!).getByRole("combobox", { name: "Message agent" }),
-    ).toHaveValue("Side draft");
+      useWorkbenchStore.getState().chatUiById[parentId]?.composerText,
+    ).toBe("Parent draft");
+    expect(useWorkbenchStore.getState().chatUiById[sideId]?.composerText).toBe(
+      "Side draft",
+    );
     expect(await ports.project.getBootstrapSnapshot()).toEqual(before);
     expect(create).not.toHaveBeenCalled();
   },
@@ -392,42 +405,42 @@ it.each([false, true])(
     ).toBeVisible();
     expect(screen.queryByText(/New chat [234]/)).toBeNull();
     expect(screen.getByRole("button", { name: "Home" })).toBeVisible();
-    expect(composer).toHaveFocus();
-    expect(composer).toHaveValue("Keep this unsent text");
-
-    fireEvent.click(
-      screen.getByRole("button", {
-        name: collapsed ? "Open settings from rail" : "Open settings",
-      }),
+    expect(composer).not.toBeInTheDocument();
+    const draft = screen.getByRole("combobox", { name: "Message agent" });
+    expect(draft).toHaveFocus();
+    expect(draft).toHaveValue("");
+    expect(
+      document.querySelector(".project-chat[aria-current='page']"),
+    ).toBeNull();
+    screen.getByRole("button", { name: "Home" }).focus();
+    fireEvent.keyDown(window, { key: "l", ctrlKey: true });
+    expect(draft).toHaveFocus();
+    fireEvent.change(draft, { target: { value: "Unsaved home text" } });
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    fireEvent.click(screen.getByRole("button", { name: /^New chat$/ }));
+    await settleLazyModules();
+    expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
+      "Unsaved home text",
     );
+    expect(await ports.project.getBootstrapSnapshot()).toEqual(before);
+    fireEvent.click(screen.getByRole("radio", { name: "Editor" }));
     await settleLazyModules();
-    fireEvent.click(screen.getByRole("button", { name: "Close settings" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Agent" }));
     await settleLazyModules();
-    expect(composer).toHaveValue("Keep this unsent text");
-    expect(useWorkbenchStore.getState().activeTabId).toBe(before.activeTabId);
-    expect(create).not.toHaveBeenCalled();
-
-    await act(async () =>
-      fireEvent.click(
-        screen.getByRole("button", {
-          name: /^New chat$/,
-        }),
-      ),
+    expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
+      "Unsaved home text",
     );
-    await settleLazyModules();
-    const created = await ports.project.getBootstrapSnapshot();
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(created.tabs.filter((tab) => tab.kind === "chat")).toHaveLength(2);
-    expect(created.activeTabId).not.toBe(before.activeTabId);
-    expect(created.messages).toEqual([]);
-    expect(created.project).toEqual(before.project);
     await act(async () =>
       useWorkbenchStore.getState().activateTab(before.activeTabId!),
     );
-    const returned = await ports.project.getBootstrapSnapshot();
-    expect(returned.messages).toEqual(before.messages);
-    expect(returned.tabs.find((tab) => tab.id === before.activeTabId)).toEqual(
-      before.tabs.find((tab) => tab.id === before.activeTabId),
+    await settleLazyModules();
+    expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
+      "Keep this unsent text",
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Home" }));
+    await settleLazyModules();
+    expect(screen.getByRole("combobox", { name: "Message agent" })).toHaveValue(
+      "Unsaved home text",
     );
   },
 );

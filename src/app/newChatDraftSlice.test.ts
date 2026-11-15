@@ -1,0 +1,305 @@
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { MAX_CHAT_COMPOSER_BYTES } from "../domain/chatOwnership";
+import { getWorkbenchPorts } from "../ports/workbenchRuntime";
+import { resetBrowserDesktopForTests } from "../services/browserDesktop";
+import { useWorkbenchStore } from "./store";
+import { desktop } from "../services/desktop";
+import { resetHarnessModelCache } from "./harnessModelCache";
+import { useChatEffortDraft } from "./chatEffortDraft";
+import { effectiveDraftChoice } from "./newChatDraftNavigation";
+import type { HarnessDefinition, ModelOption } from "../domain/workbench";
+
+const initial = useWorkbenchStore.getState();
+const ports = getWorkbenchPorts();
+beforeEach(async () => {
+  resetBrowserDesktopForTests();
+  useWorkbenchStore.setState(initial, true);
+  await useWorkbenchStore.getState().initialize();
+  await useWorkbenchStore.getState().openNewChatDraft();
+});
+afterEach(() => {
+  vi.restoreAllMocks();
+  useWorkbenchStore.setState(initial, true);
+  resetBrowserDesktopForTests();
+});
+
+it("bounds draft UTF-8 text and keeps the previous chat's text independently", async () => {
+  const state = useWorkbenchStore.getState();
+  state.setComposerText("Previous chat text");
+  const text = "é".repeat(MAX_CHAT_COMPOSER_BYTES / 2);
+  state.updateNewChatDraft({ text });
+  expect(useWorkbenchStore.getState().newChatDraft?.text).toBe(text);
+  state.updateNewChatDraft({ text: text + "é" });
+  expect(useWorkbenchStore.getState().newChatDraft?.text).toBe(text);
+  expect(useWorkbenchStore.getState().newChatDraft?.error).toMatch(
+    /limit|bytes|exceed/i,
+  );
+  await state.openNewChatDraft();
+  await state.activateTab(state.activeTabId!);
+  expect(useWorkbenchStore.getState().composerText).toBe("Previous chat text");
+  expect(useWorkbenchStore.getState().agentCenter).toBe("chat");
+});
+
+it.each([
+  { phase: "error" as const, modelId: null, empty: true },
+  { phase: "checking" as const, modelId: null, empty: true },
+])(
+  "retains the draft without creating for $phase discovery and model $modelId (empty: $empty)",
+  async ({ phase, modelId, empty }) => {
+    const state = useWorkbenchStore.getState();
+    const before = await ports.project.getBootstrapSnapshot();
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "draft-harness",
+          name: "Draft harness",
+          description: "Fixture ACP harness",
+          source: "builtIn",
+          transport: "acp",
+          installState: "available",
+          bindingId: "draft-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+      selectedHarnessId: "draft-harness",
+      models: empty ? [] : [{ id: "model-a", name: "Model A" }],
+      harnessDiscoveryPhase: phase,
+      newChatDraft: {
+        ...state.newChatDraft!,
+        harnessId: "draft-harness",
+        modelId,
+        text: "Keep this until discovery permits sending",
+      },
+    });
+    await state.sendNewChatDraft();
+    expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(
+      before.tabs,
+    );
+    expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+      text: "Keep this until discovery permits sending",
+      modelId,
+      submission: { status: "released" },
+      error: "Choose an available harness and model before sending.",
+    });
+    expect(useWorkbenchStore.getState().pendingFirstSend).toBeNull();
+  },
+);
+
+it("updates draft choices synchronously and freezes edits as soon as sending starts", async () => {
+  const state = useWorkbenchStore.getState();
+  useWorkbenchStore.setState({
+    harnesses: [],
+    models: [
+      {
+        id: "thinking",
+        name: "Thinking",
+        isDefault: true,
+        effortLevels: ["high"],
+      },
+      { id: "plain", name: "Plain", isDefault: false },
+    ],
+  });
+  state.updateNewChatDraft({ text: "First prompt", effort: "high" });
+  state.selectDraftModel("thinking");
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    text: "First prompt",
+    modelId: "thinking",
+    effort: "high",
+  });
+  state.selectDraftModel("plain");
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    modelId: "plain",
+    effort: null,
+  });
+
+  const sending = state.sendNewChatDraft();
+  state.updateNewChatDraft({ text: "Too late" });
+  state.selectDraftModel("thinking");
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    text: "First prompt",
+    modelId: "plain",
+    submission: { status: "submitting" },
+  });
+  await sending;
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    text: "First prompt",
+    submission: { status: "released" },
+    error: "Choose an available harness and model before sending.",
+  });
+});
+
+it("keeps the draft through same-project refresh and failed switching, then discards it on successful switching", async () => {
+  const state = useWorkbenchStore.getState();
+  state.updateNewChatDraft({ text: "Project draft" });
+  await state.createChat();
+  expect(useWorkbenchStore.getState().newChatDraft?.text).toBe("Project draft");
+  const snapshot = await ports.project.getBootstrapSnapshot();
+  vi.spyOn(ports.project, "switchProject").mockResolvedValueOnce({
+    committed: false,
+    snapshot: null,
+    transitionEpoch: snapshot.transitionEpoch,
+    recoveryError: "Switch rejected",
+  });
+  await state.switchProject("missing-project");
+  expect(useWorkbenchStore.getState().newChatDraft?.text).toBe("Project draft");
+  const changed = {
+    ...snapshot,
+    project: { id: "other-project", name: "Other", roots: [] },
+    tabs: [],
+    archivedChats: [],
+    activeTabId: null,
+    transitionEpoch: snapshot.transitionEpoch + 1,
+  };
+  vi.mocked(ports.project.switchProject).mockResolvedValueOnce({
+    committed: true,
+    snapshot: changed,
+    transitionEpoch: changed.transitionEpoch,
+    recoveryError: null,
+  });
+  await state.switchProject("other-project");
+  expect(useWorkbenchStore.getState().project?.id).toBe("other-project");
+  expect(useWorkbenchStore.getState().newChatDraft).toBeNull();
+  expect(useWorkbenchStore.getState().agentCenter).toBe("chat");
+});
+
+it("refuses delayed creation after the project ownership lifetime changes", async () => {
+  const before = await ports.project.getBootstrapSnapshot();
+  const state = useWorkbenchStore.getState();
+  const creation = state.createChat();
+  useWorkbenchStore.setState({
+    chatOwnershipEpoch: state.chatOwnershipEpoch + 1,
+  });
+  expect(await creation).toEqual({ status: "not-created" });
+  expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(
+    before.tabs,
+  );
+});
+
+it("keeps the latest draft model when A, B, A discovery completes out of order", async () => {
+  resetHarnessModelCache();
+  useWorkbenchStore.setState({
+    harnesses: ["A", "B"].map((id): HarnessDefinition => ({
+      id,
+      name: id,
+      description: "Fixture ACP harness",
+      source: "builtIn",
+      transport: "acp",
+      installState: "available",
+      bindingId: `binding-${id}`,
+      accountModelDiscovery: false,
+    })),
+  });
+  const models = [
+    { id: "default", name: "Default", isDefault: true },
+    { id: "chosen", name: "Chosen" },
+  ];
+  let finishFirst!: (value: typeof models) => void;
+  let finishLatest!: (value: typeof models) => void;
+  vi.spyOn(desktop, "listHarnessModels")
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishFirst = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(models)
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishLatest = resolve;
+        }),
+    );
+  const state = useWorkbenchStore.getState();
+  const first = state.selectDraftHarness("A");
+  await vi.waitFor(() => expect(finishFirst).toBeDefined());
+  await state.selectDraftHarness("B");
+  const latest = state.selectDraftHarness("A");
+  await vi.waitFor(() => expect(finishLatest).toBeDefined());
+  finishLatest(models);
+  await latest;
+  state.selectDraftModel("chosen");
+  finishFirst(models);
+  await first;
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    harnessId: "A",
+    modelId: "chosen",
+  });
+});
+
+it.each<{
+  catalog: ModelOption[];
+  modelId: string | null;
+  effort: string | null;
+}>([
+  { catalog: [], modelId: null, effort: null },
+  {
+    catalog: [{ id: "thinking", name: "Thinking" }],
+    modelId: "thinking",
+    effort: null,
+  },
+  {
+    catalog: [
+      { id: "plain", name: "Plain" },
+      { id: "new-default", name: "New default", isDefault: true },
+    ],
+    modelId: "new-default",
+    effort: null,
+  },
+  {
+    catalog: [
+      { id: "new-default", name: "New default", isDefault: true },
+      { id: "thinking", name: "Thinking", effortLevels: ["high", "low"] },
+    ],
+    modelId: "thinking",
+    effort: "high",
+  },
+])(
+  "sends with model $modelId, effort $effort after a catalog refresh, keeping the stored choice",
+  async ({ catalog, modelId, effort }) => {
+    resetHarnessModelCache();
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          id: "refresh-harness",
+          name: "Refresh harness",
+          description: "Fixture ACP harness",
+          source: "builtIn",
+          transport: "acp",
+          installState: "available",
+          bindingId: "refresh-binding",
+          accountModelDiscovery: false,
+        },
+      ],
+    });
+    vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([
+      { id: "old-default", name: "Old default", isDefault: true },
+      { id: "thinking", name: "Thinking", effortLevels: ["high"] },
+    ]);
+    const state = useWorkbenchStore.getState();
+    await state.selectDraftHarness("refresh-harness");
+    state.selectDraftModel("thinking");
+    state.updateNewChatDraft({ text: "Keep through refresh", effort: "high" });
+    vi.mocked(desktop.listHarnessModels).mockResolvedValue(catalog);
+    await state.retryHarnessDiscovery();
+    await vi.waitFor(() =>
+      expect(useWorkbenchStore.getState().models).toEqual(catalog),
+    );
+    const refreshed = useWorkbenchStore.getState();
+    expect(refreshed.newChatDraft).toMatchObject({
+      modelId: "thinking",
+      effort: "high",
+    });
+    expect(
+      effectiveDraftChoice(refreshed.newChatDraft!, refreshed),
+    ).toMatchObject({ modelId, effort });
+    await state.sendNewChatDraft();
+    const sent = useWorkbenchStore.getState();
+    expect(sent.newChatDraft).toBeNull();
+    expect(sent.composerText).toBe("Keep through refresh");
+    expect(sent.chatUiById[sent.activeTabId!]).toMatchObject({
+      harnessId: "refresh-harness",
+      modelId,
+    });
+    expect(useChatEffortDraft.getState().draft?.effort ?? null).toBe(effort);
+  },
+);

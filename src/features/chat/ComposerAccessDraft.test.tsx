@@ -68,6 +68,7 @@ const codex: SessionAccessModeCapability[] = [
 function renderNewChat(chatId?: string) {
   return render(
     <ComposerAccessControl
+      harnessName="Fixture"
       bindingId="codex-acp"
       chatId={chatId}
       capabilities={codex}

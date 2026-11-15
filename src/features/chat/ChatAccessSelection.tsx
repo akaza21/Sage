@@ -1,36 +1,14 @@
-import {
-  lazy,
-  Suspense,
-  useEffect,
-  useLayoutEffect,
-  useRef,
-  type ReactNode,
-  type RefObject,
-} from "react";
-import {
-  loadChatAccess,
-  useChatAccessStore,
-} from "../../app/sessionAccessActions";
+import { lazy, Suspense, useLayoutEffect, useRef, type RefObject } from "react";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
-import type { AcpSessionConfig } from "../../domain/acpSessionConfig";
-import type { SessionAccessModeCapability } from "../../domain/sessionAccessMode";
-import { chatAccessCandidates, chatAccessEffective } from "./chatAccessMode";
-import { CHAT_ACCESS_ICONS } from "./chatAccessIcons";
+import { ChatAccessView } from "./ChatAccessView";
 import type {
   AccessView,
   ComposerAccessControlProps,
 } from "./ComposerAccessControl";
-import { ChatAccessDraftSelection } from "./ChatAccessDraftSelection";
 import { ComposerMenuLoading } from "./ComposerMenuLoading";
 const AccessMenu = lazy(() => import("./ComposerAccessMenu"));
 
-interface AccessSelectionProps {
-  bindingId: string;
-  capabilities: readonly SessionAccessModeCapability[] | undefined;
-  error: string | null;
-  children: (view: AccessView) => ReactNode;
-}
-
+/** The access menu's anchor, as the composer's trigger holds it. */
 export interface AccessMenuAnchor {
   id: string;
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -39,8 +17,8 @@ export interface AccessMenuAnchor {
 }
 
 /**
- * The trigger stays the composer's own, so it is never remounted as this
- * chunk loads.
+ * Hands the composer's trigger what it shows, when that changes. The trigger
+ * stays the composer's own, so it is never remounted as this chunk loads.
  */
 function ReportView({
   view,
@@ -63,13 +41,21 @@ function ReportView({
   return null;
 }
 
-/** Loaded on demand, so the chat path carries none of it. */
+/**
+ * A chat's own access, and its menu: its live session's, or before the
+ * session exists the access drafted for it. Loaded on demand, so the chat
+ * path carries none of it.
+ */
 export default function ChatAccessSelection({
   bindingId,
+  harnessName,
+  confirmation,
   capabilities,
   sessionConfig: session,
   chatId,
-  endedSession,
+  value,
+  onChange,
+  endedPage,
   id,
   triggerRef,
   open,
@@ -80,6 +66,7 @@ export default function ChatAccessSelection({
     onView: (view: AccessView | null) => void;
   }) {
   const props = { bindingId, capabilities };
+  // The harness defaults' own load error shows with the chat's access.
   const error = useSessionAccessModeStore((state) => state.error);
   const withMenu = (view: AccessView) => (
     <>
@@ -109,58 +96,25 @@ export default function ChatAccessSelection({
             effective={view.effective}
             onDismiss={onDismiss}
             sessionId={view.sessionId}
+            harnessName={harnessName}
+            confirmation={confirmation}
             onDraft={view.onDraft}
           />
         </Suspense>
       ) : null}
     </>
   );
-  // A chat with no head drafts the access of the session its next send
-  // starts, even while it shows its last session's config; a removed session
-  // is past, and its chat drafts too.
-  return session && !session.removed && !chatId ? (
-    <LiveChatAccess session={session} error={error} {...props}>
-      {withMenu}
-    </LiveChatAccess>
-  ) : (
-    <ChatAccessDraftSelection
+  return (
+    <ChatAccessView
+      sessionConfig={session}
       chatId={chatId}
-      endedSession={endedSession}
+      value={value}
+      onChange={onChange}
+      endedPage={endedPage}
       error={error}
       {...props}
     >
       {withMenu}
-    </ChatAccessDraftSelection>
+    </ChatAccessView>
   );
-}
-
-function LiveChatAccess({
-  bindingId,
-  capabilities,
-  session,
-  error,
-  children,
-}: AccessSelectionProps & { session: AcpSessionConfig }) {
-  const sessionId = session.sageAgentSessionId;
-  const stored = useSessionAccessModeStore((state) => state.modes[bindingId]);
-  const chat = useChatAccessStore((state) => state.modes[sessionId]);
-  const chatError = useChatAccessStore((state) => state.error);
-  const unread = chat === undefined;
-  useEffect(() => {
-    if (unread) void loadChatAccess(sessionId);
-  }, [sessionId, unread]);
-  const candidates = chatAccessCandidates(
-    capabilities,
-    session.modes?.availableModes.map((mode) => mode.id) ?? null,
-  );
-  const effective = chatAccessEffective(stored, candidates, chat);
-  return children({
-    candidates,
-    effective,
-    error: error ?? chatError,
-    sessionId,
-    icon: effective ? CHAT_ACCESS_ICONS[effective] : undefined,
-    tone:
-      effective === "fullAccess" ? " composer__access-label--full" : undefined,
-  });
 }

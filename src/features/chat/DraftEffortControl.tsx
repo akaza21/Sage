@@ -7,7 +7,9 @@ import { capitalizeLabel } from "../../domain/text";
 import { ComposerEffortControl } from "./ComposerEffortControl";
 
 export interface DraftEffort {
-  chatId: string;
+  chatId?: string;
+  value?: string | null;
+  onChange?: (value: string) => void;
   bindingId: string;
   modelId: string;
   levels: readonly string[];
@@ -26,10 +28,12 @@ export default function DraftEffortControl({
 >) {
   const held = useChatEffortDraft((state) => state.draft);
   const { chatId, bindingId, modelId } = draft;
-  const current =
-    held?.chatId === chatId &&
-    held.bindingId === bindingId &&
-    held.modelId === modelId
+  const current = draft.onChange
+    ? (draft.value ?? DEFAULT_EFFORT_DRAFT)
+    : held &&
+        held.chatId === chatId &&
+        held.bindingId === bindingId &&
+        held.modelId === modelId
       ? held.effort
       : DEFAULT_EFFORT_DRAFT;
   const listed = [DEFAULT_EFFORT_DRAFT, ...draft.levels];
@@ -49,10 +53,13 @@ export default function DraftEffortControl({
         })),
       }}
       onSetOption={(_, value) => {
-        if ("value" in value && typeof value.value === "string")
-          useChatEffortDraft.setState({
-            draft: { chatId, bindingId, modelId, effort: value.value },
-          });
+        if ("value" in value && typeof value.value === "string") {
+          if (draft.onChange) draft.onChange(value.value);
+          else if (chatId)
+            useChatEffortDraft.setState({
+              draft: { chatId, bindingId, modelId, effort: value.value },
+            });
+        }
         return Promise.resolve();
       }}
     />

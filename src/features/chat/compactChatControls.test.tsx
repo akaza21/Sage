@@ -66,7 +66,6 @@ describe("Compact chat controls", () => {
       <ChatHarnessControls
         availableBinding
         canPrompt
-        discoveryPhase="ready"
         modelLabelScope="compact"
         sessionHarnessId={null}
         sessionModelId={null}

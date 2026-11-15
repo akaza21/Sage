@@ -4,6 +4,7 @@ use super::{ErrorKind, NormalizedPayload};
 fn durable_error_rows_decode_future_kinds_as_none() {
     for (kind, expected) in [
         (Some("attempt"), Some(ErrorKind::Attempt)),
+        (Some("notice"), Some(ErrorKind::Notice)),
         (Some("futureErrorKind"), None),
         (Some(""), None),
         (None, None),
@@ -18,7 +19,10 @@ fn durable_error_rows_decode_future_kinds_as_none() {
         let encoded = serde_json::to_value(decoded).expect("encode durable error row");
         assert_eq!(
             encoded["payload"].get("kind"),
-            expected.map(|_| serde_json::json!("attempt")).as_ref()
+            expected
+                .and(kind)
+                .map(|kind| serde_json::json!(kind))
+                .as_ref()
         );
     }
     let legacy: NormalizedPayload = serde_json::from_str(

@@ -42,7 +42,7 @@ impl StandardAcpRuntime {
                 )
             };
             vec![AdapterEvent::Error(NormalizedPayload::Error {
-                kind: None,
+                kind: Some(sage_acp_protocol::intent::ErrorKind::Notice),
                 code: SafeText::new("errorCode", "clientFileWriteRefused")
                     .map_err(|_| AdapterRuntimeError::Frame)?,
                 message: SafeText::new("errorMessage", &reason)

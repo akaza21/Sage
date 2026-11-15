@@ -63,7 +63,7 @@ export function turnReasonMessage(turn: TurnProjection): string | undefined {
   if (!stopped && turn.state !== "failed") return;
   for (let index = turn.items.length; index--;) {
     const item = turn.items[index];
-    if (item.kind === "error" && item.payload.kind !== "attempt") {
+    if (item.kind === "error" && item.payload.kind === undefined) {
       const message = item.payload.message?.trim();
       if (message || !stopped) return message;
     }

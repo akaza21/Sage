@@ -70,13 +70,14 @@ afterEach(cleanup);
 
 it.each([
   ["readOnly", "Read-only", ".lucide-eye"],
-  ["workspaceWrite", "Workspace edits", ".lucide-shield-check"],
+  ["workspaceWrite", "Workspace edits", ".lucide-pencil"],
 ] as const)(
   "uses the %s icon on both the chip and its selected row",
   async (mode, label, icon) => {
     useSessionAccessModeStore.setState({ modes: { fixture: mode } });
     render(
       <ComposerAccessControl
+        harnessName="Fixture"
         bindingId="fixture"
         capabilities={capabilities}
         open
@@ -101,6 +102,7 @@ it.each([
 it("introduces the approval question and distinct icons only for admitted modes", async () => {
   render(
     <ComposerAccessControl
+      harnessName="Fixture"
       bindingId="fixture"
       capabilities={[
         ...capabilities,
@@ -117,16 +119,14 @@ it("introduces the approval question and distinct icons only for admitted modes"
     />,
   );
   expect(
-    await screen.findByText(
-      "How should agent actions be approved in this chat?",
-    ),
+    await screen.findByText("How should Fixture actions be approved?"),
   ).toBeVisible();
   const menu = screen.getByRole("menu", { name: "Access mode" });
   expect(menu).toHaveAccessibleDescription(
-    "How should agent actions be approved in this chat?",
+    "How should Fixture actions be approved?",
   );
   expect(
-    screen.getByText("How should agent actions be approved in this chat?"),
+    screen.getByText("How should Fixture actions be approved?"),
   ).toHaveAttribute("aria-hidden", "true");
   expect(menu.querySelectorAll('[role="menuitemradio"]')).toHaveLength(3);
   expect(
@@ -137,12 +137,12 @@ it("introduces the approval question and distinct icons only for admitted modes"
   expect(
     screen
       .getByRole("menuitemradio", { name: "Workspace edits" })
-      .querySelector(".lucide-shield-check"),
+      .querySelector(".lucide-pencil"),
   ).not.toBeNull();
   expect(
     screen
       .getByRole("menuitemradio", { name: "Ask each time" })
-      .querySelector(".lucide-message-circle-question-mark"),
+      .querySelector(".lucide-hand"),
   ).not.toBeNull();
   expect(menu.querySelectorAll(".lucide-check")).toHaveLength(1);
   expect(screen.queryByRole("link")).toBeNull();
@@ -154,6 +154,7 @@ it("shows admitted descriptions, checked selection, keyboard navigation and Esca
     const [open, setOpen] = useState(true);
     return (
       <ComposerAccessControl
+        harnessName="Fixture"
         bindingId="fixture"
         capabilities={capabilities}
         open={open}
@@ -208,6 +209,7 @@ it("applies the confirmed policy to this chat only and returns focus to access",
     const [open, setOpen] = useState(true);
     return (
       <ComposerAccessControl
+        harnessName="Fixture"
         bindingId="fixture"
         capabilities={capabilities}
         open={open}
@@ -249,6 +251,7 @@ it("cancels workspace-write escalation without persisting, and drops it on bindi
   const save = vi.spyOn(getWorkbenchPorts().settings, "setSessionAccessModes");
   const dismiss = vi.fn();
   const props = {
+    harnessName: "Fixture",
     bindingId: "fixture",
     capabilities,
     open: true,
@@ -284,6 +287,7 @@ it.each(["disabled", "withdrawn"])(
       "setSessionAccessModes",
     );
     const props = {
+      harnessName: "Fixture",
       bindingId: "fixture",
       capabilities,
       open: true,
@@ -316,6 +320,7 @@ it.each(["disabled", "withdrawn"])(
 it("does not relabel an unsupported saved policy as an admitted permission mode", () => {
   render(
     <ComposerAccessControl
+      harnessName="Fixture"
       bindingId="fixture"
       capabilities={[
         {
@@ -340,6 +345,7 @@ it("does not relabel an unsupported saved policy as an admitted permission mode"
 it("has no interactive access surface without native capabilities", () => {
   render(
     <ComposerAccessControl
+      harnessName="Fixture"
       bindingId="fixture"
       open
       capabilities={undefined}

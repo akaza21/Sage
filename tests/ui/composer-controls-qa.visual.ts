@@ -6,59 +6,56 @@ import {
   waitForAnimations,
 } from "./shared/visualBrowserPrimitives";
 
-for (const control of ["effort", "project"]) {
-  test(`keyboard focus follows the ${control} control through overflow and back`, async ({
-    page,
-  }) => {
-    await page.setViewportSize({ width: 1888, height: 1096 });
-    await openScenario(page, "agent-single", "agent");
-    await settleChatProjections(page);
-    await page.evaluate(async () => {
-      const fixture =
-        await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
-      fixture.installVisualComposerEffortFixture();
-    });
-    const composer = page.locator("form.composer").first();
-    await settledComposerFit(composer);
-    const trigger =
-      control === "effort"
-        ? composer.getByRole("button", { name: "Thinking level: Medium" })
-        : composer.locator(".project-scope button");
-    await composer.getByRole("combobox", { name: "Message agent" }).focus();
-    for (
-      let index = 0;
-      index < 10 &&
-      !(await trigger.evaluate((node) => node === document.activeElement));
-      index++
-    )
-      await page.keyboard.press("Tab");
-    await expect(trigger).toBeFocused();
-    await expect(trigger).toHaveAttribute("aria-expanded", "false");
-    await composer.evaluate((element) => (element.style.width = "220px"));
-    expect(await settledComposerFit(composer)).toContain(`${control}-menu`);
-    const more = composer.getByRole("button", { name: "Composer options" });
-    await expect(more).toBeFocused();
-    await expect(more).toHaveAttribute("aria-expanded", "false");
-    await composer.evaluate((element) => (element.style.width = "560px"));
-    await settledComposerFit(composer);
-    await expect(trigger).toBeFocused();
-    // Once the user leaves the stand-in, a later resize must not steal focus.
-    await composer.evaluate((element) => (element.style.width = "220px"));
-    await settledComposerFit(composer);
-    await expect(more).toBeFocused();
-    await page.keyboard.press("Tab");
-    const next = await page.evaluate(() =>
-      document.activeElement?.getAttribute("aria-label"),
-    );
-    await composer.evaluate((element) => (element.style.width = "560px"));
-    await settledComposerFit(composer);
-    expect(
-      await page.evaluate(() =>
-        document.activeElement?.getAttribute("aria-label"),
-      ),
-    ).toBe(next);
+test("keyboard focus follows the effort control through overflow and back", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1888, height: 1096 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  await page.evaluate(async () => {
+    const fixture =
+      await import("/tests/ui/fixtures/surfaces/composerEffortVisualFixture.ts");
+    fixture.installVisualComposerEffortFixture();
   });
-}
+  const composer = page.locator("form.composer").first();
+  await settledComposerFit(composer);
+  const trigger = composer.getByRole("button", {
+    name: "Thinking level: Medium",
+  });
+  await composer.getByRole("combobox", { name: "Message agent" }).focus();
+  for (
+    let index = 0;
+    index < 10 &&
+    !(await trigger.evaluate((node) => node === document.activeElement));
+    index++
+  )
+    await page.keyboard.press("Tab");
+  await expect(trigger).toBeFocused();
+  await expect(trigger).toHaveAttribute("aria-expanded", "false");
+  await composer.evaluate((element) => (element.style.width = "220px"));
+  expect(await settledComposerFit(composer)).toContain("effort-menu");
+  const more = composer.getByRole("button", { name: "Composer options" });
+  await expect(more).toBeFocused();
+  await expect(more).toHaveAttribute("aria-expanded", "false");
+  await composer.evaluate((element) => (element.style.width = "560px"));
+  await settledComposerFit(composer);
+  await expect(trigger).toBeFocused();
+  // Once the user leaves the stand-in, a later resize must not steal focus.
+  await composer.evaluate((element) => (element.style.width = "220px"));
+  await settledComposerFit(composer);
+  await expect(more).toBeFocused();
+  await page.keyboard.press("Tab");
+  const next = await page.evaluate(() =>
+    document.activeElement?.getAttribute("aria-label"),
+  );
+  await composer.evaluate((element) => (element.style.width = "560px"));
+  await settledComposerFit(composer);
+  expect(
+    await page.evaluate(() =>
+      document.activeElement?.getAttribute("aria-label"),
+    ),
+  ).toBe(next);
+});
 
 test("dense fitting unmounts the usage meter and restores current usage on expansion", async ({
   page,
@@ -159,7 +156,6 @@ test("Composer options keeps fitting and unmounts overflowed controls", async ({
   await expect(
     composer.getByRole("button", { name: /^Thinking level:/ }),
   ).toHaveCount(0);
-  await expect(composer.locator(".project-scope button")).toHaveCount(0);
   const more = composer.getByRole("button", { name: "Composer options" });
   await more.click();
   const menu = page.getByRole("menu", { name: "Composer options menu" });

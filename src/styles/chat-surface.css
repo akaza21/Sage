@@ -313,6 +313,7 @@ button.composer__control-trigger[aria-expanded="true"] {
   max-width: 142px;
   align-items: center;
   gap: 4px;
+  padding: 0 var(--space-2);
   overflow: hidden;
   color: var(--composer-access-text);
   font-size: var(--font-size-xs);
@@ -320,11 +321,7 @@ button.composer__control-trigger[aria-expanded="true"] {
   white-space: nowrap;
 }
 
-.composer__access-label--write {
-  color: var(--composer-access-write);
-}
-
-.composer__access-label--full {
+button.composer__control-trigger.composer__access-label--full {
   color: var(--composer-access-full);
 }
 

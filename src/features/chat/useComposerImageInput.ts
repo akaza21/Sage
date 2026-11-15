@@ -41,6 +41,11 @@ export interface ImageAction {
   onChoose: () => void;
 }
 
+/** Images can be chosen for the draft, so the attach menu has a use. */
+export function imagesOffered(action: ImageAction | undefined): boolean {
+  return action !== undefined && !action.reason;
+}
+
 export function useComposerImageInput({
   contexts,
   available,

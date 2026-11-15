@@ -7,16 +7,20 @@ import {
   type SessionAccessModeCapability,
 } from "../../domain/sessionAccessMode";
 import { ACCESS_ICONS } from "./composerAccessIcons";
-import type { EndedSession } from "./endedSession";
-// Loads off the chat path; until the chunk reports what the trigger shows,
-// the trigger shows the default and stays mounted throughout.
+import type { EndedPage } from "./endedSession";
+// A chat's own access (live or drafted), its menu, errors, modes and icons
+// load off the chat path. The chunk reports what the trigger shows; until
+// then it shows the default, and the same trigger stays mounted throughout.
 const ChatAccess = lazy(() => import("./ChatAccessSelection"));
 
+/** What the access trigger and menu show, for the chat's defaults or its own mode. */
 export interface AccessView {
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
+  defaultMode?: SessionAccessMode | null;
   error?: string | null;
   sessionId?: string;
+  /** Holds a choice for a chat whose session has not started. */
   onDraft?: (mode: SessionAccessMode) => void;
   icon?: (typeof ACCESS_ICONS)["ask"];
   tone?: string;
@@ -24,11 +28,17 @@ export interface AccessView {
 
 export interface ComposerAccessControlProps {
   bindingId: string;
-  /** Given only while the chat's next send starts a session. */
+  harnessName: string;
+  value?: SessionAccessMode | null;
+  onChange?: (value: SessionAccessMode) => void;
+  /** The mode the access menu opens on confirming, as Plan turning off asks. */
+  confirmation?: SessionAccessMode | null;
+  /** The chat whose access is drafted; given only while its next send starts a session. */
   chatId?: string;
-  /** The session whose access the session the next send starts takes. */
-  endedSession?: EndedSession;
+  /** The chat while it has no head: its last session hands its access on. */
+  endedPage?: EndedPage;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
+  /** The live chat a choice applies to; without one nothing can change. */
   sessionConfig?: AcpSessionConfig | null;
   disabled: boolean;
   open: boolean;
@@ -56,7 +66,7 @@ export function ComposerAccessControl(props: ComposerAccessControlProps) {
           <button
             ref={trigger}
             type="button"
-            className={`composer__control-trigger composer__access-label${tone ?? (effective === "workspaceWrite" ? " composer__access-label--write" : "")}`}
+            className={`composer__control-trigger composer__access-label${tone ?? ""}`}
             aria-label="Access options"
             aria-describedby={`${id}-scope`}
             aria-haspopup="menu"

@@ -1,26 +1,20 @@
-import { useEffect, useId, useRef, useState, type RefObject } from "react";
+import { useId, useState, type RefObject } from "react";
 
-import { acpProjectionStoreFor } from "../../app/acpProjectionRegistry";
-import { isTauriRuntime } from "../../ports/nativeInvoke";
+import type { PromptPick } from "../../ports/promptAttachments";
 import { MenuPopover } from "../../ui/MenuPopover";
-import type { ImageAction } from "./useComposerImageInput";
+import { attachRefusal as refusal } from "./composerAttachRefusal";
+import { imagesOffered, type ImageAction } from "./useComposerImageInput";
+
+const PICKS = [
+  ["files", "Files…"],
+  ["folder", "Folder…"],
+] as const satisfies readonly (readonly [PromptPick, string])[];
 
 /**
- * Native admission treats an absent capability as unsupported; a chat without
- * a session yet is checked again when its first message starts one.
+ * Lazy: loads with the first Files and folders press. Picked files join the
+ * chat's one staged batch, which the paste part owns, so pasted text and
+ * picked files go with the same message.
  */
-function refusal(chatId: string): string | null {
-  if (!isTauriRuntime())
-    return "Attaching files needs the Sage desktop app with an ACP harness.";
-  const page = acpProjectionStoreFor(chatId).getState().page;
-  const session = page?.sessions.find(
-    (item) => item.id === page.currentSessionId,
-  );
-  return session && session.capabilities.promptResources !== true
-    ? "This harness does not accept attached files (no embedded-context support)."
-    : null;
-}
-
 export function ComposerAttach({
   chatId,
   presses,
@@ -29,12 +23,12 @@ export function ComposerAttach({
   onPick,
 }: {
   chatId: string;
-  /** Presses of the attach button so far; each is taken once. */
+  /** Presses of Files and folders so far; each is taken once. */
   presses: number;
-  /** Set before this part mounts, so the menu is placed from its first commit. */
-  triggerRef: RefObject<HTMLButtonElement | null>;
+  /** The control the menu anchors on, readable from this part's first commit. */
+  triggerRef: RefObject<HTMLElement | null>;
   imageAction?: ImageAction;
-  onPick: () => void;
+  onPick: (pick: PromptPick) => void;
 }) {
   const [notice, setNotice] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -47,21 +41,17 @@ export function ComposerAttach({
     setMenuOpen(false);
   }
   const [taken, setTaken] = useState(0);
-  const [picks, setPicks] = useState(0);
   if (presses !== taken) {
     setTaken(presses);
     const refused = refusal(chatId);
-    if (imageAction && !imageAction.reason) setMenuOpen(true);
-    else if (refused) setNotice(refused);
-    else setPicks((count) => count + 1);
+    if (refused && !imagesOffered(imageAction)) setNotice(refused);
+    else setMenuOpen(true);
   }
-  const picked = useRef(0);
-  useEffect(() => {
-    if (picks === picked.current) return;
-    picked.current = picks;
-    onPick();
-  }, [onPick, picks]);
   const refused = menuOpen ? refusal(chatId) : null;
+  const close = () => {
+    setMenuOpen(false);
+    triggerRef.current?.focus();
+  };
   return (
     <>
       <p className="sr-only" role="status" aria-live="polite">
@@ -74,36 +64,43 @@ export function ComposerAttach({
           ariaLabel="Attach"
           open
           triggerRef={triggerRef}
+          sharedTrigger
           onDismiss={() => setMenuOpen(false)}
           gap={8}
         >
-          <button
-            type="button"
-            role="menuitem"
-            className="menu-item"
-            tabIndex={-1}
-            disabled={refused !== null}
-            title={refused ?? undefined}
-            onClick={() => {
-              setMenuOpen(false);
-              setPicks((count) => count + 1);
-            }}
-          >
-            Files…
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            className="menu-item"
-            tabIndex={-1}
-            disabled={imageAction?.disabled}
-            onClick={() => {
-              setMenuOpen(false);
-              imageAction?.onChoose();
-            }}
-          >
-            Images…
-          </button>
+          {PICKS.map(([pick, label]) => (
+            <button
+              key={pick}
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              tabIndex={-1}
+              disabled={refused !== null}
+              title={refused ?? undefined}
+              onClick={() => {
+                close();
+                onPick(pick);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+          {imageAction ? (
+            <button
+              type="button"
+              role="menuitem"
+              className="menu-item"
+              tabIndex={-1}
+              disabled={imageAction.disabled}
+              title={imageAction.reason ?? undefined}
+              onClick={() => {
+                close();
+                imageAction.onChoose();
+              }}
+            >
+              Images…
+            </button>
+          ) : null}
         </MenuPopover>
       ) : null}
     </>

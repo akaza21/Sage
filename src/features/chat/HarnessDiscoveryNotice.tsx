@@ -76,7 +76,7 @@ const BoundBuildNotice = memo(function BoundBuildNotice({
   );
 });
 
-function AccountNotice({
+function ModelDiscoveryNotice({
   harness,
   phase,
 }: {
@@ -95,10 +95,14 @@ function AccountNotice({
     (state) => state.confirmHarnessSignIn,
   );
   const cancelSignIn = useWorkbenchStore((state) => state.cancelHarnessSignIn);
-  if (harness?.transport !== "acp" || !harness.accountModelDiscovery)
+  if (
+    harness?.transport !== "acp" ||
+    (!harness.accountModelDiscovery && phase !== "error")
+  )
     return null;
   if (harness.installState !== "available") return null;
-  if (harness.characterisation === "uncharacterised") return null;
+  if (harness.characterisation === "uncharacterised" && phase !== "error")
+    return null;
   const harnessName = harness.name;
 
   if (phase === "idle") {
@@ -211,7 +215,7 @@ export function HarnessDiscoveryNotice({
   return (
     <>
       <BoundBuildNotice harness={harness} />
-      <AccountNotice harness={harness} phase={discoveryPhase} />
+      <ModelDiscoveryNotice harness={harness} phase={discoveryPhase} />
     </>
   );
 }

@@ -2,7 +2,10 @@ import { useCallback, useRef, useState, type ClipboardEvent } from "react";
 
 import { MAX_CHAT_COMPOSER_BYTES } from "../../domain/chatOwnership";
 import { utf8ByteLength } from "../../domain/text";
-import { PROMPT_ATTACHMENT_TOTAL_BYTES } from "../../ports/promptAttachments";
+import {
+  PROMPT_ATTACHMENT_TOTAL_BYTES,
+  type PromptPick,
+} from "../../ports/promptAttachments";
 import type { HeldInput } from "./pastedTextTypes";
 
 const MAX_UTF8_BYTES_PER_UNIT = 3;
@@ -34,7 +37,10 @@ export function useComposerPasteSignal() {
   return {
     seq,
     take: useCallback(() => queue.current.splice(0), []),
-    holdPick: useCallback(() => hold({ kind: "pick" }), [hold]),
+    holdPick: useCallback(
+      (pick: PromptPick) => hold({ kind: "pick", pick }),
+      [hold],
+    ),
     holdEdit(next: string) {
       const bytes = overCap(next);
       if (bytes) hold({ kind: "edit", bytes });

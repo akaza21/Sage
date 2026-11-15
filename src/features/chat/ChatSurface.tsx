@@ -1,20 +1,17 @@
-import { useContext, useEffect, useRef } from "react";
+import { useContext, useRef } from "react";
 import { useRetainedElement } from "../../ui/useRetainedElement";
 import {
   AgentSessionChromeContext,
   usePinnedAgentChatOwner,
 } from "../../app/agentChatOwner";
 import { useWorkbenchStore } from "../../app/store";
-import type { TurnProjection } from "../../domain/acp";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatTranscript } from "./ChatTranscript";
 import { useUsageRequest } from "./acp/useUsageRequest";
-import { SessionWorkingPill } from "./SessionWorkingPill";
 import {
   latestRetryPrompt,
   sessionActionAvailable,
   sessionActions,
-  terminalTurnStates,
   useAcpChatActions,
   useAcpChatHistory,
   useAcpChatLoadFailure,
@@ -22,18 +19,29 @@ import {
   useRendererRecreationFocus,
 } from "./acp";
 import { useComposerFocusHotkey } from "./composerChrome";
-import { ChatHandoffControl, LazyHarnessNotice } from "./lazyParts";
+import { LazyHarnessNotice, lazyParts } from "./lazyParts";
 import { isSideChatId } from "../../workbench/sideChatState";
+import { isNewProjectChat } from "./newProjectChat";
 import { useAgentSessionChromePublisher } from "./useAgentSessionChromePublisher";
 import { useApprovalSlot } from "./useApprovalSlot";
 import { useBoundChatComposer } from "./useBoundChatComposer";
 import { useChatHarnessSelection } from "./useChatHarnessSelection";
 import { useChatSurfaceModel } from "./useChatSurfaceModel";
 import { useFollowEnd } from "./useFollowEnd";
+import { useTerminalTurnFocus } from "./useTerminalTurnFocus";
 import {
   restoredSessionConfigView,
   withSessionConfigNotice,
 } from "./restoredSessionConfigView";
+import type * as SessionHeaderChunk from "./ChatSessionHeader";
+const SessionHeaderPart = lazyParts<typeof SessionHeaderChunk>(
+  () => import("./ChatSessionHeader"),
+);
+import type * as FirstSendChunk from "./FirstChatSend";
+const FirstSendPart = lazyParts<typeof FirstSendChunk>(
+  () => import("./FirstChatSend"),
+);
+
 export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const focusedChatId = usePinnedAgentChatOwner();
   const setAgentSessionChrome = useContext(AgentSessionChromeContext);
@@ -80,8 +88,6 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const [editSummaryContainer, setEditSummaryContainer] =
     useRetainedElement<HTMLDivElement>();
-  const priorActiveTurnId = useRef<TurnProjection["id"] | null>(null);
-  const terminalFocusTurnId = useRef<TurnProjection["id"] | null>(null);
   const composerFieldId = chatId ? `prompt-${chatId}` : "prompt";
   const focused = chatId == null || focusedChatId === chatId;
   const {
@@ -189,47 +195,27 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     void acpActions.submit(prompt, [], bindingId, modelId, { retryOf: turnId });
   };
 
-  useEffect(() => {
-    const priorId = priorActiveTurnId.current;
-    const priorTurn = priorId
-      ? acpPage?.turns.find((turn) => turn.id === priorId)
-      : null;
-    if (priorId && priorTurn && terminalTurnStates.has(priorTurn.state)) {
-      terminalFocusTurnId.current = priorId;
-      priorActiveTurnId.current = activeAcpTurn?.id ?? null;
-    } else if (activeAcpTurn) {
-      priorActiveTurnId.current = activeAcpTurn.id;
-    } else if (priorId && !priorTurn) {
-      priorActiveTurnId.current = null;
-    }
-    if (
-      focused &&
-      terminalFocusTurnId.current &&
-      !actionBusy &&
-      !projectTransitioning
-    ) {
-      const surface = surfaceRef.current;
-      const activeElement = document.activeElement;
-      const preserveFocus =
-        activeElement !== surface && surface?.contains(activeElement);
-      const composer = composerRef.current;
-      const statuses =
-        surface?.querySelectorAll<HTMLElement>("[data-turn-status]");
-      const terminalStatus = [...(statuses ?? [])].find(
-        (status) => status.dataset.turnStatus === terminalFocusTurnId.current,
-      );
-      const target = composer && !composer.disabled ? composer : terminalStatus;
-      if (!preserveFocus) target?.focus();
-      if (target || preserveFocus) terminalFocusTurnId.current = null;
-    }
-  }, [
-    acpPage,
-    activeAcpTurn,
+  useTerminalTurnFocus({
+    page: acpPage,
+    activeTurn: activeAcpTurn,
     actionBusy,
     canPrompt,
     focused,
     projectTransitioning,
-  ]);
+    surfaceRef,
+    composerRef,
+  });
+  const firstSendPending = useWorkbenchStore((state) =>
+    Boolean(chatId && state.pendingFirstSend?.chatId === chatId),
+  );
+  const newChat = isNewProjectChat({
+    useNativeAcp,
+    page: acpPage,
+    project,
+    projectTransitioning,
+    ...acpHistory,
+    retentionIncomplete: acpRetentionIncomplete,
+  });
 
   return (
     <section
@@ -237,52 +223,29 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
       className={`chat-surface${setAgentSessionChrome ? " chat-surface--agent" : ""}`}
       aria-label="Agent chat"
     >
+      {chatId && firstSendPending ? (
+        <FirstSendPart
+          part="FirstChatSend"
+          chatId={chatId}
+          page={acpPage}
+          actions={acpActions}
+        />
+      ) : null}
       {!setAgentSessionChrome ? (
-        <header className="surface-header">
-          <SessionWorkingPill
-            count={workingTurnCount}
-            hidden={projectTransitioning}
-          />
-          <div className="session-controls">
-            <ChatHandoffControl
-              acpPage={useNativeAcp ? acpPage : null}
-              messages={messages}
-              busy={actionBusy || Boolean(activeAcpTurn)}
-              onCommitted={() =>
-                queueMicrotask(() => composerRef.current?.focus())
-              }
-            />
-            {canCloseSession ? (
-              <button
-                className="button button--compact"
-                type="button"
-                disabled={actionBusy || projectTransitioning}
-                onClick={closeSession}
-              >
-                Close session
-              </button>
-            ) : null}
-            {canEndSession ? (
-              <button
-                className="button button--compact"
-                type="button"
-                disabled={actionBusy || projectTransitioning}
-                onClick={endSession}
-              >
-                End session
-              </button>
-            ) : null}
-            <div
-              className="session-state"
-              aria-label={`Harness status: ${harnessStatus}`}
-            >
-              {harnessStatus === "Live" ? (
-                <span className="session-state__dot" />
-              ) : null}
-              {harnessStatus}
-            </div>
-          </div>
-        </header>
+        <SessionHeaderPart
+          part="ChatSessionHeader"
+          page={useNativeAcp ? acpPage : null}
+          messages={messages}
+          workingTurnCount={workingTurnCount}
+          projectTransitioning={projectTransitioning}
+          busy={actionBusy || Boolean(activeAcpTurn)}
+          canCloseSession={canCloseSession}
+          canEndSession={canEndSession}
+          closeSession={closeSession}
+          endSession={endSession}
+          harnessStatus={harnessStatus}
+          onCommitted={() => queueMicrotask(() => composerRef.current?.focus())}
+        />
       ) : null}
       <LazyHarnessNotice
         harness={selectedHarnessDefinition}
@@ -340,9 +303,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         imageInputAvailable={imageInput.available}
         imageInputDisabledReason={imageInput.reason}
         onAddImages={useNativeAcp ? addImages : undefined}
-        enabled={composerEnabled}
+        enabled={composerEnabled && !firstSendPending}
         sendBlocked={sendBlocked}
-        actionBusy={actionBusy}
+        actionBusy={actionBusy || firstSendPending}
         activeTurn={Boolean(activeAcpTurn)}
         queueAvailable={queueAvailable}
         queuedPrompts={queuedPrompts}
@@ -386,6 +349,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         disabledReason={disabledReason}
         onRetryLoad={acpLoadFailure.error ? acpLoadFailure.retry : null}
         project={isSideChatId(acpPage?.chatId ?? chatId) ? null : project}
+        newChat={newChat}
         usage={usage}
         usageRequest={usageRequest}
         goal={(useNativeAcp && acpPage?.goal) || { kind: "unsupported" }}

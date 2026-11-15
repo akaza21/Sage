@@ -190,7 +190,6 @@ it("paints a harness ring only after keyboard navigation, not initial or pointer
     <ChatHarnessControls
       availableBinding
       canPrompt
-      discoveryPhase="ready"
       modelLabelScope="chat"
       sessionHarnessId={null}
       sessionModelId={null}

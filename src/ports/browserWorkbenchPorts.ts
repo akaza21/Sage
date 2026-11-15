@@ -170,11 +170,13 @@ const chat: ChatPort = {
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
     projectId?: string,
+    chatId?: string,
   ) =>
     browserDesktop.createChat(
       currentLayout,
       expectedTransitionEpoch,
       projectId,
+      chatId,
     ),
   activateChat: (
     currentLayout: ProjectLayoutRequest,

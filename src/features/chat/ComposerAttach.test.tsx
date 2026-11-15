@@ -14,6 +14,7 @@ import {
   clearAcpProjectionRegistry,
 } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
+import { decodeSessionConfig } from "../../domain/acpSessionConfig";
 import {
   agentSessionFixture,
   capabilitySetFixture,
@@ -122,7 +123,25 @@ afterEach(() => {
   useWorkbenchStore.setState(initial, true);
 });
 
-describe("composer attach button", () => {
+async function openAttach() {
+  fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+  await settleLazyModules();
+  await act(async () => {
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: "Files and folders" }),
+    );
+  });
+  await settleLazyModules();
+}
+
+async function pick(name: "Files…" | "Folder…" | "Images…") {
+  await openAttach();
+  await act(async () => {
+    fireEvent.click(screen.getByRole("menuitem", { name }));
+  });
+}
+
+describe("composer attach from the + menu", () => {
   it("stages picked files natively and removes them by revision", async () => {
     withSession(true);
     native.mockImplementation(async (command: string) => {
@@ -133,9 +152,7 @@ describe("composer attach button", () => {
       throw new Error(command);
     });
     renderComposer();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
+    await pick("Files…");
     await settleLazyModules();
     expect(await screen.findByText("notes.txt · 2 KB")).toBeInTheDocument();
     const chips = screen.getByRole("list", {
@@ -172,13 +189,24 @@ describe("composer attach button", () => {
       event.preventDefault(),
     );
     renderComposer({ onSubmit });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
+    await pick("Files…");
     await settleLazyModules();
     expect(await screen.findByText("a.md · 2 KB")).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     expect(onSubmit).toHaveBeenCalledWith(expect.anything(), "r1");
+  });
+
+  it("stages a folder picked in native's folder dialog", async () => {
+    withSession(true);
+    native.mockImplementation(async (command: string) =>
+      command === "stage_prompt_files" ? staged("r1", ["src/a.ts"]) : null,
+    );
+    renderComposer();
+    await pick("Folder…");
+    expect(await screen.findByText("src/a.ts · 2 KB")).toBeInTheDocument();
+    expect(native).toHaveBeenCalledWith("stage_prompt_files", {
+      request: { owner, pick: "folder", expectedRevision: null },
+    });
   });
 
   it("shows the batch native already holds for the chat without a press", async () => {
@@ -197,9 +225,7 @@ describe("composer attach button", () => {
       command === "stage_prompt_files" ? staged("r1", ["a.md"]) : null,
     );
     const view = renderComposer();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
+    await pick("Files…");
     expect(await screen.findByText("a.md · 2 KB")).toBeInTheDocument();
     await act(async () => {
       view.rerender(composer({ dictationScope: "chat-b" }));
@@ -210,19 +236,103 @@ describe("composer attach button", () => {
     ).toHaveLength(1);
   });
 
-  it("refuses without opening the picker when the harness takes no files", async () => {
+  it("shows Files and folders disabled with its reason when the harness takes no files", async () => {
     withSession(false);
     native.mockResolvedValue(null);
     renderComposer();
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
+    await openAttach();
+    const row = screen.getByRole("menuitem", { name: "Files and folders" });
+    expect(row).toHaveAttribute("aria-disabled", "true");
+    expect(row).toHaveAccessibleDescription(
+      "This harness does not accept attached files (no embedded-context support).",
+    );
+    expect(row).toHaveTextContent(/does not accept attached files/u);
+    // The press is refused in place: the "+" menu stays, no picker opens.
     expect(
-      await screen.findByText(/does not accept attached files/u),
+      screen.getByRole("menu", { name: "Composer options menu" }),
     ).toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "Attach" })).toBeNull();
     expect(native).not.toHaveBeenCalledWith(
       "stage_prompt_files",
       expect.anything(),
+    );
+  });
+
+  it("keeps attaching open for a queued follow-up while a turn runs", async () => {
+    withSession(true);
+    native.mockResolvedValue(null);
+    renderComposer({
+      activeTurn: true,
+      queueAvailable: true,
+      imageInputAvailable: true,
+      onAddImages: vi.fn(),
+      sessionConfig: decodeSessionConfig({
+        sageAgentSessionId: "session-a",
+        runtimeEpoch: "1",
+        configRevision: "1",
+        modes: {
+          currentModeId: "default",
+          availableModes: [
+            { id: "default", name: "Default" },
+            { id: "review", name: "Review" },
+          ],
+        },
+        configOptions: [],
+      }),
+    });
+    expect(
+      screen.getByRole("button", { name: "Composer options" }),
+    ).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name: "Composer options" }));
+    await settleLazyModules();
+    // Changing the running session waits; attaching does not.
+    expect(
+      screen.getByRole("menuitemradio", { name: "Review" }),
+    ).toBeDisabled();
+    await act(async () => {
+      fireEvent.click(
+        screen.getByRole("menuitem", { name: "Files and folders" }),
+      );
+    });
+    await settleLazyModules();
+    const menu = screen.getByRole("menu", { name: "Attach" });
+    expect(
+      within(menu).getByRole("menuitem", { name: "Files…" }),
+    ).toBeEnabled();
+    expect(
+      within(menu).getByRole("menuitem", { name: "Images…" }),
+    ).toBeEnabled();
+  });
+
+  it("replaces the attach menu with the + menu when + is pressed again", async () => {
+    withSession(true);
+    native.mockResolvedValue(null);
+    renderComposer();
+    await openAttach();
+    expect(screen.getByRole("menu", { name: "Attach" })).toBeInTheDocument();
+    const plus = screen.getByRole("button", { name: "Composer options" });
+    fireEvent.pointerDown(plus);
+    fireEvent.click(plus);
+    expect(
+      await screen.findByRole("menu", { name: "Composer options menu" }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole("menu", { name: "Attach" })).toBeNull();
+  });
+
+  it("keeps unavailable images in the attach menu, disabled with their reason", async () => {
+    withSession(true);
+    native.mockResolvedValue(null);
+    renderComposer({
+      imageInputDisabledReason: "This harness does not advertise image input.",
+      onAddImages: vi.fn(),
+    });
+    await openAttach();
+    expect(screen.getByRole("menuitem", { name: "Files…" })).toBeEnabled();
+    const images = screen.getByRole("menuitem", { name: "Images…" });
+    expect(images).toBeDisabled();
+    expect(images).toHaveAttribute(
+      "title",
+      "This harness does not advertise image input.",
     );
   });
 
@@ -233,12 +343,7 @@ describe("composer attach button", () => {
     renderComposer({ imageInputAvailable: true, onAddImages });
     const chooser = screen.getByLabelText<HTMLInputElement>("Choose images");
     const click = vi.spyOn(chooser, "click");
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
-    await act(async () => {
-      fireEvent.click(await screen.findByRole("menuitem", { name: "Images…" }));
-    });
+    await pick("Images…");
     expect(click).toHaveBeenCalledOnce();
     expect(native).not.toHaveBeenCalledWith(
       "stage_prompt_files",
@@ -247,7 +352,7 @@ describe("composer attach button", () => {
   });
 });
 
-describe("composer attach button in a chat with no session yet", () => {
+describe("composer attach in a chat with no session yet", () => {
   it("opens a visible menu whose Files item asks native for the file pick", async () => {
     // A new chat: images are a draft action, so the press opens the menu.
     acpProjectionStoreFor("chat-a").setState({
@@ -257,10 +362,7 @@ describe("composer attach button in a chat with no session yet", () => {
       command === "stage_prompt_files" ? staged("r1", ["a.md"]) : null,
     );
     renderComposer({ imageInputAvailable: true, onAddImages: vi.fn() });
-    await act(async () => {
-      fireEvent.click(screen.getByRole("button", { name: "Attach files" }));
-    });
-    await settleLazyModules();
+    await openAttach();
     const menu = await screen.findByRole("menu", { name: "Attach" });
     expect(
       menu.closest<HTMLElement>(".menu-popover")?.style.visibility,

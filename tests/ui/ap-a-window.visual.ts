@@ -50,21 +50,113 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
     )
     .toBeGreaterThanOrEqual(860);
   expect(await visibleIds()).toEqual(original);
+  const chatRows = page.locator(".project-chat");
+  const listedIds = () =>
+    chatRows.evaluateAll((rows) =>
+      [...new Set(rows.map((row) => row.getAttribute("data-chat-id")))].sort(),
+    );
+  const originalChats = await listedIds();
   await page.evaluate(async () => {
     const { installWindowNewChatFixture } =
       await import("/tests/ui/fixtures/agentWindowFixtures.ts");
+    const { acpDesktop } = await import("/src/services/acpDesktop.ts");
+    const { session } = await import("/tests/ui/fixtures/visualFixtureIds.ts");
+    const { turn } = await import("/tests/ui/fixtures/visualChatPages.ts");
+    const { textItem } =
+      await import("/tests/ui/fixtures/visualItemBuilders.ts");
     installWindowNewChatFixture();
+    const getChatPage = acpDesktop.getChatPage;
+    let current: Awaited<ReturnType<typeof getChatPage>> | null = null;
+    acpDesktop.getChatPage = async (request, decodeGoal) =>
+      current?.chatId === request.chatId
+        ? structuredClone(current)
+        : getChatPage(request, decodeGoal);
+    acpDesktop.startSession = async (request) => {
+      const initial = await acpDesktop.getChatPage({
+        ...request,
+        cursor: null,
+      });
+      const started = {
+        ...session(),
+        bindingId: request.bindingId,
+        modelId: request.modelId,
+      };
+      current = {
+        ...initial,
+        currentSessionId: started.id,
+        sessions: [started],
+        projectionRevision: String(
+          Number(initial.projectionRevision) + 1,
+        ) as typeof initial.projectionRevision,
+      };
+      return { projection: structuredClone(current) };
+    };
+    acpDesktop.sendTurn = async (request) => {
+      const initial = await acpDesktop.getChatPage({
+        ...request,
+        cursor: null,
+      });
+      const sent = turn(request.chatId, initial.turns.length, "completed", []);
+      sent.items = [
+        textItem(
+          {
+            chatId: request.chatId,
+            turnId: sent.id,
+            ordinal: 0,
+            createdAt: sent.createdAt,
+          },
+          "user",
+          request.prompt,
+        ),
+      ];
+      current = {
+        ...initial,
+        turns: [...initial.turns, sent],
+        projectionRevision: String(
+          Number(initial.projectionRevision) + 1,
+        ) as typeof initial.projectionRevision,
+      };
+      return { projection: structuredClone(current) };
+    };
   });
   await page
     .locator(".project-sidebar__actions")
     .getByRole("button", { name: "New chat", exact: true })
     .click();
+  const draft = page.getByRole("region", { name: "New chat draft" });
+  await expect(
+    draft.getByRole("heading", { name: "What should we work on?" }),
+  ).toBeVisible();
+  const composer = draft.getByRole("combobox", { name: "Message agent" });
+  await expect(composer).toBeFocused();
+  await expect(composer).toHaveValue("");
+  await expect(panes).toHaveCount(0);
+  expect(await listedIds()).toEqual(originalChats);
+  await expect(chatRows.and(page.locator('[aria-current="page"]'))).toHaveCount(
+    0,
+  );
+  await page.setViewportSize({ width: 1888, height: 1000 });
+  await expect(panes).toHaveCount(0);
+  await composer.fill("Start one chat from the unsaved draft");
+  await expect(
+    draft.getByRole("button", { name: "Send message", exact: true }),
+  ).toBeEnabled();
+  await composer.press("Enter");
+  await expect(draft).toHaveCount(0);
   await expect(panes).toHaveCount(1);
   await expect(panes.first()).toHaveAttribute("data-chat-id", "ap-a-chat-1");
+  await expect
+    .poll(async () => (await listedIds()).length)
+    .toBe(originalChats.length + 1);
+  await expect(
+    panes.getByText("Start one chat from the unsaved draft", { exact: true }),
+  ).toHaveCount(1);
   await expect(
     panes.getByRole("combobox", { name: "Message agent" }),
-  ).toBeVisible();
+  ).toHaveValue("");
   await expect(panes.getByRole("alert")).toHaveCount(0);
+  await page.setViewportSize({ width: 1193, height: 1000 });
+  await expect(panes).toHaveCount(1);
   await page.setViewportSize({ width: 1888, height: 1000 });
   await expect(panes).toHaveCount(1);
 });

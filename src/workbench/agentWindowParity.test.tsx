@@ -69,12 +69,13 @@ beforeEach(() => {
     activateTab: vi.fn(async (activeTabId) =>
       useWorkbenchStore.setState({ activeTabId }),
     ),
-    createChat: vi.fn(async () =>
+    createChat: vi.fn(async () => {
       useWorkbenchStore.setState({
         tabs: [...tabs, { ...tabs[0]!, id: "chat:new", title: "New chat" }],
         activeTabId: "chat:new",
-      }),
-    ),
+      });
+      return { status: "confirmed" as const, chatId: "chat:new" };
+    }),
   });
 });
 
@@ -188,8 +189,12 @@ it("starts a fresh profile in Agent, and never adds a chat when resources collap
   resizeCenter(1200);
   expect(visibleChats()).toEqual(["chat:b"]);
   fireEvent.click(screen.getByRole("button", { name: "New chat" }));
-  expect(useWorkbenchStore.getState().createChat).toHaveBeenCalledTimes(1);
-  expect(visibleChats()).toEqual(["chat:new"]);
+  await settleLazyModules();
+  expect(visibleChats()).toEqual([]);
+  expect(
+    screen.getByRole("heading", { name: "What should we work on?" }),
+  ).toBeVisible();
+  expect(useWorkbenchStore.getState().tabs).toEqual(tabs);
 });
 
 it("collapses navigation to its icon rail, keeps header New chat usable, and restores the user's divider width", async () => {
@@ -226,7 +231,11 @@ it("collapses navigation to its icon rail, keeps header New chat usable, and res
     ".agent-task-header button[aria-label='New chat']",
   )!;
   fireEvent.click(newChat);
-  expect(useWorkbenchStore.getState().createChat).toHaveBeenCalledTimes(1);
+  await settleLazyModules();
+  expect(
+    screen.getByRole("heading", { name: "What should we work on?" }),
+  ).toBeVisible();
+  expect(useWorkbenchStore.getState().tabs).toEqual(tabs);
   fireEvent.click(
     screen.getByRole("button", { name: "Show projects and chats" }),
   );
