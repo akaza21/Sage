@@ -16,7 +16,6 @@ import {
 } from "../services/nativeSessionImport";
 import { ModalDialog } from "../ui/ModalDialog";
 
-/** Opens a session from the active Project's own Codex CLI history as a new Chat. */
 async function openSession(
   session: NativeSessionSummary,
   lister: ImportLister,
@@ -48,8 +47,6 @@ async function openSession(
   return reason || "Try again.";
 }
 
-/** The active Project's Codex CLI sessions; closing unmounts nothing else. A
- * dismissal while busy leaves the open running and ignores its result. */
 export function ImportSessionDialog() {
   const [projectId] = useState(
     () => useWorkbenchStore.getState().project?.id ?? "",
@@ -63,7 +60,6 @@ export function ImportSessionDialog() {
   const [lister, setLister] = useState<ImportLister | null>(null);
   const [busy, setBusy] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // The dialog lists one Project's sessions; it is mounted per opening.
   const fetchPage = (after: string | null) =>
     listNativeSessions(projectId, after, lister)
       .then((page) => {
@@ -108,7 +104,6 @@ export function ImportSessionDialog() {
             disabled={busy}
             onClick={async () => {
               setBusy(true);
-              // Sessions show only once a page named its lister.
               const reason = await openSession(session, lister!);
               if (!live.current) return;
               setBusy(false);

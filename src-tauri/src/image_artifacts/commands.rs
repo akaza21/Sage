@@ -6,7 +6,7 @@ use tauri::State;
 use crate::{image_attachment::ImageAttachedContext, persistence::Database, state::AppState};
 use sage_acp_protocol::intent::ImageMediaType;
 
-use super::store::{ingest_image, normalize_upload, remove_pending_image};
+use super::store::{ingest_image, normalize_upload, read_image_thumbnail, remove_pending_image};
 
 /// Base64 of `IMAGE_UPLOAD_BYTES`; an upload is normalised before it is stored.
 const MAX_IMAGE_BASE64_BYTES: usize = sage_core::limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4;
@@ -69,6 +69,41 @@ pub(crate) async fn upload_chat_image_inner(
         .map_err(|error| error.to_string());
     drop(transition);
     stored
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct ReadChatImageThumbnailRequest {
+    project_id: String,
+    chat_id: String,
+    artifact_id: String,
+}
+
+/// The PNG chip thumbnail of an attached image, as raw bytes.
+#[tauri::command]
+pub(crate) async fn read_chat_image_thumbnail(
+    state: State<'_, AppState>,
+    request: ReadChatImageThumbnailRequest,
+) -> Result<tauri::ipc::Response, String> {
+    let database = state.database.clone();
+    tauri::async_runtime::spawn_blocking(move || {
+        if database.active_project_id()?.as_deref() != Some(request.project_id.as_str()) {
+            return Err(AppError::InvalidRequest(
+                "image project is not active".into(),
+            ));
+        }
+        read_image_thumbnail(
+            &database.connection(),
+            database.image_artifact_root()?,
+            &request.project_id,
+            &request.chat_id,
+            &request.artifact_id,
+        )
+    })
+    .await
+    .map_err(|error| error.to_string())?
+    .map(tauri::ipc::Response::new)
+    .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

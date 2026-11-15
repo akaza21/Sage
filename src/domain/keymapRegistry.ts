@@ -15,10 +15,6 @@ export interface KeymapBinding {
    * native Mac editors (Command+G is Find Next there).
    */
   appleControl?: true;
-  /**
-   * The chord on macOS where it differs, as Fold is Cmd+Option+[ and Find
-   * next is Cmd+G there.
-   */
   apple?: {
     shift: KeymapModifier;
     alt: KeymapModifier;

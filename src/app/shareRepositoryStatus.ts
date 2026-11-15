@@ -4,9 +4,8 @@ import type {
 } from "../domain/repository";
 
 /**
- * Keeps every part of `previous` that a new status did not change, so an
- * automatic refresh that finds nothing new leaves the store as it was and
- * nothing re-renders (EP-12). How long Git took is not a change.
+ * Keeps what did not change, so a refresh that finds nothing new re-renders
+ * nothing (EP-12). How long Git took is not a change.
  */
 export function shareRepositoryStatus(
   previous: ProjectRepositoryStatus,
@@ -27,7 +26,6 @@ function sameRoot(left: RootRepositoryStatus, right: RootRepositoryStatus) {
   return sameValue({ ...left, elapsedMs: 0 }, { ...right, elapsedMs: 0 });
 }
 
-/** Deep equality for plain JSON values. */
 function sameValue(left: unknown, right: unknown): boolean {
   if (Object.is(left, right)) return true;
   if (

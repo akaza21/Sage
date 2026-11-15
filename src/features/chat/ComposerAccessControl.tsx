@@ -13,14 +13,12 @@ import type { EndedPage } from "./endedSession";
 // then it shows the default, and the same trigger stays mounted throughout.
 const ChatAccess = lazy(() => import("./ChatAccessSelection"));
 
-/** What the access trigger and menu show, for the chat's defaults or its own mode. */
 export interface AccessView {
   candidates: readonly SessionAccessModeCapability[];
   effective: SessionAccessMode | null;
   defaultMode?: SessionAccessMode | null;
   error?: string | null;
   sessionId?: string;
-  /** Holds a choice for a chat whose session has not started. */
   onDraft?: (mode: SessionAccessMode) => void;
   icon?: (typeof ACCESS_ICONS)["ask"];
   tone?: string;
@@ -38,7 +36,6 @@ export interface ComposerAccessControlProps {
   /** The chat while it has no head: its last session hands its access on. */
   endedPage?: EndedPage;
   capabilities: readonly SessionAccessModeCapability[] | undefined;
-  /** The live chat a choice applies to; without one nothing can change. */
   sessionConfig?: AcpSessionConfig | null;
   disabled: boolean;
   open: boolean;

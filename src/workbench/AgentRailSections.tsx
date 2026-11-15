@@ -179,10 +179,6 @@ function ProjectEntry({
   );
 }
 
-/**
- * What a collapsed project row shows for the chats it hides: a spinner while
- * one runs, otherwise a dot while one has unread updates.
- */
 function useCollapsedProjectState(
   chats: ReadonlyArray<AgentRailChat>,
   selected: boolean,
@@ -254,7 +250,6 @@ export function AgentRailSections({
   pinned: ReadonlyArray<AgentRailChatItem>;
   projects: AgentRailProjectGroup[];
   recent: ReadonlyArray<AgentRailChatItem>;
-  /** Every unpinned chat in the chosen order, for "In one list". */
   all: ReadonlyArray<AgentRailChatItem>;
   allOverflowProjectId: string | null;
   currentProjectId: string | null;
@@ -285,7 +280,6 @@ export function AgentRailSections({
       </AgentRailSection>
     ) : null;
 
-  // "In one list": every chat under Recents, in the chosen order.
   if (prefs.organize === "list") {
     return (
       <>

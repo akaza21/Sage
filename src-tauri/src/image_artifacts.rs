@@ -7,6 +7,7 @@ mod store;
 mod test_support;
 #[cfg(test)]
 mod tests;
+mod thumbnail;
 mod work;
 
 pub(crate) use gc::reconcile_image_artifacts;

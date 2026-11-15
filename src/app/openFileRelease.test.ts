@@ -168,12 +168,10 @@ describe("renaming an open File (ED-16)", () => {
       state().renameProjectFile(source, "new.ts", true),
     ).resolves.toBe(true);
 
-    // Native saw a layout without the File's tabs.
     const request = rename.mock.calls[0][0];
     expect(
       request.currentLayout.tabs.some((tab) => tab.resource !== undefined),
     ).toBe(false);
-    // The File tab is back, renamed, at its old place; the Diff tab is not.
     expect(resourceTabs()).toEqual([
       expect.objectContaining({
         kind: "file",
@@ -187,7 +185,6 @@ describe("renaming an open File (ED-16)", () => {
 
   it("reopens the renamed File as the active tab when it was active", async () => {
     vi.spyOn(projectPort, "renameProjectFile").mockResolvedValue(renamed());
-    // Opening, without loading an editor.
     const openFile = vi.fn(async (resource: typeof target) => {
       useWorkbenchStore.setState((current) =>
         resourceTabUpdate(current, "file", resource),
@@ -239,7 +236,6 @@ describe("renaming an open File (ED-16)", () => {
   it("refuses when flushing the editor shows unsaved changes", async () => {
     const rename = vi.spyOn(projectPort, "renameProjectFile");
     const tab = fileTab("file", 1);
-    // The editor still held edits the tab hadn't reported yet.
     const flushActiveEditor = vi.fn(async () => {
       useWorkbenchStore.setState((current) => ({
         tabs: current.tabs.map((item) =>
@@ -267,7 +263,6 @@ describe("renaming an open File (ED-16)", () => {
 
   it("doesn't put tabs back when a failed rename crossed another transition", async () => {
     vi.spyOn(projectPort, "renameProjectFile").mockImplementation(async () => {
-      // Another transition lands while native works.
       useWorkbenchStore.setState({ nativeTransitionEpoch: 9 });
       throw new Error("stale");
     });
@@ -348,8 +343,6 @@ describe("recycling an open File (ED-16)", () => {
       resource: { rootId: "root-a", relativePath: "src/other.ts" },
     };
     const result = trashed();
-    // Native restores the layout it was given, whose active tab was taken
-    // out, so it falls back to the first tab, the Chat.
     result.snapshot = snapshot(parent, [chatTab, other]);
     vi.spyOn(projectPort, "trashProjectResource").mockResolvedValue(result);
     const activateTab = vi.fn(async (id: string) => {
@@ -364,7 +357,6 @@ describe("recycling an open File (ED-16)", () => {
     await expect(
       state().trashProjectResource(source, "file", true),
     ).resolves.toBe(true);
-    // The tab before it, as closing it would have chosen.
     expect(activateTab).toHaveBeenCalledWith("file:other");
     expect(state().activeTabId).toBe("file:other");
   });

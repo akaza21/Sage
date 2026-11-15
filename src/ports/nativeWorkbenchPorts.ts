@@ -16,13 +16,11 @@ import type {
   ResourceRef,
 } from "../domain/workbench";
 
-/** A command taking one resource, as `{ resource }`. */
 const resourceCommand =
   <Result>(command: string) =>
   (resource: ResourceRef): Promise<Result> =>
     invokeNative(command, { resource });
 
-/** A command taking one request object, as `{ request }`. */
 const requestCommand =
   <Request, Result>(command: string) =>
   (request: Request): Promise<Result> =>

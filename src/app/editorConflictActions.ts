@@ -28,10 +28,8 @@ export const DELETED_ON_DISK =
   "It was deleted on disk. Keep your version to create it again, or close it.";
 
 /**
- * Whether `resource`, the File the user acted on, is still the File in the
- * editor of the project the action started in: an action that waited for
- * this module to load, or in the queue, never lands on a File the user has
- * switched to since.
+ * An action that waited for this module to load, or in the queue, must never
+ * land on a File the user has switched to since.
  */
 function whileActive(resource: ResourceRef) {
   const generation = get().projectGeneration;
@@ -43,12 +41,6 @@ function whileActive(resource: ResourceRef) {
     matchesActiveTabIntent(get(), generation, projectId, "file", resource);
 }
 
-/**
- * "Keep mine": puts `resource`'s buffer on top of the File as the banner
- * showed it on disk (`document.disk`). If disk has moved on since, the buffer
- * stays as it is and the banner shows the File as it is now. False, doing
- * nothing, once `resource` is no longer the active File.
- */
 export async function keepActiveEditorBuffer(
   resource: ResourceRef,
 ): Promise<boolean> {
@@ -74,7 +66,6 @@ export async function keepActiveEditorBuffer(
       bridge.setActiveEditor({ ...active, saving: true, message: null });
       const result = await getWorkbenchPorts().editor.rebaseEditorBuffer({
         resource: active.resource,
-        // The banner showed this version; a deletion has none.
         expectedDisk:
           active.document.conflict.kind === "deleted"
             ? { fingerprint: ABSENT_FINGERPRINT, byteLen: 0, modifiedAt: null }
@@ -118,11 +109,6 @@ export async function keepActiveEditorBuffer(
   }
 }
 
-/**
- * Reload: drops `resource`'s edits for the File on disk. A File that is gone
- * keeps its edits and shows as deleted, and the result is false. False,
- * doing nothing, once `resource` is no longer the active File.
- */
 export async function reloadActiveEditor(
   resource: ResourceRef,
 ): Promise<boolean> {
@@ -146,7 +132,6 @@ export async function reloadActiveEditor(
         return false;
       }
       if (document.disk.fingerprint === ABSENT_FINGERPRINT) {
-        // Gone from disk: nothing to reload, and the edits stay.
         bridge.setActiveEditor(
           {
             ...current,
@@ -175,13 +160,11 @@ export async function reloadActiveEditor(
   }
 }
 
-/** Drops the active File's unsaved changes and closes its tab. */
 export async function closeEditorWithoutSaving(tabId: string) {
   if (get().activeTabId !== tabId) return;
   if (await get().discardActiveEditor()) get().closeTab(tabId);
 }
 
-/** Saves a File that is not in the editor from its native buffer. */
 async function saveBackgroundFile(resource: ResourceRef) {
   const markFailed = () =>
     set((state) => ({
@@ -221,11 +204,6 @@ function activeSaveFailure() {
   return editor.message ?? "It could not be saved.";
 }
 
-/**
- * Saves every dirty File tab in tab order: the active one through the
- * editor, the others from their native buffers. A failure is recorded and the
- * rest still save.
- */
 export async function saveAllEditors(): Promise<SaveAllFailure[]> {
   const generation = get().projectGeneration;
   const projectId = get().project?.id;

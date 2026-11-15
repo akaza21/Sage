@@ -1,7 +1,5 @@
-// Decoders for a chat's stored session-config state: the config shown while
-// a session has no live one, and the notice about a stored choice it could not
-// take back. Only chat page responses carry these, so they live apart from the
-// live config decoder that the startup bundle loads.
+// Only chat page responses carry these, so they live apart from the live config
+// decoder that the startup bundle loads.
 import {
   decodeSessionConfig,
   type AcpRestoredSessionConfig,
@@ -11,7 +9,6 @@ import { boundedIdentifier, isRecord } from "./guards";
 
 const record = (v: unknown): v is Record<string, unknown> =>
   isRecord(v) && !Array.isArray(v);
-/** A non-empty string of at most 1024 UTF-8 bytes with no NUL. */
 const text = (v: unknown): v is string => boundedIdentifier(v, 1024) !== null;
 
 export function decodeRestoredSessionConfig(

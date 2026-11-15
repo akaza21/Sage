@@ -24,9 +24,6 @@
   color: var(--color-diff-delete);
 }
 
-/* Optional header, toolbar and notices keep their height; the hunks or a
-   state notice take the rest, so a host that leaves out the header leaves
-   no gap. */
 .diff-surface {
   display: flex;
   width: 100%;
@@ -97,7 +94,6 @@
   background: var(--color-surface);
 }
 
-/* Under a host header the counts follow the scope chip. */
 .diff-toolbar > .diff-header__counts {
   margin-inline: var(--space-2) auto;
 }
@@ -149,8 +145,6 @@
   margin-top: 12px;
 }
 
-/* A long hunk header is clipped rather than widening the pane; its text
-   stays in view when the lines scroll sideways. */
 .diff-hunk__header {
   contain: inline-size;
   overflow: hidden;
@@ -163,7 +157,6 @@
   font-size: var(--font-size-xs);
 }
 
-/* Notes wrap to the pane instead of widening it. */
 .diff-editor > p {
   contain: inline-size;
 }
@@ -209,7 +202,6 @@
   left: 48px;
 }
 
-/* Sticky like the line numbers, so the comment button stays reachable. */
 .diff-line__comment-gutter {
   position: sticky;
   z-index: var(--z-sticky);

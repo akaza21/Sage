@@ -11,7 +11,6 @@ import { utf8Bytes } from "../domain/text";
 const prefix = utf8Bytes("sage-file-diff-v1\0");
 const decoder = new TextDecoder();
 
-/** This module is loaded only for an actual immutable snapshot request. */
 export async function fetchAgentDiffSnapshot(
   request: GetAgentDiffRequest,
   invoke: (request: GetAgentDiffRequest) => Promise<unknown>,

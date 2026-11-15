@@ -50,7 +50,6 @@ import { launchSideChat } from "./AgentToolPanel";
 import { SIDE_CHAT_SPLIT, useSideChatState } from "./sideChatState";
 import { WORKBENCH_LAYOUT_STORAGE_KEY } from "./workbenchLayoutStorage";
 
-// The header menu body loads when the window first idles.
 beforeAll(() => preloadAgentHeaderMenu());
 
 let resizeCallback: ResizeObserverCallback | null = null;
@@ -418,7 +417,6 @@ describe("AgentTaskHeader working status", () => {
     const close = await screen.findByRole("menuitem", {
       name: "Close session",
     });
-    // Hand off loads with the menu, so it is there in the menu's first commit.
     expect(
       screen.getByRole("menuitem", { name: "Hand off chat" }),
     ).toBeEnabled();
@@ -1134,7 +1132,6 @@ describe("AgentChatPanes temporary side chat routing", () => {
     expect(cells[0]).toHaveTextContent("Chat A");
     expect(cells[0]).not.toHaveTextContent("Side chat");
     expect(cells[1]).toHaveClass("agent-chat-center__side-tab");
-    // Tight: the side chat shows alone with only its own tab in the row.
     reportCenterWidth(600);
     expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
       1,
@@ -1170,7 +1167,6 @@ describe("AgentChatPanes temporary side chat routing", () => {
     expect(screen.getAllByRole("region", { name: /^Chat pane / })).toHaveLength(
       1,
     );
-    // The fork commit activates the fork.
     await act(async () => {
       await useWorkbenchStore.getState().activateTab("chat:b");
     });

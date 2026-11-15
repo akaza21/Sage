@@ -299,7 +299,6 @@ describe("SettingsSurface", () => {
     fireEvent.click(
       within(files).getByRole("button", { name: "Remove **/.git" }),
     );
-    // Focus moves to the pattern that took the removed one's place.
     expect(
       within(files).getByRole("button", { name: "Remove **/.svn" }),
     ).toHaveFocus();

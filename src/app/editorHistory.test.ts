@@ -52,7 +52,6 @@ function showFile(resource: ResourceRef, phase = "ready") {
 }
 
 const tallText = Text.of(Array.from({ length: 400 }, () => "xx"));
-/** The editor's caret on a line of the active File, as FileSurface reports it. */
 const caretAt = (line: number, editable = true) =>
   useEditorCaretStore.getState().publish(tallText, (line - 1) * 3, editable);
 
@@ -112,9 +111,9 @@ describe("editor history (ED-2b)", () => {
 
   it("follows small caret moves and leaves a place on a far one", async () => {
     notePlace(place(a, 1));
-    notePlace(place(a, 5)); // the first move settles where a opened
+    notePlace(place(a, 5));
     notePlace(place(a, 12));
-    notePlace(place(a, 20)); // within 10 lines: the same place, moved
+    notePlace(place(a, 20));
     expect(canGoBack()).toBe(false);
     notePlace(place(a, 300));
     await goBack();
@@ -124,8 +123,8 @@ describe("editor history (ED-2b)", () => {
   it("lets the jump that opened a File replace where it opened", async () => {
     notePlace(place(a, 1));
     notePlace(place(a, 50));
-    notePlace(place(b, 1)); // b opens at its start...
-    notePlace(place(b, 200)); // ...then Quick Open's :200 moves there
+    notePlace(place(b, 1));
+    notePlace(place(b, 200));
     await goBack();
     expect(opened.at(-1)).toMatchObject({ resource: a, lineNumber: 50 });
     expect(canGoBack()).toBe(false);
@@ -213,14 +212,13 @@ describe("editor history (ED-2b)", () => {
     watchEditorHistory();
     showFile(a);
     caretAt(1);
-    caretAt(200); // the first move settles where a opened
+    caretAt(200);
     showFile(b);
     useEditorCaretStore.getState().clear();
     caretAt(1);
     caretAt(5);
     await goBack();
     expect(opened.at(-1)).toMatchObject({ resource: a, lineNumber: 200 });
-    // a's editor mounts at its top, then the target is applied and taken.
     useEditorCaretStore.getState().clear();
     caretAt(1);
     caretAt(200);
@@ -236,7 +234,7 @@ describe("editor history (ED-2b)", () => {
     notePlace(place(a, 1));
     notePlace(place(b, 1));
     notePlace(place(c, 1));
-    await goBack(); // b opens in its Markdown preview: nothing applies it
+    await goBack();
     await goBack();
     expect(opened.at(-1)?.resource).toEqual(a);
     expect(canGoForward()).toBe(true);
@@ -272,7 +270,7 @@ describe("editor history (ED-2b)", () => {
     caretAt(1);
     caretAt(2);
     caretAt(60);
-    useEditorCaretStore.getState().clear(); // a Diff tab, then a again
+    useEditorCaretStore.getState().clear();
     caretAt(1);
     expect(canGoBack()).toBe(true);
     await goBack();
@@ -299,7 +297,7 @@ describe("editor history (ED-2b)", () => {
     await goBack();
     useEditorCaretStore.getState().clear();
     caretAt(1);
-    caretAt(50); // a now ends at line 50
+    caretAt(50);
     useWorkbenchStore.setState({ fileNavigationTarget: null });
     expect(canGoBack()).toBe(false);
     expect(canGoForward()).toBe(true);
@@ -314,11 +312,11 @@ describe("editor history (ED-2b)", () => {
     useEditorCaretStore.getState().clear();
     caretAt(1);
     caretAt(2);
-    await goBack(); // a opens in its Markdown preview: no caret, no target taken
-    useEditorCaretStore.getState().clear(); // the preview closes
+    await goBack();
+    useEditorCaretStore.getState().clear();
     caretAt(1);
-    caretAt(3); // the user's first move
-    caretAt(300); // and a far one, noted as usual
+    caretAt(3);
+    caretAt(300);
     expect(canGoBack()).toBe(true);
     await goBack();
     expect(opened.at(-1)).toMatchObject({ resource: a, lineNumber: 3 });
@@ -332,7 +330,7 @@ describe("editor history (ED-2b)", () => {
     openable = false;
     useWorkbenchStore.setState({ fileCreateInFlight: true });
     await goBack();
-    notePlace(place(a, 301)); // still where it was: not a far move
+    notePlace(place(a, 301));
     useWorkbenchStore.setState({ fileCreateInFlight: false });
     openable = true;
     await goBack();
@@ -344,10 +342,10 @@ describe("editor history (ED-2b)", () => {
     notePlace(place(a, 1));
     notePlace(place(b, 1));
     readable = false;
-    await goBack(); // a is gone
+    await goBack();
     readable = true;
     expect(canGoForward()).toBe(true);
-    notePlace(place(c, 1)); // the user goes on elsewhere
+    notePlace(place(c, 1));
     expect(canGoForward()).toBe(false);
     notePlace({ ...place(a, 1), projectId: "other" });
     useWorkbenchStore.setState({
@@ -378,7 +376,7 @@ describe("editor history (ED-2b)", () => {
       openFileLocation: vi.fn(
         async (request: FileLocationNavigationRequest) => {
           opened.push(request);
-          notePlace(place(b, 2)); // typed while b saved on the way out
+          notePlace(place(b, 2));
           showFile(request.resource);
           useWorkbenchStore.setState({
             fileNavigationTarget: { ...request, projectGeneration: 1 },
@@ -416,7 +414,7 @@ describe("editor history (ED-2b)", () => {
     caretAt(200);
     expect(canGoBack()).toBe(false);
     expect(canGoForward()).toBe(true);
-    caretAt(400); // and the caret is followed again
+    caretAt(400);
     expect(canGoBack()).toBe(true);
   });
 });

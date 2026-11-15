@@ -1,7 +1,3 @@
-// Back and Forward through the chats the Agent window has shown, as the
-// Codex title bar offers. A chat is left behind when another one takes focus,
-// in this project or another. History lives for the window session only.
-
 import { create } from "zustand";
 
 import { useWorkbenchStore } from "../app/store";
@@ -12,21 +8,14 @@ export interface AgentChatPlace {
   chatId: string;
 }
 
-/** How a trip to a place in the history ended. */
 export type AgentChatTrip =
-  /** The window shows the place. */
   | { kind: "opened" }
-  /** Nothing moved (a turn holds the project, or a transition is running). */
+  /** Nothing moved: a turn holds the project, or a transition is running. */
   | { kind: "blocked" }
-  /** The place no longer exists and nothing moved. */
   | { kind: "missing" }
-  /**
-   * The project opened but not the chat, so the window shows `place`. When
-   * the chat is gone its entry goes; otherwise it stays to try again.
-   */
+  /** The project opened but not the chat; a gone chat's entry is dropped. */
   | { kind: "landedElsewhere"; place: AgentChatPlace; targetGone: boolean };
 
-/** Opens a place in its project and reports how far it got. */
 export type OpenAgentChat = (place: AgentChatPlace) => Promise<AgentChatTrip>;
 
 export const MAX_AGENT_CHAT_PLACES = 50;
@@ -60,7 +49,6 @@ function pushBounded(stack: AgentChatPlace[], place: AgentChatPlace) {
   if (stack.length > MAX_AGENT_CHAT_PLACES) stack.shift();
 }
 
-/** Notes the chat the Agent window now shows. */
 export function noteAgentChatVisit(place: AgentChatPlace) {
   // A trip may pass through other chats (a project opens on its own active
   // chat first); only where it ends counts.
@@ -71,7 +59,6 @@ export function noteAgentChatVisit(place: AgentChatPlace) {
   publish();
 }
 
-/** Moves from `from` towards `to`, keeping the history true to the window. */
 async function travel(
   from: AgentChatPlace[],
   to: AgentChatPlace[],
@@ -90,7 +77,6 @@ async function travel(
   }
   switch (trip.kind) {
     case "blocked":
-      // The entry stays for when the window can move again.
       return;
     case "missing":
       from.pop();
@@ -117,7 +103,6 @@ export function goForwardInAgentChats(open: OpenAgentChat) {
   return travel(forward, back, open);
 }
 
-/** The chat the Agent window shows, by the title bar's rule. */
 function shownInWorkbench(): AgentChatPlace | null {
   const projectId = useWorkbenchStore.getState().project?.id;
   const chatId = currentShownAgentChatId();
@@ -129,7 +114,6 @@ const hasChat = (chatId: string) =>
     .getState()
     .tabs.some((tab) => tab.id === chatId && tab.kind === "chat");
 
-/** Opens a place through the same native paths as the rail. */
 export const openInWorkbench: OpenAgentChat = async (target) => {
   const store = useWorkbenchStore.getState;
   if (store().projectTransitioning) return { kind: "blocked" };
@@ -150,13 +134,10 @@ export const openInWorkbench: OpenAgentChat = async (target) => {
     : { kind: "blocked" };
 };
 
-/** Title-bar Back: reopens the chat shown before this one. */
 export const goBackToPreviousChat = () => goBackInAgentChats(openInWorkbench);
 
-/** Title-bar Forward: undoes a Back. */
 export const goForwardToNextChat = () => goForwardInAgentChats(openInWorkbench);
 
-/** For tests: forgets every place. */
 export function resetAgentChatHistory() {
   back = [];
   forward = [];

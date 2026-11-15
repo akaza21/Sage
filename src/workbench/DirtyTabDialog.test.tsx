@@ -92,7 +92,6 @@ describe("DirtyTabDialog", () => {
   });
 
   describe("Cancel after a close that began on a tab button", () => {
-    // Takes focus requests as the File surface does.
     function Editor() {
       const ref = useRef<HTMLTextAreaElement>(null);
       const [requests, setRequests] = useState(0);
@@ -134,7 +133,6 @@ describe("DirtyTabDialog", () => {
     }
 
     it("returns to the open editor of the active File", () => {
-      // Only the phase and resource decide where the focus goes.
       cancelFromCloseButton({
         phase: "ready",
         resource: fileTabs[0].resource,

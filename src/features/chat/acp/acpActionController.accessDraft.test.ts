@@ -71,7 +71,6 @@ function page(revision: string, current: AgentSessionProjection | null) {
   } satisfies AcpChatPage;
 }
 
-/** A brand-new chat whose first message starts its session. */
 function newChat() {
   let current: AcpChatPage = page("1", null);
   const order: string[] = [];
@@ -134,7 +133,6 @@ describe("access drafted before a chat's session starts", () => {
       "access session-new workspaceWrite",
       "send",
     ]);
-    // Spent once: the session's own access menu takes over from here.
     expect(useChatAccessDrafts.getState().drafts).toEqual({});
     expect(useChatAccessStore.getState().modes).toEqual({
       "session-new": "workspaceWrite",

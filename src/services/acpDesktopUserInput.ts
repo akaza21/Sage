@@ -27,7 +27,6 @@ function safeOption(value: unknown): UserInputOption | null {
   return label && description !== null ? { label, description } : null;
 }
 
-/** Answer limits: counts are whole and non-negative, bounds finite. */
 function safeLimits(value: unknown): UserInputLimits | null | undefined {
   if (value === undefined) return undefined;
   if (!isRecord(value)) return null;
@@ -40,7 +39,6 @@ function safeLimits(value: unknown): UserInputLimits | null | undefined {
   return value as UserInputLimits;
 }
 
-/** An optional flag: absent means false; any other non-boolean is refused. */
 const flag = (value: unknown) =>
   value === undefined ? false : typeof value === "boolean" ? value : null;
 

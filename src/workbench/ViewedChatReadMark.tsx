@@ -5,12 +5,6 @@ import { markChatRead } from "../features/chat/acp/chatReadMarks";
 import { sessionRailFinished } from "../features/chat/acp/sessionRail";
 import { isSideChatId, useSideChatState } from "./sideChatState";
 
-/**
- * Records that the chats whose panes are on screen have been seen through
- * their latest finished Turn. It follows the displayed panes, not the
- * sidebar or the rail's highlight: a chat read while navigation is collapsed
- * is recorded, and a parent hidden behind its side chat is not.
- */
 export function ViewedChatReadMark({
   chatIds,
   visible,
@@ -29,7 +23,6 @@ export function ViewedChatReadMark({
       )
       .join("\n"),
   );
-  // One "id\nfinishedAt" entry per displayed finished chat.
   const seen = useWorkbenchStore((state) => {
     if (!visible || state.projectTransitioning) return "";
     const busyIds = busy ? busy.split("\n") : [];

@@ -14,8 +14,6 @@ export interface BrowserDeviceFailure {
 
 const MAX_MESSAGE_LENGTH = 512;
 
-/** Applies the device toolbar's emulation to the tab, or resets it with
- * null. A rejection carries a {@link BrowserDeviceFailure}. */
 export async function browserSetDevice(
   tabId: string,
   device: BrowserDevice | null,

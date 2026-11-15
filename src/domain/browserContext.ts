@@ -49,7 +49,6 @@ export interface BrowserElementContext {
   comment: string;
 }
 
-/** Within `limit` bytes, with no control or bidi character outside `allowed`. */
 function boundedText(
   value: unknown,
   limit: number,

@@ -106,9 +106,6 @@ export function ChatHarnessControls({
     selectedHarnessId === globalSelectedHarnessId
       ? globalModels
       : (cachedHarnessModels(modelIdentity) ?? []);
-  // Effort levels are known only once a session runs the selected harness and
-  // model; until then effort shows as unavailable, however the selection and
-  // the session were reached.
   // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
     !!sessionConfig?.restored ||
@@ -136,8 +133,6 @@ export function ChatHarnessControls({
     models,
     selectedSessionConfig?.confirmedModel,
   );
-  // A side chat or fork shows its parent's confirmed model and effort until
-  // its own session confirms them; nothing else is ever invented.
   const inherited = useInheritedComposerModel(inheritScope);
   const inheriting =
     !confirmedModelLabel &&

@@ -4,10 +4,15 @@ import { useWorkbenchStore } from "../../app/store";
 import type { ImageAttachedContext } from "../../domain/attachedContext";
 import { useChatImageAttachments } from "./useChatImageAttachments";
 
-const transfer = vi.hoisted(() => ({ upload: vi.fn(), remove: vi.fn() }));
+const transfer = vi.hoisted(() => ({
+  upload: vi.fn(),
+  remove: vi.fn(),
+  read: vi.fn(),
+}));
 vi.mock("./chatImageTransfer", () => ({
   uploadChatImages: transfer.upload,
   removeChatImage: transfer.remove,
+  readChatImageThumbnail: transfer.read,
 }));
 vi.mock("../../ports/nativeInvoke", () => ({
   isTauriRuntime: () => true,
@@ -19,24 +24,21 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  for (const mock of Object.values(transfer)) mock.mockReset();
 });
 
-it("keeps an image thumbnail available when native removal fails and its chip returns", async () => {
-  const image: ImageAttachedContext = {
-    kind: "image",
-    artifactId: "00000000-0000-4000-8000-000000000000",
-    mediaType: "image/png",
-    width: 1,
-    height: 1,
-    byteLength: 1,
-    sha256: "a".repeat(64),
-    label: "sample.png",
-  };
-  const revoke = vi.fn();
-  vi.stubGlobal("URL", {
-    createObjectURL: () => "blob:preview",
-    revokeObjectURL: revoke,
-  });
+const image: ImageAttachedContext = {
+  kind: "image",
+  artifactId: "00000000-0000-4000-8000-000000000000",
+  mediaType: "image/png",
+  width: 1,
+  height: 1,
+  byteLength: 1,
+  sha256: "a".repeat(64),
+  label: "sample.png",
+};
+
+function seedChat() {
   useWorkbenchStore.setState({
     project: { id: "project-a", name: "A", roots: [] },
     tabs: [
@@ -62,44 +64,181 @@ it("keeps an image thumbnail available when native removal fails and its chip re
       },
     },
   });
-  transfer.upload.mockImplementation(async (intent, files, onPreview) => {
-    useWorkbenchStore.getState().attachChatContext(intent, image);
-    onPreview(image.artifactId, files[0]);
+}
+
+function stubObjectUrls() {
+  let created = 0;
+  const urls = {
+    create: vi.fn(() => `blob:thumbnail-${++created}`),
+    revoke: vi.fn(),
+  };
+  vi.stubGlobal("URL", {
+    createObjectURL: urls.create,
+    revokeObjectURL: urls.revoke,
   });
-  let rejectRemoval!: (error: Error) => void;
-  transfer.remove.mockImplementation(
-    () =>
-      new Promise<void>((_, reject) => {
-        rejectRemoval = reject;
-      }),
-  );
-  const view = renderHook(
+  return urls;
+}
+
+function renderAttachments() {
+  return renderHook(
     ({ contexts }) => useChatImageAttachments("chat-a", contexts),
-    {
-      initialProps: { contexts: [] as ImageAttachedContext[] },
-    },
+    { initialProps: { contexts: [image] as ImageAttachedContext[] } },
   );
-  await act(async () =>
-    view.result.current.addImages([
-      new File(["x"], "sample.png", { type: "image/png" }),
-    ]),
+}
+
+it("previews an attached image's native thumbnail and releases it once the image is gone", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  const view = renderAttachments();
+
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews).toEqual({
+      [image.artifactId]: "blob:thumbnail-1",
+    }),
+  );
+  expect(transfer.read).toHaveBeenCalledWith(
+    expect.objectContaining({ projectId: "project-a", chatId: "chat-a" }),
+    image.artifactId,
+  );
+
+  view.rerender({ contexts: [] });
+  expect(urls.revoke).toHaveBeenCalledWith("blob:thumbnail-1");
+});
+
+it("creates no object URL for a thumbnail that arrives after its image was removed", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  let deliver!: (thumbnail: Blob) => void;
+  transfer.read.mockReturnValue(
+    new Promise<Blob>((resolve) => {
+      deliver = resolve;
+    }),
+  );
+  const view = renderAttachments();
+  await waitFor(() => expect(transfer.read).toHaveBeenCalled());
+
+  view.rerender({ contexts: [] });
+  await act(async () => deliver(new Blob(["png"])));
+
+  expect(urls.create).not.toHaveBeenCalled();
+  expect(view.result.current.imagePreviews).toEqual({});
+});
+
+function attachInStore() {
+  useWorkbenchStore.setState((state) => ({
+    chatUiById: {
+      "chat-a": { ...state.chatUiById["chat-a"]!, attachedContext: [image] },
+    },
+  }));
+}
+
+it("keeps showing the same thumbnail when a failed removal restores the image", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  attachInStore();
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  transfer.remove.mockRejectedValue(new Error("disk busy"));
+  const view = renderAttachments();
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
+  );
+
+  act(() => view.result.current.removeAttachedContext(image));
+  view.rerender({ contexts: [] });
+  await waitFor(() =>
+    expect(
+      useWorkbenchStore.getState().chatUiById["chat-a"]!.attachedContext,
+    ).toEqual([image]),
   );
   view.rerender({ contexts: [image] });
-  expect(view.result.current.imagePreviews[image.artifactId]).toBe(
-    "blob:preview",
+
+  expect(view.result.current.imagePreviews).toEqual({
+    [image.artifactId]: "blob:thumbnail-1",
+  });
+  expect(urls.revoke).not.toHaveBeenCalled();
+  expect(transfer.read).toHaveBeenCalledTimes(1);
+});
+
+it("releases the thumbnail when a failed removal cannot restore the image because a send started", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  attachInStore();
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  let refuse!: (error: Error) => void;
+  transfer.remove.mockReturnValue(
+    new Promise<void>((_, reject) => {
+      refuse = reject;
+    }),
+  );
+  const view = renderAttachments();
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
   );
 
   act(() => view.result.current.removeAttachedContext(image));
   view.rerender({ contexts: [] });
   await waitFor(() => expect(transfer.remove).toHaveBeenCalled());
-  await act(async () => {
-    rejectRemoval(new Error("disk busy"));
-  });
-  view.rerender({ contexts: [image] });
+  useWorkbenchStore.setState((state) => ({
+    chatUiById: {
+      "chat-a": { ...state.chatUiById["chat-a"]!, sending: true },
+    },
+  }));
+  await act(async () => refuse(new Error("disk busy")));
+
+  expect(
+    useWorkbenchStore.getState().chatUiById["chat-a"]!.attachedContext,
+  ).toEqual([]);
+  expect(urls.revoke).toHaveBeenCalledWith("blob:thumbnail-1");
+  expect(view.result.current.imagePreviews).toEqual({});
+});
+
+it("releases a removed image's thumbnail once native code retires it", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  attachInStore();
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  transfer.remove.mockResolvedValue(undefined);
+  const view = renderAttachments();
   await waitFor(() =>
-    expect(view.result.current.imagePreviews[image.artifactId]).toBe(
-      "blob:preview",
-    ),
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
   );
-  expect(revoke).not.toHaveBeenCalledWith("blob:preview");
+
+  act(() => view.result.current.removeAttachedContext(image));
+  view.rerender({ contexts: [] });
+
+  await waitFor(() => expect(view.result.current.imagePreviews).toEqual({}));
+  expect(urls.revoke).toHaveBeenCalledWith("blob:thumbnail-1");
+});
+
+it("releases every thumbnail when the composer unmounts", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  const view = renderAttachments();
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
+  );
+
+  view.unmount();
+
+  expect(urls.revoke).toHaveBeenCalledWith("blob:thumbnail-1");
+});
+
+it("stops showing a released thumbnail even if the restored image's thumbnail cannot be read", async () => {
+  stubObjectUrls();
+  seedChat();
+  transfer.read
+    .mockResolvedValueOnce(new Blob(["png"]))
+    .mockResolvedValueOnce(null);
+  const view = renderAttachments();
+  await waitFor(() =>
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
+  );
+
+  view.rerender({ contexts: [] });
+  view.rerender({ contexts: [image] });
+  await waitFor(() => expect(transfer.read).toHaveBeenCalledTimes(2));
+
+  expect(view.result.current.imagePreviews).toEqual({});
 });

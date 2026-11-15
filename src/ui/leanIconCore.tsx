@@ -57,7 +57,6 @@ export function lucideIcon(name: string, nodes: readonly IconNode[]) {
   return leanIcon(`lucide lucide-${name}`, nodes);
 }
 
-/** Sage's outline leaf, shared by launch, Editor welcome and new Chat. */
 export function SageMark({ className }: { className?: string }) {
   return (
     <svg

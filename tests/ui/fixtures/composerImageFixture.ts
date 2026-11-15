@@ -5,9 +5,13 @@ import { useWorkbenchStore } from "../../../src/app/store";
 /**
  * Presents the rendered chat as a Claude Code session whose negotiated ACP
  * capabilities do (or do not) include `promptCapabilities.image`, and answers
- * the one native upload command a paste makes with a valid image reference.
+ * the native upload a paste makes with a valid image reference and, unless
+ * told not to, the chip thumbnail read that follows with a 48 px PNG.
  */
-export function installComposerImageFixture(promptImages: boolean) {
+export function installComposerImageFixture(
+  promptImages: boolean,
+  thumbnails = true,
+) {
   const store = useWorkbenchStore.getState();
   useSessionAccessModeStore.setState({ ready: true });
   useWorkbenchStore.setState({
@@ -33,6 +37,11 @@ export function installComposerImageFixture(promptImages: boolean) {
     });
   }
   let uploads = 0;
+  let refusedThumbnailReads = 0;
+  Object.defineProperty(window, "refusedThumbnailReads", {
+    configurable: true,
+    get: () => refusedThumbnailReads,
+  });
   Object.defineProperty(window, "__TAURI_INTERNALS__", {
     configurable: true,
     value: {
@@ -41,6 +50,22 @@ export function installComposerImageFixture(promptImages: boolean) {
         command: string,
         args: { request?: { label?: string; dataBase64?: string } },
       ) => {
+        if (command === "read_chat_image_thumbnail") {
+          if (!thumbnails) {
+            refusedThumbnailReads += 1;
+            throw new Error("thumbnail unavailable");
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = 48;
+          canvas.height = 48;
+          const context = canvas.getContext("2d")!;
+          context.fillStyle = "#60a5fa";
+          context.fillRect(0, 0, 48, 48);
+          const blob = await new Promise<Blob>((resolve) =>
+            canvas.toBlob((value) => resolve(value!), "image/png"),
+          );
+          return blob.arrayBuffer();
+        }
         if (command !== "upload_chat_image") return null;
         uploads += 1;
         const bytes = atob(args.request?.dataBase64 ?? "").length;
