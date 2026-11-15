@@ -576,3 +576,105 @@ fn tool_prose_keeps_paths_private() {
         "read [redacted] and [redacted]"
     );
 }
+
+#[test]
+fn numeric_values_of_dotted_secret_keys_are_redacted() {
+    for key in [
+        "db.password",
+        "auth.token",
+        "app.secret",
+        "db.passwd",
+        "aws.secretKey",
+        "server.key",
+        "user.session",
+        "src/auth.token",
+    ] {
+        for value in ["123456", "42:7", "1-2", "9."] {
+            let input = format!("set {key}:{value} now");
+            for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+                let shown = redact("text", &input, 4096, mode).unwrap();
+                assert!(!shown.contains(value), "{mode:?}: {shown}");
+                assert!(shown.starts_with("set ") && shown.ends_with(" now"));
+            }
+        }
+    }
+}
+
+#[test]
+fn line_references_to_files_with_secret_like_names_stay_visible() {
+    // A known file extension names a file type rather than a field, so a
+    // sensitive word in the file name does not hide a line reference to it.
+    // Anything other than a line, column or range that fits a line index is
+    // still judged as a secret.
+    for input in [
+        "see password.txt:1234 now",
+        "see secrets.yaml:4294967295 now",
+    ] {
+        for mode in [Mode::Prose, Mode::CommandOutput] {
+            assert_eq!(
+                redact("text", input, 4096, mode).unwrap(),
+                input,
+                "{mode:?}"
+            );
+        }
+    }
+    for (input, secret) in [
+        ("see password.txt:4294967296 now", "4294967296"),
+        ("see password.txt:1234abcd now", "1234abcd"),
+        ("see password.txt:12:34:56 now", "12:34:56"),
+        ("see password.txt:1-2-3 now", "1-2-3"),
+        ("see password.txt:12:hunter2 now", "hunter2"),
+    ] {
+        for mode in [Mode::Prose, Mode::CommandOutput] {
+            let shown = redact("text", input, 4096, mode).unwrap();
+            assert_eq!(shown, "see [redacted] now", "{mode:?}: {input}");
+            assert!(!shown.contains(secret));
+        }
+    }
+}
+
+#[test]
+fn source_extensions_never_name_a_credential_field() {
+    for extension in super::locations::SOURCE_EXTENSIONS {
+        assert!(!super::credentials::sensitive_key(extension), "{extension}");
+    }
+}
+
+#[test]
+fn colon_chains_are_scanned_in_linear_work() {
+    use super::tokens::work;
+    for unit in ["a:", "x.rs:1:", "x.rs:1-", "x.rs:1.", "a.rs:", "1:"] {
+        let input = unit.repeat(16_384);
+        for mode in [Mode::Prose, Mode::CommandOutput] {
+            work::take();
+            redact("test", &input, input.len() * 10, mode).unwrap();
+            let observed = work::take();
+            assert!(
+                observed.reference_bytes <= input.len(),
+                "{unit} {mode:?}: {observed:?}"
+            );
+        }
+    }
+}
+
+#[test]
+fn jwt_header_runs_are_measured_once() {
+    use super::tokens::work;
+    let input = "eyJ0".repeat(65_536);
+    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+        work::take();
+        assert_eq!(
+            redact("test", &input, input.len() * 10, mode).unwrap(),
+            input,
+            "{mode:?}"
+        );
+        let observed = work::take();
+        assert!(
+            observed.jwt_run_bytes <= input.len(),
+            "{mode:?}: {observed:?}"
+        );
+    }
+    let token = format!("eyJ{}.eyJzdWIiOiJhbGljZSJ9.c2ln", "a".repeat(4096));
+    let shown = redact("text", &format!("found {token} here"), 16_384, Mode::Prose).unwrap();
+    assert_eq!(shown, "found [redacted] here");
+}

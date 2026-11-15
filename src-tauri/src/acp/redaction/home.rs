@@ -13,6 +13,9 @@ use std::{
 
 const TILDE: &str = "~";
 
+/// Punctuation that may close a path in prose without being part of its name.
+const CLOSING_PUNCTUATION: &[u8] = b".,;:!?)]}>\"'`*";
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HomePrefix {
     path: String,
@@ -20,9 +23,12 @@ pub(crate) struct HomePrefix {
 }
 
 impl HomePrefix {
-    /// A drive-letter or POSIX home. `None` for a relative or UNC path, or a
-    /// filesystem root, which would turn every absolute path into `~`.
+    /// A drive-letter or POSIX home. A verbatim `\\?\C:\…` home is read in its
+    /// ordinary form, the way prose writes it. `None` for a relative or UNC
+    /// path, or a filesystem root, which would turn every absolute path into `~`.
     pub(crate) fn new(path: &str) -> Option<Self> {
+        let ordinary = sage_core::win32_path::simplified(Path::new(path));
+        let path = ordinary.to_str()?;
         let bytes = path.as_bytes();
         let windows = bytes.len() >= 3
             && bytes[0].is_ascii_alphabetic()
@@ -140,14 +146,18 @@ impl HomePrefix {
         Some(cursor)
     }
 
-    /// Whether the home folder's last name runs on, as in `alice2`, `alice.bak`
-    /// or, where a backslash is no separator, an escaped `alice\ smith`.
+    /// Whether the home folder's last name runs on into a sibling such as
+    /// `alice2`, `alice.bak` or `alice+backup` or, where a backslash is no
+    /// separator, an escaped `alice\ smith`. The name ends only at a separator
+    /// or where nothing but closing punctuation is left of the word.
     fn runs_on(&self, rest: &[u8]) -> bool {
         match rest {
+            [] | [b'/', ..] => false,
             [b'\\', ..] => !self.windows,
-            [byte, ..] if is_name_byte(*byte) => true,
-            [b'.', byte, ..] => is_name_byte(*byte),
-            _ => false,
+            _ => !rest
+                .iter()
+                .take_while(|byte| !byte.is_ascii_whitespace())
+                .all(|byte| CLOSING_PUNCTUATION.contains(byte)),
         }
     }
 
@@ -250,8 +260,71 @@ mod tests {
             "home/alice",
             "~",
             r"\\server\share\alice",
+            r"\\?\UNC\server\share\alice",
+            r"\\?\C:\",
         ] {
             assert_eq!(HomePrefix::new(home), None, "{home}");
+        }
+    }
+
+    #[test]
+    fn verbatim_windows_home_is_read_in_its_ordinary_form() {
+        let home = HomePrefix::new(r"\\?\C:\Users\alice").unwrap();
+        assert_eq!(home, HomePrefix::new(r"C:\Users\alice").unwrap());
+        assert_eq!(
+            home.shorten(r"see C:\Users\alice\proj\x.rs"),
+            r"see ~\proj\x.rs"
+        );
+        assert_eq!(
+            home.expand(r"~\proj\x.rs"),
+            Some(PathBuf::from(r"C:\Users\alice\proj\x.rs"))
+        );
+    }
+
+    #[test]
+    fn sibling_folders_sharing_the_home_name_are_left_whole() {
+        for (home, separator, siblings) in [
+            (
+                "/home/alice",
+                "/",
+                [
+                    "/home/alice+backup/x.rs",
+                    "/home/alice@old/x.rs",
+                    "/home/alice,v2/x.rs",
+                    "/home/alice)x/x.rs",
+                    "/home/alice.d/x.rs",
+                    "/home/alice./x.rs",
+                ],
+            ),
+            (
+                r"C:\Users\alice",
+                r"\",
+                [
+                    r"C:\Users\alice+backup\x.rs",
+                    r"C:\Users\alice@old\x.rs",
+                    r"C:\Users\alice,v2\x.rs",
+                    r"C:\Users\alice)x\x.rs",
+                    r"C:\Users\alice.d\x.rs",
+                    r"C:\Users\alice.\x.rs",
+                ],
+            ),
+        ] {
+            let prefix = HomePrefix::new(home).unwrap();
+            for sibling in siblings {
+                let text = format!("open {sibling} now");
+                assert_eq!(prefix.shorten(&text), text, "{sibling}");
+            }
+            let inside = format!("{home}{separator}proj{separator}x.rs");
+            let shortened = prefix.shorten(&inside).into_owned();
+            assert_eq!(shortened, format!("~{separator}proj{separator}x.rs"));
+            assert_eq!(prefix.expand(&shortened), Some(PathBuf::from(&inside)));
+            for (text, expected) in [
+                (format!("({home}), then"), "(~), then"),
+                (format!("\"{home}\"."), "\"~\"."),
+                (format!("**{home}**"), "**~**"),
+            ] {
+                assert_eq!(prefix.shorten(&text), expected, "{text}");
+            }
         }
     }
 

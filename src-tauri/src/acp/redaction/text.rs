@@ -10,6 +10,8 @@ pub(crate) mod credentials;
 mod embedded;
 #[path = "home.rs"]
 pub(crate) mod home;
+#[path = "locations.rs"]
+mod locations;
 #[path = "paths.rs"]
 pub(crate) mod paths;
 #[path = "pem.rs"]

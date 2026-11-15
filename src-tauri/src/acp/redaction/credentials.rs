@@ -117,7 +117,7 @@ fn sensitive_token_key(key: &str) -> bool {
 pub(crate) fn sensitive_assignment(key: &str, separator: char, value: &str) -> bool {
     let bare = key.trim_matches(['-', '\'', '"', '\x60', '{', '}', '\\']);
     if separator == ':' {
-        if super::tokens::file_reference(bare, value) {
+        if super::locations::file_reference(bare, value) {
             return false;
         }
         if ["passwords", "credentials", "sig"]
