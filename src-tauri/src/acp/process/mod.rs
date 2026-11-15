@@ -20,7 +20,7 @@ pub(crate) use windows::{
 };
 
 #[cfg(all(test, not(windows)))]
-pub(crate) use unix::launch_fixture_for_test;
+pub(crate) use unix::{launch_exiting_for_test, launch_fixture_for_test};
 
 pub(crate) use capacity::{TreeCapacityLease, TreeCapacityPool};
 pub(crate) use identity::ProcessIdentityReceipt;
@@ -143,70 +143,35 @@ where
     None
 }
 
+/// A root that exits by itself with `code`, without Sage asking it to.
+#[cfg(all(test, windows))]
+pub(crate) fn launch_exiting_for_test(runtime_epoch: u64, code: u8) -> RunningTree {
+    use std::ffi::OsString;
+
+    let system_root =
+        std::env::var_os("SystemRoot").unwrap_or_else(|| OsString::from("C:\\Windows"));
+    let candidate = FixtureLiveProcess {
+        executable: std::path::Path::new(&system_root)
+            .join("System32")
+            .join("cmd.exe"),
+        args: vec![OsString::from("/c"), OsString::from(format!("exit {code}"))],
+        environment: vec![(OsString::from("SystemRoot"), system_root)],
+    }
+    .canonicalized()
+    .expect("cmd.exe exists");
+    let spec = fixture_live_process_spec(runtime_epoch, candidate).expect("cmd.exe is admitted");
+    let pool = TreeCapacityPool::isolated_ade_0006a();
+    PlatformSupervisor::launch(&spec, pool.try_acquire(spec.limits.descendants).unwrap())
+        .unwrap_or_else(|_| panic!("cmd.exe launches"))
+}
+
 #[cfg(all(test, windows))]
 fn try_launch_fixture_live_process_for_test(
     runtime_epoch: u64,
     candidate: FixtureLiveProcess,
 ) -> FixtureCandidateOutcome<RunningTree> {
-    use sha2::{Digest, Sha256};
-    use std::io::Read;
-    use uuid::Uuid;
-
-    let FixtureLiveProcess {
-        executable,
-        args,
-        environment,
-    } = candidate;
-    let Ok(mut file) = std::fs::File::open(&executable) else {
+    let Some(spec) = fixture_live_process_spec(runtime_epoch, candidate) else {
         return FixtureCandidateOutcome::RejectedWithZeroProcesses;
-    };
-    let Ok(metadata) = file.metadata() else {
-        return FixtureCandidateOutcome::RejectedWithZeroProcesses;
-    };
-    let byte_len = metadata.len();
-    let mut digest = Sha256::new();
-    let mut chunk = [0_u8; 64 * 1024];
-    loop {
-        let Ok(read) = file.read(&mut chunk) else {
-            return FixtureCandidateOutcome::RejectedWithZeroProcesses;
-        };
-        if read == 0 {
-            break;
-        }
-        digest.update(&chunk[..read]);
-    }
-    let project_id =
-        sage_acp_protocol::contract::SageProjectId::parse("project-process-fixture").unwrap();
-    let project_root = crate::project_registry::ProjectRootAuthority::for_test(
-        project_id,
-        sage_acp_protocol::contract::ProjectGeneration::ZERO,
-        sage_acp_protocol::contract::SageRootId::parse("root-process-fixture").unwrap(),
-        &std::env::current_dir().unwrap(),
-    )
-    .unwrap();
-    let Ok(artifact) =
-        ArtifactExpectation::new(Uuid::nil(), executable, digest.finalize().into(), byte_len)
-    else {
-        return FixtureCandidateOutcome::RejectedWithZeroProcesses;
-    };
-    let Ok(fixed_args) = BoundedOsArgs::new(args) else {
-        return FixtureCandidateOutcome::RejectedWithZeroProcesses;
-    };
-    let Ok(environment) = BoundedEnvironment::new(environment) else {
-        return FixtureCandidateOutcome::RejectedWithZeroProcesses;
-    };
-    let spec = LaunchSpec {
-        binding_id: Uuid::nil(),
-        runtime_epoch,
-        artifact,
-        fixed_args,
-        environment,
-        project_root,
-        required_guarantee: RequiredContainment::EnforcedTree,
-        limits: TreeLimits::ade_0006a(),
-        deadlines: ProcessDeadlines::ade_0006a(),
-        absolute_cleanup_deadline: None,
-        test_after_artifact_verified: None,
     };
     let pool = TreeCapacityPool::isolated_ade_0006a();
     let Ok(lease) = pool.try_acquire(spec.limits.descendants) else {
@@ -225,6 +190,61 @@ fn try_launch_fixture_live_process_for_test(
             Err(_) => FixtureCandidateOutcome::CleanupUnproven,
         },
     }
+}
+
+#[cfg(all(test, windows))]
+fn fixture_live_process_spec(
+    runtime_epoch: u64,
+    candidate: FixtureLiveProcess,
+) -> Option<LaunchSpec> {
+    use sha2::{Digest, Sha256};
+    use std::io::Read;
+    use uuid::Uuid;
+
+    let FixtureLiveProcess {
+        executable,
+        args,
+        environment,
+    } = candidate;
+    let mut file = std::fs::File::open(&executable).ok()?;
+    let byte_len = file.metadata().ok()?.len();
+    let mut digest = Sha256::new();
+    let mut chunk = [0_u8; 64 * 1024];
+    loop {
+        let read = file.read(&mut chunk).ok()?;
+        if read == 0 {
+            break;
+        }
+        digest.update(&chunk[..read]);
+    }
+    let project_id =
+        sage_acp_protocol::contract::SageProjectId::parse("project-process-fixture").unwrap();
+    let project_root = crate::project_registry::ProjectRootAuthority::for_test(
+        project_id,
+        sage_acp_protocol::contract::ProjectGeneration::ZERO,
+        sage_acp_protocol::contract::SageRootId::parse("root-process-fixture").unwrap(),
+        &std::env::current_dir().unwrap(),
+    )
+    .unwrap();
+    Some(LaunchSpec {
+        binding_id: Uuid::nil(),
+        runtime_epoch,
+        artifact: ArtifactExpectation::new(
+            Uuid::nil(),
+            executable,
+            digest.finalize().into(),
+            byte_len,
+        )
+        .ok()?,
+        fixed_args: BoundedOsArgs::new(args).ok()?,
+        environment: BoundedEnvironment::new(environment).ok()?,
+        project_root,
+        required_guarantee: RequiredContainment::EnforcedTree,
+        limits: TreeLimits::ade_0006a(),
+        deadlines: ProcessDeadlines::ade_0006a(),
+        absolute_cleanup_deadline: None,
+        test_after_artifact_verified: None,
+    })
 }
 
 #[cfg(all(test, windows))]

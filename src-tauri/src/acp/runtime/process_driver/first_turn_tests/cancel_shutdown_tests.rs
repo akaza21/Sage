@@ -54,6 +54,7 @@ fn committed_cancellation_is_an_intentional_shutdown_before_terminal_acknowledge
             transport: Transport(Mutex::new(VecDeque::new())),
             control: NoChildProcessControl {
                 zero_checks: Arc::new(AtomicUsize::new(0)),
+                harness_error: None,
             },
             owner: owner.clone(),
             clock: Arc::new(SystemDriverClock),
