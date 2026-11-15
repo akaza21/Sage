@@ -21,6 +21,7 @@ import { MenuPopover } from "../ui/MenuPopover";
 import {
   liveAgent,
   projectTaskResources,
+  type RecentAgent,
 } from "./agentArtifactTabPresentation";
 import { loadSubagentSurface } from "./loadSubagentSurface";
 import { AgentToolsContext } from "./AgentToolsProvider";
@@ -95,29 +96,29 @@ export function AgentResourcesPopover({
     () => projectTaskResources(validPage ? page : null, chatId),
     [page, chatId, validPage],
   );
-  const workingAgents = recentAgents.filter((agent) =>
-    liveAgent(agent.status),
-  ).length;
-  const doneAgents = recentAgents.filter(
-    (agent) => agent.status === "done",
-  ).length;
-  const agentCounts = (glyphs?: ReactNode) => (
-    <div className="agent-task-header__agent-summary">
-      <span
-        className="agent-task-header__agent-metric"
-        aria-label={`Recent subagents working: ${workingAgents}`}
-      >
-        {glyphs}
-        {workingAgents} working
-      </span>
-      <span
-        className="agent-task-header__agent-metric"
-        aria-label={`Recent subagents done: ${doneAgents}`}
-      >
-        {doneAgents} done
-      </span>
-    </div>
-  );
+  const agentCounts = (agents: readonly RecentAgent[], glyphs?: ReactNode) => {
+    const workingAgents = agents.filter((agent) =>
+      liveAgent(agent.status),
+    ).length;
+    const doneAgents = agents.filter((agent) => agent.status === "done").length;
+    return (
+      <div className="agent-task-header__agent-summary">
+        <span
+          className="agent-task-header__agent-metric"
+          aria-label={`Recent subagents working: ${workingAgents}`}
+        >
+          {glyphs}
+          {workingAgents} working
+        </span>
+        <span
+          className="agent-task-header__agent-metric"
+          aria-label={`Recent subagents done: ${doneAgents}`}
+        >
+          {doneAgents} done
+        </span>
+      </div>
+    );
+  };
 
   return (
     <MenuPopover
@@ -193,11 +194,12 @@ export function AgentResourcesPopover({
           </button>
         ))}
       </section>
-      {recentAgents.length > 0 ? (
-        <Suspense fallback={agentCounts()}>
+      {page && scope && recentAgents.length > 0 ? (
+        <Suspense fallback={agentCounts(recentAgents)}>
           <AgentTaskSubagentSummary
+            page={page}
+            projectGeneration={scope.projectGeneration}
             recentAgents={recentAgents}
-            working={workingAgents}
             counts={agentCounts}
             onSelect={() => {
               useAgentChangesState.getState().select(false);

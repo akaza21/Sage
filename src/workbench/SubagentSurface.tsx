@@ -7,19 +7,13 @@ import {
   formatWorkedDuration,
   formatWorkingDuration,
 } from "../features/chat/transcriptSummary";
-import {
-  getAcpChildTranscript,
-  type ChildTranscript,
-} from "../services/acpChildTranscript";
+import type { ChildTranscript } from "../services/acpChildTranscript";
 import { ArrowLeft } from "../ui/leanIcons";
 import {
   liveAgent,
   projectTaskResources,
 } from "./agentArtifactTabPresentation";
 import {
-  childRefresh,
-  useChildEpoch,
-  scheduleChildRefresh,
   childActivityLabel,
   choiceName,
   invocationOf,
@@ -28,6 +22,16 @@ import {
   subagentTimes,
   useNow,
 } from "./SubagentResourceRows";
+import {
+  childReadFor,
+  childRefresh,
+  claimChildRead,
+  noteChildSettlement,
+  readChildTranscript,
+  scheduleChildRefresh,
+  useChildEpoch,
+  useSettledSubagents,
+} from "./subagentLiveness";
 
 export { AgentTaskSubagentSummary } from "./AgentTaskSubagentSummary";
 
@@ -71,7 +75,10 @@ export function SubagentSurface(props: {
   const list = useSubagentPaneStore((state) => state.list);
   return list ? (
     <section className="subagent-surface" aria-label="Subagents">
-      <SubagentList page={props.page} />
+      <SubagentList
+        page={props.page}
+        projectGeneration={props.projectGeneration}
+      />
     </section>
   ) : (
     <SubagentChild {...props} />
@@ -95,55 +102,38 @@ function SubagentChild({
   const item = turn?.items.find((candidate) => candidate.id === itemId);
   const sessionId = turn?.sessionId;
   const runtimeEpoch = turn?.runtimeEpoch;
-  const session = page.sessions?.find(
-    (candidate) => candidate.id === turn?.sessionId,
-  );
   const keys =
     item?.kind === "collaboration" ? (item.payload.agentKeys ?? []) : [];
-  const attributedKey =
-    keys.length === 1 &&
-    item?.kind === "collaboration" &&
-    (!item.payload.agentKey || item.payload.agentKey === keys[0])
-      ? keys[0]
-      : keys.length === 0 && item?.kind === "collaboration"
-        ? item.payload.agentKey
-        : null;
   const superseded =
     !!turn &&
     page.currentSessionId !== undefined &&
     page.currentSessionId !== turn.sessionId;
-  const canRead =
-    !!turn &&
-    item?.kind === "collaboration" &&
-    !superseded &&
-    !!session?.capabilities?.childTranscriptRead &&
-    !!projectGeneration &&
-    !!agentKey &&
-    attributedKey === agentKey &&
-    (session.runtimeEpoch === null ||
-      session.runtimeEpoch === turn.runtimeEpoch);
-  // The child identity; the child projection epoch is its invalidation token.
-  const identity = canRead
-    ? [
-        page.projectId,
-        projectGeneration,
-        page.chatId,
-        turn.sessionId,
-        turn.runtimeEpoch,
-        itemId,
-        agentKey,
-      ].join("\u0000")
-    : "";
+  const childRead = childReadFor(page, projectGeneration, itemId, agentKey);
+  const canRead = !!childRead;
+  const identity = childRead?.identity ?? "";
   const epoch = useChildEpoch(page);
   const recent = agentKey
     ? projectTaskResources(page, page.chatId).recentAgents
     : [];
   const invocation =
     agentKey && !superseded ? invocationOf(page, itemId, agentKey) : null;
-  const observed = invocation
+  const reported = invocation
     ? recent.find((agent) => agent.id === invocation)
-    : null;
+    : undefined;
+  // While this view reads its child, other views take its result instead;
+  // claimed before the shared watcher below first runs.
+  useEffect(
+    () => (canRead ? claimChildRead(identity) : undefined),
+    [canRead, identity],
+  );
+  const [observed] = useSettledSubagents(
+    page,
+    projectGeneration,
+    reported ? [reported] : [],
+    epoch,
+  );
   const live = liveAgent(observed?.status);
+  const unconfirmedIn = observed?.unconfirmed?.turnId;
   const [read, setRead] = useState<ReadState | null>(null);
   const sync = useRef(childRefresh());
   const current = read?.key === identity ? read : null;
@@ -186,40 +176,40 @@ function SubagentChild({
       }
       state.inFlight = true;
       state.startedAt = performance.now();
-      void getAcpChildTranscript({
-        projectId: page.projectId,
-        projectGeneration,
-        chatId: page.chatId,
-        sessionId,
-        runtimeEpoch,
-        itemId,
-        agentKey,
-      })
-        // Only malformed successful responses throw; request failures are typed.
-        .catch(() => "error" as const)
-        .then((value) => {
-          state.inFlight = false;
-          if (state.identity === identity)
-            setRead((previous) => {
-              const prior = previous?.key === identity ? previous : null;
-              const stale = typeof value === "object" && value.kind === "stale";
-              return {
-                key: identity,
-                value,
-                // A failure never replaces the last full read.
-                good:
-                  typeof value === "object" && "turns" in value
-                    ? value
-                    : prior?.good,
-                stale: stale ? (prior?.stale ?? 0) + 1 : 0,
-              };
-            });
-          if (state.again) {
-            state.again = false;
-            if (state.identity === identity) schedule();
-            else state.send();
-          }
-        });
+      void readChildTranscript({
+        identity,
+        request: {
+          projectId: page.projectId,
+          projectGeneration,
+          chatId: page.chatId,
+          sessionId,
+          runtimeEpoch,
+          itemId,
+          agentKey,
+        },
+      }).then((value) => {
+        state.inFlight = false;
+        if (state.identity === identity)
+          setRead((previous) => {
+            const prior = previous?.key === identity ? previous : null;
+            const stale = typeof value === "object" && value.kind === "stale";
+            return {
+              key: identity,
+              value,
+              // A failure never replaces the last full read.
+              good:
+                typeof value === "object" && "turns" in value
+                  ? value
+                  : prior?.good,
+              stale: stale ? (prior?.stale ?? 0) + 1 : 0,
+            };
+          });
+        if (state.again) {
+          state.again = false;
+          if (state.identity === identity) schedule();
+          else state.send();
+        }
+      });
     };
     if (fresh) state.send();
     else schedule();
@@ -242,6 +232,10 @@ function SubagentChild({
     itemId,
     agentKey,
   ]);
+  useEffect(() => {
+    if (good && unconfirmedIn)
+      noteChildSettlement(identity, unconfirmedIn, good.turns);
+  }, [good, identity, unconfirmedIn]);
   const now = useNow(live);
   if (!turn || item?.kind !== "collaboration") return null;
 
@@ -252,7 +246,10 @@ function SubagentChild({
       : item.payload.operation === "started"
         ? item.payload.label
         : "Subagent");
-  const time = observed ? subagentTimes(page, recent).get(observed.id) : null;
+  const time =
+    observed && !observed.endUnknown
+      ? subagentTimes(page, recent).get(observed.id)
+      : null;
   const duration = time
     ? live
       ? formatWorkingDuration(time.startedAt, Math.max(now, time.startedAt))

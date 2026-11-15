@@ -9,7 +9,8 @@ import {
   type SubagentPaneTarget,
 } from "../app/subagentPaneStore";
 import { sameAgentArtifactOwner } from "../domain/agentArtifact";
-import type { AcpItem } from "../domain/acp";
+import type { AcpItem, TurnProjection } from "../domain/acp";
+import { terminalTurnStates } from "../features/chat/acp/statusSemantics";
 
 type ArtifactTab = { resource?: { relativePath?: string }; title: string };
 
@@ -28,12 +29,16 @@ export type TaskOutput = {
 
 export type TaskSource = { label: string; tabId: string | null };
 type AgentStatus = "starting" | "working" | "done" | "stopped" | "failed";
-type RecentAgent = {
+export type RecentAgent = {
   id: string;
   label: string;
   status: AgentStatus;
   agentKey?: string;
   target?: SubagentPaneTarget;
+  /** Live per the latest parent row, whose turn has ended. */
+  unconfirmed?: { turnId: string };
+  /** Settled by its own transcript; the parent rows hold no end time. */
+  endUnknown?: true;
 };
 
 function childTarget(
@@ -80,6 +85,8 @@ export function projectTaskResources(
   chatId: string | null,
 ) {
   const agents = new Map<string, RecentAgent>();
+  /** The turn of the latest parent row about each invocation. */
+  const reportedIn = new Map<string, TurnProjection>();
   const latestInvocation = new Map<string, string>();
   const outputs = new Map<string, TaskOutput>();
   const sources = new Map<string, TaskSource>();
@@ -170,7 +177,7 @@ export function projectTaskResources(
           const live = liveAgent(agent?.status);
           // Start and completion only advance a live child; an interrupt
           // stops it, and nothing but another spawn revives it.
-          if (invocation && agent)
+          if (invocation && agent) {
             agents.set(invocation, {
               ...agent,
               ...(target
@@ -189,6 +196,8 @@ export function projectTaskResources(
                       ? "working"
                       : agent.status,
             });
+            reportedIn.set(invocation, turn);
+          }
         }
         const states = (item.payload.agentStates ?? []).slice(
           0,
@@ -205,7 +214,7 @@ export function projectTaskResources(
               item.payload.receiverLabels[index]?.trim() || "Subagent";
             const status = agentStatus(state);
             const target = childTarget(page, turn.sessionId, item, key);
-            if (status)
+            if (status) {
               agents.set(invocation, {
                 id: invocation,
                 label,
@@ -213,6 +222,8 @@ export function projectTaskResources(
                 agentKey: key,
                 ...(target ? { target } : {}),
               });
+              reportedIn.set(invocation, turn);
+            }
           }
         } else {
           for (const [key, state] of states) {
@@ -224,7 +235,7 @@ export function projectTaskResources(
             if (
               status &&
               (!agent || liveAgent(agent.status) || !liveAgent(status))
-            )
+            ) {
               agents.set(invocation, {
                 ...agent,
                 id: invocation,
@@ -237,6 +248,8 @@ export function projectTaskResources(
                 status,
                 agentKey: key,
               });
+              reportedIn.set(invocation, turn);
+            }
           }
         }
       } else if (
@@ -273,7 +286,16 @@ export function projectTaskResources(
       }
     }
   }
-  const recentAgents = [...agents.values()].slice(-MAX_RESOURCE_ENTRIES);
+  const recentAgents = [...agents.values()]
+    .slice(-MAX_RESOURCE_ENTRIES)
+    .map((agent) => {
+      const turn = reportedIn.get(agent.id);
+      return turn &&
+        liveAgent(agent.status) &&
+        terminalTurnStates.has(turn.state)
+        ? { ...agent, unconfirmed: { turnId: turn.id } }
+        : agent;
+    });
   return {
     recentAgents,
     outputs: [...outputs.values()],

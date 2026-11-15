@@ -3,94 +3,15 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem } from "../domain/acpProjection";
 import { avatarColor } from "../features/chat/acp/subagentActivity";
-import { subscribeChildProjectionChanges } from "../services/acpChildTranscript";
-import { isTauriRuntime } from "../ports/nativeInvoke";
 import { focusPopoverDialog } from "../ui/menuPopoverDialogFocus";
 import {
   liveAgent,
   projectTaskResources,
+  type RecentAgent,
 } from "./agentArtifactTabPresentation";
+import { useChildEpoch, useSettledSubagents } from "./subagentLiveness";
 
-type RecentAgent = ReturnType<
-  typeof projectTaskResources
->["recentAgents"][number];
 export type SubagentTime = { startedAt: number; updatedAt: number };
-
-/** Latest child epoch; desktop reads wait for listener attachment to avoid gaps. Non-desktop reads never wait. */
-// eslint-disable-next-line react-refresh/only-export-components -- SubagentChild's refresh state
-export function useChildEpoch(page: AcpChatPage): number | null {
-  const [notice, setNotice] = useState({ chat: "", epoch: 0, attached: false });
-  const chat = page.projectId + "\u0000" + page.chatId;
-  useEffect(() => {
-    let live = true;
-    let stop = () => {};
-    const attached = () => {
-      if (live)
-        setNotice((previous) =>
-          previous.chat === chat
-            ? { ...previous, attached: true }
-            : { chat, epoch: 0, attached: true },
-        );
-    };
-    // Ignore notices from torn-down Chat listeners.
-    subscribeChildProjectionChanges(page.projectId, page.chatId, (epoch) => {
-      if (live) setNotice({ chat, epoch, attached: true });
-    }).then(
-      (unlisten) => {
-        if (!live) return unlisten();
-        stop = unlisten;
-        attached();
-      },
-      // Without a listener, use page epochs.
-      attached,
-    );
-    return () => {
-      live = false;
-      stop();
-    };
-  }, [chat, page.projectId, page.chatId]);
-  const own = page.childProjectionEpoch ?? 0;
-  const listenerless = !isTauriRuntime();
-  if (notice.chat === chat && (notice.attached || listenerless))
-    return Math.max(own, notice.epoch);
-  return listenerless ? own : null;
-}
-
-/** A live child re-reads at most once per this window, and within it. */
-const CHILD_REFRESH_MS = 1_000;
-
-/** Single-flight, throttled reads for one open child. */
-export type ChildRefresh = {
-  identity: string;
-  inFlight: boolean;
-  /** The epoch moved while a read was in flight. */
-  again: boolean;
-  timer: ReturnType<typeof setTimeout> | undefined;
-  /** When the latest read started (performance.now()). */
-  startedAt: number;
-  send: () => void;
-};
-
-// eslint-disable-next-line react-refresh/only-export-components -- SubagentChild's refresh state
-export function childRefresh(): ChildRefresh {
-  return {
-    identity: "",
-    inFlight: false,
-    again: false,
-    timer: undefined,
-    startedAt: -Infinity,
-    send: () => undefined,
-  };
-}
-
-/** Leading/trailing throttle; never postpone a pending read during activity. */
-// eslint-disable-next-line react-refresh/only-export-components -- SubagentChild's refresh state
-export function scheduleChildRefresh(state: ChildRefresh) {
-  if (state.timer !== undefined) return;
-  const wait = state.startedAt + CHILD_REFRESH_MS - performance.now();
-  if (wait <= 0) return state.send();
-  state.timer = setTimeout(() => state.send(), wait);
-}
 
 export function childActivityLabel(item: AcpItem): string {
   if (item.kind === "toolCall") return item.payload.presentation.label;
@@ -206,8 +127,19 @@ export function SubagentAvatar({ agentKey }: { agentKey: string }) {
   );
 }
 
-export function SubagentList({ page }: { page: AcpChatPage }) {
-  const agents = projectTaskResources(page, page.chatId).recentAgents;
+export function SubagentList({
+  page,
+  projectGeneration,
+}: {
+  page: AcpChatPage;
+  projectGeneration?: string;
+}) {
+  const agents = useSettledSubagents(
+    page,
+    projectGeneration,
+    projectTaskResources(page, page.chatId).recentAgents,
+    useChildEpoch(page),
+  );
   const times = subagentTimes(page, agents);
   const active = agents.filter((agent) => liveAgent(agent.status));
   const done = agents.filter((agent) => !liveAgent(agent.status));
@@ -219,7 +151,7 @@ export function SubagentList({ page }: { page: AcpChatPage }) {
           {title} · {rows.length}
         </h2>
         {rows.map((agent, index) => {
-          const time = times.get(agent.id);
+          const time = agent.endUnknown ? undefined : times.get(agent.id);
           const status =
             agent.status === "done" ? null : statusText[agent.status];
           const content = (
