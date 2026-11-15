@@ -23,6 +23,8 @@ mod chat_search_commands;
 #[doc(hidden)]
 pub mod codex_helper_boundary;
 mod commands;
+#[cfg(all(test, windows))]
+mod console_window_fixture;
 mod editor;
 mod editor_content;
 mod editor_coordination;
