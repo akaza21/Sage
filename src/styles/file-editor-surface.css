@@ -314,7 +314,7 @@
 
 .editor-input .cm-editor {
   --git-gutter-added: var(--diff-add);
-  --git-gutter-modified: var(--color-accent);
+  --git-gutter-modified: var(--color-warning);
   --git-gutter-deleted: var(--diff-delete);
   width: 100%;
   height: 100%;

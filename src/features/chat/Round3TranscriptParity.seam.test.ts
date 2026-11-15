@@ -41,7 +41,7 @@ it("keeps annotation hover bounds on the chip after sharing compact controls", (
 
 it("draws the initial approval ring without requiring focus-visible (R3-09)", () => {
   expect(read("src/features/chat/acp/permission-prompt.css")).toMatch(
-    /button\[data-initial-focus\][^{]*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--chat-annotation-accent\);[^}]*box-shadow:\s*0 0 0 1px var\(--chat-annotation-accent\);/s,
+    /button\[data-initial-focus\][^{]*\{[^}]*outline:\s*var\(--focus-ring-width\) solid var\(--color-accent\);[^}]*box-shadow:\s*0 0 0 1px var\(--color-accent\);/s,
   );
 });
 
