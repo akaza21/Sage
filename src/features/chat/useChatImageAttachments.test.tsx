@@ -1,7 +1,10 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
-import type { ImageAttachedContext } from "../../domain/attachedContext";
+import {
+  attachedContextKey,
+  type ImageAttachedContext,
+} from "../../domain/attachedContext";
 import { useChatImageAttachments } from "./useChatImageAttachments";
 
 const transfer = vi.hoisted(() => ({ upload: vi.fn(), remove: vi.fn() }));
@@ -21,22 +24,18 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-it("keeps an image thumbnail available when native removal fails and its chip returns", async () => {
-  const image: ImageAttachedContext = {
-    kind: "image",
-    artifactId: "00000000-0000-4000-8000-000000000000",
-    mediaType: "image/png",
-    width: 1,
-    height: 1,
-    byteLength: 1,
-    sha256: "a".repeat(64),
-    label: "sample.png",
-  };
-  const revoke = vi.fn();
-  vi.stubGlobal("URL", {
-    createObjectURL: () => "blob:preview",
-    revokeObjectURL: revoke,
-  });
+const image: ImageAttachedContext = {
+  kind: "image",
+  artifactId: "00000000-0000-4000-8000-000000000000",
+  mediaType: "image/png",
+  width: 1,
+  height: 1,
+  byteLength: 1,
+  sha256: "a".repeat(64),
+  label: "sample.png",
+};
+
+function seedChat() {
   useWorkbenchStore.setState({
     project: { id: "project-a", name: "A", roots: [] },
     tabs: [
@@ -62,6 +61,15 @@ it("keeps an image thumbnail available when native removal fails and its chip re
       },
     },
   });
+}
+
+it("keeps an image thumbnail available when native removal fails and its chip returns", async () => {
+  const revoke = vi.fn();
+  vi.stubGlobal("URL", {
+    createObjectURL: () => "blob:preview",
+    revokeObjectURL: revoke,
+  });
+  seedChat();
   transfer.upload.mockImplementation(async (intent, files, onPreview) => {
     useWorkbenchStore.getState().attachChatContext(intent, image);
     onPreview(image.artifactId, files[0]);
@@ -102,4 +110,24 @@ it("keeps an image thumbnail available when native removal fails and its chip re
     ),
   );
   expect(revoke).not.toHaveBeenCalledWith("blob:preview");
+});
+
+it("creates no object URL for a thumbnail that finishes after its chip was removed", async () => {
+  const create = vi.fn(() => "blob:preview");
+  vi.stubGlobal("URL", { createObjectURL: create, revokeObjectURL: vi.fn() });
+  seedChat();
+  transfer.upload.mockImplementation(async (intent, files, onPreview) => {
+    const state = useWorkbenchStore.getState();
+    state.attachChatContext(intent, image);
+    state.detachChatContext(intent, attachedContextKey(image));
+    onPreview(image.artifactId, files[0]);
+  });
+  const view = renderHook(() => useChatImageAttachments("chat-a", []));
+  await act(async () =>
+    view.result.current.addImages([
+      new File(["x"], "sample.png", { type: "image/png" }),
+    ]),
+  );
+  expect(create).not.toHaveBeenCalled();
+  expect(view.result.current.imagePreviews).toEqual({});
 });

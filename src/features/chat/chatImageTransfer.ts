@@ -6,6 +6,7 @@ import {
 } from "../../domain/attachedContext";
 import type { ChatOwnershipIntent } from "../../domain/chatOwnership";
 import { invokeNative } from "../../ports/nativeInvoke";
+import { createImageThumbnail } from "./imageThumbnail";
 
 function readImageFile(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -45,7 +46,7 @@ export async function removeChatImage(
 export async function uploadChatImages(
   intent: ChatOwnershipIntent,
   files: File[],
-  onPreview: (artifactId: string, file: File) => void,
+  onPreview: (artifactId: string, thumbnail: Blob) => void,
 ) {
   for (const file of files) {
     if (
@@ -71,6 +72,7 @@ export async function uploadChatImages(
       await removeChatImage(intent, image.artifactId);
       throw new Error("Chat changed before the image could be attached.");
     }
-    onPreview(image.artifactId, file);
+    const thumbnail = await createImageThumbnail(file, image);
+    if (thumbnail) onPreview(image.artifactId, thumbnail);
   }
 }

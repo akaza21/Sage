@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import { IMAGE_THUMBNAIL_EDGE_PX } from "../../src/features/chat/imageThumbnail";
+import { serveUnderTauriCsp } from "./shared/tauriCsp";
 import {
   openScenario,
   settleChatProjections,
@@ -10,6 +12,7 @@ const captureDir =
   "output/playwright/composer-image-input";
 
 async function prepare(page: Page, promptImages: boolean) {
+  await serveUnderTauriCsp(page);
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await page.evaluate(async (images) => {
@@ -65,6 +68,10 @@ for (const width of [1280, 720]) {
     const preview = composer.locator(".composer__image-preview");
     await expect(preview).toBeVisible();
     await expect(preview).toHaveJSProperty("complete", true);
+    await expect(preview).toHaveJSProperty(
+      "naturalWidth",
+      IMAGE_THUMBNAIL_EDGE_PX,
+    );
     await expect(composer.getByRole("alert")).toHaveCount(0);
     await page.screenshot({
       path: `${captureDir}/claude-composer-pasted-image-${width}.png`,

@@ -76,9 +76,16 @@ export function useChatImageAttachments(
     setImageUploading(true);
     try {
       const { uploadChatImages } = await import("./chatImageTransfer");
-      await uploadChatImages(intent, files, (artifactId, file) => {
+      await uploadChatImages(intent, files, (artifactId, thumbnail) => {
         if (!imagePreviewMounted.current) return;
-        const url = URL.createObjectURL(file);
+        const stillAttached = useWorkbenchStore
+          .getState()
+          .chatUiById[intent.chatId]?.attachedContext.some(
+            (context) =>
+              context.kind === "image" && context.artifactId === artifactId,
+          );
+        if (!stillAttached) return;
+        const url = URL.createObjectURL(thumbnail);
         setImagePreviews((current) => ({ ...current, [artifactId]: url }));
       });
     } catch (error) {
