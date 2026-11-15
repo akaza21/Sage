@@ -118,6 +118,11 @@ pub(crate) async fn activate_acp_session_inner(
     let project_root = admitted
         .project_root(&state.database, &transition)
         .map_err(|_| binding_unavailable())?;
+    // The session takes over the chat's access before it runs; one the
+    // activation goes on in instead (a resume on a later harness release
+    // links a new session) takes it once activated. A read of either's
+    // access takes it over first too, should either copy not be made.
+    session_access::carry_chat_access(state, &request.session_id)?;
     let project_id = request.project_id.clone();
     let chat_id = request.chat_id.clone();
     let owner = state
