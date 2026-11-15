@@ -166,6 +166,72 @@ fn durable_capacity_preserves_history_and_blocks_new_turns() {
     assert_eq!(count, 0);
 }
 
+fn harness_command(turn: &str) -> TurnMutationCommand {
+    TurnMutationCommand {
+        project_id: SageProjectId::parse("project-one").unwrap(),
+        chat_id: SageChatId::parse("chat-one").unwrap(),
+        session_id: SageAgentSessionId::parse("session-one").unwrap(),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+        turn_id: SageTurnId::parse(turn).unwrap(),
+        expected_revision: EntityRevision::ZERO,
+        now_millis: 20,
+    }
+}
+
+#[test]
+fn a_harness_started_turn_opens_running_after_the_last_turn_with_no_prompt() {
+    let mut connection = setup();
+    prepare_turn(&mut connection, command("hello")).unwrap();
+    let command = harness_command("turn-harness");
+    let opened = harness_turn::open_harness_turn(&mut connection, &command).unwrap();
+    assert_eq!(opened.disposition, MutationDisposition::Applied);
+    assert_eq!(
+        (opened.state, opened.delivery_state),
+        (TurnState::Running, DeliveryState::Correlated)
+    );
+    let (ordinal, items): (i64, i64) = connection
+        .query_row(
+            "SELECT ordinal,(SELECT COUNT(*) FROM items WHERE turn_id=turns.id) FROM turns WHERE id='turn-harness'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((ordinal, items), (1, 0));
+    let session: String = connection
+        .query_row(
+            "SELECT state FROM agent_sessions WHERE id='session-one'",
+            [],
+            |row| row.get(0),
+        )
+        .unwrap();
+    assert_eq!(session, "active");
+    let replay = harness_turn::open_harness_turn(&mut connection, &command).unwrap();
+    assert_eq!(replay.disposition, MutationDisposition::Duplicate);
+    let turns: i64 = connection
+        .query_row("SELECT COUNT(*) FROM turns", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(turns, 2);
+}
+
+#[test]
+fn no_harness_turn_opens_once_the_runtime_has_stopped() {
+    let mut connection = setup();
+    connection
+        .execute(
+            "UPDATE session_runtime_epochs SET state='exited' WHERE session_id='session-one'",
+            [],
+        )
+        .unwrap();
+    assert!(matches!(
+        harness_turn::open_harness_turn(&mut connection, &harness_command("turn-harness")),
+        Err(StoreError::Conflict { .. })
+    ));
+    let turns: i64 = connection
+        .query_row("SELECT COUNT(*) FROM turns", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(turns, 0);
+}
+
 #[test]
 fn correlation_can_win_the_write_observer_race() {
     let mut connection = setup();

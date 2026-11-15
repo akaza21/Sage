@@ -21,6 +21,7 @@ mod classification;
 mod configuration;
 mod drive;
 mod handle;
+mod harness_turn;
 mod observability;
 mod process_exit;
 mod shutdown;

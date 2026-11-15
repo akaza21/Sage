@@ -47,6 +47,7 @@ pub(crate) enum HostOutcome {
     CancelQueued,
     PermissionResolved,
     SessionConfigured,
+    TurnStarted,
     TurnTerminal,
     BackgroundTurnContinues,
     ProjectSwitchObserved,
@@ -331,6 +332,11 @@ pub(super) enum HostCommand {
     },
     Steer(HostSteerIntent),
     Cancel(HostCancelIntent),
+    /// The harness started a Turn on its own and the worker opened it.
+    TurnStarted {
+        owner: RuntimeOwner,
+        turn_id: SageTurnId,
+    },
     Terminal {
         owner: RuntimeOwner,
         cursor: AdapterTurnCursor,

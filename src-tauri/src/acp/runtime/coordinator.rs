@@ -12,6 +12,7 @@ use sage_acp_protocol::{
     scheduler::{RunningTurnLease, SchedulerError, TreeLease, TurnReservation},
 };
 
+mod harness;
 mod prepare;
 mod turn_control;
 

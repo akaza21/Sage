@@ -116,6 +116,12 @@ pub(crate) enum AdapterEvent {
         id: AdapterIdentity,
         state: TurnState,
     },
+    /// The harness began a Turn on its own, with none open. `id` is the
+    /// exact session identity. The adapter holds what that Turn reported
+    /// until Sage names the Turn with `HarnessAdapter::adopt_turn`.
+    TurnStarted {
+        id: AdapterIdentity,
+    },
     TerminalReason {
         id: AdapterIdentity,
         reason: TurnTerminalReason,

@@ -94,6 +94,21 @@ impl SessionTreeLease {
             .await
     }
 
+    /// Opens the Turn the harness started on its own in this live session.
+    pub(crate) async fn open_harness_turn<A: ProjectIntentAuthority>(
+        &self,
+        coordinator: &SendCoordinator<A>,
+        now_millis: i64,
+    ) -> Result<crate::acp::runtime::ActiveDispatch, Box<crate::acp::runtime::PrepareFailure>> {
+        let tree = self.tree.as_ref().ok_or_else(|| {
+            Box::new(crate::acp::runtime::PrepareFailure {
+                error: crate::acp::runtime::CoordinatorError::Scheduler(SchedulerError::StaleToken),
+                recovery: None,
+            })
+        })?;
+        coordinator.open_harness_turn(tree, now_millis).await
+    }
+
     pub(crate) async fn complete_activation(
         &mut self,
         command: CompleteActivationCommand,

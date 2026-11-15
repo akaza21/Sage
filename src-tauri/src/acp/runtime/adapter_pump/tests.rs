@@ -656,6 +656,19 @@ impl HarnessAdapter for FakeAdapter {
             .ok_or(AdapterRuntimeError::Operation)
     }
 
+    fn adopt_turn(
+        &mut self,
+        _: RequiredText<512>,
+        _: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let mut state = self.shared.0.lock().unwrap();
+        state.log.push("adopt");
+        state
+            .batches
+            .pop_front()
+            .ok_or(AdapterRuntimeError::Operation)
+    }
+
     fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
         self.shared.0.lock().unwrap().log.push("mandatory");
         Ok(())
@@ -2447,6 +2460,9 @@ fn runtime() -> tokio::runtime::Runtime {
         .build()
         .unwrap()
 }
+
+#[path = "harness_turn_tests.rs"]
+mod harness_turn_tests;
 
 #[path = "cancel_tests.rs"]
 mod cancel_tests;

@@ -75,6 +75,18 @@ where
         if let FirstTurnWorkerState::Active(active) = &mut state {
             active.settle_steer();
         }
+        state = match state {
+            FirstTurnWorkerState::Reusable(parts) if parts.turn_started() => {
+                match super::harness_turn::open(parts, context, &host).await {
+                    Ok(state) => state,
+                    Err(exit) => {
+                        fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                        return exit;
+                    }
+                }
+            }
+            state => state,
+        };
         let native_reply = if pending_config
             .as_ref()
             .is_some_and(PendingConfig::is_native_rpc)

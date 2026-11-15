@@ -323,6 +323,14 @@ impl HarnessAdapter for NativeRuntime {
         Ok(batch)
     }
 
+    fn adopt_turn(
+        &mut self,
+        client_message_id: sage_acp_protocol::contract::RequiredText<512>,
+        resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.0.adopt_turn(client_message_id, resources)
+    }
+
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
         self.0.commit_mandatory_egress(token)
     }

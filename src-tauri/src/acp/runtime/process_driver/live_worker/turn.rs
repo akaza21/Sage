@@ -59,7 +59,7 @@ where
                 responder.respond(Err(error));
                 return FirstTurnWorkerState::Reusable(parts);
             }
-            if !parts.completed.idle_frame_aligned() {
+            if !parts.completed.idle_frame_aligned() || parts.turn_started() {
                 responder.respond(Err(HostError::Capacity));
                 return FirstTurnWorkerState::Reusable(parts);
             }

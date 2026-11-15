@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 mod auto_resolution;
 mod exit;
+mod harness_turn;
 mod ingress;
 mod teardown;
 

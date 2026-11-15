@@ -241,6 +241,15 @@ pub(crate) trait HarnessAdapter {
         frame: &Frame,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError>;
+    /// Names the Turn the last `AdapterEvent::TurnStarted` announced and
+    /// returns what the harness reported for it so far.
+    fn adopt_turn(
+        &mut self,
+        _client_message_id: RequiredText<512>,
+        _resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError>;
     fn resolve_egress(
         &mut self,
