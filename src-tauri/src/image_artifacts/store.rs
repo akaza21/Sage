@@ -17,8 +17,8 @@ use sage_core::limits::{
 };
 /// A stored full image is read back within the store bound.
 const FULL_LIMIT: u64 = STORED_IMAGE_BYTES as u64;
-/// The largest `.thumb` an earlier build wrote: a small image kept whole.
-const LEGACY_THUMBNAIL_LIMIT: u64 = 256 * 1024;
+/// A chip thumbnail is read back within this bound.
+pub(super) const THUMBNAIL_LIMIT: u64 = 64 * 1024;
 
 pub(crate) fn ingest_image(
     connection: &Connection,
@@ -217,62 +217,21 @@ pub(crate) fn read_image_thumbnail(
         return Err(invalid("image artifact id is not canonical"));
     }
     validate_root(root)?;
-    let row: Option<(String, i64, String, i64, String)> = connection
+    let row: Option<(i64, String)> = connection
         .query_row(
-            "SELECT mime_type,full_bytes,full_sha256,thumbnail_bytes,thumbnail_sha256
-             FROM chat_image_artifacts
+            "SELECT thumbnail_bytes,thumbnail_sha256 FROM chat_image_artifacts
              WHERE id=?1 AND project_id=?2 AND chat_id=?3
              AND lifecycle IN ('pending','queued','inFlight')",
             params![artifact_id, project_id, chat_id],
-            |row| {
-                Ok((
-                    row.get(0)?,
-                    row.get(1)?,
-                    row.get(2)?,
-                    row.get(3)?,
-                    row.get(4)?,
-                ))
-            },
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let Some((mime, full_length, full_hash, length, hash)) = row else {
+    let Some((length, hash)) = row else {
         return Err(invalid("image artifact is unavailable"));
     };
-    let thumbnail = read_verified(
-        &thumb_path(root, artifact_id),
-        LEGACY_THUMBNAIL_LIMIT,
-        length,
-        &hash,
-    )?;
-    if is_chip_thumbnail(&thumbnail) {
-        return Ok(thumbnail);
-    }
-    // Earlier builds kept a small image whole as its own thumbnail, or a
-    // squashed 128 px copy; those are rebuilt from the full image.
-    let media_type = match mime.as_str() {
-        "image/png" => ImageMediaType::Png,
-        "image/jpeg" => ImageMediaType::Jpeg,
-        _ => return Err(invalid("image artifact type is unsupported")),
-    };
-    let full = read_verified(
-        &full_path(root, artifact_id),
-        FULL_LIMIT,
-        full_length,
-        &full_hash,
-    )?;
-    square_thumbnail(media_type, &full, STORED_THUMBNAIL_EDGE_PX)
-}
-
-fn is_chip_thumbnail(bytes: &[u8]) -> bool {
-    super::normalize::dimensions(ImageMediaType::Png, bytes).is_ok_and(|(width, height)| {
-        width <= STORED_THUMBNAIL_EDGE_PX && height <= STORED_THUMBNAIL_EDGE_PX
-    })
-}
-
-fn read_verified(path: &Path, cap: u64, length: i64, hash: &str) -> AppResult<Vec<u8>> {
-    let bytes = migration::read_image_file(path, cap)?;
+    let bytes = migration::read_image_file(&thumb_path(root, artifact_id), THUMBNAIL_LIMIT)?;
     if bytes.len() as i64 != length || format!("{:x}", Sha256::digest(&bytes)) != hash {
-        return Err(invalid("image artifact is missing or corrupt"));
+        return Err(invalid("image thumbnail is missing or corrupt"));
     }
     Ok(bytes)
 }

@@ -24,6 +24,7 @@ afterEach(() => {
   useWorkbenchStore.setState(initialState, true);
   vi.unstubAllGlobals();
   vi.clearAllMocks();
+  for (const mock of Object.values(transfer)) mock.mockReset();
 });
 
 const image: ImageAttachedContext = {
@@ -124,14 +125,18 @@ it("creates no object URL for a thumbnail that arrives after its image was remov
   expect(view.result.current.imagePreviews).toEqual({});
 });
 
-it("shows the thumbnail again when a failed removal restores the image", async () => {
-  stubObjectUrls();
-  seedChat();
+function attachInStore() {
   useWorkbenchStore.setState((state) => ({
     chatUiById: {
       "chat-a": { ...state.chatUiById["chat-a"]!, attachedContext: [image] },
     },
   }));
+}
+
+it("keeps showing the same thumbnail when a failed removal restores the image", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  attachInStore();
   transfer.read.mockResolvedValue(new Blob(["png"]));
   transfer.remove.mockRejectedValue(new Error("disk busy"));
   const view = renderAttachments();
@@ -148,11 +153,29 @@ it("shows the thumbnail again when a failed removal restores the image", async (
   );
   view.rerender({ contexts: [image] });
 
+  expect(view.result.current.imagePreviews).toEqual({
+    [image.artifactId]: "blob:thumbnail-1",
+  });
+  expect(urls.revoke).not.toHaveBeenCalled();
+  expect(transfer.read).toHaveBeenCalledTimes(1);
+});
+
+it("releases a removed image's thumbnail once native code retires it", async () => {
+  const urls = stubObjectUrls();
+  seedChat();
+  attachInStore();
+  transfer.read.mockResolvedValue(new Blob(["png"]));
+  transfer.remove.mockResolvedValue(undefined);
+  const view = renderAttachments();
   await waitFor(() =>
-    expect(view.result.current.imagePreviews).toEqual({
-      [image.artifactId]: "blob:thumbnail-2",
-    }),
+    expect(view.result.current.imagePreviews[image.artifactId]).toBeDefined(),
   );
+
+  act(() => view.result.current.removeAttachedContext(image));
+  view.rerender({ contexts: [] });
+
+  await waitFor(() => expect(view.result.current.imagePreviews).toEqual({}));
+  expect(urls.revoke).toHaveBeenCalledWith("blob:thumbnail-1");
 });
 
 it("releases every thumbnail when the composer unmounts", async () => {

@@ -7,9 +7,24 @@ use uuid::Uuid;
 
 use crate::acp::migration;
 
-use super::store::{full_path, thumb_path, validate_root};
+use sage_acp_protocol::intent::ImageMediaType;
+use sage_core::limits::STORED_THUMBNAIL_EDGE_PX;
 
-fn verify_file(path: &Path, expected_length: i64, expected_hash: &str, cap: u64) -> AppResult<()> {
+use super::{
+    normalize::dimensions,
+    store::{THUMBNAIL_LIMIT, full_path, thumb_path, validate_root},
+    thumbnail::square_thumbnail,
+};
+
+/// The largest `.thumb` an earlier build wrote: a small image kept whole.
+const LEGACY_THUMBNAIL_LIMIT: u64 = 256 * 1024;
+
+fn verify_file(
+    path: &Path,
+    expected_length: i64,
+    expected_hash: &str,
+    cap: u64,
+) -> AppResult<Vec<u8>> {
     if expected_length <= 0 || expected_length as u64 > cap {
         return Err(AppError::InvalidRequest(
             "image artifact metadata is invalid".into(),
@@ -23,6 +38,63 @@ fn verify_file(path: &Path, expected_length: i64, expected_hash: &str, cap: u64)
             "image artifact file is missing or corrupt".into(),
         ));
     }
+    Ok(bytes)
+}
+
+fn is_chip_thumbnail(bytes: &[u8]) -> bool {
+    dimensions(ImageMediaType::Png, bytes)
+        .is_ok_and(|(width, height)| width.max(height) <= STORED_THUMBNAIL_EDGE_PX)
+}
+
+/// Rewrites the thumbnail of a live image from its verified full image: one
+/// an earlier build wrote (a small image kept whole, or a squashed 128 px
+/// copy), or one a crash left out of step with its row. The file is replaced
+/// before the row, so an interrupted rebuild is redone at the next start.
+fn rebuild_thumbnail(
+    connection: &Connection,
+    root: &Path,
+    id: &str,
+    mime_type: &str,
+) -> AppResult<()> {
+    let media_type = match mime_type {
+        "image/png" => ImageMediaType::Png,
+        "image/jpeg" => ImageMediaType::Jpeg,
+        _ => {
+            return Err(AppError::InvalidRequest(
+                "image artifact type is unsupported".into(),
+            ));
+        }
+    };
+    let full = migration::read_image_file(
+        &full_path(root, id),
+        sage_core::limits::STORED_IMAGE_BYTES as u64,
+    )?;
+    let thumbnail = square_thumbnail(media_type, &full, STORED_THUMBNAIL_EDGE_PX)?;
+    drop(full);
+    let stage = root.join(format!("{id}.thumb.{}.stage", Uuid::new_v4()));
+    let written = (|| -> AppResult<()> {
+        use std::io::Write;
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&stage)?;
+        file.write_all(&thumbnail)?;
+        file.sync_all()?;
+        fs::rename(&stage, thumb_path(root, id))?;
+        Ok(())
+    })();
+    if written.is_err() {
+        let _ = fs::remove_file(&stage);
+    }
+    written?;
+    connection.execute(
+        "UPDATE chat_image_artifacts SET thumbnail_bytes=?1,thumbnail_sha256=?2 WHERE id=?3",
+        rusqlite::params![
+            thumbnail.len() as i64,
+            format!("{:x}", Sha256::digest(&thumbnail)),
+            id
+        ],
+    )?;
     Ok(())
 }
 
@@ -54,34 +126,52 @@ pub(crate) fn reconcile_image_artifacts(connection: &Connection, root: &Path) ->
         [],
     )?;
     let mut statement = connection.prepare(
-        "SELECT id,lifecycle,full_bytes,full_sha256,thumbnail_bytes,thumbnail_sha256
+        "SELECT id,lifecycle,mime_type,full_bytes,full_sha256,thumbnail_bytes,thumbnail_sha256
          FROM chat_image_artifacts ORDER BY id",
     )?;
     let mut rows = statement.query([])?;
+    let mut stale_thumbnails = Vec::new();
     while let Some(row) = rows.next()? {
         let id: String = row.get(0)?;
         let lifecycle: String = row.get(1)?;
-        let full_bytes: i64 = row.get(2)?;
-        let full_sha256: String = row.get(3)?;
-        let thumbnail_bytes: i64 = row.get(4)?;
-        let thumbnail_sha256: String = row.get(5)?;
-        if lifecycle != "retired" {
+        let mime_type: String = row.get(2)?;
+        let full_bytes: i64 = row.get(3)?;
+        let full_sha256: String = row.get(4)?;
+        let thumbnail_bytes: i64 = row.get(5)?;
+        let thumbnail_sha256: String = row.get(6)?;
+        let thumbnail = thumb_path(root, &id);
+        if lifecycle == "retired" {
             verify_file(
-                &full_path(root, &id),
-                full_bytes,
-                &full_sha256,
-                sage_core::limits::STORED_IMAGE_BYTES as u64,
+                &thumbnail,
+                thumbnail_bytes,
+                &thumbnail_sha256,
+                LEGACY_THUMBNAIL_LIMIT,
             )?;
+            continue;
         }
         verify_file(
-            &thumb_path(root, &id),
+            &full_path(root, &id),
+            full_bytes,
+            &full_sha256,
+            sage_core::limits::STORED_IMAGE_BYTES as u64,
+        )?;
+        let current = verify_file(
+            &thumbnail,
             thumbnail_bytes,
             &thumbnail_sha256,
-            256 * 1024,
-        )?;
+            THUMBNAIL_LIMIT,
+        )
+        .ok()
+        .is_some_and(|bytes| is_chip_thumbnail(&bytes));
+        if !current {
+            stale_thumbnails.push((id, mime_type));
+        }
     }
     drop(rows);
     drop(statement);
+    for (id, mime_type) in stale_thumbnails {
+        rebuild_thumbnail(connection, root, &id, &mime_type)?;
+    }
     for entry in fs::read_dir(root)? {
         let entry = entry?;
         let name = entry.file_name();

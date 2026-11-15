@@ -3,18 +3,8 @@ import { useWorkbenchStore } from "../../app/store";
 import {
   attachedContextKey,
   type AttachedContext,
-  type ImageAttachedContext,
 } from "../../domain/attachedContext";
 import { isTauriRuntime } from "../../ports/nativeInvoke";
-
-function attachedImage(chatId: string, artifactId: string) {
-  return useWorkbenchStore
-    .getState()
-    .chatUiById[chatId]?.attachedContext.find(
-      (context): context is ImageAttachedContext =>
-        context.kind === "image" && context.artifactId === artifactId,
-    );
-}
 
 export function useChatImageAttachments(
   chatId: string | undefined,
@@ -27,31 +17,36 @@ export function useChatImageAttachments(
   const imageUploadBusy = useRef(false);
   // Artifact id to its thumbnail's object URL, or null while it is read.
   const thumbnails = useRef(new Map<string, string | null>());
+  // Kept through a removal until native code confirms it, for a rollback.
+  const removing = useRef(new Set<string>());
   const imageIds = attachedContext
     .flatMap((context) =>
       context.kind === "image" ? [context.artifactId] : [],
     )
     .join();
 
+  function publish() {
+    setImagePreviews(
+      Object.fromEntries(
+        [...thumbnails.current].filter((entry) => entry[1]),
+      ) as Record<string, string>,
+    );
+  }
+
+  function release(id: string) {
+    const url = thumbnails.current.get(id);
+    if (url) URL.revokeObjectURL(url);
+    thumbnails.current.delete(id);
+  }
+
   useEffect(() => {
     const ids = new Set(imageIds.split(","));
     const loaded = thumbnails.current;
-    const publish = () =>
-      setImagePreviews(
-        Object.fromEntries(
-          [...loaded].filter((entry): entry is [string, string] =>
-            Boolean(entry[1]),
-          ),
-        ),
-      );
-    let pruned = false;
-    for (const [id, url] of loaded) {
-      if (ids.has(id)) continue;
-      if (url) URL.revokeObjectURL(url);
-      loaded.delete(id);
-      pruned = true;
-    }
-    if (pruned) publish();
+    const stale = [...loaded.keys()].filter(
+      (id) => !ids.has(id) && !removing.current.has(id),
+    );
+    stale.forEach(release);
+    if (stale.length) publish();
     const state = useWorkbenchStore.getState();
     const owner = chatId ?? state.activeTabId ?? undefined;
     const intent = owner ? state.captureChatOwnership(owner) : null;
@@ -115,18 +110,29 @@ export function useChatImageAttachments(
     const owner = chatId ?? state.activeTabId ?? undefined;
     const intent = owner ? state.captureChatOwnership(owner) : null;
     if (!intent) return;
-    const image =
-      context.kind === "image"
-        ? attachedImage(intent.chatId, context.artifactId)
-        : undefined;
-    if (!image) {
+    const image = state.chatUiById[intent.chatId]?.attachedContext.find(
+      (context) =>
+        context.kind === "image" && attachedContextKey(context) === contextKey,
+    );
+    if (!image || image.kind !== "image") {
       state.detachChatContext(intent, contextKey);
       return;
     }
-    if (!state.detachChatContext(intent, contextKey)) return;
+    const id = image.artifactId;
+    removing.current.add(id);
+    if (!state.detachChatContext(intent, contextKey)) {
+      removing.current.delete(id);
+      return;
+    }
     void import("./chatImageTransfer")
-      .then(({ removeChatImage }) => removeChatImage(intent, image.artifactId))
+      .then(({ removeChatImage }) => removeChatImage(intent, id))
+      .then(() => {
+        removing.current.delete(id);
+        release(id);
+        publish();
+      })
       .catch(() => {
+        removing.current.delete(id);
         useWorkbenchStore.getState().attachChatContext(intent, image);
         useWorkbenchStore.getState().setChatActionState(intent, {
           sending: false,
