@@ -4,11 +4,13 @@ use serde::Deserialize;
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{image_attachment::ImageAttachedContext, state::AppState};
+use crate::state::AppState;
 use sage_acp_protocol::intent::ImageMediaType;
 use sage_db::database::Database;
-
-use super::store::{ingest_image, normalize_upload, read_image_thumbnail, remove_pending_image};
+use sage_images::{
+    attachment::ImageAttachedContext, ingest_image, normalize_upload, read_image_thumbnail,
+    remove_pending_image,
+};
 
 /// Base64 of `IMAGE_UPLOAD_BYTES`; an upload is normalised before it is stored.
 const MAX_IMAGE_BASE64_BYTES: usize = sage_core::limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4;
@@ -54,7 +56,7 @@ pub(crate) async fn upload_chat_image_inner(
     if generation != *state.project_transitions.lock().await {
         return Err(stale());
     }
-    let permit = super::work::image_work_permit().await;
+    let permit = sage_images::image_work_permit().await;
     let prepared = tauri::async_runtime::spawn_blocking(move || prepare_upload(request))
         .await
         .map_err(|error| error.to_string())?
@@ -213,3 +215,6 @@ pub(crate) fn store_upload(
         &upload.label,
     )
 }
+
+#[cfg(test)]
+mod tests;

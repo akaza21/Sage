@@ -4,7 +4,6 @@ mod config_choices;
 mod file_artifact;
 mod fingerprint;
 mod identity;
-mod image_files;
 mod imported_history;
 mod legacy;
 mod legacy_events;
@@ -45,8 +44,8 @@ pub(crate) use fingerprint::CURRENT_SCHEMA_VERSION;
 pub(crate) use fingerprint::historical_trigger_sql;
 #[cfg(all(test, feature = "acp-fixture"))]
 pub(crate) use identity::legacy_binding_digest;
-pub(crate) use image_files::{read_image_file, remove_image_file};
 use sage_db::error::SqliteResultExt;
+use sage_db::files::sync_parent;
 
 use std::{fs, path::Path, time::Duration};
 
@@ -66,7 +65,7 @@ use self::{
     limits::{LIVE_SQLITE_BYTES, TEMP_SQLITE_BYTES},
     opened::{LivePathAnchor, OpenedDatabase},
     paths::MigrationPaths,
-    platform::{MigrationLock, sync_file, sync_parent},
+    platform::{MigrationLock, sync_file},
     publish::recover_or_publish,
     schema_upgrade::{apply_through_v18, build_fresh_v18, upgrade_current_through_v9},
 };

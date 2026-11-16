@@ -63,7 +63,7 @@ impl<'de> Deserialize<'de> for ImageAttachedContext {
             || value
                 .label
                 .chars()
-                .any(crate::acp::attached_context::has_unsafe_display_character)
+                .any(sage_acp_protocol::contract::has_unsafe_display_character)
         {
             return Err(de::Error::custom("invalid image attachment reference"));
         }

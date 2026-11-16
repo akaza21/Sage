@@ -15,11 +15,9 @@ use super::{
     limits::{LIVE_SQLITE_BYTES, SIDE_FILES_BYTES, WAL_HARD_BYTES},
     manifest::{read, write_stage},
     paths::MigrationPaths,
-    platform::{
-        copy_bounded_create_new, file_is_prefix_of, reject_path_alias, remove_synced,
-        require_free_bytes,
-    },
+    platform::{copy_bounded_create_new, file_is_prefix_of, require_free_bytes},
 };
+use sage_db::files::{reject_path_alias, remove_synced};
 
 mod snapshot;
 pub(super) use snapshot::LiveSnapshot;

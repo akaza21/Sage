@@ -49,7 +49,7 @@ pub(super) fn create_sqlite_stage(path: &Path) -> AppResult<SqlitePathAnchor> {
     let file = open_sqlite_anchor(path, true, true)?;
     let identity = file_identity(&file)?;
     file.sync_all()?;
-    super::platform::sync_parent(path)?;
+    sage_db::files::sync_parent(path)?;
     Ok(SqlitePathAnchor { file, identity })
 }
 
@@ -67,7 +67,7 @@ pub(super) fn delete_file_with_identity(
         },
     };
 
-    super::platform::reject_path_alias(path)?;
+    sage_db::files::reject_path_alias(path)?;
     let mut options = OpenOptions::new();
     options
         .access_mode(GENERIC_READ | DELETE)
@@ -93,7 +93,7 @@ pub(super) fn delete_file_with_identity(
         return Err(std::io::Error::last_os_error().into());
     }
     drop(file);
-    super::platform::sync_parent(path)
+    sage_db::files::sync_parent(path)
 }
 
 #[cfg(not(windows))]
@@ -111,7 +111,7 @@ fn open_sqlite_anchor(path: &Path, writable: bool, create_new: bool) -> AppResul
     use std::os::windows::fs::OpenOptionsExt;
     use windows_sys::Win32::Storage::FileSystem::{FILE_SHARE_READ, FILE_SHARE_WRITE};
 
-    super::platform::reject_path_alias(path)?;
+    sage_db::files::reject_path_alias(path)?;
     #[cfg(test)]
     run_before_anchor_open(path);
     let mut options = OpenOptions::new();
@@ -134,7 +134,7 @@ fn open_sqlite_anchor(_path: &Path, _writable: bool, _create_new: bool) -> AppRe
 fn open_sqlite_anchor(path: &Path, writable: bool, create_new: bool) -> AppResult<File> {
     use std::os::unix::fs::OpenOptionsExt;
 
-    super::platform::reject_path_alias(path)?;
+    sage_db::files::reject_path_alias(path)?;
     let mut options = OpenOptions::new();
     options.read(true).write(writable).create_new(create_new);
     #[cfg(target_os = "linux")]

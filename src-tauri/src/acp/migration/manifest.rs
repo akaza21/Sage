@@ -7,10 +7,9 @@ use sage_core::error::{AppError, AppResult};
 use super::{
     fingerprint::{DatabaseFingerprint, FileFingerprint},
     limits::MANIFEST_BYTES,
-    platform::{
-        NativeFileIdentity, open_read_no_follow, reject_path_alias, write_bounded_create_new,
-    },
+    platform::{NativeFileIdentity, write_bounded_create_new},
 };
+use sage_db::files::{open_read_no_follow, reject_path_alias};
 
 const MANIFEST_SCHEMA: u32 = 1;
 const APP_IDENTITY: &str = "sage-ade-0006a-schema-005-v1";

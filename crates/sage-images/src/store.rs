@@ -8,8 +8,8 @@ use uuid::Uuid;
 
 use super::thumbnail::square_thumbnail;
 use crate::{
-    acp::migration,
-    image_attachment::{ImageAttachedContext, ImageAttachmentKind, MAX_OUTGOING_IMAGE_BYTES},
+    attachment::{ImageAttachedContext, ImageAttachmentKind, MAX_OUTGOING_IMAGE_BYTES},
+    files::{read_image_file, remove_image_file},
 };
 use sage_acp_protocol::intent::ImageMediaType;
 use sage_core::limits::{
@@ -21,7 +21,7 @@ const FULL_LIMIT: u64 = STORED_IMAGE_BYTES as u64;
 /// A chip thumbnail is read back within this bound.
 const THUMBNAIL_LIMIT: u64 = 64 * 1024;
 
-pub(crate) fn ingest_image(
+pub fn ingest_image(
     connection: &Connection,
     root: &Path,
     project_id: &str,
@@ -40,7 +40,7 @@ pub(crate) fn ingest_image(
         || label.len() > 80
         || label
             .chars()
-            .any(crate::acp::attached_context::has_unsafe_display_character)
+            .any(sage_acp_protocol::contract::has_unsafe_display_character)
     {
         return Err(invalid("image label is invalid"));
     }
@@ -111,7 +111,7 @@ pub(crate) fn ingest_image(
 /// An image past the stored bounds (a 4K screenshot, say) is normalised
 /// instead of refused; one within them is kept byte for byte for every
 /// harness, and an image prompt normalises it again when it is sent.
-pub(super) fn normalize_upload(
+pub fn normalize_upload(
     media_type: ImageMediaType,
     bytes: &[u8],
 ) -> AppResult<Option<super::normalize::Normalized>> {
@@ -171,15 +171,15 @@ pub(super) fn validate_root(root: &Path) -> AppResult<()> {
     Ok(())
 }
 
-pub(super) fn full_path(root: &Path, id: &str) -> std::path::PathBuf {
+pub fn full_path(root: &Path, id: &str) -> std::path::PathBuf {
     root.join(format!("{id}.full"))
 }
 
-pub(super) fn thumb_path(root: &Path, id: &str) -> std::path::PathBuf {
+pub fn thumb_path(root: &Path, id: &str) -> std::path::PathBuf {
     root.join(format!("{id}.thumb"))
 }
 
-pub(crate) fn remove_pending_image(
+pub fn remove_pending_image(
     connection: &Connection,
     root: &Path,
     project_id: &str,
@@ -201,15 +201,15 @@ pub(crate) fn remove_pending_image(
     if removed != 1 {
         return Err(invalid("pending image artifact is unavailable"));
     }
-    migration::remove_image_file(&full_path(root, artifact_id))?;
-    migration::remove_image_file(&thumb_path(root, artifact_id))?;
+    remove_image_file(&full_path(root, artifact_id))?;
+    remove_image_file(&thumb_path(root, artifact_id))?;
     Ok(())
 }
 
 /// The chip thumbnail of an image attached to `chat_id`'s composer. Only a
 /// pending image has a chip, and startup drops every pending image, so each
 /// thumbnail read here was written by this build's store.
-pub(crate) fn read_image_thumbnail(
+pub fn read_image_thumbnail(
     connection: &Connection,
     root: &Path,
     project_id: &str,
@@ -233,14 +233,14 @@ pub(crate) fn read_image_thumbnail(
     let Some((length, hash)) = row else {
         return Err(invalid("image artifact is unavailable"));
     };
-    let bytes = migration::read_image_file(&thumb_path(root, artifact_id), THUMBNAIL_LIMIT)?;
+    let bytes = read_image_file(&thumb_path(root, artifact_id), THUMBNAIL_LIMIT)?;
     if bytes.len() as i64 != length || format!("{:x}", Sha256::digest(&bytes)) != hash {
         return Err(invalid("image thumbnail is missing or corrupt"));
     }
     Ok(bytes)
 }
 
-pub(crate) fn verify_image_reference(
+pub fn verify_image_reference(
     connection: &Connection,
     root: &Path,
     project_id: &str,
@@ -292,7 +292,7 @@ pub(crate) fn verify_image_reference(
             "image artifact reference does not match its owner-bound record",
         ));
     }
-    let bytes = migration::read_image_file(&full_path(root, &image.artifact_id), FULL_LIMIT)?;
+    let bytes = read_image_file(&full_path(root, &image.artifact_id), FULL_LIMIT)?;
     if bytes.len() != length as usize || format!("{:x}", Sha256::digest(&bytes)) != hash {
         return Err(invalid("image artifact is missing or corrupt"));
     }

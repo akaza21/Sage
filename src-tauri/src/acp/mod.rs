@@ -13,7 +13,6 @@ pub(crate) mod errors;
 #[cfg(any(test, feature = "acp-fixture"))]
 pub mod fixture;
 pub(crate) mod goal;
-pub(crate) mod image_admit;
 pub(crate) mod ipc;
 pub(crate) mod mcp;
 pub(crate) mod migration;

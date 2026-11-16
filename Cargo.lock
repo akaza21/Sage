@@ -2928,7 +2928,6 @@ dependencies = [
  "getrandom 0.3.4",
  "gtk",
  "jpeg-decoder",
- "jpeg-encoder",
  "libc",
  "log",
  "objc2",
@@ -2943,6 +2942,7 @@ dependencies = [
  "sage-core",
  "sage-db",
  "sage-domain",
+ "sage-images",
  "sage-process",
  "sage-test-support",
  "sage-workspace",
@@ -2998,6 +2998,7 @@ version = "0.0.0"
 dependencies = [
  "rusqlite",
  "sage-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3006,6 +3007,24 @@ version = "0.0.0"
 dependencies = [
  "sage-acp-protocol",
  "serde",
+]
+
+[[package]]
+name = "sage-images"
+version = "0.0.0"
+dependencies = [
+ "jpeg-decoder",
+ "jpeg-encoder",
+ "png 0.17.16",
+ "rusqlite",
+ "sage-acp-protocol",
+ "sage-core",
+ "sage-db",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]

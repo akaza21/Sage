@@ -27,7 +27,6 @@ base64.workspace = true
 csv-core.workspace = true
 getrandom.workspace = true
 jpeg-decoder.workspace = true
-jpeg-encoder.workspace = true
 png.workspace = true
 regex.workspace = true
 rusqlite.workspace = true
@@ -35,6 +34,7 @@ sage-acp-protocol.workspace = true
 sage-core.workspace = true
 sage-db.workspace = true
 sage-domain.workspace = true
+sage-images.workspace = true
 sage-process.workspace = true
 sage-workspace.workspace = true
 serde.workspace = true
@@ -55,6 +55,7 @@ zeroize.workspace = true
 [dev-dependencies]
 sage-acp-protocol = { workspace = true, features = ["test-support"] }
 sage-db = { workspace = true, features = ["test-support"] }
+sage-images = { workspace = true, features = ["test-support"] }
 sage-test-support.workspace = true
 sage-workspace = { workspace = true, features = ["test-support"] }
 

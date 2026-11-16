@@ -54,7 +54,7 @@ fn stage_backup_crash_prefix(paths: &MigrationPaths, prefix: &str) {
         .unwrap();
         if complete {
             fs::write(&paths.backup_stage, fs::read(&paths.backup_final).unwrap()).unwrap();
-            platform::remove_synced(&paths.backup_final).unwrap();
+            sage_db::files::remove_synced(&paths.backup_final).unwrap();
             platform::rename_synced(&paths.manifest_final, &paths.manifest_stage).unwrap();
         } else {
             fs::write(&paths.backup_stage, b"owned-partial-backup").unwrap();

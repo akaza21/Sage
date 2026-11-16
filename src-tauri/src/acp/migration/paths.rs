@@ -114,7 +114,7 @@ impl MigrationPaths {
                 "Sage migration parent is not a directory".into(),
             ));
         }
-        super::platform::reject_path_alias(parent)?;
+        sage_db::files::reject_path_alias(parent)?;
         for path in [
             &self.live,
             &self.live_wal,
@@ -144,7 +144,7 @@ impl MigrationPaths {
                     "migration artifact escaped the live database directory".into(),
                 ));
             }
-            super::platform::reject_path_alias(path)?;
+            sage_db::files::reject_path_alias(path)?;
         }
         Ok(())
     }

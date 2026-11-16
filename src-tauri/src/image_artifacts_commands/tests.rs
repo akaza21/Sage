@@ -4,11 +4,11 @@ use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use sage_acp_protocol::intent::ImageMediaType;
 
-use super::{
-    commands::{UploadChatImageRequest, upload_image_payload},
-    store::{ingest_image, read_image_thumbnail, remove_pending_image},
-    verify_image_reference,
+use sage_images::{
+    ingest_image, read_image_thumbnail, remove_pending_image, verify_image_reference,
 };
+
+use super::{UploadChatImageRequest, upload_image_payload};
 
 const PNG_1X1: &str =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
@@ -309,24 +309,24 @@ fn a_4k_screenshot_is_normalised_at_upload_and_retired_once_sent() {
 
     // Past the 2048 px store bound: once refused, now stored at that bound for
     // every harness. An image prompt narrows it to 1568 px when it is sent.
-    let screenshot = super::screenshot_png(3840, 2160);
-    let image = super::ingest_test_image(&connection, root, "p", "c", &screenshot).unwrap();
+    let screenshot = sage_images::screenshot_png(3840, 2160);
+    let image = sage_images::ingest_test_image(&connection, root, "p", "c", &screenshot).unwrap();
     assert_eq!((image.width, image.height), (2048, 1152));
     assert_eq!(image.media_type, ImageMediaType::Png);
     let stored = verify_image_reference(&connection, root, "p", "c", &image).unwrap();
-    assert_eq!(super::png_dimensions(&stored), (2048, 1152));
+    assert_eq!(sage_images::png_dimensions(&stored), (2048, 1152));
 
     // Even noise is stored for any harness, as the smaller JPEG within 4 MiB;
     // only an image prompt applies the tighter 1 MiB bound.
-    let noise = super::noise_png(2100, 1600);
-    let noise = super::ingest_test_image(&connection, root, "p", "c", &noise).unwrap();
+    let noise = sage_images::noise_png(2100, 1600);
+    let noise = sage_images::ingest_test_image(&connection, root, "p", "c", &noise).unwrap();
     assert_eq!(
         (noise.width, noise.height, noise.media_type),
         (2048, 1561, ImageMediaType::Jpeg)
     );
     assert!(noise.byte_length as usize <= sage_core::limits::STORED_IMAGE_BYTES);
 
-    super::retire_sent_images(&connection, root, "p", "c", &[&image.artifact_id]).unwrap();
+    sage_images::retire_sent_images(&connection, root, "p", "c", &[&image.artifact_id]).unwrap();
     assert!(verify_image_reference(&connection, root, "p", "c", &image).is_err());
     assert!(!root.join(format!("{}.full", image.artifact_id)).exists());
     drop(connection);
@@ -361,21 +361,19 @@ fn uploads_queue_for_one_image_work_permit_without_holding_the_project_lock() {
                     project_generation: generation,
                     chat_id: chat_id.clone(),
                     media_type: ImageMediaType::Png,
-                    data_base64: STANDARD.encode(super::screenshot_png(3000, 1000)),
+                    data_base64: STANDARD.encode(sage_images::screenshot_png(3000, 1000)),
                     label: "wide.png".into(),
                 };
-                tokio::spawn(async move {
-                    super::commands::upload_chat_image_inner(&state, request).await
-                })
+                tokio::spawn(async move { super::upload_chat_image_inner(&state, request).await })
             };
 
             // A decode in flight holds the only permit; both uploads wait.
-            let held = super::image_work_permit().await;
+            let held = sage_images::image_work_permit().await;
             let first = upload(state.clone());
             let second = upload(state.clone());
             tokio::time::sleep(Duration::from_millis(200)).await;
             assert!(!first.is_finished() && !second.is_finished());
-            assert_eq!(super::work::image_work_available(), 0);
+            assert_eq!(sage_images::image_work_available(), 0);
             // A project switch is not blocked behind the waiting decodes.
             let switch =
                 tokio::time::timeout(Duration::from_millis(200), state.project_transitions.lock())
@@ -388,8 +386,39 @@ fn uploads_queue_for_one_image_work_permit_without_holding_the_project_lock() {
             let second = second.await.unwrap().unwrap();
             assert_ne!(first.artifact_id, second.artifact_id);
             assert_eq!((first.width, first.height), (2048, 683));
-            assert_eq!(super::work::image_work_available(), 1);
+            assert_eq!(sage_images::image_work_available(), 1);
             drop(state);
             let _ = std::fs::remove_dir_all(root);
         });
+}
+
+#[test]
+fn reconciliation_removes_owned_orphans_and_rejects_live_corruption() {
+    use sage_images::{full_path, reconcile_image_artifacts, thumb_path};
+    use std::fs;
+
+    let opened = crate::acp::migration::open_or_migrate(std::path::Path::new(":memory:")).unwrap();
+    let (connection, _) = opened.into_parts();
+    connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
+    connection.execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
+    let root = std::env::temp_dir()
+        .join(format!("sage-image-gc-{}", uuid::Uuid::new_v4()))
+        .join("image-artifacts");
+    let image = sage_images::insert_test_image(&connection, &root, "p", "c", "image.png");
+    connection
+        .execute(
+            "UPDATE chat_image_artifacts SET lifecycle='queued',queue_id='q1' WHERE id=?1",
+            [&image.artifact_id],
+        )
+        .unwrap();
+    let orphan = full_path(&root, &uuid::Uuid::new_v4().to_string());
+    fs::write(&orphan, b"orphan").unwrap();
+    reconcile_image_artifacts(&connection, &root).unwrap();
+    assert!(!orphan.exists());
+    fs::write(full_path(&root, &image.artifact_id), b"tampered").unwrap();
+    assert!(reconcile_image_artifacts(&connection, &root).is_err());
+    fs::remove_file(full_path(&root, &image.artifact_id)).unwrap();
+    fs::remove_file(thumb_path(&root, &image.artifact_id)).unwrap();
+    fs::remove_dir(&root).unwrap();
+    fs::remove_dir(root.parent().unwrap()).unwrap();
 }
