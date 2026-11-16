@@ -47,7 +47,7 @@ impl ProcessTree {
         false
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         true
     }
 
@@ -117,8 +117,10 @@ mod windows {
         /// Closes the job handle; kill-on-close ends anything still running.
         pub fn close(self) {}
 
-        /// A failed query proves nothing, so it counts as not empty.
-        pub(super) fn is_empty(&self) -> bool {
+        /// True once Job accounting shows no active process, counting any
+        /// console host the tree was given. A failed query proves nothing,
+        /// so it counts as not empty.
+        pub fn is_empty(&self) -> bool {
             self.0
                 .active_processes(MAX_TREE_PROCESSES)
                 .is_ok_and(|active| active == 0)

@@ -1,18 +1,23 @@
 use super::*;
 
+fn model() -> Vec<ModelOption> {
+    vec![ModelOption {
+        id: "gpt-x".into(),
+        name: "GPT-X".into(),
+        description: None,
+        is_default: Some(true),
+        context_window: None,
+        effort_levels: Some(vec!["low".into()]),
+    }]
+}
+
+fn ids(models: Option<Vec<ModelOption>>) -> Option<Vec<String>> {
+    models.map(|models| models.into_iter().map(|model| model.id).collect())
+}
+
 #[test]
 fn an_account_change_during_a_listing_keeps_that_listing_out() {
     let catalog = CodexModelCatalog::default();
-    let model = || {
-        vec![ModelOption {
-            id: "gpt-x".into(),
-            name: "GPT-X".into(),
-            description: None,
-            is_default: Some(true),
-            context_window: None,
-            effort_levels: Some(vec!["low".into()]),
-        }]
-    };
     let began = catalog.generation();
 
     catalog.forget();
@@ -29,7 +34,7 @@ fn an_account_change_during_a_listing_keeps_that_listing_out() {
 #[cfg(unix)]
 mod fake_app_server {
     use std::{
-        os::unix::fs::PermissionsExt,
+        os::unix::{fs::PermissionsExt, process::CommandExt},
         path::{Path, PathBuf},
         time::{Duration, Instant},
     };
@@ -241,7 +246,7 @@ mod fake_app_server {
 
             assert!(
                 catalog
-                    .probed_within(&binding, Duration::from_millis(500))
+                    .probed_within(&binding, Duration::from_millis(500), PROBE_CLEANUP)
                     .is_none()
             );
             assert!(started.elapsed() < Duration::from_secs(10), "{body}");
@@ -252,5 +257,76 @@ mod fake_app_server {
             assert!(catalog.probed(&binding).is_none());
             assert!(retried.elapsed() < Duration::from_millis(100));
         }
+    }
+
+    #[test]
+    fn a_probe_that_fails_after_a_newer_listing_landed_keeps_that_listing() {
+        let server = FakeAppServer::new("trap '' HUP TERM\nexec /bin/sleep 30");
+        let catalog = CodexModelCatalog::default();
+        let binding = server.binding();
+        let digest = binding.binding_digest();
+
+        let probed = std::thread::scope(|scope| {
+            let probing = scope.spawn(|| {
+                catalog.probed_within(&binding, Duration::from_millis(800), PROBE_CLEANUP)
+            });
+            std::thread::sleep(Duration::from_millis(300));
+            assert!(catalog.refresh(catalog.generation(), digest, model()));
+            probing.join().unwrap()
+        });
+
+        let listed = Some(vec!["gpt-x".to_owned()]);
+        assert_eq!(ids(probed), listed);
+        assert_eq!(ids(catalog.known(digest)), listed);
+        std::fs::remove_file(server.script()).unwrap();
+        assert_eq!(ids(catalog.probed(&binding)), listed);
+    }
+
+    #[test]
+    fn a_tree_that_outlives_its_cleanup_deadline_fails_the_probe_in_time() {
+        let server = FakeAppServer::new("");
+        let leader = server.directory.join("leader");
+        let joined = server.directory.join("joined");
+        let body = format!(
+            "echo $$ > '{}.tmp' && mv '{0}.tmp' '{0}'\nwhile [ ! -e '{}' ]; do sleep 0.05; done\n{}",
+            leader.display(),
+            joined.display(),
+            answering_app_server(&std::env::temp_dir())
+        );
+        sage_test_support::test_executable::write(server.script(), format!("#!/bin/sh\n{body}\n"))
+            .unwrap();
+        let catalog = CodexModelCatalog::default();
+        let binding = server.binding();
+        let cleanup = Duration::from_millis(500);
+
+        let (probed, elapsed, mut member) = std::thread::scope(|scope| {
+            let probing = scope.spawn(|| {
+                let started = Instant::now();
+                let probed = catalog.probed_within(&binding, Duration::from_secs(2), cleanup);
+                (probed, started.elapsed())
+            });
+            let group = loop {
+                if let Ok(pid) = std::fs::read_to_string(&leader) {
+                    break pid.trim().parse::<libc::pid_t>().unwrap();
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            };
+            let member = std::process::Command::new("/bin/sleep")
+                .arg("30")
+                .process_group(group)
+                .spawn()
+                .unwrap();
+            std::fs::write(&joined, "").unwrap();
+            let (probed, elapsed) = probing.join().unwrap();
+            (probed, elapsed, member)
+        });
+
+        assert!(
+            probed.is_none(),
+            "zero was reported while a member was left"
+        );
+        assert!(elapsed < Duration::from_secs(4), "{elapsed:?}");
+        assert!(catalog.known(binding.binding_digest()).is_none());
+        member.wait().unwrap();
     }
 }

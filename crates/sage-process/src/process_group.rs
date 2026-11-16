@@ -34,6 +34,15 @@ impl ProcessGroup {
         // process created, and callers hold its leader unreaped.
         unsafe { libc::killpg(self.0, libc::SIGKILL) == 0 }
     }
+
+    /// True once no process, not even an unreaped zombie, is left in the
+    /// group. Signal 0 delivers nothing, so it may also ask after the leader
+    /// is reaped: a reused id can only make the group look occupied.
+    pub fn is_empty(&self) -> bool {
+        // SAFETY: signal 0 only checks whether the group has members.
+        let probed = unsafe { libc::killpg(self.0, 0) };
+        probed != 0 && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+    }
 }
 
 #[cfg(test)]
@@ -76,6 +85,28 @@ mod tests {
             thread::sleep(Duration::from_millis(10));
         }
         assert!(!alive(descendant), "the group's descendant survived");
+    }
+
+    #[test]
+    fn a_group_is_empty_only_once_its_last_member_is_reaped() {
+        let mut command = Command::new("/bin/sleep");
+        command.arg("30");
+        isolate(&mut command);
+        let mut leader = command.spawn().unwrap();
+        let group = ProcessGroup::led_by(leader.id()).unwrap();
+        let mut member = Command::new("/bin/sleep")
+            .arg("30")
+            .process_group(libc::pid_t::try_from(leader.id()).unwrap())
+            .spawn()
+            .unwrap();
+        assert!(!group.is_empty());
+
+        assert!(group.terminate());
+        leader.wait().unwrap();
+        assert!(!group.is_empty(), "an unreaped member still occupies it");
+
+        member.wait().unwrap();
+        assert!(group.is_empty());
     }
 
     #[test]

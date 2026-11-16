@@ -37,6 +37,8 @@ const PROBE_CLEANUP: Duration = Duration::from_secs(5);
 /// How long a probe whose stdin is closed may take to end its output before
 /// it is killed.
 const EXIT_GRACE: Duration = Duration::from_secs(2);
+/// How often teardown asks whether the probe's processes have ended.
+const SETTLE_POLL: Duration = Duration::from_millis(5);
 /// Startup output and four catalog pages; this bounds a misbehaving CLI.
 const PROBE_BYTES: u64 = 4 * 1024 * 1024;
 const RETRY_AFTER: Duration = Duration::from_secs(60);
@@ -54,7 +56,26 @@ struct CatalogState {
     /// Advances when the account changes, so a listing read before then is
     /// not stored after it.
     generation: u64,
+    /// Advances with every stored listing, so a probe that began before one
+    /// does not replace it.
+    revision: u64,
     listed: Option<([u8; 32], Listed)>,
+}
+
+impl CatalogState {
+    fn store(&mut self, binding_digest: [u8; 32], listed: Listed) {
+        self.revision = self.revision.wrapping_add(1);
+        self.listed = Some((binding_digest, listed));
+    }
+
+    fn models(&self, binding_digest: [u8; 32]) -> Option<Vec<ModelOption>> {
+        match &self.listed {
+            Some((digest, Listed::Models(models))) if *digest == binding_digest => {
+                Some(models.clone())
+            }
+            _ => None,
+        }
+    }
 }
 
 /// The models the admitted Codex build lists before any session, by binding
@@ -68,24 +89,20 @@ pub(crate) struct CodexModelCatalog {
 
 impl CodexModelCatalog {
     pub(crate) fn known(&self, binding_digest: [u8; 32]) -> Option<Vec<ModelOption>> {
-        match &lock(&self.state).listed {
-            Some((digest, Listed::Models(models))) if *digest == binding_digest => {
-                Some(models.clone())
-            }
-            _ => None,
-        }
+        lock(&self.state).models(binding_digest)
     }
 
     /// `None` when the build could not be read; a later lookup probes again
     /// once [`RETRY_AFTER`] has passed.
     pub(crate) fn probed(&self, binding: &AdmittedCodexBinding) -> Option<Vec<ModelOption>> {
-        self.probed_within(binding, PROBE_OPERATION)
+        self.probed_within(binding, PROBE_OPERATION, PROBE_CLEANUP)
     }
 
     fn probed_within(
         &self,
         binding: &AdmittedCodexBinding,
         operation: Duration,
+        cleanup: Duration,
     ) -> Option<Vec<ModelOption>> {
         let digest = binding.binding_digest();
         if let Some(known) = self.settled(digest) {
@@ -95,17 +112,26 @@ impl CodexModelCatalog {
         if let Some(known) = self.settled(digest) {
             return known;
         }
-        let generation = self.generation();
-        let models = CodexDiscoveryDeadline::starting_now(operation, PROBE_CLEANUP)
+        let (generation, revision) = {
+            let state = lock(&self.state);
+            (state.generation, state.revision)
+        };
+        let models = CodexDiscoveryDeadline::starting_now(operation, cleanup)
             .ok()
             .and_then(|deadline| probe(binding, deadline))
             .filter(|models| !models.is_empty());
+        let mut state = lock(&self.state);
+        if state.generation != generation {
+            return None;
+        }
+        if state.revision != revision {
+            return state.models(digest);
+        }
         let listed = models
             .clone()
             .map_or_else(|| Listed::Failed(Instant::now()), Listed::Models);
-        self.store_if_current(generation, digest, listed)
-            .then_some(models)
-            .flatten()
+        state.store(digest, listed);
+        models
     }
 
     fn settled(&self, binding_digest: [u8; 32]) -> Option<Option<Vec<ModelOption>>> {
@@ -134,15 +160,11 @@ impl CodexModelCatalog {
         binding_digest: [u8; 32],
         models: Vec<ModelOption>,
     ) -> bool {
-        self.store_if_current(generation, binding_digest, Listed::Models(models))
-    }
-
-    fn store_if_current(&self, generation: u64, binding_digest: [u8; 32], listed: Listed) -> bool {
         let mut state = lock(&self.state);
         if state.generation != generation {
             return false;
         }
-        state.listed = Some((binding_digest, listed));
+        state.store(binding_digest, Listed::Models(models));
         true
     }
 
@@ -228,10 +250,14 @@ fn contain(child: &Child) -> io::Result<ProbeTree> {
     ProbeTree::contain_blocking(child)
 }
 
-struct ProbeTransport<'a> {
+struct Running {
     child: Child,
-    /// Taken when the probe is reaped.
-    tree: Option<ProbeTree>,
+    tree: ProbeTree,
+}
+
+struct ProbeTransport<'a> {
+    /// Taken when the probe is torn down.
+    running: Option<Running>,
     stdin: Option<ChildStdin>,
     frames: mpsc::Receiver<Result<Option<Frame>, FrameError>>,
     reader: Option<JoinHandle<()>>,
@@ -245,7 +271,7 @@ impl<'a> ProbeTransport<'a> {
             Ok(tree) => tree,
             Err(_) => {
                 let _ = child.kill();
-                let _ = child.wait();
+                reap_root(child, Instant::now() + PROBE_CLEANUP);
                 return None;
             }
         };
@@ -253,8 +279,7 @@ impl<'a> ProbeTransport<'a> {
         let stdout = child.stdout.take();
         let (sender, frames) = mpsc::sync_channel(4);
         let mut transport = Self {
-            child,
-            tree: Some(tree),
+            running: Some(Running { child, tree }),
             stdin,
             frames,
             reader: None,
@@ -270,21 +295,26 @@ impl<'a> ProbeTransport<'a> {
     /// Codex exits once its stdin closes. Whatever is left of its tree after
     /// the grace, such as a child still holding its stdout, is killed before
     /// the root is reaped, while the root still pins the tree's identity.
-    fn reap(&mut self, cleanup_end: Instant) {
-        let Some(tree) = self.tree.take() else {
-            return;
+    /// Zero processes are proven only once the root is reaped and the whole
+    /// tree is empty by `cleanup_end`; teardown never waits past it.
+    fn tear_down(&mut self, cleanup_end: Instant) -> Result<(), CodexDiscoveryRunError> {
+        let Some(Running { mut child, tree }) = self.running.take() else {
+            return Ok(());
         };
         self.stdin = None;
         let now = Instant::now();
         self.drain_output(now + EXIT_GRACE.min(cleanup_end.saturating_duration_since(now)));
-        tree.terminate();
-        let _ = self.child.kill();
-        let _ = self.child.wait();
+        let tree_signalled = tree.terminate();
+        let root_signalled = child.kill().is_ok();
+        let zero = reap_root(child, cleanup_end) && settles_by(cleanup_end, || tree.is_empty());
         if self.drain_output(cleanup_end)
             && let Some(reader) = self.reader.take()
         {
             let _ = reader.join();
         }
+        (tree_signalled && root_signalled && zero)
+            .then_some(())
+            .ok_or(CodexDiscoveryRunError::Cleanup)
     }
 
     /// Discards output until the reader ends at end of stream; false when
@@ -301,6 +331,32 @@ impl<'a> ProbeTransport<'a> {
                 Err(mpsc::RecvTimeoutError::Timeout) => return false,
             }
         }
+    }
+}
+
+/// Reaps a killed root by `until`; a root that has not ended by then, such as
+/// one stuck in uninterruptible I/O, is left to a thread that reaps it later.
+fn reap_root(mut child: Child, until: Instant) -> bool {
+    if settles_by(until, || matches!(child.try_wait(), Ok(Some(_)))) {
+        return true;
+    }
+    thread::spawn(move || {
+        let _ = child.wait();
+    });
+    false
+}
+
+/// Polls `settled` until it holds or `until` passes; true when it held.
+fn settles_by(until: Instant, mut settled: impl FnMut() -> bool) -> bool {
+    loop {
+        if settled() {
+            return true;
+        }
+        let left = until.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return false;
+        }
+        thread::sleep(SETTLE_POLL.min(left));
     }
 }
 
@@ -371,14 +427,14 @@ impl DiscoveryTransport for ProbeTransport<'_> {
         _: bool,
         deadline: CodexDiscoveryDeadline,
     ) -> Result<DiscoveryZeroProcess, CodexDiscoveryRunError> {
-        self.reap(deadline.cleanup_end());
+        self.tear_down(deadline.cleanup_end())?;
         Ok(DiscoveryZeroProcess::reaped(PROBE_EPOCH))
     }
 }
 
 impl Drop for ProbeTransport<'_> {
     fn drop(&mut self) {
-        self.reap(Instant::now() + PROBE_CLEANUP);
+        let _ = self.tear_down(Instant::now() + PROBE_CLEANUP);
     }
 }
 
