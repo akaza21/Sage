@@ -1,5 +1,5 @@
 use super::Refusal;
-use crate::workspace::{Workspace, open_workspace_text_file};
+use sage_workspace::{Workspace, open_workspace_text_file};
 use serde::Deserialize;
 use std::{io::Read, path::Path};
 
@@ -137,7 +137,7 @@ pub(crate) fn read(workspace: &Workspace, relative: &str) -> Result<Option<Strin
         .and_then(Path::to_str)
         .ok_or(Refusal::OutsideWorkspace)?;
     let _held =
-        crate::workspace::open_held_parent(workspace.root(), workspace.root_identity(), parent)
+        sage_workspace::open_held_parent(workspace.root(), workspace.root_identity(), parent)
             .map_err(|_| Refusal::MissingParent)?;
     match std::fs::symlink_metadata(&path) {
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),

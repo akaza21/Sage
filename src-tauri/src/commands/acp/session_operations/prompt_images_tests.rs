@@ -25,7 +25,7 @@ impl Store {
     }
 
     fn image(&self, chat: &str) -> ImageAttachedContext {
-        crate::image_artifacts::insert_test_image(
+        sage_images::insert_test_image(
             &self.database.connection(),
             self.database.image_artifact_root().unwrap(),
             "p",
@@ -91,7 +91,7 @@ fn a_send_target_without_a_session_refuses_images_as_unsupported() {
 fn a_4k_screenshot_is_accepted_and_sent_at_most_1568_px_wide() {
     let store = Store::new();
     let upload = |bytes: Vec<u8>| {
-        crate::image_artifacts::ingest_test_image(
+        sage_images::ingest_test_image(
             &store.database.connection(),
             store.database.image_artifact_root().unwrap(),
             "p",
@@ -102,8 +102,8 @@ fn a_4k_screenshot_is_accepted_and_sent_at_most_1568_px_wide() {
     };
     // Normalised at upload; a 2000 px image within the store bounds is kept
     // as uploaded and normalised when the prompt is sent.
-    let uhd = upload(crate::image_artifacts::screenshot_png(3840, 2160));
-    let wide = upload(crate::image_artifacts::screenshot_png(2000, 1000));
+    let uhd = upload(sage_images::screenshot_png(3840, 2160));
+    let wide = upload(sage_images::screenshot_png(2000, 1000));
     assert_eq!(wide.width, 2000);
 
     let read = read(&store.database, "p", "c", &[&uhd, &wide]).unwrap();
@@ -113,10 +113,7 @@ fn a_4k_screenshot_is_accepted_and_sent_at_most_1568_px_wide() {
             image.media_type,
             sage_acp_protocol::intent::ImageMediaType::Png
         );
-        assert_eq!(
-            crate::image_artifacts::png_dimensions(&image.bytes),
-            expected
-        );
+        assert_eq!(sage_images::png_dimensions(&image.bytes), expected);
         assert!(image.preview().is_some());
     }
     assert!(
@@ -131,12 +128,12 @@ fn a_4k_screenshot_is_accepted_and_sent_at_most_1568_px_wide() {
 #[test]
 fn an_image_still_too_large_after_resizing_is_refused_with_the_prompt_bounds() {
     let store = Store::new();
-    let noise = crate::image_artifacts::ingest_test_image(
+    let noise = sage_images::ingest_test_image(
         &store.database.connection(),
         store.database.image_artifact_root().unwrap(),
         "p",
         "c",
-        &crate::image_artifacts::noise_png(2100, 1600),
+        &sage_images::noise_png(2100, 1600),
     )
     .unwrap();
 

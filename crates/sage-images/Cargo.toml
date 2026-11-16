@@ -1,0 +1,32 @@
+[package]
+name = "sage-images"
+description = "Sage's Chat images: attachment references, harness image admission and the image artifact store."
+edition.workspace = true
+rust-version.workspace = true
+publish.workspace = true
+
+[lib]
+doctest = false
+
+[lints]
+workspace = true
+
+[dependencies]
+jpeg-decoder.workspace = true
+jpeg-encoder.workspace = true
+png.workspace = true
+rusqlite.workspace = true
+sage-acp-protocol.workspace = true
+sage-core.workspace = true
+sage-db.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+tokio.workspace = true
+uuid.workspace = true
+
+[features]
+default = []
+# Test-only helpers the app's tests use. Enabled only from
+# `[dev-dependencies]`, never from `[dependencies]`.
+test-support = []

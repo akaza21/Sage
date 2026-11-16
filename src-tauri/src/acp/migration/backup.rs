@@ -16,11 +16,10 @@ use super::{
     limits::{MIGRATION_FREE_BYTES, TEMP_SQLITE_BYTES, preflight_original_schema},
     manifest::{BackupBuildIntent, BackupManifest, BackupSource, read, write_stage},
     paths::MigrationPaths,
-    platform::{
-        anchor_existing_sqlite, remove_synced, rename_synced, require_free_bytes, sync_file,
-    },
+    platform::{anchor_existing_sqlite, rename_synced, require_free_bytes, sync_file},
     stage_owner,
 };
+use sage_db::files::remove_synced;
 
 pub(super) struct VerifiedBackup {
     pub(super) source: BackupSource,

@@ -35,7 +35,7 @@ pub use custom_acp_agents::{
     CustomAcpAgent, CustomAcpAgentDraft, MAX_CUSTOM_ACP_AGENTS, custom_acp_number,
     validate_custom_acp_agent,
 };
-pub use editor_settings::{EditorSettings, EditorValue, MAX_GLOBS, default_files_exclude};
+pub use editor_settings::{EditorSettings, EditorValue};
 pub use new_chat_defaults::NewChatDefaults;
 use sage_core::error::{AppError, AppResult};
 

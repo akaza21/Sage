@@ -17,7 +17,7 @@ fn workspace_fixture() -> (Database, AdapterStoreOwner, PathBuf) {
         std::env::temp_dir().join(format!("sage-workspace-terminal-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
     assert!(
-        crate::git_process::fixture_git()
+        sage_git::process::fixture_git()
             .args(["init", "-q"])
             .current_dir(&root)
             .status()

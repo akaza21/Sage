@@ -5,6 +5,7 @@ use std::{
 };
 
 use sage_core::error::{AppError, AppResult};
+use sage_db::files::{configure_no_follow, reject_path_alias, sync_parent};
 
 pub(super) use super::platform_anchor::{
     NativeFileIdentity, SqlitePathAnchor, anchor_existing_sqlite, create_sqlite_stage,
@@ -23,28 +24,6 @@ impl MigrationLock {
         lock_exclusive(&file)?;
         Ok(Self { file })
     }
-}
-
-pub(super) fn reject_path_alias(path: &Path) -> AppResult<()> {
-    let metadata = match fs::symlink_metadata(path) {
-        Ok(metadata) => metadata,
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
-        Err(error) => return Err(error.into()),
-    };
-    #[cfg(unix)]
-    let alias = metadata.file_type().is_symlink();
-    #[cfg(windows)]
-    let alias = {
-        use std::os::windows::fs::MetadataExt;
-        const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x0000_0400;
-        metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0
-    };
-    if alias {
-        return Err(AppError::InvalidRequest(
-            "migration paths must not be symbolic links or reparse aliases".into(),
-        ));
-    }
-    Ok(())
 }
 
 impl Drop for MigrationLock {
@@ -86,24 +65,6 @@ pub(super) fn sync_file(path: &Path) -> AppResult<()> {
     Ok(())
 }
 
-pub(super) fn sync_parent(path: &Path) -> AppResult<()> {
-    #[cfg(windows)]
-    {
-        let _ = path;
-        // Windows has no portable directory-fsync primitive. Publication uses
-        // MoveFileExW(MOVEFILE_WRITE_THROUGH) below; cleanup is restart-idempotent.
-        Ok(())
-    }
-    #[cfg(unix)]
-    {
-        let parent = path.parent().ok_or_else(|| {
-            AppError::InvalidRequest("migration artifact has no parent directory".into())
-        })?;
-        open_directory(parent)?.sync_all()?;
-        Ok(())
-    }
-}
-
 pub(super) fn rename_synced(from: &Path, to: &Path) -> AppResult<()> {
     reject_path_alias(from)?;
     reject_path_alias(to)?;
@@ -117,14 +78,6 @@ pub(super) fn rename_synced(from: &Path, to: &Path) -> AppResult<()> {
     #[cfg(windows)]
     rename_write_through(from, to)?;
     sync_parent(to)
-}
-
-pub(super) fn remove_synced(path: &Path) -> AppResult<()> {
-    match fs::remove_file(path) {
-        Ok(()) => sync_parent(path),
-        Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
-        Err(error) => Err(error.into()),
-    }
 }
 
 pub(super) fn copy_bounded_create_new(source: &Path, target: &Path, cap: u64) -> AppResult<()> {
@@ -188,14 +141,6 @@ pub(super) fn write_bounded_create_new(path: &Path, bytes: &[u8], cap: u64) -> A
     sync_parent(path)
 }
 
-pub(super) fn open_read_no_follow(path: &Path) -> AppResult<File> {
-    reject_path_alias(path)?;
-    let mut options = OpenOptions::new();
-    options.read(true);
-    configure_no_follow(&mut options);
-    Ok(options.open(path)?)
-}
-
 pub(super) fn file_is_prefix_of(source: &Path, candidate: &Path, cap: u64) -> AppResult<bool> {
     reject_path_alias(source)?;
     reject_path_alias(candidate)?;
@@ -227,30 +172,6 @@ pub(super) fn file_is_prefix_of(source: &Path, candidate: &Path, cap: u64) -> Ap
     }
     Ok(true)
 }
-
-#[cfg(windows)]
-fn configure_no_follow(options: &mut OpenOptions) {
-    use std::os::windows::fs::OpenOptionsExt;
-    use windows_sys::Win32::Storage::FileSystem::FILE_FLAG_OPEN_REPARSE_POINT;
-    options.custom_flags(FILE_FLAG_OPEN_REPARSE_POINT);
-}
-
-#[cfg(target_os = "linux")]
-fn configure_no_follow(options: &mut OpenOptions) {
-    use std::os::unix::fs::OpenOptionsExt;
-    const O_NOFOLLOW: i32 = 0x0002_0000;
-    options.custom_flags(O_NOFOLLOW);
-}
-
-#[cfg(target_os = "macos")]
-fn configure_no_follow(options: &mut OpenOptions) {
-    use std::os::unix::fs::OpenOptionsExt;
-    const O_NOFOLLOW: i32 = 0x0000_0100;
-    options.custom_flags(O_NOFOLLOW);
-}
-
-#[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
-fn configure_no_follow(_options: &mut OpenOptions) {}
 
 fn open_lock_file(path: &Path) -> AppResult<File> {
     let mut options = OpenOptions::new();
@@ -303,11 +224,6 @@ fn lock_exclusive(_file: &File) -> AppResult<()> {
 
 #[cfg(windows)]
 fn unlock(_file: &File) {}
-
-#[cfg(unix)]
-fn open_directory(path: &Path) -> AppResult<File> {
-    Ok(File::open(path)?)
-}
 
 #[cfg(windows)]
 fn rename_write_through(from: &Path, to: &Path) -> AppResult<()> {

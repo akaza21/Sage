@@ -21,7 +21,6 @@ use crate::{
         reject_oversized_materialized, reject_unsupported_content, validate_line_ending,
     },
     editor_persistence::PersistedEditorBuffer,
-    workspace::{Workspace, file_create::admit_created_path},
 };
 use sage_db::database::Database;
 use sage_domain::{
@@ -31,6 +30,7 @@ use sage_domain::{
     },
     resource::ResourceRef,
 };
+use sage_workspace::{Workspace, file_create::admit_created_path};
 
 /// Only a File opened here, or one with a durable buffer, may take an absent
 /// base: otherwise the WebView could create any file by naming a missing path.
