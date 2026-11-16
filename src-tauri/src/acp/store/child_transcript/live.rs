@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::store::{AdapterStoreOwner, ChildLiveItemCommand, StoreError};
@@ -9,7 +11,7 @@ use sage_acp_protocol::{
     lifecycle::TurnState,
 };
 
-use super::settled::{record_child_state, turn_state};
+use super::settled::{Observed, record_child_state, turn_state};
 use super::{
     ChildTranscriptScope, ChildTranscriptStoreError, load_snapshot, verify_current_binding,
     write_snapshot_in,
@@ -94,16 +96,19 @@ fn store_live_item_in(
             turns: Vec::new(),
             retention_limited: false,
         });
-    let turn_ended = snapshot.turns.iter().any(|turn| {
-        turn.id == command.child_turn_id.as_str() && turn_state(&turn.status) != "running"
-    });
-    if !turn_ended {
+    // A turn the transcript holds was recorded when it first arrived, so its
+    // later deltas leave the record alone.
+    let turn = command.child_turn_id.as_str();
+    if !snapshot.turns.iter().any(|held| held.id == turn) {
         record_child_state(
             transaction,
             &scope,
-            command.child_turn_id.as_str(),
-            "running",
-            None,
+            &snapshot,
+            Observed {
+                turn,
+                state: "running",
+                ended_at: None,
+            },
             command.now_millis,
         )?;
     }
@@ -260,21 +265,22 @@ fn store_turn_status_in(
             turns: Vec::new(),
             retention_limited: false,
         });
+    record_child_state(
+        transaction,
+        &scope,
+        &snapshot,
+        Observed {
+            turn: child_turn_id.as_str(),
+            state: turn_state(status),
+            ended_at: Some(now_millis),
+        },
+        now_millis,
+    )?;
     let retained = snapshot.clone();
     let position = snapshot
         .turns
         .iter()
         .position(|turn| turn.id == child_turn_id.as_str());
-    if position.is_none_or(|index| index + 1 == snapshot.turns.len()) {
-        record_child_state(
-            transaction,
-            &scope,
-            child_turn_id.as_str(),
-            turn_state(status),
-            Some(now_millis),
-            now_millis,
-        )?;
-    }
     if let Some(index) = position {
         let turn = &mut snapshot.turns[index];
         if turn.status == status {
@@ -316,9 +322,26 @@ fn store_turn_status_in(
     }
 }
 
+/// A transcript names each turn once; one naming a turn twice has no order.
+pub(super) fn validate_turn_ids(
+    snapshot: &ChildTranscriptSnapshot,
+) -> Result<(), ChildTranscriptStoreError> {
+    let mut ids = HashSet::with_capacity(snapshot.turns.len());
+    if snapshot
+        .turns
+        .iter()
+        .all(|turn| ids.insert(turn.id.as_str()))
+    {
+        Ok(())
+    } else {
+        Err(ChildTranscriptStoreError::Corrupt)
+    }
+}
+
 pub(super) fn validate_bounds(
     snapshot: &ChildTranscriptSnapshot,
 ) -> Result<(), ChildTranscriptStoreError> {
+    validate_turn_ids(snapshot)?;
     if snapshot.turns.len() > MAX_TURNS
         || snapshot
             .turns
