@@ -16,6 +16,10 @@ const TILDE: &str = "~";
 /// Punctuation that may close a path in prose without being part of its name.
 const CLOSING_PUNCTUATION: &[u8] = b".,;:!?)]}>\"'`*";
 
+/// Longest file name most filesystems allow, which bounds how far a home
+/// folder's name can run on past a space.
+const NAME_MAX: usize = 255;
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HomePrefix {
     path: String,
@@ -79,11 +83,7 @@ impl HomePrefix {
             } else {
                 bytes[index] == first
             };
-            let matched = candidate
-                .then(|| self.match_len(&bytes[index..]))
-                .flatten()
-                .filter(|length| !self.runs_on(&bytes[index + length..]));
-            let Some(length) = matched else {
+            let Some(length) = candidate.then(|| self.match_len(&bytes[index..])).flatten() else {
                 index += 1;
                 continue;
             };
@@ -91,7 +91,7 @@ impl HomePrefix {
                 .file_url_start(bytes, index)
                 .unwrap_or(index)
                 .max(copied);
-            if !is_boundary(bytes, start) {
+            if !is_boundary(bytes, start) || self.runs_on(bytes, start, index + length) {
                 index += 1;
                 continue;
             }
@@ -147,18 +147,75 @@ impl HomePrefix {
     }
 
     /// Whether the home folder's last name runs on into a sibling such as
-    /// `alice2`, `alice.bak` or `alice+backup` or, where a backslash is no
-    /// separator, an escaped `alice\ smith`. The name ends only at a separator
-    /// or where nothing but closing punctuation is left of the word.
-    fn runs_on(&self, rest: &[u8]) -> bool {
+    /// `alice2`, `alice.bak`, `alice+backup` or `alice smith` or, where a
+    /// backslash is no separator, an escaped `alice\ smith`. The name ends at a
+    /// separator, or where nothing but closing punctuation is left of the word
+    /// or of the quote or code span the path opens.
+    fn runs_on(&self, text: &[u8], start: usize, end: usize) -> bool {
+        let rest = &text[end..];
         match rest {
-            [] | [b'/', ..] => false,
-            [b'\\', ..] => !self.windows,
-            _ => !rest
-                .iter()
-                .take_while(|byte| !byte.is_ascii_whitespace())
-                .all(|byte| CLOSING_PUNCTUATION.contains(byte)),
+            [] | [b'/', ..] => return false,
+            [b'\\', ..] => return !self.windows,
+            _ => {}
         }
+        if let Some(span) = quoted_rest(text, start, rest) {
+            return !span.iter().all(|byte| CLOSING_PUNCTUATION.contains(byte));
+        }
+        if matches!(rest[0], b' ' | b'\t') {
+            return self.name_continues_after_space(rest);
+        }
+        !rest
+            .iter()
+            .take_while(|byte| !byte.is_ascii_whitespace())
+            .all(|byte| CLOSING_PUNCTUATION.contains(byte))
+    }
+
+    /// Whether words after a space may still be the home folder's name, as in
+    /// `Alice Smith\project`: a later word on the line, within one name's
+    /// length, reaches a separator before the clause or a new path begins.
+    fn name_continues_after_space(&self, rest: &[u8]) -> bool {
+        let line = &rest[..rest
+            .iter()
+            .position(|&byte| byte == b'\n')
+            .unwrap_or(rest.len())];
+        let line = &line[..line.len().min(NAME_MAX)];
+        let mut words = line.split(|&byte| matches!(byte, b' ' | b'\t'));
+        words.next();
+        for word in words.filter(|word| !word.is_empty()) {
+            if self.starts_path(word) {
+                return false;
+            }
+            match word.iter().position(|&byte| self.is_separator(byte)) {
+                Some(_) => return true,
+                None if word
+                    .last()
+                    .is_some_and(|byte| CLOSING_PUNCTUATION.contains(byte)) =>
+                {
+                    return false;
+                }
+                None => {}
+            }
+        }
+        false
+    }
+
+    /// Whether a word opens a new absolute path rather than continuing a name.
+    fn starts_path(&self, word: &[u8]) -> bool {
+        let start = word
+            .iter()
+            .position(|byte| !b"\"'`([{<".contains(byte))
+            .unwrap_or(word.len());
+        match &word[start..] {
+            [first, ..] if self.is_separator(*first) => true,
+            [drive, b':', separator, ..] => {
+                self.windows && drive.is_ascii_alphabetic() && self.is_separator(*separator)
+            }
+            _ => false,
+        }
+    }
+
+    fn is_separator(&self, byte: u8) -> bool {
+        byte == b'/' || (self.windows && byte == b'\\')
     }
 
     fn file_url_start(&self, bytes: &[u8], index: usize) -> Option<usize> {
@@ -172,6 +229,19 @@ impl HomePrefix {
             .eq_ignore_ascii_case(scheme)
             .then_some(start)
     }
+}
+
+/// The rest of a quote or code span the path opens, up to its closing
+/// delimiter on the same line.
+fn quoted_rest<'a>(text: &[u8], start: usize, rest: &'a [u8]) -> Option<&'a [u8]> {
+    let opener = *text.get(start.checked_sub(1)?)?;
+    if !matches!(opener, b'"' | b'\'' | b'`') {
+        return None;
+    }
+    let close = rest
+        .iter()
+        .position(|&byte| byte == opener || byte == b'\n')?;
+    (rest[close] == opener).then(|| &rest[..close])
 }
 
 fn is_name_byte(byte: u8) -> bool {
@@ -322,6 +392,47 @@ mod tests {
                 (format!("({home}), then"), "(~), then"),
                 (format!("\"{home}\"."), "\"~\"."),
                 (format!("**{home}**"), "**~**"),
+            ] {
+                assert_eq!(prefix.shorten(&text), expected, "{text}");
+            }
+        }
+    }
+
+    #[test]
+    fn siblings_whose_names_continue_past_a_space_are_left_whole() {
+        for (home, separator) in [(r"C:\Users\Alice", r"\"), ("/home/alice", "/")] {
+            let prefix = HomePrefix::new(home).unwrap();
+            let sibling = format!("{home} Smith{separator}project{separator}file.rs");
+            let long_sibling = format!("{home} Jane Smith{separator}file.rs");
+            for text in [
+                format!("open {sibling} now"),
+                format!("\"{sibling}\""),
+                format!("`{sibling}`"),
+                format!("open {long_sibling} now"),
+                format!("open `{home} Smith` now"),
+                format!("open \"{home} Smith\" now"),
+                format!("'{home} Smith'"),
+            ] {
+                assert_eq!(prefix.shorten(&text), text, "{text}");
+            }
+            for (text, expected) in [
+                (format!("\"{home}\""), "\"~\"".to_owned()),
+                (format!("`{home}`"), "`~`".to_owned()),
+                (
+                    format!("`{home}{separator}x.rs`"),
+                    format!("`~{separator}x.rs`"),
+                ),
+                (format!("in {home}."), "in ~.".to_owned()),
+                (format!("{home} is home"), "~ is home".to_owned()),
+                (format!("{home}, then"), "~, then".to_owned()),
+                (
+                    format!("{home} then {home}{separator}x"),
+                    format!("~ then ~{separator}x"),
+                ),
+                (
+                    format!("{home}\nSmith{separator}x"),
+                    format!("~\nSmith{separator}x"),
+                ),
             ] {
                 assert_eq!(prefix.shorten(&text), expected, "{text}");
             }

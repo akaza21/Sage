@@ -2444,7 +2444,7 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
         panic!("item event")
     };
     let encoded = serde_json::to_string(payload).expect("safe payload");
-    assert!(!encoded.contains("Users"));
+    assert!(encoded.contains(r"read C:\\Users\\private\\token with"));
     assert!(!encoded.contains("secret-value"));
 
     let tool = runtime
@@ -2953,6 +2953,74 @@ fn command_output_deltas_use_one_safe_scoped_snapshot_and_flush_only_on_terminal
     ));
 }
 
+fn streamed_text(runtime: &mut CodexRuntime, item: &str, deltas: &[&str]) -> String {
+    let mut shown = String::new();
+    for delta in deltas {
+        let batch = runtime
+            .ingest(
+                &frame(json!({"method":"item/agentMessage/delta","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":item,"delta":delta
+                }})),
+                &Mapper,
+            )
+            .expect("delta");
+        let AdapterEvent::Item {
+            payload: NormalizedPayload::Text { text },
+            ..
+        } = &batch.events()[0]
+        else {
+            panic!("text snapshot")
+        };
+        shown = text.as_str().to_owned();
+    }
+    shown
+}
+
+#[test]
+fn streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
+    let separator = if home.contains('\\') { '\\' } else { '/' };
+    let config = format!("{home}{separator}.config");
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let split = home.len() / 2;
+    for (item, deltas, expected) in [
+        (
+            "whole",
+            vec![config.as_str()],
+            format!("~{separator}.config"),
+        ),
+        (
+            "split",
+            vec![&config[..split], &config[split..]],
+            format!("~{separator}.config"),
+        ),
+        (
+            "sibling",
+            vec![home, "2", &format!("{separator}x")],
+            format!("{home}2{separator}x"),
+        ),
+        (
+            "spaced-sibling",
+            vec![home, " Smith", &format!("{separator}x")],
+            format!("{home} Smith{separator}x"),
+        ),
+        (
+            "credentials",
+            vec!["/srv/alice:hun", "ter2@db/x done"],
+            "[redacted] done".to_owned(),
+        ),
+    ] {
+        assert_eq!(
+            streamed_text(&mut runtime, item, &deltas),
+            expected,
+            "{item}"
+        );
+    }
+}
+
 #[test]
 fn streaming_deltas_emit_complete_snapshots_and_plus_one_poison_clears_buffers() {
     let mut runtime = fixture_runtime();
@@ -3000,7 +3068,6 @@ fn streaming_deltas_emit_complete_snapshots_and_plus_one_poison_clears_buffers()
     }
     for (item, first, second, forbidden) in [
         ("split-bearer", "Bearer ", "secret-value", "secret-value"),
-        ("split-path", "C:", r"\Users\private", "Users"),
         ("split-key", "sk-", "private", "private"),
     ] {
         runtime
@@ -3021,7 +3088,7 @@ fn streaming_deltas_emit_complete_snapshots_and_plus_one_poison_clears_buffers()
             .expect("split suffix");
         assert!(!format!("{:?}", batch.events()).contains(forbidden));
     }
-    assert_eq!(runtime.snapshots.len(), 6);
+    assert_eq!(runtime.snapshots.len(), 5);
     runtime
         .ingest(
             &frame(json!({"method":"turn/completed","params":{

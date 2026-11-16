@@ -7,7 +7,7 @@ use sage_core::limits::LIMITS;
 use super::super::{
     CodexAdapter, IncomingEvent, IngressDisposition, IngressError, ItemUpdateMode,
     normalize_materialized_command,
-    support::{content, expect_thread_and_turn, identity, sanitize, text},
+    support::{content, expect_thread_and_turn, identity, text},
 };
 
 pub(super) enum DeltaKind {
@@ -83,7 +83,8 @@ pub(super) fn delta_event(
     }
     let value = match literal {
         Some(literal) => literal.to_owned(),
-        None => sanitize(text(params, "delta", 262_144)?),
+        // Kept as sent: the runtime's snapshot store redacts the assembled text.
+        None => text(params, "delta", 262_144)?.to_owned(),
     };
     let payload = match kind {
         DeltaKind::Text => NormalizedPayload::Text {

@@ -490,6 +490,29 @@ fn one_config_problem_reported_both_ways_is_shown_once_in_either_order() {
 }
 
 #[test]
+fn a_config_warning_shows_the_home_folder_as_tilde() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
+    let separator = if home.contains('\\') { '\\' } else { '/' };
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    let notice = one_notice(&notify(
+        &mut runtime,
+        "configWarning",
+        json!({
+            "summary": IGNORED_SETTING,
+            "details": format!("user {home}{separator}.codex{separator}config.toml `model` is ignored."),
+        }),
+    ));
+    let text = notice.text.as_str();
+    assert!(
+        text.contains(&format!("user ~{separator}.codex{separator}config.toml")),
+        "{text}"
+    );
+    assert!(!text.contains("[path]"), "{text}");
+}
+
+#[test]
 fn different_warnings_are_each_shown() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);

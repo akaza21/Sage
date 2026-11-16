@@ -3,7 +3,7 @@ use serde_json::Value;
 use super::super::PiTranslator;
 use super::{assistant_message, message_id, turn::failure_detail};
 use crate::acp::bindings::pi::{
-    decode::{ITEM_BYTES, bounded_delta},
+    decode::{ITEM_BYTES, bounded_text},
     protocol::{AdapterError, AdapterOutput, TerminalOutcome},
 };
 
@@ -75,7 +75,7 @@ impl PiTranslator {
         }
         self.live_turn()?;
         let delta = event.and_then(|event| event.get("delta"));
-        let Some((text, redacted_tail)) = bounded_delta(delta, ITEM_BYTES)? else {
+        let Some(text) = bounded_text(delta, ITEM_BYTES)? else {
             return self.unknown_event("message_update_without_text_delta");
         };
         match event
@@ -84,15 +84,9 @@ impl PiTranslator {
         {
             Some("thinking_delta") => {
                 self.live_turn()?.thought_active = true;
-                Ok(vec![AdapterOutput::ThoughtDelta {
-                    text,
-                    redacted_tail,
-                }])
+                Ok(vec![AdapterOutput::ThoughtDelta { text }])
             }
-            Some("text_delta") => Ok(vec![AdapterOutput::TextDelta {
-                text,
-                redacted_tail,
-            }]),
+            Some("text_delta") => Ok(vec![AdapterOutput::TextDelta { text }]),
             _ => self.unknown_event("message_update_non_text_delta"),
         }
     }

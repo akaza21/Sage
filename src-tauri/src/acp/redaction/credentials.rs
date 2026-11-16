@@ -172,7 +172,7 @@ pub(crate) fn is_sensitive_prose_token(input: &str) -> bool {
     assigned
         || inline_auth(token)
         || attached_short_value(token)
-        || url_userinfo(token).is_some()
+        || has_userinfo(token)
         || contains_token(token)
 }
 
@@ -191,17 +191,19 @@ fn assigned_parts(part: &str) -> impl Iterator<Item = (&str, char, &str)> {
     })
 }
 
-/// The byte span of credentials before an `@`: a URL's userinfo, or a
-/// `user:password@host` segment of a path such as `/srv/u:pw@db/x`.
+/// The byte span of a URL's userinfo, as in `https://u:pw@host/`.
 pub(crate) fn url_userinfo(token: &str) -> Option<(usize, usize)> {
-    let url = ["://", r":\/\/"]
+    let start = ["://", r":\/\/"]
         .iter()
-        .find_map(|delimiter| token.find(delimiter).map(|index| index + delimiter.len()))
-        .and_then(|start| {
-            let authority = token[start..].split(['/', '?', '#']).next()?;
-            Some((start, start + authority.rfind('@')?))
-        });
-    url.or_else(|| super::tokens::segment_userinfo(token))
+        .find_map(|delimiter| token.find(delimiter).map(|index| index + delimiter.len()))?;
+    let authority = token[start..].split(['/', '?', '#']).next()?;
+    Some((start, start + authority.rfind('@')?))
+}
+
+/// Whether a token carries `user:password@` credentials anywhere: in a URL's
+/// userinfo or in any segment of a path such as `/srv/u:pw@db/x`.
+pub(crate) fn has_userinfo(token: &str) -> bool {
+    url_userinfo(token).is_some() || super::tokens::segment_userinfo(token).is_some()
 }
 
 pub(crate) fn decode_key(key: &str, escaped: bool) -> String {

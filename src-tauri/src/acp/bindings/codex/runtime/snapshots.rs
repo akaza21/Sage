@@ -16,6 +16,8 @@ enum TextKind {
     Plan,
 }
 
+/// The text as the harness sent it, assembled from its deltas; only its
+/// redacted form ever leaves the runtime.
 struct Snapshot {
     kind: TextKind,
     value: String,
@@ -68,17 +70,20 @@ impl ItemSnapshots {
         }
         let key = key(id)?;
         let previous = self.values.get(&key);
-        let (next, appended_to) = match (mode, previous) {
-            (ItemUpdateMode::Append, Some(previous)) if previous.kind == kind => (
-                checked_append(&previous.value, incoming)?,
-                Some(previous.value.as_str()),
-            ),
+        let next = match (mode, previous) {
+            (ItemUpdateMode::Append, Some(previous)) if previous.kind == kind => {
+                checked_append(&previous.value, incoming)?
+            }
             (ItemUpdateMode::Append, Some(_)) => return Err(AdapterRuntimeError::Frame),
             (ItemUpdateMode::Append | ItemUpdateMode::Replace, None)
-            | (ItemUpdateMode::Replace, Some(_)) => (incoming.to_owned(), None),
+            | (ItemUpdateMode::Replace, Some(_)) => incoming.to_owned(),
         };
-        let next = sanitize_snapshot(appended_to, next);
-        if next.len() > LIMITS.wire.normalized_item_bytes as usize {
+        // Redact the whole assembled text, never each delta alone: a secret,
+        // a path or the home folder may straddle delta boundaries.
+        let shown = sanitize(&next);
+        if next.len() > LIMITS.wire.normalized_item_bytes as usize
+            || shown.len() > LIMITS.wire.normalized_item_bytes as usize
+        {
             return Err(AdapterRuntimeError::BatchBytes);
         }
         let previous_bytes = previous.map_or(0, |value| value.value.len());
@@ -93,7 +98,7 @@ impl ItemSnapshots {
         if previous.is_none() && self.values.len() >= LIMITS.wire.items_per_turn as usize {
             return Err(AdapterRuntimeError::BatchCount);
         }
-        let payload = build(kind, &next)?;
+        let payload = build(kind, &shown)?;
         self.values.insert(key, Snapshot { kind, value: next });
         self.bytes = total;
         Ok(payload)
@@ -143,27 +148,6 @@ fn checked_append(previous: &str, delta: &str) -> Result<String, AdapterRuntimeE
     output.push_str(previous);
     output.push_str(delta);
     Ok(output)
-}
-
-fn sanitize_snapshot(previous: Option<&str>, mut joined: String) -> String {
-    if let Some(previous) = previous
-        && (previous.ends_with("[redacted]") || previous.ends_with("[path]"))
-    {
-        remove_attached_continuation(previous.len(), &mut joined);
-    }
-    sanitize(&joined)
-}
-
-fn remove_attached_continuation(start: usize, joined: &mut String) {
-    let suffix = &joined[start..];
-    if suffix.starts_with(char::is_whitespace) {
-        return;
-    }
-    let end = suffix
-        .char_indices()
-        .find_map(|(index, character)| character.is_whitespace().then_some(index))
-        .unwrap_or(suffix.len());
-    joined.replace_range(start..start + end, "");
 }
 
 fn build(kind: TextKind, value: &str) -> Result<NormalizedPayload, AdapterRuntimeError> {

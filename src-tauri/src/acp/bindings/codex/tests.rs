@@ -8,7 +8,7 @@ use sage_acp_protocol::{
     lifecycle::{ServerRequestState, TurnState},
 };
 
-use super::incoming::UNPROJECTED_DIAGNOSTIC;
+use super::incoming::{ItemUpdateMode, UNPROJECTED_DIAGNOSTIC};
 use super::*;
 use super::{incoming::IngressError, request::RequestKind, state::AdapterError};
 use super::{
@@ -2255,12 +2255,19 @@ fn paths_and_secrets_are_redacted_and_file_paths_require_native_mapping() {
     else {
         panic!()
     };
-    let IncomingEvent::Item { payload, .. } = &events[0] else {
+    let IncomingEvent::Item {
+        payload: NormalizedPayload::Text { text },
+        update_mode: ItemUpdateMode::Append,
+        ..
+    } = &events[0]
+    else {
         panic!()
     };
-    let encoded = serde_json::to_string(payload).unwrap();
-    assert!(!encoded.contains("Users"));
-    assert!(!encoded.contains("abc"));
+    assert_eq!(
+        text.as_str(),
+        r"read C:\Users\secret\token and Bearer abc",
+        "a delta reaches the runtime as sent, which redacts the assembled text"
+    );
 
     let spaced = json!({"method":"item/agentMessage/delta","params":{
         "threadId":"thread-1","turnId":"turn-1","itemId":"item-2",
@@ -2281,8 +2288,10 @@ fn paths_and_secrets_are_redacted_and_file_paths_require_native_mapping() {
     };
     assert!(text.as_str().starts_with("  keep\t"));
     assert!(text.as_str().ends_with('\n'));
-    assert_eq!(text.as_str().matches("[path]").count(), 3);
-    assert!(!text.as_str().contains("private"));
+    assert!(
+        text.as_str()
+            .contains(r"(C:\Users\private\x) `/home/private/x` file:///C:/private/x")
+    );
 
     let unknown = json!({"method":"`C:\\Users\\private\\method`","params":{}});
     let (disposition, captured) =

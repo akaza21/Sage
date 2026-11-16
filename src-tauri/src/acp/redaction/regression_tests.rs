@@ -678,3 +678,39 @@ fn jwt_header_runs_are_measured_once() {
     let shown = redact("text", &format!("found {token} here"), 16_384, Mode::Prose).unwrap();
     assert_eq!(shown, "found [redacted] here");
 }
+
+#[test]
+fn every_credential_in_a_path_stays_hidden_in_diagnostics_and_replies() {
+    let passwords = ["hunter2", "secondpass", "thirdpass"];
+    for input in [
+        "/srv/alice:hunter2@db/bob:secondpass@host/x",
+        "/srv/alice:hunter2@db/bob:secondpass@host/carol:thirdpass@h/x",
+        "srv/alice:hunter2@db/bob:secondpass@host/x",
+        r"C:\srv\alice:hunter2@db\bob:secondpass@host\x",
+        "https://alice:hunter2@db.test/bob:secondpass@host/x",
+        "https://db.test/alice:hunter2@db/bob:secondpass@host/x",
+    ] {
+        let wrapped = format!("see {input} here");
+        let diagnostic = crate::acp::redaction::sanitize_diagnostic_text(&wrapped);
+        for mode in [Mode::Diagnostic, Mode::Prose, Mode::CommandOutput] {
+            let shown = redact("test", &wrapped, 4096, mode).unwrap();
+            for shown in [&shown, &diagnostic] {
+                assert!(shown.starts_with("see "), "{mode:?}: {shown}");
+                assert!(shown.ends_with(" here"), "{mode:?}: {shown}");
+                for password in passwords {
+                    assert!(!shown.contains(password), "{mode:?}: {shown}");
+                }
+            }
+        }
+    }
+    assert_eq!(
+        crate::acp::redaction::sanitize_diagnostic_text(
+            "at /srv/alice:hunter2@db/bob:secondpass@host/x"
+        ),
+        "at [path]"
+    );
+    assert_eq!(
+        crate::acp::redaction::sanitize_diagnostic_text("at https://alice:hunter2@db.test/x"),
+        "at https://[redacted]@db.test/x"
+    );
+}

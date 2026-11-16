@@ -233,11 +233,9 @@ fn captured_pi_1_5_turn_projects_thinking_text_and_tool_without_unknown_events()
     assert!(!outputs.iter().any(unknown), "{outputs:?}");
     assert!(outputs.contains(&AdapterOutput::ThoughtDelta {
         text: "Thinking about it.".into(),
-        redacted_tail: false,
     }));
     assert!(outputs.contains(&AdapterOutput::TextDelta {
         text: "I will inspect.".into(),
-        redacted_tail: false,
     }));
     assert!(outputs.iter().any(|output| matches!(
         output,
@@ -625,7 +623,7 @@ fn entry_queries_are_correlated_and_protocol_terminal_variants_remain_explicit()
 }
 
 #[test]
-fn model_and_history_pages_reject_plus_one_and_redact_absolute_paths() {
+fn model_and_history_pages_reject_plus_one_and_show_paths_as_replies_do() {
     let mut translator = PiTranslator::unavailable(4);
     let models_command = translator.begin(Operation::Initialize).unwrap().remove(1);
     let models = (0..129)
@@ -653,8 +651,8 @@ fn model_and_history_pages_reject_plus_one_and_redact_absolute_paths() {
         panic!("expected messages");
     };
     assert_eq!(messages[0].role, HistoryRole::Assistant);
-    assert!(!messages[0].text.contains("Users"));
-    assert!(!messages[0].text.contains("/home"));
+    assert!(messages[0].text.contains(r"C:\Users\real\secret.txt"));
+    assert!(messages[0].text.contains("/home/real/.env"));
 
     let mut translator = PiTranslator::unavailable(10);
     let command = translator.begin(Operation::GetMessages).unwrap().remove(0);

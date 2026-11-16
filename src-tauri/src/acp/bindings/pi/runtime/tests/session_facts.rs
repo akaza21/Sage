@@ -52,7 +52,11 @@ fn extension_notices_and_errors_become_session_notices_with_or_without_a_turn() 
                 "token sk-ant-api03-abcdefghijklmnopqrstuvwxyz0123456789\u{202e}"
             )
         )),
-        (SessionNoticeLevel::Info, "token _".into(), "Pi".into())
+        (
+            SessionNoticeLevel::Info,
+            "token [redacted]".into(),
+            "Pi".into()
+        )
     );
     assert_eq!(
         notice(session_event(

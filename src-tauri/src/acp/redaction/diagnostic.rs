@@ -5,7 +5,7 @@ mod json;
 
 use super::text::{
     credentials::{
-        attached_short_value, auth_scheme, contains_token, is_sensitive_prose_flag,
+        attached_short_value, auth_scheme, contains_token, has_userinfo, is_sensitive_prose_flag,
         public_token_key, sensitive_assignment, sensitive_key, url_userinfo,
     },
     paths::{PathContext, PathMode},
@@ -183,7 +183,9 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             output.push_str(prefix);
             output.push_str("[redacted]");
             output.push_str(suffix);
-        } else if let Some((start, end)) = url_userinfo(bare) {
+        } else if let Some((start, end)) = url_userinfo(bare)
+            && !has_userinfo(&bare[end..])
+        {
             output.push_str(prefix);
             output.push_str(&bare[..start]);
             output.push_str("[redacted]");
@@ -202,6 +204,10 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             };
             output.push_str(&ending_body[ending_body.trim_end_matches(':').len()..]);
             output.push_str(ending);
+        } else if has_userinfo(bare) {
+            output.push_str(prefix);
+            output.push_str("[redacted]");
+            output.push_str(suffix);
         } else {
             output.push_str(token);
             next = auth_scheme(&lower) || is_sensitive_prose_flag(bare);

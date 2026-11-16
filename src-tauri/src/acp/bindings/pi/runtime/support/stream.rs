@@ -1,42 +1,39 @@
 use crate::acp::bindings::adapter::AdapterRuntimeError;
-use crate::acp::bindings::pi::decode::redact_with_tail;
+use crate::acp::bindings::pi::decode::redact_structured_text;
 use sage_core::limits::LIMITS;
 
+/// Appends a delta to the text as Pi sent it and returns the whole assembled
+/// text redacted: a secret, a path or the home folder may straddle deltas, so
+/// no delta is ever redacted alone.
 pub(super) fn append_snapshot(
     snapshot: &mut Option<String>,
-    redacted_tail: &mut bool,
     delta: &str,
-    delta_redacted_tail: bool,
 ) -> Result<String, AdapterRuntimeError> {
-    let current = snapshot.take().ok_or(AdapterRuntimeError::Operation)?;
-    let length = current
+    let mut current = snapshot.take().ok_or(AdapterRuntimeError::Operation)?;
+    current
         .len()
         .checked_add(delta.len())
-        .filter(|size| {
-            *size <= LIMITS.wire.normalized_item_bytes as usize
-                && *size <= LIMITS.wire.item_bytes_per_turn as usize
-        })
+        .filter(|size| within_item_limits(*size))
         .ok_or(AdapterRuntimeError::BatchBytes)?;
-    let mut next = String::new();
-    next.try_reserve_exact(length)
+    current
+        .try_reserve_exact(delta.len())
         .map_err(|_| AdapterRuntimeError::BatchBytes)?;
-    next.push_str(&current);
-    next.push_str(delta);
-    let continuing_redaction = *redacted_tail && !delta.contains(char::is_whitespace);
-    if *redacted_tail && !delta.starts_with(char::is_whitespace) {
-        let end = delta
-            .char_indices()
-            .find_map(|(index, character)| character.is_whitespace().then_some(index))
-            .unwrap_or(delta.len());
-        next.replace_range(current.len()..current.len() + end, "");
-    }
-    let (next, joined_redacted_tail) = redact_with_tail(&next);
-    if next.len() > LIMITS.wire.normalized_item_bytes as usize
-        || next.len() > LIMITS.wire.item_bytes_per_turn as usize
-    {
+    current.push_str(delta);
+    let shown = shown_snapshot(&current)?;
+    *snapshot = Some(current);
+    Ok(shown)
+}
+
+/// The redacted form of an assembled text, the only form that leaves the runtime.
+pub(super) fn shown_snapshot(raw: &str) -> Result<String, AdapterRuntimeError> {
+    let shown = redact_structured_text(raw);
+    if !within_item_limits(shown.len()) {
         return Err(AdapterRuntimeError::BatchBytes);
     }
-    *snapshot = Some(next.clone());
-    *redacted_tail = continuing_redaction || delta_redacted_tail || joined_redacted_tail;
-    Ok(next)
+    Ok(shown)
+}
+
+fn within_item_limits(size: usize) -> bool {
+    size <= LIMITS.wire.normalized_item_bytes as usize
+        && size <= LIMITS.wire.item_bytes_per_turn as usize
 }

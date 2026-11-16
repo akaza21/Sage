@@ -43,6 +43,28 @@ pub(crate) fn redact(
     redact_with(field, input, maximum, mode, ProsePaths::Shown)
 }
 
+/// A harness's reply, thought or notice, redacted the same way for every
+/// harness. It takes the whole text assembled so far, never one streamed
+/// delta: a secret, a path or the home folder may straddle deltas.
+pub(crate) fn redact_reply(
+    field: &'static str,
+    input: &str,
+    maximum: usize,
+) -> Result<String, ContractError> {
+    redact(field, &neutralized(input, false), maximum, Mode::Prose)
+}
+
+/// [`redact_reply`] with room for every redaction marker, failing closed to a
+/// single marker for text that cannot be redacted.
+pub(crate) fn reply_text(input: &str) -> String {
+    const REDACTED: &str = "[redacted]";
+    let maximum = input
+        .len()
+        .saturating_mul(sage_core::limits::COMMAND_OUTPUT_REDACTION_BYTES)
+        .max(REDACTED.len());
+    redact_reply("text", input, maximum).unwrap_or_else(|_| REDACTED.to_owned())
+}
+
 /// Prose that keeps absolute paths private as command output does, such as
 /// tool content or an id that must carry nothing worth redacting.
 pub(crate) fn redact_prose_hiding_paths(

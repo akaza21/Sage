@@ -1430,7 +1430,6 @@ fn split_chunk_secrets_and_paths_are_redacted_after_snapshot_join() {
     }
     assert!(rendered.contains("Bearer"));
     assert!(!rendered.contains("token-secret"));
-    assert!(!rendered.contains("Users"));
-    assert!(!rendered.contains("private"));
+    assert!(rendered.contains(r"C:\\Users\\private "));
     assert!(!rendered.contains("sk-"));
 }

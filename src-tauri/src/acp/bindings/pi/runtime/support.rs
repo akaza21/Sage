@@ -226,21 +226,15 @@ impl PiRuntime {
                 self.start_text(external_id)?;
                 (Some(AdapterEvent::Absorbed), None)
             }
-            AdapterOutput::TextDelta {
-                text,
-                redacted_tail,
-            } => {
-                let (id, snapshot) = self.append_text(text, redacted_tail)?;
+            AdapterOutput::TextDelta { text } => {
+                let (id, snapshot) = self.append_text(&text)?;
                 let item = (!snapshot.is_empty())
                     .then(|| self.item(id, ItemLifecycle::Streaming, None, text_payload(snapshot)))
                     .transpose()?;
                 (Some(item.unwrap_or(AdapterEvent::Absorbed)), None)
             }
-            AdapterOutput::ThoughtDelta {
-                text,
-                redacted_tail,
-            } => {
-                let (id, snapshot) = self.append_thought(text, redacted_tail)?;
+            AdapterOutput::ThoughtDelta { text } => {
+                let (id, snapshot) = self.append_thought(&text)?;
                 (
                     Some(
                         self.item(

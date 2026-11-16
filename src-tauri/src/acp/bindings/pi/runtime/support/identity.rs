@@ -13,7 +13,7 @@ use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
 use super::super::PiRuntime;
-use super::stream::append_snapshot;
+use super::stream::{append_snapshot, shown_snapshot};
 use crate::acp::bindings::pi::ModelSummary;
 
 impl PiRuntime {
@@ -129,27 +129,19 @@ impl PiRuntime {
         }
         turn.text_id = Some(id.clone());
         turn.text_snapshot = Some(String::new());
-        turn.text_redacted_tail = false;
         Ok(id)
     }
 
     pub(super) fn append_text(
         &mut self,
-        delta: String,
-        redacted_tail: bool,
+        delta: &str,
     ) -> Result<(ExternalId, String), AdapterRuntimeError> {
         let turn = self
             .active_turn
             .as_mut()
             .ok_or(AdapterRuntimeError::Operation)?;
         let id = turn.text_id.clone().ok_or(AdapterRuntimeError::Operation)?;
-        let snapshot = append_snapshot(
-            &mut turn.text_snapshot,
-            &mut turn.text_redacted_tail,
-            &delta,
-            redacted_tail,
-        )
-        .inspect_err(|_| {
+        let snapshot = append_snapshot(&mut turn.text_snapshot, delta).inspect_err(|_| {
             self.poisoned = true;
         })?;
         Ok((id, snapshot))
@@ -169,18 +161,19 @@ impl PiRuntime {
         {
             return Err(AdapterRuntimeError::Operation);
         }
-        let snapshot = turn
-            .text_snapshot
-            .take()
-            .ok_or(AdapterRuntimeError::Operation)?;
+        let snapshot = shown_snapshot(
+            &turn
+                .text_snapshot
+                .take()
+                .ok_or(AdapterRuntimeError::Operation)?,
+        )?;
         turn.text_id = None;
         Ok((active, snapshot))
     }
 
     pub(super) fn append_thought(
         &mut self,
-        delta: String,
-        redacted_tail: bool,
+        delta: &str,
     ) -> Result<(ExternalId, String), AdapterRuntimeError> {
         if self
             .active_turn
@@ -196,7 +189,6 @@ impl PiRuntime {
                 .ok_or(AdapterRuntimeError::Operation)?;
             turn.thought_id = Some(id);
             turn.thought_snapshot = Some(String::new());
-            turn.thought_redacted_tail = false;
         }
         let turn = self
             .active_turn
@@ -206,13 +198,7 @@ impl PiRuntime {
             .thought_id
             .clone()
             .ok_or(AdapterRuntimeError::Operation)?;
-        let snapshot = append_snapshot(
-            &mut turn.thought_snapshot,
-            &mut turn.thought_redacted_tail,
-            &delta,
-            redacted_tail,
-        )
-        .inspect_err(|_| {
+        let snapshot = append_snapshot(&mut turn.thought_snapshot, delta).inspect_err(|_| {
             self.poisoned = true;
         })?;
         Ok((id, snapshot))

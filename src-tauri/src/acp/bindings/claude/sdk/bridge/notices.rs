@@ -4,7 +4,7 @@
 use serde_json::{Value, json};
 
 use super::{Inbound, SdkBridge};
-use crate::acp::redaction::text::{Mode, neutralized, redact};
+use crate::acp::redaction::text::{neutralized, redact_reply};
 use sage_acp_protocol::{
     contract::RequiredText,
     intent::{
@@ -325,7 +325,7 @@ fn activity(
 pub(super) fn prose(text: &str, max: usize) -> Option<String> {
     let text = neutralized(text, true);
     let text = clip(text.trim(), max);
-    let text = redact("sessionNotice", &text, max.saturating_mul(2), Mode::Prose).ok()?;
+    let text = redact_reply("sessionNotice", &text, max.saturating_mul(2)).ok()?;
     let text = clip(text.trim(), max);
     (!text.is_empty()).then_some(text)
 }

@@ -97,7 +97,78 @@ fn pi_split_thought_secret_redacts_attached_continuation() {
     }
     assert!(!rendered.contains("private"));
     assert!(!rendered.contains("-tail"));
-    assert!(rendered.contains("_ safe"));
+    assert!(rendered.contains("[redacted] safe"));
+}
+
+#[test]
+fn pi_streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
+    let separator = if home.contains('\\') { '\\' } else { '/' };
+    let config = format!("{home}{separator}.config");
+    let split = home.len() / 2;
+    for (kind, deltas, expected) in [
+        (
+            "text_delta",
+            vec![config.as_str()],
+            format!("~{separator}.config"),
+        ),
+        (
+            "text_delta",
+            vec![&config[..split], &config[split..]],
+            format!("~{separator}.config"),
+        ),
+        (
+            "thinking_delta",
+            vec![&config[..split], &config[split..]],
+            format!("~{separator}.config"),
+        ),
+        (
+            "text_delta",
+            vec![home, "2", &format!("{separator}x")],
+            format!("{home}2{separator}x"),
+        ),
+        (
+            "text_delta",
+            vec![home, " Smith", &format!("{separator}x")],
+            format!("{home} Smith{separator}x"),
+        ),
+        (
+            "text_delta",
+            vec!["/srv/alice:hun", "ter2@db/x done"],
+            "[redacted] done".to_owned(),
+        ),
+    ] {
+        let mut runtime = fixture_runtime(64);
+        ready(&mut runtime);
+        running(&mut runtime);
+        runtime
+            .ingest(
+                &frame(json!({"type":"message_start","message":{"role":"assistant","content":[]}})),
+                &Mapper,
+            )
+            .unwrap();
+        let mut shown = String::new();
+        for delta in &deltas {
+            let batch = runtime
+                .ingest(&frame(thought_update(kind, Some(delta))), &Mapper)
+                .unwrap();
+            for event in batch.events() {
+                match event {
+                    AdapterEvent::Item {
+                        payload: NormalizedPayload::Text { text },
+                        ..
+                    } => shown = text.as_str().to_owned(),
+                    AdapterEvent::Item {
+                        payload: NormalizedPayload::ThoughtSummary { summary },
+                        ..
+                    } => shown = summary.as_str().to_owned(),
+                    _ => {}
+                }
+            }
+        }
+        assert_eq!(shown, expected, "{kind} {deltas:?}");
+    }
 }
 
 #[test]

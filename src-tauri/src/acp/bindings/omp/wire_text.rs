@@ -10,7 +10,7 @@ pub(crate) fn normalized_text<const MAX: usize>(
     if text.len() > MAX || text.contains('\0') {
         return Err(WireError::TextLimit);
     }
-    let result = text::redact(field, text, MAX, Mode::Prose).map_err(|_| WireError::TextLimit)?;
+    let result = text::redact_reply(field, text, MAX).map_err(|_| WireError::TextLimit)?;
     SafeText::new(field, result).map_err(|_| WireError::TextLimit)
 }
 
@@ -30,8 +30,8 @@ pub(crate) fn sanitized_command_output(input: &str) -> Result<String, WireError>
 pub(super) fn valid_opaque_id(value: &str) -> bool {
     use text::{
         credentials::{
-            auth_scheme, contains_token, inline_auth, is_sensitive_prose_flag,
-            sensitive_assignment, url_userinfo,
+            auth_scheme, contains_token, has_userinfo, inline_auth, is_sensitive_prose_flag,
+            sensitive_assignment,
         },
         paths::absolute_path,
     };
@@ -60,7 +60,7 @@ pub(super) fn valid_opaque_id(value: &str) -> bool {
             || credential_context
             || inline_auth(token)
             || contains_token(token)
-            || url_userinfo(token).is_some()
+            || has_userinfo(token)
             || absolute_path(token, Mode::Permission).is_some()
         {
             return false;

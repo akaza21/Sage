@@ -514,7 +514,7 @@ fn hook_text_is_redacted_before_it_is_shown() {
     let line = failed.progress.expect("the failure says why");
     let line = line.as_str();
     assert!(line.starts_with("cannot read"), "{line}");
-    assert!(!line.contains("/home/someone"), "{line}");
+    assert!(line.contains("/home/someone/.ssh/id_ed25519"), "{line}");
     assert!(!line.contains("sk-live-abcdef0123456789"), "{line}");
 }
 

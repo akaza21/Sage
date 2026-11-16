@@ -1,7 +1,7 @@
 use serde_json::Value;
 
 use crate::acp::bindings::pi::{
-    decode::redact_structured_text,
+    decode::redact_tool_output,
     protocol::{AdapterError, AdapterOutput},
 };
 
@@ -27,7 +27,7 @@ pub(super) fn tool_text(result: Option<&Value>) -> Result<Option<String>, Adapte
         }
         text.push_str(part);
     }
-    Ok((!text.is_empty()).then(|| redact_structured_text(&text)))
+    Ok((!text.is_empty()).then(|| redact_tool_output(&text)))
 }
 
 pub(super) fn tool_images(result: Option<&Value>) -> Result<Vec<AdapterOutput>, AdapterError> {

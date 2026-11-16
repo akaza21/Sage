@@ -51,7 +51,7 @@ mod tests {
         );
         let line = status_line("wrote /srv/app/secret.txt with key=abc123", 512).unwrap();
         assert!(line.starts_with("wrote "), "{line}");
-        assert!(!line.contains("/srv/app"), "{line}");
+        assert!(line.contains("/srv/app/secret.txt"), "{line}");
         assert!(!line.contains("abc123"), "{line}");
         let long = "\u{e9}".repeat(4096);
         let line = status_line(&long, 512).unwrap();

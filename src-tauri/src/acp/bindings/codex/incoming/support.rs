@@ -8,6 +8,7 @@ use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
 use super::{IngressError, ResourceMapper};
 use crate::acp::bindings::codex::state::{AdapterError, CodexAdapter};
+use crate::acp::redaction::text::reply_text;
 
 pub(in crate::acp::bindings::codex) fn command_cwd<M: ResourceMapper>(
     item: &Map<String, Value>,
@@ -158,7 +159,14 @@ pub(super) fn safe_text(
     SafeText::new(field, sanitize(value)).map_err(content)
 }
 
+/// Harness prose, redacted as every harness's replies and notices are.
 pub(in crate::acp::bindings::codex) fn sanitize(value: &str) -> String {
+    reply_text(value)
+}
+
+/// Like [`sanitize`], but a token naming an absolute path becomes `[path]`,
+/// for summaries of commands that keep their paths private.
+pub(in crate::acp::bindings::codex) fn sanitize_hiding_paths(value: &str) -> String {
     sanitize_with_limit(value, usize::MAX, false).unwrap_or_default()
 }
 

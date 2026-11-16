@@ -14,7 +14,7 @@ mod regression_tests;
 #[path = "sanitize/review_tests.rs"]
 mod review_tests;
 
-use crate::acp::redaction::text::{Mode, clip_display, neutralized, redact};
+use crate::acp::redaction::text::{Mode, clip_display, neutralized, redact, redact_reply};
 use sage_acp_protocol::contract::{ContractError, SafeText};
 use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
@@ -25,8 +25,7 @@ pub(crate) fn normalized_text<const MAX: usize>(
     if input.len() > MAX {
         return SafeText::new(field, input);
     }
-    let input = neutralized(input, false);
-    SafeText::new(field, prose::redact_prose(field, &input, MAX)?)
+    SafeText::new(field, redact_reply(field, input, MAX)?)
 }
 
 /// A label is display text, so one longer than `MAX` is clipped after its

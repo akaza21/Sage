@@ -120,6 +120,10 @@ fn assert_failed_history(database: &Database) {
         .collect::<Vec<_>>();
     assert_eq!(
         errors,
-        [("codex", "Failed with [redacted] at [path]", false)]
+        [(
+            "codex",
+            r"Failed with [redacted] at C:\private\file.txt",
+            false
+        )]
     );
 }
