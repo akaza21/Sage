@@ -94,10 +94,19 @@ fn store_live_item_in(
             turns: Vec::new(),
             retention_limited: false,
         });
-    let starts_turn = !snapshot
-        .turns
-        .iter()
-        .any(|turn| turn.id == command.child_turn_id.as_str());
+    let turn_ended = snapshot.turns.iter().any(|turn| {
+        turn.id == command.child_turn_id.as_str() && turn_state(&turn.status) != "running"
+    });
+    if !turn_ended {
+        record_child_state(
+            transaction,
+            &scope,
+            command.child_turn_id.as_str(),
+            "running",
+            None,
+            command.now_millis,
+        )?;
+    }
     let mut candidate = snapshot.clone();
     if snapshot.retention_limited
         && !snapshot.turns.iter().any(|turn| {
@@ -112,9 +121,6 @@ fn store_live_item_in(
         Ok(true) => {
             write_snapshot_in(transaction, &scope, &candidate, command.now_millis, true)
                 .map_err(store_error)?;
-            if starts_turn {
-                record_child_state(transaction, &scope, "running", None, command.now_millis)?;
-            }
             Ok(true)
         }
         Ok(false) => Ok(false),
@@ -263,6 +269,7 @@ fn store_turn_status_in(
         record_child_state(
             transaction,
             &scope,
+            child_turn_id.as_str(),
             turn_state(status),
             Some(now_millis),
             now_millis,

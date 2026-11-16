@@ -32,10 +32,18 @@ pub(super) fn turn_state(status: &str) -> &'static str {
     }
 }
 
-/// The state a transcript's latest turn leaves its child in, if it has one.
-pub(super) fn snapshot_state(snapshot: &ChildTranscriptSnapshot) -> Option<&'static str> {
-    snapshot.turns.last().map(|turn| turn_state(&turn.status))
+/// A transcript's latest turn and the state it leaves its child in, if it
+/// has one.
+pub(super) fn snapshot_state(snapshot: &ChildTranscriptSnapshot) -> Option<(&str, &'static str)> {
+    snapshot
+        .turns
+        .last()
+        .map(|turn| (turn.id.as_str(), turn_state(&turn.status)))
 }
+
+/// How many of a child's latest ended turns its record remembers, so a late
+/// item of one of them never reads as the child running again.
+const ENDED_TURNS: usize = 32;
 
 /// A child's recorded state: what it is, and whether its spawn turn had
 /// already ended when it was recorded.
@@ -58,36 +66,59 @@ fn same(left: &str, right: &str) -> bool {
     left == right || (live(left) && live(right))
 }
 
-/// Records the child's current state. `ended_at` is when the end was observed live; an end learned later, from
-/// a read, has no known time. When the record changes what an ended spawn
-/// turn's row shows, the parent projection moves and the new revision is
-/// returned for publishing.
+/// Records the state `turn` leaves the child in. A turn the record already
+/// saw end changes nothing. `ended_at` is when the end was observed live; an
+/// end learned later, from a read, has no known time. When the record changes
+/// what an ended spawn turn's row shows, the parent projection moves and the
+/// new revision is returned for publishing.
 pub(super) fn record_child_state(
     transaction: &Transaction<'_>,
     scope: &ChildTranscriptScope,
+    turn: &str,
     state: &'static str,
     ended_at: Option<i64>,
     now_millis: i64,
 ) -> Result<Option<ProjectionRevision>, StoreError> {
-    let previous: Option<Recorded> = transaction
+    let previous: Option<(Recorded, String)> = transaction
         .query_row(
-            "SELECT state,spawn_ended,ended_at FROM acp_child_thread_states
+            "SELECT state,spawn_ended,ended_at,ended_turns FROM acp_child_thread_states
              WHERE native_child_thread_id=?1",
             [&scope.child_thread_id],
             |row| {
-                Ok(Recorded {
-                    state: row.get(0)?,
-                    spawn_ended: row.get(1)?,
-                    ended_at: row.get(2)?,
-                })
+                Ok((
+                    Recorded {
+                        state: row.get(0)?,
+                        spawn_ended: row.get(1)?,
+                        ended_at: row.get(2)?,
+                    },
+                    row.get(3)?,
+                ))
             },
         )
         .optional()?;
-    if previous
-        .as_ref()
-        .is_some_and(|previous| previous.state == state)
-    {
+    let (previous, mut ended_turns) = match previous {
+        Some((recorded, ended)) => (
+            Some(recorded),
+            serde_json::from_str::<Vec<String>>(&ended)
+                .map_err(|_| StoreError::Corrupt("child thread state"))?,
+        ),
+        None => (None, Vec::new()),
+    };
+    if ended_turns.iter().any(|ended| ended == turn) {
         return Ok(None);
+    }
+    if live(state) {
+        if previous
+            .as_ref()
+            .is_some_and(|previous| previous.state == state)
+        {
+            return Ok(None);
+        }
+    } else {
+        if ended_turns.len() == ENDED_TURNS {
+            ended_turns.remove(0);
+        }
+        ended_turns.push(turn.to_owned());
     }
     let row: Option<(Option<String>, bool)> = transaction
         .query_row(
@@ -108,10 +139,11 @@ pub(super) fn record_child_state(
     transaction.execute(
         "INSERT INTO acp_child_thread_states
          (native_child_thread_id,project_id,chat_id,session_id,runtime_epoch,state,
-          spawn_ended,ended_at)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
+          spawn_ended,ended_at,ended_turns)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
          ON CONFLICT(native_child_thread_id) DO UPDATE SET
-           state=excluded.state,spawn_ended=excluded.spawn_ended,ended_at=excluded.ended_at",
+           state=excluded.state,spawn_ended=excluded.spawn_ended,ended_at=excluded.ended_at,
+           ended_turns=excluded.ended_turns",
         params![
             scope.child_thread_id,
             scope.owner.project_id.as_str(),
@@ -121,6 +153,7 @@ pub(super) fn record_child_state(
             state,
             spawn_ended,
             ended_at,
+            serde_json::to_string(&ended_turns).expect("turn ids serialize"),
         ],
     )?;
     let Some((Some(row_state), true)) = row else {

@@ -165,11 +165,13 @@ pub(crate) fn persist_snapshot(
     validate_bounds(&merged)?;
     write_snapshot_in(&transaction, scope, &merged, now_millis, false)?;
     let published = match settled::snapshot_state(&merged) {
-        Some(state) => settled::record_child_state(&transaction, scope, state, None, now_millis)
-            .map_err(|error| match error {
-                StoreError::Database(error) => ChildTranscriptStoreError::Storage(error),
-                error => ChildTranscriptStoreError::Projection(error),
-            })?,
+        Some((turn, state)) => {
+            settled::record_child_state(&transaction, scope, turn, state, None, now_millis)
+                .map_err(|error| match error {
+                    StoreError::Database(error) => ChildTranscriptStoreError::Storage(error),
+                    error => ChildTranscriptStoreError::Projection(error),
+                })?
+        }
         None => None,
     };
     transaction.commit()?;

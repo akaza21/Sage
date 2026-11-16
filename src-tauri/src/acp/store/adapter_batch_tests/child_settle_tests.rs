@@ -4,7 +4,7 @@ use crate::acp::store::child_transcript::{
     ChildTranscriptScope, persist_snapshot, settle_lost_children,
 };
 use sage_acp_protocol::codex_protocol::{
-    ChildItem, ChildTranscriptSnapshot, ChildTurn, MAX_SNAPSHOT_BYTES,
+    ChildItem, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES,
 };
 use sage_acp_protocol::contract::BoundedVec;
 use sage_acp_protocol::scheduler::RuntimeOwner;
@@ -128,6 +128,19 @@ fn turn(id: &str, status: &str, items: Vec<ChildItem>) -> ChildTurn {
         id: id.into(),
         status: status.into(),
         items,
+    }
+}
+
+fn text_item(id: usize, bytes: usize) -> ChildItem {
+    ChildItem {
+        id: format!("item-{id}"),
+        role: None,
+        observed_sequence: Some(id as u64 + 1),
+        lifecycle: ItemLifecycle::Completed,
+        tool_state: None,
+        payload: NormalizedPayload::Text {
+            text: SafeText::new("text", "x".repeat(bytes)).unwrap(),
+        },
     }
 }
 
@@ -263,11 +276,8 @@ fn a_child_end_past_the_turn_cap_still_settles_the_spawn_row() {
 
     assert!(settle(&mut fixture, "turn-128", TurnState::Failed, 30));
     assert_eq!(spawn_state(&fixture.connection), "errored");
-    assert!(
-        !start(&mut fixture, "turn-129", 40),
-        "past the cap no turn is known to be new"
-    );
-    assert_eq!(spawn_state(&fixture.connection), "errored");
+    assert!(start(&mut fixture, "turn-129", 40));
+    assert_eq!(spawn_state(&fixture.connection), "running");
     assert!(settle(&mut fixture, "turn-129", TurnState::Completed, 50));
     assert_eq!(spawn_state(&fixture.connection), "completed");
     for (turn, now) in [("turn-129", 60), ("turn-128", 61)] {
@@ -288,28 +298,38 @@ fn a_child_turn_after_its_row_was_rewritten_settled_still_shows_running() {
 }
 
 #[test]
-fn a_child_end_past_the_byte_cap_still_settles_the_spawn_row() {
+fn a_child_turn_past_the_item_cap_moves_the_spawn_row_both_ways() {
     let mut fixture = ended_spawn_turn();
     let scope = scope(&fixture.connection);
-    let item = |id: usize, bytes: usize| ChildItem {
-        id: format!("item-{id}"),
-        role: None,
-        observed_sequence: Some(id as u64 + 1),
-        lifecycle: ItemLifecycle::Completed,
-        tool_state: None,
-        payload: NormalizedPayload::Text {
-            text: SafeText::new("text", "x".repeat(bytes)).unwrap(),
-        },
-    };
-    let mut items: Vec<ChildItem> = (0..16).map(|id| item(id, 250_000)).collect();
-    items.push(item(16, 0));
-    let mut full = snapshot(vec![turn("child-turn", "inProgress", items)]);
-    let spare = MAX_SNAPSHOT_BYTES - 64 - serde_json::to_vec(&full).unwrap().len();
-    full.turns[0].items[16] = item(16, spare - 8);
+    let items = (0..MAX_ITEMS).map(|id| text_item(id, 1)).collect();
+    let full = snapshot(vec![turn("first", "completed", items)]);
     persist_snapshot(&mut fixture.connection, &scope, &full, 25).unwrap();
-
-    assert!(settle(&mut fixture, "next-turn", TurnState::Completed, 30));
     assert_eq!(spawn_state(&fixture.connection), "completed");
+
+    assert!(start(&mut fixture, "second", 30));
+    assert_eq!(spawn_state(&fixture.connection), "running");
+    assert!(settle(&mut fixture, "second", TurnState::Completed, 40));
+    assert_eq!(spawn_state(&fixture.connection), "completed");
+    assert!(!start(&mut fixture, "first", 50), "first never runs again");
+    assert_eq!(spawn_state(&fixture.connection), "completed");
+}
+
+#[test]
+fn a_child_turn_past_the_byte_cap_moves_the_spawn_row_both_ways() {
+    let mut fixture = ended_spawn_turn();
+    let scope = scope(&fixture.connection);
+    let mut items: Vec<ChildItem> = (0..16).map(|id| text_item(id, 250_000)).collect();
+    items.push(text_item(16, 0));
+    let mut full = snapshot(vec![turn("first", "completed", items)]);
+    let spare = MAX_SNAPSHOT_BYTES - 64 - serde_json::to_vec(&full).unwrap().len();
+    full.turns[0].items[16] = text_item(16, spare - 8);
+    persist_snapshot(&mut fixture.connection, &scope, &full, 25).unwrap();
+    assert_eq!(spawn_state(&fixture.connection), "completed");
+
+    assert!(start(&mut fixture, "second", 30));
+    assert_eq!(spawn_state(&fixture.connection), "running");
+    assert!(settle(&mut fixture, "second", TurnState::Failed, 40));
+    assert_eq!(spawn_state(&fixture.connection), "errored");
 }
 
 #[test]
