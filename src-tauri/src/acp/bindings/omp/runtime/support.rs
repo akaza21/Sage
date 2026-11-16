@@ -181,17 +181,31 @@ impl OmpRuntime {
                 payload,
                 update_mode,
             } => {
-                let payload =
-                    match self
-                        .snapshots
-                        .apply(&external_key, lifecycle, update_mode, payload)
-                    {
-                        Ok(payload) => payload,
-                        Err(error) => {
-                            self.poison();
-                            return Err(error);
-                        }
-                    };
+                let applied = self
+                    .snapshots
+                    .end_previous(&external_key, &payload)
+                    .and_then(|ended| {
+                        let payload =
+                            self.snapshots
+                                .apply(&external_key, lifecycle, update_mode, payload)?;
+                        Ok((ended, payload))
+                    });
+                let (ended, payload) = match applied {
+                    Ok(applied) => applied,
+                    Err(error) => {
+                        self.poison();
+                        return Err(error);
+                    }
+                };
+                let mut events = Vec::new();
+                if let Some((ended, payload)) = ended {
+                    events.push(RuntimeEvent::Item {
+                        id: self.item_identity(ended)?,
+                        lifecycle: ItemLifecycle::Completed,
+                        tool_state: None,
+                        payload,
+                    });
+                }
                 let event = match payload {
                     NormalizedPayload::Usage { .. } => RuntimeEvent::Usage {
                         turn_id: self.turn_identity()?,
@@ -213,7 +227,8 @@ impl OmpRuntime {
                         payload,
                     },
                 };
-                (vec![event], None)
+                events.push(event);
+                (events, None)
             }
             AdapterEvent::FilePair {
                 external_key,

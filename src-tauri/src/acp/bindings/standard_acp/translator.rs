@@ -263,7 +263,7 @@ impl StandardAcpTranslator {
                 UnmappedUpdate::Surfaced(reason) => vec![self.unsupported(kind, reason)?],
             },
         };
-        self.remember_open(&events);
+        self.remember_open(&mut events);
         if let Some(running) = self.turn_running() {
             events.insert(0, running);
         }

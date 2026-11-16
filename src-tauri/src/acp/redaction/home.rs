@@ -21,6 +21,9 @@ const CLOSING_PUNCTUATION: &[u8] = b".,;:!?)]}>\"'`*";
 pub(crate) const NAME_MAX: usize = 255;
 /// Most folders beside the home folder whose names run on past a space.
 const SIBLINGS_MAX: usize = 64;
+/// Most entries read beside the home folder, so a shared folder holding
+/// many homes bounds the startup read.
+const ENTRIES_MAX: usize = 4096;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HomePrefix {
@@ -49,10 +52,10 @@ pub(crate) fn load_folders_beside_home() {
         .and_then(|parent| std::fs::read_dir(parent).ok())
         .into_iter()
         .flatten()
+        .take(ENTRIES_MAX)
         .flatten()
-        .filter_map(|entry| entry.file_name().into_string().ok())
-        .collect::<Vec<_>>();
-    let _ = BESIDE_HOME.set(prefix.sibling_rests(names.iter().map(String::as_str)));
+        .filter_map(|entry| entry.file_name().into_string().ok());
+    let _ = BESIDE_HOME.set(prefix.sibling_rests(names));
 }
 
 impl HomePrefix {
@@ -91,12 +94,15 @@ impl HomePrefix {
     /// This home with the folders beside it, named as they are on disk,
     /// whose names are the home folder's followed by a space.
     #[cfg(test)]
-    pub(crate) fn with_siblings<'a>(mut self, names: impl IntoIterator<Item = &'a str>) -> Self {
+    pub(crate) fn with_siblings(
+        mut self,
+        names: impl IntoIterator<Item = impl AsRef<str>>,
+    ) -> Self {
         self.siblings = Some(self.sibling_rests(names));
         self
     }
 
-    fn sibling_rests<'a>(&self, names: impl IntoIterator<Item = &'a str>) -> Vec<String> {
+    fn sibling_rests(&self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Vec<String> {
         let own = self
             .path
             .rsplit(|character| character == '/' || (self.windows && character == '\\'))
@@ -105,8 +111,11 @@ impl HomePrefix {
             .to_owned();
         names
             .into_iter()
-            .filter(|name| name.len() <= NAME_MAX)
             .filter_map(|name| {
+                let name = name.as_ref();
+                if name.len() > NAME_MAX {
+                    return None;
+                }
                 let rest = name.get(own.len()..)?;
                 (self.same_name(&name.as_bytes()[..own.len()], own.as_bytes())
                     && rest.starts_with([' ', '\t']))

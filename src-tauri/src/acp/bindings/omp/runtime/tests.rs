@@ -558,6 +558,55 @@ fn every_turn_end_shows_each_streamed_reply_whole() {
 }
 
 #[test]
+fn a_new_reply_ends_the_last_so_a_long_turn_ends_within_one_batch() {
+    let mut runtime = fixture_runtime(12);
+    initialize(&mut runtime, false);
+    new_session(&mut runtime);
+    let prompt = running(&mut runtime);
+    let replies = LIMITS.queues.journal_facts_per_transaction as usize + 8;
+    for index in 0..replies {
+        let batch = runtime
+            .ingest(
+                &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+                    "sessionId":"omp-session-1","update":{"sessionUpdate":"agent_message_chunk",
+                    "itemId":format!("reply-{index}"),"content":{"type":"text","text":"done now"}}
+                }})),
+                &Mapper,
+            )
+            .expect("reply chunk");
+        let ended: Vec<_> = batch
+            .events()
+            .iter()
+            .filter_map(|event| match event {
+                AdapterEvent::Item {
+                    lifecycle: ItemLifecycle::Completed,
+                    payload: NormalizedPayload::Text { text },
+                    ..
+                } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        let expected: &[&str] = if index == 0 { &[] } else { &["done now"] };
+        assert_eq!(ended, expected, "reply {index}");
+    }
+    let terminal = runtime
+        .ingest(
+            &response(&prompt, json!({"stopReason":"end_turn"})),
+            &Mapper,
+        )
+        .expect("terminal");
+    assert!(
+        matches!(
+            terminal.events(),
+            [AdapterEvent::Item { lifecycle: ItemLifecycle::Completed, payload: NormalizedPayload::Text { text }, .. }, AdapterEvent::Turn { .. }]
+                if text.as_str() == "done now"
+        ),
+        "{:?}",
+        terminal.events()
+    );
+}
+
+#[test]
 fn chunks_append_plan_replaces_and_plus_one_poison_clears_snapshots() {
     let mut runtime = fixture_runtime(12);
     initialize(&mut runtime, false);
@@ -626,7 +675,11 @@ fn chunks_append_plan_replaces_and_plus_one_poison_clears_snapshots() {
             ));
         }
     }
-    assert_eq!(runtime.snapshots.len(), 5);
+    assert_eq!(
+        runtime.snapshots.len(),
+        2,
+        "one reply and one plan stay open"
+    );
     runtime
         .ingest(
             &response(&prompt, json!({"stopReason":"end_turn"})),

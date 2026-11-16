@@ -137,3 +137,25 @@ fn a_cancelled_or_errored_prompt_shows_open_output_whole_but_leaves_it_to_the_tu
         );
     }
 }
+
+#[test]
+fn a_new_reply_ends_the_last_so_every_reply_of_a_long_turn_closes_whole() {
+    let mut translator = opened();
+    for index in 0..12 {
+        let update = json!({
+            "sessionUpdate": "agent_message_chunk",
+            "itemId": format!("reply-{index}"),
+            "content": {"type": "text", "text": "word word"}
+        });
+        let mut expected = Vec::new();
+        if index > 0 {
+            expected.push((format!("reply-{}", index - 1), ItemLifecycle::Completed));
+        }
+        expected.push((format!("reply-{index}"), ItemLifecycle::Streaming));
+        assert_eq!(send(&mut translator, update), expected, "reply {index}");
+    }
+    assert_eq!(
+        finish(&mut translator, json!({"result":{"stopReason":"end_turn"}})),
+        closed(&["reply-11"])
+    );
+}

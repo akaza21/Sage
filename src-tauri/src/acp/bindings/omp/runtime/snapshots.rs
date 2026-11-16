@@ -116,6 +116,39 @@ impl ItemSnapshots {
         Ok(payload)
     }
 
+    /// The item of the same kind as `payload` that a new item `id` ends, shown
+    /// whole: OMP streams one reply, thought and plan at a time, so starting
+    /// another means the last is done, and at most one of each kind is open
+    /// when the turn ends.
+    pub(super) fn end_previous(
+        &mut self,
+        id: &ExternalId,
+        payload: &NormalizedPayload,
+    ) -> Result<Option<(ExternalId, NormalizedPayload)>, AdapterRuntimeError> {
+        let Some((kind, _)) = parts(payload) else {
+            return Ok(None);
+        };
+        if self.values.contains_key(id.as_str()) {
+            return Ok(None);
+        }
+        let Some(previous) = self
+            .values
+            .iter()
+            .find(|(_, snapshot)| snapshot.kind == kind)
+            .map(|(previous, _)| previous.clone())
+        else {
+            return Ok(None);
+        };
+        let mut snapshot = self
+            .values
+            .remove(&previous)
+            .ok_or(AdapterRuntimeError::Frame)?;
+        self.bytes -= snapshot.stream.len();
+        let previous =
+            ExternalId::new("externalItemId", previous).map_err(|_| AdapterRuntimeError::Frame)?;
+        Ok(Some((previous, build(kind, &snapshot.stream.finished())?)))
+    }
+
     /// Each reply still streaming, shown whole: OMP never says a reply ended,
     /// so the turn's end, however it ends, ends them.
     pub(super) fn finish(

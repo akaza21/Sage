@@ -1,7 +1,8 @@
 //! ACP streams text, thought and plan updates but never says one ended. The
 //! translator closes them from what the protocol does say: answer text after
-//! a thought ends that thought block, and the prompt response ends the turn's
-//! output. A cancelled or errored prompt leaves them open for the store's turn
+//! a thought ends that thought block, a new text or thought item ends the
+//! open one of its kind, and the prompt response ends the turn's output, so
+//! at most one text and one thought are still open then. A cancelled or errored prompt leaves them open for the store's turn
 //! sweep, which marks unfinished output as cancelled, but still shows each
 //! text whole, as a tool call starting does.
 
@@ -17,9 +18,10 @@ use super::decode::turn_scoped_key;
 use super::{AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TranslationError};
 use crate::acp::redaction::text::ReplyStream;
 
-/// At most this many items close in the prompt response; any beyond it stay
-/// open and are swept, so the terminal frame keeps room for diff settlement.
-const MAX_CLOSED_AT_TURN_END: usize = MAX_EVENTS_PER_FRAME / 2;
+/// At most this many plans close in the prompt response, so the terminal
+/// frame keeps room for diff settlement. Any beyond it are left to the sweep;
+/// a plan is always shown whole, so only its lifecycle waits.
+const MAX_PLANS_CLOSED_AT_TURN_END: usize = MAX_EVENTS_PER_FRAME / 4;
 
 impl StandardAcpTranslator {
     /// A closed block's later thoughts open a new item instead of reopening a completed one.
@@ -47,8 +49,9 @@ impl StandardAcpTranslator {
             .count()
     }
 
-    pub(super) fn remember_open(&mut self, events: &[AdapterEvent]) {
-        for event in events {
+    pub(super) fn remember_open(&mut self, events: &mut Vec<AdapterEvent>) {
+        let mut ended = Vec::new();
+        for event in events.iter() {
             if let AdapterEvent::Item {
                 external_key,
                 lifecycle: ItemLifecycle::Streaming,
@@ -59,12 +62,26 @@ impl StandardAcpTranslator {
                 ..
             } = event
             {
+                let kind = std::mem::discriminant(payload);
+                let superseded = self
+                    .open_items
+                    .iter()
+                    .find(|(key, (_, open))| {
+                        !matches!(open, NormalizedPayload::PlanEntries { .. })
+                            && key.as_str() != external_key.as_str()
+                            && std::mem::discriminant(open) == kind
+                    })
+                    .map(|(key, _)| key.clone());
+                if let Some((key, open)) = superseded.and_then(|key| self.open_items.remove(&key)) {
+                    ended.push(self.whole(key, open, ItemLifecycle::Completed));
+                }
                 self.open_items.insert(
                     external_key.as_str().to_owned(),
                     (external_key.clone(), payload.clone()),
                 );
             }
         }
+        events.splice(0..0, ended);
     }
 
     pub(super) fn close_thought_block(&mut self) -> Result<Vec<AdapterEvent>, TranslationError> {
@@ -84,7 +101,14 @@ impl StandardAcpTranslator {
     /// output, and otherwise shown whole but left for the turn's sweep.
     pub(super) fn close_open_items(&mut self, events: &mut Vec<AdapterEvent>, delivered: bool) {
         let open = std::mem::take(&mut self.open_items);
-        for (external_key, payload) in open.into_values().take(MAX_CLOSED_AT_TURN_END) {
+        let mut plans = 0;
+        for (external_key, payload) in open.into_values() {
+            if matches!(payload, NormalizedPayload::PlanEntries { .. }) {
+                plans += 1;
+                if plans > MAX_PLANS_CLOSED_AT_TURN_END {
+                    continue;
+                }
+            }
             if delivered {
                 events.push(self.whole(external_key, payload, ItemLifecycle::Completed));
             } else if self.text_snapshots.contains_key(external_key.as_str()) {
