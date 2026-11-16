@@ -155,8 +155,9 @@ pub(super) struct SdkBridge {
     /// Why Claude Code would not run the prompt, ending the turn once the
     /// run still going reports its end.
     prompt_failure: Option<&'static str>,
-    /// What the stop in progress still sends Claude Code.
-    stop_plan: VecDeque<steer::StopStep>,
+    stop: steer::Stop,
+    /// Requests of a stop whose turn ended unanswered, so a late reply is dropped.
+    forgotten: VecDeque<String>,
     /// A run's `result` that did not end the turn, for when no waiting
     /// message runs after all.
     held: Option<Value>,
@@ -201,7 +202,8 @@ impl SdkBridge {
             requeuable: None,
             lifecycles: false,
             prompt_failure: None,
-            stop_plan: VecDeque::new(),
+            stop: steer::Stop::default(),
+            forgotten: VecDeque::new(),
             held: None,
         }
     }

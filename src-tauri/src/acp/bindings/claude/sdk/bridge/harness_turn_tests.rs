@@ -187,12 +187,13 @@ fn stopping_while_a_queued_message_runs_waits_for_its_result_and_opens_no_other_
     let held = bridge.inbound(result_frame("success")).unwrap();
     assert!(ends(&held, 3).is_none(), "the queued message runs next");
     let withdraw = cancel(&mut bridge);
-    bridge.inbound(lifecycle("started")).unwrap();
+    let started = bridge.inbound(lifecycle("started")).unwrap();
+    let interrupt = &started.replies[0];
+    assert_eq!(interrupt["request"]["subtype"], "interrupt");
     let reply = bridge
         .inbound(success(&withdraw, json!({"cancelled":false})))
         .unwrap();
-    let interrupt = &reply.replies[0];
-    assert_eq!(interrupt["request"]["subtype"], "interrupt");
+    assert!(reply.replies.is_empty(), "one interrupt is enough");
     let answered = bridge.inbound(success(interrupt, json!({}))).unwrap();
     assert!(ends(&answered, 3).is_none(), "the stop waits for the run");
 
@@ -822,6 +823,113 @@ fn a_stop_on_a_build_without_lifecycle_reports_interrupts_at_once() {
     let interrupt = cancel(&mut bridge);
     assert_eq!(interrupt["request"]["subtype"], "interrupt");
     bridge.inbound(success(&interrupt, json!({}))).unwrap();
+    let end = bridge
+        .inbound(result_frame("error_during_execution"))
+        .unwrap();
+    assert_eq!(ends(&end, 5).unwrap()["result"]["stopReason"], "cancelled");
+}
+
+fn interrupts(inbound: &Inbound) -> Vec<Value> {
+    inbound
+        .replies
+        .iter()
+        .filter(|reply| reply["request"]["subtype"] == "interrupt")
+        .cloned()
+        .collect()
+}
+
+#[test]
+fn a_stop_left_unanswered_holds_up_neither_capacity_nor_the_next_stop() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    let unanswered = withdrawal(&mut bridge);
+    let interrupt = bridge.inbound(text("Going")).unwrap().replies[0].clone();
+    bridge.inbound(success(&interrupt, json!({}))).unwrap();
+    bridge
+        .inbound(result_frame("error_during_execution"))
+        .unwrap();
+    let ended = bridge.inbound(prompt_lifecycle("cancelled")).unwrap();
+    assert!(ends(&ended, 5).is_some());
+    assert!(
+        !bridge
+            .pending
+            .values()
+            .any(|pending| matches!(pending, Pending::Withdraw(_))),
+        "the ended stop's withdrawal holds no capacity"
+    );
+
+    prompt_with_uuid(&mut bridge, 6);
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    let (_, steer) = bridge.steer("also this").unwrap();
+    let withdraw = withdrawal(&mut bridge);
+    let next = bridge
+        .inbound(success(&withdraw, json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(
+        next.replies[0]["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":steer})
+    );
+    let late = bridge
+        .inbound(success(&unanswered, json!({"cancelled":true})))
+        .unwrap();
+    assert!(late.acp.is_empty() && late.replies.is_empty());
+    let ended = bridge
+        .inbound(success(&next.replies[0], json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(
+        ends(&ended, 6).unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_stop_with_nothing_running_moves_on_without_the_withdrawals_reply() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    let (_, steer) = bridge.steer("also this").unwrap();
+    withdrawal(&mut bridge);
+    let next = bridge.inbound(prompt_lifecycle("cancelled")).unwrap();
+    assert!(ends(&next, 5).is_none(), "a message still waits");
+    assert_eq!(
+        next.replies[0]["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":steer})
+    );
+    let ended = bridge
+        .inbound(json!({"type":"command_lifecycle","command_uuid":steer,
+            "state":"cancelled","uuid":"e2","session_id":SESSION}))
+        .unwrap();
+    assert!(
+        ended.replies.is_empty(),
+        "no interrupt to an idle Claude Code"
+    );
+    assert_eq!(
+        ends(&ended, 5).unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_prompt_taken_up_while_stopping_gets_one_interrupt() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    let withdraw = withdrawal(&mut bridge);
+    let mut sent = interrupts(&bridge.inbound(prompt_lifecycle("started")).unwrap());
+    sent.extend(interrupts(
+        &bridge
+            .inbound(success(&withdraw, json!({"cancelled":false})))
+            .unwrap(),
+    ));
+    sent.extend(interrupts(&bridge.inbound(text("Partly")).unwrap()));
+    assert_eq!(sent.len(), 1, "one interrupt ends the run");
+    bridge.inbound(success(&sent[0], json!({}))).unwrap();
     let end = bridge
         .inbound(result_frame("error_during_execution"))
         .unwrap();

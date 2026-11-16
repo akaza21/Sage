@@ -63,7 +63,7 @@ impl SdkBridge {
             .get("request_id")
             .and_then(Value::as_str)
             .ok_or(BridgeError::Frame)?;
-        let pending = self.pending.remove(request_id).ok_or(BridgeError::Frame)?;
+        let pending = self.answered_request(request_id)?;
         if response.get("subtype").and_then(Value::as_str) != Some("success") {
             let message = response
                 .get("error")

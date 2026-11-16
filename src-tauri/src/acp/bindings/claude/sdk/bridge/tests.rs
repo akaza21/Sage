@@ -1052,11 +1052,12 @@ fn a_message_taken_up_while_its_withdrawal_is_in_flight_is_interrupted_in_its_tu
         .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
         .unwrap();
     assert!(!ended(&first));
-    bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    let started = bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+    assert_eq!(started.replies[0]["request"]["subtype"], "interrupt");
     let reply = bridge
         .inbound(success(&cancel, json!({"cancelled":false})))
         .unwrap();
-    assert_eq!(reply.replies[0]["request"]["subtype"], "interrupt");
+    assert!(reply.replies.is_empty(), "one interrupt is enough");
     let end = bridge
         .inbound(
             json!({"type":"result","subtype":"error_during_execution","is_error":true,"usage":{}}),

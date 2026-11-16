@@ -12,7 +12,7 @@
 //! background task ended), so its `result` is held like a waiting message's:
 //! the run that takes the prompt up ends the turn.
 
-use std::borrow::Cow;
+use std::{borrow::Cow, collections::VecDeque};
 
 use serde_json::{Value, json};
 
@@ -20,9 +20,18 @@ use super::{BridgeError, Inbound, MAX_PENDING, Pending, SdkBridge};
 
 /// What a stop still sends Claude Code, in order.
 #[derive(Debug)]
-pub(super) enum StopStep {
+enum StopStep {
     Withdraw(String),
     Interrupt,
+}
+
+/// The stop in progress: what it still sends, and the requests it sent.
+#[derive(Debug, Default)]
+pub(super) struct Stop {
+    plan: VecDeque<StopStep>,
+    sent: Vec<String>,
+    /// Its latest interrupt, so a run gets one interrupt, not two.
+    interrupt: Option<String>,
 }
 
 impl SdkBridge {
@@ -63,7 +72,7 @@ impl SdkBridge {
         let prompt = (stamped || self.lifecycles)
             .then(|| self.waiting_prompt.clone())
             .flatten();
-        self.stop_plan = prompt
+        self.stop.plan = prompt
             .into_iter()
             .chain(self.steers.iter().cloned())
             .map(StopStep::Withdraw)
@@ -73,44 +82,109 @@ impl SdkBridge {
     }
 
     fn next_stop_step(&mut self) -> Result<Value, BridgeError> {
-        match self.stop_plan.pop_front() {
-            Some(StopStep::Withdraw(uuid)) => self.control(
+        let (request, pending) = match self.stop.plan.pop_front() {
+            Some(StopStep::Withdraw(uuid)) => (
                 json!({"subtype": "cancel_async_message", "message_uuid": uuid}),
                 Pending::Withdraw(uuid),
             ),
-            Some(StopStep::Interrupt) => {
-                self.control(json!({"subtype": "interrupt"}), Pending::Interrupt)
+            Some(StopStep::Interrupt) => (json!({"subtype": "interrupt"}), Pending::Interrupt),
+            None => return Err(BridgeError::Unsupported),
+        };
+        let interrupt = matches!(pending, Pending::Interrupt);
+        let sdk = self.control(request, pending)?;
+        let id = sdk["request_id"].as_str().unwrap_or_default().to_owned();
+        if interrupt {
+            self.stop.interrupt = Some(id.clone());
+        }
+        self.stop.sent.push(id);
+        Ok(sdk)
+    }
+
+    /// Moves a stop on by one step after each frame Claude Code sends, so no
+    /// withdrawal waits on another's reply; Claude Code takes Sage's requests
+    /// in order, so each lands before the interrupt. With no run active, the
+    /// interrupt waits until each message this stop withdrew is settled, by
+    /// its reply or its lifecycle frame, and a stop that leaves nothing to
+    /// run ends the turn instead of interrupting an idle Claude Code.
+    pub(super) fn continue_stop(&mut self, inbound: &mut Inbound) {
+        if !self.interrupted || self.prompt.is_none() || self.stop.plan.is_empty() {
+            return;
+        }
+        let idle = !self.running || self.declining;
+        if idle && matches!(self.stop.plan.front(), Some(StopStep::Interrupt)) {
+            if self.withdrawing() {
+                return;
             }
-            None => Err(BridgeError::Unsupported),
+            if let Some(held) = self.release_held() {
+                self.stop.plan.clear();
+                self.result(&held, inbound);
+                return;
+            }
+        }
+        if let Ok(next) = self.next_stop_step() {
+            inbound.replies.push(next);
         }
     }
 
-    /// Moves a stop on after each frame: once the last withdrawal is
-    /// answered, or at once while a run is active, since Claude Code takes
-    /// Sage's requests in order and a withdrawal it never answers must not
-    /// keep the run going. A stop that leaves nothing to run ends the turn
-    /// instead of interrupting an idle Claude Code.
-    pub(super) fn continue_stop(&mut self, inbound: &mut Inbound) {
-        if !self.interrupted || self.prompt.is_none() || self.stop_plan.is_empty() {
+    /// A message this stop withdrew still waits, its withdrawal unanswered.
+    fn withdrawing(&self) -> bool {
+        self.stop
+            .sent
+            .iter()
+            .filter_map(|id| match self.pending.get(id) {
+                Some(Pending::Withdraw(uuid)) => Some(uuid),
+                _ => None,
+            })
+            .any(|uuid| self.steers.contains(uuid) || self.waiting_prompt.as_deref() == Some(uuid))
+    }
+
+    /// A run that takes the prompt up while stopping gets an interrupt,
+    /// unless the stop's own still lies ahead or has not been answered yet:
+    /// Claude Code reports the run before taking that interrupt, which ends it.
+    fn interrupt_started_run(&mut self, inbound: &mut Inbound) {
+        let ahead = self
+            .stop
+            .plan
+            .iter()
+            .any(|step| matches!(step, StopStep::Interrupt));
+        let unanswered = self
+            .stop
+            .interrupt
+            .as_ref()
+            .is_some_and(|id| self.pending.contains_key(id));
+        if ahead || unanswered {
             return;
         }
-        let active = self.running && !self.declining;
-        let withdrawing = self
-            .pending
-            .values()
-            .any(|pending| matches!(pending, Pending::Withdraw(_)));
-        if !active && withdrawing {
-            return;
+        self.stop.plan = VecDeque::from([StopStep::Interrupt]);
+        if let Ok(interrupt) = self.next_stop_step() {
+            inbound.replies.push(interrupt);
         }
-        if !active
-            && matches!(self.stop_plan.front(), Some(StopStep::Interrupt))
-            && let Some(held) = self.release_held()
-        {
-            self.stop_plan.clear();
-            self.result(&held, inbound);
-        } else if let Ok(next) = self.next_stop_step() {
-            inbound.replies.push(next);
+    }
+
+    /// A stop's requests still unanswered when its turn ends are forgotten,
+    /// so they hold no capacity and their late replies are dropped.
+    fn forget_stop(&mut self) {
+        let stop = std::mem::take(&mut self.stop);
+        for id in stop.sent {
+            if self.pending.remove(&id).is_some() {
+                if self.forgotten.len() >= MAX_PENDING {
+                    self.forgotten.pop_front();
+                }
+                self.forgotten.push_back(id);
+            }
         }
+    }
+
+    /// What a reply from Claude Code answers; a forgotten request's reply answers nothing.
+    pub(super) fn answered_request(&mut self, request_id: &str) -> Result<Pending, BridgeError> {
+        if let Some(pending) = self.pending.remove(request_id) {
+            return Ok(pending);
+        }
+        let forgotten = self.forgotten.iter().position(|id| id == request_id);
+        forgotten
+            .and_then(|index| self.forgotten.remove(index))
+            .map(|_| Pending::Abandoned)
+            .ok_or(BridgeError::Frame)
     }
 
     /// Claude Code's reply to a withdrawal. A message no longer waits on Sage
@@ -182,11 +256,8 @@ impl SdkBridge {
                 if self.held.take().is_some() {
                     self.streamed.clear();
                 }
-                if self.interrupted
-                    && let Ok(interrupt) =
-                        self.control(json!({"subtype": "interrupt"}), Pending::Interrupt)
-                {
-                    inbound.replies.push(interrupt);
+                if self.interrupted {
+                    self.interrupt_started_run(inbound);
                 }
             }
             Some(end @ ("completed" | "cancelled" | "discarded" | "refused")) => {
@@ -263,7 +334,7 @@ impl SdkBridge {
         self.waiting_prompt = None;
         self.requeuable = None;
         self.prompt_failure = None;
-        self.stop_plan.clear();
+        self.forget_stop();
         for uuid in std::mem::take(&mut self.steers) {
             inbound.steers.push((uuid, false));
         }
