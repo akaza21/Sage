@@ -1,12 +1,11 @@
 use sage_acp_protocol::codex_protocol::{ChildTranscriptSnapshot, ChildTurn};
 
 use super::ChildTranscriptStoreError;
-use super::live::{validate_bounds, validate_turn_ids};
 
 /// Merges a native read into the retained transcript. Turns stay in the
 /// read's order, which is the child's own; a turn only the retained
 /// transcript holds keeps its place next to the retained turns around it, or
-/// goes last as the newest. A read naming a turn twice is rejected.
+/// goes last as the newest.
 pub(super) fn merge_snapshots(
     read: &ChildTranscriptSnapshot,
     retained: &ChildTranscriptSnapshot,
@@ -16,7 +15,6 @@ pub(super) fn merge_snapshots(
     {
         return Err(ChildTranscriptStoreError::Stale);
     }
-    validate_turn_ids(read)?;
     let mut turns: Vec<ChildTurn> = read
         .turns
         .iter()
@@ -48,13 +46,11 @@ pub(super) fn merge_snapshots(
             .unwrap_or(turns.len());
         turns.insert(position, turn.clone());
     }
-    let merged = ChildTranscriptSnapshot {
+    Ok(ChildTranscriptSnapshot {
         turns,
         retention_limited: retained.retention_limited || read.retention_limited,
         ..retained.clone()
-    };
-    validate_bounds(&merged)?;
-    Ok(merged)
+    })
 }
 
 fn merge_turn(turn: &mut ChildTurn, read_turn: &ChildTurn) {

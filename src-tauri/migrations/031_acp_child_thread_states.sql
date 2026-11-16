@@ -17,8 +17,9 @@ CREATE TABLE acp_child_thread_states (
 CREATE INDEX idx_acp_child_thread_states_owner ON acp_child_thread_states(project_id, chat_id);
 
 -- A child whose stored transcript already ended keeps that end, recorded
--- with the turn it came from and that turn's place in the child's order. The
--- transcript records no time for it, so none is claimed.
+-- with the turn it came from and that turn's place in the child's order. An
+-- end from a later turn than the one the child was spawned with is newer than
+-- the spawn row. The transcript records no time for it, so none is claimed.
 WITH last AS MATERIALIZED (
   SELECT native_child_thread_id, project_id, chat_id, session_id, runtime_epoch,
     json_array_length(snapshot_json, '$.turns') - 1 AS ordinal,
@@ -39,6 +40,6 @@ SELECT native_child_thread_id, project_id, chat_id, session_id, runtime_epoch, t
     WHEN 'failed' THEN 'errored'
     ELSE 'interrupted'
   END,
-  0, NULL, json_array(turn_id)
+  ordinal > 0, NULL, json_array(turn_id)
 FROM ended
 WHERE status IN ('completed', 'failed', 'interrupted');
