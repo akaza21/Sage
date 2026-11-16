@@ -3,6 +3,7 @@ use std::path::{Component, Path};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::{
     acp::{
         redaction::text::home::HomePrefix,

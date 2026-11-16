@@ -16,6 +16,7 @@ use crate::acp::{
     runtime::read_text_file::{DeferredReadTextOwnerResolver, ExpectedOwnerScope},
     transport::DeadlineAsyncWriter,
 };
+use crate::project_registry::create::ProjectCreateStore;
 use sage_acp_protocol::{
     contract::{
         ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageChatId, SageProjectId, SageRootId,
@@ -71,7 +72,7 @@ fn p02_omp_real_ingress_preflights_routes_service_and_preserves_numeric_id() {
     let root = root.canonicalize().unwrap();
     let file = root.join("file.txt");
     fs::write(&file, "one\ntwo\n").unwrap();
-    let database = crate::persistence::Database::open(":memory:".as_ref()).unwrap();
+    let database = crate::database::open_database(":memory:".as_ref()).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     let owner = ReadTextOwner {
         project_id: SageProjectId::parse(&project.id).unwrap(),

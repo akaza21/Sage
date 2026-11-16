@@ -1,5 +1,6 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use uuid::Uuid;
 
 use crate::harnesses::SIMULATOR_ID;
@@ -27,7 +28,8 @@ pub(super) fn resolve_or_create(
             [chat_id],
             |row| row.get(0),
         )
-        .optional()?
+        .optional()
+        .db()?
         .ok_or_else(|| AppError::InvalidRequest("Chat is not in the active project".into()))?;
     let binding_digest = digest(format!("sage-simulator-binding-v1\0{SIMULATOR_ID}").as_bytes());
     if let Some((session, current_model)) =
@@ -70,7 +72,8 @@ fn compatible_head(
                 ))
             },
         )
-        .optional()?;
+        .optional()
+        .db()?;
     let Some((session, binding, stored_digest, state, legacy, model)) = head else {
         return Ok(None);
     };
@@ -88,26 +91,32 @@ fn compatible_head(
 
 fn close_head(transaction: &Transaction<'_>, session: &str, now: i64) -> AppResult<()> {
     require_one(
-        transaction.execute(
-            "DELETE FROM chat_session_heads WHERE session_id=?1",
-            [session],
-        )?,
+        transaction
+            .execute(
+                "DELETE FROM chat_session_heads WHERE session_id=?1",
+                [session],
+            )
+            .db()?,
         "simulator Chat head disappeared during replacement",
     )?;
     require_one(
-        transaction.execute(
-            "UPDATE agent_sessions SET state='closing',revision=revision+1,updated_at=?2
+        transaction
+            .execute(
+                "UPDATE agent_sessions SET state='closing',revision=revision+1,updated_at=?2
              WHERE id=?1 AND state='ready' AND residency='cold' AND legacy=0",
-            params![session, now],
-        )?,
+                params![session, now],
+            )
+            .db()?,
         "active simulator head is not replaceable",
     )?;
     require_one(
-        transaction.execute(
-            "UPDATE agent_sessions SET state='closed',revision=revision+1,
+        transaction
+            .execute(
+                "UPDATE agent_sessions SET state='closed',revision=revision+1,
                     updated_at=?2,terminal_at=?2 WHERE id=?1 AND state='closing'",
-            params![session, now],
-        )?,
+                params![session, now],
+            )
+            .db()?,
         "simulator head did not close during replacement",
     )
 }
@@ -120,27 +129,33 @@ fn create_owner(
     model_id: &str,
     now: i64,
 ) -> AppResult<OwnedOwner> {
-    let chat_sessions: i64 = transaction.query_row(
-        "SELECT COUNT(*) FROM (
+    let chat_sessions: i64 = transaction
+        .query_row(
+            "SELECT COUNT(*) FROM (
            SELECT 1 FROM agent_sessions WHERE project_id=?1 AND chat_id=?2 LIMIT ?3
          )",
-        params![
-            project,
-            chat_id,
-            LIMITS.durable.sessions_per_chat as i64 + 1
-        ],
-        |row| row.get(0),
-    )?;
-    let project_sessions: i64 = transaction.query_row(
-        "SELECT session_count FROM acp_project_usage WHERE project_id=?1",
-        [&project],
-        |row| row.get(0),
-    )?;
-    let global_sessions: i64 = transaction.query_row(
-        "SELECT session_count FROM acp_store_usage WHERE singleton=1",
-        [],
-        |row| row.get(0),
-    )?;
+            params![
+                project,
+                chat_id,
+                LIMITS.durable.sessions_per_chat as i64 + 1
+            ],
+            |row| row.get(0),
+        )
+        .db()?;
+    let project_sessions: i64 = transaction
+        .query_row(
+            "SELECT session_count FROM acp_project_usage WHERE project_id=?1",
+            [&project],
+            |row| row.get(0),
+        )
+        .db()?;
+    let global_sessions: i64 = transaction
+        .query_row(
+            "SELECT session_count FROM acp_store_usage WHERE singleton=1",
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if chat_sessions >= LIMITS.durable.sessions_per_chat as i64
         || project_sessions >= LIMITS.durable.sessions_per_project as i64
         || global_sessions >= LIMITS.durable.sessions_global as i64
@@ -149,12 +164,14 @@ fn create_owner(
             "simulator session capacity reached; existing history was preserved".into(),
         ));
     }
-    let ordinal: i64 = transaction.query_row(
-        "SELECT COALESCE(MAX(ordinal),-1)+1 FROM agent_sessions
+    let ordinal: i64 = transaction
+        .query_row(
+            "SELECT COALESCE(MAX(ordinal),-1)+1 FROM agent_sessions
          WHERE project_id=?1 AND chat_id=?2",
-        params![project, chat_id],
-        |row| row.get(0),
-    )?;
+            params![project, chat_id],
+            |row| row.get(0),
+        )
+        .db()?;
     if ordinal < 0 || ordinal >= LIMITS.durable.sessions_per_chat as i64 {
         return Err(AppError::ResourceLimit(
             "simulator session ordinal capacity reached".into(),
@@ -162,55 +179,65 @@ fn create_owner(
     }
     let installed_revision = next_chat_projection(transaction, &project, chat_id)?;
     let session = Uuid::new_v4().to_string();
-    transaction.execute(
-        "INSERT INTO agent_sessions(
+    transaction
+        .execute(
+            "INSERT INTO agent_sessions(
            id,project_id,chat_id,ordinal,binding_id,binding_digest,model_id,
            external_session_id,capabilities_json,state,residency,legacy,revision,
            projection_revision,created_at,updated_at,terminal_at
          ) VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,'ready','cold',0,0,?10,?11,?11,NULL)",
-        params![
-            session,
-            project,
-            chat_id,
-            ordinal,
-            SIMULATOR_ID,
-            binding_digest,
-            model_id,
-            format!("sage-simulator:{session}"),
-            SIMULATOR_CAPABILITIES,
-            installed_revision,
-            now
-        ],
-    )?;
-    transaction.execute(
-        "INSERT INTO acp_session_usage(
+            params![
+                session,
+                project,
+                chat_id,
+                ordinal,
+                SIMULATOR_ID,
+                binding_digest,
+                model_id,
+                format!("sage-simulator:{session}"),
+                SIMULATOR_CAPABILITIES,
+                installed_revision,
+                now
+            ],
+        )
+        .db()?;
+    transaction
+        .execute(
+            "INSERT INTO acp_session_usage(
            project_id,chat_id,session_id,turn_count,item_count,item_bytes,
            fact_count,fact_bytes,payload_bytes,revision
          ) VALUES (?1,?2,?3,0,0,0,0,0,0,0)",
-        params![project, chat_id, session],
-    )?;
+            params![project, chat_id, session],
+        )
+        .db()?;
     require_one(
-        transaction.execute(
-            "UPDATE acp_project_usage SET session_count=session_count+1,revision=revision+1
+        transaction
+            .execute(
+                "UPDATE acp_project_usage SET session_count=session_count+1,revision=revision+1
              WHERE project_id=?1 AND session_count=?2",
-            params![project, project_sessions],
-        )?,
+                params![project, project_sessions],
+            )
+            .db()?,
         "simulator project session ledger changed",
     )?;
     require_one(
-        transaction.execute(
-            "UPDATE acp_store_usage SET session_count=session_count+1,revision=revision+1
+        transaction
+            .execute(
+                "UPDATE acp_store_usage SET session_count=session_count+1,revision=revision+1
              WHERE singleton=1 AND session_count=?1",
-            [global_sessions],
-        )?,
+                [global_sessions],
+            )
+            .db()?,
         "global simulator session ledger changed",
     )?;
-    transaction.execute(
-        "INSERT INTO chat_session_heads(
+    transaction
+        .execute(
+            "INSERT INTO chat_session_heads(
            project_id,chat_id,session_id,installed_revision,installed_at
          ) VALUES (?1,?2,?3,?4,?5)",
-        params![project, chat_id, session, installed_revision, now],
-    )?;
+            params![project, chat_id, session, installed_revision, now],
+        )
+        .db()?;
     Ok(OwnedOwner {
         project,
         chat: chat_id.into(),
@@ -223,11 +250,13 @@ pub(super) fn next_chat_projection(
     project_id: &str,
     chat_id: &str,
 ) -> AppResult<i64> {
-    let current: i64 = transaction.query_row(
-        "SELECT projection_revision FROM chats WHERE project_id=?1 AND id=?2",
-        params![project_id, chat_id],
-        |row| row.get(0),
-    )?;
+    let current: i64 = transaction
+        .query_row(
+            "SELECT projection_revision FROM chats WHERE project_id=?1 AND id=?2",
+            params![project_id, chat_id],
+            |row| row.get(0),
+        )
+        .db()?;
     current
         .checked_add(1)
         .ok_or_else(|| AppError::ResourceLimit("Chat projection revision exhausted".into()))

@@ -28,6 +28,9 @@ use crate::{
 use sage_acp_protocol::contract::{ProjectGeneration, SageProjectId, SageRootId};
 use sage_process::handle::NativeHandle;
 
+// The launch gives the root its own windowless console, so the Job also holds
+// that console's host process beside the root and its descendant.
+const JOB_PROCESSES: u32 = 3;
 const HELPER: &str = "acp::process::windows::descendant_settlement_tests::non_app_server_child";
 
 pub(super) fn membership_snapshot(job: HANDLE) -> (u32, u32) {
@@ -217,8 +220,8 @@ fn non_app_server_token_proves_root_exit_and_job_zero_not_descendant_settlement(
         unsafe { WaitForSingleObject(descendant.raw(), 0) },
         WAIT_TIMEOUT
     );
-    assert_eq!(control.active_processes().unwrap(), 2);
-    assert_eq!(control.total_processes().unwrap(), 2);
+    assert_eq!(control.active_processes().unwrap(), JOB_PROCESSES);
+    assert_eq!(control.total_processes().unwrap(), JOB_PROCESSES);
     // The root is held by our handshake: this is ordering, not a timing threshold.
     assert_eq!(
         control.wait_zero_within(Duration::ZERO).err(),
@@ -269,7 +272,7 @@ fn non_app_server_token_proves_root_exit_and_job_zero_not_descendant_settlement(
     assert_eq!(exit, TreeExit::Exited { code: Some(0) });
     assert_eq!(usage, (0, 0));
     assert_eq!(active, 0);
-    assert_eq!(total, 2);
+    assert_eq!(total, JOB_PROCESSES);
     assert!(
         same_identity,
         "retained handle must exclude PID reuse throughout convergence"

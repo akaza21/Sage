@@ -1,4 +1,5 @@
 use super::*;
+use crate::acp::bindings::codex::runtime::authority::CodexRootAuthorityStore;
 use crate::acp::{
     bindings::codex::{CodexDiscoveryDeadline, CodexDiscoveryRunError},
     ipc::{AcpUnavailableReason, CodexDiscoveryResponse, GetCodexDiscoveryRequest},

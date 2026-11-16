@@ -1,14 +1,14 @@
 use std::path::PathBuf;
 
-use rusqlite::{OptionalExtension, TransactionBehavior, params};
+use rusqlite::{OptionalExtension, TransactionBehavior::Immediate, params};
 use sage_core::{
     error::{AppError, AppResult},
     time::now_millis,
 };
+use sage_db::error::SqliteResultExt;
 use sha2::{Digest, Sha256};
 
 use crate::{
-    persistence::Database,
     project_registry::RootRecord,
     workspace::{
         MAX_DIRECTORY_ENTRIES,
@@ -16,6 +16,7 @@ use crate::{
         root_identity_path,
     },
 };
+use sage_db::database::Database;
 use sage_domain::{
     file_operations::{TrashProjectResourceRequest, TrashResourceKind},
     resource::ResourceRef,
@@ -107,39 +108,43 @@ impl PendingTrashIntent {
 pub(super) fn persist(database: &Database, pending: &PendingTrashIntent) -> AppResult<()> {
     pending.validate()?;
     let mut connection = database.write_connection()?;
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    let exists: bool = transaction.query_row(
-        "SELECT EXISTS(SELECT 1 FROM resource_trash_intents WHERE singleton=1)",
-        [],
-        |row| row.get(0),
-    )?;
+    let transaction = connection.transaction_with_behavior(Immediate).db()?;
+    let exists: bool = transaction
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM resource_trash_intents WHERE singleton=1)",
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if exists {
         return Err(AppError::InvalidRequest(format!(
             "another pending {TRASH_NAME} intent requires startup reconciliation"
         )));
     }
-    transaction.execute(
-        "INSERT INTO resource_trash_intents(
+    transaction
+        .execute(
+            "INSERT INTO resource_trash_intents(
            singleton,project_id,project_generation,transition_epoch,root_id,
            source_relative_path,parent_relative_path,kind,root_identity,
            parent_identity,source_identity,identity_digest,created_at
          ) VALUES (1,?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12)",
-        params![
-            pending.project_id,
-            pending.project_generation as i64,
-            pending.transition_epoch as i64,
-            pending.source.root_id,
-            pending.source.relative_path,
-            pending.parent.relative_path,
-            kind_text(pending.kind),
-            pending.root_identity.as_slice(),
-            pending.parent_identity.as_slice(),
-            pending.source_identity.as_slice(),
-            pending.digest,
-            now_millis(),
-        ],
-    )?;
-    transaction.commit()?;
+            params![
+                pending.project_id,
+                pending.project_generation as i64,
+                pending.transition_epoch as i64,
+                pending.source.root_id,
+                pending.source.relative_path,
+                pending.parent.relative_path,
+                kind_text(pending.kind),
+                pending.root_identity.as_slice(),
+                pending.parent_identity.as_slice(),
+                pending.source_identity.as_slice(),
+                pending.digest,
+                now_millis(),
+            ],
+        )
+        .db()?;
+    transaction.commit().db()?;
     Ok(())
 }
 
@@ -147,11 +152,13 @@ pub(super) fn delete_exact(
     transaction: &rusqlite::Transaction<'_>,
     pending: &PendingTrashIntent,
 ) -> AppResult<()> {
-    let removed = transaction.execute(
-        "DELETE FROM resource_trash_intents
+    let removed = transaction
+        .execute(
+            "DELETE FROM resource_trash_intents
          WHERE singleton=1 AND identity_digest=?1",
-        [&pending.digest],
-    )?;
+            [&pending.digest],
+        )
+        .db()?;
     if removed != 1 {
         return Err(AppError::InvalidRequest(format!(
             "pending {TRASH_NAME} intent changed before settlement"
@@ -162,9 +169,9 @@ pub(super) fn delete_exact(
 
 pub(super) fn clear(database: &Database, pending: &PendingTrashIntent) -> AppResult<()> {
     let mut connection = database.write_connection()?;
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let transaction = connection.transaction_with_behavior(Immediate).db()?;
     delete_exact(&transaction, pending)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     Ok(())
 }
 
@@ -182,7 +189,7 @@ pub(crate) fn recover_at_startup(database: &Database) -> AppResult<Option<Startu
         .is_ok_and(|observed| observed.authority_matches && observed.source_matches);
 
     let mut connection = database.write_connection()?;
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let transaction = connection.transaction_with_behavior(Immediate).db()?;
     if confirmed_absent {
         layout::migrate_selection(
             &transaction,
@@ -192,7 +199,7 @@ pub(crate) fn recover_at_startup(database: &Database) -> AppResult<Option<Startu
         )?;
     }
     delete_exact(&transaction, &pending)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
 
     let detail = if confirmed_absent {
         "the source is absent and the durable Explorer selection was repaired"
@@ -234,7 +241,8 @@ pub(super) fn load(database: &Database) -> AppResult<Option<PendingTrashIntent>>
                 ))
             },
         )
-        .optional()?;
+        .optional()
+        .db()?;
     let Some((
         project_id,
         generation,
@@ -289,7 +297,8 @@ fn load_root(database: &Database, pending: &PendingTrashIntent) -> AppResult<Roo
                 })
             },
         )
-        .optional()?
+        .optional()
+        .db()?
         .ok_or_else(|| {
             AppError::InvalidRequest(format!("pending {TRASH_NAME} root is unavailable"))
         })

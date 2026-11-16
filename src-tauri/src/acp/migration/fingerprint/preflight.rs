@@ -1,6 +1,7 @@
 use std::{io::Read, path::Path};
 
 use rusqlite::Connection;
+use sage_db::error::SqliteResultExt;
 
 use sage_core::error::{AppError, AppResult};
 
@@ -55,15 +56,19 @@ pub(in super::super) fn reject_newer_live(
 }
 
 fn inspect_version(connection: &Connection) -> AppResult<()> {
-    let marker: i64 = connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    let marker: i64 = connection
+        .pragma_query_value(None, "user_version", |row| row.get(0))
+        .db()?;
     reject_version(marker)?;
-    let tracked: bool = connection.query_row(
-        "SELECT EXISTS(
+    let tracked: bool = connection
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM sqlite_schema WHERE type='table' AND name='schema_migrations'
          )",
-        [],
-        |row| row.get(0),
-    )?;
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if tracked {
         reject_newer_history(connection)?;
     }

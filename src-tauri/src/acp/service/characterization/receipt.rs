@@ -15,8 +15,8 @@ use crate::acp::{
     },
     process::{ProcessIdentityReceipt, SpawnTimingReceipt},
 };
-use crate::persistence::WalConvergenceReceipt;
 use sage_acp_protocol::scheduler::RuntimeOwner;
+use sage_db::physical_storage::WalConvergenceReceipt;
 
 use super::types::{CharacterizationCase, hex};
 use ledger::{ObservationLedger, validate_safe_clock};

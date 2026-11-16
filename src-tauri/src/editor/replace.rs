@@ -7,15 +7,17 @@ use super::{
     },
     normalized_resource,
 };
+use crate::editor_persistence::replace_record::ReplaceRecordStore;
+use crate::editor_persistence::store::EditorBufferStore;
 use crate::{
     editor_content::{
         detect_line_ending, fingerprint, materialize_content, reject_oversized_materialized,
         reject_unsupported_content,
     },
     editor_persistence::{PersistedEditorBuffer, ReplaceRecord},
-    persistence::Database,
     workspace::{Workspace, directory_skip::protected_workspace_name},
 };
+use sage_db::database::Database;
 use sage_domain::resource::ResourceRef;
 
 /// `content` has `\n` line ends; `line_ending` is the File's own, restored on write.

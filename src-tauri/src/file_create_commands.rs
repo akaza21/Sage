@@ -5,7 +5,9 @@ use std::sync::{
 };
 use tauri::State;
 
-use crate::{persistence::Database, state::AppState, workspace::Workspace};
+use crate::project_registry::ProjectRegistryStore;
+use crate::{state::AppState, workspace::Workspace};
+use sage_db::database::Database;
 use sage_domain::file_operations::{
     CreateProjectFileRequest, CreateProjectFileResult, CreateProjectFolderRequest,
     CreateProjectFolderResult, FileCreationOutcome,
