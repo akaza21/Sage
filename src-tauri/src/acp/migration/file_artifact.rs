@@ -49,7 +49,7 @@ fn file_fingerprint_with_cap(
     path: &Path,
     maximum_bytes: Option<u64>,
 ) -> AppResult<FileFingerprint> {
-    super::platform::reject_path_alias(path)?;
+    sage_db::files::reject_path_alias(path)?;
     let metadata = match std::fs::metadata(path) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -68,7 +68,7 @@ fn file_fingerprint_with_cap(
     if metadata.len() > cap {
         return limit("migration artifact exceeds its physical byte limit");
     }
-    let mut file = match super::platform::open_read_no_follow(path) {
+    let mut file = match sage_db::files::open_read_no_follow(path) {
         Ok(file) => file,
         Err(AppError::Io(error)) if error.kind() == std::io::ErrorKind::NotFound => {
             return Ok(FileFingerprint {
@@ -105,7 +105,7 @@ fn file_fingerprint_with_cap(
 }
 
 pub(super) fn open_read_only(path: &Path) -> AppResult<AnchoredConnection> {
-    super::platform::reject_path_alias(path)?;
+    sage_db::files::reject_path_alias(path)?;
     require_read_only_wal_state(path)?;
     let anchor = super::platform::anchor_existing_sqlite(path, false)?;
     let uri = read_only_uri(path)?;
@@ -168,8 +168,8 @@ fn require_read_only_wal_state(path: &Path) -> AppResult<()> {
         .ok_or_else(|| AppError::InvalidRequest("SQLite database filename is not UTF-8".into()))?;
     let wal = path.with_file_name(format!("{name}-wal"));
     let shm = path.with_file_name(format!("{name}-shm"));
-    super::platform::reject_path_alias(&wal)?;
-    super::platform::reject_path_alias(&shm)?;
+    sage_db::files::reject_path_alias(&wal)?;
+    sage_db::files::reject_path_alias(&shm)?;
     let wal_bytes = std::fs::metadata(&wal)
         .map(|value| value.len())
         .unwrap_or(0);

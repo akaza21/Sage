@@ -261,7 +261,7 @@ fn content(
             source,
         } => ItemContent::Image {
             media_type,
-            data_url: crate::acp::image_admit::image_data_url(media_type, data.as_str())
+            data_url: sage_images::admit::image_data_url(media_type, data.as_str())
                 .map_err(contract)?,
             source,
         },

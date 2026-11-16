@@ -1,29 +1,18 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
 use crate::acp::transcript_quote::Prompt;
-use sage_acp_protocol::contract::{BoundedVec, ContractError, RequiredText};
+use sage_acp_protocol::contract::{
+    BoundedVec, ContractError, RequiredText, has_unsafe_display_character,
+};
 use sage_acp_protocol::file_diff::{DiffRef, SnapshotReadError, wire_counter};
 use sage_core::limits::{ATTACHED_CONTEXT_LIMIT, ATTACHED_CONTEXT_NOTE_BYTES};
 
-use crate::{browser::annotate::element::BrowserElement, image_attachment::ImageAttachedContext};
+use crate::browser::annotate::element::BrowserElement;
+use sage_images::attachment::ImageAttachedContext;
 
 pub(crate) use super::service::prompt_files as files;
 
 pub type AttachedContexts = BoundedVec<AttachedContext, ATTACHED_CONTEXT_LIMIT>;
-
-pub(crate) fn has_unsafe_display_character(character: char) -> bool {
-    character.is_control()
-        || matches!(
-            character,
-            '\u{061c}'
-                | '\u{200e}'
-                | '\u{200f}'
-                | '\u{2028}'
-                | '\u{2029}'
-                | '\u{202a}'..='\u{202e}'
-                | '\u{2066}'..='\u{2069}'
-        )
-}
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(untagged)]

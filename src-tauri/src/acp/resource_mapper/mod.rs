@@ -1,9 +1,7 @@
 use std::path::{Component, Path, PathBuf};
 
-use crate::{
-    project_registry::MAX_ROOTS_PER_PROJECT,
-    workspace::{RootIdentity, leaf_identity, open_workspace_text_file},
-};
+use crate::project_registry::MAX_ROOTS_PER_PROJECT;
+use sage_workspace::{RootIdentity, leaf_identity, open_workspace_text_file};
 
 use super::bindings::adapter::ResourceMapper;
 use sage_acp_protocol::{
@@ -129,7 +127,7 @@ impl NativeResourceMapper {
             }
             canonical_roots.push(CanonicalRoot {
                 root_id: configured.root_id,
-                identity: crate::workspace::root_identity_path(&actual)
+                identity: sage_workspace::root_identity_path(&actual)
                     .map_err(|_| ResourceMapError::RootMissing)?,
                 native_root: actual,
             });

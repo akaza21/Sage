@@ -36,13 +36,10 @@ mod editor_persistence;
 mod editor_watch;
 mod file_create_commands;
 mod file_rename_commands;
-mod git_budget;
-mod git_process;
 mod harness_discovery;
 mod harnesses;
 mod helper_entrypoints;
-mod image_artifacts;
-mod image_attachment;
+mod image_artifacts_commands;
 mod ipc_commands;
 mod launch_profile;
 mod native_session_import;
@@ -54,48 +51,21 @@ mod project_commands;
 mod project_create_commands;
 mod project_migration;
 mod project_registry;
-mod repository;
-mod repository_branch_create;
 mod repository_branch_create_commands;
-mod repository_branch_delete;
 mod repository_branch_delete_commands;
-mod repository_branch_rename;
 mod repository_branch_rename_commands;
-mod repository_branches;
-mod repository_change_stamp;
-mod repository_checkout;
+mod repository_change_stamp_commands;
 mod repository_checkout_commands;
 mod repository_cherry_pick_commands;
-mod repository_commit;
 mod repository_commit_commands;
-#[cfg(test)]
-mod repository_config_refusal_tests;
-mod repository_conflict;
-mod repository_diff;
-mod repository_discovery;
-mod repository_git;
-mod repository_git_base;
-mod repository_history;
-mod repository_in_progress;
-mod repository_index_status;
-mod repository_merge_commit;
-mod repository_mutation;
+mod repository_git_base_commands;
 mod repository_mutation_commands;
-mod repository_parse;
-mod repository_public_error;
-mod repository_pull;
 mod repository_pull_commands;
 mod repository_rebase_commands;
 mod repository_ref_commands;
-mod repository_remote_transport;
 mod repository_remote_transport_commands;
-mod repository_remotes;
-mod repository_revert;
 mod repository_revert_commands;
-mod repository_sequence_abort;
 mod repository_sequence_abort_commands;
-mod repository_status;
-mod repository_workspace;
 mod resource_commands;
 mod resource_trash_commands;
 mod session_events;
@@ -116,7 +86,8 @@ mod window_viewport;
 mod workbench_diff_ref;
 mod workbench_persistence;
 mod workbench_restore;
-mod workspace;
+mod workspace_commands;
+mod workspace_notify;
 
 #[cfg(all(feature = "native-lane", not(all(windows, debug_assertions))))]
 compile_error!("the native-lane feature boots WebView2 and is for Windows debug builds only");
@@ -139,8 +110,8 @@ use crate::{
     profile_lock::{ProfileLock, ProfileLockError},
     startup_refusal::Refusal,
     state::AppState,
-    workspace::development_workspace_root,
 };
+use sage_workspace::development_workspace_root;
 
 #[cfg(any(debug_assertions, feature = "diagnostics"))]
 fn initialize_tracing() {

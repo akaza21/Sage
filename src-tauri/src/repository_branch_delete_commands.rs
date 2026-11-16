@@ -2,10 +2,11 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{repository_branch_delete, state::AppState, workspace::Workspace};
+use crate::state::AppState;
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryCheckoutRequest, GitRepositoryCheckoutResult,
 };
+use sage_workspace::Workspace;
 
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
 const MAX_GIT_ROOT_ID_BYTES: usize = 512;
@@ -32,10 +33,10 @@ fn delete_branch_command_error(error: AppError) -> GitFileMutationCommandError {
                     sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
-            message: crate::repository_public_error::containment().into(),
+            message: sage_git::public_error::containment().into(),
         },
         error => GitFileMutationCommandError::Failed {
-            message: crate::repository_public_error::delete_branch(&error),
+            message: sage_git::public_error::delete_branch(&error),
         },
     }
 }
@@ -92,7 +93,7 @@ async fn delete_git_local_branch_inner(
         })
         .collect();
     let delete_result =
-        repository_branch_delete::delete_listed_local_branch(&workspace, &request.branch).await;
+        sage_git::branch_delete::delete_listed_local_branch(&workspace, &request.branch).await;
     let error = match delete_result {
         Ok(()) => None,
         Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
@@ -106,7 +107,7 @@ async fn delete_git_local_branch_inner(
         project_id: request.project_id,
         root_id: request.root_id,
         transition_epoch: *transition_epoch,
-        repositories: crate::repository_index_status::project_status(repository_roots).await,
+        repositories: sage_git::index_status::index_project_status(repository_roots).await,
         error,
     })
 }

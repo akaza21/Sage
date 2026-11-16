@@ -18,8 +18,11 @@ sage-acp-protocol = { path = "crates/sage-acp-protocol" }
 sage-core = { path = "crates/sage-core" }
 sage-db = { path = "crates/sage-db" }
 sage-domain = { path = "crates/sage-domain" }
+sage-git = { path = "crates/sage-git" }
+sage-images = { path = "crates/sage-images" }
 sage-process = { path = "crates/sage-process" }
 sage-test-support = { path = "crates/sage-test-support" }
+sage-workspace = { path = "crates/sage-workspace" }
 
 base64 = "=0.22.1"
 # Gitignore rules for workspace walks (EDIT-0005 AD-3); only its matcher is used.

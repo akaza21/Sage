@@ -7,9 +7,9 @@ use super::{
     fingerprint::{database_fingerprint, file_fingerprint, open_read_only},
     manifest::{ReplacementBuildIntent, ReplacementManifest, read, write_stage},
     paths::MigrationPaths,
-    platform::remove_synced,
     stage_owner,
 };
+use sage_db::files::remove_synced;
 
 pub(super) fn begin(paths: &MigrationPaths, backup: &VerifiedBackup) -> AppResult<()> {
     if paths.replacement_build_intent.exists()

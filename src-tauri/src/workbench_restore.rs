@@ -6,11 +6,9 @@ use sage_db::error::SqliteResultExt;
 mod tab_repository;
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    project_registry::RootRecord,
-    workspace::{Workspace, validate_contract_path},
-};
+use crate::project_registry::RootRecord;
 use sage_domain::{chat::WorkbenchTab, repository::RepositoryRef, resource::ResourceRef};
+use sage_workspace::{Workspace, validate_contract_path};
 
 pub use tab_repository::{
     validate_layout_tab_repository, validate_root_membership, validate_tab_repository,

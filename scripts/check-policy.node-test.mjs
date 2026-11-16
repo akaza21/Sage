@@ -151,11 +151,11 @@ test("process creation requires an exact reviewed module", () => {
       1,
     );
     assert.deepEqual(
-      sourceSecurityErrors("src-tauri/src/git_process.rs", source),
+      sourceSecurityErrors("crates/sage-git/src/process.rs", source),
       [],
     );
     assert.equal(
-      sourceSecurityErrors("src-tauri/src/git_process/unreviewed.rs", source)
+      sourceSecurityErrors("crates/sage-git/src/process/unreviewed.rs", source)
         .length,
       1,
     );

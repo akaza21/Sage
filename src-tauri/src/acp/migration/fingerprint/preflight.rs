@@ -5,7 +5,7 @@ use sage_db::error::SqliteResultExt;
 
 use sage_core::error::{AppError, AppResult};
 
-use super::super::{limits, paths::MigrationPaths, platform, probe};
+use super::super::{limits, paths::MigrationPaths, probe};
 use super::{
     open_read_only,
     version::{reject_newer_history, reject_version},
@@ -79,7 +79,7 @@ fn inspect_version(connection: &Connection) -> AppResult<()> {
 /// inspected through the probe instead.
 fn header_user_version(path: &Path) -> AppResult<Option<i32>> {
     const MAGIC: &[u8; 16] = b"SQLite format 3\0";
-    platform::reject_path_alias(path)?;
+    sage_db::files::reject_path_alias(path)?;
     let mut header = [0_u8; 64];
     match std::fs::File::open(path).and_then(|mut file| file.read_exact(&mut header)) {
         Ok(()) if header.starts_with(MAGIC) => Ok(Some(i32::from_be_bytes([
