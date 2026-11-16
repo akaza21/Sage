@@ -186,16 +186,28 @@ impl SdkBridge {
         std::mem::take(&mut self.tools)
             .into_iter()
             .map(|(tool, name)| {
-                let delegated = allowed.contains(&tool)
-                    && self
-                        .child_tools
-                        .get(&tool)
-                        .and_then(|(owner, _)| self.subagents.get(owner))
-                        .is_some_and(|subagent| subagent.background);
+                let delegated = allowed
+                    .get(&tool)
+                    .and_then(|owner| self.subagents.get(owner))
+                    .is_some_and(|subagent| subagent.background);
                 let status = if delegated { "completed" } else { "failed" };
                 (tool, name, status)
             })
             .collect()
+    }
+
+    /// The subagent an approval request comes from: the one Claude Code
+    /// names by its agent id, or the one whose tool row it is.
+    pub(super) fn asking_subagent(&self, request: &Value, tool: &str) -> Option<String> {
+        let agent = request.get("agent_id").and_then(Value::as_str);
+        agent
+            .and_then(|agent| {
+                self.subagents
+                    .iter()
+                    .find(|(_, subagent)| subagent.task_id.as_deref() == Some(agent))
+                    .map(|(key, _)| key.clone())
+            })
+            .or_else(|| self.child_tools.get(tool).map(|(owner, _)| owner.clone()))
     }
 
     /// Ends the subagents a finished turn was waiting on; background ones run on.

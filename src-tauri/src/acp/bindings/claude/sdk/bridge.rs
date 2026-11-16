@@ -100,6 +100,8 @@ struct Permission {
     plan_exit: bool,
     /// The tool's row.
     tool: String,
+    /// The subagent that asked, by its `Task` tool use id.
+    subagent: Option<String>,
 }
 
 #[derive(Debug)]
@@ -131,8 +133,9 @@ pub(super) struct SdkBridge {
     permissions: BTreeMap<u64, Permission>,
     /// Claude Code request ids whose answer is not yet delivered.
     answering: BTreeSet<String>,
-    /// Tools the open turn's approvals allowed.
-    allowed_tools: BTreeSet<String>,
+    /// Tools the open turn's approvals allowed a subagent to run, with that
+    /// subagent's `Task` tool use id.
+    allowed_tools: BTreeMap<String, String>,
     next_permission: u64,
     tools: BTreeMap<String, String>,
     /// Open subagents, by their `Task` tool use id.
@@ -194,7 +197,7 @@ impl SdkBridge {
             auth_failed: false,
             permissions: BTreeMap::new(),
             answering: BTreeSet::new(),
-            allowed_tools: BTreeSet::new(),
+            allowed_tools: BTreeMap::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
             subagents: BTreeMap::new(),

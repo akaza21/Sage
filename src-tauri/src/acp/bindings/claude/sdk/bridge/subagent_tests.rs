@@ -193,19 +193,36 @@ fn child_status<'a>(events: &'a [ChildEvent], id: &str) -> Option<&'a str> {
 /// and Sage answers with `option`; the turn opened for the card ends once
 /// the answer is delivered. Returns how that turn closed the card's row.
 fn answer_background_tool(bridge: &mut SdkBridge, option: &str) -> String {
-    prompt(bridge, 3);
-    spawn(bridge, "toolu_a");
-    tool_result(bridge, "toolu_a", launched("agent-1"));
-    finish(bridge);
+    answer_background_tool_in_order(bridge, option, true)
+}
+
+fn subagent_tool_row(bridge: &mut SdkBridge) {
     bridge
         .inbound(json!({"type":"assistant","parent_tool_use_id":"toolu_a","message":{"id":"m-sub",
             "content":[{"type":"tool_use","id":BACKGROUND_TOOL,"name":"Bash","input":{"command":"make"}}]}}))
         .unwrap();
+}
+
+/// As `answer_background_tool`, with the subagent's own tool row reported
+/// before the approval request when `row_first`, else only after the card's
+/// turn has ended.
+fn answer_background_tool_in_order(
+    bridge: &mut SdkBridge,
+    option: &str,
+    row_first: bool,
+) -> String {
+    prompt(bridge, 3);
+    spawn(bridge, "toolu_a");
+    tool_result(bridge, "toolu_a", launched("agent-1"));
+    finish(bridge);
+    if row_first {
+        subagent_tool_row(bridge);
+    }
     let ask = bridge
         .inbound(
             json!({"type":"control_request","request_id":"r7","request":{
             "subtype":"can_use_tool","tool_name":"Bash","tool_use_id":BACKGROUND_TOOL,
-            "input":{"command":"make"}}}),
+            "agent_id":"agent-1","input":{"command":"make"}}}),
         )
         .unwrap();
     assert!(ask.started);
@@ -224,6 +241,9 @@ fn answer_background_tool(bridge: &mut SdkBridge, option: &str) -> String {
     let ended = bridge
         .settled_turn_end()
         .expect("the card's turn ends once answered");
+    if !row_first {
+        subagent_tool_row(bridge);
+    }
     assert!(ended.acp.iter().any(|frame| frame["id"] == 4));
     let row = ended
         .acp
@@ -244,10 +264,20 @@ fn allow_background_tool(bridge: &mut SdkBridge) {
     );
 }
 
+/// The runtime records a declined card's row as declined.
 #[test]
-fn a_declined_background_tool_closes_the_cards_row_as_failed() {
+fn a_declined_background_tool_fails_the_cards_row() {
     let mut bridge = initialized();
     assert_eq!(answer_background_tool(&mut bridge, "reject"), "failed");
+}
+
+#[test]
+fn an_approval_asked_before_its_subagent_reports_the_tool_still_completes_the_cards_row() {
+    let mut bridge = initialized();
+    assert_eq!(
+        answer_background_tool_in_order(&mut bridge, "allow_once", false),
+        "completed"
+    );
 }
 
 #[test]
