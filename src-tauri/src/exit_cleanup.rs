@@ -49,12 +49,12 @@ impl GitExitCleanup {
             RETRY_BUDGET,
             || async {
                 tauri::async_runtime::spawn_blocking(
-                    crate::workspace::notify::cancel_all_workspace_watches,
+                    crate::workspace_notify::cancel_all_workspace_watches,
                 )
                 .await
                 .unwrap_or(false)
             },
-            crate::git_process::abandon_cleanup_on_exit,
+            sage_git::process::abandon_cleanup_on_exit,
             move || app.exit(code),
         ));
     }

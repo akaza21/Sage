@@ -1,7 +1,7 @@
 use serde::{Deserialize, Deserializer, Serialize, de};
 
-use super::attached_context::{AttachedContexts, has_unsafe_display_character};
-use sage_acp_protocol::contract::{ContractError, RequiredText};
+use super::attached_context::AttachedContexts;
+use sage_acp_protocol::contract::{ContractError, RequiredText, has_unsafe_display_character};
 
 /// The text of a stored text item when the projection renders it as
 /// assistant prose, decoded exactly as the projection decodes it: a native
