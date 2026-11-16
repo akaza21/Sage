@@ -44,6 +44,10 @@ const reviewedSpawnModules = new Map([
     "Bounded Claude Code model probe",
   ],
   [
+    "src-tauri/src/acp/bindings/codex/discovery/probe.rs",
+    "Bounded Codex model probe",
+  ],
+  [
     "src-tauri/src/acp/fixture/process_ops.rs",
     "Feature-gated adversarial process fixture",
   ],
