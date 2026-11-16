@@ -147,7 +147,16 @@ impl SdkBridge {
         Ok(())
     }
 
-    pub(super) fn withdraw(&mut self, request_id: &str, inbound: &mut Inbound) {
+    /// Claude Code withdrew an approval it asked for.
+    pub(super) fn withdraw(
+        &mut self,
+        sdk: &Value,
+        inbound: &mut Inbound,
+    ) -> Result<(), BridgeError> {
+        let request_id = sdk
+            .get("request_id")
+            .and_then(Value::as_str)
+            .ok_or(BridgeError::Frame)?;
         self.permissions.retain(|wire, permission| {
             let keep = permission.request_id != request_id;
             if !keep {
@@ -155,6 +164,7 @@ impl SdkBridge {
             }
             keep
         });
+        Ok(())
     }
 
     /// Declines every open approval: Claude Code still waits on them.

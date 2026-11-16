@@ -32,10 +32,7 @@ impl SdkBridge {
         match kind {
             Some("control_response") => self.control_response(&sdk["response"], &mut inbound)?,
             Some("control_request") => self.control_request(&sdk, &mut inbound)?,
-            Some("control_cancel_request") => {
-                let request_id = sdk.get("request_id").and_then(Value::as_str);
-                self.withdraw(request_id.ok_or(BridgeError::Frame)?, &mut inbound);
-            }
+            Some("control_cancel_request") => self.withdraw(&sdk, &mut inbound)?,
             // Results still finish the rows a subagent's approvals opened.
             Some("user") => {
                 self.tool_results(&sdk, &mut inbound);
