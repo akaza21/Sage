@@ -3,6 +3,7 @@ use sage_core::error::AppError;
 use uuid::Uuid;
 
 use super::*;
+use crate::editor_persistence::store::EditorBufferStore;
 use crate::{
     editor_persistence::{MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES},
     project_registry::MAX_PROJECTS,
@@ -65,7 +66,7 @@ fn limit_plus_one_project_sentinel_rolls_back_before_collection() {
     drop(connection);
 
     assert!(matches!(
-        Database::open(&path),
+        crate::database::open_database(&path),
         Err(AppError::ResourceLimit(_))
     ));
     assert!(!migration_applied(&path));
@@ -112,7 +113,7 @@ fn limit_plus_one_root_sentinel_rolls_back_before_collection() {
     drop(connection);
 
     #[cfg(windows)]
-    let result = Database::open(&path).map(|_| ());
+    let result = crate::database::open_database(&path).map(|_| ());
     #[cfg(not(windows))]
     let result = {
         let mut connection = Connection::open(&path).unwrap();
@@ -168,7 +169,7 @@ fn limit_plus_one_tab_sentinel_rolls_back_before_collection() {
     drop(connection);
 
     assert!(matches!(
-        Database::open(&path),
+        crate::database::open_database(&path),
         Err(AppError::ResourceLimit(_))
     ));
     assert!(!migration_applied(&path));
@@ -187,7 +188,7 @@ fn omitted_dirty_metadata_bytes_are_bounded_and_roll_back() {
         .unwrap();
 
     #[cfg(windows)]
-    let result = Database::open(&path).map(|_| ());
+    let result = crate::database::open_database(&path).map(|_| ());
     #[cfg(not(windows))]
     let result = {
         let mut connection = Connection::open(&path).unwrap();
@@ -217,7 +218,7 @@ fn exact_legacy_content_limit_allows_ordinary_metadata() {
 
     #[cfg(not(windows))]
     complete_legacy_upgrade_for_runtime(&path);
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     assert_eq!(
         database.dirty_editor_buffers("legacy", None).unwrap().len(),
         1

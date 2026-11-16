@@ -3,8 +3,10 @@ use std::{fs, path::Path, sync::Arc};
 use uuid::Uuid;
 
 use super::*;
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
-    persistence::Database,
     state::AppState,
     workspace::{
         Workspace,
@@ -53,7 +55,7 @@ impl Fixture {
         let root = std::env::temp_dir().join(format!("sage-trash-command-{}", Uuid::new_v4()));
         fs::create_dir_all(root.join("src/empty")).unwrap();
         fs::write(root.join("src/closed.rs"), "preserve\n").unwrap();
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let snapshot = database.bootstrap_snapshot().unwrap();
         let root_id = project.roots[0].id.clone();

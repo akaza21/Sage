@@ -4,7 +4,7 @@ use sage_acp_protocol::{contract::SageTurnId, scheduler::RuntimeOwner};
 /// Preparation boundary shared by native bindings: resolve first, then commit
 /// the intent. No native effect is admitted until this returns successfully.
 pub(crate) fn stage_turn_undo<E: std::fmt::Display>(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     owner: &RuntimeOwner,
     turn_id: SageTurnId,
     harness_reverted: bool,

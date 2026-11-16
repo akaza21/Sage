@@ -9,14 +9,20 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         SchemaClass::CurrentImportedHistory => {}
         _ => return invalid("session capabilities require the exact imported history schema"),
     }
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(SQL)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version,applied_at) VALUES (?1,?2)",
-        rusqlite::params![VERSION, now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", VERSION)?;
-    transaction.commit()?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(SQL).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version,applied_at) VALUES (?1,?2)",
+            rusqlite::params![VERSION, now_millis()],
+        )
+        .db()?;
+    transaction
+        .pragma_update(None, "user_version", VERSION)
+        .db()?;
+    transaction.commit().db()?;
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentSessionCapabilities {
         return invalid("database did not reach the exact session capabilities schema");
     }

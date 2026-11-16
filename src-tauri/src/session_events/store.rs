@@ -5,6 +5,7 @@ mod session_owner;
 mod legacy_welcome_fixture;
 #[cfg(test)]
 pub(crate) use legacy_welcome_fixture::seed_legacy_welcome;
+use sage_db::error::SqliteResultExt;
 
 use rusqlite::{Transaction, params};
 use serde_json::json;
@@ -75,7 +76,8 @@ pub(super) fn append_turn(
         &owner.chat,
         user_payload["text"].as_str().unwrap_or_default(),
         now,
-    )?;
+    )
+    .db()?;
     insert_completed_turn(transaction, &turn, usage.session_turns)?;
     insert_text_item(transaction, &turn, 0, &payloads[0])?;
     after_first_insert();
@@ -92,19 +94,23 @@ pub(super) fn append_turn(
         fact_bytes,
     )?;
     require_one(
-        transaction.execute(
-            "UPDATE chats SET projection_revision=?3,updated_at=?4
+        transaction
+            .execute(
+                "UPDATE chats SET projection_revision=?3,updated_at=?4
              WHERE project_id=?1 AND id=?2 AND projection_revision=?3-1",
-            params![owner.project, owner.chat, projection_revision, now],
-        )?,
+                params![owner.project, owner.chat, projection_revision, now],
+            )
+            .db()?,
         "simulator Chat disappeared during append",
     )?;
     require_one(
-        transaction.execute(
-            "UPDATE agent_sessions
+        transaction
+            .execute(
+                "UPDATE agent_sessions
              SET projection_revision=?2,revision=revision+1,updated_at=?3 WHERE id=?1",
-            params![owner.session, projection_revision, now],
-        )?,
+                params![owner.session, projection_revision, now],
+            )
+            .db()?,
         "simulator session disappeared during append",
     )?;
     Ok(owner.session)
@@ -118,12 +124,14 @@ fn insert_exited_epoch(
     runtime_epoch: i64,
     now: i64,
 ) -> AppResult<()> {
-    transaction.execute(
-        "INSERT INTO session_runtime_epochs(
+    transaction
+        .execute(
+            "INSERT INTO session_runtime_epochs(
            project_id,chat_id,session_id,runtime_epoch,state,started_at,terminal_at,exit_kind
          ) VALUES (?1,?2,?3,?4,'exited',?5,?5,'simulatorSynchronous')",
-        params![project, chat, session, runtime_epoch, now],
-    )?;
+            params![project, chat, session, runtime_epoch, now],
+        )
+        .db()?;
     Ok(())
 }
 
@@ -132,22 +140,24 @@ fn insert_completed_turn(
     turn: &CompletedTurn<'_>,
     ordinal: i64,
 ) -> AppResult<()> {
-    transaction.execute(
-        "INSERT INTO turns(
+    transaction
+        .execute(
+            "INSERT INTO turns(
            id,project_id,chat_id,session_id,runtime_epoch,ordinal,client_intent_id,
            state,delivery_state,revision,created_at,updated_at,terminal_at
          ) VALUES (?1,?2,?3,?4,?5,?6,?7,'completed','correlated',0,?8,?8,?8)",
-        params![
-            turn.id,
-            turn.owner.project,
-            turn.owner.chat,
-            turn.owner.session,
-            turn.runtime_epoch,
-            ordinal,
-            format!("simulator-{}", turn.id),
-            turn.now
-        ],
-    )?;
+            params![
+                turn.id,
+                turn.owner.project,
+                turn.owner.chat,
+                turn.owner.session,
+                turn.runtime_epoch,
+                ordinal,
+                format!("simulator-{}", turn.id),
+                turn.now
+            ],
+        )
+        .db()?;
     Ok(())
 }
 
@@ -157,25 +167,27 @@ fn insert_text_item(
     ordinal: i64,
     payload: &str,
 ) -> AppResult<()> {
-    transaction.execute(
-        "INSERT INTO items(
+    transaction
+        .execute(
+            "INSERT INTO items(
            id,project_id,chat_id,session_id,turn_id,runtime_epoch,ordinal,origin,kind,lifecycle,
            payload_json,payload_bytes,payload_digest,revision,created_at,updated_at,terminal_at
          ) VALUES (?1,?2,?3,?4,?5,?6,?7,'primary','text','completed',?8,?9,?10,0,?11,?11,?11)",
-        params![
-            Uuid::new_v4().to_string(),
-            turn.owner.project,
-            turn.owner.chat,
-            turn.owner.session,
-            turn.id,
-            turn.runtime_epoch,
-            ordinal,
-            payload,
-            payload.len() as i64,
-            digest(payload.as_bytes()),
-            turn.now
-        ],
-    )?;
+            params![
+                Uuid::new_v4().to_string(),
+                turn.owner.project,
+                turn.owner.chat,
+                turn.owner.session,
+                turn.id,
+                turn.runtime_epoch,
+                ordinal,
+                payload,
+                payload.len() as i64,
+                digest(payload.as_bytes()),
+                turn.now
+            ],
+        )
+        .db()?;
     Ok(())
 }
 
@@ -187,24 +199,26 @@ fn insert_turn_fact(
     item_count: i64,
 ) -> AppResult<i64> {
     let payload = turn_fact_payload(item_count);
-    transaction.execute(
-        "INSERT INTO session_facts(
+    transaction
+        .execute(
+            "INSERT INTO session_facts(
            project_id,chat_id,session_id,sequence,turn_id,kind,payload_json,payload_bytes,
            payload_digest,projection_revision,created_at
          ) VALUES (?1,?2,?3,?4,?5,'simulatorTurnCommitted',?6,?7,?8,?9,?10)",
-        params![
-            turn.owner.project,
-            turn.owner.chat,
-            turn.owner.session,
-            sequence,
-            turn.id,
-            payload,
-            payload.len() as i64,
-            digest(payload.as_bytes()),
-            projection_revision,
-            turn.now
-        ],
-    )?;
+            params![
+                turn.owner.project,
+                turn.owner.chat,
+                turn.owner.session,
+                sequence,
+                turn.id,
+                payload,
+                payload.len() as i64,
+                digest(payload.as_bytes()),
+                projection_revision,
+                turn.now
+            ],
+        )
+        .db()?;
     Ok(payload.len() as i64)
 }
 
@@ -218,45 +232,51 @@ fn update_ledgers(
 ) -> AppResult<()> {
     let payload_bytes = item_bytes + fact_bytes;
     require_one(
-        transaction.execute(
-            "UPDATE acp_session_usage SET turn_count=turn_count+1,item_count=item_count+2,
+        transaction
+            .execute(
+                "UPDATE acp_session_usage SET turn_count=turn_count+1,item_count=item_count+2,
            item_bytes=item_bytes+?2,fact_count=fact_count+1,fact_bytes=fact_bytes+?3,
            payload_bytes=payload_bytes+?2+?3,revision=revision+1
          WHERE session_id=?1 AND turn_count=?4 AND item_count=?5 AND payload_bytes=?6",
-            params![
-                session,
-                item_bytes,
-                fact_bytes,
-                usage.session_turns,
-                usage.session_items,
-                usage.session_payload_bytes
-            ],
-        )?,
+                params![
+                    session,
+                    item_bytes,
+                    fact_bytes,
+                    usage.session_turns,
+                    usage.session_items,
+                    usage.session_payload_bytes
+                ],
+            )
+            .db()?,
         "simulator session usage ledger changed",
     )?;
     require_one(
-        transaction.execute(
-            "UPDATE acp_project_usage SET turn_count=turn_count+1,item_count=item_count+2,
+        transaction
+            .execute(
+                "UPDATE acp_project_usage SET turn_count=turn_count+1,item_count=item_count+2,
            fact_count=fact_count+1,payload_bytes=payload_bytes+?2,revision=revision+1
          WHERE project_id=?1 AND turn_count=?3",
-            params![project, payload_bytes, usage.project_turns],
-        )?,
+                params![project, payload_bytes, usage.project_turns],
+            )
+            .db()?,
         "simulator project usage ledger changed",
     )?;
     require_one(
-        transaction.execute(
-            "UPDATE acp_store_usage SET turn_count=turn_count+1,item_count=item_count+2,
+        transaction
+            .execute(
+                "UPDATE acp_store_usage SET turn_count=turn_count+1,item_count=item_count+2,
            item_bytes=item_bytes+?1,fact_count=fact_count+1,fact_bytes=fact_bytes+?2,
            shared_payload_bytes=shared_payload_bytes+?1+?2,revision=revision+1
          WHERE singleton=1 AND turn_count=?3 AND item_count=?4 AND shared_payload_bytes=?5",
-            params![
-                item_bytes,
-                fact_bytes,
-                usage.store_turns,
-                usage.store_items,
-                usage.store_payload_bytes
-            ],
-        )?,
+                params![
+                    item_bytes,
+                    fact_bytes,
+                    usage.store_turns,
+                    usage.store_items,
+                    usage.store_payload_bytes
+                ],
+            )
+            .db()?,
         "global ACP usage ledger changed",
     )
 }

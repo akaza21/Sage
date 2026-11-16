@@ -10,7 +10,7 @@ impl Drop for TempRoot {
 }
 
 pub(super) struct Reopened {
-    pub(super) database: crate::persistence::Database,
+    pub(super) database: sage_db::database::Database,
     _root: TempRoot,
 }
 impl Reopened {
@@ -27,7 +27,7 @@ impl Reopened {
                 .unwrap();
         }
         Self {
-            database: crate::persistence::Database::open(&path).unwrap(),
+            database: crate::database::open_database(&path).unwrap(),
             _root: TempRoot(root),
         }
     }

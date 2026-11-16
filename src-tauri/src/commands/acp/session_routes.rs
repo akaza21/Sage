@@ -1,4 +1,6 @@
 use super::*;
+#[cfg(all(windows, feature = "acp-fixture"))]
+use crate::project_registry::ProjectRegistryStore;
 
 pub(crate) async fn start_acp_session_inner(
     state: &AppState,
@@ -240,6 +242,8 @@ mod tests {
         ActivateSessionCommand, CompleteActivationCommand, StartSessionCommand, activate_session,
         complete_activation, start_session,
     };
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use sage_acp_protocol::{
         contract::{ClientIntentId, RequiredText, RuntimeEpoch, SageChatId, SageProjectId},
         intent::{BindingId, CapabilitySnapshotV1, ExternalId},
@@ -249,8 +253,7 @@ mod tests {
     fn prompt_resources_come_from_the_session_row_of_that_chat() {
         let root = std::env::temp_dir().join(format!("sage-resources-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let chat = database
             .bootstrap_snapshot()

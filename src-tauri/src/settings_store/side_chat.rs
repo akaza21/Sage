@@ -1,4 +1,5 @@
 use sage_core::error::AppResult;
+use sage_db::error::SqliteResultExt;
 
 use super::SettingsStore;
 use rusqlite::OptionalExtension;
@@ -9,19 +10,20 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection.execute_batch("CREATE TABLE IF NOT EXISTS side_chat_preferences (singleton INTEGER PRIMARY KEY CHECK(singleton=1), confirm_close INTEGER NOT NULL CHECK(confirm_close IN (0,1))) STRICT;")?;
+        connection.execute_batch("CREATE TABLE IF NOT EXISTS side_chat_preferences (singleton INTEGER PRIMARY KEY CHECK(singleton=1), confirm_close INTEGER NOT NULL CHECK(confirm_close IN (0,1))) STRICT;").db()?;
         Ok(connection
             .query_row(
                 "SELECT confirm_close FROM side_chat_preferences WHERE singleton=1",
                 [],
                 |row| row.get(0),
             )
-            .optional()?
+            .optional()
+            .db()?
             .unwrap_or(true))
     }
     pub fn set_confirm_close_side_chat(&self, confirm: bool) -> AppResult<()> {
         self.confirm_close_side_chat()?;
-        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).execute("INSERT INTO side_chat_preferences VALUES (1,?1) ON CONFLICT(singleton) DO UPDATE SET confirm_close=excluded.confirm_close", [confirm])?;
+        self.0.lock().unwrap_or_else(std::sync::PoisonError::into_inner).execute("INSERT INTO side_chat_preferences VALUES (1,?1) ON CONFLICT(singleton) DO UPDATE SET confirm_close=excluded.confirm_close", [confirm]).db()?;
         Ok(())
     }
 }

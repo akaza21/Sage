@@ -25,7 +25,6 @@ use crate::acp::{
     transcript_quote::Prompt,
     transport::{Frame, IncrementalFrameDecoder},
 };
-use crate::persistence::Database;
 use sage_acp_protocol::{
     contract::{RequiredText, SageTurnId},
     intent::{ExternalId, SafeResourceRef, UnavailableResourceReason},
@@ -268,7 +267,8 @@ fn go_live_writing(
 #[test]
 fn the_first_prompt_after_a_restart_carries_the_restored_model_and_effort() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     store(
@@ -314,7 +314,8 @@ fn the_first_prompt_after_a_restart_carries_the_restored_model_and_effort() {
 #[test]
 fn a_stored_effort_waits_for_codex_to_report_the_thread_effort() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     store(&service, &owner, &[option("effort", "high")]);
@@ -380,7 +381,8 @@ fn started(
 #[test]
 fn a_new_threads_first_prompt_carries_the_level_chosen_before_the_session_existed() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     store(&service, &owner, &[option("effort", "high")]);
@@ -420,7 +422,8 @@ fn a_new_threads_first_prompt_carries_the_level_chosen_before_the_session_existe
 #[test]
 fn a_level_the_catalogue_no_longer_offers_is_not_sent_on_a_new_threads_first_prompt() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     // Taken over from the chat's last session, before the catalogue dropped it.
@@ -458,7 +461,8 @@ fn restore_share(service: &AcpService, owner: &RuntimeOwner) -> f64 {
 #[test]
 fn activation_with_no_stored_choices_does_not_wait_for_the_model_list() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     let slot = &service.lane_at(0).runtime;
@@ -480,7 +484,8 @@ fn activation_with_no_stored_choices_does_not_wait_for_the_model_list() {
 #[test]
 fn a_rejected_model_list_write_ends_hydration() {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed(&service);
     let owner = owner(1);
     store(&service, &owner, &[option("effort", "high")]);

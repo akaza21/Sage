@@ -1,6 +1,9 @@
 use super::*;
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::bootstrap::BrowserTabNumberStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 
-use crate::persistence::Database;
 use sage_domain::chat::ProjectLayoutRequest;
 use std::sync::atomic::{AtomicUsize, Ordering};
 
@@ -75,7 +78,7 @@ fn startup_label_skips_a_browser_owned_by_another_project() {
     let second_root = base.join("second");
     fs::create_dir(&first_root).unwrap();
     fs::create_dir(&second_root).unwrap();
-    let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let first = database.create_project_from_root(&first_root).unwrap();
     let mut tabs = database.bootstrap_snapshot().unwrap().tabs;
     tabs.push(sage_domain::chat::WorkbenchTab {

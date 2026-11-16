@@ -4,9 +4,9 @@ use sage_core::error::{AppError, AppResult};
 
 use crate::{
     editor,
-    persistence::Database,
     workspace::{Workspace, file_rename::FileRenameMarker, resource_trash::ResourceTrashMarker},
 };
+use sage_db::database::Database;
 use sage_domain::{
     editor::BufferSnapshotRequest, file_operations::TrashResourceKind, resource::ResourceRef,
 };
