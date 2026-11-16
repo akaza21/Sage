@@ -53,6 +53,7 @@ impl SdkBridge {
             Some(_) => {}
             None => return Err(BridgeError::Frame),
         }
+        self.continue_stop(&mut inbound);
         Ok(inbound)
     }
 

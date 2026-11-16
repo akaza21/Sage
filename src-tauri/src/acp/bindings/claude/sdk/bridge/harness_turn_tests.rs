@@ -712,3 +712,118 @@ fn a_build_that_reports_no_lifecycle_ends_each_turn_on_its_result() {
         "no frame would ever say the prompt ran"
     );
 }
+
+#[test]
+fn a_refusal_while_a_run_goes_on_still_reports_the_runs_context_window() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    bridge.inbound(prompt_lifecycle("refused")).unwrap();
+    let end = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,
+            "usage":{"input_tokens":7},
+            "modelUsage":{"claude-sonnet-5-5":{"contextWindow":200000}}}))
+        .unwrap();
+    assert_eq!(
+        ends(&end, 5).unwrap()["error"]["message"],
+        "Claude Code refused this message."
+    );
+    let usage = end
+        .acp
+        .iter()
+        .find(|frame| frame["params"]["update"]["sessionUpdate"] == "usage_update")
+        .expect("the ring still updates");
+    assert_eq!(usage["params"]["update"]["size"], 200_000);
+}
+
+#[test]
+fn a_stop_with_nothing_running_ends_once_the_prompt_and_messages_are_withdrawn() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    let (_, steer) = bridge.steer("also this").unwrap();
+    let withdraw = withdrawal(&mut bridge);
+    let next = bridge
+        .inbound(success(&withdraw, json!({"cancelled":true})))
+        .unwrap();
+    assert!(ends(&next, 5).is_none(), "a message still waits");
+    assert_eq!(
+        next.replies[0]["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":steer})
+    );
+    let ended = bridge
+        .inbound(success(&next.replies[0], json!({"cancelled":true})))
+        .unwrap();
+    assert!(
+        ended.replies.is_empty(),
+        "no interrupt to an idle Claude Code"
+    );
+    assert_eq!(
+        ends(&ended, 5).unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_stop_does_not_wait_on_an_unanswered_withdrawal_while_a_run_goes_on() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    withdrawal(&mut bridge);
+    let going = bridge.inbound(text("Still going")).unwrap();
+    let interrupt = &going.replies[0];
+    assert_eq!(interrupt["request"]["subtype"], "interrupt");
+    bridge.inbound(success(interrupt, json!({}))).unwrap();
+    assert!(
+        bridge.inbound(text("More")).unwrap().replies.is_empty(),
+        "one interrupt is enough"
+    );
+    bridge
+        .inbound(result_frame("error_during_execution"))
+        .unwrap();
+    let ended = bridge.inbound(prompt_lifecycle("cancelled")).unwrap();
+    assert_eq!(
+        ends(&ended, 5).unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_withdrawal_claude_code_refuses_falls_back_to_the_interrupt() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    let withdraw = withdrawal(&mut bridge);
+    let refused = bridge
+        .inbound(
+            json!({"type":"control_response","response":{"subtype":"error",
+            "request_id":withdraw["request_id"],"error":"not queued"}}),
+        )
+        .unwrap();
+    assert!(ends(&refused, 5).is_none());
+    assert_eq!(refused.replies[0]["request"]["subtype"], "interrupt");
+    let ended = bridge.inbound(prompt_lifecycle("cancelled")).unwrap();
+    assert_eq!(
+        ends(&ended, 5).unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_stop_on_a_build_without_lifecycle_reports_interrupts_at_once() {
+    let mut bridge = initialized();
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    let interrupt = cancel(&mut bridge);
+    assert_eq!(interrupt["request"]["subtype"], "interrupt");
+    bridge.inbound(success(&interrupt, json!({}))).unwrap();
+    let end = bridge
+        .inbound(result_frame("error_during_execution"))
+        .unwrap();
+    assert_eq!(ends(&end, 5).unwrap()["result"]["stopReason"], "cancelled");
+}
