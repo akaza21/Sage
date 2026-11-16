@@ -61,7 +61,9 @@ export function ProjectScopeChip({
       {candidates.length > 0 ? (
         <SearchablePicker
           triggerRole={menuItem ? "menuitem" : undefined}
-          triggerClassName={menuItem ? "menu-item" : undefined}
+          triggerClassName={
+            menuItem ? "menu-item composer__add-action" : undefined
+          }
           portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
           popoverClassName="composer__popover composer__project-menu"
           popoverPlacement={popoverPlacement}

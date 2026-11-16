@@ -1,21 +1,28 @@
+/* Inside the "+" menu the chip is a menu row: its trigger takes the row's
+   padding, radius and type, and lays out like the other add actions. */
 .composer__options .project-scope {
   --project-scope-trigger-border: 0;
   --project-scope-trigger-fill: transparent;
   --project-scope-trigger-blur: none;
   --project-scope-trigger-shadow: none;
+  --select-control-trigger-padding: 4px 8px;
+  --radius-select-control-trigger: var(--radius-menu-row);
   display: flex;
   max-width: none;
   height: auto;
 }
 
-.composer__options .project-scope .searchable-picker__trigger {
+.composer__options .project-scope.select-control .searchable-picker__trigger {
   width: 100%;
+  color: var(--menu-row-text, var(--color-text-secondary));
+  font-size: var(--menu-row-size, var(--font-size-xs));
+  font-weight: inherit;
+}
+
+.composer__options .project-scope .searchable-picker__trigger-label {
+  display: contents;
 }
 
 .composer__options .project-scope .searchable-picker__chevron {
   display: none;
-}
-
-.composer__options .project-scope .composer__action-description {
-  margin-inline-start: var(--space-2);
 }
