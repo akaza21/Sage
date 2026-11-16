@@ -32,63 +32,86 @@ pub(super) fn turn_state(status: &str) -> &'static str {
     }
 }
 
-/// The latest turn of a transcript and the state it leaves its child in.
-pub(super) fn snapshot_state(snapshot: &ChildTranscriptSnapshot) -> Option<(&str, &'static str)> {
-    snapshot
-        .turns
-        .last()
-        .map(|turn| (turn.id.as_str(), turn_state(&turn.status)))
+/// The state a transcript's latest turn leaves its child in, if it has one.
+pub(super) fn snapshot_state(snapshot: &ChildTranscriptSnapshot) -> Option<&'static str> {
+    snapshot.turns.last().map(|turn| turn_state(&turn.status))
 }
 
-/// A recorded state taken with when it was recorded.
-type Recorded = (String, i64);
+/// A child's recorded state: what it is, and whether its spawn turn had
+/// already ended when it was recorded.
+struct Recorded {
+    state: String,
+    spawn_ended: bool,
+    ended_at: Option<i64>,
+}
 
 /// What an ended turn's row shows for a child: the state recorded for it
-/// when the row still reports it live or the record is newer than the row,
-/// otherwise the row's own state, so a child that ran again after its row
-/// was rewritten shows its new state and one the row outlived does not.
-fn shown<'a>(row: &'a str, row_updated_at: i64, recorded: Option<&'a Recorded>) -> &'a str {
-    match recorded {
-        Some((state, at)) if live(row) || *at > row_updated_at => state,
-        _ => row,
-    }
+/// when the row still reports it live or the record was made after the row
+/// was closed with its turn, otherwise the row's own state. So a child that
+/// ran again after its row was rewritten shows its new state, and one the
+/// row outlived does not, whatever any clock says.
+fn applies(row: &str, recorded: &Recorded) -> bool {
+    live(row) || recorded.spawn_ended
 }
 
 fn same(left: &str, right: &str) -> bool {
     left == right || (live(left) && live(right))
 }
 
-/// Records the child's current state, taken from the latest turn it was seen
-/// in. A turn that ended never runs again, so a late item of it is ignored.
-/// When the record changes what an ended spawn turn's row shows, the parent
-/// projection moves and the new revision is returned for publishing.
+/// Records the child's current state. `ended_at` is when the end was observed live; an end learned later, from
+/// a read, has no known time. When the record changes what an ended spawn
+/// turn's row shows, the parent projection moves and the new revision is
+/// returned for publishing.
 pub(super) fn record_child_state(
     transaction: &Transaction<'_>,
     scope: &ChildTranscriptScope,
-    turn_id: &str,
     state: &'static str,
+    ended_at: Option<i64>,
     now_millis: i64,
 ) -> Result<Option<ProjectionRevision>, StoreError> {
-    let previous: Option<(String, Option<String>, i64)> = transaction
+    let previous: Option<Recorded> = transaction
         .query_row(
-            "SELECT state,turn_id,updated_at FROM acp_child_thread_states
+            "SELECT state,spawn_ended,ended_at FROM acp_child_thread_states
              WHERE native_child_thread_id=?1",
             [&scope.child_thread_id],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            |row| {
+                Ok(Recorded {
+                    state: row.get(0)?,
+                    spawn_ended: row.get(1)?,
+                    ended_at: row.get(2)?,
+                })
+            },
         )
         .optional()?;
-    if let Some((recorded, turn, _)) = &previous
-        && (recorded == state
-            || (state == "running" && turn.as_deref() == Some(turn_id) && !live(recorded)))
+    if previous
+        .as_ref()
+        .is_some_and(|previous| previous.state == state)
     {
         return Ok(None);
     }
+    let row: Option<(Option<String>, bool)> = transaction
+        .query_row(
+            "SELECT (SELECT json_extract(s.value,'$[1]')
+                       FROM json_each(i.payload_json,'$.payload.agentStates') s
+                      WHERE json_extract(s.value,'$[0]')=?2),
+                    t.terminal_at IS NOT NULL
+               FROM items i
+               JOIN turns t ON t.id=i.turn_id AND t.project_id=i.project_id
+                AND t.chat_id=i.chat_id AND t.session_id=i.session_id
+              WHERE i.id=?1 AND i.kind='collaboration'",
+            params![scope.item_id, scope.child_thread_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let spawn_ended = row.as_ref().is_some_and(|(_, ended)| *ended);
+    let ended_at = ended_at.filter(|_| state != "running");
     transaction.execute(
         "INSERT INTO acp_child_thread_states
-         (native_child_thread_id,project_id,chat_id,session_id,runtime_epoch,state,turn_id,updated_at)
+         (native_child_thread_id,project_id,chat_id,session_id,runtime_epoch,state,
+          spawn_ended,ended_at)
          VALUES(?1,?2,?3,?4,?5,?6,?7,?8)
          ON CONFLICT(native_child_thread_id) DO UPDATE SET
-           state=excluded.state,turn_id=excluded.turn_id,updated_at=excluded.updated_at",
+           state=excluded.state,spawn_ended=excluded.spawn_ended,ended_at=excluded.ended_at",
         params![
             scope.child_thread_id,
             scope.owner.project_id.as_str(),
@@ -96,33 +119,23 @@ pub(super) fn record_child_state(
             scope.owner.session_id.as_str(),
             scope.owner.runtime_epoch.get() as i64,
             state,
-            turn_id,
-            now_millis,
+            spawn_ended,
+            ended_at,
         ],
     )?;
-    let row: Option<(Option<String>, i64)> = transaction
-        .query_row(
-            "SELECT (SELECT json_extract(s.value,'$[1]')
-                       FROM json_each(i.payload_json,'$.payload.agentStates') s
-                      WHERE json_extract(s.value,'$[0]')=?2),
-                    i.updated_at
-               FROM items i
-               JOIN turns t ON t.id=i.turn_id AND t.project_id=i.project_id
-                AND t.chat_id=i.chat_id AND t.session_id=i.session_id
-              WHERE i.id=?1 AND i.kind='collaboration' AND t.terminal_at IS NOT NULL",
-            params![scope.item_id, scope.child_thread_id],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        )
-        .optional()?;
-    let Some((Some(row_state), row_updated_at)) = row else {
+    let Some((Some(row_state), true)) = row else {
         return Ok(None);
     };
-    let before = previous.map(|(state, _, at)| (state, at));
-    let after = (state.to_owned(), now_millis);
-    if same(
-        shown(&row_state, row_updated_at, before.as_ref()),
-        shown(&row_state, row_updated_at, Some(&after)),
-    ) {
+    let shown = |recorded: Option<&Recorded>| match recorded {
+        Some(recorded) if applies(&row_state, recorded) => recorded.state.clone(),
+        _ => row_state.clone(),
+    };
+    let after = Recorded {
+        state: state.to_owned(),
+        spawn_ended,
+        ended_at,
+    };
+    if same(&shown(previous.as_ref()), &shown(Some(&after))) {
         return Ok(None);
     }
     let project = scope.owner.project_id.as_str();
@@ -146,42 +159,62 @@ fn recorded_state(
 ) -> Result<Option<Recorded>, rusqlite::Error> {
     connection
         .query_row(
-            "SELECT s.state,s.updated_at FROM acp_child_thread_bindings b
+            "SELECT s.state,s.spawn_ended,s.ended_at FROM acp_child_thread_bindings b
              JOIN acp_child_thread_states s
                ON s.native_child_thread_id=b.native_child_thread_id
               AND s.project_id=b.project_id AND s.chat_id=b.chat_id
               AND s.session_id=b.session_id AND s.runtime_epoch=b.runtime_epoch
              WHERE b.item_id=?1 AND b.native_child_thread_id=?2",
             params![item_id, child],
-            |row| Ok((row.get(0)?, row.get(1)?)),
+            |row| {
+                Ok(Recorded {
+                    state: row.get(0)?,
+                    spawn_ended: row.get(1)?,
+                    ended_at: row.get(2)?,
+                })
+            },
         )
         .optional()
 }
 
 /// Projects each child of an ended turn's row with what that row shows for
-/// it (see `shown`). A row that settles a child this way was last updated
-/// when that end was recorded, so its times span the child's run.
+/// it (see `applies`). The row's times then end when the latest child it
+/// settled was seen to end; a child whose end time is not known is listed so
+/// that no time is claimed for it.
 pub(crate) fn project_settled_children(
     connection: &Connection,
     item: &mut ItemProjection,
 ) -> Result<(), StoreError> {
     let id = item.id.as_str().to_owned();
-    let row_updated_at = item.updated_at;
-    let ItemContent::Collaboration { agent_states, .. } = &mut item.content else {
+    let mut ended_at = None;
+    let ItemContent::Collaboration {
+        agent_states,
+        untimed_agents,
+        ..
+    } = &mut item.content
+    else {
         return Ok(());
     };
     for (key, state) in agent_states.as_mut_slice() {
-        let recorded = recorded_state(connection, &id, key.as_str())?;
-        let projected = shown(state.as_str(), row_updated_at, recorded.as_ref());
-        if same(projected, state.as_str()) {
+        let Some(recorded) = recorded_state(connection, &id, key.as_str())? else {
+            continue;
+        };
+        if !applies(state.as_str(), &recorded) {
             continue;
         }
-        let projected = projected.to_owned();
-        if !live(&projected) {
-            item.updated_at = item.updated_at.max(recorded.map_or(0, |(_, at)| at));
+        if !live(&recorded.state) {
+            match recorded.ended_at {
+                Some(at) => ended_at = ended_at.max(Some(at)),
+                None => untimed_agents.push(key.clone()),
+            }
         }
-        *state = SafeText::new("agentState", projected)
-            .map_err(|_| StoreError::Corrupt("agent state"))?;
+        if !same(&recorded.state, state.as_str()) {
+            *state = SafeText::new("agentState", recorded.state)
+                .map_err(|_| StoreError::Corrupt("agent state"))?;
+        }
+    }
+    if let Some(at) = ended_at {
+        item.updated_at = at;
     }
     Ok(())
 }

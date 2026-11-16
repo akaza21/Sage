@@ -692,15 +692,19 @@ fn an_upgrade_keeps_the_end_each_stored_child_transcript_reached() {
     let (connection, _) = crate::acp::migration::open_or_migrate(&path)
         .unwrap()
         .into_parts();
-    let recorded: (String, String, i64) = connection
+    let recorded: (String, bool, Option<i64>) = connection
         .query_row(
-            "SELECT state,turn_id,updated_at FROM acp_child_thread_states
+            "SELECT state,spawn_ended,ended_at FROM acp_child_thread_states
              WHERE native_child_thread_id='child-one'",
             [],
             |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
         )
         .unwrap();
-    assert_eq!(recorded, ("errored".into(), "second".into(), 25));
+    assert_eq!(
+        recorded,
+        ("errored".into(), false, None),
+        "no end time is claimed"
+    );
     drop(connection);
     std::fs::remove_dir_all(directory).unwrap();
 }

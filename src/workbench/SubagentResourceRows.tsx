@@ -85,6 +85,14 @@ export function subagentTimes(
     for (const item of turn.items) {
       const agent = byItem.get(item.id);
       if (agent) {
+        if (
+          item.kind === "collaboration" &&
+          agent.agentKey &&
+          item.payload.untimedAgents?.includes(agent.agentKey)
+        ) {
+          latest.delete(agent.agentKey);
+          continue;
+        }
         const time = { startedAt: item.createdAt, updatedAt: item.updatedAt };
         times.set(agent.id, time);
         if (agent.agentKey) latest.set(agent.agentKey, time);

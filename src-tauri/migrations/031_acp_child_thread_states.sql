@@ -5,24 +5,31 @@ CREATE TABLE acp_child_thread_states (
   session_id TEXT NOT NULL,
   runtime_epoch INTEGER NOT NULL CHECK (runtime_epoch > 0),
   state TEXT NOT NULL CHECK (state IN ('running', 'completed', 'errored', 'interrupted')),
-  turn_id TEXT,
-  updated_at INTEGER NOT NULL,
+  spawn_ended INTEGER NOT NULL CHECK (spawn_ended IN (0, 1)),
+  ended_at INTEGER CHECK (ended_at IS NULL OR state <> 'running'),
   FOREIGN KEY (project_id, chat_id, session_id, runtime_epoch, native_child_thread_id)
     REFERENCES acp_child_thread_owners(project_id, chat_id, session_id, runtime_epoch, native_child_thread_id) ON DELETE RESTRICT
 ) STRICT;
 
 CREATE INDEX idx_acp_child_thread_states_owner ON acp_child_thread_states(project_id, chat_id);
 
--- A child whose stored transcript already ended keeps that end.
+-- A child whose stored transcript already ended keeps that end. The
+-- transcript records no time for it, so none is claimed. Each transcript is
+-- parsed once, for its last turn's status.
+WITH last AS MATERIALIZED (
+  SELECT native_child_thread_id, project_id, chat_id, session_id, runtime_epoch,
+    json_extract(snapshot_json, '$.turns[#-1].status') AS status
+  FROM acp_child_thread_transcripts
+)
 INSERT INTO acp_child_thread_states
-  (native_child_thread_id, project_id, chat_id, session_id, runtime_epoch, state, turn_id, updated_at)
+  (native_child_thread_id, project_id, chat_id, session_id, runtime_epoch, state,
+   spawn_ended, ended_at)
 SELECT native_child_thread_id, project_id, chat_id, session_id, runtime_epoch,
-  CASE json_extract(snapshot_json, '$.turns[#-1].status')
+  CASE status
     WHEN 'completed' THEN 'completed'
     WHEN 'failed' THEN 'errored'
     ELSE 'interrupted'
   END,
-  json_extract(snapshot_json, '$.turns[#-1].id'),
-  updated_at
-FROM acp_child_thread_transcripts
-WHERE json_extract(snapshot_json, '$.turns[#-1].status') IN ('completed', 'failed', 'interrupted');
+  0, NULL
+FROM last
+WHERE status IN ('completed', 'failed', 'interrupted');

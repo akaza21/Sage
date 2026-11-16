@@ -149,6 +149,26 @@ fn page_states(page: &AcpChatPage) -> Vec<String> {
         .unwrap()
 }
 
+/// The spawn row's end time, and the children it claims no end time for.
+fn spawn_times(connection: &rusqlite::Connection) -> (i64, Vec<String>) {
+    let page = load_chat_page(connection, project(), chat(), None).unwrap();
+    page.turns
+        .as_slice()
+        .iter()
+        .flat_map(|turn| turn.items.as_slice())
+        .find_map(|item| match &item.content {
+            ItemContent::Collaboration { untimed_agents, .. } => Some((
+                item.updated_at,
+                untimed_agents
+                    .iter()
+                    .map(|key| key.as_str().to_owned())
+                    .collect(),
+            )),
+            _ => None,
+        })
+        .unwrap()
+}
+
 fn spawn_state(connection: &rusqlite::Connection) -> String {
     page_states(&load_chat_page(connection, project(), chat(), None).unwrap()).join(",")
 }
@@ -166,14 +186,11 @@ fn a_child_settling_after_its_spawn_turn_ended_reprojects_the_spawn_row_once() {
         TurnState::Completed,
         31
     ));
-    let page = load_chat_page(&fixture.connection, project(), chat(), None).unwrap();
-    let row = page.turns.as_slice()[0]
-        .items
-        .as_slice()
-        .iter()
-        .find(|item| matches!(item.content, ItemContent::Collaboration { .. }))
-        .unwrap();
-    assert_eq!(row.updated_at, 30, "the row's times end when the child did");
+    assert_eq!(
+        spawn_times(&fixture.connection),
+        (30, Vec::new()),
+        "the end is dated when it was observed"
+    );
 
     // The settled state is read back without the child's transcript.
     fixture
@@ -226,6 +243,11 @@ fn a_native_read_that_settles_the_child_publishes_the_spawn_row() {
     assert!(published.is_some_and(|revision| revision > before));
     assert_eq!(published, Some(projection(&fixture.connection)));
     assert_eq!(spawn_state(&fixture.connection), "errored");
+    assert_eq!(
+        spawn_times(&fixture.connection).1,
+        ["child-one"],
+        "a read learns no end time"
+    );
 }
 
 #[test]
@@ -241,24 +263,27 @@ fn a_child_end_past_the_turn_cap_still_settles_the_spawn_row() {
 
     assert!(settle(&mut fixture, "turn-128", TurnState::Failed, 30));
     assert_eq!(spawn_state(&fixture.connection), "errored");
-    assert!(start(&mut fixture, "turn-129", 40));
-    assert_eq!(spawn_state(&fixture.connection), "running");
+    assert!(
+        !start(&mut fixture, "turn-129", 40),
+        "past the cap no turn is known to be new"
+    );
+    assert_eq!(spawn_state(&fixture.connection), "errored");
     assert!(settle(&mut fixture, "turn-129", TurnState::Completed, 50));
     assert_eq!(spawn_state(&fixture.connection), "completed");
-    assert!(
-        !start(&mut fixture, "turn-129", 60),
-        "an ended turn never runs again"
-    );
-    assert_eq!(spawn_state(&fixture.connection), "completed");
+    for (turn, now) in [("turn-129", 60), ("turn-128", 61)] {
+        assert!(!start(&mut fixture, turn, now), "{turn} never runs again");
+        assert_eq!(spawn_state(&fixture.connection), "completed");
+    }
 }
 
 #[test]
 fn a_child_turn_after_its_row_was_rewritten_settled_still_shows_running() {
     let mut fixture = ended_spawn_turn_reporting("completed");
     assert_eq!(spawn_state(&fixture.connection), "completed");
-    assert!(start(&mut fixture, "second", 40));
+    // The clock stepped back below the row's own time: order, not time, counts.
+    assert!(start(&mut fixture, "second", 5));
     assert_eq!(spawn_state(&fixture.connection), "running");
-    assert!(settle(&mut fixture, "second", TurnState::Failed, 50));
+    assert!(settle(&mut fixture, "second", TurnState::Failed, 6));
     assert_eq!(spawn_state(&fixture.connection), "errored");
 }
 
