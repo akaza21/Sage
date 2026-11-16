@@ -267,7 +267,7 @@ fn question_text_is_sanitised_and_unechoable_options_cancel_the_dialog() {
         .unwrap()
         .as_str()
         .to_owned();
-    assert!(!prefill.contains("/home/alice"), "{prefill}");
+    assert_eq!(prefill, "Saved at /home/alice/notes.txt");
     resolve(&mut runtime, "q-editor", PermissionDecision::Deny);
     for (id, options) in [
         ("q-bidi", json!(["safe", "evil\u{202e}txt"])),

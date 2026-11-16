@@ -8,6 +8,10 @@ pub(crate) mod command;
 pub(crate) mod credentials;
 #[path = "embedded.rs"]
 mod embedded;
+#[path = "home.rs"]
+pub(crate) mod home;
+#[path = "locations.rs"]
+mod locations;
 #[path = "paths.rs"]
 pub(crate) mod paths;
 #[path = "pem.rs"]
@@ -22,16 +26,39 @@ pub(crate) mod secrets;
 pub(crate) mod shell;
 #[path = "spans.rs"]
 pub(crate) mod spans;
+#[path = "tokens.rs"]
+mod tokens;
 #[path = "values.rs"]
 pub(crate) mod values;
 
 pub(crate) use paths::PathMode as Mode;
+use prose::ProsePaths;
 
 pub(crate) fn redact(
     field: &'static str,
     input: &str,
     maximum: usize,
     mode: Mode,
+) -> Result<String, ContractError> {
+    redact_with(field, input, maximum, mode, ProsePaths::Shown)
+}
+
+/// Prose that keeps absolute paths private as command output does, such as
+/// tool content or an id that must carry nothing worth redacting.
+pub(crate) fn redact_prose_hiding_paths(
+    field: &'static str,
+    input: &str,
+    maximum: usize,
+) -> Result<String, ContractError> {
+    redact_with(field, input, maximum, Mode::Prose, ProsePaths::Redacted)
+}
+
+fn redact_with(
+    field: &'static str,
+    input: &str,
+    maximum: usize,
+    mode: Mode,
+    path_display: ProsePaths,
 ) -> Result<String, ContractError> {
     if mode == Mode::Permission {
         let tokens = shell::shell_tokens(input).map_err(|_| ContractError::ForbiddenContent {
@@ -49,11 +76,11 @@ pub(crate) fn redact(
     let embedded = if mode == Mode::Diagnostic {
         std::borrow::Cow::Borrowed(input)
     } else {
-        embedded::redact(input, maximum, mode, field)?
+        embedded::redact(input, maximum, mode, path_display, field)?
     };
     let input = embedded.as_ref();
     match mode {
-        Mode::Prose => prose::redact_prose(field, input, maximum),
+        Mode::Prose => prose::redact_prose(field, input, maximum, path_display),
         Mode::CommandOutput | Mode::Permission => command::redact(field, input, maximum, mode),
         Mode::Diagnostic => {
             let output = super::diagnostic::render(input);

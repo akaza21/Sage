@@ -163,14 +163,6 @@ fn at_file_and_attached_short_flag_paths_are_redacted_and_permissions_fail_close
         );
         for shown in [
             sanitized_command_output(input).unwrap(),
-            normalized_text::<512>("text", input)
-                .unwrap()
-                .as_str()
-                .to_owned(),
-            normalized_label_text::<512>("toolLabel", input)
-                .unwrap()
-                .as_str()
-                .to_owned(),
             sanitized_content_output(input).unwrap(),
         ] {
             assert!(shown.contains("[redacted]"), "{input}: {shown}");
@@ -178,6 +170,16 @@ fn at_file_and_attached_short_flag_paths_are_redacted_and_permissions_fail_close
                 assert!(!shown.contains(private), "{input}: {shown}");
             }
         }
+        assert_eq!(
+            normalized_text::<512>("text", input).unwrap().as_str(),
+            input
+        );
+        assert_eq!(
+            normalized_label_text::<512>("toolLabel", input)
+                .unwrap()
+                .as_str(),
+            input
+        );
     }
 }
 

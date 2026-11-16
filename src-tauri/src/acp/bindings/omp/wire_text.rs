@@ -115,12 +115,21 @@ mod tests {
 
     #[test]
     fn output_and_prose_use_shared_credential_and_path_detection() {
-        for (input, secret) in [
-            ("before --token abc after", "abc"),
-            ("before TOKEN='private value' after", "private"),
+        for (input, path) in [
             ("before >/home/alice/x after", "alice"),
             (r"before -isystemC:\Users\Jane\inc after", "Jane"),
             ("before C:/Users/Jane Doe/x after", "Doe"),
+        ] {
+            let output = sanitized_command_output(input).unwrap();
+            assert!(!output.contains(path), "{input}: {output}");
+            assert_eq!(
+                normalized_text::<512>("text", input).unwrap().as_str(),
+                input
+            );
+        }
+        for (input, secret) in [
+            ("before --token abc after", "abc"),
+            ("before TOKEN='private value' after", "private"),
             (r#"before password={"a":"b","c":"d"} after"#, r#""c":"d""#),
         ] {
             for actual in [
