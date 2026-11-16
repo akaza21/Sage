@@ -75,7 +75,7 @@ impl SdkBridge {
                 Pending::Control => Self::controlled(Err(message), inbound),
                 Pending::Passive(request) => request.answered(Err(message), inbound),
                 Pending::Fork(_) => self.forked(None, inbound),
-                Pending::Withdraw(uuid) => self.withdrawn(uuid, inbound),
+                Pending::Withdraw(uuid) => self.withdrawn(uuid, None, inbound),
                 _ => {}
             }
             if let Some(id) = pending.acp_id() {
@@ -147,7 +147,7 @@ impl SdkBridge {
                 ));
             }
             Pending::Interrupt => self.interrupted_idle(inbound),
-            Pending::Withdraw(uuid) => self.withdrawn(&uuid, inbound),
+            Pending::Withdraw(uuid) => self.withdrawn(&uuid, Some(reply), inbound),
             Pending::Control => Self::controlled(Ok(reply), inbound),
             Pending::Passive(request) => request.answered(Ok(reply), inbound),
             Pending::Abandoned => {}
@@ -318,9 +318,9 @@ impl SdkBridge {
     }
 
     pub(super) fn result(&mut self, sdk: &Value, inbound: &mut Inbound) {
-        if self.prompt.is_none() || self.holds_result(sdk) {
+        let Some(sdk) = self.turn_end(sdk) else {
             return;
-        }
+        };
         let Some(id) = self.prompt.take() else {
             return;
         };
@@ -342,7 +342,7 @@ impl SdkBridge {
             count("cache_creation_input_tokens"),
         );
         let total = input + output + cache_read + cache_write;
-        if let Some(size) = context_window(sdk) {
+        if let Some(size) = context_window(&sdk) {
             inbound.acp.push(
                 self.update(json!({"sessionUpdate": "usage_update", "used": total, "size": size})),
             );
@@ -353,12 +353,12 @@ impl SdkBridge {
         } else if failed && self.auth_failed {
             acp_error(id, AUTH_REQUIRED, "Authentication required")
         } else if failed {
-            acp_error(id, INTERNAL_ERROR, &failure_message(sdk))
+            acp_error(id, INTERNAL_ERROR, &failure_message(&sdk))
         } else {
             acp_result(
                 id,
                 json!({
-                    "stopReason": stop_reason(sdk),
+                    "stopReason": stop_reason(&sdk),
                     "usage": {
                         "inputTokens": input, "outputTokens": output,
                         "cachedReadTokens": cache_read, "cachedWriteTokens": cache_write,

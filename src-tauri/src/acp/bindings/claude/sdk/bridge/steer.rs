@@ -4,13 +4,15 @@
 //! running one, or as a run of its own right after), then `completed` or
 //! `cancelled`. A run that ends while such a message still waits is not
 //! the end of the turn: the message runs next, and its `result` ends it.
-//! Stopping withdraws the waiting messages first (`cancel_async_message`),
-//! since an interrupt alone lets them run afterwards.
+//! Stopping withdraws the waiting messages and the prompt first
+//! (`cancel_async_message`), since an interrupt alone lets them run afterwards.
 //!
 //! The prompt itself is reported the same way. A run that starts before
 //! Claude Code takes it up is one Claude Code started on its own (after a
 //! background task ended), so its `result` is held like a waiting message's:
 //! the run that takes the prompt up ends the turn.
+
+use std::borrow::Cow;
 
 use serde_json::{Value, json};
 
@@ -44,29 +46,43 @@ impl SdkBridge {
         self.steers.retain(|steer| steer != uuid);
     }
 
-    /// Stopping with messages still waiting: withdraw the first, then the
-    /// rest one by one as each reply arrives, then interrupt. A prompt
-    /// stamped to be queued again goes first: once Claude Code has answered
-    /// its withdrawal, no interrupt puts it back.
-    pub(super) fn withdraw_steers(&mut self) -> Result<Value, BridgeError> {
-        let next = self
-            .requeuable
-            .take()
-            .or_else(|| self.steers.first().cloned());
-        let Some(uuid) = next else {
-            return self.control(json!({"subtype": "interrupt"}), Pending::Interrupt);
-        };
+    /// Stopping: withdraw the prompt Claude Code has not taken up, then each
+    /// waiting message as the reply before it arrives, then interrupt. Once
+    /// Claude Code has answered a withdrawal, no interrupt puts the message
+    /// back, and a build that reports no lifecycle never says the prompt ran.
+    pub(super) fn stop(&mut self) -> Result<Value, BridgeError> {
+        let stamped = self.requeuable.take().is_some();
+        match self
+            .waiting_prompt
+            .clone()
+            .filter(|_| stamped || self.lifecycles)
+        {
+            Some(uuid) => self.withdraw_message(uuid),
+            None => self.withdraw_steers(),
+        }
+    }
+
+    fn withdraw_steers(&mut self) -> Result<Value, BridgeError> {
+        match self.steers.first().cloned() {
+            Some(uuid) => self.withdraw_message(uuid),
+            None => self.control(json!({"subtype": "interrupt"}), Pending::Interrupt),
+        }
+    }
+
+    fn withdraw_message(&mut self, uuid: String) -> Result<Value, BridgeError> {
         self.control(
             json!({"subtype": "cancel_async_message", "message_uuid": uuid}),
             Pending::Withdraw(uuid),
         )
     }
 
-    /// Claude Code's reply to a withdrawal, whatever it was: the message no
-    /// longer waits on Sage, and the stop moves on.
+    /// Claude Code's reply to a withdrawal. A message no longer waits on Sage
+    /// whatever it was; the prompt only once Claude Code cancelled it, since
+    /// otherwise a run already took it up and the interrupt ends that run.
     /// A stop whose turn already ended goes no further, so a late reply never interrupts the next
     /// turn.
-    pub(super) fn withdrawn(&mut self, uuid: &str, inbound: &mut Inbound) {
+    pub(super) fn withdrawn(&mut self, uuid: &str, reply: Option<&Value>, inbound: &mut Inbound) {
+        let cancelled = reply.and_then(|reply| reply.get("cancelled")) == Some(&Value::Bool(true));
         if self.steers.iter().any(|steer| steer == uuid) {
             self.steers.retain(|steer| steer != uuid);
             inbound.steers.push((uuid.to_owned(), false));
@@ -74,9 +90,15 @@ impl SdkBridge {
         if !self.interrupted || self.prompt.is_none() {
             return;
         }
-        if let Some(held) = self.release_held() {
+        if cancelled && self.waiting_prompt.as_deref() == Some(uuid) {
+            self.waiting_prompt = None;
+            self.prompt_ended("cancelled", inbound);
+        } else if let Some(held) = self.release_held() {
             self.result(&held, inbound);
-        } else if let Ok(next) = self.withdraw_steers() {
+        }
+        if self.prompt.is_some()
+            && let Ok(next) = self.withdraw_steers()
+        {
             inbound.replies.push(next);
         }
     }
@@ -145,7 +167,8 @@ impl SdkBridge {
     }
 
     /// No run will take the prompt up. The turn ends here unless a run of
-    /// its own, or a waiting message's, still reports its end.
+    /// its own, or a waiting message's, still reports its end; a failure
+    /// stands as the turn's end even so.
     fn prompt_ended(&mut self, end: &str, inbound: &mut Inbound) {
         let failure = match end {
             "refused" => Some("Claude Code refused this message."),
@@ -157,22 +180,34 @@ impl SdkBridge {
         };
         if failure.is_some() {
             self.held = None;
+            self.prompt_failure = failure;
         }
         if !self.steers.is_empty() || (self.running && !self.declining) {
             return;
         }
-        let end = self.held.take().unwrap_or_else(|| {
-            failure.map_or(
-                Value::Null,
-                |message| json!({"type": "result", "is_error": true, "result": message}),
-            )
-        });
+        let end = self.held.take().unwrap_or(Value::Null);
         self.result(&end, inbound);
+    }
+
+    /// What a run's `result` ends the open turn with, if it ends it: for a
+    /// prompt Claude Code would not run, that failure, with the run's usage.
+    pub(super) fn turn_end<'a>(&mut self, sdk: &'a Value) -> Option<Cow<'a, Value>> {
+        if self.prompt.is_none() || self.holds_result(sdk) {
+            return None;
+        }
+        let Some(message) = self.prompt_failure.take() else {
+            return Some(Cow::Borrowed(sdk));
+        };
+        let mut end = json!({"type": "result", "is_error": true, "result": message});
+        if let Some(usage) = sdk.get("usage") {
+            end["usage"] = usage.clone();
+        }
+        Some(Cow::Owned(end))
     }
 
     /// While stopping, a message still waits only until its withdrawal is answered; if Claude Code
     /// took it up first, the interrupt that follows ends that run.
-    pub(super) fn holds_result(&mut self, sdk: &Value) -> bool {
+    fn holds_result(&mut self, sdk: &Value) -> bool {
         if !self.lifecycles || (self.steers.is_empty() && self.waiting_prompt.is_none()) {
             return false;
         }
@@ -192,6 +227,7 @@ impl SdkBridge {
         self.held = None;
         self.waiting_prompt = None;
         self.requeuable = None;
+        self.prompt_failure = None;
         for uuid in std::mem::take(&mut self.steers) {
             inbound.steers.push((uuid, false));
         }

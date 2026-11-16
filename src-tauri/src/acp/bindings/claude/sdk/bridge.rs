@@ -152,6 +152,9 @@ pub(super) struct SdkBridge {
     /// report them never says a prompt started, so no `result` is held
     /// waiting for one.
     lifecycles: bool,
+    /// Why Claude Code would not run the prompt, ending the turn once the
+    /// run still going reports its end.
+    prompt_failure: Option<&'static str>,
     /// A run's `result` that did not end the turn, for when no waiting
     /// message runs after all.
     held: Option<Value>,
@@ -195,6 +198,7 @@ impl SdkBridge {
             waiting_prompt: None,
             requeuable: None,
             lifecycles: false,
+            prompt_failure: None,
             held: None,
         }
     }

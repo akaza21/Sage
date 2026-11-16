@@ -63,7 +63,7 @@ impl SdkBridge {
             }
             "session/cancel" => {
                 self.interrupted = self.prompt.is_some();
-                self.withdraw_steers()
+                self.stop()
             }
             "session/set_mode" => {
                 let mode = text(params.get("modeId"))?;
