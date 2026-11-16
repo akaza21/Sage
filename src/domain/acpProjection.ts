@@ -227,6 +227,8 @@ export type AcpItem =
         agentStates?: readonly (readonly [string, string])[];
         /** Children settled after this row's turn ended with no known end time. */
         untimedAgents?: readonly string[];
+        /** Children shown in their recorded current state, which no other row's earlier report overrides. */
+        currentAgents?: readonly string[];
       }
     >;
 

@@ -193,3 +193,30 @@ it("keeps an unknown outcome apart from a stop", () => {
   ]);
   expect(result.map((agent) => agent.status)).toEqual(["unknown", "stopped"]);
 });
+
+it("keeps a resumed child working past an earlier wait that saw it complete", () => {
+  const spawn = (state: string, currentAgents: string[]) => {
+    const item = event(
+      "spawn",
+      "spawnAgent",
+      ["a"],
+      ["Reviewer"],
+      [["a", state]],
+    );
+    return { ...item, payload: { ...item.payload, currentAgents } } as AcpItem;
+  };
+  const waited = event(
+    "wait",
+    "wait",
+    ["a"],
+    ["Reviewer"],
+    [["a", "completed"]],
+  );
+  const native = event("native", "completed", [], [], [], "a");
+
+  expect(summary([spawn("completed", []), waited])[0].status).toBe("done");
+  expect(summary([spawn("running", ["a"]), waited])[0].status).toBe("working");
+  expect(summary([spawn("running", ["a"]), waited, native])[0].status).toBe(
+    "working",
+  );
+});

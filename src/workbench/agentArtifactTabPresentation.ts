@@ -72,7 +72,11 @@ export function recentResourceTurns(page: AcpChatPage): TurnProjection[] {
   return recentTurns.reverse();
 }
 
-/** The chat's recent subagents, one per spawn invocation, by their latest parent row. */
+/**
+ * The chat's recent subagents, one per spawn invocation, by their latest
+ * parent row. A spawn row that shows a child in its recorded current state
+ * fixes that status; later rows are earlier reports of the child.
+ */
 export function projectRecentAgents(
   page: AcpChatPage | null,
   chatId: string | null,
@@ -80,6 +84,7 @@ export function projectRecentAgents(
   if (!page || page.chatId !== chatId) return [];
   const agents = new Map<string, RecentAgent>();
   const latestInvocation = new Map<string, string>();
+  const current = new Set<string>();
   for (const turn of recentResourceTurns(page)) {
     if (
       page.currentSessionId !== undefined &&
@@ -110,8 +115,9 @@ export function projectRecentAgents(
                       agent.label === "Subagent" && label ? label : agent.label,
                   }
                 : {}),
-              status:
-                operation === "interrupted"
+              status: current.has(invocation)
+                ? agent.status
+                : operation === "interrupted"
                   ? "stopped"
                   : live && operation === "completed"
                     ? "done"
@@ -130,6 +136,8 @@ export function projectRecentAgents(
             .entries()) {
             const invocation = `${item.id}:${key}`;
             latestInvocation.set(key, invocation);
+            if (item.payload.currentAgents?.includes(key))
+              current.add(invocation);
             const state = states.find(([agent]) => agent === key)?.[1];
             const label =
               item.payload.receiverLabels[index]?.trim() || "Subagent";
@@ -147,7 +155,7 @@ export function projectRecentAgents(
         } else {
           for (const [key, state] of states) {
             const invocation = latestInvocation.get(key);
-            if (!invocation) continue;
+            if (!invocation || current.has(invocation)) continue;
             const agent = agents.get(invocation);
             const status = agentStatus(state);
             // A terminal child never returns to working without a new spawn.

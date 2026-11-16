@@ -64,9 +64,14 @@ export function safeCollaborationItem(
     payload.untimedAgents === undefined
       ? undefined
       : boundedTexts(payload.untimedAgents);
+  const currentAgents =
+    payload.currentAgents === undefined
+      ? undefined
+      : boundedTexts(payload.currentAgents);
   return !agentKeys ||
     !agentStates ||
     untimedAgents === null ||
+    currentAgents === null ||
     operation === undefined ||
     agentKey === undefined
     ? null
@@ -84,6 +89,7 @@ export function safeCollaborationItem(
           agentKeys,
           agentStates,
           untimedAgents,
+          currentAgents,
         },
       };
 }
