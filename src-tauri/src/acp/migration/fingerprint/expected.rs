@@ -379,5 +379,18 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
             .pragma_update(None, "user_version", capabilities)
             .db()?;
     }
+    let states = super::super::child_thread_states::VERSION;
+    if version >= states {
+        expected
+            .execute_batch(super::super::child_thread_states::SQL)
+            .db()?;
+        expected
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+                [states],
+            )
+            .db()?;
+        expected.pragma_update(None, "user_version", states).db()?;
+    }
     Ok(expected)
 }

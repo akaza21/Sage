@@ -723,7 +723,10 @@ it("the first child read waits until child notices are subscribed", async () => 
   expect(readChild).toHaveBeenCalledTimes(1);
 });
 
-/** A spawn row of a parent turn that has ended, never rewritten since. */
+/**
+ * A spawn row of a parent turn that has ended, closed with that turn and
+ * never rewritten since; the parent projection reports its child's state.
+ */
 function spawnFromEndedTurn(
   revision: string,
   turnState = "completed",
@@ -739,7 +742,7 @@ function spawnFromEndedTurn(
         state: turnState,
         items: turn.items.map((item) => ({
           ...item,
-          lifecycle: "started",
+          lifecycle: turnState === "running" ? "started" : "cancelled",
           projectId: "project",
           chatId: "chat",
           sessionId: "session",
@@ -771,8 +774,8 @@ it.each([
     rerender(view(spawnFromEndedTurn("8", "completed", state)));
     const done = screen.getByRole("region", { name: "Done subagents" });
     expect(within(done).getByText(shown)).toBeVisible();
-    // The parent rows hold only the spawn time, so no age is claimed.
-    expect(done.querySelector("time")).toBeNull();
+    // Only an outcome nothing recorded has no end time to age by.
+    expect(done.querySelector("time") === null).toBe(state === "unknown");
     expect(
       screen.queryByRole("region", { name: "Active subagents" }),
     ).toBeNull();
@@ -781,7 +784,8 @@ it.each([
 );
 
 it.each([
-  ["an ended", "completed", "completed", null],
+  ["an ended", "completed", "completed", "Worked for 25s"],
+  ["a lost", "completed", "unknown", null],
   ["a live", "running", "running", /Working for/],
 ])(
   "times the header of a child of %s parent turn by the state its parent projection reports",
@@ -802,7 +806,9 @@ it.each([
     const header = container.querySelector(".subagent-surface__duration");
     if (duration) {
       expect(header).toHaveTextContent(duration);
-      expect(header).toHaveClass("acp-live-shimmer");
+      expect(header?.classList.contains("acp-live-shimmer")).toBe(
+        agentState === "running",
+      );
     } else expect(header).toBeNull();
     expect(readChild).toHaveBeenCalledTimes(1);
   },

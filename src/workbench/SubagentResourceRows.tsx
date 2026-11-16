@@ -9,7 +9,6 @@ import {
   projectRecentAgents,
   type RecentAgent,
 } from "./agentArtifactTabPresentation";
-import { settledSubagents } from "./subagentLiveness";
 
 export type SubagentTime = { startedAt: number; updatedAt: number };
 
@@ -126,10 +125,7 @@ export function SubagentAvatar({ agentKey }: { agentKey: string }) {
 }
 
 export function SubagentList({ page }: { page: AcpChatPage }) {
-  const agents = useMemo(
-    () => settledSubagents(page, projectRecentAgents(page, page.chatId)),
-    [page],
-  );
+  const agents = useMemo(() => projectRecentAgents(page, page.chatId), [page]);
   const times = subagentTimes(page, agents);
   const active = agents.filter((agent) => liveAgent(agent.status));
   const done = agents.filter((agent) => !liveAgent(agent.status));
@@ -141,7 +137,8 @@ export function SubagentList({ page }: { page: AcpChatPage }) {
           {title} · {rows.length}
         </h2>
         {rows.map((agent, index) => {
-          const time = agent.endUnknown ? undefined : times.get(agent.id);
+          const time =
+            agent.status === "unknown" ? undefined : times.get(agent.id);
           const status =
             agent.status === "done" ? null : statusText[agent.status];
           const content = (

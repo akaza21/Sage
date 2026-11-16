@@ -198,10 +198,9 @@ export function AgentResourcesPopover({
           </button>
         ))}
       </section>
-      {page && scope && recentAgents.length > 0 ? (
+      {recentAgents.length > 0 ? (
         <Suspense fallback={agentCounts(recentAgents)}>
           <AgentTaskSubagentSummary
-            page={page}
             recentAgents={recentAgents}
             counts={agentCounts}
             onSelect={() => {

@@ -13,5 +13,6 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     operation_terminal_index::apply(connection)?;
     turn_undo_intent_indexes::apply(connection)?;
     imported_history::apply(connection)?;
-    session_capabilities::apply(connection)
+    session_capabilities::apply(connection)?;
+    child_thread_states::apply(connection)
 }

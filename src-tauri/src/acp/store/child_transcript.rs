@@ -1,5 +1,6 @@
 use rusqlite::{Connection, TransactionBehavior, params};
 
+use sage_acp_protocol::contract::ProjectionRevision;
 use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use sage_acp_protocol::codex_protocol::{ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES};
@@ -9,7 +10,7 @@ mod settled;
 pub(crate) use live::persist_live_item_in;
 pub(crate) use live::persist_turn_status_in;
 use live::{merge_snapshots, validate_bounds};
-pub(crate) use settled::project_settled_children;
+pub(crate) use settled::{project_settled_children, settle_lost_children};
 
 const MAX_SPAWN_SCAN: i64 = 256;
 
@@ -145,7 +146,7 @@ pub(crate) fn persist_snapshot(
     scope: &ChildTranscriptScope,
     snapshot: &ChildTranscriptSnapshot,
     now_millis: i64,
-) -> Result<(), ChildTranscriptStoreError> {
+) -> Result<Option<ProjectionRevision>, ChildTranscriptStoreError> {
     if snapshot.child_thread_id != scope.child_thread_id
         || snapshot.parent_thread_id != scope.parent_thread_id
     {
@@ -159,8 +160,18 @@ pub(crate) fn persist_snapshot(
     };
     validate_bounds(&merged)?;
     write_snapshot_in(&transaction, scope, &merged, now_millis, false)?;
+    let published = match settled::snapshot_state(&merged) {
+        Some(state) => settled::record_child_state(&transaction, scope, state, now_millis)
+            .map_err(|error| match error {
+                crate::acp::store::StoreError::Database(error) => {
+                    ChildTranscriptStoreError::Storage(error)
+                }
+                _ => ChildTranscriptStoreError::Corrupt,
+            })?,
+        None => None,
+    };
     transaction.commit()?;
-    Ok(())
+    Ok(published)
 }
 
 /// The chat's child projection epoch: the newest `updated_at` among its child

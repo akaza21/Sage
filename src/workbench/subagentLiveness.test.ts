@@ -1,11 +1,8 @@
 import { cleanup, renderHook, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 
-import type { AcpChatPage } from "../domain/acp";
-import { projectRecentAgents } from "./agentArtifactTabPresentation";
 import {
   resetSubagentLiveness,
-  settledSubagents,
   useChildReads,
   type ChildRead,
 } from "./subagentLiveness";
@@ -39,65 +36,6 @@ afterEach(() => {
   held.length = 0;
   vi.restoreAllMocks();
   resetSubagentLiveness();
-});
-
-/** One child per spawn row of an ended parent turn, as the backend projects it. */
-function page(rows: { key: string; state: string; lifecycle: string }[]) {
-  return {
-    projectId: "project",
-    chatId: "chat",
-    currentSessionId: "session",
-    sessions: [{ id: "session", runtimeEpoch: "2", capabilities: {} }],
-    turns: [
-      {
-        id: "turn",
-        sessionId: "session",
-        runtimeEpoch: "2",
-        state: "completed",
-        browserOperations: [],
-        items: rows.map(({ key, state, lifecycle }) => ({
-          id: `spawn-${key}`,
-          kind: "collaboration",
-          projectId: "project",
-          chatId: "chat",
-          sessionId: "session",
-          lifecycle,
-          payload: {
-            operation: "spawnAgent",
-            agentKeys: [key],
-            agentStates: [[key, state]],
-            receiverLabels: [key],
-          },
-        })),
-      },
-    ],
-  } as unknown as AcpChatPage;
-}
-
-const settled = (value: AcpChatPage) =>
-  settledSubagents(value, projectRecentAgents(value, "chat")).map(
-    ({ agentKey, status, endUnknown }) => [agentKey, status, endUnknown],
-  );
-
-it("takes each outcome from the parent projection, with no cache and no transcript read", () => {
-  expect(
-    settled(
-      page([
-        { key: "late", state: "completed", lifecycle: "started" },
-        { key: "lost", state: "unknown", lifecycle: "started" },
-        { key: "stopped", state: "interrupted", lifecycle: "started" },
-        { key: "rewritten", state: "errored", lifecycle: "completed" },
-        { key: "running", state: "running", lifecycle: "started" },
-      ]),
-    ),
-  ).toEqual([
-    ["late", "done", true],
-    ["lost", "unknown", true],
-    ["stopped", "stopped", true],
-    ["rewritten", "failed", undefined],
-    ["running", "working", undefined],
-  ]);
-  expect(reads).toEqual([]);
 });
 
 it("gives every waiting child a read while slow reads meet constant invalidations", async () => {

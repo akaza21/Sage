@@ -1,25 +1,19 @@
-import { useMemo, type ReactNode } from "react";
-import type { AcpChatPage } from "../domain/acpProjection";
+import type { ReactNode } from "react";
 import { liveAgent, type RecentAgent } from "./agentArtifactTabPresentation";
 import { SubagentResourceRows } from "./SubagentResourceRows";
-import { settledSubagents } from "./subagentLiveness";
 
 export function AgentTaskSubagentSummary({
-  page,
   recentAgents,
   counts,
   onSelect,
 }: {
-  page: AcpChatPage;
   recentAgents: readonly RecentAgent[];
   counts: (agents: readonly RecentAgent[], glyphs: ReactNode) => ReactNode;
   onSelect: () => void;
 }) {
-  const agents = useMemo(
-    () => settledSubagents(page, recentAgents),
-    [page, recentAgents],
-  );
-  const working = agents.filter((agent) => liveAgent(agent.status)).length;
+  const working = recentAgents.filter((agent) =>
+    liveAgent(agent.status),
+  ).length;
   return (
     <section
       aria-label="Subagents"
@@ -29,7 +23,7 @@ export function AgentTaskSubagentSummary({
         Subagents
       </strong>
       {counts(
-        agents,
+        recentAgents,
         <span className="agent-task-header__agent-glyphs" aria-hidden="true">
           {Array.from({ length: Math.min(working, 3) }, (_, index) => (
             <span
@@ -41,7 +35,7 @@ export function AgentTaskSubagentSummary({
           ))}
         </span>,
       )}
-      <SubagentResourceRows agents={agents} onSelect={onSelect} />
+      <SubagentResourceRows agents={recentAgents} onSelect={onSelect} />
     </section>
   );
 }

@@ -8,7 +8,6 @@ import {
   type ChildTranscript,
   type ChildTranscriptRequest,
 } from "../services/acpChildTranscript";
-import { liveAgent, type RecentAgent } from "./agentArtifactTabPresentation";
 
 /** Latest child epoch; desktop reads wait for listener attachment to avoid gaps. Non-desktop reads never wait. */
 export function useChildEpoch(page: AcpChatPage): number | null {
@@ -262,27 +261,4 @@ export function resetSubagentLiveness() {
   watches.clear();
   queued.clear();
   reading = null;
-}
-
-/**
- * Marks the subagents the parent projection settled after their spawn turn
- * ended. Their spawn row was never rewritten and still reads as started, so
- * no parent row holds the time they ended.
- */
-export function settledSubagents(
-  page: AcpChatPage,
-  agents: readonly RecentAgent[],
-): RecentAgent[] {
-  const started = new Set<string>();
-  for (const turn of page.turns)
-    for (const item of turn.items)
-      if (item.kind === "collaboration" && item.lifecycle === "started")
-        started.add(item.id);
-  return agents.map((agent) =>
-    !liveAgent(agent.status) &&
-    agent.agentKey &&
-    started.has(agent.id.slice(0, -agent.agentKey.length - 1))
-      ? { ...agent, endUnknown: true }
-      : agent,
-  );
 }
