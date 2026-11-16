@@ -5,6 +5,7 @@ use super::{
 };
 use crate::acp::runtime::terminal_detail;
 
+mod harness_turn;
 mod shape;
 mod teardown;
 use shape::IngestMode;
@@ -141,8 +142,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         Ok(accepted)
     }
 
+    /// Whether stdout this Turn still reads is buffered. Once the harness
+    /// has started its next Turn, the rest is that Turn's.
     pub(crate) fn has_pending_stdout_input(&self) -> bool {
-        self.decoder.has_pending_input()
+        !self.next_turn_started && self.decoder.has_pending_input()
     }
 
     pub(crate) async fn flush_deferred_if_needed(
@@ -171,6 +174,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     fn decode_chunk(&mut self, chunk: &[u8]) -> Result<Option<Frame>, AdapterPumpError> {
         self.ensure_live()?;
+        if self.next_turn_started {
+            return Err(AdapterPumpError::Intent);
+        }
         self.configure_oversize_mode();
         let was_aligned = self.decoder_frame_aligned;
         let frame = self.decoder.push_chunk(chunk).map_err(|_| {
@@ -188,6 +194,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     fn decode_pending(&mut self) -> Result<Option<Frame>, AdapterPumpError> {
         self.ensure_live()?;
+        if self.next_turn_started {
+            return Ok(None);
+        }
         self.configure_oversize_mode();
         let frame = self.decoder.drain_pending().map_err(|_| {
             self.decoder_frame_aligned = false;
@@ -202,6 +211,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
 
     fn decode_finish(&mut self) -> Result<Option<Frame>, AdapterPumpError> {
         self.ensure_live()?;
+        if self.next_turn_started {
+            return Ok(None);
+        }
         let frame = self.decoder.finish().map_err(|_| {
             self.decoder_frame_aligned = false;
             AdapterPumpError::Frame
@@ -328,6 +340,12 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 .await;
         }
         for event in events {
+            if let AdapterEvent::TurnStarted { id } = &event {
+                if let Err(error) = self.accept_turn_started(id, prospective_terminal) {
+                    return self.fail_deferred_protocol(mode, error).await;
+                }
+                continue;
+            }
             if let AdapterEvent::SteerResponse {
                 request_id,
                 accepted,

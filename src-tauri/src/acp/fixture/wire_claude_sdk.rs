@@ -99,7 +99,13 @@ pub(super) fn await_request(
         };
         if observed == expected {
             if expected == "user" {
-                receive(&frame, state, kind == "claudeSdkFollowUp", prompt_text)?;
+                let follow_up = kind == "claudeSdkFollowUp";
+                receive(&frame, state, follow_up, prompt_text)?;
+                if let Some(uuid) = frame["uuid"].as_str().filter(|_| !follow_up) {
+                    // Claude Code takes up a prompt that finds it idle at once.
+                    emit_command_lifecycle(uuid, "queued", state, output)?;
+                    emit_command_lifecycle(uuid, "started", state, output)?;
+                }
             }
             return Ok(());
         }
@@ -208,7 +214,8 @@ fn initialize() -> Value {
 
 /// Claude Code's `command_lifecycle` frame for the waiting follow-up: it is
 /// `queued` on arrival, `started` when a run takes it up, and `completed`
-/// or `cancelled` once it no longer waits.
+/// or `cancelled` once it no longer waits. A prompt is reported the same
+/// way, `queued` and at once `started`.
 fn emit_lifecycle(
     lifecycle: &str,
     state: &mut WireState,
@@ -236,6 +243,16 @@ fn emit_lifecycle(
         }
         _ => return Err(FixtureError::InvalidArguments),
     };
+    emit_command_lifecycle(&uuid, lifecycle, state, output)
+}
+
+fn emit_command_lifecycle(
+    uuid: &str,
+    lifecycle: &str,
+    state: &mut WireState,
+    output: &mut impl Write,
+) -> Result<(), FixtureError> {
+    let sdk = &mut state.claude_sdk;
     sdk.lifecycle_events += 1;
     let event = format!("fixture-lifecycle-{}", sdk.lifecycle_events);
     let session = sdk

@@ -11,17 +11,14 @@ pub(super) fn queue() -> Result<ReservedQueue<AdapterEgress>, AdapterPumpError> 
     .map_err(|_| AdapterPumpError::Backpressure)
 }
 
-/// Idle ingestion may continue an admitted native RPC or cancel a dialog;
+/// Idle ingestion writes only what `EgressToken::idle_writable` admits;
 /// ordinary requests still require their own command admission.
 pub(crate) fn write_idle_egress(
     adapter: &mut impl HarnessAdapter,
     egress: Vec<AdapterEgress>,
     transport: &mut impl EgressTransport,
 ) -> Result<(), AdapterPumpError> {
-    if egress.iter().any(|value| {
-        value.token().cancelled_permission_request().is_none()
-            && !value.token().is_native_rpc_continuation()
-    }) {
+    if egress.iter().any(|value| !value.token().idle_writable()) {
         return Err(AdapterPumpError::Frame);
     }
     for value in egress {

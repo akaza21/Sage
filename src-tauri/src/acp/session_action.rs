@@ -278,12 +278,15 @@ mod tests {
         prompt.action = Some(action.clone());
         let connection = rusqlite::Connection::open_in_memory().unwrap();
         connection
-            .execute_batch("CREATE TABLE items(turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER)")
+            .execute_batch(
+                "CREATE TABLE items(session_id TEXT,turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER);
+                 CREATE TABLE session_facts(session_id TEXT,turn_id TEXT,kind TEXT);",
+            )
             .unwrap();
         let payload = json!({"kind":"text","payload":prompt.user_payload()}).to_string();
         connection
             .execute(
-                "INSERT INTO items VALUES ('turn',0,'text',?1,?2)",
+                "INSERT INTO items VALUES ('session','turn',0,'text',?1,?2)",
                 rusqlite::params![payload, payload.len() as i64],
             )
             .unwrap();
@@ -302,14 +305,17 @@ mod tests {
     fn a_stored_action_this_build_does_not_run_still_loads_as_stored() {
         let connection = rusqlite::Connection::open_in_memory().unwrap();
         connection
-            .execute_batch("CREATE TABLE items(turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER)")
+            .execute_batch(
+                "CREATE TABLE items(session_id TEXT,turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER);
+                 CREATE TABLE session_facts(session_id TEXT,turn_id TEXT,kind TEXT);",
+            )
             .unwrap();
         let payload = json!({"kind":"text","payload":{"role":"user","text":"/review main",
             "sessionAction":{"kind":"review","target":{"kind":"baseBranch","branch":"main"}}}})
         .to_string();
         connection
             .execute(
-                "INSERT INTO items VALUES ('turn',0,'text',?1,?2)",
+                "INSERT INTO items VALUES ('session','turn',0,'text',?1,?2)",
                 rusqlite::params![payload, payload.len() as i64],
             )
             .unwrap();

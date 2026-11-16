@@ -1,5 +1,5 @@
-//! Requests outside a turn or beyond the session's card limit are declined here, before the
-//! session sees them.
+//! Requests beyond the session's card limit are declined here, before the session sees them. A
+//! request with no turn open (a background subagent's) opens one once Sage has prompted.
 
 use serde_json::{Value, json};
 
@@ -30,7 +30,7 @@ const EXIT_PLAN: [(&str, &str, &str, &str); 2] = [
 const DECLINED: &str = "The user declined this tool use.";
 const KEEP_PLANNING: &str = "The user chose to keep planning.";
 const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
-const NO_TURN: &str = "The user's turn has ended, so no one can approve this now.";
+const NO_TURN: &str = "No turn has started yet, so no one can approve this now.";
 /// Questions beyond what a Sage card shows; declining with this reason makes
 /// Claude ask in its reply instead.
 const QUESTIONS_UNSUPPORTED: &str = "Sage cannot show these questions. \
@@ -47,8 +47,12 @@ impl SdkBridge {
             .get("tool_name")
             .and_then(Value::as_str)
             .ok_or(BridgeError::Frame)?;
-        if self.prompt.is_none() {
+        if !self.prompted {
             inbound.replies.push(decision(request_id, deny(NO_TURN)));
+            return Ok(());
+        }
+        if self.declining {
+            inbound.replies.push(decision(request_id, deny(DECLINED)));
             return Ok(());
         }
         if self.permissions.len() + self.answering.len() >= OPEN_APPROVALS {
@@ -119,6 +123,10 @@ impl SdkBridge {
             });
         }
         options.push(json!({"optionId": REJECT, "name": "No", "kind": "reject_once"}));
+        if self.prompt.is_none() {
+            inbound.started = true;
+            self.approval_turn = true;
+        }
         self.next_permission += 1;
         self.permissions.insert(
             self.next_permission,
@@ -147,6 +155,24 @@ impl SdkBridge {
             }
             keep
         });
+    }
+
+    /// Declines every open approval: Claude Code still waits on them.
+    pub(super) fn decline_open(&mut self, inbound: &mut Inbound) {
+        let wires = self.deny_open(inbound);
+        inbound.withdrawn.extend(wires);
+    }
+
+    /// Declines every open approval; returns their cards' wire ids.
+    pub(super) fn deny_open(&mut self, inbound: &mut Inbound) -> Vec<u64> {
+        let mut wires = Vec::with_capacity(self.permissions.len());
+        for (wire, permission) in std::mem::take(&mut self.permissions) {
+            wires.push(wire);
+            inbound
+                .replies
+                .push(decision(&permission.request_id, deny(DECLINED)));
+        }
+        wires
     }
 
     pub(super) fn withdraw_open(&mut self, inbound: &mut Inbound) {

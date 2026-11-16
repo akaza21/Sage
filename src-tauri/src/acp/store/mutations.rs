@@ -33,6 +33,8 @@ pub(crate) enum StoreMutation {
     LookupTurn(PrepareTurnCommand),
     LookupActiveTurn(TurnMutationCommand),
     PrepareTurn(PrepareTurnCommand),
+    /// A Turn the harness started on its own; `turn_id` names the new Turn.
+    OpenHarnessTurn(TurnMutationCommand),
     BeginSend(TurnMutationCommand),
     BeginCancel(BeginCancelCommand),
     ObserveSend {
@@ -97,6 +99,9 @@ pub(super) fn standalone_commit(
     let result = match mutation {
         StoreMutation::BeginCancel(command) => {
             StoreMutationResult::Turn(super::begin_cancel(connection, command.clone())?)
+        }
+        StoreMutation::OpenHarnessTurn(command) => {
+            StoreMutationResult::Turn(super::harness_turn::open_harness_turn(connection, command)?)
         }
         StoreMutation::StartSession(command) => {
             StoreMutationResult::Session(super::start_session(connection, command.clone())?)

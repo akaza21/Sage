@@ -51,6 +51,7 @@ fn runtime() -> ClaudeSdkRuntime {
         usage: Arc::default(),
         sent: Vec::new(),
         steering: Default::default(),
+        started: None,
         launch: None,
         binding: Arc::new(AdmittedClaudeSdkBinding::for_test()),
         root: None,
@@ -1157,4 +1158,267 @@ fn a_command_longer_than_a_tool_label_keeps_the_session_and_clips_its_label() {
     assert!(COMMAND.starts_with(label.trim_end_matches('\u{2026}')));
     assert!(label.ends_with('\u{2026}'));
     assert_eq!(input_summary, Some(COMMAND));
+}
+
+#[test]
+fn a_run_claude_code_starts_after_a_background_task_becomes_a_turn_sage_names() {
+    let mut runtime = prompted();
+    let ended = feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    assert!(turn_ended(&ended));
+
+    feed(
+        &mut runtime,
+        json!({"type":"system","subtype":"task_notification","task_id":"a1",
+            "status":"completed","output_file":"","summary":"Done"}),
+    );
+    let started = feed(
+        &mut runtime,
+        json!({"type":"system","subtype":"init","session_id":"s"}),
+    );
+    let [AdapterEvent::TurnStarted { id }] = &started[..] else {
+        panic!("a started turn: {started:?}");
+    };
+    assert!(id.turn_id.is_none() && id.turn_client_message_id.is_none());
+    assert!(
+        runtime
+            .ingest(
+                &frame(json!({"type":"result","subtype":"success","usage":{}})),
+                &Mapper
+            )
+            .is_err(),
+        "nothing more is read before Sage opens the turn"
+    );
+
+    let client = RequiredText::new("client", "turn-harness").unwrap();
+    let (adopted, egress) = runtime
+        .adopt_turn(client.clone(), &Mapper)
+        .unwrap()
+        .into_parts();
+    assert!(egress.is_empty());
+    assert!(!turn_ended(&adopted));
+
+    let mut events = feed(
+        &mut runtime,
+        json!({"type":"stream_event","parent_tool_use_id":null,"event":{
+            "type":"content_block_delta","index":0,
+            "delta":{"type":"text_delta","text":"The agent found it."}}}),
+    );
+    events.extend(feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+            "usage":{"input_tokens":3,"output_tokens":4}}),
+    ));
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Item { id, payload: NormalizedPayload::Text { text }, .. }
+            if text.as_str() == "The agent found it."
+                && id.turn_client_message_id.as_ref() == Some(&client)
+    )));
+    assert!(matches!(
+        events.last(),
+        Some(AdapterEvent::Turn { id, state: TurnState::Completed })
+            if id.turn_client_message_id.as_ref() == Some(&client)
+    ));
+}
+
+#[test]
+fn an_approval_a_background_subagent_asks_with_no_turn_open_starts_one() {
+    let mut runtime = prompted();
+    feed(
+        &mut runtime,
+        json!({"type":"result","subtype":"success","is_error":false,"usage":{}}),
+    );
+    let ask = runtime
+        .ingest(
+            &frame(
+                json!({"type":"control_request","request_id":"r7","request":{
+                "subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"toolu_sub",
+                "input":{"command":"ls"}}}),
+            ),
+            &Mapper,
+        )
+        .unwrap();
+    assert!(ask.egress().is_empty(), "nothing is declined");
+    assert!(matches!(ask.events(), [AdapterEvent::TurnStarted { .. }]));
+    let (events, _) = runtime
+        .adopt_turn(
+            RequiredText::new("client", "turn-harness").unwrap(),
+            &Mapper,
+        )
+        .unwrap()
+        .into_parts();
+    assert!(
+        events
+            .iter()
+            .any(|event| matches!(event, AdapterEvent::PermissionRequest { .. }))
+    );
+}
+
+fn run_start() -> Value {
+    json!({"type":"system","subtype":"init","session_id":"s"})
+}
+
+fn finished() -> Value {
+    json!({"type":"result","subtype":"success","is_error":false,"usage":{}})
+}
+
+#[test]
+fn a_run_claude_code_starts_outside_the_chats_mode_is_interrupted_and_read_unseen() {
+    let mut runtime = prompted();
+    feed(&mut runtime, finished());
+    feed(
+        &mut runtime,
+        json!({"type":"system","subtype":"status","status":null,"permissionMode":"acceptEdits"}),
+    );
+    let (events, egress) = runtime
+        .ingest(&frame(run_start()), &Mapper)
+        .unwrap()
+        .into_parts();
+    assert!(matches!(events[..], [AdapterEvent::Absorbed]), "{events:?}");
+    let [interrupt] = &egress[..] else {
+        panic!("one interrupt, not {}", egress.len());
+    };
+    assert!(interrupt.token().idle_writable());
+    let sdk: Value = serde_json::from_slice(interrupt.frame().payload()).unwrap();
+    assert_eq!(sdk["request"]["subtype"], "interrupt");
+    let hidden = feed(
+        &mut runtime,
+        json!({"type":"stream_event","parent_tool_use_id":null,"event":{
+            "type":"content_block_delta","index":0,
+            "delta":{"type":"text_delta","text":"Hidden"}}}),
+    );
+    assert!(matches!(hidden[..], [AdapterEvent::Absorbed]), "{hidden:?}");
+    assert!(matches!(
+        feed(&mut runtime, finished())[..],
+        [AdapterEvent::Absorbed]
+    ));
+
+    feed(
+        &mut runtime,
+        json!({"type":"system","subtype":"status","status":null,"permissionMode":"default"}),
+    );
+    assert!(matches!(
+        feed(&mut runtime, run_start())[..],
+        [AdapterEvent::TurnStarted { .. }]
+    ));
+}
+
+#[test]
+fn a_started_turn_sage_refuses_is_interrupted_by_a_frame_written_between_turns() {
+    let mut runtime = prompted();
+    feed(&mut runtime, finished());
+    assert!(matches!(
+        feed(&mut runtime, run_start())[..],
+        [AdapterEvent::TurnStarted { .. }]
+    ));
+    let egress = runtime.decline_turn().unwrap();
+    let [interrupt] = &egress[..] else {
+        panic!("one interrupt, not {}", egress.len());
+    };
+    assert!(interrupt.token().idle_writable());
+    assert!(
+        runtime
+            .adopt_turn(RequiredText::new("client", "late").unwrap(), &Mapper)
+            .is_err()
+    );
+    assert!(matches!(
+        feed(&mut runtime, finished())[..],
+        [AdapterEvent::Absorbed]
+    ));
+}
+
+#[test]
+fn a_turn_opened_for_an_approval_ends_once_its_answer_is_delivered() {
+    let mut runtime = prompted();
+    feed(&mut runtime, finished());
+    let asked = feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"r7","request":{
+            "subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"toolu_sub",
+            "input":{"command":"ls"}}}),
+    );
+    assert!(matches!(asked[..], [AdapterEvent::TurnStarted { .. }]));
+    let client = RequiredText::new("client", "turn-approval").unwrap();
+    let (events, _) = runtime
+        .adopt_turn(client.clone(), &Mapper)
+        .unwrap()
+        .into_parts();
+    let request_id = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::PermissionRequest {
+                external_request_id,
+                ..
+            } => Some(external_request_id.clone()),
+            _ => None,
+        })
+        .expect("approval card");
+    let answer = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
+            decision: sage_acp_protocol::permissions::PermissionDecision::AllowOnce,
+        })
+        .unwrap();
+    let token = answer.into_token();
+    runtime
+        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .unwrap();
+    assert!(runtime.answers_delivered(&Mapper).unwrap().is_none());
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .unwrap();
+
+    let (events, _) = runtime
+        .answers_delivered(&Mapper)
+        .unwrap()
+        .expect("the approval's turn ends")
+        .into_parts();
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Turn { id, state: TurnState::Completed }
+            if id.turn_client_message_id.as_ref() == Some(&client)
+    )));
+    assert!(matches!(
+        feed(&mut runtime, run_start())[..],
+        [AdapterEvent::TurnStarted { .. }]
+    ));
+}
+
+#[test]
+fn a_run_claude_code_starts_runs_in_the_mode_sage_last_selected() {
+    let mut runtime = prompted();
+    feed(&mut runtime, finished());
+    assert_eq!(runtime.harness_turn_mode(), None, "no run has started");
+    assert!(matches!(
+        feed(&mut runtime, run_start())[..],
+        [AdapterEvent::TurnStarted { .. }]
+    ));
+    assert_eq!(runtime.harness_turn_mode(), Some("default"));
+}
+
+#[test]
+fn a_turn_opened_for_an_approval_claude_code_withdraws_ends_in_the_same_read() {
+    let mut runtime = prompted();
+    feed(&mut runtime, finished());
+    feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"r7","request":{
+            "subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"toolu_sub",
+            "input":{"command":"ls"}}}),
+    );
+    let client = RequiredText::new("client", "turn-approval").unwrap();
+    runtime.adopt_turn(client.clone(), &Mapper).unwrap();
+
+    let events = feed(
+        &mut runtime,
+        json!({"type":"control_cancel_request","request_id":"r7"}),
+    );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Turn { id, state: TurnState::Completed }
+            if id.turn_client_message_id.as_ref() == Some(&client)
+    )));
 }

@@ -3,6 +3,10 @@ use serde_json::{Value, json};
 use super::{BridgeError, Pending, SdkBridge};
 use crate::acp::bindings::claude::sdk::config::{EFFORT_ID, MODE_ID, MODEL_ID, SessionSettings};
 
+/// Claude Code reads at most ten seconds from the start of the model request
+/// that carries the prompt.
+const REQUEUE_WITHIN_MS: u64 = 10_000;
+
 impl SdkBridge {
     /// Every ACP frame maps to exactly one SDK frame, so delivery outcomes stay exact.
     pub(in crate::acp::bindings::claude::sdk) fn outbound(
@@ -31,7 +35,9 @@ impl SdkBridge {
             "session/prompt" if self.prompt.is_none() => {
                 let content = prompt_content(params.get("prompt"))?;
                 self.prompt = Some(id);
+                self.prompted = true;
                 self.interrupted = false;
+                self.requeuable = None;
                 let mut user = json!({
                     "type": "user",
                     "session_id": self.session_id,
@@ -44,6 +50,13 @@ impl SdkBridge {
                     .and_then(Value::as_str)
                     .and_then(super::controls::message_uuid)
                 {
+                    self.waiting_prompt = Some(uuid.clone());
+                    // Sage's interrupt of the run it declines may stop the run
+                    // that takes this prompt in; Claude Code then queues it again.
+                    if self.declining && self.requeue {
+                        user["requeue_if_interrupted_within_ms"] = REQUEUE_WITHIN_MS.into();
+                        self.requeuable = Some(uuid.clone());
+                    }
                     user["uuid"] = uuid.into();
                 }
                 Ok(user)

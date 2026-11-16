@@ -82,6 +82,16 @@ pub(super) fn turn_access_mode(
     })
 }
 
+/// The harness session mode a Turn the harness starts on its own in
+/// `owner`'s session may run in: the one the access a prompt there would
+/// run under maps to now. None when that cannot be read, or the binding
+/// does not carry access in session modes.
+pub(crate) fn harness_turn_mode(state: &AppState, owner: &RuntimeOwner) -> Option<&'static str> {
+    let binding = session_routes::durable_binding_id(state, &owner.session_id).ok()?;
+    let mode = turn_access_mode(state, binding.as_str(), &owner.session_id).ok()?;
+    session_mode_for_binding(state.acp.binding_registry(), binding.as_str(), mode)
+}
+
 /// The chat's own access of `session_id`, after it took over what it
 /// inherits: every read of a session's access, for the composer and for a
 /// prompt alike, goes through here, so both see the same mode.

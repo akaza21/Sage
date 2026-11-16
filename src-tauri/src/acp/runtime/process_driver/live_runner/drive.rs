@@ -3,7 +3,7 @@ use std::sync::Weak;
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     process::TreeExit,
-    runtime::{HostError, NonfatalRefusal, ProjectIntentAuthority, RuntimeHost},
+    runtime::{HostError, ProjectIntentAuthority, RuntimeHost},
 };
 
 use super::{
@@ -13,7 +13,7 @@ use super::{
     closing,
     configuration::{
         PendingConfig, fail_pending_config, handle_worker, pending_deadline_millis,
-        settle_pending_config,
+        settle_idle_refusal, settle_pending_config,
     },
     failed, failed_with_exit, process_tail, terminal,
 };
@@ -60,6 +60,7 @@ where
 {
     let mut notified = None;
     let mut pending = None;
+    let mut started = None;
     let mut pending_config: Option<PendingConfig> = None;
     let mut eof_deadline_millis = None;
     loop {
@@ -74,6 +75,25 @@ where
         }
         if let FirstTurnWorkerState::Active(active) = &mut state {
             active.settle_steer();
+        }
+        state = match state {
+            FirstTurnWorkerState::Reusable(parts) if parts.turn_started() => {
+                match super::harness_turn::open(parts, context, &host, &mut pending_config).await {
+                    Ok((state, notification)) => {
+                        started = notification;
+                        state
+                    }
+                    Err(exit) => {
+                        fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                        return exit;
+                    }
+                }
+            }
+            state => state,
+        };
+        if super::harness_turn::settle(&mut started).is_err() {
+            fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+            return failed(state);
         }
         let native_reply = if pending_config
             .as_ref()
@@ -126,36 +146,14 @@ where
                             RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
                             None,
                         ),
-                        Err(crate::acp::runtime::AdapterPumpError::Refused(
-                            NonfatalRefusal::ConfigMutation,
-                        )) => {
-                            let Some(config) = pending_config.take() else {
-                                return failed(FirstTurnWorkerState::Idle(idle));
-                            };
-                            config.complete(Err(HostError::ConfigMutationRejected));
+                        Err(crate::acp::runtime::AdapterPumpError::Refused(refusal))
+                            if settle_idle_refusal(&mut pending_config, refusal) =>
+                        {
                             (
                                 RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
                                 None,
                             )
                         }
-                        Err(crate::acp::runtime::AdapterPumpError::Refused(
-                            NonfatalRefusal::GoalMutation,
-                        )) => {
-                            let Some(config) = pending_config.take() else {
-                                return failed(FirstTurnWorkerState::Idle(idle));
-                            };
-                            config.complete(Err(HostError::GoalMutationRejected));
-                            (
-                                RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
-                                None,
-                            )
-                        }
-                        Err(crate::acp::runtime::AdapterPumpError::Refused(
-                            NonfatalRefusal::SignIn,
-                        )) => (
-                            RunnerAction::Continue(FirstTurnWorkerState::Idle(idle)),
-                            None,
-                        ),
                         Err(_) => {
                             fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                             return failed(FirstTurnWorkerState::Idle(idle));
@@ -227,36 +225,14 @@ where
                             RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
                             None,
                         ),
-                        Err(crate::acp::runtime::AdapterPumpError::Refused(
-                            NonfatalRefusal::ConfigMutation,
-                        )) => {
-                            let Some(config) = pending_config.take() else {
-                                return failed(FirstTurnWorkerState::Reusable(parts));
-                            };
-                            config.complete(Err(HostError::ConfigMutationRejected));
+                        Err(crate::acp::runtime::AdapterPumpError::Refused(refusal))
+                            if settle_idle_refusal(&mut pending_config, refusal) =>
+                        {
                             (
                                 RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
                                 None,
                             )
                         }
-                        Err(crate::acp::runtime::AdapterPumpError::Refused(
-                            NonfatalRefusal::GoalMutation,
-                        )) => {
-                            let Some(config) = pending_config.take() else {
-                                return failed(FirstTurnWorkerState::Reusable(parts));
-                            };
-                            config.complete(Err(HostError::GoalMutationRejected));
-                            (
-                                RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
-                                None,
-                            )
-                        }
-                        Err(crate::acp::runtime::AdapterPumpError::Refused(
-                            NonfatalRefusal::SignIn,
-                        )) => (
-                            RunnerAction::Continue(FirstTurnWorkerState::Reusable(parts)),
-                            None,
-                        ),
                         Err(_) => {
                             fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                             return failed(FirstTurnWorkerState::Reusable(parts));

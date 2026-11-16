@@ -1,6 +1,8 @@
 use super::*;
 use sage_acp_protocol::intent::session_event::PendingSessionEvents;
 
+mod harness_turn;
+
 pub(crate) struct CompletedPumpParts<A, J, R> {
     pub(super) adapter: A,
     pub(super) journal: J,
@@ -10,6 +12,9 @@ pub(crate) struct CompletedPumpParts<A, J, R> {
     terminal_cursor: AdapterTurnCursor,
     next_synthetic_item: u64,
     pub(super) idle_decoder: IncrementalFrameDecoder,
+    /// The harness started a Turn on its own; the stdout after the frame
+    /// that started it waits in `idle_decoder` until that Turn is open.
+    pub(super) turn_started: bool,
 }
 
 type PumpHandoff<T, P> = Result<T, Box<(P, AdapterPumpError)>>;
@@ -34,6 +39,9 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         now_millis: i64,
         transport: &mut impl super::EgressTransport,
     ) -> Result<(), AdapterPumpError> {
+        if self.turn_started {
+            return Err(AdapterPumpError::Intent);
+        }
         if self.adapter.child_read_pending() {
             self.idle_decoder.enable_recoverable_oversize();
         } else {
@@ -43,10 +51,21 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         // after the turn cannot have its oversized answer dropped.
         self.idle_decoder
             .set_oversize_skip(self.adapter.skips_oversize_frames());
-        let mut frame = self
+        let frame = self
             .idle_decoder
             .push_chunk(chunk)
             .map_err(|_| AdapterPumpError::Frame)?;
+        self.read_idle_frames(frame, chunk.len(), now_millis, transport)
+            .await
+    }
+
+    pub(super) async fn read_idle_frames(
+        &mut self,
+        mut frame: Option<Frame>,
+        chunk_bytes: usize,
+        now_millis: i64,
+        transport: &mut impl super::EgressTransport,
+    ) -> Result<(), AdapterPumpError> {
         let mut nonfatal_refusal = None;
         // Session events in one chunk coalesce into one commit and at most
         // one projection notice, so a burst of progress costs one write.
@@ -69,10 +88,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 match batch {
                     Ok(batch) => {
                         let (events, egress) = batch.into_parts();
-                        if egress.iter().any(|value| {
-                            value.token().cancelled_permission_request().is_none()
-                                && !value.token().is_native_rpc_continuation()
-                        }) {
+                        if egress.iter().any(|value| !value.token().idle_writable()) {
                             return Err(AdapterPumpError::Frame);
                         }
                         for event in events {
@@ -151,6 +167,11 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                                         session_events.push(event);
                                     }
                                 }
+                                AdapterEvent::TurnStarted { id }
+                                    if self.session_intent.owns(&id) =>
+                                {
+                                    self.turn_started = true;
+                                }
                                 AdapterEvent::IgnoredLate
                                 | AdapterEvent::IgnoredDuplicate
                                 | AdapterEvent::Absorbed => {}
@@ -165,7 +186,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                     Err(error) => return Err(AdapterPumpError::Adapter(error)),
                 }
             }
-            if !self.idle_decoder.has_pending_input() {
+            if self.turn_started || !self.idle_decoder.has_pending_input() {
                 break;
             }
             frame = self
@@ -173,7 +194,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 .drain_pending()
                 .map_err(|_| AdapterPumpError::Frame)?;
         }
-        self.commit_session_events(session_events, chunk.len(), now_millis)
+        self.commit_session_events(session_events, chunk_bytes, now_millis)
             .await?;
         nonfatal_refusal.map_or(Ok(()), Err)
     }
@@ -237,6 +258,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                 child_projection_epoch,
             });
     }
+
     pub(crate) fn idle_frame_aligned(&self) -> bool {
         self.idle_decoder.is_frame_aligned()
     }
@@ -256,9 +278,19 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         self,
         active_turn: ActiveTurnIntent,
     ) -> PumpHandoff<AdapterPump<A, J, R>, Self> {
-        if !self.idle_decoder.is_frame_aligned() || self.adapter.config_pending() {
+        if self.turn_started
+            || !self.idle_decoder.is_frame_aligned()
+            || self.adapter.config_pending()
+        {
             return Err(Box::new((self, AdapterPumpError::Intent)));
         }
+        self.rebind(active_turn)
+    }
+
+    pub(super) fn rebind(
+        self,
+        active_turn: ActiveTurnIntent,
+    ) -> PumpHandoff<AdapterPump<A, J, R>, Self> {
         let intent = self.session_intent.clone().bind_turn(active_turn);
         let admission = match AdapterPump::<A, J, R>::admit(&intent) {
             Ok(admission) => admission,
@@ -277,6 +309,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
                         terminal_cursor: self.terminal_cursor,
                         next_synthetic_item: self.next_synthetic_item,
                         idle_decoder: self.idle_decoder,
+                        turn_started: self.turn_started,
                     },
                     AdapterPumpError::Journal(error),
                 )));
@@ -292,6 +325,8 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
             admission,
         );
         pump.next_synthetic_item = next_synthetic_item;
+        pump.decoder_frame_aligned = self.idle_decoder.is_frame_aligned();
+        pump.decoder = self.idle_decoder;
         Ok(pump)
     }
 }
@@ -343,7 +378,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             && self.terminal.is_some()
             && self.pending.is_empty()
             && self.pending_permissions.is_empty()
-            && self.decoder_frame_aligned
+            && (self.decoder_frame_aligned || self.next_turn_started)
             && data_empty
             && control_empty
     }
@@ -374,6 +409,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             terminal_cursor,
             next_synthetic_item: self.next_synthetic_item,
             idle_decoder: self.decoder,
+            turn_started: self.next_turn_started,
         })
     }
 }

@@ -229,7 +229,7 @@ fn a_racing_send_survives_neutral_session_events_but_not_a_model_change() {
         let (journal, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
         let runner = runner.spawn();
         let coordinator = SendCoordinator::new(
-            Arc::new(DatabaseAuthority(database.clone())),
+            Arc::new(DatabaseAuthority(database.clone(), None)),
             journal.clone(),
             Arc::new(ProjectionMailbox::default()),
         );

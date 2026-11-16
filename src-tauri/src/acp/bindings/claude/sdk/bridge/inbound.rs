@@ -26,7 +26,11 @@ impl SdkBridge {
     ) -> Result<Inbound, BridgeError> {
         let mut inbound = Inbound::default();
         let nested = !sdk.get("parent_tool_use_id").is_none_or(Value::is_null);
-        match sdk.get("type").and_then(Value::as_str) {
+        let kind = sdk.get("type").and_then(Value::as_str);
+        if !nested && !self.observe_run(&sdk, &mut inbound) {
+            return Ok(inbound);
+        }
+        match kind {
             Some("control_response") => self.control_response(&sdk["response"], &mut inbound)?,
             Some("control_request") => self.control_request(&sdk, &mut inbound)?,
             Some("control_cancel_request") => {
@@ -143,7 +147,7 @@ impl SdkBridge {
                     json!({"configOptions": settings.config_options()}),
                 ));
             }
-            Pending::Interrupt => {}
+            Pending::Interrupt => self.interrupted_idle(inbound),
             Pending::Withdraw(uuid) => self.withdrawn(&uuid, inbound),
             Pending::Control => Self::controlled(Ok(reply), inbound),
             Pending::Passive(request) => request.answered(Ok(reply), inbound),

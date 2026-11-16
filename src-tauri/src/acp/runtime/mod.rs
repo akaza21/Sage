@@ -101,7 +101,8 @@ pub(crate) use runtime_host::HostState;
 pub(crate) use runtime_host::{
     ConfigCompletionSink, HostCancelIntent, HostCloseIntent, HostError, HostOutcome,
     HostPromptIntent, HostSteerIntent, IdleParkClaim, NativeRpcCompletionSink, PromptWrite,
-    RuntimeEngine, RuntimeHost, RuntimeShutdownRecovery, SteerCompletionSink, TerminalNotification,
+    RuntimeEngine, RuntimeHost, RuntimeShutdownRecovery, StartNotification, SteerCompletionSink,
+    TerminalNotification,
 };
 pub(crate) use session_coordinator::{
     ActivationRecovery, SessionCoordinator, SessionCoordinatorError, SessionTreeLease,

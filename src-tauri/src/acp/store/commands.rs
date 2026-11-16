@@ -109,7 +109,15 @@ pub(super) fn prepare_turn_in(
         return Ok(existing);
     }
     validate_prepare_owner(transaction, &command)?;
-    ensure_turn_capacity(transaction, &command, item_bytes)?;
+    ensure_turn_capacity(
+        transaction,
+        command.project_id.as_str(),
+        command.session_id.as_str(),
+        TurnFootprint {
+            items: 1,
+            item_bytes,
+        },
+    )?;
     let turn_id = SageTurnId::new();
     let item_id = SageItemId::new();
     let ordinal: i64 = transaction.query_row(
@@ -238,36 +246,52 @@ fn validate_prepare_owner(
         &command.chat_id,
         command.expected_projection_revision,
     )?;
+    require_current_runtime(
+        transaction,
+        command.project_id.as_str(),
+        command.chat_id.as_str(),
+        command.session_id.as_str(),
+        command.runtime_epoch,
+    )
+}
+
+/// The session's head runs `runtime_epoch`, is resident, and holds no Turn
+/// the user undid, so a Turn may open on it.
+pub(super) fn require_current_runtime(
+    transaction: &Transaction<'_>,
+    project_id: &str,
+    chat_id: &str,
+    session_id: &str,
+    runtime_epoch: sage_acp_protocol::contract::RuntimeEpoch,
+) -> Result<(), StoreError> {
     let owner: Option<(String, String)> = transaction
         .query_row(
             "SELECT s.state,s.residency FROM agent_sessions s
          JOIN chat_session_heads h ON h.session_id=s.id
          JOIN session_runtime_epochs e ON e.session_id=s.id AND e.state='running'
          WHERE s.project_id=?1 AND s.chat_id=?2 AND s.id=?3 AND e.runtime_epoch=?4",
-            params![
-                command.project_id.as_str(),
-                command.chat_id.as_str(),
-                command.session_id.as_str(),
-                command.runtime_epoch.get() as i64
-            ],
+            params![project_id, chat_id, session_id, runtime_epoch.get() as i64],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let stale = StoreError::Conflict {
-        resource: "sessionEpoch",
-    };
     match owner {
         Some((state, residency))
             if matches!(state.as_str(), "ready" | "active") && residency == "hot" => {}
-        _ => return Err(stale),
+        _ => {
+            return Err(StoreError::Conflict {
+                resource: "sessionEpoch",
+            });
+        }
     }
     // A runtime still holding a Turn the user undid is as stale as an
-    // earlier epoch: its prompt would answer with the undone Turn in context.
-    // The undo's record and this check commit in SQLite's write order, so a
-    // prompt is either prepared before the undo is recorded (which then
-    // refuses it) or refused here.
-    match super::turn_undo::pending_thread_rewind(transaction, command.session_id.as_str())? {
-        Some(rewind) if rewind.held_by(command.runtime_epoch) => Err(stale),
+    // earlier epoch: its next Turn would answer with the undone Turn in
+    // context. The undo's record and this check commit in SQLite's write
+    // order, so a Turn either opens before the undo is recorded (which then
+    // refuses it) or is refused here.
+    match super::turn_undo::pending_thread_rewind(transaction, session_id)? {
+        Some(rewind) if rewind.held_by(runtime_epoch) => Err(StoreError::Conflict {
+            resource: "sessionEpoch",
+        }),
         _ => Ok(()),
     }
 }
@@ -319,16 +343,23 @@ fn user_item_payload(payload: &serde_json::Value) -> Result<String, StoreError> 
         .map_err(|_| StoreError::Corrupt("user item serialization"))
 }
 
-fn ensure_turn_capacity(
+/// What opening a Turn adds to the durable history.
+pub(super) struct TurnFootprint {
+    pub(super) items: i64,
+    pub(super) item_bytes: i64,
+}
+
+pub(super) fn ensure_turn_capacity(
     transaction: &Transaction<'_>,
-    command: &PrepareTurnCommand,
-    item_bytes: i64,
+    project_id: &str,
+    session_id: &str,
+    TurnFootprint { items, item_bytes }: TurnFootprint,
 ) -> Result<(), StoreError> {
-    let session:(i64,i64,i64,i64)=transaction.query_row("SELECT turn_count,item_count,item_bytes,payload_bytes FROM acp_session_usage WHERE session_id=?1",[command.session_id.as_str()],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).optional()?.ok_or(StoreError::Corrupt("missing session usage"))?;
+    let session:(i64,i64,i64,i64)=transaction.query_row("SELECT turn_count,item_count,item_bytes,payload_bytes FROM acp_session_usage WHERE session_id=?1",[session_id],|row|Ok((row.get(0)?,row.get(1)?,row.get(2)?,row.get(3)?))).optional()?.ok_or(StoreError::Corrupt("missing session usage"))?;
     let project: (i64, i64) = transaction
         .query_row(
             "SELECT turn_count,item_count FROM acp_project_usage WHERE project_id=?1",
-            [command.project_id.as_str()],
+            [project_id],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?
@@ -342,7 +373,7 @@ fn ensure_turn_capacity(
     )?;
     check_add(
         session.1,
-        1,
+        items,
         LIMITS.durable.items_per_session,
         "sessionItems",
     )?;
@@ -365,7 +396,7 @@ fn ensure_turn_capacity(
         "projectTurns",
     )?;
     check_add(global.0, 1, LIMITS.durable.turns_global, "globalTurns")?;
-    check_add(global.1, 1, LIMITS.durable.items_global, "globalItems")?;
+    check_add(global.1, items, LIMITS.durable.items_global, "globalItems")?;
     check_add(
         global.2,
         item_bytes,
@@ -380,7 +411,7 @@ fn ensure_turn_capacity(
     )
 }
 
-fn ensure_one(changed: usize, resource: &'static str) -> Result<(), StoreError> {
+pub(super) fn ensure_one(changed: usize, resource: &'static str) -> Result<(), StoreError> {
     if changed == 1 {
         Ok(())
     } else {

@@ -286,12 +286,7 @@ impl<A: HarnessAdapter, J, R: ResourceMapper> IdleActivationParts<A, J, R> {
                 _ => return Err(AdapterPumpError::Frame),
             }
         }
-        if catalog.is_none()
-            && egress.iter().all(|value| {
-                value.token().cancelled_permission_request().is_some()
-                    || value.token().is_native_rpc_continuation()
-            })
-        {
+        if catalog.is_none() && egress.iter().all(|value| value.token().idle_writable()) {
             return crate::acp::runtime::adapter_pump::write_idle_egress(
                 &mut self.adapter,
                 egress,

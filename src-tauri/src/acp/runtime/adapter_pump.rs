@@ -179,6 +179,9 @@ pub(crate) struct AdapterPump<A, J, R> {
     /// The pending steer's item, journaled only when the harness accepts it.
     pending_steer_item: Option<Box<(ExternalId, NormalizedPayload)>>,
     steer_response: Option<bool>,
+    /// The harness started its next Turn after this one ended. The rest of
+    /// stdout belongs to that Turn, so it stays in the decoder for it.
+    next_turn_started: bool,
 }
 
 const STDOUT_PREAMBLE_MAX_LINES: u32 = 16;
@@ -263,6 +266,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             pending_steer_request: None,
             pending_steer_item: None,
             steer_response: None,
+            next_turn_started: false,
         }
     }
 
@@ -301,6 +305,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
     /// release the exact Turn lease before it tears the process tree down.
     pub(crate) fn latest_durable_turn_cursor(&self) -> Option<&AdapterTurnCursor> {
         self.durable_turn_cursor.as_ref()
+    }
+
+    pub(crate) fn next_turn_started(&self) -> bool {
+        self.next_turn_started
     }
 
     pub(crate) fn next_deferred_flush_deadline_millis(&self) -> Option<i64> {

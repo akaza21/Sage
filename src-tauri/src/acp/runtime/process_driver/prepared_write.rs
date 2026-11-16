@@ -52,7 +52,6 @@ where
 {
     pub(crate) turn: PreparedDriverTurn<A, J, R, T, C>,
     delivery: PromptDelivery,
-    access_mode: sage_acp_protocol::access_mode::SessionAccessMode,
     cancel_intent: Option<HostCancelIntent>,
     cancel_wire: CancelWireState,
     cancel_attempts: u8,
@@ -79,9 +78,21 @@ where
             sage_acp_protocol::contract::RuntimeEpoch::ZERO
         );
         Self {
-            delivery: PromptDelivery::new(turn_id.clone(), prompt),
+            delivery: PromptDelivery::new(turn_id.clone(), prompt, access_mode),
             turn,
-            access_mode,
+            cancel_intent: None,
+            cancel_wire: CancelWireState::NotAttempted,
+            cancel_attempts: 0,
+            durable_mutation_unknown: false,
+            pending_steer: None,
+        }
+    }
+
+    /// Wraps the Turn the harness started on its own, which Sage never writes.
+    pub(crate) fn started_by_harness(turn: PreparedDriverTurn<A, J, R, T, C>) -> Self {
+        Self {
+            delivery: PromptDelivery::delivered(turn.dispatch.turn_id().clone()),
+            turn,
             cancel_intent: None,
             cancel_wire: CancelWireState::NotAttempted,
             cancel_attempts: 0,
@@ -155,8 +166,8 @@ where
 
     fn write_prompt(mut self) -> Result<(Self, LiveWrite), Box<PreparedWriteFailure<Self>>> {
         let turn_id = self.turn.dispatch.turn_id().clone();
-        let prompt = match self.delivery.begin_write(&turn_id) {
-            Ok(prompt) => prompt,
+        let (prompt, access_mode) = match self.delivery.begin_write(&turn_id) {
+            Ok(write) => write,
             Err(error) => {
                 return Err(Box::new(PreparedWriteFailure {
                     state: self,
@@ -177,7 +188,7 @@ where
         let result = self.turn.driver.dispatch_prompt_with_access_mode(
             prompt,
             client_message_id,
-            self.access_mode,
+            access_mode,
         );
         let write = match result {
             Ok(progress) if progress.written_frames == 1 && progress.zero_byte_failures == 0 => {
@@ -312,7 +323,6 @@ where
         let Self {
             turn,
             delivery,
-            access_mode,
             cancel_intent,
             cancel_wire,
             cancel_attempts,
@@ -328,7 +338,6 @@ where
                     state: Self {
                         turn: PreparedDriverTurn { driver, dispatch },
                         delivery,
-                        access_mode,
                         cancel_intent,
                         cancel_wire,
                         cancel_attempts,

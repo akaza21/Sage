@@ -258,10 +258,18 @@ pub(crate) fn load_prompt_metadata(
 ) -> Result<PromptMetadata, super::store::StoreError> {
     use super::store::StoreError;
     use rusqlite::OptionalExtension;
-    let payload: Option<String> = connection.query_row(
-        "SELECT CASE WHEN payload_bytes<=262144 THEN payload_json ELSE NULL END FROM items WHERE turn_id=?1 AND ordinal=0 AND kind='text' LIMIT 1",
-        [turn_id], |row| row.get(0),
-    ).optional()?;
+    let payload: Option<String> = connection
+        .query_row(
+            concat!(
+            "SELECT CASE WHEN payload_bytes<=262144 THEN payload_json ELSE NULL END FROM items i
+             WHERE i.turn_id=?1 AND i.ordinal=0 AND i.kind='text' AND ",
+            super::store::prompted_turn!("i.session_id", "i.turn_id"),
+            " LIMIT 1"
+        ),
+            [turn_id],
+            |row| row.get(0),
+        )
+        .optional()?;
     let Some(payload) = payload else {
         return Ok(PromptMetadata::default());
     };
@@ -334,7 +342,7 @@ mod tests {
     #[test]
     fn original_context_survives_projection_storage_without_polluting_user_text() {
         let connection = rusqlite::Connection::open_in_memory().unwrap();
-        connection.execute_batch("CREATE TABLE items(turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER)").unwrap();
+        connection.execute_batch("CREATE TABLE items(session_id TEXT,turn_id TEXT,ordinal INTEGER,kind TEXT,payload_json TEXT,payload_bytes INTEGER); CREATE TABLE session_facts(session_id TEXT,turn_id TEXT,kind TEXT);").unwrap();
         let quote: AttachedContext = serde_json::from_value(serde_json::json!({"kind":"transcriptQuote","ordinal":1,"sourceTurnId":"earlier","sourceItemId":"answer","text":"source","comment":"why?","startOffset":0,"endOffset":6})).unwrap();
         let contexts = AttachedContexts::new("attachedContext", vec![quote.clone()]).unwrap();
         let effective =
@@ -343,7 +351,7 @@ mod tests {
             serde_json::json!({"kind":"text","payload":effective.user_payload()}).to_string();
         connection
             .execute(
-                "INSERT INTO items VALUES ('turn',0,'text',?1,?2)",
+                "INSERT INTO items VALUES ('session','turn',0,'text',?1,?2)",
                 rusqlite::params![payload, payload.len() as i64],
             )
             .unwrap();
