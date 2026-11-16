@@ -19,6 +19,17 @@ impl SdkBridge {
             Some("assistant") => true,
             _ => false,
         };
+        if kind == Some("system") && starts_run {
+            self.requeue = sdk
+                .get("capabilities")
+                .and_then(Value::as_array)
+                .is_some_and(|all| all.iter().any(|one| one == "interrupt_requeue_taken_v1"));
+        }
+        if kind == Some("result") {
+            self.running = false;
+        } else if starts_run {
+            self.running = true;
+        }
         if self.declining {
             if kind == Some("result") {
                 self.declining = false;

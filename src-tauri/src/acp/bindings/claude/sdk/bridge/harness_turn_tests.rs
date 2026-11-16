@@ -7,10 +7,26 @@ use serde_json::{Value, json};
 use super::tests::{SESSION, initialized, prompt, success};
 use super::*;
 
+/// Sage's first prompt runs and ends, reported by Claude Code's lifecycle
+/// frames as every stamped prompt is.
 fn finish_prompted_turn(bridge: &mut SdkBridge) {
-    prompt(bridge, 3);
+    const FIRST: &str = "0b7c4ad2-5f0e-4c1e-9d3a-2a6f8e1c7b90";
+    bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":3,"method":"session/prompt","params":{
+            "sessionId":SESSION,"messageId":format!("turn-{FIRST}"),
+            "prompt":[{"type":"text","text":"start a task"}]}}),
+        )
+        .unwrap();
+    let report = |state: &str| {
+        json!({"type":"command_lifecycle","command_uuid":FIRST,
+        "state":state,"uuid":"e0","session_id":SESSION})
+    };
+    bridge.inbound(report("queued")).unwrap();
+    bridge.inbound(report("started")).unwrap();
     let result = bridge.inbound(result_frame("success")).unwrap();
     assert_eq!(result.acp[0]["id"], 3);
+    assert!(bridge.inbound(report("completed")).unwrap().acp.is_empty());
 }
 
 fn result_frame(subtype: &str) -> Value {
@@ -352,7 +368,7 @@ fn a_declined_approval_is_denied_without_an_interrupt() {
 
 const PROMPT_UUID: &str = "6f9619ff-8b86-4011-b42d-00cf4fc964ff";
 
-fn prompt_with_uuid(bridge: &mut SdkBridge, id: u64) {
+fn prompt_with_uuid(bridge: &mut SdkBridge, id: u64) -> Value {
     let user = bridge
         .outbound(
             &json!({"jsonrpc":"2.0","id":id,"method":"session/prompt","params":{
@@ -361,6 +377,7 @@ fn prompt_with_uuid(bridge: &mut SdkBridge, id: u64) {
         )
         .unwrap();
     assert_eq!(user["uuid"], PROMPT_UUID);
+    user
 }
 
 fn prompt_lifecycle(state: &str) -> Value {
@@ -431,7 +448,7 @@ fn a_prompt_folded_into_the_running_run_ends_with_that_runs_result() {
 }
 
 #[test]
-fn a_prompt_claude_code_drops_ends_its_turn_with_the_held_result() {
+fn a_prompt_claude_code_drops_after_a_run_ends_its_turn_with_an_error() {
     let mut bridge = initialized();
     finish_prompted_turn(&mut bridge);
     prompt_with_uuid(&mut bridge, 5);
@@ -439,7 +456,10 @@ fn a_prompt_claude_code_drops_ends_its_turn_with_the_held_result() {
     bridge.inbound(prompt_lifecycle("queued")).unwrap();
     assert!(ends(&bridge.inbound(result_frame("success")).unwrap(), 5).is_none());
     let dropped = bridge.inbound(prompt_lifecycle("discarded")).unwrap();
-    assert!(ends(&dropped, 5).is_some());
+    assert_eq!(
+        ends(&dropped, 5).unwrap()["error"]["message"],
+        "Claude Code ended the session before running this message."
+    );
 }
 
 #[test]
@@ -481,4 +501,161 @@ fn a_stop_before_claude_code_takes_up_the_prompt_stops_the_prompts_run_too() {
         .inbound(result_frame("error_during_execution"))
         .unwrap();
     assert_eq!(ends(&end, 5).unwrap()["result"]["stopReason"], "cancelled");
+}
+
+fn requeuing_run_start() -> Value {
+    json!({"type":"system","subtype":"init","session_id":SESSION,
+        "capabilities":["interrupt_receipt_v1","interrupt_requeue_taken_v1"]})
+}
+
+/// Sage declines a run from a build that can queue a prompt again, then the
+/// user prompts while its interrupt is on the way.
+fn prompt_while_declining(bridge: &mut SdkBridge) -> (Value, Value) {
+    finish_prompted_turn(bridge);
+    assert!(bridge.inbound(requeuing_run_start()).unwrap().started);
+    let interrupt = bridge.decline().unwrap().replies[0].clone();
+    assert_eq!(interrupt["request"]["subtype"], "interrupt");
+    let user = prompt_with_uuid(bridge, 5);
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    (interrupt, user)
+}
+
+#[test]
+fn a_prompt_the_declined_run_takes_in_runs_again_after_sages_interrupt_stops_it() {
+    let mut bridge = initialized();
+    let (interrupt, user) = prompt_while_declining(&mut bridge);
+    assert_eq!(user["requeue_if_interrupted_within_ms"], 10_000);
+
+    bridge.inbound(prompt_lifecycle("started")).unwrap();
+    assert!(bridge.inbound(text("Cut short")).unwrap().acp.is_empty());
+    bridge
+        .inbound(success(
+            &interrupt,
+            json!({"still_queued":[PROMPT_UUID],"put_back":[PROMPT_UUID]}),
+        ))
+        .unwrap();
+    let stopped = bridge
+        .inbound(result_frame("error_during_execution"))
+        .unwrap();
+    assert!(
+        stopped.acp.is_empty(),
+        "the stopped run was Sage's to decline"
+    );
+
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    bridge.inbound(prompt_lifecycle("started")).unwrap();
+    assert!(!bridge.inbound(run_start()).unwrap().started);
+    assert!(!bridge.inbound(text("The reply")).unwrap().acp.is_empty());
+    let end = bridge.inbound(result_frame("success")).unwrap();
+    assert_eq!(ends(&end, 5).unwrap()["result"]["stopReason"], "end_turn");
+}
+
+#[test]
+fn a_prompt_the_declined_run_takes_in_but_cannot_give_back_ends_with_an_error() {
+    let mut bridge = initialized();
+    prompt_while_declining(&mut bridge);
+    bridge.inbound(prompt_lifecycle("started")).unwrap();
+    let lost = bridge.inbound(prompt_lifecycle("cancelled")).unwrap();
+    assert_eq!(
+        ends(&lost, 5).unwrap()["error"]["message"],
+        "Claude Code cancelled this message before answering it."
+    );
+    assert!(
+        bridge
+            .inbound(result_frame("error_during_execution"))
+            .unwrap()
+            .acp
+            .is_empty()
+    );
+}
+
+#[test]
+fn stopping_a_prompt_sage_stamped_withdraws_it_so_no_interrupt_puts_it_back() {
+    let mut bridge = initialized();
+    prompt_while_declining(&mut bridge);
+    let withdraw = cancel(&mut bridge);
+    assert_eq!(
+        withdraw["request"],
+        json!({"subtype":"cancel_async_message","message_uuid":PROMPT_UUID})
+    );
+    let next = bridge
+        .inbound(success(&withdraw, json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(next.replies[0]["request"]["subtype"], "interrupt");
+    let ended = bridge.inbound(prompt_lifecycle("cancelled")).unwrap();
+    assert_eq!(
+        ends(&ended, 5).unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_prompt_sent_with_no_run_declining_is_not_stamped() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    bridge.inbound(requeuing_run_start()).unwrap();
+    bridge.adopt(json!(4)).unwrap();
+    bridge.inbound(result_frame("success")).unwrap();
+    let user = prompt_with_uuid(&mut bridge, 5);
+    assert!(user.get("requeue_if_interrupted_within_ms").is_none());
+    assert_eq!(
+        cancel(&mut bridge)["request"]["subtype"],
+        "interrupt",
+        "a stop goes straight to the interrupt"
+    );
+}
+
+#[test]
+fn a_prompt_claude_code_refuses_before_any_run_ends_its_turn_with_an_error() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    let refused = bridge.inbound(prompt_lifecycle("refused")).unwrap();
+    assert_eq!(
+        ends(&refused, 5).unwrap()["error"]["message"],
+        "Claude Code refused this message."
+    );
+    assert!(bridge.inbound(run_start()).unwrap().started);
+}
+
+#[test]
+fn a_prompt_stopped_before_any_run_ends_its_turn_cancelled() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    let interrupt = cancel(&mut bridge);
+    assert!(ends(&bridge.inbound(success(&interrupt, json!({}))).unwrap(), 5).is_none());
+    let stopped = bridge.inbound(prompt_lifecycle("cancelled")).unwrap();
+    assert_eq!(
+        ends(&stopped, 5).unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+}
+
+#[test]
+fn a_prompt_refused_while_a_run_goes_on_ends_with_that_runs_result() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    let refused = bridge.inbound(prompt_lifecycle("refused")).unwrap();
+    assert!(ends(&refused, 5).is_none(), "the run still reports its end");
+    assert!(!bridge.inbound(text("Still going")).unwrap().started);
+    let end = bridge.inbound(result_frame("success")).unwrap();
+    assert!(ends(&end, 5).is_some());
+}
+
+#[test]
+fn a_build_that_reports_no_lifecycle_ends_each_turn_on_its_result() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    assert!(ends(&bridge.inbound(result_frame("success")).unwrap(), 3).is_some());
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    let end = bridge.inbound(result_frame("success")).unwrap();
+    assert!(
+        ends(&end, 5).is_some(),
+        "no frame would ever say the prompt ran"
+    );
 }

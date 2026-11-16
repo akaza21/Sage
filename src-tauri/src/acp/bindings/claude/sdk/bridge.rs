@@ -118,6 +118,12 @@ pub(super) struct SdkBridge {
     /// Sage refused the run Claude Code started: its frames are dropped
     /// until its `result`.
     declining: bool,
+    /// A run of Claude Code's has started and not yet reported its `result`.
+    running: bool,
+    /// Claude Code's `system/init` advertises `interrupt_requeue_taken_v1`:
+    /// a prompt stamped `requeue_if_interrupted_within_ms` that an interrupt
+    /// stops as a run takes it in goes back to its queue instead of being lost.
+    requeue: bool,
     interrupted: bool,
     auth_failed: bool,
     permissions: BTreeMap<u64, Permission>,
@@ -138,6 +144,14 @@ pub(super) struct SdkBridge {
     /// run took it up: a run before that is one Claude Code started on its
     /// own, so its `result` does not end the prompt's turn.
     waiting_prompt: Option<String>,
+    /// The open turn's prompt, stamped to go back to Claude Code's queue if
+    /// Sage's interrupt of a declined run stops it. A stop withdraws it
+    /// before interrupting, so the user's own interrupt never puts it back.
+    requeuable: Option<String>,
+    /// Claude Code has reported a `command_lifecycle`. A build that does not
+    /// report them never says a prompt started, so no `result` is held
+    /// waiting for one.
+    lifecycles: bool,
     /// A run's `result` that did not end the turn, for when no waiting
     /// message runs after all.
     held: Option<Value>,
@@ -164,6 +178,8 @@ impl SdkBridge {
             prompted: false,
             approval_turn: false,
             declining: false,
+            running: false,
+            requeue: false,
             interrupted: false,
             auth_failed: false,
             permissions: BTreeMap::new(),
@@ -177,6 +193,8 @@ impl SdkBridge {
             compacting: false,
             steers: Vec::new(),
             waiting_prompt: None,
+            requeuable: None,
+            lifecycles: false,
             held: None,
         }
     }
@@ -247,6 +265,7 @@ impl SdkBridge {
             Sent::Prompt => {
                 self.prompt = None;
                 self.waiting_prompt = None;
+                self.requeuable = None;
                 self.interrupted = false;
             }
             Sent::Control(request_id) => {

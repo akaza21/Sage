@@ -835,6 +835,19 @@ fn lifecycle(uuid: &str, state: &str) -> Value {
     json!({"type":"command_lifecycle","command_uuid":uuid,"state":state,"uuid":"e1","session_id":SESSION})
 }
 
+/// A prompt stamped with its turn's uuid, which Claude Code reports taking up.
+fn prompt_taken_up(bridge: &mut SdkBridge, id: u64) {
+    let uuid = uuid::Uuid::new_v4().to_string();
+    bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":id,"method":"session/prompt","params":{"sessionId":SESSION,
+            "messageId":format!("turn-{uuid}"),"prompt":[{"type":"text","text":"hi"}]}}),
+        )
+        .unwrap();
+    bridge.inbound(lifecycle(&uuid, "queued")).unwrap();
+    bridge.inbound(lifecycle(&uuid, "started")).unwrap();
+}
+
 fn ended(inbound: &Inbound) -> bool {
     inbound.acp.iter().any(|frame| frame["id"] == 3)
 }
@@ -886,9 +899,20 @@ fn a_message_taken_up_at_a_tool_boundary_ends_with_the_one_result() {
 }
 
 #[test]
-fn a_held_turn_ends_when_its_waiting_message_is_dropped() {
+fn a_build_that_reports_no_lifecycle_ends_the_turn_on_its_result() {
     let mut bridge = initialized();
     prompt(&mut bridge, 3);
+    bridge.steer("later").unwrap();
+    let result = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert!(ended(&result), "nothing would ever say the message ran");
+}
+
+#[test]
+fn a_held_turn_ends_when_its_waiting_message_is_dropped() {
+    let mut bridge = initialized();
+    prompt_taken_up(&mut bridge, 3);
     let (_, uuid) = bridge.steer("later").unwrap();
     let first = bridge
         .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
@@ -960,7 +984,7 @@ fn a_message_needs_a_running_turn_and_an_unsent_one_is_forgotten() {
 #[test]
 fn stopping_while_a_run_end_is_held_ends_the_turn_once_the_message_is_withdrawn() {
     let mut bridge = initialized();
-    prompt(&mut bridge, 3);
+    prompt_taken_up(&mut bridge, 3);
     let (_, uuid) = bridge.steer("later").unwrap();
     let first = bridge
         .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
@@ -988,7 +1012,7 @@ fn stopping_while_a_run_end_is_held_ends_the_turn_once_the_message_is_withdrawn(
 #[test]
 fn a_late_withdrawal_reply_never_interrupts_the_next_turn() {
     let mut bridge = initialized();
-    prompt(&mut bridge, 3);
+    prompt_taken_up(&mut bridge, 3);
     bridge.steer("later").unwrap();
     let cancel = bridge
         .outbound(
@@ -1017,7 +1041,7 @@ fn a_late_withdrawal_reply_never_interrupts_the_next_turn() {
 #[test]
 fn a_message_taken_up_while_its_withdrawal_is_in_flight_is_interrupted_in_its_turn() {
     let mut bridge = initialized();
-    prompt(&mut bridge, 3);
+    prompt_taken_up(&mut bridge, 3);
     let (_, uuid) = bridge.steer("later").unwrap();
     let cancel = bridge
         .outbound(
