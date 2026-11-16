@@ -725,3 +725,40 @@ fn a_path_after_url_userinfo_stays_hidden_in_diagnostics() {
         assert!(!shown.contains("pw"), "{shown}");
     }
 }
+
+#[test]
+fn a_credential_written_straight_after_cjk_or_full_width_punctuation_is_hidden() {
+    let secret = "2ZvYrB9g2WxubqFL4aMA";
+    for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+        for lead in [
+            "回答，",
+            "（",
+            "「",
+            "：",
+            "。",
+            "；",
+            "\u{3000}",
+            "\u{a0}",
+            "—",
+            "“",
+        ] {
+            for form in [
+                format!("--password {secret} y"),
+                format!("-p {secret} y"),
+                format!("--password=\"{secret} z\" y"),
+                format!("Authorization: Bearer {secret}\ny"),
+                format!("Bearer {secret} y"),
+                format!("token={secret} y"),
+                format!("postgres://admin:{secret}@db/app y"),
+            ] {
+                let text = format!("x {lead}{form}");
+                let shown = redact("test", &text, 4096, mode).unwrap();
+                assert!(!shown.contains(secret), "{mode:?}: {text:?} => {shown:?}");
+                assert!(
+                    shown.contains(lead.trim()),
+                    "{mode:?}: {text:?} => {shown:?}"
+                );
+            }
+        }
+    }
+}

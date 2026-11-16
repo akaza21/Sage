@@ -4,6 +4,7 @@ const QUOTE_SCAN_LIMIT: usize = 1024;
 mod json;
 
 use super::text::{
+    breaks_a_token,
     credentials::{
         attached_short_value, auth_scheme, contains_token, has_userinfo, is_sensitive_prose_flag,
         public_token_key, sensitive_assignment, sensitive_key, url_userinfo,
@@ -46,7 +47,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
     let mut json_tail = false;
     let mut paths = PathContext::default();
     while !remaining.is_empty() {
-        let trimmed = remaining.trim_start_matches(char::is_whitespace);
+        let trimmed = remaining.trim_start_matches(breaks_a_token);
         let whitespace = &remaining[..remaining.len() - trimmed.len()];
         output.push_str(whitespace);
         paths.redact("", whitespace, "", PathMode::Diagnostic);
@@ -224,7 +225,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
 }
 
 fn word_len(value: &str) -> usize {
-    value.find(char::is_whitespace).unwrap_or(value.len())
+    value.find(breaks_a_token).unwrap_or(value.len())
 }
 
 fn assignment_start(token: &str, prefix: &str, bare: &str, suffix: &str) -> Option<(usize, bool)> {

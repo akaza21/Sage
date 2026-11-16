@@ -229,6 +229,9 @@ fn every_view_of_a_randomly_split_reply_hides_what_the_whole_reply_hides() {
         let mut secrets = Vec::new();
         while text.len() < 3 * LOOKAHEAD {
             let secret = cases.secret();
+            let lead =
+                ["", "，", "。", "：", "（", "「", "\u{3000}", "\u{a0}", "—"][cases.below(9)];
+            text.push_str(lead);
             let piece = match cases.below(12) {
                 0 => format!("token={secret} "),
                 1 => format!("password: {secret}\n"),
@@ -238,7 +241,7 @@ fn every_view_of_a_randomly_split_reply_hides_what_the_whole_reply_hides() {
                 5 => format!("-----BEGIN PRIVATE KEY-----\n{secret}\n-----END PRIVATE KEY-----\n"),
                 6 => format!("--password {secret} "),
                 7 => format!("{home}/project/src/main.rs and /srv/alice/x "),
-                8 => "这是一段没有空格的中文回答。\n".to_owned(),
+                8 => "这是一段没有空格的中文回答。".to_owned(),
                 9 => "\"a quoted phrase\" in prose ".to_owned(),
                 _ => "plain words in a long reply, line after line.\n".repeat(1 + cases.below(40)),
             };
@@ -253,7 +256,8 @@ fn every_view_of_a_randomly_split_reply_hides_what_the_whole_reply_hides() {
             assert!(
                 !whole.contains(secret.as_str()),
                 "seed {seed}: {:?} shown whole",
-                &text[text.floor_char_boundary(at.saturating_sub(80))..at + 40]
+                &text[text.floor_char_boundary(at.saturating_sub(80))
+                    ..text.ceil_char_boundary(at + 40)]
             );
         }
         let mut stream = ReplyStream::default();

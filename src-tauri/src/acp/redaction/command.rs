@@ -19,8 +19,8 @@ pub(crate) fn redact(
     let mut budget = super::values::ValueBudget::default();
     let mut paths = PathContext::default();
     let mut position = 0;
-    for token in input.split_inclusive(char::is_whitespace) {
-        let body = token.trim_end_matches(char::is_whitespace);
+    for token in input.split_inclusive(super::breaks_a_token) {
+        let body = token.trim_end_matches(super::breaks_a_token);
         let whitespace = &token[body.len()..];
         let tail = &input[position + body.len()..];
         position += token.len();

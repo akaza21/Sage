@@ -46,7 +46,7 @@ fn redact_secrets(
     let mut budget = super::values::ValueBudget::default();
     let mut paths = PathContext::default();
     let mut position = 0;
-    for token in input.split_inclusive(char::is_whitespace) {
+    for token in input.split_inclusive(super::breaks_a_token) {
         let (mut body, whitespace) = split_trailing_whitespace(token);
         let tail = &input[position + body.len()..];
         position += token.len();
@@ -109,7 +109,7 @@ fn redact_secrets(
             value.escaped = false;
         }
         if (value.quote.is_some() || quoted_token)
-            && budget.exhausted(token.trim_end_matches(char::is_whitespace), whitespace)
+            && budget.exhausted(token.trim_end_matches(super::breaks_a_token), whitespace)
         {
             append(
                 &mut output,
@@ -166,7 +166,7 @@ impl QuotedValue {
 fn split_trailing_whitespace(value: &str) -> (&str, &str) {
     let split = value
         .char_indices()
-        .find_map(|(index, character)| character.is_whitespace().then_some(index))
+        .find_map(|(index, character)| super::breaks_a_token(character).then_some(index))
         .unwrap_or(value.len());
     value.split_at(split)
 }

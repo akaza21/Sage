@@ -116,6 +116,20 @@ fn redact_with(
     }
 }
 
+/// Whether a character ends a token as whitespace does. Besides whitespace,
+/// including the no-break and ideographic spaces, these are the punctuation of
+/// CJK and full-width text, such as `，`, `。` or `「`, and general punctuation
+/// such as `—` or `“`, so a key, flag or credential written straight after one
+/// is read as starting a token.
+pub(crate) fn breaks_a_token(character: char) -> bool {
+    character.is_whitespace()
+        || matches!(
+            character,
+            '\u{2010}'..='\u{205e}' | '\u{3000}'..='\u{303f}' | '\u{fe10}'..='\u{fe4f}'
+        )
+        || (matches!(character, '\u{ff00}'..='\u{ff65}') && !character.is_alphanumeric())
+}
+
 /// Clips display text to `max` bytes at a character boundary, ending a clipped
 /// value with an ellipsis.
 pub(crate) fn clip_display(value: &str, max: usize) -> String {
