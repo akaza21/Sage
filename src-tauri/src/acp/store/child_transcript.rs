@@ -167,8 +167,8 @@ pub(crate) fn persist_snapshot(
     validate_bounds(&merged)?;
     write_snapshot_in(&transaction, scope, &merged, now_millis, false)?;
     let published = match settled::snapshot_state(&merged) {
-        Some((turn, state)) => {
-            settled::record_child_state(&transaction, scope, turn, state, None, now_millis)
+        Some(observed) => {
+            settled::record_child_state(&transaction, scope, &merged, observed, now_millis)
                 .map_err(|error| match error {
                     StoreError::Database(error) => ChildTranscriptStoreError::Storage(error),
                     error => ChildTranscriptStoreError::Projection(error),

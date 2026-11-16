@@ -1,7 +1,8 @@
 use super::*;
 use crate::acp::projection::AcpChatPage;
 use crate::acp::store::child_transcript::{
-    ChildTranscriptScope, load_snapshot, persist_snapshot, settle_lost_children,
+    ChildTranscriptScope, ChildTranscriptStoreError, load_snapshot, persist_snapshot,
+    settle_lost_children,
 };
 use sage_acp_protocol::codex_protocol::{
     ChildItem, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES,
@@ -289,11 +290,7 @@ fn a_native_read_that_settles_the_child_publishes_the_spawn_row() {
 fn a_child_end_past_the_turn_cap_still_settles_the_spawn_row() {
     let mut fixture = ended_spawn_turn();
     let scope = scope(&fixture.connection);
-    let mut turns: Vec<ChildTurn> = (0..127)
-        .map(|index| turn(&format!("turn-{index}"), "completed", Vec::new()))
-        .collect();
-    turns.push(turn("turn-127", "inProgress", Vec::new()));
-    persist_snapshot(&mut fixture.connection, &scope, &snapshot(turns), 25).unwrap();
+    persist_snapshot(&mut fixture.connection, &scope, &capped_transcript(), 25).unwrap();
     assert_eq!(spawn_state(&fixture.connection), "running");
 
     assert!(settle(&mut fixture, "turn-128", TurnState::Failed, 30));
@@ -306,6 +303,124 @@ fn a_child_end_past_the_turn_cap_still_settles_the_spawn_row() {
         assert!(!start(&mut fixture, turn, now), "{turn} never runs again");
         assert_eq!(spawn_state(&fixture.connection), "completed");
     }
+}
+
+fn capped_transcript() -> ChildTranscriptSnapshot {
+    let mut turns: Vec<ChildTurn> = (0..127)
+        .map(|index| turn(&format!("turn-{index}"), "completed", Vec::new()))
+        .collect();
+    turns.push(turn("turn-127", "inProgress", Vec::new()));
+    snapshot(turns)
+}
+
+#[test]
+fn a_delayed_read_never_reopens_a_turn_the_record_moved_past() {
+    let mut fixture = ended_spawn_turn();
+    let scope = scope(&fixture.connection);
+    let read = capped_transcript();
+    persist_snapshot(&mut fixture.connection, &scope, &read, 25).unwrap();
+    assert!(settle(&mut fixture, "turn-128", TurnState::Failed, 30));
+    assert_eq!(spawn_state(&fixture.connection), "errored");
+
+    // The same read, issued while turn-127 still ran, lands after turn-128
+    // ended; the transcript is full and never held turn-128.
+    assert_eq!(
+        persist_snapshot(&mut fixture.connection, &scope, &read, 35).unwrap(),
+        None
+    );
+    assert_eq!(spawn_state(&fixture.connection), "errored");
+    let recorded: (String, i64) = fixture
+        .connection
+        .query_row(
+            "SELECT turn_id,turn_ordinal FROM acp_child_thread_states",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!(recorded, ("turn-128".into(), 128));
+}
+
+#[test]
+fn a_read_naming_a_turn_twice_is_rejected() {
+    let mut fixture = ended_spawn_turn();
+    let scope = scope(&fixture.connection);
+    let twice = snapshot(vec![
+        turn("first", "completed", Vec::new()),
+        turn("first", "failed", Vec::new()),
+    ]);
+    assert!(matches!(
+        persist_snapshot(&mut fixture.connection, &scope, &twice, 25),
+        Err(ChildTranscriptStoreError::Corrupt)
+    ));
+    assert!(
+        load_snapshot(&fixture.connection, &scope)
+            .unwrap()
+            .is_none()
+    );
+
+    let once = snapshot(vec![turn("first", "inProgress", Vec::new())]);
+    persist_snapshot(&mut fixture.connection, &scope, &once, 26).unwrap();
+    assert!(matches!(
+        persist_snapshot(&mut fixture.connection, &scope, &twice, 27),
+        Err(ChildTranscriptStoreError::Corrupt)
+    ));
+    let stored = load_snapshot(&fixture.connection, &scope).unwrap().unwrap();
+    assert_eq!(stored.turns, once.turns);
+    assert_eq!(spawn_state(&fixture.connection), "running");
+}
+
+#[test]
+fn a_delta_of_a_turn_the_transcript_holds_leaves_the_record_alone() {
+    let mut fixture = ended_spawn_turn();
+    let records = |connection: &rusqlite::Connection| -> i64 {
+        connection
+            .query_row("SELECT COUNT(*) FROM acp_child_thread_states", [], |row| {
+                row.get(0)
+            })
+            .unwrap()
+    };
+    assert!(!start(&mut fixture, "first", 21));
+    assert_eq!(records(&fixture.connection), 1);
+    fixture
+        .connection
+        .execute("DELETE FROM acp_child_thread_states", [])
+        .unwrap();
+    assert!(!start(&mut fixture, "first", 22));
+    assert_eq!(records(&fixture.connection), 0);
+    assert!(!start(&mut fixture, "second", 23));
+    assert_eq!(records(&fixture.connection), 1);
+}
+
+/// The spawn row, written as `completed`, after an upgrade that found the
+/// child's transcript already holding `turns`.
+fn upgraded_spawn_state(turns: Vec<ChildTurn>) -> String {
+    let mut fixture = ended_spawn_turn_reporting("completed");
+    let scope = scope(&fixture.connection);
+    persist_snapshot(&mut fixture.connection, &scope, &snapshot(turns), 25).unwrap();
+    fixture
+        .connection
+        .execute_batch(&format!(
+            "DROP TABLE acp_child_thread_states; {}",
+            include_str!("../../../../migrations/031_acp_child_thread_states.sql")
+        ))
+        .unwrap();
+    spawn_state(&fixture.connection)
+}
+
+#[test]
+fn an_upgrade_shows_a_child_turn_that_ended_after_the_one_its_row_reports() {
+    assert_eq!(
+        upgraded_spawn_state(vec![
+            turn("first", "completed", Vec::new()),
+            turn("second", "failed", Vec::new()),
+        ]),
+        "errored"
+    );
+    assert_eq!(
+        upgraded_spawn_state(vec![turn("first", "failed", Vec::new())]),
+        "completed",
+        "the row speaks for the turn the child was spawned with"
+    );
 }
 
 #[test]

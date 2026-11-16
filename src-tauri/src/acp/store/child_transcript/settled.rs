@@ -32,66 +32,117 @@ pub(super) fn turn_state(status: &str) -> &'static str {
     }
 }
 
-/// A transcript's latest turn and the state it leaves its child in, if it
-/// has one.
-pub(super) fn snapshot_state(snapshot: &ChildTranscriptSnapshot) -> Option<(&str, &'static str)> {
-    snapshot
-        .turns
-        .last()
-        .map(|turn| (turn.id.as_str(), turn_state(&turn.status)))
+/// A transcript's latest turn as an observation of the state it leaves its
+/// child in, if it has one. A read learns no end time.
+pub(super) fn snapshot_state(snapshot: &ChildTranscriptSnapshot) -> Option<Observed<'_>> {
+    snapshot.turns.last().map(|turn| Observed {
+        turn: &turn.id,
+        state: turn_state(&turn.status),
+        ended_at: None,
+    })
 }
 
-/// How many of a child's latest ended turns its record remembers, so a late
-/// item of one of them never reads as the child running again.
+/// How many of a child's latest ended turns its record remembers by id, so a
+/// late item of one its transcript no longer holds never reads as the child
+/// running again.
 const ENDED_TURNS: usize = 32;
 
-/// A child's recorded state: what it is, and whether its spawn turn had
-/// already ended when it was recorded.
+/// A child turn seen starting or ending, live or in a read. `ended_at` is
+/// when an end was observed live.
+pub(super) struct Observed<'a> {
+    pub(super) turn: &'a str,
+    pub(super) state: &'static str,
+    pub(super) ended_at: Option<i64>,
+}
+
+/// A child's recorded state and its provenance: the turn it came from, that
+/// turn's place in the child's order, and whether the spawn turn had already
+/// ended when it was recorded.
 struct Recorded {
+    turn: String,
+    ordinal: i64,
     state: String,
     spawn_ended: bool,
     ended_at: Option<i64>,
 }
 
-/// What an ended turn's row shows for a child: the state recorded for it
-/// when the row still reports it live or the record was made after the row
-/// was closed with its turn, otherwise the row's own state. So a child that
-/// ran again after its row was rewritten shows its new state, and one the
-/// row outlived does not, whatever any clock says.
+/// What an ended turn's row shows for a child: the recorded state when the
+/// row still reports it live, when the record was made after the row was
+/// closed with its turn, or when it came from a later child turn than the one
+/// the child was spawned with; otherwise the row's own state. So a child that
+/// ran again after its row was written shows its new state, and one the row
+/// outlived does not, whatever any clock says.
 fn applies(row: &str, recorded: &Recorded) -> bool {
-    live(row) || recorded.spawn_ended
+    live(row) || recorded.spawn_ended || recorded.ordinal > 0
+}
+
+fn shown<'a>(row: &'a str, recorded: Option<&'a Recorded>) -> &'a str {
+    match recorded {
+        Some(recorded) if applies(row, recorded) => &recorded.state,
+        _ => row,
+    }
 }
 
 fn same(left: &str, right: &str) -> bool {
     left == right || (live(left) && live(right))
 }
 
-/// Records the state `turn` leaves the child in. A turn the record already
-/// saw end changes nothing. `ended_at` is when the end was observed live; an
-/// end learned later, from a read, has no known time. When the record changes
-/// what an ended spawn turn's row shows, the parent projection moves and the
-/// new revision is returned for publishing.
+/// The place in the child's order that `turn` takes, or `None` when it is
+/// older than the recorded turn and so cannot change the record. The
+/// transcript orders the turns it holds, and the record is never behind its
+/// last one; a turn the transcript does not hold is the recorded one, one the
+/// record saw end, or a new turn after both.
+fn ordinal(
+    transcript: &ChildTranscriptSnapshot,
+    turn: &str,
+    recorded: Option<&Recorded>,
+    ended_turns: &[String],
+) -> Option<i64> {
+    let held = transcript.turns.len();
+    match transcript
+        .turns
+        .iter()
+        .position(|candidate| candidate.id == turn)
+    {
+        Some(index) if index + 1 < held => None,
+        Some(index) => Some(index as i64),
+        None => match recorded {
+            Some(recorded) if recorded.turn == turn => Some(recorded.ordinal),
+            Some(_) if ended_turns.iter().any(|ended| ended == turn) => None,
+            Some(recorded) => Some((held as i64).max(recorded.ordinal + 1)),
+            None => Some(held as i64),
+        },
+    }
+}
+
+/// Records the state `observed` leaves the child in, given the child's
+/// stored `transcript` before the observation is applied to it. The record
+/// owns the child's current turn: a turn older than it changes nothing, and
+/// a turn ends once. When the record changes what an ended spawn turn's row
+/// shows, the parent projection moves and the new revision is returned for
+/// publishing.
 pub(super) fn record_child_state(
     transaction: &Transaction<'_>,
     scope: &ChildTranscriptScope,
-    turn: &str,
-    state: &'static str,
-    ended_at: Option<i64>,
+    transcript: &ChildTranscriptSnapshot,
+    observed: Observed<'_>,
     now_millis: i64,
 ) -> Result<Option<ProjectionRevision>, StoreError> {
     let previous: Option<(Recorded, String)> = transaction
         .query_row(
-            "SELECT state,spawn_ended,ended_at,ended_turns FROM acp_child_thread_states
-             WHERE native_child_thread_id=?1",
+            "SELECT turn_id,turn_ordinal,state,spawn_ended,ended_at,ended_turns
+               FROM acp_child_thread_states WHERE native_child_thread_id=?1",
             [&scope.child_thread_id],
             |row| {
                 Ok((
                     Recorded {
-                        state: row.get(0)?,
-                        spawn_ended: row.get(1)?,
-                        ended_at: row.get(2)?,
+                        turn: row.get(0)?,
+                        ordinal: row.get(1)?,
+                        state: row.get(2)?,
+                        spawn_ended: row.get(3)?,
+                        ended_at: row.get(4)?,
                     },
-                    row.get(3)?,
+                    row.get(5)?,
                 ))
             },
         )
@@ -104,21 +155,24 @@ pub(super) fn record_child_state(
         ),
         None => (None, Vec::new()),
     };
-    if ended_turns.iter().any(|ended| ended == turn) {
+    let Some(ordinal) = ordinal(transcript, observed.turn, previous.as_ref(), &ended_turns) else {
         return Ok(None);
-    }
-    if live(state) {
-        if previous
-            .as_ref()
-            .is_some_and(|previous| previous.state == state)
-        {
-            return Ok(None);
+    };
+    let ordinal = match &previous {
+        Some(recorded) if recorded.turn == observed.turn => {
+            if !live(&recorded.state) || live(observed.state) {
+                return Ok(None);
+            }
+            recorded.ordinal
         }
-    } else {
+        Some(recorded) if ordinal <= recorded.ordinal => return Ok(None),
+        _ => ordinal,
+    };
+    if !live(observed.state) {
         if ended_turns.len() == ENDED_TURNS {
             ended_turns.remove(0);
         }
-        ended_turns.push(turn.to_owned());
+        ended_turns.push(observed.turn.to_owned());
     }
     let row: Option<(Option<String>, bool)> = transaction
         .query_row(
@@ -134,15 +188,21 @@ pub(super) fn record_child_state(
             |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let spawn_ended = row.as_ref().is_some_and(|(_, ended)| *ended);
-    let ended_at = ended_at.filter(|_| state != "running");
+    let after = Recorded {
+        turn: observed.turn.to_owned(),
+        ordinal,
+        state: observed.state.to_owned(),
+        spawn_ended: row.as_ref().is_some_and(|(_, ended)| *ended),
+        ended_at: observed.ended_at.filter(|_| !live(observed.state)),
+    };
     transaction.execute(
         "INSERT INTO acp_child_thread_states
-         (native_child_thread_id,project_id,chat_id,session_id,runtime_epoch,state,
-          spawn_ended,ended_at,ended_turns)
-         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
+         (native_child_thread_id,project_id,chat_id,session_id,runtime_epoch,turn_id,
+          turn_ordinal,state,spawn_ended,ended_at,ended_turns)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)
          ON CONFLICT(native_child_thread_id) DO UPDATE SET
-           state=excluded.state,spawn_ended=excluded.spawn_ended,ended_at=excluded.ended_at,
+           turn_id=excluded.turn_id,turn_ordinal=excluded.turn_ordinal,state=excluded.state,
+           spawn_ended=excluded.spawn_ended,ended_at=excluded.ended_at,
            ended_turns=excluded.ended_turns",
         params![
             scope.child_thread_id,
@@ -150,25 +210,21 @@ pub(super) fn record_child_state(
             scope.owner.chat_id.as_str(),
             scope.owner.session_id.as_str(),
             scope.owner.runtime_epoch.get() as i64,
-            state,
-            spawn_ended,
-            ended_at,
+            after.turn,
+            after.ordinal,
+            after.state,
+            after.spawn_ended,
+            after.ended_at,
             serde_json::to_string(&ended_turns).expect("turn ids serialize"),
         ],
     )?;
     let Some((Some(row_state), true)) = row else {
         return Ok(None);
     };
-    let shown = |recorded: Option<&Recorded>| match recorded {
-        Some(recorded) if applies(&row_state, recorded) => recorded.state.clone(),
-        _ => row_state.clone(),
-    };
-    let after = Recorded {
-        state: state.to_owned(),
-        spawn_ended,
-        ended_at,
-    };
-    if same(&shown(previous.as_ref()), &shown(Some(&after))) {
+    if same(
+        shown(&row_state, previous.as_ref()),
+        shown(&row_state, Some(&after)),
+    ) {
         return Ok(None);
     }
     let project = scope.owner.project_id.as_str();
@@ -192,18 +248,21 @@ fn recorded_state(
 ) -> Result<Option<Recorded>, rusqlite::Error> {
     connection
         .query_row(
-            "SELECT s.state,s.spawn_ended,s.ended_at FROM acp_child_thread_bindings b
-             JOIN acp_child_thread_states s
-               ON s.native_child_thread_id=b.native_child_thread_id
-              AND s.project_id=b.project_id AND s.chat_id=b.chat_id
-              AND s.session_id=b.session_id AND s.runtime_epoch=b.runtime_epoch
-             WHERE b.item_id=?1 AND b.native_child_thread_id=?2",
+            "SELECT s.turn_id,s.turn_ordinal,s.state,s.spawn_ended,s.ended_at
+               FROM acp_child_thread_bindings b
+               JOIN acp_child_thread_states s
+                 ON s.native_child_thread_id=b.native_child_thread_id
+                AND s.project_id=b.project_id AND s.chat_id=b.chat_id
+                AND s.session_id=b.session_id AND s.runtime_epoch=b.runtime_epoch
+              WHERE b.item_id=?1 AND b.native_child_thread_id=?2",
             params![item_id, child],
             |row| {
                 Ok(Recorded {
-                    state: row.get(0)?,
-                    spawn_ended: row.get(1)?,
-                    ended_at: row.get(2)?,
+                    turn: row.get(0)?,
+                    ordinal: row.get(1)?,
+                    state: row.get(2)?,
+                    spawn_ended: row.get(3)?,
+                    ended_at: row.get(4)?,
                 })
             },
         )
