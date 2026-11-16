@@ -327,6 +327,7 @@ fn content(
             agent_keys,
             agent_states,
             untimed_agents: Vec::new(),
+            current_agents: Vec::new(),
         },
     })
 }

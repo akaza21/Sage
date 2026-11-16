@@ -374,6 +374,45 @@ fn a_read_naming_a_turn_twice_is_rejected() {
     assert_eq!(spawn_state(&fixture.connection), "running");
 }
 
+/// The children the spawn row shows in their recorded current state.
+fn current_agents(connection: &rusqlite::Connection) -> Vec<String> {
+    let page = load_chat_page(connection, project(), chat(), None).unwrap();
+    page.turns
+        .as_slice()
+        .iter()
+        .flat_map(|turn| turn.items.as_slice())
+        .find_map(|item| match &item.content {
+            ItemContent::Collaboration { current_agents, .. } => Some(
+                current_agents
+                    .iter()
+                    .map(|key| key.as_str().to_owned())
+                    .collect(),
+            ),
+            _ => None,
+        })
+        .unwrap()
+}
+
+#[test]
+fn a_child_resumed_after_its_spawn_turn_ended_is_shown_as_its_current_state() {
+    let mut fixture = migrated_fixture();
+    let spawn = spawn_row(&fixture.owner);
+    apply(&mut fixture, vec![spawn]);
+    assert!(!settle(&mut fixture, "first", TurnState::Completed, 21));
+    let closed = spawn_row_reporting(&fixture.owner, "completed");
+    let ended = AdapterInboundEvent::Turn {
+        state: TurnState::Completed,
+        now_millis: 30,
+    };
+    apply(&mut fixture, vec![closed, ended]);
+    assert_eq!(spawn_state(&fixture.connection), "completed");
+    assert!(current_agents(&fixture.connection).is_empty());
+
+    assert!(start(&mut fixture, "second", 40));
+    assert_eq!(spawn_state(&fixture.connection), "running");
+    assert_eq!(current_agents(&fixture.connection), ["child-one"]);
+}
+
 #[test]
 fn a_late_delta_of_an_ended_turn_never_changes_the_spawn_row() {
     let mut fixture = ended_spawn_turn();

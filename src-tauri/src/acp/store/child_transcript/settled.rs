@@ -270,7 +270,8 @@ fn recorded_state(
 }
 
 /// Projects each child of an ended turn's row with what that row shows for
-/// it (see `applies`). The row's times then end when the latest child it
+/// it (see `applies`), listing the children it shows in their recorded
+/// current state. The row's times then end when the latest child it
 /// settled was seen to end; a child whose end time is not known is listed so
 /// that no time is claimed for it.
 pub(crate) fn project_settled_children(
@@ -282,6 +283,7 @@ pub(crate) fn project_settled_children(
     let ItemContent::Collaboration {
         agent_states,
         untimed_agents,
+        current_agents,
         ..
     } = &mut item.content
     else {
@@ -294,6 +296,7 @@ pub(crate) fn project_settled_children(
         if !applies(state.as_str(), &recorded) {
             continue;
         }
+        current_agents.push(key.clone());
         if !live(&recorded.state) {
             match recorded.ended_at {
                 Some(at) => ended_at = ended_at.max(Some(at)),

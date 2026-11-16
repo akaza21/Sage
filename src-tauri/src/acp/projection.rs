@@ -260,6 +260,11 @@ pub enum ItemContent {
         /// turn ended with no known end time, so no time is claimed for them.
         #[serde(skip_serializing_if = "Vec::is_empty")]
         untimed_agents: Vec<SafeText<512>>,
+        /// Children this row shows in their recorded current state. That
+        /// state is authoritative: no other row's earlier report of them
+        /// overrides it.
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        current_agents: Vec<SafeText<512>>,
     },
 }
 
