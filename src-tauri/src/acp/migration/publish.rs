@@ -86,7 +86,8 @@ pub(super) fn recover_or_publish(paths: &MigrationPaths) -> AppResult<bool> {
         | SchemaClass::CurrentOperationTerminalIndex
         | SchemaClass::CurrentTurnUndoIntentIndexes
         | SchemaClass::CurrentImportedHistory
-        | SchemaClass::CurrentSessionCapabilities => {
+        | SchemaClass::CurrentSessionCapabilities
+        | SchemaClass::CurrentChildThreadStates => {
             verify_replacement(&paths.live, &manifest)?;
             if paths.replacement_stage.exists() {
                 return invalid("published current schema coexists with a replacement stage");

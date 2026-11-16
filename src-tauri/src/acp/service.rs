@@ -52,6 +52,7 @@ mod debug;
 mod intent_snapshot;
 mod live_lanes;
 mod live_routes;
+mod lost_children;
 mod page_bytes;
 pub(crate) use live_lanes::{ChatRuntimeRelease, LIVE_RUNTIME_LANES, explicit_close_deadline};
 mod permission;
@@ -381,6 +382,7 @@ impl AcpService {
             self.fit_session_config_to_page_budget(&mut page, &size)?;
             self.compose_goal(&mut page);
             self.compose_usage(&mut page);
+            self.compose_lost_children(&mut page)?;
             self.fit_goal_to_page_budget(&mut page, &size)?;
             self.compose_session_surface(&mut page)?;
             Ok(page)

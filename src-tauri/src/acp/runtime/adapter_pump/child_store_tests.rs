@@ -661,3 +661,50 @@ fn the_latest_spawn_for_a_child_supplies_only_its_wire_model() {
     drop(connection);
     std::fs::remove_dir_all(directory).unwrap();
 }
+
+#[test]
+fn an_upgrade_keeps_the_end_each_stored_child_transcript_reached() {
+    let directory = std::env::temp_dir().join(format!(
+        "sage-child-states-upgrade-{}",
+        uuid::Uuid::new_v4()
+    ));
+    std::fs::create_dir_all(&directory).unwrap();
+    let path = directory.join("sage.db");
+    {
+        let connection = sqlite_child_owner(&path);
+        connection
+            .execute(
+                "INSERT INTO acp_child_thread_transcripts
+                 (native_child_thread_id,project_id,chat_id,session_id,runtime_epoch,parent_thread_id,
+                  snapshot_json,snapshot_bytes,updated_at)
+                 VALUES('child-one','project-one','chat-one','session-one',1,'thread-1',?1,length(CAST(?1 AS BLOB)),25)",
+                [r#"{"childThreadId":"child-one","parentThreadId":"thread-1","turns":[{"id":"first","status":"completed","items":[]},{"id":"second","status":"failed","items":[]}]}"#],
+            )
+            .unwrap();
+        connection
+            .execute_batch(
+                "DROP TABLE acp_child_thread_states;
+                 DELETE FROM schema_migrations WHERE version>=31;
+                 PRAGMA user_version=30;",
+            )
+            .unwrap();
+    }
+    let (connection, _) = crate::acp::migration::open_or_migrate(&path)
+        .unwrap()
+        .into_parts();
+    let recorded: (String, bool, Option<i64>) = connection
+        .query_row(
+            "SELECT state,spawn_ended,ended_at FROM acp_child_thread_states
+             WHERE native_child_thread_id='child-one'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+        )
+        .unwrap();
+    assert_eq!(
+        recorded,
+        ("errored".into(), false, None),
+        "no end time is claimed"
+    );
+    drop(connection);
+    std::fs::remove_dir_all(directory).unwrap();
+}

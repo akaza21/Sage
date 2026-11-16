@@ -1,16 +1,20 @@
-//! A subagent can settle after the parent turn that spawned it has ended.
-//! That turn's spawn row is never rewritten, so it keeps reporting the child
-//! live; the child's stored transcript holds how it ended. The parent
-//! projection is the one place that settles such a row: it takes the stored
-//! end, or, once the runtime that ran the child is gone without one, reports
-//! the outcome as unknown. Storing an end moves the parent projection, as a
-//! runtime exit does, so every view of the row is pushed the change.
+//! A subagent can settle, or start another turn, after the parent turn that
+//! spawned it has ended. That turn's spawn row is never rewritten after, so it
+//! keeps reporting the child as the runtime last wrote it. Every path that observes
+//! a child's turn start or end records the child's current state here, once,
+//! at write time; the parent projection reads that small row back for an
+//! ended turn and never parses the child's transcript. A recorded change that
+//! an ended turn's row must show moves the parent projection, so every view of
+//! the row is pushed it.
 
 use rusqlite::{Connection, OptionalExtension, Transaction, params};
 
-use sage_acp_protocol::contract::SafeText;
+use sage_acp_protocol::codex_protocol::ChildTranscriptSnapshot;
+use sage_acp_protocol::contract::{ProjectionRevision, SafeText};
+use sage_acp_protocol::scheduler::RuntimeOwner;
 
-use crate::acp::projection::{ItemContent, ItemProjection};
+use super::ChildTranscriptScope;
+use crate::acp::projection::{AcpChatPage, ItemContent, ItemProjection};
 use crate::acp::store::StoreError;
 use crate::acp::store::facts::{next_projection_revision, publish_send_neutral_projection};
 
@@ -18,108 +22,286 @@ fn live(state: &str) -> bool {
     matches!(state, "running" | "pendingInit")
 }
 
-/// The agent state a parent row words a child's stored end as, once the last
-/// turn of its transcript has settled.
-fn stored_state(
+/// The agent state a child is in once a turn of it has this status.
+pub(super) fn turn_state(status: &str) -> &'static str {
+    match status {
+        "completed" => "completed",
+        "failed" => "errored",
+        "interrupted" => "interrupted",
+        _ => "running",
+    }
+}
+
+/// A transcript's latest turn and the state it leaves its child in, if it
+/// has one.
+pub(super) fn snapshot_state(snapshot: &ChildTranscriptSnapshot) -> Option<(&str, &'static str)> {
+    snapshot
+        .turns
+        .last()
+        .map(|turn| (turn.id.as_str(), turn_state(&turn.status)))
+}
+
+/// How many of a child's latest ended turns its record remembers, so a late
+/// item of one of them never reads as the child running again.
+const ENDED_TURNS: usize = 32;
+
+/// A child's recorded state: what it is, and whether its spawn turn had
+/// already ended when it was recorded.
+struct Recorded {
+    state: String,
+    spawn_ended: bool,
+    ended_at: Option<i64>,
+}
+
+/// What an ended turn's row shows for a child: the state recorded for it
+/// when the row still reports it live or the record was made after the row
+/// was closed with its turn, otherwise the row's own state. So a child that
+/// ran again after its row was rewritten shows its new state, and one the
+/// row outlived does not, whatever any clock says.
+fn applies(row: &str, recorded: &Recorded) -> bool {
+    live(row) || recorded.spawn_ended
+}
+
+fn same(left: &str, right: &str) -> bool {
+    left == right || (live(left) && live(right))
+}
+
+/// Records the state `turn` leaves the child in. A turn the record already
+/// saw end changes nothing. `ended_at` is when the end was observed live; an
+/// end learned later, from a read, has no known time. When the record changes
+/// what an ended spawn turn's row shows, the parent projection moves and the
+/// new revision is returned for publishing.
+pub(super) fn record_child_state(
+    transaction: &Transaction<'_>,
+    scope: &ChildTranscriptScope,
+    turn: &str,
+    state: &'static str,
+    ended_at: Option<i64>,
+    now_millis: i64,
+) -> Result<Option<ProjectionRevision>, StoreError> {
+    let previous: Option<(Recorded, String)> = transaction
+        .query_row(
+            "SELECT state,spawn_ended,ended_at,ended_turns FROM acp_child_thread_states
+             WHERE native_child_thread_id=?1",
+            [&scope.child_thread_id],
+            |row| {
+                Ok((
+                    Recorded {
+                        state: row.get(0)?,
+                        spawn_ended: row.get(1)?,
+                        ended_at: row.get(2)?,
+                    },
+                    row.get(3)?,
+                ))
+            },
+        )
+        .optional()?;
+    let (previous, mut ended_turns) = match previous {
+        Some((recorded, ended)) => (
+            Some(recorded),
+            serde_json::from_str::<Vec<String>>(&ended)
+                .map_err(|_| StoreError::Corrupt("child thread state"))?,
+        ),
+        None => (None, Vec::new()),
+    };
+    if ended_turns.iter().any(|ended| ended == turn) {
+        return Ok(None);
+    }
+    if live(state) {
+        if previous
+            .as_ref()
+            .is_some_and(|previous| previous.state == state)
+        {
+            return Ok(None);
+        }
+    } else {
+        if ended_turns.len() == ENDED_TURNS {
+            ended_turns.remove(0);
+        }
+        ended_turns.push(turn.to_owned());
+    }
+    let row: Option<(Option<String>, bool)> = transaction
+        .query_row(
+            "SELECT (SELECT json_extract(s.value,'$[1]')
+                       FROM json_each(i.payload_json,'$.payload.agentStates') s
+                      WHERE json_extract(s.value,'$[0]')=?2),
+                    t.terminal_at IS NOT NULL
+               FROM items i
+               JOIN turns t ON t.id=i.turn_id AND t.project_id=i.project_id
+                AND t.chat_id=i.chat_id AND t.session_id=i.session_id
+              WHERE i.id=?1 AND i.kind='collaboration'",
+            params![scope.item_id, scope.child_thread_id],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .optional()?;
+    let spawn_ended = row.as_ref().is_some_and(|(_, ended)| *ended);
+    let ended_at = ended_at.filter(|_| state != "running");
+    transaction.execute(
+        "INSERT INTO acp_child_thread_states
+         (native_child_thread_id,project_id,chat_id,session_id,runtime_epoch,state,
+          spawn_ended,ended_at,ended_turns)
+         VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9)
+         ON CONFLICT(native_child_thread_id) DO UPDATE SET
+           state=excluded.state,spawn_ended=excluded.spawn_ended,ended_at=excluded.ended_at,
+           ended_turns=excluded.ended_turns",
+        params![
+            scope.child_thread_id,
+            scope.owner.project_id.as_str(),
+            scope.owner.chat_id.as_str(),
+            scope.owner.session_id.as_str(),
+            scope.owner.runtime_epoch.get() as i64,
+            state,
+            spawn_ended,
+            ended_at,
+            serde_json::to_string(&ended_turns).expect("turn ids serialize"),
+        ],
+    )?;
+    let Some((Some(row_state), true)) = row else {
+        return Ok(None);
+    };
+    let shown = |recorded: Option<&Recorded>| match recorded {
+        Some(recorded) if applies(&row_state, recorded) => recorded.state.clone(),
+        _ => row_state.clone(),
+    };
+    let after = Recorded {
+        state: state.to_owned(),
+        spawn_ended,
+        ended_at,
+    };
+    if same(&shown(previous.as_ref()), &shown(Some(&after))) {
+        return Ok(None);
+    }
+    let project = scope.owner.project_id.as_str();
+    let chat = scope.owner.chat_id.as_str();
+    let revision = next_projection_revision(transaction, project, chat)?;
+    publish_send_neutral_projection(
+        transaction,
+        project,
+        chat,
+        scope.owner.session_id.as_str(),
+        revision,
+        now_millis,
+    )?;
+    Ok(Some(revision))
+}
+
+fn recorded_state(
     connection: &Connection,
     item_id: &str,
     child: &str,
-) -> Result<Option<&'static str>, rusqlite::Error> {
-    let status: Option<Option<String>> = connection
+) -> Result<Option<Recorded>, rusqlite::Error> {
+    connection
         .query_row(
-            "SELECT json_extract(t.snapshot_json,'$.turns[#-1].status')
-             FROM acp_child_thread_bindings b
-             JOIN acp_child_thread_transcripts t
-               ON t.native_child_thread_id=b.native_child_thread_id
-              AND t.project_id=b.project_id AND t.chat_id=b.chat_id
-              AND t.session_id=b.session_id AND t.runtime_epoch=b.runtime_epoch
+            "SELECT s.state,s.spawn_ended,s.ended_at FROM acp_child_thread_bindings b
+             JOIN acp_child_thread_states s
+               ON s.native_child_thread_id=b.native_child_thread_id
+              AND s.project_id=b.project_id AND s.chat_id=b.chat_id
+              AND s.session_id=b.session_id AND s.runtime_epoch=b.runtime_epoch
              WHERE b.item_id=?1 AND b.native_child_thread_id=?2",
             params![item_id, child],
-            |row| row.get(0),
+            |row| {
+                Ok(Recorded {
+                    state: row.get(0)?,
+                    spawn_ended: row.get(1)?,
+                    ended_at: row.get(2)?,
+                })
+            },
         )
-        .optional()?;
-    Ok(match status.flatten().as_deref() {
-        Some("completed") => Some("completed"),
-        Some("failed") => Some("errored"),
-        Some("interrupted") => Some("interrupted"),
-        _ => None,
-    })
+        .optional()
 }
 
-/// Whether the runtime that ran an item has exited or been replaced.
-fn runtime_gone(connection: &Connection, item: &ItemProjection) -> Result<bool, rusqlite::Error> {
-    connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM session_runtime_epochs
-           WHERE session_id=?1 AND (runtime_epoch>?2 OR (runtime_epoch=?2 AND state='exited')))",
-        params![item.session_id.as_str(), item.runtime_epoch.get() as i64],
-        |row| row.get(0),
-    )
-}
-
-/// Projects each child an ended turn's row still reports live with the end
-/// its stored transcript settled on, or as `unknown` once its runtime is gone
-/// without one: the child cannot still run, but nothing says how it ended.
+/// Projects each child of an ended turn's row with what that row shows for
+/// it (see `applies`). The row's times then end when the latest child it
+/// settled was seen to end; a child whose end time is not known is listed so
+/// that no time is claimed for it.
 pub(crate) fn project_settled_children(
     connection: &Connection,
     item: &mut ItemProjection,
 ) -> Result<(), StoreError> {
-    let ItemContent::Collaboration { agent_states, .. } = &item.content else {
-        return Ok(());
-    };
-    if !agent_states
-        .as_slice()
-        .iter()
-        .any(|(_, state)| live(state.as_str()))
-    {
-        return Ok(());
-    }
-    let gone = runtime_gone(connection, item)?;
     let id = item.id.as_str().to_owned();
-    let ItemContent::Collaboration { agent_states, .. } = &mut item.content else {
+    let mut ended_at = None;
+    let ItemContent::Collaboration {
+        agent_states,
+        untimed_agents,
+        ..
+    } = &mut item.content
+    else {
         return Ok(());
     };
     for (key, state) in agent_states.as_mut_slice() {
-        if !live(state.as_str()) {
+        let Some(recorded) = recorded_state(connection, &id, key.as_str())? else {
+            continue;
+        };
+        if !applies(state.as_str(), &recorded) {
             continue;
         }
-        let settled = match stored_state(connection, &id, key.as_str())? {
-            Some(settled) => settled,
-            None if gone => "unknown",
-            None => continue,
-        };
-        *state =
-            SafeText::new("agentState", settled).map_err(|_| StoreError::Corrupt("agent state"))?;
+        if !live(&recorded.state) {
+            match recorded.ended_at {
+                Some(at) => ended_at = ended_at.max(Some(at)),
+                None => untimed_agents.push(key.clone()),
+            }
+        }
+        if !same(&recorded.state, state.as_str()) {
+            *state = SafeText::new("agentState", recorded.state)
+                .map_err(|_| StoreError::Corrupt("agent state"))?;
+        }
+    }
+    if let Some(at) = ended_at {
+        item.updated_at = at;
     }
     Ok(())
 }
 
-/// After a child's end is stored, moves the parent projection when an ended
-/// turn's spawn row still reports that child live, so the row is re-projected.
-pub(super) fn publish_settled_child(
-    transaction: &Transaction<'_>,
-    item_id: &str,
-    child: &str,
-    now_millis: i64,
+/// Reports as `unknown` each child an ended turn's row still reports live once
+/// nothing can still run it: its session is no longer the chat's current one,
+/// its runtime epoch has durably ended or been replaced, or no runtime in this
+/// process `runs` it, as after an app restart. Nothing recorded how such a
+/// child ended.
+pub(crate) fn settle_lost_children(
+    page: &mut AcpChatPage,
+    runs: impl Fn(&RuntimeOwner) -> bool,
 ) -> Result<(), StoreError> {
-    let row: Option<(String, String, String)> = transaction
-        .query_row(
-            "SELECT i.project_id,i.chat_id,i.session_id FROM items i
-             JOIN turns t ON t.id=i.turn_id AND t.project_id=i.project_id
-              AND t.chat_id=i.chat_id AND t.session_id=i.session_id
-             WHERE i.id=?1 AND i.kind='collaboration' AND t.terminal_at IS NOT NULL
-               AND EXISTS(SELECT 1 FROM json_each(i.payload_json,'$.payload.agentStates') s
-                 WHERE json_extract(s.value,'$[0]')=?2
-                   AND json_extract(s.value,'$[1]') IN ('running','pendingInit'))",
-            params![item_id, child],
-            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
-        )
-        .optional()?;
-    let Some((project, chat, session)) = row else {
-        return Ok(());
-    };
-    if stored_state(transaction, item_id, child)?.is_none() {
-        return Ok(());
+    let current = page.current_session_id.clone();
+    let live_epoch = page
+        .sessions
+        .as_slice()
+        .iter()
+        .find(|session| Some(&session.id) == current.as_ref())
+        .and_then(|session| session.runtime_epoch);
+    for turn in page.turns.as_mut_slice() {
+        if turn.terminal_at.is_none() {
+            continue;
+        }
+        for item in turn.items.as_mut_slice() {
+            let ItemContent::Collaboration { agent_states, .. } = &mut item.content else {
+                continue;
+            };
+            if !agent_states
+                .as_slice()
+                .iter()
+                .any(|(_, state)| live(state.as_str()))
+            {
+                continue;
+            }
+            let owner = RuntimeOwner {
+                project_id: item.project_id.clone(),
+                chat_id: item.chat_id.clone(),
+                session_id: item.session_id.clone(),
+                runtime_epoch: item.runtime_epoch,
+            };
+            if current.as_ref() == Some(&owner.session_id)
+                && live_epoch == Some(owner.runtime_epoch)
+                && runs(&owner)
+            {
+                continue;
+            }
+            for (_, state) in agent_states.as_mut_slice() {
+                if live(state.as_str()) {
+                    *state = SafeText::new("agentState", "unknown")
+                        .map_err(|_| StoreError::Corrupt("agent state"))?;
+                }
+            }
+        }
     }
-    let revision = next_projection_revision(transaction, &project, &chat)?;
-    publish_send_neutral_projection(transaction, &project, &chat, &session, revision, now_millis)
+    Ok(())
 }

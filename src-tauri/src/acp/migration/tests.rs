@@ -1339,6 +1339,7 @@ fn fresh_schema_equals_a_v6_schema_upgraded_in_place() {
     turn_undo_intent_indexes::apply(&mut upgraded).unwrap();
     imported_history::apply(&mut upgraded).unwrap();
     session_capabilities::apply(&mut upgraded).unwrap();
+    child_thread_states::apply(&mut upgraded).unwrap();
     let upgraded_fingerprint = database_fingerprint(&upgraded).unwrap();
 
     assert_eq!(

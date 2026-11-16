@@ -723,11 +723,15 @@ it("the first child read waits until child notices are subscribed", async () => 
   expect(readChild).toHaveBeenCalledTimes(1);
 });
 
-/** A spawn row of a parent turn that has ended, never rewritten since. */
+/**
+ * A spawn row of a parent turn that has ended, closed with that turn and
+ * never rewritten since; the parent projection reports its child's state.
+ */
 function spawnFromEndedTurn(
   revision: string,
   turnState = "completed",
   agentState = "running",
+  untimed = false,
 ) {
   const page = spawnPage(agentState, revision);
   const [turn] = page.turns;
@@ -739,7 +743,10 @@ function spawnFromEndedTurn(
         state: turnState,
         items: turn.items.map((item) => ({
           ...item,
-          lifecycle: "started",
+          lifecycle: turnState === "running" ? "started" : "cancelled",
+          ...(untimed
+            ? { payload: { ...item.payload, untimedAgents: ["child"] } }
+            : {}),
           projectId: "project",
           chatId: "chat",
           sessionId: "session",
@@ -750,12 +757,12 @@ function spawnFromEndedTurn(
 }
 
 it.each([
-  ["interrupted", "Stopped"],
-  ["errored", "Failed"],
-  ["unknown", "Outcome unavailable"],
+  ["interrupted", "Stopped", false],
+  ["errored", "Failed", true],
+  ["unknown", "Outcome unavailable", false],
 ])(
   "moves a child of an ended spawn turn to done once the parent projection settles it as %s",
-  (state, shown) => {
+  (state, shown, untimed) => {
     useSubagentPaneStore.setState({ list: true });
     const view = (page: AcpChatPage) => (
       <SubagentSurface
@@ -768,11 +775,13 @@ it.each([
     const { rerender } = render(view(spawnFromEndedTurn("7")));
     const active = screen.getByRole("region", { name: "Active subagents" });
     expect(within(active).getByText("Working")).toBeVisible();
-    rerender(view(spawnFromEndedTurn("8", "completed", state)));
+    rerender(view(spawnFromEndedTurn("8", "completed", state, untimed)));
     const done = screen.getByRole("region", { name: "Done subagents" });
     expect(within(done).getByText(shown)).toBeVisible();
-    // The parent rows hold only the spawn time, so no age is claimed.
-    expect(done.querySelector("time")).toBeNull();
+    // A child is aged only by an end time its parent projection knows.
+    expect(done.querySelector("time") !== null).toBe(
+      !untimed && state !== "unknown",
+    );
     expect(
       screen.queryByRole("region", { name: "Active subagents" }),
     ).toBeNull();
@@ -781,17 +790,19 @@ it.each([
 );
 
 it.each([
-  ["an ended", "completed", "completed", null],
-  ["a live", "running", "running", /Working for/],
+  ["an ended", "completed", "completed", false, "Worked for 25s"],
+  ["an untimed", "completed", "completed", true, null],
+  ["a lost", "completed", "unknown", false, null],
+  ["a live", "running", "running", false, /Working for/],
 ])(
   "times the header of a child of %s parent turn by the state its parent projection reports",
-  async (_name, turnState, agentState, duration) => {
+  async (_name, turnState, agentState, untimed, duration) => {
     readChild.mockResolvedValue(
       childRead([{ status: "completed", items: [text("a", "All counted")] }]),
     );
     const { container } = render(
       <SubagentSurface
-        page={spawnFromEndedTurn("7", turnState, agentState)}
+        page={spawnFromEndedTurn("7", turnState, agentState, untimed)}
         projectGeneration="3"
         itemId="spawn"
         agentKey="child"
@@ -802,7 +813,9 @@ it.each([
     const header = container.querySelector(".subagent-surface__duration");
     if (duration) {
       expect(header).toHaveTextContent(duration);
-      expect(header).toHaveClass("acp-live-shimmer");
+      expect(header?.classList.contains("acp-live-shimmer")).toBe(
+        agentState === "running",
+      );
     } else expect(header).toBeNull();
     expect(readChild).toHaveBeenCalledTimes(1);
   },

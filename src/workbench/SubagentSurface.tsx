@@ -23,7 +23,6 @@ import {
   childReadFor,
   MAX_STALE_RETRIES,
   useChildEpoch,
-  settledSubagents,
   useChildReads,
   type ChildReadResult,
 } from "./subagentLiveness";
@@ -108,10 +107,9 @@ function SubagentChild({
   );
   const invocation =
     agentKey && !superseded ? invocationOf(page, itemId, agentKey) : null;
-  const reported = invocation
+  const observed = invocation
     ? recent.find((agent) => agent.id === invocation)
     : undefined;
-  const [observed] = settledSubagents(page, reported ? [reported] : []);
   const live = liveAgent(observed?.status);
   const [read, setRead] = useState<ReadState | null>(null);
   const current = read?.key === identity ? read : null;
@@ -162,7 +160,7 @@ function SubagentChild({
         ? item.payload.label
         : "Subagent");
   const time =
-    observed && !observed.endUnknown
+    observed && observed.status !== "unknown"
       ? subagentTimes(page, recent).get(observed.id)
       : null;
   const duration = time

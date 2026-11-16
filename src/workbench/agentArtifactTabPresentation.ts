@@ -28,8 +28,6 @@ export type RecentAgent = {
   status: AgentStatus;
   agentKey?: string;
   target?: SubagentPaneTarget;
-  /** Settled after its spawn turn; the parent rows hold no end time. */
-  endUnknown?: true;
 };
 
 function childTarget(

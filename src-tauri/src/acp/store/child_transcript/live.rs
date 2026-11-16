@@ -9,15 +9,17 @@ use sage_acp_protocol::{
     lifecycle::TurnState,
 };
 
+use super::settled::{record_child_state, turn_state};
 use super::{
     ChildTranscriptScope, ChildTranscriptStoreError, load_snapshot, verify_current_binding,
     write_snapshot_in,
 };
 
 /// A changed child snapshot advances the chat's child projection epoch (its
-/// newest live `updated_at`, see `child_projection_epoch`). It never moves
-/// the parent projection revision, the optimistic-concurrency token of user
-/// actions, nor `chats.updated_at`. Duplicates stay silent.
+/// newest live `updated_at`, see `child_projection_epoch`). It moves the
+/// parent projection revision, the optimistic-concurrency token of user
+/// actions, only when the child's recorded state changes what an ended spawn
+/// turn's row shows (see `settled`). Duplicates stay silent.
 pub(crate) fn persist_live_item_in(
     transaction: &Transaction<'_>,
     owner: &AdapterStoreOwner,
@@ -92,6 +94,19 @@ fn store_live_item_in(
             turns: Vec::new(),
             retention_limited: false,
         });
+    let turn_ended = snapshot.turns.iter().any(|turn| {
+        turn.id == command.child_turn_id.as_str() && turn_state(&turn.status) != "running"
+    });
+    if !turn_ended {
+        record_child_state(
+            transaction,
+            &scope,
+            command.child_turn_id.as_str(),
+            "running",
+            None,
+            command.now_millis,
+        )?;
+    }
     let mut candidate = snapshot.clone();
     if snapshot.retention_limited
         && !snapshot.turns.iter().any(|turn| {
@@ -246,11 +261,22 @@ fn store_turn_status_in(
             retention_limited: false,
         });
     let retained = snapshot.clone();
-    if let Some(turn) = snapshot
+    let position = snapshot
         .turns
-        .iter_mut()
-        .find(|turn| turn.id == child_turn_id.as_str())
-    {
+        .iter()
+        .position(|turn| turn.id == child_turn_id.as_str());
+    if position.is_none_or(|index| index + 1 == snapshot.turns.len()) {
+        record_child_state(
+            transaction,
+            &scope,
+            child_turn_id.as_str(),
+            turn_state(status),
+            Some(now_millis),
+            now_millis,
+        )?;
+    }
+    if let Some(index) = position {
+        let turn = &mut snapshot.turns[index];
         if turn.status == status {
             return Ok(false);
         }
@@ -277,15 +303,7 @@ fn store_turn_status_in(
         });
     }
     match write_snapshot_in(transaction, &scope, &snapshot, now_millis, true) {
-        Ok(()) => {
-            super::settled::publish_settled_child(
-                transaction,
-                &scope.item_id,
-                &scope.child_thread_id,
-                now_millis,
-            )?;
-            Ok(true)
-        }
+        Ok(()) => Ok(true),
         Err(ChildTranscriptStoreError::Capacity) if !retained.retention_limited => {
             let mut limited = retained;
             limited.retention_limited = true;
@@ -384,5 +402,6 @@ fn store_error(error: ChildTranscriptStoreError) -> StoreError {
         ChildTranscriptStoreError::Storage(error) => StoreError::Database(error),
         ChildTranscriptStoreError::Corrupt => StoreError::Corrupt("childTranscript"),
         ChildTranscriptStoreError::Capacity => capacity(),
+        ChildTranscriptStoreError::Projection(error) => error,
     }
 }
