@@ -9,7 +9,9 @@ use std::{
 
 use tauri::{AppHandle, Emitter};
 
-use crate::{persistence::Database, state::AppState};
+use crate::project_registry::ProjectRegistryStore;
+use crate::state::AppState;
+use sage_db::database::Database;
 
 use super::{
     IGNORED_BELOW_NOTIFY_ACTION, OVERFLOW_NOTIFY_ACTION, WORKSPACE_NOTIFY_EVENT,

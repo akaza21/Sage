@@ -2,6 +2,7 @@ use super::RegistryAdmissionUnavailable;
 use crate::acp::{
     bindings::codex::CodexProjectRootAuthority, resource_mapper::ConfiguredResourceRoot,
 };
+use crate::project_registry::ProjectRegistryStore;
 
 #[derive(Debug, Clone, Copy)]
 pub(super) enum RootPolicy {
@@ -29,7 +30,7 @@ pub(crate) enum BindingProjectRootError {
 }
 
 pub(super) fn single_root_authority(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     context: &crate::state::ActiveProjectContext<'_>,
 ) -> Result<crate::project_registry::ProjectRootAuthority, ()> {
     let roots = database

@@ -4,6 +4,7 @@ use std::{
 };
 
 use rusqlite::{Connection, params};
+use sage_db::error::SqliteResultExt;
 use serde::{Deserialize, Serialize};
 
 mod access;
@@ -75,13 +76,14 @@ pub struct SettingsStore(Arc<Mutex<Connection>>);
 
 impl SettingsStore {
     pub fn open(path: &Path) -> AppResult<Self> {
-        let mut connection = Connection::open(path)?;
-        connection.pragma_update(None, "journal_mode", "WAL")?;
-        connection.pragma_update(None, "busy_timeout", 5_000)?;
+        let mut connection = Connection::open(path).db()?;
+        connection.pragma_update(None, "journal_mode", "WAL").db()?;
+        connection.pragma_update(None, "busy_timeout", 5_000).db()?;
         {
-            let migration = connection.transaction()?;
-            migration.execute_batch(
-                "CREATE TABLE IF NOT EXISTS editor_appearance (
+            let migration = connection.transaction().db()?;
+            migration
+                .execute_batch(
+                    "CREATE TABLE IF NOT EXISTS editor_appearance (
                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                    font_size INTEGER NOT NULL CHECK (font_size IN (12, 13, 14, 16)),
                    tab_size INTEGER NOT NULL CHECK (tab_size IN (2, 4, 8)),
@@ -89,35 +91,44 @@ impl SettingsStore {
                    line_numbers INTEGER NOT NULL DEFAULT 1 CHECK (line_numbers IN (0, 1)),
                    show_whitespace INTEGER NOT NULL DEFAULT 0 CHECK (show_whitespace IN (0, 1))
                  ) STRICT;",
-            )?;
-            migration.execute_batch(
-                "CREATE TABLE IF NOT EXISTS session_access_mode (
+                )
+                .db()?;
+            migration
+                .execute_batch(
+                    "CREATE TABLE IF NOT EXISTS session_access_mode (
                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                    mode TEXT NOT NULL CHECK (mode IN ('readOnly', 'ask', 'workspaceWrite'))
                  ) STRICT;",
-            )?;
+                )
+                .db()?;
             access::migrate(&migration)?;
             chat_access::migrate(&migration)?;
-            migration.execute_batch(
-                "CREATE TABLE IF NOT EXISTS ui_appearance (
+            migration
+                .execute_batch(
+                    "CREATE TABLE IF NOT EXISTS ui_appearance (
                    singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
                    font_size INTEGER NOT NULL CHECK (font_size IN (12, 13, 14, 16)),
                    density TEXT NOT NULL CHECK (density IN ('comfortable', 'compact'))
                  ) STRICT;",
-            )?;
+                )
+                .db()?;
             if !table_has_column(&migration, "line_numbers")? {
-                migration.execute_batch(
-                    "ALTER TABLE editor_appearance
+                migration
+                    .execute_batch(
+                        "ALTER TABLE editor_appearance
                      ADD COLUMN line_numbers INTEGER NOT NULL DEFAULT 1
                      CHECK (line_numbers IN (0, 1));",
-                )?;
+                    )
+                    .db()?;
             }
             if !table_has_column(&migration, "show_whitespace")? {
-                migration.execute_batch(
-                    "ALTER TABLE editor_appearance
+                migration
+                    .execute_batch(
+                        "ALTER TABLE editor_appearance
                      ADD COLUMN show_whitespace INTEGER NOT NULL DEFAULT 0
                      CHECK (show_whitespace IN (0, 1));",
-                )?;
+                    )
+                    .db()?;
             }
             // The fixed columns above are the legacy record; values now live
             // in the catalogue's rows, copied from it once.
@@ -130,8 +141,8 @@ impl SettingsStore {
             browser_site_permissions::migrate(&migration)?;
             terminal_dock::migrate(&migration)?;
             new_chat_defaults::migrate(&migration)?;
-            custom_acp_agents::migrate(&migration)?;
-            migration.commit()?;
+            custom_acp_agents::migrate(&migration).db()?;
+            migration.commit().db()?;
         }
         Ok(Self(Arc::new(Mutex::new(connection))))
     }
@@ -167,7 +178,7 @@ impl SettingsStore {
                     })?;
                 Ok(UiAppearance { font_size, density })
             })
-            .map_err(Into::into)
+            .db()
     }
 
     pub fn set_ui_appearance(&self, value: UiAppearance) -> AppResult<UiAppearance> {
@@ -180,22 +191,28 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection.execute(
-            "INSERT INTO ui_appearance(singleton, font_size, density) VALUES (1, ?1, ?2)
+        connection
+            .execute(
+                "INSERT INTO ui_appearance(singleton, font_size, density) VALUES (1, ?1, ?2)
              ON CONFLICT(singleton) DO UPDATE SET
                font_size=excluded.font_size,
                density=excluded.density",
-            params![value.font_size, density],
-        )?;
+                params![value.font_size, density],
+            )
+            .db()?;
         Ok(value)
     }
 }
 
 fn table_has_column(connection: &Connection, column: &str) -> AppResult<bool> {
-    let mut statement = connection.prepare("PRAGMA table_info(editor_appearance)")?;
-    let names = statement.query_map([], |row| row.get::<_, String>(1))?;
+    let mut statement = connection
+        .prepare("PRAGMA table_info(editor_appearance)")
+        .db()?;
+    let names = statement
+        .query_map([], |row| row.get::<_, String>(1))
+        .db()?;
     for name in names {
-        if name? == column {
+        if name.db()? == column {
             return Ok(true);
         }
     }

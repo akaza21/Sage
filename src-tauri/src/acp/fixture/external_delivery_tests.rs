@@ -1,15 +1,12 @@
 use std::time::Instant;
 
-use crate::{
-    acp::{
-        recovery::recover_after_restart,
-        runtime::{
-            BoundedThread, DriverError, HostCancelIntent, HostError, HostOutcome, HostPromptIntent,
-            HostState, LiveRuntimeEngine, LiveRuntimePort, LiveWrite, RuntimeHost,
-        },
-        store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
+use crate::acp::{
+    recovery::recover_after_restart,
+    runtime::{
+        BoundedThread, DriverError, HostCancelIntent, HostError, HostOutcome, HostPromptIntent,
+        HostState, LiveRuntimeEngine, LiveRuntimePort, LiveWrite, RuntimeHost,
     },
-    persistence::Database,
+    store::{AdapterTurnCursor, CloseSessionCommand, SendObservation},
 };
 use sage_acp_protocol::{contract::SageTurnId, lifecycle::DeliveryState, scheduler::RuntimeOwner};
 
@@ -137,7 +134,7 @@ async fn observe_zero_bytes(prepared: ExternalPrepared, deadline: FixtureDeadlin
     drop(journal);
     drop(database);
 
-    let reopened = Database::open(&database_path).unwrap();
+    let reopened = crate::database::open_database(&database_path).unwrap();
     recover_after_restart(&mut reopened.connection(), now + 5).unwrap();
     assert_eq!(send_started(&reopened, &started.session_id), before);
     let fixture_case = super::generated_cases::FROZEN_CASES
@@ -338,7 +335,7 @@ async fn observe_complete_exit(prepared: ExternalPrepared, deadline: FixtureDead
     drop(journal);
     drop(database);
 
-    let reopened = Database::open(&database_path).unwrap();
+    let reopened = crate::database::open_database(&database_path).unwrap();
     recover_after_restart(&mut reopened.connection(), now + 2).unwrap();
     let after = send_started(&reopened, &started.session_id);
     assert_eq!(after, before);

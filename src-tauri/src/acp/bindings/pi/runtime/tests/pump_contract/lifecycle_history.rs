@@ -51,7 +51,7 @@ async fn unfinished_compaction_preserves_failed_and_cancelled_outcomes_after_reo
                 .run_to_completion(256, std::time::Duration::ZERO, None)
                 .unwrap();
         }
-        let reopened = crate::persistence::Database::open(&path).unwrap();
+        let reopened = crate::database::open_database(&path).unwrap();
         for database in [&fixture.database, &reopened] {
             let connection = database.connection();
             let page =
@@ -117,7 +117,7 @@ async fn four_compaction_outcomes_and_cancelled_dialog_copy_survive_pump_sqlite_
             .run_to_completion(256, std::time::Duration::ZERO, None)
             .unwrap();
     }
-    let reopened = crate::persistence::Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     {
         let connection = reopened.connection();
         let page = load_chat_page(&connection, owner().project_id, owner().chat_id, None).unwrap();

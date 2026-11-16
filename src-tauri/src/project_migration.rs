@@ -11,6 +11,7 @@ use sage_core::{
     error::{AppError, AppResult},
     time::now_millis,
 };
+use sage_db::error::SqliteResultExt;
 use serde_json::{Value, json};
 use uuid::Uuid;
 
@@ -51,28 +52,34 @@ struct LegacyBuffer {
 }
 
 pub fn migrate(connection: &mut Connection) -> AppResult<()> {
-    let applied = connection.query_row(
-        "SELECT EXISTS(
+    let applied = connection
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM schema_migrations WHERE version = 4
          )",
-        [],
-        |row| row.get::<_, bool>(0),
-    )?;
+            [],
+            |row| row.get::<_, bool>(0),
+        )
+        .db()?;
     if applied {
         return Ok(());
     }
 
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
     preflight_legacy_bounds(&transaction)?;
-    transaction.execute_batch(PROJECT_LIFECYCLE_SCHEMA)?;
+    transaction.execute_batch(PROJECT_LIFECYCLE_SCHEMA).db()?;
 
     let roots = {
-        let mut statement = transaction.prepare(
-            "SELECT project_id, absolute_path, ordinal
+        let mut statement = transaction
+            .prepare(
+                "SELECT project_id, absolute_path, ordinal
              FROM project_roots
              ORDER BY project_id, ordinal
              LIMIT ?1",
-        )?;
+            )
+            .db()?;
         statement
             .query_map([MAX_TOTAL_LEGACY_ROOTS + 1], |row| {
                 Ok(LegacyRoot {
@@ -80,14 +87,20 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
                     absolute_path: row.get(1)?,
                     ordinal: row.get(2)?,
                 })
-            })?
-            .collect::<Result<Vec<_>, _>>()?
+            })
+            .db()?
+            .collect::<Result<Vec<_>, _>>()
+            .db()?
     };
     let project_ids = {
-        let mut statement = transaction.prepare("SELECT id FROM projects LIMIT ?1")?;
+        let mut statement = transaction
+            .prepare("SELECT id FROM projects LIMIT ?1")
+            .db()?;
         statement
-            .query_map([MAX_PROJECTS + 1], |row| row.get::<_, String>(0))?
-            .collect::<Result<HashSet<_>, _>>()?
+            .query_map([MAX_PROJECTS + 1], |row| row.get::<_, String>(0))
+            .db()?
+            .collect::<Result<HashSet<_>, _>>()
+            .db()?
     };
     if project_ids.len() > MAX_PROJECTS as usize {
         return Err(AppError::ResourceLimit(format!(
@@ -132,18 +145,20 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
         first_roots
             .entry(root.project_id.clone())
             .or_insert_with(|| (root_id.clone(), canonical.clone()));
-        transaction.execute(
-            "INSERT INTO project_roots_v4
+        transaction
+            .execute(
+                "INSERT INTO project_roots_v4
              (id, project_id, absolute_path, canonical_key, ordinal)
              VALUES (?1, ?2, ?3, ?4, ?5)",
-            params![
-                root_id,
-                root.project_id,
-                persisted_path_text(&canonical)?,
-                canonical_key,
-                root.ordinal
-            ],
-        )?;
+                params![
+                    root_id,
+                    root.project_id,
+                    persisted_path_text(&canonical)?,
+                    canonical_key,
+                    root.ordinal
+                ],
+            )
+            .db()?;
     }
 
     let mut resource_spellings = MigratedResourceSpellings::default();
@@ -162,8 +177,9 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
             &buffer.relative_path,
         )?;
         resource_spellings.record(root_id, &relative_path)?;
-        transaction.execute(
-            "INSERT INTO editor_buffers_v4 (
+        transaction
+            .execute(
+                "INSERT INTO editor_buffers_v4 (
                project_id, root_id, relative_path, base_fingerprint,
                base_byte_len, base_modified_at, line_ending, buffer_content,
                buffer_byte_len, buffer_fingerprint, revision,
@@ -171,27 +187,29 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
              ) VALUES (
                ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13
              )",
-            params![
-                buffer.project_id,
-                root_id,
-                relative_path,
-                buffer.base_fingerprint,
-                buffer.base_byte_len,
-                buffer.base_modified_at,
-                buffer.line_ending,
-                buffer.buffer_content,
-                buffer.buffer_byte_len,
-                buffer.buffer_fingerprint,
-                buffer.revision,
-                buffer.pending_temp_path,
-                buffer.updated_at
-            ],
-        )?;
+                params![
+                    buffer.project_id,
+                    root_id,
+                    relative_path,
+                    buffer.base_fingerprint,
+                    buffer.base_byte_len,
+                    buffer.base_modified_at,
+                    buffer.line_ending,
+                    buffer.buffer_content,
+                    buffer.buffer_byte_len,
+                    buffer.buffer_fingerprint,
+                    buffer.revision,
+                    buffer.pending_temp_path,
+                    buffer.updated_at
+                ],
+            )
+            .db()?;
     }
 
     migrate_tab_resources(&transaction, &first_roots, &mut resource_spellings)?;
-    transaction.execute_batch(
-        "DROP TABLE editor_buffers;
+    transaction
+        .execute_batch(
+            "DROP TABLE editor_buffers;
          DROP TABLE project_roots;
          ALTER TABLE project_roots_v4 RENAME TO project_roots;
          ALTER TABLE editor_buffers_v4 RENAME TO editor_buffers;
@@ -199,36 +217,42 @@ pub fn migrate(connection: &mut Connection) -> AppResult<()> {
            ON editor_buffers(project_id, updated_at);
          CREATE INDEX idx_project_roots_project_ordinal
            ON project_roots(project_id, ordinal);",
-    )?;
+        )
+        .db()?;
 
-    seed_layouts(&transaction)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (4, ?1)",
-        [now_millis()],
-    )?;
+    seed_layouts(&transaction).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (4, ?1)",
+            [now_millis()],
+        )
+        .db()?;
 
     let foreign_key_error = transaction
         .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
-        .optional()?
+        .optional()
+        .db()?
         .unwrap_or(false);
     if foreign_key_error {
         return Err(AppError::InvalidRequest(
             "project migration failed its foreign-key check".into(),
         ));
     }
-    transaction.commit()?;
+    transaction.commit().db()?;
     Ok(())
 }
 
 fn load_legacy_buffers(transaction: &rusqlite::Transaction<'_>) -> AppResult<Vec<LegacyBuffer>> {
-    let mut statement = transaction.prepare(
-        "SELECT project_id, relative_path, base_fingerprint, base_byte_len,
+    let mut statement = transaction
+        .prepare(
+            "SELECT project_id, relative_path, base_fingerprint, base_byte_len,
                 base_modified_at, line_ending, buffer_content,
                 buffer_byte_len, buffer_fingerprint, revision,
                 pending_temp_path, updated_at
          FROM editor_buffers
          LIMIT ?1",
-    )?;
+        )
+        .db()?;
     let buffers = statement
         .query_map([MAX_TOTAL_LEGACY_BUFFERS + 1], |row| {
             Ok(LegacyBuffer {
@@ -245,8 +269,10 @@ fn load_legacy_buffers(transaction: &rusqlite::Transaction<'_>) -> AppResult<Vec
                 pending_temp_path: row.get(10)?,
                 updated_at: row.get(11)?,
             })
-        })?
-        .collect::<Result<Vec<_>, _>>()?;
+        })
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     if buffers.len() > MAX_TOTAL_LEGACY_BUFFERS as usize {
         return Err(AppError::ResourceLimit(
             "legacy dirty-buffer count exceeds the migration limit".into(),
@@ -269,10 +295,12 @@ fn migrate_tab_resources(
     resource_spellings: &mut MigratedResourceSpellings,
 ) -> AppResult<()> {
     let tabs = {
-        let mut statement = transaction.prepare(
-            "SELECT id, project_id, kind, metadata_json
+        let mut statement = transaction
+            .prepare(
+                "SELECT id, project_id, kind, metadata_json
                  FROM workbench_tabs LIMIT ?1",
-        )?;
+            )
+            .db()?;
         statement
             .query_map([MAX_TOTAL_LEGACY_TABS + 1], |row| {
                 Ok((
@@ -281,8 +309,10 @@ fn migrate_tab_resources(
                     row.get::<_, String>(2)?,
                     row.get::<_, String>(3)?,
                 ))
-            })?
-            .collect::<Result<Vec<_>, _>>()?
+            })
+            .db()?
+            .collect::<Result<Vec<_>, _>>()
+            .db()?
     };
     if tabs.len() > MAX_TOTAL_LEGACY_TABS as usize {
         return Err(AppError::ResourceLimit(
@@ -324,19 +354,21 @@ fn migrate_tab_resources(
             "resource".into(),
             json!({ "rootId": root_id, "relativePath": relative_path }),
         );
-        transaction.execute(
-            "UPDATE workbench_tabs SET metadata_json = ?2 WHERE id = ?1",
-            params![
-                tab_id,
-                serde_json::to_string(&metadata)
-                    .map_err(|error| AppError::InvalidRequest(error.to_string()))?
-            ],
-        )?;
+        transaction
+            .execute(
+                "UPDATE workbench_tabs SET metadata_json = ?2 WHERE id = ?1",
+                params![
+                    tab_id,
+                    serde_json::to_string(&metadata)
+                        .map_err(|error| AppError::InvalidRequest(error.to_string()))?
+                ],
+            )
+            .db()?;
     }
     Ok(())
 }
 
-fn seed_layouts(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
+fn seed_layouts(transaction: &rusqlite::Transaction<'_>) -> rusqlite::Result<()> {
     let projects = {
         let mut statement =
             transaction.prepare("SELECT id FROM projects ORDER BY last_opened_at DESC LIMIT ?1")?;

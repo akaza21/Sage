@@ -3,7 +3,9 @@ use std::{fs, path::Path};
 use uuid::Uuid;
 
 use super::*;
-use crate::{persistence::Database, state::AppState};
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::state::AppState;
 
 struct TwoRootProject {
     base: std::path::PathBuf,
@@ -78,7 +80,7 @@ fn write_executable(path: &Path, body: &str) {
 #[test]
 fn commits_only_the_requested_root_and_returns_all_authoritative_statuses() {
     let fixture = TwoRootProject::new();
-    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)
@@ -146,7 +148,7 @@ fn commit_and_post_commit_projection_never_launch_content_filters() {
         &["config", "filter.sentinel.required", "true"],
     );
 
-    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)
@@ -202,7 +204,7 @@ fn post_commit_projection_preserves_a_staged_type_change() {
         &["update-index", "--cacheinfo", &cache_info],
     );
 
-    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)
@@ -235,7 +237,7 @@ fn post_commit_projection_preserves_a_staged_type_change() {
 #[test]
 fn effect_unknown_recovery_never_projects_a_replacement_root_identity() {
     let fixture = TwoRootProject::new();
-    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)
@@ -320,7 +322,7 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
     )
     .unwrap();
 
-    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&fixture.root_a).unwrap();
     let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
     let state = AppState::new(database);
@@ -363,7 +365,7 @@ fn ordinary_git_failure_never_exposes_an_absolute_repository_path() {
 #[test]
 fn post_commit_index_projection_never_exposes_oversized_absolute_git_diagnostics() {
     let fixture = TwoRootProject::new();
-    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&fixture.root_a).unwrap();
     let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
     let state = AppState::new(database);
@@ -438,7 +440,7 @@ fn post_commit_index_projection_never_exposes_oversized_absolute_git_diagnostics
 #[test]
 fn stale_epoch_foreign_root_and_oversized_ids_reject_before_commit() {
     let fixture = TwoRootProject::new();
-    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&fixture.root_a).unwrap();
     let root_id = database.root_records(&project.id).unwrap()[0].id.clone();
     let state = AppState::new(database);
@@ -494,7 +496,7 @@ fn stale_epoch_foreign_root_and_oversized_ids_reject_before_commit() {
 #[test]
 fn timeout_returns_effect_unknown_with_an_authoritative_all_root_projection() {
     let fixture = TwoRootProject::new();
-    let database = Database::open(&fixture.base.join("sage.db")).unwrap();
+    let database = crate::database::open_database(&fixture.base.join("sage.db")).unwrap();
     let project = database.create_project_from_root(&fixture.root_a).unwrap();
     database
         .add_project_root(&project.id, &fixture.root_b)

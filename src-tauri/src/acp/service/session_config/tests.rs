@@ -89,7 +89,8 @@ impl RuntimeEngine for ConfigErrorEngine {
 
 fn fixture(error: HostError) -> (AcpService, ConfigIntent, AcpChatPage) {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     let owner = RuntimeOwner {
         project_id: SageProjectId::parse("project-config").unwrap(),
         chat_id: SageChatId::parse("chat-config").unwrap(),

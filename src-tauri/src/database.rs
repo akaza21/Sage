@@ -1,219 +1,59 @@
-use std::{
-    path::{Path, PathBuf},
-    sync::{Arc, Mutex},
+//! Opens Sage's database at startup. `sage-db` sets up the connections; the
+//! steps around it run here in the order startup has always used: migrate,
+//! settle turns a crash left open, open the database, purge temporary Chats,
+//! then reconcile image artifacts. Nothing else touches the database before
+//! this returns.
+
+use std::path::Path;
+
+use sage_core::error::AppResult;
+use sage_db::{
+    database::{Database, DatabaseOptions},
+    physical_storage::StorageLimits,
 };
 
-use rusqlite::Connection;
-use sage_core::error::AppResult;
-
 use crate::acp::migration;
+use crate::side_chat_storage::SideChatStore;
 
-mod physical_storage;
-
-use physical_storage::{PhysicalStorage, StorageLimits};
-
-#[cfg(any(test, all(windows, feature = "acp-fixture")))]
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(crate) struct WalConvergenceReceipt {
-    wal_bytes: u64,
-    checkpoint_target_bytes: u64,
-    checkpointed: bool,
+pub(crate) fn open_database(path: &Path) -> AppResult<Database> {
+    open_database_with_limits(path, StorageLimits::production())
 }
 
-#[cfg(any(test, all(windows, feature = "acp-fixture")))]
-impl WalConvergenceReceipt {
-    pub(crate) fn wal_bytes(self) -> u64 {
-        self.wal_bytes
+fn open_database_with_limits(path: &Path, storage_limits: StorageLimits) -> AppResult<Database> {
+    let (connection, live_path_anchor) = migration::open_or_migrate(path)?.into_parts();
+    crate::turn_workspace::invalidate_active(&connection).map_err(|_| {
+        sage_core::error::AppError::InvalidRequest("workspace summary recovery failed".into())
+    })?;
+    let database = Database::open(
+        path,
+        connection,
+        live_path_anchor,
+        DatabaseOptions {
+            reader_busy_timeout: crate::chat_search::READER_BUSY_TIMEOUT,
+            storage_limits,
+        },
+    )?;
+    // Like the exit path: a failed purge never blocks startup; the
+    // temporary Chats stay hidden and the purge retries next time.
+    if let Err(error) = database.purge_side_chats() {
+        tracing::warn!(?error, "temporary Chat cleanup will retry later");
     }
-
-    pub(crate) fn checkpoint_target_bytes(self) -> u64 {
-        self.checkpoint_target_bytes
+    if let Ok(root) = database.image_artifact_root() {
+        crate::image_artifacts::reconcile_image_artifacts(&database.connection(), root)?;
     }
-
-    pub(crate) fn checkpointed(self) -> bool {
-        self.checkpointed
-    }
-
-    #[cfg(all(test, feature = "acp-fixture", windows))]
-    pub(crate) fn test_only(
-        wal_bytes: u64,
-        checkpoint_target_bytes: u64,
-        checkpointed: bool,
-    ) -> Self {
-        Self {
-            wal_bytes,
-            checkpoint_target_bytes,
-            checkpointed,
-        }
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Database {
-    connection: Arc<Mutex<Connection>>,
-    search_reader: Option<Arc<Mutex<Connection>>>,
-    physical_storage: Arc<PhysicalStorage>,
-    live_path_anchor: Arc<migration::LivePathAnchor>,
-    image_artifact_root: Option<Arc<PathBuf>>,
-}
-
-impl Database {
-    pub fn open(path: &Path) -> AppResult<Self> {
-        Self::open_with_limits(path, StorageLimits::production())
-    }
-
-    fn open_with_limits(path: &Path, limits: StorageLimits) -> AppResult<Self> {
-        let (connection, live_path_anchor) = migration::open_or_migrate(path)?.into_parts();
-        crate::turn_workspace::invalidate_active(&connection).map_err(|_| {
-            sage_core::error::AppError::InvalidRequest("workspace summary recovery failed".into())
-        })?;
-        connection.pragma_update(None, "journal_mode", "WAL")?;
-        connection.pragma_update(None, "foreign_keys", "ON")?;
-        connection.pragma_update(None, "busy_timeout", 5_000)?;
-        connection.pragma_update(None, "wal_autocheckpoint", 256)?;
-        connection.pragma_update(None, "journal_size_limit", 8 * 1024 * 1024)?;
-        let physical_storage = Arc::new(PhysicalStorage::new(path, limits));
-        physical_storage.configure(&connection)?;
-        let image_artifact_root = (path != Path::new(":memory:")).then(|| {
-            Arc::new(
-                path.parent()
-                    .expect("validated database path")
-                    .join("image-artifacts"),
-            )
-        });
-        let database = Self {
-            connection: Arc::new(Mutex::new(connection)),
-            search_reader: if path == Path::new(":memory:") {
-                None
-            } else {
-                live_path_anchor.verify_path(path)?;
-                let reader = Connection::open_with_flags(
-                    path,
-                    rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY
-                        | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-                )?;
-                reader.busy_timeout(crate::chat_search::READER_BUSY_TIMEOUT)?;
-                live_path_anchor.verify_path(path)?;
-                Some(Arc::new(Mutex::new(reader)))
-            },
-            physical_storage,
-            live_path_anchor: Arc::new(live_path_anchor),
-            image_artifact_root,
-        };
-        // Like the exit path: a failed purge never blocks startup; the
-        // temporary Chats stay hidden and the purge retries next time.
-        if let Err(error) = database.purge_side_chats() {
-            tracing::warn!(?error, "temporary Chat cleanup will retry later");
-        }
-        if let Ok(root) = database.image_artifact_root() {
-            crate::image_artifacts::reconcile_image_artifacts(&database.connection(), root)?;
-        }
-        Ok(database)
-    }
-
-    pub(crate) fn image_artifact_root(&self) -> AppResult<&Path> {
-        self.image_artifact_root
-            .as_deref()
-            .map(|path| path.as_path())
-            .ok_or_else(|| {
-                sage_core::error::AppError::Unsupported(
-                    "image artifacts need a disk database".into(),
-                )
-            })
-    }
-
-    /// A read-only connection holding an open read transaction, so it keeps
-    /// seeing the store as it was at this call while writers go on. Cheap: it
-    /// only fixes the WAL snapshot. `None` for an in-memory store.
-    pub(crate) fn pinned_reader(&self) -> AppResult<Option<Connection>> {
-        let Some(path) = self.physical_storage.path() else {
-            return Ok(None);
-        };
-        self.live_path_anchor.verify_path(path)?;
-        let reader = Connection::open_with_flags(
-            path,
-            rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX,
-        )?;
-        self.live_path_anchor.verify_path(path)?;
-        // A deferred transaction takes its snapshot at the first read.
-        reader.execute_batch("BEGIN; SELECT count(*) FROM sqlite_schema;")?;
-        Ok(Some(reader))
-    }
-
-    pub(crate) fn connection(&self) -> std::sync::MutexGuard<'_, Connection> {
-        self.connection
-            .lock()
-            .unwrap_or_else(std::sync::PoisonError::into_inner)
-    }
-
-    pub(crate) fn chat_search_reader(
-        &self,
-    ) -> AppResult<Option<std::sync::MutexGuard<'_, Connection>>> {
-        self.search_reader
-            .as_ref()
-            .map(|reader| {
-                reader.try_lock().map_err(|_| {
-                    sage_core::error::AppError::ResourceLimit(
-                        "Chat search is already reading a snapshot".into(),
-                    )
-                })
-            })
-            .transpose()
-    }
-
-    #[cfg(test)]
-    pub(crate) fn connection_ownership_probe(&self) -> std::sync::Weak<Mutex<Connection>> {
-        Arc::downgrade(&self.connection)
-    }
-
-    pub(crate) fn write_connection(&self) -> AppResult<WriteConnection<'_>> {
-        let connection = self.connection();
-        self.physical_storage.admit_write(&connection)?;
-        Ok(WriteConnection {
-            connection,
-            physical_storage: &self.physical_storage,
-        })
-    }
-
-    #[cfg(any(test, all(windows, feature = "acp-fixture")))]
-    pub(crate) fn converge_wal_for_observation(&self) -> AppResult<WalConvergenceReceipt> {
-        let connection = self.connection();
-        self.physical_storage.converge_for_observation(&connection)
-    }
-}
-
-pub(crate) struct WriteConnection<'a> {
-    connection: std::sync::MutexGuard<'a, Connection>,
-    physical_storage: &'a PhysicalStorage,
-}
-
-impl std::ops::Deref for WriteConnection<'_> {
-    type Target = Connection;
-
-    fn deref(&self) -> &Self::Target {
-        &self.connection
-    }
-}
-
-impl std::ops::DerefMut for WriteConnection<'_> {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.connection
-    }
-}
-
-impl Drop for WriteConnection<'_> {
-    fn drop(&mut self) {
-        self.physical_storage.observe_after_write(&self.connection);
-    }
+    Ok(database)
 }
 
 #[cfg(test)]
 mod tests {
+    use crate::project_registry::create::ProjectCreateStore;
+    use rusqlite::Connection;
+
     use super::*;
 
     #[test]
     fn fresh_database_applies_all_migrations_without_seeding_a_fake_project() {
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = open_database(Path::new(":memory:")).unwrap();
         let connection = database.connection();
         let migration_count: i64 = connection
             .query_row("SELECT COUNT(*) FROM schema_migrations", [], |row| {
@@ -232,7 +72,7 @@ mod tests {
 
     #[test]
     fn editor_wal_limits_are_applied_to_the_live_connection() {
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = open_database(Path::new(":memory:")).unwrap();
         let connection = database.connection();
         let auto_checkpoint: i64 = connection
             .pragma_query_value(None, "wal_autocheckpoint", |row| row.get(0))
@@ -249,7 +89,7 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("sage-pinned-reader-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
-        let database = Database::open(&directory.join("sage.db")).unwrap();
+        let database = open_database(&directory.join("sage.db")).unwrap();
         let projects = |connection: &Connection| -> i64 {
             connection
                 .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
@@ -263,7 +103,7 @@ mod tests {
         assert_eq!(projects(&reader), 0);
         drop(reader);
         assert!(
-            Database::open(Path::new(":memory:"))
+            open_database(Path::new(":memory:"))
                 .unwrap()
                 .pinned_reader()
                 .unwrap()
@@ -278,7 +118,7 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("sage-wal-observation-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
-        let database = Database::open_with_limits(
+        let database = open_database_with_limits(
             &directory.join("sage.db"),
             StorageLimits::fixture(4 * 1024 * 1024, 16 * 1024 * 1024, 32 * 1024 * 1024),
         )
@@ -297,7 +137,7 @@ mod tests {
         let directory =
             std::env::temp_dir().join(format!("sage-wal-observation-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
-        let database = Database::open_with_limits(
+        let database = open_database_with_limits(
             &directory.join("sage.db"),
             StorageLimits::fixture(4 * 1024 * 1024, 1, 32 * 1024 * 1024),
         )
@@ -327,7 +167,7 @@ mod tests {
             std::env::temp_dir().join(format!("sage-wal-observation-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("sage.db");
-        let database = Database::open_with_limits(
+        let database = open_database_with_limits(
             &path,
             StorageLimits::fixture(4 * 1024 * 1024, 1, 32 * 1024 * 1024),
         )
@@ -382,7 +222,7 @@ mod tests {
             std::env::temp_dir().join(format!("sage-wal-gate-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("sage.db");
-        let database = Database::open_with_limits(
+        let database = open_database_with_limits(
             &path,
             StorageLimits::fixture(4 * 1024 * 1024, 16 * 1024, 32 * 1024),
         )
@@ -418,7 +258,7 @@ mod tests {
             committed += 1;
         }
         assert!(committed > 0);
-        assert!(database.physical_storage.recovery_required());
+        assert!(database.storage_recovery_required());
         assert!(matches!(
             database.write_connection(),
             Err(sage_core::error::AppError::ResourceLimit(_))
@@ -433,7 +273,7 @@ mod tests {
                 )
                 .unwrap();
         }
-        assert!(!database.physical_storage.recovery_required());
+        assert!(!database.storage_recovery_required());
         drop(database);
         let _ = std::fs::remove_dir_all(directory);
     }
@@ -446,7 +286,7 @@ mod tests {
         std::fs::create_dir_all(&directory).unwrap();
         let path = directory.join("sage.db");
         let moved = directory.join("moved.db");
-        let database = Database::open(&path).unwrap();
+        let database = open_database(&path).unwrap();
         let clone = database.clone();
         assert!(std::fs::remove_file(&path).is_err());
         assert!(std::fs::rename(&path, &moved).is_err());
@@ -461,7 +301,7 @@ mod tests {
         let root =
             std::env::temp_dir().join(format!("sage-search-reader-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database = Database::open(&root.join("sage.db")).unwrap();
+        let database = open_database(&root.join("sage.db")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let held = database.chat_search_reader().unwrap().unwrap();
         let shared = database.clone();

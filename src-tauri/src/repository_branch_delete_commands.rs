@@ -1,6 +1,7 @@
 use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::{repository_branch_delete, state::AppState, workspace::Workspace};
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryCheckoutRequest, GitRepositoryCheckoutResult,

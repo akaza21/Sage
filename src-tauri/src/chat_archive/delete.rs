@@ -1,14 +1,18 @@
 use rusqlite::{Connection, OptionalExtension, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
-use crate::{
-    acp::service::ChatRuntimeRelease, chat_lifecycle::validate_chat_identifier,
-    persistence::Database,
-};
+use crate::chat_purge::ChatPurgeStore;
+use crate::{acp::service::ChatRuntimeRelease, chat_lifecycle::validate_chat_identifier};
+use sage_db::database::Database;
 use sage_domain::chat::ChatDeleteRequest;
 
-impl Database {
-    pub(crate) fn delete_archived_chat(&self, request: &ChatDeleteRequest) -> AppResult<()> {
+pub(crate) trait ArchivedChatDeleteStore {
+    fn delete_archived_chat(&self, request: &ChatDeleteRequest) -> AppResult<()>;
+}
+
+impl ArchivedChatDeleteStore for Database {
+    fn delete_archived_chat(&self, request: &ChatDeleteRequest) -> AppResult<()> {
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         self.purge_chat(&request.project_id, &request.chat_id, |connection| {
@@ -23,13 +27,15 @@ pub(crate) fn is_archived_chat(
     project: &str,
     chat: &str,
 ) -> AppResult<bool> {
-    Ok(connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id=?2)
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM chats WHERE project_id=?1 AND id=?2)
            AND NOT EXISTS(SELECT 1 FROM chat_tabs WHERE chat_id=?2)
            AND NOT EXISTS(SELECT 1 FROM workbench_tabs WHERE project_id=?1 AND id=?2)",
-        params![project, chat],
-        |row| row.get(0),
-    )?)
+            params![project, chat],
+            |row| row.get(0),
+        )
+        .db()
 }
 
 pub(super) fn has_running_turn(
@@ -37,11 +43,11 @@ pub(super) fn has_running_turn(
     project: &str,
     chat: &str,
 ) -> AppResult<bool> {
-    Ok(connection.query_row(
+    connection.query_row(
         "SELECT EXISTS(SELECT 1 FROM turns WHERE project_id=?1 AND chat_id=?2 AND terminal_at IS NULL)",
         params![project, chat],
         |row| row.get(0),
-    )?)
+    ).db()
 }
 
 pub(super) fn has_queued_prompts(
@@ -49,11 +55,13 @@ pub(super) fn has_queued_prompts(
     project: &str,
     chat: &str,
 ) -> AppResult<bool> {
-    Ok(connection.query_row(
-        "SELECT EXISTS(SELECT 1 FROM chat_queued_prompts WHERE project_id=?1 AND chat_id=?2)",
-        params![project, chat],
-        |row| row.get(0),
-    )?)
+    connection
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM chat_queued_prompts WHERE project_id=?1 AND chat_id=?2)",
+            params![project, chat],
+            |row| row.get(0),
+        )
+        .db()
 }
 
 /// The delete command releases an idle runtime before this runs.
@@ -74,7 +82,8 @@ fn admit_archived(connection: &Connection, project: &str, chat: &str) -> AppResu
             params![project, chat],
             |row| Ok([row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?]),
         )
-        .optional()?;
+        .optional()
+        .db()?;
     let refusal = match state {
         None => "Chat does not belong to that Project".into(),
         Some([true, ..]) => "Only an archived Chat can be deleted".into(),

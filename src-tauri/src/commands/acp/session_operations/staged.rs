@@ -90,6 +90,8 @@ pub(super) fn record_sent(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use sage_acp_protocol::contract::ClientIntentId;
 
     fn sent_batch() -> (
@@ -101,8 +103,7 @@ mod tests {
     ) {
         let root = std::env::temp_dir().join(format!("sage-sent-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&root).unwrap().id;
         let chat = database
             .bootstrap_snapshot()

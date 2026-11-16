@@ -1,4 +1,5 @@
 use super::{Resources, StagedFiles, attachment, read::read_paths, release_detached};
+use crate::project_registry::ProjectRegistryStore;
 use crate::state::AppState;
 use serde::Deserialize;
 use tauri::{AppHandle, State, Window};
