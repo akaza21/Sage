@@ -8,10 +8,12 @@ use sage_acp_protocol::scheduler::RuntimeOwner;
 use sage_acp_protocol::codex_protocol::{ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES};
 
 mod live;
+mod merge;
 mod settled;
 pub(crate) use live::persist_live_item_in;
 pub(crate) use live::persist_turn_status_in;
-use live::{merge_snapshots, validate_bounds};
+use live::validate_bounds;
+use merge::merge_snapshots;
 pub(crate) use settled::{project_settled_children, settle_lost_children};
 
 const MAX_SPAWN_SCAN: i64 = 256;
