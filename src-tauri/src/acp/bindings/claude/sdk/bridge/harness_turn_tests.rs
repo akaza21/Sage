@@ -252,7 +252,30 @@ fn a_turn_opened_for_an_approval_ends_once_its_answer_is_delivered() {
         .unwrap()
         .to_owned();
     bridge.delivered(&Sent::Answer(request));
+    assert!(
+        bridge.settled_turn_end().is_none(),
+        "the allowed tool has not run yet"
+    );
+    let ran = bridge
+        .inbound(
+            json!({"type":"user","parent_tool_use_id":"toolu_task","message":{"role":"user",
+            "content":[{"type":"tool_result","tool_use_id":"toolu_r7","content":"done"}]}}),
+        )
+        .unwrap();
+    let row = ran
+        .acp
+        .iter()
+        .find(|frame| frame["params"]["update"]["toolCallId"] == "toolu_r7")
+        .expect("the tool's row finishes");
+    assert_eq!(row["params"]["update"]["status"], "completed");
     let ended = bridge.settled_turn_end().expect("the settled turn ends");
+    assert!(
+        !ended
+            .acp
+            .iter()
+            .any(|frame| frame["params"]["update"]["status"] == "failed"),
+        "nothing it allowed is failed"
+    );
     assert_eq!(ends(&ended, 4).unwrap()["result"]["stopReason"], "end_turn");
 
     let run = bridge.inbound(run_start()).unwrap();
@@ -934,4 +957,26 @@ fn a_prompt_taken_up_while_stopping_gets_one_interrupt() {
         .inbound(result_frame("error_during_execution"))
         .unwrap();
     assert_eq!(ends(&end, 5).unwrap()["result"]["stopReason"], "cancelled");
+}
+
+#[test]
+fn a_stop_keeps_its_interrupt_until_there_is_room_to_send_it() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    bridge.inbound(run_start()).unwrap();
+    for message in 0..MAX_PENDING {
+        bridge.steer(&format!("message {message}")).unwrap();
+    }
+    let mut withdrawals = vec![cancel(&mut bridge)];
+    while withdrawals.len() < MAX_PENDING {
+        withdrawals.extend(bridge.inbound(text("Going")).unwrap().replies);
+    }
+    assert!(
+        bridge.inbound(text("Going")).unwrap().replies.is_empty(),
+        "no room for the interrupt yet"
+    );
+    let freed = bridge
+        .inbound(success(&withdrawals[0], json!({"cancelled":true})))
+        .unwrap();
+    assert_eq!(freed.replies[0]["request"]["subtype"], "interrupt");
 }

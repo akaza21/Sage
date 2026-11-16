@@ -82,16 +82,18 @@ impl SdkBridge {
     }
 
     fn next_stop_step(&mut self) -> Result<Value, BridgeError> {
-        let (request, pending) = match self.stop.plan.pop_front() {
+        let (request, pending) = match self.stop.plan.front() {
             Some(StopStep::Withdraw(uuid)) => (
                 json!({"subtype": "cancel_async_message", "message_uuid": uuid}),
-                Pending::Withdraw(uuid),
+                Pending::Withdraw(uuid.clone()),
             ),
             Some(StopStep::Interrupt) => (json!({"subtype": "interrupt"}), Pending::Interrupt),
             None => return Err(BridgeError::Unsupported),
         };
         let interrupt = matches!(pending, Pending::Interrupt);
+        // A step Sage has no room to send yet stays first, for the next frame.
         let sdk = self.control(request, pending)?;
+        self.stop.plan.pop_front();
         let id = sdk["request_id"].as_str().unwrap_or_default().to_owned();
         if interrupt {
             self.stop.interrupt = Some(id.clone());

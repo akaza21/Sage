@@ -94,7 +94,7 @@ impl SdkBridge {
                 inbound.replies.push(decision(request_id, deny(TOO_MANY)));
                 return Ok(());
             }
-            self.tools.insert(tool_call_id, name.to_owned());
+            self.tools.insert(tool_call_id.clone(), name.to_owned());
             let mut row = tool_call.clone();
             row.insert("sessionUpdate".into(), "tool_call".into());
             inbound.acp.push(self.update(row.into()));
@@ -126,6 +126,7 @@ impl SdkBridge {
         if self.prompt.is_none() {
             inbound.started = true;
             self.approval_turn = true;
+            self.allowed_tools.clear();
         }
         self.next_permission += 1;
         self.permissions.insert(
@@ -136,6 +137,7 @@ impl SdkBridge {
                 suggestions,
                 questions,
                 plan_exit: name == "ExitPlanMode",
+                tool: tool_call_id,
             },
         );
         inbound.acp.push(json!({
@@ -207,42 +209,59 @@ impl SdkBridge {
         let selected = (outcome.get("outcome").and_then(Value::as_str) == Some("selected"))
             .then(|| outcome.get("optionId").and_then(Value::as_str))
             .flatten();
-        if let Some(texts) = &permission.questions {
+        let response = if let Some(texts) = &permission.questions {
             let cancelled = outcome.get("outcome").and_then(Value::as_str) == Some("cancelled");
             let answers = (selected == Some(ANSWER)).then(|| result.and_then(|r| r.get("answers")));
-            let response = if cancelled {
+            if cancelled {
                 deny(DECLINED)
             } else {
                 let input = super::questions::answered(&permission.input, texts, answers.flatten());
                 json!({"behavior": "allow", "updatedInput": input})
-            };
-            self.answering.insert(permission.request_id.clone());
-            return Ok(decision(&permission.request_id, response));
+            }
+        } else {
+            Self::response(
+                permission.input,
+                permission.suggestions,
+                permission.plan_exit,
+                selected,
+            )
+        };
+        if self.approval_turn && response["behavior"] == "allow" {
+            self.allowed_tools.insert(permission.tool);
         }
-        let response = match selected {
-            Some(ALLOW_ONCE) => json!({"behavior": "allow", "updatedInput": permission.input}),
+        self.answering.insert(permission.request_id.clone());
+        Ok(decision(&permission.request_id, response))
+    }
+
+    /// What Claude Code is told for the option a card's answer selected.
+    fn response(
+        input: Value,
+        suggestions: Option<Value>,
+        plan_exit: bool,
+        selected: Option<&str>,
+    ) -> Value {
+        match selected {
+            Some(ALLOW_ONCE) => json!({"behavior": "allow", "updatedInput": input}),
             Some(ALLOW_ALWAYS | ALLOW_EDITS) => json!({
                 "behavior": "allow",
-                "updatedInput": permission.input,
-                "updatedPermissions": permission.suggestions.unwrap_or_else(|| json!([])),
+                "updatedInput": input,
+                "updatedPermissions": suggestions.unwrap_or_else(|| json!([])),
             }),
             Some(option) => match EXIT_PLAN.iter().find(|(id, ..)| *id == option) {
                 Some((.., mode)) => json!({
                     "behavior": "allow",
-                    "updatedInput": permission.input,
+                    "updatedInput": input,
                     "updatedPermissions": [{"type": "setMode", "mode": mode, "destination": "session"}],
                 }),
                 None => deny(DECLINED),
             },
             // Declining a plan stops the turn so the user can say what to
             // change, rather than Claude guessing and asking again.
-            None if permission.plan_exit => json!({
+            None if plan_exit => json!({
                 "behavior": "deny", "message": KEEP_PLANNING, "interrupt": true,
             }),
             None => deny(DECLINED),
-        };
-        self.answering.insert(permission.request_id.clone());
-        Ok(decision(&permission.request_id, response))
+        }
     }
 }
 

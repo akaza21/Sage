@@ -98,6 +98,8 @@ struct Permission {
     questions: Option<Vec<String>>,
     /// An `ExitPlanMode` card: declining it ends the turn in plan mode.
     plan_exit: bool,
+    /// The tool's row.
+    tool: String,
 }
 
 #[derive(Debug)]
@@ -129,6 +131,9 @@ pub(super) struct SdkBridge {
     permissions: BTreeMap<u64, Permission>,
     /// Claude Code request ids whose answer is not yet delivered.
     answering: BTreeSet<String>,
+    /// Rows of tools a turn opened for approvals allowed: the turn ends once
+    /// each reports its result, since no row can change after it.
+    allowed_tools: BTreeSet<String>,
     next_permission: u64,
     tools: BTreeMap<String, String>,
     /// Open subagents, by their `Task` tool use id.
@@ -190,6 +195,7 @@ impl SdkBridge {
             auth_failed: false,
             permissions: BTreeMap::new(),
             answering: BTreeSet::new(),
+            allowed_tools: BTreeSet::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
             subagents: BTreeMap::new(),

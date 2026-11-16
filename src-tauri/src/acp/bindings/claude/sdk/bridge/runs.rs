@@ -80,13 +80,18 @@ impl SdkBridge {
     }
 
     /// The end of a turn opened only for approvals, once they all settled:
-    /// answered and delivered, or withdrawn. Asked after each frame read and
-    /// once Sage's answers reach Claude Code.
+    /// answered and delivered, or withdrawn, and each tool allowed has
+    /// reported its result. Asked after each frame read and once Sage's
+    /// answers reach Claude Code.
     pub(in crate::acp::bindings::claude::sdk) fn settled_turn_end(&mut self) -> Option<Inbound> {
         if !self.approval_turn
             || self.prompt.is_none()
             || !self.permissions.is_empty()
             || !self.answering.is_empty()
+            || self
+                .tools
+                .keys()
+                .any(|tool| self.allowed_tools.contains(tool))
         {
             return None;
         }
