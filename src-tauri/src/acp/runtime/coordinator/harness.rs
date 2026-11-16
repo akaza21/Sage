@@ -6,15 +6,21 @@ use sage_acp_protocol::{
 use super::{prepare::prepare_failure, *};
 
 impl<A: ProjectIntentAuthority> SendCoordinator<A> {
-    /// Opens the Turn a harness started on its own in the tree's session. It
-    /// takes the tree's one Turn slot like a prompt does, so a prompt sent
-    /// meanwhile is refused, and it is running from the start.
+    /// Opens the Turn a harness started on its own in the tree's session,
+    /// running in the harness session `mode`, which must be the one the
+    /// chat's access allows now. It takes the tree's one Turn slot like a
+    /// prompt does, so a prompt sent meanwhile is refused, and it is running
+    /// from the start.
     pub(crate) async fn open_harness_turn(
         &self,
         tree: &TreeLease,
+        mode: Option<&'static str>,
         now_millis: i64,
     ) -> Result<ActiveDispatch, Box<PrepareFailure>> {
         let owner = tree.owner();
+        if mode.is_none() || self.authority.harness_turn_mode(owner) != mode {
+            return Err(prepare_failure(CoordinatorError::Intent));
+        }
         let command = TurnMutationCommand {
             project_id: owner.project_id.clone(),
             chat_id: owner.chat_id.clone(),

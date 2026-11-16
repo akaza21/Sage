@@ -22,6 +22,26 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         Ok(())
     }
 
+    /// Accepts the end of a Turn that only waited on the answers just
+    /// written. Returns whether the harness reported anything.
+    pub(crate) async fn accept_delivered_answers(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<bool, AdapterPumpError> {
+        self.ensure_live()?;
+        let batch = match self.adapter.answers_delivered(&self.resources) {
+            Ok(Some(batch)) => batch,
+            Ok(None) => return Ok(false),
+            Err(error) => {
+                self.teardown = true;
+                return Err(error.into());
+            }
+        };
+        self.accept_batch(batch, now_millis, IngestMode::Deferred)
+            .await?;
+        Ok(true)
+    }
+
     /// Reads what the harness reported for the Turn it started on its own,
     /// now that the Turn is open.
     pub(crate) async fn adopt_started_turn(

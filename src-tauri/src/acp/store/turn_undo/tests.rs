@@ -138,6 +138,38 @@ fn the_runtime_that_holds_an_undone_turn_opens_no_turn_of_its_own() {
 }
 
 #[test]
+fn undo_is_withheld_from_a_turn_the_harness_started_on_its_own() {
+    let fixture = Fixture::new();
+    fixture.run();
+    fixture.turn("turn-1", 0);
+    assert!(!withheld(&fixture, "turn-1"));
+    let command = TurnMutationCommand {
+        project_id: fixture.project.clone(),
+        chat_id: fixture.chat.clone(),
+        session_id: SageAgentSessionId::parse("session-a".to_owned()).unwrap(),
+        runtime_epoch: RuntimeEpoch::new(fixture.epoch() as u64).unwrap(),
+        turn_id: SageTurnId::parse("turn-harness").unwrap(),
+        expected_revision: EntityRevision::ZERO,
+        now_millis: 60,
+    };
+    open_harness_turn(&mut fixture.database.connection(), &command).unwrap();
+    assert!(withheld(&fixture, "turn-harness"));
+    assert!(!withheld(&fixture, "turn-1"));
+}
+
+fn withheld(fixture: &Fixture, turn: &str) -> bool {
+    super::undo_withheld(
+        &fixture.database.connection(),
+        fixture.project.as_str(),
+        fixture.chat.as_str(),
+        "session-a",
+        turn,
+        false,
+    )
+    .unwrap()
+}
+
+#[test]
 fn undoing_the_threads_first_turn_restarts_and_a_harness_revert_needs_nothing() {
     let fixture = Fixture::new();
     fixture.turn("turn-1", 0);

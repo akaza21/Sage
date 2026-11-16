@@ -23,10 +23,6 @@ impl ClaudeSdkRuntime {
             .inbound(sdk)
             .map_err(|_| AdapterRuntimeError::Frame)?;
         let mut batch = AdapterBatchBuilder::new();
-        let mut observed = false;
-        if let Some(prior) = inbound.prior.take() {
-            observed |= self.translate(&mut batch, *prior, resources)?;
-        }
         if inbound.started && self.session.harness_turn_admitted() {
             let id = self.session.harness_session_identity()?;
             self.started = Some(inbound);
@@ -39,11 +35,29 @@ impl ClaudeSdkRuntime {
                 .decline()
                 .map_err(|_| AdapterRuntimeError::Frame)?;
         }
-        observed |= self.translate(&mut batch, inbound, resources)?;
+        let mut observed = self.translate(&mut batch, inbound, resources)?;
+        if let Some(ended) = self.bridge()?.settled_turn_end() {
+            observed |= self.translate(&mut batch, ended, resources)?;
+        }
         if !observed {
             batch.push_event(AdapterEvent::Absorbed)?;
         }
         Ok(batch.finish())
+    }
+
+    /// The end of a turn that only waited on the answers just delivered.
+    pub(super) fn ingest_delivered(
+        &mut self,
+        resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        let Some(ended) = self.bridge()?.settled_turn_end() else {
+            return Ok(None);
+        };
+        let mut batch = AdapterBatchBuilder::new();
+        if !self.translate(&mut batch, ended, resources)? {
+            batch.push_event(AdapterEvent::Absorbed)?;
+        }
+        Ok(Some(batch.finish()))
     }
 
     /// Adds what `inbound` reports to `batch`; returns whether it reported

@@ -70,7 +70,10 @@ fn a_turn_the_harness_starts_after_the_terminal_keeps_its_stdout_for_the_next_tu
             .unwrap();
         assert!(pump.next_turn_started());
         assert!(!pump.drain_stdout_deferred(3).await.unwrap());
-        assert!(pump.has_pending_stdout_input(), "the second frame waits");
+        assert!(
+            !pump.has_pending_stdout_input(),
+            "the second frame is the next turn's to read"
+        );
         assert!(pump.completed_turn_ready());
 
         let parts = pump.try_into_completed_parts().ok().unwrap();
@@ -175,6 +178,36 @@ fn a_declined_turn_reads_on_through_the_stdout_after_it() {
         assert!(
             shared.0.lock().unwrap().batches.is_empty(),
             "the frame after it was read"
+        );
+        assert!(parts.bind_turn(next_turn()).is_ok(), "a prompt may follow");
+    });
+}
+
+#[test]
+fn a_refusal_read_after_a_declined_turn_is_reported_and_the_session_reads_on() {
+    runtime().block_on(async {
+        let (mut pump, shared) = build_pump(vec![
+            owned(vec![terminal(TurnState::Completed)], Vec::new()),
+            started(),
+            owned(vec![AdapterEvent::Absorbed], Vec::new()),
+        ]);
+        pump.push_stdout_chunk_deferred(b"{}\n", 1).await.unwrap();
+        let mut parts = pump.try_into_completed_parts().ok().unwrap();
+        let mut transport = CaptureTransport(Vec::new());
+        parts
+            .accept_idle_stdout_chunk(b"{}\n{}\n{}\n", 2, &mut transport)
+            .await
+            .unwrap();
+        shared.0.lock().unwrap().ingest_error = Some(AdapterRuntimeError::ConfigMutationRejected);
+
+        assert!(matches!(
+            parts.decline_started_turn(3, &mut transport).await,
+            Err(AdapterPumpError::Refused(NonfatalRefusal::ConfigMutation))
+        ));
+        assert!(!parts.turn_started());
+        assert!(
+            shared.0.lock().unwrap().batches.is_empty(),
+            "the frame after the refusal was read"
         );
         assert!(parts.bind_turn(next_turn()).is_ok(), "a prompt may follow");
     });

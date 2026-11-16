@@ -68,6 +68,11 @@ impl ClaudeRuntime {
         Ok(id)
     }
 
+    /// The mode Sage last selected for the session.
+    pub(crate) fn selected_mode(&self) -> Option<&'static str> {
+        self.selected_mode
+    }
+
     /// The session's own identity, for a Turn it starts before Sage names it.
     pub(crate) fn harness_session_identity(
         &self,

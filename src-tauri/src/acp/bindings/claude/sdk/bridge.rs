@@ -63,9 +63,6 @@ pub(super) struct Inbound {
     /// or asked for an approval with no turn open: the frame opens a turn,
     /// which `adopt` names, or `decline` refuses.
     pub(super) started: bool,
-    /// The end of a turn opened only for approvals, which settled before
-    /// this frame: it comes first, since the frame may open the next turn.
-    pub(super) prior: Option<Box<Inbound>>,
 }
 
 #[derive(Debug)]
@@ -137,6 +134,10 @@ pub(super) struct SdkBridge {
     compacting: bool,
     /// Mid-turn messages Claude Code has not yet taken up.
     steers: Vec<String>,
+    /// The prompt Sage wrote, by its `uuid`, until Claude Code reports a
+    /// run took it up: a run before that is one Claude Code started on its
+    /// own, so its `result` does not end the prompt's turn.
+    waiting_prompt: Option<String>,
     /// A run's `result` that did not end the turn, for when no waiting
     /// message runs after all.
     held: Option<Value>,
@@ -175,6 +176,7 @@ impl SdkBridge {
             retrying: false,
             compacting: false,
             steers: Vec::new(),
+            waiting_prompt: None,
             held: None,
         }
     }
@@ -244,6 +246,7 @@ impl SdkBridge {
         match sent {
             Sent::Prompt => {
                 self.prompt = None;
+                self.waiting_prompt = None;
                 self.interrupted = false;
             }
             Sent::Control(request_id) => {

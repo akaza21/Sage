@@ -485,3 +485,79 @@ fn a_prompt_whose_inherited_access_cannot_be_resolved_is_refused() {
     drop(state);
     std::fs::remove_dir_all(root).unwrap();
 }
+
+/// `chat_going_on_from_plan`'s chat, its Claude binding admitted.
+fn claude_chat_in_plan(root: &std::path::Path) -> AppState {
+    use crate::acp::bindings::claude::ClaudeBindingRegistration;
+    use crate::harness_discovery::{ClaudeLaunchDiscovery, DiscoveredClaudeLaunch};
+    let plain = chat_going_on_from_plan(&[]);
+    let adapter = root.join("adapter.js");
+    let node = root.join("node.exe");
+    std::fs::write(&adapter, b"adapter").unwrap();
+    std::fs::write(&node, b"node").unwrap();
+    let claude = ClaudeBindingRegistration::admitted_for_test(ClaudeLaunchDiscovery::Present(
+        Box::new(DiscoveredClaudeLaunch {
+            adapter_path: adapter.clone(),
+            adapter_version: "0.76.0".into(),
+            acp_sdk_version: "1.4.0".into(),
+            node_engine: ">=22".into(),
+            node_path: node.clone(),
+            node_version: "22.18.0".into(),
+            adapter_sha256: crate::harness_discovery::sha256_file(&adapter).unwrap(),
+            node_sha256: crate::harness_discovery::sha256_file(&node).unwrap(),
+        }),
+    ));
+    let registry = std::sync::Arc::new(crate::acp::bindings::registry::BindingRegistry::new(
+        crate::acp::bindings::codex::CodexBindingRegistration::unavailable_for_test(),
+        claude,
+    ));
+    AppState {
+        acp: AcpService::new_with_registry_for_test(
+            plain.database.clone(),
+            std::sync::Arc::clone(&registry),
+        )
+        .unwrap(),
+        harnesses: crate::harnesses::HarnessCatalog::with_registry(registry),
+        ..plain
+    }
+}
+
+#[test]
+fn a_harness_started_turn_may_run_only_in_the_mode_of_the_chats_current_access() {
+    let root = std::env::temp_dir().join(format!("sage-harness-access-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let state = claude_chat_in_plan(&root);
+    let owner = RuntimeOwner {
+        project_id: SageProjectId::parse("project-carry").unwrap(),
+        chat_id: SageChatId::parse("chat-carry").unwrap(),
+        session_id: session("session-a"),
+        runtime_epoch: RuntimeEpoch::new(1).unwrap(),
+    };
+    assert_eq!(harness_turn_mode(&state, &owner), Some("plan"));
+    let full = SessionAccessMode::FullAccess;
+    let token = state
+        .settings
+        .prepare_chat_access("session-a", full, 2)
+        .unwrap();
+    state
+        .settings
+        .grant_chat_access("session-a", full, &token, 2)
+        .unwrap();
+    assert_eq!(harness_turn_mode(&state, &owner), Some("bypassPermissions"));
+    state
+        .settings
+        .set_chat_access("session-a", SessionAccessMode::Ask, 3)
+        .unwrap();
+    assert_eq!(
+        harness_turn_mode(&state, &owner),
+        Some("default"),
+        "a step down from Full access applies to the next harness turn"
+    );
+    let unknown = RuntimeOwner {
+        session_id: session("session-unknown"),
+        ..owner
+    };
+    assert_eq!(harness_turn_mode(&state, &unknown), None);
+    drop(state);
+    std::fs::remove_dir_all(root).unwrap();
+}

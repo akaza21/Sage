@@ -26,6 +26,15 @@ use super::{
 
 pub(crate) trait ProjectIntentAuthority: Send + Sync {
     fn current_snapshot(&self, command: &PrepareTurnCommand) -> Option<IntentSnapshot>;
+    /// The harness session mode `owner`'s chat allows now. A Turn the
+    /// harness starts on its own opens only in it; with none known, none
+    /// opens.
+    fn harness_turn_mode(
+        &self,
+        _owner: &sage_acp_protocol::scheduler::RuntimeOwner,
+    ) -> Option<&'static str> {
+        None
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

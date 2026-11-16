@@ -1331,7 +1331,7 @@ fn a_started_turn_sage_refuses_is_interrupted_by_a_frame_written_between_turns()
 }
 
 #[test]
-fn a_turn_opened_for_an_approval_ends_before_the_run_that_follows_opens() {
+fn a_turn_opened_for_an_approval_ends_once_its_answer_is_delivered() {
     let mut runtime = prompted();
     feed(&mut runtime, finished());
     let asked = feed(
@@ -1363,24 +1363,62 @@ fn a_turn_opened_for_an_approval_ends_before_the_run_that_follows_opens() {
         })
         .unwrap();
     let token = answer.into_token();
-    for resolution in [EgressResolution::Queued, EgressResolution::Written] {
-        runtime.resolve_egress(token.clone(), resolution).unwrap();
-    }
+    runtime
+        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .unwrap();
+    assert!(runtime.answers_delivered(&Mapper).unwrap().is_none());
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .unwrap();
 
-    let events = feed(&mut runtime, run_start());
-    let ended = events
-        .iter()
-        .position(|event| {
-            matches!(
-                event,
-                AdapterEvent::Turn { id, state: TurnState::Completed }
-                    if id.turn_client_message_id.as_ref() == Some(&client)
-            )
-        })
-        .expect("the approval's turn ends");
+    let (events, _) = runtime
+        .answers_delivered(&Mapper)
+        .unwrap()
+        .expect("the approval's turn ends")
+        .into_parts();
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Turn { id, state: TurnState::Completed }
+            if id.turn_client_message_id.as_ref() == Some(&client)
+    )));
     assert!(matches!(
-        events.last(),
-        Some(AdapterEvent::TurnStarted { .. })
+        feed(&mut runtime, run_start())[..],
+        [AdapterEvent::TurnStarted { .. }]
     ));
-    assert!(ended < events.len() - 1);
+}
+
+#[test]
+fn a_run_claude_code_starts_runs_in_the_mode_sage_last_selected() {
+    let mut runtime = prompted();
+    feed(&mut runtime, finished());
+    assert_eq!(runtime.harness_turn_mode(), None, "no run has started");
+    assert!(matches!(
+        feed(&mut runtime, run_start())[..],
+        [AdapterEvent::TurnStarted { .. }]
+    ));
+    assert_eq!(runtime.harness_turn_mode(), Some("default"));
+}
+
+#[test]
+fn a_turn_opened_for_an_approval_claude_code_withdraws_ends_in_the_same_read() {
+    let mut runtime = prompted();
+    feed(&mut runtime, finished());
+    feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"r7","request":{
+            "subtype":"can_use_tool","tool_name":"Bash","tool_use_id":"toolu_sub",
+            "input":{"command":"ls"}}}),
+    );
+    let client = RequiredText::new("client", "turn-approval").unwrap();
+    runtime.adopt_turn(client.clone(), &Mapper).unwrap();
+
+    let events = feed(
+        &mut runtime,
+        json!({"type":"control_cancel_request","request_id":"r7"}),
+    );
+    assert!(events.iter().any(|event| matches!(
+        event,
+        AdapterEvent::Turn { id, state: TurnState::Completed }
+            if id.turn_client_message_id.as_ref() == Some(&client)
+    )));
 }

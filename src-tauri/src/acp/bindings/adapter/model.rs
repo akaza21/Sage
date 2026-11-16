@@ -250,6 +250,19 @@ pub(crate) trait HarnessAdapter {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
+    /// The harness session mode the Turn the last `AdapterEvent::TurnStarted`
+    /// announced runs in.
+    fn harness_turn_mode(&self) -> Option<&'static str> {
+        None
+    }
+    /// What the harness reports once the answers Sage wrote reached it: a
+    /// Turn that only waited on them ends. None when nothing changed.
+    fn answers_delivered(
+        &mut self,
+        _resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
     /// Refuses the Turn the last `AdapterEvent::TurnStarted` announced: what
     /// it asked is declined, and its run is stopped and read to its end
     /// without being shown. Returns the frames that do so.

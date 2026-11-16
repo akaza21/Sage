@@ -6,6 +6,11 @@
 //! the end of the turn: the message runs next, and its `result` ends it.
 //! Stopping withdraws the waiting messages first (`cancel_async_message`),
 //! since an interrupt alone lets them run afterwards.
+//!
+//! The prompt itself is reported the same way. A run that starts before
+//! Claude Code takes it up is one Claude Code started on its own (after a
+//! background task ended), so its `result` is held like a waiting message's:
+//! the run that takes the prompt up ends the turn.
 
 use serde_json::{Value, json};
 
@@ -74,10 +79,15 @@ impl SdkBridge {
         let Some(uuid) = sdk.get("command_uuid").and_then(Value::as_str) else {
             return;
         };
+        let state = sdk.get("state").and_then(Value::as_str);
+        if self.waiting_prompt.as_deref() == Some(uuid) {
+            self.prompt_lifecycle(state, inbound);
+            return;
+        }
         if !self.steers.iter().any(|steer| steer == uuid) {
             return;
         }
-        match sdk.get("state").and_then(Value::as_str) {
+        match state {
             Some("queued") => inbound.steers.push((uuid.to_owned(), true)),
             Some("started") => {
                 inbound.steers.push((uuid.to_owned(), true));
@@ -87,9 +97,37 @@ impl SdkBridge {
                     self.streamed.clear();
                 }
             }
-            Some("completed" | "cancelled") => {
+            Some("completed" | "cancelled" | "discarded" | "refused") => {
                 inbound.steers.push((uuid.to_owned(), false));
                 self.steers.retain(|steer| steer != uuid);
+                if let Some(held) = self.release_held() {
+                    self.result(&held, inbound);
+                }
+            }
+            _ => {}
+        }
+    }
+
+    /// Claude Code took up the prompt, or will never run it. A run that
+    /// takes it up reports the turn's end, even one Sage was declining, into
+    /// which Claude Code folded it; a stop sent before it ran stops that run.
+    fn prompt_lifecycle(&mut self, state: Option<&str>, inbound: &mut Inbound) {
+        match state {
+            Some("started") => {
+                self.waiting_prompt = None;
+                self.declining = false;
+                if self.held.take().is_some() {
+                    self.streamed.clear();
+                }
+                if self.interrupted
+                    && let Ok(interrupt) =
+                        self.control(json!({"subtype": "interrupt"}), Pending::Interrupt)
+                {
+                    inbound.replies.push(interrupt);
+                }
+            }
+            Some("completed" | "cancelled" | "discarded" | "refused") => {
+                self.waiting_prompt = None;
                 if let Some(held) = self.release_held() {
                     self.result(&held, inbound);
                 }
@@ -101,7 +139,7 @@ impl SdkBridge {
     /// While stopping, a message still waits only until its withdrawal is answered; if Claude Code
     /// took it up first, the interrupt that follows ends that run.
     pub(super) fn holds_result(&mut self, sdk: &Value) -> bool {
-        if self.steers.is_empty() {
+        if self.steers.is_empty() && self.waiting_prompt.is_none() {
             return false;
         }
         self.held = Some(sdk.clone());
@@ -109,7 +147,7 @@ impl SdkBridge {
     }
 
     fn release_held(&mut self) -> Option<Value> {
-        if self.steers.is_empty() {
+        if self.steers.is_empty() && self.waiting_prompt.is_none() {
             self.held.take()
         } else {
             None
@@ -118,6 +156,7 @@ impl SdkBridge {
 
     pub(super) fn end_steers(&mut self, inbound: &mut Inbound) {
         self.held = None;
+        self.waiting_prompt = None;
         for uuid in std::mem::take(&mut self.steers) {
             inbound.steers.push((uuid, false));
         }

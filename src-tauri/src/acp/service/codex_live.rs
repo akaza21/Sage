@@ -26,7 +26,10 @@ use sage_core::limits::LIMITS;
 use super::AcpService;
 use super::{CodexSessionError, codex_operation::ActiveCodexOperation, live_lanes::Lane};
 
-struct DatabaseAuthority(crate::persistence::Database);
+struct DatabaseAuthority(
+    crate::persistence::Database,
+    Option<super::HarnessTurnAccess>,
+);
 
 #[derive(Clone)]
 pub(super) struct ActivationAbortIntent {
@@ -94,6 +97,10 @@ impl ProjectIntentAuthority for DatabaseAuthority {
             command.chat_id.clone(),
         )
         .ok()
+    }
+
+    fn harness_turn_mode(&self, owner: &RuntimeOwner) -> Option<&'static str> {
+        self.1.as_ref().and_then(|access| access(owner))
     }
 }
 fn hex_digest(bytes: &[u8; 32]) -> String {

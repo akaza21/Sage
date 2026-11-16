@@ -5,6 +5,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> CompletedPump
         self.turn_started
     }
 
+    pub(crate) fn harness_turn_mode(&self) -> Option<&'static str> {
+        self.adapter.harness_turn_mode()
+    }
+
     /// Refuses the Turn the harness started, then reads on through the
     /// stdout that followed the frame starting it.
     pub(crate) async fn decline_started_turn(

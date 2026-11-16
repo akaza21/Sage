@@ -217,39 +217,45 @@ fn an_approval_declined_for_too_many_waiting_opens_no_turn() {
 }
 
 #[test]
-fn a_turn_opened_for_an_approval_ends_once_it_settles_and_a_later_run_opens_its_own() {
+fn a_turn_opened_for_an_approval_ends_once_its_answer_is_delivered() {
     let mut bridge = initialized();
     finish_prompted_turn(&mut bridge);
     let ask = bridge.inbound(subagent_approval("r7")).unwrap();
     assert!(ask.started);
     bridge.adopt(json!(4)).unwrap();
-    allow(&mut bridge, wire(&ask));
-
-    let progress = bridge
-        .inbound(
-            json!({"type":"system","subtype":"task_progress","task_id":"a1",
-            "description":"Background agent","last_tool_name":"Bash"}),
-        )
+    let answer = bridge
+        .outbound(&json!({"id":wire(&ask),"result":{"outcome":{"outcome":"selected","optionId":"allow_once"}}}))
         .unwrap();
-    let prior = progress.prior.as_deref().expect("the settled turn ends");
-    assert_eq!(ends(prior, 4).unwrap()["result"]["stopReason"], "end_turn");
-    assert!(!progress.started);
+    assert!(
+        bridge.settled_turn_end().is_none(),
+        "the answer has not reached Claude Code yet"
+    );
+    let request = answer["response"]["request_id"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    bridge.delivered(&Sent::Answer(request));
+    let ended = bridge.settled_turn_end().expect("the settled turn ends");
+    assert_eq!(ends(&ended, 4).unwrap()["result"]["stopReason"], "end_turn");
 
     let run = bridge.inbound(run_start()).unwrap();
-    assert!(run.prior.is_none());
     assert!(run.started, "the report's run opens a turn of its own");
 }
 
 #[test]
-fn a_run_starting_as_an_approval_settles_ends_that_turn_first() {
+fn a_turn_opened_for_an_approval_claude_code_withdraws_ends_with_the_withdrawal() {
     let mut bridge = initialized();
     finish_prompted_turn(&mut bridge);
-    let ask = bridge.inbound(subagent_approval("r7")).unwrap();
+    assert!(bridge.inbound(subagent_approval("r7")).unwrap().started);
     bridge.adopt(json!(4)).unwrap();
-    allow(&mut bridge, wire(&ask));
-    let run = bridge.inbound(run_start()).unwrap();
-    assert!(ends(run.prior.as_deref().unwrap(), 4).is_some());
-    assert!(run.started);
+    let withdrawn = bridge
+        .inbound(json!({"type":"control_cancel_request","request_id":"r7"}))
+        .unwrap();
+    assert_eq!(withdrawn.withdrawn.len(), 1);
+    let ended = bridge
+        .settled_turn_end()
+        .expect("nothing is left to wait on");
+    assert_eq!(ends(&ended, 4).unwrap()["result"]["stopReason"], "end_turn");
 }
 
 #[test]
@@ -258,10 +264,11 @@ fn a_run_that_starts_while_an_approval_waits_joins_its_turn() {
     finish_prompted_turn(&mut bridge);
     let ask = bridge.inbound(subagent_approval("r7")).unwrap();
     bridge.adopt(json!(4)).unwrap();
-    let run = bridge.inbound(run_start()).unwrap();
-    assert!(!run.started && run.prior.is_none());
+    assert!(!bridge.inbound(run_start()).unwrap().started);
     allow(&mut bridge, wire(&ask));
-    assert!(bridge.inbound(text("Working")).unwrap().prior.is_none());
+    assert!(bridge.settled_turn_end().is_none(), "the run in it goes on");
+    assert!(ends(&bridge.inbound(text("Working")).unwrap(), 4).is_none());
+    assert!(bridge.settled_turn_end().is_none());
     let end = bridge.inbound(result_frame("success")).unwrap();
     assert!(ends(&end, 4).is_some(), "the run's result ends the turn");
 }
@@ -341,4 +348,137 @@ fn a_declined_approval_is_denied_without_an_interrupt() {
     assert_eq!(declined.replies.len(), 1);
     assert!(denial(&declined, "r7"));
     assert!(bridge.inbound(subagent_approval("r8")).unwrap().started);
+}
+
+const PROMPT_UUID: &str = "6f9619ff-8b86-4011-b42d-00cf4fc964ff";
+
+fn prompt_with_uuid(bridge: &mut SdkBridge, id: u64) {
+    let user = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","id":id,"method":"session/prompt","params":{
+            "sessionId":SESSION,"messageId":format!("turn-{PROMPT_UUID}"),
+            "prompt":[{"type":"text","text":"hi"}]}}),
+        )
+        .unwrap();
+    assert_eq!(user["uuid"], PROMPT_UUID);
+}
+
+fn prompt_lifecycle(state: &str) -> Value {
+    json!({"type":"command_lifecycle","command_uuid":PROMPT_UUID,"state":state,
+        "uuid":"e1","session_id":SESSION})
+}
+
+#[test]
+fn a_run_claude_code_started_before_taking_up_the_prompt_leaves_the_turn_to_the_prompts_run() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+
+    assert!(!bridge.inbound(run_start()).unwrap().started);
+    assert!(
+        !bridge
+            .inbound(text("Background report"))
+            .unwrap()
+            .acp
+            .is_empty()
+    );
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    let held = bridge.inbound(result_frame("success")).unwrap();
+    assert!(ends(&held, 5).is_none(), "the prompt has not run yet");
+
+    bridge.inbound(prompt_lifecycle("started")).unwrap();
+    assert!(!bridge.inbound(run_start()).unwrap().started);
+    bridge.inbound(text("The reply")).unwrap();
+    let end = bridge.inbound(result_frame("success")).unwrap();
+    assert_eq!(ends(&end, 5).unwrap()["result"]["stopReason"], "end_turn");
+    bridge.inbound(prompt_lifecycle("completed")).unwrap();
+    assert!(
+        bridge.inbound(run_start()).unwrap().started,
+        "a later run opens a turn of its own"
+    );
+}
+
+#[test]
+fn a_run_that_ended_before_claude_code_read_the_prompt_does_not_end_its_turn() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    let held = bridge.inbound(result_frame("success")).unwrap();
+    assert!(ends(&held, 5).is_none());
+
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    bridge.inbound(prompt_lifecycle("started")).unwrap();
+    let run = bridge.inbound(run_start()).unwrap();
+    assert!(
+        !run.started,
+        "the prompt's run is its turn's, not a new one"
+    );
+    let end = bridge.inbound(result_frame("success")).unwrap();
+    assert!(ends(&end, 5).is_some());
+}
+
+#[test]
+fn a_prompt_folded_into_the_running_run_ends_with_that_runs_result() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    bridge.inbound(prompt_lifecycle("started")).unwrap();
+    let end = bridge.inbound(result_frame("success")).unwrap();
+    assert!(ends(&end, 5).is_some());
+}
+
+#[test]
+fn a_prompt_claude_code_drops_ends_its_turn_with_the_held_result() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    assert!(ends(&bridge.inbound(result_frame("success")).unwrap(), 5).is_none());
+    let dropped = bridge.inbound(prompt_lifecycle("discarded")).unwrap();
+    assert!(ends(&dropped, 5).is_some());
+}
+
+#[test]
+fn a_declined_run_that_takes_up_the_prompt_ends_the_prompts_turn() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    assert!(bridge.inbound(run_start()).unwrap().started);
+    bridge.decline().unwrap();
+    prompt_with_uuid(&mut bridge, 5);
+    assert!(bridge.inbound(text("Hidden")).unwrap().acp.is_empty());
+
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    bridge.inbound(prompt_lifecycle("started")).unwrap();
+    assert!(!bridge.inbound(text("The reply")).unwrap().acp.is_empty());
+    let end = bridge
+        .inbound(result_frame("error_during_execution"))
+        .unwrap();
+    assert!(ends(&end, 5).is_some(), "the prompt's turn gets its result");
+}
+
+#[test]
+fn a_stop_before_claude_code_takes_up_the_prompt_stops_the_prompts_run_too() {
+    let mut bridge = initialized();
+    finish_prompted_turn(&mut bridge);
+    prompt_with_uuid(&mut bridge, 5);
+    bridge.inbound(run_start()).unwrap();
+    bridge.inbound(prompt_lifecycle("queued")).unwrap();
+    let interrupt = cancel(&mut bridge);
+    assert_eq!(interrupt["request"]["subtype"], "interrupt");
+    bridge.inbound(success(&interrupt, json!({}))).unwrap();
+    let stopped = bridge
+        .inbound(result_frame("error_during_execution"))
+        .unwrap();
+    assert!(ends(&stopped, 5).is_none(), "the prompt still runs");
+
+    let started = bridge.inbound(prompt_lifecycle("started")).unwrap();
+    assert_eq!(started.replies[0]["request"]["subtype"], "interrupt");
+    let end = bridge
+        .inbound(result_frame("error_during_execution"))
+        .unwrap();
+    assert_eq!(ends(&end, 5).unwrap()["result"]["stopReason"], "cancelled");
 }

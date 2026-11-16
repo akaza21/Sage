@@ -291,7 +291,10 @@ impl Lane<'_> {
         let context = FirstTurnWorkerContext {
             owner: abort.owner.clone(),
             coordinator: SendCoordinator::new(
-                Arc::new(DatabaseAuthority(self.database.clone())),
+                Arc::new(DatabaseAuthority(
+                    self.database.clone(),
+                    self.runtime.harness_access.get(),
+                )),
                 self.journal.clone(),
                 Arc::clone(&self.publisher),
             ),

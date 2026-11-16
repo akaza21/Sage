@@ -27,16 +27,6 @@ impl SdkBridge {
             }
             return !starts_run && !matches!(kind, Some("stream_event" | "user"));
         }
-        if self.approval_turn
-            && self.prompt.is_some()
-            && self.permissions.is_empty()
-            && self.answering.is_empty()
-        {
-            let mut ended = Inbound::default();
-            self.approval_turn = false;
-            self.result(&Value::Null, &mut ended);
-            inbound.prior = Some(Box::new(ended));
-        }
         if starts_run {
             inbound.started = self.prompted && self.prompt.is_none();
             self.approval_turn = false;
@@ -76,6 +66,23 @@ impl SdkBridge {
             inbound.replies.push(interrupt);
         }
         Ok(inbound)
+    }
+
+    /// The end of a turn opened only for approvals, once they all settled:
+    /// answered and delivered, or withdrawn. Asked after each frame read and
+    /// once Sage's answers reach Claude Code.
+    pub(in crate::acp::bindings::claude::sdk) fn settled_turn_end(&mut self) -> Option<Inbound> {
+        if !self.approval_turn
+            || self.prompt.is_none()
+            || !self.permissions.is_empty()
+            || !self.answering.is_empty()
+        {
+            return None;
+        }
+        self.approval_turn = false;
+        let mut inbound = Inbound::default();
+        self.result(&Value::Null, &mut inbound);
+        Some(inbound)
     }
 
     /// A turn opened only for an approval has no run an interrupt would end

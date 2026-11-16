@@ -409,6 +409,9 @@ where
                     if let Err(error) = self.pump.settle_written_permission(now_millis).await {
                         return Err(self.pump_error(error));
                     }
+                    if let Err(error) = self.pump.accept_delivered_answers(now_millis).await {
+                        return Err(self.pump_error(error));
+                    }
                 }
                 Ok(FlushDisposition::ZeroBytes) => progress.zero_byte_failures += 1,
                 Ok(FlushDisposition::DeliveryUnknown) => {

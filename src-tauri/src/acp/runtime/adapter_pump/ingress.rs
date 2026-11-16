@@ -142,8 +142,10 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         Ok(accepted)
     }
 
+    /// Whether stdout this Turn still reads is buffered. Once the harness
+    /// has started its next Turn, the rest is that Turn's.
     pub(crate) fn has_pending_stdout_input(&self) -> bool {
-        self.decoder.has_pending_input()
+        !self.next_turn_started && self.decoder.has_pending_input()
     }
 
     pub(crate) async fn flush_deferred_if_needed(

@@ -295,6 +295,18 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         Ok(batch.finish())
     }
 
+    fn harness_turn_mode(&self) -> Option<&'static str> {
+        self.started.as_ref()?;
+        self.session.selected_mode()
+    }
+
+    fn answers_delivered(
+        &mut self,
+        resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.ingest_delivered(resources)
+    }
+
     fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
         self.started.take().ok_or(AdapterRuntimeError::Operation)?;
         let declined = self

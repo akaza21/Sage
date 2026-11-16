@@ -33,7 +33,8 @@ where
                 error: PrepareDriverTurnError::MissingLease,
             }));
         };
-        let dispatch = match lease.open_harness_turn(coordinator, now_millis).await {
+        let mode = self.completed.harness_turn_mode();
+        let dispatch = match lease.open_harness_turn(coordinator, mode, now_millis).await {
             Ok(dispatch) => dispatch,
             Err(failure) => {
                 let crate::acp::runtime::PrepareFailure { error, recovery } = *failure;

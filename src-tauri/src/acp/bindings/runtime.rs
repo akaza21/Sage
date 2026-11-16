@@ -331,6 +331,17 @@ impl HarnessAdapter for NativeRuntime {
         self.0.adopt_turn(client_message_id, resources)
     }
 
+    fn harness_turn_mode(&self) -> Option<&'static str> {
+        self.0.harness_turn_mode()
+    }
+
+    fn answers_delivered(
+        &mut self,
+        resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.0.answers_delivered(resources)
+    }
+
     fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
         self.0.decline_turn()
     }

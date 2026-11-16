@@ -3,8 +3,9 @@ use std::sync::Weak;
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
     runtime::{
-        CoordinatorError, HostError, JournalError, PreparedProcessWrite, ProjectIntentAuthority,
-        RuntimeHost, SessionTreeLease, SqliteAdapterBatchJournal, StartNotification,
+        AdapterPumpError, CoordinatorError, HostError, JournalError, PreparedProcessWrite,
+        ProjectIntentAuthority, RuntimeHost, SessionTreeLease, SqliteAdapterBatchJournal,
+        StartNotification,
     },
     store::StoreError,
 };
@@ -12,7 +13,9 @@ use sage_acp_protocol::scheduler::SchedulerError;
 
 use super::{
     FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState, RunnerExit,
-    StdinTransport, WorkerState, failed,
+    StdinTransport, WorkerState,
+    configuration::{PendingConfig, settle_idle_refusal},
+    failed,
 };
 use crate::acp::runtime::process_driver::{
     CompletedDriverParts, PrepareDriverTurnError, PrepareDriverTurnFailure, live_worker::boxed,
@@ -28,6 +31,7 @@ pub(super) async fn open<A, R, T, Auth, C>(
     parts: Box<ReusableParts<A, R, T, C>>,
     context: &FirstTurnWorkerContext<Auth>,
     host: &Weak<RuntimeHost>,
+    pending_config: &mut Option<PendingConfig>,
 ) -> Result<(WorkerState<A, R, T, C>, Option<StartNotification>), RunnerExit<A, R, T, C>>
 where
     A: HarnessAdapter,
@@ -47,17 +51,22 @@ where
                 "ACP live runner declined a harness-started Turn"
             );
             let mut parts = Box::new(failure.parts);
-            let declined = parts
+            match parts
                 .completed
                 .decline_started_turn(now_millis, &mut parts.transport)
-                .await;
-            if let Err(error) = declined {
-                tracing::warn!(
-                    activation_checkpoint = "live_runner.harness_turn.decline",
-                    ?error,
-                    "ACP live runner could not decline a harness-started Turn"
-                );
-                return Err(failed(FirstTurnWorkerState::Reusable(parts)));
+                .await
+            {
+                Ok(()) => {}
+                Err(AdapterPumpError::Refused(refusal))
+                    if settle_idle_refusal(pending_config, refusal) => {}
+                Err(error) => {
+                    tracing::warn!(
+                        activation_checkpoint = "live_runner.harness_turn.decline",
+                        ?error,
+                        "ACP live runner could not decline a harness-started Turn"
+                    );
+                    return Err(failed(FirstTurnWorkerState::Reusable(parts)));
+                }
             }
             return Ok((FirstTurnWorkerState::Reusable(parts), None));
         }
@@ -100,15 +109,17 @@ where
     Ok((FirstTurnWorkerState::Active(active), Some(notification)))
 }
 
-/// The store or scheduler refused the Turn before anything opened: the
-/// runtime holds a Turn the user undid or no longer runs, or the session's
-/// history or Turn slot is full. The run is declined and the session stays.
+/// The Turn was refused before anything opened: it would run in another
+/// mode than the chat's access allows now, the runtime holds a Turn the
+/// user undid or no longer runs, or the session's history or Turn slot is
+/// full. The run is declined and the session stays.
 fn refused<P>(failure: &PrepareDriverTurnFailure<P>) -> bool {
     failure.recovery.is_none()
         && matches!(
             &failure.error,
             PrepareDriverTurnError::Prepare(
-                CoordinatorError::Scheduler(SchedulerError::TurnCapacity)
+                CoordinatorError::Intent
+                    | CoordinatorError::Scheduler(SchedulerError::TurnCapacity)
                     | CoordinatorError::Journal(JournalError::Store(
                         StoreError::Capacity { .. }
                             | StoreError::Conflict {

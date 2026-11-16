@@ -45,6 +45,7 @@ impl SdkBridge {
                     .and_then(Value::as_str)
                     .and_then(super::controls::message_uuid)
                 {
+                    self.waiting_prompt = Some(uuid.clone());
                     user["uuid"] = uuid.into();
                 }
                 Ok(user)
