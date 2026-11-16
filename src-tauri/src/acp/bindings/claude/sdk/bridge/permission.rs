@@ -136,7 +136,10 @@ impl SdkBridge {
                 suggestions,
                 questions,
                 plan_exit: name == "ExitPlanMode",
-                subagent: self.asking_subagent(request, &tool_call_id),
+                agent: request
+                    .get("agent_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
                 tool: tool_call_id,
             },
         );
@@ -226,10 +229,8 @@ impl SdkBridge {
                 selected,
             )
         };
-        if response["behavior"] == "allow"
-            && let Some(subagent) = permission.subagent
-        {
-            self.allowed_tools.insert(permission.tool, subagent);
+        if response["behavior"] == "allow" {
+            self.allowed_tools.insert(permission.tool, permission.agent);
         }
         self.answering.insert(permission.request_id.clone());
         Ok(decision(&permission.request_id, response))

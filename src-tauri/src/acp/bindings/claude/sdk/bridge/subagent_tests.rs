@@ -313,3 +313,92 @@ fn an_allowed_background_tool_that_never_reports_fails_when_its_subagent_ends() 
     assert_eq!(child_status(&settled, BACKGROUND_TOOL), Some("failed"));
     assert_eq!(ended(&settled), [("toolu_a", ChildOutcome::Completed)]);
 }
+
+/// Sage answers `option` on the card for `request`, asked within the open
+/// prompt turn.
+fn answer_in_turn(bridge: &mut SdkBridge, request: Value, option: &str) {
+    let ask = bridge
+        .inbound(json!({"type":"control_request","request_id":"r7","request":request}))
+        .unwrap();
+    let wire = ask
+        .acp
+        .iter()
+        .find(|frame| frame["method"] == "session/request_permission")
+        .and_then(|frame| frame["id"].as_u64())
+        .unwrap();
+    let answer = bridge
+        .outbound(&json!({"id":wire,"result":{"outcome":{"outcome":"selected","optionId":option}}}))
+        .unwrap();
+    let request = answer["response"]["request_id"].as_str().unwrap();
+    bridge.delivered(&Sent::Answer(request.to_owned()));
+}
+
+fn row_status(inbound: &Inbound, id: &str) -> Option<String> {
+    inbound
+        .acp
+        .iter()
+        .find(|frame| frame["params"]["update"]["toolCallId"] == id)
+        .and_then(|frame| frame["params"]["update"]["status"].as_str())
+        .map(str::to_owned)
+}
+
+#[test]
+fn an_allowed_foreground_subagent_tool_that_never_reports_fails_with_the_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    spawn(&mut bridge, "toolu_a");
+    subagent_tool_row(&mut bridge);
+    answer_in_turn(
+        &mut bridge,
+        json!({"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":BACKGROUND_TOOL,
+            "agent_id":"agent-1","input":{"command":"make"}}),
+        "allow_once",
+    );
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert_eq!(
+        row_status(&ended, BACKGROUND_TOOL).as_deref(),
+        Some("failed")
+    );
+}
+
+#[test]
+fn a_subagent_approval_asked_before_its_agent_id_is_known_completes_the_cards_row() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    spawn(&mut bridge, "toolu_a");
+    answer_in_turn(
+        &mut bridge,
+        json!({"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":BACKGROUND_TOOL,
+            "agent_id":"agent-1","input":{"command":"make"}}),
+        "allow_once",
+    );
+    tool_result(&mut bridge, "toolu_a", launched("agent-1"));
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert_eq!(
+        row_status(&ended, BACKGROUND_TOOL).as_deref(),
+        Some("completed")
+    );
+}
+
+#[test]
+fn an_allowed_main_agent_tool_that_never_reports_fails_with_the_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    answer_in_turn(
+        &mut bridge,
+        json!({"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":BACKGROUND_TOOL,
+            "input":{"command":"make"}}),
+        "allow_once",
+    );
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert_eq!(
+        row_status(&ended, BACKGROUND_TOOL).as_deref(),
+        Some("failed")
+    );
+}

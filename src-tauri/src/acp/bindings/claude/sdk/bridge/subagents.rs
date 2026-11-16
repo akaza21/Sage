@@ -188,7 +188,7 @@ impl SdkBridge {
             .map(|(tool, name)| {
                 let delegated = allowed
                     .get(&tool)
-                    .and_then(|owner| self.subagents.get(owner))
+                    .and_then(|agent| self.asking_subagent(agent.as_deref(), &tool))
                     .is_some_and(|subagent| subagent.background);
                 let status = if delegated { "completed" } else { "failed" };
                 (tool, name, status)
@@ -196,18 +196,21 @@ impl SdkBridge {
             .collect()
     }
 
-    /// The subagent an approval request comes from: the one Claude Code
-    /// names by its agent id, or the one whose tool row it is.
-    pub(super) fn asking_subagent(&self, request: &Value, tool: &str) -> Option<String> {
-        let agent = request.get("agent_id").and_then(Value::as_str);
+    /// The subagent that asked to run `tool`: the one Claude Code named by
+    /// `agent`, its agent id, or else the one that reported the tool. Asked
+    /// once the turn ends, when Sage has had the most frames to learn the id.
+    fn asking_subagent(&self, agent: Option<&str>, tool: &str) -> Option<&Subagent> {
         agent
             .and_then(|agent| {
                 self.subagents
-                    .iter()
-                    .find(|(_, subagent)| subagent.task_id.as_deref() == Some(agent))
-                    .map(|(key, _)| key.clone())
+                    .values()
+                    .find(|subagent| subagent.task_id.as_deref() == Some(agent))
             })
-            .or_else(|| self.child_tools.get(tool).map(|(owner, _)| owner.clone()))
+            .or_else(|| {
+                self.child_tools
+                    .get(tool)
+                    .and_then(|(owner, _)| self.subagents.get(owner))
+            })
     }
 
     /// Ends the subagents a finished turn was waiting on; background ones run on.
