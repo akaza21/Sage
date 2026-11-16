@@ -1,7 +1,7 @@
 import { expect, it } from "vitest";
 
 import type { AcpChatPage, AcpItem, ToolPresentation } from "../domain/acp";
-import { projectTaskResources } from "./agentArtifactTabPresentation";
+import { projectTaskResources } from "./taskResourceProjection";
 
 function toolCall(id: string, presentation: ToolPresentation): AcpItem {
   return {

@@ -112,7 +112,7 @@ pub(super) struct SdkBridge {
     next_permission: u64,
     tools: BTreeMap<String, String>,
     /// Open subagents, by their `Task` tool use id.
-    subagents: BTreeSet<String>,
+    subagents: BTreeMap<String, subagents::Subagent>,
     /// A subagent's own tool rows: subagent and tool name, by tool use id.
     child_tools: BTreeMap<String, (String, String)>,
     streamed: VecDeque<String>,
@@ -153,7 +153,7 @@ impl SdkBridge {
             answering: BTreeSet::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
-            subagents: BTreeSet::new(),
+            subagents: BTreeMap::new(),
             child_tools: BTreeMap::new(),
             streamed: VecDeque::new(),
             retrying: false,
@@ -270,3 +270,6 @@ fn acp_error(id: Value, code: i64, message: &str) -> Value {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod subagent_tests;

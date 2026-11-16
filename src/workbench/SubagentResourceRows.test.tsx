@@ -10,7 +10,8 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import type { AcpChatPage } from "../domain/acpProjection";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
-import { SubagentResourceRows, useChildEpoch } from "./SubagentResourceRows";
+import { SubagentResourceRows } from "./SubagentResourceRows";
+import { useChildEpoch } from "./subagentLiveness";
 
 vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
   ...((await importOriginal()) as object),

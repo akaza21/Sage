@@ -1,39 +1,30 @@
 import type { AcpChatPage } from "../domain/acpProjection";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
-import type { AgentDiffRef } from "../domain/agentDiff";
-import type { ResourceRef } from "../domain/workbench";
-import { resourceKey } from "../domain/resourceIdentity";
-import { projectAgentEditSummary } from "../features/chat/acp/agentEditSummary";
 import {
   attributedSubagentKey,
   type SubagentPaneTarget,
 } from "../app/subagentPaneStore";
 import { sameAgentArtifactOwner } from "../domain/agentArtifact";
-import type { AcpItem } from "../domain/acp";
+import type { AcpItem, TurnProjection } from "../domain/acp";
 
 type ArtifactTab = { resource?: { relativePath?: string }; title: string };
 
 const MAX_RESOURCE_TURNS = 128;
-const MAX_RECENT_RESOURCE_ITEMS = 256;
+export const MAX_RECENT_RESOURCE_ITEMS = 256;
 const MAX_RESOURCE_DETAILS_PER_ITEM = 32;
-const MAX_RESOURCE_ENTRIES = 128;
+export const MAX_RESOURCE_ENTRIES = 128;
 
-export type TaskOutput = {
-  label: string;
-  owner: AgentArtifactOwner;
-  resource: ResourceRef;
-  target: "file" | "diff";
-  diffRef?: AgentDiffRef;
-};
-
-export type TaskSource = { label: string; tabId: string | null };
 type AgentStatus = "starting" | "working" | "done" | "stopped" | "failed";
-type RecentAgent = {
+export type RecentAgent = {
   id: string;
   label: string;
   status: AgentStatus;
   agentKey?: string;
   target?: SubagentPaneTarget;
+  /** The turn of the latest parent row about this child. */
+  reportedTurn?: TurnProjection;
+  /** Settled by its own transcript; the parent rows hold no end time. */
+  endUnknown?: true;
 };
 
 function childTarget(
@@ -62,34 +53,8 @@ function agentStatus(state: string | undefined): AgentStatus | null {
   return null;
 }
 
-function httpHost(value: string): string | null {
-  if (value.length > 2048) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:"
-      ? url.host
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-export function projectTaskResources(
-  page: AcpChatPage | null,
-  chatId: string | null,
-) {
-  const agents = new Map<string, RecentAgent>();
-  const latestInvocation = new Map<string, string>();
-  const outputs = new Map<string, TaskOutput>();
-  const sources = new Map<string, TaskSource>();
-  const changes = new Set<string>();
-  if (!page || page.chatId !== chatId)
-    return {
-      recentAgents: [],
-      outputs: [],
-      sources: [],
-      changesCount: 0,
-    };
+/** The newest turns, holding at most a bounded number of items, oldest first. */
+export function recentResourceTurns(page: AcpChatPage): TurnProjection[] {
   let remainingItems = MAX_RECENT_RESOURCE_ITEMS;
   const recentTurns = [];
   for (const turn of page.turns.slice(-MAX_RESOURCE_TURNS).reverse()) {
@@ -100,60 +65,24 @@ export function projectTaskResources(
       items.length === turn.items.length ? turn : { ...turn, items },
     );
   }
-  for (const turn of recentTurns.reverse()) {
-    for (const change of projectAgentEditSummary(page, turn).changes) {
-      const changedResource =
-        change.resource.kind === "resource"
-          ? change.resource.resource
-          : change.resource.displayResource;
-      if (
-        turn.sessionId === page.currentSessionId &&
-        changedResource &&
-        changes.size < MAX_RESOURCE_ENTRIES
-      )
-        changes.add(resourceKey(changedResource));
-      if (change.operation !== "created" || change.resource.kind !== "resource")
-        continue;
-      const resource = change.resource.resource;
-      const key = resourceKey(resource);
-      if (outputs.size >= MAX_RESOURCE_ENTRIES && !outputs.has(key)) continue;
-      outputs.set(key, {
-        label: resource.relativePath,
-        owner: {
-          projectId: page.projectId,
-          chatId: page.chatId,
-          sessionId: turn.sessionId,
-        },
-        resource,
-        target: change.diffRef ? "diff" : "file",
-        diffRef: change.diffRef,
-      });
-    }
-    for (const operation of (turn.browserOperations ?? []).slice(
-      -MAX_RECENT_RESOURCE_ITEMS,
-    )) {
-      if (
-        operation.projectId !== page.projectId ||
-        operation.chatId !== page.chatId ||
-        operation.sessionId !== turn.sessionId ||
-        operation.turnId !== turn.id
-      )
-        continue;
-      const label = httpHost(operation.origin);
-      if (!label || !operation.tabId) continue;
-      if (sources.size >= MAX_RESOURCE_ENTRIES && !sources.has(operation.tabId))
-        continue;
-      sources.set(operation.tabId, { label, tabId: operation.tabId });
-    }
+  return recentTurns.reverse();
+}
+
+/** The chat's recent subagents, one per spawn invocation, by their latest parent row. */
+export function projectRecentAgents(
+  page: AcpChatPage | null,
+  chatId: string | null,
+): RecentAgent[] {
+  if (!page || page.chatId !== chatId) return [];
+  const agents = new Map<string, RecentAgent>();
+  const latestInvocation = new Map<string, string>();
+  for (const turn of recentResourceTurns(page)) {
+    if (
+      page.currentSessionId !== undefined &&
+      turn.sessionId !== page.currentSessionId
+    )
+      continue;
     for (const item of turn.items) {
-      if (
-        page.currentSessionId !== undefined &&
-        turn.sessionId !== page.currentSessionId &&
-        (item.kind === "collaboration" ||
-          (item.kind === "toolCall" &&
-            item.payload.presentation.kind === "subagent"))
-      )
-        continue;
       if (item.kind === "collaboration") {
         if (item.payload.operation !== "spawnAgent" && item.payload.agentKey) {
           const invocation = latestInvocation.get(item.payload.agentKey);
@@ -170,6 +99,7 @@ export function projectTaskResources(
           if (invocation && agent)
             agents.set(invocation, {
               ...agent,
+              reportedTurn: turn,
               ...(target
                 ? {
                     target,
@@ -208,6 +138,7 @@ export function projectTaskResources(
                 label,
                 status,
                 agentKey: key,
+                reportedTurn: turn,
                 ...(target ? { target } : {}),
               });
           }
@@ -225,6 +156,7 @@ export function projectTaskResources(
               agents.set(invocation, {
                 ...agent,
                 id: invocation,
+                reportedTurn: turn,
                 label:
                   item.payload.receiverLabels[
                     (item.payload.agentKeys ?? []).indexOf(key)
@@ -254,28 +186,9 @@ export function projectTaskResources(
             status,
           });
       }
-      if (item.kind === "toolCall") {
-        const source = item.payload.presentation;
-        const label =
-          source.kind === "fetch"
-            ? source.url && httpHost(source.url)
-            : source.kind === "webSearch"
-              ? "Search Service"
-              : source.kind === "mcp" && source.serverLabel !== "MCP"
-                ? source.serverLabel
-                : null;
-        if (label && sources.size < MAX_RESOURCE_ENTRIES && !sources.has(label))
-          sources.set(label, { label, tabId: null });
-      }
     }
   }
-  const recentAgents = [...agents.values()].slice(-MAX_RESOURCE_ENTRIES);
-  return {
-    recentAgents,
-    outputs: [...outputs.values()],
-    sources: [...sources.values()],
-    changesCount: changes.size,
-  };
+  return [...agents.values()].slice(-MAX_RESOURCE_ENTRIES);
 }
 
 export function artifactTabParts(tab: ArtifactTab) {

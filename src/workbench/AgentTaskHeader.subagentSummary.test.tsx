@@ -22,6 +22,7 @@ import type { AcpChatPage, AcpItem, TurnProjection } from "../domain/acp";
 import type { WorkbenchTab } from "../domain/workbench";
 import { AgentTaskHeader } from "./AgentTaskHeader";
 import { useAgentChangesState } from "./agentChangesState";
+import { resetSubagentLiveness } from "./subagentLiveness";
 
 const readChild = vi.hoisted(() => vi.fn());
 vi.mock("../services/acpChildTranscript", () => ({
@@ -613,6 +614,7 @@ it("keeps Task lifecycle metadata readable without a child selection or transcri
 });
 
 afterEach(() => {
+  resetSubagentLiveness();
   cleanup();
   useSubagentPaneStore.getState().clear();
   useAgentChangesState.getState().close();
@@ -847,5 +849,56 @@ it.each([false, true])(
     fireEvent.keyDown(panel, { key: "Tab", shiftKey });
     expect(screen.queryByRole("dialog", { name: "Chat resources" })).toBeNull();
     expect(trigger).toHaveFocus();
+  },
+);
+
+it.each([
+  ["completed", 0, 1, "Done"],
+  ["inProgress", 1, 0, "Working"],
+])(
+  "counts a child still running at its ended spawn turn by its %s transcript",
+  async (status, working, done, shown) => {
+    const page = acpProjectionStoreFor(tab.id).getState().page!;
+    const key = "private-reviewer";
+    replaceItems(
+      [
+        collaboration(
+          "spawn-reviewer",
+          0,
+          "spawnAgent",
+          [key],
+          ["Reviewer"],
+          [[key, "running"]],
+        ),
+      ],
+      {
+        sessions: page.sessions.map((session) => ({
+          ...session,
+          capabilities: { childTranscriptRead: true },
+        })) as unknown as AcpChatPage["sessions"],
+      },
+    );
+    readChild.mockResolvedValue({
+      kind: "current",
+      retentionLimited: false,
+      turns: [{ id: "child-turn", status, items: [] }],
+    });
+    render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show chat resources" }),
+    );
+    const section = await screen.findByRole("region", { name: "Subagents" });
+    await waitFor(() => expect(readChild).toHaveBeenCalledTimes(1));
+    await waitFor(() =>
+      expect(
+        within(section).getByLabelText(`Recent subagents done: ${done}`),
+      ).toBeInTheDocument(),
+    );
+    expect(
+      within(section).getByLabelText(`Recent subagents working: ${working}`),
+    ).toBeInTheDocument();
+    expect(
+      within(section).getByRole("button", { name: "Open subagent Reviewer" }),
+    ).toHaveTextContent(shown);
   },
 );

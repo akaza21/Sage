@@ -1,17 +1,29 @@
 import type { ReactNode } from "react";
-import type { projectTaskResources } from "./agentArtifactTabPresentation";
+import type { AcpChatPage } from "../domain/acpProjection";
+import { liveAgent, type RecentAgent } from "./agentArtifactTabPresentation";
 import { SubagentResourceRows } from "./SubagentResourceRows";
+import { useChildEpoch, useSettledSubagents } from "./subagentLiveness";
 
 export function AgentTaskSubagentSummary({
+  page,
+  projectGeneration,
   recentAgents,
-  working,
   counts,
   onSelect,
-}: Pick<ReturnType<typeof projectTaskResources>, "recentAgents"> & {
-  working: number;
-  counts: (glyphs: ReactNode) => ReactNode;
+}: {
+  page: AcpChatPage;
+  projectGeneration: string;
+  recentAgents: readonly RecentAgent[];
+  counts: (agents: readonly RecentAgent[], glyphs: ReactNode) => ReactNode;
   onSelect: () => void;
 }) {
+  const agents = useSettledSubagents(
+    page,
+    projectGeneration,
+    recentAgents,
+    useChildEpoch(page),
+  );
+  const working = agents.filter((agent) => liveAgent(agent.status)).length;
   return (
     <section
       aria-label="Subagents"
@@ -21,6 +33,7 @@ export function AgentTaskSubagentSummary({
         Subagents
       </strong>
       {counts(
+        agents,
         <span className="agent-task-header__agent-glyphs" aria-hidden="true">
           {Array.from({ length: Math.min(working, 3) }, (_, index) => (
             <span
@@ -32,7 +45,7 @@ export function AgentTaskSubagentSummary({
           ))}
         </span>,
       )}
-      <SubagentResourceRows agents={recentAgents} onSelect={onSelect} />
+      <SubagentResourceRows agents={agents} onSelect={onSelect} />
     </section>
   );
 }

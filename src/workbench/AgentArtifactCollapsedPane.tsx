@@ -2,7 +2,7 @@ import { PanelRightOpen } from "../ui/leanIcons";
 import { useMemo, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import type { AcpChatPage } from "../domain/acp";
-import { projectTaskResources } from "./agentArtifactTabPresentation";
+import { projectRecentAgents } from "./agentArtifactTabPresentation";
 
 export function AgentArtifactCollapsedPane({
   count: artifactCount,
@@ -30,10 +30,10 @@ export function AgentArtifactCollapsedPane({
       turn.items.some((item) => item.id === subagentItemId),
     );
     return subagentPage && turn
-      ? projectTaskResources(
+      ? projectRecentAgents(
           { ...subagentPage, turns: [turn] },
           subagentPage.chatId,
-        ).recentAgents.length
+        ).length
       : 0;
   }, [subagentPage, subagentItemId]);
   const count = artifactCount + subagents;
