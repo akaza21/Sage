@@ -323,9 +323,9 @@ impl SdkBridge {
             return;
         };
         self.end_steers(inbound);
-        for (tool, name) in self.unfinished_tools() {
+        for (tool, name, status) in self.unfinished_tools() {
             inbound.acp.push(self.update(json!({
-                "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": "failed",
+                "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": status,
                 "_meta": {"claudeCode": {"toolName": name}},
             })));
         }

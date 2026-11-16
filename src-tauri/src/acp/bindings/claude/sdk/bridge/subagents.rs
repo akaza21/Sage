@@ -177,20 +177,23 @@ impl SdkBridge {
         });
     }
 
-    /// The rows a finished turn fails: all its tools but those it allowed a
-    /// background subagent to run, whose own row in that subagent's
-    /// transcript takes their result, or fails when the subagent ends.
-    pub(super) fn unfinished_tools(&mut self) -> Vec<(String, String)> {
+    /// How a finished turn closes its unfinished rows: failed, except a
+    /// tool it allowed a background subagent to run. That row only carried
+    /// the approval, so it completes with it; the tool's own row in the
+    /// subagent's transcript takes its result, or fails when the subagent ends.
+    pub(super) fn unfinished_tools(&mut self) -> Vec<(String, String, &'static str)> {
         let allowed = std::mem::take(&mut self.allowed_tools);
         std::mem::take(&mut self.tools)
             .into_iter()
-            .filter(|(tool, _)| {
-                !allowed.contains(tool)
-                    || !self
+            .map(|(tool, name)| {
+                let delegated = allowed.contains(&tool)
+                    && self
                         .child_tools
-                        .get(tool)
+                        .get(&tool)
                         .and_then(|(owner, _)| self.subagents.get(owner))
-                        .is_some_and(|subagent| subagent.background)
+                        .is_some_and(|subagent| subagent.background);
+                let status = if delegated { "completed" } else { "failed" };
+                (tool, name, status)
             })
             .collect()
     }

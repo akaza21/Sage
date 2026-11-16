@@ -1422,3 +1422,87 @@ fn a_turn_opened_for_an_approval_claude_code_withdraws_ends_in_the_same_read() {
             if id.turn_client_message_id.as_ref() == Some(&client)
     )));
 }
+
+/// What the turn opened for a background subagent's approval card records
+/// for the card's row once Sage's `decision` reaches Claude Code.
+fn background_card_row(
+    decision: sage_acp_protocol::permissions::PermissionDecision,
+) -> Option<sage_acp_protocol::lifecycle::ToolState> {
+    let mut runtime = prompted();
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","message":{"id":"m-a","content":[{"type":"tool_use",
+            "id":"toolu_a","name":"Agent","input":{"description":"Look","prompt":"Look"}}]}}),
+    );
+    feed(
+        &mut runtime,
+        json!({"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"toolu_a",
+            "content":"Async agent launched successfully."}]},
+            "tool_use_result":{"status":"async_launched","agentId":"agent-1"}}),
+    );
+    feed(&mut runtime, finished());
+    feed(
+        &mut runtime,
+        json!({"type":"assistant","parent_tool_use_id":"toolu_a","message":{"id":"m-sub",
+            "content":[{"type":"tool_use","id":"toolu_make","name":"Bash","input":{"command":"make"}}]}}),
+    );
+    feed(
+        &mut runtime,
+        json!({"type":"control_request","request_id":"r7","request":{"subtype":"can_use_tool",
+            "tool_name":"Bash","tool_use_id":"toolu_make","input":{"command":"make"}}}),
+    );
+    let client = RequiredText::new("client", "turn-approval").unwrap();
+    let (events, _) = runtime.adopt_turn(client, &Mapper).unwrap().into_parts();
+    let request_id = events
+        .iter()
+        .find_map(|event| match event {
+            AdapterEvent::PermissionRequest {
+                external_request_id,
+                ..
+            } => Some(external_request_id.clone()),
+            _ => None,
+        })
+        .expect("approval card");
+    let denied = matches!(
+        decision,
+        sage_acp_protocol::permissions::PermissionDecision::Deny
+    );
+    let answer = runtime
+        .command(AdapterCommand::ResolvePermission {
+            request_id: SageServerRequestId::parse(request_id.as_str()).unwrap(),
+            decision,
+        })
+        .unwrap();
+    let token = answer.into_token();
+    if denied {
+        runtime.commit_mandatory_egress(&token).unwrap();
+    }
+    runtime
+        .resolve_egress(token.clone(), EgressResolution::Queued)
+        .unwrap();
+    runtime
+        .resolve_egress(token, EgressResolution::Written)
+        .unwrap();
+    let (events, _) = runtime
+        .answers_delivered(&Mapper)
+        .unwrap()
+        .expect("the card's turn ends")
+        .into_parts();
+    events.iter().rev().find_map(|event| match event {
+        AdapterEvent::Item { tool_state, .. } => *tool_state,
+        _ => None,
+    })
+}
+
+#[test]
+fn a_background_subagents_approval_card_row_ends_with_the_answer_not_the_turn() {
+    use sage_acp_protocol::{lifecycle::ToolState, permissions::PermissionDecision};
+    assert_eq!(
+        background_card_row(PermissionDecision::AllowOnce),
+        Some(ToolState::Completed)
+    );
+    assert_eq!(
+        background_card_row(PermissionDecision::Deny),
+        Some(ToolState::Declined)
+    );
+}

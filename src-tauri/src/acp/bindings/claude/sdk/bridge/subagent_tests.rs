@@ -190,9 +190,9 @@ fn child_status<'a>(events: &'a [ChildEvent], id: &str) -> Option<&'a str> {
 }
 
 /// A subagent launched in the background asks between turns to run a tool,
-/// which Sage allows; the turn opened for the card ends once the answer is
-/// delivered, leaving the tool's row unfailed.
-fn allow_background_tool(bridge: &mut SdkBridge) {
+/// and Sage answers with `option`; the turn opened for the card ends once
+/// the answer is delivered. Returns how that turn closed the card's row.
+fn answer_background_tool(bridge: &mut SdkBridge, option: &str) -> String {
     prompt(bridge, 3);
     spawn(bridge, "toolu_a");
     tool_result(bridge, "toolu_a", launched("agent-1"));
@@ -217,9 +217,7 @@ fn allow_background_tool(bridge: &mut SdkBridge) {
         .and_then(|frame| frame["id"].as_u64())
         .unwrap();
     let answer = bridge
-        .outbound(
-            &json!({"id":wire,"result":{"outcome":{"outcome":"selected","optionId":"allow_once"}}}),
-        )
+        .outbound(&json!({"id":wire,"result":{"outcome":{"outcome":"selected","optionId":option}}}))
         .unwrap();
     let request = answer["response"]["request_id"].as_str().unwrap();
     bridge.delivered(&Sent::Answer(request.to_owned()));
@@ -227,13 +225,29 @@ fn allow_background_tool(bridge: &mut SdkBridge) {
         .settled_turn_end()
         .expect("the card's turn ends once answered");
     assert!(ended.acp.iter().any(|frame| frame["id"] == 4));
-    assert!(
-        !ended.acp.iter().any(|frame| {
-            frame["params"]["update"]["toolCallId"] == BACKGROUND_TOOL
-                && frame["params"]["update"]["status"] == "failed"
-        }),
-        "the allowed tool is about to run"
+    let row = ended
+        .acp
+        .iter()
+        .find(|frame| frame["params"]["update"]["toolCallId"] == BACKGROUND_TOOL)
+        .expect("the turn closes the card's row itself");
+    row["params"]["update"]["status"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+fn allow_background_tool(bridge: &mut SdkBridge) {
+    assert_eq!(
+        answer_background_tool(bridge, "allow_once"),
+        "completed",
+        "the card's row ends with the approval it carried"
     );
+}
+
+#[test]
+fn a_declined_background_tool_closes_the_cards_row_as_failed() {
+    let mut bridge = initialized();
+    assert_eq!(answer_background_tool(&mut bridge, "reject"), "failed");
 }
 
 #[test]
