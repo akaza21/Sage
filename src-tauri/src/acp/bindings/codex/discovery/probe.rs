@@ -7,7 +7,11 @@ use std::{
     io::{self, Read, Write},
     path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{Mutex, MutexGuard, PoisonError, mpsc},
+    sync::{
+        Arc, Mutex, MutexGuard, PoisonError,
+        atomic::{AtomicUsize, Ordering},
+        mpsc,
+    },
     thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
@@ -29,7 +33,7 @@ use super::{
 use crate::acp::{
     bindings::codex::AdmittedCodexBinding,
     ipc::CodexDiscoveryModel,
-    transport::{Frame, FrameError, FrameWriteOutcome, IncrementalFrameDecoder, OutboundFrame},
+    transport::{Frame, FrameError, FrameWriteOutcome, OutboundFrame},
 };
 
 const PROBE_OPERATION: Duration = Duration::from_secs(20);
@@ -42,6 +46,9 @@ const SETTLE_POLL: Duration = Duration::from_millis(5);
 /// Startup output and four catalog pages; this bounds a misbehaving CLI.
 const PROBE_BYTES: u64 = 4 * 1024 * 1024;
 const RETRY_AFTER: Duration = Duration::from_secs(60);
+/// Probe roots left to a reaper thread at once; no probe starts while this
+/// many are stuck, so a CLI wedged in the kernel cannot leak threads.
+const MAX_STUCK_ROOTS: usize = 4;
 /// The probe owns no session, so its runtime epoch only pairs its own exit.
 const PROBE_EPOCH: u64 = 1;
 
@@ -85,6 +92,8 @@ pub(crate) struct CodexModelCatalog {
     state: Mutex<CatalogState>,
     /// Held while a probe runs, so concurrent lookups share its outcome.
     probing: Mutex<()>,
+    /// Killed probe roots a reaper thread is still waiting for.
+    stuck_roots: Arc<AtomicUsize>,
 }
 
 impl CodexModelCatalog {
@@ -118,7 +127,7 @@ impl CodexModelCatalog {
         };
         let models = CodexDiscoveryDeadline::starting_now(operation, cleanup)
             .ok()
-            .and_then(|deadline| probe(binding, deadline))
+            .and_then(|deadline| probe(binding, deadline, &self.stuck_roots))
             .filter(|models| !models.is_empty());
         let mut state = lock(&self.state);
         if state.generation != generation {
@@ -181,8 +190,12 @@ impl CodexModelCatalog {
 fn probe(
     binding: &AdmittedCodexBinding,
     deadline: CodexDiscoveryDeadline,
+    stuck_roots: &Arc<AtomicUsize>,
 ) -> Option<Vec<ModelOption>> {
-    if !binding.is_observed() || binding.is_desktop_fixture() {
+    if !binding.is_observed()
+        || binding.is_desktop_fixture()
+        || stuck_roots.load(Ordering::Acquire) >= MAX_STUCK_ROOTS
+    {
         return None;
     }
     binding.revalidate().ok()?;
@@ -201,7 +214,12 @@ fn probe(
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
     isolate(&mut command);
-    let mut transport = ProbeTransport::spawn(command, binding)?;
+    let mut transport = ProbeTransport::spawn(
+        command,
+        binding,
+        deadline.cleanup_end(),
+        Arc::clone(stuck_roots),
+    )?;
     let runtime_epoch = RuntimeEpoch::new(PROBE_EPOCH).ok()?;
     let mut protocol = CodexDiscoveryProtocol::from_admitted_binding(binding, runtime_epoch);
     run_discovery_protocol(&mut protocol, &mut transport, PROBE_EPOCH, deadline)
@@ -262,16 +280,24 @@ struct ProbeTransport<'a> {
     frames: mpsc::Receiver<Result<Option<Frame>, FrameError>>,
     reader: Option<JoinHandle<()>>,
     binding: &'a AdmittedCodexBinding,
+    /// The probe's teardown ends by then, whichever path tears it down.
+    cleanup_end: Instant,
+    stuck_roots: Arc<AtomicUsize>,
 }
 
 impl<'a> ProbeTransport<'a> {
-    fn spawn(mut command: Command, binding: &'a AdmittedCodexBinding) -> Option<Self> {
+    fn spawn(
+        mut command: Command,
+        binding: &'a AdmittedCodexBinding,
+        cleanup_end: Instant,
+        stuck_roots: Arc<AtomicUsize>,
+    ) -> Option<Self> {
         let mut child = command.spawn().ok()?;
         let tree = match contain(&child) {
             Ok(tree) => tree,
             Err(_) => {
                 let _ = child.kill();
-                reap_root(child, Instant::now() + PROBE_CLEANUP);
+                reap_root(child, cleanup_end, &stuck_roots);
                 return None;
             }
         };
@@ -284,10 +310,12 @@ impl<'a> ProbeTransport<'a> {
             frames,
             reader: None,
             binding,
+            cleanup_end,
+            stuck_roots,
         };
         let stdout = stdout?;
         transport.reader = Some(thread::spawn(move || {
-            read_frames(stdout.take(PROBE_BYTES), &sender);
+            frames::read_frames(stdout.take(PROBE_BYTES), &sender);
         }));
         Some(transport)
     }
@@ -306,7 +334,8 @@ impl<'a> ProbeTransport<'a> {
         self.drain_output(now + EXIT_GRACE.min(cleanup_end.saturating_duration_since(now)));
         let tree_signalled = tree.terminate();
         let root_signalled = child.kill().is_ok();
-        let zero = reap_root(child, cleanup_end) && settles_by(cleanup_end, || tree.is_empty());
+        let zero = reap_root(child, cleanup_end, &self.stuck_roots)
+            && settles_by(cleanup_end, || tree.is_empty());
         if self.drain_output(cleanup_end)
             && let Some(reader) = self.reader.take()
         {
@@ -335,14 +364,21 @@ impl<'a> ProbeTransport<'a> {
 }
 
 /// Reaps a killed root by `until`; a root that has not ended by then, such as
-/// one stuck in uninterruptible I/O, is left to a thread that reaps it later.
-fn reap_root(mut child: Child, until: Instant) -> bool {
+/// one stuck in uninterruptible I/O, is left to a thread that reaps it later
+/// and is counted in `stuck_roots` until it does.
+fn reap_root(mut child: Child, until: Instant, stuck_roots: &Arc<AtomicUsize>) -> bool {
     if settles_by(until, || matches!(child.try_wait(), Ok(Some(_)))) {
         return true;
     }
-    thread::spawn(move || {
+    stuck_roots.fetch_add(1, Ordering::AcqRel);
+    let reaped = Arc::clone(stuck_roots);
+    let reaper = thread::Builder::new().spawn(move || {
         let _ = child.wait();
+        reaped.fetch_sub(1, Ordering::AcqRel);
     });
+    if reaper.is_err() {
+        stuck_roots.fetch_sub(1, Ordering::AcqRel);
+    }
     false
 }
 
@@ -357,32 +393,6 @@ fn settles_by(until: Instant, mut settled: impl FnMut() -> bool) -> bool {
             return false;
         }
         thread::sleep(SETTLE_POLL.min(left));
-    }
-}
-
-fn read_frames(
-    mut stdout: impl Read,
-    sender: &mpsc::SyncSender<Result<Option<Frame>, FrameError>>,
-) {
-    let mut decoder = IncrementalFrameDecoder::new();
-    let mut chunk = [0_u8; 8 * 1024];
-    loop {
-        let next = match decoder.drain_pending() {
-            Ok(Some(frame)) => Ok(Some(frame)),
-            Ok(None) => match stdout.read(&mut chunk) {
-                Ok(0) => decoder.finish(),
-                Ok(read) => match decoder.push_chunk(&chunk[..read]) {
-                    Ok(None) => continue,
-                    other => other,
-                },
-                Err(_) => Err(FrameError::Io),
-            },
-            Err(error) => Err(error),
-        };
-        let last = !matches!(next, Ok(Some(_)));
-        if sender.send(next).is_err() || last {
-            return;
-        }
     }
 }
 
@@ -434,7 +444,7 @@ impl DiscoveryTransport for ProbeTransport<'_> {
 
 impl Drop for ProbeTransport<'_> {
     fn drop(&mut self) {
-        let _ = self.tear_down(Instant::now() + PROBE_CLEANUP);
+        let _ = self.tear_down(self.cleanup_end);
     }
 }
 
@@ -442,5 +452,6 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
     mutex.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+mod frames;
 #[cfg(test)]
 mod tests;

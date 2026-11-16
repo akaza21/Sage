@@ -28,20 +28,41 @@ impl ProcessGroup {
             .ok_or_else(|| io::Error::from(io::ErrorKind::InvalidInput))
     }
 
-    /// Kills every process still in the group; true when the signal was sent.
+    /// Kills every process still in the group; true when the signal reached
+    /// it or the group has no members left to kill.
     pub fn terminate(&self) -> bool {
         // SAFETY: killpg only sends a signal; the id names a group this
         // process created, and callers hold its leader unreaped.
-        unsafe { libc::killpg(self.0, libc::SIGKILL) == 0 }
+        let sent = unsafe { libc::killpg(self.0, libc::SIGKILL) };
+        reach(sent, io::Error::last_os_error().raw_os_error()) != Reach::Refused
     }
 
-    /// True once no process, not even an unreaped zombie, is left in the
-    /// group. Signal 0 delivers nothing, so it may also ask after the leader
-    /// is reaped: a reused id can only make the group look occupied.
+    /// True once the group has no member to signal. Signal 0 delivers
+    /// nothing, so it may also ask after the leader is reaped: a reused id
+    /// can only make the group look occupied.
     pub fn is_empty(&self) -> bool {
         // SAFETY: signal 0 only checks whether the group has members.
         let probed = unsafe { libc::killpg(self.0, 0) };
-        probed != 0 && io::Error::last_os_error().raw_os_error() == Some(libc::ESRCH)
+        reach(probed, io::Error::last_os_error().raw_os_error()) == Reach::Empty
+    }
+}
+
+/// What a signal to the group says about it. Some systems (macOS) report a
+/// group whose only member is an unreaped zombie as having no members, so
+/// `ESRCH` is the definition of empty on every Unix; any other refusal, such
+/// as `EPERM`, proves nothing and counts as members still running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Reach {
+    Members,
+    Empty,
+    Refused,
+}
+
+fn reach(result: libc::c_int, error: Option<i32>) -> Reach {
+    match (result, error) {
+        (0, _) => Reach::Members,
+        (_, Some(libc::ESRCH)) => Reach::Empty,
+        _ => Reach::Refused,
     }
 }
 
@@ -107,6 +128,14 @@ mod tests {
 
         member.wait().unwrap();
         assert!(group.is_empty());
+    }
+
+    #[test]
+    fn a_group_with_no_member_counts_as_empty_and_a_refusal_as_occupied() {
+        assert_eq!(reach(0, None), Reach::Members);
+        assert_eq!(reach(-1, Some(libc::ESRCH)), Reach::Empty);
+        assert_eq!(reach(-1, Some(libc::EPERM)), Reach::Refused);
+        assert_eq!(reach(-1, None), Reach::Refused);
     }
 
     #[test]

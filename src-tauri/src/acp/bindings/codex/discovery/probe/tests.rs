@@ -259,19 +259,40 @@ mod fake_app_server {
         }
     }
 
+    /// Waits for the fake CLI to create `path`, which it does only once it runs.
+    fn await_file(path: &Path) {
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while !path.exists() {
+            assert!(
+                Instant::now() < deadline,
+                "{} never appeared",
+                path.display()
+            );
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
     #[test]
     fn a_probe_that_fails_after_a_newer_listing_landed_keeps_that_listing() {
-        let server = FakeAppServer::new("trap '' HUP TERM\nexec /bin/sleep 30");
+        let server = FakeAppServer::new("");
+        let started = server.directory.join("started");
+        let refreshed = server.directory.join("refreshed");
+        let body = format!(
+            ": > '{}'\nwhile [ ! -e '{}' ]; do sleep 0.01; done\nexit 1",
+            started.display(),
+            refreshed.display()
+        );
+        sage_test_support::test_executable::write(server.script(), format!("#!/bin/sh\n{body}\n"))
+            .unwrap();
         let catalog = CodexModelCatalog::default();
         let binding = server.binding();
         let digest = binding.binding_digest();
 
         let probed = std::thread::scope(|scope| {
-            let probing = scope.spawn(|| {
-                catalog.probed_within(&binding, Duration::from_millis(800), PROBE_CLEANUP)
-            });
-            std::thread::sleep(Duration::from_millis(300));
+            let probing = scope.spawn(|| catalog.probed(&binding));
+            await_file(&started);
             assert!(catalog.refresh(catalog.generation(), digest, model()));
+            std::fs::write(&refreshed, "").unwrap();
             probing.join().unwrap()
         });
 
@@ -280,6 +301,78 @@ mod fake_app_server {
         assert_eq!(ids(catalog.known(digest)), listed);
         std::fs::remove_file(server.script()).unwrap();
         assert_eq!(ids(catalog.probed(&binding)), listed);
+    }
+
+    #[test]
+    fn no_probe_starts_while_too_many_roots_are_left_to_reapers() {
+        let server = FakeAppServer::new("");
+        let ran = server.directory.join("ran");
+        let body = format!(
+            ": > '{}'\n{}",
+            ran.display(),
+            answering_app_server(&std::env::temp_dir())
+        );
+        sage_test_support::test_executable::write(server.script(), format!("#!/bin/sh\n{body}\n"))
+            .unwrap();
+        let binding = server.binding();
+        let catalog = CodexModelCatalog::default();
+        catalog
+            .stuck_roots
+            .store(MAX_STUCK_ROOTS, Ordering::Release);
+
+        assert!(catalog.probed(&binding).is_none());
+        assert!(!ran.exists(), "a probe started past the reaper cap");
+
+        let catalog = CodexModelCatalog::default();
+        catalog
+            .stuck_roots
+            .store(MAX_STUCK_ROOTS - 1, Ordering::Release);
+        assert!(catalog.probed(&binding).is_some());
+        assert!(ran.exists());
+    }
+
+    #[test]
+    fn dropping_a_probe_tears_it_down_by_its_own_cleanup_deadline() {
+        let server = FakeAppServer::new("");
+        let leader = server.directory.join("leader");
+        let body = format!(
+            "echo $$ > '{}.tmp' && mv '{0}.tmp' '{0}'\nexec /bin/sleep 30",
+            leader.display()
+        );
+        sage_test_support::test_executable::write(server.script(), format!("#!/bin/sh\n{body}\n"))
+            .unwrap();
+        let binding = server.binding();
+        let mut command = Command::new(server.script());
+        command
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null());
+        isolate(&mut command);
+        let cleanup_end = Instant::now() + Duration::from_millis(300);
+        let transport = ProbeTransport::spawn(
+            command,
+            &binding,
+            cleanup_end,
+            Arc::new(AtomicUsize::new(0)),
+        )
+        .unwrap();
+        await_file(&leader);
+        let group: libc::pid_t = std::fs::read_to_string(&leader)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        let mut member = Command::new("/bin/sleep")
+            .arg("30")
+            .process_group(group)
+            .spawn()
+            .unwrap();
+
+        drop(transport);
+
+        let late = Instant::now().saturating_duration_since(cleanup_end);
+        assert!(late < Duration::from_secs(1), "teardown ran {late:?} late");
+        member.wait().unwrap();
     }
 
     #[test]
@@ -305,12 +398,12 @@ mod fake_app_server {
                 let probed = catalog.probed_within(&binding, Duration::from_secs(2), cleanup);
                 (probed, started.elapsed())
             });
-            let group = loop {
-                if let Ok(pid) = std::fs::read_to_string(&leader) {
-                    break pid.trim().parse::<libc::pid_t>().unwrap();
-                }
-                std::thread::sleep(Duration::from_millis(10));
-            };
+            await_file(&leader);
+            let group: libc::pid_t = std::fs::read_to_string(&leader)
+                .unwrap()
+                .trim()
+                .parse()
+                .unwrap();
             let member = std::process::Command::new("/bin/sleep")
                 .arg("30")
                 .process_group(group)
