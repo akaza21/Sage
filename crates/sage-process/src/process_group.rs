@@ -47,10 +47,10 @@ impl ProcessGroup {
     }
 }
 
-/// What a signal to the group says about it. Some systems (macOS) report a
-/// group whose only member is an unreaped zombie as having no members, so
-/// `ESRCH` is the definition of empty on every Unix; any other refusal, such
-/// as `EPERM`, proves nothing and counts as members still running.
+/// What a signal to the group says about it. Linux counts an unreaped
+/// zombie as a member while macOS may not, so `ESRCH` is the definition of
+/// empty on every Unix; any other refusal, such as `EPERM`, proves nothing
+/// and counts as members still running.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Reach {
     Members,
@@ -108,23 +108,55 @@ mod tests {
         assert!(!alive(descendant), "the group's descendant survived");
     }
 
-    #[test]
-    fn a_group_is_empty_only_once_its_last_member_is_reaped() {
+    /// A leader and a second member of its group, both running.
+    fn group_of_two() -> (ProcessGroup, std::process::Child, std::process::Child) {
         let mut command = Command::new("/bin/sleep");
         command.arg("30");
         isolate(&mut command);
-        let mut leader = command.spawn().unwrap();
+        let leader = command.spawn().unwrap();
         let group = ProcessGroup::led_by(leader.id()).unwrap();
-        let mut member = Command::new("/bin/sleep")
+        let member = Command::new("/bin/sleep")
             .arg("30")
             .process_group(libc::pid_t::try_from(leader.id()).unwrap())
             .spawn()
             .unwrap();
+        (group, leader, member)
+    }
+
+    #[test]
+    fn a_group_is_occupied_while_any_member_runs_and_empty_once_all_are_gone() {
+        let (group, mut leader, mut member) = group_of_two();
         assert!(!group.is_empty());
+
+        leader.kill().unwrap();
+        leader.wait().unwrap();
+        assert!(!group.is_empty(), "a running member still occupies it");
+
+        member.kill().unwrap();
+        member.wait().unwrap();
+        assert!(group.is_empty());
+    }
+
+    #[test]
+    fn terminating_a_group_leaves_it_empty_once_its_members_are_reaped() {
+        let (group, mut leader, mut member) = group_of_two();
 
         assert!(group.terminate());
         leader.wait().unwrap();
-        assert!(!group.is_empty(), "an unreaped member still occupies it");
+        member.wait().unwrap();
+
+        assert!(group.is_empty());
+    }
+
+    /// Linux keeps an unreaped zombie in its group; macOS may not count it.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn on_linux_an_unreaped_member_still_occupies_the_group() {
+        let (group, mut leader, mut member) = group_of_two();
+
+        assert!(group.terminate());
+        leader.wait().unwrap();
+        assert!(!group.is_empty());
 
         member.wait().unwrap();
         assert!(group.is_empty());

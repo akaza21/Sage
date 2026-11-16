@@ -192,10 +192,15 @@ fn probe(
     deadline: CodexDiscoveryDeadline,
     stuck_roots: &Arc<AtomicUsize>,
 ) -> Option<Vec<ModelOption>> {
-    if !binding.is_observed()
-        || binding.is_desktop_fixture()
-        || stuck_roots.load(Ordering::Acquire) >= MAX_STUCK_ROOTS
-    {
+    if !binding.is_observed() || binding.is_desktop_fixture() {
+        return None;
+    }
+    let stuck = stuck_roots.load(Ordering::Acquire);
+    if stuck >= MAX_STUCK_ROOTS {
+        tracing::warn!(
+            stuck_roots = stuck,
+            "Codex model probe skipped while earlier probe processes are still exiting"
+        );
         return None;
     }
     binding.revalidate().ok()?;
@@ -282,6 +287,9 @@ struct ProbeTransport<'a> {
     binding: &'a AdmittedCodexBinding,
     /// The probe's teardown ends by then, whichever path tears it down.
     cleanup_end: Instant,
+    /// How teardown learns the tree is empty; a test stands in a tree that
+    /// never empties, since no real process outlives the tree's kill.
+    tree_empty: fn(&ProbeTree) -> bool,
     stuck_roots: Arc<AtomicUsize>,
 }
 
@@ -311,6 +319,7 @@ impl<'a> ProbeTransport<'a> {
             reader: None,
             binding,
             cleanup_end,
+            tree_empty: ProbeTree::is_empty,
             stuck_roots,
         };
         let stdout = stdout?;
@@ -335,7 +344,7 @@ impl<'a> ProbeTransport<'a> {
         let tree_signalled = tree.terminate();
         let root_signalled = child.kill().is_ok();
         let zero = reap_root(child, cleanup_end, &self.stuck_roots)
-            && settles_by(cleanup_end, || tree.is_empty());
+            && settles_by(cleanup_end, || (self.tree_empty)(&tree));
         if self.drain_output(cleanup_end)
             && let Some(reader) = self.reader.take()
         {

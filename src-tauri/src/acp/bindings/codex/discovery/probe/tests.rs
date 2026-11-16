@@ -331,50 +331,69 @@ mod fake_app_server {
         assert!(ran.exists());
     }
 
-    #[test]
-    fn dropping_a_probe_tears_it_down_by_its_own_cleanup_deadline() {
-        let server = FakeAppServer::new("");
-        let leader = server.directory.join("leader");
-        let body = format!(
-            "echo $$ > '{}.tmp' && mv '{0}.tmp' '{0}'\nexec /bin/sleep 30",
-            leader.display()
-        );
-        sage_test_support::test_executable::write(server.script(), format!("#!/bin/sh\n{body}\n"))
-            .unwrap();
-        let binding = server.binding();
+    /// A probe of a CLI that runs until it is killed, whose tree never
+    /// reports empty, with its teardown due `cleanup` from now.
+    fn unemptied_probe<'a>(
+        server: &FakeAppServer,
+        binding: &'a AdmittedCodexBinding,
+        cleanup: Duration,
+    ) -> ProbeTransport<'a> {
+        sage_test_support::test_executable::write(
+            server.script(),
+            "#!/bin/sh\nexec /bin/sleep 30\n",
+        )
+        .unwrap();
         let mut command = Command::new(server.script());
         command
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::null());
         isolate(&mut command);
-        let cleanup_end = Instant::now() + Duration::from_millis(300);
-        let transport = ProbeTransport::spawn(
+        let mut transport = ProbeTransport::spawn(
             command,
-            &binding,
-            cleanup_end,
+            binding,
+            Instant::now() + cleanup,
             Arc::new(AtomicUsize::new(0)),
         )
         .unwrap();
-        await_file(&leader);
-        let group: libc::pid_t = std::fs::read_to_string(&leader)
-            .unwrap()
-            .trim()
-            .parse()
-            .unwrap();
-        let mut member = Command::new("/bin/sleep")
-            .arg("30")
-            .process_group(group)
-            .spawn()
-            .unwrap();
+        transport.tree_empty = |_| false;
+        transport
+    }
+
+    #[test]
+    fn dropping_a_probe_tears_it_down_by_its_own_cleanup_deadline() {
+        let server = FakeAppServer::new("");
+        let binding = server.binding();
+        let transport = unemptied_probe(&server, &binding, Duration::from_millis(300));
+        let cleanup_end = transport.cleanup_end;
 
         drop(transport);
 
         let late = Instant::now().saturating_duration_since(cleanup_end);
         assert!(late < Duration::from_secs(1), "teardown ran {late:?} late");
-        member.wait().unwrap();
     }
 
+    #[test]
+    fn a_tree_left_occupied_past_the_cleanup_deadline_proves_no_zero_in_time() {
+        let server = FakeAppServer::new("");
+        let binding = server.binding();
+        let mut transport = unemptied_probe(&server, &binding, Duration::from_secs(5));
+        let deadline = CodexDiscoveryDeadline::starting_now(
+            Duration::from_millis(1),
+            Duration::from_millis(300),
+        )
+        .unwrap();
+
+        let zero = transport.terminate_zero(false, deadline);
+
+        assert!(matches!(zero, Err(CodexDiscoveryRunError::Cleanup)));
+        let late = Instant::now().saturating_duration_since(deadline.cleanup_end());
+        assert!(late < Duration::from_secs(1), "teardown ran {late:?} late");
+    }
+
+    /// Linux keeps a killed, unreaped member in its group, so a real member
+    /// the test holds unreaped keeps the probe from proving zero processes.
+    #[cfg(target_os = "linux")]
     #[test]
     fn a_tree_that_outlives_its_cleanup_deadline_fails_the_probe_in_time() {
         let server = FakeAppServer::new("");
