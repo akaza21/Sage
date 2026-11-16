@@ -24,10 +24,44 @@ use crate::acp::runtime::process_driver::{
 type ReusableParts<A, R, T, C> =
     CompletedDriverParts<A, SqliteAdapterBatchJournal, R, T, C, SessionTreeLease>;
 
+/// Opens or declines each Turn the harness started on its own after the last
+/// one ended, until one opens or none is left. A decline reads on through the
+/// stdout already buffered after it, which may start the next Turn, so every
+/// start that output holds is settled before the runner waits again. An
+/// opened Turn's host answer is left in `started` to read.
+pub(super) async fn open_started<A, R, T, Auth, C>(
+    mut state: WorkerState<A, R, T, C>,
+    context: &FirstTurnWorkerContext<Auth>,
+    host: &Weak<RuntimeHost>,
+    pending_config: &mut Option<PendingConfig>,
+    started: &mut Option<StartNotification>,
+) -> Result<WorkerState<A, R, T, C>, RunnerExit<A, R, T, C>>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    Auth: ProjectIntentAuthority,
+    C: crate::acp::runtime::ProcessTreeControl,
+    C::ZeroProof: crate::acp::runtime::process_driver::CoordinatorZeroToken,
+{
+    loop {
+        state = match state {
+            FirstTurnWorkerState::Reusable(parts) if parts.turn_started() => {
+                let (next, notification) = open(parts, context, host, pending_config).await?;
+                if notification.is_some() {
+                    *started = notification;
+                }
+                next
+            }
+            state => return Ok(state),
+        };
+    }
+}
+
 /// Opens the Turn the harness started on its own after the last one ended,
 /// so its output is read and shown like any prompted Turn's. Returns the
 /// host's answer still to read, or none when the Turn was declined.
-pub(super) async fn open<A, R, T, Auth, C>(
+async fn open<A, R, T, Auth, C>(
     parts: Box<ReusableParts<A, R, T, C>>,
     context: &FirstTurnWorkerContext<Auth>,
     host: &Weak<RuntimeHost>,

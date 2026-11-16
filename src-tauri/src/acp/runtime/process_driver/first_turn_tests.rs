@@ -76,6 +76,8 @@ struct Adapter {
     final_stdout: Option<AdapterIdentity>,
     config_pending: bool,
     usage_read_pending: bool,
+    /// The session a `harness/started` frame starts a Turn in.
+    harness_session: Option<AdapterIdentity>,
 }
 
 struct ConfigThenLateAdapter {
@@ -139,6 +141,13 @@ impl HarnessAdapter for Adapter {
             Some("mcpServer/startupStatus/updated") => {
                 return AdapterBatch::new(vec![AdapterEvent::IgnoredLate], vec![]);
             }
+            Some("harness/started") => {
+                let id = self
+                    .harness_session
+                    .clone()
+                    .ok_or(AdapterRuntimeError::Operation)?;
+                return AdapterBatch::new(vec![AdapterEvent::TurnStarted { id }], vec![]);
+            }
             Some("turn/started") => {
                 return AdapterBatch::new(
                     vec![AdapterEvent::Error(
@@ -175,6 +184,15 @@ impl HarnessAdapter for Adapter {
             ),
             None => Err(AdapterRuntimeError::Operation),
         }
+    }
+
+    /// A decline stops the harness's run, counted with the cancels.
+    fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
+        self.cancel_count.fetch_add(1, Ordering::SeqCst);
+        Ok(vec![AdapterEgress::new(
+            OutboundFrame::new(b"{}".to_vec()).unwrap(),
+            EgressToken::settling(),
+        )])
     }
 
     fn config_pending(&self) -> bool {
@@ -425,6 +443,7 @@ enum CloseBeforeWriteCase {
     ReusableReaderEofThenProcessExitDeadline,
     ReusableReaderEofDeadline,
     ReusablePendingConfigReaderEofDeadline,
+    ReusableDeclinedHarnessStarts,
     Prepared,
     BeginSendAppliedUnknown,
     BeginSendNotAppliedUnknown,
@@ -470,6 +489,7 @@ impl CloseBeforeWriteCase {
             | Self::ReusableReaderEofThenProcessExitDeadline
             | Self::ReusableReaderEofDeadline
             | Self::ReusablePendingConfigReaderEofDeadline
+            | Self::ReusableDeclinedHarnessStarts
             | Self::Prepared
             | Self::FinalStdoutAppliedUnknown
             | Self::FinalStdoutNotAppliedUnknown => None,
@@ -492,6 +512,7 @@ impl CloseBeforeWriteCase {
             || self == Self::ReusableReaderEofThenProcessExitDeadline
             || self == Self::ReusableReaderEofDeadline
             || self == Self::ReusablePendingConfigReaderEofDeadline
+            || self == Self::ReusableDeclinedHarnessStarts
             || self == Self::PreparedReaderEofDispatch
             || self.begin_send_injection().is_some()
             || self.final_stdout_injection().is_some()
@@ -1028,6 +1049,7 @@ pub(crate) fn observe_process_live_port_cancel_at_capacity(
                         final_stdout: None,
                         config_pending: false,
                         usage_read_pending: false,
+                        harness_session: None,
                     },
                     activation_journal,
                     Mapper,
@@ -1337,6 +1359,7 @@ async fn first_turn_retry_cancel_and_close_recovery_scenario(whole_test_deadline
                 final_stdout: None,
                 config_pending: false,
                 usage_read_pending: false,
+                harness_session: None,
             },
             activation_journal,
             Mapper,
@@ -2110,6 +2133,11 @@ fn reusable_pending_config_reader_eof_fails_at_its_deadline() {
 }
 
 #[test]
+fn harness_starts_buffered_in_one_chunk_are_all_declined_before_the_runner_waits() {
+    close_before_first_write(CloseBeforeWriteCase::ReusableDeclinedHarnessStarts);
+}
+
+#[test]
 fn prepared_turn_closes_as_cancelled_without_writing_prompt_or_cancel() {
     close_before_first_write(CloseBeforeWriteCase::Prepared);
 }
@@ -2286,6 +2314,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                                 | CloseBeforeWriteCase::EarlyStdoutBeforeObservation
                                 | CloseBeforeWriteCase::ReusableReaderEofDeadline
                                 | CloseBeforeWriteCase::ReusablePendingConfigReaderEofDeadline
+                                | CloseBeforeWriteCase::ReusableDeclinedHarnessStarts
                         ))
                         .then(|| AdapterIdentity {
                             binding_digest: [0x33; 32],
@@ -2297,6 +2326,15 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                         }),
                     config_pending: false,
                     usage_read_pending: false,
+                    harness_session: (case == CloseBeforeWriteCase::ReusableDeclinedHarnessStarts)
+                        .then(|| AdapterIdentity {
+                            binding_digest: [0x33; 32],
+                            runtime_epoch: epoch,
+                            session_id: started.session_id.clone(),
+                            external_id: external_session.clone(),
+                            turn_id: None,
+                            turn_client_message_id: None,
+                        }),
                 },
                 activation_journal,
                 Mapper,
@@ -2906,6 +2944,7 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
             CloseBeforeWriteCase::ReusableReaderEofThenProcessExitDeadline
                 | CloseBeforeWriteCase::ReusableReaderEofDeadline
                 | CloseBeforeWriteCase::ReusablePendingConfigReaderEofDeadline
+                | CloseBeforeWriteCase::ReusableDeclinedHarnessStarts
         ) {
             let turn_id = match &state {
                 FirstTurnWorkerState::Active(active) => active.turn.dispatch.turn_id().clone(),
@@ -2964,6 +3003,52 @@ fn close_before_first_write_on_stack(case: CloseBeforeWriteCase) {
                 Ok(Ok(WorkerReply::Unit))
             ));
             assert!(matches!(state, FirstTurnWorkerState::Reusable(_)));
+            if case == CloseBeforeWriteCase::ReusableDeclinedHarnessStarts {
+                // Two runs the chat's access disallows start in one chunk, and
+                // nothing follows them: the runner must decline both before it
+                // waits on its mailbox again.
+                let declined_before = cancel_count.load(Ordering::SeqCst);
+                mailbox
+                    .try_push_chunk(
+                        b"{\"method\":\"harness/started\"}\n{\"method\":\"harness/started\"}\n"
+                            .to_vec(),
+                    )
+                    .unwrap();
+                let shutdown = std::thread::spawn({
+                    let mailbox = Arc::clone(&mailbox);
+                    let cancel_count = Arc::clone(&cancel_count);
+                    move || {
+                        let deadline = Instant::now() + tree_termination_deadline();
+                        while cancel_count.load(Ordering::SeqCst) < declined_before + 2
+                            && Instant::now() < deadline
+                        {
+                            std::thread::sleep(Duration::from_millis(5));
+                        }
+                        mailbox.submit_worker(WorkerCommand::Shutdown).unwrap()
+                    }
+                });
+                let (state, reason) = tokio::time::timeout(
+                    tree_termination_deadline() * 2,
+                    super::live_runner::drive_for_test(state, &context),
+                )
+                .await
+                .expect("the runner shuts down once asked");
+                drop(shutdown.join().unwrap());
+                assert_eq!(
+                    cancel_count.load(Ordering::SeqCst),
+                    declined_before + 2,
+                    "both buffered starts are declined without further input"
+                );
+                assert_eq!(reason, TreeExit::Cancelled);
+                assert!(matches!(state, FirstTurnWorkerState::Reusable(_)));
+                drop(context);
+                drop(sessions);
+                drop(scheduler);
+                drop(journal);
+                journal_task.finish();
+                drop(database);
+                return;
+            }
             let deadline = now
                 + i64::try_from(sage_core::limits::LIMITS.deadlines_ms.tree_termination)
                     .unwrap();
@@ -3469,6 +3554,7 @@ fn activation_idle_available_commands_update_does_not_reject_the_session() {
                     final_stdout: None,
                     config_pending: false,
                     usage_read_pending: false,
+                    harness_session: None,
                 },
                 activation_journal,
                 Mapper,

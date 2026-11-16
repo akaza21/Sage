@@ -76,20 +76,20 @@ where
         if let FirstTurnWorkerState::Active(active) = &mut state {
             active.settle_steer();
         }
-        state = match state {
-            FirstTurnWorkerState::Reusable(parts) if parts.turn_started() => {
-                match super::harness_turn::open(parts, context, &host, &mut pending_config).await {
-                    Ok((state, notification)) => {
-                        started = notification;
-                        state
-                    }
-                    Err(exit) => {
-                        fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
-                        return exit;
-                    }
-                }
+        state = match super::harness_turn::open_started(
+            state,
+            context,
+            &host,
+            &mut pending_config,
+            &mut started,
+        )
+        .await
+        {
+            Ok(state) => state,
+            Err(exit) => {
+                fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+                return exit;
             }
-            state => state,
         };
         if super::harness_turn::settle(&mut started).is_err() {
             fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
