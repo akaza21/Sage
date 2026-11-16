@@ -4,7 +4,7 @@
 
 use std::{
     ffi::OsString,
-    io::{self, Read, Write},
+    io::{self, Write},
     path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
     sync::{
@@ -12,7 +12,7 @@ use std::{
         atomic::{AtomicUsize, Ordering},
         mpsc,
     },
-    thread::{self, JoinHandle},
+    thread,
     time::{Duration, Instant},
 };
 
@@ -46,9 +46,13 @@ const SETTLE_POLL: Duration = Duration::from_millis(5);
 /// Startup output and four catalog pages; this bounds a misbehaving CLI.
 const PROBE_BYTES: u64 = 4 * 1024 * 1024;
 const RETRY_AFTER: Duration = Duration::from_secs(60);
-/// Probe roots left to a reaper thread at once; no probe starts while this
-/// many are stuck, so a CLI wedged in the kernel cannot leak threads.
-const MAX_STUCK_ROOTS: usize = 4;
+/// Time kept before the cleanup deadline to stop a reader whose output a
+/// process outside the probe's tree still holds open.
+const READER_STOP: Duration = Duration::from_millis(200);
+/// Probe resources left unreleased at once, reader threads and roots left to
+/// a reaper; no probe starts while this many remain, so a CLI wedged in the
+/// kernel or one whose descendant escapes with its output cannot leak threads.
+const MAX_UNRESOLVED: usize = 4;
 /// The probe owns no session, so its runtime epoch only pairs its own exit.
 const PROBE_EPOCH: u64 = 1;
 
@@ -92,8 +96,9 @@ pub(crate) struct CodexModelCatalog {
     state: Mutex<CatalogState>,
     /// Held while a probe runs, so concurrent lookups share its outcome.
     probing: Mutex<()>,
-    /// Killed probe roots a reaper thread is still waiting for.
-    stuck_roots: Arc<AtomicUsize>,
+    /// Probe reader threads still running and killed roots a reaper thread
+    /// is still waiting for.
+    unresolved: Arc<AtomicUsize>,
 }
 
 impl CodexModelCatalog {
@@ -127,7 +132,7 @@ impl CodexModelCatalog {
         };
         let models = CodexDiscoveryDeadline::starting_now(operation, cleanup)
             .ok()
-            .and_then(|deadline| probe(binding, deadline, &self.stuck_roots))
+            .and_then(|deadline| probe(binding, deadline, &self.unresolved))
             .filter(|models| !models.is_empty());
         let mut state = lock(&self.state);
         if state.generation != generation {
@@ -190,15 +195,15 @@ impl CodexModelCatalog {
 fn probe(
     binding: &AdmittedCodexBinding,
     deadline: CodexDiscoveryDeadline,
-    stuck_roots: &Arc<AtomicUsize>,
+    unresolved: &Arc<AtomicUsize>,
 ) -> Option<Vec<ModelOption>> {
     if !binding.is_observed() || binding.is_desktop_fixture() {
         return None;
     }
-    let stuck = stuck_roots.load(Ordering::Acquire);
-    if stuck >= MAX_STUCK_ROOTS {
+    let left = unresolved.load(Ordering::Acquire);
+    if left >= MAX_UNRESOLVED {
         tracing::warn!(
-            stuck_roots = stuck,
+            unresolved = left,
             "Codex model probe skipped while earlier probe processes are still exiting"
         );
         return None;
@@ -223,7 +228,7 @@ fn probe(
         command,
         binding,
         deadline.cleanup_end(),
-        Arc::clone(stuck_roots),
+        Arc::clone(unresolved),
     )?;
     let runtime_epoch = RuntimeEpoch::new(PROBE_EPOCH).ok()?;
     let mut protocol = CodexDiscoveryProtocol::from_admitted_binding(binding, runtime_epoch);
@@ -283,14 +288,14 @@ struct ProbeTransport<'a> {
     running: Option<Running>,
     stdin: Option<ChildStdin>,
     frames: mpsc::Receiver<Result<Option<Frame>, FrameError>>,
-    reader: Option<JoinHandle<()>>,
+    reader: Option<frames::Reader>,
     binding: &'a AdmittedCodexBinding,
     /// The probe's teardown ends by then, whichever path tears it down.
     cleanup_end: Instant,
     /// How teardown learns the tree is empty; a test stands in a tree that
     /// never empties, since no real process outlives the tree's kill.
     tree_empty: fn(&ProbeTree) -> bool,
-    stuck_roots: Arc<AtomicUsize>,
+    unresolved: Arc<AtomicUsize>,
 }
 
 impl<'a> ProbeTransport<'a> {
@@ -298,14 +303,14 @@ impl<'a> ProbeTransport<'a> {
         mut command: Command,
         binding: &'a AdmittedCodexBinding,
         cleanup_end: Instant,
-        stuck_roots: Arc<AtomicUsize>,
+        unresolved: Arc<AtomicUsize>,
     ) -> Option<Self> {
         let mut child = command.spawn().ok()?;
         let tree = match contain(&child) {
             Ok(tree) => tree,
             Err(_) => {
                 let _ = child.kill();
-                reap_root(child, cleanup_end, &stuck_roots);
+                reap_root(child, cleanup_end, &unresolved);
                 return None;
             }
         };
@@ -320,20 +325,19 @@ impl<'a> ProbeTransport<'a> {
             binding,
             cleanup_end,
             tree_empty: ProbeTree::is_empty,
-            stuck_roots,
+            unresolved,
         };
-        let stdout = stdout?;
-        transport.reader = Some(thread::spawn(move || {
-            frames::read_frames(stdout.take(PROBE_BYTES), &sender);
-        }));
+        let lease = frames::Lease::take(&transport.unresolved);
+        transport.reader = Some(frames::spawn(stdout?, PROBE_BYTES, sender, lease).ok()?);
         Some(transport)
     }
 
     /// Codex exits once its stdin closes. Whatever is left of its tree after
     /// the grace, such as a child still holding its stdout, is killed before
     /// the root is reaped, while the root still pins the tree's identity.
-    /// Zero processes are proven only once the root is reaped and the whole
-    /// tree is empty by `cleanup_end`; teardown never waits past it.
+    /// Zero processes are proven only once the root is reaped, the whole
+    /// tree is empty and its output has ended by `cleanup_end`; teardown
+    /// never waits past it.
     fn tear_down(&mut self, cleanup_end: Instant) -> Result<(), CodexDiscoveryRunError> {
         let Some(Running { mut child, tree }) = self.running.take() else {
             return Ok(());
@@ -343,14 +347,18 @@ impl<'a> ProbeTransport<'a> {
         self.drain_output(now + EXIT_GRACE.min(cleanup_end.saturating_duration_since(now)));
         let tree_signalled = tree.terminate();
         let root_signalled = child.kill().is_ok();
-        let zero = reap_root(child, cleanup_end, &self.stuck_roots)
+        let zero = reap_root(child, cleanup_end, &self.unresolved)
             && settles_by(cleanup_end, || (self.tree_empty)(&tree));
-        if self.drain_output(cleanup_end)
-            && let Some(reader) = self.reader.take()
-        {
-            let _ = reader.join();
+        let drained =
+            self.drain_output(cleanup_end.checked_sub(READER_STOP).unwrap_or(cleanup_end));
+        if let Some(reader) = self.reader.take() {
+            if !drained {
+                reader.stop();
+                self.drain_output(cleanup_end);
+            }
+            reader.release();
         }
-        (tree_signalled && root_signalled && zero)
+        (tree_signalled && root_signalled && zero && drained)
             .then_some(())
             .ok_or(CodexDiscoveryRunError::Cleanup)
     }
@@ -374,20 +382,16 @@ impl<'a> ProbeTransport<'a> {
 
 /// Reaps a killed root by `until`; a root that has not ended by then, such as
 /// one stuck in uninterruptible I/O, is left to a thread that reaps it later
-/// and is counted in `stuck_roots` until it does.
-fn reap_root(mut child: Child, until: Instant, stuck_roots: &Arc<AtomicUsize>) -> bool {
+/// and is counted in `unresolved` until it does.
+fn reap_root(mut child: Child, until: Instant, unresolved: &Arc<AtomicUsize>) -> bool {
     if settles_by(until, || matches!(child.try_wait(), Ok(Some(_)))) {
         return true;
     }
-    stuck_roots.fetch_add(1, Ordering::AcqRel);
-    let reaped = Arc::clone(stuck_roots);
-    let reaper = thread::Builder::new().spawn(move || {
+    let lease = frames::Lease::take(unresolved);
+    let _ = thread::Builder::new().spawn(move || {
+        let _lease = lease;
         let _ = child.wait();
-        reaped.fetch_sub(1, Ordering::AcqRel);
     });
-    if reaper.is_err() {
-        stuck_roots.fetch_sub(1, Ordering::AcqRel);
-    }
     false
 }
 

@@ -183,6 +183,46 @@ mod fake_app_server {
     }
 
     #[test]
+    fn a_descendant_that_escapes_the_tree_with_the_output_fails_cleanup_and_frees_the_reader() {
+        let server = FakeAppServer::new("");
+        let escaped = server.directory.join("escaped");
+        let body = format!(
+            "perl -e 'use POSIX; POSIX::setsid(); open(my $f, \">\", $ARGV[0]); print $f $$; close $f; sleep 30' '{}' &\n{}",
+            escaped.display(),
+            answering_app_server(&std::env::temp_dir())
+        );
+        sage_test_support::test_executable::write(server.script(), format!("#!/bin/sh\n{body}\n"))
+            .unwrap();
+        let catalog = CodexModelCatalog::default();
+        let started = Instant::now();
+
+        let probed = catalog.probed_within(
+            &server.binding(),
+            Duration::from_secs(2),
+            Duration::from_millis(500),
+        );
+
+        let elapsed = started.elapsed();
+        let pid: libc::pid_t = std::fs::read_to_string(&escaped)
+            .unwrap()
+            .trim()
+            .parse()
+            .unwrap();
+        // SAFETY: kills the escaped descendant this test's probe started.
+        unsafe { libc::kill(pid, libc::SIGKILL) };
+        assert!(
+            probed.is_none(),
+            "zero was reported while the output stayed open"
+        );
+        assert!(elapsed < Duration::from_secs(4), "{elapsed:?}");
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while catalog.unresolved.load(Ordering::Acquire) > 0 {
+            assert!(Instant::now() < deadline, "the stopped reader never ended");
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    #[test]
     fn a_child_still_holding_the_probes_output_is_killed_with_it() {
         let server = FakeAppServer::new("");
         let recorded = server.directory.join("child");
@@ -304,7 +344,7 @@ mod fake_app_server {
     }
 
     #[test]
-    fn no_probe_starts_while_too_many_roots_are_left_to_reapers() {
+    fn no_probe_starts_while_too_many_probe_resources_are_unreleased() {
         let server = FakeAppServer::new("");
         let ran = server.directory.join("ran");
         let body = format!(
@@ -316,17 +356,15 @@ mod fake_app_server {
             .unwrap();
         let binding = server.binding();
         let catalog = CodexModelCatalog::default();
-        catalog
-            .stuck_roots
-            .store(MAX_STUCK_ROOTS, Ordering::Release);
+        catalog.unresolved.store(MAX_UNRESOLVED, Ordering::Release);
 
         assert!(catalog.probed(&binding).is_none());
-        assert!(!ran.exists(), "a probe started past the reaper cap");
+        assert!(!ran.exists(), "a probe started past the unreleased cap");
 
         let catalog = CodexModelCatalog::default();
         catalog
-            .stuck_roots
-            .store(MAX_STUCK_ROOTS - 1, Ordering::Release);
+            .unresolved
+            .store(MAX_UNRESOLVED - 1, Ordering::Release);
         assert!(catalog.probed(&binding).is_some());
         assert!(ran.exists());
     }
