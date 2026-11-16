@@ -44,6 +44,8 @@ pub(crate) use terminal::PromptTerminal;
 
 pub(super) const MAX_EVENTS_PER_FRAME: usize = 16;
 const MAX_TRACKED_TOOLS: usize = 512;
+/// Most bytes a text or thought item shows.
+pub(super) const TEXT_BYTES: usize = 262_144;
 
 pub(crate) trait ResourceMapper {
     /// The absolute native path is transient and must not be retained in errors,
@@ -250,7 +252,10 @@ impl StandardAcpTranslator {
                 self.admit_open_item(external_key.as_str())?;
                 vec![plan_event(update, external_key)?]
             }
-            Some(SessionUpdateKind::ToolCall) => self.tool_call(update, resources)?,
+            Some(SessionUpdateKind::ToolCall) => {
+                let tool = self.tool_call(update, resources)?;
+                self.text_shown_whole_before(tool)
+            }
             Some(SessionUpdateKind::ToolCallUpdate) => self.tool_update(update, resources)?,
             Some(SessionUpdateKind::UsageUpdate) => vec![self.usage_update(update)],
             _ => match unmapped_update(self.profile, kind) {
@@ -367,7 +372,7 @@ impl StandardAcpTranslator {
         snapshot
             .push(chunk)
             .map_err(|_| TranslationError::ItemLimit)?;
-        let safe_snapshot = SafeText::<262144>::new("text", snapshot.streaming())?;
+        let safe_snapshot = SafeText::<TEXT_BYTES>::new("text", snapshot.streaming())?;
         self.text_bytes = aggregate;
         Ok(AdapterEvent::Item {
             external_key,

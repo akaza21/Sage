@@ -119,7 +119,7 @@ fn every_delivered_stop_reason_closes_text_thought_and_plan() {
 }
 
 #[test]
-fn a_cancelled_or_errored_prompt_leaves_open_output_to_the_turn_sweep() {
+fn a_cancelled_or_errored_prompt_shows_open_output_whole_but_leaves_it_to_the_turn_sweep() {
     for result in [
         json!({"result":{"stopReason":"cancelled"}}),
         json!({"error":{"code":-32603,"message":"backend down"}}),
@@ -127,8 +127,12 @@ fn a_cancelled_or_errored_prompt_leaves_open_output_to_the_turn_sweep() {
         let mut translator = opened();
         chunk(&mut translator, "agent_message_chunk", "Partial");
         let emitted = finish(&mut translator, result.clone());
-        assert!(
-            emitted.iter().all(|(key, _)| key != "agent-message:7"),
+        assert_eq!(
+            emitted
+                .iter()
+                .filter(|(key, _)| key == "agent-message:7")
+                .collect::<Vec<_>>(),
+            [&("agent-message:7".to_owned(), ItemLifecycle::Streaming)],
             "{result}: {emitted:?}"
         );
     }

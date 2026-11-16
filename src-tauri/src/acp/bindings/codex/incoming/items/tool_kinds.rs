@@ -12,8 +12,8 @@ use sage_acp_protocol::{
 
 use super::super::IngressError;
 use super::presentation::{
-    ToolLocations, ToolPresentationInput, bounded_label, bounded_summary, declared_tool_state,
-    lenient_tool_state, tool_with_summary_status,
+    ToolLocations, ToolPresentationInput, bounded_label, bounded_output_summary, bounded_summary,
+    declared_tool_state, lenient_tool_state, tool_with_summary_status,
 };
 use super::{ItemNormalization, content};
 
@@ -168,13 +168,13 @@ fn mcp_result_text(result: &Value) -> Option<String> {
 fn clipped_output(text: &str) -> Option<String> {
     RESULT_CLIPS.into_iter().find_map(|limit| {
         if text.len() <= limit {
-            return bounded_summary(text);
+            return bounded_output_summary(text);
         }
         let mut end = limit;
         while !text.is_char_boundary(end) {
             end -= 1;
         }
-        bounded_summary(&format!("{}{TRUNCATED}", &text[..end]))
+        bounded_output_summary(&format!("{}{TRUNCATED}", &text[..end]))
     })
 }
 

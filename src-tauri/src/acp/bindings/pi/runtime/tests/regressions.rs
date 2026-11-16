@@ -106,6 +106,7 @@ fn pi_streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
     let home = home.to_str().expect("UTF-8 home folder");
     let separator = if home.contains('\\') { '\\' } else { '/' };
     let config = format!("{home}{separator}.config");
+    let quoted_home = format!("\"{home}");
     let split = home.len() / 2;
     for (kind, deltas, expected) in [
         (
@@ -130,8 +131,8 @@ fn pi_streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
         ),
         (
             "text_delta",
-            vec![home, " Smith", &format!("{separator}x")],
-            format!("{home} Smith{separator}x"),
+            vec![quoted_home.as_str(), " Smith", &format!("{separator}x\"")],
+            format!("\"{home} Smith{separator}x\""),
         ),
         (
             "text_delta",

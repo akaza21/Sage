@@ -311,6 +311,16 @@ impl HarnessAdapter for ClaudeRuntime {
         self.ingest_inner(frame, resources)
     }
 
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        let events = match self.active.as_mut() {
+            Some(active) if active.turn.is_some() => active.translator.unfinished_replies(),
+            _ => return Ok(Vec::new()),
+        };
+        Ok(self.translate_events(events)?.into_parts().0)
+    }
+
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
         self.commit_mandatory_egress_inner(token)
     }

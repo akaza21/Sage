@@ -10,7 +10,7 @@ use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 
 use super::super::{
     IngressError,
-    support::{content, sanitize_tool_text},
+    support::{content, sanitize, sanitize_tool_text},
 };
 use super::ItemNormalization;
 
@@ -59,9 +59,21 @@ pub(super) fn context_compaction(
     ))
 }
 
+/// What a tool row was asked, such as a search query or a hook's prompt,
+/// shown as Claude Code shows a tool's title: paths kept, home as `~`.
 pub(super) fn bounded_summary(value: &str) -> Option<String> {
+    bounded(value, sanitize)
+}
+
+/// What a tool returned, which keeps absolute paths private as Claude Code's
+/// tool content does.
+pub(super) fn bounded_output_summary(value: &str) -> Option<String> {
+    bounded(value, sanitize_tool_text)
+}
+
+fn bounded(value: &str, redact: fn(&str) -> String) -> Option<String> {
     (value.len() <= ITEM_SUMMARY_BYTES)
-        .then(|| sanitize_tool_text(value))
+        .then(|| redact(value))
         .filter(|value| !value.is_empty() && value.len() <= ITEM_SUMMARY_BYTES)
 }
 

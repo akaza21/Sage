@@ -205,6 +205,13 @@ impl PiTranslator {
                     turn.thought_active = false;
                     events.push(AdapterOutput::ThoughtCompleted { outcome: incoming });
                 }
+                // A reply the turn ended before Pi closed it is shown whole.
+                if std::mem::take(&mut turn.reply_open) {
+                    events.push(AdapterOutput::TextCompleted {
+                        external_id: None,
+                        outcome: incoming,
+                    });
+                }
                 if turn.compaction_active {
                     turn.compaction_active = false;
                     events.push(match incoming {

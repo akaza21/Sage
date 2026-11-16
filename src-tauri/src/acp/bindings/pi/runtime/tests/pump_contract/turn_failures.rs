@@ -245,9 +245,7 @@ async fn retained_retry(
                 _ => None,
             })
             .collect::<Vec<_>>();
-        // A failed attempt may have stopped inside a word, so it keeps only
-        // what was safe to show while it streamed.
-        assert_eq!(texts[0], (ItemLifecycle::Failed, "Failed attempt "));
+        assert_eq!(texts[0], (ItemLifecycle::Failed, "Failed attempt retained"));
         if outcome == TurnState::Cancelled && !streaming_cancel {
             assert_eq!(texts.len(), 1);
         } else {
@@ -260,11 +258,7 @@ async fn retained_retry(
                         TurnState::Cancelled => ItemLifecycle::Cancelled,
                         _ => ItemLifecycle::Failed,
                     },
-                    if outcome == TurnState::Completed {
-                        "Second attempt retained"
-                    } else {
-                        "Second attempt "
-                    }
+                    "Second attempt retained"
                 )
             );
         }
@@ -394,5 +388,39 @@ async fn explicit_retry_creates_a_new_turn_and_preserves_prior_failure_after_sql
         assert!(retry.items.as_slice().iter().any(|item| matches!(&item.content, ItemContent::Text { text, .. } if text.as_str() == "Explicit retry answer")));
     }
     drop(reopened);
+    fixture.finish().await;
+}
+
+#[tokio::test]
+async fn a_reply_cut_off_when_pi_exits_is_kept_whole() {
+    let fixture = Fixture::new();
+    let mut pump = fixture.pump(ready_adapter());
+    start(&mut pump).await;
+    for event in [
+        json!({"type":"message_start","message":{"role":"assistant"}}),
+        json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"Cut off mid-wor"}}),
+    ] {
+        pump.push_stdout_chunk(&line(event), 2).await.unwrap();
+    }
+    let ended = pump.finish_stdout_deferred(3).await;
+    assert!(matches!(ended, Ok(true)), "{ended:?}");
+    assert!(!pump.finish_stdout_deferred(3).await.unwrap());
+    let page = load_chat_page(
+        &fixture.database.connection(),
+        owner().project_id,
+        owner().chat_id,
+        None,
+    )
+    .unwrap();
+    let texts = page.turns.as_slice()[0]
+        .items
+        .as_slice()
+        .iter()
+        .filter_map(|item| match &item.content {
+            ItemContent::Text { text, .. } => Some(text.as_str().to_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(texts, ["Cut off mid-wor"]);
     fixture.finish().await;
 }

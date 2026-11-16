@@ -2517,10 +2517,13 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
     assert!(
         matches!(
             terminal.events(),
-            [AdapterEvent::Turn {
-                state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
-                ..
-            }]
+            [
+                ..,
+                AdapterEvent::Turn {
+                    state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
+                    ..
+                }
+            ]
         ),
         "Sage asked for this stop, so it is a user cancel"
     );
@@ -2982,11 +2985,48 @@ fn streamed_views(runtime: &mut CodexRuntime, item: &str, deltas: &[&str]) -> Ve
 }
 
 #[test]
+fn a_turn_that_ends_before_its_reply_completes_shows_the_reply_whole() {
+    for status in ["interrupted", "failed", "completed"] {
+        let mut runtime = fixture_runtime();
+        ready(&mut runtime);
+        running_turn(&mut runtime);
+        for delta in ["Stopped mid", "-word 这是没有空格的", "回答"] {
+            runtime
+                .ingest(
+                    &frame(json!({"method":"item/agentMessage/delta","params":{
+                        "threadId":"thread-1","turnId":"turn-1","itemId":"reply","delta":delta
+                    }})),
+                    &Mapper,
+                )
+                .expect("delta");
+        }
+        let batch = runtime
+            .ingest(
+                &frame(json!({"method":"turn/completed","params":{
+                    "threadId":"thread-1","turn":{"id":"turn-1","status":status}
+                }})),
+                &Mapper,
+            )
+            .expect("terminal");
+        assert!(
+            matches!(
+                batch.events(),
+                [AdapterEvent::Item { payload: NormalizedPayload::Text { text }, .. }, AdapterEvent::Turn { .. }, ..]
+                    if text.as_str() == "Stopped mid-word 这是没有空格的回答"
+            ),
+            "{status}: {:?}",
+            batch.events()
+        );
+    }
+}
+
+#[test]
 fn streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
     let home = std::env::home_dir().expect("home folder");
     let home = home.to_str().expect("UTF-8 home folder");
     let separator = if home.contains('\\') { '\\' } else { '/' };
     let config = format!("{home}{separator}.config");
+    let quoted_home = format!("\"{home}");
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     running_turn(&mut runtime);
@@ -3009,8 +3049,8 @@ fn streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
         ),
         (
             "spaced-sibling",
-            vec![home, " Smith", &format!("{separator}x")],
-            format!("{home} Smith{separator}x"),
+            vec![quoted_home.as_str(), " Smith", &format!("{separator}x\"")],
+            format!("\"{home} Smith{separator}x\""),
         ),
         (
             "credentials",

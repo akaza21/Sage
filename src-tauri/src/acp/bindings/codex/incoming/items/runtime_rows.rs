@@ -10,8 +10,8 @@ use sage_core::limits::LIMITS;
 
 use super::super::{IngressError, support::safe_text};
 use super::presentation::{
-    ToolPresentationInput, bounded_label, bounded_summary, lenient_tool_state,
-    tool_with_summary_status,
+    ToolPresentationInput, bounded_label, bounded_output_summary, bounded_summary,
+    lenient_tool_state, tool_with_summary_status,
 };
 use super::{ItemNormalization, sanitize};
 
@@ -140,7 +140,7 @@ pub(super) fn function_call_output(
         ToolCategory::Other,
         &bounded_label(name.as_deref(), "Tool output"),
         None,
-        output.as_deref().and_then(bounded_summary),
+        output.as_deref().and_then(bounded_output_summary),
     )
 }
 

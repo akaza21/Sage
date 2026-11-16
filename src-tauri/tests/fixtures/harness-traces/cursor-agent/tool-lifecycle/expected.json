@@ -28,7 +28,7 @@
       "kind": "text",
       "lifecycle": "streaming",
       "updateMode": "append",
-      "chunks": 13
+      "chunks": 14
     },
     {
       "event": "item",

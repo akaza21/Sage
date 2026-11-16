@@ -53,6 +53,13 @@
     },
     {
       "event": "item",
+      "externalItemId": "agent-message:3",
+      "kind": "text",
+      "lifecycle": "streaming",
+      "text": "I'll write that single file."
+    },
+    {
+      "event": "item",
       "externalItemId": "$toolCallId",
       "kind": "toolCall",
       "lifecycle": "started",

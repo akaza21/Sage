@@ -2,8 +2,8 @@ use std::collections::BTreeMap;
 
 use crate::acp::{
     bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
-        EgressToken, HarnessAdapter, ResourceMapper,
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
+        EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
     transport::{Frame, request_payload_digest},
 };
@@ -338,6 +338,10 @@ impl HarnessAdapter for OmpRuntime {
         let request_digest =
             request_payload_digest(frame).map_err(|_| AdapterRuntimeError::Frame)?;
         self.translate_events(events, request_digest)
+    }
+
+    fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
+        self.whole_unfinished_replies()
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {

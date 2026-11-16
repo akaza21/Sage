@@ -151,7 +151,6 @@ impl PiRuntime {
     pub(super) fn complete_text(
         &mut self,
         value: Option<String>,
-        completed: bool,
     ) -> Result<(ExternalId, String), AdapterRuntimeError> {
         let turn = self
             .active_turn
@@ -163,7 +162,7 @@ impl PiRuntime {
         {
             return Err(AdapterRuntimeError::Operation);
         }
-        let snapshot = closed_snapshot(&mut turn.text_snapshot, completed)?;
+        let snapshot = closed_snapshot(&mut turn.text_snapshot)?;
         turn.text_id = None;
         Ok((active, snapshot))
     }

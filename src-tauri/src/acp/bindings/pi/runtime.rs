@@ -384,6 +384,12 @@ impl HarnessAdapter for PiRuntime {
         self.ingest_frame(frame, resources)
     }
 
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        self.whole_unfinished_replies()
+    }
+
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
         if token.cancelled_permission_request().is_some() {
             return self.commit_dialog_cancel(token);

@@ -256,8 +256,7 @@ impl PiRuntime {
                 external_id,
                 outcome,
             } => {
-                let (id, snapshot) =
-                    self.complete_text(external_id, outcome == TerminalOutcome::Completed)?;
+                let (id, snapshot) = self.complete_text(external_id)?;
                 if snapshot.is_empty() {
                     return Ok((Some(AdapterEvent::Absorbed), None));
                 }

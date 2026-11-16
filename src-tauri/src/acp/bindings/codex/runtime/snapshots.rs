@@ -1,10 +1,11 @@
 use std::collections::BTreeMap;
 
-use crate::acp::bindings::adapter::AdapterRuntimeError;
+use crate::acp::bindings::adapter::{AdapterEvent, AdapterRuntimeError};
 use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
 use sage_core::limits::LIMITS;
 
 use super::super::{incoming::ItemUpdateMode, state::ScopedExternalId};
+use super::support::identity;
 use crate::acp::redaction::text::ReplyStream;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +17,7 @@ enum TextKind {
 
 /// The text as the harness sent it; only its redacted form leaves the runtime.
 struct Snapshot {
+    id: ScopedExternalId,
     kind: TextKind,
     stream: ReplyStream,
 }
@@ -86,6 +88,7 @@ impl ItemSnapshots {
             (ItemUpdateMode::Append, Some(_)) => return Err(AdapterRuntimeError::Frame),
             (mode, _) => (
                 Snapshot {
+                    id: id.clone(),
                     kind,
                     stream: ReplyStream::new(incoming),
                 },
@@ -116,6 +119,24 @@ impl ItemSnapshots {
         self.values.insert(key, snapshot);
         self.bytes = total;
         Ok(payload)
+    }
+
+    /// Each reply the turn ended before Codex completed it, shown whole and
+    /// left streaming for the turn's sweep to settle.
+    pub(super) fn finish(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
+        let values = std::mem::take(&mut self.values);
+        self.bytes = 0;
+        values
+            .into_values()
+            .map(|mut snapshot| {
+                Ok(AdapterEvent::Item {
+                    id: identity(snapshot.id),
+                    lifecycle: ItemLifecycle::Streaming,
+                    tool_state: None,
+                    payload: build(snapshot.kind, &snapshot.stream.finished())?,
+                })
+            })
+            .collect()
     }
 
     fn remove(&mut self, id: &ScopedExternalId) {

@@ -117,7 +117,7 @@ impl ItemSnapshots {
     }
 
     /// Each reply still streaming, shown whole: OMP never says a reply ended,
-    /// so a completed turn completes them.
+    /// so the turn's end, however it ends, ends them.
     pub(super) fn finish(
         &mut self,
     ) -> Result<Vec<(ExternalId, NormalizedPayload)>, AdapterRuntimeError> {

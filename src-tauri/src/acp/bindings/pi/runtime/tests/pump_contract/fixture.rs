@@ -44,6 +44,11 @@ impl HarnessAdapter for ObservedPi {
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
         self.inner.command(command)
     }
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        self.inner.unfinished_replies()
+    }
     fn ingest(
         &mut self,
         frame: &Frame,

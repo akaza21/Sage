@@ -16,14 +16,19 @@ const TILDE: &str = "~";
 /// Punctuation that may close a path in prose without being part of its name.
 const CLOSING_PUNCTUATION: &[u8] = b".,;:!?)]}>\"'`*";
 
-/// Longest file name most filesystems allow, which bounds how far the word
-/// after a home folder is read.
-const NAME_MAX: usize = 255;
+/// Longest file name most filesystems allow, which bounds how far a folder
+/// beside the home folder is read.
+pub(crate) const NAME_MAX: usize = 255;
+/// Most folders beside the home folder whose names run on past a space.
+const SIBLINGS_MAX: usize = 64;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HomePrefix {
     path: String,
     windows: bool,
+    /// What follows the home folder's name in each folder beside it whose
+    /// name runs on past a space, such as ` Smith` for `alice Smith`.
+    siblings: Vec<String>,
 }
 
 impl HomePrefix {
@@ -52,7 +57,34 @@ impl HomePrefix {
         } else {
             trimmed.to_owned()
         };
-        Some(Self { path, windows })
+        Some(Self {
+            path,
+            windows,
+            siblings: Vec::new(),
+        })
+    }
+
+    /// This home with the folders beside it, named as they are on disk,
+    /// whose names are the home folder's followed by a space.
+    pub(crate) fn with_siblings<'a>(mut self, names: impl IntoIterator<Item = &'a str>) -> Self {
+        let own = self
+            .path
+            .rsplit(|character| character == '/' || (self.windows && character == '\\'))
+            .next()
+            .unwrap_or_default()
+            .to_owned();
+        self.siblings = names
+            .into_iter()
+            .filter(|name| name.len() <= NAME_MAX)
+            .filter_map(|name| {
+                let rest = name.get(own.len()..)?;
+                (self.same_name(&name.as_bytes()[..own.len()], own.as_bytes())
+                    && rest.starts_with([' ', '\t']))
+                .then(|| rest.to_owned())
+            })
+            .take(SIBLINGS_MAX)
+            .collect();
+        self
     }
 
     /// The home folder of the user Sage runs as, read once.
@@ -60,10 +92,17 @@ impl HomePrefix {
         static CURRENT: OnceLock<Option<HomePrefix>> = OnceLock::new();
         CURRENT
             .get_or_init(|| {
-                std::env::home_dir()
-                    .as_deref()
-                    .and_then(Path::to_str)
-                    .and_then(Self::new)
+                let home = std::env::home_dir()?;
+                let prefix = Self::new(home.to_str()?)?;
+                let names = home
+                    .parent()
+                    .and_then(|parent| std::fs::read_dir(parent).ok())
+                    .into_iter()
+                    .flatten()
+                    .flatten()
+                    .filter_map(|entry| entry.file_name().into_string().ok())
+                    .collect::<Vec<_>>();
+                Some(prefix.with_siblings(names.iter().map(String::as_str)))
             })
             .as_ref()
     }
@@ -170,34 +209,26 @@ impl HomePrefix {
             .all(|byte| CLOSING_PUNCTUATION.contains(byte))
     }
 
-    /// Whether the word after a space still belongs to the home folder's
-    /// name, as `Smith\project` does after `C:\Users\Alice`: it runs to a
-    /// separator without opening a new path of its own.
+    /// Whether the text after a space spells the rest of a folder that
+    /// exists beside the home folder, as ` Smith\project` does after
+    /// `C:\Users\Alice` when `C:\Users\Alice Smith` exists.
     fn name_continues_after_space(&self, rest: &[u8]) -> bool {
-        let line = &rest[..rest
-            .iter()
-            .position(|&byte| byte == b'\n')
-            .unwrap_or(rest.len())];
-        let line = &line[..line.len().min(NAME_MAX)];
-        line.split(|&byte| matches!(byte, b' ' | b'\t'))
-            .find(|word| !word.is_empty())
-            .is_some_and(|word| {
-                !self.starts_path(word) && word.iter().any(|&byte| self.is_separator(byte))
-            })
+        self.siblings.iter().any(|sibling| {
+            rest.get(..sibling.len())
+                .is_some_and(|name| self.same_name(name, sibling.as_bytes()))
+                && rest.get(sibling.len()).is_none_or(|&byte| {
+                    self.is_separator(byte)
+                        || byte.is_ascii_whitespace()
+                        || CLOSING_PUNCTUATION.contains(&byte)
+                })
+        })
     }
 
-    /// Whether a word opens a new absolute path rather than continuing a name.
-    fn starts_path(&self, word: &[u8]) -> bool {
-        let start = word
-            .iter()
-            .position(|byte| !b"\"'`([{<".contains(byte))
-            .unwrap_or(word.len());
-        match &word[start..] {
-            [first, ..] if self.is_separator(*first) => true,
-            [drive, b':', separator, ..] => {
-                self.windows && drive.is_ascii_alphabetic() && self.is_separator(*separator)
-            }
-            _ => false,
+    fn same_name(&self, text: &[u8], name: &[u8]) -> bool {
+        if self.windows {
+            text.eq_ignore_ascii_case(name)
+        } else {
+            text == name
         }
     }
 
@@ -388,10 +419,18 @@ mod tests {
     #[test]
     fn siblings_whose_names_continue_past_a_space_are_left_whole() {
         for (home, separator) in [(r"C:\Users\Alice", r"\"), ("/home/alice", "/")] {
-            let prefix = HomePrefix::new(home).unwrap();
+            let name = home.rsplit(['/', '\\']).next().unwrap();
+            let prefix = HomePrefix::new(home).unwrap().with_siblings([
+                format!("{name} Smith").as_str(),
+                &format!("{name} Jane Smith"),
+                &format!("{name}2"),
+            ]);
             let sibling = format!("{home} Smith{separator}project{separator}file.rs");
+            let long_sibling = format!("{home} Jane Smith{separator}file.rs");
             for text in [
                 format!("open {sibling} now"),
+                format!("open {long_sibling} now"),
+                format!("open {home} Smith now"),
                 format!("\"{sibling}\""),
                 format!("`{sibling}`"),
                 format!("open `{home} Smith` now"),
@@ -421,6 +460,10 @@ mod tests {
                 (
                     format!("Cloned into {home} and opened src{separator}main.rs"),
                     format!("Cloned into ~ and opened src{separator}main.rs"),
+                ),
+                (
+                    format!("{home} Smithson{separator}x"),
+                    format!("~ Smithson{separator}x"),
                 ),
             ] {
                 assert_eq!(prefix.shorten(&text), expected, "{text}");

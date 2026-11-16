@@ -117,6 +117,11 @@ impl CodexRuntime {
                             .map_err(|_| AdapterRuntimeError::BatchCount)?;
                         continue;
                     }
+                    if matches!(&event, IncomingEvent::Turn { state, .. } if state.is_terminal()) {
+                        for item in self.snapshots.finish()? {
+                            batch.push_event(item)?;
+                        }
+                    }
                     let (event, egress) = self.translate_event(event, request_digest)?;
                     let mandatory = egress
                         .as_ref()
@@ -129,21 +134,7 @@ impl CodexRuntime {
                         }
                     })?;
                     if let Some(message) = browser_notice {
-                        batch.push_event(AdapterEvent::Error(
-                            sage_acp_protocol::intent::NormalizedPayload::Error {
-                                kind: Some(sage_acp_protocol::intent::ErrorKind::Notice),
-                                code: sage_acp_protocol::contract::SafeText::new(
-                                    "code",
-                                    "browserMcpUnavailable",
-                                )
-                                .map_err(|_| AdapterRuntimeError::Frame)?,
-                                message: sage_acp_protocol::contract::SafeText::new(
-                                    "message", message,
-                                )
-                                .map_err(|_| AdapterRuntimeError::Frame)?,
-                                retryable: false,
-                            },
-                        ))?;
+                        batch.push_event(browser_unavailable_notice(message)?)?;
                     }
                     if let Some(egress) = egress {
                         batch.push_egress(egress).map_err(|error| {

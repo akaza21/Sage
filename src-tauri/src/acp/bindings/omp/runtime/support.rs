@@ -246,16 +246,19 @@ impl OmpRuntime {
                     PromptTerminal::Cancelled => TurnState::Cancelled,
                     PromptTerminal::Failed => TurnState::Failed,
                 };
+                let lifecycle = match terminal {
+                    PromptTerminal::Completed => ItemLifecycle::Completed,
+                    PromptTerminal::Cancelled => ItemLifecycle::Cancelled,
+                    PromptTerminal::Failed => ItemLifecycle::Failed,
+                };
                 let mut events = Vec::new();
-                if terminal == PromptTerminal::Completed {
-                    for (external_key, payload) in self.snapshots.finish()? {
-                        events.push(RuntimeEvent::Item {
-                            id: self.item_identity(external_key)?,
-                            lifecycle: ItemLifecycle::Completed,
-                            tool_state: None,
-                            payload,
-                        });
-                    }
+                for (external_key, payload) in self.snapshots.finish()? {
+                    events.push(RuntimeEvent::Item {
+                        id: self.item_identity(external_key)?,
+                        lifecycle,
+                        tool_state: None,
+                        payload,
+                    });
                 }
                 events.push(RuntimeEvent::Turn {
                     id: self.turn_identity()?,

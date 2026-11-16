@@ -2,7 +2,8 @@
 //! translator closes them from what the protocol does say: answer text after
 //! a thought ends that thought block, and the prompt response ends the turn's
 //! output. A cancelled or errored prompt leaves them open for the store's turn
-//! sweep, which marks unfinished output as cancelled.
+//! sweep, which marks unfinished output as cancelled, but still shows each
+//! text whole, as a tool call starting does.
 
 use sage_acp_protocol::{
     contract::SafeText,
@@ -10,11 +11,12 @@ use sage_acp_protocol::{
     lifecycle::ItemLifecycle,
 };
 
-use crate::acp::redaction::text::ReplyStream;
 use sage_core::limits::LIMITS;
 
 use super::decode::turn_scoped_key;
-use super::{AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TranslationError};
+use super::{
+    AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TEXT_BYTES, TranslationError,
+};
 
 /// At most this many items close in the prompt response; any beyond it stay
 /// open and are swept, so the terminal frame keeps room for diff settlement.
@@ -72,23 +74,74 @@ impl StandardAcpTranslator {
             return Ok(Vec::new());
         };
         self.thought_block = self.thought_block.saturating_add(1);
-        Ok(vec![self.completed(external_key, payload)])
+        Ok(vec![self.whole(
+            external_key,
+            payload,
+            ItemLifecycle::Completed,
+        )])
     }
 
-    pub(super) fn close_open_items(&mut self, events: &mut Vec<AdapterEvent>) {
+    /// Ends the turn's open items: completed when the prompt delivered its
+    /// output, and otherwise shown whole but left for the turn's sweep.
+    pub(super) fn close_open_items(&mut self, events: &mut Vec<AdapterEvent>, delivered: bool) {
         let open = std::mem::take(&mut self.open_items);
         for (external_key, payload) in open.into_values().take(MAX_CLOSED_AT_TURN_END) {
-            events.push(self.completed(external_key, payload));
+            if delivered {
+                events.push(self.whole(external_key, payload, ItemLifecycle::Completed));
+            } else if self.text_snapshots.contains_key(external_key.as_str()) {
+                events.push(self.whole(external_key, payload, ItemLifecycle::Streaming));
+            }
         }
     }
 
-    /// A completed text or thought shows its whole reply, including the last
-    /// word that streaming held back.
-    fn completed(&mut self, external_key: ExternalId, payload: NormalizedPayload) -> AdapterEvent {
+    /// Each text or thought of the turn still open when the harness's output
+    /// ended, shown whole for the turn's sweep to settle.
+    pub(crate) fn unfinished_replies(&mut self) -> Vec<AdapterEvent> {
+        let mut events = Vec::new();
+        if self.pending_prompt.is_some() {
+            self.close_open_items(&mut events, false);
+        }
+        events
+    }
+
+    /// Text and thoughts shown whole ahead of a tool call: the harness ended
+    /// them to call it, so no word of theirs is still arriving.
+    pub(super) fn text_shown_whole_before(&mut self, tool: Vec<AdapterEvent>) -> Vec<AdapterEvent> {
+        let open: Vec<_> = self
+            .open_items
+            .values()
+            .filter(|(key, _)| self.text_snapshots.contains_key(key.as_str()))
+            .cloned()
+            .collect();
+        let mut events: Vec<_> = open
+            .into_iter()
+            .map(|(key, payload)| {
+                (
+                    self.whole(key, payload.clone(), ItemLifecycle::Streaming),
+                    payload,
+                )
+            })
+            .filter_map(|(event, shown)| {
+                matches!(&event, AdapterEvent::Item { payload, .. } if *payload != shown)
+                    .then_some(event)
+            })
+            .collect();
+        events.extend(tool);
+        events
+    }
+
+    /// A text or thought shown whole, including the last word that streaming
+    /// held back, clipped if redaction made it longer than an item may be.
+    fn whole(
+        &mut self,
+        external_key: ExternalId,
+        payload: NormalizedPayload,
+        lifecycle: ItemLifecycle,
+    ) -> AdapterEvent {
         let finished = self
             .text_snapshots
             .get_mut(external_key.as_str())
-            .map(ReplyStream::finished)
+            .map(|stream| stream.finished_within(TEXT_BYTES))
             .and_then(|text| SafeText::new("text", text).ok());
         let payload = match (payload, finished) {
             (NormalizedPayload::Text { .. }, Some(text)) => NormalizedPayload::Text { text },
@@ -99,7 +152,7 @@ impl StandardAcpTranslator {
         };
         AdapterEvent::Item {
             external_key,
-            lifecycle: ItemLifecycle::Completed,
+            lifecycle,
             tool_state: None,
             payload,
         }

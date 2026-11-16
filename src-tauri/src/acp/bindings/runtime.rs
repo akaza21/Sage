@@ -304,6 +304,11 @@ impl HarnessAdapter for NativeRuntime {
         self.0.cancel_permission(request_id)
     }
 
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<super::adapter::AdapterEvent>, AdapterRuntimeError> {
+        self.0.unfinished_replies()
+    }
     fn ingest(
         &mut self,
         frame: &Frame,

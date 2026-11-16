@@ -1,8 +1,8 @@
 use super::*;
 use crate::acp::{
     bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterOptionalEgress, AdapterRuntimeError,
-        EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterOptionalEgress,
+        AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
     runtime::later_permission::resolve_later_permission,
     transport::{Frame, OutboundFrame},
@@ -325,6 +325,9 @@ impl HarnessAdapter for CodexRuntime {
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         self.ingest_frame(frame, resources)
+    }
+    fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
+        self.snapshots.finish()
     }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.cancelled_permission_request() {

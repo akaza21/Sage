@@ -2,30 +2,42 @@
 //!
 //! Every harness assembles its reply here and nowhere else redacts it, so a
 //! secret, a path or the home folder that straddles deltas is judged whole.
-//! While the reply streams, only text up to its last whitespace is shown: a
-//! word still arriving, such as `/srv/alice:hun`, may be the start of a
-//! secret. The finished reply is shown whole.
+//! While the reply streams, the word still arriving is held back: it may be
+//! the start of a secret, such as `/srv/alice:hun`. Text written without
+//! spaces, as Chinese or Japanese is, is shown up to its last such character,
+//! since no secret is spelled in it. Whenever the reply ends, completed or
+//! not, it is shown whole.
 //!
 //! Redacting the whole reply on every delta would cost time quadratic in its
 //! length, so a prefix is redacted once and kept. A prefix is kept only when
 //! redacting it alone, and the text after it alone, gives exactly what
-//! redacting both together gives, with at least [`LOOKAHEAD`] bytes after it:
-//! anything still open there, such as an unclosed quote or private key, fails
-//! closed over the whole text and so cannot pass that check.
+//! redacting both together gives, with [`LOOKAHEAD`] bytes after it, as far
+//! as any rule reads to decide a span. A construct still open there, such as
+//! an unclosed quote, fails that check; the stream then redacts again only
+//! once the text after the kept prefix has doubled, showing the last view
+//! until then, so the work stays linear in the reply's length.
 
-use super::reply_text;
+use super::{clip_display, reply_text, spans::MAX_SPAN_BYTES};
 
 /// Bytes that must follow a kept prefix before it is kept.
-const LOOKAHEAD: usize = 1024;
+const LOOKAHEAD: usize = MAX_SPAN_BYTES;
 /// Unkept text that prompts an attempt to keep a prefix.
-const KEEP_AFTER: usize = 4 * LOOKAHEAD;
+const KEEP_AFTER: usize = 2 * LOOKAHEAD;
+/// The longest word held back; a longer one is shown up to this many bytes
+/// from its end.
+const HELD_MAX: usize = LOOKAHEAD;
+/// Characters that join a word into a secret or a path, so a word holding one
+/// is held back whole, whatever script it is written in.
+const TOKEN_JOINERS: [char; 5] = [':', '=', '@', '/', '\\'];
 
 #[derive(Debug, Default)]
 pub(crate) struct ReplyStream {
     raw: String,
     kept: usize,
     kept_shown: String,
-    next_attempt: usize,
+    shown: String,
+    shown_end: usize,
+    next_redaction: usize,
     #[cfg(test)]
     redacted_bytes: usize,
 }
@@ -49,24 +61,45 @@ impl ReplyStream {
         Ok(())
     }
 
-    /// The reply while it streams: redacted, and only up to its last whitespace.
+    /// The reply while it streams: redacted, without the word still arriving.
     pub(crate) fn streaming(&mut self) -> String {
-        let end = self.raw[self.kept..]
-            .char_indices()
-            .rfind(|(_, character)| character.is_whitespace())
-            .map_or(self.kept, |(index, character)| {
-                self.kept + index + character.len_utf8()
-            });
-        let tail = self.redact(self.kept, end);
-        let shown = format!("{}{tail}", self.kept_shown);
-        self.try_keep(end, &tail);
-        shown
+        let end = self.visible_end();
+        if end > self.shown_end && end - self.kept >= self.next_redaction {
+            let tail = self.redact(self.kept, end);
+            self.shown = format!("{}{tail}", self.kept_shown);
+            self.shown_end = end;
+            self.try_keep(end, &tail);
+        }
+        self.shown.clone()
     }
 
-    /// The whole reply, redacted, once the harness says it is complete.
+    /// The whole reply, redacted, once the harness ends it for any reason or
+    /// stops it to call a tool. A later view shows no less of it.
     pub(crate) fn finished(&mut self) -> String {
         let tail = self.redact(self.kept, self.raw.len());
-        format!("{}{tail}", self.kept_shown)
+        self.shown = format!("{}{tail}", self.kept_shown);
+        self.shown_end = self.raw.len();
+        self.shown.clone()
+    }
+
+    /// [`Self::finished`], clipped to `maximum` bytes when redaction markers
+    /// made it longer than the text as sent.
+    pub(crate) fn finished_within(&mut self, maximum: usize) -> String {
+        clip_display(&self.finished(), maximum)
+    }
+
+    fn visible_end(&self) -> usize {
+        let mut from = self.raw.len().saturating_sub(HELD_MAX).max(self.kept);
+        while !self.raw.is_char_boundary(from) {
+            from += 1;
+        }
+        let window = &self.raw[from..];
+        let word = after_last(window, char::is_whitespace);
+        let held = &window[word..];
+        if held.contains(TOKEN_JOINERS) {
+            return from + word;
+        }
+        from + word + after_last(held, ends_a_token)
     }
 
     fn redact(&mut self, start: usize, end: usize) -> String {
@@ -82,41 +115,58 @@ impl ReplyStream {
 
     fn try_keep(&mut self, end: usize, tail: &str) {
         let unkept = end - self.kept;
-        if unkept < KEEP_AFTER.max(self.next_attempt) {
+        if unkept < KEEP_AFTER {
             return;
         }
-        self.next_attempt = unkept + KEEP_AFTER;
-        let Some(boundary) = self.boundary(end) else {
-            return;
-        };
-        let head = self.redact(self.kept, boundary);
-        let rest = self.redact(boundary, end);
-        if tail.len() == head.len() + rest.len() && tail.starts_with(&head) && tail.ends_with(&rest)
-        {
-            self.kept_shown.push_str(&head);
-            self.kept = boundary;
-            self.next_attempt = 0;
+        if let Some(boundary) = self.boundary(end) {
+            let head = self.redact(self.kept, boundary);
+            let rest = self.redact(boundary, end);
+            if tail.len() == head.len() + rest.len()
+                && tail.starts_with(&head)
+                && tail.ends_with(&rest)
+            {
+                self.kept_shown.push_str(&head);
+                self.kept = boundary;
+                self.next_redaction = 0;
+                return;
+            }
         }
+        self.next_redaction = unkept.saturating_mul(2);
     }
 
-    /// The end of the last line, or failing that the last word, that has
-    /// [`LOOKAHEAD`] bytes after it.
+    /// The end of the last line, or failing that the last word or wide
+    /// character, that has [`LOOKAHEAD`] bytes after it.
     fn boundary(&self, end: usize) -> Option<usize> {
         let mut limit = end.checked_sub(LOOKAHEAD)?;
         while !self.raw.is_char_boundary(limit) {
             limit -= 1;
         }
         let window = self.raw.get(self.kept..limit)?;
-        let (index, character) = window
-            .char_indices()
-            .rfind(|(_, character)| *character == '\n')
-            .or_else(|| {
-                window
-                    .char_indices()
-                    .rfind(|(_, character)| character.is_whitespace())
-            })?;
-        Some(self.kept + index + character.len_utf8())
+        let breaks: [fn(char) -> bool; 3] = [
+            |character| character == '\n',
+            char::is_whitespace,
+            ends_a_token,
+        ];
+        let after = breaks
+            .into_iter()
+            .map(|matches| after_last(window, matches))
+            .find(|after| *after > 0)
+            .unwrap_or(0);
+        (after > 0).then_some(self.kept + after)
     }
+}
+
+/// The byte just past the last character in `text` that matches, or 0.
+fn after_last(text: &str, matches: impl Fn(char) -> bool) -> usize {
+    text.char_indices()
+        .rfind(|(_, character)| matches(*character))
+        .map_or(0, |(index, character)| index + character.len_utf8())
+}
+
+/// A character no secret is spelled with: an ideograph, kana, hangul or other
+/// wide script, or punctuation and symbols outside ASCII.
+fn ends_a_token(character: char) -> bool {
+    !character.is_ascii() && (character >= '\u{2e80}' || !character.is_alphanumeric())
 }
 
 #[cfg(test)]

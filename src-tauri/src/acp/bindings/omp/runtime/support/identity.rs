@@ -4,6 +4,7 @@ use crate::acp::bindings::adapter::{
 use sage_acp_protocol::{
     contract::RequiredText,
     intent::{ExternalId, ModelId},
+    lifecycle::ItemLifecycle,
 };
 use sage_core::limits::LIMITS;
 
@@ -37,6 +38,28 @@ impl OmpRuntime {
             Some(turn.external_id.clone()),
             Some(turn.client_message_id.clone()),
         ))
+    }
+
+    /// Each reply still streaming when OMP's output ended, shown whole for
+    /// the turn's sweep to settle.
+    pub(in crate::acp::bindings::omp) fn whole_unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
+        if self.active_turn.is_none() {
+            return Ok(Vec::new());
+        }
+        self.snapshots
+            .finish()?
+            .into_iter()
+            .map(|(external_id, payload)| {
+                Ok(AdapterEvent::Item {
+                    id: self.item_identity(external_id)?,
+                    lifecycle: ItemLifecycle::Streaming,
+                    tool_state: None,
+                    payload,
+                })
+            })
+            .collect()
     }
 
     pub(super) fn item_identity(

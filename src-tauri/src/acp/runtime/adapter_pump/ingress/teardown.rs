@@ -33,6 +33,27 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         .await
     }
 
+    /// Once the harness's output has ended mid-turn, its replies are shown
+    /// whole before the turn is swept, as any other ending shows them.
+    pub(super) async fn accept_unfinished_replies(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<bool, AdapterPumpError> {
+        if self.terminal.is_some() || self.ensure_live().is_err() {
+            return Ok(false);
+        }
+        let Ok(events) = self.adapter.unfinished_replies() else {
+            return Ok(false);
+        };
+        if events.is_empty() {
+            return Ok(false);
+        }
+        let batch = AdapterBatch::new(events, Vec::new())?;
+        self.accept_batch(batch, now_millis, IngestMode::Deferred)
+            .await?;
+        Ok(true)
+    }
+
     pub(super) async fn fail_deferred_frame<T>(&mut self) -> Result<T, AdapterPumpError> {
         if !self.pending.is_empty() && self.flush_deferred().await.is_err() {
             self.pending.clear();

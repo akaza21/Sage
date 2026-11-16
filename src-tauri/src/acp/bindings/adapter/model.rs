@@ -241,6 +241,11 @@ pub(crate) trait HarnessAdapter {
         frame: &Frame,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError>;
+    /// Each reply of the active Turn still streaming, shown whole, once the
+    /// harness's output has ended and nothing more of it can arrive.
+    fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
+        Ok(Vec::new())
+    }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError>;
     fn resolve_egress(
         &mut self,

@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-const QUOTE_SCAN_LIMIT: usize = 1024;
+pub(crate) const QUOTE_SCAN_LIMIT: usize = 1024;
 
 pub(crate) fn scan_window(value: &str) -> &str {
     let mut end = value.len().min(QUOTE_SCAN_LIMIT);

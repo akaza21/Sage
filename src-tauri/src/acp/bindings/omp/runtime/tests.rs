@@ -17,6 +17,7 @@ use crate::acp::{
 use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId, SageServerRequestId},
     intent::{ExternalId, NormalizedPayload, SafeResourceRef},
+    lifecycle::ItemLifecycle,
 };
 
 struct Mapper;
@@ -395,7 +396,7 @@ fn turn_items_typed_diff_cancel_duplicate_and_late_are_normalized() {
     }
     let terminal_frame = response(&prompt, json!({"stopReason":"cancelled"}));
     let terminal = runtime.ingest(&terminal_frame, &Mapper).expect("terminal");
-    assert!(matches!(terminal.events(), [AdapterEvent::Turn { .. }]));
+    assert!(matches!(terminal.events(), [.., AdapterEvent::Turn { .. }]));
     assert!(matches!(
         runtime
             .ingest(&terminal_frame, &Mapper)
@@ -520,30 +521,40 @@ fn malformed_and_plus_one_models_fail_closed() {
 }
 
 #[test]
-fn a_completed_turn_shows_each_streamed_reply_whole() {
-    let mut runtime = fixture_runtime(12);
-    initialize(&mut runtime, false);
-    new_session(&mut runtime);
-    running(&mut runtime);
-    for delta in ["hel", "lo there"] {
-        runtime
-            .ingest(
-                &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
-                    "sessionId":"omp-session-1","update":{"sessionUpdate":"agent_message_chunk",
-                    "itemId":"message-chunks","content":{"type":"text","text":delta}}
-                }})),
-                &Mapper,
-            )
-            .expect("message chunk");
+fn every_turn_end_shows_each_streamed_reply_whole() {
+    for (stop, lifecycle) in [
+        (json!({"stopReason":"end_turn"}), ItemLifecycle::Completed),
+        (json!({"stopReason":"cancelled"}), ItemLifecycle::Cancelled),
+        (json!({"stopReason":"max_tokens"}), ItemLifecycle::Failed),
+    ] {
+        let mut runtime = fixture_runtime(12);
+        initialize(&mut runtime, false);
+        new_session(&mut runtime);
+        let prompt = running(&mut runtime);
+        for delta in ["hel", "lo 这是没有空格的", "回答"] {
+            runtime
+                .ingest(
+                    &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+                        "sessionId":"omp-session-1","update":{"sessionUpdate":"agent_message_chunk",
+                        "itemId":"message-chunks","content":{"type":"text","text":delta}}
+                    }})),
+                    &Mapper,
+                )
+                .expect("message chunk");
+        }
+        let terminal = runtime
+            .ingest(&response(&prompt, stop.clone()), &Mapper)
+            .expect("terminal");
+        assert!(
+            matches!(
+                terminal.events(),
+                [AdapterEvent::Item { lifecycle: ended, payload: NormalizedPayload::Text { text }, .. }, AdapterEvent::Turn { .. }]
+                    if *ended == lifecycle && text.as_str() == "hello 这是没有空格的回答"
+            ),
+            "{stop}: {:?}",
+            terminal.events()
+        );
     }
-    let finished = runtime.snapshots.finish().expect("finished replies");
-    assert!(
-        matches!(
-            finished.as_slice(),
-            [(_, NormalizedPayload::Text { text })] if text.as_str() == "hello there"
-        ),
-        "{finished:?}"
-    );
 }
 
 #[test]

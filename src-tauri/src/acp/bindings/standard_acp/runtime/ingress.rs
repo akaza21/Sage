@@ -221,6 +221,16 @@ impl StandardAcpRuntime {
         self.translate(all)
     }
 
+    pub(super) fn whole_unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<SharedEvent>, AdapterRuntimeError> {
+        let events = match self.active.as_mut() {
+            Some(active) if active.turn.is_some() => active.translator.unfinished_replies(),
+            _ => return Ok(Vec::new()),
+        };
+        Ok(self.translate(events)?.into_parts().0)
+    }
+
     fn translate(
         &mut self,
         events: Vec<StandardEvent>,

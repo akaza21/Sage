@@ -587,6 +587,72 @@ fn message_chunks_emit_complete_bounded_snapshots_and_reset_between_turns() {
 }
 
 #[test]
+fn a_reply_shows_whole_when_a_tool_starts_or_the_prompt_stops_or_fails() {
+    fn chunk(text: &str) -> Value {
+        json!({"method": "session/update", "params": {"sessionId": "claude-session-1",
+            "update": {"sessionUpdate": "agent_message_chunk", "itemId": "message-one",
+                "content": {"type": "text", "text": text}}}})
+    }
+    fn whole(events: &[AdapterEvent], lifecycle: ItemLifecycle, expected: &str) -> bool {
+        events.iter().any(|event| {
+            matches!(event, AdapterEvent::Item {
+                lifecycle: shown, payload: NormalizedPayload::Text { text }, ..
+            } if *shown == lifecycle && text.as_str() == expected)
+        })
+    }
+
+    let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
+    translator.begin_prompt("prompt-1").unwrap();
+    translator
+        .translate_notification(
+            &encoded(&chunk("I'll write that single file.")),
+            &FixtureResources,
+        )
+        .unwrap();
+    let tool = translator
+        .translate_notification(
+            &encoded(&json!({"method": "session/update", "params": {
+                "sessionId": "claude-session-1", "update": {"sessionUpdate": "tool_call",
+                    "toolCallId": "tool-1", "kind": "edit", "status": "pending"}}})),
+            &FixtureResources,
+        )
+        .unwrap();
+    assert!(
+        whole(
+            &tool,
+            ItemLifecycle::Streaming,
+            "I'll write that single file."
+        ),
+        "{tool:?}"
+    );
+
+    for ending in [
+        json!({"id": "prompt-2", "result": {"stopReason": "cancelled"}}),
+        json!({"id": "prompt-2", "error": {"code": -32603, "message": "Internal error"}}),
+    ] {
+        let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
+        translator.begin_prompt("prompt-2").unwrap();
+        translator
+            .translate_notification(
+                &encoded(&chunk("这是没有空格的回答 stopped mid")),
+                &FixtureResources,
+            )
+            .unwrap();
+        let ended = translator
+            .translate_prompt_result(&encoded(&ending))
+            .unwrap();
+        assert!(
+            whole(
+                &ended,
+                ItemLifecycle::Streaming,
+                "这是没有空格的回答 stopped mid"
+            ),
+            "{ending}: {ended:?}"
+        );
+    }
+}
+
+#[test]
 fn message_snapshot_redacts_tokens_split_across_frame_boundaries() {
     let chunk = |text: &str| {
         json!({
@@ -621,10 +687,8 @@ fn message_snapshot_redacts_tokens_split_across_frame_boundaries() {
 fn accumulated_message_limit_rejects_before_mutating_the_snapshot() {
     let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
     translator.begin_prompt("prompt-1").unwrap();
-    let first = format!(
-        "{} ",
-        "a".repeat(LIMITS.wire.normalized_item_bytes as usize - 2)
-    );
+    let below = LIMITS.wire.normalized_item_bytes as usize - 1;
+    let first = format!("{}{}", "word ".repeat(below / 5), " ".repeat(below % 5));
     let frame = |text: &str| {
         json!({
             "method": "session/update",

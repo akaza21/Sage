@@ -349,6 +349,10 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.ingest_sdk(sdk, resources)
     }
 
+    fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
+        self.session.unfinished_replies()
+    }
+
     /// Claude Code's own output can exceed the structure limits sized for ACP frames: an edit's
     /// result carries its whole patch in `tool_use_result`, which Sage never reads. Such a frame is
     /// read without those fields. Still out of bounds, a turn's end or a reply to Sage keeps only

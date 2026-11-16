@@ -578,3 +578,68 @@ fn an_unrecognised_tool_row_keeps_paths_private_like_other_tool_content() {
         summary.as_str()
     );
 }
+
+#[test]
+fn what_a_tool_was_asked_keeps_paths_as_claude_code_tool_titles_do() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
+    let separator = if home.contains('\\') { '\\' } else { '/' };
+    let asked = format!("Check /srv/app{separator}notes.md and {home}{separator}todo.md");
+    let shown = format!("Check /srv/app{separator}notes.md and ~{separator}todo.md");
+    for row in [
+        json!({"type": "hookPrompt", "status": "completed", "fragments": [{"text": asked}]}),
+        json!({"type": "webSearch", "status": "completed", "query": asked}),
+        json!({"type": "enteredReviewMode", "status": "completed", "review": asked}),
+    ] {
+        let (payload, _, _) =
+            normalize_item(&item(row.clone()), ItemLifecycle::Completed, &UnusedMapper)
+                .expect("tool row")
+                .expect("item");
+        let NormalizedPayload::ToolCall {
+            label,
+            input_summary,
+            ..
+        } = payload
+        else {
+            panic!("tool row");
+        };
+        let text = format!(
+            "{} {:?}",
+            label.as_str(),
+            input_summary.map(|summary| summary.as_str().to_owned())
+        );
+        assert!(text.contains(&shown), "{row}: {text}");
+    }
+}
+
+#[test]
+fn what_a_tool_returned_keeps_paths_private_as_claude_code_tool_content_does() {
+    for row in [
+        json!({"type": "functionCallOutput", "status": "completed", "name": "read",
+            "output": "Read /srv/app/notes.md"}),
+        json!({"type": "mcpToolCall", "status": "completed", "server": "docs", "tool": "fetch",
+            "result": {"content": [{"type": "text", "text": "Read /srv/app/notes.md"}]}}),
+    ] {
+        let (payload, _, _) =
+            normalize_item(&item(row.clone()), ItemLifecycle::Completed, &UnusedMapper)
+                .expect("tool row")
+                .expect("item");
+        let NormalizedPayload::ToolCall {
+            output_summary: Some(output),
+            ..
+        } = payload
+        else {
+            panic!("tool row with output");
+        };
+        assert!(
+            output.as_str().starts_with("Read "),
+            "{row}: {}",
+            output.as_str()
+        );
+        assert!(
+            !output.as_str().contains("/srv/app"),
+            "{row}: {}",
+            output.as_str()
+        );
+    }
+}

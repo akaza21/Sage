@@ -22,18 +22,12 @@ pub(super) fn append_snapshot(
     Ok(shown)
 }
 
-/// The reply once Pi ends it: whole when it completed, and otherwise only
-/// what was safe to show while it streamed.
+/// The whole reply once Pi ends it, however it ended.
 pub(super) fn closed_snapshot(
     snapshot: &mut Option<ReplyStream>,
-    completed: bool,
 ) -> Result<String, AdapterRuntimeError> {
     let mut stream = snapshot.take().ok_or(AdapterRuntimeError::Operation)?;
-    bounded(if completed {
-        stream.finished()
-    } else {
-        stream.streaming()
-    })
+    bounded(stream.finished())
 }
 
 fn bounded(shown: String) -> Result<String, AdapterRuntimeError> {
