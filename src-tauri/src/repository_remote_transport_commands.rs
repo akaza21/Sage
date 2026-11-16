@@ -2,7 +2,7 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{repository_remote_transport, state::AppState};
+use crate::state::AppState;
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryRemoteTransportRequest,
     GitRepositoryRemoteTransportResult,
@@ -70,10 +70,10 @@ fn remote_transport_command_error(error: AppError) -> GitFileMutationCommandErro
                     sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
-            message: crate::repository_public_error::containment().into(),
+            message: sage_git::public_error::containment().into(),
         },
         error => GitFileMutationCommandError::Failed {
-            message: crate::repository_public_error::remote_transport(&error),
+            message: sage_git::public_error::remote_transport(&error),
         },
     }
 }
@@ -138,10 +138,10 @@ async fn transport_git_remote_inner(
         .collect();
     let transport_result = match transport {
         RemoteTransport::Fetch => {
-            repository_remote_transport::fetch_listed_remote(&workspace, &request.remote).await
+            sage_git::remote_transport::fetch_listed_remote(&workspace, &request.remote).await
         }
         RemoteTransport::Push => {
-            repository_remote_transport::push_listed_remote(&workspace, &request.remote).await
+            sage_git::remote_transport::push_listed_remote(&workspace, &request.remote).await
         }
     };
     let error = match transport_result {
@@ -157,7 +157,7 @@ async fn transport_git_remote_inner(
         project_id: request.project_id,
         root_id: request.root_id,
         transition_epoch: *transition_epoch,
-        repositories: crate::repository_index_status::project_status(repository_roots).await,
+        repositories: sage_git::index_status::index_project_status(repository_roots).await,
         error,
     })
 }

@@ -4,7 +4,6 @@ use std::{
     sync::{Arc, atomic::AtomicBool},
 };
 
-use crate::git_process;
 use sage_core::error::AppError;
 use sage_workspace::file_walk::MAX_WORKSPACE_FILES;
 
@@ -45,7 +44,8 @@ pub(super) async fn all_untracked(
         }
     }
     let output =
-        git_process::run_cancellable(root, &args, MAX_TRACKED_PATH_BYTES, None, cancelled).await?;
+        sage_git::process::run_cancellable(root, &args, MAX_TRACKED_PATH_BYTES, None, cancelled)
+            .await?;
     if !output.status.success() || output.stdout_truncated {
         return Ok(false);
     }

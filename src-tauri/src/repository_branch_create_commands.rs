@@ -2,7 +2,7 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{repository_branch_create, state::AppState};
+use crate::state::AppState;
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryCheckoutRequest, GitRepositoryCheckoutResult,
 };
@@ -33,10 +33,10 @@ fn create_branch_command_error(error: AppError) -> GitFileMutationCommandError {
                     sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
-            message: crate::repository_public_error::containment().into(),
+            message: sage_git::public_error::containment().into(),
         },
         error => GitFileMutationCommandError::Failed {
-            message: crate::repository_public_error::create_branch(&error),
+            message: sage_git::public_error::create_branch(&error),
         },
     }
 }
@@ -93,7 +93,7 @@ async fn create_git_local_branch_inner(
         })
         .collect();
     let create_result =
-        repository_branch_create::create_unlisted_local_branch(&workspace, &request.branch).await;
+        sage_git::branch_create::create_unlisted_local_branch(&workspace, &request.branch).await;
     let error = match create_result {
         Ok(()) => None,
         Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
@@ -107,7 +107,7 @@ async fn create_git_local_branch_inner(
         project_id: request.project_id,
         root_id: request.root_id,
         transition_epoch: *transition_epoch,
-        repositories: crate::repository_index_status::project_status(repository_roots).await,
+        repositories: sage_git::index_status::index_project_status(repository_roots).await,
         error,
     })
 }
