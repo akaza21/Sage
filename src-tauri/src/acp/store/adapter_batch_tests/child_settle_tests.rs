@@ -10,6 +10,10 @@ use sage_acp_protocol::contract::BoundedVec;
 use sage_acp_protocol::scheduler::RuntimeOwner;
 
 fn spawn_row(owner: &AdapterStoreOwner) -> AdapterInboundEvent {
+    spawn_row_reporting(owner, "running")
+}
+
+fn spawn_row_reporting(owner: &AdapterStoreOwner, state: &str) -> AdapterInboundEvent {
     let key = SafeText::new("agentKey", "child-one").unwrap();
     let mut item = item(owner, "agent:child-one");
     item.payload = NormalizedPayload::Collaboration {
@@ -25,7 +29,7 @@ fn spawn_row(owner: &AdapterStoreOwner) -> AdapterInboundEvent {
         agent_keys: BoundedVec::new("agentKeys", vec![key.clone()]).unwrap(),
         agent_states: BoundedVec::new(
             "agentStates",
-            vec![(key, SafeText::new("agentState", "running").unwrap())],
+            vec![(key, SafeText::new("agentState", state).unwrap())],
         )
         .unwrap(),
         model: None,
@@ -42,12 +46,16 @@ fn spawn_row(owner: &AdapterStoreOwner) -> AdapterInboundEvent {
 
 /// A fixture whose spawn turn has ended with its row reporting the child live.
 fn ended_spawn_turn() -> Fixture {
+    ended_spawn_turn_reporting("running")
+}
+
+fn ended_spawn_turn_reporting(state: &str) -> Fixture {
     let mut fixture = migrated_fixture();
     let ended = AdapterInboundEvent::Turn {
         state: TurnState::Completed,
         now_millis: 20,
     };
-    let spawn = spawn_row(&fixture.owner);
+    let spawn = spawn_row_reporting(&fixture.owner, state);
     apply(&mut fixture, vec![spawn, ended]);
     fixture
 }
@@ -237,6 +245,21 @@ fn a_child_end_past_the_turn_cap_still_settles_the_spawn_row() {
     assert_eq!(spawn_state(&fixture.connection), "running");
     assert!(settle(&mut fixture, "turn-129", TurnState::Completed, 50));
     assert_eq!(spawn_state(&fixture.connection), "completed");
+    assert!(
+        !start(&mut fixture, "turn-129", 60),
+        "an ended turn never runs again"
+    );
+    assert_eq!(spawn_state(&fixture.connection), "completed");
+}
+
+#[test]
+fn a_child_turn_after_its_row_was_rewritten_settled_still_shows_running() {
+    let mut fixture = ended_spawn_turn_reporting("completed");
+    assert_eq!(spawn_state(&fixture.connection), "completed");
+    assert!(start(&mut fixture, "second", 40));
+    assert_eq!(spawn_state(&fixture.connection), "running");
+    assert!(settle(&mut fixture, "second", TurnState::Failed, 50));
+    assert_eq!(spawn_state(&fixture.connection), "errored");
 }
 
 #[test]
@@ -275,6 +298,19 @@ fn a_live_child_of_an_ended_turn_reads_unknown_once_nothing_can_run_it() {
     // The app restarted, or the runtime exited, without recording an end.
     settle_lost_children(&mut page, |_| false).unwrap();
     assert_eq!(page_states(&page), ["unknown"]);
+
+    // A recovery that ends the epoch durably settles it while still held.
+    fixture
+        .connection
+        .execute(
+            "UPDATE session_runtime_epochs SET state='exited',terminal_at=40,exit_kind='processExit'
+               WHERE session_id='session-one' AND runtime_epoch=1",
+            [],
+        )
+        .unwrap();
+    let mut ended = load_chat_page(&fixture.connection, project(), chat(), None).unwrap();
+    settle_lost_children(&mut ended, |_| true).unwrap();
+    assert_eq!(page_states(&ended), ["unknown"]);
 }
 
 #[test]

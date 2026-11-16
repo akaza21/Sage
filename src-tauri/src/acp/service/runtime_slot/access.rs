@@ -30,6 +30,21 @@ impl RuntimeSlot {
         }
     }
 
+    /// Whether this exact owner's runtime was published and has not been
+    /// released, recovering or not: anything it spawned may still run.
+    pub(crate) fn runs(&self, owner: &RuntimeOwner) -> bool {
+        match &*self.lock() {
+            State::Claimed { owner: current, .. }
+            | State::Recovery { owner: current, .. }
+            | State::StartingRecovery { owner: current } => current == owner,
+            State::Empty
+            | State::Starting { .. }
+            | State::Primed { .. }
+            | State::Stopping { .. }
+            | State::Stopped => false,
+        }
+    }
+
     pub(crate) fn is_empty(&self) -> bool {
         matches!(&*self.lock(), State::Empty)
     }

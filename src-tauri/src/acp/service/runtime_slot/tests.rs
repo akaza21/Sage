@@ -367,3 +367,24 @@ fn explicit_recovery_close_releases_only_the_retained_exact_host() {
     assert!(!slot.is_active());
     foreign.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
+
+#[test]
+fn a_recovering_owner_still_runs_what_it_spawned_until_released() {
+    let slot = RuntimeSlot::new();
+    let first = owner("session-first");
+    assert!(!slot.runs(&first));
+    slot.claim(first.clone(), host(&first)).unwrap();
+    assert!(slot.runs(&first));
+    assert!(!slot.runs(&owner("session-second")));
+    slot.mark_recovery(&first).unwrap();
+    assert!(slot.runs(&first), "recovery keeps the owner");
+    slot.recover_after_zero_process(&first).unwrap();
+    assert!(!slot.runs(&first), "a released owner runs nothing");
+
+    slot.reserve_start(first.clone()).unwrap();
+    assert!(!slot.runs(&first));
+    slot.mark_recovery(&first).unwrap();
+    assert!(slot.runs(&first));
+    slot.abort_start(&first).unwrap();
+    assert!(!slot.runs(&first));
+}

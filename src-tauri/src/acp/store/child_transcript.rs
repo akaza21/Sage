@@ -1,6 +1,8 @@
 use rusqlite::{Connection, TransactionBehavior, params};
 
 use sage_acp_protocol::contract::ProjectionRevision;
+
+use crate::acp::store::StoreError;
 use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use sage_acp_protocol::codex_protocol::{ChildTranscriptSnapshot, MAX_SNAPSHOT_BYTES};
@@ -92,6 +94,8 @@ pub(crate) enum ChildTranscriptStoreError {
     Corrupt,
     #[error("child transcript capacity reached")]
     Capacity,
+    #[error("child state could not reach the parent projection")]
+    Projection(#[source] StoreError),
 }
 
 pub(crate) fn verify_current_binding(
@@ -161,13 +165,14 @@ pub(crate) fn persist_snapshot(
     validate_bounds(&merged)?;
     write_snapshot_in(&transaction, scope, &merged, now_millis, false)?;
     let published = match settled::snapshot_state(&merged) {
-        Some(state) => settled::record_child_state(&transaction, scope, state, now_millis)
-            .map_err(|error| match error {
-                crate::acp::store::StoreError::Database(error) => {
-                    ChildTranscriptStoreError::Storage(error)
-                }
-                _ => ChildTranscriptStoreError::Corrupt,
-            })?,
+        Some((turn, state)) => {
+            settled::record_child_state(&transaction, scope, turn, state, now_millis).map_err(
+                |error| match error {
+                    StoreError::Database(error) => ChildTranscriptStoreError::Storage(error),
+                    error => ChildTranscriptStoreError::Projection(error),
+                },
+            )?
+        }
         None => None,
     };
     transaction.commit()?;

@@ -99,7 +99,13 @@ fn store_live_item_in(
         .iter()
         .any(|turn| turn.id == command.child_turn_id.as_str())
     {
-        record_child_state(transaction, &scope, "running", command.now_millis)?;
+        record_child_state(
+            transaction,
+            &scope,
+            command.child_turn_id.as_str(),
+            "running",
+            command.now_millis,
+        )?;
     }
     let mut candidate = snapshot.clone();
     if snapshot.retention_limited
@@ -260,7 +266,13 @@ fn store_turn_status_in(
         .iter()
         .position(|turn| turn.id == child_turn_id.as_str());
     if position.is_none_or(|index| index + 1 == snapshot.turns.len()) {
-        record_child_state(transaction, &scope, turn_state(status), now_millis)?;
+        record_child_state(
+            transaction,
+            &scope,
+            child_turn_id.as_str(),
+            turn_state(status),
+            now_millis,
+        )?;
     }
     if let Some(index) = position {
         let turn = &mut snapshot.turns[index];
@@ -389,5 +401,6 @@ fn store_error(error: ChildTranscriptStoreError) -> StoreError {
         ChildTranscriptStoreError::Storage(error) => StoreError::Database(error),
         ChildTranscriptStoreError::Corrupt => StoreError::Corrupt("childTranscript"),
         ChildTranscriptStoreError::Capacity => capacity(),
+        ChildTranscriptStoreError::Projection(error) => error,
     }
 }
