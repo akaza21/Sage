@@ -1,3 +1,6 @@
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::bootstrap::BrowserTabNumberStore;
 pub mod acp;
 pub(crate) mod app_preview_commands;
 mod app_run_events;
@@ -25,6 +28,7 @@ pub mod codex_helper_boundary;
 mod commands;
 #[cfg(all(test, windows))]
 mod console_window_fixture;
+mod database;
 mod editor;
 mod editor_content;
 mod editor_coordination;
@@ -43,7 +47,6 @@ mod ipc_commands;
 mod launch_profile;
 mod native_session_import;
 mod notifications;
-mod persistence;
 mod preview_lifecycle;
 mod profile_handoff;
 mod profile_lock;
@@ -133,7 +136,6 @@ use tracing_subscriber::{Layer, layer::SubscriberExt, util::SubscriberInitExt};
 use crate::launch_profile::{DesktopFixtureMode, resolve_desktop_fixture_mode_from_environment};
 use crate::{
     launch_profile::{reject_unavailable_fixture_environment_inputs, resolve_launch_profile},
-    persistence::Database,
     profile_lock::{ProfileLock, ProfileLockError},
     startup_refusal::Refusal,
     state::AppState,
@@ -207,13 +209,14 @@ pub fn run() {
                     | DesktopFixtureMode::ClaudeFixture(_)
                     | DesktopFixtureMode::PiFixture(_)
             );
-            let database = match Database::open(&profile.durable_dir().join("sage.db")) {
-                Ok(database) => database,
-                Err(error @ AppError::NewerProfile { .. }) => {
-                    startup_refusal::exit(Refusal::NewerProfile(error.to_string()), &profile)
-                }
-                Err(error) => return Err(error.into()),
-            };
+            let database =
+                match crate::database::open_database(&profile.durable_dir().join("sage.db")) {
+                    Ok(database) => database,
+                    Err(error @ AppError::NewerProfile { .. }) => {
+                        startup_refusal::exit(Refusal::NewerProfile(error.to_string()), &profile)
+                    }
+                    Err(error) => return Err(error.into()),
+                };
             let seed_project_root = if profile.is_disposable() {
                 profile.project_root().map(ToOwned::to_owned)
             } else {

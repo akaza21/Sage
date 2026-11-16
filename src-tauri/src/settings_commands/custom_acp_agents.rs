@@ -95,7 +95,7 @@ mod tests {
     use super::*;
     use crate::{
         acp::bindings::standard_acp::custom_executable::write_test_executable,
-        persistence::Database, settings_store::CustomAcpAgentDraft,
+        settings_store::CustomAcpAgentDraft,
     };
 
     fn draft(executable: &std::path::Path) -> CustomAcpAgentDraft {
@@ -115,7 +115,9 @@ mod tests {
         std::fs::create_dir_all(&root).unwrap();
         let executable = root.join("agent.exe");
         write_test_executable(&executable, b"agent");
-        let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
+        let state = AppState::new(
+            crate::database::open_database(std::path::Path::new(":memory:")).unwrap(),
+        );
         assert_eq!(
             save(&state, &draft(&root.join("missing.exe"))).unwrap_err(),
             "The executable does not exist."
@@ -155,7 +157,9 @@ mod tests {
         write_test_executable(&target, b"agent");
         let link = root.join("agent-link");
         std::os::unix::fs::symlink(&target, &link).unwrap();
-        let state = AppState::new(Database::open(std::path::Path::new(":memory:")).unwrap());
+        let state = AppState::new(
+            crate::database::open_database(std::path::Path::new(":memory:")).unwrap(),
+        );
         let refusal = save(&state, &draft(&link)).unwrap_err();
         assert_eq!(
             refusal,

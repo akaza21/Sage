@@ -53,7 +53,7 @@ impl Drop for Release {
 
 pub(super) struct CausalStore {
     pub(super) inner: DatabaseAcpStore,
-    pub(super) database: crate::persistence::Database,
+    pub(super) database: sage_db::database::Database,
     pub(super) project: SageProjectId,
     pub(super) chat: SageChatId,
     pub(super) events: mpsc::SyncSender<Event>,

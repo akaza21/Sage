@@ -7,6 +7,7 @@ use sage_acp_protocol::{
     scheduler::RuntimeOwner,
     session_config::{ConfigMutation, SessionConfig},
 };
+use sage_db::error::SqliteResultExt;
 
 use super::AcpService;
 
@@ -31,7 +32,7 @@ impl AcpService {
                     config,
                     sage_core::time::now_millis(),
                 )
-                .map_err(Into::into)
+                .db()
             });
             if let Err(error) = saved {
                 tracing::warn!(?error, "session config snapshot was not stored");
@@ -106,14 +107,15 @@ impl AcpService {
         }
         // Written only while the chat's next send still runs this session.
         let stored = self.database.write_connection().and_then(|mut connection| {
-            let transaction = connection.transaction()?;
-            if !crate::acp::store::runs_next_send(&transaction, session)? {
+            let transaction = connection.transaction().db()?;
+            if !crate::acp::store::runs_next_send(&transaction, session).db()? {
                 return Ok(None);
             }
-            notices::clear(&transaction, session, choice)?;
+            notices::clear(&transaction, session, choice).db()?;
             let written =
-                choices::record(&transaction, session, choice, sage_core::time::now_millis())?;
-            transaction.commit()?;
+                choices::record(&transaction, session, choice, sage_core::time::now_millis())
+                    .db()?;
+            transaction.commit().db()?;
             Ok(Some(written))
         });
         // On failure the rearmed restore resets what it holds from what is

@@ -1,13 +1,11 @@
 use super::*;
 use crate::acp::bindings::codex::test_identity::{MANAGED_CODEX_HOME, user_agent};
-use crate::{
-    acp::{
-        projection::ItemContent,
-        runtime::{JournalHandle, ProjectionMailbox, SqliteAdapterBatchJournal},
-        store::{DatabaseAcpStore, load_chat_page},
-    },
-    persistence::Database,
+use crate::acp::{
+    projection::ItemContent,
+    runtime::{JournalHandle, ProjectionMailbox, SqliteAdapterBatchJournal},
+    store::{DatabaseAcpStore, load_chat_page},
 };
+use sage_db::database::Database;
 
 struct TempRoot(std::path::PathBuf);
 
@@ -47,7 +45,7 @@ fn codex_terminal_only_error_survives_the_shared_pump_history_and_database_reope
                 .run_to_completion(256, std::time::Duration::ZERO, None).unwrap();
         }
         drop(fixture);
-        let database = Database::open(&path).unwrap();
+        let database = crate::database::open_database(&path).unwrap();
         let mut codex = CodexRuntime::fixture_with_identity(Platform::WindowsX86_64, [7; 32], session("one"));
         let init = codex.command(AdapterCommand::Initialize).unwrap();
         codex.resolve_egress(init.into_token(), EgressResolution::Queued).unwrap();
@@ -88,7 +86,7 @@ fn codex_terminal_only_error_survives_the_shared_pump_history_and_database_reope
         drop(shutdown);
         drop(handle);
         drop(database);
-        let reopened = Database::open(&path).unwrap();
+        let reopened = crate::database::open_database(&path).unwrap();
         assert_failed_history(&reopened);
         drop(reopened);
     });

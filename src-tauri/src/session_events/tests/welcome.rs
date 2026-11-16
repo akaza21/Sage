@@ -5,7 +5,7 @@ use sage_acp_protocol::contract::{SageChatId, SageProjectId};
 #[test]
 fn hidden_welcome_does_not_skip_real_turns_or_create_a_trailing_page() {
     for count in [20, 21] {
-        let database = Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let session = legacy_welcome_session(&database);
         let chat = chat(&database, &session);
         for ordinal in 0..count {
@@ -68,7 +68,7 @@ fn history(database: &Database, chat: &str) -> crate::acp::projection::AcpChatPa
 
 #[test]
 fn hidden_welcome_preserves_same_turn_item_continuation_without_duplicates() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let seed = legacy_welcome_session(&database);
     let chat = chat(&database, &seed);
     let real = database
@@ -147,7 +147,7 @@ fn hidden_welcome_preserves_same_turn_item_continuation_without_duplicates() {
 
 #[test]
 fn historical_seed_provenance_is_omitted_without_deleting_rows_or_usage() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let session = legacy_welcome_session(&database);
     let chat = chat(&database, &session);
     let before = durable_chat_state(&database, &chat);
@@ -173,7 +173,7 @@ fn historical_seed_provenance_is_omitted_without_deleting_rows_or_usage() {
 
 #[test]
 fn an_assistant_only_zero_duration_turn_without_seed_fact_provenance_is_preserved() {
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let session = historical_simulator_session(&database, "observedTurn");
     let chat = chat(&database, &session);
     assert_eq!(database.messages(&session).unwrap().len(), 1);

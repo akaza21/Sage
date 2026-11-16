@@ -1,13 +1,16 @@
 use super::*;
 use rusqlite::OptionalExtension;
+use sage_db::error::SqliteResultExt;
 
 pub(super) fn migrate(connection: &Connection) -> AppResult<()> {
-    connection.execute_batch(
-        "CREATE TABLE IF NOT EXISTS terminal_dock (
+    connection
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS terminal_dock (
            singleton INTEGER PRIMARY KEY CHECK (singleton = 1),
            visible INTEGER NOT NULL CHECK (visible IN (0, 1))
          ) STRICT;",
-    )?;
+        )
+        .db()?;
     Ok(())
 }
 
@@ -23,7 +26,8 @@ impl SettingsStore {
                 [],
                 |row| row.get(0),
             )
-            .optional()?
+            .optional()
+            .db()?
             .unwrap_or(false))
     }
 
@@ -32,11 +36,13 @@ impl SettingsStore {
             .0
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
-        connection.execute(
-            "INSERT INTO terminal_dock(singleton, visible) VALUES (1, ?1)
+        connection
+            .execute(
+                "INSERT INTO terminal_dock(singleton, visible) VALUES (1, ?1)
              ON CONFLICT(singleton) DO UPDATE SET visible=excluded.visible",
-            [visible],
-        )?;
+                [visible],
+            )
+            .db()?;
         Ok(visible)
     }
 }

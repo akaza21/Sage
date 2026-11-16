@@ -135,7 +135,7 @@ impl CharacterizationBinding {
     pub(super) fn complete_receipt(
         &self,
         owner: &RuntimeOwner,
-        wal: crate::persistence::WalConvergenceReceipt,
+        wal: sage_db::physical_storage::WalConvergenceReceipt,
     ) -> Result<(), CharacterizationError> {
         self.receipt
             .complete(owner, wal)

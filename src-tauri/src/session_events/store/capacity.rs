@@ -1,5 +1,6 @@
 use rusqlite::{OptionalExtension, Transaction, params};
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 
 use sage_core::limits::LIMITS;
 
@@ -62,7 +63,7 @@ pub(super) fn load(
                 })
             },
         )
-        .optional()?
+        .optional().db()?
         .ok_or_else(|| AppError::InvalidRequest("simulator usage ledger is absent".into()))
 }
 

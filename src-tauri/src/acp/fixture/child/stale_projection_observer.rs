@@ -127,8 +127,8 @@ fn ready_adapter() -> FixtureAdapter {
     adapter
 }
 
-fn durable_database() -> crate::persistence::Database {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+fn durable_database() -> sage_db::database::Database {
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let connection = database.connection();
     connection.execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-a','project-a',1,1,1)",[]).unwrap();
     connection.execute("INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-a','project-a','C:/project','c:/project',0)",[]).unwrap();

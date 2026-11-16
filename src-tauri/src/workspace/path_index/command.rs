@@ -2,6 +2,7 @@ use sage_core::error::{AppError, AppResult};
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::{
     settings_store::EditorValue,
     state::AppState,

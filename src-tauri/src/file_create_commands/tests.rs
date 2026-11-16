@@ -1,9 +1,10 @@
+use crate::project_registry::ProjectRegistryStore;
+use crate::project_registry::create::ProjectCreateStore;
 use std::{fs, path::Path, sync::Arc};
 
 use uuid::Uuid;
 
 use super::*;
-use crate::persistence::Database;
 use sage_domain::{file_operations::FileCreationOutcome, resource::ResourceRef};
 
 fn fixture() -> (
@@ -13,7 +14,7 @@ fn fixture() -> (
 ) {
     let root = std::env::temp_dir().join(format!("sage-create-command-{}", Uuid::new_v4()));
     fs::create_dir_all(root.join("src")).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project = database.create_project_from_root(&root).unwrap();
     (root, Arc::new(AppState::new(database)), project)
 }
