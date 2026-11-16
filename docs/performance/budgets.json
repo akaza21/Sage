@@ -134,9 +134,9 @@
       },
       {
         "entry": "src/workbench/AgentResourcesPopover.tsx",
-        "maxGzipBytes": 1639,
+        "maxGzipBytes": 2160,
         "maxCssGzipBytes": 139,
-        "reason": "Chat resource rows from retained projections; mounts only while the resources popover is open."
+        "reason": "Chat resource rows and the changes, outputs and sources projection moved off the first chat paint; mounts only while the resources popover is open."
       },
       {
         "entry": "src/features/chat/ComposerAccessMenu.tsx",
