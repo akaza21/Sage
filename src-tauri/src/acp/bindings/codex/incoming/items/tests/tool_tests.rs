@@ -552,10 +552,12 @@ fn spawn_keeps_only_the_wire_supplied_bounded_model_and_effort() {
 }
 
 #[test]
-fn an_unrecognised_tool_row_keeps_paths_private_like_other_tool_content() {
+fn an_unrecognised_tool_row_keeps_paths_as_what_other_tools_were_asked() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
     let row = item(json!({
         "type": "futureToolKind", "status": "completed", "title": "Inspect",
-        "target": "/home/someone/project/notes.md"
+        "target": "/srv/app/notes.md", "draft": format!("{home}/todo.md")
     }));
     let (payload, _, _) = normalize_item(&row, ItemLifecycle::Completed, &UnusedMapper)
         .expect("other tool")
@@ -567,16 +569,9 @@ fn an_unrecognised_tool_row_keeps_paths_private_like_other_tool_content() {
     else {
         panic!("tool row with a summary");
     };
-    assert!(
-        summary.as_str().contains("futureToolKind"),
-        "{}",
-        summary.as_str()
-    );
-    assert!(
-        !summary.as_str().contains("/home/someone"),
-        "{}",
-        summary.as_str()
-    );
+    for shown in ["futureToolKind", "/srv/app/notes.md", "\"~/todo.md\""] {
+        assert!(summary.as_str().contains(shown), "{}", summary.as_str());
+    }
 }
 
 #[test]

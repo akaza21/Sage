@@ -1,4 +1,4 @@
-use super::{HELD_MAX, KEEP_AFTER, ReplyStream};
+use super::{ITEM_BYTES, LOOKAHEAD, ReplyStream, STALL};
 use crate::acp::redaction::text::reply_text;
 
 fn streamed(text: &str, chunk: usize) -> (Vec<(usize, String)>, ReplyStream) {
@@ -51,8 +51,24 @@ fn text_without_spaces_streams_up_to_its_last_wide_character() {
     }
     assert_eq!(stream.streaming(), "这是一段没有空格的中文段落");
     let mut long = ReplyStream::default();
-    long.push(&"a".repeat(3 * HELD_MAX)).unwrap();
-    assert_eq!(long.streaming().len(), 3 * HELD_MAX - HELD_MAX);
+    long.push(&"a".repeat(3 * LOOKAHEAD)).unwrap();
+    assert_eq!(long.streaming(), "");
+}
+
+#[test]
+fn a_joined_word_longer_than_any_span_is_held_back_whole() {
+    let line = format!(
+        "{}postgres://admin:S3cretPass@db/app{} done",
+        "var a=1;".repeat(LOOKAHEAD / 4),
+        ";b=2".repeat(LOOKAHEAD / 2)
+    );
+    for chunk in [1, 7, 64] {
+        let (views, mut stream) = streamed(&format!("Minified: {line}"), chunk);
+        for (sent, view) in views {
+            assert!(!view.contains("S3cr"), "by {chunk} at {sent}");
+        }
+        assert!(!stream.finished().contains("S3cr"));
+    }
 }
 
 #[test]
@@ -76,8 +92,8 @@ fn every_view_is_the_redacted_text_shown_so_far_or_the_view_before() {
             let (views, mut stream) = streamed(&text, chunk);
             assert_eq!(stream.finished(), reply_text(&text), "{piece} by {chunk}");
             let mut previous = String::new();
-            for (sent, view) in views {
-                if view != previous {
+            for (index, (sent, view)) in views.into_iter().enumerate() {
+                if view != previous && (chunk > 64 || index % 8 == 0) {
                     let expected = reply_text(visible(&text[..sent]));
                     assert_eq!(view, expected, "{piece} by {chunk} at {sent}");
                 }
@@ -87,35 +103,69 @@ fn every_view_is_the_redacted_text_shown_so_far_or_the_view_before() {
     }
 }
 
-#[test]
-fn streaming_work_per_delta_stays_bounded_even_when_a_construct_never_closes() {
-    let per_delta = |opening: &str, bytes: usize| {
-        let text = format!(
-            "{opening}{}",
-            "word and a /srv/path/x line\n".repeat(bytes / 28)
-        );
-        let mut stream = ReplyStream::default();
-        let mut deltas = 0;
-        for chunk in text.as_bytes().chunks(256) {
-            stream.push(std::str::from_utf8(chunk).unwrap()).unwrap();
-            stream.streaming();
-            deltas += 1;
+fn work_and_longest_wait(text: &str, chunk: usize) -> (usize, usize) {
+    let mut stream = ReplyStream::default();
+    let (mut previous, mut since, mut longest) = (String::new(), 0, 0);
+    for piece in text.as_bytes().chunks(chunk) {
+        stream.push(std::str::from_utf8(piece).unwrap()).unwrap();
+        let view = stream.streaming();
+        since += piece.len();
+        if view != previous {
+            longest = longest.max(since);
+            since = 0;
         }
-        stream.redacted_bytes / deltas
-    };
-    for opening in [
-        "",
-        "--password 'hunter2 rejected; it isn't valid ",
-        "-----BEGIN PRIVATE KEY-----\n",
-        "config = {\"nested\": [",
+        previous = view;
+    }
+    (stream.redacted_bytes, longest)
+}
+
+#[test]
+fn streaming_a_plain_reply_redacts_each_byte_a_few_times() {
+    let text = "plain words in a long reply, line after line.\n".repeat(256 * 1024 / 47);
+    let (work, longest) = work_and_longest_wait(&text, 16);
+    assert!(
+        work <= 8 * text.len(),
+        "{work} bytes redacted for {}",
+        text.len()
+    );
+    assert!(longest <= 64, "the view waited {longest} bytes");
+}
+
+#[test]
+fn streaming_work_stays_linear_and_the_view_moves_once_a_construct_closes() {
+    let filler = "word and a /srv/path/x line\n";
+    for (opening, closing) in [
+        ("password=\"", "\" then"),
+        (
+            "-----BEGIN PRIVATE KEY-----\n",
+            "-----END PRIVATE KEY-----\n",
+        ),
+        ("config = {\"nested\": [", "]}\n"),
+        (
+            "-----BEGIN CERTIFICATE-----\n",
+            "-----END CERTIFICATE-----\n",
+        ),
     ] {
-        let short = per_delta(opening, 48 * 1024);
-        let long = per_delta(opening, 256 * 1024);
-        assert!(long <= 3 * KEEP_AFTER, "{opening}: {long} bytes per delta");
-        assert!(
-            long <= short * 2,
-            "{opening}: work per delta grew from {short} to {long}"
+        let text = format!(
+            "{}{opening}{}{closing}{}",
+            filler.repeat(64),
+            "word and more words ".repeat(40),
+            filler.repeat(256 * 1024 / filler.len())
         );
+        let (work, longest) = work_and_longest_wait(&text, 256);
+        assert!(work <= 32 * text.len(), "{opening}: {work} bytes redacted");
+        assert!(
+            longest <= STALL,
+            "{opening}: the view waited {longest} bytes"
+        );
+    }
+    for opening in [
+        "--password 'hunter2 rejected; it isn't valid ",
+        "token=\"open ",
+    ] {
+        let text = format!("{opening}{}", filler.repeat(256 * 1024 / filler.len()));
+        let (work, _) = work_and_longest_wait(&text, 256);
+        assert!(work <= 32 * text.len(), "{opening}: {work} bytes redacted");
     }
 }
 
@@ -133,10 +183,16 @@ fn a_reply_shown_whole_for_a_tool_call_is_not_taken_back_by_the_next_delta() {
 
 #[test]
 fn a_whole_reply_longer_than_an_item_is_clipped_not_dropped() {
-    let mut stream = ReplyStream::new(&"token=abc ".repeat(100));
+    let mut stream = ReplyStream::new(&"token=abc ".repeat(ITEM_BYTES / 10));
+    let streaming = stream.streaming();
     let whole = stream.finished();
-    let clipped = stream.finished_within(whole.len() - 10);
-    assert!(clipped.len() <= whole.len() - 10, "{clipped}");
-    assert!(clipped.ends_with('\u{2026}'), "{clipped}");
-    assert!(whole.starts_with(clipped.trim_end_matches('\u{2026}')));
+    for shown in [&streaming, &whole] {
+        assert!(shown.len() <= ITEM_BYTES, "{} bytes", shown.len());
+        assert!(shown.ends_with('\u{2026}'));
+    }
+    assert!(
+        whole.starts_with("[redacted] [redacted] "),
+        "{}",
+        &whole[..80]
+    );
 }

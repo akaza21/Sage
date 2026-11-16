@@ -3021,6 +3021,42 @@ fn a_turn_that_ends_before_its_reply_completes_shows_the_reply_whole() {
 }
 
 #[test]
+fn a_reply_that_redaction_makes_longer_than_an_item_is_clipped_at_turn_end() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let delta = "token=abc ".repeat(2_500);
+    for _ in 0..10 {
+        runtime
+            .ingest(
+                &frame(json!({"method":"item/agentMessage/delta","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"reply","delta":delta
+                }})),
+                &Mapper,
+            )
+            .expect("delta");
+    }
+    let batch = runtime
+        .ingest(
+            &frame(json!({"method":"turn/completed","params":{
+                "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
+            }})),
+            &Mapper,
+        )
+        .expect("a reply grown by redaction still ends its turn");
+    assert!(
+        matches!(
+            batch.events(),
+            [AdapterEvent::Item { payload: NormalizedPayload::Text { text }, .. }, AdapterEvent::Turn { .. }, ..]
+                if text.as_str().ends_with('\u{2026}')
+                    && text.as_str().len() <= sage_core::limits::LIMITS.wire.normalized_item_bytes as usize
+        ),
+        "{:?}",
+        batch.events().len()
+    );
+}
+
+#[test]
 fn streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
     let home = std::env::home_dir().expect("home folder");
     let home = home.to_str().expect("UTF-8 home folder");

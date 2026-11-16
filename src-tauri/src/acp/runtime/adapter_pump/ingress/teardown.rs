@@ -33,14 +33,20 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         .await
     }
 
-    /// Once the harness's output has ended mid-turn, its replies are shown
-    /// whole before the turn is swept, as any other ending shows them.
-    pub(super) async fn accept_unfinished_replies(
+    /// The frame left in the harness's output when it ended. With none left
+    /// mid-turn, its replies are shown whole before the turn is swept, as any
+    /// other ending shows them.
+    pub(super) async fn accept_last_frame(
         &mut self,
+        frame: Option<Frame>,
         now_millis: i64,
     ) -> Result<bool, AdapterPumpError> {
-        if self.terminal.is_some() || self.ensure_live().is_err() {
-            return Ok(false);
+        let ended = frame.is_none();
+        let accepted = self
+            .accept_optional(frame, now_millis, IngestMode::Deferred)
+            .await?;
+        if !ended || accepted || self.terminal.is_some() || self.ensure_live().is_err() {
+            return Ok(accepted);
         }
         let Ok(events) = self.adapter.unfinished_replies() else {
             return Ok(false);

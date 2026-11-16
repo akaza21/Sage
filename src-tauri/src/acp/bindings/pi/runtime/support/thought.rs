@@ -1,9 +1,34 @@
-use super::super::PiRuntime;
+use super::super::{PiRuntime, TurnIntent};
 use super::stream::closed_snapshot;
 use crate::acp::bindings::adapter::{AdapterEvent, AdapterRuntimeError};
 use crate::acp::bindings::pi::TerminalOutcome;
 use crate::acp::redaction::text::ReplyStream;
-use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
+use sage_acp_protocol::{
+    contract::{RequiredText, SafeText},
+    intent::{ExternalId, NormalizedPayload},
+    lifecycle::ItemLifecycle,
+};
+
+impl TurnIntent {
+    /// A turn starts with no reply, thought or tool open.
+    pub(in crate::acp::bindings::pi) fn new(
+        external_id: ExternalId,
+        client_message_id: RequiredText<512>,
+    ) -> Self {
+        Self {
+            external_id,
+            client_message_id,
+            text_id: None,
+            text_snapshot: None,
+            compaction_id: None,
+            dialog_notices: 0,
+            thought_id: None,
+            thought_snapshot: None,
+            tools: std::collections::BTreeMap::new(),
+            tool_snapshot_bytes: 0,
+        }
+    }
+}
 
 impl PiRuntime {
     /// The reply and thought still streaming when Pi's output ended, shown

@@ -132,13 +132,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             Err(AdapterPumpError::Frame) => return self.fail_deferred_frame().await,
             Err(error) => return Err(error),
         };
-        let ended = frame.is_none();
-        let mut accepted = self
-            .accept_optional(frame, now_millis, IngestMode::Deferred)
-            .await?;
-        if ended && !accepted {
-            accepted = self.accept_unfinished_replies(now_millis).await?;
-        }
+        let accepted = self.accept_last_frame(frame, now_millis).await?;
         if !self.decoder.has_pending_input() {
             self.flush_deferred().await?;
         }

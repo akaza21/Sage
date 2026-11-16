@@ -34,8 +34,8 @@ mod tool_kinds;
 use tool_kinds::{explore_presentation, mcp_tool, read_path, web_search};
 
 use presentation::{
-    ToolPresentationInput, bounded_command_summary, bounded_label, bounded_output_summary,
-    bounded_summary, context_compaction, declared_tool_state, lenient_tool_state, parse_tool_state,
+    ToolPresentationInput, bounded_command_summary, bounded_label, bounded_summary,
+    context_compaction, declared_tool_state, lenient_tool_state, parse_tool_state,
     terminal_lifecycle, tool, tool_with_summary, tool_with_summary_status,
 };
 
@@ -156,7 +156,7 @@ fn other_item(
         input_summary: serde_json::to_string(item)
             .ok()
             .as_deref()
-            .and_then(bounded_output_summary),
+            .and_then(bounded_summary),
         output_summary: None,
         locations: BoundedVec::default(),
         command_activity: CommandActivity::Ordinary,

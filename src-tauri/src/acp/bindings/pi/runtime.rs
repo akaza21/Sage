@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, VecDeque};
 
 use crate::acp::{
     bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
-        EgressToken, HarnessAdapter, ResourceMapper,
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
+        EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
     transport::{Frame, request_payload_digest},
 };
@@ -348,18 +348,7 @@ impl HarnessAdapter for PiRuntime {
                         .map_err(|_| AdapterRuntimeError::Operation)?;
                 let egress = self.begin_prompt(&prompt, external_id.as_str())?;
                 self.commands_discovered = false;
-                self.active_turn = Some(TurnIntent {
-                    external_id,
-                    client_message_id,
-                    text_id: None,
-                    text_snapshot: None,
-                    compaction_id: None,
-                    dialog_notices: 0,
-                    thought_id: None,
-                    thought_snapshot: None,
-                    tools: BTreeMap::new(),
-                    tool_snapshot_bytes: 0,
-                });
+                self.active_turn = Some(TurnIntent::new(external_id, client_message_id));
                 // Bridge authority is scoped to the turn that was actually reserved.
                 self.begin_bridge_turn(access_mode);
                 Ok(egress)
@@ -384,9 +373,7 @@ impl HarnessAdapter for PiRuntime {
         self.ingest_frame(frame, resources)
     }
 
-    fn unfinished_replies(
-        &mut self,
-    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+    fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
         self.whole_unfinished_replies()
     }
 

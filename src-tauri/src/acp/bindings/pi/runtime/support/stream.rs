@@ -42,3 +42,15 @@ fn within_item_limits(size: usize) -> bool {
     size <= LIMITS.wire.normalized_item_bytes as usize
         && size <= LIMITS.wire.item_bytes_per_turn as usize
 }
+
+#[cfg(test)]
+mod tests {
+    use super::{ReplyStream, closed_snapshot};
+
+    #[test]
+    fn a_reply_that_redaction_makes_longer_than_an_item_is_clipped_when_it_closes() {
+        let mut snapshot = Some(ReplyStream::new(&"token=abc ".repeat(25_000)));
+        let closed = closed_snapshot(&mut snapshot).expect("clipped, not refused");
+        assert!(closed.ends_with('\u{2026}'), "{}", closed.len());
+    }
+}

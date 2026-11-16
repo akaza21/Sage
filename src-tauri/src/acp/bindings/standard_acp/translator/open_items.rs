@@ -14,9 +14,8 @@ use sage_acp_protocol::{
 use sage_core::limits::LIMITS;
 
 use super::decode::turn_scoped_key;
-use super::{
-    AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TEXT_BYTES, TranslationError,
-};
+use super::{AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TranslationError};
+use crate::acp::redaction::text::ReplyStream;
 
 /// At most this many items close in the prompt response; any beyond it stay
 /// open and are swept, so the terminal frame keeps room for diff settlement.
@@ -131,7 +130,7 @@ impl StandardAcpTranslator {
     }
 
     /// A text or thought shown whole, including the last word that streaming
-    /// held back, clipped if redaction made it longer than an item may be.
+    /// held back.
     fn whole(
         &mut self,
         external_key: ExternalId,
@@ -141,7 +140,7 @@ impl StandardAcpTranslator {
         let finished = self
             .text_snapshots
             .get_mut(external_key.as_str())
-            .map(|stream| stream.finished_within(TEXT_BYTES))
+            .map(ReplyStream::finished)
             .and_then(|text| SafeText::new("text", text).ok());
         let payload = match (payload, finished) {
             (NormalizedPayload::Text { .. }, Some(text)) => NormalizedPayload::Text { text },

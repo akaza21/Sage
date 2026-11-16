@@ -145,6 +145,7 @@ pub(crate) fn share_async_runtime() {
 pub fn run() {
     initialize_tracing();
     share_async_runtime();
+    tauri::async_runtime::spawn_blocking(acp::redaction::text::home::load_folders_beside_home);
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())

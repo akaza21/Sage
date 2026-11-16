@@ -382,25 +382,13 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         {
             return Ok(());
         }
-        if !matches!(resolution, EgressResolution::Queued)
-            && let Some(index) = self.sent.iter().position(|(sent, _)| *sent == token)
-        {
-            let (_, sent) = self.sent.swap_remove(index);
-            if let Some(bridge) = self.bridge.as_mut() {
-                if matches!(
-                    resolution,
-                    EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
-                ) {
-                    bridge.undo(&sent);
-                } else {
-                    bridge.delivered(&sent);
-                }
-            }
-        }
+        self.settle_sent(&token, resolution);
         self.session.resolve_egress(token, resolution)
     }
 }
 
+#[path = "runtime_delivery.rs"]
+mod delivery;
 #[path = "runtime_native.rs"]
 mod native;
 use native::sdk_capabilities;

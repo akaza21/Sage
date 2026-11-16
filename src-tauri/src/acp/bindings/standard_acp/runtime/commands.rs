@@ -157,7 +157,11 @@ impl HarnessAdapter for StandardAcpRuntime {
     fn unfinished_replies(
         &mut self,
     ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
-        self.whole_unfinished_replies()
+        let events = match self.active.as_mut() {
+            Some(active) if active.turn.is_some() => active.translator.unfinished_replies(),
+            _ => return Ok(Vec::new()),
+        };
+        Ok(self.translate(events)?.into_parts().0)
     }
 
     fn ingest(
