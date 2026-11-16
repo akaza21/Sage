@@ -59,7 +59,7 @@ impl ImageRefusal {
             ),
             Self::TooLarge(total) => format!(
                 "Images in one message can total at most {} after resizing to {PROMPT_IMAGE_EDGE_PX} px. Remove some images or crop them.",
-                crate::image_artifacts::byte_size(total)
+                sage_images::byte_size(total)
             ),
         }
     }

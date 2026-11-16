@@ -340,8 +340,7 @@ fn normalized_payloads_admit_only_canonical_resource_refs() {
 fn image_payloads_use_the_image_kind_and_reject_unknown_media_types() {
     const PNG: &str = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
     let payload =
-        crate::acp::image_admit::admit_image_data_url(&format!("data:image/png;base64,{PNG}"))
-            .unwrap();
+        sage_images::admit::admit_image_data_url(&format!("data:image/png;base64,{PNG}")).unwrap();
     assert_eq!(
         payload.kind(),
         sage_acp_protocol::lifecycle::ItemKind::Image

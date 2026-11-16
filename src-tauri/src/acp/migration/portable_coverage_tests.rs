@@ -13,11 +13,12 @@ use super::{
     backup::load_retained_pair,
     fingerprint::{SchemaClass, database_fingerprint, file_fingerprint},
     manifest::{BackupManifest, BackupSource, ReplacementManifest, SourceSet, write_stage},
-    platform::{remove_synced, rename_synced},
+    platform::rename_synced,
     publish::recover_or_publish,
     schema_upgrade::{apply_through_v13, apply_through_v18, apply_v5, apply_v6},
     test_failpoint,
 };
+use sage_db::files::remove_synced;
 
 const PENDING_CAPABILITIES: &str = "{\"schemaVersion\":1,\"protocolVersion\":\"pending\",\"newSession\":false,\"resumeSession\":false,\"loadSession\":false,\"closeSession\":false,\"prompt\":false,\"cancel\":false,\"nativeSessionFork\":false,\"activeTurnSteer\":false,\"childConversationProjection\":false,\"childTranscriptRead\":false,\"collaborationEventProjection\":false,\"multiRootExtensionSchemaId\":null,\"modelCount\":0,\"configCount\":0}";
 

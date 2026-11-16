@@ -2,11 +2,12 @@ use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{repository_conflict, state::AppState, workspace::Workspace};
+use crate::state::AppState;
 use sage_domain::file_operations::{
     GitFileMutationCommandError, GitRepositoryCherryPickContinueRequest,
     GitRepositoryCherryPickContinueResult,
 };
+use sage_workspace::Workspace;
 
 const MAX_GIT_PROJECT_ID_BYTES: usize = 512;
 const MAX_GIT_ROOT_ID_BYTES: usize = 512;
@@ -33,10 +34,10 @@ fn cherry_pick_command_error(error: AppError) -> GitFileMutationCommandError {
                     sage_domain::file_operations::GitProcessState::PotentiallyRunning
                 }
             },
-            message: crate::repository_public_error::containment().into(),
+            message: sage_git::public_error::containment().into(),
         },
         error => GitFileMutationCommandError::Failed {
-            message: crate::repository_public_error::cherry_pick(&error),
+            message: sage_git::public_error::cherry_pick(&error),
         },
     }
 }
@@ -92,7 +93,7 @@ async fn continue_git_cherry_pick_inner(
             (root.id.clone(), workspace)
         })
         .collect();
-    let cherry_pick_result = repository_conflict::continue_cherry_pick(&workspace).await;
+    let cherry_pick_result = sage_git::conflict::continue_cherry_pick(&workspace).await;
     let error = match cherry_pick_result {
         Ok(()) => None,
         Err(AppError::GitEffectUnknown(_)) => Some(sage_domain::file_operations::GitFileMutationError {
@@ -106,7 +107,7 @@ async fn continue_git_cherry_pick_inner(
         project_id: request.project_id,
         root_id: request.root_id,
         transition_epoch: *transition_epoch,
-        repositories: crate::repository_index_status::project_status(repository_roots).await,
+        repositories: sage_git::index_status::index_project_status(repository_roots).await,
         error,
     })
 }

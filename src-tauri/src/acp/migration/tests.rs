@@ -3007,13 +3007,13 @@ fn replacement_cleanup_prefixes_converge() {
         retire_manifested_source(&paths, &manifest);
         platform::rename_synced(&paths.replacement_stage, &paths.live).unwrap();
         if matches!(prefix, "shm" | "wal" | "main") && paths.retired_shm.exists() {
-            platform::remove_synced(&paths.retired_shm).unwrap();
+            sage_db::files::remove_synced(&paths.retired_shm).unwrap();
         }
         if matches!(prefix, "wal" | "main") && paths.retired_wal.exists() {
-            platform::remove_synced(&paths.retired_wal).unwrap();
+            sage_db::files::remove_synced(&paths.retired_wal).unwrap();
         }
         if prefix == "main" {
-            platform::remove_synced(&paths.retired_live).unwrap();
+            sage_db::files::remove_synced(&paths.retired_live).unwrap();
         }
         let connection = open_or_migrate(&directory.database()).unwrap();
         assert_eq!(

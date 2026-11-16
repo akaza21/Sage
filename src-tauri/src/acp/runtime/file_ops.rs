@@ -2,13 +2,13 @@ use std::sync::{Arc, atomic::AtomicBool};
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    editor,
-    workspace::{Workspace, file_rename::FileRenameMarker, resource_trash::ResourceTrashMarker},
-};
+use crate::editor;
 use sage_db::database::Database;
 use sage_domain::{
     editor::BufferSnapshotRequest, file_operations::TrashResourceKind, resource::ResourceRef,
+};
+use sage_workspace::{
+    Workspace, file_rename::FileRenameMarker, resource_trash::ResourceTrashMarker,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
