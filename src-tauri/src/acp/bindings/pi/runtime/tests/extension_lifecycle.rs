@@ -377,13 +377,13 @@ fn assert_text(runtime: &mut PiRuntime, expected: &str, client: &str) {
     let batch = runtime
         .ingest(
             &frame(json!({"type":"message_update",
-        "assistantMessageEvent":{"type":"text_delta","delta":expected}})),
+        "assistantMessageEvent":{"type":"text_delta","delta":format!("{expected}\n")}})),
             &Mapper,
         )
         .unwrap();
     assert!(matches!(batch.events(), [AdapterEvent::Item {
         id, payload: NormalizedPayload::Text { text }, ..
-    }] if text.as_str() == expected && id.turn_client_message_id.as_ref().unwrap().as_str() == client));
+    }] if text.as_str() == format!("{expected}\n") && id.turn_client_message_id.as_ref().unwrap().as_str() == client));
     runtime
         .ingest(
             &frame(

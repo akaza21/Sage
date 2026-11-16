@@ -13,8 +13,9 @@ use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
 use super::super::PiRuntime;
-use super::stream::{append_snapshot, shown_snapshot};
+use super::stream::{append_snapshot, closed_snapshot};
 use crate::acp::bindings::pi::ModelSummary;
+use crate::acp::redaction::text::ReplyStream;
 
 impl PiRuntime {
     pub(super) fn identity(
@@ -128,7 +129,7 @@ impl PiRuntime {
             return Err(AdapterRuntimeError::Operation);
         }
         turn.text_id = Some(id.clone());
-        turn.text_snapshot = Some(String::new());
+        turn.text_snapshot = Some(ReplyStream::default());
         Ok(id)
     }
 
@@ -150,6 +151,7 @@ impl PiRuntime {
     pub(super) fn complete_text(
         &mut self,
         value: Option<String>,
+        completed: bool,
     ) -> Result<(ExternalId, String), AdapterRuntimeError> {
         let turn = self
             .active_turn
@@ -161,12 +163,7 @@ impl PiRuntime {
         {
             return Err(AdapterRuntimeError::Operation);
         }
-        let snapshot = shown_snapshot(
-            &turn
-                .text_snapshot
-                .take()
-                .ok_or(AdapterRuntimeError::Operation)?,
-        )?;
+        let snapshot = closed_snapshot(&mut turn.text_snapshot, completed)?;
         turn.text_id = None;
         Ok((active, snapshot))
     }
@@ -188,7 +185,7 @@ impl PiRuntime {
                 .as_mut()
                 .ok_or(AdapterRuntimeError::Operation)?;
             turn.thought_id = Some(id);
-            turn.thought_snapshot = Some(String::new());
+            turn.thought_snapshot = Some(ReplyStream::default());
         }
         let turn = self
             .active_turn

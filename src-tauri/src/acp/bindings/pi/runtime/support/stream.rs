@@ -1,36 +1,47 @@
 use crate::acp::bindings::adapter::AdapterRuntimeError;
-use crate::acp::bindings::pi::decode::redact_structured_text;
+use crate::acp::redaction::text::ReplyStream;
 use sage_core::limits::LIMITS;
 
-/// Appends a delta to the text as Pi sent it and returns the whole assembled
-/// text redacted: a secret, a path or the home folder may straddle deltas, so
-/// no delta is ever redacted alone.
+/// Appends a delta to the reply as Pi sent it and returns what may be shown
+/// while it streams.
 pub(super) fn append_snapshot(
-    snapshot: &mut Option<String>,
+    snapshot: &mut Option<ReplyStream>,
     delta: &str,
 ) -> Result<String, AdapterRuntimeError> {
-    let mut current = snapshot.take().ok_or(AdapterRuntimeError::Operation)?;
-    current
+    let mut stream = snapshot.take().ok_or(AdapterRuntimeError::Operation)?;
+    stream
         .len()
         .checked_add(delta.len())
         .filter(|size| within_item_limits(*size))
         .ok_or(AdapterRuntimeError::BatchBytes)?;
-    current
-        .try_reserve_exact(delta.len())
+    stream
+        .push(delta)
         .map_err(|_| AdapterRuntimeError::BatchBytes)?;
-    current.push_str(delta);
-    let shown = shown_snapshot(&current)?;
-    *snapshot = Some(current);
+    let shown = bounded(stream.streaming())?;
+    *snapshot = Some(stream);
     Ok(shown)
 }
 
-/// The redacted form of an assembled text, the only form that leaves the runtime.
-pub(super) fn shown_snapshot(raw: &str) -> Result<String, AdapterRuntimeError> {
-    let shown = redact_structured_text(raw);
-    if !within_item_limits(shown.len()) {
-        return Err(AdapterRuntimeError::BatchBytes);
+/// The reply once Pi ends it: whole when it completed, and otherwise only
+/// what was safe to show while it streamed.
+pub(super) fn closed_snapshot(
+    snapshot: &mut Option<ReplyStream>,
+    completed: bool,
+) -> Result<String, AdapterRuntimeError> {
+    let mut stream = snapshot.take().ok_or(AdapterRuntimeError::Operation)?;
+    bounded(if completed {
+        stream.finished()
+    } else {
+        stream.streaming()
+    })
+}
+
+fn bounded(shown: String) -> Result<String, AdapterRuntimeError> {
+    if within_item_limits(shown.len()) {
+        Ok(shown)
+    } else {
+        Err(AdapterRuntimeError::BatchBytes)
     }
-    Ok(shown)
 }
 
 fn within_item_limits(size: usize) -> bool {

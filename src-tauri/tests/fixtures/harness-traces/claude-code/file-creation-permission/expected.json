@@ -21,35 +21,35 @@
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "I"
+      "text": ""
     },
     {
       "event": "item",
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "I'll write"
+      "text": "I'll "
     },
     {
       "event": "item",
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "I'll write that"
+      "text": "I'll write "
     },
     {
       "event": "item",
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "I'll write that single"
+      "text": "I'll write that "
     },
     {
       "event": "item",
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "I'll write that single file."
+      "text": "I'll write that single "
     },
     {
       "event": "item",

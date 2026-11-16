@@ -8,8 +8,11 @@ use sage_acp_protocol::{
 };
 use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 
-use super::super::{IngressError, support::content};
-use super::{ItemNormalization, sanitize};
+use super::super::{
+    IngressError,
+    support::{content, sanitize_tool_text},
+};
+use super::ItemNormalization;
 
 const COMMAND_LABEL_CHARS: usize = 200;
 const COMMAND_LABEL_BYTES: usize = 500;
@@ -58,7 +61,7 @@ pub(super) fn context_compaction(
 
 pub(super) fn bounded_summary(value: &str) -> Option<String> {
     (value.len() <= ITEM_SUMMARY_BYTES)
-        .then(|| sanitize(value))
+        .then(|| sanitize_tool_text(value))
         .filter(|value| !value.is_empty() && value.len() <= ITEM_SUMMARY_BYTES)
 }
 

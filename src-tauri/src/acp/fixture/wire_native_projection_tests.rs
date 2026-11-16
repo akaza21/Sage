@@ -178,16 +178,18 @@ fn approval_wire_projects_nonempty_setup_and_correlates_permission_only_to_secon
         );
         let file = ExistingFile::new();
         let mut projection = translator();
-        let setup_events = projection
+        let mut setup_events = projection
             .translate_notification_value(frames[setup - 1].clone(), &file)
             .unwrap();
+        setup_events.extend(
+            projection
+                .translate_prompt_result_value(frames[setup].clone())
+                .unwrap(),
+        );
         assert!(setup_events.iter().any(|event| matches!(event,
             AdapterEvent::Item { payload: NormalizedPayload::Text { text }, .. }
             if text.as_str() == "Synthetic approval setup completed. No tool was run."
         )));
-        projection
-            .translate_prompt_result_value(frames[setup].clone())
-            .unwrap();
         projection.begin_prompt("5").unwrap();
         let mut tools = Vec::new();
         for frame in &frames[setup + 1..terminal] {

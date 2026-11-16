@@ -31,7 +31,7 @@ pub(super) fn decode_frame(raw: &[u8]) -> Result<Value, WireError> {
 
 #[path = "wire_text.rs"]
 mod text;
-pub(super) use text::{normalized_text, sanitized_command_output};
+pub(super) use text::{delta_text, normalized_text, sanitized_command_output};
 
 pub(super) fn opaque_id(value: Option<&Value>) -> Result<String, WireError> {
     let value = match value {

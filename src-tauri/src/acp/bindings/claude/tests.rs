@@ -368,7 +368,7 @@ fn message_and_plan_text_show_native_paths_and_redact_secrets() {
                 "sessionUpdate": "agent_message_chunk",
                 "content": {
                     "type": "text",
-                    "text": r"Result C:\private\file sk-ant-fixture"
+                    "text": "Result C:\\private\\file sk-ant-fixture\n"
                 }
             }
         }
@@ -557,22 +557,33 @@ fn message_chunks_emit_complete_bounded_snapshots_and_reset_between_turns() {
     let first = translator
         .translate_notification(&encoded(&chunk("Hel")), &FixtureResources)
         .unwrap();
-    assert_eq!(text(&first), "Hel");
+    assert_eq!(text(&first), "", "a word still arriving is held back");
     let second = translator
-        .translate_notification(&encoded(&chunk("lo")), &FixtureResources)
+        .translate_notification(&encoded(&chunk("lo there")), &FixtureResources)
         .unwrap();
-    assert_eq!(text(&second), "Hello");
-    translator
+    assert_eq!(text(&second), "Hello ");
+    let ended = translator
         .translate_prompt_result(&encoded(
             &json!({"id":"prompt-1","result":{"stopReason":"end_turn"}}),
         ))
         .unwrap();
+    assert!(
+        ended.iter().any(|event| matches!(
+            event,
+            AdapterEvent::Item {
+                lifecycle: ItemLifecycle::Completed,
+                payload: NormalizedPayload::Text { text },
+                ..
+            } if text.as_str() == "Hello there"
+        )),
+        "the completed reply shows its last word: {ended:?}"
+    );
 
     translator.begin_prompt("prompt-2").unwrap();
     let next_turn = translator
-        .translate_notification(&encoded(&chunk("Again")), &FixtureResources)
+        .translate_notification(&encoded(&chunk("Again ")), &FixtureResources)
         .unwrap();
-    assert_eq!(text(&next_turn), "Again");
+    assert_eq!(text(&next_turn), "Again ");
 }
 
 #[test]
@@ -599,7 +610,7 @@ fn message_snapshot_redacts_tokens_split_across_frame_boundaries() {
         .translate_notification(&encoded(&chunk("secret C:")), &FixtureResources)
         .unwrap();
     let events = translator
-        .translate_notification(&encoded(&chunk(r"\private\file.txt")), &FixtureResources)
+        .translate_notification(&encoded(&chunk("\\private\\file.txt ")), &FixtureResources)
         .unwrap();
     let projected = format!("{events:?}");
     assert!(projected.contains(r"Bearer [redacted] C:\\private\\file.txt"));
@@ -610,7 +621,10 @@ fn message_snapshot_redacts_tokens_split_across_frame_boundaries() {
 fn accumulated_message_limit_rejects_before_mutating_the_snapshot() {
     let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
     translator.begin_prompt("prompt-1").unwrap();
-    let first = "a".repeat(LIMITS.wire.normalized_item_bytes as usize - 1);
+    let first = format!(
+        "{} ",
+        "a".repeat(LIMITS.wire.normalized_item_bytes as usize - 2)
+    );
     let frame = |text: &str| {
         json!({
             "method": "session/update",
@@ -632,7 +646,7 @@ fn accumulated_message_limit_rejects_before_mutating_the_snapshot() {
         Err(TranslationError::ItemLimit)
     ));
     let exact = translator
-        .translate_notification(&encoded(&frame("b")), &FixtureResources)
+        .translate_notification(&encoded(&frame("\n")), &FixtureResources)
         .unwrap();
     let [
         AdapterEvent::Item {
@@ -647,7 +661,7 @@ fn accumulated_message_limit_rejects_before_mutating_the_snapshot() {
         text.as_str().len(),
         LIMITS.wire.normalized_item_bytes as usize
     );
-    assert!(text.as_str().ends_with('b'));
+    assert!(text.as_str().ends_with(" \n"));
 }
 
 #[test]
@@ -1381,7 +1395,7 @@ fn thought_chunks_stream_and_nested_transcript_updates_are_bounded_fallbacks() {
             lifecycle: ItemLifecycle::Streaming,
             payload: NormalizedPayload::ThoughtSummary { summary },
             ..
-        } if summary.as_str() == "unproven thought"
+        } if summary.as_str() == "unproven "
     ));
     let nested = translator
         .translate_notification(&encoded(&frames[1]), &FixtureResources)

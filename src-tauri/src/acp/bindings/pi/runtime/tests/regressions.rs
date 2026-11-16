@@ -86,7 +86,7 @@ fn pi_split_thought_secret_redacts_attached_continuation() {
     ready(&mut runtime);
     running(&mut runtime);
     let mut rendered = String::new();
-    for delta in ["sk-", "private", "-tail", " safe"] {
+    for delta in ["sk-", "private", "-tail", " safe "] {
         let batch = runtime
             .ingest(
                 &frame(thought_update("thinking_delta", Some(delta))),
@@ -149,7 +149,7 @@ fn pi_streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
             )
             .unwrap();
         let mut shown = String::new();
-        for delta in &deltas {
+        for delta in deltas.iter().copied().chain(["\n"]) {
             let batch = runtime
                 .ingest(&frame(thought_update(kind, Some(delta))), &Mapper)
                 .unwrap();
@@ -166,8 +166,9 @@ fn pi_streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
                     _ => {}
                 }
             }
+            assert!(!shown.contains("hun"), "{kind} {deltas:?}: {shown}");
         }
-        assert_eq!(shown, expected, "{kind} {deltas:?}");
+        assert_eq!(shown, format!("{expected}\n"), "{kind} {deltas:?}");
     }
 }
 
@@ -198,10 +199,10 @@ fn pi_literal_underscore_continuations_preserve_text_and_thought_content() {
         assert!(
             matches!(batch.events(), [AdapterEvent::Item {
             payload: NormalizedPayload::Text { text }, ..
-        }] if text.as_str() == "Checking snake_case identifiers")
+        }] if text.as_str() == "Checking snake_case ")
                 || matches!(batch.events(), [AdapterEvent::Item {
             payload: NormalizedPayload::ThoughtSummary { summary }, ..
-        }] if summary.as_str() == "Checking snake_case identifiers")
+        }] if summary.as_str() == "Checking snake_case ")
         );
     }
 }

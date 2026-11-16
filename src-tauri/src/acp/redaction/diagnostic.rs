@@ -8,7 +8,7 @@ use super::text::{
         attached_short_value, auth_scheme, contains_token, has_userinfo, is_sensitive_prose_flag,
         public_token_key, sensitive_assignment, sensitive_key, url_userinfo,
     },
-    paths::{PathContext, PathMode},
+    paths::{PathContext, PathMode, absolute_path},
     pem::{redact_pem, scan_window},
 };
 
@@ -185,6 +185,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             output.push_str(suffix);
         } else if let Some((start, end)) = url_userinfo(bare)
             && !has_userinfo(&bare[end..])
+            && absolute_path(&bare[end + 1..], PathMode::Diagnostic).is_none()
         {
             output.push_str(prefix);
             output.push_str(&bare[..start]);

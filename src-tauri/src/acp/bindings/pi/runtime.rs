@@ -57,11 +57,11 @@ pub(super) struct TurnIntent {
     external_id: ExternalId,
     client_message_id: RequiredText<512>,
     text_id: Option<ExternalId>,
-    text_snapshot: Option<String>,
+    text_snapshot: Option<crate::acp::redaction::text::ReplyStream>,
     compaction_id: Option<ExternalId>,
     dialog_notices: u8,
     thought_id: Option<ExternalId>,
-    thought_snapshot: Option<String>,
+    thought_snapshot: Option<crate::acp::redaction::text::ReplyStream>,
     tools: BTreeMap<String, sage_acp_protocol::intent::NormalizedPayload>,
     tool_snapshot_bytes: usize,
 }

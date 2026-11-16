@@ -245,7 +245,9 @@ async fn retained_retry(
                 _ => None,
             })
             .collect::<Vec<_>>();
-        assert_eq!(texts[0], (ItemLifecycle::Failed, "Failed attempt retained"));
+        // A failed attempt may have stopped inside a word, so it keeps only
+        // what was safe to show while it streamed.
+        assert_eq!(texts[0], (ItemLifecycle::Failed, "Failed attempt "));
         if outcome == TurnState::Cancelled && !streaming_cancel {
             assert_eq!(texts.len(), 1);
         } else {
@@ -258,7 +260,11 @@ async fn retained_retry(
                         TurnState::Cancelled => ItemLifecycle::Cancelled,
                         _ => ItemLifecycle::Failed,
                     },
-                    "Second attempt retained"
+                    if outcome == TurnState::Completed {
+                        "Second attempt retained"
+                    } else {
+                        "Second attempt "
+                    }
                 )
             );
         }

@@ -1,7 +1,8 @@
 use super::super::PiRuntime;
-use super::stream::shown_snapshot;
+use super::stream::closed_snapshot;
 use crate::acp::bindings::adapter::{AdapterEvent, AdapterRuntimeError};
 use crate::acp::bindings::pi::TerminalOutcome;
+use crate::acp::redaction::text::ReplyStream;
 use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
 
 impl PiRuntime {
@@ -15,7 +16,7 @@ impl PiRuntime {
             return Err(AdapterRuntimeError::Operation);
         }
         turn.thought_id = Some(id.clone());
-        turn.thought_snapshot = Some(String::new());
+        turn.thought_snapshot = Some(ReplyStream::default());
         self.item(
             id,
             ItemLifecycle::Started,
@@ -38,11 +39,9 @@ impl PiRuntime {
         let Some(id) = turn.thought_id.take() else {
             return Ok(None);
         };
-        let summary = shown_snapshot(
-            &turn
-                .thought_snapshot
-                .take()
-                .ok_or(AdapterRuntimeError::Operation)?,
+        let summary = closed_snapshot(
+            &mut turn.thought_snapshot,
+            outcome == TerminalOutcome::Completed,
         )?;
         let lifecycle = match outcome {
             TerminalOutcome::Completed => ItemLifecycle::Completed,

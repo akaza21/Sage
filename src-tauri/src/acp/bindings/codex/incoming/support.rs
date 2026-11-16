@@ -8,6 +8,7 @@ use sage_core::limits::{COMMAND_OUTPUT_REDACTION_BYTES, LIMITS};
 
 use super::{IngressError, ResourceMapper};
 use crate::acp::bindings::codex::state::{AdapterError, CodexAdapter};
+use crate::acp::bindings::standard_acp::sanitize::sanitized_content_output;
 use crate::acp::redaction::text::reply_text;
 
 pub(in crate::acp::bindings::codex) fn command_cwd<M: ResourceMapper>(
@@ -162,6 +163,11 @@ pub(super) fn safe_text(
 /// Harness prose, redacted as every harness's replies and notices are.
 pub(in crate::acp::bindings::codex) fn sanitize(value: &str) -> String {
     reply_text(value)
+}
+
+/// Tool content, which keeps absolute paths private as every harness's does.
+pub(in crate::acp::bindings::codex) fn sanitize_tool_text(value: &str) -> String {
+    sanitized_content_output(value).unwrap_or_else(|_| "[redacted]".to_owned())
 }
 
 /// Like [`sanitize`], but a token naming an absolute path becomes `[path]`,

@@ -550,3 +550,31 @@ fn spawn_keeps_only_the_wire_supplied_bounded_model_and_effort() {
         NormalizedPayload::Collaboration { model: None, .. }
     ));
 }
+
+#[test]
+fn an_unrecognised_tool_row_keeps_paths_private_like_other_tool_content() {
+    let row = item(json!({
+        "type": "futureToolKind", "status": "completed", "title": "Inspect",
+        "target": "/home/someone/project/notes.md"
+    }));
+    let (payload, _, _) = normalize_item(&row, ItemLifecycle::Completed, &UnusedMapper)
+        .expect("other tool")
+        .expect("item");
+    let NormalizedPayload::ToolCall {
+        input_summary: Some(summary),
+        ..
+    } = payload
+    else {
+        panic!("tool row with a summary");
+    };
+    assert!(
+        summary.as_str().contains("futureToolKind"),
+        "{}",
+        summary.as_str()
+    );
+    assert!(
+        !summary.as_str().contains("/home/someone"),
+        "{}",
+        summary.as_str()
+    );
+}

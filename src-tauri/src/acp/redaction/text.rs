@@ -18,6 +18,8 @@ pub(crate) mod paths;
 pub(crate) mod pem;
 #[path = "prose.rs"]
 mod prose;
+#[path = "reply_stream.rs"]
+mod reply_stream;
 #[path = "scalars.rs"]
 mod scalars;
 #[path = "secrets.rs"]
@@ -33,6 +35,7 @@ pub(crate) mod values;
 
 pub(crate) use paths::PathMode as Mode;
 use prose::ProsePaths;
+pub(crate) use reply_stream::ReplyStream;
 
 pub(crate) fn redact(
     field: &'static str,

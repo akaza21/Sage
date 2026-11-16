@@ -4,7 +4,13 @@
 //! output. A cancelled or errored prompt leaves them open for the store's turn
 //! sweep, which marks unfinished output as cancelled.
 
-use sage_acp_protocol::{intent::NormalizedPayload, lifecycle::ItemLifecycle};
+use sage_acp_protocol::{
+    contract::SafeText,
+    intent::{ExternalId, NormalizedPayload},
+    lifecycle::ItemLifecycle,
+};
+
+use crate::acp::redaction::text::ReplyStream;
 use sage_core::limits::LIMITS;
 
 use super::decode::turn_scoped_key;
@@ -66,27 +72,36 @@ impl StandardAcpTranslator {
             return Ok(Vec::new());
         };
         self.thought_block = self.thought_block.saturating_add(1);
-        Ok(vec![completed(external_key, payload)])
+        Ok(vec![self.completed(external_key, payload)])
     }
 
     pub(super) fn close_open_items(&mut self, events: &mut Vec<AdapterEvent>) {
         let open = std::mem::take(&mut self.open_items);
-        events.extend(
-            open.into_values()
-                .take(MAX_CLOSED_AT_TURN_END)
-                .map(|(external_key, payload)| completed(external_key, payload)),
-        );
+        for (external_key, payload) in open.into_values().take(MAX_CLOSED_AT_TURN_END) {
+            events.push(self.completed(external_key, payload));
+        }
     }
-}
 
-fn completed(
-    external_key: sage_acp_protocol::intent::ExternalId,
-    payload: NormalizedPayload,
-) -> AdapterEvent {
-    AdapterEvent::Item {
-        external_key,
-        lifecycle: ItemLifecycle::Completed,
-        tool_state: None,
-        payload,
+    /// A completed text or thought shows its whole reply, including the last
+    /// word that streaming held back.
+    fn completed(&mut self, external_key: ExternalId, payload: NormalizedPayload) -> AdapterEvent {
+        let finished = self
+            .text_snapshots
+            .get_mut(external_key.as_str())
+            .map(ReplyStream::finished)
+            .and_then(|text| SafeText::new("text", text).ok());
+        let payload = match (payload, finished) {
+            (NormalizedPayload::Text { .. }, Some(text)) => NormalizedPayload::Text { text },
+            (NormalizedPayload::ThoughtSummary { .. }, Some(summary)) => {
+                NormalizedPayload::ThoughtSummary { summary }
+            }
+            (payload, _) => payload,
+        };
+        AdapterEvent::Item {
+            external_key,
+            lifecycle: ItemLifecycle::Completed,
+            tool_state: None,
+            payload,
+        }
     }
 }

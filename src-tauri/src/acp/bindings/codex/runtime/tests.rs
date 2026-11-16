@@ -2953,27 +2953,32 @@ fn command_output_deltas_use_one_safe_scoped_snapshot_and_flush_only_on_terminal
     ));
 }
 
-fn streamed_text(runtime: &mut CodexRuntime, item: &str, deltas: &[&str]) -> String {
-    let mut shown = String::new();
-    for delta in deltas {
-        let batch = runtime
-            .ingest(
-                &frame(json!({"method":"item/agentMessage/delta","params":{
-                    "threadId":"thread-1","turnId":"turn-1","itemId":item,"delta":delta
-                }})),
-                &Mapper,
-            )
-            .expect("delta");
-        let AdapterEvent::Item {
-            payload: NormalizedPayload::Text { text },
-            ..
-        } = &batch.events()[0]
-        else {
-            panic!("text snapshot")
-        };
-        shown = text.as_str().to_owned();
-    }
-    shown
+/// Streams `deltas` and then a line break, which lets the last word show,
+/// and returns every view shown along the way.
+fn streamed_views(runtime: &mut CodexRuntime, item: &str, deltas: &[&str]) -> Vec<String> {
+    deltas
+        .iter()
+        .copied()
+        .chain(["\n"])
+        .map(|delta| {
+            let batch = runtime
+                .ingest(
+                    &frame(json!({"method":"item/agentMessage/delta","params":{
+                        "threadId":"thread-1","turnId":"turn-1","itemId":item,"delta":delta
+                    }})),
+                    &Mapper,
+                )
+                .expect("delta");
+            let AdapterEvent::Item {
+                payload: NormalizedPayload::Text { text },
+                ..
+            } = &batch.events()[0]
+            else {
+                panic!("text snapshot")
+            };
+            text.as_str().to_owned()
+        })
+        .collect()
 }
 
 #[test]
@@ -3013,11 +3018,11 @@ fn streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
             "[redacted] done".to_owned(),
         ),
     ] {
-        assert_eq!(
-            streamed_text(&mut runtime, item, &deltas),
-            expected,
-            "{item}"
-        );
+        let views = streamed_views(&mut runtime, item, &deltas);
+        assert_eq!(views.last().unwrap(), &format!("{expected}\n"), "{item}");
+        for view in &views {
+            assert!(!view.contains("hun"), "{item}: {view}");
+        }
     }
 }
 
@@ -3027,15 +3032,15 @@ fn streaming_deltas_emit_complete_snapshots_and_plus_one_poison_clears_buffers()
     ready(&mut runtime);
     running_turn(&mut runtime);
     let cases = [
-        ("item/agentMessage/delta", "text-1", "hel", "lo", "hello"),
+        ("item/agentMessage/delta", "text-1", "hel", "lo ", "hello "),
         (
             "item/reasoning/summaryTextDelta",
             "thought-1",
             "thin",
-            "k",
-            "think",
+            "k\n",
+            "think\n",
         ),
-        ("item/plan/delta", "plan-1", "step ", "one", "step one"),
+        ("item/plan/delta", "plan-1", "step ", "one", "step "),
     ];
     for (method, item, first, second, expected) in cases {
         runtime

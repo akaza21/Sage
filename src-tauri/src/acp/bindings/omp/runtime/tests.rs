@@ -520,12 +520,39 @@ fn malformed_and_plus_one_models_fail_closed() {
 }
 
 #[test]
+fn a_completed_turn_shows_each_streamed_reply_whole() {
+    let mut runtime = fixture_runtime(12);
+    initialize(&mut runtime, false);
+    new_session(&mut runtime);
+    running(&mut runtime);
+    for delta in ["hel", "lo there"] {
+        runtime
+            .ingest(
+                &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+                    "sessionId":"omp-session-1","update":{"sessionUpdate":"agent_message_chunk",
+                    "itemId":"message-chunks","content":{"type":"text","text":delta}}
+                }})),
+                &Mapper,
+            )
+            .expect("message chunk");
+    }
+    let finished = runtime.snapshots.finish().expect("finished replies");
+    assert!(
+        matches!(
+            finished.as_slice(),
+            [(_, NormalizedPayload::Text { text })] if text.as_str() == "hello there"
+        ),
+        "{finished:?}"
+    );
+}
+
+#[test]
 fn chunks_append_plan_replaces_and_plus_one_poison_clears_snapshots() {
     let mut runtime = fixture_runtime(12);
     initialize(&mut runtime, false);
     new_session(&mut runtime);
     let prompt = running(&mut runtime);
-    for delta in ["hel", "lo"] {
+    for delta in ["hel", "lo there"] {
         let batch = runtime
             .ingest(
                 &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
@@ -535,16 +562,17 @@ fn chunks_append_plan_replaces_and_plus_one_poison_clears_snapshots() {
                 &Mapper,
             )
             .expect("message chunk");
-        if delta == "lo" {
+        if delta == "lo there" {
             assert!(matches!(
                 batch.events().last(),
                 Some(AdapterEvent::Item {
                     payload: NormalizedPayload::Text { text },
                     ..
-                }) if text.as_str() == "hello"
+                }) if text.as_str() == "hello "
             ));
         }
     }
+
     for (item, first, second, forbidden) in [
         ("split-bearer", "Bearer ", "secret-value", "secret-value"),
         ("split-path", "C:", r"\Users\private", "[redacted]"),

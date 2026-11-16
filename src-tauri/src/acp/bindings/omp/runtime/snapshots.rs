@@ -8,7 +8,8 @@ use sage_acp_protocol::{
 };
 use sage_core::limits::LIMITS;
 
-use super::super::{ItemUpdateMode, wire::normalized_text};
+use super::super::ItemUpdateMode;
+use crate::acp::redaction::text::ReplyStream;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TextKind {
@@ -17,9 +18,10 @@ enum TextKind {
     Plan,
 }
 
+/// The text as the harness sent it; only its redacted form leaves the runtime.
 struct Snapshot {
     kind: TextKind,
-    value: String,
+    stream: ReplyStream,
 }
 
 pub(super) struct ItemSnapshots {
@@ -62,42 +64,78 @@ impl ItemSnapshots {
             self.remove(id.as_str());
             return Ok(payload);
         }
-        let previous = self.values.get(id.as_str());
-        let (next, appended_to) = match (mode, previous) {
-            (ItemUpdateMode::Append, Some(previous)) if previous.kind == kind => (
-                checked_append(&previous.value, incoming)?,
-                Some(previous.value.as_str()),
-            ),
+        let limit = LIMITS.wire.normalized_item_bytes as usize;
+        let previous = self.values.remove(id.as_str());
+        let new_item = previous.is_none();
+        let previous_bytes = previous.as_ref().map_or(0, |value| value.stream.len());
+        // Deltas are assembled as sent and the whole reply is redacted; a
+        // replacing payload is a complete text and is shown whole.
+        let (mut snapshot, streamed) = match (mode, previous) {
+            (ItemUpdateMode::Append, Some(mut previous)) if previous.kind == kind => {
+                if previous_bytes.saturating_add(incoming.len()) > limit {
+                    return Err(AdapterRuntimeError::BatchBytes);
+                }
+                previous
+                    .stream
+                    .push(incoming)
+                    .map_err(|_| AdapterRuntimeError::BatchBytes)?;
+                (previous, true)
+            }
             (ItemUpdateMode::Append, Some(_)) => return Err(AdapterRuntimeError::Frame),
-            (ItemUpdateMode::Append | ItemUpdateMode::Replace, None)
-            | (ItemUpdateMode::Replace, Some(_)) => (incoming.to_owned(), None),
+            (mode, _) => (
+                Snapshot {
+                    kind,
+                    stream: ReplyStream::new(incoming),
+                },
+                mode == ItemUpdateMode::Append,
+            ),
         };
-        let next = sanitize_snapshot(appended_to, next)?;
-        if next.len() > LIMITS.wire.normalized_item_bytes as usize {
+        let raw_bytes = snapshot.stream.len();
+        let shown = if streamed {
+            snapshot.stream.streaming()
+        } else {
+            snapshot.stream.finished()
+        };
+        if raw_bytes > limit || shown.len() > limit {
             return Err(AdapterRuntimeError::BatchBytes);
         }
-        let previous_bytes = previous.map_or(0, |value| value.value.len());
         let total = self
             .bytes
             .checked_sub(previous_bytes)
-            .and_then(|value| value.checked_add(next.len()))
+            .and_then(|value| value.checked_add(raw_bytes))
             .ok_or(AdapterRuntimeError::BatchBytes)?;
         if total > LIMITS.wire.item_bytes_per_turn as usize {
             return Err(AdapterRuntimeError::BatchBytes);
         }
-        if previous.is_none() && self.values.len() >= LIMITS.wire.items_per_turn as usize {
+        if new_item && self.values.len() >= LIMITS.wire.items_per_turn as usize {
             return Err(AdapterRuntimeError::BatchCount);
         }
-        let payload = build(kind, &next)?;
-        self.values
-            .insert(id.as_str().to_owned(), Snapshot { kind, value: next });
+        let payload = build(kind, &shown)?;
+        self.values.insert(id.as_str().to_owned(), snapshot);
         self.bytes = total;
         Ok(payload)
     }
 
+    /// Each reply still streaming, shown whole: OMP never says a reply ended,
+    /// so a completed turn completes them.
+    pub(super) fn finish(
+        &mut self,
+    ) -> Result<Vec<(ExternalId, NormalizedPayload)>, AdapterRuntimeError> {
+        let values = std::mem::take(&mut self.values);
+        self.bytes = 0;
+        values
+            .into_iter()
+            .map(|(id, mut snapshot)| {
+                let id = ExternalId::new("externalItemId", id)
+                    .map_err(|_| AdapterRuntimeError::Frame)?;
+                Ok((id, build(snapshot.kind, &snapshot.stream.finished())?))
+            })
+            .collect()
+    }
+
     fn remove(&mut self, id: &str) {
         if let Some(value) = self.values.remove(id) {
-            self.bytes -= value.value.len();
+            self.bytes -= value.stream.len();
         }
     }
 }
@@ -111,49 +149,6 @@ fn parts(payload: &NormalizedPayload) -> Option<(TextKind, &str)> {
         NormalizedPayload::Plan { summary } => Some((TextKind::Plan, summary.as_str())),
         _ => None,
     }
-}
-
-fn checked_append(previous: &str, delta: &str) -> Result<String, AdapterRuntimeError> {
-    let length = previous
-        .len()
-        .checked_add(delta.len())
-        .ok_or(AdapterRuntimeError::BatchBytes)?;
-    if length > LIMITS.wire.normalized_item_bytes as usize {
-        return Err(AdapterRuntimeError::BatchBytes);
-    }
-    let mut output = String::new();
-    output
-        .try_reserve_exact(length)
-        .map_err(|_| AdapterRuntimeError::BatchBytes)?;
-    output.push_str(previous);
-    output.push_str(delta);
-    Ok(output)
-}
-
-fn sanitize_snapshot(
-    previous: Option<&str>,
-    mut joined: String,
-) -> Result<String, AdapterRuntimeError> {
-    if let Some(previous) = previous
-        && previous.ends_with("[redacted]")
-    {
-        remove_attached_continuation(previous.len(), &mut joined);
-    }
-    normalized_text::<262144>("snapshot", &joined)
-        .map(|value| value.as_str().to_owned())
-        .map_err(|_| AdapterRuntimeError::BatchBytes)
-}
-
-fn remove_attached_continuation(start: usize, joined: &mut String) {
-    let suffix = &joined[start..];
-    if suffix.starts_with(char::is_whitespace) {
-        return;
-    }
-    let end = suffix
-        .char_indices()
-        .find_map(|(index, character)| character.is_whitespace().then_some(index))
-        .unwrap_or(suffix.len());
-    joined.replace_range(start..start + end, "");
 }
 
 fn build(kind: TextKind, value: &str) -> Result<NormalizedPayload, AdapterRuntimeError> {

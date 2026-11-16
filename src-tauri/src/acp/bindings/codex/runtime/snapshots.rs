@@ -4,10 +4,8 @@ use crate::acp::bindings::adapter::AdapterRuntimeError;
 use sage_acp_protocol::{contract::SafeText, intent::NormalizedPayload, lifecycle::ItemLifecycle};
 use sage_core::limits::LIMITS;
 
-use super::super::{
-    incoming::{ItemUpdateMode, sanitize},
-    state::ScopedExternalId,
-};
+use super::super::{incoming::ItemUpdateMode, state::ScopedExternalId};
+use crate::acp::redaction::text::ReplyStream;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum TextKind {
@@ -16,11 +14,10 @@ enum TextKind {
     Plan,
 }
 
-/// The text as the harness sent it, assembled from its deltas; only its
-/// redacted form ever leaves the runtime.
+/// The text as the harness sent it; only its redacted form leaves the runtime.
 struct Snapshot {
     kind: TextKind,
-    value: String,
+    stream: ReplyStream,
 }
 
 pub(super) struct ItemSnapshots {
@@ -69,37 +66,54 @@ impl ItemSnapshots {
             return Ok(payload);
         }
         let key = key(id)?;
-        let previous = self.values.get(&key);
-        let next = match (mode, previous) {
-            (ItemUpdateMode::Append, Some(previous)) if previous.kind == kind => {
-                checked_append(&previous.value, incoming)?
+        let limit = LIMITS.wire.normalized_item_bytes as usize;
+        let previous = self.values.remove(&key);
+        let new_item = previous.is_none();
+        let previous_bytes = previous.as_ref().map_or(0, |value| value.stream.len());
+        // Deltas are assembled as sent and the whole reply is redacted; a
+        // replacing payload is a complete text and is shown whole.
+        let (mut snapshot, streamed) = match (mode, previous) {
+            (ItemUpdateMode::Append, Some(mut previous)) if previous.kind == kind => {
+                if previous_bytes.saturating_add(incoming.len()) > limit {
+                    return Err(AdapterRuntimeError::BatchBytes);
+                }
+                previous
+                    .stream
+                    .push(incoming)
+                    .map_err(|_| AdapterRuntimeError::BatchBytes)?;
+                (previous, true)
             }
             (ItemUpdateMode::Append, Some(_)) => return Err(AdapterRuntimeError::Frame),
-            (ItemUpdateMode::Append | ItemUpdateMode::Replace, None)
-            | (ItemUpdateMode::Replace, Some(_)) => incoming.to_owned(),
+            (mode, _) => (
+                Snapshot {
+                    kind,
+                    stream: ReplyStream::new(incoming),
+                },
+                mode == ItemUpdateMode::Append,
+            ),
         };
-        // Redact the whole assembled text, never each delta alone: a secret,
-        // a path or the home folder may straddle delta boundaries.
-        let shown = sanitize(&next);
-        if next.len() > LIMITS.wire.normalized_item_bytes as usize
-            || shown.len() > LIMITS.wire.normalized_item_bytes as usize
-        {
+        let raw_bytes = snapshot.stream.len();
+        let shown = if streamed {
+            snapshot.stream.streaming()
+        } else {
+            snapshot.stream.finished()
+        };
+        if raw_bytes > limit || shown.len() > limit {
             return Err(AdapterRuntimeError::BatchBytes);
         }
-        let previous_bytes = previous.map_or(0, |value| value.value.len());
         let total = self
             .bytes
             .checked_sub(previous_bytes)
-            .and_then(|value| value.checked_add(next.len()))
+            .and_then(|value| value.checked_add(raw_bytes))
             .ok_or(AdapterRuntimeError::BatchBytes)?;
         if total > LIMITS.wire.item_bytes_per_turn as usize {
             return Err(AdapterRuntimeError::BatchBytes);
         }
-        if previous.is_none() && self.values.len() >= LIMITS.wire.items_per_turn as usize {
+        if new_item && self.values.len() >= LIMITS.wire.items_per_turn as usize {
             return Err(AdapterRuntimeError::BatchCount);
         }
         let payload = build(kind, &shown)?;
-        self.values.insert(key, Snapshot { kind, value: next });
+        self.values.insert(key, snapshot);
         self.bytes = total;
         Ok(payload)
     }
@@ -112,7 +126,7 @@ impl ItemSnapshots {
             .values
             .remove(&(turn.as_str().to_owned(), id.external_id.as_str().to_owned()))
         {
-            self.bytes -= value.value.len();
+            self.bytes -= value.stream.len();
         }
     }
 }
@@ -131,23 +145,6 @@ fn text_parts(payload: &NormalizedPayload) -> Option<(TextKind, &str)> {
         NormalizedPayload::Plan { summary } => Some((TextKind::Plan, summary.as_str())),
         _ => None,
     }
-}
-
-fn checked_append(previous: &str, delta: &str) -> Result<String, AdapterRuntimeError> {
-    let length = previous
-        .len()
-        .checked_add(delta.len())
-        .ok_or(AdapterRuntimeError::BatchBytes)?;
-    if length > LIMITS.wire.normalized_item_bytes as usize {
-        return Err(AdapterRuntimeError::BatchBytes);
-    }
-    let mut output = String::new();
-    output
-        .try_reserve_exact(length)
-        .map_err(|_| AdapterRuntimeError::BatchBytes)?;
-    output.push_str(previous);
-    output.push_str(delta);
-    Ok(output)
 }
 
 fn build(kind: TextKind, value: &str) -> Result<NormalizedPayload, AdapterRuntimeError> {

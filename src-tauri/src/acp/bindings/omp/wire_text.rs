@@ -14,6 +14,18 @@ pub(crate) fn normalized_text<const MAX: usize>(
     SafeText::new(field, result).map_err(|_| WireError::TextLimit)
 }
 
+/// A streamed delta as OMP sent it, bounded but unredacted: the runtime's
+/// snapshot store redacts the reply it assembles.
+pub(crate) fn delta_text<const MAX: usize>(
+    field: &'static str,
+    text: &str,
+) -> Result<SafeText<MAX>, WireError> {
+    if text.len() > MAX || text.contains('\0') {
+        return Err(WireError::TextLimit);
+    }
+    SafeText::new(field, text).map_err(|_| WireError::TextLimit)
+}
+
 /// General `normalized_text` callers retain their strict `SafeText` maximum; oversized command
 /// output is valid and is capped later.
 pub(crate) fn sanitized_command_output(input: &str) -> Result<String, WireError> {

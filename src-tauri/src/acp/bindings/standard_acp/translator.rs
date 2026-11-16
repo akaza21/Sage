@@ -13,11 +13,12 @@ use sage_acp_protocol::{
 use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
+use crate::acp::redaction::text::ReplyStream;
+
 #[cfg(test)]
 use super::wire::decode_frame;
 use super::{
     profile::StandardAcpProfile,
-    sanitize::normalized_text,
     surface::{SessionUpdateKind, UNKNOWN_NOTIFICATION_REASON, UnmappedUpdate, unmapped_update},
 };
 
@@ -106,7 +107,7 @@ pub(crate) struct StandardAcpTranslator {
         ),
     >,
     command_snapshot_bytes: usize,
-    text_snapshots: BTreeMap<String, String>,
+    text_snapshots: BTreeMap<String, ReplyStream>,
     image_keys: BTreeSet<String>,
     text_bytes: usize,
     permissions: BTreeMap<String, String>,
@@ -351,8 +352,7 @@ impl StandardAcpTranslator {
         {
             return Err(TranslationError::ItemLimit);
         }
-        let current_snapshot = self.text_snapshots.get(&key);
-        let current = current_snapshot.map_or(0, String::len);
+        let current = self.text_snapshots.get(&key).map_or(0, ReplyStream::len);
         let item_bytes = current
             .checked_add(chunk.len())
             .filter(|bytes| *bytes <= LIMITS.wire.normalized_item_bytes as usize)
@@ -363,18 +363,11 @@ impl StandardAcpTranslator {
             .and_then(|bytes| bytes.checked_add(item_bytes))
             .filter(|bytes| *bytes <= LIMITS.wire.item_bytes_per_turn as usize)
             .ok_or(TranslationError::ItemLimit)?;
-        let mut snapshot = String::new();
+        let snapshot = self.text_snapshots.entry(key).or_default();
         snapshot
-            .try_reserve_exact(item_bytes)
+            .push(chunk)
             .map_err(|_| TranslationError::ItemLimit)?;
-        if let Some(current) = current_snapshot {
-            snapshot.push_str(current);
-        }
-        snapshot.push_str(chunk);
-        // Sanitize the complete accumulated value, not each delta in
-        // isolation: secrets and native paths may straddle frame boundaries.
-        let safe_snapshot = normalized_text::<262144>("text", &snapshot)?;
-        self.text_snapshots.insert(key, snapshot);
+        let safe_snapshot = SafeText::<262144>::new("text", snapshot.streaming())?;
         self.text_bytes = aggregate;
         Ok(AdapterEvent::Item {
             external_key,

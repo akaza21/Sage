@@ -107,7 +107,7 @@
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "PONG"
+      "text": ""
     },
     {
       "event": "usage",

@@ -16,8 +16,8 @@ const TILDE: &str = "~";
 /// Punctuation that may close a path in prose without being part of its name.
 const CLOSING_PUNCTUATION: &[u8] = b".,;:!?)]}>\"'`*";
 
-/// Longest file name most filesystems allow, which bounds how far a home
-/// folder's name can run on past a space.
+/// Longest file name most filesystems allow, which bounds how far the word
+/// after a home folder is read.
 const NAME_MAX: usize = 255;
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -170,33 +170,20 @@ impl HomePrefix {
             .all(|byte| CLOSING_PUNCTUATION.contains(byte))
     }
 
-    /// Whether words after a space may still be the home folder's name, as in
-    /// `Alice Smith\project`: a later word on the line, within one name's
-    /// length, reaches a separator before the clause or a new path begins.
+    /// Whether the word after a space still belongs to the home folder's
+    /// name, as `Smith\project` does after `C:\Users\Alice`: it runs to a
+    /// separator without opening a new path of its own.
     fn name_continues_after_space(&self, rest: &[u8]) -> bool {
         let line = &rest[..rest
             .iter()
             .position(|&byte| byte == b'\n')
             .unwrap_or(rest.len())];
         let line = &line[..line.len().min(NAME_MAX)];
-        let mut words = line.split(|&byte| matches!(byte, b' ' | b'\t'));
-        words.next();
-        for word in words.filter(|word| !word.is_empty()) {
-            if self.starts_path(word) {
-                return false;
-            }
-            match word.iter().position(|&byte| self.is_separator(byte)) {
-                Some(_) => return true,
-                None if word
-                    .last()
-                    .is_some_and(|byte| CLOSING_PUNCTUATION.contains(byte)) =>
-                {
-                    return false;
-                }
-                None => {}
-            }
-        }
-        false
+        line.split(|&byte| matches!(byte, b' ' | b'\t'))
+            .find(|word| !word.is_empty())
+            .is_some_and(|word| {
+                !self.starts_path(word) && word.iter().any(|&byte| self.is_separator(byte))
+            })
     }
 
     /// Whether a word opens a new absolute path rather than continuing a name.
@@ -403,12 +390,10 @@ mod tests {
         for (home, separator) in [(r"C:\Users\Alice", r"\"), ("/home/alice", "/")] {
             let prefix = HomePrefix::new(home).unwrap();
             let sibling = format!("{home} Smith{separator}project{separator}file.rs");
-            let long_sibling = format!("{home} Jane Smith{separator}file.rs");
             for text in [
                 format!("open {sibling} now"),
                 format!("\"{sibling}\""),
                 format!("`{sibling}`"),
-                format!("open {long_sibling} now"),
                 format!("open `{home} Smith` now"),
                 format!("open \"{home} Smith\" now"),
                 format!("'{home} Smith'"),
@@ -432,6 +417,10 @@ mod tests {
                 (
                     format!("{home}\nSmith{separator}x"),
                     format!("~\nSmith{separator}x"),
+                ),
+                (
+                    format!("Cloned into {home} and opened src{separator}main.rs"),
+                    format!("Cloned into ~ and opened src{separator}main.rs"),
                 ),
             ] {
                 assert_eq!(prefix.shorten(&text), expected, "{text}");

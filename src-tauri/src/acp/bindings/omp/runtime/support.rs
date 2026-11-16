@@ -8,7 +8,7 @@ use crate::acp::{
 use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload},
-    lifecycle::TurnState,
+    lifecycle::{ItemLifecycle, TurnState},
 };
 
 use super::{OmpRuntime, RequestKind};
@@ -246,13 +246,24 @@ impl OmpRuntime {
                     PromptTerminal::Cancelled => TurnState::Cancelled,
                     PromptTerminal::Failed => TurnState::Failed,
                 };
-                let event = RuntimeEvent::Turn {
+                let mut events = Vec::new();
+                if terminal == PromptTerminal::Completed {
+                    for (external_key, payload) in self.snapshots.finish()? {
+                        events.push(RuntimeEvent::Item {
+                            id: self.item_identity(external_key)?,
+                            lifecycle: ItemLifecycle::Completed,
+                            tool_state: None,
+                            payload,
+                        });
+                    }
+                }
+                events.push(RuntimeEvent::Turn {
                     id: self.turn_identity()?,
                     state,
-                };
+                });
                 self.active_turn = None;
                 self.snapshots.clear();
-                (vec![event], None)
+                (events, None)
             }
             AdapterEvent::IgnoredDuplicate => (vec![RuntimeEvent::IgnoredDuplicate], None),
             AdapterEvent::IgnoredLate => (vec![RuntimeEvent::IgnoredLate], None),

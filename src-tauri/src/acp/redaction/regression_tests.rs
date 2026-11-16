@@ -714,3 +714,14 @@ fn every_credential_in_a_path_stays_hidden_in_diagnostics_and_replies() {
         "at https://[redacted]@db.test/x"
     );
 }
+
+#[test]
+fn a_path_after_url_userinfo_stays_hidden_in_diagnostics() {
+    for input in ["file://u@/home/alice/x", "file://u:pw@/home/alice/x"] {
+        let shown = crate::acp::redaction::sanitize_diagnostic_text(&format!("open {input} now"));
+        assert!(shown.starts_with("open "), "{shown}");
+        assert!(shown.ends_with(" now"), "{shown}");
+        assert!(!shown.contains("alice"), "{shown}");
+        assert!(!shown.contains("pw"), "{shown}");
+    }
+}

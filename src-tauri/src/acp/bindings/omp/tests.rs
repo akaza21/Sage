@@ -31,9 +31,10 @@ use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
 use super::{
-    AdapterEvent, ArtifactIdentity, CandidateManifest, CuratedOmpBinding, OMP_BUN_MINIMUM,
-    OMP_LICENSE, OMP_PACKAGE, OMP_SOURCE_COMMIT, OMP_VERSION, OmpBindingError, OmpPlatform,
-    OmpRuntime, OmpTranslator, Operation, PromptTerminal, ResourceMapper, TranslationError,
+    AdapterEvent, ArtifactIdentity, CandidateManifest, CuratedOmpBinding, ItemUpdateMode,
+    OMP_BUN_MINIMUM, OMP_LICENSE, OMP_PACKAGE, OMP_SOURCE_COMMIT, OMP_VERSION, OmpBindingError,
+    OmpPlatform, OmpRuntime, OmpTranslator, Operation, PromptTerminal, ResourceMapper,
+    TranslationError,
 };
 
 struct P02Capture(Vec<u8>);
@@ -953,9 +954,22 @@ fn normalized_text_redacts_secrets_and_shows_absolute_paths() {
     initialize(&mut translator, false);
     new_session(&mut translator);
     begin_prompt(&mut translator);
+    let sent = r"See C:\Users\private, sk-secret, and Bearer token-secret";
     let event = br#"{"jsonrpc":"2.0","method":"session/update","params":{"sessionId":"omp-session-1","update":{"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"See C:\\Users\\private, sk-secret, and Bearer token-secret"}}}}"#;
     let events = translator.ingest(event, &FixtureResources).unwrap();
-    let rendered = format!("{events:?}");
+    assert!(
+        matches!(
+            events.as_slice(),
+            [.., AdapterEvent::Item {
+                payload: NormalizedPayload::Text { text },
+                update_mode: ItemUpdateMode::Append,
+                ..
+            }] if text.as_str() == sent
+        ),
+        "a delta reaches the runtime as sent, which redacts the assembled reply: {events:?}"
+    );
+    let shown = super::wire::normalized_text::<262144>("text", sent).unwrap();
+    let rendered = format!("{shown:?}");
     assert!(rendered.contains(r"See C:\\Users\\private, [redacted]"));
     assert!(!rendered.contains("sk-secret"));
     assert!(!rendered.contains("token-secret"));
