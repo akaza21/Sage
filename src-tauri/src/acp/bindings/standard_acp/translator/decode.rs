@@ -172,23 +172,6 @@ pub(super) fn stated_context_window(usage: &Map<String, Value>) -> Option<u32> {
         .and_then(|value| u32::try_from(value).ok())
 }
 
-pub(super) fn usage_event(
-    usage: &Map<String, Value>,
-    context_window: Option<u32>,
-) -> Option<AdapterEvent> {
-    let count = |key: &str| usage.get(key).and_then(Value::as_u64);
-    let cached = count("cachedReadTokens")
-        .unwrap_or(0)
-        .saturating_add(count("cachedWriteTokens").unwrap_or(0));
-    let input_tokens = count("inputTokens")?.saturating_add(cached);
-    let output_tokens = count("outputTokens")?;
-    Some(AdapterEvent::Usage(NormalizedPayload::Usage {
-        input_tokens,
-        output_tokens,
-        context_window,
-    }))
-}
-
 pub(super) fn unsupported_event(
     kind: &str,
     summary: &str,

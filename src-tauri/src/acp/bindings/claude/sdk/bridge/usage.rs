@@ -28,11 +28,17 @@ pub(in crate::acp::bindings::claude::sdk) enum UsageReply {
 impl SdkBridge {
     /// Holds a main-thread model call's prompt, cached or not, plus its
     /// reply. Claude Code's synthetic error replies state no prompt and
-    /// leave the count as it was; counts too large to add up make it unknown.
-    pub(super) fn track_context(&mut self, usage: &Value) {
+    /// leave the count as it was; counts too large to add up make it unknown,
+    /// which is stated at once.
+    pub(super) fn track_context(&mut self, usage: &Value, inbound: &mut Inbound) {
         match prompt_tokens(usage) {
             Some(0) => {}
-            prompt => self.context_tokens = prompt.and_then(|prompt| with_reply(usage, prompt)),
+            prompt => {
+                self.context_tokens = prompt.and_then(|prompt| with_reply(usage, prompt));
+                if self.context_tokens.is_none() {
+                    self.report_context(0, inbound);
+                }
+            }
         }
     }
 

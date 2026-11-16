@@ -79,6 +79,34 @@ describe("ComposerContext", () => {
     vi.restoreAllMocks();
   });
 
+  it("keeps usage reachable from an empty ring while the context count is unknown", async () => {
+    vi.spyOn(acpUsageDesktop, "read").mockResolvedValue({ kind: "offline" });
+    render(
+      <ComposerContext
+        usage={null}
+        usageRequest={
+          {
+            projectId: "project-a",
+            projectGeneration: "1",
+            chatId: "chat-a",
+            sessionId: "session-a",
+            runtimeEpoch: "2",
+          } as AcpUsageRequest
+        }
+      />,
+    );
+    const trigger = await screen.findByRole("button", {
+      name: "Context unknown. Show usage",
+    });
+    expect(trigger.style.getPropertyValue("--composer-context-usage")).toBe(
+      "0%",
+    );
+    fireEvent.click(trigger);
+    const dialog = await screen.findByRole("dialog", { name: "Usage" });
+    expect(dialog).not.toHaveTextContent("Context window");
+    vi.restoreAllMocks();
+  });
+
   it("clamps only the visual and numeric progressbar value when usage is over capacity", async () => {
     render(<ComposerContext usage={usage(300_000, 272_000)} />);
     await screen.findByRole("progressbar");

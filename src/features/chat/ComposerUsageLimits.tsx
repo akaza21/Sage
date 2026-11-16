@@ -140,7 +140,7 @@ export default function ComposerUsageLimits({
   onDismiss,
 }: {
   id: string;
-  context: ContextFill;
+  context: ContextFill | null;
   request: AcpUsageRequest;
   triggerRef: RefObject<HTMLElement | null>;
   onDismiss: () => void;
@@ -157,7 +157,7 @@ export default function ComposerUsageLimits({
       onDismiss={onDismiss}
       className="composer__popover composer-usage"
     >
-      <ContextWindow {...context} />
+      {context && <ContextWindow {...context} />}
       <UsageReport request={request} />
     </MenuPopover>
   );

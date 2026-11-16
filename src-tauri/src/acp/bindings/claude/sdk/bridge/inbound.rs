@@ -213,7 +213,7 @@ impl SdkBridge {
             self.auth_failed = true;
         }
         let message = &sdk["message"];
-        self.track_context(&message["usage"]);
+        self.track_context(&message["usage"], inbound);
         let streamed = message
             .get("id")
             .and_then(Value::as_str)

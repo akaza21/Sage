@@ -18,9 +18,10 @@ export function ComposerContext({
   visible?: boolean;
 }) {
   if (
-    !usage ||
-    !Number.isSafeInteger(usage.contextWindow) ||
-    usage.contextWindow! <= 0
+    !usageRequest &&
+    (!usage ||
+      !Number.isSafeInteger(usage.contextWindow) ||
+      usage.contextWindow! <= 0)
   )
     return null;
   return (

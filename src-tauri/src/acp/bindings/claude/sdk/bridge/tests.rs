@@ -284,14 +284,22 @@ fn a_compaction_without_its_compacted_size_clears_the_context_until_a_model_call
 fn token_counts_too_large_to_add_up_are_reported_as_unknown() {
     let mut bridge = initialized();
     prompt(&mut bridge, 3);
-    for usage in [
-        json!({"input_tokens":5,"output_tokens":120,"cache_read_input_tokens":41_000}),
-        json!({"input_tokens":u64::MAX,"output_tokens":0,"cache_read_input_tokens":1}),
-    ] {
-        bridge
-            .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[],"usage":usage}}))
-            .unwrap();
-    }
+    let call = |usage: Value| json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[],"usage":usage}});
+    let counted = bridge
+        .inbound(call(
+            json!({"input_tokens":5,"output_tokens":120,"cache_read_input_tokens":41_000}),
+        ))
+        .unwrap();
+    assert!(!reports_context(&counted));
+    let overflowed = bridge
+        .inbound(call(
+            json!({"input_tokens":u64::MAX,"output_tokens":0,"cache_read_input_tokens":1}),
+        ))
+        .unwrap();
+    assert_eq!(
+        updates(&overflowed),
+        [&json!({"sessionUpdate":"usage_update","used":0})]
+    );
     let result = bridge
         .inbound(
             json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
