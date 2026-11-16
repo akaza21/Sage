@@ -1,8 +1,7 @@
 import { expect, it } from "vitest";
 
 import type { AcpChatPage, AcpItem } from "../domain/acp";
-import { projectTaskResources } from "./agentArtifactTabPresentation";
-import { unconfirmedTurn } from "./subagentLiveness";
+import { projectRecentAgents } from "./agentArtifactTabPresentation";
 
 function event(
   id: string,
@@ -38,7 +37,7 @@ function summary(items: AcpItem[]) {
       },
     ],
   } as unknown as AcpChatPage;
-  return projectTaskResources(page, "chat");
+  return projectRecentAgents(page, "chat");
 }
 
 it("reconciles each admitted child without duplicating counts or shuffling rows", () => {
@@ -92,13 +91,11 @@ it("reconciles each admitted child without duplicating counts or shuffling rows"
   ];
   for (const stage of stages) {
     const result = summary(stage.items);
-    expect(result.recentAgents.map((agent) => agent.label)).toEqual([
+    expect(result.map((agent) => agent.label)).toEqual([
       "Researcher",
       "Builder",
     ]);
-    expect(result.recentAgents.map((agent) => agent.status)).toEqual(
-      stage.statuses,
-    );
+    expect(result.map((agent) => agent.status)).toEqual(stage.statuses);
   }
 });
 
@@ -125,10 +122,7 @@ it("retains a failed child beside independently completed siblings", () => {
       ],
     ),
   ]);
-  expect(result.recentAgents.map((agent) => agent.status)).toEqual([
-    "done",
-    "failed",
-  ]);
+  expect(result.map((agent) => agent.status)).toEqual(["done", "failed"]);
 });
 
 it("counts paired spawn and native completion observations as one child", () => {
@@ -142,13 +136,12 @@ it("counts paired spawn and native completion observations as one child", () => 
     ),
     event("activity", "completed", [], [], [], "child-1"),
   ]);
-  expect(result.recentAgents).toEqual([
+  expect(result).toEqual([
     {
       id: "spawn:child-1",
       label: "Reviewer",
       status: "done",
       agentKey: "child-1",
-      reportedTurn: expect.objectContaining({ id: "turn" }),
     },
   ]);
 });
@@ -160,8 +153,8 @@ it.each(["pendingInit", "running"])(
       event("spawn", "spawnAgent", ["a"], ["Reviewer"], [["a", state]]),
       event("native", "completed", [], [], [], "a"),
     ]);
-    expect(result.recentAgents[0]).toMatchObject({ status: "done" });
-    expect(result.recentAgents[0].target).toBeUndefined();
+    expect(result[0]).toMatchObject({ status: "done" });
+    expect(result[0].target).toBeUndefined();
   },
 );
 
@@ -181,47 +174,22 @@ it("does not infer a child from a started event without a retained spawn", () =>
     ["Researcher"],
     [["a", "completed"]],
   );
-  expect(summary([started]).recentAgents).toEqual([]);
-  expect(
-    summary([started, done]).recentAgents.map((agent) => agent.status),
-  ).toEqual([]);
+  expect(summary([started])).toEqual([]);
+  expect(summary([started, done]).map((agent) => agent.status)).toEqual([]);
 });
 
-it("leaves a live child unconfirmed only while its latest parent row sits in an ended turn", () => {
-  const turn = (id: string, state: string, items: AcpItem[]) => ({
-    id,
-    state,
-    sessionId: "session",
-    items,
-    browserOperations: [],
-  });
-  const recent = (turns: ReturnType<typeof turn>[]) =>
-    projectTaskResources(
-      { projectId: "project", chatId: "chat", turns } as unknown as AcpChatPage,
-      "chat",
-    ).recentAgents.map((agent) => ({
-      status: agent.status,
-      unconfirmed: unconfirmedTurn(agent)?.id,
-    }));
-  const spawn = (key: string, state: string) =>
-    event(`spawn-${key}`, "spawnAgent", [key], ["Reviewer"], [[key, state]]);
-  const ended = turn("first", "completed", [
-    spawn("a", "running"),
-    spawn("b", "completed"),
+it("keeps an unknown outcome apart from a stop", () => {
+  const result = summary([
+    event(
+      "spawn",
+      "spawnAgent",
+      ["a", "b"],
+      ["Lost", "Stopped"],
+      [
+        ["a", "unknown"],
+        ["b", "interrupted"],
+      ],
+    ),
   ]);
-  expect(recent([ended])).toEqual([
-    { status: "working", unconfirmed: "first" },
-    { status: "done", unconfirmed: undefined },
-  ]);
-  expect(recent([{ ...ended, state: "running" }])[0].unconfirmed).toBe(
-    undefined,
-  );
-  // A later report about the child in a live turn can still change it.
-  const reported = turn("second", "running", [
-    event("wait-a", "wait", ["a"], ["Reviewer"], [["a", "running"]]),
-  ]);
-  expect(recent([ended, reported])[0]).toEqual({
-    status: "working",
-    unconfirmed: undefined,
-  });
+  expect(result.map((agent) => agent.status)).toEqual(["unknown", "stopped"]);
 });

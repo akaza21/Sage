@@ -854,10 +854,10 @@ it.each([false, true])(
 
 it.each([
   ["completed", 0, 1, "Done"],
-  ["inProgress", 1, 0, "Working"],
+  ["running", 1, 0, "Working"],
 ])(
-  "counts a child still running at its ended spawn turn by its %s transcript",
-  async (status, working, done, shown) => {
+  "counts a child of an ended spawn turn by the %s state its parent projection reports, without reading it",
+  async (state, working, done, shown) => {
     const page = acpProjectionStoreFor(tab.id).getState().page!;
     const key = "private-reviewer";
     replaceItems(
@@ -868,7 +868,7 @@ it.each([
           "spawnAgent",
           [key],
           ["Reviewer"],
-          [[key, "running"]],
+          [[key, state]],
         ),
       ],
       {
@@ -878,17 +878,11 @@ it.each([
         })) as unknown as AcpChatPage["sessions"],
       },
     );
-    readChild.mockResolvedValue({
-      kind: "current",
-      retentionLimited: false,
-      turns: [{ id: "child-turn", status, items: [] }],
-    });
     render(<AgentTaskHeader tab={tab} chatCount={1} snapshot={null} />);
     fireEvent.click(
       screen.getByRole("button", { name: "Show chat resources" }),
     );
     const section = await screen.findByRole("region", { name: "Subagents" });
-    await waitFor(() => expect(readChild).toHaveBeenCalledTimes(1));
     await waitFor(() =>
       expect(
         within(section).getByLabelText(`Recent subagents done: ${done}`),
@@ -900,5 +894,6 @@ it.each([
     expect(
       within(section).getByRole("button", { name: "Open subagent Reviewer" }),
     ).toHaveTextContent(shown);
+    expect(readChild).not.toHaveBeenCalled();
   },
 );

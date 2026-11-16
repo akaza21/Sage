@@ -1,13 +1,6 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { AcpChatPage, TurnProjection } from "../domain/acpProjection";
-import { terminalTurnStates } from "../features/chat/acp/statusSemantics";
+import type { AcpChatPage } from "../domain/acpProjection";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import {
   getAcpChildTranscript,
@@ -56,38 +49,6 @@ export function useChildEpoch(page: AcpChatPage): number | null {
   return listenerless ? own : null;
 }
 
-/** A live child re-reads at most once per this window, and within it. */
-const CHILD_REFRESH_MS = 1_000;
-
-/** Single-flight, throttled reads for one child. */
-type ChildRefresh = {
-  inFlight: boolean;
-  /** The epoch moved while a read was in flight. */
-  again: boolean;
-  timer: ReturnType<typeof setTimeout> | undefined;
-  /** When the latest read started (performance.now()). */
-  startedAt: number;
-  send: () => void;
-};
-
-function childRefresh(): ChildRefresh {
-  return {
-    inFlight: false,
-    again: false,
-    timer: undefined,
-    startedAt: -Infinity,
-    send: () => undefined,
-  };
-}
-
-/** Leading/trailing throttle; never postpone a pending read during activity. */
-function scheduleChildRefresh(state: ChildRefresh) {
-  if (state.timer !== undefined) return;
-  const wait = state.startedAt + CHILD_REFRESH_MS - performance.now();
-  if (wait <= 0) return state.send();
-  state.timer = setTimeout(() => state.send(), wait);
-}
-
 export type ChildRead = { identity: string; request: ChildTranscriptRequest };
 
 /** The verified child read behind a spawn row, or null when none may be sent. */
@@ -128,7 +89,7 @@ export function childReadFor(
       session.runtimeEpoch !== turn.runtimeEpoch)
   )
     return null;
-  const request = {
+  const request: ChildTranscriptRequest = {
     projectId: page.projectId,
     projectGeneration,
     chatId: page.chatId,
@@ -138,91 +99,36 @@ export function childReadFor(
     agentKey,
   };
   // The child projection epoch is this identity's invalidation token.
-  return {
-    identity: [
-      request.projectId,
-      projectGeneration,
-      request.chatId,
-      request.sessionId,
-      request.runtimeEpoch,
-      itemId,
-      agentKey,
-    ].join("\u0000"),
-    request,
-  };
-}
-
-type Settlement = "done" | "stopped" | "failed";
-
-/** What a child transcript says once its last turn has settled. */
-function transcriptSettlement(
-  turns: readonly { status: string }[],
-): Settlement | null {
-  const status = turns.at(-1)?.status;
-  return status === "completed"
-    ? "done"
-    : status === "interrupted"
-      ? "stopped"
-      : status === "failed"
-        ? "failed"
-        : null;
-}
-
-const MAX_SETTLEMENTS = 64;
-const MAX_WATCHED_AGENTS = 8;
-const MAX_WATCHES = 32;
-const MAX_STALE_RETRIES = 3;
-
-/**
- * Settled children by read identity and the ended parent turn that last
- * reported them, so a later parent report about the same child starts over.
- */
-const settlements = new Map<string, Settlement>();
-const listeners = new Set<() => void>();
-let settlementVersion = 0;
-
-function settlementKey(identity: string, turnId: string) {
-  return identity + "\u0000" + turnId;
-}
-
-function noteSettlement(key: string, turns: readonly { status: string }[]) {
-  const settlement = transcriptSettlement(turns);
-  if (!settlement || settlements.get(key) === settlement) return;
-  settlements.delete(key);
-  settlements.set(key, settlement);
-  if (settlements.size > MAX_SETTLEMENTS)
-    settlements.delete(settlements.keys().next().value!);
-  settlementVersion += 1;
-  for (const listener of listeners) listener();
-}
-
-function currentSettlementVersion() {
-  return settlementVersion;
-}
-
-function subscribeSettlements(listener: () => void) {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
+  return { identity: Object.values(request).join("\u0000"), request };
 }
 
 export type ChildReadResult = ChildTranscript | "error";
 
+/** Consecutive stale answers one read retries before waiting for a new epoch. */
+export const MAX_STALE_RETRIES = 3;
+/** A child re-reads at most once per this window, and within it. */
+const CHILD_REFRESH_MS = 1_000;
+/** Idle watches are dropped once this many children are watched. */
+const MAX_WATCHES = 32;
+
 /** One mounted view's interest in a child's reads. */
 type Reader = {
-  identity: string;
-  /** The child epoch this reader has asked to be served. */
-  epoch: number | null;
+  /** The child epoch of the last read this reader was given. */
+  served: number | null;
   wanted: boolean;
   onRead: (value: ChildReadResult) => void;
 };
 
-/** Every view of one child shares this reader: one read at a time, throttled. */
+/** Every view of one child shares this: one read at a time, throttled. */
 type Watch = {
   read: ChildRead;
   readers: Set<Reader>;
-  refresh: ChildRefresh;
-  /** The epoch the latest scheduled read serves. */
-  epoch: number | null;
+  /** The newest child epoch a reader asked for. */
+  epoch: number;
+  inFlight: boolean;
+  timer: ReturnType<typeof setTimeout> | undefined;
+  /** When the latest read started (performance.now()). */
+  startedAt: number;
   stale: number;
 };
 
@@ -230,15 +136,6 @@ const watches = new Map<string, Watch>();
 /** One child read in flight across all views; the others queue behind it. */
 let reading: Watch | null = null;
 const queued = new Set<Watch>();
-
-/** Test isolation: forgets every watched child and settled result. */
-export function resetSubagentLiveness() {
-  for (const watch of watches.values()) clearTimeout(watch.refresh.timer);
-  watches.clear();
-  queued.clear();
-  reading = null;
-  settlements.clear();
-}
 
 function watchFor(read: ChildRead): Watch {
   const existing = watches.get(read.identity);
@@ -248,218 +145,144 @@ function watchFor(read: ChildRead): Watch {
   }
   for (const [identity, idle] of watches) {
     if (watches.size < MAX_WATCHES) break;
-    if (idle.readers.size > 0 || idle.refresh.inFlight || queued.has(idle))
-      continue;
-    clearTimeout(idle.refresh.timer);
+    if (idle.readers.size > 0 || idle.inFlight || queued.has(idle)) continue;
+    clearTimeout(idle.timer);
     watches.delete(identity);
   }
   const watch: Watch = {
     read,
     readers: new Set(),
-    refresh: childRefresh(),
-    epoch: null,
+    epoch: 0,
+    inFlight: false,
+    timer: undefined,
+    startedAt: -Infinity,
     stale: 0,
-  };
-  const state = watch.refresh;
-  state.send = () => {
-    state.timer = undefined;
-    // A view that unmounted or no longer needs reads never reads.
-    if (![...watch.readers].some((reader) => reader.wanted)) {
-      watch.epoch = null;
-      return;
-    }
-    if (state.inFlight) {
-      state.again = true;
-      return;
-    }
-    if (reading && reading !== watch) {
-      queued.add(watch);
-      return;
-    }
-    reading = watch;
-    state.inFlight = true;
-    state.startedAt = performance.now();
-    // A user config, goal or fork command that meets a read in flight waits
-    // for it in Rust (RuntimeHost::native_rpc), so reads cannot starve it.
-    void getAcpChildTranscript(watch.read.request)
-      // Only malformed successful responses throw; request failures are typed.
-      .catch(() => "error" as const)
-      .then((value) => {
-        state.inFlight = false;
-        if (reading !== watch) return;
-        reading = null;
-        const stale = typeof value === "object" && value.kind === "stale";
-        watch.stale = stale ? watch.stale + 1 : 0;
-        for (const reader of [...watch.readers]) reader.onRead(value);
-        if (state.again || (stale && watch.stale < MAX_STALE_RETRIES)) {
-          state.again = false;
-          scheduleChildRefresh(state);
-        }
-        for (const next of queued) {
-          if (reading) break;
-          queued.delete(next);
-          next.refresh.send();
-        }
-      });
   };
   watches.set(read.identity, watch);
   return watch;
 }
 
-/** Joins a child's shared reader and asks for the epoch when wanted. */
+/** Whether a reader that wants reads has not yet seen the newest epoch. */
+function behind(watch: Watch) {
+  return [...watch.readers].some(
+    (reader) => reader.wanted && reader.served !== watch.epoch,
+  );
+}
+
+/** Leading/trailing throttle; never postpone a pending read during activity. */
+function schedule(watch: Watch) {
+  if (watch.timer !== undefined) return;
+  const wait = watch.startedAt + CHILD_REFRESH_MS - performance.now();
+  if (wait <= 0) send(watch);
+  else watch.timer = setTimeout(() => send(watch), wait);
+}
+
+/** Queues a due read behind the reads already waiting, in arrival order. */
+function send(watch: Watch) {
+  watch.timer = undefined;
+  // A read in flight reschedules once it lands if a reader is still behind.
+  if (watch.inFlight || !behind(watch)) return;
+  queued.add(watch);
+  dispatch();
+}
+
+/** Starts the longest-waiting due read once no read is in flight. */
+function dispatch() {
+  for (const watch of queued) {
+    if (reading) return;
+    queued.delete(watch);
+    if (!watch.inFlight && behind(watch)) start(watch);
+  }
+}
+
+function start(watch: Watch) {
+  reading = watch;
+  watch.inFlight = true;
+  watch.startedAt = performance.now();
+  const epoch = watch.epoch;
+  // A user config, goal or fork command that meets a read in flight waits
+  // for it in Rust (RuntimeHost::native_rpc), so reads cannot starve it.
+  void getAcpChildTranscript(watch.read.request)
+    // Only malformed successful responses throw; request failures are typed.
+    .catch(() => "error" as const)
+    .then((value) => {
+      watch.inFlight = false;
+      if (reading !== watch) return;
+      reading = null;
+      const stale = typeof value === "object" && value.kind === "stale";
+      watch.stale = stale ? watch.stale + 1 : 0;
+      const retry = stale && watch.stale < MAX_STALE_RETRIES;
+      for (const reader of [...watch.readers]) {
+        if (!retry) reader.served = epoch;
+        reader.onRead(value);
+      }
+      if (behind(watch)) schedule(watch);
+      dispatch();
+    });
+}
+
+/** Joins a child's shared reads, asking for one at `epoch` when wanted. */
 function attach(read: ChildRead, reader: Reader, epoch: number) {
   const watch = watchFor(read);
   watch.readers.add(reader);
-  if (reader.wanted && reader.epoch !== epoch) {
-    const fresh = reader.epoch === null;
-    reader.epoch = epoch;
-    // A read already sent for this epoch serves every view; a view that
-    // just opened needs one it can see.
-    if (watch.epoch !== epoch || (fresh && !watch.refresh.inFlight)) {
-      watch.epoch = epoch;
-      scheduleChildRefresh(watch.refresh);
-    }
+  if (reader.wanted && reader.served !== epoch) {
+    watch.epoch = epoch;
+    schedule(watch);
   }
   return () => {
     watch.readers.delete(reader);
   };
 }
 
-/** Reads one child for an open view on each child epoch, through the shared reader. */
+/** Reads one child for an open view on each child epoch, through the shared reads. */
 export function useChildReads(
   read: ChildRead | null,
   epoch: number | null,
   wanted: boolean,
   onRead: (value: ChildReadResult) => void,
 ) {
-  const readers = useRef<Reader | null>(null);
+  const owned = useRef<{ identity: string; reader: Reader } | null>(null);
   useEffect(() => {
     if (!read || epoch === null) return;
-    let reader = readers.current;
-    if (reader?.identity !== read.identity)
-      reader = readers.current = {
+    if (owned.current?.identity !== read.identity)
+      owned.current = {
         identity: read.identity,
-        epoch: null,
-        wanted,
-        onRead,
+        reader: { served: null, wanted, onRead },
       };
+    const { reader } = owned.current;
     reader.wanted = wanted;
     reader.onRead = onRead;
     return attach(read, reader, epoch);
   }, [read, epoch, wanted, onRead]);
 }
 
-/**
- * The ended parent turn whose row still reports a child live: no later
- * parent row can change it, so only its own transcript can.
- */
-export function unconfirmedTurn(agent: RecentAgent): TurnProjection | null {
-  const turn = agent.reportedTurn;
-  return turn && liveAgent(agent.status) && terminalTurnStates.has(turn.state)
-    ? turn
-    : null;
+/** Test isolation: forgets every watched child. */
+export function resetSubagentLiveness() {
+  for (const watch of watches.values()) clearTimeout(watch.timer);
+  watches.clear();
+  queued.clear();
+  reading = null;
 }
 
 /**
- * Whether the runtime that ran an ended turn is gone: its session is no
- * longer current or has since closed or restarted its runtime.
+ * Marks the subagents the parent projection settled after their spawn turn
+ * ended. Their spawn row was never rewritten and still reads as started, so
+ * no parent row holds the time they ended.
  */
-function runtimeEnded(page: AcpChatPage, turn: TurnProjection) {
-  const session = page.sessions?.find(({ id }) => id === turn.sessionId);
-  return (
-    !!session &&
-    ((page.currentSessionId !== undefined &&
-      session.id !== page.currentSessionId) ||
-      session.runtimeEpoch !== turn.runtimeEpoch)
-  );
-}
-
-/**
- * Corrects subagents whose parent rows can no longer change: a child still
- * reported working from an ended parent turn takes its status from its own
- * transcript once that settles, and is stopped once the runtime that ran it
- * is gone, since its harness process went with it. Reads happen only while
- * a view is mounted, on child epoch changes, for the latest few such
- * children. Pass stable `agents` so a render does not re-attach every watch.
- */
-export function useSettledSubagents(
+export function settledSubagents(
   page: AcpChatPage,
-  projectGeneration: string | undefined,
   agents: readonly RecentAgent[],
-  epoch: number | null,
 ): RecentAgent[] {
-  useSyncExternalStore(subscribeSettlements, currentSettlementVersion);
-  const readers = useRef(new Map<string, Reader>());
-  const unconfirmed = useMemo(
-    () =>
-      agents.flatMap((agent) => {
-        const turn = unconfirmedTurn(agent);
-        return turn ? [{ agent, turn }] : [];
-      }),
-    [agents],
+  const started = new Set<string>();
+  for (const turn of page.turns)
+    for (const item of turn.items)
+      if (item.kind === "collaboration" && item.lifecycle === "started")
+        started.add(item.id);
+  return agents.map((agent) =>
+    !liveAgent(agent.status) &&
+    agent.agentKey &&
+    started.has(agent.id.slice(0, -agent.agentKey.length - 1))
+      ? { ...agent, endUnknown: true }
+      : agent,
   );
-  const ended = useMemo(
-    () =>
-      new Set(
-        unconfirmed
-          .filter(({ turn }) => runtimeEnded(page, turn))
-          .map(({ agent }) => agent.id),
-      ),
-    [page, unconfirmed],
-  );
-  const watched = useMemo(
-    () =>
-      unconfirmed
-        .filter(({ agent }) => !ended.has(agent.id))
-        .slice(-MAX_WATCHED_AGENTS)
-        .flatMap(({ agent, turn }) => {
-          const read =
-            agent.target &&
-            childReadFor(
-              page,
-              projectGeneration,
-              agent.target.itemId,
-              agent.target.agentKey,
-            );
-          return read
-            ? [{ agent, read, key: settlementKey(read.identity, turn.id) }]
-            : [];
-        }),
-    [page, projectGeneration, unconfirmed, ended],
-  );
-  useEffect(() => {
-    if (epoch === null) return;
-    const kept = new Map<string, Reader>();
-    const releases = watched.map(({ read, key }) => {
-      let reader = readers.current.get(key);
-      if (!reader) {
-        const created: Reader = {
-          identity: read.identity,
-          epoch: null,
-          wanted: true,
-          onRead: (value) => {
-            if (typeof value === "object" && "turns" in value)
-              noteSettlement(key, value.turns);
-            created.wanted = !settlements.has(key);
-          },
-        };
-        reader = created;
-      }
-      reader.wanted = !settlements.has(key);
-      kept.set(key, reader);
-      return attach(read, reader, epoch);
-    });
-    readers.current = kept;
-    return () => releases.forEach((release) => release());
-  }, [watched, epoch]);
-  const settled = new Map(
-    watched.flatMap(({ agent, key }) => {
-      const settlement = settlements.get(key);
-      return settlement ? [[agent.id, settlement] as const] : [];
-    }),
-  );
-  return agents.map((agent) => {
-    const status = ended.has(agent.id) ? "stopped" : settled.get(agent.id);
-    return status ? { ...agent, status, endUnknown: true } : agent;
-  });
 }

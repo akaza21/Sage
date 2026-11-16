@@ -6,10 +6,10 @@ import { avatarColor } from "../features/chat/acp/subagentActivity";
 import { focusPopoverDialog } from "../ui/menuPopoverDialogFocus";
 import {
   liveAgent,
-  projectTaskResources,
+  projectRecentAgents,
   type RecentAgent,
 } from "./agentArtifactTabPresentation";
-import { useChildEpoch, useSettledSubagents } from "./subagentLiveness";
+import { settledSubagents } from "./subagentLiveness";
 
 export type SubagentTime = { startedAt: number; updatedAt: number };
 
@@ -28,6 +28,7 @@ const statusText = {
   done: "Done",
   stopped: "Stopped",
   failed: "Failed",
+  unknown: "Outcome unavailable",
 } as const;
 
 export function useNow(live: boolean): number {
@@ -124,18 +125,10 @@ export function SubagentAvatar({ agentKey }: { agentKey: string }) {
   );
 }
 
-export function SubagentList({
-  page,
-  projectGeneration,
-}: {
-  page: AcpChatPage;
-  projectGeneration?: string;
-}) {
-  const agents = useSettledSubagents(
-    page,
-    projectGeneration,
-    useMemo(() => projectTaskResources(page, page.chatId).recentAgents, [page]),
-    useChildEpoch(page),
+export function SubagentList({ page }: { page: AcpChatPage }) {
+  const agents = useMemo(
+    () => settledSubagents(page, projectRecentAgents(page, page.chatId)),
+    [page],
   );
   const times = subagentTimes(page, agents);
   const active = agents.filter((agent) => liveAgent(agent.status));

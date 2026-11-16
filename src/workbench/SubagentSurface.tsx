@@ -9,10 +9,7 @@ import {
 } from "../features/chat/transcriptSummary";
 import type { ChildTranscript } from "../services/acpChildTranscript";
 import { ArrowLeft } from "../ui/leanIcons";
-import {
-  liveAgent,
-  projectTaskResources,
-} from "./agentArtifactTabPresentation";
+import { liveAgent, projectRecentAgents } from "./agentArtifactTabPresentation";
 import {
   childActivityLabel,
   choiceName,
@@ -24,9 +21,10 @@ import {
 } from "./SubagentResourceRows";
 import {
   childReadFor,
+  MAX_STALE_RETRIES,
   useChildEpoch,
+  settledSubagents,
   useChildReads,
-  useSettledSubagents,
   type ChildReadResult,
 } from "./subagentLiveness";
 
@@ -34,7 +32,6 @@ export { AgentTaskSubagentSummary } from "./AgentTaskSubagentSummary";
 
 const MAX_CHILD_ACTIVITIES = 32;
 const MAX_VISIBLE_CHILD_ITEMS = 256;
-const MAX_STALE_RETRIES = 3;
 
 type ChildRead = Extract<ChildTranscript, { turns: unknown }>;
 type ReadState = {
@@ -70,10 +67,7 @@ export function SubagentSurface(props: {
   const list = useSubagentPaneStore((state) => state.list);
   return list ? (
     <section className="subagent-surface" aria-label="Subagents">
-      <SubagentList
-        page={props.page}
-        projectGeneration={props.projectGeneration}
-      />
+      <SubagentList page={props.page} />
     </section>
   ) : (
     <SubagentChild {...props} />
@@ -109,8 +103,7 @@ function SubagentChild({
   const identity = childRead?.identity ?? "";
   const epoch = useChildEpoch(page);
   const recent = useMemo(
-    () =>
-      agentKey ? projectTaskResources(page, page.chatId).recentAgents : [],
+    () => (agentKey ? projectRecentAgents(page, page.chatId) : []),
     [page, agentKey],
   );
   const invocation =
@@ -118,12 +111,7 @@ function SubagentChild({
   const reported = invocation
     ? recent.find((agent) => agent.id === invocation)
     : undefined;
-  const [observed] = useSettledSubagents(
-    page,
-    projectGeneration,
-    useMemo(() => (reported ? [reported] : []), [reported]),
-    epoch,
-  );
+  const [observed] = settledSubagents(page, reported ? [reported] : []);
   const live = liveAgent(observed?.status);
   const [read, setRead] = useState<ReadState | null>(null);
   const current = read?.key === identity ? read : null;

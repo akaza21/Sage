@@ -723,9 +723,13 @@ it("the first child read waits until child notices are subscribed", async () => 
   expect(readChild).toHaveBeenCalledTimes(1);
 });
 
-/** A spawn still reported running from a parent turn that has ended. */
-function spawnFromEndedTurn(epoch: string, turnState = "completed") {
-  const page = spawnPage("running", epoch);
+/** A spawn row of a parent turn that has ended, never rewritten since. */
+function spawnFromEndedTurn(
+  revision: string,
+  turnState = "completed",
+  agentState = "running",
+) {
+  const page = spawnPage(agentState, revision);
   const [turn] = page.turns;
   return {
     ...page,
@@ -735,6 +739,7 @@ function spawnFromEndedTurn(epoch: string, turnState = "completed") {
         state: turnState,
         items: turn.items.map((item) => ({
           ...item,
+          lifecycle: "started",
           projectId: "project",
           chatId: "chat",
           sessionId: "session",
@@ -746,58 +751,47 @@ function spawnFromEndedTurn(epoch: string, turnState = "completed") {
 
 it.each([
   ["interrupted", "Stopped"],
-  ["failed", "Failed"],
+  ["errored", "Failed"],
+  ["unknown", "Outcome unavailable"],
 ])(
-  "lists a child whose ended spawn turn still says running by its %s transcript",
-  async (status, shown) => {
+  "moves a child of an ended spawn turn to done once the parent projection settles it as %s",
+  (state, shown) => {
     useSubagentPaneStore.setState({ list: true });
-    readChild.mockResolvedValueOnce(
-      childRead([{ status: "inProgress", items: [text("a", "Counting")] }]),
-    );
-    readChild.mockResolvedValue(
-      childRead([{ status, items: [text("a", "Counting")] }]),
-    );
-    render(
+    const view = (page: AcpChatPage) => (
       <SubagentSurface
-        page={spawnFromEndedTurn("7")}
+        page={page}
         projectGeneration="3"
         itemId="spawn"
         agentKey="child"
-      />,
+      />
     );
-    await waitFor(() => expect(readChild).toHaveBeenCalledTimes(1));
-    await act(async () => undefined);
+    const { rerender } = render(view(spawnFromEndedTurn("7")));
     const active = screen.getByRole("region", { name: "Active subagents" });
     expect(within(active).getByText("Working")).toBeVisible();
-    await waitFor(() => expect(childNotices.has("project/chat")).toBe(true));
-    act(() => childNotices.get("project/chat")!(1_000));
-    const done = await screen.findByRole(
-      "region",
-      { name: "Done subagents" },
-      { timeout: 2_000 },
-    );
+    rerender(view(spawnFromEndedTurn("8", "completed", state)));
+    const done = screen.getByRole("region", { name: "Done subagents" });
     expect(within(done).getByText(shown)).toBeVisible();
     // The parent rows hold only the spawn time, so no age is claimed.
     expect(done.querySelector("time")).toBeNull();
     expect(
       screen.queryByRole("region", { name: "Active subagents" }),
     ).toBeNull();
+    expect(readChild).not.toHaveBeenCalled();
   },
-  10_000,
 );
 
 it.each([
-  ["an ended", "completed", null],
-  ["a live", "running", /Working for/],
+  ["an ended", "completed", "completed", null],
+  ["a live", "running", "running", /Working for/],
 ])(
-  "settles the header of a child reported running from %s parent turn by its transcript",
-  async (_name, turnState, duration) => {
+  "times the header of a child of %s parent turn by the state its parent projection reports",
+  async (_name, turnState, agentState, duration) => {
     readChild.mockResolvedValue(
       childRead([{ status: "completed", items: [text("a", "All counted")] }]),
     );
     const { container } = render(
       <SubagentSurface
-        page={spawnFromEndedTurn("7", turnState)}
+        page={spawnFromEndedTurn("7", turnState, agentState)}
         projectGeneration="3"
         itemId="spawn"
         agentKey="child"
@@ -810,42 +804,6 @@ it.each([
       expect(header).toHaveTextContent(duration);
       expect(header).toHaveClass("acp-live-shimmer");
     } else expect(header).toBeNull();
-    // The view's own read settles it; nothing reads the child a second time.
     expect(readChild).toHaveBeenCalledTimes(1);
-  },
-);
-
-it.each([
-  ["closed", null],
-  ["replaced", "9"],
-])(
-  "stops a child reported running from an ended turn once its runtime is %s, without reading it",
-  async (_name, runtimeEpoch) => {
-    useSubagentPaneStore.setState({ list: true });
-    const page = spawnFromEndedTurn("7");
-    render(
-      <SubagentSurface
-        page={
-          {
-            ...page,
-            sessions: page.sessions.map((session) => ({
-              ...session,
-              runtimeEpoch,
-            })),
-          } as AcpChatPage
-        }
-        projectGeneration="3"
-        itemId="spawn"
-        agentKey="child"
-      />,
-    );
-    const done = screen.getByRole("region", { name: "Done subagents" });
-    expect(within(done).getByText("Stopped")).toBeVisible();
-    expect(done.querySelector("time")).toBeNull();
-    await act(async () => undefined);
-    expect(
-      screen.queryByRole("region", { name: "Active subagents" }),
-    ).toBeNull();
-    expect(readChild).not.toHaveBeenCalled();
   },
 );

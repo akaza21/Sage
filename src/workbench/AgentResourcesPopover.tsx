@@ -20,9 +20,10 @@ import { openAgentArtifact } from "../app/openAgentArtifact";
 import { MenuPopover } from "../ui/MenuPopover";
 import {
   liveAgent,
-  projectTaskResources,
+  projectRecentAgents,
   type RecentAgent,
 } from "./agentArtifactTabPresentation";
+import { projectTaskResources } from "./taskResourceProjection";
 import { loadSubagentSurface } from "./loadSubagentSurface";
 import { AgentToolsContext } from "./AgentToolsProvider";
 import { useAgentChangesState } from "./agentChangesState";
@@ -92,8 +93,12 @@ export function AgentResourcesPopover({
     onDismiss,
   ]);
   const { launch } = useContext(AgentToolsContext);
-  const { recentAgents, outputs, sources, changesCount } = useMemo(
+  const { outputs, sources, changesCount } = useMemo(
     () => projectTaskResources(validPage ? page : null, chatId),
+    [page, chatId, validPage],
+  );
+  const recentAgents = useMemo(
+    () => projectRecentAgents(validPage ? page : null, chatId),
     [page, chatId, validPage],
   );
   const agentCounts = (agents: readonly RecentAgent[], glyphs?: ReactNode) => {
@@ -197,7 +202,6 @@ export function AgentResourcesPopover({
         <Suspense fallback={agentCounts(recentAgents)}>
           <AgentTaskSubagentSummary
             page={page}
-            projectGeneration={scope.projectGeneration}
             recentAgents={recentAgents}
             counts={agentCounts}
             onSelect={() => {

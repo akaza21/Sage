@@ -167,6 +167,31 @@ describe("CollaborationItem", () => {
     }
   });
 
+  it("settles a background spawn row from the outcome the parent projection reports", () => {
+    for (const [state, wording] of [
+      ["completed", "Sleep then report finished"],
+      ["unknown", "Sleep then report outcome unknown"],
+    ]) {
+      const item = {
+        kind: "collaboration",
+        lifecycle: "started",
+        payload: {
+          activityId: null,
+          label: "Subagent",
+          summary: "",
+          receiverLabels: ["Sleep then report"],
+          operation: "spawnAgent",
+          agentKeys: ["toolu_bg"],
+          agentStates: [["toolu_bg", state]],
+        },
+      } as unknown as Extract<AcpItem, { kind: "collaboration" }>;
+      const { unmount } = render(<CollaborationItem item={item} />);
+      expect(screen.getByRole("status", { name: wording })).toBeVisible();
+      expect(screen.queryByText(/started working/)).toBeNull();
+      unmount();
+    }
+  });
+
   it("shows an interrupted child as stopped", () => {
     const item = {
       kind: "collaboration",
