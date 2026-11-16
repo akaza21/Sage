@@ -7,36 +7,29 @@
 //! spaces, as Chinese or Japanese is, is shown up to its last such character,
 //! since no secret is spelled in it, unless the word holds a character that
 //! joins it into a secret or a path. Whenever the reply ends, completed or
-//! not, it is shown whole, clipped to what an item may hold.
+//! not, the whole text as sent is redacted at once and shown, clipped to what
+//! an item may hold, so what is kept never depends on how it streamed.
 //!
 //! Redacting the whole reply on every delta would cost time quadratic in its
-//! length, so a redacted prefix is kept and only the text after it is
-//! redacted again. The prefix grows at the end of each shown word once
-//! nothing is left open there: neither text that marks the next word as a
-//! secret, nor an unclosed quote, bracket or private key, nor the home folder
-//! a name with spaces may continue. Each [`PROBES`] continuation, redacted
-//! after the prefix, must leave the prefix as it was and itself unredacted.
-//! While a construct stays open the prefix waits; once [`STALL`] bytes are
-//! unkept, a prefix ending [`LOOKAHEAD`] bytes back is kept when redacting it
-//! and the rest apart gives what redacting both together gives. The stream
-//! redacts again only once the text since its last view is an eighth of the
-//! unkept text, so the work stays linear in the reply's length.
+//! length, so while it streams a redacted prefix is kept and only the text
+//! after it is redacted again. A prefix is kept only when redacting it alone,
+//! and the [`LOOKAHEAD`] bytes or more after it alone, gives exactly what
+//! redacting both together gives; no rule reads further than that to decide
+//! a span. The view is redacted again once the text since the last view is
+//! an eighth of the unkept text, and a prefix is tried at most every
+//! [`KEEP_EVERY`] bytes or eighth of the unkept text, so the work stays
+//! linear in the reply's length.
 
-use super::{clip_display, pem::QUOTE_SCAN_LIMIT, reply_text, spans::MAX_SPAN_BYTES};
+use super::{clip_display, reply_text, spans::MAX_SPAN_BYTES};
 use sage_core::limits::LIMITS;
 
-/// Bytes that must follow a prefix kept while a construct is open, as far as
-/// any rule reads to decide a span.
+/// Bytes that must follow a kept prefix, as far as any rule reads to decide
+/// a span.
 const LOOKAHEAD: usize = MAX_SPAN_BYTES;
-/// Unkept text after which a prefix is kept by comparing it with the text
-/// that followed it.
-const STALL: usize = 2 * LOOKAHEAD;
+/// The fewest bytes between attempts to keep a prefix.
+const KEEP_EVERY: usize = 4096;
 /// The share of the unkept text that must arrive before it is redacted again.
 const REFRESH_SHARE: usize = 8;
-/// Continuations that would turn into a secret after a key, a flag, an
-/// assignment or an open quote, bracket or credential line.
-const PROBES: [&str; 2] = ["= sagestreamprobe", ": sagestreamprobe"];
-const PEM_BEGIN: &str = "-----BEGIN";
 /// Characters that join a word into a secret or a path, so a word holding one
 /// is held back whole, whatever script it is written in.
 const TOKEN_JOINERS: [char; 5] = [':', '=', '@', '/', '\\'];
@@ -59,6 +52,7 @@ pub(crate) struct ReplyStream {
     kept_shown: String,
     shown: String,
     shown_end: usize,
+    attempted_end: usize,
     #[cfg(test)]
     redacted_bytes: usize,
 }
@@ -89,19 +83,24 @@ impl ReplyStream {
         let end = self.visible_end();
         let unkept = end - self.kept;
         if end > self.shown_end && end - self.shown_end >= unkept / REFRESH_SHARE {
-            let tail = self.redact(self.kept, end, "");
+            let tail = self.redact(self.kept, end);
             self.shown = self.after_kept(&tail);
             self.shown_end = end;
-            self.try_keep(end, tail);
+            if unkept >= LOOKAHEAD + KEEP_EVERY
+                && end - self.attempted_end >= KEEP_EVERY.max(unkept / REFRESH_SHARE)
+            {
+                self.attempted_end = end;
+                self.try_keep(end, &tail);
+            }
         }
         self.shown.clone()
     }
 
-    /// The whole reply, redacted, once the harness ends it for any reason or
-    /// stops it to call a tool. A later view shows no less of it.
+    /// The whole reply, redacted at once, when the harness ends it for any
+    /// reason or stops it to call a tool. A later view shows no less of it.
     pub(crate) fn finished(&mut self) -> String {
-        let tail = self.redact(self.kept, self.raw.len(), "");
-        self.shown = self.after_kept(&tail);
+        let whole = self.redact(0, self.raw.len());
+        self.shown = clip_display(&whole, ITEM_BYTES);
         self.shown_end = self.raw.len();
         self.shown.clone()
     }
@@ -135,56 +134,28 @@ impl ReplyStream {
         clip_display(&shown, ITEM_BYTES)
     }
 
-    fn redact(&mut self, start: usize, end: usize, probe: &str) -> String {
+    fn redact(&mut self, start: usize, end: usize) -> String {
         #[cfg(test)]
         {
-            self.redacted_bytes += end - start + probe.len();
+            self.redacted_bytes += end - start;
         }
-        if start == end && probe.is_empty() {
+        if start == end {
             return String::new();
         }
-        if probe.is_empty() {
-            return reply_text(&self.raw[start..end]);
-        }
-        reply_text(&format!("{}{probe}", &self.raw[start..end]))
+        reply_text(&self.raw[start..end])
     }
 
-    fn try_keep(&mut self, end: usize, tail: String) {
-        if self.nothing_open_at(end, &tail) {
-            self.kept_shown.push_str(&tail);
-            self.kept = end;
-        } else if end - self.kept >= STALL
-            && let Some(boundary) = self.boundary(end)
+    fn try_keep(&mut self, end: usize, tail: &str) {
+        let Some(boundary) = self.boundary(end) else {
+            return;
+        };
+        let head = self.redact(self.kept, boundary);
+        let rest = self.redact(boundary, end);
+        if tail.len() == head.len() + rest.len() && tail.starts_with(&head) && tail.ends_with(&rest)
         {
-            let head = self.redact(self.kept, boundary, "");
-            let rest = self.redact(boundary, end, "");
-            if tail.len() == head.len() + rest.len()
-                && tail.starts_with(&head)
-                && tail.ends_with(&rest)
-            {
-                self.kept_shown.push_str(&head);
-                self.kept = boundary;
-            }
+            self.kept_shown.push_str(&head);
+            self.kept = boundary;
         }
-    }
-
-    fn nothing_open_at(&mut self, end: usize, tail: &str) -> bool {
-        if end == self.kept || tail.trim_end().ends_with('~') {
-            return false;
-        }
-        let mut from = end.saturating_sub(QUOTE_SCAN_LIMIT + PEM_BEGIN.len());
-        while !self.raw.is_char_boundary(from) {
-            from += 1;
-        }
-        if self.raw[from..end].contains(PEM_BEGIN) {
-            return false;
-        }
-        PROBES.into_iter().all(|probe| {
-            let probed = self.redact(self.kept, end, probe);
-            probed.len() == tail.len() + probe.len()
-                && probed.starts_with(tail)
-                && probed.ends_with(probe)
-        })
     }
 
     /// The end of the last line, or failing that the last word or wide

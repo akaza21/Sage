@@ -709,17 +709,18 @@ fn accumulated_message_limit_rejects_before_mutating_the_snapshot() {
         translator.translate_notification(&encoded(&frame("xx")), &FixtureResources),
         Err(TranslationError::ItemLimit)
     ));
-    let exact = translator
+    translator
         .translate_notification(&encoded(&frame("\n")), &FixtureResources)
         .unwrap();
+    let whole = translator.unfinished_replies();
     let [
         AdapterEvent::Item {
             payload: NormalizedPayload::Text { text },
             ..
         },
-    ] = exact.as_slice()
+    ] = whole.as_slice()
     else {
-        panic!("expected exact-limit text snapshot")
+        panic!("expected the exact-limit text shown whole")
     };
     assert_eq!(
         text.as_str().len(),

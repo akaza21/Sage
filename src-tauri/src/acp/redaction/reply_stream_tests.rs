@@ -1,4 +1,4 @@
-use super::{ITEM_BYTES, LOOKAHEAD, ReplyStream, STALL};
+use super::{ITEM_BYTES, KEEP_EVERY, LOOKAHEAD, REFRESH_SHARE, ReplyStream};
 use crate::acp::redaction::text::reply_text;
 
 fn streamed(text: &str, chunk: usize) -> (Vec<(usize, String)>, ReplyStream) {
@@ -124,11 +124,14 @@ fn streaming_a_plain_reply_redacts_each_byte_a_few_times() {
     let text = "plain words in a long reply, line after line.\n".repeat(256 * 1024 / 47);
     let (work, longest) = work_and_longest_wait(&text, 16);
     assert!(
-        work <= 8 * text.len(),
+        work <= 12 * text.len(),
         "{work} bytes redacted for {}",
         text.len()
     );
-    assert!(longest <= 64, "the view waited {longest} bytes");
+    assert!(
+        longest <= (LOOKAHEAD + 2 * KEEP_EVERY) / REFRESH_SHARE + 64,
+        "the view waited {longest} bytes"
+    );
 }
 
 #[test]
@@ -155,7 +158,7 @@ fn streaming_work_stays_linear_and_the_view_moves_once_a_construct_closes() {
         let (work, longest) = work_and_longest_wait(&text, 256);
         assert!(work <= 32 * text.len(), "{opening}: {work} bytes redacted");
         assert!(
-            longest <= STALL,
+            longest <= 2 * LOOKAHEAD,
             "{opening}: the view waited {longest} bytes"
         );
     }
@@ -195,4 +198,111 @@ fn a_whole_reply_longer_than_an_item_is_clipped_not_dropped() {
         "{}",
         &whole[..80]
     );
+}
+
+/// A small xorshift generator, so each case is reproducible from its seed.
+struct Cases(u64);
+
+impl Cases {
+    fn below(&mut self, bound: usize) -> usize {
+        self.0 ^= self.0 << 13;
+        self.0 ^= self.0 >> 7;
+        self.0 ^= self.0 << 17;
+        (self.0 % bound as u64) as usize
+    }
+
+    fn secret(&mut self) -> String {
+        const ALPHABET: &[u8] = b"abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+        (0..20)
+            .map(|_| char::from(ALPHABET[self.below(ALPHABET.len())]))
+            .collect()
+    }
+}
+
+#[test]
+fn every_view_of_a_randomly_split_reply_hides_what_the_whole_reply_hides() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder").to_owned();
+    for seed in 1..=12u64 {
+        let mut cases = Cases(seed.wrapping_mul(0x9e37_79b9_7f4a_7c15));
+        let mut text = String::new();
+        let mut secrets = Vec::new();
+        while text.len() < 3 * LOOKAHEAD {
+            let secret = cases.secret();
+            let piece = match cases.below(12) {
+                0 => format!("token={secret} "),
+                1 => format!("password: {secret}\n"),
+                2 => format!("Authorization: Bearer {secret}\n"),
+                3 => format!("postgres://admin:{secret}@db/app "),
+                4 => format!("export API_KEY=\"{secret} and more\"\n"),
+                5 => format!("-----BEGIN PRIVATE KEY-----\n{secret}\n-----END PRIVATE KEY-----\n"),
+                6 => format!("--password {secret} "),
+                7 => format!("{home}/project/src/main.rs and /srv/alice/x "),
+                8 => "这是一段没有空格的中文回答。\n".to_owned(),
+                9 => "\"a quoted phrase\" in prose ".to_owned(),
+                _ => "plain words in a long reply, line after line.\n".repeat(1 + cases.below(40)),
+            };
+            if piece.contains(&secret) {
+                secrets.push(secret);
+            }
+            text.push_str(&piece);
+        }
+        let whole = reply_text(&text);
+        for secret in &secrets {
+            let at = text.find(secret.as_str()).unwrap_or(0);
+            assert!(
+                !whole.contains(secret.as_str()),
+                "seed {seed}: {:?} shown whole",
+                &text[text.floor_char_boundary(at.saturating_sub(80))..at + 40]
+            );
+        }
+        let mut stream = ReplyStream::default();
+        let mut sent = 0;
+        let mut views = 0;
+        let mut previous = String::new();
+        while sent < text.len() {
+            let mut end = (sent + 1 + cases.below(300)).min(text.len());
+            while !text.is_char_boundary(end) {
+                end += 1;
+            }
+            stream.push(&text[sent..end]).unwrap();
+            sent = end;
+            let view = stream.streaming();
+            let same = view
+                .bytes()
+                .zip(previous.bytes())
+                .take_while(|(new, old)| new == old)
+                .count();
+            let mut from = same.saturating_sub(secrets[0].len());
+            while !view.is_char_boundary(from) {
+                from -= 1;
+            }
+            for secret in &secrets {
+                for start in 0..=secret.len() - 6 {
+                    assert!(
+                        !view[from..].contains(&secret[start..start + 6]),
+                        "seed {seed} at {sent}: part of {secret} shown"
+                    );
+                }
+            }
+            previous = view.clone();
+            views += 1;
+            if views % 16 == 0 {
+                let shown = &text[..stream.shown_end];
+                assert_eq!(view, reply_text(shown), "seed {seed} at {sent}");
+            }
+        }
+        assert_eq!(stream.finished(), whole, "seed {seed}");
+    }
+}
+
+#[test]
+fn a_finished_reply_is_the_whole_text_redacted_at_once() {
+    let text = format!(
+        "{}-----BEGIN RSA PRIV{}",
+        "plain words in a long reply.\n".repeat(2 * LOOKAHEAD / 29),
+        "ATE KEY-----\nMIIEvAIBADANBgkqhkiG9w0BAQEFAASC\n"
+    );
+    let (_, mut stream) = streamed(&text, 13);
+    assert_eq!(stream.finished(), reply_text(&text));
 }
