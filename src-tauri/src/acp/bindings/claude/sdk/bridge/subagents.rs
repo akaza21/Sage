@@ -177,6 +177,24 @@ impl SdkBridge {
         });
     }
 
+    /// The rows a finished turn fails: all its tools but those it allowed a
+    /// background subagent to run, whose own row in that subagent's
+    /// transcript takes their result, or fails when the subagent ends.
+    pub(super) fn unfinished_tools(&mut self) -> Vec<(String, String)> {
+        let allowed = std::mem::take(&mut self.allowed_tools);
+        std::mem::take(&mut self.tools)
+            .into_iter()
+            .filter(|(tool, _)| {
+                !allowed.contains(tool)
+                    || !self
+                        .child_tools
+                        .get(tool)
+                        .and_then(|(owner, _)| self.subagents.get(owner))
+                        .is_some_and(|subagent| subagent.background)
+            })
+            .collect()
+    }
+
     /// Ends the subagents a finished turn was waiting on; background ones run on.
     pub(super) fn end_children(&mut self, inbound: &mut Inbound) {
         let open: Vec<_> = self

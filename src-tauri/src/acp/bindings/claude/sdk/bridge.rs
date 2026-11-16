@@ -131,8 +131,7 @@ pub(super) struct SdkBridge {
     permissions: BTreeMap<u64, Permission>,
     /// Claude Code request ids whose answer is not yet delivered.
     answering: BTreeSet<String>,
-    /// Rows of tools a turn opened for approvals allowed: the turn ends once
-    /// each reports its result, since no row can change after it.
+    /// Tools the open turn's approvals allowed.
     allowed_tools: BTreeSet<String>,
     next_permission: u64,
     tools: BTreeMap<String, String>,

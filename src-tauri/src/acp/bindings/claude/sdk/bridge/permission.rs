@@ -126,7 +126,6 @@ impl SdkBridge {
         if self.prompt.is_none() {
             inbound.started = true;
             self.approval_turn = true;
-            self.allowed_tools.clear();
         }
         self.next_permission += 1;
         self.permissions.insert(
@@ -226,7 +225,7 @@ impl SdkBridge {
                 selected,
             )
         };
-        if self.approval_turn && response["behavior"] == "allow" {
+        if response["behavior"] == "allow" {
             self.allowed_tools.insert(permission.tool);
         }
         self.answering.insert(permission.request_id.clone());

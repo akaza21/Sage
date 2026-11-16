@@ -252,30 +252,7 @@ fn a_turn_opened_for_an_approval_ends_once_its_answer_is_delivered() {
         .unwrap()
         .to_owned();
     bridge.delivered(&Sent::Answer(request));
-    assert!(
-        bridge.settled_turn_end().is_none(),
-        "the allowed tool has not run yet"
-    );
-    let ran = bridge
-        .inbound(
-            json!({"type":"user","parent_tool_use_id":"toolu_task","message":{"role":"user",
-            "content":[{"type":"tool_result","tool_use_id":"toolu_r7","content":"done"}]}}),
-        )
-        .unwrap();
-    let row = ran
-        .acp
-        .iter()
-        .find(|frame| frame["params"]["update"]["toolCallId"] == "toolu_r7")
-        .expect("the tool's row finishes");
-    assert_eq!(row["params"]["update"]["status"], "completed");
     let ended = bridge.settled_turn_end().expect("the settled turn ends");
-    assert!(
-        !ended
-            .acp
-            .iter()
-            .any(|frame| frame["params"]["update"]["status"] == "failed"),
-        "nothing it allowed is failed"
-    );
     assert_eq!(ends(&ended, 4).unwrap()["result"]["stopReason"], "end_turn");
 
     let run = bridge.inbound(run_start()).unwrap();

@@ -1370,16 +1370,12 @@ fn a_turn_opened_for_an_approval_ends_once_its_answer_is_delivered() {
     runtime
         .resolve_egress(token, EgressResolution::Written)
         .unwrap();
-    assert!(
-        runtime.answers_delivered(&Mapper).unwrap().is_none(),
-        "the allowed tool has not run yet"
-    );
 
-    let events = feed(
-        &mut runtime,
-        json!({"type":"user","parent_tool_use_id":"toolu_task","message":{"role":"user",
-            "content":[{"type":"tool_result","tool_use_id":"toolu_sub","content":"done"}]}}),
-    );
+    let (events, _) = runtime
+        .answers_delivered(&Mapper)
+        .unwrap()
+        .expect("the approval's turn ends")
+        .into_parts();
     assert!(events.iter().any(|event| matches!(
         event,
         AdapterEvent::Turn { id, state: TurnState::Completed }
