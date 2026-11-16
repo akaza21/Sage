@@ -277,7 +277,15 @@ fn store_turn_status_in(
         });
     }
     match write_snapshot_in(transaction, &scope, &snapshot, now_millis, true) {
-        Ok(()) => Ok(true),
+        Ok(()) => {
+            super::settled::publish_settled_child(
+                transaction,
+                &scope.item_id,
+                &scope.child_thread_id,
+                now_millis,
+            )?;
+            Ok(true)
+        }
         Err(ChildTranscriptStoreError::Capacity) if !retained.retention_limited => {
             let mut limited = retained;
             limited.retention_limited = true;

@@ -3,12 +3,15 @@ import { afterEach, expect, it, vi } from "vitest";
 
 import type { AcpChatPage } from "../domain/acp";
 import { projectRecentAgents } from "./agentArtifactTabPresentation";
-import { resetSubagentLiveness, useSettledSubagents } from "./subagentLiveness";
+import {
+  resetSubagentLiveness,
+  settledSubagents,
+  useChildReads,
+  type ChildRead,
+} from "./subagentLiveness";
 
-const transcripts = vi.hoisted(
-  () => new Map<string, { kind: string; status: string }>(),
-);
 const reads = vi.hoisted(() => [] as string[]);
+const held = vi.hoisted(() => [] as (() => void)[]);
 vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
   ...((await importOriginal()) as object),
   isTauriRuntime: () => false,
@@ -17,15 +20,14 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
     { request }: { request: { agentKey: string } },
   ) => {
     reads.push(request.agentKey);
-    const transcript = transcripts.get(request.agentKey);
-    if (!transcript) throw { kind: "unavailable" };
+    await new Promise<void>((resolve) => held.push(resolve));
     return {
-      kind: transcript.kind,
+      kind: "current",
       snapshot: {
         childThreadId: request.agentKey,
         parentThreadId: "parent",
         retentionLimited: false,
-        turns: [{ id: "child-turn", status: transcript.status, items: [] }],
+        turns: [{ id: "child-turn", status: "inProgress", items: [] }],
       },
     };
   },
@@ -33,24 +35,19 @@ vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
 
 afterEach(() => {
   cleanup();
-  transcripts.clear();
   reads.length = 0;
+  held.length = 0;
+  vi.restoreAllMocks();
   resetSubagentLiveness();
 });
 
-/** Children spawned by a parent turn that ended while they still ran. */
-function page(children: string[], runtimeEpoch: string | null = "2") {
+/** One child per spawn row of an ended parent turn, as the backend projects it. */
+function page(rows: { key: string; state: string; lifecycle: string }[]) {
   return {
     projectId: "project",
     chatId: "chat",
     currentSessionId: "session",
-    sessions: [
-      {
-        id: "session",
-        runtimeEpoch,
-        capabilities: { childTranscriptRead: true },
-      },
-    ],
+    sessions: [{ id: "session", runtimeEpoch: "2", capabilities: {} }],
     turns: [
       {
         id: "turn",
@@ -58,16 +55,17 @@ function page(children: string[], runtimeEpoch: string | null = "2") {
         runtimeEpoch: "2",
         state: "completed",
         browserOperations: [],
-        items: children.map((key) => ({
+        items: rows.map(({ key, state, lifecycle }) => ({
           id: `spawn-${key}`,
           kind: "collaboration",
           projectId: "project",
           chatId: "chat",
           sessionId: "session",
+          lifecycle,
           payload: {
             operation: "spawnAgent",
             agentKeys: [key],
-            agentStates: [[key, "running"]],
+            agentStates: [[key, state]],
             receiverLabels: [key],
           },
         })),
@@ -76,104 +74,66 @@ function page(children: string[], runtimeEpoch: string | null = "2") {
   } as unknown as AcpChatPage;
 }
 
-function renderStatuses(initial: AcpChatPage, epoch = 1) {
-  const view = renderHook(
-    ({ page, epoch }) =>
-      useSettledSubagents(
-        page,
-        "3",
-        projectRecentAgents(page, page.chatId),
-        epoch,
-      ).map((agent) => agent.status),
-    { initialProps: { page: initial, epoch } },
+const settled = (value: AcpChatPage) =>
+  settledSubagents(value, projectRecentAgents(value, "chat")).map(
+    ({ agentKey, status, endUnknown }) => [agentKey, status, endUnknown],
   );
-  return {
-    statuses: () => view.result.current,
-    rerender: (page: AcpChatPage, epoch: number) =>
-      view.rerender({ page, epoch }),
+
+it("takes each outcome from the parent projection, with no cache and no transcript read", () => {
+  expect(
+    settled(
+      page([
+        { key: "late", state: "completed", lifecycle: "started" },
+        { key: "lost", state: "unknown", lifecycle: "started" },
+        { key: "stopped", state: "interrupted", lifecycle: "started" },
+        { key: "rewritten", state: "errored", lifecycle: "completed" },
+        { key: "running", state: "running", lifecycle: "started" },
+      ]),
+    ),
+  ).toEqual([
+    ["late", "done", true],
+    ["lost", "unknown", true],
+    ["stopped", "stopped", true],
+    ["rewritten", "failed", undefined],
+    ["running", "working", undefined],
+  ]);
+  expect(reads).toEqual([]);
+});
+
+it("gives every waiting child a read while slow reads meet constant invalidations", async () => {
+  let now = 0;
+  vi.spyOn(performance, "now").mockImplementation(() => now);
+  const read = (agentKey: string): ChildRead => {
+    const request = {
+      projectId: "project",
+      projectGeneration: "3",
+      chatId: "chat",
+      sessionId: "session",
+      runtimeEpoch: "2",
+      itemId: `spawn-${agentKey}`,
+      agentKey,
+    };
+    return { identity: Object.values(request).join("\u0000"), request };
   };
-}
-
-const keys = (count: number) =>
-  Array.from({ length: count }, (_, index) => `child-${index}`);
-
-it("settles every child once each read settles one, past the per-epoch read budget", async () => {
-  const children = keys(10);
-  for (const key of children)
-    transcripts.set(key, { kind: "current", status: "completed" });
-  const view = renderStatuses(page(children));
-  await waitFor(() =>
-    expect(view.statuses()).toEqual(children.map(() => "done")),
+  const views = ["child-0", "child-1", "child-2"].map((key) =>
+    renderHook(({ epoch }) => useChildReads(read(key), epoch, true, () => {}), {
+      initialProps: { epoch: 1 },
+    }),
   );
-  expect([...reads].sort()).toEqual([...children].sort());
-});
-
-it("shares reads among the unresolved children on later epochs, least recently read first", async () => {
-  const children = keys(9);
-  for (const key of children)
-    transcripts.set(key, { kind: "current", status: "inProgress" });
-  const view = renderStatuses(page(children));
-  await waitFor(() => expect(reads).toHaveLength(8));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(reads).toHaveLength(8);
-  const unread = children.find((key) => !reads.includes(key))!;
-  transcripts.set(unread, { kind: "current", status: "failed" });
-  expect(view.statuses()).toEqual(children.map(() => "working"));
-
-  view.rerender(page(children), 2);
-  await waitFor(() =>
-    expect(view.statuses()[children.indexOf(unread)]).toBe("failed"),
-  );
-  expect(view.statuses().filter((status) => status === "working")).toHaveLength(
-    8,
-  );
-  expect(reads[8]).toBe(unread);
-});
-
-it.each([
-  ["completed", "restarted", "done", "9"],
-  ["failed", "restarted", "failed", "9"],
-  ["completed", "closed", "done", null],
-  ["failed", "closed", "failed", null],
-])(
-  "keeps a %s child's outcome once its runtime has %s",
-  async (status, _change, outcome, runtimeEpoch) => {
-    transcripts.set("child-0", { kind: "current", status });
-    const view = renderStatuses(page(["child-0"]));
-    await waitFor(() => expect(view.statuses()).toEqual([outcome]));
-
-    view.rerender(page(["child-0"], runtimeEpoch), 2);
-    expect(view.statuses()).toEqual([outcome]);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(view.statuses()).toEqual([outcome]);
-    expect(reads).toEqual(["child-0"]);
-  },
-);
-
-it.each([
-  ["completed", "done"],
-  ["failed", "failed"],
-  ["interrupted", "stopped"],
-  ["inProgress", "stopped"],
-])(
-  "takes a %s child's outcome from its stored transcript once its runtime has closed",
-  async (status, outcome) => {
-    transcripts.set("child-0", { kind: "fromEarlierSession", status });
-    const view = renderStatuses(page(["child-0"], null));
-    await waitFor(() => expect(view.statuses()).toEqual([outcome]));
-  },
-);
-
-it("stops a child whose runtime closed without a stored transcript", async () => {
-  const view = renderStatuses(page(["child-0"], null));
-  await waitFor(() => expect(view.statuses()).toEqual(["stopped"]));
-  expect(reads).toEqual(["child-0"]);
-});
-
-it("keeps a live child working while its transcript is in progress", async () => {
-  transcripts.set("child-0", { kind: "current", status: "inProgress" });
-  const view = renderStatuses(page(["child-0"]));
   await waitFor(() => expect(reads).toEqual(["child-0"]));
-  await new Promise((resolve) => setTimeout(resolve, 0));
-  expect(view.statuses()).toEqual(["working"]);
+  for (let epoch = 2; reads.length < 6; epoch += 1) {
+    now += 2_000;
+    for (const view of views) view.rerender({ epoch });
+    const count = reads.length;
+    held.shift()!();
+    await waitFor(() => expect(reads.length).toBe(count + 1));
+  }
+  expect(reads).toEqual([
+    "child-0",
+    "child-1",
+    "child-2",
+    "child-0",
+    "child-1",
+    "child-2",
+  ]);
 });

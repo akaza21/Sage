@@ -14,16 +14,21 @@ export const MAX_RECENT_RESOURCE_ITEMS = 256;
 const MAX_RESOURCE_DETAILS_PER_ITEM = 32;
 export const MAX_RESOURCE_ENTRIES = 128;
 
-type AgentStatus = "starting" | "working" | "done" | "stopped" | "failed";
+type AgentStatus =
+  | "starting"
+  | "working"
+  | "done"
+  | "stopped"
+  | "failed"
+  /** Its runtime is gone and nothing recorded how it ended. */
+  | "unknown";
 export type RecentAgent = {
   id: string;
   label: string;
   status: AgentStatus;
   agentKey?: string;
   target?: SubagentPaneTarget;
-  /** The turn of the latest parent row about this child. */
-  reportedTurn?: TurnProjection;
-  /** Settled by its own transcript; the parent rows hold no end time. */
+  /** Settled after its spawn turn; the parent rows hold no end time. */
   endUnknown?: true;
 };
 
@@ -50,6 +55,7 @@ function agentStatus(state: string | undefined): AgentStatus | null {
   if (state === "completed") return "done";
   if (state === "shutdown" || state === "interrupted") return "stopped";
   if (state === "errored" || state === "notFound") return "failed";
+  if (state === "unknown") return state;
   return null;
 }
 
@@ -99,7 +105,6 @@ export function projectRecentAgents(
           if (invocation && agent)
             agents.set(invocation, {
               ...agent,
-              reportedTurn: turn,
               ...(target
                 ? {
                     target,
@@ -138,7 +143,6 @@ export function projectRecentAgents(
                 label,
                 status,
                 agentKey: key,
-                reportedTurn: turn,
                 ...(target ? { target } : {}),
               });
           }
@@ -156,7 +160,6 @@ export function projectRecentAgents(
               agents.set(invocation, {
                 ...agent,
                 id: invocation,
-                reportedTurn: turn,
                 label:
                   item.payload.receiverLabels[
                     (item.payload.agentKeys ?? []).indexOf(key)

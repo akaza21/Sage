@@ -1,27 +1,23 @@
-import type { ReactNode } from "react";
+import { useMemo, type ReactNode } from "react";
 import type { AcpChatPage } from "../domain/acpProjection";
 import { liveAgent, type RecentAgent } from "./agentArtifactTabPresentation";
 import { SubagentResourceRows } from "./SubagentResourceRows";
-import { useChildEpoch, useSettledSubagents } from "./subagentLiveness";
+import { settledSubagents } from "./subagentLiveness";
 
 export function AgentTaskSubagentSummary({
   page,
-  projectGeneration,
   recentAgents,
   counts,
   onSelect,
 }: {
   page: AcpChatPage;
-  projectGeneration: string;
   recentAgents: readonly RecentAgent[];
   counts: (agents: readonly RecentAgent[], glyphs: ReactNode) => ReactNode;
   onSelect: () => void;
 }) {
-  const agents = useSettledSubagents(
-    page,
-    projectGeneration,
-    recentAgents,
-    useChildEpoch(page),
+  const agents = useMemo(
+    () => settledSubagents(page, recentAgents),
+    [page, recentAgents],
   );
   const working = agents.filter((agent) => liveAgent(agent.status)).length;
   return (

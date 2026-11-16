@@ -23,8 +23,8 @@ import {
   childReadFor,
   MAX_STALE_RETRIES,
   useChildEpoch,
+  settledSubagents,
   useChildReads,
-  useSettledSubagents,
   type ChildReadResult,
 } from "./subagentLiveness";
 
@@ -67,10 +67,7 @@ export function SubagentSurface(props: {
   const list = useSubagentPaneStore((state) => state.list);
   return list ? (
     <section className="subagent-surface" aria-label="Subagents">
-      <SubagentList
-        page={props.page}
-        projectGeneration={props.projectGeneration}
-      />
+      <SubagentList page={props.page} />
     </section>
   ) : (
     <SubagentChild {...props} />
@@ -114,12 +111,7 @@ function SubagentChild({
   const reported = invocation
     ? recent.find((agent) => agent.id === invocation)
     : undefined;
-  const [observed] = useSettledSubagents(
-    page,
-    projectGeneration,
-    useMemo(() => (reported ? [reported] : []), [reported]),
-    epoch,
-  );
+  const [observed] = settledSubagents(page, reported ? [reported] : []);
   const live = liveAgent(observed?.status);
   const [read, setRead] = useState<ReadState | null>(null);
   const current = read?.key === identity ? read : null;

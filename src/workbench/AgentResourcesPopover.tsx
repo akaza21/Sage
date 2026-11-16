@@ -202,7 +202,6 @@ export function AgentResourcesPopover({
         <Suspense fallback={agentCounts(recentAgents)}>
           <AgentTaskSubagentSummary
             page={page}
-            projectGeneration={scope.projectGeneration}
             recentAgents={recentAgents}
             counts={agentCounts}
             onSelect={() => {

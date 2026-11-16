@@ -8,7 +8,12 @@ export type CollaborationProjectionItem = Extract<
 export const MAX_SUBAGENT_GROUP_ITEMS = 300;
 
 export type SubagentRowState =
-  "started working" | "finished" | "failed to start" | "failed" | "stopped";
+  | "started working"
+  | "finished"
+  | "failed to start"
+  | "failed"
+  | "stopped"
+  | "outcome unknown";
 
 export type SubagentEntry = { key: string; label: string };
 
@@ -95,6 +100,7 @@ export function collaborationRows(
       );
     else if (state === "shutdown" || state === "interrupted")
       append(key, "stopped", name);
+    else if (state === "unknown") append(key, "outcome unknown", name);
     else if (
       (state === "running" || state === "pendingInit") &&
       operation === "spawnAgent"

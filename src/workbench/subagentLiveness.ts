@@ -1,13 +1,6 @@
-import {
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  useSyncExternalStore,
-} from "react";
+import { useEffect, useRef, useState } from "react";
 
-import type { AcpChatPage, TurnProjection } from "../domain/acpProjection";
-import { terminalTurnStates } from "../features/chat/acp/statusSemantics";
+import type { AcpChatPage } from "../domain/acpProjection";
 import { isTauriRuntime } from "../ports/nativeInvoke";
 import {
   getAcpChildTranscript,
@@ -15,11 +8,7 @@ import {
   type ChildTranscript,
   type ChildTranscriptRequest,
 } from "../services/acpChildTranscript";
-import {
-  liveAgent,
-  MAX_RESOURCE_ENTRIES,
-  type RecentAgent,
-} from "./agentArtifactTabPresentation";
+import { liveAgent, type RecentAgent } from "./agentArtifactTabPresentation";
 
 /** Latest child epoch; desktop reads wait for listener attachment to avoid gaps. Non-desktop reads never wait. */
 export function useChildEpoch(page: AcpChatPage): number | null {
@@ -188,14 +177,25 @@ function schedule(watch: Watch) {
   else watch.timer = setTimeout(() => send(watch), wait);
 }
 
+/** Queues a due read behind the reads already waiting, in arrival order. */
 function send(watch: Watch) {
   watch.timer = undefined;
   // A read in flight reschedules once it lands if a reader is still behind.
   if (watch.inFlight || !behind(watch)) return;
-  if (reading) {
-    queued.add(watch);
-    return;
+  queued.add(watch);
+  dispatch();
+}
+
+/** Starts the longest-waiting due read once no read is in flight. */
+function dispatch() {
+  for (const watch of queued) {
+    if (reading) return;
+    queued.delete(watch);
+    if (!watch.inFlight && behind(watch)) start(watch);
   }
+}
+
+function start(watch: Watch) {
   reading = watch;
   watch.inFlight = true;
   watch.startedAt = performance.now();
@@ -217,11 +217,7 @@ function send(watch: Watch) {
         reader.onRead(value);
       }
       if (behind(watch)) schedule(watch);
-      for (const next of queued) {
-        if (reading) break;
-        queued.delete(next);
-        send(next);
-      }
+      dispatch();
     });
 }
 
@@ -260,183 +256,33 @@ export function useChildReads(
   }, [read, epoch, wanted, onRead]);
 }
 
-type Outcome = "done" | "stopped" | "failed";
-
-/** Every recent child of both visible chats keeps its known outcome. */
-const MAX_OUTCOMES = 2 * MAX_RESOURCE_ENTRIES;
-/** Children one view reads per child epoch, least recently read first. */
-const MAX_READS_PER_EPOCH = 8;
-
-/**
- * Known outcomes, oldest first, by child and the ended parent turn that
- * reported it live, so a later parent report about the child starts over.
- * Each change replaces the map, so a render sees one consistent snapshot.
- */
-let outcomes: ReadonlyMap<string, Outcome> = new Map();
-const outcomeListeners = new Set<() => void>();
-
-function noteOutcome(key: string, outcome: Outcome) {
-  if (outcomes.get(key) === outcome) return;
-  const next = new Map(outcomes);
-  next.delete(key);
-  next.set(key, outcome);
-  if (next.size > MAX_OUTCOMES) next.delete(next.keys().next().value!);
-  outcomes = next;
-  for (const listener of outcomeListeners) listener();
-}
-
-function subscribeOutcomes(listener: () => void) {
-  outcomeListeners.add(listener);
-  return () => outcomeListeners.delete(listener);
-}
-
-const currentOutcomes = () => outcomes;
-
-/** Test isolation: forgets every watched child and known outcome. */
+/** Test isolation: forgets every watched child. */
 export function resetSubagentLiveness() {
   for (const watch of watches.values()) clearTimeout(watch.timer);
   watches.clear();
   queued.clear();
   reading = null;
-  outcomes = new Map();
 }
 
 /**
- * What a read says about a child. A transcript speaks once its last turn
- * has settled. Once the runtime that ran the child is gone, a transcript
- * still in progress, or none at all, means the child stopped with it.
+ * Marks the subagents the parent projection settled after their spawn turn
+ * ended. Their spawn row was never rewritten and still reads as started, so
+ * no parent row holds the time they ended.
  */
-function readOutcome(value: ChildReadResult, ended: boolean): Outcome | null {
-  if (typeof value === "object" && "turns" in value) {
-    switch (value.turns.at(-1)?.status) {
-      case "completed":
-        return "done";
-      case "interrupted":
-        return "stopped";
-      case "failed":
-        return "failed";
-    }
-    return value.kind === "fromEarlierSession" ? "stopped" : null;
-  }
-  return ended && !(typeof value === "object" && value.kind === "stale")
-    ? "stopped"
-    : null;
-}
-
-/**
- * The ended parent turn whose row still reports a child live: no later
- * parent row can change it, so only its own transcript can.
- */
-export function unconfirmedTurn(agent: RecentAgent): TurnProjection | null {
-  const turn = agent.reportedTurn;
-  return turn && liveAgent(agent.status) && terminalTurnStates.has(turn.state)
-    ? turn
-    : null;
-}
-
-/**
- * Whether the runtime that ran an ended turn is gone: its session is no
- * longer current or has since closed or restarted its runtime.
- */
-function runtimeEnded(page: AcpChatPage, turn: TurnProjection) {
-  const session = page.sessions?.find(({ id }) => id === turn.sessionId);
-  return (
-    !!session &&
-    ((page.currentSessionId !== undefined &&
-      session.id !== page.currentSessionId) ||
-      session.runtimeEpoch !== turn.runtimeEpoch)
-  );
-}
-
-type UnconfirmedChild = {
-  id: string;
-  /** The child's key in `outcomes`. */
-  key: string;
-  ended: boolean;
-  read: ChildRead | null;
-};
-
-/**
- * Corrects subagents whose parent rows can no longer change: a child still
- * reported live from an ended parent turn takes the outcome its own
- * transcript gives, live or stored, and one whose runtime is gone without a
- * readable transcript stopped with it. Known outcomes always apply. Reads
- * happen only while a view is mounted, on child epoch changes, for a
- * bounded share of the unresolved children, least recently read first.
- * Pass stable `agents` so a render does not re-attach every read.
- */
-export function useSettledSubagents(
+export function settledSubagents(
   page: AcpChatPage,
-  projectGeneration: string | undefined,
   agents: readonly RecentAgent[],
-  epoch: number | null,
 ): RecentAgent[] {
-  const known = useSyncExternalStore(subscribeOutcomes, currentOutcomes);
-  const children = useMemo(
-    () =>
-      agents.flatMap((agent): UnconfirmedChild[] => {
-        const turn = unconfirmedTurn(agent);
-        if (!turn) return [];
-        const { target } = agent;
-        return [
-          {
-            id: agent.id,
-            key: [page.projectId, page.chatId, turn.id, agent.id].join(
-              "\u0000",
-            ),
-            ended: runtimeEnded(page, turn),
-            read: target
-              ? childReadFor(
-                  page,
-                  projectGeneration,
-                  target.itemId,
-                  target.agentKey,
-                )
-              : null,
-          },
-        ];
-      }),
-    [page, projectGeneration, agents],
+  const started = new Set<string>();
+  for (const turn of page.turns)
+    for (const item of turn.items)
+      if (item.kind === "collaboration" && item.lifecycle === "started")
+        started.add(item.id);
+  return agents.map((agent) =>
+    !liveAgent(agent.status) &&
+    agent.agentKey &&
+    started.has(agent.id.slice(0, -agent.agentKey.length - 1))
+      ? { ...agent, endUnknown: true }
+      : agent,
   );
-  const unresolved = useMemo(
-    () =>
-      children.filter(
-        (child): child is UnconfirmedChild & { read: ChildRead } =>
-          !!child.read && !known.has(child.key),
-      ),
-    [children, known],
-  );
-  const readers = useRef(new Map<string, Reader>());
-  useEffect(() => {
-    if (epoch === null) return;
-    const kept = new Map<string, Reader>();
-    const due = unresolved.map(({ key, read, ended }) => {
-      const reader: Reader = readers.current.get(key) ?? {
-        served: null,
-        wanted: true,
-        onRead: () => undefined,
-      };
-      reader.onRead = (value) => {
-        const outcome = readOutcome(value, ended);
-        if (!outcome) return;
-        reader.wanted = false;
-        noteOutcome(key, outcome);
-      };
-      kept.set(key, reader);
-      return { read, reader };
-    });
-    readers.current = kept;
-    const releases = due
-      .sort((a, b) => (a.reader.served ?? -1) - (b.reader.served ?? -1))
-      .slice(0, MAX_READS_PER_EPOCH)
-      .map(({ read, reader }) => attach(read, reader, epoch));
-    return () => releases.forEach((release) => release());
-  }, [unresolved, epoch]);
-  return agents.map((agent) => {
-    const child = children.find(({ id }) => id === agent.id);
-    const status =
-      child &&
-      (known.get(child.key) ?? (child.ended && !child.read ? "stopped" : null));
-    return status ? { ...agent, status, endUnknown: true } : agent;
-  });
 }
