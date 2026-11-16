@@ -19,11 +19,13 @@ pub(crate) fn redact(
     let mut budget = super::values::ValueBudget::default();
     let mut paths = PathContext::default();
     let mut position = 0;
-    for token in input.split_inclusive(super::breaks_a_token) {
-        let body = token.trim_end_matches(super::breaks_a_token);
-        let whitespace = &token[body.len()..];
+    while position < input.len() {
+        let (body, whitespace) = super::next_token(
+            &input[position..],
+            value.in_value() || secrets.protects_value(),
+        );
         let tail = &input[position + body.len()..];
-        position += token.len();
+        position += body.len() + whitespace.len();
         let path = paths.redact(body, whitespace, tail, mode).is_some();
         let continued = value.in_value();
         let literal_value = continued || secrets.next_value();

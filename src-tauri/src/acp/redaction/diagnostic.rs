@@ -9,6 +9,7 @@ use super::text::{
         attached_short_value, auth_scheme, contains_token, has_userinfo, is_sensitive_prose_flag,
         public_token_key, sensitive_assignment, sensitive_key, url_userinfo,
     },
+    next_token,
     paths::{PathContext, PathMode, absolute_path},
     pem::{redact_pem, scan_window},
 };
@@ -47,7 +48,11 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
     let mut json_tail = false;
     let mut paths = PathContext::default();
     while !remaining.is_empty() {
-        let trimmed = remaining.trim_start_matches(breaks_a_token);
+        let trimmed = if redact_next {
+            remaining.trim_start_matches(char::is_whitespace)
+        } else {
+            remaining.trim_start_matches(breaks_a_token)
+        };
         let whitespace = &remaining[..remaining.len() - trimmed.len()];
         output.push_str(whitespace);
         paths.redact("", whitespace, "", PathMode::Diagnostic);
@@ -57,7 +62,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
         }
         let position = value.len() - remaining.len();
         if position >= word_end {
-            word_end = position + word_len(remaining);
+            word_end = position + next_token(remaining, redact_next).0.len();
         }
         let token_len = word_end - position;
         let token = &remaining[..token_len];
@@ -225,7 +230,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
 }
 
 fn word_len(value: &str) -> usize {
-    value.find(breaks_a_token).unwrap_or(value.len())
+    value.find(char::is_whitespace).unwrap_or(value.len())
 }
 
 fn assignment_start(token: &str, prefix: &str, bare: &str, suffix: &str) -> Option<(usize, bool)> {

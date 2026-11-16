@@ -727,6 +727,23 @@ fn a_path_after_url_userinfo_stays_hidden_in_diagnostics() {
 }
 
 #[test]
+fn secrets_after_punctuation_outside_ascii_are_redacted_in_replies() {
+    for (input, expected) in [
+        ("回答，--password X", "回答，--password [redacted]"),
+        (
+            "回答，--password 'X Y' 完",
+            "回答，--password [redacted] 完",
+        ),
+        ("回答，password=X 完", "回答，[redacted] 完"),
+        ("回答（Bearer X）", "回答（Bearer [redacted]"),
+        ("«--password X» done", "«--password [redacted] done"),
+        ("it’s fine, don’t worry", "it’s fine, don’t worry"),
+    ] {
+        assert_eq!(super::reply_text(input), expected, "{input}");
+    }
+}
+
+#[test]
 fn a_credential_written_straight_after_cjk_or_full_width_punctuation_is_hidden() {
     let secret = "2ZvYrB9g2WxubqFL4aMA";
     for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
@@ -760,5 +777,62 @@ fn a_credential_written_straight_after_cjk_or_full_width_punctuation_is_hidden()
                 );
             }
         }
+    }
+}
+
+#[test]
+fn punctuation_outside_ascii_inside_a_path_keeps_the_whole_path_hidden() {
+    for path in [
+        "/home/o’brien/notes.txt",
+        r"C:\Users\O’Brien\notes.txt",
+        "/srv/报告，最终版/x.txt",
+    ] {
+        let text = format!("see {path} here");
+        for mode in [Mode::CommandOutput, Mode::Diagnostic] {
+            let shown = redact("test", &text, 4096, mode).unwrap();
+            assert!(!shown.contains("rien"), "{mode:?}: {shown}");
+            assert!(!shown.contains("最终版"), "{mode:?}: {shown}");
+        }
+        let shown = super::redact_prose_hiding_paths("test", &text, 4096).unwrap();
+        assert!(
+            !shown.contains("rien") && !shown.contains("最终版"),
+            "{shown}"
+        );
+    }
+}
+
+#[test]
+fn a_secret_value_is_never_cut_at_punctuation_or_a_change_of_script() {
+    let secret = "hunter2Zq";
+    for value in [
+        format!("password=abc—{secret} y"),
+        format!("password=密码{secret} y"),
+        format!("https://alice:pw—{secret}@db/app y"),
+        format!("postgres://admin:密码—{secret}@db/app y"),
+        format!("--password 密码{secret} y"),
+        format!("--password abc，{secret} y"),
+        format!("Bearer 密码—{secret} y"),
+    ] {
+        for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+            let shown = redact("test", &format!("x {value}"), 4096, mode).unwrap();
+            assert!(!shown.contains(secret), "{mode:?}: {value} => {shown}");
+        }
+        let shown = super::reply_text(&value);
+        assert!(!shown.contains(secret), "{value} => {shown}");
+    }
+}
+
+#[test]
+fn a_key_or_flag_written_straight_after_an_ideograph_starts_a_token() {
+    for (input, expected) in [
+        (
+            "回答Authorization: Bearer X\n完",
+            "回答Authorization: [redacted] [redacted]\n完",
+        ),
+        ("请用--password X登录", "请用--password [redacted]"),
+        ("パスワードはtoken=X です", "パスワードは[redacted] です"),
+        ("答案是Python的写法", "答案是Python的写法"),
+    ] {
+        assert_eq!(super::reply_text(input), expected, "{input}");
     }
 }

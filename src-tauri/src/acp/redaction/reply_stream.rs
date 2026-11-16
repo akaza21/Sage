@@ -12,15 +12,16 @@
 //!
 //! Redacting the whole reply on every delta would cost time quadratic in its
 //! length, so while it streams a redacted prefix is kept and only the text
-//! after it is redacted again. A prefix is kept only when redacting it alone,
-//! and the [`LOOKAHEAD`] bytes or more after it alone, gives exactly what
-//! redacting both together gives; no rule reads further than that to decide
-//! a span. The view is redacted again once the text since the last view is
+//! after it is redacted again. A prefix is kept only when nothing at its end,
+//! such as a header, a flag or an open quote, waits for a value after it, and
+//! redacting it alone, and the [`LOOKAHEAD`] bytes or more after it alone,
+//! gives exactly what redacting both together gives; no rule reads further
+//! than that to decide a span. The view is redacted again once the text since the last view is
 //! an eighth of the unkept text, and a prefix is tried at most every
 //! [`KEEP_EVERY`] bytes or eighth of the unkept text, so the work stays
 //! linear in the reply's length.
 
-use super::{clip_display, reply_text, spans::MAX_SPAN_BYTES};
+use super::{TOKEN_JOINERS, clip_display, reply_text, reply_text_settling, spans::MAX_SPAN_BYTES};
 use sage_core::limits::LIMITS;
 
 /// Bytes that must follow a kept prefix, as far as any rule reads to decide
@@ -30,9 +31,6 @@ const LOOKAHEAD: usize = MAX_SPAN_BYTES;
 const KEEP_EVERY: usize = 4096;
 /// The share of the unkept text that must arrive before it is redacted again.
 const REFRESH_SHARE: usize = 8;
-/// Characters that join a word into a secret or a path, so a word holding one
-/// is held back whole, whatever script it is written in.
-const TOKEN_JOINERS: [char; 5] = [':', '=', '@', '/', '\\'];
 const ITEM_BYTES: usize = smaller(
     LIMITS.wire.normalized_item_bytes,
     LIMITS.wire.item_bytes_per_turn,
@@ -149,7 +147,15 @@ impl ReplyStream {
         let Some(boundary) = self.boundary(end) else {
             return;
         };
-        let head = self.redact(self.kept, boundary);
+        #[cfg(test)]
+        {
+            self.redacted_bytes += boundary - self.kept;
+        }
+        let head = reply_text_settling(&self.raw[self.kept..boundary]);
+        if !head.settled {
+            return;
+        }
+        let head = head.text;
         let rest = self.redact(boundary, end);
         if tail.len() == head.len() + rest.len() && tail.starts_with(&head) && tail.ends_with(&rest)
         {

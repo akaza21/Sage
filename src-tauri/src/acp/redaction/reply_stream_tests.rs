@@ -229,10 +229,13 @@ fn every_view_of_a_randomly_split_reply_hides_what_the_whole_reply_hides() {
         let mut secrets = Vec::new();
         while text.len() < 3 * LOOKAHEAD {
             let secret = cases.secret();
-            let lead =
-                ["", "，", "。", "：", "（", "「", "\u{3000}", "\u{a0}", "—"][cases.below(9)];
+            let leads = [
+                "", "回答", "パス", "，", "。", "：", "（", "「", "、", "«", "’", "\u{3000}",
+                "\u{a0}", "—",
+            ];
+            let lead = leads[cases.below(leads.len())];
             text.push_str(lead);
-            let piece = match cases.below(12) {
+            let piece = match cases.below(13) {
                 0 => format!("token={secret} "),
                 1 => format!("password: {secret}\n"),
                 2 => format!("Authorization: Bearer {secret}\n"),
@@ -243,6 +246,11 @@ fn every_view_of_a_randomly_split_reply_hides_what_the_whole_reply_hides() {
                 7 => format!("{home}/project/src/main.rs and /srv/alice/x "),
                 8 => "这是一段没有空格的中文回答。".to_owned(),
                 9 => "\"a quoted phrase\" in prose ".to_owned(),
+                10 => match cases.below(3) {
+                    0 => format!("password=密码—{secret} "),
+                    1 => format!("Bearer 密码{secret}，完 "),
+                    _ => format!("https://alice:密{secret}—x@db/app "),
+                },
                 _ => "plain words in a long reply, line after line.\n".repeat(1 + cases.below(40)),
             };
             if piece.contains(&secret) {
@@ -309,4 +317,20 @@ fn a_finished_reply_is_the_whole_text_redacted_at_once() {
     );
     let (_, mut stream) = streamed(&text, 13);
     assert_eq!(stream.finished(), reply_text(&text));
+}
+
+#[test]
+fn a_value_after_a_kept_prefix_keeps_the_key_or_header_before_it() {
+    let filler = "plain words keep the reply long enough to keep a prefix. ".repeat(400);
+    for opener in ["Authorization: Bearer", "--password", "token:"] {
+        let gap = " ".repeat(2 * LOOKAHEAD);
+        let text = format!("{filler}\n{opener}{gap}hunter2secret done\n{filler}");
+        for chunk in [61, 1500] {
+            let (views, mut stream) = streamed(&text, chunk);
+            for (sent, view) in views {
+                assert!(!view.contains("hunter2"), "{opener} by {chunk} at {sent}");
+            }
+            assert!(!stream.finished().contains("hunter2"), "{opener}");
+        }
+    }
 }

@@ -57,6 +57,9 @@ toml = "=0.8.2"
 tokio = { version = "=1.53.3", features = ["io-util", "macros", "process", "rt-multi-thread", "sync", "time"] }
 tracing = "=0.1.44"
 tracing-subscriber = { version = "=0.3.23", default-features = false, features = ["fmt"] }
+# Word boundaries (UAX #29) for telling where CJK text meets a Latin word in
+# redaction. Already in the lock through Tauri's keyboard-types.
+unicode-segmentation = "=1.13.3"
 url = "=2.5.8"
 uuid = { version = "=1.24.0", features = ["serde", "v4"] }
 # Saved browser passwords (BF-7b): AES-256-GCM sealing, zeroized plaintext

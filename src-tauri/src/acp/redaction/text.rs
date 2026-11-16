@@ -1,4 +1,7 @@
-use std::borrow::Cow;
+use std::{borrow::Cow, sync::LazyLock};
+
+use regex::Regex;
+use unicode_segmentation::UnicodeSegmentation;
 
 use sage_acp_protocol::contract::ContractError;
 
@@ -54,18 +57,36 @@ pub(crate) fn redact_reply(
     input: &str,
     maximum: usize,
 ) -> Result<String, ContractError> {
-    redact(field, &neutralized(input, false), maximum, Mode::Prose)
+    Ok(redact_reply_settling(field, input, maximum)?.text)
+}
+
+fn redact_reply_settling(
+    field: &'static str,
+    input: &str,
+    maximum: usize,
+) -> Result<prose::RedactedProse, ContractError> {
+    let input = neutralized(input, false);
+    let embedded = embedded::redact(&input, maximum, Mode::Prose, ProsePaths::Shown, field)?;
+    prose::redact_prose_settling(field, &embedded, maximum, ProsePaths::Shown)
 }
 
 /// [`redact_reply`] with room for every redaction marker, failing closed to a
 /// single marker for text that cannot be redacted.
 pub(crate) fn reply_text(input: &str) -> String {
+    reply_text_settling(input).text
+}
+
+/// [`reply_text`], and whether nothing at its end waits for text after it.
+pub(crate) fn reply_text_settling(input: &str) -> prose::RedactedProse {
     const REDACTED: &str = "[redacted]";
     let maximum = input
         .len()
         .saturating_mul(sage_core::limits::COMMAND_OUTPUT_REDACTION_BYTES)
         .max(REDACTED.len());
-    redact_reply("text", input, maximum).unwrap_or_else(|_| REDACTED.to_owned())
+    redact_reply_settling("text", input, maximum).unwrap_or_else(|_| prose::RedactedProse {
+        text: REDACTED.to_owned(),
+        settled: false,
+    })
 }
 
 /// Prose that keeps absolute paths private as command output does, such as
@@ -116,18 +137,60 @@ fn redact_with(
     }
 }
 
-/// Whether a character ends a token as whitespace does. Besides whitespace,
-/// including the no-break and ideographic spaces, these are the punctuation of
-/// CJK and full-width text, such as `，`, `。` or `「`, and general punctuation
-/// such as `—` or `“`, so a key, flag or credential written straight after one
-/// is read as starting a token.
+/// Whether a character ends a token as whitespace does: whitespace, or any
+/// Unicode punctuation outside ASCII, such as `，`, `「` or `—`, which CJK
+/// prose puts no space after. ASCII punctuation stays inside a token, since it
+/// spells keys, flags, paths and secrets.
 pub(crate) fn breaks_a_token(character: char) -> bool {
+    static PUNCTUATION: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"^\p{P}$").expect("valid punctuation class"));
     character.is_whitespace()
-        || matches!(
-            character,
-            '\u{2010}'..='\u{205e}' | '\u{3000}'..='\u{303f}' | '\u{fe10}'..='\u{fe4f}'
-        )
-        || (matches!(character, '\u{ff00}'..='\u{ff65}') && !character.is_alphanumeric())
+        || (!character.is_ascii()
+            && !character.is_alphanumeric()
+            && PUNCTUATION.is_match(character.encode_utf8(&mut [0; 4])))
+}
+
+/// Characters that join a token into a secret or a path. A token holding one
+/// ends only at whitespace, since a secret or a file name may hold any
+/// punctuation or script.
+pub(crate) const TOKEN_JOINERS: [char; 5] = [':', '=', '@', '/', '\\'];
+
+/// The token at the start of `text`, and the character that ended it, if any.
+///
+/// Whitespace ends a token. Until the token holds a [`TOKEN_JOINERS`]
+/// character, so does a character that [`breaks_a_token`] or a
+/// [`script_change`], so a key or flag may start there. A `value` the redactor waits
+/// for, such as the one after `--password` or `Bearer`, ends only at
+/// whitespace: its characters never split it.
+pub(crate) fn next_token(text: &str, value: bool) -> (&str, &str) {
+    let mut joined = value;
+    let mut previous = None;
+    for (index, character) in text.char_indices() {
+        let next = index + character.len_utf8();
+        if character.is_whitespace() || (!joined && breaks_a_token(character)) {
+            return (&text[..index], &text[index..next]);
+        }
+        if !joined && previous.is_some_and(|before| script_change(before, character)) {
+            return (&text[..index], "");
+        }
+        joined |= TOKEN_JOINERS.contains(&character);
+        previous = Some(character);
+    }
+    (text, "")
+}
+
+/// Whether a word boundary falls between `before` and `after` where ASCII
+/// meets a letter or digit that UAX #29 never joins into a word with a Latin
+/// letter, such as an ideograph or kana.
+fn script_change(before: char, after: char) -> bool {
+    let apart_from_latin = |character: char| {
+        character.is_alphanumeric() && format!("{character}a").split_word_bounds().nth(1).is_some()
+    };
+    match (before.is_ascii(), after.is_ascii()) {
+        (false, true) => apart_from_latin(before),
+        (true, false) => apart_from_latin(after),
+        _ => false,
+    }
 }
 
 /// Clips display text to `max` bytes at a character boundary, ending a clipped
