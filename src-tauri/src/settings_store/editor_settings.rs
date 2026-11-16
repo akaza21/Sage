@@ -13,7 +13,7 @@ use serde::Serialize;
 use serde_json::Value;
 
 use super::SettingsStore;
-use crate::workspace::path_glob::valid_path_glob;
+use sage_workspace::path_glob::{DEFAULT_FILES_EXCLUDE, MAX_GLOBS, valid_path_glob};
 
 const ROW_VERSION: i64 = 1;
 
@@ -59,8 +59,6 @@ impl PartialEq<SettingValue> for EditorValue {
     }
 }
 
-pub const MAX_GLOBS: usize = 50;
-
 #[derive(Debug, Clone, Copy)]
 pub enum SettingKind {
     Bool,
@@ -73,7 +71,7 @@ pub enum SettingKind {
     Choice {
         choices: &'static [&'static str],
     },
-    /// Patterns in Sage's path glob dialect (`workspace::path_glob`).
+    /// Patterns in Sage's path glob dialect (`sage_workspace::path_glob`).
     Globs,
 }
 
@@ -160,14 +158,7 @@ pub const EDITOR_SETTINGS: &[SettingSpec] = &[
     SettingSpec {
         key: "files.exclude",
         kind: SettingKind::Globs,
-        default: SettingValue::Globs(&[
-            "**/.git",
-            "**/.svn",
-            "**/.hg",
-            "**/CVS",
-            "**/.DS_Store",
-            "**/Thumbs.db",
-        ]),
+        default: SettingValue::Globs(DEFAULT_FILES_EXCLUDE),
     },
     SettingSpec {
         key: "git.autoRefresh",
@@ -233,15 +224,6 @@ fn admit_globs(value: &Value) -> Option<Vec<String>> {
         }
     }
     Some(patterns)
-}
-
-pub fn default_files_exclude() -> Vec<String> {
-    match spec("files.exclude").map(|spec| spec.default) {
-        Some(SettingValue::Globs(patterns)) => {
-            patterns.iter().map(|pattern| (*pattern).into()).collect()
-        }
-        _ => Vec::new(),
-    }
 }
 
 /// Within JavaScript's safe-integer range, so Rust and the TypeScript
@@ -411,7 +393,7 @@ impl SettingsStore {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::workspace::path_glob::MAX_PATH_GLOB_BYTES;
+    use sage_workspace::path_glob::MAX_PATH_GLOB_BYTES;
     use serde_json::json;
 
     fn temp_store_path(label: &str) -> std::path::PathBuf {

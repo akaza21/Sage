@@ -20,6 +20,7 @@ sage-db = { path = "crates/sage-db" }
 sage-domain = { path = "crates/sage-domain" }
 sage-process = { path = "crates/sage-process" }
 sage-test-support = { path = "crates/sage-test-support" }
+sage-workspace = { path = "crates/sage-workspace" }
 
 base64 = "=0.22.1"
 # Gitignore rules for workspace walks (EDIT-0005 AD-3); only its matcher is used.

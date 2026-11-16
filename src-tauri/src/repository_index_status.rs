@@ -2,14 +2,12 @@ use std::time::Instant;
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    repository::{self, RepositoryBoundary},
-    workspace::Workspace,
-};
+use crate::repository::{self, RepositoryBoundary};
 use sage_domain::{
     repository::{FileChange, ProjectRepositoryStatus, RootRepositoryStatus},
     resource::ResourceRef,
 };
+use sage_workspace::Workspace;
 
 const MAX_INDEX_STATUS_BYTES: usize = 4 * 1024 * 1024;
 const MAX_CHANGES: usize = 300;

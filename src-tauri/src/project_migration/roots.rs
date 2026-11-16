@@ -5,11 +5,9 @@ use std::{
 
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    project_registry::{canonical_comparison_key, persisted_path_text},
-    workspace::{Workspace, validate_contract_path},
-};
+use crate::project_registry::{canonical_comparison_key, persisted_path_text};
 use sage_domain::resource::ResourceRef;
+use sage_workspace::{Workspace, validate_contract_path};
 
 #[derive(Default)]
 pub(super) struct MigratedResourceSpellings {

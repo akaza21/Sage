@@ -1,7 +1,7 @@
 use sage_core::error::{AppError, AppResult};
 
-use crate::workspace::Workspace;
 use sage_domain::repository::GitRecentCommit;
+use sage_workspace::Workspace;
 
 pub const MAX_RECENT_COMMITS: usize = 64;
 const MAX_COMMIT_SUBJECT_BYTES: usize = 255;

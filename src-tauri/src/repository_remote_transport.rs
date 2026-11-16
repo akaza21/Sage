@@ -1,9 +1,7 @@
 use sage_core::error::{AppError, AppResult};
 
-use crate::{
-    git_budget, repository, repository_branches, repository_conflict, repository_remotes,
-    workspace::Workspace,
-};
+use crate::{git_budget, repository, repository_branches, repository_conflict, repository_remotes};
+use sage_workspace::Workspace;
 
 const MAX_GIT_MUTATION_OUTPUT_BYTES: usize = 64 * 1024;
 
@@ -124,7 +122,7 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::workspace::Workspace;
+    use sage_workspace::Workspace;
 
     fn git(root: &Path, args: &[&str]) {
         assert!(
