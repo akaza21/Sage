@@ -38,8 +38,10 @@ impl SdkBridge {
                     " automatically"
                 };
                 // Claude Code reports only `pre_tokens`: the compacted size stays
-                // unknown until the next model call states it.
+                // unknown until the next model call states it. It is stated
+                // now, so a turn that ends before that call keeps no stale count.
                 self.context_tokens = tokens("post_tokens");
+                self.report_context(self.context_tokens.unwrap_or(0), inbound);
                 let text = match (tokens("pre_tokens"), tokens("post_tokens")) {
                     (Some(before), Some(after)) => format!(
                         "Claude Code compacted the conversation{how}, from {before} to {after} tokens."

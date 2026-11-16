@@ -210,13 +210,12 @@ fn reports_context(inbound: &Inbound) -> bool {
 }
 
 #[test]
-fn a_compaction_without_its_compacted_size_leaves_the_context_unknown_until_a_model_call_states_it()
-{
+fn a_compaction_without_its_compacted_size_clears_the_context_until_a_model_call_states_it() {
     let mut bridge = initialized();
     prompt(&mut bridge, 3);
     bridge
         .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[],
-            "usage":{"input_tokens":5,"output_tokens":120,"cache_read_input_tokens":41_000,"cache_creation_input_tokens":0}}}))
+            "usage":{"input_tokens":5,"output_tokens":120,"cache_read_input_tokens":190_000,"cache_creation_input_tokens":0}}}))
         .unwrap();
     bridge
         .inbound(
@@ -224,12 +223,14 @@ fn a_compaction_without_its_compacted_size_leaves_the_context_unknown_until_a_mo
             "usage":{},"modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
         )
         .unwrap();
+    let cleared = json!({"sessionUpdate":"usage_update","used":0,"size":1_000_000});
 
     prompt(&mut bridge, 4);
-    bridge
+    let compacted = bridge
         .inbound(json!({"type":"system","subtype":"compact_boundary",
-            "compact_metadata":{"trigger":"auto","pre_tokens":41_125}}))
+            "compact_metadata":{"trigger":"auto","pre_tokens":190_125}}))
         .unwrap();
+    assert_eq!(updates(&compacted), [&cleared]);
     let failed = bridge
         .inbound(
             json!({"type":"result","subtype":"error_during_execution","is_error":true,
@@ -240,6 +241,29 @@ fn a_compaction_without_its_compacted_size_leaves_the_context_unknown_until_a_mo
     assert_eq!(failed.acp.last().unwrap()["id"], 4);
 
     prompt(&mut bridge, 5);
+    let compacted = bridge
+        .inbound(json!({"type":"system","subtype":"compact_boundary",
+            "compact_metadata":{"trigger":"manual","pre_tokens":3_000}}))
+        .unwrap();
+    assert_eq!(updates(&compacted), [&cleared]);
+    let interrupt = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    bridge.inbound(success(&interrupt, json!({}))).unwrap();
+    let cancelled = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,"usage":{}}),
+        )
+        .unwrap();
+    assert!(!reports_context(&cancelled));
+    assert_eq!(
+        cancelled.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+
+    prompt(&mut bridge, 6);
     bridge
         .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m2","content":[],
             "usage":{"input_tokens":3_000,"output_tokens":200,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}))

@@ -335,10 +335,9 @@ impl SdkBridge {
         self.withdraw_open(inbound);
         self.end_retry(inbound);
         self.end_children(inbound);
-        if let (Some(used), Some(size)) = (self.context_tokens, context_window(sdk)) {
-            inbound.acp.push(
-                self.update(json!({"sessionUpdate": "usage_update", "used": used, "size": size})),
-            );
+        self.context_size = context_window(sdk).or(self.context_size);
+        if let Some(used) = self.context_tokens {
+            self.report_context(used, inbound);
         }
         let failed = sdk.get("is_error").and_then(Value::as_bool) == Some(true);
         inbound.acp.push(if self.interrupted {

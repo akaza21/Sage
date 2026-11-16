@@ -35,6 +35,16 @@ impl SdkBridge {
             prompt => self.context_tokens = prompt.and_then(|prompt| with_reply(usage, prompt)),
         }
     }
+
+    /// States what the context holds; zero says the count is unknown, as no
+    /// model call ever sends an empty context.
+    pub(super) fn report_context(&self, used: u64, inbound: &mut Inbound) {
+        let mut update = json!({"sessionUpdate": "usage_update", "used": used});
+        if let Some(size) = self.context_size {
+            update["size"] = size.into();
+        }
+        inbound.acp.push(self.update(update));
+    }
 }
 
 /// A turn's spend as an ACP prompt result's `usage`; `None` when its counts

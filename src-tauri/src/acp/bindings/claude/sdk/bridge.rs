@@ -127,6 +127,8 @@ pub(super) struct SdkBridge {
     /// call or compaction. A turn's `result` usage sums every call of the
     /// turn, so it overstates this.
     context_tokens: Option<u64>,
+    /// The model's context window, from the latest `result` that stated it.
+    context_size: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -161,6 +163,7 @@ impl SdkBridge {
             steers: Vec::new(),
             held: None,
             context_tokens: None,
+            context_size: None,
         }
     }
 
