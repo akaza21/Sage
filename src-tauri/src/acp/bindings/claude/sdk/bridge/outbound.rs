@@ -31,7 +31,7 @@ impl SdkBridge {
             "session/prompt" if self.prompt.is_none() => {
                 let content = prompt_content(params.get("prompt"))?;
                 self.prompt = Some(id);
-                self.running = true;
+                self.prompted = true;
                 self.interrupted = false;
                 let mut user = json!({
                     "type": "user",

@@ -7,18 +7,19 @@ impl RuntimeHost {
         &self,
         owner: RuntimeOwner,
         turn_id: sage_acp_protocol::contract::SageTurnId,
-    ) -> Result<(), HostError> {
+    ) -> Result<StartNotification, HostError> {
         if self.lifecycle.load(Ordering::Acquire) != HOST_RUNNING {
             return Err(HostError::Closed);
         }
         let command = HostCommand::TurnStarted { owner, turn_id };
         let deadline = Instant::now() + self.response_timeout(&command);
-        let (reply, _response) = mpsc::sync_channel(1);
+        let (reply, response) = mpsc::sync_channel(1);
         self.mailbox.try_push(Envelope {
             command,
             reply,
             deadline,
-        })
+        })?;
+        Ok(StartNotification { response, deadline })
     }
 
     pub(crate) fn try_notify_terminal(

@@ -109,6 +109,8 @@ fn first_prompt_title(
                  WHERE i.project_id=?1 AND i.chat_id=?2 AND i.ordinal=0 AND i.origin='primary'
                    AND i.turn_id=(SELECT t.id FROM turns t WHERE t.project_id=?1 AND t.chat_id=?2 AND ",
                 crate::acp::store::turn_undo::visible_turn!("t.session_id", "t.id"),
+                " AND ",
+                crate::acp::store::prompted_turn!("t.session_id", "t.id"),
                 " ORDER BY t.created_at,t.ordinal LIMIT 1)"
             ),
             params![project_id, chat_id],

@@ -235,7 +235,6 @@ where
         self.rebind(|completed| completed.bind_turn(active_turn))
     }
 
-    /// Whether the harness started a Turn on its own that still needs opening.
     pub(crate) fn turn_started(&self) -> bool {
         self.completed.turn_started()
     }

@@ -17,8 +17,6 @@ where
     C: ProcessTreeControl,
     L: TreeLeaseOwner,
 {
-    /// Reads the harness-started Turn's first reports and any of its stdout
-    /// already decoded before the Turn was opened.
     pub(crate) async fn adopt_started_turn(&mut self, now_millis: i64) -> Result<(), DriverError> {
         self.ensure_running()?;
         if let Err(error) = self.pump.adopt_started_turn(now_millis).await {

@@ -55,9 +55,13 @@ pub(crate) fn retry_origin(
         .query_row(
             // The items schema bounds a payload at the normalized item cap,
             // so the prompt is read whole.
-            "SELECT t.client_intent_id, i.payload_json
-             FROM turns t LEFT JOIN items i ON i.turn_id=t.id AND i.ordinal=0 AND i.kind='text'
-             WHERE t.id=?1 AND t.project_id=?2 AND t.chat_id=?3",
+            concat!(
+                "SELECT t.client_intent_id, i.payload_json
+                 FROM turns t LEFT JOIN items i ON i.turn_id=t.id AND i.ordinal=0 AND i.kind='text'
+                   AND ",
+                crate::acp::store::prompted_turn!("t.session_id", "t.id"),
+                " WHERE t.id=?1 AND t.project_id=?2 AND t.chat_id=?3"
+            ),
             rusqlite::params![turn, project, chat],
             |row| Ok((row.get(0)?, row.get(1)?)),
         )

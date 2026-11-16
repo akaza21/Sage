@@ -250,6 +250,12 @@ pub(crate) trait HarnessAdapter {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         Err(AdapterRuntimeError::UnsupportedCommand)
     }
+    /// Refuses the Turn the last `AdapterEvent::TurnStarted` announced: what
+    /// it asked is declined, and its run is stopped and read to its end
+    /// without being shown. Returns the frames that do so.
+    fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError>;
     fn resolve_egress(
         &mut self,

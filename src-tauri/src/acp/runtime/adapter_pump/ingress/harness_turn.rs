@@ -1,17 +1,24 @@
 use super::{IngestMode, *};
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
-    /// Only after this Turn's end may the harness start another, and only in
-    /// this exact session.
+    /// After this Turn's end, the harness's next Turn follows it in this
+    /// exact session. Before it, this Turn's prompt has not reached the
+    /// harness yet, and the Turn keeps the session: the run is declined.
     pub(super) fn accept_turn_started(
         &mut self,
         id: &crate::acp::bindings::adapter::AdapterIdentity,
         terminal: Option<TurnState>,
     ) -> Result<(), AdapterPumpError> {
-        if terminal.is_none() || !self.exact_session(id) {
+        if !self.exact_session(id) {
             return Err(AdapterPumpError::Intent);
         }
-        self.next_turn_started = true;
+        if terminal.is_some() {
+            self.next_turn_started = true;
+            return Ok(());
+        }
+        for egress in self.adapter.decline_turn()? {
+            self.enqueue(egress)?;
+        }
         Ok(())
     }
 

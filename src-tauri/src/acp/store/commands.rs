@@ -243,29 +243,18 @@ fn validate_prepare_owner(
         &command.chat_id,
         command.expected_projection_revision,
     )?;
-    require_hot_runtime(
+    require_current_runtime(
         transaction,
         command.project_id.as_str(),
         command.chat_id.as_str(),
         command.session_id.as_str(),
         command.runtime_epoch,
-    )?;
-    // A runtime still holding a Turn the user undid is as stale as an
-    // earlier epoch: its prompt would answer with the undone Turn in context.
-    // The undo's record and this check commit in SQLite's write order, so a
-    // prompt is either prepared before the undo is recorded (which then
-    // refuses it) or refused here.
-    match super::turn_undo::pending_thread_rewind(transaction, command.session_id.as_str())? {
-        Some(rewind) if rewind.held_by(command.runtime_epoch) => Err(StoreError::Conflict {
-            resource: "sessionEpoch",
-        }),
-        _ => Ok(()),
-    }
+    )
 }
 
-/// The session's head runs `runtime_epoch` and is resident, so a Turn may
-/// open on it.
-pub(super) fn require_hot_runtime(
+/// The session's head runs `runtime_epoch`, is resident, and holds no Turn
+/// the user undid, so a Turn may open on it.
+pub(super) fn require_current_runtime(
     transaction: &Transaction<'_>,
     project_id: &str,
     chat_id: &str,
@@ -284,13 +273,23 @@ pub(super) fn require_hot_runtime(
         .optional()?;
     match owner {
         Some((state, residency))
-            if matches!(state.as_str(), "ready" | "active") && residency == "hot" =>
-        {
-            Ok(())
+            if matches!(state.as_str(), "ready" | "active") && residency == "hot" => {}
+        _ => {
+            return Err(StoreError::Conflict {
+                resource: "sessionEpoch",
+            });
         }
-        _ => Err(StoreError::Conflict {
+    }
+    // A runtime still holding a Turn the user undid is as stale as an
+    // earlier epoch: its next Turn would answer with the undone Turn in
+    // context. The undo's record and this check commit in SQLite's write
+    // order, so a Turn either opens before the undo is recorded (which then
+    // refuses it) or is refused here.
+    match super::turn_undo::pending_thread_rewind(transaction, session_id)? {
+        Some(rewind) if rewind.held_by(runtime_epoch) => Err(StoreError::Conflict {
             resource: "sessionEpoch",
         }),
+        _ => Ok(()),
     }
 }
 

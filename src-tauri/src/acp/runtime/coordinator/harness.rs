@@ -8,7 +8,7 @@ use super::{prepare::prepare_failure, *};
 impl<A: ProjectIntentAuthority> SendCoordinator<A> {
     /// Opens the Turn a harness started on its own in the tree's session. It
     /// takes the tree's one Turn slot like a prompt does, so a prompt sent
-    /// meanwhile waits for it, and it is running from the start.
+    /// meanwhile is refused, and it is running from the start.
     pub(crate) async fn open_harness_turn(
         &self,
         tree: &TreeLease,
@@ -27,41 +27,28 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
         let reservation = tree
             .reserve_turn()
             .map_err(|error| prepare_failure(error.into()))?;
-        let committed = match self.journal.enqueue_one(
-            JournalLane::Data,
-            StoreMutation::OpenHarnessTurn(command.clone()),
-            deadline(now_millis, 30_000),
-        ) {
-            Ok(ticket) => ticket.committed().await,
-            Err(error) => Err(error),
-        };
-        let mutation = match committed {
-            Ok(commit) => match one_opened(commit) {
-                Ok(mutation) => mutation,
-                // The Turn may be durable, so its slot stays charged.
-                Err(error) => return Err(prepare_failure(error)),
-            },
-            Err(error @ JournalError::Store(crate::acp::store::StoreError::CommitUnknown)) => {
-                return Err(prepare_failure(error.into()));
-            }
-            Err(error) => {
-                reservation
-                    .abort_before_durable_commit()
-                    .map_err(|scheduler| prepare_failure(scheduler.into()))?;
-                return Err(prepare_failure(error.into()));
+        let (reservation, mutation, opened) = self
+            .open_reserved(
+                reservation,
+                StoreMutation::OpenHarnessTurn(command.clone()),
+                now_millis,
+                one_opened,
+            )
+            .await?;
+        let lease = match reservation.bind_retained(command.turn_id.clone()) {
+            Ok(lease) => lease,
+            Err((reservation, error)) => {
+                return Err(self.ambiguous(reservation, mutation, error.into()));
             }
         };
-        let lease = reservation
-            .bind_retained(command.turn_id.clone())
-            .map_err(|(_, error)| prepare_failure(error.into()))?;
         let dispatch = ActiveDispatch {
             journal: self.journal.clone(),
             publisher: Arc::clone(&self.publisher),
             lease: Some(lease),
             command,
-            accepted_state: mutation.state,
-            accepted_delivery: mutation.delivery_state,
-            accepted_projection_revision: mutation.projection_revision,
+            accepted_state: opened.state,
+            accepted_delivery: opened.delivery_state,
+            accepted_projection_revision: opened.projection_revision,
             projection_retry_pending: false,
             attempts: 0,
             commit_unknown_reconciliations: 0,

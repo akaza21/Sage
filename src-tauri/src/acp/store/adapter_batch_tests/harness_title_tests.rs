@@ -113,6 +113,36 @@ fn a_cleared_harness_title_restores_the_first_prompt_title() {
 }
 
 #[test]
+fn a_cleared_harness_title_skips_a_turn_the_harness_started_before_the_first_prompt() {
+    let mut fixture = untitled_chat();
+    let started = super::super::TurnMutationCommand {
+        project_id: fixture.owner.project_id.clone(),
+        chat_id: fixture.owner.chat_id.clone(),
+        session_id: fixture.owner.session_id.clone(),
+        runtime_epoch: fixture.owner.runtime_epoch,
+        turn_id: sage_acp_protocol::contract::SageTurnId::parse("turn-harness").unwrap(),
+        expected_revision: sage_acp_protocol::contract::EntityRevision::ZERO,
+        now_millis: 1,
+    };
+    super::super::harness_turn::open_harness_turn(&mut fixture.connection, &started).unwrap();
+    let harness = AdapterStoreOwner {
+        turn_id: started.turn_id.clone(),
+        ..fixture.owner.clone()
+    };
+    apply_adapter_inbound_batch(
+        &mut fixture.connection,
+        batch(
+            &harness,
+            vec![AdapterInboundEvent::Item(item(&harness, "reply"))],
+        ),
+    )
+    .unwrap();
+    apply(&mut fixture, title("Harness name"), 6);
+    apply(&mut fixture, harness_title_cleared(), 7);
+    assert_eq!(shown(&fixture), same("Chat: test", "prompt"));
+}
+
+#[test]
 fn a_cleared_harness_title_without_a_usable_first_prompt_restores_the_placeholder() {
     let mut fixture = untitled_chat();
     fixture

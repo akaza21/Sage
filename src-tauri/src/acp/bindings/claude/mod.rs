@@ -17,7 +17,7 @@ pub(crate) fn claude_profile() -> &'static StandardAcpProfile {
 }
 
 pub(crate) use access_modes::{
-    CLAUDE_ACCESS_MODES, CLAUDE_SDK_ACCESS_MODES, current_mode, mode_change_admitted,
+    CLAUDE_ACCESS_MODES, CLAUDE_SDK_ACCESS_MODES, known_mode, mode_change_admitted,
     option_admitted, option_target_mode, wider_mode,
 };
 pub(crate) use admission::{

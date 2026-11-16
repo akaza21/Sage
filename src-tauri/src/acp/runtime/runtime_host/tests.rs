@@ -1382,6 +1382,121 @@ fn terminal_cursor_returns_idle_and_close_orders_zero_before_finalize() {
     host.shutdown(RuntimeHost::close_deadline()).unwrap();
 }
 
+fn settle(started: &StartNotification) {
+    let deadline = Instant::now() + Duration::from_secs(1);
+    while !started.settled().unwrap() {
+        assert!(Instant::now() < deadline, "the host answers the start");
+        std::thread::yield_now();
+    }
+}
+
+fn cancelled(turn_id: SageTurnId) -> AdapterTurnCursor {
+    AdapterTurnCursor::test_only(
+        turn_id,
+        TurnState::Cancelled,
+        DeliveryState::Correlated,
+        sage_acp_protocol::contract::EntityRevision::new(2).unwrap(),
+        ProjectionRevision::new(3).unwrap(),
+    )
+}
+
+#[test]
+fn a_turn_the_harness_started_runs_until_stop_and_its_terminal_return_the_host_to_idle() {
+    let engine = FakeEngine::new([]);
+    let observed = engine.clone();
+    let host = RuntimeHost::start(engine).unwrap();
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+
+    let started = host
+        .try_notify_turn_started(runtime.clone(), turn())
+        .unwrap();
+    settle(&started);
+    assert_eq!(host.state().unwrap(), HostState::Running);
+    assert!(host.send(prompt(&runtime)).is_err(), "the chat is busy");
+
+    host.cancel(cancel(&runtime)).unwrap();
+    assert_eq!(
+        host.accept_terminal(runtime.clone(), cancelled(turn()))
+            .unwrap(),
+        HostOutcome::TurnTerminal
+    );
+    assert_eq!(host.state().unwrap(), HostState::Idle);
+    assert_eq!(
+        observed.events(),
+        [
+            "activate",
+            "beginCancel",
+            "dispatchCancel",
+            "acceptTerminal"
+        ]
+    );
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn a_prompt_in_flight_while_a_harness_turn_opens_is_refused_and_the_turn_runs() {
+    use std::sync::mpsc;
+
+    use super::mailbox::Envelope;
+
+    let gate = Arc::new((Mutex::new((false, false)), Condvar::new()));
+    let engine = FakeEngine::new([])
+        .with_prepare_gate(Arc::clone(&gate))
+        .with_prepare_error(HostError::Intent);
+    let host = RuntimeHost::start(engine).unwrap();
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    let (prepare_reply, prepare_response) = mpsc::sync_channel(1);
+    host.mailbox
+        .try_push(Envelope {
+            command: HostCommand::PreparePrompt(prompt(&runtime)),
+            reply: prepare_reply,
+            deadline: test_deadline(),
+        })
+        .unwrap();
+    let (state, ready) = &*gate;
+    let mut blocked = state.lock().unwrap();
+    while !blocked.0 {
+        blocked = ready.wait(blocked).unwrap();
+    }
+    let started = host
+        .try_notify_turn_started(runtime.clone(), turn())
+        .unwrap();
+    assert!(!started.settled().unwrap(), "the host is still preparing");
+    blocked.1 = true;
+    ready.notify_all();
+    drop(blocked);
+
+    assert!(matches!(
+        prepare_response.recv().unwrap(),
+        Err(HostError::Intent)
+    ));
+    settle(&started);
+    assert_eq!(host.state().unwrap(), HostState::Running);
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
+#[test]
+fn the_host_refuses_a_started_turn_while_another_runs_and_the_worker_reads_it() {
+    let host = RuntimeHost::start(FakeEngine::new([PromptWrite::Complete(turn())])).unwrap();
+    let runtime = owner("project-a");
+    host.activate(runtime.clone()).unwrap();
+    host.send(prompt(&runtime)).unwrap();
+    let started = host
+        .try_notify_turn_started(runtime.clone(), other_turn())
+        .unwrap();
+    let deadline = Instant::now() + Duration::from_secs(1);
+    let refused = loop {
+        match started.settled() {
+            Ok(false) if Instant::now() < deadline => std::thread::yield_now(),
+            outcome => break outcome,
+        }
+    };
+    assert!(matches!(refused, Err(HostError::Intent)));
+    host.shutdown(RuntimeHost::close_deadline()).unwrap();
+}
+
 #[test]
 fn worker_terminal_notification_never_waits_for_the_host_callback() {
     use std::time::Duration;

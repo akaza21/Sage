@@ -94,7 +94,6 @@ impl SessionTreeLease {
             .await
     }
 
-    /// Opens the Turn the harness started on its own in this live session.
     pub(crate) async fn open_harness_turn<A: ProjectIntentAuthority>(
         &self,
         coordinator: &SendCoordinator<A>,

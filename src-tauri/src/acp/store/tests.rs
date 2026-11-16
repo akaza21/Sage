@@ -214,6 +214,28 @@ fn a_harness_started_turn_opens_running_after_the_last_turn_with_no_prompt() {
 }
 
 #[test]
+fn a_harness_started_turn_left_running_by_a_crash_fails_on_restart() {
+    let mut connection = setup();
+    harness_turn::open_harness_turn(&mut connection, &harness_command("turn-harness")).unwrap();
+    let report = crate::acp::recovery::recover_after_restart(&mut connection, 50).unwrap();
+    assert_eq!(
+        report.terminal_turn,
+        Some((
+            SageTurnId::parse("turn-harness").unwrap(),
+            TurnState::Failed
+        ))
+    );
+    let (state, terminal_at): (String, Option<i64>) = connection
+        .query_row(
+            "SELECT state,terminal_at FROM turns WHERE id='turn-harness'",
+            [],
+            |row| Ok((row.get(0)?, row.get(1)?)),
+        )
+        .unwrap();
+    assert_eq!((state.as_str(), terminal_at), ("failed", Some(50)));
+}
+
+#[test]
 fn no_harness_turn_opens_once_the_runtime_has_stopped() {
     let mut connection = setup();
     connection

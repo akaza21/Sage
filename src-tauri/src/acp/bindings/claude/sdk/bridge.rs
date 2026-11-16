@@ -61,8 +61,11 @@ pub(super) struct Inbound {
     pub(super) steers: Vec<(String, bool)>,
     /// Claude Code started a run of its own (after a background task ended)
     /// or asked for an approval with no turn open: the frame opens a turn,
-    /// which `adopt` names.
+    /// which `adopt` names, or `decline` refuses.
     pub(super) started: bool,
+    /// The end of a turn opened only for approvals, which settled before
+    /// this frame: it comes first, since the frame may open the next turn.
+    pub(super) prior: Option<Box<Inbound>>,
 }
 
 #[derive(Debug)]
@@ -109,9 +112,15 @@ pub(super) struct SdkBridge {
     pending: BTreeMap<String, Pending>,
     next_request: u64,
     prompt: Option<Value>,
-    /// A run of Claude Code's is in progress: from a prompt's write, or a
-    /// run's first frame, to its `result`.
-    running: bool,
+    /// Sage has prompted this session. Until then Claude Code runs nothing
+    /// on its own, so nothing it sends opens a turn.
+    prompted: bool,
+    /// The open turn was opened for an approval alone, with no run of
+    /// Claude Code's in it.
+    approval_turn: bool,
+    /// Sage refused the run Claude Code started: its frames are dropped
+    /// until its `result`.
+    declining: bool,
     interrupted: bool,
     auth_failed: bool,
     permissions: BTreeMap<u64, Permission>,
@@ -151,7 +160,9 @@ impl SdkBridge {
             pending: BTreeMap::new(),
             next_request: 0,
             prompt: None,
-            running: false,
+            prompted: false,
+            approval_turn: false,
+            declining: false,
             interrupted: false,
             auth_failed: false,
             permissions: BTreeMap::new(),
@@ -233,7 +244,6 @@ impl SdkBridge {
         match sent {
             Sent::Prompt => {
                 self.prompt = None;
-                self.running = false;
                 self.interrupted = false;
             }
             Sent::Control(request_id) => {

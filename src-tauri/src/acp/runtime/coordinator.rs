@@ -16,7 +16,7 @@ mod harness;
 mod prepare;
 mod turn_control;
 
-pub(crate) use prepare::{AmbiguousTurnReservation, PrepareFailure, PrepareRecovery};
+pub(crate) use prepare::{PrepareFailure, PrepareRecovery};
 use prepare::{build_active_dispatch, one_prepared, prepare_failure, publish};
 
 use super::{
@@ -140,65 +140,14 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
             }
             Err(error) => return Err(prepare_failure(error.into())),
         };
-        let ticket = match self.journal.enqueue_one(
-            JournalLane::Data,
-            StoreMutation::PrepareTurn(command.clone()),
-            deadline(command.now_millis, 30_000),
-        ) {
-            Ok(ticket) => ticket,
-            Err(error) => {
-                reservation
-                    .abort_before_durable_commit()
-                    .map_err(|scheduler| prepare_failure(scheduler.into()))?;
-                return Err(prepare_failure(error.into()));
-            }
-        };
-        let commit = match ticket.committed().await {
-            Ok(commit) => commit,
-            Err(JournalError::Store(crate::acp::store::StoreError::CommitUnknown)) => {
-                return Err(Box::new(PrepareFailure {
-                    error: JournalError::Store(crate::acp::store::StoreError::CommitUnknown).into(),
-                    recovery: Some(PrepareRecovery::Ambiguous(AmbiguousTurnReservation {
-                        reservation,
-                        journal: self.journal.clone(),
-                        publisher: Arc::clone(&self.publisher),
-                        command,
-                    })),
-                }));
-            }
-            Err(JournalError::Store(error)) => {
-                reservation
-                    .abort_before_durable_commit()
-                    .map_err(|scheduler| prepare_failure(scheduler.into()))?;
-                return Err(prepare_failure(JournalError::Store(error).into()));
-            }
-            Err(JournalError::Deadline) => {
-                reservation
-                    .abort_before_durable_commit()
-                    .map_err(|scheduler| prepare_failure(scheduler.into()))?;
-                return Err(prepare_failure(JournalError::Deadline.into()));
-            }
-            Err(error) => {
-                reservation
-                    .abort_before_durable_commit()
-                    .map_err(|scheduler| prepare_failure(scheduler.into()))?;
-                return Err(prepare_failure(error.into()));
-            }
-        };
-        let prepared = match one_prepared(commit) {
-            Ok(prepared) => prepared,
-            Err(error) => {
-                return Err(Box::new(PrepareFailure {
-                    error,
-                    recovery: Some(PrepareRecovery::Ambiguous(AmbiguousTurnReservation {
-                        reservation,
-                        journal: self.journal.clone(),
-                        publisher: Arc::clone(&self.publisher),
-                        command,
-                    })),
-                }));
-            }
-        };
+        let (reservation, _, prepared) = self
+            .open_reserved(
+                reservation,
+                StoreMutation::PrepareTurn(command.clone()),
+                command.now_millis,
+                one_prepared,
+            )
+            .await?;
         if prepared.disposition == MutationDisposition::Duplicate {
             reservation
                 .abort_before_durable_commit()
@@ -222,15 +171,11 @@ impl<A: ProjectIntentAuthority> SendCoordinator<A> {
         ) {
             Ok(active) => active,
             Err((reservation, command, error)) => {
-                return Err(Box::new(PrepareFailure {
-                    error: error.into(),
-                    recovery: Some(PrepareRecovery::Ambiguous(AmbiguousTurnReservation {
-                        reservation,
-                        journal: self.journal.clone(),
-                        publisher: Arc::clone(&self.publisher),
-                        command,
-                    })),
-                }));
+                return Err(self.ambiguous(
+                    reservation,
+                    StoreMutation::PrepareTurn(command),
+                    error.into(),
+                ));
             }
         };
         if let Err(error) = publish(

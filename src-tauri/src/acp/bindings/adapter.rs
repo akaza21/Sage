@@ -204,6 +204,7 @@ enum EgressIntent {
     Request(u64),
     NativeRpcContinuation(u64),
     ProtocolNotification,
+    Settling,
     CancelRequest(u64),
     CancelNotification,
     MandatoryDeny {
@@ -230,12 +231,26 @@ impl EgressToken {
         Self(EgressIntent::NativeRpcContinuation(id))
     }
 
-    pub(crate) fn is_native_rpc_continuation(&self) -> bool {
-        matches!(self.0, EgressIntent::NativeRpcContinuation(_))
-    }
-
     pub(crate) fn protocol_notification() -> Self {
         Self(EgressIntent::ProtocolNotification)
+    }
+
+    /// A frame that answers or stops what the harness started on its own
+    /// and starts nothing itself, so an idle pump may write it too.
+    pub(crate) fn settling() -> Self {
+        Self(EgressIntent::Settling)
+    }
+
+    /// What an idle pump may write: a settling frame, the next step of an
+    /// admitted native RPC, or a dialog's cancellation. Anything else needs
+    /// its own command admission.
+    pub(crate) fn idle_writable(&self) -> bool {
+        matches!(
+            self.0,
+            EgressIntent::Settling
+                | EgressIntent::NativeRpcContinuation(_)
+                | EgressIntent::PermissionCancel { .. }
+        )
     }
 
     pub(crate) fn cancel_request(id: u64) -> Self {
@@ -317,7 +332,9 @@ impl EgressToken {
     pub(crate) fn is_notification(&self) -> bool {
         matches!(
             self.0,
-            EgressIntent::ProtocolNotification | EgressIntent::CancelNotification
+            EgressIntent::ProtocolNotification
+                | EgressIntent::Settling
+                | EgressIntent::CancelNotification
         )
     }
 

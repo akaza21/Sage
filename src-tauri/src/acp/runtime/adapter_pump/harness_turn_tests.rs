@@ -129,10 +129,71 @@ fn a_turn_the_harness_starts_while_idle_is_bound_with_the_stdout_after_it() {
 }
 
 #[test]
-fn a_turn_start_before_the_running_turn_ends_is_a_protocol_failure() {
+fn a_run_the_harness_starts_before_this_turns_prompt_reaches_it_is_declined() {
     runtime().block_on(async {
-        let (mut pump, _) = build_pump(vec![started()]);
-        assert!(pump.push_stdout_chunk_deferred(b"{}\n", 1).await.is_err());
+        let (mut pump, shared) = build_pump(vec![started(), owned(vec![item("own")], Vec::new())]);
+        pump.push_stdout_chunk_deferred(b"{}\n{}\n", 1)
+            .await
+            .unwrap();
+        assert!(pump.drain_stdout_deferred(2).await.unwrap());
+        pump.flush_deferred().await.unwrap();
         assert!(!pump.next_turn_started());
+        assert!(!pump.teardown_required());
+        assert_eq!(
+            shared.0.lock().unwrap().log,
+            ["decline", "journal", "publish"]
+        );
+        assert_eq!(
+            pump.egress.data_usage().0,
+            1,
+            "the interrupt waits to be written"
+        );
+        assert_eq!(durable_items(&shared), ["own"]);
+    });
+}
+
+#[test]
+fn a_declined_turn_reads_on_through_the_stdout_after_it() {
+    runtime().block_on(async {
+        let (mut pump, shared) = build_pump(vec![
+            owned(vec![terminal(TurnState::Completed)], Vec::new()),
+            started(),
+            owned(vec![AdapterEvent::Absorbed], Vec::new()),
+        ]);
+        pump.push_stdout_chunk_deferred(b"{}\n", 1).await.unwrap();
+        let mut parts = pump.try_into_completed_parts().ok().unwrap();
+        let mut transport = CaptureTransport(Vec::new());
+        parts
+            .accept_idle_stdout_chunk(b"{}\n{}\n", 2, &mut transport)
+            .await
+            .unwrap();
+        assert!(parts.turn_started());
+
+        parts.decline_started_turn(3, &mut transport).await.unwrap();
+        assert!(!parts.turn_started());
+        assert_eq!(transport.0, br#"{"interrupt":true}"#);
+        assert!(
+            shared.0.lock().unwrap().batches.is_empty(),
+            "the frame after it was read"
+        );
+        assert!(parts.bind_turn(next_turn()).is_ok(), "a prompt may follow");
+    });
+}
+
+#[test]
+fn a_started_turn_is_not_bound_while_a_setting_changes() {
+    runtime().block_on(async {
+        let (mut pump, shared) = build_pump(vec![
+            owned(vec![terminal(TurnState::Completed)], Vec::new()),
+            started(),
+        ]);
+        pump.push_stdout_chunk_deferred(b"{}\n", 1).await.unwrap();
+        pump.push_stdout_chunk_deferred(b"{}\n", 2).await.unwrap();
+        assert!(pump.next_turn_started());
+        let parts = pump.try_into_completed_parts().ok().unwrap();
+        shared.0.lock().unwrap().config_pending = true;
+        let (parts, _) = *parts.bind_harness_turn(next_turn()).err().unwrap();
+        shared.0.lock().unwrap().config_pending = false;
+        assert!(parts.bind_harness_turn(next_turn()).is_ok());
     });
 }

@@ -22,7 +22,7 @@ use crate::acp::{
     },
     process::LaunchSpec,
     runtime::ActivationMode,
-    transport::{Frame, OutboundFrame, request_value_digest},
+    transport::{Frame, OutboundFrame},
 };
 use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
@@ -119,97 +119,6 @@ impl ClaudeSdkRuntime {
             }
         }
         Ok(AdapterEgress::new(frame, token))
-    }
-
-    fn ingest_sdk(
-        &mut self,
-        sdk: Value,
-        resources: &dyn ResourceMapper,
-    ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        if self.started.is_some() {
-            return Err(AdapterRuntimeError::Operation);
-        }
-        let inbound = self
-            .bridge()?
-            .inbound(sdk)
-            .map_err(|_| AdapterRuntimeError::Frame)?;
-        if inbound.started {
-            let id = self.session.harness_session_identity()?;
-            self.started = Some(inbound);
-            return AdapterBatch::new(vec![AdapterEvent::TurnStarted { id }], Vec::new());
-        }
-        self.translate(inbound, resources)
-    }
-
-    fn translate(
-        &mut self,
-        inbound: Inbound,
-        resources: &dyn ResourceMapper,
-    ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        let mut batch = AdapterBatchBuilder::new();
-        let mut observed = false;
-        for wire in inbound.withdrawn {
-            let (events, _) = self.session.withdraw_permission(&wire.into())?.into_parts();
-            for event in events
-                .into_iter()
-                .filter(|event| !matches!(event, AdapterEvent::Absorbed))
-            {
-                observed = true;
-                batch.push_event(event)?;
-            }
-        }
-        for event in self.steering.answers(inbound.steers) {
-            observed = true;
-            batch.push_event(event)?;
-        }
-        self.answered(inbound.native, inbound.usage);
-        if let Some(questions) = inbound.questions {
-            self.session.offer_user_input(questions);
-        }
-        for event in inbound.session {
-            if let Some(event) = self.session.session_event(event) {
-                observed = true;
-                batch.push_event(event)?;
-            }
-        }
-        for child in inbound.children {
-            for event in self
-                .session
-                .child_event(&mut self.children, child, resources)?
-            {
-                observed = true;
-                batch.push_event(event)?;
-            }
-        }
-        for acp in inbound.acp {
-            let digest = request_value_digest(&acp);
-            let (events, egress) = self
-                .session
-                .ingest_value(acp, digest, resources)?
-                .into_parts();
-            for event in events {
-                observed = true;
-                batch.push_event(match event {
-                    AdapterEvent::Initialized { capabilities } => AdapterEvent::Initialized {
-                        capabilities: sdk_capabilities(capabilities),
-                    },
-                    event => event,
-                })?;
-            }
-            for egress in egress {
-                batch.push_egress(self.outbound(egress)?)?;
-            }
-        }
-        for reply in inbound.replies {
-            batch.push_egress(AdapterEgress::new(
-                sdk_frame(&reply)?,
-                EgressToken::protocol_notification(),
-            ))?;
-        }
-        if !observed {
-            batch.push_event(AdapterEvent::Absorbed)?;
-        }
-        Ok(batch.finish())
     }
 }
 
@@ -379,7 +288,20 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.bridge()?
             .adopt(id.into())
             .map_err(|_| AdapterRuntimeError::Operation)?;
-        self.translate(inbound, resources)
+        let mut batch = AdapterBatchBuilder::new();
+        if !self.translate(&mut batch, inbound, resources)? {
+            batch.push_event(AdapterEvent::Absorbed)?;
+        }
+        Ok(batch.finish())
+    }
+
+    fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
+        self.started.take().ok_or(AdapterRuntimeError::Operation)?;
+        let declined = self
+            .bridge()?
+            .decline()
+            .map_err(|_| AdapterRuntimeError::Operation)?;
+        declined.replies.iter().map(settling).collect()
     }
 
     /// Claude Code's own output can exceed the structure limits sized for ACP frames: an edit's
@@ -430,6 +352,9 @@ impl HarnessAdapter for ClaudeSdkRuntime {
     }
 }
 
+#[path = "runtime_inbound.rs"]
+mod inbound;
+use inbound::settling;
 #[path = "runtime_native.rs"]
 mod native;
 use native::sdk_capabilities;

@@ -7,12 +7,28 @@ use sage_acp_protocol::{
 
 use super::{
     MutationDisposition, StoreError, TurnMutation, TurnMutationCommand,
-    commands::{TurnFootprint, ensure_one, ensure_turn_capacity, require_hot_runtime},
+    commands::{TurnFootprint, ensure_one, ensure_turn_capacity, require_current_runtime},
     facts::{
         append_fact, entity_revision_from_i64, next_projection_revision, projection_from_i64,
         publish_projection,
     },
 };
+
+/// SQL predicate: the Turn whose session and id are the given columns
+/// answers a prompt, so its first item is the user's. A Turn the harness
+/// started on its own has no prompt.
+macro_rules! prompted_turn {
+    ($session:literal, $turn:literal) => {
+        concat!(
+            "NOT EXISTS(SELECT 1 FROM session_facts started WHERE started.session_id=",
+            $session,
+            " AND started.turn_id=",
+            $turn,
+            " AND started.kind='harnessTurnStarted')"
+        )
+    };
+}
+pub(crate) use prompted_turn;
 
 /// Opens a Turn the harness started on its own: no prompt item, already
 /// running, and correlated, since the harness itself named it. The Turn is its
@@ -41,7 +57,7 @@ fn open_harness_turn_in(
             resource: "turnRevision",
         });
     }
-    require_hot_runtime(
+    require_current_runtime(
         transaction,
         command.project_id.as_str(),
         command.chat_id.as_str(),

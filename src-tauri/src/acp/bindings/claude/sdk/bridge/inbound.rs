@@ -26,7 +26,9 @@ impl SdkBridge {
         let mut inbound = Inbound::default();
         let nested = !sdk.get("parent_tool_use_id").is_none_or(Value::is_null);
         let kind = sdk.get("type").and_then(Value::as_str);
-        self.observe_run(nested, kind, &mut inbound);
+        if !nested && !self.observe_run(&sdk, &mut inbound) {
+            return Ok(inbound);
+        }
         match kind {
             Some("control_response") => self.control_response(&sdk["response"], &mut inbound)?,
             Some("control_request") => self.control_request(&sdk, &mut inbound)?,

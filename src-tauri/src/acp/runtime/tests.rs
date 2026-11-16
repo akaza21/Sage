@@ -497,10 +497,11 @@ fn prepare_commit_unknown_retains_the_exact_turn_reservation_until_lookup_resolu
         ));
         let recovery = failure.recovery.take().expect("exact reserved Turn");
         let ambiguous = recovery.ambiguous().expect("lookup required");
-        assert_eq!(
-            ambiguous.command().client_intent_id,
-            command().client_intent_id
-        );
+        assert!(matches!(
+            ambiguous.mutation(),
+            StoreMutation::PrepareTurn(prepared)
+                if prepared.client_intent_id == command().client_intent_id
+        ));
         assert!(matches!(
             tree.reserve_turn(),
             Err(sage_acp_protocol::scheduler::SchedulerError::TurnCapacity)

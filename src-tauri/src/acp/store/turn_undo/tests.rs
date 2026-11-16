@@ -1,13 +1,14 @@
 use super::{UndoneThread, fixture::Fixture};
 use crate::acp::{
     store::{
-        MutationDisposition, PrepareTurnCommand, RestartSessionCommand, StoreError, load_chat_page,
-        prepare_turn, restart_undone_session, unstarted_continuation,
+        MutationDisposition, PrepareTurnCommand, RestartSessionCommand, StoreError,
+        TurnMutationCommand, harness_turn::open_harness_turn, load_chat_page, prepare_turn,
+        restart_undone_session, unstarted_continuation,
     },
     transcript_quote::Prompt,
 };
 use sage_acp_protocol::contract::{
-    ClientIntentId, ProjectGeneration, RuntimeEpoch, SageAgentSessionId,
+    ClientIntentId, EntityRevision, ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageTurnId,
 };
 
 #[test]
@@ -105,6 +106,35 @@ fn the_runtime_that_holds_an_undone_turn_takes_no_prompt_and_a_raced_prompt_refu
     prepare(&raced).unwrap();
     assert!(raced.try_undo("turn-2", false).is_err());
     assert_eq!(raced.pending(), None);
+}
+
+#[test]
+fn the_runtime_that_holds_an_undone_turn_opens_no_turn_of_its_own() {
+    let fixture = Fixture::new();
+    fixture.run();
+    fixture.turn("turn-1", 0);
+    fixture.turn("turn-2", 1);
+    fixture.undo("turn-2", false);
+    let command = TurnMutationCommand {
+        project_id: fixture.project.clone(),
+        chat_id: fixture.chat.clone(),
+        session_id: SageAgentSessionId::parse("session-a".to_owned()).unwrap(),
+        runtime_epoch: RuntimeEpoch::new(fixture.epoch() as u64).unwrap(),
+        turn_id: SageTurnId::parse("turn-harness").unwrap(),
+        expected_revision: EntityRevision::ZERO,
+        now_millis: 60,
+    };
+    assert!(matches!(
+        open_harness_turn(&mut fixture.database.connection(), &command),
+        Err(StoreError::Conflict {
+            resource: "sessionEpoch"
+        })
+    ));
+    assert_eq!(fixture.page_turns(), ["turn-1"]);
+    assert_eq!(
+        fixture.pending(),
+        Some(("turn-2".into(), UndoneThread::Cut))
+    );
 }
 
 #[test]

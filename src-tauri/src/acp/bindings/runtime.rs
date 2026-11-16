@@ -331,6 +331,10 @@ impl HarnessAdapter for NativeRuntime {
         self.0.adopt_turn(client_message_id, resources)
     }
 
+    fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
+        self.0.decline_turn()
+    }
+
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
         self.0.commit_mandatory_egress(token)
     }

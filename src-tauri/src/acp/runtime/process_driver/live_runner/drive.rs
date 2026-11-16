@@ -60,6 +60,7 @@ where
 {
     let mut notified = None;
     let mut pending = None;
+    let mut started = None;
     let mut pending_config: Option<PendingConfig> = None;
     let mut eof_deadline_millis = None;
     loop {
@@ -78,7 +79,10 @@ where
         state = match state {
             FirstTurnWorkerState::Reusable(parts) if parts.turn_started() => {
                 match super::harness_turn::open(parts, context, &host).await {
-                    Ok(state) => state,
+                    Ok((state, notification)) => {
+                        started = notification;
+                        state
+                    }
                     Err(exit) => {
                         fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
                         return exit;
@@ -87,6 +91,10 @@ where
             }
             state => state,
         };
+        if super::harness_turn::settle(&mut started).is_err() {
+            fail_pending_config(&mut pending_config, HostError::RecoveryRequired);
+            return failed(state);
+        }
         let native_reply = if pending_config
             .as_ref()
             .is_some_and(PendingConfig::is_native_rpc)
