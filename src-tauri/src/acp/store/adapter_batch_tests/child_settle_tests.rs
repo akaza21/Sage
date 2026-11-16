@@ -81,11 +81,16 @@ fn settle(fixture: &mut Fixture, turn: &str, status: TurnState, now_millis: i64)
 }
 
 fn start(fixture: &mut Fixture, turn: &str, now_millis: i64) -> bool {
+    delta(fixture, turn, &format!("{turn}-thought"), now_millis)
+}
+
+/// Streams one child item of `turn`; true when the parent projection moved.
+fn delta(fixture: &mut Fixture, turn: &str, item: &str, now_millis: i64) -> bool {
     let before = projection(&fixture.connection);
     let event = AdapterInboundEvent::ChildLiveItem(ChildLiveItemCommand {
         child_thread_id: ExternalId::new("child", "child-one").unwrap(),
         child_turn_id: ExternalId::new("turn", turn).unwrap(),
-        item_id: ExternalId::new("item", format!("{turn}-thought")).unwrap(),
+        item_id: ExternalId::new("item", item).unwrap(),
         role: None,
         lifecycle: ItemLifecycle::Started,
         tool_state: None,
@@ -370,25 +375,35 @@ fn a_read_naming_a_turn_twice_is_rejected() {
 }
 
 #[test]
-fn a_delta_of_a_turn_the_transcript_holds_leaves_the_record_alone() {
+fn a_late_delta_of_an_ended_turn_never_changes_the_spawn_row() {
     let mut fixture = ended_spawn_turn();
-    let records = |connection: &rusqlite::Connection| -> i64 {
-        connection
-            .query_row("SELECT COUNT(*) FROM acp_child_thread_states", [], |row| {
-                row.get(0)
-            })
-            .unwrap()
-    };
     assert!(!start(&mut fixture, "first", 21));
-    assert_eq!(records(&fixture.connection), 1);
-    fixture
-        .connection
-        .execute("DELETE FROM acp_child_thread_states", [])
-        .unwrap();
-    assert!(!start(&mut fixture, "first", 22));
-    assert_eq!(records(&fixture.connection), 0);
+    assert!(settle(&mut fixture, "first", TurnState::Completed, 22));
+    assert!(start(&mut fixture, "second", 23));
+    assert!(settle(&mut fixture, "second", TurnState::Failed, 24));
+    for (turn, now) in [("first", 25), ("second", 26)] {
+        assert!(!delta(&mut fixture, turn, &format!("{turn}-late"), now));
+        assert_eq!(spawn_state(&fixture.connection), "errored");
+    }
+}
+
+#[test]
+fn a_spawn_row_closed_after_a_later_child_turn_began_keeps_its_own_state() {
+    let mut fixture = migrated_fixture();
+    let spawn = spawn_row(&fixture.owner);
+    apply(&mut fixture, vec![spawn]);
+    assert!(!start(&mut fixture, "first", 21));
+    assert!(!settle(&mut fixture, "first", TurnState::Completed, 22));
+    // The parent sends the child more input within the same turn, and the
+    // end of that second child turn is never observed.
     assert!(!start(&mut fixture, "second", 23));
-    assert_eq!(records(&fixture.connection), 1);
+    let closed = spawn_row_reporting(&fixture.owner, "completed");
+    let ended = AdapterInboundEvent::Turn {
+        state: TurnState::Completed,
+        now_millis: 30,
+    };
+    apply(&mut fixture, vec![closed, ended]);
+    assert_eq!(spawn_state(&fixture.connection), "completed");
 }
 
 /// The spawn row, written as `completed`, after an upgrade that found the

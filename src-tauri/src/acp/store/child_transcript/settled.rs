@@ -47,8 +47,8 @@ pub(super) fn snapshot_state(snapshot: &ChildTranscriptSnapshot) -> Option<Obser
 /// running again.
 const ENDED_TURNS: usize = 32;
 
-/// A child turn seen starting or ending, live or in a read. `ended_at` is
-/// when an end was observed live.
+/// A child turn seen starting or ending; `ended_at` is set only for an end
+/// observed live.
 pub(super) struct Observed<'a> {
     pub(super) turn: &'a str,
     pub(super) state: &'static str,
@@ -56,8 +56,9 @@ pub(super) struct Observed<'a> {
 }
 
 /// A child's recorded state and its provenance: the turn it came from, that
-/// turn's place in the child's order, and whether the spawn turn had already
-/// ended when it was recorded.
+/// turn's place in the child's order, and whether the state is known to be
+/// newer than the spawn row (recorded after the spawn turn ended, or on
+/// upgrade, from a later turn than the one the child was spawned with).
 struct Recorded {
     turn: String,
     ordinal: i64,
@@ -66,14 +67,13 @@ struct Recorded {
     ended_at: Option<i64>,
 }
 
-/// What an ended turn's row shows for a child: the recorded state when the
-/// row still reports it live, when the record was made after the row was
-/// closed with its turn, or when it came from a later child turn than the one
-/// the child was spawned with; otherwise the row's own state. So a child that
-/// ran again after its row was written shows its new state, and one the row
-/// outlived does not, whatever any clock says.
+/// What an ended turn's row shows for a child: the state recorded for it
+/// when the row still reports it live or the record is newer than the row,
+/// otherwise the row's own state. So a child that ran again after its row was
+/// rewritten shows its new state, and one the row outlived does not, whatever
+/// any clock says.
 fn applies(row: &str, recorded: &Recorded) -> bool {
-    live(row) || recorded.spawn_ended || recorded.ordinal > 0
+    live(row) || recorded.spawn_ended
 }
 
 fn shown<'a>(row: &'a str, recorded: Option<&'a Recorded>) -> &'a str {

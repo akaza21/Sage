@@ -53,10 +53,11 @@ fn store_live_item_in(
     owner: &AdapterStoreOwner,
     command: &ChildLiveItemCommand,
 ) -> Result<bool, StoreError> {
-    let item_id: Option<String> = transaction
+    let bound: Option<(String, Option<String>)> = transaction
         .query_row(
-            "SELECT b.item_id FROM acp_child_thread_bindings b
+            "SELECT b.item_id,s.turn_id FROM acp_child_thread_bindings b
              JOIN acp_child_thread_owners o ON o.native_child_thread_id=b.native_child_thread_id
+             LEFT JOIN acp_child_thread_states s ON s.native_child_thread_id=b.native_child_thread_id
              WHERE b.native_child_thread_id=?1 AND b.project_id=?2 AND b.chat_id=?3
                AND b.session_id=?4 AND b.runtime_epoch=?5
                AND o.parent_thread_id=?6 AND o.source='codexSubAgentActivity'",
@@ -68,10 +69,10 @@ fn store_live_item_in(
                 owner.runtime_epoch.get() as i64,
                 owner.external_session_id.as_str(),
             ],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let Some(item_id) = item_id else {
+    let Some((item_id, recorded_turn)) = bound else {
         return Err(StoreError::Conflict {
             resource: "childTranscriptOwner",
         });
@@ -96,10 +97,12 @@ fn store_live_item_in(
             turns: Vec::new(),
             retention_limited: false,
         });
-    // A turn the transcript holds was recorded when it first arrived, so its
-    // later deltas leave the record alone.
+    // A turn that is the recorded one, or that the transcript holds, was
+    // recorded when it first arrived, so its later deltas leave the record
+    // alone. The recorded turn covers a transcript too full to hold it.
     let turn = command.child_turn_id.as_str();
-    if !snapshot.turns.iter().any(|held| held.id == turn) {
+    if recorded_turn.as_deref() != Some(turn) && !snapshot.turns.iter().any(|held| held.id == turn)
+    {
         record_child_state(
             transaction,
             &scope,
@@ -322,26 +325,19 @@ fn store_turn_status_in(
     }
 }
 
-/// A transcript names each turn once; one naming a turn twice has no order.
-pub(super) fn validate_turn_ids(
+/// A transcript within its bounds that names each turn once, so it has one
+/// order.
+pub(super) fn validate_bounds(
     snapshot: &ChildTranscriptSnapshot,
 ) -> Result<(), ChildTranscriptStoreError> {
     let mut ids = HashSet::with_capacity(snapshot.turns.len());
-    if snapshot
+    if !snapshot
         .turns
         .iter()
         .all(|turn| ids.insert(turn.id.as_str()))
     {
-        Ok(())
-    } else {
-        Err(ChildTranscriptStoreError::Corrupt)
+        return Err(ChildTranscriptStoreError::Corrupt);
     }
-}
-
-pub(super) fn validate_bounds(
-    snapshot: &ChildTranscriptSnapshot,
-) -> Result<(), ChildTranscriptStoreError> {
-    validate_turn_ids(snapshot)?;
     if snapshot.turns.len() > MAX_TURNS
         || snapshot
             .turns

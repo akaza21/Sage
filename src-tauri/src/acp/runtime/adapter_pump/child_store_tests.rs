@@ -710,8 +710,8 @@ fn an_upgrade_keeps_the_end_each_stored_child_transcript_reached() {
         .unwrap();
     assert_eq!(
         recorded,
-        ("second".into(), 1, "errored".into(), false, None),
-        "the end keeps the turn it came from, and no end time is claimed"
+        ("second".into(), 1, "errored".into(), true, None),
+        "the end keeps the turn it came from, newer than the spawn row, and no end time is claimed"
     );
     drop(connection);
     std::fs::remove_dir_all(directory).unwrap();
