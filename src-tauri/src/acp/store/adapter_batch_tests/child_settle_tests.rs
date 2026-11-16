@@ -1,7 +1,7 @@
 use super::*;
 use crate::acp::projection::AcpChatPage;
 use crate::acp::store::child_transcript::{
-    ChildTranscriptScope, persist_snapshot, settle_lost_children,
+    ChildTranscriptScope, load_snapshot, persist_snapshot, settle_lost_children,
 };
 use sage_acp_protocol::codex_protocol::{
     ChildItem, ChildTranscriptSnapshot, ChildTurn, MAX_ITEMS, MAX_SNAPSHOT_BYTES,
@@ -239,6 +239,28 @@ fn a_child_turn_after_its_spawn_turn_ended_moves_the_row_both_ways() {
     assert_eq!(spawn_state(&fixture.connection), "interrupted");
     assert!(!settle(&mut fixture, "first", TurnState::Completed, 51));
     assert_eq!(spawn_state(&fixture.connection), "interrupted");
+}
+
+#[test]
+fn a_history_read_behind_a_live_turn_keeps_that_turn_current() {
+    let mut fixture = ended_spawn_turn();
+    let scope = scope(&fixture.connection);
+    assert!(!start(&mut fixture, "second", 21));
+    let read = snapshot(vec![
+        turn("first", "completed", Vec::new()),
+        turn("second", "inProgress", Vec::new()),
+    ]);
+    assert_eq!(
+        persist_snapshot(&mut fixture.connection, &scope, &read, 25).unwrap(),
+        None
+    );
+    assert_eq!(spawn_state(&fixture.connection), "running");
+    let stored = load_snapshot(&fixture.connection, &scope).unwrap().unwrap();
+    let order: Vec<&str> = stored.turns.iter().map(|turn| turn.id.as_str()).collect();
+    assert_eq!(order, ["first", "second"]);
+
+    assert!(settle(&mut fixture, "second", TurnState::Failed, 30));
+    assert_eq!(spawn_state(&fixture.connection), "errored");
 }
 
 #[test]

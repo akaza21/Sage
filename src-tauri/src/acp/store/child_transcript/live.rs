@@ -316,57 +316,6 @@ fn store_turn_status_in(
     }
 }
 
-pub(super) fn merge_snapshots(
-    read: &ChildTranscriptSnapshot,
-    retained: &ChildTranscriptSnapshot,
-) -> Result<ChildTranscriptSnapshot, ChildTranscriptStoreError> {
-    if read.child_thread_id != retained.child_thread_id
-        || read.parent_thread_id != retained.parent_thread_id
-    {
-        return Err(ChildTranscriptStoreError::Stale);
-    }
-    let mut merged = retained.clone();
-    merged.retention_limited |= read.retention_limited;
-    for read_turn in &read.turns {
-        if let Some(turn) = merged.turns.iter_mut().find(|turn| turn.id == read_turn.id) {
-            if turn.status == "inProgress" {
-                turn.status = read_turn.status.clone();
-            }
-            for (read_index, item) in read_turn.items.iter().enumerate() {
-                if let Some(candidate) = turn
-                    .items
-                    .iter_mut()
-                    .find(|candidate| candidate.id == item.id)
-                {
-                    if !candidate.lifecycle.is_terminal()
-                        || (item.lifecycle.is_terminal() && candidate.observed_sequence.is_none())
-                    {
-                        let sequence = candidate.observed_sequence;
-                        let role = candidate.role;
-                        *candidate = item.clone();
-                        candidate.observed_sequence = sequence;
-                        if candidate.role.is_none() {
-                            candidate.role = role;
-                        }
-                    }
-                } else {
-                    let before = read_turn.items[read_index + 1..].iter().find_map(|next| {
-                        turn.items
-                            .iter()
-                            .position(|candidate| candidate.id == next.id)
-                    });
-                    let position = before.unwrap_or(turn.items.len());
-                    turn.items.insert(position, item.clone());
-                }
-            }
-        } else {
-            merged.turns.push(read_turn.clone());
-        }
-    }
-    validate_bounds(&merged)?;
-    Ok(merged)
-}
-
 pub(super) fn validate_bounds(
     snapshot: &ChildTranscriptSnapshot,
 ) -> Result<(), ChildTranscriptStoreError> {
