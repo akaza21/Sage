@@ -123,6 +123,10 @@ pub(super) struct SdkBridge {
     /// A run's `result` that did not end the turn, for when no waiting
     /// message runs after all.
     held: Option<Value>,
+    /// What the session's context holds, from its latest main-thread model
+    /// call or compaction. A turn's `result` usage sums every call of the
+    /// turn, so it overstates this.
+    context_tokens: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -156,6 +160,7 @@ impl SdkBridge {
             compacting: false,
             steers: Vec::new(),
             held: None,
+            context_tokens: None,
         }
     }
 

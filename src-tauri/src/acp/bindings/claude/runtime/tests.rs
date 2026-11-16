@@ -254,7 +254,7 @@ fn initialize_new_prompt_update_terminal_cancel_and_close_preserve_intent() {
 }
 
 #[test]
-fn a_real_claude_turn_correlates_before_its_items_and_snapshots_usage_off_the_item_stream() {
+fn a_real_claude_turn_correlates_before_its_items_and_snapshots_its_context_off_the_item_stream() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
     let (id, token) = prompt(&mut runtime);
@@ -271,19 +271,23 @@ fn a_real_claude_turn_correlates_before_its_items_and_snapshots_usage_off_the_it
             &Mapper,
         )
         .expect("usage update");
-    assert!(
-        matches!(
-            usage.events(),
-            [
-                SharedEvent::Turn {
-                    state: TurnState::Running,
-                    ..
-                },
-                SharedEvent::Absorbed
-            ]
-        ),
-        "{:?}",
-        usage.events()
+    let [
+        SharedEvent::Turn {
+            state: TurnState::Running,
+            ..
+        },
+        SharedEvent::Usage { payload, .. },
+    ] = usage.events()
+    else {
+        panic!("{:?}", usage.events())
+    };
+    assert_eq!(
+        *payload,
+        NormalizedPayload::Usage {
+            input_tokens: 23_753,
+            output_tokens: 0,
+            context_window: Some(1_000_000),
+        }
     );
 
     let message = runtime
@@ -312,9 +316,9 @@ fn a_real_claude_turn_correlates_before_its_items_and_snapshots_usage_off_the_it
             &Mapper,
         )
         .expect("prompt result carrying vendor _meta and usage");
-    // The completed prompt closes the answer ACP never ends, before the turn.
+    // The completed prompt closes the answer ACP never ends, before the turn;
+    // its usage is the turn's spend, which the context snapshot ignores.
     let [
-        SharedEvent::Usage { payload, .. },
         SharedEvent::Item {
             lifecycle: ItemLifecycle::Completed,
             ..
@@ -327,14 +331,6 @@ fn a_real_claude_turn_correlates_before_its_items_and_snapshots_usage_off_the_it
     else {
         panic!("{:?}", terminal.events())
     };
-    assert_eq!(
-        *payload,
-        NormalizedPayload::Usage {
-            input_tokens: 2,
-            output_tokens: 4,
-            context_window: Some(1_000_000),
-        }
-    );
 }
 
 #[test]

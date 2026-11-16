@@ -82,6 +82,7 @@ export default function UsageContext({
         <UsageLimits
           part="default"
           id={limitsId}
+          context={{ used: total, capacity }}
           request={usageRequest}
           triggerRef={triggerRef}
           onDismiss={() => setLimitsOpen(false)}

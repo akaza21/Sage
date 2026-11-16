@@ -56,6 +56,29 @@ describe("ComposerContext", () => {
     expect(meter).not.toHaveTextContent("%");
   });
 
+  it("shows a chat's real context use in the usage popover even past its window", async () => {
+    vi.spyOn(acpUsageDesktop, "read").mockResolvedValue({ kind: "offline" });
+    render(
+      <ComposerContext
+        usage={usage(300_000, 272_000)}
+        usageRequest={
+          {
+            projectId: "project-a",
+            projectGeneration: "1",
+            chatId: "chat-a",
+            sessionId: "session-a",
+            runtimeEpoch: "2",
+          } as AcpUsageRequest
+        }
+      />,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: /Show usage/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Usage" });
+    expect(dialog).toHaveTextContent("Context window0% left");
+    expect(dialog).toHaveTextContent("300K / 272K tokens used");
+    vi.restoreAllMocks();
+  });
+
   it("clamps only the visual and numeric progressbar value when usage is over capacity", async () => {
     render(<ComposerContext usage={usage(300_000, 272_000)} />);
     await screen.findByRole("progressbar");
@@ -150,6 +173,11 @@ describe("ComposerContext", () => {
     ]);
     expect(screen.getByRole("alert")).toHaveTextContent("Usage limit reached.");
     expect(screen.getByText("Pro plan")).toBeVisible();
+    const dialog = screen.getByRole("dialog", { name: "Usage" });
+    expect(dialog.firstElementChild).toHaveTextContent(
+      "Context window98% left",
+    );
+    expect(dialog).toHaveTextContent("6K / 272K tokens used");
     expect(read).toHaveBeenCalledWith(request);
 
     fireEvent.click(trigger);

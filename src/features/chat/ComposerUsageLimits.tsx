@@ -60,6 +60,32 @@ function UsageLimit({ window }: { window: UsageWindow }) {
   );
 }
 
+const compactTokens = new Intl.NumberFormat(undefined, {
+  notation: "compact",
+  maximumFractionDigits: 1,
+});
+
+interface ContextFill {
+  used: number;
+  capacity: number;
+}
+
+function ContextWindow({ used, capacity }: ContextFill) {
+  const left = Math.max(0, 100 - Math.round((used / capacity) * 100));
+  return (
+    <>
+      <div className="composer-usage__heading">
+        <span>Context window</span>
+        <span>{left}% left</span>
+      </div>
+      <p>
+        {compactTokens.format(used)} / {compactTokens.format(capacity)} tokens
+        used
+      </p>
+    </>
+  );
+}
+
 function costText(usd: number): string {
   // Sub-dollar sessions keep their cents' fractions, as harnesses price them.
   return usd.toLocaleString(undefined, {
@@ -108,11 +134,13 @@ function SessionSpendRows({
 
 export default function ComposerUsageLimits({
   id,
+  context,
   request,
   triggerRef,
   onDismiss,
 }: {
   id: string;
+  context: ContextFill;
   request: AcpUsageRequest;
   triggerRef: RefObject<HTMLElement | null>;
   onDismiss: () => void;
@@ -129,6 +157,7 @@ export default function ComposerUsageLimits({
       onDismiss={onDismiss}
       className="composer__popover composer-usage"
     >
+      <ContextWindow {...context} />
       <UsageReport request={request} />
     </MenuPopover>
   );

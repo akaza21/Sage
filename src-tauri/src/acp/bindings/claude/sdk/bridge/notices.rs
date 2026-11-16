@@ -37,6 +37,9 @@ impl SdkBridge {
                 } else {
                     " automatically"
                 };
+                // Claude Code reports only `pre_tokens`: the compacted size stays
+                // unknown until the next model call states it.
+                self.context_tokens = tokens("post_tokens");
                 let text = match (tokens("pre_tokens"), tokens("post_tokens")) {
                     (Some(before), Some(after)) => format!(
                         "Claude Code compacted the conversation{how}, from {before} to {after} tokens."

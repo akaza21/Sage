@@ -31,10 +31,22 @@ const delta = (type, text) =>
           : { type: "text_delta", text },
     },
   });
+const CALL_USAGE = {
+  input_tokens: 12,
+  output_tokens: 48,
+  cache_read_input_tokens: 1024,
+  cache_creation_input_tokens: 256,
+};
 const assistant = (id, content, extra = {}) =>
   frame({
     type: "assistant",
-    message: { id, type: "message", role: "assistant", content },
+    message: {
+      id,
+      type: "message",
+      role: "assistant",
+      content,
+      usage: CALL_USAGE,
+    },
     ...extra,
   });
 const toolUse = (id, name, input) =>
@@ -63,12 +75,7 @@ const result = (extra = {}) =>
     is_error: false,
     stop_reason: "end_turn",
     result: "",
-    usage: {
-      input_tokens: 12,
-      output_tokens: 48,
-      cache_read_input_tokens: 1024,
-      cache_creation_input_tokens: 256,
-    },
+    usage: CALL_USAGE,
     modelUsage: { "claude-fixture": { contextWindow: 200000 } },
     ...extra,
   });
