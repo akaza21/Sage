@@ -7,6 +7,8 @@ use uuid::Uuid;
 
 use super::filesystem::{cleanup_failed_save_with, read_editable_bytes, temporary_contract_path};
 use super::*;
+use crate::editor_persistence::store::EditorBufferStore;
+use crate::project_registry::create::ProjectCreateStore;
 use crate::{
     editor_content::MAX_EDITABLE_BYTES,
     editor_coordination::{EditorOperationCoordinator, EditorOperationKind},
@@ -23,7 +25,7 @@ impl Fixture {
     fn new() -> Self {
         let root = std::env::temp_dir().join(format!("sage-editor-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let database = Database::open(&root.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
         Self {
@@ -47,7 +49,7 @@ impl Fixture {
 
     fn reopen_database(&mut self) {
         drop(self.database.take());
-        self.database = Some(Database::open(&self.root.join("sage.db")).unwrap());
+        self.database = Some(crate::database::open_database(&self.root.join("sage.db")).unwrap());
     }
 
     fn resource(&self, path: &str) -> ResourceRef {

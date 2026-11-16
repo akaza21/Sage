@@ -189,7 +189,7 @@ impl ProjectionPublisher for Publisher {
 }
 
 pub(super) struct Fixture {
-    pub(super) database: crate::persistence::Database,
+    pub(super) database: sage_db::database::Database,
     pub(super) observed: Arc<Mutex<Vec<AdapterEvent>>>,
     external_session_id: ExternalId,
     handle: JournalHandle,
@@ -202,8 +202,7 @@ impl Fixture {
     }
 
     pub(super) fn with_external_session_id(external_session_id: ExternalId) -> Self {
-        let database =
-            crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         {
             let connection = database.connection();
             connection

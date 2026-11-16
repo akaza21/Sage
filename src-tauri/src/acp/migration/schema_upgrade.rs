@@ -1,4 +1,5 @@
 use super::*;
+use sage_db::error::SqliteResultExt;
 
 mod child_thread;
 mod item_kind;
@@ -15,9 +16,12 @@ pub(super) use item_kind::{apply_through_v18, apply_v17_steps, apply_v18_steps, 
 
 pub(super) fn apply_through_v11(connection: &mut Connection) -> AppResult<()> {
     let versions = connection
-        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 11")?
-        .query_map([], |row| row.get::<_, i64>(0))?
-        .collect::<Result<Vec<_>, _>>()?;
+        .prepare("SELECT version FROM schema_migrations ORDER BY version LIMIT 11")
+        .db()?
+        .query_map([], |row| row.get::<_, i64>(0))
+        .db()?
+        .collect::<Result<Vec<_>, _>>()
+        .db()?;
     if versions.is_empty()
         || versions.len() > 11
         || versions
@@ -32,10 +36,10 @@ pub(super) fn apply_through_v11(connection: &mut Connection) -> AppResult<()> {
         return Ok(());
     }
     if last < 2 {
-        connection.execute_batch(V2)?;
+        connection.execute_batch(V2).db()?;
     }
     if last < 3 {
-        connection.execute_batch(V3)?;
+        connection.execute_batch(V3).db()?;
     }
     if last < 4 {
         project_migration::migrate(connection)?;
@@ -80,16 +84,19 @@ pub(super) fn apply_through_v13(connection: &mut Connection) -> AppResult<()> {
 }
 
 pub(super) fn apply_v5(connection: &mut Connection) -> AppResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
     legacy::convert(&transaction, now_millis())?;
     let foreign_key_error = transaction
         .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
-        .optional()?
+        .optional()
+        .db()?
         .unwrap_or(false);
     if foreign_key_error {
         return invalid("ACP migration failed its foreign-key check");
     }
-    transaction.commit()?;
+    transaction.commit().db()?;
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV5 {
         return invalid("database did not reach exact schema v5");
     }
@@ -98,9 +105,11 @@ pub(super) fn apply_v5(connection: &mut Connection) -> AppResult<()> {
 
 #[cfg(test)]
 pub(super) fn apply_v6(connection: &mut Connection) -> AppResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
     apply_v6_steps(&transaction)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     if fingerprint::classify_connection(connection)? != SchemaClass::CurrentV6 {
         return invalid("database did not reach exact schema v6");
     }
@@ -109,10 +118,12 @@ pub(super) fn apply_v6(connection: &mut Connection) -> AppResult<()> {
 
 pub(super) fn apply_v7(connection: &mut Connection) -> AppResult<()> {
     with_foreign_keys_disabled(connection, |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .db()?;
         apply_v7_steps(&transaction)?;
         verify_v7_foreign_keys(&transaction)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     })?;
     verify_reached(connection, SchemaClass::CurrentV7)
@@ -120,13 +131,15 @@ pub(super) fn apply_v7(connection: &mut Connection) -> AppResult<()> {
 
 pub(super) fn apply_v6_and_v7_atomically(connection: &mut Connection) -> AppResult<()> {
     with_foreign_keys_disabled(connection, |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .db()?;
         apply_v6_steps(&transaction)?;
         #[cfg(test)]
         super::test_failpoint::hit("v5-to-v7-after-v6")?;
         apply_v7_steps(&transaction)?;
         verify_v7_foreign_keys(&transaction)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     })?;
     verify_reached(connection, SchemaClass::CurrentV7)
@@ -134,10 +147,12 @@ pub(super) fn apply_v6_and_v7_atomically(connection: &mut Connection) -> AppResu
 
 pub(super) fn apply_v8(connection: &mut Connection) -> AppResult<()> {
     with_foreign_keys_disabled(connection, |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .db()?;
         apply_v8_steps(&transaction)?;
         verify_v8_foreign_keys(&transaction)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     })?;
     verify_reached(connection, SchemaClass::CurrentV8)
@@ -145,17 +160,21 @@ pub(super) fn apply_v8(connection: &mut Connection) -> AppResult<()> {
 
 pub(super) fn apply_v9(connection: &mut Connection) -> AppResult<()> {
     with_foreign_keys_disabled(connection, |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(V9)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .db()?;
+        transaction.execute_batch(V9).db()?;
         #[cfg(test)]
         super::test_failpoint::hit("v8-to-v9-after-schema")?;
-        transaction.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (9, ?1)",
-            [now_millis()],
-        )?;
-        transaction.pragma_update(None, "user_version", 9)?;
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (9, ?1)",
+                [now_millis()],
+            )
+            .db()?;
+        transaction.pragma_update(None, "user_version", 9).db()?;
         verify_v8_foreign_keys(&transaction)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     })?;
     verify_reached(connection, SchemaClass::CurrentV9)
@@ -163,15 +182,19 @@ pub(super) fn apply_v9(connection: &mut Connection) -> AppResult<()> {
 
 pub(super) fn apply_v10(connection: &mut Connection) -> AppResult<()> {
     with_foreign_keys_disabled(connection, |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(V10)?;
-        transaction.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (10, ?1)",
-            [now_millis()],
-        )?;
-        transaction.pragma_update(None, "user_version", 10)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .db()?;
+        transaction.execute_batch(V10).db()?;
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (10, ?1)",
+                [now_millis()],
+            )
+            .db()?;
+        transaction.pragma_update(None, "user_version", 10).db()?;
         verify_v8_foreign_keys(&transaction)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     })?;
     verify_reached(connection, SchemaClass::CurrentV10)
@@ -179,16 +202,20 @@ pub(super) fn apply_v10(connection: &mut Connection) -> AppResult<()> {
 
 pub(super) fn apply_v11(connection: &mut Connection) -> AppResult<()> {
     with_foreign_keys_disabled(connection, |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(V11)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .db()?;
+        transaction.execute_batch(V11).db()?;
         tool_result_fold::apply(&transaction)?;
-        transaction.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (11, ?1)",
-            [now_millis()],
-        )?;
-        transaction.pragma_update(None, "user_version", 11)?;
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (11, ?1)",
+                [now_millis()],
+            )
+            .db()?;
+        transaction.pragma_update(None, "user_version", 11).db()?;
         verify_v8_foreign_keys(&transaction)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     })?;
     verify_reached(connection, SchemaClass::CurrentV11)
@@ -196,45 +223,57 @@ pub(super) fn apply_v11(connection: &mut Connection) -> AppResult<()> {
 
 pub(super) fn apply_v12(connection: &mut Connection) -> AppResult<()> {
     with_foreign_keys_disabled(connection, |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        transaction.execute_batch(V12)?;
-        transaction.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (12, ?1)",
-            [now_millis()],
-        )?;
-        transaction.pragma_update(None, "user_version", 12)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .db()?;
+        transaction.execute_batch(V12).db()?;
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (12, ?1)",
+                [now_millis()],
+            )
+            .db()?;
+        transaction.pragma_update(None, "user_version", 12).db()?;
         verify_v8_foreign_keys(&transaction)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     })?;
     verify_reached(connection, SchemaClass::CurrentV12)
 }
 
 pub(super) fn apply_v13(connection: &mut Connection) -> AppResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V13)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (13, ?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 13)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(V13).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (13, ?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 13).db()?;
     verify_v8_foreign_keys(&transaction)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     verify_reached(connection, SchemaClass::CurrentV13)
 }
 
 pub(super) fn apply_v14(connection: &mut Connection) -> AppResult<()> {
-    let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
-    transaction.execute_batch(V14)?;
+    let transaction = connection
+        .transaction_with_behavior(TransactionBehavior::Immediate)
+        .db()?;
+    transaction.execute_batch(V14).db()?;
     #[cfg(test)]
     super::test_failpoint::hit("v13-to-v14-after-schema")?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (14, ?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 14)?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (14, ?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 14).db()?;
     verify_v8_foreign_keys(&transaction)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     verify_reached(connection, SchemaClass::CurrentV14)
 }
 
@@ -242,45 +281,52 @@ fn with_foreign_keys_disabled(
     connection: &mut Connection,
     migration: impl FnOnce(&mut Connection) -> AppResult<()>,
 ) -> AppResult<()> {
-    let foreign_keys: bool =
-        connection.pragma_query_value(None, "foreign_keys", |row| row.get(0))?;
+    let foreign_keys: bool = connection
+        .pragma_query_value(None, "foreign_keys", |row| row.get(0))
+        .db()?;
     if foreign_keys {
-        connection.pragma_update(None, "foreign_keys", "OFF")?;
+        connection.pragma_update(None, "foreign_keys", "OFF").db()?;
     }
     let result = migration(connection);
     if foreign_keys {
-        connection.pragma_update(None, "foreign_keys", "ON")?;
+        connection.pragma_update(None, "foreign_keys", "ON").db()?;
     }
     result
 }
 
 fn apply_v6_steps(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
-    transaction.execute_batch(V6)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (6, ?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 6)?;
+    transaction.execute_batch(V6).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (6, ?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 6).db()?;
     Ok(())
 }
 
 fn apply_v7_steps(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
-    transaction.execute_batch(V7)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (7, ?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 7)?;
+    transaction.execute_batch(V7).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (7, ?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 7).db()?;
     Ok(())
 }
 
 fn apply_v8_steps(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
-    transaction.execute_batch(V8)?;
-    transaction.execute(
-        "INSERT INTO schema_migrations(version, applied_at) VALUES (8, ?1)",
-        [now_millis()],
-    )?;
-    transaction.pragma_update(None, "user_version", 8)?;
+    transaction.execute_batch(V8).db()?;
+    transaction
+        .execute(
+            "INSERT INTO schema_migrations(version, applied_at) VALUES (8, ?1)",
+            [now_millis()],
+        )
+        .db()?;
+    transaction.pragma_update(None, "user_version", 8).db()?;
     Ok(())
 }
 
@@ -294,7 +340,8 @@ fn verify_reached(connection: &Connection, class: SchemaClass) -> AppResult<()> 
 fn verify_v8_foreign_keys(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
     let foreign_key_error = transaction
         .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
-        .optional()?
+        .optional()
+        .db()?
         .unwrap_or(false);
     if foreign_key_error {
         return invalid("ACP permission-decision migration failed its foreign-key check");
@@ -305,7 +352,8 @@ fn verify_v8_foreign_keys(transaction: &rusqlite::Transaction<'_>) -> AppResult<
 fn verify_v7_foreign_keys(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
     let foreign_key_error = transaction
         .query_row("PRAGMA foreign_key_check", [], |_| Ok(true))
-        .optional()?
+        .optional()
+        .db()?
         .unwrap_or(false);
     if foreign_key_error {
         return invalid("ACP activation-abort migration failed its foreign-key check");
@@ -335,9 +383,9 @@ pub(super) fn build_fresh_v14(connection: &mut Connection) -> AppResult<()> {
 
 #[cfg(test)]
 pub(super) fn build_fresh_v9(connection: &mut Connection) -> AppResult<()> {
-    connection.execute_batch(INITIAL)?;
-    connection.execute_batch(V2)?;
-    connection.execute_batch(V3)?;
+    connection.execute_batch(INITIAL).db()?;
+    connection.execute_batch(V2).db()?;
+    connection.execute_batch(V3).db()?;
     project_migration::migrate(connection)?;
     apply_v5(connection)?;
     apply_v6_and_v7_atomically(connection)?;
@@ -346,9 +394,9 @@ pub(super) fn build_fresh_v9(connection: &mut Connection) -> AppResult<()> {
 }
 
 pub(super) fn build_fresh_v10(connection: &mut Connection) -> AppResult<()> {
-    connection.execute_batch(INITIAL)?;
-    connection.execute_batch(V2)?;
-    connection.execute_batch(V3)?;
+    connection.execute_batch(INITIAL).db()?;
+    connection.execute_batch(V2).db()?;
+    connection.execute_batch(V3).db()?;
     project_migration::migrate(connection)?;
     apply_v5(connection)?;
     apply_v6_and_v7_atomically(connection)?;

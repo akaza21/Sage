@@ -6,29 +6,27 @@ use std::{
 use serde_json::{Value, json};
 use uuid::Uuid;
 
-use crate::{
-    acp::{
-        bindings::adapter::{AdapterCommand, EgressResolution, HarnessAdapter},
-        fixture::{
-            adapter::FixtureAdapter,
-            generated_cases::FrozenCase,
-            test_support::{FixtureDeadline, JournalCleanup},
-        },
-        ipc::{IntentSnapshot, ProjectionChangedV1},
-        recovery::recover_after_restart,
-        runtime::{
-            JournalHandle, PrepareDispatch, ProjectIntentAuthority, ProjectionPublishError,
-            ProjectionPublishStatus, ProjectionPublisher, SendCoordinator, SessionCoordinator,
-        },
-        store::{
-            ActivateSessionCommand, CompleteActivationCommand, DatabaseAcpStore,
-            PrepareTurnCommand, SendObservation, StartSessionCommand, load_chat_page,
-        },
-        transcript_quote::Prompt,
-        transport::FrameWriteOutcome,
+use crate::acp::{
+    bindings::adapter::{AdapterCommand, EgressResolution, HarnessAdapter},
+    fixture::{
+        adapter::FixtureAdapter,
+        generated_cases::FrozenCase,
+        test_support::{FixtureDeadline, JournalCleanup},
     },
-    persistence::Database,
+    ipc::{IntentSnapshot, ProjectionChangedV1},
+    recovery::recover_after_restart,
+    runtime::{
+        JournalHandle, PrepareDispatch, ProjectIntentAuthority, ProjectionPublishError,
+        ProjectionPublishStatus, ProjectionPublisher, SendCoordinator, SessionCoordinator,
+    },
+    store::{
+        ActivateSessionCommand, CompleteActivationCommand, DatabaseAcpStore, PrepareTurnCommand,
+        SendObservation, StartSessionCommand, load_chat_page,
+    },
+    transcript_quote::Prompt,
+    transport::FrameWriteOutcome,
 };
+use crate::project_registry::create::ProjectCreateStore;
 use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, RequiredText, RuntimeEpoch, SageChatId, SageProjectId,
@@ -38,6 +36,7 @@ use sage_acp_protocol::{
     lifecycle::DeliveryState,
     scheduler::Scheduler,
 };
+use sage_db::database::Database;
 
 pub(in crate::acp::fixture) const CASE_IDS: &[&str] = &["send-partial-write-failure"];
 
@@ -64,7 +63,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
         let project_root = root.join("project");
         std::fs::create_dir_all(&project_root).unwrap();
         let database_path = root.join("sage.db");
-        let database = Database::open(&database_path).unwrap();
+        let database = crate::database::open_database(&database_path).unwrap();
         let project = database.create_project_from_root(&project_root).unwrap();
         let project_id = SageProjectId::parse(project.id).unwrap();
         let chat_id = SageChatId::parse("fixture-chat").unwrap();
@@ -234,7 +233,7 @@ fn observe_partial_write(case: &FrozenCase) -> Value {
         drop(journal);
         drop(database);
 
-        let reopened = Database::open(&database_path).unwrap();
+        let reopened = crate::database::open_database(&database_path).unwrap();
         recover_after_restart(&mut reopened.connection(), now + 6).unwrap();
         let after = send_started(&reopened, started.session_id.as_str());
         let (state, delivery): (String, String) = reopened

@@ -83,7 +83,7 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
                     .unwrap();
             }
             drop(fixture);
-            let database = Database::open(&path).unwrap();
+            let database = crate::database::open_database(&path).unwrap();
             let command = format!("echo {} --token 'private value'", "x".repeat(1_000));
             let retained = format!("echo {} --token [redacted]", "x".repeat(1_000));
             let expected_capabilities = runtime.capabilities().expect("ready capabilities");
@@ -156,7 +156,7 @@ fn claude_long_command_and_raw_or_console_output_survive_the_pump_and_sqlite_reo
                 )
             );
             drop(database);
-            let reopened = Database::open(&path).unwrap();
+            let reopened = crate::database::open_database(&path).unwrap();
             assert_eq!(
                 command_fact(&reopened, &expected_capabilities),
                 (

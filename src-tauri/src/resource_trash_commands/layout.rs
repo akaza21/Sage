@@ -3,6 +3,7 @@ use sage_core::{
     error::{AppError, AppResult},
     time::now_millis,
 };
+use sage_db::error::SqliteResultExt;
 
 use crate::workspace::resource_trash::TRASH_NAME;
 use sage_domain::{file_operations::TrashProjectResourceRequest, resource::ResourceRef};
@@ -21,8 +22,9 @@ pub(super) fn ensure_resource_closed(
     project_id: &str,
     source: &ResourceRef,
 ) -> AppResult<()> {
-    let tab_reference: bool = transaction.query_row(
-        "SELECT EXISTS(
+    let tab_reference: bool = transaction
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM workbench_tabs
            WHERE project_id=?1 AND kind IN ('file','diff')
              AND json_extract(metadata_json,'$.resource.rootId')=?2
@@ -31,23 +33,26 @@ pub(super) fn ensure_resource_closed(
                substr(json_extract(metadata_json,'$.resource.relativePath'),1,length(?3)+1)=?3||'/'
              )
          )",
-        params![project_id, source.root_id, source.relative_path],
-        |row| row.get(0),
-    )?;
+            params![project_id, source.root_id, source.relative_path],
+            |row| row.get(0),
+        )
+        .db()?;
     if tab_reference {
         return Err(AppError::InvalidRequest(format!(
             "close File and Diff tabs for the resource and its descendants before moving it to the {TRASH_NAME}"
         )));
     }
-    let buffer_reference: bool = transaction.query_row(
-        "SELECT EXISTS(
+    let buffer_reference: bool = transaction
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM editor_buffers
            WHERE project_id=?1 AND root_id=?2
              AND (relative_path=?3 OR substr(relative_path,1,length(?3)+1)=?3||'/')
          )",
-        params![project_id, source.root_id, source.relative_path],
-        |row| row.get(0),
-    )?;
+            params![project_id, source.root_id, source.relative_path],
+            |row| row.get(0),
+        )
+        .db()?;
     if buffer_reference {
         return Err(AppError::InvalidRequest(format!(
             "save or discard and close editor buffers for the resource and its descendants before moving it to the {TRASH_NAME}"
@@ -92,7 +97,7 @@ pub(super) fn migrate_selection(
             parent.relative_path,
             now_millis()
         ],
-    )?;
+    ).db()?;
     Ok(())
 }
 

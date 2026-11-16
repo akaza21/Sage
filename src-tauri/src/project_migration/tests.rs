@@ -1,9 +1,9 @@
+use crate::editor_persistence::store::EditorBufferStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use std::{fs, path::Path};
 
 use rusqlite::{Connection, params};
 use uuid::Uuid;
-
-use crate::persistence::Database;
 
 #[cfg(not(windows))]
 fn complete_legacy_upgrade_for_runtime(path: &Path) {
@@ -89,7 +89,7 @@ fn migrates_legacy_root_tabs_session_and_dirty_buffer() {
 
     #[cfg(not(windows))]
     complete_legacy_upgrade_for_runtime(&path);
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let project = snapshot.project.unwrap();
     assert_eq!(project.id, "legacy");
@@ -140,7 +140,7 @@ fn missing_legacy_root_and_dirty_buffer_survive_upgrade_and_reopen() {
 
     #[cfg(not(windows))]
     complete_legacy_upgrade_for_runtime(&path);
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     assert_eq!(
         snapshot.project.as_ref().unwrap().roots[0].availability,
@@ -152,7 +152,7 @@ fn missing_legacy_root_and_dirty_buffer_survive_upgrade_and_reopen() {
     );
     drop(database);
 
-    let reopened = Database::open(&path).unwrap();
+    let reopened = crate::database::open_database(&path).unwrap();
     assert_eq!(
         reopened
             .bootstrap_snapshot()
@@ -193,7 +193,7 @@ fn missing_root_buffer_case_aliases_roll_back_with_legacy_rows_intact() {
     fs::remove_dir_all(&root).unwrap();
 
     assert!(matches!(
-        Database::open(&path),
+        crate::database::open_database(&path),
         Err(sage_core::error::AppError::InvalidRequest(_))
     ));
     let connection = Connection::open(&path).unwrap();
@@ -228,7 +228,7 @@ fn missing_root_buffer_and_tab_case_aliases_roll_back() {
     seed_legacy(&path, &root, r#"{"resourcePath":"SRC/MAIN.RS"}"#);
     fs::remove_dir_all(&root).unwrap();
 
-    assert!(Database::open(&path).is_err());
+    assert!(crate::database::open_database(&path).is_err());
     let connection = Connection::open(&path).unwrap();
     let metadata: String = connection
         .query_row(
@@ -272,7 +272,7 @@ fn missing_root_case_distinct_resources_remain_independent() {
     fs::remove_dir_all(&root).unwrap();
 
     complete_legacy_upgrade_for_runtime(&path);
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     assert_eq!(
         database.dirty_editor_buffers("legacy", None).unwrap().len(),
         2
@@ -290,7 +290,7 @@ fn failed_migration_rolls_back_without_destroying_legacy_rows() {
     let path = folder.join("sage.db");
     seed_legacy(&path, &root, "not-json");
 
-    assert!(Database::open(&path).is_err());
+    assert!(crate::database::open_database(&path).is_err());
     let connection = Connection::open(&path).unwrap();
     let migrated: bool = connection
         .query_row(
@@ -344,7 +344,7 @@ fn over_limit_legacy_buffers_fail_before_collection_and_roll_back() {
     }
     drop(connection);
 
-    assert!(Database::open(&path).is_err());
+    assert!(crate::database::open_database(&path).is_err());
     let connection = Connection::open(&path).unwrap();
     let count: i64 = connection
         .query_row("SELECT COUNT(*) FROM editor_buffers", [], |row| row.get(0))
@@ -381,7 +381,7 @@ fn over_limit_actual_legacy_buffer_bytes_fail_and_roll_back() {
         .unwrap();
     drop(connection);
 
-    assert!(Database::open(&path).is_err());
+    assert!(crate::database::open_database(&path).is_err());
     let connection = Connection::open(&path).unwrap();
     let migrated: bool = connection
         .query_row(
@@ -409,7 +409,7 @@ fn noncanonical_legacy_resource_alias_rolls_back() {
     fs::create_dir_all(&root).unwrap();
     let path = folder.join("sage.db");
     seed_legacy(&path, &root, r#"{"resourcePath":"src/./main.rs"}"#);
-    assert!(Database::open(&path).is_err());
+    assert!(crate::database::open_database(&path).is_err());
     let connection = Connection::open(&path).unwrap();
     let migrated: bool = connection
         .query_row(
@@ -434,7 +434,7 @@ fn windows_migration_recovers_actual_root_relative_casing() {
     let path = folder.join("sage.db");
     seed_legacy(&path, &root, r#"{"resourcePath":"SRC/MAIN.RS"}"#);
 
-    let database = Database::open(&path).unwrap();
+    let database = crate::database::open_database(&path).unwrap();
     let snapshot = database.bootstrap_snapshot().unwrap();
     let file = snapshot.tabs.iter().find(|tab| tab.id == "file").unwrap();
     assert_eq!(file.resource.as_ref().unwrap().relative_path, "src/main.rs");

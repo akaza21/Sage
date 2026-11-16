@@ -22,13 +22,13 @@ use crate::{
         },
         store::PrepareTurnCommand,
     },
-    persistence::Database,
     project_registry::ProjectRootAuthority,
 };
 use sage_acp_protocol::{
     contract::{ProjectGeneration, RuntimeEpoch, SageAgentSessionId, SageProjectId, SageRootId},
     intent::{SafeResourceRef, UnavailableResourceReason},
 };
+use sage_db::database::Database;
 
 #[derive(Clone, Copy)]
 pub(super) enum ExternalCase {

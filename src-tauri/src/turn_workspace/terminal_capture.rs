@@ -2,10 +2,8 @@ use rusqlite::{Connection, params};
 use std::time::Duration;
 
 use super::{TurnWorkspaceChanges, WorkspaceMark, capture_after, diff_marks};
-use crate::{
-    acp::store::{SendObservation, StoreError, StoreMutation},
-    persistence::Database,
-};
+use crate::acp::store::{SendObservation, StoreError, StoreMutation};
+use sage_db::database::Database;
 
 struct CaptureJob {
     session: String,

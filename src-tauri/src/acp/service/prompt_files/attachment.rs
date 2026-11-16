@@ -6,7 +6,7 @@ use super::FileStages;
 /// memory promptly.
 pub(crate) fn release_detached(
     stages: &std::sync::Mutex<FileStages>,
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
 ) {
     let owners = stages
         .lock()
@@ -44,7 +44,7 @@ pub(crate) fn release_detached(
 }
 
 pub(crate) fn retry_origin(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     project: &str,
     chat: &str,
     turn: &str,
@@ -85,7 +85,7 @@ fn attachment_count(payload: &str) -> Option<usize> {
 
 /// The `attached_at` of the chat's current tab, or `None` when it has none.
 pub(crate) fn attachment(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     project: &str,
     chat: &str,
 ) -> rusqlite::Result<Option<i64>> {

@@ -17,7 +17,7 @@ use support::*;
 
 mod admission;
 
-pub(super) mod authority;
+pub(crate) mod authority;
 use authority::RuntimeLaunchAuthority;
 
 mod launch;

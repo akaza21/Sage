@@ -1,28 +1,26 @@
 use std::{path::PathBuf, sync::Arc};
 
-use crate::{
-    acp::{
-        fixture::adapter::FixtureAdapter,
-        ipc::IntentSnapshot,
-        process::{StdinEndpoint, StdoutEndpoint, TreeCapacityPool, TreeControl, TreeExit},
-        runtime::{
-            ActivatedSession, ActivationJournal, BlockingStdoutReader, BoundedThread,
-            CompletedActivationDriverParts, CoordinatorActivationJournal, DriverClock,
-            DriverMailbox, HostPromptIntent, IdleActivationParts, JournalHandle,
-            PreparedProcessWrite, SendCoordinator, SqliteAdapterBatchJournal, SystemDriverClock,
-        },
-        store::{
-            ActivateSessionCommand, CompleteActivationCommand, PrepareTurnCommand, SessionMutation,
-        },
-        transcript_quote::Prompt,
+use crate::acp::{
+    fixture::adapter::FixtureAdapter,
+    ipc::IntentSnapshot,
+    process::{StdinEndpoint, StdoutEndpoint, TreeCapacityPool, TreeControl, TreeExit},
+    runtime::{
+        ActivatedSession, ActivationJournal, BlockingStdoutReader, BoundedThread,
+        CompletedActivationDriverParts, CoordinatorActivationJournal, DriverClock, DriverMailbox,
+        HostPromptIntent, IdleActivationParts, JournalHandle, PreparedProcessWrite,
+        SendCoordinator, SqliteAdapterBatchJournal, SystemDriverClock,
     },
-    persistence::Database,
+    store::{
+        ActivateSessionCommand, CompleteActivationCommand, PrepareTurnCommand, SessionMutation,
+    },
+    transcript_quote::Prompt,
 };
 use sage_acp_protocol::{
     contract::{ClientIntentId, ProjectGeneration, RuntimeEpoch, SageChatId, SageProjectId},
     intent::ExternalId,
     scheduler::{RuntimeOwner, Scheduler},
 };
+use sage_db::database::Database;
 
 use super::external_fixture_adapters::{
     Authority, CommitCheckingPublisher, ExternalCase, Mapper, fixture_artifact, hex, launch_spec,

@@ -160,7 +160,7 @@ fn relaunch(
     (project_id, chat_id, root_path, root_id): (SageProjectId, SageChatId, PathBuf, SageRootId),
 ) -> FixtureSetup {
     let service = AcpService::new_with_registry_for_test(
-        crate::persistence::Database::open(&profile.database_path).unwrap(),
+        crate::database::open_database(&profile.database_path).unwrap(),
         registry,
     )
     .unwrap();

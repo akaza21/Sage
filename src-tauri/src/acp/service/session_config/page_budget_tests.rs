@@ -4,10 +4,7 @@ use sha2::{Digest, Sha256};
 use super::restore_tests::{option, owner, start};
 use super::stored_tests::seed_chat;
 use super::*;
-use crate::{
-    acp::session_config::notices::{self, NoticeReason, SessionConfigNotice},
-    persistence::Database,
-};
+use crate::acp::session_config::notices::{self, NoticeReason, SessionConfigNotice};
 use sage_acp_protocol::session_config::ConfigId;
 
 const ITEMS: usize = 9;
@@ -60,7 +57,8 @@ fn items(page: &AcpChatPage) -> usize {
 /// Terminal items cannot be rewritten, so each size gets a chat of its own.
 fn parked_chat(last_len: usize) -> AcpService {
     let service =
-        AcpService::new(Database::open(std::path::Path::new(":memory:")).unwrap()).unwrap();
+        AcpService::new(crate::database::open_database(std::path::Path::new(":memory:")).unwrap())
+            .unwrap();
     seed_chat(&service);
     let first = owner(1);
     start(

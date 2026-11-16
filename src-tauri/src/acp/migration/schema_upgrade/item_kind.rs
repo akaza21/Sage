@@ -1,4 +1,5 @@
 use super::*;
+use sage_db::error::SqliteResultExt;
 
 pub(in crate::acp::migration) fn apply_v17(connection: &mut Connection) -> AppResult<()> {
     apply_item_kind_version(connection, 17, SchemaClass::CurrentV17, apply_v17_steps)
@@ -23,11 +24,13 @@ pub(in crate::acp::migration) fn apply_v17_and_v18_atomically(
 ) -> AppResult<()> {
     apply_item_kind_version(connection, 18, SchemaClass::CurrentV18, |connection| {
         apply_v17_steps(connection)?;
-        connection.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (17, ?1)",
-            [now_millis()],
-        )?;
-        connection.pragma_update(None, "user_version", 17)?;
+        connection
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (17, ?1)",
+                [now_millis()],
+            )
+            .db()?;
+        connection.pragma_update(None, "user_version", 17).db()?;
         apply_v18_steps(connection)
     })
 }
@@ -39,23 +42,29 @@ fn apply_item_kind_version(
     steps: fn(&Connection) -> AppResult<()>,
 ) -> AppResult<()> {
     with_foreign_keys_disabled(connection, |connection| {
-        let transaction = connection.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let transaction = connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .db()?;
         steps(&transaction)?;
         #[cfg(test)]
         if version == 18 {
             super::super::test_failpoint::hit("v17-to-v18-after-schema")?;
         }
-        transaction.execute(
-            "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, ?2)",
-            [version, now_millis()],
-        )?;
-        transaction.pragma_update(None, "user_version", version)?;
+        transaction
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, ?2)",
+                [version, now_millis()],
+            )
+            .db()?;
+        transaction
+            .pragma_update(None, "user_version", version)
+            .db()?;
         #[cfg(test)]
         if version == 18 {
             super::super::test_failpoint::hit("v17-to-v18-after-markers")?;
         }
         verify_v8_foreign_keys(&transaction)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     })?;
     verify_reached(connection, schema)
@@ -88,11 +97,13 @@ fn rebuild_items(
     old_kind: &str,
     new_kind: &str,
 ) -> AppResult<()> {
-    let original: String = connection.query_row(
-        "SELECT sql FROM sqlite_schema WHERE type='table' AND name='items'",
-        [],
-        |row| row.get(0),
-    )?;
+    let original: String = connection
+        .query_row(
+            "SELECT sql FROM sqlite_schema WHERE type='table' AND name='items'",
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
     if original.matches(old_kind).count() != 1 || !original.starts_with(original_prefix) {
         return invalid("item table source is not the exact admitted shape");
     }
@@ -104,9 +115,9 @@ fn rebuild_items(
         )
         .replacen(old_kind, new_kind, 1);
     let schema_objects = connection
-        .prepare("SELECT name, sql FROM sqlite_schema WHERE tbl_name='items' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name")?
-        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?)))?
-        .collect::<Result<Vec<_>, _>>()?;
+        .prepare("SELECT name, sql FROM sqlite_schema WHERE tbl_name='items' AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type,name").db()?
+        .query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))).db()?
+        .collect::<Result<Vec<_>, _>>().db()?;
     let names = schema_objects
         .iter()
         .map(|(name, _)| name.as_str())
@@ -124,15 +135,19 @@ fn rebuild_items(
     {
         return invalid("item indexes or triggers are incomplete");
     }
-    let count: i64 = connection.query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))?;
-    connection.execute_batch(&replacement)?;
+    let count: i64 = connection
+        .query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))
+        .db()?;
+    connection.execute_batch(&replacement).db()?;
     connection.execute_batch(&format!(
         "INSERT INTO {replacement_table} SELECT * FROM items; DROP TABLE items; ALTER TABLE {replacement_table} RENAME TO items;"
-    ))?;
+    )).db()?;
     for (_, sql) in schema_objects {
-        connection.execute_batch(&sql)?;
+        connection.execute_batch(&sql).db()?;
     }
-    let copied: i64 = connection.query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))?;
+    let copied: i64 = connection
+        .query_row("SELECT COUNT(*) FROM items", [], |row| row.get(0))
+        .db()?;
     if copied != count {
         return invalid("item rebuild changed its row count");
     }
