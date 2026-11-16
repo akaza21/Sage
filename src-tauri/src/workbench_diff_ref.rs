@@ -122,6 +122,8 @@ pub fn parse_diff_ref_from_metadata(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use sage_domain::{chat::WorkbenchTab, repository::RepositoryRef, resource::ResourceRef};
     use std::{fs, path::Path};
     use uuid::Uuid;
@@ -269,7 +271,7 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("sage-diffref-{}", Uuid::new_v4()));
         fs::create_dir_all(&folder).unwrap();
         fs::write(folder.join("src-a.ts"), "old\n").unwrap();
-        let database = crate::persistence::Database::open(Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(Path::new(":memory:")).unwrap();
         let project = database.create_project_from_root(&folder).unwrap();
         let root_id = project.roots[0].id.clone();
         let mut snapshot = database.bootstrap_snapshot().unwrap();

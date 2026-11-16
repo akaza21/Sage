@@ -13,15 +13,16 @@ use self::filesystem::{
     read_disk_document, read_disk_document_if_present, split_contract_path,
     temporary_contract_path,
 };
+use crate::editor_persistence::store::EditorBufferStore;
 use crate::{
     editor_content::{
         canonicalize_editor_content, fingerprint, materialize_content,
         reject_oversized_materialized, reject_unsupported_content, validate_line_ending,
     },
     editor_persistence::PersistedEditorBuffer,
-    persistence::Database,
     workspace::Workspace,
 };
+use sage_db::database::Database;
 use sage_domain::{
     editor::{
         BufferSnapshotAck, BufferSnapshotRequest, DocumentVersion, EditorBufferVersion,

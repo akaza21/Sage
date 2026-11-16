@@ -1,5 +1,7 @@
 use std::time::Instant;
 
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use crate::{
     acp::{
         ipc::{
@@ -19,7 +21,6 @@ use crate::{
         activate_acp_session_inner, cancel_acp_turn_inner, close_acp_session_inner,
         get_acp_chat_page_inner, send_acp_turn_inner, start_acp_session_inner,
     },
-    persistence::Database,
     state::AppState,
 };
 use sage_acp_protocol::{
@@ -58,7 +59,7 @@ fn run(case: CharacterizationCase, expected_terminal: TurnState) {
         let temp_root = TempRoot::new("sage-characterization-commands");
         let project_root = temp_root.path().join("project");
         std::fs::create_dir_all(&project_root).unwrap();
-        let database = Database::open(&temp_root.path().join("sage.db")).unwrap();
+        let database = crate::database::open_database(&temp_root.path().join("sage.db")).unwrap();
         let project_id =
             SageProjectId::parse(database.create_project_from_root(&project_root).unwrap().id)
                 .unwrap();

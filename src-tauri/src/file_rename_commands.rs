@@ -1,16 +1,17 @@
 use std::sync::Arc;
 
 use sage_core::error::{AppError, AppResult};
+use sage_db::error::SqliteResultExt;
 use tauri::State;
 
 use crate::{
-    persistence::Database,
     preview_lifecycle::on_committed_project_transition_epoch,
     resource_commands::build_bootstrap_snapshot,
     state::AppState,
     workbench_persistence::validate_layout,
     workspace::file_rename::{FileRenameCommit, FileRenameMarker},
 };
+use sage_db::database::Database;
 use sage_domain::{
     file_operations::{FileRenameOutcome, RenameProjectFileRequest, RenameProjectFileResult},
     resource::ResourceRef,
@@ -225,7 +226,7 @@ where
     F: FnOnce(&rusqlite::Transaction<'_>) -> AppResult<()>,
 {
     let mut connection = database.write_connection()?;
-    let transaction = connection.transaction()?;
+    let transaction = connection.transaction().db()?;
     let workspace = resolve_workspace(&transaction, &request)?;
     let target = match kind {
         RenameKind::File => workspace.rename_file_target(&request.source, &request.basename)?,
@@ -257,7 +258,7 @@ where
         )?;
     }
     after_rename(&transaction)?;
-    transaction.commit()?;
+    transaction.commit().db()?;
     Ok(commit)
 }
 
@@ -268,7 +269,7 @@ fn recover_effect_unknown(
     marker: &FileRenameMarker,
 ) -> AppResult<FileRenameCommit> {
     let mut connection = database.write_connection()?;
-    let transaction = connection.transaction()?;
+    let transaction = connection.transaction().db()?;
     let workspace = resolve_workspace(&transaction, &request)?;
     let target = match kind {
         RenameKind::File => workspace.rename_file_target(&request.source, &request.basename)?,
@@ -301,7 +302,7 @@ fn recover_effect_unknown(
             &commit.target,
         )?;
     }
-    transaction.commit()?;
+    transaction.commit().db()?;
     Ok(commit)
 }
 

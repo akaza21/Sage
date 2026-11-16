@@ -1,3 +1,4 @@
+use crate::project_registry::create::ProjectCreateStore;
 use std::{fs, path::PathBuf};
 
 use uuid::Uuid;
@@ -14,7 +15,7 @@ impl Fixture {
     fn new() -> Self {
         let root = std::env::temp_dir().join(format!("sage-agent-file-ops-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
-        let database = Database::open(&root.join("sage.db")).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
         let project = database.create_project_from_root(&root).unwrap();
         let workspace = Workspace::open(&project.id, &project.roots[0].id, &root).unwrap();
         Self {

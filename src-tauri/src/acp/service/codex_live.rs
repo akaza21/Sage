@@ -27,7 +27,7 @@ use super::AcpService;
 use super::{CodexSessionError, codex_operation::ActiveCodexOperation, live_lanes::Lane};
 
 struct DatabaseAuthority(
-    crate::persistence::Database,
+    sage_db::database::Database,
     Option<super::HarnessTurnAccess>,
 );
 

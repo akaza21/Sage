@@ -1,14 +1,10 @@
 use rusqlite::OptionalExtension;
 
-use crate::{
-    acp::{
-        recovery::{RecoveryReport, recover_after_restart},
-        store::{
-            AcpStore, DatabaseAcpStore, DenyOnlyPermissionJournal, RequestStateCommand,
-            StoreMutation,
-        },
+use crate::acp::{
+    recovery::{RecoveryReport, recover_after_restart},
+    store::{
+        AcpStore, DatabaseAcpStore, DenyOnlyPermissionJournal, RequestStateCommand, StoreMutation,
     },
-    persistence::Database,
 };
 use sage_acp_protocol::{
     contract::{
@@ -22,6 +18,7 @@ use sage_acp_protocol::{
         decline_permission,
     },
 };
+use sage_db::database::Database;
 
 pub(in crate::acp::fixture) const BINDING_DIGEST: [u8; 32] = [7; 32];
 
@@ -31,7 +28,7 @@ pub(in crate::acp::fixture) struct PermissionStoreFixture {
 
 impl PermissionStoreFixture {
     pub(in crate::acp::fixture) fn new() -> Self {
-        let database = Database::open(std::path::Path::new(":memory:")).unwrap();
+        let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
         seed(&database);
         Self { database }
     }

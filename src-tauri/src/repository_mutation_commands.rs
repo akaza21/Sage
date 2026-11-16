@@ -4,6 +4,7 @@ use std::time::Duration;
 use sage_core::error::{AppError, AppResult, GitContainmentState};
 use tauri::State;
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::{
     repository,
     repository_mutation::{mutate_file, mutate_file_with_process_policy},
@@ -152,7 +153,9 @@ mod tests {
     use uuid::Uuid;
 
     use super::*;
-    use crate::{persistence::Database, state::AppState};
+    use crate::project_registry::create::ProjectCreateStore;
+    use crate::state::AppState;
+    use crate::workbench_persistence::store::WorkbenchStore;
     use sage_domain::file_operations::{GitFileMutationAction, GitFileMutationRequest};
 
     fn git(root: &Path, args: &[&str]) {
@@ -197,7 +200,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
@@ -246,7 +249,7 @@ mod tests {
             git(&root, &["add", "--", "tracked.txt"]);
             git(&root, &["commit", "-q", "-m", "fixture"]);
             fs::write(root.join("tracked.txt"), "keep changed\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
@@ -299,7 +302,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
@@ -343,7 +346,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
@@ -396,7 +399,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
@@ -451,7 +454,7 @@ mod tests {
             git(&root, &["add", "--", "tracked.txt"]);
             git(&root, &["commit", "-q", "-m", "fixture"]);
             fs::write(root.join("tracked.txt"), "changed\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
@@ -502,7 +505,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             hold_staging_of_new_file(&root);
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
@@ -573,7 +576,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
@@ -628,7 +631,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let root_id = snapshot.project.unwrap().roots[0].id.clone();
@@ -680,7 +683,7 @@ mod tests {
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
             hold_staging_of_new_file(&root);
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let request = GitFileMutationRequest {
@@ -771,7 +774,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let request = GitFileMutationRequest {
@@ -869,7 +872,7 @@ mod tests {
             fs::create_dir_all(&root).unwrap();
             git(&root, &["init", "-q"]);
             fs::write(root.join("new.txt"), "new\n").unwrap();
-            let database = Database::open(&base.join("sage.db")).unwrap();
+            let database = crate::database::open_database(&base.join("sage.db")).unwrap();
             let project = database.create_project_from_root(&root).unwrap();
             let snapshot = database.bootstrap_snapshot().unwrap();
             let request = GitFileMutationRequest {

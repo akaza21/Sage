@@ -14,6 +14,7 @@ use std::{
 
 use tauri::State;
 
+use crate::project_registry::ProjectRegistryStore;
 use crate::state::AppState;
 
 const MAX_POINTER_BYTES: u64 = 1024;

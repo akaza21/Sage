@@ -81,7 +81,7 @@ fn shutdown_running_codex_turn_preserves_partial_chat_after_reopen() {
         drop(setup);
         assert_job_zero();
 
-        let database = crate::persistence::Database::open(&database_path).unwrap();
+        let database = crate::database::open_database(&database_path).unwrap();
         let reopened = AcpService::new_with_codex_publisher_for_test(
             database,
             CodexBindingRegistration::unavailable_for_test(),

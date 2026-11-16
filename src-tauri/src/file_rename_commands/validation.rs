@@ -3,6 +3,7 @@ use sage_core::{
     error::{AppError, AppResult},
     time::now_millis,
 };
+use sage_db::error::SqliteResultExt;
 
 use crate::{project_registry::RootRecord, workspace::Workspace};
 use sage_domain::{file_operations::RenameProjectFileRequest, resource::ResourceRef};
@@ -22,7 +23,8 @@ pub(super) fn resolve_workspace(
             [],
             |row| row.get::<_, Option<String>>(0),
         )
-        .optional()?
+        .optional()
+        .db()?
         .flatten();
     if active.as_deref() != Some(request.project_id.as_str()) {
         return Err(AppError::InvalidRequest(
@@ -43,7 +45,8 @@ pub(super) fn resolve_workspace(
                 })
             },
         )
-        .optional()?
+        .optional()
+        .db()?
         .ok_or_else(|| {
             AppError::InvalidRequest(
                 "file rename root does not belong to the active Project".into(),
@@ -80,14 +83,15 @@ pub(super) fn ensure_resources_closed(
             (kind as u8)
         ],
         |row| row.get(0),
-    )?;
+    ).db()?;
     if tab_reference {
         return Err(AppError::InvalidRequest(
             "close File and Diff tabs for the source and target before renaming".into(),
         ));
     }
-    let buffer_reference: bool = transaction.query_row(
-        "SELECT EXISTS(
+    let buffer_reference: bool = transaction
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM editor_buffers
            WHERE project_id=?1 AND root_id=?2
              AND (
@@ -95,15 +99,16 @@ pub(super) fn ensure_resources_closed(
                OR (?5=1 AND substr(relative_path,1,length(?3)+1)=?3 || '/')
              )
          )",
-        params![
-            project_id,
-            source.root_id,
-            source.relative_path,
-            target.relative_path,
-            (kind as u8)
-        ],
-        |row| row.get(0),
-    )?;
+            params![
+                project_id,
+                source.root_id,
+                source.relative_path,
+                target.relative_path,
+                (kind as u8)
+            ],
+            |row| row.get(0),
+        )
+        .db()?;
     if buffer_reference {
         return Err(AppError::InvalidRequest(
             "discard or save and close the source and target editor buffer before renaming".into(),
@@ -144,18 +149,20 @@ pub(super) fn migrate_selection(
     source: &ResourceRef,
     target: &ResourceRef,
 ) -> AppResult<()> {
-    transaction.execute(
-        "UPDATE project_layouts
+    transaction
+        .execute(
+            "UPDATE project_layouts
          SET selected_relative_path=?4,updated_at=?5
          WHERE project_id=?1 AND selected_root_id=?2 AND selected_relative_path=?3",
-        params![
-            project_id,
-            source.root_id,
-            source.relative_path,
-            target.relative_path,
-            now_millis()
-        ],
-    )?;
+            params![
+                project_id,
+                source.root_id,
+                source.relative_path,
+                target.relative_path,
+                now_millis()
+            ],
+        )
+        .db()?;
     Ok(())
 }
 

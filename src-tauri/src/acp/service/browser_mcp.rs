@@ -53,7 +53,7 @@ impl Drop for BrowserMcpActivationGuard {
 }
 
 pub(super) fn session_state(
-    database: &crate::persistence::Database,
+    database: &sage_db::database::Database,
     owner: &RuntimeOwner,
 ) -> BrowserMcpSessionState {
     let row = database

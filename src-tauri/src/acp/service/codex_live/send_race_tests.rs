@@ -1,23 +1,21 @@
 use std::{path::Path, sync::Arc};
 
 use super::DatabaseAuthority;
-use crate::{
-    acp::{
-        runtime::{
-            ActiveDispatch, CoordinatorError, JournalHandle, PrepareDispatch, ProjectionMailbox,
-            SendCoordinator,
-        },
-        store::{
-            ActivateSessionCommand, AdapterInboundBatchCommand, AdapterInboundEvent,
-            AdapterStoreOwner, CompleteActivationCommand, DatabaseAcpStore, PrepareTurnCommand,
-            SessionEventCommand, StartSessionCommand, TurnMutationCommand, activate_session,
-            apply_adapter_inbound_batch, begin_send, complete_activation, prepare_turn,
-            start_session,
-        },
-        transcript_quote::Prompt,
+use crate::acp::{
+    runtime::{
+        ActiveDispatch, CoordinatorError, JournalHandle, PrepareDispatch, ProjectionMailbox,
+        SendCoordinator,
     },
-    persistence::Database,
+    store::{
+        ActivateSessionCommand, AdapterInboundBatchCommand, AdapterInboundEvent, AdapterStoreOwner,
+        CompleteActivationCommand, DatabaseAcpStore, PrepareTurnCommand, SessionEventCommand,
+        StartSessionCommand, TurnMutationCommand, activate_session, apply_adapter_inbound_batch,
+        begin_send, complete_activation, prepare_turn, start_session,
+    },
+    transcript_quote::Prompt,
 };
+use crate::project_registry::create::ProjectCreateStore;
+use crate::workbench_persistence::store::WorkbenchStore;
 use sage_acp_protocol::{
     contract::{
         ClientIntentId, ProjectGeneration, ProjectionRevision, RequiredText, RuntimeEpoch,
@@ -33,6 +31,7 @@ use sage_acp_protocol::{
     lifecycle::TurnState,
     scheduler::{RuntimeOwner, Scheduler},
 };
+use sage_db::database::Database;
 
 struct IdleSession {
     database: Database,
@@ -95,7 +94,7 @@ fn commit(database: &Database, owner: &AdapterStoreOwner, event: SessionScopedEv
 fn idle_session() -> IdleSession {
     let root = std::env::temp_dir().join(format!("sage-send-race-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();
-    let database = Database::open(Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(Path::new(":memory:")).unwrap();
     let project_id =
         SageProjectId::parse(database.create_project_from_root(&root).unwrap().id).unwrap();
     let chat_id = SageChatId::parse(

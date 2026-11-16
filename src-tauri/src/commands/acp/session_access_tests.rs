@@ -179,7 +179,7 @@ fn a_governed_binding_refuses_mode_changes_outside_the_access_path() {
 
 #[test]
 fn a_deleted_chat_keeps_no_access_choice() {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let settings = crate::settings_store::SettingsStore::in_memory().unwrap();
     let token = settings
         .prepare_chat_access("session-gone", SessionAccessMode::FullAccess, 1)
@@ -305,7 +305,7 @@ async fn grant(
 #[tokio::test]
 async fn a_grant_needs_a_pending_token_and_a_deliberate_allow() {
     use native_confirm::tests::{Dialog, PATIENT};
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     let state = AppState::try_new(database).unwrap();
     let access = || state.settings.chat_access("session-access").unwrap();
     let dialog = Dialog::answering(true);
@@ -350,7 +350,7 @@ async fn a_grant_needs_a_pending_token_and_a_deliberate_allow() {
 /// A chat whose session A holds Plan, then sessions that went on from it on
 /// the same binding without running a turn: `later` of them, in order.
 fn chat_going_on_from_plan(later: &[&str]) -> AppState {
-    let database = crate::persistence::Database::open(std::path::Path::new(":memory:")).unwrap();
+    let database = crate::database::open_database(std::path::Path::new(":memory:")).unwrap();
     {
         let connection = database.connection();
         connection

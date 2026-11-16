@@ -1,4 +1,5 @@
 use super::*;
+use sage_db::error::SqliteResultExt;
 
 struct TestDir(PathBuf);
 
@@ -54,11 +55,9 @@ fn interrupted_scratch_is_reused_for_current_wal_data_and_source_changes_are_rej
         assert_eq!(
             snapshot
                 .inspect(|connection| {
-                    Ok(connection.query_row::<i64, _, _>(
-                        "SELECT value FROM marker",
-                        [],
-                        |row| row.get(0),
-                    )?)
+                    connection
+                        .query_row::<i64, _, _>("SELECT value FROM marker", [], |row| row.get(0))
+                        .db()
                 })
                 .unwrap(),
             3

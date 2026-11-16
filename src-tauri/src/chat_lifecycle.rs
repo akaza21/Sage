@@ -1,6 +1,7 @@
 use rusqlite::{OptionalExtension, params};
+use sage_db::error::SqliteResultExt;
 mod auto_title;
-mod create;
+pub(crate) mod create;
 mod title_source;
 pub(crate) use auto_title::{auto_title_first_prompt_in, title_line};
 pub(crate) use create::insert_new_chat;
@@ -13,10 +14,8 @@ pub(crate) use title_source::{
     placeholder_chat_title,
 };
 
-use crate::{
-    persistence::Database, workbench_persistence::persist_layout_in,
-    workbench_restore::validate_tab_projection,
-};
+use crate::{workbench_persistence::persist_layout_in, workbench_restore::validate_tab_projection};
+use sage_db::database::Database;
 use sage_domain::chat::RenameChatRequest;
 
 pub const MAX_CHAT_TITLE_BYTES: usize = 128;
@@ -88,7 +87,8 @@ pub(crate) fn durable_chat_title_in(
             params![project_id, chat_id],
             |row| row.get(0),
         )
-        .optional()?
+        .optional()
+        .db()?
         .ok_or_else(|| {
             AppError::InvalidRequest("Chat tab does not reference an existing durable Chat".into())
         })
@@ -100,19 +100,23 @@ pub(crate) fn attach_chat_tab_in(
     chat_id: &str,
     attached_at: i64,
 ) -> AppResult<()> {
-    transaction.execute(
-        "INSERT OR IGNORE INTO chat_tabs(project_id,chat_id,tab_id,attached_at)
+    transaction
+        .execute(
+            "INSERT OR IGNORE INTO chat_tabs(project_id,chat_id,tab_id,attached_at)
          VALUES (?1,?2,?2,?3)",
-        params![project_id, chat_id, attached_at],
-    )?;
-    let attached: bool = transaction.query_row(
-        "SELECT EXISTS(
+            params![project_id, chat_id, attached_at],
+        )
+        .db()?;
+    let attached: bool = transaction
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM chat_tabs
            WHERE project_id=?1 AND chat_id=?2 AND tab_id=?2
          )",
-        params![project_id, chat_id],
-        |row| row.get(0),
-    )?;
+            params![project_id, chat_id],
+            |row| row.get(0),
+        )
+        .db()?;
     if !attached {
         return Err(AppError::InvalidRequest(
             "Chat tab identity conflicts with another attachment".into(),
@@ -121,19 +125,25 @@ pub(crate) fn attach_chat_tab_in(
     Ok(())
 }
 
-impl Database {
-    pub(crate) fn rename_chat(&self, request: &RenameChatRequest) -> AppResult<()> {
+pub(crate) trait ChatRenameStore {
+    fn rename_chat(&self, request: &RenameChatRequest) -> AppResult<()>;
+}
+
+impl ChatRenameStore for Database {
+    fn rename_chat(&self, request: &RenameChatRequest) -> AppResult<()> {
         crate::side_chat_storage::refuse_persistence(&self.connection(), &request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
         validate_chat_identifier("Chat ID", &request.chat_id)?;
         let title = canonical_chat_title(&request.title)?;
         let mut connection = self.write_connection()?;
-        let transaction = connection.transaction()?;
-        let active_project_id = transaction.query_row(
-            "SELECT active_project_id FROM app_state WHERE singleton=1",
-            [],
-            |row| row.get::<_, Option<String>>(0),
-        )?;
+        let transaction = connection.transaction().db()?;
+        let active_project_id = transaction
+            .query_row(
+                "SELECT active_project_id FROM app_state WHERE singleton=1",
+                [],
+                |row| row.get::<_, Option<String>>(0),
+            )
+            .db()?;
         let source_is_active = active_project_id.as_deref() == Some(request.project_id.as_str());
         if source_is_active {
             if request.current_layout.project_id != request.project_id {
@@ -155,7 +165,7 @@ impl Database {
             persist_layout_in(&transaction, &request.current_layout)?;
         }
         apply_chat_title(&transaction, request, &title)?;
-        transaction.commit()?;
+        transaction.commit().db()?;
         Ok(())
     }
 }
@@ -165,53 +175,61 @@ fn apply_chat_title(
     request: &RenameChatRequest,
     title: &str,
 ) -> AppResult<()> {
-    let chat_exists: bool = transaction.query_row(
-        "SELECT EXISTS(
+    let chat_exists: bool = transaction
+        .query_row(
+            "SELECT EXISTS(
            SELECT 1 FROM chats WHERE project_id=?1 AND id=?2
          )",
-        params![request.project_id, request.chat_id],
-        |row| row.get(0),
-    )?;
+            params![request.project_id, request.chat_id],
+            |row| row.get(0),
+        )
+        .db()?;
     if !chat_exists {
         return Err(AppError::InvalidRequest(
             "Chat does not belong to that Project".into(),
         ));
     }
-    let attached_tab_id = transaction.query_row(
-        "SELECT tab_id FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
-        params![request.project_id, request.chat_id],
-        |row| row.get::<_, String>(0),
-    )?;
+    let attached_tab_id = transaction
+        .query_row(
+            "SELECT tab_id FROM chat_tabs WHERE project_id=?1 AND chat_id=?2",
+            params![request.project_id, request.chat_id],
+            |row| row.get::<_, String>(0),
+        )
+        .db()?;
     let now = now_millis();
     require_one(
-        transaction.execute(
-            "UPDATE chats SET title=?3,title_source=?4
+        transaction
+            .execute(
+                "UPDATE chats SET title=?3,title_source=?4
              WHERE project_id=?1 AND id=?2",
-            params![
-                request.project_id,
-                request.chat_id,
-                title,
-                ChatTitleSource::User.as_str()
-            ],
-        )?,
+                params![
+                    request.project_id,
+                    request.chat_id,
+                    title,
+                    ChatTitleSource::User.as_str()
+                ],
+            )
+            .db()?,
         "Chat disappeared during rename",
     )?;
     require_one(
-        transaction.execute(
-            "UPDATE workbench_tabs SET title=?4,updated_at=?5
+        transaction
+            .execute(
+                "UPDATE workbench_tabs SET title=?4,updated_at=?5
              WHERE project_id=?1 AND id=?2 AND kind='chat'
                AND EXISTS(
                  SELECT 1 FROM chat_tabs
                  WHERE project_id=?1 AND chat_id=?3 AND tab_id=?2
                )",
-            params![
-                request.project_id,
-                attached_tab_id,
-                request.chat_id,
-                title,
-                now
-            ],
-        )?,
+                params![
+                    request.project_id,
+                    attached_tab_id,
+                    request.chat_id,
+                    title,
+                    now
+                ],
+            )
+            .db()?,
         "attached Chat tab disappeared during rename",
     )?;
     Ok(())
