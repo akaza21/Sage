@@ -61,6 +61,7 @@ export const PORTABLE_BUDGET_TESTS = Object.freeze([
   "capture-native-editor-drive.node-test.mjs",
   "capture-native-editor-capture.node-test.mjs",
   "capture-native-editor-batch.node-test.mjs",
+  "cargo-test-support-policy.node-test.mjs",
   "check-harness-trace-privacy.node-test.mjs",
   "check-policy.node-test.mjs",
   "check-lanes.portable.node-test.mjs",
@@ -525,6 +526,11 @@ export const LANE_JUSTIFICATIONS = Object.freeze([
     file: "check-policy.node-test.mjs",
     reason:
       "Portable exact-main-WebView ACL permission regression for Sage app commands; no native capability required.",
+  },
+  {
+    file: "cargo-test-support-policy.node-test.mjs",
+    reason:
+      "Portable test-support dependency policy over synthetic and offline `cargo metadata` graphs; needs only the Rust toolchain, no native capability.",
   },
   {
     file: "app-smoke-server.node-test.mjs",

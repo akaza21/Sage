@@ -6,12 +6,13 @@ use std::sync::{
 use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
-use crate::{state::AppState, workspace::Workspace};
+use crate::state::AppState;
 use sage_db::database::Database;
 use sage_domain::file_operations::{
     CreateProjectFileRequest, CreateProjectFileResult, CreateProjectFolderRequest,
     CreateProjectFolderResult, FileCreationOutcome,
 };
+use sage_workspace::Workspace;
 
 const MAX_JAVASCRIPT_SAFE_INTEGER: u64 = 9_007_199_254_740_991;
 const MAX_FILE_CREATE_ID_BYTES: usize = 512;
@@ -175,7 +176,7 @@ fn result_from_commit(
     request: CreateProjectFileRequest,
     transition_epoch: u64,
     outcome: FileCreationOutcome,
-    commit: crate::workspace::file_create::FileCreateCommit,
+    commit: sage_workspace::file_create::FileCreateCommit,
 ) -> CreateProjectFileResult {
     CreateProjectFileResult {
         outcome,

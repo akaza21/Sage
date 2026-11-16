@@ -7,8 +7,8 @@ use sage_db::error::SqliteResultExt;
 use crate::{
     editor_persistence::{MAX_TOTAL_DIRTY_BYTES, MAX_TOTAL_DIRTY_METADATA_BYTES},
     project_registry::{RootRecord, canonical_comparison_key},
-    workspace::validate_contract_path,
 };
+use sage_workspace::validate_contract_path;
 
 const PROJECT_BYTES: i64 = 2 * 1024 * 1024;
 const ROOT_BYTES: i64 = 16 * 1024 * 1024;

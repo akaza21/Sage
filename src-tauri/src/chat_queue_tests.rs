@@ -11,14 +11,14 @@ fn reopen_discards_pending_image_but_preserves_queued_image() {
         let database = crate::database::open_database(&path).unwrap();
         database.connection().execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
         database.connection().execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
-        pending = crate::image_artifacts::insert_test_image(
+        pending = sage_images::insert_test_image(
             &database.connection(),
             database.image_artifact_root().unwrap(),
             "p",
             "c",
             "pending.png",
         );
-        queued = crate::image_artifacts::insert_test_image(
+        queued = sage_images::insert_test_image(
             &database.connection(),
             database.image_artifact_root().unwrap(),
             "p",
@@ -63,14 +63,8 @@ fn reopen_discards_pending_image_but_preserves_queued_image() {
             1
         );
         assert!(
-            crate::image_artifacts::verify_image_reference(
-                &database.connection(),
-                root,
-                "p",
-                "c",
-                &queued
-            )
-            .is_ok()
+            sage_images::verify_image_reference(&database.connection(), root, "p", "c", &queued)
+                .is_ok()
         );
         assert!(root.join(format!("{}.thumb", queued.artifact_id)).exists());
     }
@@ -84,7 +78,7 @@ fn queued_image_identity_is_committed_with_the_prompt_and_retired_on_removal() {
     let database = crate::database::open_database(&directory.join("sage.db")).unwrap();
     database.connection().execute("INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('p','P',1,1,1)", []).unwrap();
     database.connection().execute("INSERT INTO chats(id,project_id,ordinal,title,created_at,updated_at) VALUES('c','p',0,'C',1,1)", []).unwrap();
-    let image = crate::image_artifacts::insert_test_image(
+    let image = sage_images::insert_test_image(
         &database.connection(),
         database.image_artifact_root().unwrap(),
         "p",

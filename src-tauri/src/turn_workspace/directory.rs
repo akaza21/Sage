@@ -67,7 +67,7 @@ impl Directory {
 
     pub(super) fn identity(&self) -> Option<[u8; 24]> {
         let file = self.anchors.last()?;
-        crate::workspace::leaf_identity(file, &file.metadata().ok()?)
+        sage_workspace::leaf_identity(file, &file.metadata().ok()?)
             .ok()
             .map(|identity| identity.stable_bytes())
     }

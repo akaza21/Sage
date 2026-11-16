@@ -1,8 +1,6 @@
-use crate::acp::{
-    bindings::adapter::{AdapterEvent, AdapterRuntimeError},
-    image_admit::{ImageAdmitError, admit_image_parts},
-};
+use crate::acp::bindings::adapter::{AdapterEvent, AdapterRuntimeError};
 use sage_acp_protocol::{intent::ImageMediaType, lifecycle::ItemLifecycle};
+use sage_images::admit::{ImageAdmitError, admit_image_parts};
 
 use super::{PiRuntime, identity::unsupported_payload};
 

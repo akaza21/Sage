@@ -15,6 +15,9 @@ workspace = true
 rusqlite.workspace = true
 sage-core.workspace = true
 
+[target.'cfg(windows)'.dependencies]
+windows-sys.workspace = true
+
 [features]
 default = []
 # The WAL observation the adversarial ACP fixture records on Windows.

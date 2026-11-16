@@ -119,7 +119,7 @@ fn claim_directory(directory: &std::path::Path) -> AppResult<()> {
     }
     // An atomic directory marker cannot be left as a partially written manifest.
     fs::create_dir(&owner)?;
-    super::super::platform::sync_parent(&owner)?;
+    sage_db::files::sync_parent(&owner)?;
     Ok(())
 }
 

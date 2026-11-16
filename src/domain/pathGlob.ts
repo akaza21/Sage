@@ -3,7 +3,7 @@ import { utf8ByteLength } from "./text";
 /**
  * A pattern matches a whole Project-relative path with `/` separators: a `**`
  * segment matches zero or more segments, `*` and `?` match within a segment,
- * and matching is case-sensitive. Mirrors src-tauri/src/workspace/path_glob.rs;
+ * and matching is case-sensitive. Mirrors crates/sage-workspace/src/path_glob.rs;
  * both test against path_glob/cases.json.
  */
 

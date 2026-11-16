@@ -145,7 +145,7 @@ pub(super) struct DatabaseFingerprint {
 }
 
 pub(super) fn classify_path(path: &Path) -> AppResult<SchemaClass> {
-    super::platform::reject_path_alias(path)?;
+    sage_db::files::reject_path_alias(path)?;
     if !path.exists() || std::fs::metadata(path)?.len() == 0 {
         return Ok(SchemaClass::Fresh);
     }

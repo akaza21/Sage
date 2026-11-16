@@ -2927,12 +2927,9 @@ dependencies = [
  "gdkwayland-sys",
  "getrandom 0.3.4",
  "gtk",
- "ignore",
  "jpeg-decoder",
- "jpeg-encoder",
  "libc",
  "log",
- "memchr",
  "objc2",
  "objc2-foundation",
  "objc2-user-notifications",
@@ -2945,8 +2942,11 @@ dependencies = [
  "sage-core",
  "sage-db",
  "sage-domain",
+ "sage-git",
+ "sage-images",
  "sage-process",
  "sage-test-support",
+ "sage-workspace",
  "serde",
  "serde_json",
  "sha2",
@@ -2999,6 +2999,7 @@ version = "0.0.0"
 dependencies = [
  "rusqlite",
  "sage-core",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -3007,6 +3008,42 @@ version = "0.0.0"
 dependencies = [
  "sage-acp-protocol",
  "serde",
+]
+
+[[package]]
+name = "sage-git"
+version = "0.0.0"
+dependencies = [
+ "libc",
+ "sage-core",
+ "sage-domain",
+ "sage-process",
+ "sage-test-support",
+ "sage-workspace",
+ "serde",
+ "sha2",
+ "tokio",
+ "url",
+ "uuid",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "sage-images"
+version = "0.0.0"
+dependencies = [
+ "jpeg-decoder",
+ "jpeg-encoder",
+ "png 0.17.16",
+ "rusqlite",
+ "sage-acp-protocol",
+ "sage-core",
+ "sage-db",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "uuid",
 ]
 
 [[package]]
@@ -3025,6 +3062,30 @@ dependencies = [
  "tokio",
  "tracing",
  "tracing-subscriber",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
+name = "sage-workspace"
+version = "0.0.0"
+dependencies = [
+ "ignore",
+ "libc",
+ "memchr",
+ "objc2",
+ "objc2-foundation",
+ "regex",
+ "sage-core",
+ "sage-domain",
+ "sage-test-support",
+ "serde",
+ "serde_json",
+ "sha2",
+ "tokio",
+ "tracing",
+ "uuid",
+ "windows",
+ "windows-core 0.61.2",
  "windows-sys 0.61.2",
 ]
 

@@ -5,18 +5,16 @@ use uuid::Uuid;
 use super::*;
 use crate::project_registry::ProjectRegistryStore;
 use crate::project_registry::create::ProjectCreateStore;
+use crate::state::AppState;
 use crate::workbench_persistence::store::WorkbenchStore;
-use crate::{
-    state::AppState,
-    workspace::{
-        Workspace,
-        resource_trash::{ResourceTrashCommit, ResourceTrashIdentity, ResourceTrashMarker},
-    },
-};
 use sage_domain::{
     chat::{ProjectLayoutRequest, WorkbenchTab},
     file_operations::{ResourceTrashOutcome, TrashProjectResourceRequest, TrashResourceKind},
     resource::ResourceRef,
+};
+use sage_workspace::{
+    Workspace,
+    resource_trash::{ResourceTrashCommit, ResourceTrashIdentity, ResourceTrashMarker},
 };
 
 fn trash_with_fixture(
@@ -25,8 +23,12 @@ fn trash_with_fixture(
     _identity: ResourceTrashIdentity,
     marker: Arc<ResourceTrashMarker>,
 ) -> AppResult<ResourceTrashCommit> {
-    let parent = workspace.preflight_resource_trash(&request.source, request.kind)?;
-    marker.record_mutation_started();
+    let parent = sage_workspace::resource_trash::test_support::preflight_resource_trash(
+        workspace,
+        &request.source,
+        request.kind,
+    )?;
+    sage_workspace::resource_trash::test_support::record_mutation_started(&marker);
     let source_path = workspace.root().join(&request.source.relative_path);
     match request.kind {
         TrashResourceKind::File => fs::remove_file(source_path)?,
@@ -317,7 +319,12 @@ fn adapter_completion_without_mutation_marker_clears_intent_and_fails_closed() {
             &fixture.state,
             fixture.file_request(),
             |workspace, request, _identity, _marker| {
-                let parent = workspace.preflight_resource_trash(&request.source, request.kind)?;
+                let parent =
+                    sage_workspace::resource_trash::test_support::preflight_resource_trash(
+                        workspace,
+                        &request.source,
+                        request.kind,
+                    )?;
                 Ok(ResourceTrashCommit {
                     source: request.source.clone(),
                     parent,

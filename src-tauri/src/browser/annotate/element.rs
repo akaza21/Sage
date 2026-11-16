@@ -9,10 +9,8 @@ use std::sync::LazyLock;
 use regex::Regex;
 use serde::{Deserialize, Deserializer, Serialize, de};
 
-use crate::acp::{
-    attached_context::has_unsafe_display_character,
-    browser::{redact_console, redact_url, safe_page_text},
-};
+use crate::acp::browser::{redact_console, redact_url, safe_page_text};
+use sage_acp_protocol::contract::has_unsafe_display_character;
 use sage_core::limits::{ATTACHED_CONTEXT_LIMIT, ATTACHED_CONTEXT_NOTE_BYTES, BROWSER_LIMITS};
 
 use super::super::page_context::valid_page_context_tab_id;

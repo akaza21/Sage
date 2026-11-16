@@ -7,8 +7,9 @@ use super::{
     fingerprint::{SchemaClass, database_fingerprint, file_fingerprint, open_read_only},
     manifest::{ReplacementManifest, SourceSet, read},
     paths::MigrationPaths,
-    platform::{remove_synced, rename_synced},
+    platform::rename_synced,
 };
+use sage_db::files::remove_synced;
 
 pub(super) fn recover_or_publish(paths: &MigrationPaths) -> AppResult<bool> {
     if !paths.replacement_manifest.exists() {
