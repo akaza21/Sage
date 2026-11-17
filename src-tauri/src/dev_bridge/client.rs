@@ -40,7 +40,7 @@ impl Listeners {
             .ids
             .values()
             .any(|subscription| matches!(subscription, Subscription::CloseRequested));
-        if subscribed && session.take_close_request() {
+        if subscribed && session.forward_close_request() {
             for (&handler, subscription) in &self.ids {
                 if matches!(subscription, Subscription::CloseRequested) {
                     output.event("tauri://close-requested", handler, "null");

@@ -10,13 +10,12 @@ use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 use tokio_tungstenite::tungstenite::Message;
 
 // Reserve 20 decimal digits for each of the two counters.
-const MAX_UPLOAD_METADATA_BYTES: usize = (2 * limits::IMAGE_OWNER_ID_BYTES + limits::IMAGE_LABEL_BYTES)
-    * limits::JSON_ESCAPE_MAX_BYTES
-    + 2 * 20;
+const MAX_UPLOAD_METADATA_BYTES: usize =
+    (2 * limits::IMAGE_OWNER_ID_BYTES + limits::IMAGE_LABEL_BYTES) * limits::JSON_ESCAPE_MAX_BYTES
+        + 2 * 20;
 const UPLOAD_ENVELOPE: &str = r#"{"id":,"cmd":"upload_chat_image","args":{"request":{"projectId":"","projectGeneration":,"chatId":"","mediaType":"image/jpeg","dataBase64":"","label":""}}}"#;
-pub(super) const MAX_MESSAGE_BYTES: usize = limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4
-    + MAX_UPLOAD_METADATA_BYTES
-    + UPLOAD_ENVELOPE.len();
+pub(super) const MAX_MESSAGE_BYTES: usize =
+    limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4 + MAX_UPLOAD_METADATA_BYTES + UPLOAD_ENVELOPE.len();
 /// Responses and events wait here for the socket writer; a client that stops
 /// reading is disconnected once either bound is reached.
 pub(super) const OUTBOUND_FRAMES: usize = 1024;
@@ -103,7 +102,6 @@ impl Outbound {
         }
     }
 
-    /// Called by the socket writer for each frame it takes off the queue.
     pub fn dequeued(&self, frame: &Message) {
         self.queued_bytes.fetch_sub(frame.len(), Ordering::Relaxed);
     }
@@ -196,6 +194,7 @@ mod tests {
     fn gate_admits_registered_commands_and_only_the_three_event_commands() {
         for command in [
             "get_bootstrap_snapshot",
+            "persist_project_layout_and_close",
             "plugin:event|listen",
             "plugin:event|unlisten",
             "plugin:event|emit",
@@ -206,6 +205,7 @@ mod tests {
             "missing_command",
             "plugin:dialog|open",
             "plugin:shell|execute",
+            "plugin:window|destroy",
             "plugin:event|emit_to",
             "plugin:event|listen_extra",
         ] {

@@ -20,12 +20,19 @@ use tokio_tungstenite::{
     },
 };
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum CloseRequest {
+    Idle,
+    Pending,
+    Forwarded,
+}
+
 pub(super) struct Access {
     host: String,
     origin: String,
     pairing: Arc<Mutex<Pairing>>,
     permits: Arc<Semaphore>,
-    close_requests: watch::Sender<bool>,
+    close_requests: watch::Sender<CloseRequest>,
 }
 
 impl Access {
@@ -35,24 +42,31 @@ impl Access {
             origin,
             pairing,
             permits: Arc::new(Semaphore::new(MAX_PENDING)),
-            close_requests: watch::channel(false).0,
+            close_requests: watch::channel(CloseRequest::Idle).0,
         }
     }
 
     pub fn request_close(&self) -> bool {
-        if !lock(&self.pairing).is_active() {
+        let pairing = lock(&self.pairing);
+        if !pairing.is_active() {
+            self.close_requests.send_replace(CloseRequest::Idle);
             return false;
         }
-        self.close_requests.send_replace(true);
-        true
+        self.close_requests.send_if_modified(|state| {
+            if *state != CloseRequest::Idle {
+                return false;
+            }
+            *state = CloseRequest::Pending;
+            true
+        })
     }
 }
 
 pub(super) struct Session {
     _lease: Lease,
     permits: Arc<Semaphore>,
-    close_requests: watch::Sender<bool>,
-    close_changes: watch::Receiver<bool>,
+    close_requests: watch::Sender<CloseRequest>,
+    close_changes: watch::Receiver<CloseRequest>,
 }
 
 impl Session {
@@ -64,9 +78,15 @@ impl Session {
         self.close_changes.changed().await
     }
 
-    pub fn take_close_request(&self) -> bool {
-        self.close_requests
-            .send_if_modified(|pending| std::mem::take(pending))
+    pub fn forward_close_request(&self) -> bool {
+        self.close_requests.send_if_modified(|state| {
+            if *state != CloseRequest::Pending {
+                return false;
+            }
+            // Forwarding must retain the native second-close escape hatch.
+            *state = CloseRequest::Forwarded;
+            true
+        })
     }
 }
 
@@ -118,9 +138,13 @@ pub(super) async fn accept(
             return Err(());
         }
         let credentials: Credentials = serde_json::from_str(&text).map_err(|_| ())?;
-        let session = lock(&access.pairing)
-            .authenticate(credentials)
-            .map_err(|_| ())?;
+        let session = {
+            let mut pairing = lock(&access.pairing);
+            let session = pairing.authenticate(credentials).map_err(|_| ())?;
+            // Serialize reset with native close admission so a new request is never lost.
+            access.close_requests.send_replace(CloseRequest::Idle);
+            session
+        };
         let client = Session {
             _lease: Lease(access.pairing.clone()),
             permits: access.permits.clone(),

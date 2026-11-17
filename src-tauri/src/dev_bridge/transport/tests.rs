@@ -180,7 +180,9 @@ async fn reconnect_preserves_admission_until_dispatched_operations_respond() {
             let _ = socket.close(None).await;
         }
     });
-    let mut first = connect(address, &address.to_string(), origin).await.unwrap();
+    let mut first = connect(address, &address.to_string(), origin)
+        .await
+        .unwrap();
     let session = pair(
         &mut first,
         serde_json::json!({"pairingCode":"a".repeat(64)}),
@@ -197,11 +199,18 @@ async fn reconnect_preserves_admission_until_dispatched_operations_respond() {
             ))
             .await
             .unwrap();
-        outstanding.push(callbacks.recv().await.unwrap());
+        outstanding.push(
+            tokio::time::timeout(Duration::from_secs(5), callbacks.recv())
+                .await
+                .unwrap()
+                .unwrap(),
+        );
     }
     first.close(None).await.unwrap();
     let _ = first.next().await;
-    let mut reload = connect(address, &address.to_string(), origin).await.unwrap();
+    let mut reload = connect(address, &address.to_string(), origin)
+        .await
+        .unwrap();
     pair(&mut reload, session).await.unwrap();
     reload
         .send(Message::Text(
@@ -213,18 +222,23 @@ async fn reconnect_preserves_admission_until_dispatched_operations_respond() {
         response(&mut reload).await,
         serde_json::json!({"id":100,"err":"bridge invoke limit reached"})
     );
-    outstanding.pop().unwrap().respond(InvokeResponse::Ok(
-        InvokeResponseBody::Json("null".into()),
-    ));
+    outstanding
+        .pop()
+        .unwrap()
+        .respond(InvokeResponse::Ok(InvokeResponseBody::Json("null".into())));
     reload
         .send(Message::Text(
             r#"{"id":101,"cmd":"pick_project_source_folder"}"#.into(),
         ))
         .await
         .unwrap();
-    callbacks.recv().await.unwrap().respond(InvokeResponse::Ok(
-        InvokeResponseBody::Json("\"selected-folder\"".into()),
-    ));
+    tokio::time::timeout(Duration::from_secs(5), callbacks.recv())
+        .await
+        .unwrap()
+        .unwrap()
+        .respond(InvokeResponse::Ok(InvokeResponseBody::Json(
+            "\"selected-folder\"".into(),
+        )));
     assert_eq!(
         response(&mut reload).await,
         serde_json::json!({"id":101,"ok":"selected-folder"})
@@ -261,13 +275,21 @@ async fn websocket_accepts_maximum_image_and_exact_bound_but_rejects_one_byte_ov
         );
         drop(upload);
         drop(image);
-        assert_eq!(socket.next().await.unwrap().unwrap().len(), MAX_MESSAGE_BYTES);
+        assert_eq!(
+            socket.next().await.unwrap().unwrap().len(),
+            MAX_MESSAGE_BYTES
+        );
         assert!(matches!(socket.next().await, Some(Err(Error::Capacity(_)))));
     });
-    let mut socket = connect(address, &address.to_string(), origin).await.unwrap();
-    pair(&mut socket, serde_json::json!({"pairingCode":"a".repeat(64)}))
+    let mut socket = connect(address, &address.to_string(), origin)
         .await
         .unwrap();
+    pair(
+        &mut socket,
+        serde_json::json!({"pairingCode":"a".repeat(64)}),
+    )
+    .await
+    .unwrap();
     let image = serde_json::json!({
         "id": u32::MAX, "cmd": "upload_chat_image", "args": {"request": {
             "projectId": "\0".repeat(512), "projectGeneration": u64::MAX,
@@ -292,8 +314,8 @@ async fn websocket_accepts_maximum_image_and_exact_bound_but_rejects_one_byte_ov
 }
 
 #[tokio::test]
-async fn native_close_waits_for_the_browser_listener_but_not_for_a_disconnected_client() {
-    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+async fn native_close_waits_once_for_the_browser_and_reconnect_discards_stale_requests() {
+    let listener = Arc::new(TcpListener::bind("127.0.0.1:0").await.unwrap());
     let address = listener.local_addr().unwrap();
     let origin = "http://127.0.0.1:23456";
     let access = Arc::new(Access::new(
@@ -303,12 +325,15 @@ async fn native_close_waits_for_the_browser_listener_but_not_for_a_disconnected_
     ));
     assert!(!access.request_close());
     let server_access = access.clone();
+    let server_listener = listener.clone();
     let server = tokio::spawn(async move {
-        let (stream, _) = listener.accept().await.unwrap();
+        let (stream, _) = server_listener.accept().await.unwrap();
         accept(stream, &server_access).await.unwrap()
     });
-    let mut browser = connect(address, &address.to_string(), origin).await.unwrap();
-    pair(
+    let mut browser = connect(address, &address.to_string(), origin)
+        .await
+        .unwrap();
+    let credentials = pair(
         &mut browser,
         serde_json::json!({"pairingCode":"a".repeat(64)}),
     )
@@ -316,11 +341,53 @@ async fn native_close_waits_for_the_browser_listener_but_not_for_a_disconnected_
     .unwrap();
     let (_socket, session) = server.await.unwrap();
     assert!(access.request_close());
-    assert!(access.request_close());
-    assert!(session.take_close_request());
-    assert!(!session.take_close_request());
-    assert!(access.request_close());
-    assert!(session.take_close_request());
+    assert!(
+        !access.request_close(),
+        "a browser without a listener cannot trap close"
+    );
+    assert!(session.forward_close_request());
+    assert!(!session.forward_close_request());
+    assert!(
+        !access.request_close(),
+        "a hung close handler cannot trap close"
+    );
     drop(session);
     assert!(!access.request_close());
+
+    // Exercise reconnect with both an undelivered and a forwarded request.
+    for forwarded in [false, true, false] {
+        let (accepted, connected) = tokio::join!(
+            async {
+                let (stream, _) = listener.accept().await.unwrap();
+                accept(stream, &access).await.unwrap()
+            },
+            async {
+                let mut browser = connect(address, &address.to_string(), origin)
+                    .await
+                    .unwrap();
+                pair(&mut browser, credentials.clone()).await.unwrap();
+                browser
+            }
+        );
+        let (_socket, session) = accepted;
+        let _browser = connected;
+        assert!(
+            !session.forward_close_request(),
+            "reconnect must not replay a stale close"
+        );
+        assert!(
+            access.request_close(),
+            "reconnect starts a fresh close handshake"
+        );
+        if forwarded {
+            assert!(session.forward_close_request());
+        }
+        assert!(!access.request_close());
+        drop(session);
+        // Leave the latch untouched until the next authentication.
+    }
+    assert!(
+        !access.request_close(),
+        "a disconnected browser cannot trap close"
+    );
 }
