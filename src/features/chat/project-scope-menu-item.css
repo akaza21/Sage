@@ -23,3 +23,10 @@
 .composer__options .project-scope .searchable-picker__chevron {
   display: none;
 }
+
+@media (forced-colors: active) {
+  .composer__options .project-scope,
+  .composer__options .project-scope__icon {
+    border: 0;
+  }
+}
