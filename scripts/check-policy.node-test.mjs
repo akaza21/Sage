@@ -12,6 +12,73 @@ import path from "node:path";
 import test from "node:test";
 import { validateMainCapabilityPermissions } from "./check-policy-permissions.mjs";
 import {
+  browserBridgeBundleErrors,
+  browserBridgeConfigurationErrors,
+} from "./browser-bridge-policy.mjs";
+
+test("browser bridge is excluded from bundles and release configuration", () => {
+  assert.notDeepEqual(
+    browserBridgeBundleErrors('const key = "sage-browser-bridge:9876";'),
+    [],
+  );
+  assert.deepEqual(browserBridgeBundleErrors("const native = true;"), []);
+  for (const [file, source] of [
+    ["src-tauri/tauri.conf.json", '{"build":{"features":["browser-bridge"]}}'],
+    [
+      ".github/workflows/package.yml",
+      "run: cargo build --release --features browser-bridge",
+    ],
+    [".github/workflows/package.yml", "features: browser-bridge"],
+    [
+      "package.json",
+      JSON.stringify({ scripts: { build: "npm run dev:browser" } }),
+    ],
+    [
+      ".github/workflows/package.yml",
+      "run: cargo test --features browser-bridge && cargo build --features browser-bridge",
+    ],
+    [
+      ".github/workflows/package.yml",
+      "run: cargo clippy --features browser-bridge && tauri build --debug --features browser-bridge",
+    ],
+    [
+      "package.json",
+      JSON.stringify({
+        scripts: { build: "tauri build --features browser-bridge" },
+      }),
+    ],
+    [
+      "package.json",
+      JSON.stringify({
+        scripts: { "dev:browser": "tauri build --features browser-bridge" },
+      }),
+    ],
+    ["Cargo.toml", '[features]\nshipping = ["browser-bridge"]'],
+    ["Cargo.toml", "[profile.release]\ndebug-assertions = true"],
+  ])
+    assert.notDeepEqual(
+      browserBridgeConfigurationErrors(file, source),
+      [],
+      file,
+    );
+  assert.deepEqual(
+    browserBridgeConfigurationErrors(
+      "package.json",
+      JSON.stringify({
+        scripts: { "dev:browser": "tauri dev --features browser-bridge" },
+      }),
+    ),
+    [],
+  );
+  assert.deepEqual(
+    browserBridgeConfigurationErrors(
+      ".github/workflows/check.yml",
+      "run: cargo test --features browser-bridge",
+    ),
+    [],
+  );
+});
+import {
   curatedPackageResources,
   packageResourcePolicyErrors,
 } from "./package-resource-policy.mjs";

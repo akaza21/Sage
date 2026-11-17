@@ -1,6 +1,6 @@
 use url::Url;
 
-pub(crate) fn admits_main_invoke(label: &str, url: &Url) -> bool {
+pub(crate) fn admits_main_invoke(label: &str, url: &Url, dev_url: Option<&Url>) -> bool {
     if label != "main" || url.username() != "" || url.password().is_some() {
         return false;
     }
@@ -9,17 +9,22 @@ pub(crate) fn admits_main_invoke(label: &str, url: &Url) -> bool {
     #[cfg(not(windows))]
     let packaged = packaged
         || (url.scheme() == "tauri" && url.host_str() == Some("localhost") && url.port().is_none());
-    #[cfg(debug_assertions)]
-    let development =
-        url.scheme() == "http" && url.host_str() == Some("127.0.0.1") && url.port() == Some(1420);
-    #[cfg(not(debug_assertions))]
-    let development = false;
+    let development = cfg!(debug_assertions)
+        && dev_url.is_some_and(|development| url.origin() == development.origin());
     packaged || development
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn admits_main_invoke(label: &str, url: &Url) -> bool {
+        super::admits_main_invoke(
+            label,
+            url,
+            Some(&Url::parse("http://127.0.0.1:1420").unwrap()),
+        )
+    }
 
     #[test]
     fn only_main_webview_at_local_app_origin_can_invoke_sage_commands() {

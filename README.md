@@ -106,9 +106,12 @@ application. The current development machine has these prerequisites installed.
 ```powershell
 npm install
 npm run dev
+npm run dev:browser # Real UI in your browser for annotation (debug only)
 npm run check
 node scripts/validate-performance-budgets.mjs
 ```
+
+`dev:browser` starts Vite and the real backend, then opens a single-use pairing link. Reload reconnects using a tab-scoped session token. The in-app Preview browser (native child webview) and native dialogs do not render in the browser tab.
 
 Native local gates (Windows, macOS, Linux):
 

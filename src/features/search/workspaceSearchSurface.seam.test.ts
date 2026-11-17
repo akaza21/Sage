@@ -6,7 +6,7 @@ import { describe, expect, it } from "vitest";
 describe("Workspace Search stylesheet seam", () => {
   it("loads Search rules from the application entry, not the shell stylesheet", async () => {
     const [entry, shellCss, surfaceCss] = await Promise.all([
-      readFile(resolve("src/main.tsx"), "utf8"),
+      readFile(resolve("src/main.desktop.tsx"), "utf8"),
       readFile(resolve("src/styles/global.css"), "utf8"),
       readFile(resolve("src/features/search/workspace-search.css"), "utf8"),
     ]);

@@ -7,6 +7,7 @@ import process from "node:process";
 import { cargoPackageFeatureErrors } from "./ade0006a-package-policy.mjs";
 import { acpTransportParityErrors } from "./acp-transport-parity.mjs";
 import { browserTestPolicyErrors } from "./browser-test-policy.mjs";
+import { browserBridgePolicyErrors } from "./browser-bridge-policy.mjs";
 import { testSupportGraphErrors } from "./cargo-test-support-policy.mjs";
 import { cssHygienePolicyErrors } from "./css-hygiene-policy.mjs";
 import {
@@ -182,6 +183,7 @@ export function sourceSecurityErrors(file, source) {
 
 const root = process.cwd();
 const failures = [];
+failures.push(...browserBridgePolicyErrors(root));
 
 async function readJson(relativePath) {
   return JSON.parse(await readFile(path.join(root, relativePath), "utf8"));

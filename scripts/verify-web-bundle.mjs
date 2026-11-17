@@ -4,6 +4,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import ts from "typescript";
+import { browserBridgeBundleErrors } from "./browser-bridge-policy.mjs";
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
 import {
   measureWebBundlePaths,
@@ -467,6 +468,10 @@ export function verifyWebBundle(root) {
     coreTotalGzipBytes -= gzipBytes(assetPath(root, subagent.file));
   }
   for (const file of jsFiles) {
+    for (const error of browserBridgeBundleErrors(
+      readFileSync(path.join(assets, file), "utf8"),
+    ))
+      fail(error);
     if (
       readFileSync(path.join(assets, file), "utf8").includes(
         BROWSER_FIXTURE_SENTINEL,

@@ -7,6 +7,7 @@ import { changeScope } from "./change-scope.mjs";
 import {
   declaredCargoFeatures,
   lintFeatures,
+  isolatedDebugFeatures,
   platformFeatures,
   runnerFeatures,
   testFeatures,
@@ -41,6 +42,10 @@ const runnerPlatforms = {
   "macos-latest": "darwin",
 };
 const releaseCheckCommand = "cargo check -p sage --release --lib";
+const bridgeClippyCommand =
+  "cargo clippy -p sage --all-targets --features browser-bridge -- -D warnings";
+const bridgeTestCommand =
+  "cargo test -p sage --features browser-bridge --lib dev_bridge:: -- --test-threads=2";
 
 test("Rust CI runs the supported feature phases in strict job order", async () => {
   const workflow = await readFile(workflowPath, "utf8");
@@ -56,11 +61,13 @@ test("Rust CI runs the supported feature phases in strict job order", async () =
     clippyCommand,
     clippyLibCommand,
     ...rustTestPhases,
+    bridgeClippyCommand,
+    bridgeTestCommand,
     releaseCheckCommand,
   ]);
   assert.deepEqual(
     cargoCommands.filter((command) => command.startsWith("cargo test ")),
-    rustTestPhases,
+    [...rustTestPhases, bridgeTestCommand],
   );
 });
 
@@ -89,7 +96,7 @@ test("Rust CI derives requested runner features from cargo-features.mjs", async 
   );
 });
 
-test("Clippy covers every declared Cargo feature on some runner", () => {
+test("Clippy covers every declared Cargo feature on some runner", async () => {
   const declared = declaredCargoFeatures();
   for (const feature of Object.keys(platformFeatures)) {
     assert.ok(declared.includes(feature), `${feature} is a declared feature`);
@@ -99,6 +106,15 @@ test("Clippy covers every declared Cargo feature on some runner", () => {
       lintFeatures(platform),
     ),
   );
+  const workflow = await readFile(workflowPath, "utf8");
+  for (const feature of isolatedDebugFeatures) {
+    assert.ok(
+      workflow.includes(
+        `run: cargo clippy -p sage --all-targets --features ${feature} -- -D warnings`,
+      ),
+    );
+    linted.add(feature);
+  }
   assert.deepEqual([...linted].sort(), declared);
 });
 

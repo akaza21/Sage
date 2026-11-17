@@ -32,9 +32,9 @@ fn child_page_cannot_invoke_sage_or_open_unadmitted_popup() {
     tabs.insert("browser-1".into(), 1, false);
     let app = Url::parse("http://tauri.localhost/index.html").unwrap();
     let public = Url::parse("https://example.com/").unwrap();
-    assert!(ipc_guard::admits_main_invoke("main", &app));
-    assert!(!ipc_guard::admits_main_invoke("browser-1", &app));
-    assert!(!ipc_guard::admits_main_invoke("browser-1", &public));
+    assert!(ipc_guard::admits_main_invoke("main", &app, None));
+    assert!(!ipc_guard::admits_main_invoke("browser-1", &app, None));
+    assert!(!ipc_guard::admits_main_invoke("browser-1", &public, None));
     assert_eq!(
         popup_target(&tabs, "browser-1", &public).as_deref(),
         Some("https://example.com/")
