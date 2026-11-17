@@ -1,4 +1,6 @@
-use super::protocol::{MAX_LISTENERS, OUTBOUND_CAPACITY, Outbound, Request, admits_command};
+use super::protocol::{
+    MAX_LISTENERS, MAX_PENDING, OUTBOUND_FRAMES, Outbound, Request, admits_command,
+};
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
@@ -26,12 +28,9 @@ impl Drop for Listeners {
     }
 }
 
-pub(super) async fn serve(
-    socket: WebSocketStream<TcpStream>,
-    app: tauri::AppHandle,
-    permits: Arc<Semaphore>,
-) {
-    let (sender, mut receiver) = mpsc::channel(OUTBOUND_CAPACITY);
+pub(super) async fn serve(socket: WebSocketStream<TcpStream>, app: tauri::AppHandle) {
+    let permits = Arc::new(Semaphore::new(MAX_PENDING));
+    let (sender, mut receiver) = mpsc::channel(OUTBOUND_FRAMES);
     let (stop, mut cancelled) = watch::channel(false);
     let output = Outbound::new(sender, stop);
     let mut listeners = Listeners {
@@ -45,7 +44,8 @@ pub(super) async fn serve(
             _ = cancelled.changed() => break,
             frame = receiver.recv() => {
                 let Some(frame) = frame else { break; };
-                let send = writer.send(Message::Text(frame.into()));
+                output.dequeued(&frame);
+                let send = writer.send(frame);
                 if !matches!(tokio::time::timeout(std::time::Duration::from_secs(5), send).await, Ok(Ok(()))) { break; }
             }
             incoming = reader.next() => {
@@ -66,14 +66,47 @@ pub(super) async fn serve(
 }
 
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ListenArgs {
     event: String,
+    target: ListenTarget,
     handler: u32,
 }
 
+#[derive(Deserialize)]
+#[serde(tag = "kind", deny_unknown_fields)]
+enum ListenTarget {
+    Any,
+    AnyLabel { label: String },
+    Window { label: String },
+    Webview { label: String },
+    WebviewWindow { label: String },
+}
+
+impl ListenTarget {
+    /// The page stands in for the main webview, so it hears what that webview
+    /// would: global events and events addressed to `main`, never another window's.
+    fn reaches_main(&self) -> bool {
+        match self {
+            Self::Any => true,
+            Self::AnyLabel { label }
+            | Self::Window { label }
+            | Self::Webview { label }
+            | Self::WebviewWindow { label } => label == "main",
+        }
+    }
+}
+
 fn listen(listeners: &mut Listeners, request: Request, output: &Outbound) {
-    let Ok(args) = serde_json::from_value::<ListenArgs>(request.args) else {
+    let Some(args) = serde_json::from_value::<ListenArgs>(request.args)
+        .ok()
+        .filter(|args| args.target.reaches_main())
+    else {
         output.error(request.id, "invalid event listener");
+        return;
+    };
+    let Some(main) = listeners.app.get_webview_window("main") else {
+        output.error(request.id, "main window unavailable");
         return;
     };
     if args.event.is_empty()
@@ -90,7 +123,7 @@ fn listen(listeners: &mut Listeners, request: Request, output: &Outbound) {
     }
     let outbound = output.clone();
     let name = args.event.clone();
-    let id = listeners.app.listen_any(args.event, move |event| {
+    let id = main.listen(args.event, move |event| {
         outbound.event(&name, args.handler, event.payload());
     });
     // The callback id is also the bridge listener id, so events may precede the acknowledgement.
@@ -141,4 +174,27 @@ fn dispatch(app: &tauri::AppHandle, request: Request, output: Outbound, permits:
             output.respond(request.id, response);
         }),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn listeners_are_admitted_only_for_events_the_main_webview_receives() {
+        let reaches_main = |target: Value| {
+            serde_json::from_value::<ListenArgs>(
+                json!({"event":"sage:changed","target":target,"handler":3}),
+            )
+            .is_ok_and(|args| args.target.reaches_main())
+        };
+        assert!(reaches_main(json!({"kind":"Any"})));
+        assert!(reaches_main(json!({"kind":"Window","label":"main"})));
+        assert!(reaches_main(json!({"kind":"AnyLabel","label":"main"})));
+        assert!(!reaches_main(
+            json!({"kind":"AnyLabel","label":"browser-1"})
+        ));
+        assert!(!reaches_main(json!({"kind":"Window","label":"popup-1"})));
+        assert!(!reaches_main(json!({"kind":"App"})));
+    }
 }

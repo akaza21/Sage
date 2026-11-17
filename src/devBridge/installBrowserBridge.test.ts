@@ -5,9 +5,11 @@ import { isTauriRuntime } from "../ports/nativeInvoke";
 import { installBrowserBridge } from "./installBrowserBridge";
 
 class FakeSocket extends EventTarget {
+  static readonly OPEN = 1;
   static latest: FakeSocket;
   readyState = 0;
   bufferedAmount = 0;
+  binaryType = "blob";
   sent: { id: number; cmd: string; args: Record<string, unknown> }[] = [];
   constructor(readonly url: string) {
     super();
@@ -19,6 +21,9 @@ class FakeSocket extends EventTarget {
   open() {
     this.readyState = 1;
     this.dispatchEvent(new Event("open"));
+  }
+  receiveBinary(data: ArrayBuffer) {
+    this.dispatchEvent(new MessageEvent("message", { data }));
   }
   receive(frame: unknown) {
     this.dispatchEvent(
@@ -38,6 +43,8 @@ beforeEach(() => {
 });
 afterEach(() => {
   FakeSocket.latest?.close();
+  document.body.replaceChildren();
+  vi.useRealTimers();
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   Reflect.deleteProperty(window, "__TAURI_EVENT_PLUGIN_INTERNALS__");
   vi.unstubAllGlobals();
@@ -153,4 +160,51 @@ it("releases callbacks from rejected API listeners so subscriptions recover afte
   const recovered = socket.sent.at(-1)!;
   socket.receive({ id: recovered.id, ok: recovered.args.handler });
   await expect(listening).resolves.toBeTypeOf("function");
+});
+
+it("resolves a binary invoke response as an ArrayBuffer, as the app's IPC does", async () => {
+  const socket = await connect();
+  expect(socket.binaryType).toBe("arraybuffer");
+  const thumbnail = invoke("read_chat_image_thumbnail", { imageId: "one" });
+  const { id } = socket.sent.at(-1)!;
+  const frame = new Uint8Array([0, 0, 0, id, 0x89, 0x50, 0x4e, 0x47]);
+  socket.receiveBinary(frame.buffer);
+  const bytes = await thumbnail;
+  expect(bytes).toBeInstanceOf(ArrayBuffer);
+  expect([...new Uint8Array(bytes as ArrayBuffer)]).toEqual([
+    0x89, 0x50, 0x4e, 0x47,
+  ]);
+});
+
+it("retries a session reconnect refused while the previous page still holds the session", async () => {
+  sessionStorage.setItem(
+    "sage-browser-bridge:session",
+    JSON.stringify({ port: "32123", session: "b".repeat(64) }),
+  );
+  history.replaceState(null, "", "/?bridge=32123");
+  vi.useFakeTimers();
+  const reloaded = installBrowserBridge();
+  const refused = FakeSocket.latest;
+  refused.close();
+  await vi.advanceTimersByTimeAsync(400);
+  const retry = FakeSocket.latest;
+  expect(retry).not.toBe(refused);
+  retry.open();
+  expect(retry.sent[0]).toEqual({ session: "b".repeat(64) });
+  retry.receive({ session: "b".repeat(64) });
+  await reloaded;
+  expect(document.querySelector('[role="alert"]')).toBeNull();
+});
+
+it("never retries a refused pairing code and tells the user when a live session drops", async () => {
+  const refused = installBrowserBridge();
+  FakeSocket.latest.close();
+  await expect(refused).rejects.toThrow("disconnected");
+
+  history.replaceState(null, "", "/?bridge=32123#" + "a".repeat(64));
+  const socket = await connect();
+  socket.close();
+  expect(document.querySelector('[role="alert"]')?.textContent).toContain(
+    "Reload this tab",
+  );
 });

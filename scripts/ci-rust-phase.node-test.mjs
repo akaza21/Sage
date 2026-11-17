@@ -45,7 +45,7 @@ const releaseCheckCommand = "cargo check -p sage --release --lib";
 const bridgeClippyCommand =
   "cargo clippy -p sage --all-targets --features browser-bridge -- -D warnings";
 const bridgeTestCommand =
-  "cargo test -p sage --features browser-bridge --lib dev_bridge:: -- --test-threads=2";
+  "cargo test -p sage --features browser-bridge --lib dev_bridge::";
 
 test("Rust CI runs the supported feature phases in strict job order", async () => {
   const workflow = await readFile(workflowPath, "utf8");

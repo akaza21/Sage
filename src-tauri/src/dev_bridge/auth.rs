@@ -1,5 +1,5 @@
 use serde::Deserialize;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
 use subtle::ConstantTimeEq;
 
 /// The first WebSocket text frame is credentials, never an invoke.
@@ -75,10 +75,14 @@ pub(super) fn random_secret() -> std::io::Result<String> {
     Ok(result)
 }
 
+pub(super) fn lock(pairing: &Mutex<Pairing>) -> MutexGuard<'_, Pairing> {
+    pairing.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 pub(super) struct Lease(pub Arc<Mutex<Pairing>>);
 impl Drop for Lease {
     fn drop(&mut self) {
-        self.0.lock().unwrap().active = false;
+        lock(&self.0).active = false;
     }
 }
 

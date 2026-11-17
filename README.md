@@ -111,7 +111,7 @@ npm run check
 node scripts/validate-performance-budgets.mjs
 ```
 
-`dev:browser` starts Vite and the real backend, then opens a single-use pairing link. Reload reconnects using a tab-scoped session token. The in-app Preview browser (native child webview) and native dialogs do not render in the browser tab.
+`dev:browser` starts Vite and a debug Sage with the `browser-bridge` feature, then opens the real UI in your default browser through a single-use pairing link (printed to the terminal when no browser can be opened). Until it is used, that link grants control of the backend, so do not paste it into logs or issues. The bridge listens on 127.0.0.1 only and cannot be compiled into release builds. Reloading the tab reconnects with a tab-scoped session token. The in-app Preview browser (a native child webview) and native dialogs do not render in the browser tab.
 
 Native local gates (Windows, macOS, Linux):
 

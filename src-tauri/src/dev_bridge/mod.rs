@@ -7,7 +7,6 @@ use std::{
     io,
     sync::{Arc, Mutex},
 };
-use tokio::sync::Semaphore;
 
 pub(crate) fn host_url(app: &tauri::AppHandle) -> io::Result<url::Url> {
     let mut url = app
@@ -51,20 +50,18 @@ pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
         let Ok(listener) = tokio::net::TcpListener::from_std(listener) else {
             return;
         };
-        let permits = Arc::new(Semaphore::new(protocol::MAX_PENDING));
         let mut clients = tokio::task::JoinSet::new();
         loop {
             tokio::select! {
                 accepted = listener.accept() => {
                     let Ok((stream, _)) = accepted else { break; };
-                    // One paired client plus one bounded handshake to reject concurrent arrivals.
+                    // Room for a reloading tab to connect while its old session winds down.
                     if clients.len() >= 2 { drop(stream); continue; }
                     let access = access.clone();
                     let app = app.clone();
-                    let permits = permits.clone();
                     clients.spawn(async move {
                         if let Ok((socket, _lease)) = transport::accept(stream, &access).await {
-                            client::serve(socket, app, permits).await;
+                            client::serve(socket, app).await;
                         }
                     });
                 }
@@ -78,21 +75,4 @@ pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
         println!("Open Sage in your browser: {browser_url}");
     }
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn invokes_follow_the_configured_development_origin_without_admitting_children() {
-        use crate::browser::ipc_guard::admits_main_invoke;
-        let configured = url::Url::parse("http://127.0.0.1:23456").unwrap();
-        let host = configured.join("/?bridge-host").unwrap();
-        assert!(admits_main_invoke("main", &host, Some(&configured)));
-        assert!(!admits_main_invoke("browser-1", &host, Some(&configured)));
-        assert!(!admits_main_invoke(
-            "main",
-            &url::Url::parse("http://127.0.0.1:23457").unwrap(),
-            Some(&configured)
-        ));
-    }
 }

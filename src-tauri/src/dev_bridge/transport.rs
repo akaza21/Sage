@@ -1,5 +1,5 @@
 use super::{
-    auth::{Credentials, Lease, Pairing},
+    auth::{Credentials, Lease, Pairing, lock},
     protocol::MAX_MESSAGE_BYTES,
 };
 use futures_util::{SinkExt, StreamExt};
@@ -39,7 +39,7 @@ impl Callback for UpgradeGuard<'_> {
         };
         if !exact_header("host", &self.access.host)
             || !exact_header("origin", &self.access.origin)
-            || self.access.pairing.lock().unwrap().is_active()
+            || lock(&self.access.pairing).is_active()
         {
             return Err(Response::builder()
                 .status(403)
@@ -71,10 +71,7 @@ pub(super) async fn accept(
             return Err(());
         }
         let credentials: Credentials = serde_json::from_str(&text).map_err(|_| ())?;
-        let session = access
-            .pairing
-            .lock()
-            .unwrap()
+        let session = lock(&access.pairing)
             .authenticate(credentials)
             .map_err(|_| ())?;
         let lease = Lease(access.pairing.clone());
@@ -85,7 +82,7 @@ pub(super) async fn accept(
             .map_err(|_| ())?;
         Ok((socket, lease))
     };
-    tokio::time::timeout(Duration::from_secs(5), handshake)
+    tokio::time::timeout(Duration::from_secs(2), handshake)
         .await
         .map_err(|_| ())?
 }

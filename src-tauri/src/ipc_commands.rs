@@ -10,17 +10,12 @@ use crate::{
     repository_revert_commands, repository_sequence_abort_commands, resource_commands,
     resource_trash_commands, settings_commands, user_terminal, voice_input, workspace_commands,
 };
-use tauri::Manager;
 
 pub(crate) fn handle_main_invoke(invoke: tauri::ipc::Invoke) -> bool {
     let webview = invoke.message.webview_ref();
-    let admitted = webview.url().is_ok_and(|url| {
-        browser::ipc_guard::admits_main_invoke(
-            webview.label(),
-            &url,
-            webview.app_handle().config().build.dev_url.as_ref(),
-        )
-    });
+    let admitted = webview
+        .url()
+        .is_ok_and(|url| browser::ipc_guard::admits_main_invoke(webview.label(), &url));
     if !admitted {
         invoke
             .resolver

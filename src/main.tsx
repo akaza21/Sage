@@ -1,15 +1,16 @@
-const root = document.getElementById("root");
+const element = document.getElementById("root");
 
-if (!root) {
+if (!element) {
   throw new Error("Sage could not find its application root.");
 }
+const root = element;
 
 async function mount() {
   if (import.meta.env.DEV) {
     const query = new URLSearchParams(location.search);
     if (query.has("bridge-host")) {
-      root!.style.cssText = "color: #ddd; padding: 24px; font: 14px system-ui";
-      root!.textContent = "Sage is open in your browser.";
+      root.style.cssText = "color: #ddd; padding: 24px; font: 14px system-ui";
+      root.textContent = "Sage is open in your browser.";
       return;
     }
     if (query.has("bridge")) {
