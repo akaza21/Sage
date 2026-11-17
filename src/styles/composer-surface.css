@@ -263,6 +263,7 @@
   flex: 0 1 auto;
 }
 
+/* The project reads as a label in its surroundings, never as a chip. */
 .project-scope {
   display: inline-flex;
   min-width: 28px;
@@ -273,12 +274,7 @@
   gap: var(--space-1);
   padding: 0 var(--space-2);
   overflow: hidden;
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  color: var(--glass-text);
-  background: var(--glass-fill);
-  backdrop-filter: var(--glass-blur);
-  box-shadow: var(--glass-highlight);
+  color: inherit;
   font-size: var(--font-size-xs);
   font-weight: var(--font-weight-semibold);
   white-space: nowrap;
@@ -293,35 +289,15 @@
   --select-control-trigger-min-width: var(--control-height-compact);
   --select-control-trigger-padding: 0 var(--space-1);
   --radius-select-control-trigger: var(--radius-pill);
-  --select-control-trigger-border: var(--border-width) solid var(--glass-border);
-  --select-control-trigger-fill: var(--glass-fill);
-  --select-control-trigger-blur: var(--glass-blur);
-  --select-control-trigger-shadow: var(--glass-highlight);
   padding: 0;
   overflow: visible;
-  border: 0;
-  background: transparent;
-  backdrop-filter: none;
-  box-shadow: none;
 }
 
 .project-scope .searchable-picker {
   width: 100%;
 }
 
-/* A project label set in surrounding text or a menu, without the chip. */
-.project-scope.project-scope--bare {
-  --select-control-trigger-border: 0;
-  --select-control-trigger-fill: transparent;
-  --select-control-trigger-blur: none;
-  --select-control-trigger-shadow: none;
-  border: 0;
-  background: transparent;
-  backdrop-filter: none;
-  box-shadow: none;
-}
-
-.project-scope--bare .searchable-picker__chevron {
+.project-scope .searchable-picker__chevron {
   display: none;
 }
 
@@ -329,28 +305,10 @@
   font-weight: var(--font-weight-medium);
 }
 
-.composer
-  .project-scope
-  .searchable-picker__trigger:is(
-    :hover:not(:disabled),
-    [aria-expanded="true"]
-  ) {
-  color: var(--color-text-emphasis);
-  background: var(--composer-control-hover);
-}
-
 .project-scope__icon,
 .select-control__icon {
   flex: 0 0 auto;
   color: var(--color-text-muted);
-}
-
-.select-control--chip {
-  border: 1px solid var(--glass-border);
-  border-radius: var(--radius-md);
-  background: var(--glass-fill);
-  backdrop-filter: var(--glass-blur);
-  box-shadow: var(--glass-highlight);
 }
 
 .composer__shortcut {
@@ -435,8 +393,7 @@
   .project-scope,
   .project-scope__icon,
   .select-control__icon,
-  .composer__attachment-remove,
-  .select-control--chip {
+  .composer__attachment-remove {
     border: 1px solid CanvasText;
   }
 

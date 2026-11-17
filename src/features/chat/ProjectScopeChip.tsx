@@ -8,24 +8,21 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 import type { MenuPlacement } from "../../ui/menuPopoverPosition";
 import "./project-scope-menu-item.css";
 
-export type ProjectScopeVariant = "chip" | "bare" | "menuItem";
-
 export function ProjectScopeChip({
   projectName,
   disabled = false,
   open,
   onOpenChange,
-  variant = "chip",
+  menuItem = false,
   popoverPlacement,
 }: {
   projectName: string;
   disabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  variant?: ProjectScopeVariant;
+  menuItem?: boolean;
   popoverPlacement?: MenuPlacement;
 }) {
-  const menuItem = variant === "menuItem";
   const projects = useWorkbenchStore((state) => state.projects);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
@@ -49,16 +46,9 @@ export function ProjectScopeChip({
           ? `Project: ${projectName} (No other projects available)`
           : undefined
       }
-      className={[
-        candidates.length > 0 ? "select-control" : null,
-        candidates.length > 0 && variant === "chip"
-          ? "select-control--chip"
-          : null,
-        "project-scope",
-        variant === "chip" ? null : "project-scope--bare",
-      ]
-        .filter(Boolean)
-        .join(" ")}
+      className={
+        candidates.length > 0 ? "select-control project-scope" : "project-scope"
+      }
     >
       {candidates.length > 0 ? (
         <SearchablePicker
