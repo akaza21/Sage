@@ -16,9 +16,14 @@ impl SdkBridge {
         };
         match method {
             // Sage shows a stop control on each background task, so a
-            // cancelled turn leaves the others running.
+            // cancelled turn leaves the others running. Subagent text is
+            // forwarded so the subagent view shows what it wrote.
             "initialize" => self.control(
-                json!({"subtype": "initialize", "perTaskStopAffordance": true}),
+                json!({
+                    "subtype": "initialize",
+                    "perTaskStopAffordance": true,
+                    "forwardSubagentText": true,
+                }),
                 Pending::Initialize(id),
             ),
             "session/new" => self.session(id),

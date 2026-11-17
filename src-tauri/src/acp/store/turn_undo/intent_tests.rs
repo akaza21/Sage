@@ -57,6 +57,7 @@ fn upgrading_a_populated_ledger_seeks_undo_intents_and_recovers_only_the_unsettl
              DROP INDEX idx_session_facts_undo_start;
              DROP INDEX idx_session_facts_undo_recovery;
              DROP INDEX idx_session_facts_undo_settled;
+             DROP TABLE acp_child_thread_states;
              DROP TABLE acp_imported_histories;
              DROP INDEX idx_agent_sessions_external_session;
              DELETE FROM schema_migrations WHERE version>=28;

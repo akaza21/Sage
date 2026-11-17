@@ -1,3 +1,5 @@
+use std::collections::HashSet;
+
 use rusqlite::{OptionalExtension, Transaction, params};
 
 use crate::acp::store::{AdapterStoreOwner, ChildLiveItemCommand, StoreError};
@@ -9,15 +11,17 @@ use sage_acp_protocol::{
     lifecycle::TurnState,
 };
 
+use super::settled::{Observed, record_child_state, turn_state};
 use super::{
     ChildTranscriptScope, ChildTranscriptStoreError, load_snapshot, verify_current_binding,
     write_snapshot_in,
 };
 
 /// A changed child snapshot advances the chat's child projection epoch (its
-/// newest live `updated_at`, see `child_projection_epoch`). It never moves
-/// the parent projection revision, the optimistic-concurrency token of user
-/// actions, nor `chats.updated_at`. Duplicates stay silent.
+/// newest live `updated_at`, see `child_projection_epoch`). It moves the
+/// parent projection revision, the optimistic-concurrency token of user
+/// actions, only when the child's recorded state changes what an ended spawn
+/// turn's row shows (see `settled`). Duplicates stay silent.
 pub(crate) fn persist_live_item_in(
     transaction: &Transaction<'_>,
     owner: &AdapterStoreOwner,
@@ -49,10 +53,11 @@ fn store_live_item_in(
     owner: &AdapterStoreOwner,
     command: &ChildLiveItemCommand,
 ) -> Result<bool, StoreError> {
-    let item_id: Option<String> = transaction
+    let bound: Option<(String, Option<String>)> = transaction
         .query_row(
-            "SELECT b.item_id FROM acp_child_thread_bindings b
+            "SELECT b.item_id,s.turn_id FROM acp_child_thread_bindings b
              JOIN acp_child_thread_owners o ON o.native_child_thread_id=b.native_child_thread_id
+             LEFT JOIN acp_child_thread_states s ON s.native_child_thread_id=b.native_child_thread_id
              WHERE b.native_child_thread_id=?1 AND b.project_id=?2 AND b.chat_id=?3
                AND b.session_id=?4 AND b.runtime_epoch=?5
                AND o.parent_thread_id=?6 AND o.source='codexSubAgentActivity'",
@@ -64,10 +69,10 @@ fn store_live_item_in(
                 owner.runtime_epoch.get() as i64,
                 owner.external_session_id.as_str(),
             ],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get(1)?)),
         )
         .optional()?;
-    let Some(item_id) = item_id else {
+    let Some((item_id, recorded_turn)) = bound else {
         return Err(StoreError::Conflict {
             resource: "childTranscriptOwner",
         });
@@ -92,6 +97,24 @@ fn store_live_item_in(
             turns: Vec::new(),
             retention_limited: false,
         });
+    // A turn that is the recorded one, or that the transcript holds, was
+    // recorded when it first arrived, so its later deltas leave the record
+    // alone. The recorded turn covers a transcript too full to hold it.
+    let turn = command.child_turn_id.as_str();
+    if recorded_turn.as_deref() != Some(turn) && !snapshot.turns.iter().any(|held| held.id == turn)
+    {
+        record_child_state(
+            transaction,
+            &scope,
+            &snapshot,
+            Observed {
+                turn,
+                state: "running",
+                ended_at: None,
+            },
+            command.now_millis,
+        )?;
+    }
     let mut candidate = snapshot.clone();
     if snapshot.retention_limited
         && !snapshot.turns.iter().any(|turn| {
@@ -245,12 +268,24 @@ fn store_turn_status_in(
             turns: Vec::new(),
             retention_limited: false,
         });
+    record_child_state(
+        transaction,
+        &scope,
+        &snapshot,
+        Observed {
+            turn: child_turn_id.as_str(),
+            state: turn_state(status),
+            ended_at: Some(now_millis),
+        },
+        now_millis,
+    )?;
     let retained = snapshot.clone();
-    if let Some(turn) = snapshot
+    let position = snapshot
         .turns
-        .iter_mut()
-        .find(|turn| turn.id == child_turn_id.as_str())
-    {
+        .iter()
+        .position(|turn| turn.id == child_turn_id.as_str());
+    if let Some(index) = position {
+        let turn = &mut snapshot.turns[index];
         if turn.status == status {
             return Ok(false);
         }
@@ -290,60 +325,19 @@ fn store_turn_status_in(
     }
 }
 
-pub(super) fn merge_snapshots(
-    read: &ChildTranscriptSnapshot,
-    retained: &ChildTranscriptSnapshot,
-) -> Result<ChildTranscriptSnapshot, ChildTranscriptStoreError> {
-    if read.child_thread_id != retained.child_thread_id
-        || read.parent_thread_id != retained.parent_thread_id
-    {
-        return Err(ChildTranscriptStoreError::Stale);
-    }
-    let mut merged = retained.clone();
-    merged.retention_limited |= read.retention_limited;
-    for read_turn in &read.turns {
-        if let Some(turn) = merged.turns.iter_mut().find(|turn| turn.id == read_turn.id) {
-            if turn.status == "inProgress" {
-                turn.status = read_turn.status.clone();
-            }
-            for (read_index, item) in read_turn.items.iter().enumerate() {
-                if let Some(candidate) = turn
-                    .items
-                    .iter_mut()
-                    .find(|candidate| candidate.id == item.id)
-                {
-                    if !candidate.lifecycle.is_terminal()
-                        || (item.lifecycle.is_terminal() && candidate.observed_sequence.is_none())
-                    {
-                        let sequence = candidate.observed_sequence;
-                        let role = candidate.role;
-                        *candidate = item.clone();
-                        candidate.observed_sequence = sequence;
-                        if candidate.role.is_none() {
-                            candidate.role = role;
-                        }
-                    }
-                } else {
-                    let before = read_turn.items[read_index + 1..].iter().find_map(|next| {
-                        turn.items
-                            .iter()
-                            .position(|candidate| candidate.id == next.id)
-                    });
-                    let position = before.unwrap_or(turn.items.len());
-                    turn.items.insert(position, item.clone());
-                }
-            }
-        } else {
-            merged.turns.push(read_turn.clone());
-        }
-    }
-    validate_bounds(&merged)?;
-    Ok(merged)
-}
-
+/// A transcript within its bounds that names each turn once, so it has one
+/// order.
 pub(super) fn validate_bounds(
     snapshot: &ChildTranscriptSnapshot,
 ) -> Result<(), ChildTranscriptStoreError> {
+    let mut ids = HashSet::with_capacity(snapshot.turns.len());
+    if !snapshot
+        .turns
+        .iter()
+        .all(|turn| ids.insert(turn.id.as_str()))
+    {
+        return Err(ChildTranscriptStoreError::Corrupt);
+    }
     if snapshot.turns.len() > MAX_TURNS
         || snapshot
             .turns
@@ -376,5 +370,6 @@ fn store_error(error: ChildTranscriptStoreError) -> StoreError {
         ChildTranscriptStoreError::Storage(error) => StoreError::Database(error),
         ChildTranscriptStoreError::Corrupt => StoreError::Corrupt("childTranscript"),
         ChildTranscriptStoreError::Capacity => capacity(),
+        ChildTranscriptStoreError::Projection(error) => error,
     }
 }

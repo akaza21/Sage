@@ -37,6 +37,17 @@ pub(crate) enum ChildOutcome {
     Stopped,
 }
 
+impl ChildOutcome {
+    /// A subagent's end as Claude Code words it; any other end stopped it.
+    pub(crate) fn settled(status: Option<&str>) -> Self {
+        match status {
+            Some("completed") => Self::Completed,
+            Some("failed") => Self::Failed,
+            _ => Self::Stopped,
+        }
+    }
+}
+
 #[derive(Default)]
 pub(crate) struct Children(BTreeMap<String, (ClaudeTranslator, Row)>);
 
@@ -45,6 +56,9 @@ struct Row {
     label: String,
     prompt: String,
     model: Option<String>,
+    /// The turn whose spawn row this is; a background subagent can end
+    /// after it, when only its own transcript still takes updates.
+    turn: ExternalId,
 }
 
 impl ClaudeRuntime {
@@ -54,10 +68,11 @@ impl ClaudeRuntime {
         event: ChildEvent,
         resources: &dyn SharedResourceMapper,
     ) -> Result<Vec<SharedEvent>, AdapterRuntimeError> {
-        let Some(active) = self.active.as_ref().filter(|active| active.turn.is_some()) else {
+        let Some(active) = self.active.as_ref() else {
             children.0.clear();
             return Ok(Vec::new());
         };
+        let turn = active.turn.as_ref().map(|turn| &turn.external_turn_id);
         let mut events = Vec::new();
         match event {
             ChildEvent::Spawned {
@@ -66,6 +81,9 @@ impl ClaudeRuntime {
                 prompt,
                 model,
             } => {
+                let Some(turn) = turn else {
+                    return Ok(events);
+                };
                 if children.0.len() >= OPEN_CHILDREN || children.0.contains_key(&key) {
                     return Ok(events);
                 }
@@ -79,6 +97,7 @@ impl ClaudeRuntime {
                     label,
                     prompt,
                     model,
+                    turn: turn.clone(),
                 };
                 events.push(self.child_row(active, &key, &row, "running")?);
                 if !row.prompt.is_empty() {
@@ -128,7 +147,9 @@ impl ClaudeRuntime {
                     ChildOutcome::Failed => ("errored", TurnState::Failed),
                     ChildOutcome::Stopped => ("interrupted", TurnState::Interrupted),
                 };
-                events.push(self.child_row(active, &key, &row, state)?);
+                if turn == Some(&row.turn) {
+                    events.push(self.child_row(active, &key, &row, state)?);
+                }
                 let id = ExternalId::new("childThreadId", key).map_err(frame)?;
                 events.push(SharedEvent::ChildTurnStatus {
                     child_thread_id: id.clone(),

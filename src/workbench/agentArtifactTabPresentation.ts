@@ -1,34 +1,28 @@
 import type { AcpChatPage } from "../domain/acpProjection";
 import type { AgentArtifactOwner } from "../domain/agentArtifact";
-import type { AgentDiffRef } from "../domain/agentDiff";
-import type { ResourceRef } from "../domain/workbench";
-import { resourceKey } from "../domain/resourceIdentity";
-import { projectAgentEditSummary } from "../features/chat/acp/agentEditSummary";
 import {
   attributedSubagentKey,
   type SubagentPaneTarget,
 } from "../app/subagentPaneStore";
 import { sameAgentArtifactOwner } from "../domain/agentArtifact";
-import type { AcpItem } from "../domain/acp";
+import type { AcpItem, TurnProjection } from "../domain/acp";
 
 type ArtifactTab = { resource?: { relativePath?: string }; title: string };
 
 const MAX_RESOURCE_TURNS = 128;
-const MAX_RECENT_RESOURCE_ITEMS = 256;
+export const MAX_RECENT_RESOURCE_ITEMS = 256;
 const MAX_RESOURCE_DETAILS_PER_ITEM = 32;
-const MAX_RESOURCE_ENTRIES = 128;
+export const MAX_RESOURCE_ENTRIES = 128;
 
-export type TaskOutput = {
-  label: string;
-  owner: AgentArtifactOwner;
-  resource: ResourceRef;
-  target: "file" | "diff";
-  diffRef?: AgentDiffRef;
-};
-
-export type TaskSource = { label: string; tabId: string | null };
-type AgentStatus = "starting" | "working" | "done" | "stopped" | "failed";
-type RecentAgent = {
+type AgentStatus =
+  | "starting"
+  | "working"
+  | "done"
+  | "stopped"
+  | "failed"
+  /** Its runtime is gone and nothing recorded how it ended. */
+  | "unknown";
+export type RecentAgent = {
   id: string;
   label: string;
   status: AgentStatus;
@@ -59,37 +53,12 @@ function agentStatus(state: string | undefined): AgentStatus | null {
   if (state === "completed") return "done";
   if (state === "shutdown" || state === "interrupted") return "stopped";
   if (state === "errored" || state === "notFound") return "failed";
+  if (state === "unknown") return state;
   return null;
 }
 
-function httpHost(value: string): string | null {
-  if (value.length > 2048) return null;
-  try {
-    const url = new URL(value);
-    return url.protocol === "http:" || url.protocol === "https:"
-      ? url.host
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-export function projectTaskResources(
-  page: AcpChatPage | null,
-  chatId: string | null,
-) {
-  const agents = new Map<string, RecentAgent>();
-  const latestInvocation = new Map<string, string>();
-  const outputs = new Map<string, TaskOutput>();
-  const sources = new Map<string, TaskSource>();
-  const changes = new Set<string>();
-  if (!page || page.chatId !== chatId)
-    return {
-      recentAgents: [],
-      outputs: [],
-      sources: [],
-      changesCount: 0,
-    };
+/** The newest turns, holding at most a bounded number of items, oldest first. */
+export function recentResourceTurns(page: AcpChatPage): TurnProjection[] {
   let remainingItems = MAX_RECENT_RESOURCE_ITEMS;
   const recentTurns = [];
   for (const turn of page.turns.slice(-MAX_RESOURCE_TURNS).reverse()) {
@@ -100,60 +69,29 @@ export function projectTaskResources(
       items.length === turn.items.length ? turn : { ...turn, items },
     );
   }
-  for (const turn of recentTurns.reverse()) {
-    for (const change of projectAgentEditSummary(page, turn).changes) {
-      const changedResource =
-        change.resource.kind === "resource"
-          ? change.resource.resource
-          : change.resource.displayResource;
-      if (
-        turn.sessionId === page.currentSessionId &&
-        changedResource &&
-        changes.size < MAX_RESOURCE_ENTRIES
-      )
-        changes.add(resourceKey(changedResource));
-      if (change.operation !== "created" || change.resource.kind !== "resource")
-        continue;
-      const resource = change.resource.resource;
-      const key = resourceKey(resource);
-      if (outputs.size >= MAX_RESOURCE_ENTRIES && !outputs.has(key)) continue;
-      outputs.set(key, {
-        label: resource.relativePath,
-        owner: {
-          projectId: page.projectId,
-          chatId: page.chatId,
-          sessionId: turn.sessionId,
-        },
-        resource,
-        target: change.diffRef ? "diff" : "file",
-        diffRef: change.diffRef,
-      });
-    }
-    for (const operation of (turn.browserOperations ?? []).slice(
-      -MAX_RECENT_RESOURCE_ITEMS,
-    )) {
-      if (
-        operation.projectId !== page.projectId ||
-        operation.chatId !== page.chatId ||
-        operation.sessionId !== turn.sessionId ||
-        operation.turnId !== turn.id
-      )
-        continue;
-      const label = httpHost(operation.origin);
-      if (!label || !operation.tabId) continue;
-      if (sources.size >= MAX_RESOURCE_ENTRIES && !sources.has(operation.tabId))
-        continue;
-      sources.set(operation.tabId, { label, tabId: operation.tabId });
-    }
+  return recentTurns.reverse();
+}
+
+/**
+ * The chat's recent subagents, one per spawn invocation, by their latest
+ * parent row. A spawn row that shows a child in its recorded current state
+ * fixes that status; later rows are earlier reports of the child.
+ */
+export function projectRecentAgents(
+  page: AcpChatPage | null,
+  chatId: string | null,
+): RecentAgent[] {
+  if (!page || page.chatId !== chatId) return [];
+  const agents = new Map<string, RecentAgent>();
+  const latestInvocation = new Map<string, string>();
+  const current = new Set<string>();
+  for (const turn of recentResourceTurns(page)) {
+    if (
+      page.currentSessionId !== undefined &&
+      turn.sessionId !== page.currentSessionId
+    )
+      continue;
     for (const item of turn.items) {
-      if (
-        page.currentSessionId !== undefined &&
-        turn.sessionId !== page.currentSessionId &&
-        (item.kind === "collaboration" ||
-          (item.kind === "toolCall" &&
-            item.payload.presentation.kind === "subagent"))
-      )
-        continue;
       if (item.kind === "collaboration") {
         if (item.payload.operation !== "spawnAgent" && item.payload.agentKey) {
           const invocation = latestInvocation.get(item.payload.agentKey);
@@ -177,8 +115,9 @@ export function projectTaskResources(
                       agent.label === "Subagent" && label ? label : agent.label,
                   }
                 : {}),
-              status:
-                operation === "interrupted"
+              status: current.has(invocation)
+                ? agent.status
+                : operation === "interrupted"
                   ? "stopped"
                   : live && operation === "completed"
                     ? "done"
@@ -197,6 +136,8 @@ export function projectTaskResources(
             .entries()) {
             const invocation = `${item.id}:${key}`;
             latestInvocation.set(key, invocation);
+            if (item.payload.currentAgents?.includes(key))
+              current.add(invocation);
             const state = states.find(([agent]) => agent === key)?.[1];
             const label =
               item.payload.receiverLabels[index]?.trim() || "Subagent";
@@ -214,7 +155,7 @@ export function projectTaskResources(
         } else {
           for (const [key, state] of states) {
             const invocation = latestInvocation.get(key);
-            if (!invocation) continue;
+            if (!invocation || current.has(invocation)) continue;
             const agent = agents.get(invocation);
             const status = agentStatus(state);
             // A terminal child never returns to working without a new spawn.
@@ -254,28 +195,9 @@ export function projectTaskResources(
             status,
           });
       }
-      if (item.kind === "toolCall") {
-        const source = item.payload.presentation;
-        const label =
-          source.kind === "fetch"
-            ? source.url && httpHost(source.url)
-            : source.kind === "webSearch"
-              ? "Search Service"
-              : source.kind === "mcp" && source.serverLabel !== "MCP"
-                ? source.serverLabel
-                : null;
-        if (label && sources.size < MAX_RESOURCE_ENTRIES && !sources.has(label))
-          sources.set(label, { label, tabId: null });
-      }
     }
   }
-  const recentAgents = [...agents.values()].slice(-MAX_RESOURCE_ENTRIES);
-  return {
-    recentAgents,
-    outputs: [...outputs.values()],
-    sources: [...sources.values()],
-    changesCount: changes.size,
-  };
+  return [...agents.values()].slice(-MAX_RESOURCE_ENTRIES);
 }
 
 export function artifactTabParts(tab: ArtifactTab) {

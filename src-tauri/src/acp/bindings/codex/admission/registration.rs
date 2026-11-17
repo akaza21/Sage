@@ -12,6 +12,8 @@ use super::{
     },
     AdmittedCodexBinding, CodexAdmissionUnavailable, ObservedLaunchInputs,
 };
+use crate::acp::bindings::codex::CodexModelCatalog;
+use sage_domain::harness::ModelOption;
 
 #[derive(Debug)]
 pub(crate) enum CodexRegistrationState {
@@ -22,6 +24,7 @@ pub(crate) enum CodexRegistrationState {
 #[derive(Debug)]
 pub(crate) struct CodexRegistrationAuthority {
     pub(super) state: Mutex<CodexRegistrationState>,
+    pub(super) models: CodexModelCatalog,
     #[cfg(all(windows, feature = "acp-fixture", debug_assertions))]
     pub(super) fixture_only: bool,
 }
@@ -40,6 +43,7 @@ impl CodexBindingRegistration {
         Ok(Self {
             authority: Arc::new(CodexRegistrationAuthority {
                 state: Mutex::new(CodexRegistrationState::Admitted(binding)),
+                models: Default::default(),
                 fixture_only: true,
             }),
         })
@@ -52,6 +56,7 @@ impl CodexBindingRegistration {
                 state: Mutex::new(CodexRegistrationState::Unavailable(
                     CodexAdmissionUnavailable::IndependentAdmission,
                 )),
+                models: Default::default(),
                 fixture_only: true,
             }),
         }
@@ -169,6 +174,21 @@ impl CodexBindingRegistration {
             }
             CodexRegistrationState::Admitted(_) => Err(CodexAdmissionUnavailable::Drift),
             CodexRegistrationState::Unavailable(reason) => Err(*reason),
+        }
+    }
+
+    pub(crate) fn model_catalog(&self) -> &CodexModelCatalog {
+        &self.authority.models
+    }
+
+    /// The models the admitted build lists before a session; `probe` may run
+    /// the installed CLI once, so call it off the main thread.
+    pub(crate) fn launch_models(&self, probe: bool) -> Option<Vec<ModelOption>> {
+        let binding = self.admitted()?;
+        if probe {
+            self.authority.models.probed(&binding)
+        } else {
+            self.authority.models.known(binding.binding_digest())
         }
     }
 

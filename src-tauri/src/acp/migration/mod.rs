@@ -1,5 +1,6 @@
 mod backup;
 mod build_intent;
+mod child_thread_states;
 mod config_choices;
 mod file_artifact;
 mod fingerprint;

@@ -17,6 +17,12 @@
       "state": "running"
     },
     {
+      "event": "usage",
+      "inputTokens": 26001,
+      "outputTokens": 0,
+      "contextWindow": 1000000
+    },
+    {
       "event": "item",
       "externalItemId": "agent-message:3",
       "kind": "text",
@@ -90,6 +96,12 @@
       "externalItemId": "toolu_01LN3a6hp1LoECW8gV6J6Zwt:diff:0",
       "kind": "fileChangeDiff",
       "lifecycle": "streaming"
+    },
+    {
+      "event": "usage",
+      "inputTokens": 26116,
+      "outputTokens": 0,
+      "contextWindow": 1000000
     },
     {
       "event": "item",

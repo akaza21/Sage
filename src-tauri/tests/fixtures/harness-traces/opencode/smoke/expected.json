@@ -29,8 +29,8 @@
     },
     {
       "event": "usage",
-      "inputTokens": 5,
-      "outputTokens": 1,
+      "inputTokens": 6,
+      "outputTokens": 0,
       "contextWindow": 4096
     },
     {

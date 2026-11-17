@@ -5,7 +5,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/030_session_capab
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentSessionCapabilities => return Ok(()),
+        SchemaClass::CurrentSessionCapabilities | SchemaClass::CurrentChildThreadStates => {
+            return Ok(());
+        }
         SchemaClass::CurrentImportedHistory => {}
         _ => return invalid("session capabilities require the exact imported history schema"),
     }

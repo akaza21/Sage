@@ -31,6 +31,8 @@ import {
   type PlanAccessTarget,
 } from "./ComposerPlanAccess";
 
+export { ListedHarnessModels } from "./ListedHarnessModels";
+
 export type ComposerMenuActions = Pick<
   ComponentProps<typeof ComposerAddActions>,
   "onAttachFiles" | "attachRefusalChatId" | "onOpenGoal" | "onCompact"

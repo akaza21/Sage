@@ -33,6 +33,10 @@
   border-bottom: 1px solid var(--usage-divider);
 }
 
+.composer-usage__heading:not(:first-child) {
+  margin-top: var(--space-2);
+}
+
 .composer-usage__heading,
 .composer-usage__section,
 .composer-usage__reset,

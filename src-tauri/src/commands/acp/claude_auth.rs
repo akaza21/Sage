@@ -103,15 +103,13 @@ async fn run_status(
 /// Kills the status check's whole process group if it is dropped while armed,
 /// so a CLI that forks (e.g. a node wrapper) leaves no descendants behind.
 #[cfg(unix)]
-struct ProcessGroupGuard(Option<libc::pid_t>);
+struct ProcessGroupGuard(Option<sage_process::process_group::ProcessGroup>);
 
 #[cfg(unix)]
 impl Drop for ProcessGroupGuard {
     fn drop(&mut self) {
         if let Some(group) = self.0 {
-            // SAFETY: the group was created for this child, and its leader is
-            // not yet reaped, so the id cannot name an unrelated group.
-            unsafe { libc::killpg(group, libc::SIGKILL) };
+            group.terminate();
         }
     }
 }
@@ -128,7 +126,7 @@ async fn run_status_with_timeout(
         command.creation_flags(sage_process::console::CREATION_FLAGS);
     }
     #[cfg(unix)]
-    std::os::unix::process::CommandExt::process_group(&mut command, 0);
+    sage_process::process_group::isolate(&mut command);
     command
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -139,7 +137,11 @@ async fn run_status_with_timeout(
         .map_err(|_| "Claude Code sign-in check could not start.")?;
     // Declared after `child` so it drops first, while the leader is unreaped.
     #[cfg(unix)]
-    let mut group = ProcessGroupGuard(child.id().and_then(|id| libc::pid_t::try_from(id).ok()));
+    let mut group = ProcessGroupGuard(
+        child
+            .id()
+            .and_then(|id| sage_process::process_group::ProcessGroup::led_by(id).ok()),
+    );
     let stdout = child
         .stdout
         .take()
