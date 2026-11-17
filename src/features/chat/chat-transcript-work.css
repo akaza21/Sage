@@ -47,6 +47,8 @@
 }
 
 .chat-transcript-work__groups {
+  --thought-after-message-gap: var(--space-4);
+
   display: grid;
   gap: var(--space-1);
   padding: var(--space-1) 0 0;
@@ -55,10 +57,6 @@
 .chat-transcript-work__groups[data-revealed] > * {
   animation: sage-row-in var(--motion-duration-row) ease-out both;
   animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
-}
-
-.chat-transcript-work__groups > .acp-message + .acp-thought {
-  margin-top: var(--space-4);
 }
 
 @media (prefers-reduced-motion: reduce) {

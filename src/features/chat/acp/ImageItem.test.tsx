@@ -5,14 +5,26 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
+import * as responseImage from "../../../services/acpDesktopResponseImage";
 import { safeItem } from "../../../services/acpDesktopResponseItems";
 
 import { ImageItem } from "./ImageItem";
 
-afterEach(cleanup);
+vi.mock("../../../services/acpDesktopResponseImage", async (original) => {
+  const actual = await original<typeof responseImage>();
+  return {
+    ...actual,
+    admittedImageDataUrl: vi.fn(actual.admittedImageDataUrl),
+  };
+});
+
+afterEach(() => {
+  cleanup();
+  vi.mocked(responseImage.admittedImageDataUrl).mockClear();
+});
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
@@ -26,6 +38,15 @@ function item(dataUrl = `data:image/png;base64,${png}`, id = "image-one") {
 }
 
 describe("ImageItem", () => {
+  it("does not revalidate an unchanged image when its parent re-renders", () => {
+    const image = item();
+    const { rerender } = render(<ImageItem item={image} thumbnail />);
+    rerender(<ImageItem item={image} thumbnail />);
+    expect(responseImage.admittedImageDataUrl).toHaveBeenCalledOnce();
+    rerender(<ImageItem item={{ ...image }} thumbnail />);
+    expect(responseImage.admittedImageDataUrl).toHaveBeenCalledTimes(2);
+  });
+
   it("renders a reloaded desktop image projection and resets an open viewer on remount", () => {
     const reloaded = safeItem(
       JSON.parse(

@@ -284,6 +284,12 @@
   white-space: nowrap;
 }
 
+/* A list that wants a break between a message and the next thought sets the
+   gap on itself. */
+.acp-message + .acp-thought {
+  margin-top: var(--thought-after-message-gap, 0);
+}
+
 @media (prefers-reduced-motion: reduce) {
   .acp-tool-running > svg,
   .acp-live-shimmer {

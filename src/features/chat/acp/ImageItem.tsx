@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { memo, useId, useRef, useState } from "react";
 
 import type { AcpItem } from "../../../domain/acp";
 import { admittedImageDataUrl } from "../../../services/acpDesktopResponseImage";
@@ -7,7 +7,7 @@ import { ModalDialog } from "../../../ui/ModalDialog";
 type ImageProjectionItem = Extract<AcpItem, { kind: "image" }>;
 type AdmittedImage = NonNullable<ReturnType<typeof admittedImageDataUrl>>;
 
-export function ImageItem({
+export const ImageItem = memo(function ImageItem({
   item,
   thumbnail = false,
 }: {
@@ -31,7 +31,7 @@ export function ImageItem({
       thumbnail={thumbnail}
     />
   );
-}
+});
 
 function AdmittedImageItem({
   admitted,
