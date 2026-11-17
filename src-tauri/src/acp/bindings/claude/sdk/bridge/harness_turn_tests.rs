@@ -720,10 +720,16 @@ fn a_refusal_while_a_run_goes_on_still_reports_the_runs_context_window() {
     finish_prompted_turn(&mut bridge);
     prompt_with_uuid(&mut bridge, 5);
     bridge.inbound(run_start()).unwrap();
+    bridge
+        .inbound(
+            json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m-run",
+            "content":[],"usage":{"input_tokens":7,"output_tokens":3}}}),
+        )
+        .unwrap();
     bridge.inbound(prompt_lifecycle("refused")).unwrap();
     let end = bridge
         .inbound(json!({"type":"result","subtype":"success","is_error":false,
-            "usage":{"input_tokens":7},
+            "usage":{"input_tokens":7,"output_tokens":3},
             "modelUsage":{"claude-sonnet-5-5":{"contextWindow":200000}}}))
         .unwrap();
     assert_eq!(
@@ -735,6 +741,7 @@ fn a_refusal_while_a_run_goes_on_still_reports_the_runs_context_window() {
         .iter()
         .find(|frame| frame["params"]["update"]["sessionUpdate"] == "usage_update")
         .expect("the ring still updates");
+    assert_eq!(usage["params"]["update"]["used"], 10);
     assert_eq!(usage["params"]["update"]["size"], 200_000);
 }
 
