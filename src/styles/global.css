@@ -32,8 +32,9 @@
 
   /* Accent ramp. 400 keeps text at 4.5:1 or more on every surface up to
      #2d2d2d, and 300 on every surface up to the composer fill (#363636).
-     Body text keeps 4.9:1 or more on 700 to 900. Ink is the text colour on
-     300 and 400. */
+     Body text and 200 keep 4.9:1 or more on 700 to 900. Ink is the text
+     colour on 300 and 400. */
+  --color-blue-200: #a6cff9;
   --color-blue-300: #75b4f7;
   --color-blue-400: #4c9df3;
   --color-blue-700: #264f78;
@@ -66,6 +67,7 @@
   --color-accent: var(--color-blue-400);
   --color-accent-hover: var(--color-blue-300);
   --color-accent-muted: var(--color-blue-800);
+  --color-accent-muted-foreground: var(--color-blue-200);
   --color-accent-foreground: var(--color-text-inverse);
   --color-focus-ring: var(--color-accent-hover);
   --color-success: #68d983;
@@ -784,6 +786,7 @@ textarea:disabled,
     --color-accent: LinkText;
     --color-accent-hover: LinkText;
     --color-accent-muted: Canvas;
+    --color-accent-muted-foreground: LinkText;
     --color-accent-foreground: HighlightText;
     --color-focus-ring: Highlight;
     --highlight-focus-edge: Highlight;

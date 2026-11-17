@@ -338,7 +338,7 @@
 }
 
 .agent-artifact-pane__follow[aria-pressed="true"] {
-  color: var(--color-accent-hover);
+  color: var(--color-accent-muted-foreground);
   background: var(--color-surface-active);
 }
 
