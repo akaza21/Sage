@@ -416,6 +416,13 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
     });
     await expectResponsiveToolbar(composer);
   }
+  await expect(project).toHaveCSS("font-size", "13px");
+  await project.click();
+  const menu = page.locator(".searchable-picker__popover--menu");
+  await expect(menu).toBeVisible();
+  expect((await menu.boundingBox())!.width).toBe(248);
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
   await page.emulateMedia({ forcedColors: "active" });
   await project.focus();
   const tab = frame.locator(".composer-location");

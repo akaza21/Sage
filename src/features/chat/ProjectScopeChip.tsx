@@ -8,6 +8,14 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 import type { MenuPlacement } from "../../ui/menuPopoverPosition";
 import "./project-scope.css";
 
+type ProjectScopeVariant = "inline" | "caption" | "menuItem";
+
+const variantClass: Record<ProjectScopeVariant, string> = {
+  inline: "project-scope project-scope--inline",
+  caption: "project-scope project-scope--caption",
+  menuItem: "project-scope project-scope--menu-item",
+};
+
 export function ProjectScopeChip({
   projectName,
   disabled = false,
@@ -20,10 +28,14 @@ export function ProjectScopeChip({
   disabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  variant?: "inline" | "caption" | "menuItem";
+  variant?: ProjectScopeVariant;
   popoverPlacement?: MenuPlacement;
 }) {
   const menuItem = variant === "menuItem";
+  const caption = variant === "caption";
+  const icon = caption ? undefined : (
+    <Folder className="project-scope__icon" size={14} aria-hidden="true" />
+  );
   const projects = useWorkbenchStore((state) => state.projects);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
@@ -47,7 +59,7 @@ export function ProjectScopeChip({
           ? `Project: ${projectName} (No other projects available)`
           : undefined
       }
-      className={`project-scope project-scope--${variant === "menuItem" ? "menu-item" : variant}`}
+      className={variantClass[variant]}
     >
       {candidates.length > 0 ? (
         <SearchablePicker
@@ -64,19 +76,11 @@ export function ProjectScopeChip({
           popoverPlacement={popoverPlacement}
           ariaLabel={menuItem ? "Work in a project" : `Project: ${projectName}`}
           stateTitle={`Project: ${projectName}`}
-          triggerIcon={
-            variant === "caption" ? undefined : (
-              <Folder
-                className="project-scope__icon"
-                size={14}
-                aria-hidden="true"
-              />
-            )
-          }
+          triggerIcon={icon}
           triggerLabel={
             menuItem ? (
               "Work in a project"
-            ) : variant === "caption" ? (
+            ) : caption ? (
               <span className="project-scope__caption">{projectName}</span>
             ) : undefined
           }
@@ -110,16 +114,10 @@ export function ProjectScopeChip({
         />
       ) : (
         <>
-          {variant === "caption" ? null : (
-            <Folder
-              className="project-scope__icon"
-              size={14}
-              aria-hidden="true"
-            />
-          )}
+          {icon}
           <span
             className={
-              variant === "caption"
+              caption
                 ? "project-scope__label project-scope__caption"
                 : "project-scope__label"
             }

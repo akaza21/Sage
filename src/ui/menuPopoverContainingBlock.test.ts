@@ -12,12 +12,12 @@ afterEach(() => {
 
 it("opens a composer popover above the changed-files summary instead of covering it", () => {
   document.body.innerHTML =
-    '<section class="chat-surface"><div class="chat-dock"><div class="chat-edit-summary-zone">2 files changed</div><form class="composer"><button>Effort</button></form></div></section><div class="composer__effort-menu"></div>';
+    '<section class="chat-surface"><div class="chat-dock-frame"><div class="chat-edit-summary-zone">2 files changed</div><form class="composer"><button>Effort</button></form></div></section><div class="composer__effort-menu"></div>';
   const trigger = document.querySelector("button")!;
   const menu = document.querySelector<HTMLElement>(".composer__effort-menu")!;
   vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
     function (this: HTMLElement) {
-      if (this.classList.contains("chat-dock"))
+      if (this.classList.contains("chat-dock-frame"))
         return new DOMRect(0, 615, 600, 145);
       if (this.classList.contains("chat-edit-summary-zone"))
         return new DOMRect(0, 615, 600, 30);

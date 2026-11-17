@@ -34,6 +34,7 @@
 .searchable-picker__trigger--plain {
   border: 0;
   color: inherit;
+  font-size: inherit;
   background: transparent;
   cursor: pointer;
 }
@@ -80,7 +81,7 @@
   overscroll-behavior: contain;
 }
 
-.searchable-picker__popover--menu {
+.searchable-picker__popover.searchable-picker__popover--menu {
   display: flex;
   flex-direction: column;
   width: min(248px, calc(100vw - var(--space-8)));

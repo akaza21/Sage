@@ -34,7 +34,7 @@ export function menuPopoverPosition(
     maxWidth,
     Math.max(surface.width, matchTriggerWidth ? anchor.width : 0),
   );
-  const dock = origin.closest(".chat-dock")?.getBoundingClientRect();
+  const dock = origin.closest(".chat-dock-frame")?.getBoundingClientRect();
   if (dock && dock.width >= width) {
     leftEdge = Math.max(leftEdge, dock.left);
     rightEdge = Math.min(rightEdge, dock.right);

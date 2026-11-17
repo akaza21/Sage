@@ -23,7 +23,6 @@ export function ComposerLocationStrip({
       <ProjectScopeChip
         projectName={projectName}
         disabled={disabled}
-
         popoverPlacement="above-start"
       />
     </div>
