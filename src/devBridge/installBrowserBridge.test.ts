@@ -170,6 +170,90 @@ async function connect() {
   return socket;
 }
 
+it.each([false, true])(
+  "guards an unflushed edit until snapshot and layout persistence complete (layout failure: %s)",
+  async (failLayout) => {
+    const socket = await connect();
+    const { installWorkbenchNavigationGuard } =
+      await import("../app/installWorkbenchNavigationGuard");
+    const { resetWorkbenchPortsForTests } =
+      await import("../ports/workbenchRuntime");
+    resetWorkbenchPortsForTests();
+    const { useWorkbenchStore } = await import("../app/store");
+    const { getFileEditorController } =
+      await import("../features/files/fileEditorController");
+    const initial = useWorkbenchStore.getState();
+    const resource = { rootId: "root-a", relativePath: "draft.txt" };
+    const version = { fingerprint: "base", byteLen: 0, modifiedAt: null };
+    let snapshot: FakeSocket["sent"][number] | undefined;
+    let layout: FakeSocket["sent"][number] | undefined;
+    socket.onRequest = (request) => {
+      if (request.cmd === "snapshot_editor_buffer") snapshot = request;
+      else if (request.cmd === "persist_project_layout") layout = request;
+      else socket.receive({ id: request.id, ok: null });
+    };
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      projectTransitioning: false,
+      tabs: [],
+      activeEditor: getFileEditorController().ready({
+        resource,
+        disk: version,
+        base: version,
+        buffer: { ...version, revision: 0, content: "" },
+        lineEnding: "none",
+        dirty: false,
+        conflict: null,
+      }),
+    });
+    const dispose = installWorkbenchNavigationGuard();
+    const navigate = () => {
+      const event = new Event("beforeunload", { cancelable: true });
+      window.dispatchEvent(event);
+      return event.defaultPrevented;
+    };
+    try {
+      expect(navigate()).toBe(false);
+      expect(snapshot).toBeUndefined();
+      expect(layout).toBeUndefined();
+      useWorkbenchStore.getState().updateEditorContent("unsaved edit");
+      expect(navigate()).toBe(true);
+      await waitFor(() => expect(snapshot).toBeDefined());
+      expect(snapshot!.args.request).toMatchObject({
+        resource,
+        content: "unsaved edit",
+        revision: 1,
+      });
+      socket.receive({
+        id: snapshot!.id,
+        ok: { revision: 1, persistedAt: 1, dirty: true, applied: true },
+      });
+      await waitFor(() => expect(layout).toBeDefined());
+      expect(layout!.args.request).toMatchObject({ projectId: "project-a" });
+      expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+        persistedRevision: 1,
+      });
+      expect(navigate()).toBe(true);
+      if (failLayout) {
+        const failed = layout!;
+        socket.receive({ id: failed.id, err: "layout write failed" });
+        await waitFor(() =>
+          expect(useWorkbenchStore.getState().error).toBe(
+            "layout write failed",
+          ),
+        );
+        expect(navigate()).toBe(true);
+        await waitFor(() => expect(layout).not.toBe(failed));
+      }
+      socket.receive({ id: layout!.id, ok: null });
+      await waitFor(() => expect(navigate()).toBe(false));
+    } finally {
+      dispose();
+      useWorkbenchStore.setState(initial, true);
+    }
+  },
+);
+
 it("strips the fragment immediately and resolves or rejects invokes by id", async () => {
   const socket = await connect();
   expect(isTauriRuntime()).toBe(true);

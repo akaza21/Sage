@@ -1,7 +1,9 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import type * as NativeInvoke from "../ports/nativeInvoke";
 
-const events = vi.hoisted(() => ({ listen: vi.fn() }));
+const events = vi.hoisted(() => ({
+  listen: vi.fn().mockResolvedValue(() => undefined),
+}));
 
 vi.mock("@tauri-apps/api/event", () => events);
 vi.mock("../ports/nativeInvoke", async (importOriginal) => ({
@@ -107,6 +109,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.dispatchEvent(new Event("pagehide"));
   useWorkbenchStore.setState({
     tabs: original.tabs,
     activeTabId: original.activeTabId,
@@ -115,6 +118,43 @@ afterEach(() => {
     project: original.project,
     flushActiveEditor: original.flushActiveEditor,
   });
+});
+
+it("keeps browser events after cancelled navigation and releases them on page exit", async () => {
+  const source = new EventTarget();
+  events.listen.mockImplementation(
+    async (name: string, receive: (event: { payload: unknown }) => void) => {
+      const listener = (event: Event) =>
+        receive({ payload: (event as CustomEvent).detail });
+      source.addEventListener(name, listener);
+      return () => source.removeEventListener(name, listener);
+    },
+  );
+  createBrowserSlice(useWorkbenchStore.setState, useWorkbenchStore.getState, {
+    subscribe: vi.fn(),
+  } as never);
+  await vi.dynamicImportSettled();
+  const cancel = (event: Event) => event.preventDefault();
+  window.addEventListener("beforeunload", cancel);
+  try {
+    const leaving = new Event("beforeunload", { cancelable: true });
+    window.dispatchEvent(leaving);
+    expect(leaving.defaultPrevented).toBe(true);
+    source.dispatchEvent(
+      new CustomEvent("browser:tab-closed", { detail: browserTab.id }),
+    );
+    expect(useWorkbenchStore.getState().tabs).toEqual([fileTab]);
+
+    useWorkbenchStore.setState({ tabs: [fileTab, browserTab] });
+    window.dispatchEvent(new Event("pagehide"));
+    source.dispatchEvent(
+      new CustomEvent("browser:tab-closed", { detail: browserTab.id }),
+    );
+    expect(useWorkbenchStore.getState().tabs).toEqual([fileTab, browserTab]);
+  } finally {
+    window.removeEventListener("beforeunload", cancel);
+    window.dispatchEvent(new Event("pagehide"));
+  }
 });
 
 it("removes the native-closed browser without closing it twice or clearing the active file editor", async () => {

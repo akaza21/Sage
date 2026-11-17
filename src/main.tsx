@@ -17,6 +17,10 @@ async function mount() {
       const { installBrowserBridge } =
         await import("./devBridge/installBrowserBridge");
       await installBrowserBridge();
+      const { installWorkbenchNavigationGuard } =
+        await import("./app/installWorkbenchNavigationGuard");
+      const dispose = installWorkbenchNavigationGuard();
+      import.meta.hot?.dispose(dispose);
     }
   }
   await import("./main.desktop");
