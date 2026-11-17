@@ -52,7 +52,7 @@ impl ClaudeSdkRuntime {
         if let Some(reply) = SdkBridge::refusal(&sdk) {
             batch.push_egress(AdapterEgress::new(
                 sdk_frame(&reply)?,
-                EgressToken::protocol_notification(),
+                EgressToken::settling(),
             ))?;
         }
         batch.push_event(AdapterEvent::Absorbed)?;

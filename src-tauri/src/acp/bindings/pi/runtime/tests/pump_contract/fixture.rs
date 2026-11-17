@@ -73,6 +73,27 @@ impl HarnessAdapter for ObservedPi {
     fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
         self.inner.held_batch()
     }
+    fn adopt_turn(
+        &mut self,
+        client_message_id: sage_acp_protocol::contract::RequiredText<512>,
+        resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.inner.adopt_turn(client_message_id, resources)
+    }
+    fn harness_turn_mode(&self) -> Option<&'static str> {
+        self.inner.harness_turn_mode()
+    }
+    fn answers_delivered(
+        &mut self,
+        resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.inner.answers_delivered(resources)
+    }
+    fn decline_turn(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEgress>, AdapterRuntimeError> {
+        self.inner.decline_turn()
+    }
 }
 
 pub(super) fn ready_adapter() -> ObservedPi {

@@ -55,6 +55,11 @@ fn rank(mode: &str) -> Option<usize> {
     PERMISSIVENESS.iter().position(|known| *known == mode)
 }
 
+/// `mode`, when it is one of Claude's permission modes.
+pub(crate) fn known_mode(mode: &str) -> Option<&'static str> {
+    PERMISSIVENESS.into_iter().find(|known| *known == mode)
+}
+
 /// Claude may move a turn on its own only to a mode no more permissive. An unknown mode is
 /// never admitted.
 pub(crate) fn mode_change_admitted(selected: &str, next: &str) -> bool {

@@ -25,6 +25,7 @@ impl ClaudeRuntime {
                     .config
                     .validate_mode(mode.as_str())
                     .map_err(|_| AdapterRuntimeError::Operation)?;
+                self.selected_mode = super::super::known_mode(mode.as_str());
                 self.reserve(
                     PendingRequest::SetMode,
                     "session/set_mode",

@@ -548,6 +548,7 @@ struct FakeState {
     ingest_error: Option<AdapterRuntimeError>,
     refusal_detail: Option<RefusalDetail>,
     turn_unnamed: bool,
+    config_pending: bool,
 }
 
 #[derive(Clone)]
@@ -569,6 +570,10 @@ impl HarnessAdapter for FakeAdapter {
 
     fn defer_cancel(&mut self) -> bool {
         self.shared.0.lock().unwrap().turn_unnamed
+    }
+
+    fn config_pending(&self) -> bool {
+        self.shared.0.lock().unwrap().config_pending
     }
 
     fn command(&mut self, command: AdapterCommand) -> Result<AdapterEgress, AdapterRuntimeError> {
@@ -654,6 +659,27 @@ impl HarnessAdapter for FakeAdapter {
             .batches
             .pop_front()
             .ok_or(AdapterRuntimeError::Operation)
+    }
+
+    fn adopt_turn(
+        &mut self,
+        _: RequiredText<512>,
+        _: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let mut state = self.shared.0.lock().unwrap();
+        state.log.push("adopt");
+        state
+            .batches
+            .pop_front()
+            .ok_or(AdapterRuntimeError::Operation)
+    }
+
+    fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
+        self.shared.0.lock().unwrap().log.push("decline");
+        Ok(vec![AdapterEgress::new(
+            OutboundFrame::new(br#"{"interrupt":true}"#.to_vec()).unwrap(),
+            EgressToken::settling(),
+        )])
     }
 
     fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
@@ -2455,6 +2481,9 @@ fn runtime() -> tokio::runtime::Runtime {
         .build()
         .unwrap()
 }
+
+#[path = "harness_turn_tests.rs"]
+mod harness_turn_tests;
 
 #[path = "cancel_tests.rs"]
 mod cancel_tests;

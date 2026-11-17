@@ -177,3 +177,228 @@ fn held_background_subagents_count_against_the_open_transcript_cap_until_they_se
         "{room:?}"
     );
 }
+
+const BACKGROUND_TOOL: &str = "toolu_make";
+
+fn child_status<'a>(events: &'a [ChildEvent], id: &str) -> Option<&'a str> {
+    events.iter().find_map(|event| match event {
+        ChildEvent::Update { update, .. } if update["params"]["update"]["toolCallId"] == id => {
+            update["params"]["update"]["status"].as_str()
+        }
+        _ => None,
+    })
+}
+
+/// A subagent launched in the background asks between turns to run a tool,
+/// and Sage answers with `option`; the turn opened for the card ends once
+/// the answer is delivered. Returns how that turn closed the card's row.
+fn answer_background_tool(bridge: &mut SdkBridge, option: &str) -> String {
+    answer_background_tool_in_order(bridge, option, true)
+}
+
+fn subagent_tool_row(bridge: &mut SdkBridge) {
+    bridge
+        .inbound(json!({"type":"assistant","parent_tool_use_id":"toolu_a","message":{"id":"m-sub",
+            "content":[{"type":"tool_use","id":BACKGROUND_TOOL,"name":"Bash","input":{"command":"make"}}]}}))
+        .unwrap();
+}
+
+/// As `answer_background_tool`, with the subagent's own tool row reported
+/// before the approval request when `row_first`, else only after the card's
+/// turn has ended.
+fn answer_background_tool_in_order(
+    bridge: &mut SdkBridge,
+    option: &str,
+    row_first: bool,
+) -> String {
+    prompt(bridge, 3);
+    spawn(bridge, "toolu_a");
+    tool_result(bridge, "toolu_a", launched("agent-1"));
+    finish(bridge);
+    if row_first {
+        subagent_tool_row(bridge);
+    }
+    let ask = bridge
+        .inbound(
+            json!({"type":"control_request","request_id":"r7","request":{
+            "subtype":"can_use_tool","tool_name":"Bash","tool_use_id":BACKGROUND_TOOL,
+            "agent_id":"agent-1","input":{"command":"make"}}}),
+        )
+        .unwrap();
+    assert!(ask.started);
+    bridge.adopt(json!(4)).unwrap();
+    let wire = ask
+        .acp
+        .iter()
+        .find(|frame| frame["method"] == "session/request_permission")
+        .and_then(|frame| frame["id"].as_u64())
+        .unwrap();
+    let answer = bridge
+        .outbound(&json!({"id":wire,"result":{"outcome":{"outcome":"selected","optionId":option}}}))
+        .unwrap();
+    let request = answer["response"]["request_id"].as_str().unwrap();
+    bridge.delivered(&Sent::Answer(request.to_owned()));
+    let ended = bridge
+        .settled_turn_end()
+        .expect("the card's turn ends once answered");
+    if !row_first {
+        subagent_tool_row(bridge);
+    }
+    assert!(ended.acp.iter().any(|frame| frame["id"] == 4));
+    let row = ended
+        .acp
+        .iter()
+        .find(|frame| frame["params"]["update"]["toolCallId"] == BACKGROUND_TOOL)
+        .expect("the turn closes the card's row itself");
+    row["params"]["update"]["status"]
+        .as_str()
+        .unwrap()
+        .to_owned()
+}
+
+fn allow_background_tool(bridge: &mut SdkBridge) {
+    assert_eq!(
+        answer_background_tool(bridge, "allow_once"),
+        "completed",
+        "the card's row ends with the approval it carried"
+    );
+}
+
+/// The runtime records a declined card's row as declined.
+#[test]
+fn a_declined_background_tool_fails_the_cards_row() {
+    let mut bridge = initialized();
+    assert_eq!(answer_background_tool(&mut bridge, "reject"), "failed");
+}
+
+#[test]
+fn an_approval_asked_before_its_subagent_reports_the_tool_still_completes_the_cards_row() {
+    let mut bridge = initialized();
+    assert_eq!(
+        answer_background_tool_in_order(&mut bridge, "allow_once", false),
+        "completed"
+    );
+}
+
+#[test]
+fn an_allowed_background_tool_frees_the_composer_and_its_later_result_completes_its_row() {
+    let mut bridge = initialized();
+    allow_background_tool(&mut bridge);
+    prompt(&mut bridge, 5);
+    finish(&mut bridge);
+    let ran = bridge
+        .inbound(
+            json!({"type":"user","parent_tool_use_id":"toolu_a","message":{"role":"user",
+            "content":[{"type":"tool_result","tool_use_id":BACKGROUND_TOOL,"content":"built"}]}}),
+        )
+        .unwrap();
+    assert!(
+        ran.acp.is_empty(),
+        "nothing reaches a parent turn that has ended"
+    );
+    assert_eq!(
+        child_status(&ran.children, BACKGROUND_TOOL),
+        Some("completed")
+    );
+}
+
+#[test]
+fn an_allowed_background_tool_that_never_reports_fails_when_its_subagent_ends() {
+    let mut bridge = initialized();
+    allow_background_tool(&mut bridge);
+    let settled = task(
+        &mut bridge,
+        notification("agent-1", Some("toolu_a"), "completed"),
+    );
+    assert_eq!(child_status(&settled, BACKGROUND_TOOL), Some("failed"));
+    assert_eq!(ended(&settled), [("toolu_a", ChildOutcome::Completed)]);
+}
+
+/// Sage answers `option` on the card for `request`, asked within the open
+/// prompt turn.
+fn answer_in_turn(bridge: &mut SdkBridge, request: Value, option: &str) {
+    let ask = bridge
+        .inbound(json!({"type":"control_request","request_id":"r7","request":request}))
+        .unwrap();
+    let wire = ask
+        .acp
+        .iter()
+        .find(|frame| frame["method"] == "session/request_permission")
+        .and_then(|frame| frame["id"].as_u64())
+        .unwrap();
+    let answer = bridge
+        .outbound(&json!({"id":wire,"result":{"outcome":{"outcome":"selected","optionId":option}}}))
+        .unwrap();
+    let request = answer["response"]["request_id"].as_str().unwrap();
+    bridge.delivered(&Sent::Answer(request.to_owned()));
+}
+
+fn row_status(inbound: &Inbound, id: &str) -> Option<String> {
+    inbound
+        .acp
+        .iter()
+        .find(|frame| frame["params"]["update"]["toolCallId"] == id)
+        .and_then(|frame| frame["params"]["update"]["status"].as_str())
+        .map(str::to_owned)
+}
+
+#[test]
+fn an_allowed_foreground_subagent_tool_that_never_reports_fails_with_the_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    spawn(&mut bridge, "toolu_a");
+    subagent_tool_row(&mut bridge);
+    answer_in_turn(
+        &mut bridge,
+        json!({"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":BACKGROUND_TOOL,
+            "agent_id":"agent-1","input":{"command":"make"}}),
+        "allow_once",
+    );
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert_eq!(
+        row_status(&ended, BACKGROUND_TOOL).as_deref(),
+        Some("failed")
+    );
+}
+
+#[test]
+fn a_subagent_approval_asked_before_its_agent_id_is_known_completes_the_cards_row() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    spawn(&mut bridge, "toolu_a");
+    answer_in_turn(
+        &mut bridge,
+        json!({"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":BACKGROUND_TOOL,
+            "agent_id":"agent-1","input":{"command":"make"}}),
+        "allow_once",
+    );
+    tool_result(&mut bridge, "toolu_a", launched("agent-1"));
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert_eq!(
+        row_status(&ended, BACKGROUND_TOOL).as_deref(),
+        Some("completed")
+    );
+}
+
+#[test]
+fn an_allowed_main_agent_tool_that_never_reports_fails_with_the_turn() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    answer_in_turn(
+        &mut bridge,
+        json!({"subtype":"can_use_tool","tool_name":"Bash","tool_use_id":BACKGROUND_TOOL,
+            "input":{"command":"make"}}),
+        "allow_once",
+    );
+    let ended = bridge
+        .inbound(json!({"type":"result","subtype":"success","is_error":false,"usage":{}}))
+        .unwrap();
+    assert_eq!(
+        row_status(&ended, BACKGROUND_TOOL).as_deref(),
+        Some("failed")
+    );
+}

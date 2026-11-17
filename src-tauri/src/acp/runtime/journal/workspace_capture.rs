@@ -134,6 +134,7 @@ fn owner(mutation: &StoreMutation) -> Option<(&SageProjectId, &SageChatId)> {
         }
         StoreMutation::LookupActiveTurn(c)
         | StoreMutation::BeginSend(c)
+        | StoreMutation::OpenHarnessTurn(c)
         | StoreMutation::ObserveSend { command: c, .. }
         | StoreMutation::TurnTerminal { command: c, .. } => Some((&c.project_id, &c.chat_id)),
         StoreMutation::BeginCancel(c) => Some((&c.turn.project_id, &c.turn.chat_id)),

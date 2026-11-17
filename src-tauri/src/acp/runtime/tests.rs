@@ -24,6 +24,10 @@ impl ProjectIntentAuthority for Authority {
     fn current_snapshot(&self, _: &PrepareTurnCommand) -> Option<IntentSnapshot> {
         Some(self.0.clone())
     }
+
+    fn harness_turn_mode(&self, _: &RuntimeOwner) -> Option<&'static str> {
+        Some("default")
+    }
 }
 
 struct FakeStore {
@@ -497,10 +501,11 @@ fn prepare_commit_unknown_retains_the_exact_turn_reservation_until_lookup_resolu
         ));
         let recovery = failure.recovery.take().expect("exact reserved Turn");
         let ambiguous = recovery.ambiguous().expect("lookup required");
-        assert_eq!(
-            ambiguous.command().client_intent_id,
-            command().client_intent_id
-        );
+        assert!(matches!(
+            ambiguous.mutation(),
+            StoreMutation::PrepareTurn(prepared)
+                if prepared.client_intent_id == command().client_intent_id
+        ));
         assert!(matches!(
             tree.reserve_turn(),
             Err(sage_acp_protocol::scheduler::SchedulerError::TurnCapacity)
@@ -578,6 +583,36 @@ fn post_commit_bootstrap_failure_retains_dispatch_and_terminal_release() {
             .unwrap();
         handle.close_when_drained();
         runner.await.unwrap();
+    });
+}
+
+#[test]
+fn a_harness_turn_outside_the_chats_current_access_is_refused_before_journal_or_scheduler() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    runtime.block_on(async {
+        let (handle, _runner, order) = fake(None, false);
+        let coordinator = SendCoordinator::new(
+            Arc::new(Authority(snapshot(None))),
+            handle.clone(),
+            Arc::new(ProjectionMailbox::default()),
+        );
+        let scheduler = Scheduler::new();
+        let tree = scheduler
+            .reserve_tree(RuntimeOwner {
+                project_id: command().project_id.clone(),
+                chat_id: command().chat_id.clone(),
+                session_id: command().session_id.clone(),
+                runtime_epoch: command().runtime_epoch,
+            })
+            .unwrap();
+        for mode in [Some("bypassPermissions"), None] {
+            assert!(matches!(
+                coordinator.open_harness_turn(&tree, mode, 1).await,
+                Err(failure) if matches!(failure.error, CoordinatorError::Intent)
+            ));
+        }
+        assert!(!scheduler.active().unwrap().turn_reserved);
+        assert!(order.lock().unwrap().is_empty());
     });
 }
 

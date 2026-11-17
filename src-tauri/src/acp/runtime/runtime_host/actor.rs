@@ -8,6 +8,8 @@ use sage_acp_protocol::scheduler::RuntimeOwner;
 
 #[path = "actor_close.rs"]
 mod actor_close;
+#[path = "actor_harness.rs"]
+mod actor_harness;
 #[path = "actor_park.rs"]
 mod actor_park;
 #[path = "actor_session_config.rs"]
@@ -169,6 +171,7 @@ impl<E: RuntimeEngine> Actor<E> {
             HostCommand::DispatchPrompt { owner, turn_id } => self.dispatch_prompt(owner, turn_id),
             HostCommand::Steer(intent) => self.steer(intent),
             HostCommand::Cancel(intent) => self.cancel(intent),
+            HostCommand::TurnStarted { owner, turn_id } => self.turn_started(owner, turn_id),
             HostCommand::Terminal { owner, cursor } => self.terminal(owner, cursor),
             HostCommand::ProjectSwitched(_) => {
                 Ok(HostReply::Outcome(if self.state == HostState::Running {

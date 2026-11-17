@@ -4,7 +4,7 @@ use serde_json::Value;
 
 use super::{
     admission::AdmittedClaudeSdkBinding,
-    bridge::{SdkBridge, Sent},
+    bridge::{Inbound, SdkBridge, Sent},
     launch::SessionLaunch,
 };
 use crate::acp::{
@@ -22,7 +22,7 @@ use crate::acp::{
     },
     process::LaunchSpec,
     runtime::ActivationMode,
-    transport::{Frame, OutboundFrame, request_value_digest},
+    transport::{Frame, OutboundFrame},
 };
 use sage_acp_protocol::{
     contract::{RuntimeEpoch, SageAgentSessionId, SageServerRequestId},
@@ -55,6 +55,7 @@ impl RuntimeFactory for ClaudeSdkRuntimeFactory {
             usage: Arc::default(),
             sent: Vec::new(),
             steering: Steering::default(),
+            started: None,
             launch: None,
             binding: self.binding,
             root: Some(self.root),
@@ -71,6 +72,9 @@ struct ClaudeSdkRuntime {
     usage: Arc<sage_acp_protocol::usage::UsageCell>,
     sent: Vec<(EgressToken, Sent)>,
     steering: Steering,
+    /// What Claude Code reported for a turn it started on its own, held
+    /// until Sage opens that turn. Sage reads nothing more meanwhile.
+    started: Option<Inbound>,
     launch: Option<SessionLaunch>,
     binding: Arc<AdmittedClaudeSdkBinding>,
     root: Option<crate::project_registry::ProjectRootAuthority>,
@@ -115,81 +119,6 @@ impl ClaudeSdkRuntime {
             }
         }
         Ok(AdapterEgress::new(frame, token))
-    }
-
-    fn ingest_sdk(
-        &mut self,
-        sdk: Value,
-        resources: &dyn ResourceMapper,
-    ) -> Result<AdapterBatch, AdapterRuntimeError> {
-        let inbound = self
-            .bridge()?
-            .inbound(sdk)
-            .map_err(|_| AdapterRuntimeError::Frame)?;
-        let mut batch = AdapterBatchBuilder::new();
-        let mut observed = false;
-        for wire in inbound.withdrawn {
-            let (events, _) = self.session.withdraw_permission(&wire.into())?.into_parts();
-            for event in events
-                .into_iter()
-                .filter(|event| !matches!(event, AdapterEvent::Absorbed))
-            {
-                observed = true;
-                batch.push_event(event)?;
-            }
-        }
-        for event in self.steering.answers(inbound.steers) {
-            observed = true;
-            batch.push_event(event)?;
-        }
-        self.answered(inbound.native, inbound.usage);
-        if let Some(questions) = inbound.questions {
-            self.session.offer_user_input(questions);
-        }
-        for event in inbound.session {
-            if let Some(event) = self.session.session_event(event) {
-                observed = true;
-                batch.push_event(event)?;
-            }
-        }
-        for child in inbound.children {
-            for event in self
-                .session
-                .child_event(&mut self.children, child, resources)?
-            {
-                observed = true;
-                batch.push_event(event)?;
-            }
-        }
-        for acp in inbound.acp {
-            let digest = request_value_digest(&acp);
-            let (events, egress) = self
-                .session
-                .ingest_value(acp, digest, resources)?
-                .into_parts();
-            for event in events {
-                observed = true;
-                batch.push_event(match event {
-                    AdapterEvent::Initialized { capabilities } => AdapterEvent::Initialized {
-                        capabilities: sdk_capabilities(capabilities),
-                    },
-                    event => event,
-                })?;
-            }
-            for egress in egress {
-                batch.push_egress(self.outbound(egress)?)?;
-            }
-        }
-        for reply in inbound.replies {
-            batch.push_egress(AdapterEgress::new(
-                sdk_frame(&reply)?,
-                EgressToken::protocol_notification(),
-            ))?;
-        }
-        if !observed {
-            batch.push_event(AdapterEvent::Absorbed)?;
-        }
-        Ok(batch.finish())
     }
 }
 
@@ -353,6 +282,44 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.session.unfinished_replies()
     }
 
+    fn adopt_turn(
+        &mut self,
+        client_message_id: sage_acp_protocol::contract::RequiredText<512>,
+        resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        let inbound = self.started.take().ok_or(AdapterRuntimeError::Operation)?;
+        let id = self.session.begin_harness_turn(client_message_id)?;
+        self.bridge()?
+            .adopt(id.into())
+            .map_err(|_| AdapterRuntimeError::Operation)?;
+        let mut batch = AdapterBatchBuilder::new();
+        if !self.translate(&mut batch, inbound, resources)? {
+            batch.push_event(AdapterEvent::Absorbed)?;
+        }
+        Ok(batch.finish())
+    }
+
+    fn harness_turn_mode(&self) -> Option<&'static str> {
+        self.started.as_ref()?;
+        self.session.selected_mode()
+    }
+
+    fn answers_delivered(
+        &mut self,
+        resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.ingest_delivered(resources)
+    }
+
+    fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
+        self.started.take().ok_or(AdapterRuntimeError::Operation)?;
+        let declined = self
+            .bridge()?
+            .decline()
+            .map_err(|_| AdapterRuntimeError::Operation)?;
+        declined.replies.iter().map(settling).collect()
+    }
+
     /// Claude Code's own output can exceed the structure limits sized for ACP frames: an edit's
     /// result carries its whole patch in `tool_use_result`, which Sage never reads. Such a frame is
     /// read without those fields. Still out of bounds, a turn's end or a reply to Sage keeps only
@@ -392,6 +359,9 @@ impl HarnessAdapter for ClaudeSdkRuntime {
 
 #[path = "runtime_delivery.rs"]
 mod delivery;
+#[path = "runtime_inbound.rs"]
+mod inbound;
+use inbound::settling;
 #[path = "runtime_native.rs"]
 mod native;
 use native::sdk_capabilities;

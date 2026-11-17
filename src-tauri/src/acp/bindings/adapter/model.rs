@@ -247,6 +247,34 @@ pub(crate) trait HarnessAdapter {
     /// Output the last batch held back because it filled up, as much as fits
     /// in one batch; the pump takes it until `None` before the next frame.
     fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError>;
+    /// Names the Turn the last `AdapterEvent::TurnStarted` announced and
+    /// returns what the harness reported for it so far.
+    fn adopt_turn(
+        &mut self,
+        _client_message_id: RequiredText<512>,
+        _resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
+    /// The harness session mode the Turn the last `AdapterEvent::TurnStarted`
+    /// announced runs in.
+    fn harness_turn_mode(&self) -> Option<&'static str> {
+        None
+    }
+    /// What the harness reports once the answers Sage wrote reached it: a
+    /// Turn that only waited on them ends. None when nothing changed.
+    fn answers_delivered(
+        &mut self,
+        _resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
+    /// Refuses the Turn the last `AdapterEvent::TurnStarted` announced: what
+    /// it asked is declined, and its run is stopped and read to its end
+    /// without being shown. Returns the frames that do so.
+    fn decline_turn(&mut self) -> Result<Vec<AdapterEgress>, AdapterRuntimeError> {
+        Err(AdapterRuntimeError::UnsupportedCommand)
+    }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError>;
     fn resolve_egress(
         &mut self,

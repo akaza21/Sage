@@ -199,7 +199,8 @@ pub(super) fn record_turn_undone_in(
 /// finished Turn: a fork Chat was taken through it and shows the parent's
 /// history up to it, or, for a harness that reverts its own thread
 /// (`single_step`), a Turn its runtime ran later was undone already: such a
-/// harness only reverts the last Turn its process ran.
+/// harness only reverts the last Turn its process ran. A Turn the harness
+/// started on its own has no prompt to rewind to, so it is never undone.
 pub(crate) fn undo_withheld(
     connection: &Connection,
     project: &str,
@@ -210,13 +211,17 @@ pub(crate) fn undo_withheld(
 ) -> Result<bool, StoreError> {
     connection
         .query_row(
-            "SELECT EXISTS(SELECT 1 FROM chat_lineage l
-               JOIN chats c ON c.project_id=l.child_project_id AND c.id=l.child_chat_id
-               WHERE l.parent_project_id=?1 AND l.parent_chat_id=?2 AND l.source_turn_id=?4)
-             OR (?5 AND EXISTS(SELECT 1 FROM turns u JOIN turns later
-               ON later.session_id=u.session_id AND later.runtime_epoch=u.runtime_epoch
-                 AND later.ordinal>u.ordinal
-               WHERE u.session_id=?3 AND u.id=?4))",
+            concat!(
+                "SELECT EXISTS(SELECT 1 FROM chat_lineage l
+                   JOIN chats c ON c.project_id=l.child_project_id AND c.id=l.child_chat_id
+                   WHERE l.parent_project_id=?1 AND l.parent_chat_id=?2 AND l.source_turn_id=?4)
+                 OR (?5 AND EXISTS(SELECT 1 FROM turns u JOIN turns later
+                   ON later.session_id=u.session_id AND later.runtime_epoch=u.runtime_epoch
+                     AND later.ordinal>u.ordinal
+                   WHERE u.session_id=?3 AND u.id=?4))
+                 OR NOT ",
+                super::prompted_turn!("?3", "?4")
+            ),
             params![project, chat, session, turn, single_step],
             |row| row.get(0),
         )

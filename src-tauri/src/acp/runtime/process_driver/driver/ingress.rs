@@ -58,9 +58,14 @@ where
         .into_iter()
         .flatten()
         .min();
-        let message = mailbox
-            .wait_next_until(deadline, self.clock.as_ref())
-            .map_err(DriverError::Mailbox)?;
+        // Stdout behind a Turn the harness started belongs to that next Turn,
+        // so it stays queued until the reusable handoff opens it.
+        let message = if self.pump.next_turn_started() {
+            mailbox.wait_control_until(deadline, self.clock.as_ref())
+        } else {
+            mailbox.wait_next_until(deadline, self.clock.as_ref())
+        }
+        .map_err(DriverError::Mailbox)?;
         match message {
             Some(message) => {
                 let now_millis = self.clock.now_millis();

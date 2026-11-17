@@ -178,6 +178,42 @@ impl SdkBridge {
         });
     }
 
+    /// How a finished turn closes its unfinished rows: failed, except a
+    /// tool it allowed a background subagent to run. That row only carried
+    /// the approval, so it completes with it; the tool's own row in the
+    /// subagent's transcript takes its result, or fails when the subagent ends.
+    pub(super) fn unfinished_tools(&mut self) -> Vec<(String, String, &'static str)> {
+        let allowed = std::mem::take(&mut self.allowed_tools);
+        std::mem::take(&mut self.tools)
+            .into_iter()
+            .map(|(tool, name)| {
+                let delegated = allowed
+                    .get(&tool)
+                    .and_then(|agent| self.asking_subagent(agent.as_deref(), &tool))
+                    .is_some_and(|subagent| subagent.background);
+                let status = if delegated { "completed" } else { "failed" };
+                (tool, name, status)
+            })
+            .collect()
+    }
+
+    /// The subagent that asked to run `tool`: the one Claude Code named by
+    /// `agent`, its agent id, or else the one that reported the tool. Asked
+    /// once the turn ends, when Sage has had the most frames to learn the id.
+    fn asking_subagent(&self, agent: Option<&str>, tool: &str) -> Option<&Subagent> {
+        agent
+            .and_then(|agent| {
+                self.subagents
+                    .values()
+                    .find(|subagent| subagent.task_id.as_deref() == Some(agent))
+            })
+            .or_else(|| {
+                self.child_tools
+                    .get(tool)
+                    .and_then(|(owner, _)| self.subagents.get(owner))
+            })
+    }
+
     /// Ends the subagents a finished turn was waiting on; background ones run on.
     pub(super) fn end_children(&mut self, inbound: &mut Inbound) {
         let open: Vec<_> = self

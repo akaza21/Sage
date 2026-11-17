@@ -54,6 +54,7 @@ struct SharedState {
     commit_error: Option<PumpJournalError>,
     rejected_ingests: usize,
     ingest_outcomes: VecDeque<Result<(), AdapterRuntimeError>>,
+    delivered: Option<AdapterBatch>,
     worker_observation: Option<Arc<DriverMailbox>>,
     worker_response: Option<mpsc::Receiver<Result<WorkerReply, crate::acp::runtime::HostError>>>,
 }
@@ -190,6 +191,13 @@ impl HarnessAdapter for FakeAdapter {
             self.shared.0.lock().expect("shared").worker_response = response;
         }
         batch
+    }
+
+    fn answers_delivered(
+        &mut self,
+        _: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(self.shared.0.lock().expect("shared").delivered.take())
     }
 
     fn commit_mandatory_egress(&mut self, _: &EgressToken) -> Result<(), AdapterRuntimeError> {
@@ -680,6 +688,43 @@ fn multiple_rejections_in_one_chunk_are_non_latching_and_drain_to_alignment() {
 }
 
 #[test]
+fn a_rejection_read_with_the_turns_end_and_the_harness_next_run_leaves_that_run_unread() {
+    runtime().block_on(async {
+        let started = AdapterIdentity {
+            external_id: ExternalId::new("session", "external-session").expect("session"),
+            turn_id: None,
+            turn_client_message_id: None,
+            ..identity_one("session")
+        };
+        let (mut driver, shared, _, control) = build_driver(
+            vec![
+                owned(vec![terminal(identity_one("end"), TurnState::Completed)]),
+                owned(vec![AdapterEvent::TurnStarted { id: started }]),
+            ],
+            VecDeque::new(),
+        );
+        shared.0.lock().expect("shared").ingest_outcomes =
+            VecDeque::from([Err(AdapterRuntimeError::ConfigMutationRejected)]);
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .try_push_chunk(b"{}\n{}\n{}\n{}\n".to_vec())
+            .expect("rejection, turn end, harness run and its next frame");
+
+        assert_eq!(
+            driver.run_next(&mailbox).await,
+            Err(DriverError::Refused(NonfatalRefusal::ConfigMutation))
+        );
+        assert_eq!(driver.teardown_cause(), None);
+        assert!(control.lock().expect("control").requested.is_empty());
+        let Ok(completed) = driver.try_complete_turn(&mailbox) else {
+            panic!("the turn ended");
+        };
+        assert!(completed.turn_started());
+        assert!(shared.0.lock().expect("shared").batches.is_empty());
+    });
+}
+
+#[test]
 fn accepted_frame_before_rejection_stays_ordered_and_nonfatal() {
     runtime().block_on(async {
         let (mut driver, shared, _, control) = build_driver(
@@ -1014,6 +1059,68 @@ fn permission_write_settles_the_durable_decision() {
             ]
         );
         assert!(state.commands.contains(&"permission"));
+    });
+}
+
+#[test]
+fn a_turn_that_only_waited_on_an_approval_ends_once_its_answer_is_written() {
+    runtime().block_on(async {
+        let permission = AdapterEvent::PermissionRequest {
+            turn_id: identity_one("turn-envelope"),
+            item_id: identity_one("permission-item"),
+            external_request_id: ExternalId::new("permissionRequest", "request-allow")
+                .expect("request"),
+            payload: NormalizedPayload::PermissionRequest {
+                user_input: None,
+                category: sage_acp_protocol::intent::ToolCategory::Other,
+                summary: SafeText::new("summary", "permission").expect("summary"),
+                offered_option_kinds: None,
+                reason: None,
+            },
+            request_payload_digest: [3; 32],
+        };
+        let (mut driver, shared, _, _) = build_driver(
+            vec![owned(vec![permission])],
+            VecDeque::from([FrameWriteOutcome::Complete]),
+        );
+        let mailbox = DriverMailbox::new().expect("mailbox");
+        mailbox
+            .try_push_chunk(b"{}\n".to_vec())
+            .expect("permission ingress");
+        driver
+            .run_next(&mailbox)
+            .await
+            .expect("permission journaled");
+        let request_id = shared
+            .0
+            .lock()
+            .expect("shared")
+            .durable
+            .iter()
+            .flatten()
+            .find_map(|event| match event {
+                DurableAdapterEvent::PermissionRequest { intent, .. } => {
+                    Some(intent.request_id.clone())
+                }
+                _ => None,
+            })
+            .expect("durable scoped permission request");
+        shared.0.lock().expect("shared").delivered = Some(owned(vec![terminal(
+            identity_one("end"),
+            TurnState::Completed,
+        )]));
+
+        driver
+            .resolve_permission(&request_id, PermissionDecision::AllowOnce)
+            .await
+            .expect("allow written");
+
+        let state = shared.0.lock().expect("shared");
+        assert!(state.delivered.is_none(), "the written answer was reported");
+        assert!(state.durable.iter().flatten().any(|event| matches!(
+            event,
+            DurableAdapterEvent::Turn { state, .. } if state.is_terminal()
+        )));
     });
 }
 

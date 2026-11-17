@@ -26,13 +26,14 @@ impl SdkBridge {
     ) -> Result<Inbound, BridgeError> {
         let mut inbound = Inbound::default();
         let nested = !sdk.get("parent_tool_use_id").is_none_or(Value::is_null);
-        match sdk.get("type").and_then(Value::as_str) {
+        let kind = sdk.get("type").and_then(Value::as_str);
+        if !nested && !self.observe_run(&sdk, &mut inbound) {
+            return Ok(inbound);
+        }
+        match kind {
             Some("control_response") => self.control_response(&sdk["response"], &mut inbound)?,
             Some("control_request") => self.control_request(&sdk, &mut inbound)?,
-            Some("control_cancel_request") => {
-                let request_id = sdk.get("request_id").and_then(Value::as_str);
-                self.withdraw(request_id.ok_or(BridgeError::Frame)?, &mut inbound);
-            }
+            Some("control_cancel_request") => self.withdraw(&sdk, &mut inbound)?,
             // Results still finish the rows a subagent's approvals opened.
             Some("user") => {
                 self.tool_results(&sdk, &mut inbound);
@@ -50,6 +51,7 @@ impl SdkBridge {
             Some(_) => {}
             None => return Err(BridgeError::Frame),
         }
+        self.continue_stop(&mut inbound);
         Ok(inbound)
     }
 
@@ -62,7 +64,7 @@ impl SdkBridge {
             .get("request_id")
             .and_then(Value::as_str)
             .ok_or(BridgeError::Frame)?;
-        let pending = self.pending.remove(request_id).ok_or(BridgeError::Frame)?;
+        let pending = self.answered_request(request_id)?;
         if response.get("subtype").and_then(Value::as_str) != Some("success") {
             let message = response
                 .get("error")
@@ -72,7 +74,7 @@ impl SdkBridge {
                 Pending::Control => Self::controlled(Err(message), inbound),
                 Pending::Passive(request) => request.answered(Err(message), inbound),
                 Pending::Fork(_) => self.forked(None, inbound),
-                Pending::Withdraw(uuid) => self.withdrawn(uuid, inbound),
+                Pending::Withdraw(uuid) => self.withdrawn(uuid, None, inbound),
                 _ => {}
             }
             if let Some(id) = pending.acp_id() {
@@ -143,8 +145,8 @@ impl SdkBridge {
                     json!({"configOptions": settings.config_options()}),
                 ));
             }
-            Pending::Interrupt => {}
-            Pending::Withdraw(uuid) => self.withdrawn(&uuid, inbound),
+            Pending::Interrupt => self.interrupted_idle(inbound),
+            Pending::Withdraw(uuid) => self.withdrawn(&uuid, Some(reply), inbound),
             Pending::Control => Self::controlled(Ok(reply), inbound),
             Pending::Passive(request) => request.answered(Ok(reply), inbound),
             Pending::Abandoned => {}
@@ -320,23 +322,23 @@ impl SdkBridge {
     }
 
     pub(super) fn result(&mut self, sdk: &Value, inbound: &mut Inbound) {
-        if self.prompt.is_none() || self.holds_result(sdk) {
+        let Some(sdk) = self.turn_end(sdk) else {
             return;
-        }
+        };
         let Some(id) = self.prompt.take() else {
             return;
         };
         self.end_steers(inbound);
-        for (tool, name) in std::mem::take(&mut self.tools) {
+        for (tool, name, status) in self.unfinished_tools() {
             inbound.acp.push(self.update(json!({
-                "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": "failed",
+                "sessionUpdate": "tool_call_update", "toolCallId": tool, "status": status,
                 "_meta": {"claudeCode": {"toolName": name}},
             })));
         }
         self.withdraw_open(inbound);
         self.end_retry(inbound);
         self.end_children(inbound);
-        self.context_size = context_window(sdk).or(self.context_size);
+        self.context_size = context_window(&sdk).or(self.context_size);
         if let Some(used) = self.context_tokens {
             self.report_context(used, inbound);
         }
@@ -346,9 +348,9 @@ impl SdkBridge {
         } else if failed && self.auth_failed {
             acp_error(id, AUTH_REQUIRED, "Authentication required")
         } else if failed {
-            acp_error(id, INTERNAL_ERROR, &failure_message(sdk))
+            acp_error(id, INTERNAL_ERROR, &failure_message(&sdk))
         } else {
-            let mut result = json!({"stopReason": stop_reason(sdk)});
+            let mut result = json!({"stopReason": stop_reason(&sdk)});
             if let Some(usage) = turn_usage(&sdk["usage"]) {
                 result["usage"] = usage;
             }

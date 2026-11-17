@@ -1,5 +1,5 @@
-//! Requests outside a turn or beyond the session's card limit are declined here, before the
-//! session sees them.
+//! Requests beyond the session's card limit are declined here, before the session sees them. A
+//! request with no turn open (a background subagent's) opens one once Sage has prompted.
 
 use serde_json::{Value, json};
 
@@ -30,7 +30,7 @@ const EXIT_PLAN: [(&str, &str, &str, &str); 2] = [
 const DECLINED: &str = "The user declined this tool use.";
 const KEEP_PLANNING: &str = "The user chose to keep planning.";
 const TOO_MANY: &str = "Too many approvals are already waiting for the user.";
-const NO_TURN: &str = "The user's turn has ended, so no one can approve this now.";
+const NO_TURN: &str = "No turn has started yet, so no one can approve this now.";
 /// Questions beyond what a Sage card shows; declining with this reason makes
 /// Claude ask in its reply instead.
 const QUESTIONS_UNSUPPORTED: &str = "Sage cannot show these questions. \
@@ -47,8 +47,12 @@ impl SdkBridge {
             .get("tool_name")
             .and_then(Value::as_str)
             .ok_or(BridgeError::Frame)?;
-        if self.prompt.is_none() {
+        if !self.prompted {
             inbound.replies.push(decision(request_id, deny(NO_TURN)));
+            return Ok(());
+        }
+        if self.declining {
+            inbound.replies.push(decision(request_id, deny(DECLINED)));
             return Ok(());
         }
         if self.permissions.len() + self.answering.len() >= OPEN_APPROVALS {
@@ -90,7 +94,7 @@ impl SdkBridge {
                 inbound.replies.push(decision(request_id, deny(TOO_MANY)));
                 return Ok(());
             }
-            self.tools.insert(tool_call_id, name.to_owned());
+            self.tools.insert(tool_call_id.clone(), name.to_owned());
             let mut row = tool_call.clone();
             row.insert("sessionUpdate".into(), "tool_call".into());
             inbound.acp.push(self.update(row.into()));
@@ -119,6 +123,10 @@ impl SdkBridge {
             });
         }
         options.push(json!({"optionId": REJECT, "name": "No", "kind": "reject_once"}));
+        if self.prompt.is_none() {
+            inbound.started = true;
+            self.approval_turn = true;
+        }
         self.next_permission += 1;
         self.permissions.insert(
             self.next_permission,
@@ -128,6 +136,11 @@ impl SdkBridge {
                 suggestions,
                 questions,
                 plan_exit: name == "ExitPlanMode",
+                agent: request
+                    .get("agent_id")
+                    .and_then(Value::as_str)
+                    .map(str::to_owned),
+                tool: tool_call_id,
             },
         );
         inbound.acp.push(json!({
@@ -139,7 +152,16 @@ impl SdkBridge {
         Ok(())
     }
 
-    pub(super) fn withdraw(&mut self, request_id: &str, inbound: &mut Inbound) {
+    /// Claude Code withdrew an approval it asked for.
+    pub(super) fn withdraw(
+        &mut self,
+        sdk: &Value,
+        inbound: &mut Inbound,
+    ) -> Result<(), BridgeError> {
+        let request_id = sdk
+            .get("request_id")
+            .and_then(Value::as_str)
+            .ok_or(BridgeError::Frame)?;
         self.permissions.retain(|wire, permission| {
             let keep = permission.request_id != request_id;
             if !keep {
@@ -147,6 +169,25 @@ impl SdkBridge {
             }
             keep
         });
+        Ok(())
+    }
+
+    /// Declines every open approval: Claude Code still waits on them.
+    pub(super) fn decline_open(&mut self, inbound: &mut Inbound) {
+        let wires = self.deny_open(inbound);
+        inbound.withdrawn.extend(wires);
+    }
+
+    /// Declines every open approval; returns their cards' wire ids.
+    pub(super) fn deny_open(&mut self, inbound: &mut Inbound) -> Vec<u64> {
+        let mut wires = Vec::with_capacity(self.permissions.len());
+        for (wire, permission) in std::mem::take(&mut self.permissions) {
+            wires.push(wire);
+            inbound
+                .replies
+                .push(decision(&permission.request_id, deny(DECLINED)));
+        }
+        wires
     }
 
     pub(super) fn withdraw_open(&mut self, inbound: &mut Inbound) {
@@ -171,42 +212,59 @@ impl SdkBridge {
         let selected = (outcome.get("outcome").and_then(Value::as_str) == Some("selected"))
             .then(|| outcome.get("optionId").and_then(Value::as_str))
             .flatten();
-        if let Some(texts) = &permission.questions {
+        let response = if let Some(texts) = &permission.questions {
             let cancelled = outcome.get("outcome").and_then(Value::as_str) == Some("cancelled");
             let answers = (selected == Some(ANSWER)).then(|| result.and_then(|r| r.get("answers")));
-            let response = if cancelled {
+            if cancelled {
                 deny(DECLINED)
             } else {
                 let input = super::questions::answered(&permission.input, texts, answers.flatten());
                 json!({"behavior": "allow", "updatedInput": input})
-            };
-            self.answering.insert(permission.request_id.clone());
-            return Ok(decision(&permission.request_id, response));
+            }
+        } else {
+            Self::response(
+                permission.input,
+                permission.suggestions,
+                permission.plan_exit,
+                selected,
+            )
+        };
+        if response["behavior"] == "allow" {
+            self.allowed_tools.insert(permission.tool, permission.agent);
         }
-        let response = match selected {
-            Some(ALLOW_ONCE) => json!({"behavior": "allow", "updatedInput": permission.input}),
+        self.answering.insert(permission.request_id.clone());
+        Ok(decision(&permission.request_id, response))
+    }
+
+    /// What Claude Code is told for the option a card's answer selected.
+    fn response(
+        input: Value,
+        suggestions: Option<Value>,
+        plan_exit: bool,
+        selected: Option<&str>,
+    ) -> Value {
+        match selected {
+            Some(ALLOW_ONCE) => json!({"behavior": "allow", "updatedInput": input}),
             Some(ALLOW_ALWAYS | ALLOW_EDITS) => json!({
                 "behavior": "allow",
-                "updatedInput": permission.input,
-                "updatedPermissions": permission.suggestions.unwrap_or_else(|| json!([])),
+                "updatedInput": input,
+                "updatedPermissions": suggestions.unwrap_or_else(|| json!([])),
             }),
             Some(option) => match EXIT_PLAN.iter().find(|(id, ..)| *id == option) {
                 Some((.., mode)) => json!({
                     "behavior": "allow",
-                    "updatedInput": permission.input,
+                    "updatedInput": input,
                     "updatedPermissions": [{"type": "setMode", "mode": mode, "destination": "session"}],
                 }),
                 None => deny(DECLINED),
             },
             // Declining a plan stops the turn so the user can say what to
             // change, rather than Claude guessing and asking again.
-            None if permission.plan_exit => json!({
+            None if plan_exit => json!({
                 "behavior": "deny", "message": KEEP_PLANNING, "interrupt": true,
             }),
             None => deny(DECLINED),
-        };
-        self.answering.insert(permission.request_id.clone());
-        Ok(decision(&permission.request_id, response))
+        }
     }
 }
 

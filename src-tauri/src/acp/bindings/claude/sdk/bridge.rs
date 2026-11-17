@@ -17,6 +17,7 @@ mod notices;
 mod outbound;
 mod permission;
 mod questions;
+mod runs;
 mod steer;
 mod subagents;
 mod usage;
@@ -58,6 +59,10 @@ pub(super) struct Inbound {
     pub(super) children: Vec<crate::acp::bindings::claude::runtime::ChildEvent>,
     /// Mid-turn messages, by id: taken up (or queued to be), or not.
     pub(super) steers: Vec<(String, bool)>,
+    /// Claude Code started a run of its own (after a background task ended)
+    /// or asked for an approval with no turn open: the frame opens a turn,
+    /// which `adopt` names, or `decline` refuses.
+    pub(super) started: bool,
 }
 
 #[derive(Debug)]
@@ -93,6 +98,10 @@ struct Permission {
     questions: Option<Vec<String>>,
     /// An `ExitPlanMode` card: declining it ends the turn in plan mode.
     plan_exit: bool,
+    /// The tool's row.
+    tool: String,
+    /// Claude Code's id for the subagent that asked, if one did.
+    agent: Option<String>,
 }
 
 #[derive(Debug)]
@@ -104,11 +113,29 @@ pub(super) struct SdkBridge {
     pending: BTreeMap<String, Pending>,
     next_request: u64,
     prompt: Option<Value>,
+    /// Sage has prompted this session. Until then Claude Code runs nothing
+    /// on its own, so nothing it sends opens a turn.
+    prompted: bool,
+    /// The open turn was opened for an approval alone, with no run of
+    /// Claude Code's in it.
+    approval_turn: bool,
+    /// Sage refused the run Claude Code started: its frames are dropped
+    /// until its `result`.
+    declining: bool,
+    /// A run of Claude Code's has started and not yet reported its `result`.
+    running: bool,
+    /// Claude Code's `system/init` advertises `interrupt_requeue_taken_v1`:
+    /// a prompt stamped `requeue_if_interrupted_within_ms` that an interrupt
+    /// stops as a run takes it in goes back to its queue instead of being lost.
+    requeue: bool,
     interrupted: bool,
     auth_failed: bool,
     permissions: BTreeMap<u64, Permission>,
     /// Claude Code request ids whose answer is not yet delivered.
     answering: BTreeSet<String>,
+    /// Tools the open turn's approvals allowed, with the id of the subagent
+    /// that asked, if one did.
+    allowed_tools: BTreeMap<String, Option<String>>,
     next_permission: u64,
     tools: BTreeMap<String, String>,
     /// Open subagents, by their `Task` tool use id.
@@ -120,6 +147,24 @@ pub(super) struct SdkBridge {
     compacting: bool,
     /// Mid-turn messages Claude Code has not yet taken up.
     steers: Vec<String>,
+    /// The prompt Sage wrote, by its `uuid`, until Claude Code reports a
+    /// run took it up: a run before that is one Claude Code started on its
+    /// own, so its `result` does not end the prompt's turn.
+    waiting_prompt: Option<String>,
+    /// The open turn's prompt, stamped to go back to Claude Code's queue if
+    /// Sage's interrupt of a declined run stops it. A stop withdraws it
+    /// before interrupting, so the user's own interrupt never puts it back.
+    requeuable: Option<String>,
+    /// Claude Code has reported a `command_lifecycle`. A build that does not
+    /// report them never says a prompt started, so no `result` is held
+    /// waiting for one.
+    lifecycles: bool,
+    /// Why Claude Code would not run the prompt, ending the turn once the
+    /// run still going reports its end.
+    prompt_failure: Option<&'static str>,
+    stop: steer::Stop,
+    /// Requests of a stop whose turn ended unanswered, so a late reply is dropped.
+    forgotten: VecDeque<String>,
     /// A run's `result` that did not end the turn, for when no waiting
     /// message runs after all.
     held: Option<Value>,
@@ -149,10 +194,16 @@ impl SdkBridge {
             pending: BTreeMap::new(),
             next_request: 0,
             prompt: None,
+            prompted: false,
+            approval_turn: false,
+            declining: false,
+            running: false,
+            requeue: false,
             interrupted: false,
             auth_failed: false,
             permissions: BTreeMap::new(),
             answering: BTreeSet::new(),
+            allowed_tools: BTreeMap::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
             subagents: BTreeMap::new(),
@@ -161,6 +212,12 @@ impl SdkBridge {
             retrying: false,
             compacting: false,
             steers: Vec::new(),
+            waiting_prompt: None,
+            requeuable: None,
+            lifecycles: false,
+            prompt_failure: None,
+            stop: steer::Stop::default(),
+            forgotten: VecDeque::new(),
             held: None,
             context_tokens: None,
             context_size: None,
@@ -232,6 +289,8 @@ impl SdkBridge {
         match sent {
             Sent::Prompt => {
                 self.prompt = None;
+                self.waiting_prompt = None;
+                self.requeuable = None;
                 self.interrupted = false;
             }
             Sent::Control(request_id) => {
@@ -276,3 +335,6 @@ mod tests;
 
 #[cfg(test)]
 mod subagent_tests;
+
+#[cfg(test)]
+mod harness_turn_tests;

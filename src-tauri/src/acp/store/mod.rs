@@ -11,6 +11,8 @@ pub(crate) mod commands;
 mod database_store;
 pub(crate) mod edit_disposition;
 mod facts;
+mod harness_turn;
+pub(crate) use harness_turn::prompted_turn;
 mod history;
 mod history_activities;
 mod history_cursor;

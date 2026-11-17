@@ -32,6 +32,13 @@ impl WriteFence {
         }
     }
 
+    pub(crate) fn delivered(turn_id: SageTurnId) -> Self {
+        Self {
+            turn_id,
+            phase: Phase::StdoutOpen,
+        }
+    }
+
     pub(crate) fn begin_write(&mut self, turn_id: &SageTurnId) -> Result<(), WriteFenceError> {
         self.exact(turn_id)?;
         if self.phase != Phase::Bound {

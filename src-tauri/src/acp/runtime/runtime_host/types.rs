@@ -10,6 +10,8 @@ use sage_acp_protocol::{
 use std::{sync::mpsc, time::Instant};
 
 mod command;
+mod notification;
+pub(crate) use notification::{StartNotification, TerminalNotification};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum HostState {
@@ -47,6 +49,7 @@ pub(crate) enum HostOutcome {
     CancelQueued,
     PermissionResolved,
     SessionConfigured,
+    TurnStarted,
     TurnTerminal,
     BackgroundTurnContinues,
     ProjectSwitchObserved,
@@ -331,6 +334,11 @@ pub(super) enum HostCommand {
     },
     Steer(HostSteerIntent),
     Cancel(HostCancelIntent),
+    /// The harness started a Turn on its own and the worker opened it.
+    TurnStarted {
+        owner: RuntimeOwner,
+        turn_id: SageTurnId,
+    },
     Terminal {
         owner: RuntimeOwner,
         cursor: AdapterTurnCursor,
@@ -352,27 +360,4 @@ pub(super) enum HostReply {
     Prepared(SageTurnId),
     #[allow(dead_code, reason = "only tests query the host state")]
     State(HostState),
-}
-
-pub(crate) struct TerminalNotification {
-    pub(super) response: mpsc::Receiver<Result<HostReply, HostError>>,
-    pub(super) deadline: Instant,
-}
-
-impl TerminalNotification {
-    pub(crate) fn wait(self) -> Result<(), HostError> {
-        let remaining = self.deadline.saturating_duration_since(Instant::now());
-        match self.response.recv_timeout(remaining) {
-            Ok(Ok(HostReply::Outcome(HostOutcome::TurnTerminal))) => Ok(()),
-            Ok(Ok(
-                HostReply::Outcome(_)
-                | HostReply::NativeRpc(_)
-                | HostReply::Prepared(_)
-                | HostReply::State(_),
-            )) => Err(HostError::State),
-            Ok(Err(error)) => Err(error),
-            Err(mpsc::RecvTimeoutError::Timeout) => Err(HostError::Deadline),
-            Err(mpsc::RecvTimeoutError::Disconnected) => Err(HostError::Closed),
-        }
-    }
 }
