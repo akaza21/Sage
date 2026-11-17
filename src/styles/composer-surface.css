@@ -1,5 +1,6 @@
 .chat-dock-frame {
   display: flex;
+  min-width: 0;
   min-height: 0;
   max-height: 100%;
   flex-direction: column;
@@ -263,49 +264,6 @@
   flex: 0 1 auto;
 }
 
-/* The project reads as a label in its surroundings, never as a chip. */
-.project-scope {
-  display: inline-flex;
-  min-width: 28px;
-  max-width: 12rem;
-  height: var(--control-height-compact);
-  flex: 0 1 auto;
-  align-items: center;
-  gap: var(--space-1);
-  padding: 0 var(--space-2);
-  overflow: hidden;
-  color: inherit;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  white-space: nowrap;
-}
-
-.project-scope > span {
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.project-scope.select-control {
-  --select-control-trigger-min-width: var(--control-height-compact);
-  --select-control-trigger-padding: 0 var(--space-1);
-  --radius-select-control-trigger: var(--radius-pill);
-  padding: 0;
-  overflow: visible;
-}
-
-.project-scope .searchable-picker {
-  width: 100%;
-}
-
-.project-scope .searchable-picker__chevron {
-  display: none;
-}
-
-.project-scope.select-control .searchable-picker__trigger {
-  font-weight: var(--font-weight-medium);
-}
-
-.project-scope__icon,
 .select-control__icon {
   flex: 0 0 auto;
   color: var(--color-text-muted);
@@ -390,8 +348,6 @@
 @media (forced-colors: active) {
   .chat-dock,
   .composer__attachment,
-  .project-scope,
-  .project-scope__icon,
   .select-control__icon,
   .composer__attachment-remove {
     border: 1px solid CanvasText;

@@ -1,0 +1,112 @@
+/* ProjectScopeChip owns every style of the project picker; consumers pick a
+   variant and set only inherited type and colour around it. */
+.project-scope {
+  --picker-trigger-icon-size: var(--icon-size-sm);
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-1);
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.project-scope__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-scope__icon {
+  flex: none;
+}
+
+.project-scope__picker {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.project-scope .project-scope__trigger {
+  min-width: 0;
+  max-width: 100%;
+  min-height: var(--control-height-compact);
+  padding: 0 var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: inherit;
+  background: transparent;
+  font: inherit;
+  cursor: pointer;
+}
+
+.project-scope .project-scope__trigger:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
+}
+
+.project-scope--inline,
+.project-scope--inline .project-scope__trigger {
+  gap: var(--composer-location-icon-gap);
+}
+
+.project-scope--inline
+  .project-scope__trigger:is(:hover:not(:disabled), [aria-expanded="true"]) {
+  color: var(--color-text-emphasis);
+  background: var(--composer-control-hover);
+}
+
+.project-scope--caption,
+.project-scope--caption .project-scope__picker {
+  display: flex;
+  width: 100%;
+  justify-content: center;
+}
+
+.project-scope--caption .project-scope__trigger {
+  width: 100%;
+  min-height: 0;
+  justify-content: center;
+  padding: 0;
+  border-radius: var(--radius-none);
+  text-decoration: underline dotted;
+  text-underline-offset: var(--space-1);
+}
+
+.project-scope__caption {
+  display: block;
+  text-align: center;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.project-scope--caption:focus-within {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* Inside the "+" menu the picker is a menu row and takes the row's padding,
+   radius and type from the menu-item styles. */
+.project-scope--menu-item,
+.project-scope--menu-item .project-scope__picker {
+  display: flex;
+  width: 100%;
+}
+
+.project-scope--menu-item .project-scope__trigger {
+  width: 100%;
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-menu-row);
+  color: var(--menu-row-text, var(--color-text-secondary));
+  font-size: var(--menu-row-size, var(--font-size-xs));
+}
+
+@media (forced-colors: active) {
+  .project-scope--caption:focus-within {
+    outline-color: Highlight;
+  }
+
+  .project-scope--caption .project-scope__trigger {
+    color: LinkText;
+  }
+}

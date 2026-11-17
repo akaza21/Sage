@@ -89,6 +89,7 @@ export function SearchablePicker({
   triggerIcon,
   triggerLabel,
   triggerDetail,
+  chevron = true,
   sectionLabel,
   searchable = true,
   onSelect,
@@ -117,6 +118,7 @@ export function SearchablePicker({
   triggerLabel?: ReactNode;
   /** Rendered after the label as the trigger's own child, e.g. a menu row's description. */
   triggerDetail?: ReactNode;
+  chevron?: boolean;
   sectionLabel?: string;
   searchable?: boolean;
   onSelect: (id: string) => void;
@@ -219,11 +221,13 @@ export function SearchablePicker({
           {triggerLabel ?? selectedLabel ?? emptyLabel}
         </span>
         {triggerDetail}
-        <ChevronDown
-          className="searchable-picker__chevron"
-          size={14}
-          aria-hidden="true"
-        />
+        {chevron ? (
+          <ChevronDown
+            className="searchable-picker__chevron"
+            size={14}
+            aria-hidden="true"
+          />
+        ) : null}
       </button>
       {loadFailed ? (
         <ResourceStateNotice

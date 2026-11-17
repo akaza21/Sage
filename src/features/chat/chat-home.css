@@ -30,68 +30,8 @@
   overflow-wrap: anywhere;
 }
 
-.chat-home .project-scope {
-  display: inline-flex;
-  width: 100%;
-  max-width: 100%;
-  justify-content: center;
-  margin-top: 0;
-  height: auto;
-  padding: 0;
-  border-radius: var(--radius-none);
-  color: inherit;
-  font: inherit;
-  vertical-align: bottom;
-}
-
-.chat-home .searchable-picker {
-  display: block;
-  width: 100%;
-  max-width: 100%;
-}
-
-.chat-home .searchable-picker__trigger-label,
-.chat-home .project-scope__label {
-  overflow: visible;
-  text-align: center;
-  white-space: normal;
-  overflow-wrap: anywhere;
-}
-
-.chat-home .project-scope__icon {
-  display: none;
-}
-
-.chat-home .project-scope:focus-within {
-  outline: var(--focus-ring);
-  outline-offset: var(--focus-ring-offset);
-}
-
-.chat-home .searchable-picker__trigger {
-  width: 100%;
-  justify-content: center;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  border-radius: var(--radius-none);
-  color: inherit;
-  background: none;
-  font: inherit;
-  line-height: inherit;
-  text-decoration: underline dotted;
-  text-underline-offset: var(--space-1);
-}
-
 @media (forced-colors: active) {
-  .chat-home .project-scope:focus-within {
-    outline-color: Highlight;
-  }
-
   .chat-home > svg {
     color: CanvasText;
-  }
-
-  .chat-home .searchable-picker__trigger {
-    color: LinkText;
   }
 }

@@ -1,6 +1,5 @@
 /* A tab on top of the composer, inset so the composer's corners stay whole. */
 .composer-location {
-  --picker-trigger-icon-size: var(--icon-size-sm);
   display: flex;
   min-width: 0;
   height: var(--composer-location-height);
@@ -10,53 +9,22 @@
   margin-inline: var(--composer-location-inset);
   padding-inline: var(--space-2);
   overflow: hidden;
-  border-radius: var(--radius-lg) var(--radius-lg) var(--radius-none)
-    var(--radius-none);
+  border-radius: var(--radius-lg);
+  border-end-start-radius: var(--radius-none);
+  border-end-end-radius: var(--radius-none);
   color: var(--composer-control-text);
   background: var(--composer-location-fill);
   font-size: var(--font-size-sm);
   font-weight: var(--font-weight-medium);
 }
 
-.composer-location__item,
-.composer-location .project-scope.select-control,
-.composer-location .searchable-picker__trigger {
-  gap: var(--composer-location-icon-gap);
-}
-
 .composer-location__item {
   display: inline-flex;
   flex: none;
   align-items: center;
+  gap: var(--composer-location-icon-gap);
   padding-inline: var(--space-1);
   white-space: nowrap;
-}
-
-.composer-location .project-scope {
-  --select-control-trigger-padding: 0 var(--space-1);
-  --radius-select-control-trigger: var(--radius-sm);
-  min-width: 0;
-  padding: 0;
-  color: inherit;
-  font: inherit;
-}
-
-.composer-location .searchable-picker__trigger {
-  color: inherit;
-  font: inherit;
-}
-
-.composer-location
-  .searchable-picker__trigger:is(
-    :hover:not(:disabled),
-    [aria-expanded="true"]
-  ) {
-  color: var(--color-text-emphasis);
-  background: var(--composer-control-hover);
-}
-
-.composer-location .project-scope__icon {
-  color: inherit;
 }
 
 @media (forced-colors: active) {

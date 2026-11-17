@@ -6,23 +6,24 @@ import { selectProjectSwitchBlocked } from "../../app/workbenchSelectors";
 import { Folder } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import type { MenuPlacement } from "../../ui/menuPopoverPosition";
-import "./project-scope-menu-item.css";
+import "./project-scope.css";
 
 export function ProjectScopeChip({
   projectName,
   disabled = false,
   open,
   onOpenChange,
-  menuItem = false,
+  variant = "inline",
   popoverPlacement,
 }: {
   projectName: string;
   disabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  menuItem?: boolean;
+  variant?: "inline" | "caption" | "menuItem";
   popoverPlacement?: MenuPlacement;
 }) {
+  const menuItem = variant === "menuItem";
   const projects = useWorkbenchStore((state) => state.projects);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
@@ -46,29 +47,39 @@ export function ProjectScopeChip({
           ? `Project: ${projectName} (No other projects available)`
           : undefined
       }
-      className={
-        candidates.length > 0 ? "select-control project-scope" : "project-scope"
-      }
+      className={`project-scope project-scope--${variant === "menuItem" ? "menu-item" : variant}`}
     >
       {candidates.length > 0 ? (
         <SearchablePicker
           triggerRole={menuItem ? "menuitem" : undefined}
+          className="project-scope__picker"
           triggerClassName={
-            menuItem ? "menu-item composer__add-action" : undefined
+            menuItem
+              ? "project-scope__trigger menu-item composer__add-action"
+              : "project-scope__trigger"
           }
+          chevron={false}
           portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
           popoverClassName="composer__popover composer__project-menu"
           popoverPlacement={popoverPlacement}
           ariaLabel={menuItem ? "Work in a project" : `Project: ${projectName}`}
           stateTitle={`Project: ${projectName}`}
           triggerIcon={
-            <Folder
-              className="project-scope__icon"
-              size={14}
-              aria-hidden="true"
-            />
+            variant === "caption" ? undefined : (
+              <Folder
+                className="project-scope__icon"
+                size={14}
+                aria-hidden="true"
+              />
+            )
           }
-          triggerLabel={menuItem ? "Work in a project" : undefined}
+          triggerLabel={
+            menuItem ? (
+              "Work in a project"
+            ) : variant === "caption" ? (
+              <span className="project-scope__caption">{projectName}</span>
+            ) : undefined
+          }
           triggerDetail={
             menuItem ? (
               <span className="composer__action-description">
@@ -99,13 +110,19 @@ export function ProjectScopeChip({
         />
       ) : (
         <>
-          <Folder
-            className="project-scope__icon"
-            size={14}
-            aria-hidden="true"
-          />
+          {variant === "caption" ? null : (
+            <Folder
+              className="project-scope__icon"
+              size={14}
+              aria-hidden="true"
+            />
+          )}
           <span
-            className="project-scope__label"
+            className={
+              variant === "caption"
+                ? "project-scope__label project-scope__caption"
+                : "project-scope__label"
+            }
             title={`Project: ${projectName}`}
           >
             {projectName}

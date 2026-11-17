@@ -170,7 +170,7 @@ test("location strip project target fits its chip without bleeding into adjacent
     });
   });
   const chip = page.locator(
-    ".chat-dock-frame .composer-location .project-scope.select-control",
+    ".chat-dock-frame .composer-location .project-scope--inline",
   );
   await expect(chip).toBeVisible();
   const geometry = await chip.evaluate((element) => {
@@ -207,6 +207,15 @@ test("location strip project target fits its chip without bleeding into adjacent
   await expect(caption).toHaveCSS("box-shadow", "none");
   await expect(caption).toHaveCSS("backdrop-filter", "none");
   await expect(caption).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  // High contrast keeps both project labels unboxed.
+  await page.emulateMedia({ forcedColors: "active" });
+  for (const label of [chip, page.locator(".chat-home .project-scope")]) {
+    await expect(label).toHaveCSS("border-left-width", "0px");
+    await expect(label.locator(".searchable-picker__trigger")).toHaveCSS(
+      "border-left-width",
+      "0px",
+    );
+  }
 });
 
 test("queued messages and the edit disclosure share the dock and never overlap input", async ({
