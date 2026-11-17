@@ -204,10 +204,12 @@ pub(crate) fn next_token(text: &str, value: bool) -> (&str, &str) {
 
 /// The key a token may start: the text up to its first [`TOKEN_JOINERS`]
 /// character or whitespace, read at most [`KEY_SCAN_BYTES`] ahead.
-#[derive(Clone, Copy)]
 struct Key {
-    end: usize,
+    /// `None` when the key runs past the bytes read ahead.
+    end: Option<usize>,
     assigned: bool,
+    /// Set once a key with no known end might be cut.
+    closed: bool,
 }
 
 impl Key {
@@ -219,22 +221,35 @@ impl Key {
         let window = &text[..scan];
         let end = window
             .find(|character: char| character.is_whitespace() || TOKEN_JOINERS.contains(&character))
-            .unwrap_or(window.len());
+            .or((scan == text.len()).then_some(scan));
         Self {
             end,
-            assigned: window[end..].starts_with(['=', ':']) && !window[end..].starts_with("://"),
+            assigned: end.is_some_and(|end| {
+                window[end..].starts_with(['=', ':']) && !window[end..].starts_with("://")
+            }),
+            closed: false,
         }
     }
 
     /// Whether splitting at `at` cuts a key: the key of an assignment, or a
     /// sensitive key, splits only into a part that reads as a sensitive key
     /// itself, outside the quotes the key is written in and, for a flag such
-    /// as `--old—token`, as a sensitive flag too.
-    fn cut_at(self, text: &str, at: usize) -> bool {
-        if at > self.end {
+    /// as `--old—token`, as a sensitive flag too. A key running past the
+    /// bytes read ahead has no known end, so once the text before `at` reads
+    /// as a sensitive key, a flag or a quoted key, the token is never split.
+    fn cut_at(&mut self, text: &str, at: usize) -> bool {
+        let Some(end) = self.end else {
+            let before = &text[..at];
+            self.closed = self.closed
+                || before.starts_with('-')
+                || before.contains(['"', '\''])
+                || credentials::sensitive_key(before);
+            return self.closed;
+        };
+        if at > end {
             return false;
         }
-        let (key, part) = (&text[..self.end], &text[at..self.end]);
+        let (key, part) = (&text[..end], &text[at..end]);
         (self.assigned || credentials::sensitive_key(key))
             && ((key.ends_with(['"', '\'']) && key[..at].contains(['"', '\'']))
                 || !credentials::sensitive_key(part)

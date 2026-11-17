@@ -219,6 +219,14 @@ impl HarnessAdapter for Adapter {
     ) -> Result<(), AdapterRuntimeError> {
         Ok(())
     }
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        Ok(Vec::new())
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
 }
 
 impl HarnessAdapter for ConfigThenLateAdapter {
@@ -251,6 +259,14 @@ impl HarnessAdapter for ConfigThenLateAdapter {
         _: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
         Ok(())
+    }
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        Ok(Vec::new())
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
     }
 }
 
@@ -336,6 +352,14 @@ impl HarnessAdapter for SequencedAdapter {
         _: EgressResolution,
     ) -> Result<(), AdapterRuntimeError> {
         Ok(())
+    }
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        Ok(Vec::new())
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
     }
 }
 

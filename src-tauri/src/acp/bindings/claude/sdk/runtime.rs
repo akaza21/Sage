@@ -385,6 +385,9 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.settle_sent(&token, resolution);
         self.session.resolve_egress(token, resolution)
     }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
 }
 
 #[path = "runtime_delivery.rs"]

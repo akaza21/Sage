@@ -70,6 +70,9 @@ impl HarnessAdapter for ObservedPi {
     ) -> Result<(), AdapterRuntimeError> {
         self.inner.resolve_egress(token, resolution)
     }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.inner.held_batch()
+    }
 }
 
 pub(super) fn ready_adapter() -> ObservedPi {

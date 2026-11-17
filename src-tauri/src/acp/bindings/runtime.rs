@@ -344,6 +344,9 @@ impl HarnessAdapter for NativeRuntime {
         let published = self.publish_config();
         result.and(published)
     }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.0.held_batch()
+    }
 }
 
 impl NativeRuntime {

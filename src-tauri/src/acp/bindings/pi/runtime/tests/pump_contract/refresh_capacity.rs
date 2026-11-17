@@ -60,6 +60,14 @@ impl HarnessAdapter for SaturatedRefresh {
     ) -> Result<(), AdapterRuntimeError> {
         self.runtime.resolve_egress(token, resolution)
     }
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        self.runtime.unfinished_replies()
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.runtime.held_batch()
+    }
 }
 
 #[tokio::test]

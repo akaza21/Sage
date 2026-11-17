@@ -318,6 +318,9 @@ impl HarnessAdapter for StandardAcpRuntime {
         }
         Ok(())
     }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
 }
 
 impl StandardAcpRuntime {

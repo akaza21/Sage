@@ -845,12 +845,46 @@ fn a_sensitive_key_holding_punctuation_outside_ascii_stays_whole() {
         "password—backup = hunter2Zq",
         "--password—backup hunter2Zq",
         "回答，password’s=hunter2Zq",
-    ] {
+    ]
+    .into_iter()
+    .map(str::to_owned)
+    .chain(
+        // Keys running past the bytes read ahead for a key, crossing them at
+        // every byte around the boundary.
+        (240..270).flat_map(|filler| {
+            let long = "a".repeat(filler);
+            [
+                format!("{{\"password{long}—backup\":\"hunter2Zq\"}}"),
+                format!("password{long}—backup:hunter2Zq"),
+                format!("password{long}—backup=hunter2Zq"),
+                format!("--password{long}—backup hunter2Zq"),
+                format!("{{\"{long}—password\":\"hunter2Zq\"}}"),
+                format!("回答，api_key{}，backup=hunter2Zq", "密".repeat(filler / 3)),
+            ]
+        }),
+    ) {
+        let input = input.as_str();
         for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
             let shown = redact("test", input, 4096, mode).unwrap();
             assert!(!shown.contains("hunter2Zq"), "{mode:?}: {input} => {shown}");
         }
         assert!(!super::reply_text(input).contains("hunter2Zq"), "{input}");
+    }
+}
+
+#[test]
+fn a_long_run_without_spaces_still_starts_tokens_at_punctuation_and_scripts() {
+    let lead = "回答".repeat(200);
+    for input in [
+        format!("{lead}，--password hunter2Zq"),
+        format!("{lead}请用--password hunter2Zq"),
+        format!("{lead}Authorization: Bearer hunter2Zq"),
+    ] {
+        for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+            let shown = redact("test", &input, 4096, mode).unwrap();
+            assert!(!shown.contains("hunter2Zq"), "{mode:?}: {input} => {shown}");
+        }
+        assert!(!super::reply_text(&input).contains("hunter2Zq"), "{input}");
     }
 }
 
@@ -877,13 +911,17 @@ fn starting_tokens_at_punctuation_or_a_script_hides_all_that_spaces_alone_hide()
         state ^= state << 17;
         (state % bound as u64) as usize
     };
-    for case in 0..3000 {
+    for case in 0..4000 {
         let mark = MARKS[below(MARKS.len())];
         let base = KEYS[below(KEYS.len())];
-        let key = match below(4) {
+        // A long key runs past the bytes read ahead for a key.
+        let filler = "a".repeat(230 + below(50));
+        let key = match below(6) {
             0 => base.to_owned(),
             1 => format!("{base}{mark}backup"),
             2 => format!("old{mark}{base}"),
+            3 => format!("{base}{filler}{mark}backup"),
+            4 => format!("{filler}{mark}{base}"),
             _ => format!("{mark}{base}{mark}"),
         };
         let secret = format!("s3cr3t{case}Zq");

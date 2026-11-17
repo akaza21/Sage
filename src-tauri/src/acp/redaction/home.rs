@@ -232,7 +232,7 @@ impl HomePrefix {
             return !span.iter().all(|byte| CLOSING_PUNCTUATION.contains(byte));
         }
         if matches!(rest[0], b' ' | b'\t') {
-            return self.name_continues_after_space(rest);
+            return self.name_continues_after_space(rest) || self.path_continues_after_space(rest);
         }
         !rest
             .iter()
@@ -257,6 +257,31 @@ impl HomePrefix {
                         || CLOSING_PUNCTUATION.contains(&byte)
                 })
         })
+    }
+
+    /// Whether the words after a space go on into a path, as ` Smithson\x`
+    /// or ` Jane Smith\x` do, so the home folder's name runs on into a folder
+    /// beside it whether or not that folder was there when Sage started.
+    /// Words that read as a name start with a capital or a digit; a word
+    /// that starts lower case, as in ` and opened src\main.rs`, ends the name.
+    fn path_continues_after_space(&self, rest: &[u8]) -> bool {
+        let line = &rest[..rest.len().min(NAME_MAX)];
+        let line = line
+            .iter()
+            .position(|&byte| byte == b'\n' || byte == b'\r')
+            .map_or(line, |end| &line[..end]);
+        for word in line
+            .split(|&byte| byte == b' ' || byte == b'\t')
+            .filter(|word| !word.is_empty())
+        {
+            if word.iter().any(|&byte| self.is_separator(byte)) {
+                return true;
+            }
+            if !word[0].is_ascii_uppercase() && !word[0].is_ascii_digit() {
+                return false;
+            }
+        }
+        false
     }
 
     fn same_name(&self, text: &[u8], name: &[u8]) -> bool {

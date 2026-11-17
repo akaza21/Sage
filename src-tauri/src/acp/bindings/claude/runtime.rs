@@ -332,6 +332,9 @@ impl HarnessAdapter for ClaudeRuntime {
     ) -> Result<(), AdapterRuntimeError> {
         self.resolve_egress_inner(token, resolution)
     }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

@@ -121,15 +121,69 @@ fn a_reply_held_back_while_streaming_is_committed_whole_before_shutdown() {
     });
 }
 
-fn last_reply(database: &Database) -> String {
-    let connection = database.connection();
-    let page = load_chat_page(
-        &connection,
+#[test]
+fn a_turn_ending_with_more_open_replies_than_a_batch_holds_completes_through_the_native_runtime() {
+    runtime().block_on(async {
+        for count in [128, 129] {
+            let database = sign_in_tests::migrated_database();
+            let intent = session_intent().bind_turn(ActiveTurnIntent {
+                turn_id: turn("one"),
+                external_turn_id: Some(ExternalId::new("turn", "external-turn").unwrap()),
+                client_message_id: message(),
+            });
+            let (handle, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
+            let shutdown = JournalShutdown(handle.clone());
+            let task = runner.spawn();
+            let mut pump = AdapterPump::new(
+                crate::acp::bindings::runtime::NativeRuntime::new(started_codex_turn()),
+                SqliteAdapterBatchJournal::new(handle.clone(), intent.clone()),
+                Mapper,
+                Arc::new(ProjectionMailbox::default()),
+                intent,
+            )
+            .unwrap();
+            for index in 0..count {
+                let delta = codex_line(serde_json::json!({"method":"item/agentMessage/delta","params":{
+                    "threadId":"external-session","turnId":"external-turn",
+                    "itemId":format!("reply-{index}"),"delta":"done now"
+                }}));
+                pump.push_stdout_chunk(&delta, 10).await.unwrap();
+            }
+            let completed = codex_line(serde_json::json!({"method":"turn/completed","params":{
+                "threadId":"external-session","turn":{"id":"external-turn","status":"completed"}
+            }}));
+            pump.push_stdout_chunk(&completed, 11).await.unwrap();
+            assert!(pump.completed_turn_ready(), "{count}");
+            let page = chat_page(&database);
+            let turn = &page.turns.as_slice()[0];
+            assert_eq!(turn.state, TurnState::Completed, "{count}");
+            let whole = turn
+                .items
+                .as_slice()
+                .iter()
+                .filter(|item| matches!(&item.content, ItemContent::Text { text, .. } if text.as_str() == "done now"))
+                .count();
+            assert_eq!(whole, count);
+            drop(pump);
+            handle.close_when_drained();
+            task.await.unwrap();
+            drop(shutdown);
+        }
+    });
+}
+
+fn chat_page(database: &Database) -> crate::acp::projection::AcpChatPage {
+    load_chat_page(
+        &database.connection(),
         SageProjectId::parse("project-one").unwrap(),
         SageChatId::parse("chat-one").unwrap(),
         None,
     )
-    .unwrap();
+    .unwrap()
+}
+
+fn last_reply(database: &Database) -> String {
+    let page = chat_page(database);
     page.turns
         .as_slice()
         .iter()
@@ -194,14 +248,7 @@ fn started_codex_turn() -> CodexRuntime {
 }
 
 fn assert_failed_history(database: &Database) {
-    let connection = database.connection();
-    let page = load_chat_page(
-        &connection,
-        SageProjectId::parse("project-one").unwrap(),
-        SageChatId::parse("chat-one").unwrap(),
-        None,
-    )
-    .unwrap();
+    let page = chat_page(database);
     assert_eq!(page.turns.as_slice().len(), 1);
     let turn = &page.turns.as_slice()[0];
     assert_eq!(turn.state, TurnState::Failed);

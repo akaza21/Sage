@@ -422,6 +422,9 @@ impl HarnessAdapter for PiRuntime {
         }
         self.resolve_request(&token, resolution)
     }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
 }
 
 #[cfg(test)]

@@ -158,6 +158,10 @@ fn siblings_whose_names_continue_past_a_space_are_left_whole() {
             format!("open `{home} Smith` now"),
             format!("open \"{home} Smith\" now"),
             format!("'{home} Smith'"),
+            // Folders beside the home folder made after Sage started.
+            format!("open {home} Smithson{separator}x now"),
+            format!("open {home} Jane Doe{separator}x now"),
+            format!("{home} 2024 Backup{separator}x"),
         ] {
             assert_eq!(prefix.shorten(&text), text, "{text}");
         }
@@ -183,10 +187,7 @@ fn siblings_whose_names_continue_past_a_space_are_left_whole() {
                 format!("Cloned into {home} and opened src{separator}main.rs"),
                 format!("Cloned into ~ and opened src{separator}main.rs"),
             ),
-            (
-                format!("{home} Smithson{separator}x"),
-                format!("~ Smithson{separator}x"),
-            ),
+            (format!("{home} Smithson now"), "~ Smithson now".to_owned()),
         ] {
             assert_eq!(prefix.shorten(&text), expected, "{text}");
         }
