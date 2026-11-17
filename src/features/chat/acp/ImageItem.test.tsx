@@ -4,6 +4,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -38,13 +39,19 @@ function item(dataUrl = `data:image/png;base64,${png}`, id = "image-one") {
 }
 
 describe("ImageItem", () => {
-  it("does not revalidate an unchanged image when its parent re-renders", () => {
+  it("keeps an unchanged thumbnail on screen across parent updates without revalidating it", () => {
     const image = item();
     const { rerender } = render(<ImageItem item={image} thumbnail />);
     rerender(<ImageItem item={image} thumbnail />);
+    const thumbnail = screen.getByRole("img");
+    expect(thumbnail).toBeVisible();
+    expect(thumbnail).toHaveAttribute("src", image.payload.dataUrl);
     expect(responseImage.admittedImageDataUrl).toHaveBeenCalledOnce();
-    rerender(<ImageItem item={{ ...image }} thumbnail />);
-    expect(responseImage.admittedImageDataUrl).toHaveBeenCalledTimes(2);
+    fireEvent.click(screen.getByRole("button", { name: "Open image viewer" }));
+    expect(within(screen.getByRole("dialog")).getByRole("img")).toHaveAttribute(
+      "src",
+      image.payload.dataUrl,
+    );
   });
 
   it("renders a reloaded desktop image projection and resets an open viewer on remount", () => {

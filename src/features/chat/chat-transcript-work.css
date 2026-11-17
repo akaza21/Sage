@@ -54,24 +54,9 @@
   padding: var(--space-1) 0 0;
 }
 
-.chat-transcript-work__groups[data-revealed] > * {
-  animation: sage-row-in var(--motion-duration-row) ease-out both;
-  animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
-}
-
 @media (prefers-reduced-motion: reduce) {
   .chat-transcript-work__toggle,
   .chat-transcript-work__chevron {
     transition: none;
-  }
-
-  .chat-transcript-work__groups[data-revealed] > * {
-    animation: none;
-  }
-}
-
-@media (forced-colors: active) {
-  .chat-transcript-work__groups[data-revealed] > * {
-    animation: none;
   }
 }

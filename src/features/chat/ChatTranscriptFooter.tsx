@@ -60,8 +60,7 @@ export function ChatTranscriptTurnSummary({
       <WorkedTurnTerminal value={terminal}>
         <div
           id={groupsId}
-          className="chat-transcript-work__groups"
-          data-revealed={(terminal && expanded) || undefined}
+          className={`chat-transcript-work__groups${terminal && expanded ? " stagger-reveal" : ""}`}
         >
           {open ? children : steered}
         </div>

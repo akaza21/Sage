@@ -145,7 +145,7 @@ test.describe("CP-47 motion", () => {
     const worked = page.locator(".chat-transcript-work__toggle");
     await worked.click();
     const rows = page.locator(
-      ".chat-transcript-work__groups[data-revealed] > :not(.acp-tool-rollup)",
+      ".chat-transcript-work__groups.stagger-reveal > :not(.acp-tool-rollup)",
     );
     await expect(rows.first()).toHaveCSS("animation-name", "sage-row-in");
     const delays = await rows.evaluateAll((nodes) =>

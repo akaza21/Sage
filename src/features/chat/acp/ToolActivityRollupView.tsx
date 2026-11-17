@@ -103,7 +103,7 @@ export function ToolActivityRollup({
         </span>
       </summary>
       {expanded ? (
-        <div className="acp-tool-rollup__items">
+        <div className="acp-tool-rollup__items stagger-reveal">
           {rollup.items.map((item) =>
             rollup.items.length > 1 && rollup.kind !== "subagent" ? (
               <ToolActivityRollup

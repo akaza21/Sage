@@ -168,11 +168,6 @@
     transform var(--motion-duration-chevron) ease-out;
 }
 
-.acp-tool-rollup__items > * {
-  animation: sage-row-in var(--motion-duration-row) ease-out both;
-  animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
-}
-
 .acp-tool-rollup > summary:hover .acp-tool-rollup__chevron,
 .acp-tool-rollup > summary:focus-visible .acp-tool-rollup__chevron,
 .acp-tool-rollup[open] > summary .acp-tool-rollup__chevron {
@@ -305,10 +300,6 @@
   .acp-tool-rollup__chevron {
     transition: none;
   }
-
-  .acp-tool-rollup__items > * {
-    animation: none;
-  }
 }
 
 @media (forced-colors: active) {
@@ -316,9 +307,5 @@
   .acp-live-shimmer {
     background: none;
     color: CanvasText;
-  }
-
-  .acp-tool-rollup__items > * {
-    animation: none;
   }
 }
