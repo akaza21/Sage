@@ -675,4 +675,24 @@ describe("ChatTranscript side chats", () => {
     expect(screen.getByText("Thinking")).toHaveClass("acp-live-shimmer");
     expect(container.textContent).not.toMatch(/Working/);
   });
+
+  it("shows the Working heading above Thinking while a main chat turn has only started", async () => {
+    const main = page("running");
+    main.turns[0].items = [
+      {
+        ...textItem(),
+        id: "prompt" as never,
+        payload: { role: "user", text: "Explain" },
+      },
+    ];
+    render(view(main, { id: "project-1", name: "Sage" }, false));
+    await settleLazyModules();
+    const heading = screen.getByText(/^Working for /);
+    const thinking = screen.getByText("Thinking");
+    expect(thinking).toHaveClass("acp-live-shimmer");
+    expect(
+      heading.compareDocumentPosition(thinking) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+  });
 });

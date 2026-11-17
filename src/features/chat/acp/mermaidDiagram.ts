@@ -5,7 +5,7 @@ export const MAX_MERMAID_NODES = 32;
 export const MAX_MERMAID_EDGES = 48;
 export const MAX_MERMAID_SOURCE_BYTES = 8192;
 
-export type MermaidDirection = "TD" | "LR";
+export type MermaidDirection = "TD" | "BT" | "LR" | "RL";
 
 export interface MermaidNode {
   id: string;
@@ -99,14 +99,12 @@ export function parseMermaidFlowchart(source: string): MermaidDiagram {
   if (lines.length === 0) {
     return { ok: false, reason: "unsupported" };
   }
-  const header = /^(?:graph|flowchart)\s+(TD|TB|LR|RL)\b/iu.exec(lines[0]);
+  const header = /^(?:graph|flowchart)\s+(TD|TB|BT|LR|RL)\b/iu.exec(lines[0]);
   if (!header) {
     return { ok: false, reason: "unsupported" };
   }
-  const direction: MermaidDirection =
-    header[1].toUpperCase() === "LR" || header[1].toUpperCase() === "RL"
-      ? "LR"
-      : "TD";
+  const keyword = header[1].toUpperCase();
+  const direction = (keyword === "TB" ? "TD" : keyword) as MermaidDirection;
   const nodes = new Map<string, MermaidNode>();
   const edges: MermaidEdge[] = [];
   for (const line of lines.slice(1)) {

@@ -10,10 +10,11 @@ describe("transcript summaries", () => {
     expect(formatWorkedDuration(0, 192_000)).toBe("Worked for 3m 12s");
     expect(formatWorkedDuration(0, 45_000)).toBe("Worked for 45s");
     expect(formatWorkedDuration(0, 9_660_000)).toBe("Worked for 2h 41m");
+    expect(formatWorkedDuration(0, 5_305_000)).toBe("Worked for 1h 28m 25s");
     expect(formatWorkedDuration(1_000, null)).toBeNull();
     expect(formatWorkedDuration(2_000, 1_000)).toBeNull();
     expect(formatWorkingDuration(1_000, 49_011_000)).toBe(
-      "Working for 13h 36m",
+      "Working for 13h 36m 50s",
     );
     expect(formatWorkingDuration(1_000, 4_000)).toBe("Working for 3s");
   });
