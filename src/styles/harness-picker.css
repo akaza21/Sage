@@ -72,7 +72,10 @@
 }
 
 .composer-access-menu__option--full,
-.composer-access-menu__option--full .composer-access-menu__description,
+.composer-access-menu__option--full .composer-access-menu__description {
+  color: var(--composer-access-full);
+}
+
 .composer-access-menu__description {
   grid-column: 2 / -1;
   color: var(--text-muted);
