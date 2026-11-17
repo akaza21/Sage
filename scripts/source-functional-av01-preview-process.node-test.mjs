@@ -179,7 +179,7 @@ function Wait-Signal([string]$Path,[string]$Label) {
   }
 }
 try {
-  $child=Start-Process -FilePath $NodePath -ArgumentList @('-e','setTimeout(()=>{},120000)') -PassThru -WindowStyle Hidden
+  $child=Start-Process -FilePath $NodePath -ArgumentList @('-e','setTimeout(()=>{},120000)') -PassThru -NoNewWindow
   $self=Get-Process -Id $PID
   [ordered]@{processId=$PID;creationDate=$self.StartTime.ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'");executablePath=$self.Path;childProcessId=$child.Id}|ConvertTo-Json -Compress
   Wait-Signal $Dispose 'dispose'

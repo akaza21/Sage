@@ -255,7 +255,7 @@ foreach($name in @(${OWNED_RUNTIME_CLEANUP_FUNCTIONS.map((name) => `'${name}'`).
 $evidence=Join-Path ([IO.Path]::GetTempPath()) ('sage-vite-query-failure-'+[Guid]::NewGuid().ToString('N'));
 [void][IO.Directory]::CreateDirectory($evidence);
 $powershell=(Get-Process -Id $PID).Path;
-$child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+$child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -NoNewWindow -PassThru;
 try{
   $identity=Get-FootprintLaunchIdentity $child $powershell;
   $runtime=[ordered]@{process=$child;identity=$identity;store=(New-FootprintIdentityStore)};
@@ -434,7 +434,7 @@ $result=Invoke-TestFootprintTree $root $store $snapshot $stop $clock $delay;
 test("exact process termination validates and kills through one retained handle", () => {
   const observed = runPowerShellFixture(String.raw`
 $powershell=(Get-Process -Id $PID).Path;
-$child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+$child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -NoNewWindow -PassThru;
 try{
   $identity=Get-FootprintLaunchIdentity $child $powershell;
   $other=[ordered]@{processId=$identity.processId;executablePath=$identity.executablePath;creationDate=[DateTime]::Parse($identity.creationDate).ToUniversalTime().AddSeconds(-1).ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'")};
@@ -463,7 +463,7 @@ $startup=([wmiclass]'Win32_ProcessStartup').CreateInstance();$startup.CreateFlag
 $created=([wmiclass]'Win32_Process').Create(('"'+$powershell+'" -NoProfile -NonInteractive -Command exit'),$null,$startup);
 if($created.ReturnValue -ne 0){throw "suspended launch failed: $($created.ReturnValue)"};
 $suspended=Get-Process -Id ([int]$created.ProcessId);
-$running=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+$running=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -NoNewWindow -PassThru;
 try{
   $mainModuleReadable=$null -ne $suspended.Path;
   $identity=Get-FootprintLaunchIdentity $suspended $powershell;
@@ -513,7 +513,7 @@ try{
     if($LASTEXITCODE -ne 0){throw "mklink failed: $mklink"}
   };
   $expected=(Resolve-Path -LiteralPath (Join-Path $latest ([IO.Path]::GetFileName($realNode)))).Path;
-  $child=Start-Process -FilePath $expected -ArgumentList @('-e','setTimeout(()=>{},30000)') -WindowStyle Hidden -PassThru;
+  $child=Start-Process -FilePath $expected -ArgumentList @('-e','setTimeout(()=>{},30000)') -NoNewWindow -PassThru;
   $kernelPath=[SageFootprint.ProcessImageIdentity]::Query([int]$child.Id);
   $identity=Get-FootprintLaunchIdentity $child $expected;
   $upperCase=Get-FootprintLaunchIdentity $child $expected.ToUpperInvariant();
@@ -600,7 +600,7 @@ test("a launch identity captured immediately holds with every core busy at Below
       String.raw`
 $powershell=(Get-Process -Id $PID).Path;$launches=20;$captured=0;$failures=@();
 for($i=0;$i -lt $launches;$i++){
-  $child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -WindowStyle Hidden -PassThru;
+  $child=Start-Process -FilePath $powershell -ArgumentList @('-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30') -NoNewWindow -PassThru;
   try{
     $identity=Get-FootprintLaunchIdentity $child $powershell;
     if($identity.processId -eq $child.Id -and $identity.executablePath -eq [IO.Path]::GetFullPath($powershell)){$captured++}else{$failures+='mismatched identity'}
