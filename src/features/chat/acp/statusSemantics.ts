@@ -77,6 +77,20 @@ export function turnReasonMessage(turn: TurnProjection): string | undefined {
   }
 }
 
+export function getTurnFailure(turn: TurnProjection | undefined) {
+  if (turn?.state !== "failed") return null;
+  const kind = turn.terminalReason?.kind ?? "other";
+  return {
+    kind,
+    message:
+      turnReasonMessage(turn) ||
+      (kind !== "other"
+        ? turnTerminalReasonLabels[kind]
+        : "The harness gave no error details."),
+    remediation: turn.terminalReason?.remediation,
+  };
+}
+
 export const terminalToolStates: ReadonlySet<ToolState> = new Set([
   "completed",
   "failed",

@@ -1,7 +1,7 @@
 import { useId } from "react";
 
 import type { TurnProjection } from "../../../domain/acp";
-import { turnReasonMessage, turnTerminalReasonLabels } from "./statusSemantics";
+import { getTurnFailure } from "./statusSemantics";
 
 export function TurnFailure({
   turn,
@@ -11,18 +11,14 @@ export function TurnFailure({
   onRetry?: () => void;
 }) {
   const headingId = useId();
-  if (turn.state !== "failed") return null;
-  const message =
-    turnReasonMessage(turn) ||
-    (turn.terminalReason && turn.terminalReason.kind !== "other"
-      ? turnTerminalReasonLabels[turn.terminalReason.kind]
-      : "The harness gave no error details.");
+  const failure = getTurnFailure(turn);
+  if (!failure) return null;
   return (
     <div className="acp-turn__failure" role="group" aria-labelledby={headingId}>
       <strong id={headingId}>Turn failed</strong>
-      <p data-turn-reason-message="">{message}</p>
-      {turn.terminalReason?.remediation ? (
-        <p data-turn-reason-remediation="">{turn.terminalReason.remediation}</p>
+      <p data-turn-reason-message="">{failure.message}</p>
+      {failure.remediation ? (
+        <p data-turn-reason-remediation="">{failure.remediation}</p>
       ) : null}
       {onRetry ? (
         <button className="acp-turn__retry" type="button" onClick={onRetry}>

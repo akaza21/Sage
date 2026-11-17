@@ -1,4 +1,4 @@
-import { useContext, useRef } from "react";
+import { useContext, useRef, useState } from "react";
 import { useRetainedElement } from "../../ui/useRetainedElement";
 import {
   AgentSessionChromeContext,
@@ -8,6 +8,7 @@ import { useWorkbenchStore } from "../../app/store";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatTranscript } from "./ChatTranscript";
 import { useUsageRequest } from "./acp/useUsageRequest";
+import { getTurnFailure } from "./acp/statusSemantics";
 import {
   latestRetryPrompt,
   sessionActionAvailable,
@@ -216,6 +217,14 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     ...acpHistory,
     retentionIncomplete: acpRetentionIncomplete,
   });
+  const latestTurn = acpPage?.turns.at(-1);
+  const claudeAuthScope = `${project?.id ?? acpPage?.projectId ?? ""}:${epoch}:${chatId ?? acpPage?.chatId ?? activeTabId ?? ""}:${latestTurn?.id ?? ""}`;
+  const [signedInScope, setSignedInScope] = useState<string | null>(null);
+  const claudeSignInRequired =
+    selectedHarnessId === "claude-code" &&
+    (acpActions.errorKind === "signInRequired" ||
+      (signedInScope !== claudeAuthScope &&
+        getTurnFailure(latestTurn)?.kind === "authRequired"));
 
   return (
     <section
@@ -313,14 +322,16 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         projectTransitioning={projectTransitioning}
         workbenchError={error}
         chatError={foregroundError}
-        signInHarness={signInHarness}
+        signInHarness={claudeSignInRequired ? selectedHarness : signInHarness}
         onClaudeSignedIn={
-          selectedHarnessId === "claude-code" &&
-          acpActions.errorKind === "signInRequired"
-            ? acpActions.clearError
+          claudeSignInRequired
+            ? () => {
+                setSignedInScope(claudeAuthScope);
+                acpActions.clearError();
+              }
             : undefined
         }
-        claudeAuthScope={`${project?.id ?? ""}:${epoch}:${chatId ?? activeTabId ?? ""}`}
+        claudeAuthScope={claudeAuthScope}
         accessTarget={accessTarget}
         availableBinding={availableBinding}
         canPrompt={canPrompt}

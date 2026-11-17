@@ -2563,6 +2563,100 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeEnabled();
   });
 
+  it("shows Claude sign-in for the latest auth-failed turn until a new turn or successful check", async () => {
+    vi.spyOn(acpDesktop, "getClaudeAuthStatus").mockResolvedValue({
+      loggedIn: true,
+    });
+    const harness = useWorkbenchStore.getState().harnesses[0];
+    useWorkbenchStore.setState({
+      harnesses: [
+        {
+          ...harness,
+          id: "claude-code",
+          name: "Claude Code",
+          transport: "acp",
+          bindingId: "claude-agent-acp",
+        },
+      ],
+      selectedHarnessId: "claude-code",
+    });
+    matchConfiguredSession();
+    const page = hooks.page!;
+    const failedTurn = {
+      ...page.turns[0],
+      state: "failed" as const,
+      terminalAt: 3,
+      terminalReason: {
+        kind: "authRequired" as const,
+        message: "Authentication required",
+      },
+      items: [],
+    };
+    hooks.page = {
+      ...page,
+      sessions: page.sessions.map((session) => ({
+        ...session,
+        bindingId: "claude-agent-acp" as never,
+      })),
+      turns: [failedTurn],
+    };
+    const { rerender } = render(<ChatSurface />);
+
+    expect(
+      within(
+        await screen.findByRole("group", { name: "Turn failed" }),
+      ).getByText("Authentication required"),
+    ).toBeVisible();
+    expect(
+      await screen.findByRole("button", { name: "Check sign-in" }),
+    ).toBeVisible();
+
+    const nextTurn = {
+      ...failedTurn,
+      id: "turn-b" as typeof failedTurn.id,
+      ordinal: 1,
+      state: "running" as const,
+      terminalAt: null,
+      terminalReason: undefined,
+    };
+    hooks.page = { ...hooks.page, turns: [failedTurn, nextTurn] };
+    rerender(<ChatSurface />);
+    expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Open Claude sign-in" }),
+    ).toBeNull();
+
+    hooks.page = {
+      ...hooks.page,
+      turns: [
+        failedTurn,
+        {
+          ...nextTurn,
+          state: "failed",
+          terminalAt: 4,
+          terminalReason: failedTurn.terminalReason,
+        },
+      ],
+    };
+    rerender(<ChatSurface />);
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Check sign-in" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Check sign-in" }),
+      ).toBeNull(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Open Claude sign-in" }),
+    ).toBeNull();
+    rerender(<ChatSurface />);
+    expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
+    expect(screen.getAllByRole("group", { name: "Turn failed" })).toHaveLength(
+      2,
+    );
+  });
+
   it("satisfies the exported ACP-04 Codex-ready selector with real chat controls", async () => {
     hooks.page = {
       ...projection(),
