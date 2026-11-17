@@ -63,7 +63,9 @@ export function ProjectScopeChip({
       {candidates.length > 0 ? (
         <SearchablePicker
           triggerRole={menuItem ? "menuitem" : undefined}
-          triggerClassName={menuItem ? "menu-item" : undefined}
+          triggerClassName={
+            menuItem ? "menu-item composer__add-action" : undefined
+          }
           portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
           popoverClassName="composer__popover composer__project-menu"
           popoverPlacement={popoverPlacement}
@@ -76,14 +78,12 @@ export function ProjectScopeChip({
               aria-hidden="true"
             />
           }
-          triggerLabel={
+          triggerLabel={menuItem ? "Work in a project" : undefined}
+          triggerDetail={
             menuItem ? (
-              <>
-                Work in a project
-                <span className="composer__action-description">
-                  Choose project for new chats
-                </span>
-              </>
+              <span className="composer__action-description">
+                Choose project for new chats
+              </span>
             ) : undefined
           }
           open={open}

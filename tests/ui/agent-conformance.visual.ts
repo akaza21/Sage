@@ -1112,7 +1112,7 @@ test.describe("Agent Panel V1 conformance — composer", () => {
   test("drops the context meter from a narrow composer before any control label (Codex ref 37)", async ({
     page,
   }) => {
-    await page.setViewportSize({ width: 480, height: 900 });
+    await page.setViewportSize({ width: 460, height: 900 });
     await openScenario(page, "agent-composer-context-known", "agent");
     await settleChatProjections(page);
     await expect(
