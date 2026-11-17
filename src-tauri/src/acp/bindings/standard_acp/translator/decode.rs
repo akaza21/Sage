@@ -32,13 +32,12 @@ pub(super) fn structural_subagent(update: &Map<String, Value>) -> bool {
     .any(|name| matches!(name, "Task" | "Agent"))
 }
 
-/// Whether the chunk is a whole block Claude Code finished before sending,
-/// so no word of it is still arriving.
-pub(super) fn block_finished(update: &Map<String, Value>) -> bool {
+/// Whether a content chunk says it is a whole block, sent once finished, so
+/// no word of it is still arriving.
+pub(super) fn chunk_complete(update: &Map<String, Value>) -> bool {
     update
         .get("_meta")
-        .and_then(|meta| meta.get("claudeCode"))
-        .and_then(|meta| meta.get("blockFinished"))
+        .and_then(|meta| meta.get("complete"))
         .and_then(Value::as_bool)
         == Some(true)
 }

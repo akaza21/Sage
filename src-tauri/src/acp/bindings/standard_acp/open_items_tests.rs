@@ -5,7 +5,7 @@ use super::{
     translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator},
 };
 use sage_acp_protocol::{
-    intent::{SafeResourceRef, UnavailableResourceReason},
+    intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
     lifecycle::ItemLifecycle,
 };
 
@@ -158,4 +158,36 @@ fn a_new_reply_ends_the_last_so_every_reply_of_a_long_turn_closes_whole() {
         finish(&mut translator, json!({"result":{"stopReason":"end_turn"}})),
         closed(&["reply-11"])
     );
+}
+
+#[test]
+fn a_chunk_that_says_it_is_complete_shows_whole_at_once() {
+    let shown = |complete: bool| {
+        let mut update = json!({
+            "sessionUpdate": "agent_message_chunk",
+            "itemId": "reply",
+            "content": {"type": "text", "text": "Searching"}
+        });
+        if complete {
+            update["_meta"] = json!({"complete": true});
+        }
+        let events = opened()
+            .translate_notification_value(
+                json!({"method":"session/update","params":{"sessionId":"session-1","update":update}}),
+                &NoResources,
+            )
+            .unwrap();
+        events
+            .into_iter()
+            .find_map(|event| match event {
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::Text { text },
+                    ..
+                } => Some(text.as_str().to_owned()),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(shown(false), "");
+    assert_eq!(shown(true), "Searching");
 }

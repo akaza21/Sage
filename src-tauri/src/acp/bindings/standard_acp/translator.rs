@@ -384,7 +384,7 @@ impl StandardAcpTranslator {
         snapshot
             .push(chunk)
             .map_err(|_| TranslationError::ItemLimit)?;
-        let shown = if decode::block_finished(update) {
+        let shown = if decode::chunk_complete(update) {
             snapshot.finished()
         } else {
             snapshot.streaming()

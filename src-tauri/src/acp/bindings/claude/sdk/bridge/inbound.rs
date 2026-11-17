@@ -232,7 +232,7 @@ impl SdkBridge {
                         let mut update = json!({
                             "sessionUpdate": "agent_message_chunk",
                             "content": {"type": "text", "text": text},
-                            "_meta": {"claudeCode": {"blockFinished": true}},
+                            "_meta": {"complete": true},
                         });
                         if let Some(message_id) = message_id {
                             update["itemId"] = json!(format!("{message_id}:{index}"));
