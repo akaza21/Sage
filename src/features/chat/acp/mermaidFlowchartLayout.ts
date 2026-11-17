@@ -46,13 +46,25 @@ function sizeNode(node: MermaidNode) {
   };
 }
 
-export function flowchartReturnRail(
-  nodes: ReturnType<typeof layoutFlowchart>,
-  from: ReturnType<typeof layoutFlowchart>[number],
-  to: ReturnType<typeof layoutFlowchart>[number],
-  direction: MermaidDirection,
+type FlowchartNode = ReturnType<typeof sizeNode> & { x: number; y: number };
+type Point = readonly [x: number, y: number];
+
+export interface FlowchartEdgeRoute {
+  label: string;
+  points: Point[];
+  labelAt: { x: number; y: number };
+  labelLift: number;
+}
+
+const isHorizontal = (direction: MermaidDirection) =>
+  direction === "LR" || direction === "RL";
+
+function returnRail(
+  nodes: readonly FlowchartNode[],
+  from: FlowchartNode,
+  to: FlowchartNode,
+  horizontal: boolean,
 ) {
-  const horizontal = direction === "LR";
   const axis = horizontal ? "x" : "y";
   const first = Math.min(from[axis], to[axis]);
   const last = Math.max(from[axis], to[axis]);
@@ -66,9 +78,10 @@ export function flowchartReturnRail(
   return extent + (horizontal ? 12 : 40);
 }
 
-export function layoutFlowchart(
+function placeForward(
   diagram: Extract<MermaidDiagram, { ok: true }>,
-) {
+  horizontal: boolean,
+): FlowchartNode[] {
   const layer = new Map<string, number>();
   const queue = diagram.nodes
     .filter((node) => !diagram.edges.some((edge) => edge.to === node.id))
@@ -82,7 +95,6 @@ export function layoutFlowchart(
       if (edge.from === id && !layer.has(edge.to))
         queue.push({ id: edge.to, depth: depth + 1 });
   }
-  const horizontal = diagram.direction === "LR";
   const sized = diagram.nodes.map(sizeNode);
   const siblingSize = Math.max(
     ...sized.map((node) => (horizontal ? node.height : node.width)),
@@ -118,4 +130,74 @@ export function layoutFlowchart(
       y: horizontal ? siblingOffset + inset : offsets.get(depth)!,
     };
   });
+}
+
+function routeForward(
+  nodes: readonly FlowchartNode[],
+  diagram: Extract<MermaidDiagram, { ok: true }>,
+  horizontal: boolean,
+): FlowchartEdgeRoute[] {
+  const byId = new Map(nodes.map((node) => [node.id, node]));
+  return diagram.edges.map((edge) => {
+    const from = byId.get(edge.from)!;
+    const to = byId.get(edge.to)!;
+    const returning = horizontal ? to.x <= from.x : to.y <= from.y;
+    const lateral = horizontal !== returning;
+    const start: Point = [
+      from.x + (lateral ? from.width : from.width / 2),
+      from.y + (lateral ? from.height / 2 : from.height),
+    ];
+    const end: Point = [
+      to.x + (lateral ? (returning ? to.width : 0) : to.width / 2),
+      to.y + (lateral ? to.height / 2 : returning ? to.height : 0),
+    ];
+    if (!returning)
+      return {
+        label: edge.label,
+        points: [start, end],
+        labelAt: { x: (start[0] + end[0]) / 2, y: (start[1] + end[1]) / 2 },
+        labelLift: 4,
+      };
+    const rail = returnRail(nodes, from, to, horizontal);
+    return {
+      label: edge.label,
+      points: horizontal
+        ? [start, [start[0], rail], [end[0], rail], end]
+        : [start, [rail, start[1]], [rail, end[1]], end],
+      labelAt: horizontal
+        ? { x: (start[0] + end[0]) / 2, y: rail }
+        : { x: rail, y: (start[1] + end[1]) / 2 },
+      labelLift: horizontal ? 0 : 4,
+    };
+  });
+}
+
+/**
+ * Lays the chart out top-down or left-right, then mirrors the main axis for
+ * BT and RL so edge routing only has to handle the forward orientations.
+ */
+export function layoutFlowchart(
+  diagram: Extract<MermaidDiagram, { ok: true }>,
+) {
+  const horizontal = isHorizontal(diagram.direction);
+  const forward = placeForward(diagram, horizontal);
+  const edges = routeForward(forward, diagram, horizontal);
+  if (diagram.direction !== "BT" && diagram.direction !== "RL")
+    return { nodes: forward, edges };
+  const main = horizontal ? "x" : "y";
+  const size = horizontal ? "width" : "height";
+  const extent =
+    Math.max(...forward.map((node) => node[main] + node[size])) + 20;
+  const mirror = (point: Point): Point =>
+    horizontal ? [extent - point[0], point[1]] : [point[0], extent - point[1]];
+  return {
+    nodes: forward.map((node) => ({
+      ...node,
+      [main]: extent - node[main] - node[size],
+    })),
+    edges: edges.map((edge) => {
+      const [x, y] = mirror([edge.labelAt.x, edge.labelAt.y]);
+      return { ...edge, points: edge.points.map(mirror), labelAt: { x, y } };
+    }),
+  };
 }

@@ -145,7 +145,9 @@ describe("bounded Mermaid flowchart rendering", () => {
   it.each(
     [
       { direction: "TD", label: "A much longer label here ok" },
+      { direction: "BT", label: "A much longer label here ok" },
       { direction: "LR", label: "W".repeat(64) },
+      { direction: "RL", label: "W".repeat(64) },
     ].flatMap((diagram) =>
       [false, true].flatMap((sibling) =>
         ["", "retry"].map((edgeLabel) => ({ ...diagram, sibling, edgeLabel })),
@@ -172,7 +174,8 @@ describe("bounded Mermaid flowchart rendering", () => {
         },
       );
       expect(nodes).toHaveLength(sibling ? 4 : 3);
-      const dimension = direction === "TD" ? "width" : "height";
+      const vertical = direction === "TD" || direction === "BT";
+      const dimension = vertical ? "width" : "height";
       expect(nodes[1][dimension]).toBeGreaterThan(nodes[0][dimension]);
       expect(nodes[1][dimension]).toBeGreaterThan(nodes[2][dimension]);
       const points = [...container.querySelectorAll("path[marker-end]")]
@@ -180,12 +183,12 @@ describe("bounded Mermaid flowchart rendering", () => {
         .getAttribute("d")!
         .match(/[ML][\d.]+ [\d.]+/gu)!
         .map((point) => point.slice(1).split(" ").map(Number));
-      const axis = direction === "TD" ? 0 : 1;
+      const axis = vertical ? 0 : 1;
       expect(points).toHaveLength(4);
       expect(points[1][axis]).toBe(points[2][axis]);
       for (const node of nodes)
         expect(points[1][axis]).toBeGreaterThan(
-          direction === "TD" ? node.right : node.bottom,
+          vertical ? node.right : node.bottom,
         );
       const [svgLeft, , svgWidth, svgHeight] = screen
         .getByRole("img")
@@ -193,7 +196,7 @@ describe("bounded Mermaid flowchart rendering", () => {
         .split(" ")
         .map(Number);
       expect(points[1][axis]).toBeLessThan(
-        direction === "TD" ? svgLeft + svgWidth : svgHeight,
+        vertical ? svgLeft + svgWidth : svgHeight,
       );
     },
   );
