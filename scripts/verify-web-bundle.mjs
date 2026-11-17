@@ -4,7 +4,6 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import ts from "typescript";
-import { browserBridgeBundleErrors } from "./browser-bridge-policy.mjs";
 import { webBuildSourceFingerprint } from "./web-build-fingerprint.mjs";
 import {
   measureWebBundlePaths,
@@ -19,6 +18,7 @@ import {
 const DESKTOP_NATIVE_TARGET = "desktop-native";
 const BROWSER_FIXTURE_SENTINEL =
   "Simulated browser fixture — not live repository state.";
+const BROWSER_BRIDGE_SENTINEL = "SAGE_DEV_BROWSER_BRIDGE";
 
 function fail(message) {
   throw new Error(`web-bundle: ${message}`);
@@ -468,16 +468,12 @@ export function verifyWebBundle(root) {
     coreTotalGzipBytes -= gzipBytes(assetPath(root, subagent.file));
   }
   for (const file of jsFiles) {
-    for (const error of browserBridgeBundleErrors(
-      readFileSync(path.join(assets, file), "utf8"),
-    ))
-      fail(error);
-    if (
-      readFileSync(path.join(assets, file), "utf8").includes(
-        BROWSER_FIXTURE_SENTINEL,
-      )
-    ) {
+    const source = readFileSync(path.join(assets, file), "utf8");
+    if (source.includes(BROWSER_FIXTURE_SENTINEL)) {
       fail("desktop artifact contains a browser fixture sentinel");
+    }
+    if (source.includes(BROWSER_BRIDGE_SENTINEL)) {
+      fail("desktop artifact contains the browser bridge");
     }
   }
   const lazyFeatureChunks = measureLazyFeatures({

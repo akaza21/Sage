@@ -72,10 +72,10 @@ pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
             }
         }
     });
-    // The interactive launch link is the only credential output; never send it to tracing.
-    println!("Open Sage in your browser: {browser_url}");
+    // The link carries the pairing code, so it goes to the terminal only when the
+    // browser cannot be opened, and never to tracing.
     if crate::system_browser::open_dev_bridge(&browser_url).is_err() {
-        tracing::info!("open the browser bridge link printed in the terminal");
+        println!("Open Sage in your browser: {browser_url}");
     }
     Ok(())
 }
