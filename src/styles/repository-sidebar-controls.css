@@ -393,7 +393,7 @@
 .source-commit__sha {
   padding: 2px 4px;
   border-radius: var(--radius-pill);
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   background: var(--color-accent-muted);
   font-family: var(--font-family-mono);
   font-size: var(--font-size-xs);

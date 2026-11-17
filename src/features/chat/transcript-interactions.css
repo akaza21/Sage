@@ -374,19 +374,6 @@
   margin-top: var(--space-3);
 }
 
-.close-side-chat-dialog .dirty-dialog__actions .button {
-  height: 32px;
-  border-color: transparent;
-  border-radius: var(--radius-md);
-  background: var(--chat-dialog-cancel-fill);
-  color: var(--color-status-foreground);
-}
-
-.close-side-chat-dialog .dirty-dialog__actions .button--danger {
-  background: var(--chat-annotation-danger-bg);
-  color: var(--chat-annotation-danger);
-}
-
 .close-side-chat-dialog .button--danger:is(:focus-visible, :focus) {
   outline: var(--focus-ring-width) solid var(--color-accent);
   outline-offset: 0;
