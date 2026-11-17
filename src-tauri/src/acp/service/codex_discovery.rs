@@ -12,7 +12,9 @@ use crate::acp::{
 use super::codex_operation::{ActiveCodexOperation, CodexOperationGate, PreparedCodexOperation};
 
 mod cache;
-use cache::{CacheKey, CacheScope, DiscoveryCache, response_from, validate_scope};
+use cache::{
+    CacheKey, CacheScope, DiscoveryCache, launchable_models, response_from, validate_scope,
+};
 mod flight;
 use flight::{DiscoveryFlight, DiscoveryFlightKey};
 
@@ -24,6 +26,7 @@ pub(crate) struct PreparedCodexDiscovery {
     operation: Option<PreparedCodexOperation>,
     deadline: CodexDiscoveryDeadline,
     invalidation_epoch: u64,
+    catalog_generation: u64,
     flight: Arc<DiscoveryFlight>,
     owns_flight: bool,
     completed: bool,
@@ -71,6 +74,7 @@ impl CodexDiscoveryManager {
         deadline.ensure_operation()?;
         validate_scope(&request, &project_root)?;
         let invalidation_epoch = self.gate.current_epoch();
+        let catalog_generation = self.registration.model_catalog().generation();
         let key = DiscoveryFlightKey {
             project_id: request.project_id.clone(),
             project_generation: request.project_generation,
@@ -92,6 +96,7 @@ impl CodexDiscoveryManager {
                 operation: None,
                 deadline,
                 invalidation_epoch,
+                catalog_generation,
                 flight: Arc::clone(existing),
                 owns_flight: false,
                 completed: false,
@@ -106,6 +111,7 @@ impl CodexDiscoveryManager {
             operation: Some(operation),
             deadline,
             invalidation_epoch,
+            catalog_generation,
             flight: active_flight,
             owns_flight: true,
             completed: false,
@@ -265,6 +271,7 @@ impl CodexDiscoveryManager {
         prepared.deadline.ensure_total()?;
         self.publish(
             operation_epoch,
+            prepared.catalog_generation,
             CacheKey {
                 scope,
                 runtime_epoch,
@@ -276,10 +283,13 @@ impl CodexDiscoveryManager {
 
     pub(crate) fn invalidate(&self) {
         self.gate.invalidate();
-        self.cache.clear();
+        self.forget_snapshot();
     }
 
+    /// Called when the account changes: a discovery prepared before now can
+    /// no longer publish its catalog.
     pub(crate) fn forget_snapshot(&self) {
+        self.registration.model_catalog().forget();
         self.cache.clear();
     }
 
@@ -336,12 +346,25 @@ impl CodexDiscoveryManager {
     fn publish(
         &self,
         expected_invalidation_epoch: u64,
+        catalog_generation: u64,
         key: CacheKey,
         response: CodexDiscoveryResponse,
     ) -> Result<(), CodexDiscoveryRunError> {
-        self.cache.publish_if_current(key, response, || {
-            self.gate.is_current(expected_invalidation_epoch)
-        })
+        let binding_digest = key.scope.binding_digest;
+        let catalog = self.registration.model_catalog();
+        self.cache.publish_if_current(
+            key,
+            response,
+            || {
+                self.gate.is_current(expected_invalidation_epoch)
+                    && catalog.generation() == catalog_generation
+            },
+            |published| {
+                if let Some(models) = launchable_models(published) {
+                    catalog.refresh(catalog_generation, binding_digest, models);
+                }
+            },
+        )
     }
 
     fn clear_flight(&self, completed: &Arc<DiscoveryFlight>) {
@@ -586,6 +609,7 @@ mod tests {
         manager
             .publish(
                 manager.gate.current_epoch(),
+                manager.registration.model_catalog().generation(),
                 CacheKey {
                     scope: scope.clone(),
                     runtime_epoch,
@@ -608,6 +632,7 @@ mod tests {
         manager
             .publish(
                 manager.gate.current_epoch(),
+                manager.registration.model_catalog().generation(),
                 CacheKey {
                     scope: scope.clone(),
                     runtime_epoch,
@@ -624,6 +649,59 @@ mod tests {
     }
 
     #[test]
+    fn an_account_change_after_discovery_began_keeps_its_catalog_out() {
+        let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
+        let catalog = manager.registration.model_catalog();
+        let scope = scope();
+        let runtime_epoch = RuntimeEpoch::new(16).unwrap();
+        let publish = |generation, account| {
+            let mut listed = response(&scope, runtime_epoch);
+            listed.account = account;
+            listed.models[0].effort_levels = ["low", "ultra"]
+                .map(|level| RequiredText::new("effort", level).unwrap())
+                .to_vec();
+            manager.publish(
+                manager.gate.current_epoch(),
+                generation,
+                CacheKey {
+                    scope: scope.clone(),
+                    runtime_epoch,
+                },
+                listed,
+            )
+        };
+        let began = catalog.generation();
+
+        manager.forget_snapshot();
+
+        assert_eq!(
+            publish(began, CodexDiscoveryAccount::ManagedChatgpt).unwrap_err(),
+            CodexDiscoveryRunError::Drift
+        );
+        assert!(manager.cache.response_for(&scope).unwrap().is_none());
+        assert!(catalog.known(scope.binding_digest).is_none());
+
+        publish(catalog.generation(), CodexDiscoveryAccount::ManagedChatgpt).unwrap();
+        let listed = serde_json::to_value(catalog.known(scope.binding_digest)).unwrap();
+        assert_eq!(
+            listed,
+            serde_json::json!([{
+                "id": "gpt-cache",
+                "name": "GPT Cache",
+                "description": null,
+                "isDefault": true,
+                "effortLevels": ["low", "ultra"]
+            }])
+        );
+        publish(catalog.generation(), CodexDiscoveryAccount::SignedOut).unwrap();
+        assert_eq!(
+            serde_json::to_value(catalog.known(scope.binding_digest)).unwrap(),
+            listed
+        );
+        assert!(catalog.known([6; 32]).is_none());
+    }
+
+    #[test]
     fn invalidation_between_discovery_and_publish_cannot_reinsert_a_stale_snapshot() {
         let manager = CodexDiscoveryManager::new(startup_codex_binding_registration());
         let scope = scope();
@@ -635,6 +713,7 @@ mod tests {
             manager
                 .publish(
                     stale_epoch,
+                    manager.registration.model_catalog().generation(),
                     CacheKey {
                         scope: scope.clone(),
                         runtime_epoch,
@@ -683,6 +762,7 @@ mod tests {
         mismatched
             .publish(
                 mismatched.gate.current_epoch(),
+                mismatched.registration.model_catalog().generation(),
                 CacheKey {
                     scope: cache_scope.clone(),
                     runtime_epoch,
@@ -742,6 +822,7 @@ mod tests {
         mismatched
             .publish(
                 mismatched.gate.current_epoch(),
+                mismatched.registration.model_catalog().generation(),
                 CacheKey {
                     scope: unrelated_scope.clone(),
                     runtime_epoch: unrelated_epoch,
@@ -768,6 +849,7 @@ mod tests {
         matching
             .publish(
                 matching.gate.current_epoch(),
+                matching.registration.model_catalog().generation(),
                 CacheKey {
                     scope: stale_scope.clone(),
                     runtime_epoch: stale_epoch,
@@ -967,6 +1049,7 @@ mod tests {
         manager
             .publish(
                 manager.gate.current_epoch(),
+                manager.registration.model_catalog().generation(),
                 CacheKey {
                     scope: scope.clone(),
                     runtime_epoch,

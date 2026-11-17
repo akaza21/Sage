@@ -36,7 +36,7 @@ mod tools;
 
 use decode::{
     object, optional_external_key, plan_event, stated_context_window, string, unsupported_event,
-    usage_event, usage_object,
+    usage_object,
 };
 pub(crate) use error::TranslationError;
 pub(crate) use terminal::PromptTerminal;
@@ -182,7 +182,6 @@ impl StandardAcpTranslator {
         self.terminal = None;
         self.terminal_request_id = None;
         self.running_emitted = false;
-        self.context_window = None;
         self.clear_turn_items();
         self.pending_prompt = Some(request_id.as_str().to_owned());
         Ok(())
@@ -272,7 +271,20 @@ impl StandardAcpTranslator {
         if let Some(window) = stated_context_window(usage) {
             self.context_window = Some(window);
         }
-        usage_event(usage, self.context_window).unwrap_or(AdapterEvent::Absorbed)
+        // ACP states the context as one count: all of it is the next request's prompt.
+        // Token counts other than `used`, like a prompt result's, are spend, not context.
+        match usage
+            .get("used")
+            .and_then(Value::as_u64)
+            .filter(|_| self.pending_prompt.is_some())
+        {
+            Some(used) => AdapterEvent::Usage(NormalizedPayload::Usage {
+                input_tokens: used,
+                output_tokens: 0,
+                context_window: self.context_window,
+            }),
+            None => AdapterEvent::Absorbed,
+        }
     }
 
     pub(super) fn turn_running(&mut self) -> Option<AdapterEvent> {

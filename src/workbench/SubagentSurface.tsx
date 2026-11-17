@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import type { AcpChatPage, AcpItem } from "../domain/acp";
 import { ItemView } from "../features/chat/acp/TurnActivityItem";
@@ -7,19 +7,10 @@ import {
   formatWorkedDuration,
   formatWorkingDuration,
 } from "../features/chat/transcriptSummary";
-import {
-  getAcpChildTranscript,
-  type ChildTranscript,
-} from "../services/acpChildTranscript";
+import type { ChildTranscript } from "../services/acpChildTranscript";
 import { ArrowLeft } from "../ui/leanIcons";
+import { liveAgent, projectRecentAgents } from "./agentArtifactTabPresentation";
 import {
-  liveAgent,
-  projectTaskResources,
-} from "./agentArtifactTabPresentation";
-import {
-  childRefresh,
-  useChildEpoch,
-  scheduleChildRefresh,
   childActivityLabel,
   choiceName,
   invocationOf,
@@ -28,12 +19,18 @@ import {
   subagentTimes,
   useNow,
 } from "./SubagentResourceRows";
+import {
+  childReadFor,
+  MAX_STALE_RETRIES,
+  useChildEpoch,
+  useChildReads,
+  type ChildReadResult,
+} from "./subagentLiveness";
 
 export { AgentTaskSubagentSummary } from "./AgentTaskSubagentSummary";
 
 const MAX_CHILD_ACTIVITIES = 32;
 const MAX_VISIBLE_CHILD_ITEMS = 256;
-const MAX_STALE_RETRIES = 3;
 
 type ChildRead = Extract<ChildTranscript, { turns: unknown }>;
 type ReadState = {
@@ -91,58 +88,30 @@ function SubagentChild({
     candidate.items.some((item) => item.id === itemId),
   );
   const item = turn?.items.find((candidate) => candidate.id === itemId);
-  const sessionId = turn?.sessionId;
-  const runtimeEpoch = turn?.runtimeEpoch;
-  const session = page.sessions?.find(
-    (candidate) => candidate.id === turn?.sessionId,
-  );
   const keys =
     item?.kind === "collaboration" ? (item.payload.agentKeys ?? []) : [];
-  const attributedKey =
-    keys.length === 1 &&
-    item?.kind === "collaboration" &&
-    (!item.payload.agentKey || item.payload.agentKey === keys[0])
-      ? keys[0]
-      : keys.length === 0 && item?.kind === "collaboration"
-        ? item.payload.agentKey
-        : null;
   const superseded =
     !!turn &&
     page.currentSessionId !== undefined &&
     page.currentSessionId !== turn.sessionId;
-  const canRead =
-    !!turn &&
-    item?.kind === "collaboration" &&
-    !superseded &&
-    !!session?.capabilities?.childTranscriptRead &&
-    !!projectGeneration &&
-    !!agentKey &&
-    attributedKey === agentKey &&
-    (session.runtimeEpoch === null ||
-      session.runtimeEpoch === turn.runtimeEpoch);
-  const identity = canRead
-    ? [
-        page.projectId,
-        projectGeneration,
-        page.chatId,
-        turn.sessionId,
-        turn.runtimeEpoch,
-        itemId,
-        agentKey,
-      ].join("\u0000")
-    : "";
+  const childRead = useMemo(
+    () => childReadFor(page, projectGeneration, itemId, agentKey),
+    [page, projectGeneration, itemId, agentKey],
+  );
+  const canRead = !!childRead;
+  const identity = childRead?.identity ?? "";
   const epoch = useChildEpoch(page);
-  const recent = agentKey
-    ? projectTaskResources(page, page.chatId).recentAgents
-    : [];
+  const recent = useMemo(
+    () => (agentKey ? projectRecentAgents(page, page.chatId) : []),
+    [page, agentKey],
+  );
   const invocation =
     agentKey && !superseded ? invocationOf(page, itemId, agentKey) : null;
   const observed = invocation
     ? recent.find((agent) => agent.id === invocation)
-    : null;
+    : undefined;
   const live = liveAgent(observed?.status);
   const [read, setRead] = useState<ReadState | null>(null);
-  const sync = useRef(childRefresh());
   const current = read?.key === identity ? read : null;
   const good = current?.good;
   const settled =
@@ -155,87 +124,31 @@ function SubagentChild({
     current.value.kind === "stale"
       ? Math.min(current.stale, MAX_STALE_RETRIES)
       : 0;
-  useEffect(() => {
-    if (
-      epoch === null ||
-      !canRead ||
-      settled ||
-      staleRetry >= MAX_STALE_RETRIES ||
-      !sessionId ||
-      !runtimeEpoch ||
-      !projectGeneration ||
-      !agentKey
-    )
-      return;
-    const state = sync.current;
-    const fresh = state.identity !== identity;
-    state.identity = identity;
-    // A user config, goal or fork command that meets a read in flight waits for
-    // it in Rust (RuntimeHost::native_rpc), so reads cannot starve it.
-    const schedule = () => scheduleChildRefresh(state);
-    state.send = () => {
-      state.timer = undefined;
-      if (state.inFlight) {
-        state.again = true;
-        return;
-      }
-      state.inFlight = true;
-      state.startedAt = performance.now();
-      void getAcpChildTranscript({
-        projectId: page.projectId,
-        projectGeneration,
-        chatId: page.chatId,
-        sessionId,
-        runtimeEpoch,
-        itemId,
-        agentKey,
-      })
-        // Only malformed successful responses throw; request failures are typed.
-        .catch(() => "error" as const)
-        .then((value) => {
-          state.inFlight = false;
-          if (state.identity === identity)
-            setRead((previous) => {
-              const prior = previous?.key === identity ? previous : null;
-              const stale = typeof value === "object" && value.kind === "stale";
-              return {
-                key: identity,
-                value,
-                good:
-                  typeof value === "object" && "turns" in value
-                    ? value
-                    : prior?.good,
-                stale: stale ? (prior?.stale ?? 0) + 1 : 0,
-              };
-            });
-          if (state.again) {
-            state.again = false;
-            if (state.identity === identity) schedule();
-            else state.send();
-          }
-        });
-    };
-    if (fresh) state.send();
-    else schedule();
-    return () => {
-      clearTimeout(state.timer);
-      state.timer = undefined;
-      state.send = () => undefined;
-    };
-  }, [
-    identity,
+  // Throttled to about once a second and never beside another read of
+  // this child, shared with every other view of it.
+  useChildReads(
+    childRead,
     epoch,
-    settled,
-    staleRetry,
-    canRead,
-    page.projectId,
-    page.chatId,
-    projectGeneration,
-    sessionId,
-    runtimeEpoch,
-    itemId,
-    agentKey,
-  ]);
+    !settled && staleRetry < MAX_STALE_RETRIES,
+    useCallback(
+      (value: ChildReadResult) =>
+        setRead((previous) => {
+          const prior = previous?.key === identity ? previous : null;
+          const stale = typeof value === "object" && value.kind === "stale";
+          return {
+            key: identity,
+            value,
+            // A failure never replaces the last full read.
+            good:
+              typeof value === "object" && "turns" in value
+                ? value
+                : prior?.good,
+            stale: stale ? (prior?.stale ?? 0) + 1 : 0,
+          };
+        }),
+      [identity],
+    ),
+  );
   const now = useNow(live);
   if (!turn || item?.kind !== "collaboration") return null;
 
@@ -246,7 +159,10 @@ function SubagentChild({
       : item.payload.operation === "started"
         ? item.payload.label
         : "Subagent");
-  const time = observed ? subagentTimes(page, recent).get(observed.id) : null;
+  const time =
+    observed && observed.status !== "unknown"
+      ? subagentTimes(page, recent).get(observed.id)
+      : null;
   const duration = time
     ? live
       ? formatWorkingDuration(time.startedAt, Math.max(now, time.startedAt))

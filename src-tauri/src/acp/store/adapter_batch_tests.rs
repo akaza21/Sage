@@ -15,6 +15,7 @@ use sage_acp_protocol::{
 };
 use sage_core::limits::LIMITS;
 
+mod child_settle_tests;
 mod child_thread_tests;
 mod command_turn_tests;
 mod harness_title_tests;

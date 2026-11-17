@@ -1,11 +1,21 @@
 //! Subagents: a `Task` tool use opens a child transcript, the frames Claude
-//! Code tags with that tool use fill it, and the tool's result closes it.
+//! Code tags with that tool use fill it, and the tool's result closes it. A
+//! subagent running in the background outlives its tool result and the turn;
+//! its `task_notification` closes it instead.
 
 use serde_json::{Value, json};
 
 use super::{Inbound, MAX_TRACKED_TOOLS, SdkBridge, notices::prose};
 use crate::acp::bindings::claude::runtime::{ChildEvent, ChildOutcome, OPEN_CHILDREN};
 use crate::acp::bindings::claude::sdk::tools::{result_text, text_content, tool_fields};
+
+#[derive(Debug, Default)]
+pub(super) struct Subagent {
+    /// Claude Code's task id for the subagent, from its task events, its
+    /// async launch result (`agentId`) or its own frames (`agent_id`).
+    task_id: Option<String>,
+    background: bool,
+}
 
 /// Claude Code's subagent tool, under its current and earlier name.
 fn spawns(name: &str) -> bool {
@@ -30,7 +40,7 @@ impl SdkBridge {
                 .and_then(Value::as_str)
                 .and_then(|text| prose(text, max))
         };
-        self.subagents.insert(id.to_owned());
+        self.subagents.insert(id.to_owned(), Subagent::default());
         inbound.children.push(ChildEvent::Spawned {
             key: id.to_owned(),
             label: text("description", 512)
@@ -47,8 +57,11 @@ impl SdkBridge {
         let Some(key) = sdk.get("parent_tool_use_id").and_then(Value::as_str) else {
             return;
         };
-        if !self.subagents.contains(key) {
+        let Some(subagent) = self.subagents.get_mut(key) else {
             return;
+        };
+        if let Some(agent) = sdk.get("agent_id").and_then(Value::as_str) {
+            subagent.task_id.get_or_insert_with(|| agent.to_owned());
         }
         let message = &sdk["message"];
         let blocks = message
@@ -58,8 +71,11 @@ impl SdkBridge {
             .flatten();
         match sdk.get("type").and_then(Value::as_str) {
             Some("assistant") => {
-                let message_id = message
-                    .get("id")
+                // Claude Code sends each finished block as its own message
+                // sharing the API message id; the frame's uuid tells them apart.
+                let message_id = sdk
+                    .get("uuid")
+                    .or_else(|| message.get("id"))
                     .and_then(Value::as_str)
                     .unwrap_or("message");
                 for (index, block) in blocks.enumerate() {
@@ -135,7 +151,7 @@ impl SdkBridge {
     }
 
     pub(super) fn end_child(&mut self, key: &str, outcome: ChildOutcome, inbound: &mut Inbound) {
-        if !self.subagents.remove(key) {
+        if self.subagents.remove(key).is_none() {
             return;
         }
         let open: Vec<_> = self
@@ -161,10 +177,68 @@ impl SdkBridge {
         });
     }
 
+    /// Ends the subagents a finished turn was waiting on; background ones run on.
     pub(super) fn end_children(&mut self, inbound: &mut Inbound) {
-        let open: Vec<_> = self.subagents.iter().cloned().collect();
+        let open: Vec<_> = self
+            .subagents
+            .iter()
+            .filter(|(_, subagent)| !subagent.background)
+            .map(|(key, _)| key.clone())
+            .collect();
         for key in open {
             self.end_child(&key, ChildOutcome::Stopped, inbound);
         }
+    }
+
+    /// A subagent's tool result that only reports its launch into the
+    /// background leaves its transcript open, and names the task whose
+    /// `task_notification` will settle it.
+    pub(super) fn keeps_open_after_launch(&mut self, key: &str, output: Option<&Value>) -> bool {
+        let Some(subagent) = self.subagents.get_mut(key) else {
+            return false;
+        };
+        let field = |name: &str| output.and_then(|output| output.get(name)?.as_str());
+        if field("status") == Some("async_launched") {
+            subagent.background = true;
+            if let Some(agent) = field("agentId") {
+                subagent.task_id.get_or_insert_with(|| agent.to_owned());
+            }
+        }
+        subagent.background
+    }
+
+    /// Follows a subagent's background task: `task_started` names it,
+    /// `task_updated` may move it to the background and `task_notification`
+    /// ends it.
+    pub(super) fn subagent_task(&mut self, sdk: &Value, inbound: &mut Inbound) {
+        let field = |key: &str| sdk.get(key).and_then(Value::as_str);
+        let Some(task_id) = field("task_id") else {
+            return;
+        };
+        let key = field("tool_use_id")
+            .filter(|key| self.subagents.contains_key(*key))
+            .map(str::to_owned)
+            .or_else(|| {
+                self.subagents
+                    .iter()
+                    .find(|(_, subagent)| subagent.task_id.as_deref() == Some(task_id))
+                    .map(|(key, _)| key.clone())
+            });
+        let Some(key) = key else {
+            return;
+        };
+        let backgrounded = sdk
+            .get("is_backgrounded")
+            .or_else(|| sdk["patch"].get("is_backgrounded"))
+            .and_then(Value::as_bool)
+            == Some(true);
+        if let Some(subagent) = self.subagents.get_mut(&key) {
+            subagent.task_id = Some(task_id.to_owned());
+            subagent.background |= backgrounded;
+        }
+        if field("subtype") != Some("task_notification") {
+            return;
+        }
+        self.end_child(&key, ChildOutcome::settled(field("status")), inbound);
     }
 }

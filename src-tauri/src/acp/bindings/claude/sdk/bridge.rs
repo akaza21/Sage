@@ -112,7 +112,7 @@ pub(super) struct SdkBridge {
     next_permission: u64,
     tools: BTreeMap<String, String>,
     /// Open subagents, by their `Task` tool use id.
-    subagents: BTreeSet<String>,
+    subagents: BTreeMap<String, subagents::Subagent>,
     /// A subagent's own tool rows: subagent and tool name, by tool use id.
     child_tools: BTreeMap<String, (String, String)>,
     streamed: VecDeque<String>,
@@ -123,6 +123,12 @@ pub(super) struct SdkBridge {
     /// A run's `result` that did not end the turn, for when no waiting
     /// message runs after all.
     held: Option<Value>,
+    /// What the session's context holds, from its latest main-thread model
+    /// call or compaction. A turn's `result` usage sums every call of the
+    /// turn, so it overstates this.
+    context_tokens: Option<u64>,
+    /// The model's context window, from the latest `result` that stated it.
+    context_size: Option<u64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -149,13 +155,15 @@ impl SdkBridge {
             answering: BTreeSet::new(),
             next_permission: 0,
             tools: BTreeMap::new(),
-            subagents: BTreeSet::new(),
+            subagents: BTreeMap::new(),
             child_tools: BTreeMap::new(),
             streamed: VecDeque::new(),
             retrying: false,
             compacting: false,
             steers: Vec::new(),
             held: None,
+            context_tokens: None,
+            context_size: None,
         }
     }
 
@@ -265,3 +273,6 @@ fn acp_error(id: Value, code: i64, message: &str) -> Value {
 
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+mod subagent_tests;

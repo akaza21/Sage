@@ -196,7 +196,10 @@ export function LazyHarnessNotice(
 }
 
 export const ComposerOptionsPart = lazyParts<
-  Pick<typeof ComposerOptionsChunk, "ComposerOptionsMenu">
+  Pick<
+    typeof ComposerOptionsChunk,
+    "ComposerOptionsMenu" | "ListedHarnessModels"
+  >
 >(() => import("./ComposerAddActions"));
 
 const HandoffControlPart = lazyParts<typeof HandoffControlChunk>(

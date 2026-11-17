@@ -1,8 +1,10 @@
 use serde::Serialize;
 
 mod browser_operation;
+mod item_roles;
 mod session_activity;
 pub use browser_operation::BrowserOperationProjection;
+pub use item_roles::{ItemOrigin, TextRole};
 pub use session_activity::TurnSessionActivityProjection;
 
 use sage_acp_protocol::{
@@ -18,21 +20,6 @@ use sage_acp_protocol::{
     },
 };
 use sage_core::limits::COMMAND_RESOURCE_LIMIT;
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum ItemOrigin {
-    Primary,
-    HarnessActivity,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub enum TextRole {
-    User,
-    Assistant,
-    System,
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -269,6 +256,15 @@ pub enum ItemContent {
         agent_key: Option<SafeText<512>>,
         agent_keys: BoundedVec<SafeText<512>, 32>,
         agent_states: BoundedVec<(SafeText<512>, SafeText<32>), 32>,
+        /// Children this row settled from their recorded state after its
+        /// turn ended with no known end time, so no time is claimed for them.
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        untimed_agents: Vec<SafeText<512>>,
+        /// Children this row shows in their recorded current state. That
+        /// state is authoritative: no other row's earlier report of them
+        /// overrides it.
+        #[serde(skip_serializing_if = "Vec::is_empty")]
+        current_agents: Vec<SafeText<512>>,
     },
 }
 

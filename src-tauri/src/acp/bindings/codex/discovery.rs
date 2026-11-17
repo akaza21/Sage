@@ -1,9 +1,11 @@
 mod diagnostics;
+mod probe;
 mod protocol;
 mod runner;
 pub(crate) mod schema;
 mod transport;
 
+pub(crate) use probe::CodexModelCatalog;
 pub(crate) use protocol::{CodexDiscoveryProtocol, DiscoveryRequest};
 pub(crate) use runner::{CodexDiscoveryDeadline, CodexDiscoveryRunError, DiscoveryZeroProcess};
 #[cfg(test)]

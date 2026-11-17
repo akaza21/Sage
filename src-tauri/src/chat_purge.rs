@@ -27,7 +27,8 @@ const BY_CHAT_SESSION: &str =
 /// release theirs. Workspace changes no turn owns are deleted next, so their
 /// trigger releases them before the remaining session charge is read and the
 /// session delete cannot cascade to them and release them a second time.
-const CHAT_ROWS: [(&str, &str); 14] = [
+const CHAT_ROWS: [(&str, &str); 15] = [
+    ("acp_child_thread_states", BY_OWNER),
     ("acp_child_thread_transcripts", BY_OWNER),
     ("acp_child_thread_bindings", BY_OWNER),
     ("acp_child_thread_owners", BY_OWNER),

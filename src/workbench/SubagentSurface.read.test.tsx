@@ -13,7 +13,9 @@ import type {
   RuntimeEpoch,
   SageAgentSessionId,
 } from "../domain/acp";
+import { useSubagentPaneStore } from "../app/subagentPaneStore";
 import { SubagentSurface } from "./SubagentSurface";
+import { resetSubagentLiveness } from "./subagentLiveness";
 
 const readChild = vi.hoisted(() => vi.fn());
 const desktop = vi.hoisted(() => ({ runtime: false }));
@@ -52,6 +54,8 @@ afterEach(() => {
   childNotices.clear();
   subscribeGate.wait = null;
   desktop.runtime = false;
+  useSubagentPaneStore.setState({ list: false });
+  resetSubagentLiveness();
 });
 
 function childPage(): AcpChatPage {
@@ -718,3 +722,101 @@ it("the first child read waits until child notices are subscribed", async () => 
   expect(childNotices.has("project/chat")).toBe(true);
   expect(readChild).toHaveBeenCalledTimes(1);
 });
+
+/**
+ * A spawn row of a parent turn that has ended, closed with that turn and
+ * never rewritten since; the parent projection reports its child's state.
+ */
+function spawnFromEndedTurn(
+  revision: string,
+  turnState = "completed",
+  agentState = "running",
+  untimed = false,
+) {
+  const page = spawnPage(agentState, revision);
+  const [turn] = page.turns;
+  return {
+    ...page,
+    turns: [
+      {
+        ...turn,
+        state: turnState,
+        items: turn.items.map((item) => ({
+          ...item,
+          lifecycle: turnState === "running" ? "started" : "cancelled",
+          ...(untimed
+            ? { payload: { ...item.payload, untimedAgents: ["child"] } }
+            : {}),
+          projectId: "project",
+          chatId: "chat",
+          sessionId: "session",
+        })),
+      },
+    ],
+  } as unknown as AcpChatPage;
+}
+
+it.each([
+  ["interrupted", "Stopped", false],
+  ["errored", "Failed", true],
+  ["unknown", "Outcome unavailable", false],
+])(
+  "moves a child of an ended spawn turn to done once the parent projection settles it as %s",
+  (state, shown, untimed) => {
+    useSubagentPaneStore.setState({ list: true });
+    const view = (page: AcpChatPage) => (
+      <SubagentSurface
+        page={page}
+        projectGeneration="3"
+        itemId="spawn"
+        agentKey="child"
+      />
+    );
+    const { rerender } = render(view(spawnFromEndedTurn("7")));
+    const active = screen.getByRole("region", { name: "Active subagents" });
+    expect(within(active).getByText("Working")).toBeVisible();
+    rerender(view(spawnFromEndedTurn("8", "completed", state, untimed)));
+    const done = screen.getByRole("region", { name: "Done subagents" });
+    expect(within(done).getByText(shown)).toBeVisible();
+    // A child is aged only by an end time its parent projection knows.
+    expect(done.querySelector("time") !== null).toBe(
+      !untimed && state !== "unknown",
+    );
+    expect(
+      screen.queryByRole("region", { name: "Active subagents" }),
+    ).toBeNull();
+    expect(readChild).not.toHaveBeenCalled();
+  },
+);
+
+it.each([
+  ["an ended", "completed", "completed", false, "Worked for 25s"],
+  ["an untimed", "completed", "completed", true, null],
+  ["a lost", "completed", "unknown", false, null],
+  ["a live", "running", "running", false, /Working for/],
+])(
+  "times the header of a child of %s parent turn by the state its parent projection reports",
+  async (_name, turnState, agentState, untimed, duration) => {
+    readChild.mockResolvedValue(
+      childRead([{ status: "completed", items: [text("a", "All counted")] }]),
+    );
+    const { container } = render(
+      <SubagentSurface
+        page={spawnFromEndedTurn("7", turnState, agentState, untimed)}
+        projectGeneration="3"
+        itemId="spawn"
+        agentKey="child"
+      />,
+    );
+    expect(await screen.findByText("All counted")).toBeVisible();
+    await act(async () => undefined);
+    const header = container.querySelector(".subagent-surface__duration");
+    if (duration) {
+      expect(header).toHaveTextContent(duration);
+      expect(header?.classList.contains("acp-live-shimmer")).toBe(
+        agentState === "running",
+      );
+    } else expect(header).toBeNull();
+    expect(readChild).toHaveBeenCalledTimes(1);
+  },
+);

@@ -22,41 +22,48 @@ export default function UsageContext({
   usage,
   usageRequest = null,
 }: {
-  usage: UsagePayload;
+  usage: UsagePayload | null;
   usageRequest?: AcpUsageRequest | null;
 }) {
   const [limitsOpen, setLimitsOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const limitsId = useId();
-  const total = usage.totalTokens;
+  const total = usage?.totalTokens ?? 0;
   const formattedTotal = total.toLocaleString();
-  const capacity = usage.contextWindow;
-  if (
-    capacity === undefined ||
-    !Number.isSafeInteger(capacity) ||
-    capacity <= 0 ||
-    capacity > 0xffff_ffff
-  ) {
-    return null;
-  }
+  const capacity = usage?.contextWindow ?? 0;
+  // An unknown count, such as after a compaction, shows an empty ring.
+  const known =
+    usage !== null &&
+    Number.isSafeInteger(capacity) &&
+    capacity > 0 &&
+    capacity <= 0xffff_ffff;
+  if (!known && !usageRequest) return null;
 
-  const progress = Math.min(Math.max(total, 0), capacity);
+  const progress = known ? Math.min(Math.max(total, 0), capacity) : 0;
   const formattedCapacity = capacity.toLocaleString();
-  const fill = `${(progress / capacity) * 100}%`;
-  const tooltip = `${Math.round(total / 1_000)}k / ${Math.round(capacity / 1_000)}k tokens · ${Math.round((total / capacity) * 100)}%`;
+  const fill = known ? `${(progress / capacity) * 100}%` : "0%";
+  const tooltip = known
+    ? `${Math.round(total / 1_000)}k / ${Math.round(capacity / 1_000)}k tokens · ${Math.round((total / capacity) * 100)}%`
+    : "Context unknown";
   return (
     <p className="composer__context" aria-label="Composer context">
       <span className="composer__context-item composer__context-item--usage">
-        <span className="composer__context-usage-label">
-          {compactTokenCount(total)} context
-        </span>
+        {known && (
+          <span className="composer__context-usage-label">
+            {compactTokenCount(total)} context
+          </span>
+        )}
         {usageRequest ? (
           <button
             ref={triggerRef}
             type="button"
             className="composer__context-usage"
             title={`${tooltip} · Usage`}
-            aria-label={`${formattedTotal} / ${formattedCapacity} context tokens used. Show usage`}
+            aria-label={
+              known
+                ? `${formattedTotal} / ${formattedCapacity} context tokens used. Show usage`
+                : "Context unknown. Show usage"
+            }
             aria-haspopup="dialog"
             aria-expanded={limitsOpen}
             aria-controls={limitsOpen ? limitsId : undefined}
@@ -82,6 +89,7 @@ export default function UsageContext({
         <UsageLimits
           part="default"
           id={limitsId}
+          context={known ? { used: total, capacity } : null}
           request={usageRequest}
           triggerRef={triggerRef}
           onDismiss={() => setLimitsOpen(false)}

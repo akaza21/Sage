@@ -6,36 +6,57 @@ import type {
   SageProjectId,
 } from "../domain/acp";
 import { errorMessage } from "../domain/errors";
+import { resetHarnessModelCache } from "./harnessModelCache";
 import type { WorkbenchState } from "./store";
 
 type Set = (partial: Partial<WorkbenchState>) => void;
 type Get = () => WorkbenchState;
 
+/**
+ * Every sign-in and sign-out runs through here. Models listed for the
+ * previous account are forgotten before the change, and any listed while it
+ * ran are forgotten once it ends.
+ *
+ * A browser sign-in is `waiting` with the signed-out catalog still listed,
+ * and one left unfinished asks for sign-in again. Any other change is
+ * `checking` with no account until it is rediscovered, and one that does not
+ * land is an error.
+ */
 export const accountChange =
   (set: Set, get: Get) =>
   async (
     call: (scope: CodexAuthScope) => Promise<CodexAuthResponse>,
     expected: CodexAuthResponse["phase"],
+    pending: "checking" | "waiting",
   ) => {
     const scope = authScope(get());
     if (!scope) return;
     const requestGeneration = get().harnessRequestGeneration;
-    set({
-      harnessDiscoveryPhase: "checking",
-      harnessDiscoveryError: null,
-      harnessAccount: null,
-      models: [],
-      selectedModelId: null,
-    });
+    resetHarnessModelCache();
+    set(
+      pending === "waiting"
+        ? { harnessDiscoveryPhase: pending, harnessDiscoveryError: null }
+        : {
+            harnessDiscoveryPhase: pending,
+            harnessDiscoveryError: null,
+            harnessAccount: null,
+            models: [],
+            selectedModelId: null,
+          },
+    );
     try {
-      const response = await call(scope);
+      const response = await call(scope).finally(resetHarnessModelCache);
       if (!authCurrent(get(), scope, requestGeneration)) return;
       if (response.phase !== expected)
-        set({
-          harnessDiscoveryPhase: "error",
-          harnessDiscoveryError:
-            "The Codex account change did not converge safely.",
-        });
+        set(
+          pending === "waiting"
+            ? { harnessDiscoveryPhase: "signInRequired" }
+            : {
+                harnessDiscoveryPhase: "error",
+                harnessDiscoveryError:
+                  "The Codex account change did not converge safely.",
+              },
+        );
       else if (expected === "signedOut")
         set({ harnessDiscoveryPhase: "signInRequired" });
       else await get().retryHarnessDiscovery();

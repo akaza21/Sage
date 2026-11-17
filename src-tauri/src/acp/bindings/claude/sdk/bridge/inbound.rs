@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+use super::usage::{context_window, turn_usage};
 use super::{
     BridgeError, Inbound, MAX_TRACKED_TOOLS, Pending, RECENT_STREAMED_MESSAGES, SdkBridge,
     acp_error, acp_result,
@@ -34,7 +35,7 @@ impl SdkBridge {
             }
             // Results still finish the rows a subagent's approvals opened.
             Some("user") => {
-                self.tool_results(&sdk["message"], &mut inbound);
+                self.tool_results(&sdk, &mut inbound);
                 if nested {
                     self.nested(&sdk, &mut inbound);
                 }
@@ -212,6 +213,7 @@ impl SdkBridge {
             self.auth_failed = true;
         }
         let message = &sdk["message"];
+        self.track_context(&message["usage"], inbound);
         let streamed = message
             .get("id")
             .and_then(Value::as_str)
@@ -248,7 +250,7 @@ impl SdkBridge {
             return;
         };
         let input = block.get("input").unwrap_or(&Value::Null);
-        if self.tools.contains_key(id) || self.subagents.contains(id) {
+        if self.tools.contains_key(id) || self.subagents.contains_key(id) {
             return;
         }
         if self.spawn(id, name, input, inbound) {
@@ -273,8 +275,8 @@ impl SdkBridge {
         inbound.acp.push(self.update(update.into()));
     }
 
-    fn tool_results(&mut self, message: &Value, inbound: &mut Inbound) {
-        for block in message
+    fn tool_results(&mut self, sdk: &Value, inbound: &mut Inbound) {
+        for block in sdk["message"]
             .get("content")
             .and_then(Value::as_array)
             .into_iter()
@@ -286,24 +288,21 @@ impl SdkBridge {
             let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else {
                 continue;
             };
-            if self.subagents.contains(id) {
-                let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
-                let outcome = if failed {
-                    ChildOutcome::Failed
-                } else {
-                    ChildOutcome::Completed
-                };
-                self.end_child(id, outcome, inbound);
+            let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
+            let status = if failed { "failed" } else { "completed" };
+            if self.subagents.contains_key(id) {
+                if !self.keeps_open_after_launch(id, sdk.get("tool_use_result")) {
+                    self.end_child(id, ChildOutcome::settled(Some(status)), inbound);
+                }
                 continue;
             }
             let Some(name) = self.tools.remove(id) else {
                 continue;
             };
-            let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
             let mut update = json!({
                 "sessionUpdate": "tool_call_update",
                 "toolCallId": id,
-                "status": if failed { "failed" } else { "completed" },
+                "status": status,
                 "_meta": {"claudeCode": {"toolName": name}},
             });
             let edits = tool_fields(&name, &Value::Null)["kind"] == "edit";
@@ -333,18 +332,9 @@ impl SdkBridge {
         self.withdraw_open(inbound);
         self.end_retry(inbound);
         self.end_children(inbound);
-        let usage = &sdk["usage"];
-        let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
-        let (input, output) = (count("input_tokens"), count("output_tokens"));
-        let (cache_read, cache_write) = (
-            count("cache_read_input_tokens"),
-            count("cache_creation_input_tokens"),
-        );
-        let total = input + output + cache_read + cache_write;
-        if let Some(size) = context_window(sdk) {
-            inbound.acp.push(
-                self.update(json!({"sessionUpdate": "usage_update", "used": total, "size": size})),
-            );
+        self.context_size = context_window(sdk).or(self.context_size);
+        if let Some(used) = self.context_tokens {
+            self.report_context(used, inbound);
         }
         let failed = sdk.get("is_error").and_then(Value::as_bool) == Some(true);
         inbound.acp.push(if self.interrupted {
@@ -354,17 +344,11 @@ impl SdkBridge {
         } else if failed {
             acp_error(id, INTERNAL_ERROR, &failure_message(sdk))
         } else {
-            acp_result(
-                id,
-                json!({
-                    "stopReason": stop_reason(sdk),
-                    "usage": {
-                        "inputTokens": input, "outputTokens": output,
-                        "cachedReadTokens": cache_read, "cachedWriteTokens": cache_write,
-                        "totalTokens": total,
-                    },
-                }),
-            )
+            let mut result = json!({"stopReason": stop_reason(sdk)});
+            if let Some(usage) = turn_usage(&sdk["usage"]) {
+                result["usage"] = usage;
+            }
+            acp_result(id, result)
         });
         self.interrupted = false;
         self.auth_failed = false;
@@ -387,14 +371,6 @@ impl Pending {
             | Self::Fork(_) => None,
         }
     }
-}
-
-fn context_window(sdk: &Value) -> Option<u64> {
-    sdk.get("modelUsage")?
-        .as_object()?
-        .values()
-        .filter_map(|usage| usage.get("contextWindow").and_then(Value::as_u64))
-        .max()
 }
 
 fn stop_reason(sdk: &Value) -> &'static str {

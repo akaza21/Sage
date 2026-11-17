@@ -81,6 +81,28 @@ describe("currentChatUsage", () => {
     expect(currentChatUsage(first)).toMatchObject({ totalTokens: 12_000 });
   });
 
+  it("clears the count after a compaction until a later turn states one", () => {
+    const compacted = page(usage(190_000, 1_000_000));
+    const turn = compacted.turns[0]!;
+    compacted.turns = [
+      turn,
+      {
+        ...turn,
+        id: "turn-2" as never,
+        ordinal: 2,
+        state: "failed",
+        usage: usage(0, 1_000_000),
+      },
+      { ...turn, id: "turn-3" as never, ordinal: 3, usage: undefined },
+    ];
+    expect(currentChatUsage(compacted)).toBeNull();
+    compacted.turns = [
+      ...compacted.turns,
+      { ...turn, id: "turn-4" as never, ordinal: 4, usage: usage(3_200) },
+    ];
+    expect(currentChatUsage(compacted)).toMatchObject({ totalTokens: 3_200 });
+  });
+
   it("does not use usage from a different session", () => {
     expect(
       currentChatUsage(page(usage(4_096), "session-1", "session-2")),

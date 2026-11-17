@@ -1067,6 +1067,44 @@ describe("safeAcpMutationResponse", () => {
     ).not.toBeNull();
   });
 
+  it.each([
+    [["child-1"], ["child-1"]],
+    [[7], null],
+  ])(
+    "keeps the children settled with no known end time (%j)",
+    (untimedAgents, kept) => {
+      const loaded = safeAcpMutationResponse(
+        mutation({
+          turns: [
+            turn({
+              items: [
+                item(0, {
+                  kind: "collaboration",
+                  payload: {
+                    activityId: null,
+                    label: "Subagent",
+                    summary: "",
+                    receiverLabels: [],
+                    operation: "spawnAgent",
+                    agentKeys: ["child-1"],
+                    agentStates: [["child-1", "completed"]],
+                    untimedAgents,
+                  },
+                }),
+              ],
+            }),
+          ],
+        }),
+      );
+      const [loadedItem] = loaded?.projection.turns[0].items ?? [];
+      expect(
+        (loadedItem?.kind === "collaboration" &&
+          loadedItem.payload.untimedAgents) ||
+          null,
+      ).toEqual(kept);
+    },
+  );
+
   it("rejects a harness activity collaboration item without its activity", () => {
     expect(
       safeAcpMutationResponse(

@@ -2,9 +2,9 @@ use serde_json::{Value, json};
 
 use super::*;
 
-const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
+pub(super) const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
 
-fn initialized() -> SdkBridge {
+pub(super) fn initialized() -> SdkBridge {
     let mut bridge = SdkBridge::new(SESSION.into(), None);
     let sdk = bridge
         .outbound(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
@@ -46,7 +46,7 @@ fn updates(inbound: &Inbound) -> Vec<&Value> {
         .collect()
 }
 
-fn prompt(bridge: &mut SdkBridge, id: u64) -> Value {
+pub(super) fn prompt(bridge: &mut SdkBridge, id: u64) -> Value {
     bridge
         .outbound(&json!({"jsonrpc":"2.0","id":id,"method":"session/prompt","params":{"sessionId":SESSION,"prompt":[{"type":"text","text":"hi"}]}}))
         .unwrap()
@@ -74,7 +74,7 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
     let assistant = bridge.inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"msg_1","content":[
         {"type":"text","text":"Writing"},
         {"type":"tool_use","id":"toolu_1","name":"Write","input":{"file_path":"/w/a.txt","content":"x\n"}}
-    ]}})).unwrap();
+    ],"usage":{"input_tokens":2,"output_tokens":4,"cache_read_input_tokens":100,"cache_creation_input_tokens":0}}})).unwrap();
     let tool = updates(&assistant);
     assert_eq!(tool.len(), 1, "streamed text is not repeated");
     assert_eq!(
@@ -142,6 +142,173 @@ fn a_turn_streams_text_runs_an_approved_tool_and_completes_with_usage() {
     assert_eq!(result.acp[1]["id"], 3);
     assert_eq!(result.acp[1]["result"]["stopReason"], "end_turn");
     assert_eq!(result.acp[1]["result"]["usage"]["totalTokens"], 106);
+}
+
+#[test]
+fn the_context_reported_is_the_last_main_thread_call_not_the_turns_summed_spend() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    for (input, cached, output) in [(10, 40_000, 300), (5, 41_000, 120)] {
+        bridge
+            .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[],
+                "usage":{"input_tokens":input,"output_tokens":output,"cache_read_input_tokens":cached,"cache_creation_input_tokens":0}}}))
+            .unwrap();
+    }
+    bridge
+        .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"synthetic","content":[],
+            "usage":{"input_tokens":0,"output_tokens":0}}}))
+        .unwrap();
+    let result = bridge.inbound(json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+        "usage":{"input_tokens":15,"output_tokens":420,"cache_read_input_tokens":81_000,"cache_creation_input_tokens":0},
+        "modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}})).unwrap();
+    assert_eq!(
+        updates(&result)[0],
+        &json!({"sessionUpdate":"usage_update","used":41_125,"size":1_000_000})
+    );
+    assert_eq!(result.acp[1]["result"]["usage"]["totalTokens"], 81_435);
+
+    prompt(&mut bridge, 4);
+    bridge
+        .inbound(json!({"type":"system","subtype":"compact_boundary",
+            "compact_metadata":{"trigger":"manual","pre_tokens":41_125,"post_tokens":3_200}}))
+        .unwrap();
+    let compacted = bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+        "usage":{"input_tokens":0,"output_tokens":0},
+        "modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert_eq!(
+        updates(&compacted)[0],
+        &json!({"sessionUpdate":"usage_update","used":3_200,"size":1_000_000})
+    );
+}
+
+#[test]
+fn no_context_is_reported_before_any_model_call_states_one() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let result = bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+        "usage":{"input_tokens":0,"output_tokens":0},
+        "modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert!(
+        updates(&result)
+            .iter()
+            .all(|update| update["sessionUpdate"] != "usage_update")
+    );
+}
+
+fn reports_context(inbound: &Inbound) -> bool {
+    updates(inbound)
+        .iter()
+        .any(|update| update["sessionUpdate"] == "usage_update")
+}
+
+#[test]
+fn a_compaction_without_its_compacted_size_clears_the_context_until_a_model_call_states_it() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    bridge
+        .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[],
+            "usage":{"input_tokens":5,"output_tokens":120,"cache_read_input_tokens":190_000,"cache_creation_input_tokens":0}}}))
+        .unwrap();
+    bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+            "usage":{},"modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    let cleared = json!({"sessionUpdate":"usage_update","used":0,"size":1_000_000});
+
+    prompt(&mut bridge, 4);
+    let compacted = bridge
+        .inbound(json!({"type":"system","subtype":"compact_boundary",
+            "compact_metadata":{"trigger":"auto","pre_tokens":190_125}}))
+        .unwrap();
+    assert_eq!(updates(&compacted), [&cleared]);
+    let failed = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,
+            "usage":{},"modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert!(!reports_context(&failed));
+    assert_eq!(failed.acp.last().unwrap()["id"], 4);
+
+    prompt(&mut bridge, 5);
+    let compacted = bridge
+        .inbound(json!({"type":"system","subtype":"compact_boundary",
+            "compact_metadata":{"trigger":"manual","pre_tokens":3_000}}))
+        .unwrap();
+    assert_eq!(updates(&compacted), [&cleared]);
+    let interrupt = bridge
+        .outbound(
+            &json!({"jsonrpc":"2.0","method":"session/cancel","params":{"sessionId":SESSION}}),
+        )
+        .unwrap();
+    bridge.inbound(success(&interrupt, json!({}))).unwrap();
+    let cancelled = bridge
+        .inbound(
+            json!({"type":"result","subtype":"error_during_execution","is_error":true,"usage":{}}),
+        )
+        .unwrap();
+    assert!(!reports_context(&cancelled));
+    assert_eq!(
+        cancelled.acp.last().unwrap()["result"]["stopReason"],
+        "cancelled"
+    );
+
+    prompt(&mut bridge, 6);
+    bridge
+        .inbound(json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m2","content":[],
+            "usage":{"input_tokens":3_000,"output_tokens":200,"cache_read_input_tokens":0,"cache_creation_input_tokens":0}}}))
+        .unwrap();
+    let result = bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+            "usage":{},"modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert_eq!(
+        updates(&result)[0],
+        &json!({"sessionUpdate":"usage_update","used":3_200,"size":1_000_000})
+    );
+}
+
+#[test]
+fn token_counts_too_large_to_add_up_are_reported_as_unknown() {
+    let mut bridge = initialized();
+    prompt(&mut bridge, 3);
+    let call = |usage: Value| json!({"type":"assistant","parent_tool_use_id":null,"message":{"id":"m","content":[],"usage":usage}});
+    let counted = bridge
+        .inbound(call(
+            json!({"input_tokens":5,"output_tokens":120,"cache_read_input_tokens":41_000}),
+        ))
+        .unwrap();
+    assert!(!reports_context(&counted));
+    let overflowed = bridge
+        .inbound(call(
+            json!({"input_tokens":u64::MAX,"output_tokens":0,"cache_read_input_tokens":1}),
+        ))
+        .unwrap();
+    assert_eq!(
+        updates(&overflowed),
+        [&json!({"sessionUpdate":"usage_update","used":0})]
+    );
+    let result = bridge
+        .inbound(
+            json!({"type":"result","subtype":"success","is_error":false,"stop_reason":"end_turn",
+            "usage":{"input_tokens":u64::MAX,"output_tokens":1},
+            "modelUsage":{"claude-opus-5-5":{"contextWindow":1_000_000}}}),
+        )
+        .unwrap();
+    assert!(!reports_context(&result));
+    assert_eq!(result.acp[0]["result"], json!({"stopReason":"end_turn"}));
 }
 
 #[test]

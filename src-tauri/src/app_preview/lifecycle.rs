@@ -311,10 +311,7 @@ pub(crate) fn reserve_start(
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped());
             #[cfg(unix)]
-            {
-                use std::os::unix::process::CommandExt;
-                command.process_group(0);
-            }
+            sage_process::process_group::isolate(&mut command);
             let mut raw_child = command.spawn().map_err(|_| PreviewError::Unavailable {
                 message: "Preview could not start its curated package script.".into(),
             })?;

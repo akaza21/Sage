@@ -1,17 +1,19 @@
 import type { ReactNode } from "react";
-import type { projectTaskResources } from "./agentArtifactTabPresentation";
+import { liveAgent, type RecentAgent } from "./agentArtifactTabPresentation";
 import { SubagentResourceRows } from "./SubagentResourceRows";
 
 export function AgentTaskSubagentSummary({
   recentAgents,
-  working,
   counts,
   onSelect,
-}: Pick<ReturnType<typeof projectTaskResources>, "recentAgents"> & {
-  working: number;
-  counts: (glyphs: ReactNode) => ReactNode;
+}: {
+  recentAgents: readonly RecentAgent[];
+  counts: (agents: readonly RecentAgent[], glyphs: ReactNode) => ReactNode;
   onSelect: () => void;
 }) {
+  const working = recentAgents.filter((agent) =>
+    liveAgent(agent.status),
+  ).length;
   return (
     <section
       aria-label="Subagents"
@@ -21,6 +23,7 @@ export function AgentTaskSubagentSummary({
         Subagents
       </strong>
       {counts(
+        recentAgents,
         <span className="agent-task-header__agent-glyphs" aria-hidden="true">
           {Array.from({ length: Math.min(working, 3) }, (_, index) => (
             <span

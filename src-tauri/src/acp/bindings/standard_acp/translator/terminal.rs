@@ -12,8 +12,7 @@ use sage_acp_protocol::{
 use super::super::wire::decode_frame;
 use super::super::{sanitize::normalized_text, surface::HARNESS_RPC_ERROR_CODE};
 use super::{
-    AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TranslationError,
-    decode::{rpc_id, usage_event, usage_object},
+    AdapterEvent, MAX_EVENTS_PER_FRAME, StandardAcpTranslator, TranslationError, decode::rpc_id,
 };
 
 const MAX_TERMINAL_REQUESTS: usize = 16;
@@ -83,10 +82,6 @@ impl StandardAcpTranslator {
         let running = self.turn_running();
         self.pending_prompt = None;
         self.record_terminal(request_id.as_str(), terminal);
-        let usage = frame
-            .get("result")
-            .and_then(Value::as_object)
-            .and_then(|result| usage_event(usage_object(result), self.context_window));
         let mut events = Vec::new();
         events.extend(running);
         if let Some(message) = error_message {
@@ -131,7 +126,6 @@ impl StandardAcpTranslator {
                 },
             });
         }
-        events.extend(usage);
         // A prompt that ended for any reason but a stop or an error delivered
         // its output whole; a stopped or failed prompt leaves it to the sweep.
         if frame.get("error").is_none() && terminal != PromptTerminal::Cancelled {
