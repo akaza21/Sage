@@ -395,7 +395,7 @@
   width: auto;
   padding: 0 var(--space-2);
   white-space: nowrap;
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   font-size: var(--font-size-xs);
 }
 .browser-surface__find {

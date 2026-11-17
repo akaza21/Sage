@@ -30,12 +30,16 @@
 }
 
 .button {
+  height: var(--button-height, auto);
   padding: var(--space-2) var(--space-3);
+  border-color: var(--button-border, var(--color-border-strong));
+  color: var(--button-text, var(--color-text-primary));
+  background: var(--button-fill, var(--color-surface));
   cursor: pointer;
 }
 
 .button:hover:not(:disabled) {
-  background: var(--color-surface-hover);
+  background: var(--button-fill-hover, var(--color-surface-hover));
 }
 
 .button--compact {
@@ -48,14 +52,24 @@
 }
 
 .button--primary {
-  border-color: var(--color-accent);
-  background: var(--color-accent-muted);
+  border-color: var(--button-primary-border, var(--color-accent));
+  color: var(--button-primary-text, var(--color-text-primary));
+  background: var(--button-primary-fill, var(--color-accent-muted));
+  font-weight: var(--button-primary-weight, var(--font-weight-regular));
+}
+
+.button--primary:hover:not(:disabled) {
+  background: var(--button-primary-fill-hover, var(--color-surface-hover));
 }
 
 .button--danger {
-  border-color: var(--color-danger);
-  color: var(--color-danger);
-  background: var(--color-danger-muted);
+  border-color: var(--button-danger-border, var(--color-danger));
+  color: var(--button-danger-text, var(--color-danger));
+  background: var(--button-danger-fill, var(--color-danger-muted));
+}
+
+.button--danger:hover:not(:disabled) {
+  background: var(--button-danger-fill-hover, var(--color-surface-hover));
 }
 
 .input,

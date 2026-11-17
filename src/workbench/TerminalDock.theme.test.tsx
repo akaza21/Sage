@@ -206,10 +206,10 @@ it("renders in the app theme's canvas, text, selection and mono font", async () 
     background: "#141414",
     foreground: "#c5c5c5",
     cursor: "#c5c5c5",
-    selectionBackground: "#294126",
+    selectionBackground: "#264f78",
   });
   expect(rendered(".xterm-rows", "color")).toBe("#c5c5c5");
-  expect(rendered(".xterm-selection div", "background-color")).toBe("#294126");
+  expect(rendered(".xterm-selection div", "background-color")).toBe("#264f78");
   await waitFor(() =>
     expect(
       (container.querySelector(".xterm-scrollable-element") as HTMLElement)
@@ -253,7 +253,7 @@ it("follows the forced-colors palette while mounted and keeps its output", async
   // show here that it stopped drawing the dark palette.
   expect(rendered(".xterm-rows", "color")).not.toBe("#c5c5c5");
   expect(rendered(".xterm-selection div", "background-color")).not.toBe(
-    "#294126",
+    "#264f78",
   );
 
   setForcedColors(false, theme.sheet!);
@@ -263,7 +263,7 @@ it("follows the forced-colors palette while mounted and keeps its output", async
     (container.querySelector(".xterm-scrollable-element") as HTMLElement).style
       .backgroundColor,
   ).toBe("rgb(20, 20, 20)");
-  expect(rendered(".xterm-selection div", "background-color")).toBe("#294126");
+  expect(rendered(".xterm-selection div", "background-color")).toBe("#264f78");
   expect(opened).toHaveBeenCalledTimes(1);
   expect(terminal.buffer.active.getLine(0)?.translateToString(true)).toBe(
     OUTPUT,
