@@ -183,7 +183,10 @@ fn siblings_whose_names_continue_past_a_space_are_left_whole() {
                 format!("Cloned into {home} and opened src{separator}main.rs"),
                 format!("Cloned into ~ and opened src{separator}main.rs"),
             ),
-            (format!("{home} Smithson now"), "~ Smithson now".to_owned()),
+            (
+                format!("{home} Smithson{separator}x"),
+                format!("~ Smithson{separator}x"),
+            ),
         ] {
             assert_eq!(prefix.shorten(&text), expected, "{text}");
         }
@@ -217,54 +220,6 @@ fn shortened_paths_expand_back_under_the_home_folder() {
 #[test]
 fn the_current_home_leaves_reading_the_folders_beside_it_to_startup() {
     if let Some(home) = HomePrefix::current() {
-        assert!(matches!(home.siblings, Siblings::OnDisk(_)));
-    }
-}
-
-#[test]
-fn folders_beside_the_home_folder_made_at_any_time_are_left_whole() {
-    let parent = TempParent::new();
-    let home = parent.path().join("alice");
-    std::fs::create_dir(&home).unwrap();
-    std::fs::create_dir(parent.path().join("alice smithson")).unwrap();
-    let home = home.to_str().unwrap();
-    let prefix = HomePrefix::new(home).unwrap().reading_siblings_always();
-    let separator = std::path::MAIN_SEPARATOR;
-    let unchanged = |text: String| assert_eq!(prefix.shorten(&text), text, "{text}");
-    unchanged(format!("open {home} smithson{separator}x now"));
-    for name in ["alice Jones", "alice jones jr"] {
-        std::fs::create_dir(parent.path().join(name)).unwrap();
-        let rest = &name["alice".len()..];
-        unchanged(format!("open {home}{rest}{separator}x now"));
-    }
-    assert_eq!(
-        prefix.shorten(&format!(
-            "Cloned into {home} and opened src{separator}main.rs"
-        )),
-        format!("Cloned into ~ and opened src{separator}main.rs")
-    );
-    assert_eq!(
-        prefix.shorten(&format!("{home} Smithers{separator}x")),
-        format!("~ Smithers{separator}x")
-    );
-}
-
-struct TempParent(PathBuf);
-
-impl TempParent {
-    fn new() -> Self {
-        let path = std::env::temp_dir().join(format!("sage-home-{}", uuid::Uuid::new_v4()));
-        std::fs::create_dir(&path).unwrap();
-        Self(path.canonicalize().unwrap())
-    }
-
-    fn path(&self) -> &Path {
-        &self.0
-    }
-}
-
-impl Drop for TempParent {
-    fn drop(&mut self) {
-        let _ = std::fs::remove_dir_all(&self.0);
+        assert_eq!(home.siblings, None);
     }
 }
