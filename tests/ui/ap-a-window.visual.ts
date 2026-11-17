@@ -144,10 +144,13 @@ test("AP-A1/A2: resize, resource collapse, and a new Chat never add an unsolicit
   await composer.press("Enter");
   await expect(draft).toHaveCount(0);
   await expect(panes).toHaveCount(1);
-  await expect(panes.first()).toHaveAttribute("data-chat-id", "ap-a-chat-1");
   await expect
     .poll(async () => (await listedIds()).length)
     .toBe(originalChats.length + 1);
+  const [createdId] = (await listedIds()).filter(
+    (id) => !originalChats.includes(id),
+  );
+  await expect(panes.first()).toHaveAttribute("data-chat-id", createdId!);
   await expect(
     panes.getByText("Start one chat from the unsaved draft", { exact: true }),
   ).toHaveCount(1);
