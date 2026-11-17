@@ -96,24 +96,21 @@ export default function ComposerAccessMenu({
             ? `Allow ${confirmation.label.toLowerCase()} in this chat?`
             : `Switch to ${confirmation.label}?`}
         </h2>
-        <p>{confirmation.description}</p>
-        {warning ? (
-          <p className="composer-access-menu__warning">
-            {warning} Other chats and new chats keep their own access.
+        <div className="dialog-body">
+          <p>{warning ?? confirmation.description}</p>
+          <p>
+            {permissive
+              ? "Other chats and new chats keep their own access. "
+              : null}
+            {SESSION_ACCESS_MODE_SCOPE}
           </p>
-        ) : null}
-        <p>{SESSION_ACCESS_MODE_SCOPE}</p>
+        </div>
         <div className="dirty-dialog__actions">
-          <button
-            autoFocus
-            className="button--compact"
-            type="button"
-            onClick={close}
-          >
+          <button autoFocus className="button" type="button" onClick={close}>
             Cancel
           </button>
           <button
-            className="button--compact"
+            className="button button--primary"
             type="button"
             disabled={permissive !== null && !!sessionId && token === null}
             onClick={() => {
