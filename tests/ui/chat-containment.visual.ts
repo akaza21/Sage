@@ -6,6 +6,7 @@ import {
 } from "./shared/visualBrowserPrimitives";
 import { openComposerOptions, revealWorkedContent } from "./agentVisualHelpers";
 import type { ChatContainmentProfile } from "./fixtures/chatContainmentFixture";
+import { settledComposerFit } from "./shared/composerGeometry";
 
 const profiles: ChatContainmentProfile[] = [
   { name: "Codex", effort: true, context: true, goal: true, steer: true },
@@ -205,6 +206,7 @@ async function expectComposerControls(
   await expect(
     composer.getByRole("button", { name: /^Remove Image/ }),
   ).toBeEnabled();
+  await settledComposerFit(composer);
   await expectControls(
     composer,
     composer.locator(

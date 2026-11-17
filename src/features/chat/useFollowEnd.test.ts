@@ -584,6 +584,45 @@ describe("useFollowEnd", () => {
     expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 83 });
   });
 
+  it("re-anchors when its landed step's scroll event arrives after the content grew", () => {
+    const frames: FrameRequestCallback[] = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+    const { scrollTo, transcript, view } = mountFollowEnd();
+    measure(transcript, {
+      clientHeight: 282,
+      scrollHeight: 426,
+      scrollTop: 104,
+    });
+    act(() => growTranscript());
+    expect(scrollTo).toHaveBeenLastCalledWith({ behavior: "auto", top: 144 });
+
+    measure(transcript, {
+      clientHeight: 282,
+      scrollHeight: 426,
+      scrollTop: 144,
+    });
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+
+    measure(transcript, {
+      clientHeight: 282,
+      scrollHeight: 697,
+      scrollTop: 144,
+    });
+    scrollTo.mockClear();
+    act(() => {
+      view.result.current.updateFollowEnd();
+      frames.shift()?.(0);
+    });
+    expect(scrollTo).toHaveBeenCalledWith({ behavior: "auto", top: 415 });
+    expect(view.result.current.followingEnd).toBe(true);
+  });
+
   it.each(["wheel", "pointerdown", "touchstart", "keydown"])(
     "lets %s inside the transcript interrupt an anchor scroll",
     (eventType) => {
