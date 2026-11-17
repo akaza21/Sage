@@ -2,9 +2,9 @@ use serde_json::{Value, json};
 
 use super::*;
 
-const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
+pub(super) const SESSION: &str = "0b7d6c8e-3c1a-4f7e-9a51-2f6d8c1e4b90";
 
-fn initialized() -> SdkBridge {
+pub(super) fn initialized() -> SdkBridge {
     let mut bridge = SdkBridge::new(SESSION.into(), None);
     let sdk = bridge
         .outbound(&json!({"jsonrpc":"2.0","id":1,"method":"initialize","params":{}}))
@@ -46,7 +46,7 @@ fn updates(inbound: &Inbound) -> Vec<&Value> {
         .collect()
 }
 
-fn prompt(bridge: &mut SdkBridge, id: u64) -> Value {
+pub(super) fn prompt(bridge: &mut SdkBridge, id: u64) -> Value {
     bridge
         .outbound(&json!({"jsonrpc":"2.0","id":id,"method":"session/prompt","params":{"sessionId":SESSION,"prompt":[{"type":"text","text":"hi"}]}}))
         .unwrap()

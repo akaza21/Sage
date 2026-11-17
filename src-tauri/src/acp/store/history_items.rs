@@ -205,7 +205,10 @@ fn load_turn_items(
             break;
         }
         let permission = permission(row, &item)?;
-        let projection = decode_item(item, permission, project_roots)?;
+        let mut projection = decode_item(item, permission, project_roots)?;
+        if turn.terminal_at.is_some() {
+            super::child_transcript::project_settled_children(connection, &mut projection)?;
+        }
         let item_bytes = encoded_len(&projection)
             .map_err(|_| StoreError::Corrupt("item projection serialization"))?
             + usize::from(!items.is_empty());

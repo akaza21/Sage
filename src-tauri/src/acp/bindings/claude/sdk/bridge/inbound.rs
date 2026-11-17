@@ -35,7 +35,7 @@ impl SdkBridge {
             }
             // Results still finish the rows a subagent's approvals opened.
             Some("user") => {
-                self.tool_results(&sdk["message"], &mut inbound);
+                self.tool_results(&sdk, &mut inbound);
                 if nested {
                     self.nested(&sdk, &mut inbound);
                 }
@@ -250,7 +250,7 @@ impl SdkBridge {
             return;
         };
         let input = block.get("input").unwrap_or(&Value::Null);
-        if self.tools.contains_key(id) || self.subagents.contains(id) {
+        if self.tools.contains_key(id) || self.subagents.contains_key(id) {
             return;
         }
         if self.spawn(id, name, input, inbound) {
@@ -275,8 +275,8 @@ impl SdkBridge {
         inbound.acp.push(self.update(update.into()));
     }
 
-    fn tool_results(&mut self, message: &Value, inbound: &mut Inbound) {
-        for block in message
+    fn tool_results(&mut self, sdk: &Value, inbound: &mut Inbound) {
+        for block in sdk["message"]
             .get("content")
             .and_then(Value::as_array)
             .into_iter()
@@ -288,24 +288,21 @@ impl SdkBridge {
             let Some(id) = block.get("tool_use_id").and_then(Value::as_str) else {
                 continue;
             };
-            if self.subagents.contains(id) {
-                let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
-                let outcome = if failed {
-                    ChildOutcome::Failed
-                } else {
-                    ChildOutcome::Completed
-                };
-                self.end_child(id, outcome, inbound);
+            let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
+            let status = if failed { "failed" } else { "completed" };
+            if self.subagents.contains_key(id) {
+                if !self.keeps_open_after_launch(id, sdk.get("tool_use_result")) {
+                    self.end_child(id, ChildOutcome::settled(Some(status)), inbound);
+                }
                 continue;
             }
             let Some(name) = self.tools.remove(id) else {
                 continue;
             };
-            let failed = block.get("is_error").and_then(Value::as_bool) == Some(true);
             let mut update = json!({
                 "sessionUpdate": "tool_call_update",
                 "toolCallId": id,
-                "status": if failed { "failed" } else { "completed" },
+                "status": status,
                 "_meta": {"claudeCode": {"toolName": name}},
             });
             let edits = tool_fields(&name, &Value::Null)["kind"] == "edit";

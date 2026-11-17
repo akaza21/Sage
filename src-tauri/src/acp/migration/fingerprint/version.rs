@@ -138,6 +138,9 @@ pub(super) fn class_for_version(version: u32) -> AppResult<SchemaClass> {
         version if version == super::super::session_capabilities::VERSION => {
             SchemaClass::CurrentSessionCapabilities
         }
+        version if version == super::super::child_thread_states::VERSION => {
+            SchemaClass::CurrentChildThreadStates
+        }
         _ => return invalid("Sage schema version is above the supported maximum"),
     })
 }

@@ -73,6 +73,7 @@ impl SdkBridge {
             }
             Some("hook_started" | "hook_progress" | "hook_response") => hook(sdk, inbound),
             Some("task_started" | "task_progress" | "task_updated" | "task_notification") => {
+                self.subagent_task(sdk, inbound);
                 task(sdk, inbound);
             }
             Some("notification") => {

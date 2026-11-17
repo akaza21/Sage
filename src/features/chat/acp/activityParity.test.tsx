@@ -12,7 +12,7 @@ import { settleLazyModules } from "../../../test/settleLazyModules";
 import { parityTool } from "./activityParity.fixture";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { page, textItem } from "./acpProjection.fixture";
-import { projectTaskResources } from "../../../workbench/agentArtifactTabPresentation";
+import { projectRecentAgents } from "../../../workbench/agentArtifactTabPresentation";
 import { ToolItem } from "./ToolItem";
 
 afterEach(cleanup);
@@ -215,12 +215,12 @@ it("names pending task observations as started working and keeps grouped/header 
     screen.getByText("Reviewer and Builder started working"),
   ).toBeVisible();
   expect(screen.queryByText(/pending/)).toBeNull();
-  const resources = projectTaskResources(projection, projection.chatId);
-  expect(resources.recentAgents.map((agent) => agent.status)).toEqual([
+  const recentAgents = projectRecentAgents(projection, projection.chatId);
+  expect(recentAgents.map((agent) => agent.status)).toEqual([
     "working",
     "working",
   ]);
-  expect(resources.recentAgents.map((agent) => agent.label)).toEqual([
+  expect(recentAgents.map((agent) => agent.label)).toEqual([
     "Reviewer",
     "Builder",
   ]);

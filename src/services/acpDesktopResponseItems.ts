@@ -10,6 +10,7 @@ import {
   safeText,
   safeTimestamp,
 } from "./acpDesktopGuards";
+import { safeCollaborationItem } from "./acpDesktopCollaboration";
 import { admittedImageDataUrl } from "./acpDesktopResponseImage";
 import { safeUserInputRequest } from "./acpDesktopUserInput";
 import {
@@ -19,7 +20,6 @@ import {
 } from "./acpDesktopResponsePayloads";
 
 const MAX_PLAN_ENTRIES = 512;
-const MAX_COLLABORATION_RECEIVERS = 32;
 
 function safeItemIdentity(
   value: Record<string, unknown>,
@@ -334,67 +334,10 @@ export function safeItem(value: unknown): AcpItem | null {
           }
         : null;
     }
-    case "collaboration": {
-      const activityId = safeNullableIdentifier(payload.activityId);
-      const label = safeText(payload.label, 512);
-      const summary = safeText(payload.summary, 16_384);
-      if (
-        value.toolState !== null ||
-        activityId === undefined ||
-        (identity.origin !== "primary" &&
-          (activityId === null || identity.activityId === null)) ||
-        label === null ||
-        summary === null ||
-        !Array.isArray(payload.receiverLabels) ||
-        payload.receiverLabels.length > MAX_COLLABORATION_RECEIVERS
-      )
-        return null;
-      const receiverLabels = payload.receiverLabels.map((receiver) =>
-        safeText(receiver, 512),
-      );
-      const operation =
-        payload.operation == null ? null : safeText(payload.operation, 32);
-      const agentKey =
-        payload.agentKey == null ? null : safeText(payload.agentKey, 512);
-      const agentKeys = Array.isArray(payload.agentKeys)
-        ? payload.agentKeys.map((key) => safeText(key, 512))
-        : [];
-      const agentStates = Array.isArray(payload.agentStates)
-        ? payload.agentStates.map((entry) =>
-            Array.isArray(entry) && entry.length === 2
-              ? [safeText(entry[0], 512), safeText(entry[1], 32)]
-              : null,
-          )
-        : [];
-      return receiverLabels.some((receiver) => receiver === null) ||
-        (payload.operation != null && operation === null) ||
-        (payload.agentKey != null && agentKey === null) ||
-        agentKeys.length > MAX_COLLABORATION_RECEIVERS ||
-        agentKeys.some((key) => key === null) ||
-        agentStates.length > MAX_COLLABORATION_RECEIVERS ||
-        agentStates.some(
-          (entry) => entry === null || entry.some((part) => part === null),
-        )
-        ? null
-        : {
-            ...identity,
-            kind: "collaboration",
-            toolState: null,
-            payload: {
-              activityId: activityId as Extract<
-                AcpItem,
-                { kind: "collaboration" }
-              >["payload"]["activityId"],
-              label,
-              summary,
-              receiverLabels: receiverLabels as string[],
-              operation,
-              agentKey,
-              agentKeys: agentKeys as string[],
-              agentStates: agentStates as [string, string][],
-            },
-          };
-    }
+    case "collaboration":
+      return value.toolState === null
+        ? safeCollaborationItem(identity, payload)
+        : null;
     default:
       return null;
   }

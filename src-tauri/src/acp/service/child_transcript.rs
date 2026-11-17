@@ -2,6 +2,7 @@ use rusqlite::{OptionalExtension, params};
 
 use crate::acp::{
     goal::NativeRead,
+    ipc::ProjectionChangedV1,
     store::child_transcript::{
         ChildTranscriptScope, ChildTranscriptStoreError, load_earlier_snapshot, load_snapshot,
         persist_snapshot, verify_current_binding,
@@ -87,7 +88,16 @@ impl AcpService {
                     &snapshot,
                     sage_core::time::now_millis(),
                 ) {
-                    Ok(()) => {}
+                    Ok(Some(projection_revision)) => {
+                        let _ = self.publisher.publish_committed(ProjectionChangedV1 {
+                            project_id: scope.owner.project_id.clone(),
+                            chat_id: scope.owner.chat_id.clone(),
+                            session_id: scope.owner.session_id.clone(),
+                            projection_revision,
+                            child_projection_epoch: 0,
+                        });
+                    }
+                    Ok(None) => {}
                     Err(ChildTranscriptStoreError::Capacity) => {
                         return Ok(ChildTranscriptRead::TooLarge);
                     }
