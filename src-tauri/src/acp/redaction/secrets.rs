@@ -40,6 +40,11 @@ impl SecretContext {
             .then_some(separator + 1)
     }
 
+    /// Whether no key, flag or header waits for a value.
+    pub(crate) fn settled(&self) -> bool {
+        !(self.next_value || self.authorization_line || self.key_waiting || self.colon_key_waiting)
+    }
+
     pub(crate) fn finish_value(&mut self) {
         *self = Self::default();
     }

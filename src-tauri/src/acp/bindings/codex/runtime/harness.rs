@@ -1,8 +1,8 @@
 use super::*;
 use crate::acp::{
     bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterOptionalEgress, AdapterRuntimeError,
-        EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterOptionalEgress,
+        AdapterRuntimeError, EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
     runtime::later_permission::resolve_later_permission,
     transport::{Frame, OutboundFrame},
@@ -326,6 +326,12 @@ impl HarnessAdapter for CodexRuntime {
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         self.ingest_frame(frame, resources)
     }
+    fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
+        self.snapshots.finish()
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.held.next_batch()
+    }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.cancelled_permission_request() {
             return self
@@ -360,63 +366,12 @@ impl HarnessAdapter for CodexRuntime {
                 EgressResolution::Queued | EgressResolution::Written => Ok(()),
             };
         }
-        if let Some(request_id) = token.allow_request() {
-            let next = match resolution {
-                EgressResolution::Queued => ServerRequestState::ResponseQueued,
-                EgressResolution::Written => ServerRequestState::ResolvedAllowed,
-                EgressResolution::QueueRejected
-                | EgressResolution::WriteZeroBytes
-                | EgressResolution::DeliveryUnknown => {
-                    return Err(AdapterRuntimeError::MandatoryDenyTeardown);
-                }
-            };
-            return self
-                .inner
-                .advance_permission(request_id, next)
-                .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
-        }
-        if let Some(request_id) = token.cancelled_permission_request() {
-            if matches!(
-                resolution,
-                EgressResolution::QueueRejected
-                    | EgressResolution::WriteZeroBytes
-                    | EgressResolution::DeliveryUnknown
-            ) {
-                return Err(AdapterRuntimeError::MandatoryDenyTeardown);
-            }
-            return self
-                .inner
-                .advance_permission(request_id, ServerRequestState::Cancelled)
-                .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown);
-        }
-        let Some((request_id, replay)) = token.deny_request() else {
-            return Err(AdapterRuntimeError::EgressIntent);
-        };
-        if matches!(
-            resolution,
-            EgressResolution::QueueRejected
-                | EgressResolution::WriteZeroBytes
-                | EgressResolution::DeliveryUnknown
-        ) {
-            return Err(AdapterRuntimeError::MandatoryDenyTeardown);
-        }
-        if replay {
-            return Ok(());
-        }
-        let next = match resolution {
-            EgressResolution::Queued => ServerRequestState::ResponseQueued,
-            EgressResolution::Written => ServerRequestState::ResolvedDeclined,
-            EgressResolution::QueueRejected
-            | EgressResolution::WriteZeroBytes
-            | EgressResolution::DeliveryUnknown => unreachable!(),
-        };
-        self.inner
-            .advance_permission(request_id, next)
-            .map_err(|_| AdapterRuntimeError::MandatoryDenyTeardown)
+        self.resolve_permission_egress(&token, resolution)
     }
 }
 
 mod browser_failure;
 mod command_method;
+mod permission_egress;
 mod request_egress;
 use command_method::command_method;

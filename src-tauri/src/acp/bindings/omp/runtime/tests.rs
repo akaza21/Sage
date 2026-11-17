@@ -17,6 +17,7 @@ use crate::acp::{
 use sage_acp_protocol::{
     contract::{RequiredText, RuntimeEpoch, SageAgentSessionId, SageRootId, SageServerRequestId},
     intent::{ExternalId, NormalizedPayload, SafeResourceRef},
+    lifecycle::ItemLifecycle,
 };
 
 struct Mapper;
@@ -395,7 +396,7 @@ fn turn_items_typed_diff_cancel_duplicate_and_late_are_normalized() {
     }
     let terminal_frame = response(&prompt, json!({"stopReason":"cancelled"}));
     let terminal = runtime.ingest(&terminal_frame, &Mapper).expect("terminal");
-    assert!(matches!(terminal.events(), [AdapterEvent::Turn { .. }]));
+    assert!(matches!(terminal.events(), [.., AdapterEvent::Turn { .. }]));
     assert!(matches!(
         runtime
             .ingest(&terminal_frame, &Mapper)
@@ -520,12 +521,98 @@ fn malformed_and_plus_one_models_fail_closed() {
 }
 
 #[test]
+fn every_turn_end_shows_each_streamed_reply_whole() {
+    for (stop, lifecycle) in [
+        (json!({"stopReason":"end_turn"}), ItemLifecycle::Completed),
+        (json!({"stopReason":"cancelled"}), ItemLifecycle::Cancelled),
+        (json!({"stopReason":"max_tokens"}), ItemLifecycle::Failed),
+    ] {
+        let mut runtime = fixture_runtime(12);
+        initialize(&mut runtime, false);
+        new_session(&mut runtime);
+        let prompt = running(&mut runtime);
+        for delta in ["hel", "lo 这是没有空格的", "回答"] {
+            runtime
+                .ingest(
+                    &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+                        "sessionId":"omp-session-1","update":{"sessionUpdate":"agent_message_chunk",
+                        "itemId":"message-chunks","content":{"type":"text","text":delta}}
+                    }})),
+                    &Mapper,
+                )
+                .expect("message chunk");
+        }
+        let terminal = runtime
+            .ingest(&response(&prompt, stop.clone()), &Mapper)
+            .expect("terminal");
+        assert!(
+            matches!(
+                terminal.events(),
+                [AdapterEvent::Item { lifecycle: ended, payload: NormalizedPayload::Text { text }, .. }, AdapterEvent::Turn { .. }]
+                    if *ended == lifecycle && text.as_str() == "hello 这是没有空格的回答"
+            ),
+            "{stop}: {:?}",
+            terminal.events()
+        );
+    }
+}
+
+#[test]
+fn a_new_reply_ends_the_last_so_a_long_turn_ends_within_one_batch() {
+    let mut runtime = fixture_runtime(12);
+    initialize(&mut runtime, false);
+    new_session(&mut runtime);
+    let prompt = running(&mut runtime);
+    let replies = LIMITS.queues.journal_facts_per_transaction as usize + 8;
+    for index in 0..replies {
+        let batch = runtime
+            .ingest(
+                &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
+                    "sessionId":"omp-session-1","update":{"sessionUpdate":"agent_message_chunk",
+                    "itemId":format!("reply-{index}"),"content":{"type":"text","text":"done now"}}
+                }})),
+                &Mapper,
+            )
+            .expect("reply chunk");
+        let ended: Vec<_> = batch
+            .events()
+            .iter()
+            .filter_map(|event| match event {
+                AdapterEvent::Item {
+                    lifecycle: ItemLifecycle::Completed,
+                    payload: NormalizedPayload::Text { text },
+                    ..
+                } => Some(text.as_str()),
+                _ => None,
+            })
+            .collect();
+        let expected: &[&str] = if index == 0 { &[] } else { &["done now"] };
+        assert_eq!(ended, expected, "reply {index}");
+    }
+    let terminal = runtime
+        .ingest(
+            &response(&prompt, json!({"stopReason":"end_turn"})),
+            &Mapper,
+        )
+        .expect("terminal");
+    assert!(
+        matches!(
+            terminal.events(),
+            [AdapterEvent::Item { lifecycle: ItemLifecycle::Completed, payload: NormalizedPayload::Text { text }, .. }, AdapterEvent::Turn { .. }]
+                if text.as_str() == "done now"
+        ),
+        "{:?}",
+        terminal.events()
+    );
+}
+
+#[test]
 fn chunks_append_plan_replaces_and_plus_one_poison_clears_snapshots() {
     let mut runtime = fixture_runtime(12);
     initialize(&mut runtime, false);
     new_session(&mut runtime);
     let prompt = running(&mut runtime);
-    for delta in ["hel", "lo"] {
+    for delta in ["hel", "lo there"] {
         let batch = runtime
             .ingest(
                 &frame(json!({"jsonrpc":"2.0","method":"session/update","params":{
@@ -535,19 +622,20 @@ fn chunks_append_plan_replaces_and_plus_one_poison_clears_snapshots() {
                 &Mapper,
             )
             .expect("message chunk");
-        if delta == "lo" {
+        if delta == "lo there" {
             assert!(matches!(
                 batch.events().last(),
                 Some(AdapterEvent::Item {
                     payload: NormalizedPayload::Text { text },
                     ..
-                }) if text.as_str() == "hello"
+                }) if text.as_str() == "hello "
             ));
         }
     }
+
     for (item, first, second, forbidden) in [
         ("split-bearer", "Bearer ", "secret-value", "secret-value"),
-        ("split-path", "C:", r"\Users\private", "Users"),
+        ("split-path", "C:", r"\Users\private", "[redacted]"),
         ("split-key", "sk-", "private", "private"),
     ] {
         for text in [first, second] {
@@ -587,7 +675,11 @@ fn chunks_append_plan_replaces_and_plus_one_poison_clears_snapshots() {
             ));
         }
     }
-    assert_eq!(runtime.snapshots.len(), 5);
+    assert_eq!(
+        runtime.snapshots.len(),
+        2,
+        "one reply and one plan stay open"
+    );
     runtime
         .ingest(
             &response(&prompt, json!({"stopReason":"end_turn"})),

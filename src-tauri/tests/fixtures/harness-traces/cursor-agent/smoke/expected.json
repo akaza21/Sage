@@ -11,14 +11,14 @@
       "externalItemId": "thought:3",
       "kind": "thoughtSummary",
       "lifecycle": "streaming",
-      "text": "The user requested a"
+      "text": "The user requested "
     },
     {
       "event": "item",
       "externalItemId": "thought:3",
       "kind": "thoughtSummary",
       "lifecycle": "streaming",
-      "text": "The user requested a single-word reply."
+      "text": "The user requested a single-word "
     },
     {
       "event": "item",
@@ -32,7 +32,7 @@
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "ok"
+      "text": ""
     },
     {
       "event": "item",

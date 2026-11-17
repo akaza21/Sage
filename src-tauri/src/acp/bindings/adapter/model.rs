@@ -241,6 +241,12 @@ pub(crate) trait HarnessAdapter {
         frame: &Frame,
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError>;
+    /// Each reply of the active Turn still streaming, shown whole, once the
+    /// harness's output has ended and nothing more of it can arrive.
+    fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError>;
+    /// Output the last batch held back because it filled up, as much as fits
+    /// in one batch; the pump takes it until `None` before the next frame.
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError>;
     /// Names the Turn the last `AdapterEvent::TurnStarted` announced and
     /// returns what the harness reported for it so far.
     fn adopt_turn(

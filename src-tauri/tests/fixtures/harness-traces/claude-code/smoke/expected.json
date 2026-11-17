@@ -23,7 +23,7 @@
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "ok"
+      "text": ""
     },
     {
       "event": "usage",

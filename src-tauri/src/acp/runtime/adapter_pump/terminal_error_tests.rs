@@ -41,36 +41,30 @@ fn codex_terminal_only_error_survives_the_shared_pump_history_and_database_reope
         {
             let source = fixture.connection();
             let mut copy = rusqlite::Connection::open(&path).unwrap();
-            rusqlite::backup::Backup::new(&source, &mut copy).unwrap()
-                .run_to_completion(256, std::time::Duration::ZERO, None).unwrap();
+            rusqlite::backup::Backup::new(&source, &mut copy)
+                .unwrap()
+                .run_to_completion(256, std::time::Duration::ZERO, None)
+                .unwrap();
         }
         drop(fixture);
         let database = crate::database::open_database(&path).unwrap();
-        let mut codex = CodexRuntime::fixture_with_identity(Platform::WindowsX86_64, [7; 32], session("one"));
-        let init = codex.command(AdapterCommand::Initialize).unwrap();
-        codex.resolve_egress(init.into_token(), EgressResolution::Queued).unwrap();
-        let initialized = codex.ingest(&codex_frame(serde_json::json!({"id":1,"result":{
-            "userAgent":user_agent("sage", "unknown"),
-            "codexHome":MANAGED_CODEX_HOME,
-            "platformFamily":"windows","platformOs":"windows"
-        }})), &Mapper).unwrap();
-        codex.resolve_egress(initialized.egress()[0].token().clone(), EgressResolution::Queued).unwrap();
-        let start = codex.command(AdapterCommand::NewSession { native_root: r"C:\repo".into(), model: None }).unwrap();
-        codex.ingest(&codex_frame(serde_json::json!({"id":codex_request_id(&start),"result":{"thread":{"id":"external-session"}}})), &Mapper).unwrap();
-        codex.command(AdapterCommand::Prompt {
-            prompt: Prompt::new("prompt", "Inspect only").unwrap(), client_message_id: message(),
-            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
-        }).unwrap();
-        codex.ingest(&codex_frame(serde_json::json!({"method":"turn/started","params":{
-            "threadId":"external-session","turn":{"id":"external-turn","status":"inProgress"}
-        }})), &Mapper).unwrap();
+        let codex = started_codex_turn();
         let intent = session_intent().bind_turn(ActiveTurnIntent {
-            turn_id: turn("one"), external_turn_id: Some(ExternalId::new("turn", "external-turn").unwrap()), client_message_id: message(),
+            turn_id: turn("one"),
+            external_turn_id: Some(ExternalId::new("turn", "external-turn").unwrap()),
+            client_message_id: message(),
         });
         let (handle, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
         let shutdown = JournalShutdown(handle.clone());
         let task = runner.spawn();
-        let mut pump = AdapterPump::new(codex, SqliteAdapterBatchJournal::new(handle.clone(), intent.clone()), Mapper, Arc::new(ProjectionMailbox::default()), intent).unwrap();
+        let mut pump = AdapterPump::new(
+            codex,
+            SqliteAdapterBatchJournal::new(handle.clone(), intent.clone()),
+            Mapper,
+            Arc::new(ProjectionMailbox::default()),
+            intent,
+        )
+        .unwrap();
         let frame = codex_line(serde_json::json!({"method":"turn/completed","params":{
             "threadId":"external-session","turn":{"id":"external-turn","status":"failed",
             "error":{"message":"Failed with sk-private at C:\\private\\file.txt"}}
@@ -92,15 +86,169 @@ fn codex_terminal_only_error_survives_the_shared_pump_history_and_database_reope
     });
 }
 
-fn assert_failed_history(database: &Database) {
-    let connection = database.connection();
-    let page = load_chat_page(
-        &connection,
+#[test]
+fn a_reply_held_back_while_streaming_is_committed_whole_before_shutdown() {
+    runtime().block_on(async {
+        let database = sign_in_tests::migrated_database();
+        let intent = session_intent().bind_turn(ActiveTurnIntent {
+            turn_id: turn("one"),
+            external_turn_id: Some(ExternalId::new("turn", "external-turn").unwrap()),
+            client_message_id: message(),
+        });
+        let (handle, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
+        let shutdown = JournalShutdown(handle.clone());
+        let task = runner.spawn();
+        let mut pump = AdapterPump::new(
+            started_codex_turn(),
+            SqliteAdapterBatchJournal::new(handle.clone(), intent.clone()),
+            Mapper,
+            Arc::new(ProjectionMailbox::default()),
+            intent,
+        )
+        .unwrap();
+        let delta = codex_line(serde_json::json!({"method":"item/agentMessage/delta","params":{
+            "threadId":"external-session","turnId":"external-turn","itemId":"message","delta":"ok"
+        }}));
+        pump.push_stdout_chunk(&delta, 10).await.unwrap();
+        pump.flush_deferred().await.unwrap();
+        assert_eq!(last_reply(&database), "");
+        pump.commit_unfinished_replies(11).await.unwrap();
+        assert_eq!(last_reply(&database), "ok");
+        drop(pump);
+        handle.close_when_drained();
+        task.await.unwrap();
+        drop(shutdown);
+    });
+}
+
+#[test]
+fn a_turn_ending_with_more_open_replies_than_a_batch_holds_completes_through_the_native_runtime() {
+    runtime().block_on(async {
+        for count in [128, 129] {
+            let database = sign_in_tests::migrated_database();
+            let intent = session_intent().bind_turn(ActiveTurnIntent {
+                turn_id: turn("one"),
+                external_turn_id: Some(ExternalId::new("turn", "external-turn").unwrap()),
+                client_message_id: message(),
+            });
+            let (handle, runner) = JournalHandle::new(DatabaseAcpStore::new(database.clone()));
+            let shutdown = JournalShutdown(handle.clone());
+            let task = runner.spawn();
+            let mut pump = AdapterPump::new(
+                crate::acp::bindings::runtime::NativeRuntime::new(started_codex_turn()),
+                SqliteAdapterBatchJournal::new(handle.clone(), intent.clone()),
+                Mapper,
+                Arc::new(ProjectionMailbox::default()),
+                intent,
+            )
+            .unwrap();
+            for index in 0..count {
+                let delta = codex_line(serde_json::json!({"method":"item/agentMessage/delta","params":{
+                    "threadId":"external-session","turnId":"external-turn",
+                    "itemId":format!("reply-{index}"),"delta":"done now"
+                }}));
+                pump.push_stdout_chunk(&delta, 10).await.unwrap();
+            }
+            let completed = codex_line(serde_json::json!({"method":"turn/completed","params":{
+                "threadId":"external-session","turn":{"id":"external-turn","status":"completed"}
+            }}));
+            pump.push_stdout_chunk(&completed, 11).await.unwrap();
+            assert!(pump.completed_turn_ready(), "{count}");
+            let page = chat_page(&database);
+            let turn = &page.turns.as_slice()[0];
+            assert_eq!(turn.state, TurnState::Completed, "{count}");
+            let whole = turn
+                .items
+                .as_slice()
+                .iter()
+                .filter(|item| matches!(&item.content, ItemContent::Text { text, .. } if text.as_str() == "done now"))
+                .count();
+            assert_eq!(whole, count);
+            drop(pump);
+            handle.close_when_drained();
+            task.await.unwrap();
+            drop(shutdown);
+        }
+    });
+}
+
+fn chat_page(database: &Database) -> crate::acp::projection::AcpChatPage {
+    load_chat_page(
+        &database.connection(),
         SageProjectId::parse("project-one").unwrap(),
         SageChatId::parse("chat-one").unwrap(),
         None,
     )
-    .unwrap();
+    .unwrap()
+}
+
+fn last_reply(database: &Database) -> String {
+    let page = chat_page(database);
+    page.turns
+        .as_slice()
+        .iter()
+        .flat_map(|turn| turn.items.as_slice())
+        .filter_map(|item| match &item.content {
+            ItemContent::Text {
+                role: crate::acp::projection::TextRole::Assistant,
+                text,
+            } => Some(text.as_str().to_owned()),
+            _ => None,
+        })
+        .next_back()
+        .unwrap()
+}
+
+fn started_codex_turn() -> CodexRuntime {
+    let mut codex =
+        CodexRuntime::fixture_with_identity(Platform::WindowsX86_64, [7; 32], session("one"));
+    let init = codex.command(AdapterCommand::Initialize).unwrap();
+    codex
+        .resolve_egress(init.into_token(), EgressResolution::Queued)
+        .unwrap();
+    let initialized = codex
+        .ingest(
+            &codex_frame(serde_json::json!({"id":1,"result":{
+                "userAgent":user_agent("sage", "unknown"),
+                "codexHome":MANAGED_CODEX_HOME,
+                "platformFamily":"windows","platformOs":"windows"
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    codex
+        .resolve_egress(
+            initialized.egress()[0].token().clone(),
+            EgressResolution::Queued,
+        )
+        .unwrap();
+    let start = codex
+        .command(AdapterCommand::NewSession {
+            native_root: r"C:\repo".into(),
+            model: None,
+        })
+        .unwrap();
+    codex.ingest(&codex_frame(serde_json::json!({"id":codex_request_id(&start),"result":{"thread":{"id":"external-session"}}})), &Mapper).unwrap();
+    codex
+        .command(AdapterCommand::Prompt {
+            prompt: Prompt::new("prompt", "Inspect only").unwrap(),
+            client_message_id: message(),
+            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::ReadOnly,
+        })
+        .unwrap();
+    codex
+        .ingest(
+            &codex_frame(serde_json::json!({"method":"turn/started","params":{
+                "threadId":"external-session","turn":{"id":"external-turn","status":"inProgress"}
+            }})),
+            &Mapper,
+        )
+        .unwrap();
+    codex
+}
+
+fn assert_failed_history(database: &Database) {
+    let page = chat_page(database);
     assert_eq!(page.turns.as_slice().len(), 1);
     let turn = &page.turns.as_slice()[0];
     assert_eq!(turn.state, TurnState::Failed);
@@ -120,6 +268,10 @@ fn assert_failed_history(database: &Database) {
         .collect::<Vec<_>>();
     assert_eq!(
         errors,
-        [("codex", "Failed with [redacted] at [path]", false)]
+        [(
+            "codex",
+            r"Failed with [redacted] at C:\private\file.txt",
+            false
+        )]
     );
 }

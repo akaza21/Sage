@@ -1,42 +1,56 @@
 use crate::acp::bindings::adapter::AdapterRuntimeError;
-use crate::acp::bindings::pi::decode::redact_with_tail;
+use crate::acp::redaction::text::ReplyStream;
 use sage_core::limits::LIMITS;
 
+/// Appends a delta to the reply as Pi sent it and returns what may be shown
+/// while it streams.
 pub(super) fn append_snapshot(
-    snapshot: &mut Option<String>,
-    redacted_tail: &mut bool,
+    snapshot: &mut Option<ReplyStream>,
     delta: &str,
-    delta_redacted_tail: bool,
 ) -> Result<String, AdapterRuntimeError> {
-    let current = snapshot.take().ok_or(AdapterRuntimeError::Operation)?;
-    let length = current
+    let mut stream = snapshot.take().ok_or(AdapterRuntimeError::Operation)?;
+    stream
         .len()
         .checked_add(delta.len())
-        .filter(|size| {
-            *size <= LIMITS.wire.normalized_item_bytes as usize
-                && *size <= LIMITS.wire.item_bytes_per_turn as usize
-        })
+        .filter(|size| within_item_limits(*size))
         .ok_or(AdapterRuntimeError::BatchBytes)?;
-    let mut next = String::new();
-    next.try_reserve_exact(length)
+    stream
+        .push(delta)
         .map_err(|_| AdapterRuntimeError::BatchBytes)?;
-    next.push_str(&current);
-    next.push_str(delta);
-    let continuing_redaction = *redacted_tail && !delta.contains(char::is_whitespace);
-    if *redacted_tail && !delta.starts_with(char::is_whitespace) {
-        let end = delta
-            .char_indices()
-            .find_map(|(index, character)| character.is_whitespace().then_some(index))
-            .unwrap_or(delta.len());
-        next.replace_range(current.len()..current.len() + end, "");
+    let shown = bounded(stream.streaming())?;
+    *snapshot = Some(stream);
+    Ok(shown)
+}
+
+/// The whole reply once Pi ends it, however it ended.
+pub(super) fn closed_snapshot(
+    snapshot: &mut Option<ReplyStream>,
+) -> Result<String, AdapterRuntimeError> {
+    let mut stream = snapshot.take().ok_or(AdapterRuntimeError::Operation)?;
+    bounded(stream.finished())
+}
+
+fn bounded(shown: String) -> Result<String, AdapterRuntimeError> {
+    if within_item_limits(shown.len()) {
+        Ok(shown)
+    } else {
+        Err(AdapterRuntimeError::BatchBytes)
     }
-    let (next, joined_redacted_tail) = redact_with_tail(&next);
-    if next.len() > LIMITS.wire.normalized_item_bytes as usize
-        || next.len() > LIMITS.wire.item_bytes_per_turn as usize
-    {
-        return Err(AdapterRuntimeError::BatchBytes);
+}
+
+fn within_item_limits(size: usize) -> bool {
+    size <= LIMITS.wire.normalized_item_bytes as usize
+        && size <= LIMITS.wire.item_bytes_per_turn as usize
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{ReplyStream, closed_snapshot};
+
+    #[test]
+    fn a_reply_that_redaction_makes_longer_than_an_item_is_clipped_when_it_closes() {
+        let mut snapshot = Some(ReplyStream::new(&"token=abc ".repeat(25_000)));
+        let closed = closed_snapshot(&mut snapshot).expect("clipped, not refused");
+        assert!(closed.ends_with('\u{2026}'), "{}", closed.len());
     }
-    *snapshot = Some(next.clone());
-    *redacted_tail = continuing_redaction || delta_redacted_tail || joined_redacted_tail;
-    Ok(next)
 }

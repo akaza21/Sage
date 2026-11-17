@@ -348,6 +348,14 @@ impl HarnessAdapter for FixtureAdapter {
             _ => Err(AdapterRuntimeError::EgressIntent),
         }
     }
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        Ok(Vec::new())
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
 }
 
 fn ingest_metadata(value: serde_json::Value) -> Result<AdapterBatch, AdapterRuntimeError> {

@@ -10,6 +10,32 @@ impl AdapterBatchBuilder {
         }
     }
 
+    /// Whether `event` fits in what is left of this batch.
+    pub(crate) fn fits_event(&self, event: &AdapterEvent) -> Result<bool, AdapterRuntimeError> {
+        let bytes = event_bytes(event).ok_or(AdapterRuntimeError::BatchBytes)?;
+        Ok(
+            self.events.len() < LIMITS.queues.journal_facts_per_transaction as usize
+                && self.event_bytes.checked_add(bytes).is_some_and(|next| {
+                    next <= LIMITS.queues.journal_bytes_per_transaction as usize
+                }),
+        )
+    }
+
+    /// Whether `egress` fits in what is left of this batch.
+    pub(crate) fn fits_egress(&self, egress: &AdapterEgress) -> bool {
+        self.egress.len() < LIMITS.queues.egress_control_frames_inside_total as usize
+            && self
+                .egress_bytes
+                .checked_add(egress.frame().wire_len())
+                .is_some_and(|next| {
+                    next <= LIMITS.queues.egress_control_bytes_inside_total as usize
+                })
+    }
+
+    pub(crate) fn is_empty(&self) -> bool {
+        self.events.is_empty() && self.egress.is_empty()
+    }
+
     pub(crate) fn push_event(&mut self, event: AdapterEvent) -> Result<(), AdapterRuntimeError> {
         if self.events.len() >= LIMITS.queues.journal_facts_per_transaction as usize {
             return Err(AdapterRuntimeError::BatchCount);

@@ -1,4 +1,5 @@
 use super::Mode;
+pub(crate) use super::tokens::contains_token;
 
 const SECRET_PARTS: &[&str] = &[
     "password",
@@ -13,10 +14,17 @@ const SECRET_PARTS: &[&str] = &[
     "sessionid",
 ];
 
+/// A key is judged both as written and with JSON escapes decoded: an escaped
+/// `\u0074oken` names a token, while the `\t` in a path such as
+/// `C:\keys\token` is only a separator.
 pub(crate) fn sensitive_key(key: &str) -> bool {
     let key = key.trim_matches(['-', '\'', '"', '\x60', '{', '}', ':', '\\']);
     let key = key.strip_prefix("$env:").unwrap_or(key);
     let decoded = decode_key(key, false);
+    sensitive_key_text(&decoded) || (decoded != key && sensitive_key_text(key))
+}
+
+fn sensitive_key_text(decoded: &str) -> bool {
     let lower = decoded.to_ascii_lowercase();
     let normalized: String = lower
         .chars()
@@ -31,6 +39,9 @@ pub(crate) fn sensitive_key(key: &str) -> bool {
             | "awsaccesskeyid"
             | "authorization"
             | "proxyauthorization"
+            | "sig"
+            | "xamzsignature"
+            | "xgoogsignature"
     ) || SECRET_PARTS.iter().any(|part| normalized.contains(part))
         || normalized
             .match_indices("secret")
@@ -106,7 +117,10 @@ fn sensitive_token_key(key: &str) -> bool {
 pub(crate) fn sensitive_assignment(key: &str, separator: char, value: &str) -> bool {
     let bare = key.trim_matches(['-', '\'', '"', '\x60', '{', '}', '\\']);
     if separator == ':' {
-        if ["passwords", "credentials"]
+        if super::locations::file_reference(bare, value) {
+            return false;
+        }
+        if ["passwords", "credentials", "sig"]
             .iter()
             .any(|part| bare.eq_ignore_ascii_case(part))
         {
@@ -151,120 +165,45 @@ pub(crate) fn is_sensitive_prose_flag(input: &str) -> bool {
 pub(crate) fn is_sensitive_prose_token(input: &str) -> bool {
     let token = input.trim_matches(['"', '\'', '\x60', '(', ')', '[', ']', '{', '}', ',', ';']);
     let assigned = token.split(['?', '&']).any(|part| {
-        part.split_once('=')
-            .or_else(|| part.split_once(':'))
-            .is_some_and(|(key, value)| {
-                !value.is_empty()
-                    && sensitive_assignment(key, if part.contains('=') { '=' } else { ':' }, value)
-            })
+        assigned_parts(part).any(|(key, separator, value)| {
+            !value.is_empty() && sensitive_assignment(key, separator, value)
+        })
     });
     assigned
         || inline_auth(token)
         || attached_short_value(token)
-        || url_userinfo(token).is_some()
+        || has_userinfo(token)
         || contains_token(token)
 }
 
-/// Longest AWS access key tail `contains_token` inspects after a prefix: the
-/// 16 key characters plus one to reject a longer run.
-pub(crate) const AWS_KEY_TAIL_SCAN: usize = 17;
-
-pub(crate) fn contains_token(value: &str) -> bool {
-    let bytes = value.as_bytes();
-    for index in 0..bytes.len() {
-        work::record(|work| work.positions += 1);
-        if index > 0 && bytes[index - 1].is_ascii_alphabetic() {
-            continue;
+/// Every `key=value` or `key:value` reading of a token. A key starts after the
+/// previous separator or `/`, so `C:\keys\token=…` and `/srv/x\token=…` are
+/// judged by their last name and each byte joins at most one key.
+fn assigned_parts(part: &str) -> impl Iterator<Item = (&str, char, &str)> {
+    let mut key_start = 0;
+    part.char_indices().filter_map(move |(index, character)| {
+        if !matches!(character, '=' | ':' | '/') {
+            return None;
         }
-        let rest = &bytes[index..];
-        if rest.starts_with(b"AKIA") || rest.starts_with(b"ASIA") {
-            work::record(|work| work.aws_prefixes += 1);
-            let tail = rest[4..]
-                .iter()
-                .take(AWS_KEY_TAIL_SCAN)
-                .inspect(|_| work::record(|work| work.aws_tail_bytes += 1))
-                .take_while(|byte| byte.is_ascii_alphanumeric());
-            let (length, uppercase) = tail.fold((0usize, true), |(length, uppercase), byte| {
-                (
-                    length + 1,
-                    uppercase && (byte.is_ascii_uppercase() || byte.is_ascii_digit()),
-                )
-            });
-            if length == 16 && uppercase {
-                return true;
-            }
-            continue;
-        }
-        let prefix = if rest.len() >= 3 && rest[..3].eq_ignore_ascii_case(b"sk-") {
-            3
-        } else if rest.len() >= 4 && rest[..4].eq_ignore_ascii_case(b"ghp_") {
-            4
-        } else if rest.len() >= 5
-            && rest[..3].eq_ignore_ascii_case(b"xox")
-            && rest[3].is_ascii_alphabetic()
-            && rest[4] == b'-'
-        {
-            5
-        } else {
-            continue;
-        };
-        let tail = rest[prefix..]
-            .iter()
-            .take_while(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_'));
-        let (length, alphanumeric) = tail.fold((0usize, false), |(length, alphanumeric), byte| {
-            (length + 1, alphanumeric || byte.is_ascii_alphanumeric())
-        });
-        if length >= 3 && alphanumeric {
-            return true;
-        }
-    }
-    false
+        let key = &part[key_start..index];
+        key_start = index + 1;
+        (character != '/').then(|| (key, character, &part[index + 1..]))
+    })
 }
 
-/// Test-only accounting of the work `contains_token` does on this thread, so
-/// tests can bound it by input size instead of by wall-clock time.
-pub(crate) mod work {
-    #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
-    pub(crate) struct ContainsTokenWork {
-        /// Outer-loop byte positions visited.
-        pub(crate) positions: usize,
-        pub(crate) aws_prefixes: usize,
-        pub(crate) aws_tail_bytes: usize,
-    }
-
-    #[cfg(test)]
-    thread_local! {
-        static WORK: std::cell::Cell<ContainsTokenWork> =
-            const { std::cell::Cell::new(ContainsTokenWork { positions: 0, aws_prefixes: 0, aws_tail_bytes: 0 }) };
-    }
-
-    #[cfg(test)]
-    pub(crate) fn record(update: impl FnOnce(&mut ContainsTokenWork)) {
-        WORK.with(|cell| {
-            let mut work = cell.get();
-            update(&mut work);
-            cell.set(work);
-        });
-    }
-
-    #[cfg(not(test))]
-    #[inline(always)]
-    pub(crate) fn record(_update: impl FnOnce(&mut ContainsTokenWork)) {}
-
-    /// Returns the work recorded on this thread since the last call.
-    #[cfg(test)]
-    pub(crate) fn take() -> ContainsTokenWork {
-        WORK.with(std::cell::Cell::take)
-    }
-}
-
+/// The byte span of a URL's userinfo, as in `https://u:pw@host/`.
 pub(crate) fn url_userinfo(token: &str) -> Option<(usize, usize)> {
     let start = ["://", r":\/\/"]
         .iter()
         .find_map(|delimiter| token.find(delimiter).map(|index| index + delimiter.len()))?;
     let authority = token[start..].split(['/', '?', '#']).next()?;
-    let end = start + authority.rfind('@')?;
-    Some((start, end))
+    Some((start, start + authority.rfind('@')?))
+}
+
+/// Whether a token carries `user:password@` credentials anywhere: in a URL's
+/// userinfo or in any segment of a path such as `/srv/u:pw@db/x`.
+pub(crate) fn has_userinfo(token: &str) -> bool {
+    url_userinfo(token).is_some() || super::tokens::segment_userinfo(token).is_some()
 }
 
 pub(crate) fn decode_key(key: &str, escaped: bool) -> String {

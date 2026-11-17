@@ -33,6 +33,57 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         .await
     }
 
+    /// The frame left in the harness's output when it ended. With none left
+    /// mid-turn, its replies are shown whole before the turn is swept, as any
+    /// other ending shows them.
+    pub(super) async fn accept_last_frame(
+        &mut self,
+        frame: Option<Frame>,
+        now_millis: i64,
+    ) -> Result<bool, AdapterPumpError> {
+        let ended = frame.is_none();
+        let accepted = self
+            .accept_optional(frame, now_millis, IngestMode::Deferred)
+            .await?;
+        if !ended || accepted {
+            return Ok(accepted);
+        }
+        self.accept_unfinished_replies(now_millis).await
+    }
+
+    /// Commits each reply of the active turn still streaming, shown whole,
+    /// before Sage stops the harness mid-turn: the last word streaming held
+    /// back would otherwise never be shown.
+    pub(crate) async fn commit_unfinished_replies(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<(), AdapterPumpError> {
+        if self.accept_unfinished_replies(now_millis).await? {
+            self.flush_deferred().await?;
+        }
+        Ok(())
+    }
+
+    async fn accept_unfinished_replies(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<bool, AdapterPumpError> {
+        if self.terminal.is_some() || self.ensure_live().is_err() {
+            return Ok(false);
+        }
+        let Ok(events) = self.adapter.unfinished_replies() else {
+            return Ok(false);
+        };
+        let mut replies = HeldOutput::of(events);
+        let mut accepted = false;
+        while let Some(batch) = replies.next_batch()? {
+            self.accept_batch(batch, now_millis, IngestMode::Deferred)
+                .await?;
+            accepted = true;
+        }
+        Ok(accepted)
+    }
+
     pub(super) async fn fail_deferred_frame<T>(&mut self) -> Result<T, AdapterPumpError> {
         if !self.pending.is_empty() && self.flush_deferred().await.is_err() {
             self.pending.clear();

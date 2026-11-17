@@ -85,6 +85,21 @@ fn assert_prose(input: &str, expected: &str) {
     assert_eq!(sanitized_content_output(input).unwrap(), expected);
 }
 
+/// Message and label prose show absolute paths; tool content keeps them private.
+fn assert_prose_paths(input: &str, prose: &str, tool_content: &str) {
+    assert_eq!(
+        normalized_text::<512>("text", input).unwrap().as_str(),
+        prose
+    );
+    assert_eq!(
+        normalized_label_text::<512>("toolLabel", input)
+            .unwrap()
+            .as_str(),
+        prose
+    );
+    assert_eq!(sanitized_content_output(input).unwrap(), tool_content);
+}
+
 #[test]
 fn quoted_environment_password_redacts_all_words_without_dropping_prose() {
     assert_prose(
@@ -145,8 +160,9 @@ fn a_closing_secret_quote_does_not_expose_a_following_assignment() {
 
 #[test]
 fn a_closing_secret_quote_does_not_expose_a_following_path() {
-    assert_prose(
+    assert_prose_paths(
         r#"password="a b",/home/alice/private"#,
+        "[redacted],/home/alice/private",
         "[redacted],[redacted]",
     );
 }
@@ -181,14 +197,14 @@ fn quoted_authorization_does_not_hide_following_prose() {
 fn an_unquoted_windows_path_redacts_the_segment_after_a_space() {
     let input = r"before C:\Users\John Smith\.ssh\id after";
     let expected = "before [redacted] [redacted] after";
-    assert_prose(input, expected);
+    assert_prose_paths(input, input, expected);
     assert_eq!(sanitized_command_output(input).unwrap(), expected);
     assert!(sanitize_command_summary(input).is_err());
     assert!(redact("permissionCommand", input, 512, Mode::Permission).is_err());
 }
 
 fn assert_glued_path_rejected(input: &str) {
-    assert_prose(input, "cc [redacted]");
+    assert_prose_paths(input, input, "cc [redacted]");
     assert_eq!(sanitized_command_output(input).unwrap(), "cc [redacted]");
     assert!(sanitize_command_summary(input).is_err(), "{input}");
     assert!(matches!(
@@ -260,7 +276,7 @@ fn a_private_key_dash_segment_remains_redacted() {
 #[test]
 fn windows_path_continuation_does_not_redact_the_next_line() {
     let input = "C:\\Users\\John\nordinary\\text";
-    assert_prose(input, "[redacted]\nordinary\\text");
+    assert_prose_paths(input, input, "[redacted]\nordinary\\text");
     assert_eq!(
         sanitized_command_output(input).unwrap(),
         "[redacted]\nordinary\\text"

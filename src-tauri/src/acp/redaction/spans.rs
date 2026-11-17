@@ -3,6 +3,17 @@ use super::Mode;
 pub(crate) const MAX_VALUE_BYTES: usize = 8192;
 pub(crate) const MAX_VALUE_NEWLINES: usize = 64;
 pub(crate) const DIAGNOSTIC_BYTES: usize = 1024;
+/// The furthest past its start that any prose rule reads to decide a span: a
+/// quoted or bracketed value, a private key's end line, or the name of a
+/// folder beside the home folder.
+pub(crate) const MAX_SPAN_BYTES: usize = larger(
+    MAX_VALUE_BYTES,
+    larger(super::pem::QUOTE_SCAN_LIMIT, super::home::NAME_MAX),
+);
+
+const fn larger(left: usize, right: usize) -> usize {
+    if left > right { left } else { right }
+}
 
 pub(crate) fn byte_limit(mode: Mode) -> usize {
     if mode == Mode::Diagnostic {

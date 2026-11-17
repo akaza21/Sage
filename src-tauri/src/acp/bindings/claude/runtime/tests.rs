@@ -234,10 +234,13 @@ fn initialize_new_prompt_update_terminal_cancel_and_close_preserve_intent() {
         .expect("terminal");
     assert!(matches!(
         terminal.events(),
-        [SharedEvent::Turn {
-            state: TurnState::Cancelled,
-            ..
-        }]
+        [
+            ..,
+            SharedEvent::Turn {
+                state: TurnState::Cancelled,
+                ..
+            }
+        ]
     ));
 
     let close = runtime

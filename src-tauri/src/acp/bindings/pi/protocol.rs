@@ -251,13 +251,13 @@ pub enum AdapterOutput {
     TextStarted {
         external_id: Option<String>,
     },
+    /// A delta as Pi sent it; the runtime redacts the assembled text.
     TextDelta {
         text: String,
-        redacted_tail: bool,
     },
+    /// A delta as Pi sent it; the runtime redacts the assembled text.
     ThoughtDelta {
         text: String,
-        redacted_tail: bool,
     },
     ThoughtStarted,
     ThoughtCompleted {

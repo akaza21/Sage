@@ -4,11 +4,13 @@ const QUOTE_SCAN_LIMIT: usize = 1024;
 mod json;
 
 use super::text::{
+    breaks_a_token,
     credentials::{
-        attached_short_value, auth_scheme, contains_token, is_sensitive_prose_flag,
+        attached_short_value, auth_scheme, contains_token, has_userinfo, is_sensitive_prose_flag,
         public_token_key, sensitive_assignment, sensitive_key, url_userinfo,
     },
-    paths::{PathContext, PathMode},
+    next_token,
+    paths::{PathContext, PathMode, absolute_path},
     pem::{redact_pem, scan_window},
 };
 
@@ -46,7 +48,11 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
     let mut json_tail = false;
     let mut paths = PathContext::default();
     while !remaining.is_empty() {
-        let trimmed = remaining.trim_start_matches(char::is_whitespace);
+        let trimmed = if redact_next {
+            remaining.trim_start_matches(char::is_whitespace)
+        } else {
+            remaining.trim_start_matches(breaks_a_token)
+        };
         let whitespace = &remaining[..remaining.len() - trimmed.len()];
         output.push_str(whitespace);
         paths.redact("", whitespace, "", PathMode::Diagnostic);
@@ -56,7 +62,7 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
         }
         let position = value.len() - remaining.len();
         if position >= word_end {
-            word_end = position + word_len(remaining);
+            word_end = position + next_token(remaining, redact_next).0.len();
         }
         let token_len = word_end - position;
         let token = &remaining[..token_len];
@@ -183,7 +189,10 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             output.push_str(prefix);
             output.push_str("[redacted]");
             output.push_str(suffix);
-        } else if let Some((start, end)) = url_userinfo(bare) {
+        } else if let Some((start, end)) = url_userinfo(bare)
+            && !has_userinfo(&bare[end..])
+            && absolute_path(&bare[end + 1..], PathMode::Diagnostic).is_none()
+        {
             output.push_str(prefix);
             output.push_str(&bare[..start]);
             output.push_str("[redacted]");
@@ -202,6 +211,10 @@ fn sanitize_words(value: &str, json_depth: u8) -> String {
             };
             output.push_str(&ending_body[ending_body.trim_end_matches(':').len()..]);
             output.push_str(ending);
+        } else if has_userinfo(bare) {
+            output.push_str(prefix);
+            output.push_str("[redacted]");
+            output.push_str(suffix);
         } else {
             output.push_str(token);
             next = auth_scheme(&lower) || is_sensitive_prose_flag(bare);

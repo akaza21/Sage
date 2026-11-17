@@ -695,6 +695,14 @@ impl HarnessAdapter for FakeAdapter {
         self.shared.0.lock().unwrap().resolutions.push(resolution);
         Ok(())
     }
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        Ok(Vec::new())
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
 }
 
 struct FakeJournal {

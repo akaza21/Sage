@@ -6,6 +6,7 @@ use super::{
 use crate::acp::runtime::terminal_detail;
 
 mod harness_turn;
+mod held;
 mod shape;
 mod teardown;
 use shape::IngestMode;
@@ -102,7 +103,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         match self.adapter.ingest(&frame, &self.resources) {
             Ok(batch) => {
                 self.refresh_provisional_deadline(now_millis);
-                self.accept_batch(batch, now_millis, IngestMode::Deferred)
+                self.accept_ingested(batch, now_millis, IngestMode::Deferred)
                     .await?
             }
             Err(error) if NonfatalRefusal::from_adapter(&error).is_some() => {}
@@ -133,9 +134,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
             Err(AdapterPumpError::Frame) => return self.fail_deferred_frame().await,
             Err(error) => return Err(error),
         };
-        let accepted = self
-            .accept_optional(frame, now_millis, IngestMode::Deferred)
-            .await?;
+        let accepted = self.accept_last_frame(frame, now_millis).await?;
         if !self.decoder.has_pending_input() {
             self.flush_deferred().await?;
         }
@@ -317,7 +316,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                 return Err(error.into());
             }
         };
-        self.accept_batch(batch, now_millis, mode).await?;
+        self.accept_ingested(batch, now_millis, mode).await?;
         Ok(true)
     }
 

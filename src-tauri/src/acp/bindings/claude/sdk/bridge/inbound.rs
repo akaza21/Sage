@@ -231,7 +231,11 @@ impl SdkBridge {
             match block.get("type").and_then(Value::as_str) {
                 Some("text") if !streamed => {
                     if let Some(text) = block.get("text").and_then(Value::as_str) {
-                        let mut update = json!({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": text}});
+                        let mut update = json!({
+                            "sessionUpdate": "agent_message_chunk",
+                            "content": {"type": "text", "text": text},
+                            "_meta": {"complete": true},
+                        });
                         if let Some(message_id) = message_id {
                             update["itemId"] = json!(format!("{message_id}:{index}"));
                         }

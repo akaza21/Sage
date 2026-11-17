@@ -3,12 +3,56 @@ use super::{
     secrets::{REDACTED, SecretContext, append},
 };
 use sage_acp_protocol::contract::ContractError;
+use std::borrow::Cow;
+
+/// How prose shows absolute paths. Messages show them as written, with the
+/// home folder shortened to `~`; tool content keeps them private like command
+/// output does.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum ProsePaths {
+    Shown,
+    Redacted,
+}
 
 pub(crate) fn redact_prose(
     field: &'static str,
     input: &str,
     maximum_output: usize,
+    path_display: ProsePaths,
 ) -> Result<String, ContractError> {
+    Ok(redact_prose_settling(field, input, maximum_output, path_display)?.text)
+}
+
+pub(crate) struct RedactedProse {
+    pub(crate) text: String,
+    /// Nothing at the end waits for text after it: no key, flag or header for
+    /// a value, no open quote and no home folder name that may go on.
+    pub(crate) settled: bool,
+}
+
+pub(crate) fn redact_prose_settling(
+    field: &'static str,
+    input: &str,
+    maximum_output: usize,
+    path_display: ProsePaths,
+) -> Result<RedactedProse, ContractError> {
+    let (text, settled) = redact_secrets(field, input, maximum_output, path_display)?;
+    let shortened = super::home::HomePrefix::current()
+        .filter(|_| path_display == ProsePaths::Shown)
+        .and_then(|home| match home.shorten(&text) {
+            Cow::Owned(shortened) => Some(shortened),
+            Cow::Borrowed(_) => None,
+        });
+    let text = shortened.unwrap_or(text);
+    Ok(RedactedProse { text, settled })
+}
+
+fn redact_secrets(
+    field: &'static str,
+    input: &str,
+    maximum_output: usize,
+    path_display: ProsePaths,
+) -> Result<(String, bool), ContractError> {
     let pem = super::pem::redact_pem(input);
     let input = pem.as_ref();
     let scanned = super::values::redact_values(field, input, maximum_output, PathMode::Prose)?;
@@ -19,9 +63,14 @@ pub(crate) fn redact_prose(
     let mut budget = super::values::ValueBudget::default();
     let mut paths = PathContext::default();
     let mut position = 0;
-    for token in input.split_inclusive(char::is_whitespace) {
-        let (mut body, whitespace) = split_trailing_whitespace(token);
+    while position < input.len() {
+        let (token_body, whitespace) = super::next_token(
+            &input[position..],
+            secrets.protects_value() || value.quote.is_some(),
+        );
+        let mut body = token_body;
         let tail = &input[position + body.len()..];
+        let token = &input[position..position + body.len() + whitespace.len()];
         position += token.len();
         let mut quoted_token = false;
         while !body.is_empty() {
@@ -55,7 +104,8 @@ pub(crate) fn redact_prose(
             };
             let prefix = &body[..body.len() - suffix.len()];
             let secret = secrets.redact(prefix, "", continued);
-            let path = paths.redact(prefix, "", tail, PathMode::Prose).is_some();
+            let path = path_display == ProsePaths::Redacted
+                && paths.redact(prefix, "", tail, PathMode::Prose).is_some();
             if !continued {
                 let replacement = if secret || path || quoted {
                     REDACTED
@@ -80,16 +130,14 @@ pub(crate) fn redact_prose(
         if !whitespace.is_empty() {
             value.escaped = false;
         }
-        if (value.quote.is_some() || quoted_token)
-            && budget.exhausted(token.trim_end_matches(char::is_whitespace), whitespace)
-        {
+        if (value.quote.is_some() || quoted_token) && budget.exhausted(token_body, whitespace) {
             append(
                 &mut output,
                 super::values::SECRET_LIMIT,
                 maximum_output,
                 field,
             )?;
-            return Ok(output);
+            return Ok((output, false));
         }
         if value.quote.is_none() {
             budget = super::values::ValueBudget::default();
@@ -104,7 +152,9 @@ pub(crate) fn redact_prose(
             field,
         )?;
     }
-    Ok(output)
+    let settled =
+        !scanned.exhausted && secrets.settled() && value.quote.is_none() && paths.settled();
+    Ok((output, settled))
 }
 
 #[derive(Default)]
@@ -133,12 +183,4 @@ impl QuotedValue {
         }
         ""
     }
-}
-
-fn split_trailing_whitespace(value: &str) -> (&str, &str) {
-    let split = value
-        .char_indices()
-        .find_map(|(index, character)| character.is_whitespace().then_some(index))
-        .unwrap_or(value.len());
-    value.split_at(split)
 }

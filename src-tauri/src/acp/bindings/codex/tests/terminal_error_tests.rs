@@ -90,7 +90,7 @@ fn unretried_error_notification_suppresses_the_matching_terminal_error() {
     };
     assert!(matches!(events.as_slice(), [
         IncomingEvent::Error(NormalizedPayload::Error { message, retryable: false, .. })
-    ] if message.as_str() == "Failed with [redacted] at [path]"));
+    ] if message.as_str() == r"Failed with [redacted] at C:\private\file.txt"));
     let frame = completion(json!({"message":message}));
     let IngressDisposition::Events(events) = adapter.ingest(&frame, &Mapper).unwrap() else {
         panic!()
@@ -213,7 +213,7 @@ fn terminal_only_error_is_sanitized_before_the_failed_turn_and_duplicate_is_abso
     assert!(matches!(events.as_slice(), [
         IncomingEvent::Error(NormalizedPayload::Error { code, message, retryable: false, .. }),
         IncomingEvent::Turn { state: TurnState::Failed, .. }
-    ] if code.as_str() == "codex" && message.as_str() == "Failed with [redacted] at [path]"));
+    ] if code.as_str() == "codex" && message.as_str() == r"Failed with [redacted] at C:\private\file.txt"));
     assert_eq!(
         adapter.ingest(&frame, &Mapper).unwrap(),
         IngressDisposition::DuplicateTerminal

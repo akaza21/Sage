@@ -346,6 +346,17 @@ where
     C: ProcessTreeControl,
     C::ZeroProof: CoordinatorZeroToken,
 {
+    /// Before Sage shuts the harness down mid-turn, commits the turn's
+    /// replies still streaming, shown whole. The turn is swept once Sage
+    /// reopens, so a failure here leaves only the last view shown.
+    pub(crate) async fn commit_unfinished_replies(&mut self) {
+        if let Self::Active(active) = self
+            && !active.has_durable_terminal()
+        {
+            let _ = active.turn.driver.commit_unfinished_replies().await;
+        }
+    }
+
     pub(crate) fn close_stdin_after_durable_completed(&mut self) {
         match self {
             Self::Reusable(parts) => {

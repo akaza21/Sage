@@ -14,7 +14,9 @@ use super::{
 
 pub(super) mod support;
 use support::{capability, error_payload, identity, text};
-pub(in crate::acp::bindings::codex) use support::{command_output_token, sanitize, validate_shape};
+pub(in crate::acp::bindings::codex) use support::{
+    command_output_token, sanitize, sanitize_hiding_paths, validate_shape,
+};
 
 mod items;
 use items::{normalize_item, normalize_materialized_command};
@@ -66,7 +68,7 @@ pub(in crate::acp::bindings::codex) const UNPROJECTED_DIAGNOSTIC: &str =
 
 pub(in crate::acp::bindings::codex) fn record_unprojected(method: &str) {
     if reports_diagnostics() {
-        tracing::warn!(codex_method = %sanitize(method), "{UNPROJECTED_DIAGNOSTIC}");
+        tracing::warn!(codex_method = %sanitize_hiding_paths(method), "{UNPROJECTED_DIAGNOSTIC}");
     }
 }
 

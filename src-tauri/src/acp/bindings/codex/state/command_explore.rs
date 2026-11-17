@@ -3,7 +3,7 @@
 
 use serde_json::{Map, Value};
 
-use crate::acp::bindings::codex::incoming::support::sanitize;
+use crate::acp::bindings::codex::incoming::sanitize_hiding_paths;
 
 const MAX_ACTIONS: usize = 8;
 const PHRASE_CHARS: usize = 120;
@@ -88,7 +88,7 @@ fn display(value: &str) -> Option<String> {
         })
         .take(PHRASE_CHARS)
         .collect();
-    let shown = sanitize(flat.trim());
+    let shown = sanitize_hiding_paths(flat.trim());
     let shown = shown.trim();
     (!shown.is_empty()).then(|| shown.to_owned())
 }

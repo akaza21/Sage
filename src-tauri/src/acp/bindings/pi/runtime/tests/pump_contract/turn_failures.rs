@@ -390,3 +390,37 @@ async fn explicit_retry_creates_a_new_turn_and_preserves_prior_failure_after_sql
     drop(reopened);
     fixture.finish().await;
 }
+
+#[tokio::test]
+async fn a_reply_cut_off_when_pi_exits_is_kept_whole() {
+    let fixture = Fixture::new();
+    let mut pump = fixture.pump(ready_adapter());
+    start(&mut pump).await;
+    for event in [
+        json!({"type":"message_start","message":{"role":"assistant"}}),
+        json!({"type":"message_update","assistantMessageEvent":{"type":"text_delta","delta":"Cut off mid-wor"}}),
+    ] {
+        pump.push_stdout_chunk(&line(event), 2).await.unwrap();
+    }
+    let ended = pump.finish_stdout_deferred(3).await;
+    assert!(matches!(ended, Ok(true)), "{ended:?}");
+    assert!(!pump.finish_stdout_deferred(3).await.unwrap());
+    let page = load_chat_page(
+        &fixture.database.connection(),
+        owner().project_id,
+        owner().chat_id,
+        None,
+    )
+    .unwrap();
+    let texts = page.turns.as_slice()[0]
+        .items
+        .as_slice()
+        .iter()
+        .filter_map(|item| match &item.content {
+            ItemContent::Text { text, .. } => Some(text.as_str().to_owned()),
+            _ => None,
+        })
+        .collect::<Vec<_>>();
+    assert_eq!(texts, ["Cut off mid-wor"]);
+    fixture.finish().await;
+}

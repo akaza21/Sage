@@ -25,7 +25,7 @@
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "chunks": 19
+      "chunks": 20
     },
     {
       "event": "item",

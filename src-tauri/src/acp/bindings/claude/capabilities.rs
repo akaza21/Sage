@@ -8,6 +8,7 @@ use sage_acp_protocol::{
 #[cfg(test)]
 use super::wire::decode_frame;
 use super::{sanitize::normalized_text, wire::WireError};
+use crate::acp::redaction::text::{neutralized, redact_prose_hiding_paths};
 
 const MAX_MODELS: usize = 128;
 const MAX_MODEL_BYTES: usize = 262_144;
@@ -90,8 +91,8 @@ impl ClaudeCapabilityOffer {
                 if model_bytes > MAX_MODEL_BYTES {
                     return Err(CapabilityError::ModelsLimit);
                 }
-                let safe_id = normalized_text::<512>("modelId", id)?;
-                if safe_id.as_str() != id {
+                let safe_id = redact_prose_hiding_paths("modelId", &neutralized(id, false), 512)?;
+                if safe_id != id {
                     return Err(CapabilityError::MalformedModel);
                 }
                 models.push(ClaudeModel {

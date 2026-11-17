@@ -71,6 +71,11 @@ impl PathContext {
         (path.is_some() || continuation).then_some(span)
     }
 
+    /// Whether no Windows path or home folder name may go on past the text so far.
+    pub(crate) fn settled(&self) -> bool {
+        !self.windows && self.home_words == 0
+    }
+
     pub(crate) fn end_span(&mut self, span: &str) {
         if span.contains([';', '|', '&', '\n', '\r']) {
             self.windows = false;

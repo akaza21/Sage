@@ -1,6 +1,8 @@
 use serde_json::Value;
 
 use super::protocol::AdapterError;
+use crate::acp::bindings::standard_acp::sanitize::sanitized_content_output;
+use crate::acp::redaction::text as redaction;
 
 pub(super) const FRAME_BYTES: usize = 1_048_576;
 pub(super) const EXTERNAL_ID_BYTES: usize = 512;
@@ -95,19 +97,21 @@ pub(super) fn bounded_string(
     value: Option<&Value>,
     limit: usize,
 ) -> Result<Option<String>, AdapterError> {
-    Ok(bounded_delta(value, limit)?.map(|(text, _)| text))
+    Ok(bounded_text(value, limit)?.map(|text| redact_structured_text(&text)))
 }
 
-pub(super) fn bounded_delta(
+/// A string as Pi sent it, unredacted, for text the runtime assembles from
+/// deltas and redacts whole.
+pub(super) fn bounded_text(
     value: Option<&Value>,
     limit: usize,
-) -> Result<Option<(String, bool)>, AdapterError> {
+) -> Result<Option<String>, AdapterError> {
     let Some(value) = value else { return Ok(None) };
     let text = value.as_str().ok_or(AdapterError::Malformed)?;
     if text.len() > limit || text.contains('\0') {
         return Err(AdapterError::Limit("text bytes"));
     }
-    Ok(Some(redact_with_tail(text)))
+    Ok(Some(text.to_owned()))
 }
 
 pub(super) fn external_id(value: Option<&Value>) -> Result<Option<String>, AdapterError> {
@@ -135,35 +139,14 @@ pub(super) fn validate_opaque_text(text: &str, limit: usize) -> Result<(), Adapt
     Ok(())
 }
 
+/// Redacts harness prose as every harness's replies are.
 pub(super) fn redact_structured_text(text: &str) -> String {
-    redact_with_tail(text).0
+    redaction::reply_text(text)
 }
 
-pub(super) fn redact_with_tail(text: &str) -> (String, bool) {
-    let mut redact_next = false;
-    let mut redacted_tail = false;
-    let text = text
-        .split_inclusive(char::is_whitespace)
-        .map(|part| {
-            let token = part.trim_end_matches(char::is_whitespace);
-            let suffix = &part[token.len()..];
-            let bare = token.trim_matches(|character: char| {
-                matches!(
-                    character,
-                    '"' | '\'' | '(' | ')' | '[' | ']' | '{' | '}' | ',' | ';'
-                )
-            });
-            let sensitive = redact_next || is_sensitive_token(bare);
-            redact_next = bare.eq_ignore_ascii_case("bearer");
-            redacted_tail = sensitive && !redact_next && suffix.is_empty();
-            if sensitive && !redact_next {
-                format!("_{suffix}")
-            } else {
-                part.to_owned()
-            }
-        })
-        .collect();
-    (text, redacted_tail)
+/// Tool output, which keeps absolute paths private as every harness's does.
+pub(super) fn redact_tool_output(text: &str) -> String {
+    sanitized_content_output(text).unwrap_or_else(|_| "[redacted]".to_owned())
 }
 
 fn is_sensitive_token(token: &str) -> bool {

@@ -13,11 +13,12 @@ use sage_acp_protocol::{
 use sage_core::limits::COMMAND_RESOURCE_LIMIT;
 use sage_core::limits::LIMITS;
 
+use crate::acp::redaction::text::ReplyStream;
+
 #[cfg(test)]
 use super::wire::decode_frame;
 use super::{
     profile::StandardAcpProfile,
-    sanitize::normalized_text,
     surface::{SessionUpdateKind, UNKNOWN_NOTIFICATION_REASON, UnmappedUpdate, unmapped_update},
 };
 
@@ -43,6 +44,8 @@ pub(crate) use terminal::PromptTerminal;
 
 pub(super) const MAX_EVENTS_PER_FRAME: usize = 16;
 const MAX_TRACKED_TOOLS: usize = 512;
+/// Most bytes a text or thought item shows.
+pub(super) const TEXT_BYTES: usize = 262_144;
 
 pub(crate) trait ResourceMapper {
     /// The absolute native path is transient and must not be retained in errors,
@@ -106,7 +109,7 @@ pub(crate) struct StandardAcpTranslator {
         ),
     >,
     command_snapshot_bytes: usize,
-    text_snapshots: BTreeMap<String, String>,
+    text_snapshots: BTreeMap<String, ReplyStream>,
     image_keys: BTreeSet<String>,
     text_bytes: usize,
     permissions: BTreeMap<String, String>,
@@ -248,7 +251,10 @@ impl StandardAcpTranslator {
                 self.admit_open_item(external_key.as_str())?;
                 vec![plan_event(update, external_key)?]
             }
-            Some(SessionUpdateKind::ToolCall) => self.tool_call(update, resources)?,
+            Some(SessionUpdateKind::ToolCall) => {
+                let tool = self.tool_call(update, resources)?;
+                self.text_shown_whole_before(tool)
+            }
             Some(SessionUpdateKind::ToolCallUpdate) => self.tool_update(update, resources)?,
             Some(SessionUpdateKind::UsageUpdate) => vec![self.usage_update(update)],
             _ => match unmapped_update(self.profile, kind) {
@@ -256,7 +262,7 @@ impl StandardAcpTranslator {
                 UnmappedUpdate::Surfaced(reason) => vec![self.unsupported(kind, reason)?],
             },
         };
-        self.remember_open(&events);
+        self.remember_open(&mut events);
         if let Some(running) = self.turn_running() {
             events.insert(0, running);
         }
@@ -363,8 +369,7 @@ impl StandardAcpTranslator {
         {
             return Err(TranslationError::ItemLimit);
         }
-        let current_snapshot = self.text_snapshots.get(&key);
-        let current = current_snapshot.map_or(0, String::len);
+        let current = self.text_snapshots.get(&key).map_or(0, ReplyStream::len);
         let item_bytes = current
             .checked_add(chunk.len())
             .filter(|bytes| *bytes <= LIMITS.wire.normalized_item_bytes as usize)
@@ -375,18 +380,16 @@ impl StandardAcpTranslator {
             .and_then(|bytes| bytes.checked_add(item_bytes))
             .filter(|bytes| *bytes <= LIMITS.wire.item_bytes_per_turn as usize)
             .ok_or(TranslationError::ItemLimit)?;
-        let mut snapshot = String::new();
+        let snapshot = self.text_snapshots.entry(key).or_default();
         snapshot
-            .try_reserve_exact(item_bytes)
+            .push(chunk)
             .map_err(|_| TranslationError::ItemLimit)?;
-        if let Some(current) = current_snapshot {
-            snapshot.push_str(current);
-        }
-        snapshot.push_str(chunk);
-        // Sanitize the complete accumulated value, not each delta in
-        // isolation: secrets and native paths may straddle frame boundaries.
-        let safe_snapshot = normalized_text::<262144>("text", &snapshot)?;
-        self.text_snapshots.insert(key, snapshot);
+        let shown = if decode::chunk_complete(update) {
+            snapshot.finished()
+        } else {
+            snapshot.streaming()
+        };
+        let safe_snapshot = SafeText::<TEXT_BYTES>::new("text", shown)?;
         self.text_bytes = aggregate;
         Ok(AdapterEvent::Item {
             external_key,

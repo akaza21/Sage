@@ -4,8 +4,8 @@ use crate::acp::redaction::text::{
     self, Mode,
     credentials::{
         assigned_auth_marker, attached_short_value, auth_continuation, auth_marker, contains_token,
-        inline_auth, is_sensitive_prose_flag, sensitive_assignment, sensitive_flag,
-        sensitive_header, sensitive_header_name, sensitive_key, url_userinfo,
+        has_userinfo, inline_auth, is_sensitive_prose_flag, sensitive_assignment, sensitive_flag,
+        sensitive_header, sensitive_header_name, sensitive_key,
     },
     shell::shell_tokens,
 };
@@ -85,7 +85,7 @@ fn redact_tokens(input: &str) -> Result<String, ()> {
         });
         let attached = attached_short_value(cooked);
         let separated_flag = is_sensitive_prose_flag(cooked);
-        let known_secret = contains_token(cooked) || url_userinfo(cooked).is_some();
+        let known_secret = contains_token(cooked) || has_userinfo(cooked);
         let redact = redact_next || header || assigned || attached || inline_auth || known_secret;
         output.push_str(if redact {
             "[redacted]"

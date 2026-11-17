@@ -183,19 +183,42 @@ macro_rules! path_case {
         fn $name() {
             assert_eq!(sanitized_command_output($input).unwrap(), $expected);
             assert_eq!(sanitized_content_output($input).unwrap(), $expected);
-            assert_eq!(
-                normalized_text::<1024>("text", $input).unwrap().as_str(),
-                $expected
-            );
-            assert_eq!(
-                normalized_label_text::<1024>("toolLabel", $input)
-                    .unwrap()
-                    .as_str(),
-                $expected
-            );
             assert!(sanitize_command_summary($input).is_err());
         }
     };
+}
+
+#[test]
+fn message_and_label_prose_show_paths_as_written() {
+    for input in [
+        "cc -idirafter/abs/path",
+        r"C:\Users\Jane Doe Smith\x tail",
+        r"C:\home\Jane Doe Smith\x tail",
+    ] {
+        assert_eq!(
+            normalized_text::<1024>("text", input).unwrap().as_str(),
+            input
+        );
+        assert_eq!(
+            normalized_label_text::<1024>("toolLabel", input)
+                .unwrap()
+                .as_str(),
+            input
+        );
+    }
+    let attached_user = "cc -unknown/abs/path";
+    assert_eq!(
+        normalized_text::<1024>("text", attached_user)
+            .unwrap()
+            .as_str(),
+        "cc [redacted]"
+    );
+    assert_eq!(
+        normalized_label_text::<1024>("toolLabel", attached_user)
+            .unwrap()
+            .as_str(),
+        "cc [redacted]"
+    );
 }
 
 path_case!(idirafter_path, "cc -idirafter/abs/path", "cc [redacted]");

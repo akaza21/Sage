@@ -11,6 +11,7 @@ pub(super) fn redact<'a>(
     input: &'a str,
     maximum: usize,
     mode: Mode,
+    path_display: super::prose::ProsePaths,
     field: &'static str,
 ) -> Result<Cow<'a, str>, ContractError> {
     let bytes = input.as_bytes();
@@ -66,7 +67,7 @@ pub(super) fn redact<'a>(
             });
         }
         let sanitized = match mode {
-            Mode::Prose => super::prose::redact_prose(field, &decoded, maximum)?,
+            Mode::Prose => super::prose::redact_prose(field, &decoded, maximum, path_display)?,
             _ => super::command::redact(field, &decoded, maximum, mode)?,
         };
         if sanitized != decoded {

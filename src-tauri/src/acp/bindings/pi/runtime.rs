@@ -2,8 +2,8 @@ use std::collections::{BTreeMap, VecDeque};
 
 use crate::acp::{
     bindings::adapter::{
-        AdapterBatch, AdapterCommand, AdapterEgress, AdapterRuntimeError, EgressResolution,
-        EgressToken, HarnessAdapter, ResourceMapper,
+        AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
+        EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
     },
     transport::{Frame, request_payload_digest},
 };
@@ -57,13 +57,11 @@ pub(super) struct TurnIntent {
     external_id: ExternalId,
     client_message_id: RequiredText<512>,
     text_id: Option<ExternalId>,
-    text_snapshot: Option<String>,
-    text_redacted_tail: bool,
+    text_snapshot: Option<crate::acp::redaction::text::ReplyStream>,
     compaction_id: Option<ExternalId>,
     dialog_notices: u8,
     thought_id: Option<ExternalId>,
-    thought_snapshot: Option<String>,
-    thought_redacted_tail: bool,
+    thought_snapshot: Option<crate::acp::redaction::text::ReplyStream>,
     tools: BTreeMap<String, sage_acp_protocol::intent::NormalizedPayload>,
     tool_snapshot_bytes: usize,
 }
@@ -350,20 +348,7 @@ impl HarnessAdapter for PiRuntime {
                         .map_err(|_| AdapterRuntimeError::Operation)?;
                 let egress = self.begin_prompt(&prompt, external_id.as_str())?;
                 self.commands_discovered = false;
-                self.active_turn = Some(TurnIntent {
-                    external_id,
-                    client_message_id,
-                    text_id: None,
-                    text_snapshot: None,
-                    text_redacted_tail: false,
-                    compaction_id: None,
-                    dialog_notices: 0,
-                    thought_id: None,
-                    thought_snapshot: None,
-                    thought_redacted_tail: false,
-                    tools: BTreeMap::new(),
-                    tool_snapshot_bytes: 0,
-                });
+                self.active_turn = Some(TurnIntent::new(external_id, client_message_id));
                 // Bridge authority is scoped to the turn that was actually reserved.
                 self.begin_bridge_turn(access_mode);
                 Ok(egress)
@@ -386,6 +371,10 @@ impl HarnessAdapter for PiRuntime {
         resources: &dyn ResourceMapper,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {
         self.ingest_frame(frame, resources)
+    }
+
+    fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
+        self.whole_unfinished_replies()
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
@@ -432,6 +421,9 @@ impl HarnessAdapter for PiRuntime {
             };
         }
         self.resolve_request(&token, resolution)
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
     }
 }
 

@@ -5,7 +5,10 @@ use tauri::State;
 
 use crate::project_registry::ProjectRegistryStore;
 use crate::{
-    acp::resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
+    acp::{
+        redaction::text::home::HomePrefix,
+        resource_mapper::{ConfiguredResourceRoot, NativeResourceMapper},
+    },
     project_registry::RootRecord,
     state::AppState,
 };
@@ -50,12 +53,19 @@ pub async fn resolve_chat_file_reference(
         .database
         .root_records(&request.project_id)
         .map_err(|error| error.to_string())?;
-    Ok(resolve_with_roots(&roots, &request.destination))
+    Ok(resolve_with_roots(
+        &roots,
+        &request.destination,
+        HomePrefix::current(),
+    ))
 }
 
+/// Chat prose shows the home folder as `~`, so a `~` destination resolves
+/// under `home` like the absolute path it was written as.
 fn resolve_with_roots(
     roots: &[RootRecord],
     destination: &str,
+    home: Option<&HomePrefix>,
 ) -> Option<ResolvedChatFileReference> {
     if destination.is_empty()
         || destination.len() > MAX_REFERENCE_BYTES
@@ -66,7 +76,8 @@ fn resolve_with_roots(
         return None;
     }
     let (path, line_number) = split_line(destination)?;
-    let supplied = Path::new(path);
+    let expanded = home.and_then(|home| home.expand(path));
+    let supplied = expanded.as_deref().unwrap_or(Path::new(path));
     if !supplied.is_absolute()
         && (roots.len() != 1
             || path.contains('\\')
@@ -160,7 +171,7 @@ mod tests {
                 .unwrap_or(root.join("README.md").to_str().unwrap())
                 .to_owned(),
         ] {
-            let resolved = resolve_with_roots(&roots, &format!("{destination}:12")).unwrap();
+            let resolved = resolve_with_roots(&roots, &format!("{destination}:12"), None).unwrap();
             assert_eq!(resolved.resource.relative_path, "README.md");
             assert_eq!(resolved.line_number, Some(12));
         }
@@ -177,9 +188,31 @@ mod tests {
             "x".repeat(MAX_REFERENCE_BYTES + 1),
         ] {
             assert!(
-                resolve_with_roots(&roots, &destination).is_none(),
+                resolve_with_roots(&roots, &destination, None).is_none(),
                 "{destination}"
             );
         }
+    }
+
+    #[test]
+    fn home_shortened_references_resolve_under_the_home_folder() {
+        let temp = TempTree::new();
+        let root = temp.path().join("project");
+        std::fs::create_dir(&root).unwrap();
+        std::fs::write(root.join("README.md"), "hello").unwrap();
+        let roots = [RootRecord {
+            id: "root-a".into(),
+            project_id: "project-a".into(),
+            absolute_path: root.canonicalize().unwrap(),
+            ordinal: 0,
+        }];
+        let home = HomePrefix::new(temp.path().to_str().unwrap()).unwrap();
+        let separator = std::path::MAIN_SEPARATOR;
+        let destination = format!("~{separator}project{separator}README.md:3");
+        let resolved = resolve_with_roots(&roots, &destination, Some(&home)).unwrap();
+        assert_eq!(resolved.resource.relative_path, "README.md");
+        assert_eq!(resolved.line_number, Some(3));
+        assert!(resolve_with_roots(&roots, &destination, None).is_none());
+        assert!(resolve_with_roots(&roots, "~/README.md", Some(&home)).is_none());
     }
 }

@@ -302,6 +302,7 @@
         "src-tauri/src/acp/bindings/adapter/batch_builder.rs",
         "src-tauri/src/acp/bindings/adapter/byte_count.rs",
         "src-tauri/src/acp/bindings/adapter/egress_resolution.rs",
+        "src-tauri/src/acp/bindings/adapter/held.rs",
         "src-tauri/src/acp/bindings/adapter/invalid_response.rs",
         "src-tauri/src/acp/bindings/adapter/model.rs",
         "src-tauri/src/acp/bindings/adapter/refusal_detail.rs",

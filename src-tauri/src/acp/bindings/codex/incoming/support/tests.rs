@@ -1,6 +1,7 @@
 use serde_json::json;
 
-use super::{IngressError, parse_usage, sanitize, sanitized_command_output};
+use super::{IngressError, parse_usage, sanitize, sanitize_hiding_paths, sanitized_command_output};
+use crate::acp::redaction::text::{Mode, redact};
 use sage_acp_protocol::intent::NormalizedPayload;
 
 #[test]
@@ -78,24 +79,39 @@ fn malformed_usage_counts_still_fail_closed() {
 }
 
 #[test]
-fn generic_bearer_colon_does_not_carry_redaction_to_the_next_token() {
-    assert_eq!(sanitize("Bearer: opaque"), "[redacted] opaque");
+fn a_bearer_colon_hides_the_credential_that_follows_it() {
+    assert_eq!(sanitize("Bearer: opaque"), "Bearer: [redacted]");
 }
 
 #[test]
-fn a_slash_command_in_prose_is_not_a_path_but_command_output_keeps_it_private() {
-    for (prose, shown) in [
-        ("re-run /review", "re-run /review"),
-        ("(/review).", "(/review)."),
-        ("/home/u/x", "[path]"),
-        ("`/a/b`", "[path]"),
-        ("C:\\x", "[path]"),
-        ("file:///x", "[path]"),
-        ("/root", "[path]"),
-        ("/alice", "[path]"),
-        ("x=/review", "[path]"),
+fn prose_is_redacted_as_every_harness_does_while_command_output_keeps_paths_private() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
+    let separator = if home.contains('\\') { '\\' } else { '/' };
+    for prose in [
+        "re-run /review",
+        "(/review).",
+        "/home/u/x",
+        "`/a/b`",
+        "C:\\x",
+        "file:///x",
+        "/alice",
+        "x=/review",
+        "token=abc and Bearer opaque",
+        &format!("user {home}{separator}.codex{separator}config.toml is ignored"),
     ] {
-        assert_eq!(sanitize(prose), shown);
+        assert_eq!(
+            sanitize(prose),
+            redact("text", prose, 4096, Mode::Prose).unwrap(),
+            "{prose}"
+        );
     }
+    assert_eq!(sanitize("(/review)."), "(/review).");
+    assert_eq!(sanitize("see /home/u/x"), "see /home/u/x");
+    assert_eq!(
+        sanitize(&format!("user {home}{separator}.config")),
+        format!("user ~{separator}.config")
+    );
     assert_eq!(sanitized_command_output("/review").unwrap(), "[path]");
+    assert_eq!(sanitize_hiding_paths("ls /home/u/x"), "ls [path]");
 }

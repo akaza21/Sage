@@ -250,7 +250,7 @@ impl ClaudeRuntime {
         self.translate_events(events)
     }
 
-    fn translate_events(
+    pub(super) fn translate_events(
         &mut self,
         events: Vec<AdapterEvent>,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {

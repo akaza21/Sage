@@ -1,7 +1,7 @@
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterBatchBuilder, AdapterEgress, AdapterEvent, AdapterRuntimeError,
-        EgressToken,
+        EgressToken, HeldOutput,
     },
     transport::OutboundFrame,
 };
@@ -41,6 +41,8 @@ pub(crate) struct CodexRuntime {
     inner: CodexAdapter,
     next_request_id: u64,
     snapshots: ItemSnapshots,
+    /// What a turn's end could not fit in its batch, drained by the pump.
+    held: HeldOutput,
     poisoned: bool,
     pending_browser_failure_details: Vec<(String, String, usize)>,
     browser_failure_warning_logged: bool,
@@ -109,19 +111,24 @@ impl CodexRuntime {
                     if let IncomingEvent::HostToolReply { bytes } = event {
                         let frame =
                             OutboundFrame::new(bytes).map_err(|_| AdapterRuntimeError::Frame)?;
-                        batch
-                            .push_egress(AdapterEgress::new(
-                                frame,
-                                EgressToken::protocol_notification(),
-                            ))
+                        self.held
+                            .push_egress(
+                                &mut batch,
+                                AdapterEgress::new(frame, EgressToken::protocol_notification()),
+                            )
                             .map_err(|_| AdapterRuntimeError::BatchCount)?;
                         continue;
+                    }
+                    if matches!(&event, IncomingEvent::Turn { state, .. } if state.is_terminal()) {
+                        for item in self.snapshots.finish()? {
+                            self.held.push_event(&mut batch, item)?;
+                        }
                     }
                     let (event, egress) = self.translate_event(event, request_digest)?;
                     let mandatory = egress
                         .as_ref()
                         .is_some_and(|value| value.token().is_mandatory());
-                    batch.push_event(event).map_err(|error| {
+                    self.held.push_event(&mut batch, event).map_err(|error| {
                         if mandatory {
                             AdapterRuntimeError::MandatoryDenyTeardown
                         } else {
@@ -129,24 +136,11 @@ impl CodexRuntime {
                         }
                     })?;
                     if let Some(message) = browser_notice {
-                        batch.push_event(AdapterEvent::Error(
-                            sage_acp_protocol::intent::NormalizedPayload::Error {
-                                kind: Some(sage_acp_protocol::intent::ErrorKind::Notice),
-                                code: sage_acp_protocol::contract::SafeText::new(
-                                    "code",
-                                    "browserMcpUnavailable",
-                                )
-                                .map_err(|_| AdapterRuntimeError::Frame)?,
-                                message: sage_acp_protocol::contract::SafeText::new(
-                                    "message", message,
-                                )
-                                .map_err(|_| AdapterRuntimeError::Frame)?,
-                                retryable: false,
-                            },
-                        ))?;
+                        self.held
+                            .push_event(&mut batch, browser_unavailable_notice(message)?)?;
                     }
                     if let Some(egress) = egress {
-                        batch.push_egress(egress).map_err(|error| {
+                        self.held.push_egress(&mut batch, egress).map_err(|error| {
                             if mandatory {
                                 AdapterRuntimeError::MandatoryDenyTeardown
                             } else {

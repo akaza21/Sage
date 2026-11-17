@@ -47,9 +47,13 @@ pub(crate) fn redact_values<'a>(
         let assignment = matches!(bytes[index], b'=' | b':')
             .then(|| assignment_start(input, index, mode != PathMode::Permission))
             .flatten();
-        let flag = (bytes[index] == b'-' && (index == 0 || bytes[index - 1].is_ascii_whitespace()))
-            .then(|| quoted_flag(input, index))
-            .flatten();
+        let flag = (bytes[index] == b'-'
+            && input[..index]
+                .chars()
+                .next_back()
+                .is_none_or(super::breaks_a_token))
+        .then(|| quoted_flag(input, index))
+        .flatten();
         let Some((start, value)) = assignment.or(flag) else {
             index += 1;
             continue;

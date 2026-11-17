@@ -91,6 +91,7 @@ impl SdkBridge {
                                     "sessionUpdate": "agent_message_chunk",
                                     "itemId": format!("{message_id}:{index}"),
                                     "content": {"type": "text", "text": text},
+                                    "_meta": {"complete": true},
                                 }),
                             );
                         }

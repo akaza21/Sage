@@ -25,7 +25,7 @@
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "synthetic final"
+      "text": "synthetic "
     },
     {
       "event": "usage",

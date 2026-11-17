@@ -86,7 +86,7 @@ fn pi_split_thought_secret_redacts_attached_continuation() {
     ready(&mut runtime);
     running(&mut runtime);
     let mut rendered = String::new();
-    for delta in ["sk-", "private", "-tail", " safe"] {
+    for delta in ["sk-", "private", "-tail", " safe "] {
         let batch = runtime
             .ingest(
                 &frame(thought_update("thinking_delta", Some(delta))),
@@ -97,7 +97,80 @@ fn pi_split_thought_secret_redacts_attached_continuation() {
     }
     assert!(!rendered.contains("private"));
     assert!(!rendered.contains("-tail"));
-    assert!(rendered.contains("_ safe"));
+    assert!(rendered.contains("[redacted] safe"));
+}
+
+#[test]
+fn pi_streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
+    let separator = if home.contains('\\') { '\\' } else { '/' };
+    let config = format!("{home}{separator}.config");
+    let quoted_home = format!("\"{home}");
+    let split = home.len() / 2;
+    for (kind, deltas, expected) in [
+        (
+            "text_delta",
+            vec![config.as_str()],
+            format!("~{separator}.config"),
+        ),
+        (
+            "text_delta",
+            vec![&config[..split], &config[split..]],
+            format!("~{separator}.config"),
+        ),
+        (
+            "thinking_delta",
+            vec![&config[..split], &config[split..]],
+            format!("~{separator}.config"),
+        ),
+        (
+            "text_delta",
+            vec![home, "2", &format!("{separator}x")],
+            format!("{home}2{separator}x"),
+        ),
+        (
+            "text_delta",
+            vec![quoted_home.as_str(), " Smith", &format!("{separator}x\"")],
+            format!("\"{home} Smith{separator}x\""),
+        ),
+        (
+            "text_delta",
+            vec!["/srv/alice:hun", "ter2@db/x done"],
+            "[redacted] done".to_owned(),
+        ),
+    ] {
+        let mut runtime = fixture_runtime(64);
+        ready(&mut runtime);
+        running(&mut runtime);
+        runtime
+            .ingest(
+                &frame(json!({"type":"message_start","message":{"role":"assistant","content":[]}})),
+                &Mapper,
+            )
+            .unwrap();
+        let mut shown = String::new();
+        for delta in deltas.iter().copied().chain(["\n"]) {
+            let batch = runtime
+                .ingest(&frame(thought_update(kind, Some(delta))), &Mapper)
+                .unwrap();
+            for event in batch.events() {
+                match event {
+                    AdapterEvent::Item {
+                        payload: NormalizedPayload::Text { text },
+                        ..
+                    } => shown = text.as_str().to_owned(),
+                    AdapterEvent::Item {
+                        payload: NormalizedPayload::ThoughtSummary { summary },
+                        ..
+                    } => shown = summary.as_str().to_owned(),
+                    _ => {}
+                }
+            }
+            assert!(!shown.contains("hun"), "{kind} {deltas:?}: {shown}");
+        }
+        assert_eq!(shown, format!("{expected}\n"), "{kind} {deltas:?}");
+    }
 }
 
 #[test]
@@ -127,10 +200,10 @@ fn pi_literal_underscore_continuations_preserve_text_and_thought_content() {
         assert!(
             matches!(batch.events(), [AdapterEvent::Item {
             payload: NormalizedPayload::Text { text }, ..
-        }] if text.as_str() == "Checking snake_case identifiers")
+        }] if text.as_str() == "Checking snake_case ")
                 || matches!(batch.events(), [AdapterEvent::Item {
             payload: NormalizedPayload::ThoughtSummary { summary }, ..
-        }] if summary.as_str() == "Checking snake_case identifiers")
+        }] if summary.as_str() == "Checking snake_case ")
         );
     }
 }

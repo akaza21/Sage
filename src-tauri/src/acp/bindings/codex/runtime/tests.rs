@@ -2444,7 +2444,7 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
         panic!("item event")
     };
     let encoded = serde_json::to_string(payload).expect("safe payload");
-    assert!(!encoded.contains("Users"));
+    assert!(encoded.contains(r"read C:\\Users\\private\\token with"));
     assert!(!encoded.contains("secret-value"));
 
     let tool = runtime
@@ -2517,10 +2517,13 @@ fn initialize_session_prompt_stream_tool_usage_cancel_and_terminal_are_normalize
     assert!(
         matches!(
             terminal.events(),
-            [AdapterEvent::Turn {
-                state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
-                ..
-            }]
+            [
+                ..,
+                AdapterEvent::Turn {
+                    state: sage_acp_protocol::lifecycle::TurnState::Cancelled,
+                    ..
+                }
+            ]
         ),
         "Sage asked for this stop, so it is a user cancel"
     );
@@ -2953,21 +2956,248 @@ fn command_output_deltas_use_one_safe_scoped_snapshot_and_flush_only_on_terminal
     ));
 }
 
+/// Streams `deltas` and then a line break, which lets the last word show,
+/// and returns every view shown along the way.
+fn streamed_views(runtime: &mut CodexRuntime, item: &str, deltas: &[&str]) -> Vec<String> {
+    deltas
+        .iter()
+        .copied()
+        .chain(["\n"])
+        .map(|delta| {
+            let batch = runtime
+                .ingest(
+                    &frame(json!({"method":"item/agentMessage/delta","params":{
+                        "threadId":"thread-1","turnId":"turn-1","itemId":item,"delta":delta
+                    }})),
+                    &Mapper,
+                )
+                .expect("delta");
+            let AdapterEvent::Item {
+                payload: NormalizedPayload::Text { text },
+                ..
+            } = &batch.events()[0]
+            else {
+                panic!("text snapshot")
+            };
+            text.as_str().to_owned()
+        })
+        .collect()
+}
+
+#[test]
+fn a_turn_that_ends_before_its_reply_completes_shows_the_reply_whole() {
+    for status in ["interrupted", "failed", "completed"] {
+        let mut runtime = fixture_runtime();
+        ready(&mut runtime);
+        running_turn(&mut runtime);
+        for delta in ["Stopped mid", "-word 这是没有空格的", "回答"] {
+            runtime
+                .ingest(
+                    &frame(json!({"method":"item/agentMessage/delta","params":{
+                        "threadId":"thread-1","turnId":"turn-1","itemId":"reply","delta":delta
+                    }})),
+                    &Mapper,
+                )
+                .expect("delta");
+        }
+        let batch = runtime
+            .ingest(
+                &frame(json!({"method":"turn/completed","params":{
+                    "threadId":"thread-1","turn":{"id":"turn-1","status":status}
+                }})),
+                &Mapper,
+            )
+            .expect("terminal");
+        assert!(
+            matches!(
+                batch.events(),
+                [AdapterEvent::Item { payload: NormalizedPayload::Text { text }, .. }, AdapterEvent::Turn { .. }, ..]
+                    if text.as_str() == "Stopped mid-word 这是没有空格的回答"
+            ),
+            "{status}: {:?}",
+            batch.events()
+        );
+    }
+}
+
+/// Streams `count` replies that never complete, each `"done now"` with its
+/// last word still held back.
+fn open_replies(count: usize) -> CodexRuntime {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    for index in 0..count {
+        runtime
+            .ingest(
+                &frame(json!({"method":"item/agentMessage/delta","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":format!("reply-{index}"),
+                    "delta":"done now"
+                }})),
+                &Mapper,
+            )
+            .expect("delta");
+    }
+    runtime
+}
+
+/// Each batch of `first` and what it held back, as the pump drains them.
+fn drained(first: AdapterBatch, held: impl FnMut() -> Option<AdapterBatch>) -> Vec<AdapterBatch> {
+    std::iter::once(first)
+        .chain(std::iter::from_fn(held))
+        .collect()
+}
+
+fn whole_replies(batches: &[AdapterBatch]) -> usize {
+    let limit = sage_core::limits::LIMITS
+        .queues
+        .journal_facts_per_transaction as usize;
+    batches
+        .iter()
+        .inspect(|batch| assert!(batch.events().len() <= limit))
+        .flat_map(AdapterBatch::events)
+        .filter(|event| {
+            matches!(event, AdapterEvent::Item { payload: NormalizedPayload::Text { text }, .. }
+                if text.as_str() == "done now")
+        })
+        .count()
+}
+
+#[test]
+fn a_turn_end_drains_every_open_reply_whole_before_its_terminal_event() {
+    for count in [128, 129] {
+        let mut runtime = open_replies(count);
+        let first = runtime
+            .ingest(
+                &frame(json!({"method":"turn/completed","params":{
+                    "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
+                }})),
+                &Mapper,
+            )
+            .expect("terminal");
+        let batches = drained(first, || runtime.held_batch().expect("held batch"));
+        assert!(batches.len() > 1, "{count}: one batch cannot hold them all");
+        assert_eq!(whole_replies(&batches), count);
+        let events: Vec<_> = batches.iter().flat_map(AdapterBatch::events).collect();
+        let terminal = events
+            .iter()
+            .position(
+                |event| matches!(event, AdapterEvent::Turn { state, .. } if state.is_terminal()),
+            )
+            .expect("terminal turn");
+        assert_eq!(terminal, events.len() - 1, "{count}: the turn ends last");
+    }
+}
+
+#[test]
+fn replies_open_when_the_output_ends_drain_whole_in_bounded_batches() {
+    for count in [128, 129] {
+        let mut runtime = open_replies(count);
+        let mut replies = crate::acp::bindings::adapter::HeldOutput::of(
+            runtime.unfinished_replies().expect("unfinished replies"),
+        );
+        let first = replies.next_batch().expect("batch").expect("a reply");
+        let batches = drained(first, || replies.next_batch().expect("batch"));
+        assert_eq!(whole_replies(&batches), count);
+    }
+}
+
+#[test]
+fn a_reply_that_redaction_makes_longer_than_an_item_is_clipped_at_turn_end() {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let delta = "token=abc ".repeat(2_500);
+    for _ in 0..10 {
+        runtime
+            .ingest(
+                &frame(json!({"method":"item/agentMessage/delta","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":"reply","delta":delta
+                }})),
+                &Mapper,
+            )
+            .expect("delta");
+    }
+    let batch = runtime
+        .ingest(
+            &frame(json!({"method":"turn/completed","params":{
+                "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
+            }})),
+            &Mapper,
+        )
+        .expect("a reply grown by redaction still ends its turn");
+    assert!(
+        matches!(
+            batch.events(),
+            [AdapterEvent::Item { payload: NormalizedPayload::Text { text }, .. }, AdapterEvent::Turn { .. }, ..]
+                if text.as_str().ends_with('\u{2026}')
+                    && text.as_str().len() <= sage_core::limits::LIMITS.wire.normalized_item_bytes as usize
+        ),
+        "{:?}",
+        batch.events().len()
+    );
+}
+
+#[test]
+fn streamed_replies_show_the_home_folder_as_tilde_however_deltas_split_it() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
+    let separator = if home.contains('\\') { '\\' } else { '/' };
+    let config = format!("{home}{separator}.config");
+    let quoted_home = format!("\"{home}");
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    let split = home.len() / 2;
+    for (item, deltas, expected) in [
+        (
+            "whole",
+            vec![config.as_str()],
+            format!("~{separator}.config"),
+        ),
+        (
+            "split",
+            vec![&config[..split], &config[split..]],
+            format!("~{separator}.config"),
+        ),
+        (
+            "sibling",
+            vec![home, "2", &format!("{separator}x")],
+            format!("{home}2{separator}x"),
+        ),
+        (
+            "spaced-sibling",
+            vec![quoted_home.as_str(), " Smith", &format!("{separator}x\"")],
+            format!("\"{home} Smith{separator}x\""),
+        ),
+        (
+            "credentials",
+            vec!["/srv/alice:hun", "ter2@db/x done"],
+            "[redacted] done".to_owned(),
+        ),
+    ] {
+        let views = streamed_views(&mut runtime, item, &deltas);
+        assert_eq!(views.last().unwrap(), &format!("{expected}\n"), "{item}");
+        for view in &views {
+            assert!(!view.contains("hun"), "{item}: {view}");
+        }
+    }
+}
+
 #[test]
 fn streaming_deltas_emit_complete_snapshots_and_plus_one_poison_clears_buffers() {
     let mut runtime = fixture_runtime();
     ready(&mut runtime);
     running_turn(&mut runtime);
     let cases = [
-        ("item/agentMessage/delta", "text-1", "hel", "lo", "hello"),
+        ("item/agentMessage/delta", "text-1", "hel", "lo ", "hello "),
         (
             "item/reasoning/summaryTextDelta",
             "thought-1",
             "thin",
-            "k",
-            "think",
+            "k\n",
+            "think\n",
         ),
-        ("item/plan/delta", "plan-1", "step ", "one", "step one"),
+        ("item/plan/delta", "plan-1", "step ", "one", "step "),
     ];
     for (method, item, first, second, expected) in cases {
         runtime
@@ -3000,7 +3230,6 @@ fn streaming_deltas_emit_complete_snapshots_and_plus_one_poison_clears_buffers()
     }
     for (item, first, second, forbidden) in [
         ("split-bearer", "Bearer ", "secret-value", "secret-value"),
-        ("split-path", "C:", r"\Users\private", "Users"),
         ("split-key", "sk-", "private", "private"),
     ] {
         runtime
@@ -3021,7 +3250,7 @@ fn streaming_deltas_emit_complete_snapshots_and_plus_one_poison_clears_buffers()
             .expect("split suffix");
         assert!(!format!("{:?}", batch.events()).contains(forbidden));
     }
-    assert_eq!(runtime.snapshots.len(), 6);
+    assert_eq!(runtime.snapshots.len(), 5);
     runtime
         .ingest(
             &frame(json!({"method":"turn/completed","params":{

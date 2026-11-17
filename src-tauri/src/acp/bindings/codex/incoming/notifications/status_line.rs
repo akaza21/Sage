@@ -1,17 +1,13 @@
 use super::super::support::sanitize;
-use crate::acp::redaction::text::{Mode, redact};
 
 const ELLIPSIS: char = '\u{2026}';
 
 /// Only a bounded prefix of `raw` is read, so an oversized message costs no
-/// more than a short one. `max` is a byte limit. Blank text, or text the
-/// redactor refuses, yields `None`.
+/// more than a short one. `max` is a byte limit. Blank text yields `None`.
 pub(super) fn status_line(raw: &str, max: usize) -> Option<String> {
     let prefix = clip(raw, max.saturating_mul(4));
     let collapsed = prefix.split_whitespace().collect::<Vec<_>>().join(" ");
-    let sanitized = sanitize(&collapsed);
-    let bound = sanitized.len().saturating_mul(2).saturating_add(64);
-    let line = redact("statusLine", &sanitized, bound, Mode::Prose).ok()?;
+    let line = sanitize(&collapsed);
     if line.trim().is_empty() {
         return None;
     }
@@ -51,7 +47,7 @@ mod tests {
         );
         let line = status_line("wrote /srv/app/secret.txt with key=abc123", 512).unwrap();
         assert!(line.starts_with("wrote "), "{line}");
-        assert!(!line.contains("/srv/app"), "{line}");
+        assert!(line.contains("/srv/app/secret.txt"), "{line}");
         assert!(!line.contains("abc123"), "{line}");
         let long = "\u{e9}".repeat(4096);
         let line = status_line(&long, 512).unwrap();

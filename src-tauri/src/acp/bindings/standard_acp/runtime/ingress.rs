@@ -221,7 +221,7 @@ impl StandardAcpRuntime {
         self.translate(all)
     }
 
-    fn translate(
+    pub(super) fn translate(
         &mut self,
         events: Vec<StandardEvent>,
     ) -> Result<AdapterBatch, AdapterRuntimeError> {

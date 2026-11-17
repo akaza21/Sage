@@ -278,6 +278,10 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         self.ingest_sdk(sdk, resources)
     }
 
+    fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
+        self.session.unfinished_replies()
+    }
+
     fn adopt_turn(
         &mut self,
         client_message_id: sage_acp_protocol::contract::RequiredText<512>,
@@ -345,25 +349,16 @@ impl HarnessAdapter for ClaudeSdkRuntime {
         {
             return Ok(());
         }
-        if !matches!(resolution, EgressResolution::Queued)
-            && let Some(index) = self.sent.iter().position(|(sent, _)| *sent == token)
-        {
-            let (_, sent) = self.sent.swap_remove(index);
-            if let Some(bridge) = self.bridge.as_mut() {
-                if matches!(
-                    resolution,
-                    EgressResolution::QueueRejected | EgressResolution::WriteZeroBytes
-                ) {
-                    bridge.undo(&sent);
-                } else {
-                    bridge.delivered(&sent);
-                }
-            }
-        }
+        self.settle_sent(&token, resolution);
         self.session.resolve_egress(token, resolution)
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
     }
 }
 
+#[path = "runtime_delivery.rs"]
+mod delivery;
 #[path = "runtime_inbound.rs"]
 mod inbound;
 use inbound::settling;

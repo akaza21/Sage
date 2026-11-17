@@ -337,7 +337,7 @@ fn model_metadata_redacts_labels_and_rejects_unsafe_ids() {
     let offer = ClaudeCapabilityOffer::from_initialize_bytes(&encoded(&value)).unwrap();
     assert_eq!(
         offer.models[0].label.as_str(),
-        "Claude [redacted] [redacted]"
+        r"Claude C:\private\model [redacted]"
     );
     value["result"]["models"][0]["id"] = json!(r"C:\private\model");
     assert!(ClaudeCapabilityOffer::from_initialize_bytes(&encoded(&value)).is_err());
@@ -359,7 +359,7 @@ fn raw_decode_rejects_malformed_duplicate_deep_and_limit_plus_one_shapes() {
 }
 
 #[test]
-fn message_and_plan_text_redact_native_paths_and_secrets() {
+fn message_and_plan_text_show_native_paths_and_redact_secrets() {
     let message = json!({
         "method": "session/update",
         "params": {
@@ -368,7 +368,7 @@ fn message_and_plan_text_redact_native_paths_and_secrets() {
                 "sessionUpdate": "agent_message_chunk",
                 "content": {
                     "type": "text",
-                    "text": r"Result C:\private\file sk-ant-fixture"
+                    "text": "Result C:\\private\\file sk-ant-fixture\n"
                 }
             }
         }
@@ -387,13 +387,15 @@ fn message_and_plan_text_redact_native_paths_and_secrets() {
         }
     });
     let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
-    for frame in [message, plan] {
+    for (frame, shown) in [
+        (message, r"Result C:\\private\\file [redacted]"),
+        (plan, "/private/file [redacted]"),
+    ] {
         let events = translator
             .translate_notification(&encoded(&frame), &FixtureResources)
             .unwrap();
         let projected = format!("{events:?}");
-        assert!(projected.contains("[redacted]"));
-        assert!(!projected.contains("private"));
+        assert!(projected.contains(shown), "{projected}");
         assert!(!projected.contains("sk-ant"));
         assert!(!projected.contains("token=secret"));
     }
@@ -555,22 +557,99 @@ fn message_chunks_emit_complete_bounded_snapshots_and_reset_between_turns() {
     let first = translator
         .translate_notification(&encoded(&chunk("Hel")), &FixtureResources)
         .unwrap();
-    assert_eq!(text(&first), "Hel");
+    assert_eq!(text(&first), "", "a word still arriving is held back");
     let second = translator
-        .translate_notification(&encoded(&chunk("lo")), &FixtureResources)
+        .translate_notification(&encoded(&chunk("lo there")), &FixtureResources)
         .unwrap();
-    assert_eq!(text(&second), "Hello");
-    translator
+    assert_eq!(text(&second), "Hello ");
+    let ended = translator
         .translate_prompt_result(&encoded(
             &json!({"id":"prompt-1","result":{"stopReason":"end_turn"}}),
         ))
         .unwrap();
+    assert!(
+        ended.iter().any(|event| matches!(
+            event,
+            AdapterEvent::Item {
+                lifecycle: ItemLifecycle::Completed,
+                payload: NormalizedPayload::Text { text },
+                ..
+            } if text.as_str() == "Hello there"
+        )),
+        "the completed reply shows its last word: {ended:?}"
+    );
 
     translator.begin_prompt("prompt-2").unwrap();
     let next_turn = translator
-        .translate_notification(&encoded(&chunk("Again")), &FixtureResources)
+        .translate_notification(&encoded(&chunk("Again ")), &FixtureResources)
         .unwrap();
-    assert_eq!(text(&next_turn), "Again");
+    assert_eq!(text(&next_turn), "Again ");
+}
+
+#[test]
+fn a_reply_shows_whole_when_a_tool_starts_or_the_prompt_stops_or_fails() {
+    fn chunk(text: &str) -> Value {
+        json!({"method": "session/update", "params": {"sessionId": "claude-session-1",
+            "update": {"sessionUpdate": "agent_message_chunk", "itemId": "message-one",
+                "content": {"type": "text", "text": text}}}})
+    }
+    fn whole(events: &[AdapterEvent], lifecycle: ItemLifecycle, expected: &str) -> bool {
+        events.iter().any(|event| {
+            matches!(event, AdapterEvent::Item {
+                lifecycle: shown, payload: NormalizedPayload::Text { text }, ..
+            } if *shown == lifecycle && text.as_str() == expected)
+        })
+    }
+
+    let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
+    translator.begin_prompt("prompt-1").unwrap();
+    translator
+        .translate_notification(
+            &encoded(&chunk("I'll write that single file.")),
+            &FixtureResources,
+        )
+        .unwrap();
+    let tool = translator
+        .translate_notification(
+            &encoded(&json!({"method": "session/update", "params": {
+                "sessionId": "claude-session-1", "update": {"sessionUpdate": "tool_call",
+                    "toolCallId": "tool-1", "kind": "edit", "status": "pending"}}})),
+            &FixtureResources,
+        )
+        .unwrap();
+    assert!(
+        whole(
+            &tool,
+            ItemLifecycle::Streaming,
+            "I'll write that single file."
+        ),
+        "{tool:?}"
+    );
+
+    for ending in [
+        json!({"id": "prompt-2", "result": {"stopReason": "cancelled"}}),
+        json!({"id": "prompt-2", "error": {"code": -32603, "message": "Internal error"}}),
+    ] {
+        let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
+        translator.begin_prompt("prompt-2").unwrap();
+        translator
+            .translate_notification(
+                &encoded(&chunk("这是没有空格的回答 stopped mid")),
+                &FixtureResources,
+            )
+            .unwrap();
+        let ended = translator
+            .translate_prompt_result(&encoded(&ending))
+            .unwrap();
+        assert!(
+            whole(
+                &ended,
+                ItemLifecycle::Streaming,
+                "这是没有空格的回答 stopped mid"
+            ),
+            "{ending}: {ended:?}"
+        );
+    }
 }
 
 #[test]
@@ -597,19 +676,19 @@ fn message_snapshot_redacts_tokens_split_across_frame_boundaries() {
         .translate_notification(&encoded(&chunk("secret C:")), &FixtureResources)
         .unwrap();
     let events = translator
-        .translate_notification(&encoded(&chunk(r"\private\file.txt")), &FixtureResources)
+        .translate_notification(&encoded(&chunk("\\private\\file.txt ")), &FixtureResources)
         .unwrap();
     let projected = format!("{events:?}");
-    assert!(projected.contains("[redacted]"));
+    assert!(projected.contains(r"Bearer [redacted] C:\\private\\file.txt"));
     assert!(!projected.contains("secret"));
-    assert!(!projected.contains("private"));
 }
 
 #[test]
 fn accumulated_message_limit_rejects_before_mutating_the_snapshot() {
     let mut translator = ClaudeTranslator::new(claude_profile(), "claude-session-1").unwrap();
     translator.begin_prompt("prompt-1").unwrap();
-    let first = "a".repeat(LIMITS.wire.normalized_item_bytes as usize - 1);
+    let below = LIMITS.wire.normalized_item_bytes as usize - 1;
+    let first = format!("{}{}", "word ".repeat(below / 5), " ".repeat(below % 5));
     let frame = |text: &str| {
         json!({
             "method": "session/update",
@@ -630,23 +709,24 @@ fn accumulated_message_limit_rejects_before_mutating_the_snapshot() {
         translator.translate_notification(&encoded(&frame("xx")), &FixtureResources),
         Err(TranslationError::ItemLimit)
     ));
-    let exact = translator
-        .translate_notification(&encoded(&frame("b")), &FixtureResources)
+    translator
+        .translate_notification(&encoded(&frame("\n")), &FixtureResources)
         .unwrap();
+    let whole = translator.unfinished_replies();
     let [
         AdapterEvent::Item {
             payload: NormalizedPayload::Text { text },
             ..
         },
-    ] = exact.as_slice()
+    ] = whole.as_slice()
     else {
-        panic!("expected exact-limit text snapshot")
+        panic!("expected the exact-limit text shown whole")
     };
     assert_eq!(
         text.as_str().len(),
         LIMITS.wire.normalized_item_bytes as usize
     );
-    assert!(text.as_str().ends_with('b'));
+    assert!(text.as_str().ends_with(" \n"));
 }
 
 #[test]
@@ -731,8 +811,7 @@ fn correlated_rpc_error_is_redacted_and_terminalized() {
         ]
     ));
     let projected = format!("{events:?}");
-    assert!(projected.contains("[redacted]"));
-    assert!(!projected.contains("private"));
+    assert!(projected.contains(r"failed at C:\\private\\file with [redacted]"));
     assert!(!projected.contains("sk-ant"));
 }
 
@@ -1381,7 +1460,7 @@ fn thought_chunks_stream_and_nested_transcript_updates_are_bounded_fallbacks() {
             lifecycle: ItemLifecycle::Streaming,
             payload: NormalizedPayload::ThoughtSummary { summary },
             ..
-        } if summary.as_str() == "unproven thought"
+        } if summary.as_str() == "unproven "
     ));
     let nested = translator
         .translate_notification(&encoded(&frames[1]), &FixtureResources)

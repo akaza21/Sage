@@ -3,7 +3,7 @@ use std::sync::Arc;
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
-        EgressResolution, HarnessAdapter, ResourceMapper,
+        EgressResolution, HarnessAdapter, HeldOutput, ResourceMapper,
     },
     runtime::{ProjectionPublishStatus, ProjectionPublisher, TurnNotice},
     store::AdapterTurnCursor,

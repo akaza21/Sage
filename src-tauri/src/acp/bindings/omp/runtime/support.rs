@@ -8,7 +8,7 @@ use crate::acp::{
 use sage_acp_protocol::{
     contract::{RequiredText, SchemaVersionV1},
     intent::{CapabilitySnapshotV1, ExternalId, NormalizedPayload},
-    lifecycle::TurnState,
+    lifecycle::{ItemLifecycle, TurnState},
 };
 
 use super::{OmpRuntime, RequestKind};
@@ -101,13 +101,13 @@ impl OmpRuntime {
                 }
             };
             for event in normalized {
-                if let Err(error) = builder.push_event(event) {
+                if let Err(error) = self.held.push_event(&mut builder, event) {
                     self.poison();
                     return Err(error);
                 }
             }
             if let Some(egress) = egress
-                && let Err(error) = builder.push_egress(egress)
+                && let Err(error) = self.held.push_egress(&mut builder, egress)
             {
                 self.poison();
                 return Err(if self.denials.is_empty() {
@@ -181,17 +181,31 @@ impl OmpRuntime {
                 payload,
                 update_mode,
             } => {
-                let payload =
-                    match self
-                        .snapshots
-                        .apply(&external_key, lifecycle, update_mode, payload)
-                    {
-                        Ok(payload) => payload,
-                        Err(error) => {
-                            self.poison();
-                            return Err(error);
-                        }
-                    };
+                let applied = self
+                    .snapshots
+                    .end_previous(&external_key, &payload)
+                    .and_then(|ended| {
+                        let payload =
+                            self.snapshots
+                                .apply(&external_key, lifecycle, update_mode, payload)?;
+                        Ok((ended, payload))
+                    });
+                let (ended, payload) = match applied {
+                    Ok(applied) => applied,
+                    Err(error) => {
+                        self.poison();
+                        return Err(error);
+                    }
+                };
+                let mut events = Vec::new();
+                if let Some((ended, payload)) = ended {
+                    events.push(RuntimeEvent::Item {
+                        id: self.item_identity(ended)?,
+                        lifecycle: ItemLifecycle::Completed,
+                        tool_state: None,
+                        payload,
+                    });
+                }
                 let event = match payload {
                     NormalizedPayload::Usage { .. } => RuntimeEvent::Usage {
                         turn_id: self.turn_identity()?,
@@ -213,7 +227,8 @@ impl OmpRuntime {
                         payload,
                     },
                 };
-                (vec![event], None)
+                events.push(event);
+                (events, None)
             }
             AdapterEvent::FilePair {
                 external_key,
@@ -246,13 +261,27 @@ impl OmpRuntime {
                     PromptTerminal::Cancelled => TurnState::Cancelled,
                     PromptTerminal::Failed => TurnState::Failed,
                 };
-                let event = RuntimeEvent::Turn {
+                let lifecycle = match terminal {
+                    PromptTerminal::Completed => ItemLifecycle::Completed,
+                    PromptTerminal::Cancelled => ItemLifecycle::Cancelled,
+                    PromptTerminal::Failed => ItemLifecycle::Failed,
+                };
+                let mut events = Vec::new();
+                for (external_key, payload) in self.snapshots.finish()? {
+                    events.push(RuntimeEvent::Item {
+                        id: self.item_identity(external_key)?,
+                        lifecycle,
+                        tool_state: None,
+                        payload,
+                    });
+                }
+                events.push(RuntimeEvent::Turn {
                     id: self.turn_identity()?,
                     state,
-                };
+                });
                 self.active_turn = None;
                 self.snapshots.clear();
-                (vec![event], None)
+                (events, None)
             }
             AdapterEvent::IgnoredDuplicate => (vec![RuntimeEvent::IgnoredDuplicate], None),
             AdapterEvent::IgnoredLate => (vec![RuntimeEvent::IgnoredLate], None),

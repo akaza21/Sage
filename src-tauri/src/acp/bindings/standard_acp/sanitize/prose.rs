@@ -20,7 +20,7 @@ pub(crate) fn sanitized_content_output(input: &str) -> Result<String, ContractEr
     }
 
     let input = neutralized(input, false);
-    redact_prose("toolOutput", &input, maximum_output)
+    text::redact_prose_hiding_paths("toolOutput", &input, maximum_output)
 }
 
 pub(super) fn redact_prose(

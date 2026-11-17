@@ -60,6 +60,35 @@ impl HarnessAdapter for SaturatedRefresh {
     ) -> Result<(), AdapterRuntimeError> {
         self.runtime.resolve_egress(token, resolution)
     }
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEvent>, AdapterRuntimeError> {
+        self.runtime.unfinished_replies()
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.runtime.held_batch()
+    }
+    fn adopt_turn(
+        &mut self,
+        client_message_id: sage_acp_protocol::contract::RequiredText<512>,
+        resources: &dyn ResourceMapper,
+    ) -> Result<AdapterBatch, AdapterRuntimeError> {
+        self.runtime.adopt_turn(client_message_id, resources)
+    }
+    fn harness_turn_mode(&self) -> Option<&'static str> {
+        self.runtime.harness_turn_mode()
+    }
+    fn answers_delivered(
+        &mut self,
+        resources: &dyn ResourceMapper,
+    ) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.runtime.answers_delivered(resources)
+    }
+    fn decline_turn(
+        &mut self,
+    ) -> Result<Vec<crate::acp::bindings::adapter::AdapterEgress>, AdapterRuntimeError> {
+        self.runtime.decline_turn()
+    }
 }
 
 #[tokio::test]

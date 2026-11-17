@@ -304,6 +304,11 @@ impl HarnessAdapter for NativeRuntime {
         self.0.cancel_permission(request_id)
     }
 
+    fn unfinished_replies(
+        &mut self,
+    ) -> Result<Vec<super::adapter::AdapterEvent>, AdapterRuntimeError> {
+        self.0.unfinished_replies()
+    }
     fn ingest(
         &mut self,
         frame: &Frame,
@@ -361,6 +366,9 @@ impl HarnessAdapter for NativeRuntime {
         // them) no longer holds the session's options back.
         let published = self.publish_config();
         result.and(published)
+    }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.0.held_batch()
     }
 }
 

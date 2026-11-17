@@ -91,6 +91,21 @@ impl super::super::ResourceMapper for MapperBridge<'_> {
     }
 }
 
+pub(super) fn browser_unavailable_notice(
+    message: &'static str,
+) -> Result<AdapterEvent, AdapterRuntimeError> {
+    use sage_acp_protocol::contract::SafeText;
+    Ok(AdapterEvent::Error(
+        sage_acp_protocol::intent::NormalizedPayload::Error {
+            kind: Some(sage_acp_protocol::intent::ErrorKind::Notice),
+            code: SafeText::new("code", "browserMcpUnavailable")
+                .map_err(|_| AdapterRuntimeError::Frame)?,
+            message: SafeText::new("message", message).map_err(|_| AdapterRuntimeError::Frame)?,
+            retryable: false,
+        },
+    ))
+}
+
 pub(super) fn identity(value: ScopedExternalId) -> AdapterIdentity {
     AdapterIdentity {
         binding_digest: value.binding_digest,

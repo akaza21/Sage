@@ -591,12 +591,11 @@ fn a_control_char_title_reaches_the_summary_exactly_as_it_reaches_the_tool_card_
 }
 
 #[test]
-fn an_absolute_path_in_a_title_is_redacted_exactly_as_the_tool_card_redacts_it() {
+fn an_absolute_path_in_a_title_is_shown_exactly_as_the_tool_card_shows_it() {
     let mut translator = started(claude(), json!({ "kind": "edit" }));
-    let (_, summary) = permission(
-        &mut translator,
-        json!({ "kind": "edit", "title": r"Write C:\secrets\key.txt" }),
-    );
-    assert!(!summary.contains("secrets"), "{summary}");
-    assert!(summary.starts_with("Write "), "{summary}");
+    let title = r"Write C:\work\key.txt";
+    let (_, summary) = permission(&mut translator, json!({ "kind": "edit", "title": title }));
+    let label = normalized_label_text::<512>("toolLabel", title).expect("tool card label");
+    assert_eq!(summary, label.as_str());
+    assert_eq!(summary, title);
 }

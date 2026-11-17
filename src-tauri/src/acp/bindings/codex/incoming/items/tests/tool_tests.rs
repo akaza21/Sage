@@ -550,3 +550,93 @@ fn spawn_keeps_only_the_wire_supplied_bounded_model_and_effort() {
         NormalizedPayload::Collaboration { model: None, .. }
     ));
 }
+
+#[test]
+fn an_unrecognised_tool_row_keeps_paths_as_what_other_tools_were_asked() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
+    let row = item(json!({
+        "type": "futureToolKind", "status": "completed", "title": "Inspect",
+        "target": "/srv/app/notes.md", "draft": format!("{home}/todo.md")
+    }));
+    let (payload, _, _) = normalize_item(&row, ItemLifecycle::Completed, &UnusedMapper)
+        .expect("other tool")
+        .expect("item");
+    let NormalizedPayload::ToolCall {
+        input_summary: Some(summary),
+        ..
+    } = payload
+    else {
+        panic!("tool row with a summary");
+    };
+    for shown in ["futureToolKind", "/srv/app/notes.md", "\"~/todo.md\""] {
+        assert!(summary.as_str().contains(shown), "{}", summary.as_str());
+    }
+}
+
+#[test]
+fn what_a_tool_was_asked_keeps_paths_as_claude_code_tool_titles_do() {
+    let home = std::env::home_dir().expect("home folder");
+    let home = home.to_str().expect("UTF-8 home folder");
+    let separator = if home.contains('\\') { '\\' } else { '/' };
+    let asked = format!("Check /srv/app{separator}notes.md and {home}{separator}todo.md");
+    let shown = format!("Check /srv/app{separator}notes.md and ~{separator}todo.md");
+    for row in [
+        json!({"type": "hookPrompt", "status": "completed", "fragments": [{"text": asked}]}),
+        json!({"type": "webSearch", "status": "completed", "query": asked}),
+        json!({"type": "enteredReviewMode", "status": "completed", "review": asked}),
+    ] {
+        let (payload, _, _) =
+            normalize_item(&item(row.clone()), ItemLifecycle::Completed, &UnusedMapper)
+                .expect("tool row")
+                .expect("item");
+        let NormalizedPayload::ToolCall {
+            label,
+            input_summary,
+            ..
+        } = payload
+        else {
+            panic!("tool row");
+        };
+        let text = format!(
+            "{} {}",
+            label.as_str(),
+            input_summary
+                .as_ref()
+                .map_or("", |summary| summary.as_str())
+        );
+        assert!(text.contains(&shown), "{row}: {text}");
+    }
+}
+
+#[test]
+fn what_a_tool_returned_keeps_paths_private_as_claude_code_tool_content_does() {
+    for row in [
+        json!({"type": "functionCallOutput", "status": "completed", "name": "read",
+            "output": "Read /srv/app/notes.md"}),
+        json!({"type": "mcpToolCall", "status": "completed", "server": "docs", "tool": "fetch",
+            "result": {"content": [{"type": "text", "text": "Read /srv/app/notes.md"}]}}),
+    ] {
+        let (payload, _, _) =
+            normalize_item(&item(row.clone()), ItemLifecycle::Completed, &UnusedMapper)
+                .expect("tool row")
+                .expect("item");
+        let NormalizedPayload::ToolCall {
+            output_summary: Some(output),
+            ..
+        } = payload
+        else {
+            panic!("tool row with output");
+        };
+        assert!(
+            output.as_str().starts_with("Read "),
+            "{row}: {}",
+            output.as_str()
+        );
+        assert!(
+            !output.as_str().contains("/srv/app"),
+            "{row}: {}",
+            output.as_str()
+        );
+    }
+}

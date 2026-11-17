@@ -233,3 +233,42 @@ pub(super) fn summary_retry(value: &Value) -> AdapterOutput {
     ));
     super::notice(super::SessionNoticeLevel::Warning, "Pi", Some(&text))
 }
+
+impl ActiveTurn {
+    /// Settles what the turn left open as it ends: a thought, a reply Pi
+    /// never closed, which is then shown whole, a compaction, or a wait to
+    /// retry, whose activity row must not stay running in the chat.
+    pub(in crate::acp::bindings::pi::translator) fn close_open_output(
+        &mut self,
+        outcome: TerminalOutcome,
+    ) -> Vec<AdapterOutput> {
+        let mut closed = Vec::new();
+        if self.thought_active {
+            self.thought_active = false;
+            closed.push(AdapterOutput::ThoughtCompleted { outcome });
+        }
+        if std::mem::take(&mut self.reply_open) {
+            closed.push(AdapterOutput::TextCompleted {
+                external_id: None,
+                outcome,
+            });
+        }
+        if self.compaction_active {
+            self.compaction_active = false;
+            closed.push(match outcome {
+                TerminalOutcome::Failed => AdapterOutput::CompactionFailed,
+                TerminalOutcome::Completed
+                | TerminalOutcome::Cancelled
+                | TerminalOutcome::Interrupted => AdapterOutput::CompactionInterrupted,
+            });
+        }
+        if let Some(attempt) = self.retry_waiting.take() {
+            closed.push(AdapterOutput::Retry {
+                attempt,
+                max_attempts: None,
+                state: SessionActivityState::Cancelled,
+            });
+        }
+        closed
+    }
+}

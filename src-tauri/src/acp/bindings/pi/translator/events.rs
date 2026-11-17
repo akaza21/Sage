@@ -201,28 +201,7 @@ impl PiTranslator {
                         .or_else(|| turn.settlement_message.take());
                     events.push(AdapterOutput::FailureDetail { message });
                 }
-                if turn.thought_active {
-                    turn.thought_active = false;
-                    events.push(AdapterOutput::ThoughtCompleted { outcome: incoming });
-                }
-                if turn.compaction_active {
-                    turn.compaction_active = false;
-                    events.push(match incoming {
-                        TerminalOutcome::Failed => AdapterOutput::CompactionFailed,
-                        TerminalOutcome::Completed
-                        | TerminalOutcome::Cancelled
-                        | TerminalOutcome::Interrupted => AdapterOutput::CompactionInterrupted,
-                    });
-                }
-                // A wait to retry ends with its Turn; its activity row
-                // must not stay running in the chat.
-                if let Some(attempt) = turn.retry_waiting.take() {
-                    events.push(AdapterOutput::Retry {
-                        attempt,
-                        max_attempts: None,
-                        state: sage_acp_protocol::intent::session_event::SessionActivityState::Cancelled,
-                    });
-                }
+                events.extend(turn.close_open_output(incoming));
                 events.push(AdapterOutput::TurnTerminal {
                     turn_key: turn.turn_key.clone(),
                     outcome: incoming,

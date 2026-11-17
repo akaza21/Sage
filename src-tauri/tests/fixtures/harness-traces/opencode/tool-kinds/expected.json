@@ -11,7 +11,7 @@
       "externalItemId": "thought:3",
       "kind": "thoughtSummary",
       "lifecycle": "streaming",
-      "chunks": 13
+      "chunks": 14
     },
     {
       "event": "item",
@@ -107,7 +107,7 @@
       "externalItemId": "agent-message:3",
       "kind": "text",
       "lifecycle": "streaming",
-      "text": "PONG"
+      "text": ""
     },
     {
       "event": "usage",

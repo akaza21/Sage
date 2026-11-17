@@ -5,7 +5,7 @@ use super::{
     translator::{AdapterEvent, ResourceMapper, StandardAcpTranslator},
 };
 use sage_acp_protocol::{
-    intent::{SafeResourceRef, UnavailableResourceReason},
+    intent::{NormalizedPayload, SafeResourceRef, UnavailableResourceReason},
     lifecycle::ItemLifecycle,
 };
 
@@ -119,7 +119,7 @@ fn every_delivered_stop_reason_closes_text_thought_and_plan() {
 }
 
 #[test]
-fn a_cancelled_or_errored_prompt_leaves_open_output_to_the_turn_sweep() {
+fn a_cancelled_or_errored_prompt_shows_open_output_whole_but_leaves_it_to_the_turn_sweep() {
     for result in [
         json!({"result":{"stopReason":"cancelled"}}),
         json!({"error":{"code":-32603,"message":"backend down"}}),
@@ -127,9 +127,67 @@ fn a_cancelled_or_errored_prompt_leaves_open_output_to_the_turn_sweep() {
         let mut translator = opened();
         chunk(&mut translator, "agent_message_chunk", "Partial");
         let emitted = finish(&mut translator, result.clone());
-        assert!(
-            emitted.iter().all(|(key, _)| key != "agent-message:7"),
+        assert_eq!(
+            emitted
+                .iter()
+                .filter(|(key, _)| key == "agent-message:7")
+                .collect::<Vec<_>>(),
+            [&("agent-message:7".to_owned(), ItemLifecycle::Streaming)],
             "{result}: {emitted:?}"
         );
     }
+}
+
+#[test]
+fn a_new_reply_ends_the_last_so_every_reply_of_a_long_turn_closes_whole() {
+    let mut translator = opened();
+    for index in 0..12 {
+        let update = json!({
+            "sessionUpdate": "agent_message_chunk",
+            "itemId": format!("reply-{index}"),
+            "content": {"type": "text", "text": "word word"}
+        });
+        let mut expected = Vec::new();
+        if index > 0 {
+            expected.push((format!("reply-{}", index - 1), ItemLifecycle::Completed));
+        }
+        expected.push((format!("reply-{index}"), ItemLifecycle::Streaming));
+        assert_eq!(send(&mut translator, update), expected, "reply {index}");
+    }
+    assert_eq!(
+        finish(&mut translator, json!({"result":{"stopReason":"end_turn"}})),
+        closed(&["reply-11"])
+    );
+}
+
+#[test]
+fn a_chunk_that_says_it_is_complete_shows_whole_at_once() {
+    let shown = |complete: bool| {
+        let mut update = json!({
+            "sessionUpdate": "agent_message_chunk",
+            "itemId": "reply",
+            "content": {"type": "text", "text": "Searching"}
+        });
+        if complete {
+            update["_meta"] = json!({"complete": true});
+        }
+        let events = opened()
+            .translate_notification_value(
+                json!({"method":"session/update","params":{"sessionId":"session-1","update":update}}),
+                &NoResources,
+            )
+            .unwrap();
+        events
+            .into_iter()
+            .find_map(|event| match event {
+                AdapterEvent::Item {
+                    payload: NormalizedPayload::Text { text },
+                    ..
+                } => Some(text.as_str().to_owned()),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(shown(false), "");
+    assert_eq!(shown(true), "Searching");
 }

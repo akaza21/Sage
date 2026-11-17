@@ -16,7 +16,7 @@ use sage_core::limits::LIMITS;
 use super::{ActiveTurn, OmpTranslator, ResourceMapper, TranslationError};
 use crate::acp::bindings::omp::{
     protocol::{AdapterEvent, ItemUpdateMode},
-    wire::{normalized_text, opaque_id},
+    wire::{delta_text, normalized_text, opaque_id},
 };
 
 pub(crate) use kinds::{category_label, external_id, object, tool_category};
@@ -272,7 +272,7 @@ fn text_event(
     if required_string(content, "type")? != "text" {
         return unsupported_event("non_text_content", "Non-text OMP content is not admitted");
     }
-    let text = normalized_text::<262144>("text", required_string(content, "text")?)?;
+    let text = delta_text::<262144>("text", required_string(content, "text")?)?;
     Ok(AdapterEvent::Item {
         external_key: optional_item_id(update, if thought { "thought" } else { "agent-message" })?,
         lifecycle: ItemLifecycle::Streaming,

@@ -218,26 +218,28 @@ fn separators_and_marker_names_inside_secret_values_are_literal_content() {
 }
 
 #[test]
-fn redacts_secret_and_native_path_tokens() {
-    let value = normalized_text::<512>(
-        "fixture",
-        r"result sk-ant-secret C:\private\file.txt /private/file Bearer abc123 safe",
-    )
-    .unwrap();
+fn prose_redacts_secret_tokens_and_tool_content_also_redacts_native_paths() {
+    let input = r"result sk-ant-secret C:\private\file.txt /private/file Bearer abc123 safe";
+    let value = normalized_text::<512>("fixture", input).unwrap();
     assert_eq!(
         value.as_str(),
+        r"result [redacted] C:\private\file.txt /private/file Bearer [redacted] safe"
+    );
+    assert_eq!(
+        sanitized_content_output(input).unwrap(),
         "result [redacted] [redacted] [redacted] Bearer [redacted] safe"
     );
 }
 
 #[test]
-fn an_embedded_absolute_path_behind_a_flag_or_key_is_redacted() {
-    let value = normalized_text::<512>(
-        "fixture",
-        r"Write --target=C:\Users\Alice\secret.txt note:/home/probe/x tail",
-    )
-    .unwrap();
-    assert_eq!(value.as_str(), "Write [redacted] [redacted] tail");
+fn an_embedded_absolute_path_behind_a_flag_or_key_is_redacted_in_tool_content() {
+    let input = r"Write --target=C:\Users\Alice\secret.txt note:/home/probe/x tail";
+    let value = normalized_text::<512>("fixture", input).unwrap();
+    assert_eq!(value.as_str(), input);
+    assert_eq!(
+        sanitized_content_output(input).unwrap(),
+        "Write [redacted] [redacted] tail"
+    );
 }
 
 #[test]
@@ -309,9 +311,12 @@ fn prose_and_output_redact_only_secret_tokens_and_paths() {
     let result = normalized_text::<512>("text", input).unwrap();
     assert_eq!(
         result.as_str(),
+        "Here's [redacted] Bearer [redacted] [redacted] /home/probe/key.txt safe"
+    );
+    assert_eq!(
+        sanitized_command_output(input).unwrap(),
         "Here's [redacted] Bearer [redacted] [redacted] [redacted] safe"
     );
-    assert_eq!(sanitized_command_output(input).unwrap(), result.as_str());
 }
 
 #[test]

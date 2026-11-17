@@ -717,6 +717,12 @@ fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
         2,
         "{inner:?}"
     );
+    assert!(
+        inner.iter().any(|event| matches!(event,
+            AdapterEvent::ChildLiveItem { payload: NormalizedPayload::Text { text }, .. }
+                if text.as_str() == "Looking")),
+        "a finished block shows whole at once: {inner:?}"
+    );
     let result = feed(
         &mut runtime,
         json!({"type":"user","parent_tool_use_id":"toolu_task","message":{"content":[{"type":"tool_result","tool_use_id":"sub-1","content":"a.test.ts"}]}}),
