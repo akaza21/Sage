@@ -2,8 +2,10 @@ param([Parameter(Mandatory)][string]$ModulePath)
 
 $ErrorActionPreference = "Stop"
 . $ModulePath
-$process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "exit 3" -PassThru
-$null = $process.Handle
+$startInfo = [System.Diagnostics.ProcessStartInfo]::new("cmd.exe", "/c exit 3")
+$startInfo.UseShellExecute = $false
+$startInfo.CreateNoWindow = $true
+$process = [System.Diagnostics.Process]::Start($startInfo)
 $process.WaitForExit()
 $receipt = Get-ProcessExitReceipt $process
 if (-not $receipt.hasExited) { throw "Exited process was not recorded." }
