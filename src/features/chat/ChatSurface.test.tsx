@@ -2572,6 +2572,7 @@ describe("ChatSurface ACP resource integration", () => {
     const harness = useWorkbenchStore.getState().harnesses[0];
     useWorkbenchStore.setState({
       harnesses: [
+        harness,
         {
           ...harness,
           id: "claude-code",
@@ -2622,6 +2623,13 @@ describe("ChatSurface ACP resource integration", () => {
     expect(
       await screen.findByRole("button", { name: "Check sign-in" }),
     ).toBeVisible();
+
+    const claudePage = hooks.page;
+    hooks.page = { ...claudePage, sessions: page.sessions };
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
+    expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
+    hooks.page = claudePage;
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
 
     const nextTurn = {
       ...failedTurn,

@@ -218,6 +218,12 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     retentionIncomplete: acpRetentionIncomplete,
   });
   const latestTurn = acpPage?.turns.at(-1);
+  const latestTurnSession = acpPage?.sessions.find(
+    (session) => session.id === latestTurn?.sessionId,
+  );
+  const latestTurnHarness = harnesses.find(
+    (harness) => harness.bindingId === latestTurnSession?.bindingId,
+  );
   const claudeAuthScope = `${project?.id ?? acpPage?.projectId ?? ""}:${epoch}:${chatId ?? acpPage?.chatId ?? activeTabId ?? ""}:${latestTurn?.id ?? ""}`;
   const ownerChatId = chatId ?? acpPage?.chatId ?? activeTabId;
   const dismissedAuthTurnId = useWorkbenchStore((state) =>
@@ -231,10 +237,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   );
   const authOwner = captureChatOwnership(ownerChatId ?? undefined);
   const claudeSignInRequired =
-    selectedHarnessId === "claude-code" &&
-    (acpActions.errorKind === "signInRequired" ||
-      (dismissedAuthTurnId !== latestTurn?.id &&
-        getTurnFailure(latestTurn)?.kind === "authRequired"));
+    (selectedHarnessId === "claude-code" &&
+      acpActions.errorKind === "signInRequired") ||
+    (latestTurnHarness?.id === "claude-code" &&
+      dismissedAuthTurnId !== latestTurn?.id &&
+      getTurnFailure(latestTurn)?.kind === "authRequired");
 
   return (
     <section
@@ -334,7 +341,7 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         chatError={foregroundError}
         signInHarness={
           signInHarness ??
-          (claudeSignInRequired && !foregroundError ? selectedHarness : null)
+          (claudeSignInRequired && !foregroundError ? latestTurnHarness : null)
         }
         onClaudeSignedIn={
           claudeSignInRequired
