@@ -52,6 +52,7 @@ pub(crate) struct RuntimeSlot {
     pub(crate) commands: Arc<crate::acp::slash_commands::CommandChannel>,
     pub(crate) goal: Arc<crate::acp::goal::GoalChannel>,
     pub(crate) usage: Arc<sage_acp_protocol::usage::UsageChannel>,
+    pub(crate) harness_access: super::harness_access::HarnessAccessSlot,
 }
 
 impl RuntimeSlot {
@@ -62,6 +63,7 @@ impl RuntimeSlot {
             commands: Arc::default(),
             goal: Arc::new(crate::acp::goal::GoalChannel::default()),
             usage: Arc::default(),
+            harness_access: Default::default(),
         }
     }
 

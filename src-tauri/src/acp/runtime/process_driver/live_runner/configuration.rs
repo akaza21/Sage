@@ -71,6 +71,25 @@ pub(super) fn fail_pending_config(pending: &mut Option<PendingConfig>, error: Ho
     }
 }
 
+/// Settles what a read between turns refused: a refused setting or goal
+/// answers the one pending, and a refused sign-in waits for the next. False
+/// when nothing pending matches the refusal.
+pub(super) fn settle_idle_refusal(
+    pending: &mut Option<PendingConfig>,
+    refusal: NonfatalRefusal,
+) -> bool {
+    let error = match refusal {
+        NonfatalRefusal::ConfigMutation => HostError::ConfigMutationRejected,
+        NonfatalRefusal::GoalMutation => HostError::GoalMutationRejected,
+        NonfatalRefusal::SignIn => return true,
+    };
+    let Some(config) = pending.take() else {
+        return false;
+    };
+    config.complete(Err(error));
+    true
+}
+
 /// Settles the pending mutation; true when it missed its deadline, so the
 /// caller can abandon what the harness may still answer.
 pub(super) fn settle_pending_config(
@@ -317,5 +336,36 @@ mod tests {
         assert!(!settle_pending_config(&mut pending, false, false, None));
         assert!(pending.is_none());
         assert_eq!(receiver.recv().unwrap(), Err(HostError::RecoveryRequired));
+    }
+
+    #[test]
+    fn a_refusal_read_between_turns_answers_the_pending_setting_and_nothing_else() {
+        let (sender, receiver) = std::sync::mpsc::sync_channel(1);
+        let completion = ConfigCompletionSink::new(move |result| {
+            sender.send(result).unwrap();
+        });
+        let mut pending = Some(PendingConfig {
+            completion: PendingCompletion::Config(completion),
+            deadline: std::time::Instant::now() + std::time::Duration::from_secs(1),
+            native_rpc: false,
+        });
+        assert!(settle_idle_refusal(&mut pending, NonfatalRefusal::SignIn));
+        assert!(
+            pending.is_some(),
+            "a sign-in refusal leaves the setting pending"
+        );
+        assert!(settle_idle_refusal(
+            &mut pending,
+            NonfatalRefusal::ConfigMutation
+        ));
+        assert!(pending.is_none());
+        assert_eq!(
+            receiver.recv().unwrap(),
+            Err(HostError::ConfigMutationRejected)
+        );
+        assert!(
+            !settle_idle_refusal(&mut pending, NonfatalRefusal::GoalMutation),
+            "a refusal with nothing pending is not one Sage asked for"
+        );
     }
 }

@@ -68,6 +68,8 @@ pub(crate) use file_snapshot::verify_current_owner;
 mod chat_fork;
 mod child_transcript;
 mod goal;
+mod harness_access;
+pub(crate) use harness_access::HarnessTurnAccess;
 mod native_import;
 mod native_read;
 mod project_switch;

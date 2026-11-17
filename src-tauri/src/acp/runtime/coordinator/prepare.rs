@@ -16,7 +16,7 @@ pub(crate) struct AmbiguousTurnReservation {
     pub(super) reservation: TurnReservation,
     pub(super) journal: JournalHandle,
     pub(super) publisher: Arc<dyn ProjectionPublisher>,
-    pub(super) command: PrepareTurnCommand,
+    pub(super) mutation: Box<StoreMutation>,
 }
 
 impl std::fmt::Debug for PrepareFailure {
@@ -52,8 +52,8 @@ impl PrepareRecovery {
 
 impl AmbiguousTurnReservation {
     #[cfg(test)]
-    pub(crate) fn command(&self) -> &PrepareTurnCommand {
-        &self.command
+    pub(crate) fn mutation(&self) -> &StoreMutation {
+        &self.mutation
     }
 
     #[cfg(test)]
@@ -68,6 +68,66 @@ pub(super) fn prepare_failure(error: CoordinatorError) -> Box<PrepareFailure> {
         error,
         recovery: None,
     })
+}
+
+impl<A: ProjectIntentAuthority> SendCoordinator<A> {
+    /// Commits the one mutation that opens a reserved Turn and reads its
+    /// result. An unknown commit or an unreadable result may have left the
+    /// Turn durable, so the reservation stays with the failure for recovery;
+    /// any other failure proves no Turn opened and releases it.
+    pub(super) async fn open_reserved<T>(
+        &self,
+        reservation: TurnReservation,
+        mutation: StoreMutation,
+        now_millis: i64,
+        one: fn(StoreCommit) -> Result<T, CoordinatorError>,
+    ) -> Result<(TurnReservation, StoreMutation, T), Box<PrepareFailure>> {
+        let ticket = match self.journal.enqueue_one(
+            JournalLane::Data,
+            mutation.clone(),
+            deadline(now_millis, 30_000),
+        ) {
+            Ok(ticket) => ticket,
+            Err(error) => return Err(released(reservation, error.into())),
+        };
+        match ticket.committed().await {
+            Ok(commit) => match one(commit) {
+                Ok(result) => Ok((reservation, mutation, result)),
+                Err(error) => Err(self.ambiguous(reservation, mutation, error)),
+            },
+            Err(error @ JournalError::Store(crate::acp::store::StoreError::CommitUnknown)) => {
+                Err(self.ambiguous(reservation, mutation, error.into()))
+            }
+            Err(error) => Err(released(reservation, error.into())),
+        }
+    }
+
+    pub(super) fn ambiguous(
+        &self,
+        reservation: TurnReservation,
+        mutation: StoreMutation,
+        error: CoordinatorError,
+    ) -> Box<PrepareFailure> {
+        Box::new(PrepareFailure {
+            error,
+            recovery: Some(PrepareRecovery::Ambiguous(AmbiguousTurnReservation {
+                reservation,
+                journal: self.journal.clone(),
+                publisher: Arc::clone(&self.publisher),
+                mutation: Box::new(mutation),
+            })),
+        })
+    }
+}
+
+pub(super) fn released(
+    reservation: TurnReservation,
+    error: CoordinatorError,
+) -> Box<PrepareFailure> {
+    match reservation.abort_before_durable_commit() {
+        Ok(()) => prepare_failure(error),
+        Err(scheduler) => prepare_failure(scheduler.into()),
+    }
 }
 
 // The error tuple deliberately returns both single-owner values without an

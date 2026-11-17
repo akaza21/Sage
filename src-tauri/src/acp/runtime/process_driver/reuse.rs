@@ -17,6 +17,8 @@ use crate::acp::{
 use sage_acp_protocol::scheduler::RuntimeOwner;
 use sage_process::error::LaunchError;
 
+mod harness_turn;
+
 use super::{
     CoordinatorZeroToken, DriverClock, DriverError, DriverMailbox, ProcessAdapterDriver,
     ProcessTreeControl, StdinTransport, TeardownCause, TreeLeaseOwner, driver::DriverState,
@@ -38,9 +40,9 @@ where
         if !matches!(self.state, DriverState::Running)
             || self.first_delivery_unknown.is_some()
             || self.pending_exit.is_some()
-            || !mailbox
-                .queued_handoff_stdout()
-                .is_some_and(|stdout| self.pump.queued_stdout_repeats_terminal(&stdout))
+            || !mailbox.queued_handoff_stdout().is_some_and(|stdout| {
+                self.pump.next_turn_started() || self.pump.queued_stdout_repeats_terminal(&stdout)
+            })
             || !self.pump.completed_turn_ready()
         {
             return Err(Box::new(RebindFailure {
@@ -230,6 +232,25 @@ where
         self,
         active_turn: ActiveTurnIntent,
     ) -> BindTurnResult<A, J, R, T, C, L> {
+        self.rebind(|completed| completed.bind_turn(active_turn))
+    }
+
+    pub(crate) fn turn_started(&self) -> bool {
+        self.completed.turn_started()
+    }
+
+    fn rebind(
+        self,
+        bind: impl FnOnce(
+            CompletedPumpParts<A, J, R>,
+        ) -> Result<
+            crate::acp::runtime::AdapterPump<A, J, R>,
+            Box<(
+                CompletedPumpParts<A, J, R>,
+                crate::acp::runtime::AdapterPumpError,
+            )>,
+        >,
+    ) -> BindTurnResult<A, J, R, T, C, L> {
         let Self {
             completed,
             transport,
@@ -238,7 +259,7 @@ where
             owner,
             clock,
         } = self;
-        match completed.bind_turn(active_turn) {
+        match bind(completed) {
             Ok(pump) => Ok(ProcessAdapterDriver {
                 pump,
                 transport,

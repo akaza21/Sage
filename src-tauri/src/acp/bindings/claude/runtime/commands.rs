@@ -58,33 +58,15 @@ impl ClaudeRuntime {
                 if !self.auth.permits_prompt() {
                     return Err(AdapterRuntimeError::SignInRequired);
                 }
-                let id = self.next_request_id.checked_add(1).filter(|id| *id <= i64::MAX as u64).ok_or(AdapterRuntimeError::Operation)?;
-                let active = self.active.as_mut().ok_or(AdapterRuntimeError::Operation)?;
-                if active.turn.is_some() {
-                    return Err(AdapterRuntimeError::Operation);
-                }
-                // The prompt is written only while the session is, by every
-                // source it reports, in the mode selected for this turn; a
-                // flip after the select stops it here. An access mode Claude
-                // has no permission mode for is never sent at all.
+                // An access mode Claude has no permission mode for is never
+                // sent at all.
                 let native_mode = crate::acp::bindings::access_policy::session_mode(
                     super::super::CLAUDE_BINDING_ID,
                     access_mode,
                 )
                 .ok_or(AdapterRuntimeError::Operation)?;
-                if !active.config.in_mode(native_mode) {
-                    return Err(AdapterRuntimeError::Operation);
-                }
-                active.translator.begin_prompt(&id.to_string()).map_err(map_translation)?;
-                active.turn = Some(TurnIntent {
-                    external_turn_id: ExternalId::new("externalTurnId", format!("prompt-{id}"))
-                        .map_err(|_| AdapterRuntimeError::Operation)?,
-                    client_message_id,
-                    request_id: id,
-                    cancel_written: false,
-                    native_mode: Some(native_mode),
-                    sanctioned_mode: None,
-                });
+                let id = self.begin_turn(client_message_id, native_mode)?;
+                let active = self.active.as_ref().ok_or(AdapterRuntimeError::Operation)?;
                 let external_session_id = active.external_id.clone();
                 let message_id = active.turn.as_ref().map(|turn| turn.client_message_id.as_str().to_owned());
                 match self.reserve(PendingRequest::Prompt, "session/prompt", json!({"sessionId":external_session_id.as_str(),"prompt":blocks,"messageId":message_id})) {

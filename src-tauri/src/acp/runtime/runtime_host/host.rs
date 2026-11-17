@@ -11,7 +11,7 @@ use crate::acp::{prompt_send::PromptSendError, store::AdapterTurnCursor};
 use sage_acp_protocol::scheduler::RuntimeOwner;
 
 use super::super::bounded_thread::{BoundedThread, ThreadWaitError};
-pub(crate) use super::types::TerminalNotification;
+pub(crate) use super::types::{StartNotification, TerminalNotification};
 
 use super::types::HostState;
 use super::{

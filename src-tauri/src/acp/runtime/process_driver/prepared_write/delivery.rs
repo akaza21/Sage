@@ -1,5 +1,5 @@
 use crate::acp::{store::SendObservation, transcript_quote::Prompt};
-use sage_acp_protocol::contract::SageTurnId;
+use sage_acp_protocol::{access_mode::SessionAccessMode, contract::SageTurnId};
 
 use super::super::{WriteFence, WriteFenceError};
 
@@ -10,19 +10,31 @@ use super::super::{WriteFence, WriteFenceError};
 /// are released instead of living as long as the active Turn.
 pub(super) struct PromptDelivery {
     fence: WriteFence,
-    prompt: Option<Prompt>,
+    prompt: Option<(Prompt, SessionAccessMode)>,
 }
 
 impl PromptDelivery {
-    pub(super) fn new(turn_id: SageTurnId, prompt: Prompt) -> Self {
+    pub(super) fn new(turn_id: SageTurnId, prompt: Prompt, access_mode: SessionAccessMode) -> Self {
         Self {
             fence: WriteFence::bound(turn_id),
-            prompt: Some(prompt),
+            prompt: Some((prompt, access_mode)),
+        }
+    }
+
+    /// A Turn the harness started on its own has nothing to write and its
+    /// output is already arriving.
+    pub(super) fn delivered(turn_id: SageTurnId) -> Self {
+        Self {
+            fence: WriteFence::delivered(turn_id),
+            prompt: None,
         }
     }
 
     /// Opens the fence for one write and returns the prompt to write.
-    pub(super) fn begin_write(&mut self, turn_id: &SageTurnId) -> Result<Prompt, WriteFenceError> {
+    pub(super) fn begin_write(
+        &mut self,
+        turn_id: &SageTurnId,
+    ) -> Result<(Prompt, SessionAccessMode), WriteFenceError> {
         self.fence.begin_write(turn_id)?;
         self.prompt.clone().ok_or(WriteFenceError::State)
     }
@@ -72,14 +84,15 @@ mod tests {
             SendObservation::ProcessLost,
         ] {
             let (prompt, attachment) = prompt_with_attachment();
-            let mut delivery = PromptDelivery::new(turn.clone(), prompt);
+            let mut delivery =
+                PromptDelivery::new(turn.clone(), prompt, SessionAccessMode::ReadOnly);
             drop(delivery.begin_write(&turn).unwrap());
             delivery
                 .accept_observation(&turn, SendObservation::ZeroBytes)
                 .unwrap();
             // Zero bytes admit one more write of the same prompt.
             assert!(attachment.upgrade().is_some());
-            let retry = delivery.begin_write(&turn).unwrap();
+            let (retry, _) = delivery.begin_write(&turn).unwrap();
             assert_eq!(retry.as_str(), "Explain");
             drop(retry);
             delivery.accept_observation(&turn, settled).unwrap();

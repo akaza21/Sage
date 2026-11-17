@@ -21,6 +21,7 @@ use sage_acp_protocol::{
 };
 use sage_core::limits::LIMITS;
 
+mod available_commands;
 mod capabilities;
 mod coordinator_journal;
 mod ingress;
@@ -33,10 +34,10 @@ mod startup_step;
 use intent::{digest, validate_intent};
 use phase::Phase;
 
+pub(crate) use available_commands::is_available_commands_update;
 pub(crate) use coordinator_journal::{
     CoordinatorActivationHandoff, CoordinatorActivationJournal, CoordinatorShutdownHandoff,
 };
-pub(crate) use ingress::is_available_commands_update;
 pub(crate) use mode::ActivationMode;
 pub(crate) use parts::{IdleActivationParts, RecoveryActivationParts, TeardownActivationParts};
 pub(crate) use startup_step::ActivationStartupStep;

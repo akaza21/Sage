@@ -32,6 +32,7 @@ fn queued_steer_overtaken_by_cancel_never_writes() {
                     final_stdout: None,
                     config_pending: false,
                     usage_read_pending: false,
+                    harness_session: None,
                 },
                 activation_journal,
                 Mapper,

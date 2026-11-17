@@ -38,6 +38,7 @@ mod children;
 mod commands;
 mod egress;
 mod fork;
+mod harness_turn;
 mod ingress;
 mod launch;
 mod mode_guard;
@@ -77,6 +78,9 @@ pub(crate) struct ClaudeRuntime {
     stores_children: bool,
     /// The SDK bridge answers `/status` and `/mcp`, so they open panels.
     opens_panels: bool,
+    /// The permission mode Sage last put the session in, which a turn
+    /// Claude Code starts on its own runs in.
+    selected_mode: Option<&'static str>,
 }
 
 struct ActiveSession {
@@ -190,6 +194,7 @@ impl ClaudeRuntime {
             forks: Vec::new(),
             stores_children: false,
             opens_panels: false,
+            selected_mode: None,
         }
     }
 

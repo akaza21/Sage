@@ -20,7 +20,9 @@ pub(super) fn mutation_retained_bytes(mutation: &StoreMutation) -> usize {
                 + command.session_id.as_str().len()
                 + command.turn_id.as_str().len()
         }
-        StoreMutation::BeginSend(command) | StoreMutation::ObserveSend { command, .. } => {
+        StoreMutation::BeginSend(command)
+        | StoreMutation::OpenHarnessTurn(command)
+        | StoreMutation::ObserveSend { command, .. } => {
             command.project_id.as_str().len()
                 + command.chat_id.as_str().len()
                 + command.session_id.as_str().len()

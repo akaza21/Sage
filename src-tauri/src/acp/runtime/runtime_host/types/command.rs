@@ -12,7 +12,8 @@ impl HostCommand {
             }
             Self::Activate(_) => LIMITS.deadlines_ms.initialize,
             Self::Cancel(_) => LIMITS.deadlines_ms.tree_termination,
-            Self::Terminal { .. }
+            Self::TurnStarted { .. }
+            | Self::Terminal { .. }
             | Self::BeginClose(_)
             | Self::FinishClose(_)
             | Self::RecoverClose(_)
@@ -38,6 +39,7 @@ impl HostCommand {
             self,
             Self::ResolvePermission { .. }
                 | Self::Cancel(_)
+                | Self::TurnStarted { .. }
                 | Self::Terminal { .. }
                 | Self::State
                 | Self::BeginClose(_)
@@ -89,6 +91,7 @@ impl HostCommand {
                     + std::mem::size_of::<u64>()
                     + std::mem::size_of::<i64>()
             }
+            Self::TurnStarted { owner, turn_id } => owner_bytes(owner) + turn_id.as_str().len(),
             Self::Terminal { owner, cursor } => {
                 owner_bytes(owner) + cursor.turn_id().as_str().len() + 32
             }
