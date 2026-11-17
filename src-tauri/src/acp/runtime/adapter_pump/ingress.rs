@@ -3,7 +3,6 @@ use super::{
     normalize::{control_critical, validate_batch, validate_deny_pairs},
     *,
 };
-use crate::acp::runtime::terminal_detail;
 
 mod harness_turn;
 mod held;
@@ -291,19 +290,7 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
                     self.flush_deferred().await?;
                 }
                 if matches!(refusal, NonfatalRefusal::SignIn) {
-                    let detail = self.adapter.refusal_detail();
-                    self.terminalize_active_turn(
-                        TurnTerminalReason::AuthRequired,
-                        detail
-                            .as_ref()
-                            .and_then(|detail| terminal_detail::auth_required(detail.message())),
-                        detail
-                            .as_ref()
-                            .and_then(|detail| terminal_detail::remediation(detail.remediation())),
-                        now_millis,
-                        frame.len(),
-                    )
-                    .await?;
+                    self.fail_turn_for_sign_in(now_millis, frame.len()).await?;
                 }
                 return Err(refusal.into());
             }

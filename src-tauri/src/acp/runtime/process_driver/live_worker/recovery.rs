@@ -13,10 +13,11 @@ use super::write_recovery::{
 };
 use super::{FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState};
 
-pub(super) fn handle_begin_send<A, R, T, C>(
+pub(super) async fn handle_begin_send<A, R, T, C, Auth>(
     active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
     owner: sage_acp_protocol::scheduler::RuntimeOwner,
     turn_id: sage_acp_protocol::contract::SageTurnId,
+    context: &FirstTurnWorkerContext<Auth>,
     envelope: WorkerEnvelope,
 ) -> FirstTurnWorkerState<A, R, T, C>
 where
@@ -43,7 +44,10 @@ where
             turn_id,
         }));
     }
-    match active.retry_send_projection() {
+    match active
+        .retry_send_projection(context.clock.now_millis())
+        .await
+    {
         Ok((active, write)) => {
             envelope.respond(Ok(WorkerReply::Write(write)));
             FirstTurnWorkerState::Active(Box::new(active))

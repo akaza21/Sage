@@ -283,7 +283,18 @@ where
                     failure,
                     owner,
                     turn_id,
-                } => recovery::handle_begin_send(failure.state, owner, turn_id, envelope),
+                } => {
+                    boxed(|| {
+                        recovery::handle_begin_send(
+                            failure.state,
+                            owner,
+                            turn_id,
+                            context,
+                            envelope,
+                        )
+                    })
+                    .await
+                }
                 FirstTurnWorkerRecovery::BeginSendRetry {
                     failure,
                     owner,

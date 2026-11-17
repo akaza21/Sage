@@ -17,7 +17,7 @@ pub(crate) fn harness_exited(exit: Option<TreeExit>) -> Option<String> {
         TreeExit::ContainmentFailure => "harness process containment failed".to_owned(),
         TreeExit::ProtocolFailure => "harness process stream failed before a clean exit".to_owned(),
         TreeExit::ParentShutdown => {
-            "harness process stopped while Sage was shutting down".to_owned()
+            "harness process was stopped by Sage before this turn finished".to_owned()
         }
     };
     bound(detail)
@@ -79,8 +79,8 @@ pub(crate) fn harness_exited_with_error(
     with_harness_error(harness_exited(Some(exit)), exit, harness_error)
 }
 
-/// A tree Sage cancelled or shut down did not fail on its own, so its last
-/// stderr error is not the cause.
+/// A tree Sage stopped did not fail on its own, so its last stderr error is
+/// not the cause.
 fn with_harness_error(
     described: Option<String>,
     exit: TreeExit,

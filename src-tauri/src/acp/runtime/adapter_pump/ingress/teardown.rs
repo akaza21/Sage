@@ -1,7 +1,53 @@
 use super::{IngestMode, *};
+use crate::acp::runtime::terminal_detail;
 
 impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A, J, R> {
-    pub(super) async fn terminalize_active_turn(
+    /// Fails the active turn the harness answered with a sign-in refusal.
+    pub(super) async fn fail_turn_for_sign_in(
+        &mut self,
+        now_millis: i64,
+        source_bytes: usize,
+    ) -> Result<(), AdapterPumpError> {
+        let (message, remediation) = self.sign_in_detail();
+        self.terminalize_active_turn(
+            TurnTerminalReason::AuthRequired,
+            message,
+            remediation,
+            now_millis,
+            source_bytes,
+        )
+        .await
+    }
+
+    /// Fails the active turn whose prompt the harness refused for sign-in
+    /// before Sage wrote it. No harness frame carries that refusal, so the
+    /// commit is measured by the detail it records.
+    pub(crate) async fn fail_unwritten_prompt_for_sign_in(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<(), AdapterPumpError> {
+        let (message, remediation) = self.sign_in_detail();
+        let measured = [message, remediation]
+            .into_iter()
+            .flatten()
+            .map(|text| text.len())
+            .sum::<usize>();
+        self.fail_turn_for_sign_in(now_millis, measured.max(1))
+            .await
+    }
+
+    /// The harness's own words for a sign-in refusal, when it gave any.
+    fn sign_in_detail(&self) -> (Option<String>, Option<String>) {
+        let Some(detail) = self.adapter.refusal_detail() else {
+            return (None, None);
+        };
+        (
+            terminal_detail::auth_required(detail.message()),
+            terminal_detail::remediation(detail.remediation()),
+        )
+    }
+
+    async fn terminalize_active_turn(
         &mut self,
         reason: TurnTerminalReason,
         message: Option<String>,

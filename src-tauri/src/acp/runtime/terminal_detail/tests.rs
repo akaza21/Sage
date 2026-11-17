@@ -143,7 +143,7 @@ fn a_lost_runtime_is_classified_by_how_its_tree_ended() {
             TreeExit::ParentShutdown,
             lost(
                 TurnTerminalReason::Other,
-                "harness process stopped while Sage was shutting down",
+                "harness process was stopped by Sage before this turn finished",
             ),
         ),
     ] {
@@ -208,7 +208,7 @@ fn an_intentional_stop_does_not_append_the_harness_error() {
     let outcome = runtime_lost(TreeExit::ParentShutdown, None, Some("broken pipe"));
     assert_eq!(
         outcome.message.as_deref(),
-        Some("harness process stopped while Sage was shutting down")
+        Some("harness process was stopped by Sage before this turn finished")
     );
 }
 
