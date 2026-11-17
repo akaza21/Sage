@@ -53,14 +53,14 @@ export function ProjectScopeChip({
         <SearchablePicker
           triggerRole={menuItem ? "menuitem" : undefined}
           className="project-scope__picker"
+          appearance="plain"
+          popoverAppearance="menu"
           triggerClassName={
-            menuItem
-              ? "project-scope__trigger menu-item composer__add-action"
-              : "project-scope__trigger"
+            menuItem ? "menu-item composer__add-action" : undefined
           }
           chevron={false}
           portalTarget={menuItem ? "closest-popover" : "closest-dialog"}
-          popoverClassName="composer__popover composer__project-menu"
+          popoverClassName="composer__popover"
           popoverPlacement={popoverPlacement}
           ariaLabel={menuItem ? "Work in a project" : `Project: ${projectName}`}
           stateTitle={`Project: ${projectName}`}

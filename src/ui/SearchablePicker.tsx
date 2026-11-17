@@ -89,6 +89,8 @@ export function SearchablePicker({
   triggerIcon,
   triggerLabel,
   triggerDetail,
+  appearance = "field",
+  popoverAppearance = "list",
   chevron = true,
   sectionLabel,
   searchable = true,
@@ -118,6 +120,10 @@ export function SearchablePicker({
   triggerLabel?: ReactNode;
   /** Rendered after the label as the trigger's own child, e.g. a menu row's description. */
   triggerDetail?: ReactNode;
+  /** "plain" draws the trigger as text in its surroundings, with no field chrome. */
+  appearance?: "field" | "plain";
+  /** "menu" draws the open list as a compact menu with a borderless search field. */
+  popoverAppearance?: "list" | "menu";
   chevron?: boolean;
   sectionLabel?: string;
   searchable?: boolean;
@@ -186,7 +192,11 @@ export function SearchablePicker({
       <button
         ref={triggerRef}
         type="button"
-        className={["searchable-picker__trigger", triggerClassName]
+        className={[
+          "searchable-picker__trigger",
+          appearance === "plain" ? "searchable-picker__trigger--plain" : null,
+          triggerClassName,
+        ]
           .filter(Boolean)
           .join(" ")}
         aria-label={ariaLabel}
@@ -250,7 +260,14 @@ export function SearchablePicker({
           onOptionRender={onOptionRender}
           onSelect={onSelect}
           open={open}
-          popoverClassName={popoverClassName}
+          popoverClassName={[
+            popoverAppearance === "menu"
+              ? "searchable-picker__popover--menu"
+              : null,
+            popoverClassName,
+          ]
+            .filter(Boolean)
+            .join(" ")}
           popoverGap={popoverGap}
           popoverPlacement={popoverPlacement}
           portalTarget={portalTarget}

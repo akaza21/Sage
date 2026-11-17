@@ -1,7 +1,8 @@
-/* ProjectScopeChip owns every style of the project picker; consumers pick a
-   variant and set only inherited type and colour around it. */
+/* ProjectScopeChip's styles. Its picker draws a plain trigger, and each
+   variant tunes it only through SearchablePicker's custom properties. */
 .project-scope {
   --picker-trigger-icon-size: var(--icon-size-sm);
+  --picker-field-padding: 0 var(--space-1);
   display: inline-flex;
   min-width: 0;
   max-width: 100%;
@@ -27,55 +28,32 @@
   max-width: 100%;
 }
 
-.project-scope .project-scope__trigger {
-  min-width: 0;
-  max-width: 100%;
-  min-height: var(--control-height-compact);
-  padding: 0 var(--space-1);
-  border: 0;
-  border-radius: var(--radius-sm);
-  color: inherit;
-  background: transparent;
-  font: inherit;
-  cursor: pointer;
-}
-
-.project-scope .project-scope__trigger:disabled {
-  color: var(--color-text-disabled);
-  cursor: not-allowed;
-}
-
-.project-scope--inline,
-.project-scope--inline .project-scope__trigger {
+.project-scope--inline {
+  --picker-trigger-hover-color: var(--color-text-emphasis);
+  --picker-trigger-hover-fill: var(--composer-control-hover);
   gap: var(--composer-location-icon-gap);
 }
 
-.project-scope--inline
-  .project-scope__trigger:is(:hover:not(:disabled), [aria-expanded="true"]) {
-  color: var(--color-text-emphasis);
-  background: var(--composer-control-hover);
-}
-
-.project-scope--caption,
-.project-scope--caption .project-scope__picker {
+.project-scope--caption {
+  --picker-field-padding: 0;
+  --picker-field-min-height: 0;
+  --radius-picker-field: var(--radius-none);
+  --picker-trigger-width: 100%;
+  --picker-trigger-justify: center;
   display: flex;
   width: 100%;
   justify-content: center;
 }
 
-.project-scope--caption .project-scope__trigger {
+.project-scope--caption .project-scope__picker {
   width: 100%;
-  min-height: 0;
-  justify-content: center;
-  padding: 0;
-  border-radius: var(--radius-none);
-  text-decoration: underline dotted;
-  text-underline-offset: var(--space-1);
 }
 
 .project-scope__caption {
   display: block;
   text-align: center;
+  text-decoration: underline dotted;
+  text-underline-offset: var(--space-1);
   white-space: normal;
   overflow-wrap: anywhere;
 }
@@ -85,20 +63,28 @@
   outline-offset: var(--focus-ring-offset);
 }
 
-/* Inside the "+" menu the picker is a menu row and takes the row's padding,
-   radius and type from the menu-item styles. */
-.project-scope--menu-item,
-.project-scope--menu-item .project-scope__picker {
+/* In the "+" menu the picker is a menu row. */
+.project-scope--menu-item {
+  --picker-field-padding: var(--space-1) var(--space-2);
+  --radius-picker-field: var(--radius-menu-row);
+  --picker-field-min-height: var(
+    --menu-row-height,
+    var(--control-height-compact)
+  );
+  --picker-trigger-width: 100%;
+  --picker-trigger-hover-color: var(--menu-row-text, var(--color-text-primary));
+  --picker-trigger-hover-fill: var(
+    --menu-row-hover,
+    var(--color-surface-hover)
+  );
   display: flex;
   width: 100%;
-}
-
-.project-scope--menu-item .project-scope__trigger {
-  width: 100%;
-  padding: var(--space-1) var(--space-2);
-  border-radius: var(--radius-menu-row);
   color: var(--menu-row-text, var(--color-text-secondary));
   font-size: var(--menu-row-size, var(--font-size-xs));
+}
+
+.project-scope--menu-item .project-scope__picker {
+  width: 100%;
 }
 
 @media (forced-colors: active) {
@@ -106,7 +92,7 @@
     outline-color: Highlight;
   }
 
-  .project-scope--caption .project-scope__trigger {
+  .project-scope--caption .project-scope__caption {
     color: LinkText;
   }
 }
