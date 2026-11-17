@@ -398,6 +398,9 @@
   color: var(--color-accent);
   font-size: var(--font-size-xs);
 }
+.browser-surface__toolbar .browser-surface__agent-handoff:hover:not(:disabled) {
+  color: var(--color-accent-hover);
+}
 .browser-surface__find {
   display: flex;
   align-items: center;
