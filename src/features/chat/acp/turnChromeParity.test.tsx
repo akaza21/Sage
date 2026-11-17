@@ -2,7 +2,6 @@ import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { readFile } from "node:fs/promises";
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
-import { ChatTranscriptFooter } from "../ChatTranscriptFooter";
 import { AcpChatPresentation } from "./AcpChatPresentation";
 import { TurnActivityItem } from "./TurnActivityItem";
 import { page, textItem } from "./acpProjection.fixture";
@@ -72,14 +71,12 @@ it("shows no rows under a collapsed Worked and reveals its groups collapsed", as
       retentionIncomplete={false}
     />,
   );
-  const worked = container.querySelector<HTMLDetailsElement>(
-    "details.chat-transcript-work",
-  )!;
+  const worked = screen.getByRole("button", { name: /^Worked for/ });
   expect(container.querySelector(".acp-tool-rollup")).toBeNull();
   expect(container.querySelector(".chat-transcript-work__groups")).toBeNull();
   expect(screen.queryByText("Intro prose")).toBeNull();
-  fireEvent.click(worked.querySelector("summary")!);
-  expect(worked).toHaveAttribute("open");
+  fireEvent.click(worked);
+  expect(worked).toHaveAttribute("aria-expanded", "true");
   const read = container.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
   expect(read).not.toHaveAttribute("open");
   expect(screen.queryByText("fixture output")).toBeNull();
@@ -95,7 +92,7 @@ it("shows no rows under a collapsed Worked and reveals its groups collapsed", as
   read.open = true;
   fireEvent(read, new Event("toggle"));
   expect(screen.getByText("fixture output")).toBeVisible();
-  fireEvent.click(worked.querySelector("summary")!);
+  fireEvent.click(worked);
   expect(container.querySelector(".acp-tool-rollup")).toBeNull();
 });
 
@@ -144,9 +141,7 @@ it.each<ToolPresentation>([
           retentionIncomplete={false}
         />,
       );
-      fireEvent.click(
-        container.querySelector(".chat-transcript-work > summary")!,
-      );
+      fireEvent.click(screen.getByRole("button", { name: /^Worked for/ }));
       const rows = [
         ...container.querySelectorAll<HTMLDetailsElement>(".acp-tool-rollup"),
       ];
@@ -221,13 +216,17 @@ it("never auto-opens a completed turn for an unresolved retained permission", ()
       <p>Retained tool work</p>
     </ChatTranscriptTurnSummary>,
   );
-  expect(container.querySelector("details")).not.toHaveAttribute("open");
+  expect(screen.getByRole("button", { name: /^Worked for/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
+  expect(container.querySelector(".chat-transcript-work__groups")).toBeNull();
 });
 
 it("hides a completed Ran row while Worked is closed and shows it closed once open", () => {
   const projection = page("completed");
   projection.turns[0].items = [parityTool(), textItem()];
-  const { container } = render(
+  render(
     <AcpChatPresentation
       page={projection}
       hasEarlier={false}
@@ -237,10 +236,10 @@ it("hides a completed Ran row while Worked is closed and shows it closed once op
       retentionIncomplete={false}
     />,
   );
-  const worked = container.querySelector(".chat-transcript-work")!;
-  expect(worked).not.toHaveAttribute("open");
+  const worked = screen.getByRole("button", { name: /^Worked for/ });
+  expect(worked).toHaveAttribute("aria-expanded", "false");
   expect(screen.queryByText("Ran git status --short")).toBeNull();
-  fireEvent.click(worked.querySelector("summary")!);
+  fireEvent.click(worked);
   const row = screen.getByText("Ran git status --short");
   expect(row).toBeVisible();
   const disclosure = row.closest("details")!;
@@ -266,9 +265,10 @@ it("adds no empty tool row group beside a closed Worked without tool calls", () 
       retentionIncomplete={false}
     />,
   );
-  const worked = container.querySelector("details.chat-transcript-work");
-  expect(worked).not.toBeNull();
-  expect(worked).not.toHaveAttribute("open");
+  expect(screen.getByRole("button", { name: /^Worked for/ })).toHaveAttribute(
+    "aria-expanded",
+    "false",
+  );
   expect(container.querySelector(".chat-transcript-work__groups")).toBeNull();
 });
 
@@ -345,7 +345,7 @@ it("keeps a simple completed answer's Worked duration without an empty disclosur
     />,
   );
   expect(screen.getByText("Worked for 5s")).toBeVisible();
-  expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+  expect(container.querySelector(".chat-transcript-work__toggle")).toBeNull();
 });
 
 it.each(["completed"] as const)(
@@ -354,10 +354,13 @@ it.each(["completed"] as const)(
     const projection = page(state);
     projection.turns[0].items = [parityTool()];
     const { container } = render(
-      <ChatTranscriptFooter
-        useNativeAcp
+      <AcpChatPresentation
         page={projection}
-        messages={[]}
+        hasEarlier={false}
+        loadingEarlier={false}
+        historyError={null}
+        projectRoots={[]}
+        retentionIncomplete={false}
         onRetry={vi.fn()}
       />,
     );
@@ -408,13 +411,10 @@ it("opens no compact rollup when Worked is opened", () => {
       retentionIncomplete={false}
     />,
   );
-  const work = container.querySelector<HTMLDetailsElement>(
-    ".chat-transcript-work",
-  )!;
-  expect(work.open).toBe(false);
+  const work = screen.getByRole("button", { name: /^Worked for/ });
+  expect(work).toHaveAttribute("aria-expanded", "false");
   expect(container.querySelector(".acp-tool-command-frame")).toBeNull();
-  work.open = true;
-  fireEvent(work, new Event("toggle"));
+  fireEvent.click(work);
   const rows =
     container.querySelectorAll<HTMLDetailsElement>(".acp-tool-rollup");
   expect([...rows].map((row) => row.open)).toEqual([false, false]);
@@ -476,11 +476,7 @@ it("lists individually collapsed Ran command rows inside expanded Worked", () =>
       retentionIncomplete={false}
     />,
   );
-  const worked = container.querySelector<HTMLDetailsElement>(
-    ".chat-transcript-work",
-  )!;
-  worked.open = true;
-  fireEvent(worked, new Event("toggle"));
+  fireEvent.click(screen.getByRole("button", { name: /^Worked for/ }));
   const group =
     container.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
   expect(group.open).toBe(false);

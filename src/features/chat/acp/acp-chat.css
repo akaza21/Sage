@@ -52,6 +52,10 @@
   grid-template-columns: minmax(0, 1fr);
 }
 
+.acp-turn:hover {
+  --answer-actions-time-opacity: 1;
+}
+
 .acp-turn + .acp-turn {
   padding-top: var(--space-4);
 }
@@ -152,6 +156,13 @@
   gap: var(--transcript-item-gap);
 }
 
+.acp-turn__attachments {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--space-2);
+}
+
 .acp-turn__items > .acp-message--assistant {
   margin-block-start: calc(var(--space-1) * 1.5);
 }
@@ -201,7 +212,6 @@
 }
 
 .acp-state,
-.acp-message__role,
 .acp-change-operation,
 .acp-unknown__category {
   color: var(--color-text-muted);
@@ -267,46 +277,6 @@
 .acp-message__command-source {
   color: var(--color-text-muted);
   font-size: var(--font-size-xs);
-}
-
-.acp-message__meta {
-  display: flex;
-  align-items: center;
-  gap: var(--space-2);
-  margin-bottom: var(--space-1);
-}
-
-.acp-message__role {
-  color: var(--color-text-secondary);
-  font-weight: var(--font-weight-semibold);
-}
-
-.acp-message__avatar {
-  display: inline-flex;
-  width: 20px;
-  height: 20px;
-  flex: none;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid var(--color-border-subtle);
-  border-radius: var(--radius-circle);
-  background: var(--color-surface);
-  color: var(--color-text-secondary);
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-}
-
-.acp-message--assistant .acp-message__avatar {
-  border-color: var(--highlight-selection-edge);
-  background: var(--highlight-selection-fill);
-  color: var(--color-accent);
-}
-
-.acp-message__meta time {
-  margin-left: auto;
-  color: var(--color-text-muted);
-  font-size: var(--font-size-xs);
-  font-variant-numeric: tabular-nums;
 }
 
 :is(.acp-markdown, .file-markdown-preview) :not(pre) > code {

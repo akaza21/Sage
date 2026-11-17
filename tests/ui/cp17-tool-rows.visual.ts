@@ -175,7 +175,7 @@ test("CP-17 tool rows: an integration group reads in Codex grammar and scrolls i
       },
     ],
   });
-  await page.locator(".chat-transcript-work > summary").click();
+  await page.locator(".chat-transcript-work__toggle").click();
   const group = page.locator(
     ".chat-transcript-work__groups > .acp-tool-rollup",
   );

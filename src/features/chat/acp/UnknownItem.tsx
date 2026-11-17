@@ -21,7 +21,7 @@ export function UnknownItem({ item }: { item: UnknownProjectionItem }) {
   }
   return (
     <article
-      className="acp-activity-card acp-activity-card--unknown acp-unknown"
+      className="acp-activity acp-activity-card acp-unknown"
       role="group"
       aria-label="Unsupported tool activity"
       aria-describedby={descriptionId}

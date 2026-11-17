@@ -280,14 +280,7 @@ function SubagentChild({
               ) : (
                 <div className="acp-turn__items" aria-label="Child transcript">
                   {visible.map((child) => (
-                    <ItemView
-                      key={child.id}
-                      item={child}
-                      interactive={false}
-                      neutralTextRole={
-                        child.kind === "text" && child.payload.role === "system"
-                      }
-                    />
+                    <ItemView key={child.id} item={child} interactive={false} />
                   ))}
                 </div>
               )}

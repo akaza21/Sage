@@ -1,12 +1,13 @@
-import { useEffect, useState, type ReactNode } from "react";
-import { ChevronRight, RotateCcw } from "../../ui/leanIcons";
+import { useEffect, useId, useState, type ReactNode } from "react";
+import { ChevronRight } from "../../ui/leanIcons";
 
-import type { AcpChatPage, AcpItem, TurnProjection } from "../../domain/acp";
+import type { AcpItem, TurnProjection } from "../../domain/acp";
 import type { ChatMessage } from "../../domain/chat";
 import { TurnDaySeparator } from "./acp/AcpTurnDates";
 import { terminalTurnStates } from "./acp/statusSemantics";
 import { WorkedTurnTerminal } from "./acp/WorkedTurnTerminal";
 import { AnswerActions } from "./AnswerActions";
+import "./chat-transcript-work.css";
 import {
   formatWorkedDuration,
   formatWorkingDuration,
@@ -18,18 +19,6 @@ const isAssistantText = (
   item.kind === "text" &&
   item.payload.role === "assistant" &&
   !!item.payload.text.trim();
-
-function lastAssistantItem(
-  page: AcpChatPage | null,
-): Extract<AcpItem, { kind: "text" }> | null {
-  const turn = page?.turns.at(-1);
-  if (!turn || !terminalTurnStates.has(turn.state)) return null;
-  for (let index = turn.items.length; index--;) {
-    const item = turn.items[index];
-    if (isAssistantText(item)) return item;
-  }
-  return null;
-}
 
 export function ChatTranscriptTurnSummary({
   turn,
@@ -47,6 +36,7 @@ export function ChatTranscriptTurnSummary({
   const terminal = terminalTurnStates.has(turn.state);
   const [expanded, setExpanded] = useState(false);
   const [nowMs, setNowMs] = useState(() => Date.now());
+  const groupsId = useId();
   useEffect(() => {
     if (terminal) return;
     const timer = window.setInterval(() => setNowMs(Date.now()), 1_000);
@@ -68,7 +58,11 @@ export function ChatTranscriptTurnSummary({
   const groups =
     (open && children) || steered?.length ? (
       <WorkedTurnTerminal value={terminal}>
-        <div className="chat-transcript-work__groups">
+        <div
+          id={groupsId}
+          className="chat-transcript-work__groups"
+          data-revealed={(terminal && expanded) || undefined}
+        >
           {open ? children : steered}
         </div>
       </WorkedTurnTerminal>
@@ -91,19 +85,13 @@ export function ChatTranscriptTurnSummary({
 
   return (
     <>
-      <details
-        className="chat-transcript-work"
-        open={expanded}
-        onToggle={(event) => {
-          if (event.currentTarget.open !== expanded)
-            setExpanded(event.currentTarget.open);
-        }}
-      >
-        <summary
-          onClick={(event) => {
-            event.preventDefault();
-            setExpanded(!expanded);
-          }}
+      <div className="chat-transcript-work">
+        <button
+          type="button"
+          className="chat-transcript-work__heading chat-transcript-work__toggle"
+          aria-expanded={expanded}
+          aria-controls={expanded ? groupsId : undefined}
+          onClick={() => setExpanded(!expanded)}
         >
           {duration}
           <ChevronRight
@@ -111,61 +99,30 @@ export function ChatTranscriptTurnSummary({
             className="chat-transcript-work__chevron"
             aria-hidden="true"
           />
-        </summary>
-      </details>
+        </button>
+      </div>
       {groups}
     </>
   );
 }
 
 export function ChatTranscriptFooter({
-  useNativeAcp,
-  page,
   messages,
-  onRetry,
 }: {
-  useNativeAcp: boolean;
-  page: AcpChatPage | null;
   messages: readonly ChatMessage[];
-  onRetry?: () => void;
 }) {
-  const acpAssistant = lastAssistantItem(page);
-  const legacyAssistant = page
-    ? undefined
-    : [...messages].reverse().find((message) => message.role === "assistant");
-  const text = page
-    ? (acpAssistant?.payload.text ?? "")
-    : (legacyAssistant?.text ?? "");
-  const timestamp = page ? acpAssistant?.createdAt : legacyAssistant?.createdAt;
-  if (!text.trim()) return null;
-  const retryAction = page || !useNativeAcp ? onRetry : undefined;
-
+  const assistant = [...messages]
+    .reverse()
+    .find((message) => message.role === "assistant");
+  if (!assistant?.text.trim()) return null;
   return (
     <>
       <TurnDaySeparator
         timestamp={
-          !page && typeof timestamp === "number" && Number.isFinite(timestamp)
-            ? timestamp
-            : null
+          Number.isFinite(assistant.createdAt) ? assistant.createdAt : null
         }
       />
-      <AnswerActions
-        text={text}
-        createdAt={page ? timestamp : undefined}
-        page={page}
-        forkable
-      >
-        {retryAction ? (
-          <button
-            type="button"
-            aria-label="Retry"
-            title="Retry"
-            onClick={retryAction}
-          >
-            <RotateCcw size={14} aria-hidden="true" />
-          </button>
-        ) : null}
-      </AnswerActions>
+      <AnswerActions text={assistant.text} />
     </>
   );
 }

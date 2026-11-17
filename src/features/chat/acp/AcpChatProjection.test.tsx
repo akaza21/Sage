@@ -46,15 +46,24 @@ async function renderProjection(ui: Parameters<typeof render>[0]) {
   return result;
 }
 
+function workedToggle(work: Element | null | undefined) {
+  return (
+    work?.querySelector<HTMLButtonElement>(
+      ":scope > .chat-transcript-work__toggle",
+    ) ?? null
+  );
+}
+
 function toggleWorked(work: Element | null | undefined, open = true) {
-  const disclosure = work as HTMLDetailsElement;
-  disclosure.open = open;
-  fireEvent(disclosure, new Event("toggle"));
+  const toggle = workedToggle(work);
+  if (!toggle) throw new Error("Expected a Worked disclosure");
+  if ((toggle.getAttribute("aria-expanded") === "true") !== open)
+    fireEvent.click(toggle);
 }
 
 function workedGroups(work: Element | null | undefined) {
-  if (!work?.matches("details")) return work;
-  const next = work.nextElementSibling;
+  if (!workedToggle(work)) return work;
+  const next = work!.nextElementSibling;
   return next?.matches(".chat-transcript-work__groups") ? next : null;
 }
 
@@ -88,7 +97,9 @@ it("renders durable browser actions separately from harness tool rows", async ()
   };
   await renderProjection(<AcpChatProjection page={browserPage} active />);
   expect(screen.queryByRole("region", { name: "Browser actions" })).toBeNull();
-  toggleWorked(screen.getByText(/^Worked for /).closest("details"));
+  toggleWorked(
+    screen.getByText(/^Worked for /).closest(".chat-transcript-work"),
+  );
   const browserActions = screen.getByRole("region", {
     name: "Browser actions",
   });
@@ -312,30 +323,16 @@ describe("AcpChatProjection", () => {
       undefined,
     );
   });
-  it("badges an assistant message with the Sage avatar beside its role label", async () => {
+  it("renders messages without an author row, as Codex does", async () => {
     await renderProjection(
       <AcpChatProjection page={page("completed")} active />,
     );
 
-    const message = screen
-      .getByText("Normalized answer")
-      .closest(".acp-message");
-    const avatar = message?.querySelector(".acp-message__avatar");
-
-    expect(avatar).not.toBeNull();
-    expect(avatar?.getAttribute("aria-hidden")).toBe("true");
-    expect(avatar?.textContent).toBe("S");
-  });
-
-  it("leaves a user message without an empty avatar placeholder", async () => {
-    await renderProjection(
-      <AcpChatProjection page={page("completed")} active />,
-    );
-
-    const messages = document.querySelectorAll(".acp-message--user");
-
+    const messages = document.querySelectorAll(".acp-message");
+    expect(messages.length).toBeGreaterThan(0);
     for (const message of messages) {
-      expect(message.querySelector(".acp-message__avatar")).toBeNull();
+      expect(message.querySelector("header, time")).toBeNull();
+      expect(message).not.toHaveTextContent(/^(Agent|You|System)/);
     }
   });
 
@@ -380,15 +377,6 @@ describe("AcpChatProjection", () => {
       screen.getByRole("status", { name: "Waiting for model" }),
     ).toHaveTextContent("Waiting for model");
     expect(screen.getByText("Normalized answer")).toBeInTheDocument();
-    expect(
-      screen.getByText(
-        new Intl.DateTimeFormat(undefined, {
-          hour: "numeric",
-          minute: "2-digit",
-        }).format(Date.UTC(2026, 7, 31, 9, 5)),
-        { selector: "time" },
-      ),
-    ).toHaveAttribute("dateTime", "2026-08-31T09:05:00.000Z");
     expect(container.querySelector(".acp-chat-projection")).toMatchObject({
       dataset: {
         projectId: "project-1",
@@ -448,9 +436,7 @@ describe("AcpChatProjection", () => {
     const turn = container.querySelector<HTMLElement>(".acp-turn");
     const prompt = turn?.querySelector(".acp-message--user");
     const day = turn?.querySelector(".chat-transcript-day");
-    const work = turn?.querySelector<HTMLDetailsElement>(
-      ".chat-transcript-work",
-    );
+    const work = turn?.querySelector(".chat-transcript-work");
     const answer = turn?.querySelector(".acp-message--assistant");
     const changedFiles = screen.getByRole("region", {
       name: "Files edited in this chat",
@@ -474,10 +460,10 @@ describe("AcpChatProjection", () => {
     expect(container.querySelectorAll(".acp-tool-rollup")).toHaveLength(0);
     expect(turn?.querySelectorAll(".acp-message--user")).toHaveLength(1);
     expect(within(turn!).queryByText("Ran tests · npm test")).toBeNull();
-    expect(work).not.toHaveAttribute("open");
+    expect(workedToggle(work)).toHaveAttribute("aria-expanded", "false");
 
     toggleWorked(work);
-    expect(work).toHaveAttribute("open");
+    expect(workedToggle(work)).toHaveAttribute("aria-expanded", "true");
     expect(container.querySelectorAll(".acp-tool-rollup")).toHaveLength(1);
     expect(container.querySelector(".acp-tool-rollup")).not.toHaveAttribute(
       "open",
@@ -495,7 +481,7 @@ describe("AcpChatProjection", () => {
       await within(rollup!).findByLabelText("Command line"),
     ).toHaveTextContent("npm test");
     toggleWorked(work, false);
-    expect(work).not.toHaveAttribute("open");
+    expect(workedToggle(work)).toHaveAttribute("aria-expanded", "false");
   });
 
   it("shows day labels only when the calendar day changes between turns", async () => {
@@ -633,7 +619,7 @@ describe("AcpChatProjection", () => {
     );
     const work = container.querySelector(".chat-transcript-work");
     expect(work).not.toBeNull();
-    expect(work).not.toHaveAttribute("open");
+    expect(workedToggle(work)).toHaveAttribute("aria-expanded", "false");
     toggleWorked(work);
     const labels = () =>
       [...workedGroups(work)!.querySelectorAll(".acp-tool-rollup__label")].map(
@@ -776,7 +762,7 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={next} active />,
     );
     const work = container.querySelector(".chat-transcript-work");
-    expect(work).not.toBeInstanceOf(HTMLDetailsElement);
+    expect(workedToggle(work)).toBeNull();
     expect(workedGroups(work)?.querySelector(":scope > summary")).toBeNull();
     expect(
       workedGroups(work)?.querySelector(".chat-transcript-work__heading"),
@@ -894,7 +880,7 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={next} active />,
     );
     const work = container.querySelector(".chat-transcript-work");
-    expect(work).not.toHaveAttribute("open");
+    expect(workedToggle(work)).toHaveAttribute("aria-expanded", "false");
     expect(workedGroups(work)).toBeNull();
     toggleWorked(work);
     expect(
@@ -991,7 +977,7 @@ describe("AcpChatProjection", () => {
       <AcpChatProjection page={next} active />,
     );
     const work = container.querySelector(".chat-transcript-work");
-    expect(work).not.toHaveAttribute("open");
+    expect(workedToggle(work)).toHaveAttribute("aria-expanded", "false");
     expect(work).not.toHaveTextContent("Trailing progress");
     toggleWorked(work);
     expect(workedGroups(work)).toHaveTextContent("Trailing progress");
@@ -1078,7 +1064,7 @@ describe("AcpChatProjection", () => {
       </ChatTranscriptTurnSummary>,
     );
     const work = container.querySelector(".chat-transcript-work");
-    expect(work).not.toBeInstanceOf(HTMLDetailsElement);
+    expect(workedToggle(work)).toBeNull();
     expect(screen.getByText("Running npm test")).toBeVisible();
     const settled = {
       ...running,
@@ -1090,7 +1076,7 @@ describe("AcpChatProjection", () => {
         <p>Running npm test</p>
       </ChatTranscriptTurnSummary>,
     );
-    expect(work).not.toHaveAttribute("open");
+    expect(workedToggle(work)).toHaveAttribute("aria-expanded", "false");
   });
 
   it("renders prompt image attachments above the user bubble", async () => {
@@ -1128,7 +1114,7 @@ describe("AcpChatProjection", () => {
     expect(attachment?.closest(".acp-turn__attachments")).not.toBeNull();
     expect(bubble).not.toBeNull();
     expect(answer).not.toBeNull();
-    expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+    expect(container.querySelector(".chat-transcript-work__toggle")).toBeNull();
     expect(screen.getByText("Worked for 0s")).toBeVisible();
     expect(
       attachment!.compareDocumentPosition(bubble!) &
@@ -1208,7 +1194,9 @@ describe("AcpChatProjection", () => {
       } as AcpItem,
     ];
     render(<AcpChatProjection page={next} active />);
-    toggleWorked(screen.getByText(/^Worked for /).closest("details"));
+    toggleWorked(
+      screen.getByText(/^Worked for /).closest(".chat-transcript-work"),
+    );
     const image = await screen.findByRole("img", {
       name: "Image provided by the agent",
     });
@@ -2129,11 +2117,7 @@ describe("AcpChatProjection", () => {
       />,
     );
 
-    const worked = document.querySelector<HTMLDetailsElement>(
-      ".chat-transcript-work",
-    )!;
-    worked.open = true;
-    fireEvent(worked, new Event("toggle"));
+    toggleWorked(document.querySelector(".chat-transcript-work"));
     const group = document.querySelector<HTMLDetailsElement>(
       '.acp-tool-rollup[data-activity-kind="mixed"]',
     )!;
@@ -2321,9 +2305,8 @@ describe("AcpChatProjection", () => {
     expect(
       within(failure).getByRole("button", { name: "Retry" }),
     ).toBeVisible();
-    const work = document.querySelector("details.chat-transcript-work");
-    expect(work).not.toBeNull();
-    expect(work).not.toHaveAttribute("open");
+    const work = document.querySelector(".chat-transcript-work");
+    expect(workedToggle(work)).toHaveAttribute("aria-expanded", "false");
   });
 
   it("prefers the terminal reason over an earlier error item", async () => {

@@ -91,7 +91,7 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await open(page, "commands");
-      await page.locator(".chat-transcript-work > summary").click();
+      await page.locator(".chat-transcript-work__toggle").click();
       // Worked reveals its groups closed (Codex s2/f0012-f0015); a group
       // opens on its own click (s2/f0016-f0018).
       const commandGroup = page.locator(
@@ -143,7 +143,7 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await open(page, "reads");
-      await page.locator(".chat-transcript-work > summary").click();
+      await page.locator(".chat-transcript-work__toggle").click();
       await expect(
         page.locator(
           ".chat-transcript-work__groups > .acp-tool-rollup > summary .acp-tool-rollup__label",
@@ -271,7 +271,7 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await open(page, "wrapped-command");
-      await page.locator(".chat-transcript-work > summary").click();
+      await page.locator(".chat-transcript-work__toggle").click();
       const row = page.locator(".acp-tool-rollup");
       await expect(row.locator(":scope > summary")).toHaveText(
         "Ran Get-Content -LiteralPath README.md --token [redacted]",
@@ -289,7 +289,7 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await open(page, "notice");
-      await page.locator(".chat-transcript-work > summary").click();
+      await page.locator(".chat-transcript-work__toggle").click();
       const notice = page.locator(".acp-error");
       await expect(notice.locator("strong")).toHaveText(
         "Browser tools unavailable",
@@ -372,7 +372,7 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await open(page, "compaction");
-      await page.locator(".chat-transcript-work > summary").click();
+      await page.locator(".chat-transcript-work__toggle").click();
       const row = page.locator(".acp-compaction-notice");
       await expect(row.locator(":scope > svg")).toHaveCount(1);
       await waitForAnimations(row);
@@ -395,7 +395,7 @@ for (const width of [1888, 720, 480]) {
       page,
     }) => {
       await open(page, "subagents");
-      await page.locator(".chat-transcript-work > summary").click();
+      await page.locator(".chat-transcript-work__toggle").click();
       await expect(
         page.getByText("Reviewer and Builder finished", { exact: true }),
       ).toBeVisible();
@@ -415,6 +415,68 @@ for (const width of [1888, 720, 480]) {
       expect(avatars[1].left - avatars[0].right).toBeGreaterThanOrEqual(4);
     });
 
+    test("Worked discloses its groups as flat activity rows", async ({
+      page,
+    }) => {
+      await open(page, "commands");
+      const toggle = page.getByRole("button", { name: "Worked for 5s" });
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(page.locator(".chat-transcript-work__groups")).toHaveCount(
+        0,
+      );
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      const groups = page.locator(
+        `[id="${await toggle.getAttribute("aria-controls")}"]`,
+      );
+      const group = groups.locator(":scope > .acp-tool-rollup");
+      await group.locator(":scope > summary").click();
+      await group
+        .locator(".acp-tool-rollup__items > .acp-tool-rollup")
+        .last()
+        .locator(":scope > summary")
+        .click();
+      await expect(groups.locator(".acp-tool-command-frame")).toBeVisible();
+      // Codex rows (ref 13) carry no card rule, inset or fill at any depth.
+      const chrome = await groups.locator(".acp-activity").evaluateAll((rows) =>
+        rows.map((row) => {
+          const style = getComputedStyle(row);
+          return [
+            style.borderLeftWidth,
+            style.paddingLeft,
+            style.backgroundImage,
+            style.backgroundColor,
+          ].join(" ");
+        }),
+      );
+      expect(chrome.length).toBeGreaterThan(2);
+      expect(new Set(chrome)).toEqual(
+        new Set(["0px 0px none rgba(0, 0, 0, 0)"]),
+      );
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(groups).toHaveCount(0);
+    });
+
+    test("answer time and action labels appear only on hover or keyboard focus", async ({
+      page,
+    }) => {
+      await open(page, "simple");
+      const time = page.locator(".chat-transcript-actions__time");
+      await page.mouse.move(0, 0);
+      await expect(time).toHaveCSS("opacity", "0");
+      await page.locator(".acp-turn").hover();
+      await expect(time).toHaveCSS("opacity", "1");
+      await page.mouse.move(0, 0);
+      await expect(time).toHaveCSS("opacity", "0");
+      await page.getByRole("button", { name: "Copy" }).focus();
+      await page.keyboard.press("Tab");
+      await page.keyboard.press("Shift+Tab");
+      await expect(time).toHaveCSS("opacity", "1");
+      await expect(page.locator(".tooltip")).toHaveText("Copy");
+      await expect(page.locator(".tooltip")).toBeVisible();
+    });
+
     test("simple answers keep Worked; tool-only turns have no action row", async ({
       page,
     }) => {
@@ -422,7 +484,9 @@ for (const width of [1888, 720, 480]) {
       await expect(
         page.getByText("Worked for 5s", { exact: true }),
       ).toBeVisible();
-      await expect(page.locator("details.chat-transcript-work")).toHaveCount(0);
+      await expect(page.locator(".chat-transcript-work__toggle")).toHaveCount(
+        0,
+      );
       await page.goto("https://activity.test/?scenario=tool-only");
       await expect(page.locator(".acp-turn")).toBeVisible();
       await expect(page.locator(".chat-transcript-actions")).toHaveCount(0);

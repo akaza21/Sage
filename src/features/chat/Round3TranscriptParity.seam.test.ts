@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { expect, it } from "vitest";
 
 const read = (path: string) => readFileSync(path, "utf8");
-const polish = () => read("src/features/chat/chat-transcript-polish.css");
 
 it("leaves the fork option about 33px below the title (R3-12a)", () => {
   expect(read("src/features/chat/fork-chat.css")).toMatch(
@@ -63,58 +62,4 @@ it("reserves find space below header actions at every pane width (R3-05)", () =>
     /\.chat-surface--agent > \.chat-find\s*\{[^}]*grid-area:\s*find;/s,
   );
   expect(css).not.toMatch(/position:\s*absolute/);
-});
-
-it("uses a compact disclosure gap, inherited label color and an 8px chevron gap (R3-04)", () => {
-  expect(read("src/features/chat/acp/acp-activity-details.css")).toMatch(
-    /\.acp-tool-rollup__items\s*\{[^}]*margin-top:\s*calc\(var\(--space-1\) \/ 2\);/s,
-  );
-  expect(polish()).toMatch(
-    /\.chat-transcript-work__groups \.acp-tool-rollup > summary\s*\{[^}]*gap:\s*var\(--space-2\);/s,
-  );
-  expect(read("src/features/chat/acp/acp-activity-cards.css")).toMatch(
-    /\.acp-activity-card > summary > span\.acp-tool-rollup__summary-copy\s*\{[^}]*color:\s*inherit;/s,
-  );
-  expect(polish()).toMatch(
-    /\.acp-tool-rollup\[open\] > summary\s*\{[^}]*color:\s*var\(--color-text-emphasis\);/s,
-  );
-});
-
-it.each([false, true])(
-  "inherits the open label color across lazy stylesheet order %s (R3-04)",
-  (baseLast) => {
-    const style = document.createElement("style");
-    const base = read("src/features/chat/acp/acp-activity-cards.css");
-    style.textContent =
-      `:root { --color-text-muted: #949494; }` +
-      (baseLast ? polish() + base : base + polish());
-    const groups = document.createElement("div");
-    groups.className = "chat-transcript-work__groups";
-    groups.innerHTML =
-      '<details class="acp-activity-card acp-tool-rollup" open><summary style="color: rgb(255, 255, 255)"><span class="acp-tool-rollup__summary-copy">Explored</span></summary></details>';
-    document.head.append(style);
-    document.body.append(groups);
-    try {
-      expect(
-        getComputedStyle(
-          groups.querySelector(".acp-tool-rollup__summary-copy")!,
-        ).color,
-      ).toBe("rgb(255, 255, 255)");
-    } finally {
-      style.remove();
-      groups.remove();
-    }
-  },
-);
-
-it("owns the earlier answer gap in the turn layout and keeps time interaction-only (R3-03)", () => {
-  expect(read("src/features/chat/acp/acp-chat.css")).toMatch(
-    /\.acp-turn__items\s*\{[^}]*gap:\s*var\(--transcript-item-gap\);/s,
-  );
-  expect(polish()).toMatch(
-    /\.chat-transcript-actions__time\s*\{[^}]*opacity:\s*0;/s,
-  );
-  expect(polish()).toMatch(
-    /\.chat-transcript-actions:focus-within > \.chat-transcript-actions__time\s*\{\s*opacity:\s*1;/s,
-  );
 });

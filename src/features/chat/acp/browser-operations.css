@@ -22,6 +22,8 @@
 
 .acp-browser-operation > summary > strong {
   overflow: hidden;
+  color: var(--color-text-muted);
+  font-weight: var(--font-weight-regular);
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -33,20 +35,8 @@
   font-size: var(--font-size-xs);
 }
 
-.acp-activity-card--browser[data-activity-state="outcomeUnknown"] {
-  border-left-color: var(--color-warning);
-}
-
-.acp-activity-card--browser[data-activity-state="started"] {
-  border-left-color: var(--color-accent);
-}
-
-.acp-activity-card--browser[data-activity-state="denied"] {
-  border-left-color: var(--color-warning);
-}
-
-.acp-activity-card--browser[data-activity-state="outcomeUnknown"] .acp-state,
-.acp-activity-card--browser[data-activity-state="denied"] .acp-state {
+.acp-browser-operation-item[data-activity-state="outcomeUnknown"] .acp-state,
+.acp-browser-operation-item[data-activity-state="denied"] .acp-state {
   color: var(--color-warning);
   background: var(--color-warning-muted);
 }

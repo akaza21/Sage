@@ -569,7 +569,3 @@
   display: block;
   color: var(--color-text-muted);
 }
-
-.subagent-surface__transcript .acp-message__meta {
-  display: none;
-}

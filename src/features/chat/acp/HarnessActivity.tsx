@@ -217,7 +217,7 @@ export function HarnessActivity({
 
   return (
     <details
-      className="acp-activity acp-child-activity"
+      className="acp-child-activity"
       role="group"
       aria-label={`Harness activity: ${safeLabel}`}
       aria-describedby={descriptionId}

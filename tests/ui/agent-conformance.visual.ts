@@ -605,8 +605,6 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     await openScenario(page, "agent-single", "agent");
     await settleTranscriptAtEnd(page);
 
-    // C9, C12 — timestamps present on both roles.
-    // C11 — different: the assistant turn is named `Agent`, not `Sage`.
     const user = page.locator(".acp-message--user").first();
     const assistant = page.locator(".acp-message--assistant").first();
     await expect(user).toBeVisible();
@@ -619,12 +617,11 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
     await expect(assistant.locator(".acp-markdown")).toContainText(
       "The core hierarchy is now consistent.",
     );
-    await expect(user.locator(".acp-message__role")).toHaveText("You");
-    await expect(user.locator(".acp-message__meta")).toBeHidden();
-    await expect(user.locator(".acp-message__meta time")).toHaveCount(1);
-    await expect(assistant.locator(".acp-message__role")).toHaveText("Agent");
-    await expect(assistant.locator(".acp-message__meta")).toBeHidden();
-    await expect(assistant.locator(".acp-message__meta time")).toHaveCount(1);
+    // Codex messages carry no author row: no role, avatar or time.
+    for (const message of [user, assistant])
+      await expect(
+        message.locator(":scope > header, :scope > time"),
+      ).toHaveCount(0);
   });
 
   test("runs turn content to the same measure as the composer", async ({
@@ -747,11 +744,10 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
   }) => {
     await openScenario(page, "agent-declared-test", "agent");
     await settleTranscriptAtEnd(page);
-    const worked = page.locator("details.chat-transcript-work");
-    const workedSummary = worked.locator(":scope > summary");
-    await expect(workedSummary).toBeVisible();
-    await expect(workedSummary).toContainText(/^Worked/);
-    await expect(worked).not.toHaveAttribute("open", "");
+    const worked = page.locator(".chat-transcript-work__toggle");
+    await expect(worked).toBeVisible();
+    await expect(worked).toContainText(/^Worked/);
+    await expect(worked).toHaveAttribute("aria-expanded", "false");
     // Like Codex (s2/f0011), a collapsed Worked shows no activity rows.
     await expect(toolRollup(page)).toHaveCount(0);
     await revealWorkedContent(toolRollup(page).locator("summary"));
@@ -770,7 +766,6 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
       "C25: `N passed` must not be claimed from a lifecycle state",
     ).not.toContainText(/passed/i);
 
-    await expect(rollup).toHaveClass(/acp-activity-card/);
     await expect(
       summary.locator(".acp-tool-rollup__summary-copy > svg").first(),
       "C18: the activity row leads with a state glyph",

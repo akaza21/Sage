@@ -65,7 +65,7 @@ export function ToolActivityRollup({
   const progress = liveToolProgress(current);
   return (
     <details
-      className="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup"
+      className="acp-activity acp-tool-rollup"
       data-activity-kind={rollup.kind}
       data-activity-state={state}
       open={expanded}

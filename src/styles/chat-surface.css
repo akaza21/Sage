@@ -127,6 +127,11 @@
   scrollbar-gutter: stable;
 }
 
+.message-list__content {
+  width: min(100%, var(--chat-column-measure));
+  margin-inline: auto;
+}
+
 .project-intro,
 .message {
   width: 100%;

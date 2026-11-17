@@ -546,7 +546,6 @@ describe("SubagentSurface", () => {
     );
     expect(await screen.findByText("From an earlier session")).toBeVisible();
     expect(screen.getByText("Legacy note")).toBeVisible();
-    expect(screen.getByText("Unattributed")).toBeVisible();
     expect(screen.queryByText("Reviewing")).not.toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Agent plan" })).toHaveAttribute(
       "data-activity-kind",

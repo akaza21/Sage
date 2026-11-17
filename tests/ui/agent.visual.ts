@@ -1782,7 +1782,7 @@ test.describe("Wave 2 200% zoom state", () => {
     await expect
       .poll(() =>
         page
-          .locator(".acp-activity-card")
+          .locator(".acp-activity")
           .evaluateAll((cards) =>
             cards.every(
               (card) =>

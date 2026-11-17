@@ -132,9 +132,7 @@ describe("visual scenario surface ownership", () => {
     // Consecutive tools share one row (Codex live parity §8); the plan,
     // error and unsupported cards stay separate. The live search names the row.
     await waitFor(() =>
-      expect(
-        container.querySelectorAll(".acp-activity-card--tool-rollup"),
-      ).toHaveLength(1),
+      expect(container.querySelectorAll(".acp-tool-rollup")).toHaveLength(1),
     );
     expect(
       container.querySelector(".acp-tool-rollup__label")?.textContent,

@@ -191,7 +191,7 @@ export const PARITY_STATES = Object.freeze([
       frames: 11,
       intervalMs: 60,
       animations: ["sage-row-in"],
-      trigger: ".acp-turn:last-of-type .chat-transcript-work > summary",
+      trigger: ".acp-turn:last-of-type .chat-transcript-work__toggle",
     },
   },
   {

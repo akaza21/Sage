@@ -343,6 +343,9 @@
   );
   --transcript-item-gap: var(--space-2);
   --transcript-answer-gap: var(--space-2);
+  --transcript-row-line-height: 21px;
+  --transcript-nested-row-height: 20px;
+  --transcript-thumbnail-size: 88px;
   --radius-edit-summary: var(--radius-md);
   --settings-measure: 820px;
   --settings-content-gap: var(--space-4);

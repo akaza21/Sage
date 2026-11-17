@@ -52,11 +52,11 @@ async function expectCapWorkerReachable(
   await expect(group).not.toBeAttached();
   const work = page
     .locator(`[data-turn-id="turn-${turn}"]`)
-    .locator("details.chat-transcript-work");
+    .locator(".chat-transcript-work__toggle");
   await expect(work).toHaveCount(1);
-  await expect(work).not.toHaveAttribute("open", "");
-  await work.locator(":scope > summary").click();
-  await expect(work).toHaveAttribute("open", "");
+  await expect(work).toHaveAttribute("aria-expanded", "false");
+  await work.click();
+  await expect(work).toHaveAttribute("aria-expanded", "true");
   await expect(group).toBeVisible();
   await expect(group.getByRole("status")).toHaveText(
     `Worker ${turn}-8, Worker ${turn}-9 and Worker ${turn}-10 started working`,
@@ -80,8 +80,8 @@ async function expectCapWorkerReachable(
       itemId: `item-${turn}-${ordinal}`,
       agentKey: `worker-${turn}-${ordinal}`,
     });
-  await work.locator(":scope > summary").click();
-  await expect(work).not.toHaveAttribute("open", "");
+  await work.click();
+  await expect(work).toHaveAttribute("aria-expanded", "false");
 }
 
 test("long Chat preserves the visible Turn when earlier Turns arrive", async ({
@@ -156,15 +156,14 @@ test("expanding a measured Turn keeps neighboring history reachable", async ({
   await page.evaluate(() => window.chatPerf.scrollToMiddle());
   await page.waitForFunction(() => Boolean(window.chatPerf.visibleAnchor()));
   const anchored = await page.evaluate(() => window.chatPerf.visibleAnchor());
-  const disclosure = page
-    .locator(`[data-turn-id="${anchored?.id}"] details`)
+  const summary = page
+    .locator(`[data-turn-id="${anchored?.id}"] .chat-transcript-work__toggle`)
     .first();
-  await expect(disclosure).toBeVisible();
+  await expect(summary).toBeVisible();
   // Bring the summary fully into view first so the click's own actionability
   // scroll cannot masquerade as anchor drift caused by the expansion.
   // Align it to the top: collapsed Turns are short enough that centering the
   // summary would hand the anchor to an earlier Turn.
-  const summary = disclosure.locator(":scope > summary");
   await summary.evaluate((element) =>
     element.scrollIntoView({ block: "start" }),
   );
@@ -177,7 +176,7 @@ test("expanding a measured Turn keeps neighboring history reachable", async ({
   const before = await page.evaluate(() => window.chatPerf.visibleAnchor());
   expect(before?.id).toBe(anchored?.id);
   await summary.click();
-  await expect(disclosure).toHaveAttribute("open", "");
+  await expect(summary).toHaveAttribute("aria-expanded", "true");
   const after = await page.evaluate(() => window.chatPerf.visibleAnchor());
   expect(after?.id).toBe(before?.id);
   expect(Math.abs((after?.top ?? 0) - (before?.top ?? 0))).toBeLessThanOrEqual(
@@ -202,7 +201,7 @@ for (const mode of ["cap", "stress"] as const) {
       await expect(
         page
           .locator('[data-turn-id="turn-100"]')
-          .locator("details.chat-transcript-work"),
+          .locator(".chat-transcript-work__toggle"),
       ).toHaveCount(1);
     await page.waitForTimeout(200);
     const stream = await page.evaluate(() => window.chatPerf.stream(30));

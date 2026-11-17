@@ -73,7 +73,6 @@ function MeasuredTurnRow({
       role="listitem"
       aria-posinset={index + 1}
       aria-setsize={count}
-      data-last-turn={index === count - 1 || undefined}
     >
       {children}
     </div>

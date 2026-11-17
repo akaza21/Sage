@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { afterEach, expect, it } from "vitest";
 
@@ -28,8 +25,6 @@ import { WorkedTurnTerminal } from "./WorkedTurnTerminal";
 afterEach(cleanup);
 
 type ToolProjectionItem = Extract<AcpItem, { kind: "toolCall" }>;
-
-const css = (path: string) => readFileSync(resolve(path), "utf8");
 
 function tool(
   presentation: ToolPresentation,
@@ -105,9 +100,6 @@ it("draws command rows with Codex's terminal-square icon and thin row strokes (s
   const icon = container.querySelector("summary svg[data-activity-icon]");
   expect(icon).toHaveClass("lucide-square-terminal");
   expect(container.querySelector(".lucide-terminal")).toBeNull();
-  expect(css("src/features/chat/acp/acp-activity-details.css")).toMatch(
-    /\.acp-tool-rollup__summary-copy > svg:first-child\s*\{\s*color:\s*var\(--color-text-muted\);\s*stroke-width:\s*1\.5;/,
-  );
 });
 
 it("opens a Web run row to its plaintext result block (s5/f0405)", () => {
@@ -148,21 +140,6 @@ it("draws a right chevron that turns down when the row opens (s5/f0390)", () => 
   );
   expect(container.querySelector(".acp-tool-rollup__chevron")).toHaveClass(
     "lucide-chevron-right",
-  );
-  expect(css("src/features/chat/acp/acp-activity-details.css")).toMatch(
-    /\.acp-tool-rollup\[open\] > summary \.acp-tool-rollup__chevron\s*\{\s*transform:\s*rotate\(90deg\);/,
-  );
-});
-
-it("keeps a failed row's icon muted, not red (s5/f0397)", () => {
-  const activity = css("src/features/chat/acp/acp-activity-details.css");
-  const transcript = css("src/features/chat/chat-transcript-polish.css");
-  for (const sheet of [activity, transcript])
-    expect(sheet).not.toMatch(
-      /\.acp-tool-rollup\[data-activity-state="failed"\][^{]*svg\s*\{[^}]*danger/,
-    );
-  expect(activity).toMatch(
-    /\.acp-tool-rollup__summary-copy > svg:first-child\s*\{\s*color:\s*var\(--color-text-muted\);/,
   );
 });
 
@@ -213,13 +190,4 @@ it("names an unresolved command in an ended turn as Ran, without shimmer", () =>
   const label = container.querySelector(".acp-tool-rollup__label");
   expect(label).toHaveTextContent("Ran curl.exe -s https://example.com");
   expect(label).not.toHaveClass("acp-live-shimmer");
-});
-
-it("pitches nested Worked rows at 24 px (s5/f0390, about 22 px)", () => {
-  expect(css("src/features/chat/chat-transcript-polish.css")).toMatch(
-    /\.chat-transcript-work__groups\s+\.acp-tool-rollup__items\s+\.acp-tool-rollup\s*>\s*summary\s*\{\s*min-height:\s*20px;/,
-  );
-  expect(css("src/features/chat/acp/acp-activity-details.css")).toMatch(
-    /\.acp-tool-rollup__items\s*\{[^}]*gap:\s*var\(--space-1\);/,
-  );
 });

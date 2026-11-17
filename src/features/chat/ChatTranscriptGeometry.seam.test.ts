@@ -84,18 +84,6 @@ describe("CP-28 transcript style contracts", () => {
     );
     const source = readFileSync("src/styles/composer-surface.css", "utf8");
     expect(source).not.toMatch(/466px/);
-    expect(
-      declaration(
-        "src/features/chat/chat-transcript-polish.css",
-        ".message-list__content",
-      ).getPropertyValue("--reading-measure"),
-    ).toBe("");
-    expect(
-      declaration(
-        "src/features/chat/chat-transcript-polish.css",
-        ".message-list__content",
-      ).width,
-    ).toBe("min(100%, var(--chat-column-measure))");
   });
 
   it("configures one native-marker gutter and hanging text inset for Chat lists", () => {
@@ -152,14 +140,5 @@ describe("CP-28 transcript style contracts", () => {
     );
     expect(forced.border).toBe("1px solid canvastext");
     expect(forced.background.toLowerCase()).toBe("canvas");
-  });
-
-  it("declares the Worked SVG as a nonshrinking block outside interaction selectors", () => {
-    const indicator = declaration(
-      "src/features/chat/chat-transcript-polish.css",
-      ".chat-transcript-work__chevron",
-    );
-    expect(indicator.display).toBe("block");
-    expect(indicator.getPropertyValue("flex-shrink")).toBe("0");
   });
 });
