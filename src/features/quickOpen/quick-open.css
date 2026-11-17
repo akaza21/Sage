@@ -112,12 +112,8 @@
 }
 
 .quick-open__match {
-  color: var(--color-accent);
+  color: var(--color-accent-text);
   font-weight: 600;
-}
-
-.quick-open__row[aria-selected="true"] .quick-open__match {
-  color: var(--color-text-emphasis);
 }
 
 .quick-open__status {

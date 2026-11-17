@@ -12,6 +12,24 @@
 }
 
 .dialog--scrim {
+  --button-height: var(--control-height-default);
+  --button-border: transparent;
+  --button-text: var(--color-status-foreground);
+  --button-fill: var(--chat-dialog-cancel-fill);
+  --button-fill-hover: var(--color-panel-raised-hover);
+  --button-primary-border: transparent;
+  --button-primary-text: var(--dialog-primary-text);
+  --button-primary-fill: var(--dialog-primary-fill);
+  --button-primary-fill-hover: var(--dialog-primary-hover);
+  --button-primary-weight: var(--font-weight-semibold);
+  --button-danger-border: transparent;
+  --button-danger-text: var(--chat-annotation-danger);
+  --button-danger-fill: var(--chat-annotation-danger-bg);
+  --button-danger-fill-hover: color-mix(
+    in srgb,
+    var(--chat-annotation-danger) 12%,
+    var(--chat-annotation-danger-bg)
+  );
   width: min(378px, calc(100vw - 32px));
   background: var(--color-plane-raised);
 }
@@ -43,42 +61,6 @@
   justify-content: flex-end;
   gap: var(--space-2);
   margin-top: 20px;
-}
-
-.dialog--scrim .dirty-dialog__actions .button {
-  --dialog-button-fill: var(--chat-dialog-cancel-fill);
-  --dialog-button-hover: var(--color-panel-raised-hover);
-  height: var(--control-height-default);
-  border-color: transparent;
-  border-radius: var(--radius-md);
-  background: var(--dialog-button-fill);
-  color: var(--color-status-foreground);
-}
-
-.dialog--scrim .dirty-dialog__actions .button:hover:not(:disabled) {
-  background: var(--dialog-button-hover);
-}
-
-.dialog--scrim .dirty-dialog__actions .button--primary {
-  --dialog-button-fill: var(--dialog-primary-fill);
-  --dialog-button-hover: var(--dialog-primary-hover);
-  color: var(--dialog-primary-text);
-  font-weight: var(--font-weight-semibold);
-}
-
-.dialog--scrim .dirty-dialog__actions .button--primary:disabled {
-  color: var(--dialog-primary-disabled-text);
-  cursor: default;
-}
-
-.dialog--scrim .dirty-dialog__actions .button--danger {
-  --dialog-button-fill: var(--chat-annotation-danger-bg);
-  --dialog-button-hover: color-mix(
-    in srgb,
-    var(--chat-annotation-danger) 12%,
-    var(--chat-annotation-danger-bg)
-  );
-  color: var(--chat-annotation-danger);
 }
 
 .dialog-body {

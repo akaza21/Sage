@@ -338,7 +338,7 @@
 }
 
 .agent-artifact-pane__follow[aria-pressed="true"] {
-  color: var(--color-accent-muted-foreground);
+  color: var(--color-accent-text);
   background: var(--color-surface-active);
 }
 

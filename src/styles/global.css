@@ -67,7 +67,7 @@
   --color-accent: var(--color-blue-400);
   --color-accent-hover: var(--color-blue-300);
   --color-accent-muted: var(--color-blue-800);
-  --color-accent-muted-foreground: var(--color-blue-200);
+  --color-accent-text: var(--color-blue-200);
   --color-accent-foreground: var(--color-text-inverse);
   --color-focus-ring: var(--color-accent-hover);
   --color-success: #68d983;
@@ -786,7 +786,7 @@ textarea:disabled,
     --color-accent: LinkText;
     --color-accent-hover: LinkText;
     --color-accent-muted: Canvas;
-    --color-accent-muted-foreground: LinkText;
+    --color-accent-text: LinkText;
     --color-accent-foreground: HighlightText;
     --color-focus-ring: Highlight;
     --highlight-focus-edge: Highlight;

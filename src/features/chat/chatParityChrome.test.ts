@@ -59,9 +59,9 @@ describe("Codex chrome parity (w9 group B)", () => {
       /width:\s*var\(--icon-size-sm\);[\s\S]*height:\s*var\(--icon-size-sm\);/,
     );
     expect(global).toMatch(/--icon-size-sm:\s*14px;/);
-    expect(
-      rule(dialogs, ".dialog--scrim .dirty-dialog__actions .button"),
-    ).toMatch(/var\(--chat-dialog-cancel-fill\)/);
+    expect(rule(dialogs, ".dialog--scrim")).toMatch(
+      /--button-fill:\s*var\(--chat-dialog-cancel-fill\);/,
+    );
     expect(rule(interactions, ".close-side-chat-dialog")).toMatch(
       /font-size:\s*13px;/,
     );
