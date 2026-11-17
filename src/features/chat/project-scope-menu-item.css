@@ -20,10 +20,6 @@
   font-weight: inherit;
 }
 
-.composer__options .project-scope .searchable-picker__trigger-label {
-  display: contents;
-}
-
 .composer__options .project-scope .searchable-picker__chevron {
   display: none;
 }

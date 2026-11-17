@@ -76,14 +76,12 @@ export function ProjectScopeChip({
               aria-hidden="true"
             />
           }
-          triggerLabel={
+          triggerLabel={menuItem ? "Work in a project" : undefined}
+          triggerDetail={
             menuItem ? (
-              <>
-                Work in a project
-                <span className="composer__action-description">
-                  Choose project for new chats
-                </span>
-              </>
+              <span className="composer__action-description">
+                Choose project for new chats
+              </span>
             ) : undefined
           }
           open={open}
