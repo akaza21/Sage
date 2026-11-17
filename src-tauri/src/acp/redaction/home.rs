@@ -8,7 +8,8 @@
 use std::{
     borrow::Cow,
     path::{Path, PathBuf},
-    sync::OnceLock,
+    sync::{Arc, Mutex, OnceLock},
+    time::{Duration, Instant},
 };
 
 const TILDE: &str = "~";
@@ -22,40 +23,54 @@ pub(crate) const NAME_MAX: usize = 255;
 /// Most folders beside the home folder whose names run on past a space.
 const SIBLINGS_MAX: usize = 64;
 /// Most entries read beside the home folder, so a shared folder holding
-/// many homes bounds the startup read.
+/// many homes bounds each read.
 const ENTRIES_MAX: usize = 4096;
+/// Least time between reads of the folders beside the home folder.
+const READ_EVERY: Duration = Duration::from_secs(2);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct HomePrefix {
     path: String,
     windows: bool,
-    /// What follows the home folder's name in each folder beside it whose
-    /// name runs on past a space, such as ` Smith` for `alice Smith`; `None`
-    /// for the folders read at startup by [`load_folders_beside_home`].
-    siblings: Option<Vec<String>>,
+    siblings: Siblings,
 }
 
-static BESIDE_HOME: OnceLock<Vec<String>> = OnceLock::new();
+/// What follows the home folder's name in each folder beside it whose name
+/// runs on past a space, such as ` Smith` for `alice Smith`.
+#[derive(Debug, Clone)]
+enum Siblings {
+    Listed(Vec<String>),
+    /// Read from disk, and read again when the text names a folder beside
+    /// the home folder that the last read did not hold.
+    OnDisk(Arc<Mutex<BesideHome>>),
+}
 
-/// Reads the folders beside the current home folder once, so that redaction
-/// never waits on a slow or network disk. Sage calls it at startup off the
-/// async runtime; until it returns, no folder is known to run on past a space.
+impl PartialEq for Siblings {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Listed(left), Self::Listed(right)) => left == right,
+            (Self::OnDisk(left), Self::OnDisk(right)) => Arc::ptr_eq(left, right),
+            _ => false,
+        }
+    }
+}
+
+impl Eq for Siblings {}
+
+#[derive(Debug, Default)]
+struct BesideHome {
+    rests: Vec<String>,
+    read_at: Option<Instant>,
+    read_every: Duration,
+}
+
+/// Reads the folders beside the current home folder, so that the first
+/// redaction does not wait on a slow or network disk. Sage calls it at
+/// startup off the async runtime.
 pub(crate) fn load_folders_beside_home() {
-    let Some(home) = std::env::home_dir() else {
-        return;
-    };
-    let Some(prefix) = home.to_str().and_then(HomePrefix::new) else {
-        return;
-    };
-    let names = home
-        .parent()
-        .and_then(|parent| std::fs::read_dir(parent).ok())
-        .into_iter()
-        .flatten()
-        .take(ENTRIES_MAX)
-        .flatten()
-        .filter_map(|entry| entry.file_name().into_string().ok());
-    let _ = BESIDE_HOME.set(prefix.sibling_rests(names));
+    if let Some(prefix) = HomePrefix::current() {
+        prefix.read_siblings();
+    }
 }
 
 impl HomePrefix {
@@ -87,8 +102,50 @@ impl HomePrefix {
         Some(Self {
             path,
             windows,
-            siblings: Some(Vec::new()),
+            siblings: Siblings::Listed(Vec::new()),
         })
+    }
+
+    /// This home, with the folders beside it read from disk.
+    fn reading_siblings(mut self, read_every: Duration) -> Self {
+        self.siblings = Siblings::OnDisk(Arc::new(Mutex::new(BesideHome {
+            read_every,
+            ..BesideHome::default()
+        })));
+        self
+    }
+
+    /// Reads the folders beside the home folder again, at most once every
+    /// [`READ_EVERY`] and at most [`ENTRIES_MAX`] of them.
+    fn read_siblings(&self) {
+        let Siblings::OnDisk(beside) = &self.siblings else {
+            return;
+        };
+        {
+            let Ok(mut beside) = beside.lock() else {
+                return;
+            };
+            let now = Instant::now();
+            if beside
+                .read_at
+                .is_some_and(|read_at| now.duration_since(read_at) < beside.read_every)
+            {
+                return;
+            }
+            beside.read_at = Some(now);
+        }
+        let names = Path::new(&self.path)
+            .parent()
+            .and_then(|parent| std::fs::read_dir(parent).ok())
+            .into_iter()
+            .flatten()
+            .take(ENTRIES_MAX)
+            .flatten()
+            .filter_map(|entry| entry.file_name().into_string().ok());
+        let rests = self.sibling_rests(names);
+        if let Ok(mut beside) = beside.lock() {
+            beside.rests = rests;
+        }
     }
 
     /// This home with the folders beside it, named as they are on disk,
@@ -98,8 +155,15 @@ impl HomePrefix {
         mut self,
         names: impl IntoIterator<Item = impl AsRef<str>>,
     ) -> Self {
-        self.siblings = Some(self.sibling_rests(names));
+        self.siblings = Siblings::Listed(self.sibling_rests(names));
         self
+    }
+
+    /// This home with the folders beside it read from disk whenever the text
+    /// names one the last read did not hold.
+    #[cfg(test)]
+    pub(crate) fn reading_siblings_always(self) -> Self {
+        self.reading_siblings(Duration::ZERO)
     }
 
     fn sibling_rests(&self, names: impl IntoIterator<Item = impl AsRef<str>>) -> Vec<String> {
@@ -126,14 +190,12 @@ impl HomePrefix {
     }
 
     /// The home folder of the user Sage runs as, with the folders beside it
-    /// that [`load_folders_beside_home`] read.
+    /// read from disk.
     pub(crate) fn current() -> Option<&'static Self> {
         static CURRENT: OnceLock<Option<HomePrefix>> = OnceLock::new();
         CURRENT
             .get_or_init(|| {
-                let mut prefix = Self::new(std::env::home_dir()?.to_str()?)?;
-                prefix.siblings = None;
-                Some(prefix)
+                Some(Self::new(std::env::home_dir()?.to_str()?)?.reading_siblings(READ_EVERY))
             })
             .as_ref()
     }
@@ -232,7 +294,7 @@ impl HomePrefix {
             return !span.iter().all(|byte| CLOSING_PUNCTUATION.contains(byte));
         }
         if matches!(rest[0], b' ' | b'\t') {
-            return self.name_continues_after_space(rest) || self.path_continues_after_space(rest);
+            return self.name_continues_after_space(rest);
         }
         !rest
             .iter()
@@ -242,46 +304,42 @@ impl HomePrefix {
 
     /// Whether the text after a space spells the rest of a folder that
     /// exists beside the home folder, as ` Smith\project` does after
-    /// `C:\Users\Alice` when `C:\Users\Alice Smith` exists.
+    /// `C:\Users\Alice` when `C:\Users\Alice Smith` exists. Text that runs
+    /// on to a separator names a folder the last read of the disk may have
+    /// missed, so the folders are read again first.
     fn name_continues_after_space(&self, rest: &[u8]) -> bool {
-        let siblings = self
-            .siblings
-            .as_deref()
-            .unwrap_or_else(|| BESIDE_HOME.get().map_or(&[], Vec::as_slice));
-        siblings.iter().any(|sibling| {
-            rest.get(..sibling.len())
-                .is_some_and(|name| self.same_name(name, sibling.as_bytes()))
-                && rest.get(sibling.len()).is_none_or(|&byte| {
-                    self.is_separator(byte)
-                        || byte.is_ascii_whitespace()
-                        || CLOSING_PUNCTUATION.contains(&byte)
-                })
-        })
-    }
-
-    /// Whether the words after a space go on into a path, as ` Smithson\x`
-    /// or ` Jane Smith\x` do, so the home folder's name runs on into a folder
-    /// beside it whether or not that folder was there when Sage started.
-    /// Words that read as a name start with a capital or a digit; a word
-    /// that starts lower case, as in ` and opened src\main.rs`, ends the name.
-    fn path_continues_after_space(&self, rest: &[u8]) -> bool {
-        let line = &rest[..rest.len().min(NAME_MAX)];
-        let line = line
-            .iter()
-            .position(|&byte| byte == b'\n' || byte == b'\r')
-            .map_or(line, |end| &line[..end]);
-        for word in line
-            .split(|&byte| byte == b' ' || byte == b'\t')
-            .filter(|word| !word.is_empty())
-        {
-            if word.iter().any(|&byte| self.is_separator(byte)) {
-                return true;
-            }
-            if !word[0].is_ascii_uppercase() && !word[0].is_ascii_digit() {
-                return false;
-            }
+        let named = |rests: &[String]| {
+            rests.iter().any(|sibling| {
+                rest.get(..sibling.len())
+                    .is_some_and(|name| self.same_name(name, sibling.as_bytes()))
+                    && rest.get(sibling.len()).is_none_or(|&byte| {
+                        self.is_separator(byte)
+                            || byte.is_ascii_whitespace()
+                            || CLOSING_PUNCTUATION.contains(&byte)
+                    })
+            })
+        };
+        let known = |siblings: &Siblings| match siblings {
+            Siblings::Listed(rests) => named(rests),
+            Siblings::OnDisk(beside) => beside.lock().is_ok_and(|beside| named(&beside.rests)),
+        };
+        if known(&self.siblings) {
+            return true;
+        }
+        if matches!(self.siblings, Siblings::OnDisk(_)) && self.names_a_folder(rest) {
+            self.read_siblings();
+            return known(&self.siblings);
         }
         false
+    }
+
+    /// Whether `rest` reaches a separator within a folder name's length on
+    /// its line.
+    fn names_a_folder(&self, rest: &[u8]) -> bool {
+        rest.iter()
+            .take(NAME_MAX)
+            .take_while(|&&byte| byte != b'\n' && byte != b'\r')
+            .any(|&byte| self.is_separator(byte))
     }
 
     fn same_name(&self, text: &[u8], name: &[u8]) -> bool {
