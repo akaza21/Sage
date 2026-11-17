@@ -40,6 +40,10 @@ function distanceFromEnd(
   );
 }
 
+function isAt(transcript: Pick<HTMLElement, "scrollTop">, top: number | null) {
+  return top !== null && Math.abs(transcript.scrollTop - top) <= 1;
+}
+
 export function useFollowEnd({
   ownerKey,
   revision,
@@ -69,6 +73,10 @@ export function useFollowEnd({
   // Own anchor steps keep following until arrival, reader input, backward
   // movement, or owner change, even when resizing makes their target stale.
   const anchoringRef = useRef(false);
+  // Where the last own anchor step moved the transcript. Its scroll event can
+  // arrive after later growth; that landing re-anchors instead of reading as
+  // the reader leaving the end.
+  const anchoredTopRef = useRef<number | null>(null);
   const lastScrollTopRef = useRef(0);
   const followingEndRef = useRef(followingEnd);
   const navigationPausedRef = useRef(false);
@@ -97,6 +105,7 @@ export function useFollowEnd({
   useEffect(() => {
     jumpingRef.current = false;
     anchoringRef.current = false;
+    anchoredTopRef.current = null;
     navigationPausedRef.current = false;
     lastScrollTopRef.current = transcriptRef.current?.scrollTop ?? 0;
     return cancelFrame;
@@ -110,7 +119,10 @@ export function useFollowEnd({
         return;
       }
       const top = transcript.scrollHeight - transcript.clientHeight;
-      if (Math.abs(top - transcript.scrollTop) > 1) anchoringRef.current = true;
+      if (Math.abs(top - transcript.scrollTop) > 1) {
+        anchoringRef.current = true;
+        anchoredTopRef.current = top;
+      }
       scrollTranscript(transcript, top, behavior);
     },
     [endRef, transcriptRef],
@@ -135,6 +147,7 @@ export function useFollowEnd({
     const readerInput = () => {
       navigationPausedRef.current = false;
       anchoringRef.current = false;
+      anchoredTopRef.current = null;
       interruptJump();
     };
     const navigate = () => {
@@ -219,6 +232,7 @@ export function useFollowEnd({
       if (
         !jumpingRef.current &&
         !anchoringRef.current &&
+        !isAt(current, anchoredTopRef.current) &&
         (!transcriptIsAtEnd(current) || navigationPausedRef.current)
       )
         followingEndRef.current = false;
@@ -228,6 +242,15 @@ export function useFollowEnd({
       frameRef.current = null;
       const transcript = transcriptRef.current;
       if (transcript) {
+        if (
+          !jumpingRef.current &&
+          followingEndRef.current &&
+          isAt(transcript, anchoredTopRef.current) &&
+          distanceFromEnd(transcript) > 1
+        ) {
+          anchorToEnd("auto");
+          return;
+        }
         const atEnd = transcriptIsAtEnd(transcript);
         if (atEnd) followedHeightRef.current = transcript.scrollHeight;
         if (jumpingRef.current || anchoringRef.current) {
@@ -242,7 +265,7 @@ export function useFollowEnd({
         setJumpState(jumpFor(transcript));
       }
     });
-  }, [ownerKey, jumpFor, transcriptRef]);
+  }, [anchorToEnd, ownerKey, jumpFor, transcriptRef]);
 
   const jumpToLatest = useCallback(() => {
     navigationPausedRef.current = false;
