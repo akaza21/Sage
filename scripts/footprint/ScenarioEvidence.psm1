@@ -90,7 +90,10 @@ function Invoke-FootprintBoundedProcess {
     resultPath = [IO.Path]::GetFullPath($ResultPath)
   } | ConvertTo-Json -Compress
   $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($payload))
-  $wrapper = Start-Process -FilePath $resolvedWrapperNode -ArgumentList @("`"$resolvedRunner`"", $encoded) -PassThru -WindowStyle Hidden
+  $start = [Diagnostics.ProcessStartInfo]::new($resolvedWrapperNode, "`"$resolvedRunner`" $encoded")
+  $start.UseShellExecute = $false
+  $start.CreateNoWindow = $true
+  $wrapper = [Diagnostics.Process]::Start($start)
   if (-not $wrapper.WaitForExit($TimeoutMs + 5000)) {
     try { $wrapper.Kill() } catch {}
     [void]$wrapper.WaitForExit(5000)

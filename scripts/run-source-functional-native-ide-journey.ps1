@@ -678,7 +678,13 @@ function Start-OwnedVite(
   $npmPath = Require-AbsoluteFile $npm.Source "npm launcher"
   $commandPath = Require-AbsoluteFile $command.Source "command interpreter"
   $commandLine = '/d /s /c ""{0}" run dev -- --host 127.0.0.1 --port {1}"' -f $npmPath, $Contract.port
-  $process = Start-Process -FilePath $commandPath -ArgumentList $commandLine -WorkingDirectory $SourceRoot -WindowStyle Hidden -PassThru
+  # A hidden window style still allocates a new console, which a default
+  # terminal such as Windows Terminal takes over and shows.
+  $start = [Diagnostics.ProcessStartInfo]::new($commandPath, $commandLine)
+  $start.WorkingDirectory = $SourceRoot
+  $start.UseShellExecute = $false
+  $start.CreateNoWindow = $true
+  $process = [Diagnostics.Process]::Start($start)
   return Capture-OwnedRuntimeOrQuarantine `
     $process $commandPath "vite" $EvidenceRoot `
     $StartupDeadlineMilliseconds $null $null $MonotonicMilliseconds
