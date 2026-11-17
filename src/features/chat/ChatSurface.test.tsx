@@ -72,7 +72,7 @@ vi.mock("./acp", async () => {
   return {
     ...actual,
     useAcpChatProjection: () => hooks.page,
-    useAcpChatActions: () => hooks.actions,
+    useAcpChatActions: () => ({ ...hooks.actions }),
   };
 });
 
@@ -2563,10 +2563,12 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeEnabled();
   });
 
-  it("shows Claude sign-in for the latest auth-failed turn until a new turn or successful check", async () => {
-    vi.spyOn(acpDesktop, "getClaudeAuthStatus").mockResolvedValue({
-      loggedIn: true,
-    });
+  it("keeps sign-in dismissal across chat remounts and preserves unrelated foreground errors", async () => {
+    const status = vi
+      .spyOn(acpDesktop, "getClaudeAuthStatus")
+      .mockResolvedValue({
+        loggedIn: true,
+      });
     const harness = useWorkbenchStore.getState().harnesses[0];
     useWorkbenchStore.setState({
       harnesses: [
@@ -2579,6 +2581,16 @@ describe("ChatSurface ACP resource integration", () => {
         },
       ],
       selectedHarnessId: "claude-code",
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: ["chat-a", "chat-b"].map((id, position) => ({
+        id,
+        kind: "chat",
+        title: id,
+        position,
+        pinned: false,
+        dirty: false,
+      })),
+      activeTabId: "chat-a",
     });
     matchConfiguredSession();
     const page = hooks.page!;
@@ -2600,7 +2612,7 @@ describe("ChatSurface ACP resource integration", () => {
       })),
       turns: [failedTurn],
     };
-    const { rerender } = render(<ChatSurface />);
+    const { rerender } = render(<ChatSurface key="chat-a" chatId="chat-a" />);
 
     expect(
       within(
@@ -2620,7 +2632,7 @@ describe("ChatSurface ACP resource integration", () => {
       terminalReason: undefined,
     };
     hooks.page = { ...hooks.page, turns: [failedTurn, nextTurn] };
-    rerender(<ChatSurface />);
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
     expect(
       screen.queryByRole("button", { name: "Open Claude sign-in" }),
@@ -2638,7 +2650,7 @@ describe("ChatSurface ACP resource integration", () => {
         },
       ],
     };
-    rerender(<ChatSurface />);
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     fireEvent.click(
       await screen.findByRole("button", { name: "Check sign-in" }),
     );
@@ -2650,10 +2662,78 @@ describe("ChatSurface ACP resource integration", () => {
     expect(
       screen.queryByRole("button", { name: "Open Claude sign-in" }),
     ).toBeNull();
-    rerender(<ChatSurface />);
+    const dismissedPage = hooks.page;
+    hooks.page = { ...dismissedPage, chatId: "chat-b" as never, turns: [] };
+    act(() =>
+      useWorkbenchStore.setState((state) => ({
+        activeTabId: "chat-b",
+        nativeTransitionEpoch: state.nativeTransitionEpoch + 1,
+      })),
+    );
+    rerender(<ChatSurface key="chat-b" chatId="chat-b" />);
     expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
+    hooks.page = dismissedPage;
+    act(() =>
+      useWorkbenchStore.setState((state) => ({
+        activeTabId: "chat-a",
+        nativeTransitionEpoch: state.nativeTransitionEpoch + 1,
+      })),
+    );
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
+    expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Open Claude sign-in" }),
+    ).toBeNull();
     expect(screen.getAllByRole("group", { name: "Turn failed" })).toHaveLength(
       2,
+    );
+    hooks.page = {
+      ...dismissedPage,
+      turns: [
+        ...dismissedPage.turns,
+        { ...dismissedPage.turns[1], id: "turn-c" as never, ordinal: 2 },
+      ],
+    };
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
+    expect(
+      await screen.findByRole("button", { name: "Check sign-in" }),
+    ).toBeVisible();
+    hooks.actions.error = "Send failed before a turn could be created.";
+    hooks.actions.errorKind = "invalidRequest";
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Send failed before a turn could be created.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Open Claude sign-in" }),
+    ).toBeVisible();
+    hooks.actions.error = "The harness requires sign-in.";
+    hooks.actions.errorKind = "signInRequired";
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
+    let finishCheck: (value: { loggedIn: boolean }) => void = () => {};
+    status.mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finishCheck = resolve;
+        }),
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
+    hooks.actions.error = "Send failed before a turn could be created.";
+    hooks.actions.errorKind = "invalidRequest";
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Send failed before a turn could be created.",
+    );
+    await act(async () => finishCheck({ loggedIn: true }));
+    await waitFor(() =>
+      expect(
+        screen.queryByRole("button", { name: "Check sign-in" }),
+      ).toBeNull(),
+    );
+    expect(hooks.actions.clearError).not.toHaveBeenCalled();
+    rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Send failed before a turn could be created.",
     );
   });
 

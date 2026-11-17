@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type { HarnessDefinition } from "../../domain/harness";
 import { acpDesktop } from "../../services/acpDesktop";
@@ -17,6 +17,10 @@ export function SignInRequiredMessage({
 export function ClaudeAuthActions({ onSignedIn }: { onSignedIn: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  const signedIn = useRef(onSignedIn);
+  useLayoutEffect(() => {
+    signedIn.current = onSignedIn;
+  }, [onSignedIn]);
   // A check that outlives this chat scope must not clear the next scope's error.
   const mounted = useRef(false);
   useEffect(() => {
@@ -37,7 +41,7 @@ export function ClaudeAuthActions({ onSignedIn }: { onSignedIn: () => void }) {
       } else {
         const status = await acpDesktop.getClaudeAuthStatus();
         if (!mounted.current) return;
-        if (status.loggedIn) onSignedIn();
+        if (status.loggedIn) signedIn.current();
         else setMessage("Claude is still signed out.");
       }
     } catch {

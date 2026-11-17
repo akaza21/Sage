@@ -1,7 +1,7 @@
 import type { StateCreator } from "zustand";
 
 import type { AttachedContext } from "../domain/attachedContext";
-import type { AcpCommandFailure } from "../domain/acp";
+import type { AcpCommandFailure, SageTurnId } from "../domain/acp";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   boundedChatError,
@@ -26,6 +26,10 @@ export interface ChatOwnershipSlice {
   setChatHarnessSelection: (
     intent: ChatOwnershipIntent,
     selection: { harnessId: string | null; modelId: string | null },
+  ) => boolean;
+  dismissChatAuthTurn: (
+    intent: ChatOwnershipIntent,
+    turnId: SageTurnId,
   ) => boolean;
   setChatComposer: (intent: ChatOwnershipIntent, text: string) => boolean;
   attachChatContext: (
@@ -129,6 +133,18 @@ export const createChatOwnershipSlice: StateCreator<
       chatUiById: {
         ...state.chatUiById,
         [intent.chatId]: { ...entry, ...selection },
+      },
+    });
+    return true;
+  },
+  dismissChatAuthTurn: (intent, turnId) => {
+    const state = get();
+    if (!ownsChat(state, intent)) return false;
+    const entry = state.chatUiById[intent.chatId] ?? emptyEntry();
+    set({
+      chatUiById: {
+        ...state.chatUiById,
+        [intent.chatId]: { ...entry, dismissedAuthTurnId: turnId },
       },
     });
     return true;

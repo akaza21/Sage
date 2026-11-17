@@ -1,4 +1,4 @@
-import { useContext, useRef, useState } from "react";
+import { useContext, useRef } from "react";
 import { useRetainedElement } from "../../ui/useRetainedElement";
 import {
   AgentSessionChromeContext,
@@ -219,11 +219,21 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   });
   const latestTurn = acpPage?.turns.at(-1);
   const claudeAuthScope = `${project?.id ?? acpPage?.projectId ?? ""}:${epoch}:${chatId ?? acpPage?.chatId ?? activeTabId ?? ""}:${latestTurn?.id ?? ""}`;
-  const [signedInScope, setSignedInScope] = useState<string | null>(null);
+  const ownerChatId = chatId ?? acpPage?.chatId ?? activeTabId;
+  const dismissedAuthTurnId = useWorkbenchStore((state) =>
+    ownerChatId ? state.chatUiById[ownerChatId]?.dismissedAuthTurnId : null,
+  );
+  const captureChatOwnership = useWorkbenchStore(
+    (state) => state.captureChatOwnership,
+  );
+  const dismissChatAuthTurn = useWorkbenchStore(
+    (state) => state.dismissChatAuthTurn,
+  );
+  const authOwner = captureChatOwnership(ownerChatId ?? undefined);
   const claudeSignInRequired =
     selectedHarnessId === "claude-code" &&
     (acpActions.errorKind === "signInRequired" ||
-      (signedInScope !== claudeAuthScope &&
+      (dismissedAuthTurnId !== latestTurn?.id &&
         getTurnFailure(latestTurn)?.kind === "authRequired"));
 
   return (
@@ -322,12 +332,17 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         projectTransitioning={projectTransitioning}
         workbenchError={error}
         chatError={foregroundError}
-        signInHarness={claudeSignInRequired ? selectedHarness : signInHarness}
+        signInHarness={
+          signInHarness ??
+          (claudeSignInRequired && !foregroundError ? selectedHarness : null)
+        }
         onClaudeSignedIn={
           claudeSignInRequired
             ? () => {
-                setSignedInScope(claudeAuthScope);
-                acpActions.clearError();
+                if (authOwner && latestTurn)
+                  dismissChatAuthTurn(authOwner, latestTurn.id);
+                if (acpActions.errorKind === "signInRequired")
+                  acpActions.clearError();
               }
             : undefined
         }
