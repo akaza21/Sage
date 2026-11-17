@@ -239,7 +239,7 @@ export const createChatOwnershipSlice: StateCreator<
       chatError: null,
       chatUiById: {
         ...state.chatUiById,
-        [chatId]: { ...entry, error: null },
+        [chatId]: { ...entry, error: null, errorKind: null },
       },
     });
   },

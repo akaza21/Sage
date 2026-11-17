@@ -533,6 +533,39 @@ describe("useAcpChatActions per-Chat ownership", () => {
     );
   });
 
+  it.each([
+    ["a bound", "chat-a"],
+    ["an unbound", null],
+  ])("clears a sign-in refusal and its kind for %s Chat", async (_, chatId) => {
+    vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
+      new AcpDesktopError({
+        kind: "signInRequired",
+        message: "Sign in before sending a prompt.",
+      }),
+    );
+    if (chatId) {
+      const store = acpProjectionStoreFor(chatId);
+      store.getState().activateScope({
+        projectId: "project-a" as SageProjectId,
+        projectGeneration: "0" as ProjectGeneration,
+        chatId: chatId as SageChatId,
+      });
+      store
+        .getState()
+        .completePageLoad(store.getState().beginPageLoad(null), page());
+    }
+    const { result } = renderHook(() => useAcpChatActions(chatId));
+
+    await act(async () => {
+      await result.current.submit("Need access", [], bindingId, null);
+    });
+    expect(result.current.errorKind).toBe("signInRequired");
+
+    act(() => result.current.clearError());
+    expect(result.current.error).toBeNull();
+    expect(result.current.errorKind).toBeNull();
+  });
+
   it("does not show a sign-in error kind after the bound Chat changes", async () => {
     vi.spyOn(acpDesktop, "sendTurn").mockRejectedValue(
       new AcpDesktopError({
