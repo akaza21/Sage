@@ -288,13 +288,20 @@ for (const covering of [
     }
     await expect(dock).toBeVisible();
     await expect(dock.locator(".xterm-helper-textarea")).toBeFocused();
+    // The read outstanding at hide may have settled before the hidden output
+    // was written. Then that output comes from the first read after resuming,
+    // which reaches native through an async import once the held page is
+    // written, so the paused clock must run again after that read starts.
+    await page.clock.runFor(250);
+    await expect
+      .poll(async () => (await activity()).reads)
+      .toBeGreaterThan(hidden.reads);
     await page.clock.runFor(250);
     if (covering !== "Editor drawer") await expect(composer).toBeVisible();
     await expect(composer).toHaveValue("Draft survives suspension");
     await expect(rows).toContainText("Output received while hidden");
     await expect(rows).toContainText("Retained shell 1");
     await expect(dock.getByRole("tab")).toHaveCount(1);
-    expect((await activity()).reads).toBeGreaterThan(hidden.reads);
     await expect.poll(() => gridGeometry(page)).toEqual(original);
     expect((await activity()).resizes).toBe(hidden.resizes + 1);
   });

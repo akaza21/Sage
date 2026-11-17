@@ -16,11 +16,17 @@ export function installWindowNewChatFixture() {
     created?.chatId === request.chatId
       ? structuredClone(created)
       : original(request, decodeGoal);
-  getWorkbenchPorts().chat.createChat = async (layout, expected) => {
+  getWorkbenchPorts().chat.createChat = async (
+    layout,
+    expected,
+    _projectId,
+    chatId,
+  ) => {
     const state = useWorkbenchStore.getState();
     if (!state.project) throw new Error("Window fixture needs a project");
     if (created) throw new Error("Window fixture creates only one Chat");
-    const id = "ap-a-chat-1" as SageChatId;
+    if (!chatId) throw new Error("Window fixture needs the caller's Chat id");
+    const id = chatId as SageChatId;
     created = {
       projectId: state.project.id as SageProjectId,
       chatId: id,
