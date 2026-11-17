@@ -1,6 +1,6 @@
 use crate::acp::{
     bindings::adapter::{HarnessAdapter, ResourceMapper},
-    runtime::{HostCancelIntent, HostError, SqliteAdapterBatchJournal},
+    runtime::{HostCancelIntent, HostError, ProjectIntentAuthority, SqliteAdapterBatchJournal},
 };
 
 use super::super::{
@@ -11,7 +11,7 @@ use super::write_recovery::map_write;
 use super::write_recovery::{
     classify_begin_send_failure, classify_observe_failure, durable_commit_unknown,
 };
-use super::{FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState};
+use super::{FirstTurnWorkerContext, FirstTurnWorkerRecovery, FirstTurnWorkerState, boxed};
 
 pub(super) async fn handle_begin_send<A, R, T, C, Auth>(
     active: PreparedProcessWrite<A, SqliteAdapterBatchJournal, R, T, C>,
@@ -329,6 +329,71 @@ where
                 failure,
                 intent,
             }))
+        }
+    }
+}
+
+pub(super) async fn handle_send<A, R, T, C, Auth: ProjectIntentAuthority>(
+    recovery: FirstTurnWorkerRecovery<A, R, T, C>,
+    context: &FirstTurnWorkerContext<Auth>,
+    envelope: WorkerEnvelope,
+) -> FirstTurnWorkerState<A, R, T, C>
+where
+    A: HarnessAdapter,
+    R: ResourceMapper,
+    T: StdinTransport,
+    C: ProcessTreeControl,
+    C::ZeroProof: CoordinatorZeroToken,
+{
+    match recovery {
+        FirstTurnWorkerRecovery::BeginCancel { failure, intent } => {
+            boxed(|| handle_begin_cancel(failure.state, intent, envelope)).await
+        }
+        FirstTurnWorkerRecovery::BeginSend {
+            failure,
+            owner,
+            turn_id,
+        } => boxed(|| handle_begin_send(failure.state, owner, turn_id, context, envelope)).await,
+        FirstTurnWorkerRecovery::BeginSendRetry {
+            failure,
+            owner,
+            turn_id,
+        } => {
+            boxed(|| handle_begin_send_retry(failure.state, owner, turn_id, context, envelope))
+                .await
+        }
+        FirstTurnWorkerRecovery::Observe {
+            failure,
+            owner,
+            turn_id,
+            observation,
+        } => handle_observe(failure.state, owner, turn_id, observation, envelope),
+        FirstTurnWorkerRecovery::ObserveRetry {
+            failure,
+            owner,
+            turn_id,
+            observation,
+        } => {
+            boxed(|| {
+                handle_observe_retry(
+                    failure.state,
+                    owner,
+                    turn_id,
+                    observation,
+                    context,
+                    envelope,
+                )
+            })
+            .await
+        }
+        FirstTurnWorkerRecovery::Terminal {
+            failure,
+            owner,
+            cursor,
+        } => handle_terminal(failure.state, owner, cursor, context, envelope),
+        retained => {
+            envelope.reject(HostError::RecoveryRequired);
+            FirstTurnWorkerState::Recovery(Box::new(retained))
         }
     }
 }

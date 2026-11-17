@@ -276,74 +276,7 @@ where
                     boxed(|| reusable::handle_zero(Box::new(failure.state), context, envelope))
                         .await
                 }
-                FirstTurnWorkerRecovery::BeginCancel { failure, intent } => {
-                    boxed(|| recovery::handle_begin_cancel(failure.state, intent, envelope)).await
-                }
-                FirstTurnWorkerRecovery::BeginSend {
-                    failure,
-                    owner,
-                    turn_id,
-                } => {
-                    boxed(|| {
-                        recovery::handle_begin_send(
-                            failure.state,
-                            owner,
-                            turn_id,
-                            context,
-                            envelope,
-                        )
-                    })
-                    .await
-                }
-                FirstTurnWorkerRecovery::BeginSendRetry {
-                    failure,
-                    owner,
-                    turn_id,
-                } => {
-                    boxed(|| {
-                        recovery::handle_begin_send_retry(
-                            failure.state,
-                            owner,
-                            turn_id,
-                            context,
-                            envelope,
-                        )
-                    })
-                    .await
-                }
-                FirstTurnWorkerRecovery::Observe {
-                    failure,
-                    owner,
-                    turn_id,
-                    observation,
-                } => recovery::handle_observe(failure.state, owner, turn_id, observation, envelope),
-                FirstTurnWorkerRecovery::ObserveRetry {
-                    failure,
-                    owner,
-                    turn_id,
-                    observation,
-                } => {
-                    boxed(|| {
-                        recovery::handle_observe_retry(
-                            failure.state,
-                            owner,
-                            turn_id,
-                            observation,
-                            context,
-                            envelope,
-                        )
-                    })
-                    .await
-                }
-                FirstTurnWorkerRecovery::Terminal {
-                    failure,
-                    owner,
-                    cursor,
-                } => recovery::handle_terminal(failure.state, owner, cursor, context, envelope),
-                retained => {
-                    envelope.reject(HostError::RecoveryRequired);
-                    Self::Recovery(Box::new(retained))
-                }
+                send => boxed(|| recovery::handle_send(send, context, envelope)).await,
             },
         }
     }
