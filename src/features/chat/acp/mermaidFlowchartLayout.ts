@@ -53,6 +53,7 @@ export interface FlowchartEdgeRoute {
   label: string;
   points: Point[];
   labelAt: { x: number; y: number };
+  labelLift: number;
 }
 
 const isHorizontal = (direction: MermaidDirection) =>
@@ -154,10 +155,8 @@ function routeForward(
       return {
         label: edge.label,
         points: [start, end],
-        labelAt: {
-          x: (start[0] + end[0]) / 2,
-          y: (start[1] + end[1]) / 2 - 4,
-        },
+        labelAt: { x: (start[0] + end[0]) / 2, y: (start[1] + end[1]) / 2 },
+        labelLift: 4,
       };
     const rail = returnRail(nodes, from, to, horizontal);
     return {
@@ -167,7 +166,8 @@ function routeForward(
         : [start, [rail, start[1]], [rail, end[1]], end],
       labelAt: horizontal
         ? { x: (start[0] + end[0]) / 2, y: rail }
-        : { x: rail, y: (start[1] + end[1]) / 2 - 4 },
+        : { x: rail, y: (start[1] + end[1]) / 2 },
+      labelLift: horizontal ? 0 : 4,
     };
   });
 }

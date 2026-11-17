@@ -136,7 +136,8 @@ function MermaidSvg({
     path: route.points
       .map(([x, y], index) => `${index ? "L" : "M"}${x} ${y}`)
       .join(""),
-    ...route.labelAt,
+    x: route.labelAt.x,
+    y: route.labelAt.y - route.labelLift,
   }));
   const labelledEdges = edges.filter((edge) => edge.label);
   const bounds = labelledEdges.map((edge) => ({
