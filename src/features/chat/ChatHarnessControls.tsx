@@ -70,6 +70,7 @@ export function ChatHarnessControls({
     (state) => state.projectTransitioning,
   );
   const [effortFromAdd, setEffortFromAdd] = useState(false);
+  const [, listed] = useState(0);
   const {
     active,
     modelId,
@@ -99,13 +100,11 @@ export function ChatHarnessControls({
     accessOpen: active === "access",
     openAccess: () => toggle("access"),
   });
-  const modelIdentity = selectedHarness?.accountModelDiscovery
-    ? null
-    : harnessModelIdentity(selectedHarness);
-  const models =
+  const knownModels =
     selectedHarnessId === globalSelectedHarnessId
       ? globalModels
-      : (cachedHarnessModels(modelIdentity) ?? []);
+      : cachedHarnessModels(harnessModelIdentity(selectedHarness));
+  const models = knownModels ?? [];
   // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
     !!sessionConfig?.restored ||
@@ -229,6 +228,13 @@ export function ChatHarnessControls({
   };
   return (
     <>
+      {!knownModels && (
+        <ComposerOptionsPart
+          part="ListedHarnessModels"
+          harness={selectedHarness}
+          onListed={listed}
+        />
+      )}
       <div
         ref={controls}
         className="composer__controls"

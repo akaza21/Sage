@@ -17,7 +17,7 @@ import {
   harnessModelIdentity,
   rememberHarnessModels,
 } from "./harnessModelCache";
-import { accountChange, authCurrent, authScope } from "./harnessAuth";
+import { accountChange, authScope } from "./harnessAuth";
 import { matchesProjectIntent, nextProjectGeneration } from "./projectIntent";
 import type { WorkbenchState } from "./store";
 import { errorMessage } from "../domain/errors";
@@ -192,11 +192,6 @@ export const createHarnessSlice: StateCreator<
         ) {
           return;
         }
-        set({ harnessAccount: response.account });
-        if (response.account === "signedOut") {
-          set({ harnessDiscoveryPhase: "signInRequired", error: null });
-          return;
-        }
         const models = response.models.map((model) => ({
           id: model.id,
           name: model.name,
@@ -205,10 +200,13 @@ export const createHarnessSlice: StateCreator<
             ? { effortLevels: [...model.effortLevels] }
             : {}),
         }));
+        // Signed out, the catalog is still listed; sign-in gates a send.
         set({
+          harnessAccount: response.account,
           models,
           selectedModelId: preferredModelId(models, previousModelId),
-          harnessDiscoveryPhase: "ready",
+          harnessDiscoveryPhase:
+            response.account === "signedOut" ? "signInRequired" : "ready",
           harnessDiscoveryError: null,
           error: null,
         });
@@ -320,25 +318,12 @@ export const createHarnessSlice: StateCreator<
       }
     },
     confirmHarnessSignIn: async () => {
-      const scope = authScope(get());
-      if (!scope || get().harnessDiscoveryPhase !== "consent") return;
-      const requestGeneration = get().harnessRequestGeneration;
-      set({ harnessDiscoveryPhase: "waiting", harnessDiscoveryError: null });
-      try {
-        const response = await acpHarnessDesktop.startCodexAuth(scope);
-        if (!authCurrent(get(), scope, requestGeneration)) return;
-        if (response.phase !== "signedIn") {
-          set({ harnessDiscoveryPhase: "signInRequired" });
-          return;
-        }
-        await get().retryHarnessDiscovery();
-      } catch (error) {
-        if (!authCurrent(get(), scope, requestGeneration)) return;
-        set({
-          harnessDiscoveryPhase: "error",
-          harnessDiscoveryError: errorMessage(error),
-        });
-      }
+      if (get().harnessDiscoveryPhase === "consent")
+        await changeAccount(
+          acpHarnessDesktop.startCodexAuth,
+          "signedIn",
+          "waiting",
+        );
     },
     cancelHarnessSignIn: async () => {
       if (get().harnessDiscoveryPhase === "consent") {
@@ -351,12 +336,16 @@ export const createHarnessSlice: StateCreator<
     },
     logoutHarness: async () => {
       if (get().harnessDiscoveryPhase === "ready")
-        await changeAccount(acpHarnessDesktop.logoutCodexAuth, "signedOut");
+        await changeAccount(
+          acpHarnessDesktop.logoutCodexAuth,
+          "signedOut",
+          "checking",
+        );
     },
     signInHarnessWith: async (call) => {
       const phase = get().harnessDiscoveryPhase;
       if (phase !== "checking" && phase !== "waiting")
-        await changeAccount(call, "signedIn");
+        await changeAccount(call, "signedIn", "checking");
     },
     selectModel: (selectedModelId) => {
       if (

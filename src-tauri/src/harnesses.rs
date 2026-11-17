@@ -1207,4 +1207,51 @@ mod tests {
         assert_eq!(codex.binding_id.as_deref(), Some("codex-app-server"));
         assert!(catalog.models("codex").unwrap().is_empty());
     }
+
+    #[test]
+    fn catalog_lists_the_models_the_admitted_codex_build_listed() {
+        let executable = std::env::temp_dir().join(format!(
+            "sage-codex-catalog-models-{}.bin",
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::write(&executable, b"observed-codex").unwrap();
+        let registration = CodexBindingRegistration::unavailable_for_test();
+        let binding = registration
+            .authenticate_observed_for_test(executable.clone(), "codex-cli 0.167.1".into())
+            .unwrap();
+        let catalog = HarnessCatalog::with_codex_registration_and_presence(
+            registration.clone(),
+            CodexHostPresence::Present,
+        )
+        .settled_for_test();
+        let listed = registration.model_catalog();
+        let model = || {
+            vec![ModelOption {
+                id: "gpt-6.1-sol".into(),
+                name: "GPT-6.1-Sol".into(),
+                description: None,
+                is_default: Some(true),
+                context_window: None,
+                effort_levels: Some(vec!["low".into(), "max".into(), "ultra".into()]),
+            }]
+        };
+        assert!(catalog.known_models("codex").unwrap().is_empty());
+
+        listed.refresh(listed.generation(), [0; 32], model());
+        assert!(catalog.known_models("codex").unwrap().is_empty());
+
+        listed.refresh(listed.generation(), binding.binding_digest(), model());
+        let expected = serde_json::json!([{
+            "id": "gpt-6.1-sol",
+            "name": "GPT-6.1-Sol",
+            "description": null,
+            "isDefault": true,
+            "effortLevels": ["low", "max", "ultra"]
+        }]);
+        assert_eq!(
+            serde_json::to_value(catalog.known_models("codex").unwrap()).unwrap(),
+            expected
+        );
+        std::fs::remove_file(executable).unwrap();
+    }
 }

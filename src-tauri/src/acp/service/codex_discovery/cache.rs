@@ -112,27 +112,17 @@ impl DiscoveryCache {
             Some(model) => &entry.id == model,
             None => entry.is_default,
         })?;
-        Some(sage_domain::harness::ModelOption {
-            id: model.id.as_str().to_owned(),
-            name: model.name.as_str().to_owned(),
-            description: None,
-            is_default: Some(model.is_default),
-            context_window: None,
-            effort_levels: (!model.effort_levels.is_empty()).then(|| {
-                model
-                    .effort_levels
-                    .iter()
-                    .map(|level| level.as_str().to_owned())
-                    .collect()
-            }),
-        })
+        Some(model.into())
     }
 
+    /// Stores `response` when `is_current` holds, then runs `published`
+    /// before a clear can take the entry away again.
     pub(super) fn publish_if_current(
         &self,
         key: CacheKey,
         response: CodexDiscoveryResponse,
         is_current: impl FnOnce() -> bool,
+        published: impl FnOnce(&CodexDiscoveryResponse),
     ) -> Result<(), CodexDiscoveryRunError> {
         let mut entry = self
             .entry
@@ -141,7 +131,7 @@ impl DiscoveryCache {
         if !is_current() {
             return Err(CodexDiscoveryRunError::Drift);
         }
-        *entry = Some(CachedDiscovery { key, response });
+        published(&entry.insert(CachedDiscovery { key, response }).response);
         Ok(())
     }
 
@@ -280,13 +270,17 @@ pub(super) fn response_from(
         models: content
             .models
             .iter()
-            .map(|model| CodexDiscoveryModel {
-                id: model.id.clone(),
-                name: model.name.clone(),
-                is_default: model.is_default,
-                effort_levels: model.effort_levels.clone(),
-            })
+            .map(CodexDiscoveryModel::from)
             .collect(),
         default_model_id: content.default_model_id.clone(),
     }
+}
+
+/// The models a signed-in discovery listed; `None` when the account cannot
+/// start a session.
+pub(super) fn launchable_models(
+    response: &CodexDiscoveryResponse,
+) -> Option<Vec<sage_domain::harness::ModelOption>> {
+    (response.account != CodexDiscoveryAccount::SignedOut)
+        .then(|| response.models.iter().map(Into::into).collect())
 }
