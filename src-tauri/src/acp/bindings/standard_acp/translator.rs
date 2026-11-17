@@ -384,7 +384,12 @@ impl StandardAcpTranslator {
         snapshot
             .push(chunk)
             .map_err(|_| TranslationError::ItemLimit)?;
-        let safe_snapshot = SafeText::<TEXT_BYTES>::new("text", snapshot.streaming())?;
+        let shown = if decode::block_finished(update) {
+            snapshot.finished()
+        } else {
+            snapshot.streaming()
+        };
+        let safe_snapshot = SafeText::<TEXT_BYTES>::new("text", shown)?;
         self.text_bytes = aggregate;
         Ok(AdapterEvent::Item {
             external_key,

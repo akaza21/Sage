@@ -32,6 +32,17 @@ pub(super) fn structural_subagent(update: &Map<String, Value>) -> bool {
     .any(|name| matches!(name, "Task" | "Agent"))
 }
 
+/// Whether the chunk is a whole block Claude Code finished before sending,
+/// so no word of it is still arriving.
+pub(super) fn block_finished(update: &Map<String, Value>) -> bool {
+    update
+        .get("_meta")
+        .and_then(|meta| meta.get("claudeCode"))
+        .and_then(|meta| meta.get("blockFinished"))
+        .and_then(Value::as_bool)
+        == Some(true)
+}
+
 pub(super) fn fits_permission_payload(summary: &str) -> bool {
     escaped_bytes(summary).is_some_and(|escaped| {
         escaped.saturating_add(PERMISSION_ENVELOPE_BYTES)

@@ -1277,7 +1277,7 @@ fn answer_text_on_either_side_of_a_tool_call_stays_two_items() {
     assert_eq!(
         updates(&unstreamed),
         [
-            &json!({"sessionUpdate":"agent_message_chunk","itemId":"msg_c:0","content":{"type":"text","text":"Signed out."}})
+            &json!({"sessionUpdate":"agent_message_chunk","itemId":"msg_c:0","content":{"type":"text","text":"Signed out."},"_meta":{"claudeCode":{"blockFinished":true}}})
         ]
     );
 }

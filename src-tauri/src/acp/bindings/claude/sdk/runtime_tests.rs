@@ -713,14 +713,14 @@ fn a_subagent_fills_its_own_transcript_under_a_collaboration_row() {
             .iter()
             .filter(|event| matches!(event, AdapterEvent::ChildLiveItem { .. }))
             .count(),
-        3,
+        2,
         "{inner:?}"
     );
     assert!(
         inner.iter().any(|event| matches!(event,
             AdapterEvent::ChildLiveItem { payload: NormalizedPayload::Text { text }, .. }
                 if text.as_str() == "Looking")),
-        "the text before a tool call shows whole: {inner:?}"
+        "a finished block shows whole at once: {inner:?}"
     );
     let result = feed(
         &mut runtime,
