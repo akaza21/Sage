@@ -95,12 +95,12 @@ for (const width of [1888, 720, 480]) {
       // Worked reveals its groups closed (Codex s2/f0012-f0015); a group
       // opens on its own click (s2/f0016-f0018).
       const commandGroup = page.locator(
-        ".chat-transcript-work__groups > .acp-tool-rollup",
+        ".chat-transcript-work__groups > .chat-transcript-work__row > .acp-tool-rollup",
       );
       await expect(commandGroup).not.toHaveAttribute("open");
       await commandGroup.locator(":scope > summary").click();
       const commands = page.locator(
-        ".acp-tool-rollup__items > .acp-tool-rollup",
+        ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
       );
       await expect(commands).toHaveCount(3);
       for (const command of await commands.all()) {
@@ -118,7 +118,7 @@ for (const width of [1888, 720, 480]) {
         0,
       );
       const group = page.locator(
-        ".chat-transcript-work__groups > .acp-tool-rollup",
+        ".chat-transcript-work__groups > .chat-transcript-work__row > .acp-tool-rollup",
       );
       await waitForAnimations(group);
       const row = await group.boundingBox();
@@ -146,15 +146,17 @@ for (const width of [1888, 720, 480]) {
       await page.locator(".chat-transcript-work__toggle").click();
       await expect(
         page.locator(
-          ".chat-transcript-work__groups > .acp-tool-rollup > summary .acp-tool-rollup__label",
+          ".chat-transcript-work__groups > .chat-transcript-work__row > .acp-tool-rollup > summary .acp-tool-rollup__label",
         ),
       ).toHaveText("Read files");
       const readGroup = page.locator(
-        ".chat-transcript-work__groups > .acp-tool-rollup",
+        ".chat-transcript-work__groups > .chat-transcript-work__row > .acp-tool-rollup",
       );
       await expect(readGroup).not.toHaveAttribute("open");
       await readGroup.locator(":scope > summary").click();
-      const rows = page.locator(".acp-tool-rollup__items > .acp-tool-rollup");
+      const rows = page.locator(
+        ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
+      );
       await expect(rows).toHaveCount(3);
       await expect(page.locator(".acp-tool-command-frame")).toHaveCount(0);
       await rows.first().locator(":scope > summary").click();
@@ -429,10 +431,14 @@ for (const width of [1888, 720, 480]) {
       const groups = page.locator(
         `[id="${await toggle.getAttribute("aria-controls")}"]`,
       );
-      const group = groups.locator(":scope > .acp-tool-rollup");
+      const group = groups.locator(
+        ":scope > .chat-transcript-work__row > .acp-tool-rollup",
+      );
       await group.locator(":scope > summary").click();
       await group
-        .locator(".acp-tool-rollup__items > .acp-tool-rollup")
+        .locator(
+          ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
+        )
         .last()
         .locator(":scope > summary")
         .click();

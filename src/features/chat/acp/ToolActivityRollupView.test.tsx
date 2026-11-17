@@ -609,7 +609,7 @@ describe("ToolActivityRollup", () => {
     row.open = true;
     fireEvent(row, new Event("toggle"));
     const commands = row.querySelectorAll<HTMLDetailsElement>(
-      ".acp-tool-rollup__items > .acp-tool-rollup",
+      ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
     );
     expect(
       [...commands].map(
@@ -1332,7 +1332,7 @@ describe("ToolActivityRollup", () => {
 
     expect(screen.queryByLabelText("Command line")).toBeNull();
     const command = document.querySelector<HTMLDetailsElement>(
-      ".acp-tool-rollup__items > .acp-tool-rollup",
+      ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
     )!;
     expect(command.querySelector("summary")).toHaveTextContent(
       "Ran npm run build",
@@ -1470,7 +1470,7 @@ describe("ToolActivityRollup", () => {
     expect(disclosure.open).toBe(true);
     expect(disclosure).toHaveAttribute("open");
     const rows = disclosure.querySelectorAll<HTMLDetailsElement>(
-      ".acp-tool-rollup__items > .acp-tool-rollup",
+      ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
     );
     expect(
       [...rows].map(

@@ -1,4 +1,5 @@
 import { type ReactNode } from "react";
+import { WorkRow } from "../WorkRow";
 import { type AcpItem } from "../../../domain/acp";
 import { type AgentArtifactOpenHandler } from "../../../domain/agentArtifact";
 import { CollaborationItem } from "./CollaborationItem";
@@ -21,37 +22,55 @@ export function PrimaryActivities({
 }) {
   const grouped = groupPrimaryActivities(withSubagentNames(items));
   const last = grouped.at(-1);
+  const isMessage = (activity: (typeof grouped)[number] | undefined) =>
+    activity?.kind === "item" &&
+    (activity.item.kind === "text" || activity.item.kind === "userPrompt");
   const thinking =
     running &&
     (last?.kind === "collaborationRollup" ||
       (last?.kind === "toolRollup" && last.rollup.kind === "subagent"));
   return (
     <>
-      {grouped.map((activity) =>
-        activity.kind === "toolRollup" ? (
-          <ToolActivityRollup
-            key={activity.rollup.items[0]?.id}
-            rollup={activity.rollup}
-            interactive={interactive}
-            onOpenResource={onOpenResource}
-          />
-        ) : activity.kind === "collaborationRollup" ? (
-          <CollaborationItem
-            key={activity.items[0].id}
-            item={activity.items[0]}
-            items={activity.items}
-          />
-        ) : (
-          renderItem(activity.item)
-        ),
-      )}
-      {thinking ? (
-        <p
-          className="acp-thought acp-live-shimmer"
-          data-activity-kind="thought"
+      {grouped.map((activity, index) => (
+        <WorkRow
+          key={
+            activity.kind === "toolRollup"
+              ? activity.rollup.items[0]?.id
+              : activity.kind === "collaborationRollup"
+                ? activity.items[0].id
+                : activity.item.id
+          }
+          afterMessage={
+            activity.kind === "item" &&
+            activity.item.kind === "thoughtSummary" &&
+            isMessage(grouped[index - 1])
+          }
         >
-          Thinking
-        </p>
+          {activity.kind === "toolRollup" ? (
+            <ToolActivityRollup
+              rollup={activity.rollup}
+              interactive={interactive}
+              onOpenResource={onOpenResource}
+            />
+          ) : activity.kind === "collaborationRollup" ? (
+            <CollaborationItem
+              item={activity.items[0]}
+              items={activity.items}
+            />
+          ) : (
+            renderItem(activity.item)
+          )}
+        </WorkRow>
+      ))}
+      {thinking ? (
+        <WorkRow afterMessage={isMessage(last)}>
+          <p
+            className="acp-thought acp-live-shimmer"
+            data-activity-kind="thought"
+          >
+            Thinking
+          </p>
+        </WorkRow>
       ) : null}
     </>
   );

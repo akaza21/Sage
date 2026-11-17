@@ -312,7 +312,7 @@ export async function runAgentCanonicalTest(
     await group.locator(":scope > summary").click();
     await expect(group).toHaveAttribute("open", "");
     const members = group.locator(
-      ":scope > .acp-tool-rollup__items > .acp-tool-rollup",
+      ":scope > .acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
     );
     await expect(members).toHaveCount(5);
     const execution = members.and(

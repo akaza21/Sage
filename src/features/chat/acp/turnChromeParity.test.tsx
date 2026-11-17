@@ -152,7 +152,9 @@ it.each<ToolPresentation>([
       if (withRead) {
         expect(rows).toHaveLength(1);
         expect(
-          latest.querySelectorAll(".acp-tool-rollup__items > .acp-tool-rollup"),
+          latest.querySelectorAll(
+            ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
+          ),
         ).toHaveLength(2);
       } else {
         expect(
@@ -483,7 +485,7 @@ it("lists individually collapsed Ran command rows inside expanded Worked", () =>
   group.open = true;
   fireEvent(group, new Event("toggle"));
   const commands = container.querySelectorAll<HTMLDetailsElement>(
-    ".acp-tool-rollup__items > details",
+    ".acp-tool-rollup__items > .acp-tool-rollup__row > details",
   );
   expect(commands).toHaveLength(2);
   for (const command of commands) {

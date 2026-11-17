@@ -47,11 +47,21 @@
 }
 
 .chat-transcript-work__groups {
-  --thought-after-message-gap: var(--space-4);
-
   display: grid;
   gap: var(--space-1);
   padding: var(--space-1) 0 0;
+}
+
+.chat-transcript-work__row {
+  min-width: 0;
+}
+
+.chat-transcript-work__row:empty {
+  display: none;
+}
+
+.chat-transcript-work__row--after-message {
+  margin-top: var(--space-4);
 }
 
 @media (prefers-reduced-motion: reduce) {

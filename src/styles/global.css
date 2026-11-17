@@ -873,7 +873,7 @@ textarea:disabled,
   }
 }
 
-/* A list that reveals its rows fades them in, staggered top to bottom. */
+/* A list that reveals its own row wrappers fades them in, top to bottom. */
 .stagger-reveal > * {
   animation: sage-row-in var(--motion-duration-row) ease-out both;
   animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));

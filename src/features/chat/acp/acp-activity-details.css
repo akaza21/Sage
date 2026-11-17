@@ -8,6 +8,10 @@
   scrollbar-width: thin;
 }
 
+.acp-tool-rollup__row {
+  min-width: 0;
+}
+
 .acp-tool-rollup {
   width: 100%;
   font-weight: var(--font-weight-regular);
@@ -277,12 +281,6 @@
   font-size: var(--font-size-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* A list that wants a break between a message and the next thought sets the
-   gap on itself. */
-.acp-message + .acp-thought {
-  margin-top: var(--thought-after-message-gap, 0);
 }
 
 @media (prefers-reduced-motion: reduce) {

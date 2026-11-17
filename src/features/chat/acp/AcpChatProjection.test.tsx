@@ -189,9 +189,10 @@ it.each(["running", "completed", "streaming"])(
     if (state === "running") {
       const thinking = screen.getByText("Thinking");
       expect(thinking).toHaveClass("acp-live-shimmer");
-      expect(thinking.previousElementSibling?.textContent).toContain(
-        "Count math",
-      );
+      expect(
+        thinking.closest(".chat-transcript-work__row")?.previousElementSibling
+          ?.textContent,
+      ).toContain("Count math");
     } else expect(container.querySelector(".acp-thought")).toBeNull();
   },
 );
@@ -637,7 +638,7 @@ describe("AcpChatProjection", () => {
       "Read main.ts",
     ]);
     for (const member of rollup!.querySelectorAll<HTMLDetailsElement>(
-      ".acp-tool-rollup__items > details",
+      ".acp-tool-rollup__items > .acp-tool-rollup__row > details",
     )) {
       expect(member).not.toHaveAttribute("open");
       member.open = true;
@@ -713,7 +714,7 @@ describe("AcpChatProjection", () => {
     expect(
       [
         ...workedGroups(work)!.querySelectorAll(
-          ".chat-transcript-work__groups > .acp-tool-rollup > summary .acp-tool-rollup__label",
+          ".chat-transcript-work__groups > .chat-transcript-work__row > .acp-tool-rollup > summary .acp-tool-rollup__label",
         ),
       ].map((row) => row.textContent?.trim()),
     ).toEqual(["Edited a file, read files, ran a command"]);
