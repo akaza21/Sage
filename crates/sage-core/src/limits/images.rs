@@ -10,6 +10,9 @@ pub const PROMPT_IMAGE_COUNT: usize = 4;
 pub const IMAGE_UPLOAD_BYTES: usize = 10 * 1024 * 1024;
 pub const IMAGE_UPLOAD_EDGE_PX: u32 = 8192;
 pub const IMAGE_UPLOAD_PIXELS: u64 = 16_777_216;
+/// Each of an upload's owner ids, its project and its chat.
+pub const IMAGE_OWNER_ID_BYTES: usize = 512;
+pub const IMAGE_LABEL_BYTES: usize = 80;
 /// Native bytes a pixel while a progressive JPEG decodes (jpeg-decoder 0.3):
 /// 2-byte coefficients for three components (6), the three component planes
 /// (3) and the RGB output (3), all live at once. This is the worst decode;
@@ -144,5 +147,7 @@ mod tests {
         assert_eq!(mirrored("MAX_OUTGOING_IMAGE_BYTES"), STORED_IMAGE_BYTES);
         assert_eq!(mirrored("MAX_PROMPT_IMAGES"), PROMPT_IMAGE_COUNT);
         assert_eq!(mirrored("MAX_IMAGE_UPLOAD_BYTES"), IMAGE_UPLOAD_BYTES);
+        assert_eq!(mirrored("MAX_IMAGE_OWNER_ID_BYTES"), IMAGE_OWNER_ID_BYTES);
+        assert_eq!(mirrored("MAX_IMAGE_LABEL_BYTES"), IMAGE_LABEL_BYTES);
     }
 }

@@ -59,7 +59,7 @@ impl<'de> Deserialize<'de> for ImageAttachedContext {
                 .bytes()
                 .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
             || value.label.is_empty()
-            || value.label.len() > 80
+            || value.label.len() > sage_core::limits::IMAGE_LABEL_BYTES
             || value
                 .label
                 .chars()

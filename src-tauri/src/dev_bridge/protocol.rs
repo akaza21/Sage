@@ -1,3 +1,4 @@
+use sage_core::limits;
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json, value::RawValue};
 use std::sync::{
@@ -8,11 +9,12 @@ use tauri::ipc::{InvokeResponse, InvokeResponseBody};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 use tokio_tungstenite::tungstenite::Message;
 
-// Upload owners allow 512 bytes each and labels 80; JSON can escape each byte
-// as six ASCII bytes. Reserve 20 decimal digits for each of the two counters.
-const MAX_UPLOAD_METADATA_BYTES: usize = (2 * 512 + 80) * 6 + 2 * 20;
+// Reserve 20 decimal digits for each of the two counters.
+const MAX_UPLOAD_METADATA_BYTES: usize = (2 * limits::IMAGE_OWNER_ID_BYTES + limits::IMAGE_LABEL_BYTES)
+    * limits::JSON_ESCAPE_MAX_BYTES
+    + 2 * 20;
 const UPLOAD_ENVELOPE: &str = r#"{"id":,"cmd":"upload_chat_image","args":{"request":{"projectId":"","projectGeneration":,"chatId":"","mediaType":"image/jpeg","dataBase64":"","label":""}}}"#;
-pub(super) const MAX_MESSAGE_BYTES: usize = sage_core::limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4
+pub(super) const MAX_MESSAGE_BYTES: usize = limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4
     + MAX_UPLOAD_METADATA_BYTES
     + UPLOAD_ENVELOPE.len();
 /// Responses and events wait here for the socket writer; a client that stops
