@@ -183,7 +183,7 @@ const Turn = memo(
             />
             <ChatTranscriptTurnSummary
               turn={turn}
-              thinkingPlaceholder={isSideChatId(page.chatId)}
+              runningHeading={!isSideChatId(page.chatId)}
               steered={workingItems
                 .filter((item) => item.kind === "userPrompt")
                 .map(renderWorkingItem)}

@@ -13,7 +13,6 @@ import {
 } from "./mermaidDiagram";
 import {
   FLOWCHART_LABEL_LINE_HEIGHT,
-  flowchartReturnRail,
   layoutFlowchart,
 } from "./mermaidFlowchartLayout";
 import {
@@ -130,34 +129,16 @@ function MermaidSvg({
   diagram: Extract<MermaidDiagram, { ok: true }>;
   description: string;
 }) {
-  const placed = layoutFlowchart(diagram);
+  const { nodes: placed, edges: routes } = layoutFlowchart(diagram);
   const marker = useId();
-  const byId = new Map(placed.map((node) => [node.id, node]));
-  const edges = diagram.edges.map((edge) => {
-    const from = byId.get(edge.from)!;
-    const to = byId.get(edge.to)!;
-    const horizontal = diagram.direction === "LR";
-    const returning = horizontal ? to.x <= from.x : to.y <= from.y;
-    const lateral = horizontal !== returning;
-    const startX = from.x + (lateral ? from.width : from.width / 2);
-    const startY = from.y + (lateral ? from.height / 2 : from.height);
-    const endX = to.x + (lateral ? (returning ? to.width : 0) : to.width / 2);
-    const endY = to.y + (lateral ? to.height / 2 : returning ? to.height : 0);
-    const rail = returning
-      ? flowchartReturnRail(placed, from, to, diagram.direction)
-      : 0;
-    const route = returning
-      ? horizontal
-        ? `L${startX} ${rail}L${endX} ${rail}`
-        : `L${rail} ${startY}L${rail} ${endY}`
-      : "";
-    return {
-      label: edge.label,
-      path: `M${startX} ${startY}${route}L${endX} ${endY}`,
-      x: returning && !horizontal ? rail : (startX + endX) / 2,
-      y: returning && horizontal ? rail : (startY + endY) / 2 - 4,
-    };
-  });
+  const edges = routes.map((route) => ({
+    label: route.label,
+    path: route.points
+      .map(([x, y], index) => `${index ? "L" : "M"}${x} ${y}`)
+      .join(""),
+    x: route.labelAt.x,
+    y: route.labelAt.y - route.labelLift,
+  }));
   const labelledEdges = edges.filter((edge) => edge.label);
   const bounds = labelledEdges.map((edge) => ({
     x: edge.x,
