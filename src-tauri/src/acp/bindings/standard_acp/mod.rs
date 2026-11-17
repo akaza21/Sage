@@ -33,6 +33,8 @@ mod tests;
 #[cfg(test)]
 mod tool_input_tests;
 #[cfg(test)]
+mod usage_tests;
+#[cfg(test)]
 mod web_search_tests;
 
 pub(crate) use admission::{

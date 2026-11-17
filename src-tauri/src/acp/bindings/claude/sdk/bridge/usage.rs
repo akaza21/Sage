@@ -1,7 +1,7 @@
 use serde_json::{Value, json};
 use time::{OffsetDateTime, format_description::well_known::Rfc3339};
 
-use super::Inbound;
+use super::{Inbound, SdkBridge};
 use crate::acp::goal::NativeRpcReply;
 use sage_acp_protocol::usage::UsageSnapshot;
 
@@ -23,6 +23,73 @@ pub(in crate::acp::bindings::claude::sdk) enum UsageReply {
     Limits(UsageSnapshot),
     /// Plan limits do not apply: an API key, or a cloud provider's account.
     Unsupported,
+}
+
+impl SdkBridge {
+    /// Holds a main-thread model call's prompt, cached or not, plus its
+    /// reply. Claude Code's synthetic error replies state no prompt and
+    /// leave the count as it was; counts too large to add up make it unknown,
+    /// which is stated at once.
+    pub(super) fn track_context(&mut self, usage: &Value, inbound: &mut Inbound) {
+        match prompt_tokens(usage) {
+            Some(0) => {}
+            prompt => {
+                self.context_tokens = prompt.and_then(|prompt| with_reply(usage, prompt));
+                if self.context_tokens.is_none() {
+                    self.report_context(0, inbound);
+                }
+            }
+        }
+    }
+
+    /// States what the context holds; zero says the count is unknown, as no
+    /// model call ever sends an empty context.
+    pub(super) fn report_context(&self, used: u64, inbound: &mut Inbound) {
+        let mut update = json!({"sessionUpdate": "usage_update", "used": used});
+        if let Some(size) = self.context_size {
+            update["size"] = size.into();
+        }
+        inbound.acp.push(self.update(update));
+    }
+}
+
+/// A turn's spend as an ACP prompt result's `usage`; `None` when its counts
+/// do not add up.
+pub(super) fn turn_usage(usage: &Value) -> Option<Value> {
+    let total = with_reply(usage, prompt_tokens(usage)?)?;
+    Some(json!({
+        "inputTokens": count(usage, "input_tokens"),
+        "outputTokens": count(usage, "output_tokens"),
+        "cachedReadTokens": count(usage, "cache_read_input_tokens"),
+        "cachedWriteTokens": count(usage, "cache_creation_input_tokens"),
+        "totalTokens": total,
+    }))
+}
+
+fn count(usage: &Value, key: &str) -> u64 {
+    usage.get(key).and_then(Value::as_u64).unwrap_or(0)
+}
+
+fn prompt_tokens(usage: &Value) -> Option<u64> {
+    [
+        "input_tokens",
+        "cache_read_input_tokens",
+        "cache_creation_input_tokens",
+    ]
+    .into_iter()
+    .try_fold(0_u64, |sum, key| sum.checked_add(count(usage, key)))
+}
+
+fn with_reply(usage: &Value, prompt: u64) -> Option<u64> {
+    prompt.checked_add(count(usage, "output_tokens"))
+}
+
+pub(super) fn context_window(sdk: &Value) -> Option<u64> {
+    sdk.get("modelUsage")?
+        .as_object()?
+        .values()
+        .filter_map(|usage| usage.get("contextWindow").and_then(Value::as_u64))
+        .max()
 }
 
 /// The read asks only for the limits; the transcript scan behind `/usage`'s

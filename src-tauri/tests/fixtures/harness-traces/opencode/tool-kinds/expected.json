@@ -111,8 +111,8 @@
     },
     {
       "event": "usage",
-      "inputTokens": 6671,
-      "outputTokens": 4,
+      "inputTokens": 8463,
+      "outputTokens": 0,
       "contextWindow": 200000
     },
     {
@@ -129,7 +129,7 @@
     "opencode omits kind on the completing tool_call_update for all three tools. The category asserted on every completed event therefore proves the translator retains the category recorded when the tool started, rather than defaulting a kind-less completion to Other.",
     "The tools interleave. The execute tool starts before the read completes, so the translator must track concurrent tool identities rather than assuming one open tool at a time.",
     "Tool labels are rewritten on completion from the tool name to the target path. The asserted labels keep a real captured path and show the drive-qualified prefix removed at projection time, so this trace also covers redaction on a genuine absolute path.",
-    "opencode states the context window on usage_update and the input and output token split on the prompt result. Neither frame states both, so the turn-scoped usage snapshot joins the two stated facts and infers nothing; had the split never arrived, no usage would be recorded.",
+    "opencode states what the context holds (used) and its size on usage_update, which becomes the turn's usage snapshot. The prompt result's token split is the turn's spend, so it surfaces nothing once usage_update has stated the context.",
     "ACP has no message end, so the translator closes output itself: answer text after an untagged thought completes that thought block (a later thought opens the next block's item), and the completed prompt response completes the turn's still-open text, thought and plan items before the turn terminal."
   ]
 }

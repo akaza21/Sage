@@ -1,5 +1,6 @@
 use serde_json::{Value, json};
 
+use super::usage::{context_window, turn_usage};
 use super::{
     BridgeError, Inbound, MAX_TRACKED_TOOLS, Pending, RECENT_STREAMED_MESSAGES, SdkBridge,
     acp_error, acp_result,
@@ -212,6 +213,7 @@ impl SdkBridge {
             self.auth_failed = true;
         }
         let message = &sdk["message"];
+        self.track_context(&message["usage"], inbound);
         let streamed = message
             .get("id")
             .and_then(Value::as_str)
@@ -333,18 +335,9 @@ impl SdkBridge {
         self.withdraw_open(inbound);
         self.end_retry(inbound);
         self.end_children(inbound);
-        let usage = &sdk["usage"];
-        let count = |key: &str| usage.get(key).and_then(Value::as_u64).unwrap_or(0);
-        let (input, output) = (count("input_tokens"), count("output_tokens"));
-        let (cache_read, cache_write) = (
-            count("cache_read_input_tokens"),
-            count("cache_creation_input_tokens"),
-        );
-        let total = input + output + cache_read + cache_write;
-        if let Some(size) = context_window(sdk) {
-            inbound.acp.push(
-                self.update(json!({"sessionUpdate": "usage_update", "used": total, "size": size})),
-            );
+        self.context_size = context_window(sdk).or(self.context_size);
+        if let Some(used) = self.context_tokens {
+            self.report_context(used, inbound);
         }
         let failed = sdk.get("is_error").and_then(Value::as_bool) == Some(true);
         inbound.acp.push(if self.interrupted {
@@ -354,17 +347,11 @@ impl SdkBridge {
         } else if failed {
             acp_error(id, INTERNAL_ERROR, &failure_message(sdk))
         } else {
-            acp_result(
-                id,
-                json!({
-                    "stopReason": stop_reason(sdk),
-                    "usage": {
-                        "inputTokens": input, "outputTokens": output,
-                        "cachedReadTokens": cache_read, "cachedWriteTokens": cache_write,
-                        "totalTokens": total,
-                    },
-                }),
-            )
+            let mut result = json!({"stopReason": stop_reason(sdk)});
+            if let Some(usage) = turn_usage(&sdk["usage"]) {
+                result["usage"] = usage;
+            }
+            acp_result(id, result)
         });
         self.interrupted = false;
         self.auth_failed = false;
@@ -387,14 +374,6 @@ impl Pending {
             | Self::Fork(_) => None,
         }
     }
-}
-
-fn context_window(sdk: &Value) -> Option<u64> {
-    sdk.get("modelUsage")?
-        .as_object()?
-        .values()
-        .filter_map(|usage| usage.get("contextWindow").and_then(Value::as_u64))
-        .max()
 }
 
 fn stop_reason(sdk: &Value) -> &'static str {

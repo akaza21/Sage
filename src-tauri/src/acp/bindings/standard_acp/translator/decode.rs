@@ -172,19 +172,6 @@ pub(super) fn stated_context_window(usage: &Map<String, Value>) -> Option<u32> {
         .and_then(|value| u32::try_from(value).ok())
 }
 
-pub(super) fn usage_event(
-    usage: &Map<String, Value>,
-    context_window: Option<u32>,
-) -> Option<AdapterEvent> {
-    let input_tokens = usage.get("inputTokens").and_then(Value::as_u64)?;
-    let output_tokens = usage.get("outputTokens").and_then(Value::as_u64)?;
-    Some(AdapterEvent::Usage(NormalizedPayload::Usage {
-        input_tokens,
-        output_tokens,
-        context_window,
-    }))
-}
-
 pub(super) fn unsupported_event(
     kind: &str,
     summary: &str,
