@@ -1,6 +1,7 @@
+import { MAX_MESSAGE_BYTES } from "./limits";
+
 const MAX_PENDING = 64;
 const MAX_CALLBACKS = 256;
-const MAX_MESSAGE_BYTES = 4 * 1024 * 1024;
 const AUTH_TIMEOUT_MS = 10_000;
 const RECONNECT_ATTEMPTS = 5;
 const RECONNECT_DELAY_MS = 400;
@@ -204,10 +205,7 @@ export async function installBrowserBridge(): Promise<void> {
         throw new Error("Sage browser bridge invoke limit reached");
       const id = ++sequence;
       const body = JSON.stringify({ id, cmd, args });
-      if (
-        new Blob([body]).size > MAX_MESSAGE_BYTES ||
-        current.bufferedAmount > MAX_MESSAGE_BYTES
-      )
+      if (new Blob([body]).size + current.bufferedAmount > MAX_MESSAGE_BYTES)
         throw new Error("Sage browser bridge message limit reached");
       return await new Promise<unknown>((resolve, reject) => {
         pending.set(id, { resolve, reject });

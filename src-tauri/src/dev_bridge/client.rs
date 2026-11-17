@@ -1,10 +1,9 @@
-use super::protocol::{
-    MAX_LISTENERS, MAX_PENDING, OUTBOUND_FRAMES, Outbound, Request, admits_command,
-};
+use super::protocol::{MAX_LISTENERS, OUTBOUND_FRAMES, Outbound, Request, admits_command};
+use super::transport::Session;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
-use std::{collections::HashMap, sync::Arc};
+use std::collections::HashMap;
 use tauri::{
     Listener, Manager,
     ipc::{CallbackFn, InvokeBody},
@@ -12,24 +11,50 @@ use tauri::{
 };
 use tokio::{
     net::TcpStream,
-    sync::{Semaphore, mpsc, watch},
+    sync::{mpsc, watch},
 };
 use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
 
+enum Subscription {
+    Native(tauri::EventId),
+    CloseRequested,
+}
+
 struct Listeners {
     app: tauri::AppHandle,
-    ids: HashMap<u32, tauri::EventId>,
+    ids: HashMap<u32, Subscription>,
 }
 impl Drop for Listeners {
     fn drop(&mut self) {
-        for (_, id) in self.ids.drain() {
-            self.app.unlisten(id);
+        for (_, subscription) in self.ids.drain() {
+            if let Subscription::Native(id) = subscription {
+                self.app.unlisten(id);
+            }
         }
     }
 }
 
-pub(super) async fn serve(socket: WebSocketStream<TcpStream>, app: tauri::AppHandle) {
-    let permits = Arc::new(Semaphore::new(MAX_PENDING));
+impl Listeners {
+    fn forward_close(&self, session: &Session, output: &Outbound) {
+        let subscribed = self
+            .ids
+            .values()
+            .any(|subscription| matches!(subscription, Subscription::CloseRequested));
+        if subscribed && session.take_close_request() {
+            for (&handler, subscription) in &self.ids {
+                if matches!(subscription, Subscription::CloseRequested) {
+                    output.event("tauri://close-requested", handler, "null");
+                }
+            }
+        }
+    }
+}
+
+pub(super) async fn serve(
+    socket: WebSocketStream<TcpStream>,
+    app: tauri::AppHandle,
+    mut session: Session,
+) {
     let (sender, mut receiver) = mpsc::channel(OUTBOUND_FRAMES);
     let (stop, mut cancelled) = watch::channel(false);
     let output = Outbound::new(sender, stop);
@@ -42,6 +67,7 @@ pub(super) async fn serve(socket: WebSocketStream<TcpStream>, app: tauri::AppHan
         tokio::select! {
             biased;
             _ = cancelled.changed() => break,
+            _ = session.close_requested() => listeners.forward_close(&session, &output),
             frame = receiver.recv() => {
                 let Some(frame) = frame else { break; };
                 output.dequeued(&frame);
@@ -54,11 +80,11 @@ pub(super) async fn serve(socket: WebSocketStream<TcpStream>, app: tauri::AppHan
                 if !admits_command(&request.cmd) {
                     output.error(request.id, "command is not admitted by the browser bridge");
                 } else if request.cmd == "plugin:event|listen" {
-                    listen(&mut listeners, request, &output);
+                    listen(&mut listeners, request, &output, &session);
                 } else if request.cmd == "plugin:event|unlisten" {
                     unlisten(&mut listeners, request, &output);
                 } else {
-                    dispatch(&app, request, output.clone(), &permits);
+                    dispatch(&app, request, output.clone(), &session);
                 }
             }
         }
@@ -97,7 +123,7 @@ impl ListenTarget {
     }
 }
 
-fn listen(listeners: &mut Listeners, request: Request, output: &Outbound) {
+fn listen(listeners: &mut Listeners, request: Request, output: &Outbound, session: &Session) {
     let Some(args) = serde_json::from_value::<ListenArgs>(request.args)
         .ok()
         .filter(|args| args.target.reaches_main())
@@ -121,14 +147,21 @@ fn listen(listeners: &mut Listeners, request: Request, output: &Outbound) {
         output.error(request.id, "event listener limit or invalid event name");
         return;
     }
-    let outbound = output.clone();
-    let name = args.event.clone();
-    let id = main.listen(args.event, move |event| {
-        outbound.event(&name, args.handler, event.payload());
-    });
+    let id = if args.event == "tauri://close-requested" {
+        // Native close requests use a latch until the browser's existing close
+        // handler subscribes; registering a Tauri listener too would deliver twice.
+        Subscription::CloseRequested
+    } else {
+        let outbound = output.clone();
+        let name = args.event.clone();
+        Subscription::Native(main.listen(args.event, move |event| {
+            outbound.event(&name, args.handler, event.payload());
+        }))
+    };
     // The callback id is also the bridge listener id, so events may precede the acknowledgement.
     listeners.ids.insert(args.handler, id);
     output.send(json!({"id":request.id, "ok":args.handler}));
+    listeners.forward_close(session, output);
 }
 
 fn unlisten(listeners: &mut Listeners, request: Request, output: &Outbound) {
@@ -138,16 +171,17 @@ fn unlisten(listeners: &mut Listeners, request: Request, output: &Outbound) {
         .and_then(Value::as_u64)
         .and_then(|id| u32::try_from(id).ok());
     if let Some(id) = id.and_then(|id| listeners.ids.remove(&id)) {
-        listeners.app.unlisten(id);
+        if let Subscription::Native(id) = id {
+            listeners.app.unlisten(id);
+        }
         output.send(json!({"id":request.id, "ok":null}));
     } else {
         output.error(request.id, "unknown event listener");
     }
 }
 
-fn dispatch(app: &tauri::AppHandle, request: Request, output: Outbound, permits: &Arc<Semaphore>) {
-    let Ok(permit) = permits.clone().try_acquire_owned() else {
-        output.error(request.id, "bridge invoke limit reached");
+fn dispatch(app: &tauri::AppHandle, request: Request, output: Outbound, session: &Session) {
+    let Some(reply) = session.admit(request.id, &output) else {
         return;
     };
     let Some(webview) = app.get_webview("main") else {
@@ -170,8 +204,7 @@ fn dispatch(app: &tauri::AppHandle, request: Request, output: Outbound, permits:
     webview.on_message(
         invoke,
         Box::new(move |_, _, response, _, _| {
-            let _permit = permit;
-            output.respond(request.id, response);
+            reply.respond(response);
         }),
     );
 }

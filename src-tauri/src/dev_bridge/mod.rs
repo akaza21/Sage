@@ -7,6 +7,7 @@ use std::{
     io,
     sync::{Arc, Mutex},
 };
+use tauri::Manager;
 
 pub(crate) fn host_url(app: &tauri::AppHandle) -> io::Result<url::Url> {
     let mut url = app
@@ -40,10 +41,21 @@ pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
         .query_pairs_mut()
         .append_pair("bridge", &address.port().to_string());
     browser_url.set_fragment(Some(&code));
-    let access = Arc::new(transport::Access {
-        host: address.to_string(),
-        origin: browser_url.origin().ascii_serialization(),
-        pairing: Arc::new(Mutex::new(auth::Pairing::new(code))),
+    let access = Arc::new(transport::Access::new(
+        address.to_string(),
+        browser_url.origin().ascii_serialization(),
+        Arc::new(Mutex::new(auth::Pairing::new(code))),
+    ));
+    let close_access = access.clone();
+    let main = app
+        .get_webview_window("main")
+        .ok_or_else(|| io::Error::other("main window unavailable"))?;
+    main.on_window_event(move |event| {
+        if let tauri::WindowEvent::CloseRequested { api, .. } = event
+            && close_access.request_close()
+        {
+            api.prevent_close();
+        }
     });
     let app = app.clone();
     tauri::async_runtime::spawn(async move {
@@ -60,8 +72,8 @@ pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
                     let access = access.clone();
                     let app = app.clone();
                     clients.spawn(async move {
-                        if let Ok((socket, _lease)) = transport::accept(stream, &access).await {
-                            client::serve(socket, app).await;
+                        if let Ok((socket, session)) = transport::accept(stream, &access).await {
+                            client::serve(socket, app, session).await;
                         }
                     });
                 }

@@ -5,10 +5,16 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 use tauri::ipc::{InvokeResponse, InvokeResponseBody};
-use tokio::sync::{mpsc, watch};
+use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch};
 use tokio_tungstenite::tungstenite::Message;
 
-pub(super) const MAX_MESSAGE_BYTES: usize = 4 * 1024 * 1024;
+// Upload owners allow 512 bytes each and labels 80; JSON can escape each byte
+// as six ASCII bytes. Reserve 20 decimal digits for each of the two counters.
+const MAX_UPLOAD_METADATA_BYTES: usize = (2 * 512 + 80) * 6 + 2 * 20;
+const UPLOAD_ENVELOPE: &str = r#"{"id":,"cmd":"upload_chat_image","args":{"request":{"projectId":"","projectGeneration":,"chatId":"","mediaType":"image/jpeg","dataBase64":"","label":""}}}"#;
+pub(super) const MAX_MESSAGE_BYTES: usize = sage_core::limits::IMAGE_UPLOAD_BYTES.div_ceil(3) * 4
+    + MAX_UPLOAD_METADATA_BYTES
+    + UPLOAD_ENVELOPE.len();
 /// Responses and events wait here for the socket writer; a client that stops
 /// reading is disconnected once either bound is reached.
 pub(super) const OUTBOUND_FRAMES: usize = 1024;
@@ -56,6 +62,18 @@ pub(super) struct Outbound {
     queued_bytes: Arc<AtomicUsize>,
 }
 
+pub(super) struct PendingInvoke {
+    id: u32,
+    output: Outbound,
+    _permit: OwnedSemaphorePermit,
+}
+
+impl PendingInvoke {
+    pub fn respond(self, response: InvokeResponse) {
+        self.output.respond(self.id, response);
+    }
+}
+
 impl Outbound {
     pub fn new(sender: mpsc::Sender<Message>, stop: watch::Sender<bool>) -> Self {
         Self {
@@ -67,6 +85,20 @@ impl Outbound {
 
     pub fn disconnect(&self) {
         let _ = self.stop.send(true);
+    }
+
+    pub fn admit(&self, id: u32, permits: &Arc<Semaphore>) -> Option<PendingInvoke> {
+        match permits.clone().try_acquire_owned() {
+            Ok(permit) => Some(PendingInvoke {
+                id,
+                output: self.clone(),
+                _permit: permit,
+            }),
+            Err(_) => {
+                self.error(id, "bridge invoke limit reached");
+                None
+            }
+        }
     }
 
     /// Called by the socket writer for each frame it takes off the queue.
@@ -212,7 +244,7 @@ mod tests {
             output.event("sage:changed", id, r#"{"revision":1}"#);
         }
         assert!(!*cancelled.borrow());
-        let chunk = "a".repeat(MAX_MESSAGE_BYTES - 64);
+        let chunk = "a".repeat(MAX_QUEUED_BYTES / 4 - 64);
         for id in 0..3 {
             output.send(json!({"id":id,"ok":chunk}));
         }

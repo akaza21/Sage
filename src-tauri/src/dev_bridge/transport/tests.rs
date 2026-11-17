@@ -5,16 +5,58 @@ use tokio_tungstenite::{
     tungstenite::{client::IntoClientRequest, http::HeaderValue},
 };
 
+async fn connect(
+    address: std::net::SocketAddr,
+    host: &str,
+    origin: &str,
+) -> Result<WebSocketStream<TcpStream>, ()> {
+    let mut request = format!("ws://{address}/").into_client_request().unwrap();
+    request
+        .headers_mut()
+        .insert("Host", HeaderValue::from_str(host).unwrap());
+    request
+        .headers_mut()
+        .insert("Origin", HeaderValue::from_str(origin).unwrap());
+    let stream = TcpStream::connect(address).await.unwrap();
+    client_async(request, stream)
+        .await
+        .map(|(socket, _)| socket)
+        .map_err(|_| ())
+}
+
+async fn pair(
+    socket: &mut WebSocketStream<TcpStream>,
+    credentials: serde_json::Value,
+) -> Option<serde_json::Value> {
+    socket
+        .send(Message::Text(credentials.to_string().into()))
+        .await
+        .unwrap();
+    match socket.next().await {
+        Some(Ok(Message::Text(text))) => Some(serde_json::from_str(&text).unwrap()),
+        _ => None,
+    }
+}
+
+async fn response(socket: &mut WebSocketStream<TcpStream>) -> serde_json::Value {
+    let message = tokio::time::timeout(Duration::from_secs(5), socket.next())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    serde_json::from_str(&message.into_text().unwrap()).unwrap()
+}
+
 #[tokio::test]
 async fn websocket_handshake_rejects_foreign_host_and_origin_and_consumed_or_busy_pairing() {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
     let address = listener.local_addr().unwrap();
     let origin = "http://127.0.0.1:23456";
-    let access = Arc::new(Access {
-        host: address.to_string(),
-        origin: origin.into(),
-        pairing: Arc::new(Mutex::new(Pairing::new("a".repeat(64)))),
-    });
+    let access = Arc::new(Access::new(
+        address.to_string(),
+        origin.into(),
+        Arc::new(Mutex::new(Pairing::new("a".repeat(64)))),
+    ));
     let server = tokio::spawn(async move {
         let mut tasks = tokio::task::JoinSet::new();
         loop {
@@ -34,37 +76,6 @@ async fn websocket_handshake_rejects_foreign_host_and_origin_and_consumed_or_bus
             }
         }
     });
-    async fn connect(
-        address: std::net::SocketAddr,
-        host: &str,
-        origin: &str,
-    ) -> Result<WebSocketStream<TcpStream>, ()> {
-        let mut request = format!("ws://{address}/").into_client_request().unwrap();
-        request
-            .headers_mut()
-            .insert("Host", HeaderValue::from_str(host).unwrap());
-        request
-            .headers_mut()
-            .insert("Origin", HeaderValue::from_str(origin).unwrap());
-        let stream = TcpStream::connect(address).await.unwrap();
-        client_async(request, stream)
-            .await
-            .map(|(socket, _)| socket)
-            .map_err(|_| ())
-    }
-    async fn pair(
-        socket: &mut WebSocketStream<TcpStream>,
-        credentials: serde_json::Value,
-    ) -> Option<serde_json::Value> {
-        socket
-            .send(Message::Text(credentials.to_string().into()))
-            .await
-            .unwrap();
-        match socket.next().await {
-            Some(Ok(Message::Text(text))) => Some(serde_json::from_str(&text).unwrap()),
-            _ => None,
-        }
-    }
     assert!(
         connect(address, &address.to_string(), "http://evil.test")
             .await
@@ -120,4 +131,196 @@ async fn websocket_handshake_rejects_foreign_host_and_origin_and_consumed_or_bus
     assert_eq!(pair(&mut reload, session.clone()).await.unwrap(), session);
     server.abort();
     let _ = server.await;
+}
+
+#[tokio::test]
+async fn reconnect_preserves_admission_until_dispatched_operations_respond() {
+    use super::super::protocol::{MAX_PENDING, Outbound, PendingInvoke, Request};
+    use tauri::ipc::{InvokeResponse, InvokeResponseBody};
+    use tokio::sync::{mpsc, watch};
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let origin = "http://127.0.0.1:23456";
+    let access = Access::new(
+        address.to_string(),
+        origin.into(),
+        Arc::new(Mutex::new(Pairing::new("a".repeat(64)))),
+    );
+    let (dispatched, mut callbacks) = mpsc::channel::<PendingInvoke>(MAX_PENDING);
+    let server = tokio::spawn(async move {
+        loop {
+            let (stream, _) = listener.accept().await.unwrap();
+            let (mut socket, session) = accept(stream, &access).await.unwrap();
+            let (sender, mut receiver) = mpsc::channel(MAX_PENDING);
+            let (stop, _cancelled) = watch::channel(false);
+            let output = Outbound::new(sender, stop);
+            loop {
+                tokio::select! {
+                    incoming = socket.next() => {
+                        match incoming.unwrap().unwrap() {
+                            Message::Text(text) => {
+                                let request: Request = serde_json::from_str(&text).unwrap();
+                                if let Some(reply) = session.admit(request.id, &output) {
+                                    dispatched.send(reply).await.unwrap();
+                                }
+                            }
+                            Message::Close(_) => break,
+                            _ => panic!("unexpected client frame"),
+                        }
+                    }
+                    frame = receiver.recv() => {
+                        let frame = frame.unwrap();
+                        output.dequeued(&frame);
+                        socket.send(frame).await.unwrap();
+                    }
+                }
+            }
+            drop(session);
+            let _ = socket.close(None).await;
+        }
+    });
+    let mut first = connect(address, &address.to_string(), origin).await.unwrap();
+    let session = pair(
+        &mut first,
+        serde_json::json!({"pairingCode":"a".repeat(64)}),
+    )
+    .await
+    .unwrap();
+    let mut outstanding = Vec::new();
+    for id in 0..MAX_PENDING {
+        first
+            .send(Message::Text(
+                serde_json::json!({"id":id,"cmd":"pick_project_source_folder"})
+                    .to_string()
+                    .into(),
+            ))
+            .await
+            .unwrap();
+        outstanding.push(callbacks.recv().await.unwrap());
+    }
+    first.close(None).await.unwrap();
+    let _ = first.next().await;
+    let mut reload = connect(address, &address.to_string(), origin).await.unwrap();
+    pair(&mut reload, session).await.unwrap();
+    reload
+        .send(Message::Text(
+            r#"{"id":100,"cmd":"pick_project_source_folder"}"#.into(),
+        ))
+        .await
+        .unwrap();
+    assert_eq!(
+        response(&mut reload).await,
+        serde_json::json!({"id":100,"err":"bridge invoke limit reached"})
+    );
+    outstanding.pop().unwrap().respond(InvokeResponse::Ok(
+        InvokeResponseBody::Json("null".into()),
+    ));
+    reload
+        .send(Message::Text(
+            r#"{"id":101,"cmd":"pick_project_source_folder"}"#.into(),
+        ))
+        .await
+        .unwrap();
+    callbacks.recv().await.unwrap().respond(InvokeResponse::Ok(
+        InvokeResponseBody::Json("\"selected-folder\"".into()),
+    ));
+    assert_eq!(
+        response(&mut reload).await,
+        serde_json::json!({"id":101,"ok":"selected-folder"})
+    );
+    server.abort();
+    let _ = server.await;
+}
+
+#[tokio::test]
+async fn websocket_accepts_maximum_image_and_exact_bound_but_rejects_one_byte_over() {
+    use base64::{Engine as _, engine::general_purpose::STANDARD};
+    use tokio_tungstenite::tungstenite::Error;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let origin = "http://127.0.0.1:23456";
+    let access = Access::new(
+        address.to_string(),
+        origin.into(),
+        Arc::new(Mutex::new(Pairing::new("a".repeat(64)))),
+    );
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let (mut socket, _lease) = accept(stream, &access).await.unwrap();
+        let image = socket.next().await.unwrap().unwrap().into_text().unwrap();
+        let upload: super::super::protocol::Request = serde_json::from_str(&image).unwrap();
+        assert_eq!(upload.cmd, "upload_chat_image");
+        assert_eq!(
+            STANDARD
+                .decode(upload.args["request"]["dataBase64"].as_str().unwrap())
+                .unwrap()
+                .len(),
+            sage_core::limits::IMAGE_UPLOAD_BYTES
+        );
+        drop(upload);
+        drop(image);
+        assert_eq!(socket.next().await.unwrap().unwrap().len(), MAX_MESSAGE_BYTES);
+        assert!(matches!(socket.next().await, Some(Err(Error::Capacity(_)))));
+    });
+    let mut socket = connect(address, &address.to_string(), origin).await.unwrap();
+    pair(&mut socket, serde_json::json!({"pairingCode":"a".repeat(64)}))
+        .await
+        .unwrap();
+    let image = serde_json::json!({
+        "id": u32::MAX, "cmd": "upload_chat_image", "args": {"request": {
+            "projectId": "\0".repeat(512), "projectGeneration": u64::MAX,
+            "chatId": "\0".repeat(512), "mediaType": "image/jpeg",
+            "dataBase64": STANDARD.encode(vec![0; sage_core::limits::IMAGE_UPLOAD_BYTES]),
+            "label": "\0".repeat(80)
+        }}
+    });
+    socket
+        .send(Message::Text(image.to_string().into()))
+        .await
+        .unwrap();
+    drop(image);
+    socket
+        .send(Message::Text("a".repeat(MAX_MESSAGE_BYTES).into()))
+        .await
+        .unwrap();
+    let _ = socket
+        .send(Message::Text("a".repeat(MAX_MESSAGE_BYTES + 1).into()))
+        .await;
+    server.await.unwrap();
+}
+
+#[tokio::test]
+async fn native_close_waits_for_the_browser_listener_but_not_for_a_disconnected_client() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let origin = "http://127.0.0.1:23456";
+    let access = Arc::new(Access::new(
+        address.to_string(),
+        origin.into(),
+        Arc::new(Mutex::new(Pairing::new("a".repeat(64)))),
+    ));
+    assert!(!access.request_close());
+    let server_access = access.clone();
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        accept(stream, &server_access).await.unwrap()
+    });
+    let mut browser = connect(address, &address.to_string(), origin).await.unwrap();
+    pair(
+        &mut browser,
+        serde_json::json!({"pairingCode":"a".repeat(64)}),
+    )
+    .await
+    .unwrap();
+    let (_socket, session) = server.await.unwrap();
+    assert!(access.request_close());
+    assert!(access.request_close());
+    assert!(session.take_close_request());
+    assert!(!session.take_close_request());
+    assert!(access.request_close());
+    assert!(session.take_close_request());
+    drop(session);
+    assert!(!access.request_close());
 }

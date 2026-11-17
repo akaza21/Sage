@@ -1,8 +1,12 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { createElement } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { isTauriRuntime } from "../ports/nativeInvoke";
+import { MAX_IMAGE_UPLOAD_BYTES } from "../domain/attachedContext";
 import { installBrowserBridge } from "./installBrowserBridge";
+import { MAX_MESSAGE_BYTES } from "./limits";
 
 class FakeSocket extends EventTarget {
   static readonly OPEN = 1;
@@ -11,12 +15,15 @@ class FakeSocket extends EventTarget {
   bufferedAmount = 0;
   binaryType = "blob";
   sent: { id: number; cmd: string; args: Record<string, unknown> }[] = [];
+  onRequest?: (request: FakeSocket["sent"][number]) => void;
   constructor(readonly url: string) {
     super();
     FakeSocket.latest = this;
   }
   send(data: string) {
-    this.sent.push(JSON.parse(data));
+    const request = JSON.parse(data);
+    this.sent.push(request);
+    this.onRequest?.(request);
   }
   open() {
     this.readyState = 1;
@@ -42,12 +49,115 @@ beforeEach(() => {
   vi.stubGlobal("WebSocket", FakeSocket);
 });
 afterEach(() => {
+  cleanup();
   FakeSocket.latest?.close();
   document.body.replaceChildren();
   vi.useRealTimers();
   Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
   Reflect.deleteProperty(window, "__TAURI_EVENT_PLUGIN_INTERNALS__");
   vi.unstubAllGlobals();
+});
+
+it("flushes browser edits and settings before the shared workbench close persists layout and destroys the host", async () => {
+  const socket = await connect();
+  const { resetWorkbenchPortsForTests } =
+    await import("../ports/workbenchRuntime");
+  resetWorkbenchPortsForTests();
+  const { App } = await import("../app/App");
+  const { useWorkbenchStore } = await import("../app/store");
+  const { useEditorSettingsStore } = await import("../app/editorSettingsStore");
+  const { getFileEditorController } =
+    await import("../features/files/fileEditorController");
+  const initial = useWorkbenchStore.getState();
+  const resource = { rootId: "root-a", relativePath: "draft.txt" };
+  const version = { fingerprint: "base", byteLen: 0, modifiedAt: null };
+  let editorWrite: FakeSocket["sent"][number] | undefined;
+  let settingsWrite: FakeSocket["sent"][number] | undefined;
+  let closeHandler: number | undefined;
+  let destroyed = false;
+  let persistedLayout: unknown;
+  socket.onRequest = (request) => {
+    if (request.cmd === "snapshot_editor_buffer") {
+      editorWrite = request;
+      return;
+    }
+    if (request.cmd === "set_editor_settings") {
+      settingsWrite = request;
+      return;
+    }
+    if (request.cmd === "persist_project_layout_and_close") {
+      persistedLayout = request.args.request;
+      destroyed = true;
+    }
+    if (request.args.event === "tauri://close-requested")
+      closeHandler = request.args.handler as number;
+    socket.receive({
+      id: request.id,
+      ok:
+        request.cmd === "plugin:event|listen"
+          ? request.args.handler
+          : request.cmd === "list_harnesses"
+            ? []
+            : null,
+    });
+  };
+  useWorkbenchStore.setState({
+    phase: "booting",
+    initialize: async () => {},
+    refreshRepository: async () => {},
+    project: { id: "project-a", name: "A", roots: [] },
+    tabs: [],
+    activeEditor: getFileEditorController().ready({
+      resource,
+      disk: version,
+      base: version,
+      buffer: { ...version, revision: 0, content: "" },
+      lineEnding: "none",
+      dirty: false,
+      conflict: null,
+    }),
+  });
+  useWorkbenchStore.getState().updateEditorContent("unsaved edit");
+  useEditorSettingsStore.setState({ persistenceReady: true });
+  useEditorSettingsStore.getState().setSettings({ "editor.fontSize": 16 });
+  const screen = render(createElement(App));
+  try {
+    await waitFor(() => expect(closeHandler).toBeTypeOf("number"));
+    act(() =>
+      socket.receive({
+        event: "tauri://close-requested",
+        handlerId: closeHandler,
+        payload: null,
+      }),
+    );
+    await waitFor(() => expect(editorWrite).toBeDefined());
+    expect(editorWrite!.args.request).toMatchObject({
+      content: "unsaved edit",
+      revision: 1,
+    });
+    expect(destroyed).toBe(false);
+    await act(async () => {
+      socket.receive({
+        id: editorWrite!.id,
+        ok: { revision: 1, persistedAt: 1, dirty: true, applied: true },
+      });
+    });
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      persistedRevision: 1,
+    });
+    await waitFor(() => expect(settingsWrite).toBeDefined());
+    expect(destroyed).toBe(false);
+    expect(settingsWrite!.args.changes).toEqual({ "editor.fontSize": 16 });
+    await act(async () =>
+      socket.receive({ id: settingsWrite!.id, ok: { "editor.fontSize": 16 } }),
+    );
+    await waitFor(() => expect(destroyed).toBe(true));
+    expect(persistedLayout).toMatchObject({ projectId: "project-a", tabs: [] });
+    expect(screen.queryByRole("alert")).toBeNull();
+  } finally {
+    screen.unmount();
+    useWorkbenchStore.setState(initial, true);
+  }
 });
 
 async function connect() {
@@ -207,4 +317,75 @@ it("never retries a refused pairing code and tells the user when a live session 
   expect(document.querySelector('[role="alert"]')?.textContent).toContain(
     "Reload this tab",
   );
+});
+
+it("transports the largest composer image upload including escaped metadata", async () => {
+  const socket = await connect();
+  const request = {
+    projectId: "\0".repeat(512),
+    projectGeneration: Number.MAX_SAFE_INTEGER,
+    chatId: "\0".repeat(512),
+    mediaType: "image/jpeg",
+    dataBase64: btoa("\0".repeat(MAX_IMAGE_UPLOAD_BYTES)),
+    label: "\0".repeat(80),
+  };
+  const uploaded = invoke("upload_chat_image", { request });
+  const received = socket.sent.at(-1)!;
+  expect(received.cmd).toBe("upload_chat_image");
+  expect(received.args).toEqual({ request });
+  socket.receive({ id: received.id, ok: { artifactId: "uploaded-image" } });
+  await expect(uploaded).resolves.toEqual({ artifactId: "uploaded-image" });
+});
+
+it("admits exactly the message byte bound and refuses one byte more in either direction", async () => {
+  const socket = await connect();
+  const envelope = JSON.stringify({
+    id: 1,
+    cmd: "get_bootstrap_snapshot",
+    args: { padding: "" },
+  });
+  const padding = "a".repeat(MAX_MESSAGE_BYTES - envelope.length);
+  const accepted = invoke("get_bootstrap_snapshot", { padding });
+  const request = socket.sent.at(-1)!;
+  expect(new Blob([JSON.stringify(request)]).size).toBe(MAX_MESSAGE_BYTES);
+  socket.receive({ id: request.id, ok: "accepted" });
+  await expect(accepted).resolves.toBe("accepted");
+  await expect(
+    invoke("get_bootstrap_snapshot", { padding: padding + "a" }),
+  ).rejects.toThrow("message limit");
+
+  const received: number[] = [];
+  const listening = listen<string>("sage:changed", (event) =>
+    received.push(event.payload.length),
+  );
+  const subscription = socket.sent.at(-1)!;
+  const handlerId = subscription.args.handler as number;
+  socket.receive({ id: subscription.id, ok: handlerId });
+  await listening;
+  const frame = { event: "sage:changed", handlerId, payload: "" };
+  frame.payload = "a".repeat(MAX_MESSAGE_BYTES - JSON.stringify(frame).length);
+  socket.receive(frame);
+  expect(received).toEqual([frame.payload.length]);
+  const waiting = invoke("get_bootstrap_snapshot");
+  const disconnected = expect(waiting).rejects.toThrow("disconnected");
+  socket.receive({ ...frame, payload: frame.payload + "a" });
+  await disconnected;
+  expect(received).toHaveLength(1);
+});
+
+it("includes bytes already buffered on the socket in the send budget", async () => {
+  const socket = await connect();
+  const frameBytes = JSON.stringify({
+    id: 1,
+    cmd: "get_bootstrap_snapshot",
+    args: {},
+  }).length;
+  socket.bufferedAmount = MAX_MESSAGE_BYTES - frameBytes + 1;
+  await expect(invoke("get_bootstrap_snapshot")).rejects.toThrow(
+    "message limit",
+  );
+  socket.bufferedAmount--;
+  const accepted = invoke("get_bootstrap_snapshot");
+  socket.receive({ id: socket.sent.at(-1)!.id, ok: "within budget" });
+  await expect(accepted).resolves.toBe("within budget");
 });
