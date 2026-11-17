@@ -52,8 +52,7 @@ impl Drop for CloseOnDrop {
     }
 }
 
-#[test]
-fn two_prompts_in_one_epoch_persist_both_agent_messages_and_both_usage_snapshots() {
+fn two_turns(second: Ending<'static>) -> Database {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
     let database = migrated_database(&runtime);
@@ -77,7 +76,7 @@ fn two_prompts_in_one_epoch_persist_both_agent_messages_and_both_usage_snapshots
             )
             .expect("first pump");
 
-            let first = drive_turn(&mut pump, "turn-one", "ok", 10).await;
+            let first = drive_turn(&mut pump, "turn-one", Ending::Answered("ok"), 10).await;
             assert_eq!(first, 3);
             let (state, items) = turn_facts(&database, "turn-one");
             assert!(
@@ -96,7 +95,7 @@ fn two_prompts_in_one_epoch_persist_both_agent_messages_and_both_usage_snapshots
                 .map_err(|boxed| boxed.1)
                 .expect("second turn bound to the same session and epoch");
 
-            let second = drive_turn(&mut pump, "turn-two", "ok again", 20).await;
+            let second = drive_turn(&mut pump, "turn-two", second, 20).await;
             assert_eq!(second, 4);
             assert!(pump.completed_turn_ready());
 
@@ -105,7 +104,38 @@ fn two_prompts_in_one_epoch_persist_both_agent_messages_and_both_usage_snapshots
                 .await
                 .expect("journal drained");
         });
+    database
+}
 
+fn usage_rows(database: &Database) -> Vec<(String, i64, i64, Option<i64>)> {
+    let connection = database.connection();
+    let mut statement = connection
+        .prepare("SELECT turn_id,input_tokens,output_tokens,context_window FROM acp_turn_usage_snapshots ORDER BY turn_id")
+        .expect("usage query");
+    statement
+        .query_map([], |row| {
+            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
+        })
+        .expect("usage rows")
+        .map(|row| row.expect("usage row"))
+        .collect()
+}
+
+fn turn_states(database: &Database) -> Vec<(String, String)> {
+    let connection = database.connection();
+    let mut statement = connection
+        .prepare("SELECT id,state FROM turns ORDER BY ordinal")
+        .expect("turn query");
+    statement
+        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
+        .expect("turn rows")
+        .map(|row| row.expect("turn row"))
+        .collect()
+}
+
+#[test]
+fn two_prompts_in_one_epoch_persist_both_agent_messages_and_both_usage_snapshots() {
+    let database = two_turns(Ending::Answered("ok again"));
     let connection = database.connection();
     let mut statement = connection
         .prepare("SELECT turn_id,external_item_id FROM items WHERE kind='text' AND external_item_id LIKE 'agent-message%' ORDER BY turn_id")
@@ -123,34 +153,17 @@ fn two_prompts_in_one_epoch_persist_both_agent_messages_and_both_usage_snapshots
         ]
     );
 
-    let mut statement = connection
-        .prepare("SELECT turn_id,input_tokens,output_tokens,context_window FROM acp_turn_usage_snapshots ORDER BY turn_id")
-        .expect("usage query");
-    let usage: Vec<(String, i64, i64, Option<i64>)> = statement
-        .query_map([], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?))
-        })
-        .expect("usage rows")
-        .map(|row| row.expect("usage row"))
-        .collect();
+    drop(statement);
+    drop(connection);
     assert_eq!(
-        usage,
+        usage_rows(&database),
         [
-            ("turn-one".to_owned(), 2, 4, Some(1_000_000)),
-            ("turn-two".to_owned(), 2, 4, Some(1_000_000)),
+            ("turn-one".to_owned(), 23_753, 0, Some(1_000_000)),
+            ("turn-two".to_owned(), 23_753, 0, Some(1_000_000)),
         ]
     );
-
-    let mut statement = connection
-        .prepare("SELECT id,state FROM turns ORDER BY ordinal")
-        .expect("turn query");
-    let turns: Vec<(String, String)> = statement
-        .query_map([], |row| Ok((row.get(0)?, row.get(1)?)))
-        .expect("turn rows")
-        .map(|row| row.expect("turn row"))
-        .collect();
     assert_eq!(
-        turns,
+        turn_states(&database),
         [
             ("turn-one".to_owned(), "completed".to_owned()),
             ("turn-two".to_owned(), "completed".to_owned()),
@@ -158,10 +171,73 @@ fn two_prompts_in_one_epoch_persist_both_agent_messages_and_both_usage_snapshots
     );
 }
 
+#[test]
+fn a_compaction_that_clears_the_context_outlives_the_turn_failing_before_another_count() {
+    let database = two_turns(Ending::CompactedThenFailed);
+    assert_eq!(
+        usage_rows(&database),
+        [
+            ("turn-one".to_owned(), 23_753, 0, Some(1_000_000)),
+            ("turn-two".to_owned(), 0, 0, Some(1_000_000)),
+        ]
+    );
+    assert_eq!(turn_states(&database)[1].1, "failed");
+    let connection = database.connection();
+    let page = crate::acp::store::load_chat_page(
+        &connection,
+        SageProjectId::parse("project-one").expect("project"),
+        SageChatId::parse("chat-one").expect("chat"),
+        None,
+    )
+    .expect("chat page");
+    let totals: Vec<_> = page
+        .turns
+        .as_slice()
+        .iter()
+        .map(|turn| {
+            let total = turn.usage.as_ref().map(|usage| usage.total_tokens);
+            (turn.id.as_str(), total)
+        })
+        .collect();
+    assert_eq!(totals, [("turn-two", Some(0)), ("turn-one", Some(23_753))]);
+}
+
+enum Ending<'a> {
+    Answered(&'a str),
+    CompactedThenFailed,
+}
+
+impl Ending<'_> {
+    fn frames(&self, request: u64) -> Vec<String> {
+        let usage = |used: u64| {
+            format!(
+                r#"{{"jsonrpc":"2.0","method":"session/update","params":{{"sessionId":"{SESSION}","update":{{"sessionUpdate":"usage_update","used":{used},"size":1000000}}}}}}"#
+            )
+        };
+        match self {
+            Self::Answered(text) => vec![
+                usage(23_753),
+                format!(
+                    r#"{{"jsonrpc":"2.0","method":"session/update","params":{{"sessionId":"{SESSION}","update":{{"sessionUpdate":"agent_message_chunk","content":{{"type":"text","text":"{text}"}},"messageId":"msg-{request}"}}}}}}"#
+                ),
+                format!(
+                    r#"{{"jsonrpc":"2.0","id":{request},"result":{{"stopReason":"end_turn","usage":{{"inputTokens":2,"outputTokens":4,"cachedReadTokens":23747,"cachedWriteTokens":0,"totalTokens":23753}}}}}}"#
+                ),
+            ],
+            Self::CompactedThenFailed => vec![
+                usage(0),
+                format!(
+                    r#"{{"jsonrpc":"2.0","id":{request},"error":{{"code":-32603,"message":"Claude Code stopped"}}}}"#
+                ),
+            ],
+        }
+    }
+}
+
 async fn drive_turn<J: crate::acp::runtime::AdapterBatchJournal>(
     pump: &mut AdapterPump<ClaudeRuntime, J, Mapper>,
     turn_id: &str,
-    text: &str,
+    ending: Ending<'_>,
     now_millis: i64,
 ) -> u64 {
     pump.queue_prompt(
@@ -179,20 +255,7 @@ async fn drive_turn<J: crate::acp::runtime::AdapterBatchJournal>(
         .last_request_id
         .expect("outbound prompt carried a request id");
 
-    for (offset, chunk) in [
-        format!(
-            r#"{{"jsonrpc":"2.0","method":"session/update","params":{{"sessionId":"{SESSION}","update":{{"sessionUpdate":"usage_update","used":23753,"size":1000000}}}}}}"#
-        ),
-        format!(
-            r#"{{"jsonrpc":"2.0","method":"session/update","params":{{"sessionId":"{SESSION}","update":{{"sessionUpdate":"agent_message_chunk","content":{{"type":"text","text":"{text}"}},"messageId":"msg-{request}"}}}}}}"#
-        ),
-        format!(
-            r#"{{"jsonrpc":"2.0","id":{request},"result":{{"stopReason":"end_turn","usage":{{"inputTokens":2,"outputTokens":4,"cachedReadTokens":23747,"cachedWriteTokens":0,"totalTokens":23753}}}}}}"#
-        ),
-    ]
-    .into_iter()
-    .enumerate()
-    {
+    for (offset, chunk) in ending.frames(request).into_iter().enumerate() {
         let mut bytes = chunk.into_bytes();
         bytes.push(b'\n');
         let accepted = bounded(

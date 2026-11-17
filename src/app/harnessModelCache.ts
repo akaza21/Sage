@@ -2,7 +2,10 @@ import type { HarnessDefinition, ModelOption } from "../domain/workbench";
 
 export const HARNESS_MODEL_CACHE_LIMIT = 16;
 
-const entries = new Map<string, ModelOption[]>();
+let entries = new Map<string, ModelOption[]>();
+
+/** Changes whenever cached models are forgotten. */
+export const harnessModelGeneration = () => entries;
 
 export function harnessModelIdentity(
   harness: HarnessDefinition | undefined,
@@ -43,6 +46,7 @@ export function rememberHarnessModels(
   }
 }
 
+/** Forgets every listing, as when an account changes. */
 export function resetHarnessModelCache(): void {
-  entries.clear();
+  entries = new Map();
 }

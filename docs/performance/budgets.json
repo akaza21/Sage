@@ -146,7 +146,7 @@
       {
         "entry": "src/features/chat/ComposerAddActions.tsx",
         "maxGzipBytes": 3000,
-        "reason": "Composer Add menu, image/goal actions and session controls load on first open; closed composers need only the trigger."
+        "reason": "Composer Add menu, image/goal actions and session controls load on first open, or to list models for a chat on another harness; closed composers need only the trigger."
       },
       {
         "entry": "src/features/chat/ComposerModelMenu.tsx",

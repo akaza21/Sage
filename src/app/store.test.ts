@@ -3440,7 +3440,7 @@ describe("workbench resource and project navigation", () => {
     );
   });
 
-  it("keeps the Codex composer model state empty while sign-in is required", async () => {
+  it("lists the signed-out Codex catalog while sign-in is required", async () => {
     const onlyRoot = useWorkbenchStore.getState().project!.roots[0];
     useWorkbenchStore.setState({
       project: { ...useWorkbenchStore.getState().project!, roots: [onlyRoot] },
@@ -3473,8 +3473,9 @@ describe("workbench resource and project navigation", () => {
     expect(useWorkbenchStore.getState()).toEqual(
       expect.objectContaining({
         harnessDiscoveryPhase: "signInRequired",
-        models: [],
-        selectedModelId: null,
+        harnessAccount: "signedOut",
+        models: [{ id: "gpt-a", name: "GPT A", isDefault: true }],
+        selectedModelId: "gpt-a",
       }),
     );
   });

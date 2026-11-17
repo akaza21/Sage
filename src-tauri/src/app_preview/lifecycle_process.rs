@@ -61,13 +61,14 @@ pub(super) struct ManagedChild {
     pub(super) child: super::lifecycle_windows::PreviewProcess,
     drainers: Vec<JoinHandle<()>>,
     #[cfg(unix)]
-    process_group: i32,
+    process_group: sage_process::process_group::ProcessGroup,
 }
 
 impl ManagedChild {
     #[cfg(not(windows))]
     pub(super) fn reserve(child: Child) -> Result<Self, Child> {
-        let Ok(process_group) = i32::try_from(child.id()) else {
+        let Ok(process_group) = sage_process::process_group::ProcessGroup::led_by(child.id())
+        else {
             return Err(child);
         };
         Ok(Self {
@@ -110,7 +111,7 @@ impl ManagedChild {
             return false;
         }
         #[cfg(unix)]
-        terminate_process_group(self.process_group);
+        self.process_group.terminate();
         #[cfg(all(not(unix), not(windows)))]
         let _ = self.child.kill();
 
@@ -191,17 +192,6 @@ pub(super) fn kill_and_reap_unreserved(child: &mut Child) -> bool {
             _ => return false,
         }
     }
-}
-
-#[cfg(unix)]
-fn terminate_process_group(process_group: i32) {
-    const SIGKILL: i32 = 9;
-    unsafe extern "C" {
-        fn kill(pid: i32, signal: i32) -> i32;
-    }
-    // SAFETY: the negative pid targets only the process group created for this
-    // owned Preview root, whose child id was range-checked when reserved.
-    let _ = unsafe { kill(-process_group, SIGKILL) };
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

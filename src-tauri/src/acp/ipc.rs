@@ -1,12 +1,13 @@
 use serde::{Deserialize, Serialize};
 
 use super::attached_context::AttachedContexts;
-use crate::acp::transcript_quote::Prompt;
+use crate::acp::{bindings::codex::CodexModelSnapshot, transcript_quote::Prompt};
 use sage_acp_protocol::{
     contract::*,
     intent::{BindingId, EffortId, ModelId, PageCursor},
     lifecycle::TurnState,
 };
+use sage_domain::harness::ModelOption;
 
 mod intent_validation;
 
@@ -111,6 +112,37 @@ pub struct CodexDiscoveryModel {
     pub is_default: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub effort_levels: Vec<RequiredText<512>>,
+}
+
+impl From<&CodexModelSnapshot> for CodexDiscoveryModel {
+    fn from(model: &CodexModelSnapshot) -> Self {
+        Self {
+            id: model.id.clone(),
+            name: model.name.clone(),
+            is_default: model.is_default,
+            effort_levels: model.effort_levels.clone(),
+        }
+    }
+}
+
+/// A listed model as a session reads it before it starts.
+impl From<&CodexDiscoveryModel> for ModelOption {
+    fn from(model: &CodexDiscoveryModel) -> Self {
+        Self {
+            id: model.id.as_str().to_owned(),
+            name: model.name.as_str().to_owned(),
+            description: None,
+            is_default: Some(model.is_default),
+            context_window: None,
+            effort_levels: (!model.effort_levels.is_empty()).then(|| {
+                model
+                    .effort_levels
+                    .iter()
+                    .map(|level| level.as_str().to_owned())
+                    .collect()
+            }),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]

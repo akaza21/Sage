@@ -20,8 +20,10 @@ import {
 import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 
 import {
+  cachedHarnessModels,
   harnessModelIdentity,
   rememberHarnessModels,
+  resetHarnessModelCache,
 } from "../../app/harnessModelCache";
 import { useChatEffortDraft } from "../../app/chatEffortDraft";
 import { useChatAccessStore } from "../../app/sessionAccessActions";
@@ -34,6 +36,8 @@ import {
   resetWorkbenchPortsForTests,
 } from "../../ports/workbenchRuntime";
 import { PickerOption } from "../../ui/PickerOption";
+import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
+import { desktop } from "../../services/desktop";
 import { ChatHarnessControls } from "./ChatHarnessControls";
 
 beforeAll(() => preloadSearchablePicker());
@@ -142,7 +146,9 @@ beforeEach(async () => {
 afterEach(() => {
   cleanup();
   toolbarStyle.remove();
+  vi.useRealTimers();
   vi.unstubAllGlobals();
+  resetHarnessModelCache();
   useWorkbenchStore.setState(initialWorkbenchState, true);
 });
 
@@ -273,6 +279,170 @@ it("holds a thinking level chosen before the first session for the listed model"
   });
   expect(screen.getByRole("button", { name: "Thinking level" })).toBeDisabled();
   useChatEffortDraft.setState({ draft: null });
+});
+
+const listedCodex = {
+  id: "codex",
+  name: "Codex",
+  description: "",
+  installState: "available" as const,
+  source: "builtIn" as const,
+  accountModelDiscovery: true,
+  transport: "acp" as const,
+  bindingId: "codex-app-server",
+  version: "0.167.1",
+};
+const gptX = {
+  id: "gpt-x",
+  name: "GPT-X",
+  isDefault: true,
+  effortLevels: ["low", "xhigh"],
+};
+
+function renderListedCodexChat() {
+  useWorkbenchStore.setState({
+    harnesses: [...useWorkbenchStore.getState().harnesses, listedCodex],
+    selectedHarnessId: "access-test",
+    models: [{ id: "opus", name: "Opus 5" }],
+  });
+  return renderControls({
+    sessionHarnessId: null,
+    selectedHarnessId: "codex",
+    selectedModelId: "gpt-x",
+    accessTarget: { bindingId: "codex-app-server", draftChatId: "chat-draft" },
+  });
+}
+
+it("lists a restored chat's harness models and thinking levels when the workbench selected another harness", async () => {
+  vi.spyOn(desktop, "listHarnessModels").mockResolvedValue([gptX]);
+  renderListedCodexChat();
+  expect(
+    await screen.findByRole("button", { name: "Thinking level: Default" }),
+  ).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: /^Model/ }));
+  expect(
+    await screen.findByRole("option", { name: /GPT-X/ }),
+  ).toBeInTheDocument();
+  expect(cachedHarnessModels(harnessModelIdentity(listedCodex))).toEqual([
+    gptX,
+  ]);
+});
+
+it("keeps models listed before an account change out and lists the new account's", async () => {
+  let release: (models: (typeof gptX)[]) => void = () => undefined;
+  const gptY = { ...gptX, id: "gpt-y", name: "GPT-Y" };
+  vi.spyOn(desktop, "listHarnessModels")
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          release = resolve;
+        }),
+    )
+    .mockResolvedValue([gptY]);
+  const view = renderListedCodexChat();
+
+  resetHarnessModelCache();
+  await act(async () => release([gptX]));
+  expect(cachedHarnessModels(harnessModelIdentity(listedCodex))).toBeNull();
+  view.rerenderControls({
+    sessionHarnessId: null,
+    selectedHarnessId: "codex",
+    selectedModelId: "gpt-y",
+    accessTarget: { bindingId: "codex-app-server", draftChatId: "chat-draft" },
+  });
+
+  expect(
+    await screen.findByRole("button", { name: "Thinking level: Default" }),
+  ).toBeEnabled();
+  fireEvent.click(screen.getByRole("button", { name: /^Model/ }));
+  expect(
+    await screen.findByRole("option", { name: /GPT-Y/ }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: /GPT-X/ })).toBeNull();
+});
+
+it("lists a restored chat's models for the account signed in from the composer once the workbench switches harness", async () => {
+  // The signed-out build lists GPT-X; the signed-in account lists GPT-Y.
+  const gptY = { ...gptX, id: "gpt-y", name: "GPT-Y" };
+  let signedIn = false;
+  const codexCatalog = () => (signedIn ? [gptY] : [gptX]);
+  vi.spyOn(desktop, "listHarnessModels").mockImplementation((harnessId) =>
+    Promise.resolve(
+      harnessId === "codex" ? codexCatalog() : [{ id: "opus", name: "Opus 5" }],
+    ),
+  );
+  vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockImplementation(
+    async (scope) => {
+      signedIn = true;
+      return { ...scope, phase: "signedIn", revision: "2" } as never;
+    },
+  );
+  vi.spyOn(acpHarnessDesktop, "discoverCodex").mockImplementation(
+    async (scope) =>
+      ({
+        ...scope,
+        rootId: "root-a",
+        runtimeEpoch: "1",
+        account: signedIn ? "managedChatgpt" : "signedOut",
+        models: codexCatalog(),
+        defaultModelId: codexCatalog()[0].id,
+      }) as never,
+  );
+  useWorkbenchStore.setState({
+    projectGeneration: 0,
+    nativeTransitionEpoch: 0,
+    project: {
+      id: "project-a",
+      name: "A",
+      roots: [
+        {
+          id: "root-a",
+          name: "A",
+          ordinal: 0,
+          availability: "available",
+          message: null,
+        },
+      ],
+    },
+  });
+  const view = renderListedCodexChat();
+  await screen.findByRole("button", { name: "Thinking level: Default" });
+
+  await act(() => useWorkbenchStore.getState().selectHarness("codex"));
+  act(() => useWorkbenchStore.getState().requestHarnessSignIn());
+  await act(() => useWorkbenchStore.getState().confirmHarnessSignIn());
+  expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("ready");
+  await act(() => useWorkbenchStore.getState().selectHarness("access-test"));
+  view.rerenderControls({
+    sessionHarnessId: null,
+    selectedHarnessId: "codex",
+    selectedModelId: "gpt-y",
+    accessTarget: { bindingId: "codex-app-server", draftChatId: "chat-draft" },
+  });
+
+  fireEvent.click(screen.getByRole("button", { name: /^Model/ }));
+  expect(
+    await screen.findByRole("option", { name: /GPT-Y/ }),
+  ).toBeInTheDocument();
+  expect(screen.queryByRole("option", { name: /GPT-X/ })).toBeNull();
+});
+
+it("asks a harness that listed nothing once more after its backoff", async () => {
+  vi.useFakeTimers({ shouldAdvanceTime: true });
+  vi.spyOn(desktop, "listHarnessModels")
+    .mockResolvedValueOnce([])
+    .mockResolvedValue([gptX]);
+  renderListedCodexChat();
+  await act(async () => undefined);
+  expect(
+    screen.getByRole("button", { name: /^Thinking level/ }),
+  ).toBeDisabled();
+
+  await act(async () => vi.advanceTimersByTime(60_000));
+
+  expect(
+    await screen.findByRole("button", { name: "Thinking level: Default" }),
+  ).toBeEnabled();
 });
 
 it("shows a held thinking level the model no longer lists as held, not as Default", async () => {

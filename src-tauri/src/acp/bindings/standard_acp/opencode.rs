@@ -829,8 +829,8 @@ mod tests {
             event,
             AdapterEvent::Usage {
                 payload: NormalizedPayload::Usage {
-                    input_tokens: 5,
-                    output_tokens: 1,
+                    input_tokens: 6,
+                    output_tokens: 0,
                     context_window: Some(4096),
                 },
                 ..
