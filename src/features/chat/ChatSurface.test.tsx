@@ -2500,7 +2500,7 @@ describe("ChatSurface ACP resource integration", () => {
       "The harness requires sign-in before it can continue.";
     hooks.actions.errorKind = "signInRequired";
 
-    render(<ChatSurface />);
+    const { rerender } = render(<ChatSurface />);
 
     expect(screen.getByRole("alert")).toHaveTextContent(
       "The harness requires sign-in before it can continue.",
@@ -2515,12 +2515,6 @@ describe("ChatSurface ACP resource integration", () => {
       await screen.findByRole("button", { name: "Open Claude sign-in" }),
     );
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
-    fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
-    await waitFor(() => expect(status).toHaveBeenCalledOnce());
-    expect(hooks.actions.clearError).toHaveBeenCalledOnce();
-    expect(
-      screen.getByRole("combobox", { name: "Message agent" }),
-    ).toBeEnabled();
     let finishCheck: (value: { loggedIn: boolean }) => void = () => {};
     status.mockImplementationOnce(
       () =>
@@ -2536,7 +2530,12 @@ describe("ChatSurface ACP resource integration", () => {
       });
     });
     await act(async () => finishCheck({ loggedIn: true }));
-    expect(hooks.actions.clearError).toHaveBeenCalledOnce();
+    expect(hooks.actions.clearError).not.toHaveBeenCalled();
+    status.mockResolvedValueOnce({ loggedIn: false });
+    fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
+    expect(
+      await screen.findByText("Claude is still signed out."),
+    ).toBeInTheDocument();
     status.mockRejectedValueOnce(new Error("secret detail"));
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
     expect(
@@ -2545,6 +2544,23 @@ describe("ChatSurface ACP resource integration", () => {
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("secret detail")).not.toBeInTheDocument();
+
+    hooks.actions.clearError.mockImplementationOnce(() => {
+      hooks.actions.error = null;
+      hooks.actions.errorKind = null;
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
+    await waitFor(() =>
+      expect(hooks.actions.clearError).toHaveBeenCalledOnce(),
+    );
+    rerender(<ChatSurface />);
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "Check sign-in" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("combobox", { name: "Message agent" }),
+    ).toBeEnabled();
   });
 
   it("satisfies the exported ACP-04 Codex-ready selector with real chat controls", async () => {

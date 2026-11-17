@@ -18,6 +18,9 @@ impl ClaudeRuntime {
         let Some(pending) = self.pending.remove(&id) else {
             return self.ingest_late_prompt_response(value);
         };
+        // A refusal ends only its own request: Claude Code reads its
+        // credentials again for the next one, so a sign-in made outside Sage
+        // takes effect without any notice reaching Sage.
         if is_auth_required_error(&value)
             && matches!(pending, PendingRequest::Prompt | PendingRequest::NewSession)
         {
@@ -214,10 +217,7 @@ impl ClaudeRuntime {
         if method == crate::acp::runtime::host_browse::CURATED_BROWSE_TOOL_NAME {
             return self.ingest_browse_host(value);
         }
-        if value.get("id").is_none()
-            && let Some(observed) = decode_auth_status_update(&value)
-        {
-            self.auth = observed;
+        if value.get("id").is_none() && is_auth_status_update(&value) {
             return AdapterBatch::new(vec![SharedEvent::Absorbed], Vec::new());
         }
         if method != "session/update" {
