@@ -170,7 +170,7 @@ test("location strip project target fits its chip without bleeding into adjacent
     });
   });
   const chip = page.locator(
-    "form.composer .composer__location .project-scope.select-control",
+    ".chat-dock-frame .composer-location .project-scope.select-control",
   );
   await expect(chip).toBeVisible();
   const geometry = await chip.evaluate((element) => {

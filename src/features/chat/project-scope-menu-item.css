@@ -1,8 +1,4 @@
 .composer__options .project-scope {
-  --project-scope-trigger-border: 0;
-  --project-scope-trigger-fill: transparent;
-  --project-scope-trigger-blur: none;
-  --project-scope-trigger-shadow: none;
   display: flex;
   max-width: none;
   height: auto;
@@ -10,10 +6,6 @@
 
 .composer__options .project-scope .searchable-picker__trigger {
   width: 100%;
-}
-
-.composer__options .project-scope .searchable-picker__chevron {
-  display: none;
 }
 
 .composer__options .project-scope .composer__action-description {

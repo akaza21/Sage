@@ -989,7 +989,7 @@ test("a harness notice takes its own row above the transcript and composer", asy
   // This empty chat's location strip and lazy context rows mount once its
   // history settles; measure the composer they leave.
   await expect(
-    composer.getByRole("group", { name: "Chat location" }),
+    surface.getByRole("group", { name: "Chat location" }),
   ).toBeVisible();
   await expect(
     composer.getByRole("list", { name: "Attached context" }),

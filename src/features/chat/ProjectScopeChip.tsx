@@ -2,37 +2,34 @@ import { useMemo } from "react";
 
 import { useWorkbenchStore } from "../../app/store";
 import { hasActiveAcpTurn } from "../../app/acpProjectionRegistry";
+import { selectProjectSwitchBlocked } from "../../app/workbenchSelectors";
 import { Folder } from "../../ui/leanIcons";
 import { SearchablePicker } from "../../ui/SearchablePicker";
 import type { MenuPlacement } from "../../ui/menuPopoverPosition";
 import "./project-scope-menu-item.css";
+
+export type ProjectScopeVariant = "chip" | "bare" | "menuItem";
 
 export function ProjectScopeChip({
   projectName,
   disabled = false,
   open,
   onOpenChange,
-  menuItem = false,
+  variant = "chip",
   popoverPlacement,
 }: {
   projectName: string;
   disabled?: boolean;
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
-  menuItem?: boolean;
+  variant?: ProjectScopeVariant;
   popoverPlacement?: MenuPlacement;
 }) {
+  const menuItem = variant === "menuItem";
   const projects = useWorkbenchStore((state) => state.projects);
   const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
-  const switchBlocked = useWorkbenchStore(
-    (state) =>
-      state.projectTransitioning ||
-      state.sending ||
-      Object.values(state.chatUiById).some(
-        (chat) => chat.sending || chat.modeChanging,
-      ),
-  );
+  const switchBlocked = useWorkbenchStore(selectProjectSwitchBlocked);
   const candidates = useMemo(
     () =>
       projects.map((project) => ({
@@ -52,11 +49,16 @@ export function ProjectScopeChip({
           ? `Project: ${projectName} (No other projects available)`
           : undefined
       }
-      className={
-        candidates.length > 0
-          ? "select-control select-control--chip project-scope"
-          : "project-scope"
-      }
+      className={[
+        candidates.length > 0 ? "select-control" : null,
+        candidates.length > 0 && variant === "chip"
+          ? "select-control--chip"
+          : null,
+        "project-scope",
+        variant === "chip" ? null : "project-scope--bare",
+      ]
+        .filter(Boolean)
+        .join(" ")}
     >
       {candidates.length > 0 ? (
         <SearchablePicker

@@ -381,6 +381,10 @@
   --composer-send-text: #171717;
   --composer-send-hover: #e8e8e8;
   --composer-send-disabled-text: #606060;
+  --composer-location-fill: #282828;
+  --composer-location-inset: var(--space-3);
+  --composer-location-height: var(--control-height-emphasis);
+  --composer-location-icon-gap: 6px;
   --elevation-popover: 0 8px 24px rgb(0 0 0 / 0.32);
   --elevation-floating: 0 16px 48px rgb(0 0 0 / 0.24);
   --highlight-focus-edge: color-mix(

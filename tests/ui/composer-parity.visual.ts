@@ -132,7 +132,7 @@ for (const width of [1888, 720, 480]) {
       await expect(
         composer.locator(".composer__controls .project-scope"),
       ).toHaveCount(0);
-      const strip = composer.locator(".composer__slots").getByRole("group", {
+      const strip = page.locator(".chat-dock-frame").getByRole("group", {
         name: "Chat location",
       });
       await expect(strip).toContainText("This computer");

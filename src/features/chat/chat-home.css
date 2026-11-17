@@ -12,10 +12,6 @@
 }
 
 .chat-home {
-  --project-scope-trigger-border: 0;
-  --project-scope-trigger-fill: transparent;
-  --project-scope-trigger-blur: none;
-  --project-scope-trigger-shadow: none;
   width: 100%;
   min-width: 0;
   text-align: center;
@@ -42,12 +38,8 @@
   margin-top: 0;
   height: auto;
   padding: 0;
-  border: 0;
   border-radius: var(--radius-none);
   color: inherit;
-  background: none;
-  backdrop-filter: none;
-  box-shadow: none;
   font: inherit;
   vertical-align: bottom;
 }
@@ -66,8 +58,7 @@
   overflow-wrap: anywhere;
 }
 
-.chat-home .project-scope__icon,
-.chat-home .searchable-picker__chevron {
+.chat-home .project-scope__icon {
   display: none;
 }
 

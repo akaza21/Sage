@@ -360,15 +360,16 @@ async function installChrome(page: Page, home: boolean) {
   }, home);
 }
 
-test("a new chat's location strip sits above the input at the composer's width", async ({
+test("a new chat's location sits on a tab joined to the top of its composer", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1888, height: 1096 });
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await installChrome(page, true);
-  const composer = page.locator("form.composer").first();
-  const strip = composer.getByRole("group", { name: "Chat location" });
+  const frame = page.locator(".chat-dock-frame").first();
+  const composer = frame.locator("form.composer");
+  const strip = frame.getByRole("group", { name: "Chat location" });
   await expect(strip).toContainText("This computer");
   const project = strip.getByRole("button", {
     name: "Project: Sage project with a long name",
@@ -379,30 +380,39 @@ test("a new chat's location strip sits above the input at the composer's width",
   for (const width of [1888, 720, 480]) {
     await page.setViewportSize({ width, height: 1096 });
     await settledComposerFit(composer);
-    const geometry = await composer.evaluate((form) => {
-      const strip = form
-        .querySelector(".composer__location")!
-        .getBoundingClientRect();
-      const input = form
-        .querySelector(".composer__input-area")!
-        .getBoundingClientRect();
-      const frame = form.getBoundingClientRect();
-      const style = getComputedStyle(form);
+    const geometry = await frame.evaluate((element) => {
+      const tab = element.querySelector(".composer-location")!;
+      const strip = tab.getBoundingClientRect();
+      const dock = element.querySelector(".chat-dock")!.getBoundingClientRect();
+      const style = getComputedStyle(tab);
+      const icons = [...tab.querySelectorAll("svg")]
+        .filter((icon) => icon.checkVisibility())
+        .map((icon) => {
+          const box = icon.getBoundingClientRect();
+          return [box.width, box.height];
+        });
       return {
-        attached: Math.abs(input.top - strip.bottom) <= 1,
-        width: Math.abs(
-          strip.width -
-            (frame.width -
-              Number.parseFloat(style.borderLeftWidth) -
-              Number.parseFloat(style.borderRightWidth)),
-        ),
-        contained: strip.left >= frame.left && strip.right <= frame.right,
+        attached: Math.abs(dock.top - strip.bottom) <= 0.5,
+        insets: [strip.left - dock.left, dock.right - strip.right],
+        height: strip.height,
+        corners: [
+          style.borderTopLeftRadius,
+          style.borderTopRightRadius,
+          style.borderBottomLeftRadius,
+          style.borderBottomRightRadius,
+        ],
+        icons,
       };
     });
     expect(geometry, `at ${width}px`).toEqual({
       attached: true,
-      width: 0,
-      contained: true,
+      insets: [12, 12],
+      height: 36,
+      corners: ["12px", "12px", "0px", "0px"],
+      icons: [
+        [14, 14],
+        [14, 14],
+      ],
     });
     await expectResponsiveToolbar(composer);
   }
@@ -415,7 +425,7 @@ test("the location strip is gone once the chat has a turn", async ({
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   const composer = page.locator("form.composer").first();
-  await expect(composer.locator(".composer__location")).toHaveCount(0);
+  await expect(page.locator(".composer-location")).toHaveCount(0);
   const turns = await page.evaluate(async () => {
     const { acpProjectionStoreFor } =
       await import("/src/app/acpProjectionRegistry.ts");
@@ -429,7 +439,7 @@ test("the location strip is gone once the chat has a turn", async ({
     return current.turns;
   });
   await expect(
-    composer.getByRole("group", { name: "Chat location" }),
+    page.getByRole("group", { name: "Chat location" }),
   ).toBeVisible();
   await page.evaluate(async (turns) => {
     const { acpProjectionStoreFor } =
@@ -443,7 +453,7 @@ test("the location strip is gone once the chat has a turn", async ({
       turns,
     });
   }, turns);
-  await expect(composer.locator(".composer__location")).toHaveCount(0);
+  await expect(page.locator(".composer-location")).toHaveCount(0);
   const add = composer.getByRole("button", {
     name: "Composer options",
     exact: true,
@@ -463,7 +473,7 @@ test("a side chat composer shows no location strip", async ({ page }) => {
   await openSplitComposerScenario(page);
   const composers = page.locator("form.composer");
   await expect(composers).toHaveCount(2);
-  await expect(page.locator(".composer__location")).toHaveCount(0);
+  await expect(page.locator(".composer-location")).toHaveCount(0);
   for (const composer of await composers.all())
     await expectResponsiveToolbar(composer);
 });

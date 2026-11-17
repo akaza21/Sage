@@ -1,4 +1,4 @@
-.chat-dock {
+.chat-dock-frame {
   display: flex;
   min-height: 0;
   max-height: 100%;
@@ -14,6 +14,13 @@
     var(--chat-column-gutter),
     calc((100% - var(--chat-column-trailing) - var(--chat-column-measure)) / 2)
   );
+}
+
+.chat-dock {
+  display: flex;
+  min-height: 0;
+  flex: 0 1 auto;
+  flex-direction: column;
 }
 
 .chat-dock > * {
@@ -286,22 +293,10 @@
   --select-control-trigger-min-width: var(--control-height-compact);
   --select-control-trigger-padding: 0 var(--space-1);
   --radius-select-control-trigger: var(--radius-pill);
-  --select-control-trigger-border: var(
-    --project-scope-trigger-border,
-    var(--border-width) solid var(--glass-border)
-  );
-  --select-control-trigger-fill: var(
-    --project-scope-trigger-fill,
-    var(--glass-fill)
-  );
-  --select-control-trigger-blur: var(
-    --project-scope-trigger-blur,
-    var(--glass-blur)
-  );
-  --select-control-trigger-shadow: var(
-    --project-scope-trigger-shadow,
-    var(--glass-highlight)
-  );
+  --select-control-trigger-border: var(--border-width) solid var(--glass-border);
+  --select-control-trigger-fill: var(--glass-fill);
+  --select-control-trigger-blur: var(--glass-blur);
+  --select-control-trigger-shadow: var(--glass-highlight);
   padding: 0;
   overflow: visible;
   border: 0;
@@ -312,6 +307,22 @@
 
 .project-scope .searchable-picker {
   width: 100%;
+}
+
+/* A project label set in surrounding text or a menu, without the chip. */
+.project-scope.project-scope--bare {
+  --select-control-trigger-border: 0;
+  --select-control-trigger-fill: transparent;
+  --select-control-trigger-blur: none;
+  --select-control-trigger-shadow: none;
+  border: 0;
+  background: transparent;
+  backdrop-filter: none;
+  box-shadow: none;
+}
+
+.project-scope--bare .searchable-picker__chevron {
+  display: none;
 }
 
 .project-scope.select-control .searchable-picker__trigger {

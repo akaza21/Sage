@@ -31,7 +31,7 @@
   grid-area: transcript;
 }
 
-.chat-surface--agent > .chat-dock {
+.chat-surface--agent > .chat-dock-frame {
   grid-area: composer;
 }
 
