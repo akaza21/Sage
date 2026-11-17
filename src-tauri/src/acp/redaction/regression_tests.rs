@@ -836,3 +836,80 @@ fn a_key_or_flag_written_straight_after_an_ideograph_starts_a_token() {
         assert_eq!(super::reply_text(input), expected, "{input}");
     }
 }
+
+#[test]
+fn a_sensitive_key_holding_punctuation_outside_ascii_stays_whole() {
+    for input in [
+        r#"{"password—backup":"hunter2Zq"}"#,
+        "password—backup=hunter2Zq",
+        "password—backup = hunter2Zq",
+        "--password—backup hunter2Zq",
+        "回答，password’s=hunter2Zq",
+    ] {
+        for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+            let shown = redact("test", input, 4096, mode).unwrap();
+            assert!(!shown.contains("hunter2Zq"), "{mode:?}: {input} => {shown}");
+        }
+        assert!(!super::reply_text(input).contains("hunter2Zq"), "{input}");
+    }
+}
+
+/// Everything redacting with tokens split at whitespace alone hides stays
+/// hidden now that punctuation and scripts may start a token too.
+#[test]
+fn starting_tokens_at_punctuation_or_a_script_hides_all_that_spaces_alone_hide() {
+    const KEYS: [&str; 8] = [
+        "password",
+        "api_key",
+        "token",
+        "secret",
+        "passwd",
+        "auth_token",
+        "clientSecret",
+        "Authorization",
+    ];
+    const MARKS: [&str; 10] = ["", "—", "，", "’", "：", "「", "」", "·", "、", "-"];
+    const LEADS: [&str; 5] = ["", "回答", "回答，", "x ", "パス"];
+    let mut state = 0x9e37_79b9_7f4a_7c15_u64;
+    let mut below = |bound: usize| {
+        state ^= state << 13;
+        state ^= state >> 7;
+        state ^= state << 17;
+        (state % bound as u64) as usize
+    };
+    for case in 0..3000 {
+        let mark = MARKS[below(MARKS.len())];
+        let base = KEYS[below(KEYS.len())];
+        let key = match below(4) {
+            0 => base.to_owned(),
+            1 => format!("{base}{mark}backup"),
+            2 => format!("old{mark}{base}"),
+            _ => format!("{mark}{base}{mark}"),
+        };
+        let secret = format!("s3cr3t{case}Zq");
+        let form = match below(7) {
+            0 => format!("{key}={secret}"),
+            1 => format!("{key}: {secret}"),
+            2 => format!("\"{key}\":\"{secret}\""),
+            3 => format!("{{\"{key}\":\"{secret}\"}}"),
+            4 => format!("--{key} {secret}"),
+            5 => format!("{key} = {secret}"),
+            _ => format!("{key}{mark}{secret}"),
+        };
+        let input = format!("{}{form} done", LEADS[below(LEADS.len())]);
+        for mode in [Mode::Prose, Mode::CommandOutput, Mode::Diagnostic] {
+            let before = super::with_spaces_only(|| redact("test", &input, 4096, mode).unwrap());
+            let now = redact("test", &input, 4096, mode).unwrap();
+            assert!(
+                before.contains(&secret) || !now.contains(&secret),
+                "{mode:?}: {input} => {now} (spaces alone: {before})"
+            );
+        }
+        let before = super::with_spaces_only(|| super::reply_text(&input));
+        let now = super::reply_text(&input);
+        assert!(
+            before.contains(&secret) || !now.contains(&secret),
+            "{input} => {now} (spaces alone: {before})"
+        );
+    }
+}

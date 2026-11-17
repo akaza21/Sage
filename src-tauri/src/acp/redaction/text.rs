@@ -142,6 +142,10 @@ fn redact_with(
 /// prose puts no space after. ASCII punctuation stays inside a token, since it
 /// spells keys, flags, paths and secrets.
 pub(crate) fn breaks_a_token(character: char) -> bool {
+    #[cfg(test)]
+    if spaces_only() {
+        return character.is_whitespace();
+    }
     static PUNCTUATION: LazyLock<Regex> =
         LazyLock::new(|| Regex::new(r"^\p{P}$").expect("valid punctuation class"));
     character.is_whitespace()
@@ -155,23 +159,42 @@ pub(crate) fn breaks_a_token(character: char) -> bool {
 /// punctuation or script.
 pub(crate) const TOKEN_JOINERS: [char; 5] = [':', '=', '@', '/', '\\'];
 
+/// Most bytes read ahead for the key a token may start, as `password—backup`
+/// in `{"password—backup": …}`.
+const KEY_SCAN_BYTES: usize = 256;
+
 /// The token at the start of `text`, and the character that ended it, if any.
 ///
 /// Whitespace ends a token. Until the token holds a [`TOKEN_JOINERS`]
 /// character, so does a character that [`breaks_a_token`] or a
-/// [`script_change`], so a key or flag may start there. A `value` the redactor waits
-/// for, such as the one after `--password` or `Bearer`, ends only at
-/// whitespace: its characters never split it.
+/// [`script_change`], so a key or flag may start there, unless that would cut
+/// the key of an assignment or a sensitive key (see [`Key::cut_at`]). A `value` the redactor waits for, such as the
+/// one after `--password` or `Bearer`, ends only at whitespace: its characters
+/// never split it.
 pub(crate) fn next_token(text: &str, value: bool) -> (&str, &str) {
     let mut joined = value;
     let mut previous = None;
+    let mut key = None;
     for (index, character) in text.char_indices() {
         let next = index + character.len_utf8();
-        if character.is_whitespace() || (!joined && breaks_a_token(character)) {
+        if character.is_whitespace() {
             return (&text[..index], &text[index..next]);
         }
-        if !joined && previous.is_some_and(|before| script_change(before, character)) {
-            return (&text[..index], "");
+        let split = if joined {
+            None
+        } else if breaks_a_token(character) {
+            Some(next)
+        } else if previous.is_some_and(|before| script_change(before, character)) {
+            Some(index)
+        } else {
+            None
+        };
+        if let Some(after) = split
+            && !key
+                .get_or_insert_with(|| Key::ahead(text))
+                .cut_at(text, after)
+        {
+            return (&text[..index], &text[index..after]);
         }
         joined |= TOKEN_JOINERS.contains(&character);
         previous = Some(character);
@@ -179,10 +202,51 @@ pub(crate) fn next_token(text: &str, value: bool) -> (&str, &str) {
     (text, "")
 }
 
+/// The key a token may start: the text up to its first [`TOKEN_JOINERS`]
+/// character or whitespace, read at most [`KEY_SCAN_BYTES`] ahead.
+#[derive(Clone, Copy)]
+struct Key {
+    end: usize,
+    assigned: bool,
+}
+
+impl Key {
+    fn ahead(text: &str) -> Self {
+        let window = &text[..text.floor_char_boundary(KEY_SCAN_BYTES)];
+        let end = window
+            .find(|character: char| character.is_whitespace() || TOKEN_JOINERS.contains(&character))
+            .unwrap_or(window.len());
+        Self {
+            end,
+            assigned: window[end..].starts_with(['=', ':']) && !window[end..].starts_with("://"),
+        }
+    }
+
+    /// Whether splitting at `at` cuts a key: the key of an assignment, or a
+    /// sensitive key, splits only into a part that reads as a sensitive key
+    /// itself, outside the quotes the key is written in and, for a flag such
+    /// as `--old—token`, as a sensitive flag too.
+    fn cut_at(self, text: &str, at: usize) -> bool {
+        if at > self.end {
+            return false;
+        }
+        let (key, part) = (&text[..self.end], &text[at..self.end]);
+        (self.assigned || credentials::sensitive_key(key))
+            && ((key.ends_with(['"', '\'']) && key[..at].contains(['"', '\'']))
+                || !credentials::sensitive_key(part)
+                || (credentials::is_sensitive_prose_flag(key)
+                    && !credentials::is_sensitive_prose_flag(part)))
+    }
+}
+
 /// Whether a word boundary falls between `before` and `after` where ASCII
 /// meets a letter or digit that UAX #29 never joins into a word with a Latin
 /// letter, such as an ideograph or kana.
 fn script_change(before: char, after: char) -> bool {
+    #[cfg(test)]
+    if spaces_only() {
+        return false;
+    }
     let apart_from_latin = |character: char| {
         character.is_alphanumeric() && format!("{character}a").split_word_bounds().nth(1).is_some()
     };
@@ -191,6 +255,26 @@ fn script_change(before: char, after: char) -> bool {
         (true, false) => apart_from_latin(after),
         _ => false,
     }
+}
+
+#[cfg(test)]
+thread_local! {
+    static SPACES_ONLY: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+#[cfg(test)]
+fn spaces_only() -> bool {
+    SPACES_ONLY.get()
+}
+
+/// Runs `redact` with tokens split at whitespace alone, as they were before
+/// punctuation and scripts could start one, to compare against.
+#[cfg(test)]
+pub(crate) fn with_spaces_only<T>(redact: impl FnOnce() -> T) -> T {
+    SPACES_ONLY.set(true);
+    let result = redact();
+    SPACES_ONLY.set(false);
+    result
 }
 
 /// Clips display text to `max` bytes at a character boundary, ending a clipped
