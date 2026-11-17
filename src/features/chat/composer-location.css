@@ -58,3 +58,16 @@
 .composer-location .project-scope__icon {
   color: inherit;
 }
+
+@media (forced-colors: active) {
+  .composer-location {
+    border: var(--border-width) solid CanvasText;
+    border-bottom: 0;
+  }
+
+  .composer-location:focus-within {
+    border-color: Highlight;
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+}

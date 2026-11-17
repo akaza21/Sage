@@ -416,6 +416,11 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
     });
     await expectResponsiveToolbar(composer);
   }
+  await page.emulateMedia({ forcedColors: "active" });
+  await project.focus();
+  const tab = frame.locator(".composer-location");
+  await expect(tab).toHaveCSS("outline-style", "solid");
+  await expect(tab).toHaveCSS("outline-width", "2px");
 });
 
 test("the location strip is gone once the chat has a turn", async ({
