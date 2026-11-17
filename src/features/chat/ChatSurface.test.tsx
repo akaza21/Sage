@@ -2517,9 +2517,7 @@ describe("ChatSurface ACP resource integration", () => {
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
     await waitFor(() => expect(status).toHaveBeenCalledOnce());
-    expect(
-      screen.getByText("Claude reports signed in. Send your prompt again."),
-    ).toBeInTheDocument();
+    expect(hooks.actions.clearError).toHaveBeenCalledOnce();
     expect(
       screen.getByRole("combobox", { name: "Message agent" }),
     ).toBeEnabled();
@@ -2538,9 +2536,7 @@ describe("ChatSurface ACP resource integration", () => {
       });
     });
     await act(async () => finishCheck({ loggedIn: true }));
-    expect(
-      screen.queryByText("Claude reports signed in. Send your prompt again."),
-    ).not.toBeInTheDocument();
+    expect(hooks.actions.clearError).toHaveBeenCalledOnce();
     status.mockRejectedValueOnce(new Error("secret detail"));
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
     expect(

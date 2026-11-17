@@ -18,26 +18,25 @@ impl ClaudeRuntime {
         let Some(pending) = self.pending.remove(&id) else {
             return self.ingest_late_prompt_response(value);
         };
-        if let Some(observed) = decode_auth_required_error(&value) {
-            self.auth = observed;
-            if matches!(pending, PendingRequest::Prompt | PendingRequest::NewSession) {
-                self.refusal_detail = profile_for(CLAUDE_PROFILE_ID)
-                    .and_then(|profile| auth_refusal_detail(profile, &value));
-                if matches!(pending, PendingRequest::Prompt) {
-                    if let Some(active) = self.active.as_mut() {
-                        active.turn = None;
-                        active
-                            .translator
-                            .reject_prompt(&id.to_string())
-                            .map_err(map_translation)?;
-                    }
-                    self.deferred.clear();
-                    if self.delivery_unknown == Some(DeliveryUnknown::Request(id)) {
-                        self.delivery_unknown = None;
-                    }
+        if is_auth_required_error(&value)
+            && matches!(pending, PendingRequest::Prompt | PendingRequest::NewSession)
+        {
+            self.refusal_detail = profile_for(CLAUDE_PROFILE_ID)
+                .and_then(|profile| auth_refusal_detail(profile, &value));
+            if matches!(pending, PendingRequest::Prompt) {
+                if let Some(active) = self.active.as_mut() {
+                    active.turn = None;
+                    active
+                        .translator
+                        .reject_prompt(&id.to_string())
+                        .map_err(map_translation)?;
                 }
-                return Err(AdapterRuntimeError::SignInRequired);
+                self.deferred.clear();
+                if self.delivery_unknown == Some(DeliveryUnknown::Request(id)) {
+                    self.delivery_unknown = None;
+                }
             }
+            return Err(AdapterRuntimeError::SignInRequired);
         }
         let result = match pending {
             PendingRequest::Initialize => self.initialize_response(value),

@@ -23,7 +23,7 @@ pub(crate) use access_modes::{
 pub(crate) use admission::{
     AdmittedClaudeBinding, ClaudeAdmissionUnavailable, ClaudeBindingRegistration,
 };
-pub(crate) use auth::{ClaudeAuthState, decode_auth_required_error, decode_auth_status_update};
+pub(crate) use auth::{ClaudeAuthState, decode_auth_status_update, is_auth_required_error};
 pub(crate) use capabilities::{ClaudeCapabilityOffer, negotiate_capabilities};
 pub(crate) use manifest::{
     AdmittedCandidate, CLAUDE_BINDING_ID, CandidateManifest, ENTRYPOINT, LAUNCH_ENVIRONMENT_KEYS,

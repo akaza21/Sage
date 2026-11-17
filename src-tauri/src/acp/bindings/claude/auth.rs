@@ -57,22 +57,25 @@ pub(crate) fn decode_auth_status_update(value: &Value) -> Option<ClaudeAuthState
     Some(ClaudeAuthState::Unknown)
 }
 
-pub(crate) fn decode_auth_required_error(value: &Value) -> Option<ClaudeAuthState> {
-    let error = value.get("error")?;
-    if error.get("code").and_then(Value::as_i64)? != AUTH_REQUIRED_CODE {
-        return None;
+/// A refusal answers only the request it ends. Claude Code reads its
+/// credentials again for every request, so a sign-in made outside Sage is
+/// seen by the next prompt without any status update reaching Sage.
+pub(crate) fn is_auth_required_error(value: &Value) -> bool {
+    let Some(error) = value.get("error") else {
+        return false;
+    };
+    if error.get("code").and_then(Value::as_i64) != Some(AUTH_REQUIRED_CODE) {
+        return false;
     }
-    let message = bounded(
+    bounded(
         error.get("message").and_then(Value::as_str),
         MAX_ERROR_MESSAGE_CHARS,
-    )?;
-    if !AUTH_REQUIRED_MESSAGES
-        .iter()
-        .any(|known_message| known_message.eq_ignore_ascii_case(message))
-    {
-        return None;
-    }
-    Some(ClaudeAuthState::SignedOut)
+    )
+    .is_some_and(|message| {
+        AUTH_REQUIRED_MESSAGES
+            .iter()
+            .any(|known_message| known_message.eq_ignore_ascii_case(message))
+    })
 }
 
 #[cfg(test)]
@@ -147,15 +150,13 @@ mod tests {
     }
 
     #[test]
-    fn the_observed_prompt_refusal_is_read_as_signed_out_rather_than_a_bare_failure() {
+    fn the_observed_prompt_refusal_is_read_as_a_sign_in_refusal_rather_than_a_bare_failure() {
         let observed = json!({
             "jsonrpc": "2.0",
             "id": 3,
             "error": {"code": -32000, "message": "Authentication required"}
         });
-        let state = decode_auth_required_error(&observed).expect("decodes");
-        assert_eq!(state, ClaudeAuthState::SignedOut);
-        assert!(!state.permits_prompt());
+        assert!(is_auth_required_error(&observed));
     }
 
     #[test]
@@ -169,7 +170,7 @@ mod tests {
             json!({"id": 1, "error": {"code": -32000, "message": "x".repeat(MAX_ERROR_MESSAGE_CHARS + 1)}}),
         ] {
             assert!(
-                decode_auth_required_error(&frame).is_none(),
+                !is_auth_required_error(&frame),
                 "unrelated frame decoded as sign-in: {frame}"
             );
         }
@@ -178,24 +179,21 @@ mod tests {
     #[test]
     fn the_refusal_message_is_matched_without_regard_to_casing() {
         for message in ["AUTHENTICATION REQUIRED", "Not Logged In"] {
-            let state = decode_auth_required_error(&json!({
+            assert!(is_auth_required_error(&json!({
                 "id": 9,
                 "error": {"code": -32000, "message": message}
-            }))
-            .expect("decodes");
-            assert!(!state.permits_prompt());
+            })));
         }
     }
 
     #[test]
     fn an_mcp_server_authentication_message_is_not_a_harness_auth_refusal() {
-        let state = decode_auth_required_error(&json!({
+        assert!(!is_auth_required_error(&json!({
             "id": 9,
             "error": {
                 "code": -32000,
                 "message": "Authentication required for MCP server GitHub"
             }
-        }));
-        assert!(state.is_none());
+        })));
     }
 }

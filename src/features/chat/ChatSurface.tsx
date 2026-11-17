@@ -314,9 +314,11 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         workbenchError={error}
         chatError={foregroundError}
         signInHarness={signInHarness}
-        claudeSignInRequired={
+        onClaudeSignedIn={
           selectedHarnessId === "claude-code" &&
           acpActions.errorKind === "signInRequired"
+            ? acpActions.clearError
+            : undefined
         }
         claudeAuthScope={`${project?.id ?? ""}:${epoch}:${chatId ?? activeTabId ?? ""}`}
         accessTarget={accessTarget}

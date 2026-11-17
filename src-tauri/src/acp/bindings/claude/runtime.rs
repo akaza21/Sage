@@ -29,8 +29,8 @@ use sage_core::limits::LIMITS;
 
 use super::{
     AdapterEvent, CLAUDE_PROFILE_ID, ClaudeAuthState, ClaudeCapabilityOffer, ClaudeTranslator,
-    PromptTerminal, admission::AdmittedClaudeBinding, decode_auth_required_error,
-    decode_auth_status_update, negotiate_capabilities, wire::decode_frame,
+    PromptTerminal, admission::AdmittedClaudeBinding, decode_auth_status_update,
+    is_auth_required_error, negotiate_capabilities, wire::decode_frame,
 };
 
 mod browse_host;

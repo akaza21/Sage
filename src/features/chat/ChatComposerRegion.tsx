@@ -60,7 +60,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     workbenchError,
     chatError,
     signInHarness,
-    claudeSignInRequired,
+    onClaudeSignedIn,
     claudeAuthScope,
     availableBinding,
     canPrompt,
@@ -201,7 +201,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             workbenchError={workbenchError}
             chatError={chatError}
             signInHarness={signInHarness}
-            claudeSignInRequired={claudeSignInRequired}
+            onClaudeSignedIn={onClaudeSignedIn}
             claudeAuthScope={claudeAuthScope}
             imageStatus={imageInput.status}
             missingBindingNotice={missingBindingNotice}
