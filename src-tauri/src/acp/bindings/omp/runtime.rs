@@ -3,7 +3,7 @@ use std::collections::BTreeMap;
 use crate::acp::{
     bindings::adapter::{
         AdapterBatch, AdapterCommand, AdapterEgress, AdapterEvent, AdapterRuntimeError,
-        EgressResolution, EgressToken, HarnessAdapter, ResourceMapper,
+        EgressResolution, EgressToken, HarnessAdapter, HeldOutput, ResourceMapper,
     },
     transport::{Frame, request_payload_digest},
 };
@@ -78,6 +78,8 @@ pub(crate) struct OmpRuntime {
     pub(super) active_turn: Option<TurnIntent>,
     pub(super) denials: BTreeMap<String, DenyIntent>,
     pub(super) deferred: Vec<super::AdapterEvent>,
+    /// What a batch could not fit, drained by the pump.
+    pub(super) held: HeldOutput,
     snapshots: ItemSnapshots,
     reservations: BTreeMap<u64, RequestReservation>,
     next_egress: u64,
@@ -116,6 +118,7 @@ impl OmpRuntime {
             active_turn: None,
             denials: BTreeMap::new(),
             deferred: Vec::new(),
+            held: HeldOutput::default(),
             snapshots: ItemSnapshots::new(),
             reservations: BTreeMap::new(),
             next_egress: 0,
@@ -342,6 +345,10 @@ impl HarnessAdapter for OmpRuntime {
 
     fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
         self.whole_unfinished_replies()
+    }
+
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.held.next_batch()
     }
 
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {

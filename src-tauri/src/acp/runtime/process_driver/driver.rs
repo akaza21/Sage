@@ -309,6 +309,18 @@ where
         Ok(())
     }
 
+    /// Commits the active turn's replies still streaming, shown whole, before
+    /// Sage stops the harness mid-turn.
+    pub(crate) async fn commit_unfinished_replies(&mut self) -> Result<(), DriverError> {
+        let now_millis = self.clock.now_millis();
+        if let Err(error) = self.pump.commit_unfinished_replies(now_millis).await {
+            return Err(self.pump_error(error));
+        }
+        let mut progress = DriverProgress::default();
+        self.flush_all_ingress(DispatchSource::Ingress, now_millis, &mut progress)
+            .await
+    }
+
     pub(crate) fn request_host_termination(&mut self) -> Result<(), DriverError> {
         match self.state {
             DriverState::Running => {

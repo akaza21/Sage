@@ -45,19 +45,43 @@ impl<A: HarnessAdapter, J: AdapterBatchJournal, R: ResourceMapper> AdapterPump<A
         let accepted = self
             .accept_optional(frame, now_millis, IngestMode::Deferred)
             .await?;
-        if !ended || accepted || self.terminal.is_some() || self.ensure_live().is_err() {
+        if !ended || accepted {
             return Ok(accepted);
+        }
+        self.accept_unfinished_replies(now_millis).await
+    }
+
+    /// Commits each reply of the active turn still streaming, shown whole,
+    /// before Sage stops the harness mid-turn: the last word streaming held
+    /// back would otherwise never be shown.
+    pub(crate) async fn commit_unfinished_replies(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<(), AdapterPumpError> {
+        if self.accept_unfinished_replies(now_millis).await? {
+            self.flush_deferred().await?;
+        }
+        Ok(())
+    }
+
+    async fn accept_unfinished_replies(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<bool, AdapterPumpError> {
+        if self.terminal.is_some() || self.ensure_live().is_err() {
+            return Ok(false);
         }
         let Ok(events) = self.adapter.unfinished_replies() else {
             return Ok(false);
         };
-        if events.is_empty() {
-            return Ok(false);
+        let mut replies = HeldOutput::of(events);
+        let mut accepted = false;
+        while let Some(batch) = replies.next_batch()? {
+            self.accept_batch(batch, now_millis, IngestMode::Deferred)
+                .await?;
+            accepted = true;
         }
-        let batch = AdapterBatch::new(events, Vec::new())?;
-        self.accept_batch(batch, now_millis, IngestMode::Deferred)
-            .await?;
-        Ok(true)
+        Ok(accepted)
     }
 
     pub(super) async fn fail_deferred_frame<T>(&mut self) -> Result<T, AdapterPumpError> {

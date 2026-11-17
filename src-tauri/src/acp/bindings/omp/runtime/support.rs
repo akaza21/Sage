@@ -101,13 +101,13 @@ impl OmpRuntime {
                 }
             };
             for event in normalized {
-                if let Err(error) = builder.push_event(event) {
+                if let Err(error) = self.held.push_event(&mut builder, event) {
                     self.poison();
                     return Err(error);
                 }
             }
             if let Some(egress) = egress
-                && let Err(error) = builder.push_egress(egress)
+                && let Err(error) = self.held.push_egress(&mut builder, egress)
             {
                 self.poison();
                 return Err(if self.denials.is_empty() {

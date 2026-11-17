@@ -246,6 +246,11 @@ pub(crate) trait HarnessAdapter {
     fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
         Ok(Vec::new())
     }
+    /// Output the last batch held back because it filled up, as much as fits
+    /// in one batch; the pump takes it until `None` before the next frame.
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        Ok(None)
+    }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError>;
     fn resolve_egress(
         &mut self,

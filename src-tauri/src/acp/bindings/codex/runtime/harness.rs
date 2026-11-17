@@ -329,6 +329,9 @@ impl HarnessAdapter for CodexRuntime {
     fn unfinished_replies(&mut self) -> Result<Vec<AdapterEvent>, AdapterRuntimeError> {
         self.snapshots.finish()
     }
+    fn held_batch(&mut self) -> Result<Option<AdapterBatch>, AdapterRuntimeError> {
+        self.held.next_batch()
+    }
     fn commit_mandatory_egress(&mut self, token: &EgressToken) -> Result<(), AdapterRuntimeError> {
         if let Some(request_id) = token.cancelled_permission_request() {
             return self

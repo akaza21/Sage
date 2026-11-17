@@ -404,6 +404,8 @@ pub(crate) struct AdapterBatchBuilder {
 }
 
 mod batch_builder;
+mod held;
+pub(crate) use held::HeldOutput;
 
 mod refusal_detail;
 pub(crate) use refusal_detail::RefusalDetail;

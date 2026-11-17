@@ -5,7 +5,7 @@ use super::{
 };
 use crate::acp::{
     bindings::{
-        adapter::AdapterRuntimeError,
+        adapter::{AdapterRuntimeError, HeldOutput},
         codex::{
             admission::AdmittedCodexBinding, managed::ManagedStagingPrerequisite,
             manifest::MetadataValidatedPacket, policy::SecurityPolicyPrerequisite,
@@ -87,6 +87,7 @@ impl CodexRuntime {
             ),
             next_request_id: 0,
             snapshots: ItemSnapshots::new(),
+            held: HeldOutput::default(),
             poisoned: false,
             pending_browser_failure_details: Vec::new(),
             browser_failure_warning_logged: false,
@@ -143,6 +144,7 @@ impl CodexRuntime {
             ),
             next_request_id: 0,
             snapshots: ItemSnapshots::new(),
+            held: HeldOutput::default(),
             poisoned: false,
             pending_browser_failure_details: Vec::new(),
             browser_failure_warning_logged: false,

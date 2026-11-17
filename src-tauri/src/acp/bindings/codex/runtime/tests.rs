@@ -3020,6 +3020,87 @@ fn a_turn_that_ends_before_its_reply_completes_shows_the_reply_whole() {
     }
 }
 
+/// Streams `count` replies that never complete, each `"done now"` with its
+/// last word still held back.
+fn open_replies(count: usize) -> CodexRuntime {
+    let mut runtime = fixture_runtime();
+    ready(&mut runtime);
+    running_turn(&mut runtime);
+    for index in 0..count {
+        runtime
+            .ingest(
+                &frame(json!({"method":"item/agentMessage/delta","params":{
+                    "threadId":"thread-1","turnId":"turn-1","itemId":format!("reply-{index}"),
+                    "delta":"done now"
+                }})),
+                &Mapper,
+            )
+            .expect("delta");
+    }
+    runtime
+}
+
+/// Each batch of `first` and what it held back, as the pump drains them.
+fn drained(first: AdapterBatch, held: impl FnMut() -> Option<AdapterBatch>) -> Vec<AdapterBatch> {
+    std::iter::once(first)
+        .chain(std::iter::from_fn(held))
+        .collect()
+}
+
+fn whole_replies(batches: &[AdapterBatch]) -> usize {
+    let limit = sage_core::limits::LIMITS
+        .queues
+        .journal_facts_per_transaction as usize;
+    batches
+        .iter()
+        .inspect(|batch| assert!(batch.events().len() <= limit))
+        .flat_map(AdapterBatch::events)
+        .filter(|event| {
+            matches!(event, AdapterEvent::Item { payload: NormalizedPayload::Text { text }, .. }
+                if text.as_str() == "done now")
+        })
+        .count()
+}
+
+#[test]
+fn a_turn_end_drains_every_open_reply_whole_before_its_terminal_event() {
+    for count in [128, 129] {
+        let mut runtime = open_replies(count);
+        let first = runtime
+            .ingest(
+                &frame(json!({"method":"turn/completed","params":{
+                    "threadId":"thread-1","turn":{"id":"turn-1","status":"completed"}
+                }})),
+                &Mapper,
+            )
+            .expect("terminal");
+        let batches = drained(first, || runtime.held_batch().expect("held batch"));
+        assert!(batches.len() > 1, "{count}: one batch cannot hold them all");
+        assert_eq!(whole_replies(&batches), count);
+        let events: Vec<_> = batches.iter().flat_map(AdapterBatch::events).collect();
+        let terminal = events
+            .iter()
+            .position(
+                |event| matches!(event, AdapterEvent::Turn { state, .. } if state.is_terminal()),
+            )
+            .expect("terminal turn");
+        assert_eq!(terminal, events.len() - 1, "{count}: the turn ends last");
+    }
+}
+
+#[test]
+fn replies_open_when_the_output_ends_drain_whole_in_bounded_batches() {
+    for count in [128, 129] {
+        let mut runtime = open_replies(count);
+        let mut replies = crate::acp::bindings::adapter::HeldOutput::of(
+            runtime.unfinished_replies().expect("unfinished replies"),
+        );
+        let first = replies.next_batch().expect("batch").expect("a reply");
+        let batches = drained(first, || replies.next_batch().expect("batch"));
+        assert_eq!(whole_replies(&batches), count);
+    }
+}
+
 #[test]
 fn a_reply_that_redaction_makes_longer_than_an_item_is_clipped_at_turn_end() {
     let mut runtime = fixture_runtime();

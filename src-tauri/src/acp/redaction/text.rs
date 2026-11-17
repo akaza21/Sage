@@ -212,7 +212,11 @@ struct Key {
 
 impl Key {
     fn ahead(text: &str) -> Self {
-        let window = &text[..text.floor_char_boundary(KEY_SCAN_BYTES)];
+        let mut scan = text.len().min(KEY_SCAN_BYTES);
+        while !text.is_char_boundary(scan) {
+            scan -= 1;
+        }
+        let window = &text[..scan];
         let end = window
             .find(|character: char| character.is_whitespace() || TOKEN_JOINERS.contains(&character))
             .unwrap_or(window.len());

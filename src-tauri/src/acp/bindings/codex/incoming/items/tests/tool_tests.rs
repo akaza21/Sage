@@ -599,9 +599,11 @@ fn what_a_tool_was_asked_keeps_paths_as_claude_code_tool_titles_do() {
             panic!("tool row");
         };
         let text = format!(
-            "{} {:?}",
+            "{} {}",
             label.as_str(),
-            input_summary.map(|summary| summary.as_str().to_owned())
+            input_summary
+                .as_ref()
+                .map_or("", |summary| summary.as_str())
         );
         assert!(text.contains(&shown), "{row}: {text}");
     }

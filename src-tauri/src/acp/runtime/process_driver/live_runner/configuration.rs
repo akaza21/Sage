@@ -125,6 +125,7 @@ where
             config.complete(Err(HostError::Closed));
         }
         let mut state = state;
+        state.commit_unfinished_replies().await;
         state.close_stdin_after_durable_completed();
         return (RunnerAction::Shutdown(Box::new(state), envelope), None);
     }
@@ -239,6 +240,7 @@ where
             Ok(DriverStep::YieldWorker { envelope, .. }) => {
                 if matches!(&envelope.command, WorkerCommand::Shutdown) {
                     let mut state = FirstTurnWorkerState::Active(active);
+                    state.commit_unfinished_replies().await;
                     state.close_stdin_after_durable_completed();
                     return (
                         RunnerAction::Shutdown(Box::new(state), envelope),

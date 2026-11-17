@@ -68,11 +68,19 @@ fn shutdown_running_codex_turn_preserves_partial_chat_after_reopen() {
             .service
             .send_codex_turn(setup.turn_command(&owner))
             .unwrap();
+        // The reply is still streaming, so its last word, `ok`, is held back
+        // until shutdown shows it whole.
         setup.wait_until(|| {
             setup.page(&owner).turns.as_slice().iter().any(|turn| {
                 turn.session_id == owner.session_id
                     && turn.items.as_slice().iter().any(|item| {
-                        matches!(&item.content, ItemContent::Text { role: crate::acp::projection::TextRole::Assistant, text } if text.as_str() == "ok")
+                        matches!(
+                            &item.content,
+                            ItemContent::Text {
+                                role: crate::acp::projection::TextRole::Assistant,
+                                ..
+                            }
+                        )
                     })
             })
         });
