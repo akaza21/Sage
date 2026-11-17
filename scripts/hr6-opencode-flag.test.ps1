@@ -152,7 +152,7 @@ $grandchildReadyFile = Join-Path ([IO.Path]::GetTempPath()) ("hr6-opencode-flag-
 
 $grandchildHandshake = @'
 $grandchildCommand = '[IO.File]::WriteAllText($env:HR6_GRANDCHILD_READY_FILE, [string]$PID); Start-Sleep -Seconds 300'
-$grandchild = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Command', '"' + $grandchildCommand + '"') -WindowStyle Hidden -PassThru
+$grandchild = Start-Process -FilePath 'powershell.exe' -ArgumentList @('-NoProfile', '-Command', '"' + $grandchildCommand + '"') -NoNewWindow -PassThru
 $readyWatch = [Diagnostics.Stopwatch]::StartNew()
 $readyPid = 0
 while ($readyWatch.ElapsedMilliseconds -lt %READYMS%) {
