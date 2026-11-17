@@ -2,7 +2,7 @@ param([Parameter(Mandatory)][string]$ModulePath)
 
 $ErrorActionPreference = "Stop"
 . $ModulePath
-$process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "exit 3" -PassThru
+$process = Start-Process -FilePath "cmd.exe" -ArgumentList "/c", "exit 3" -NoNewWindow -PassThru
 $null = $process.Handle
 $process.WaitForExit()
 $receipt = Get-ProcessExitReceipt $process
