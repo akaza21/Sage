@@ -8,7 +8,6 @@ import { useWorkbenchStore } from "../../app/store";
 import { ChatComposerRegion } from "./ChatComposerRegion";
 import { ChatTranscript } from "./ChatTranscript";
 import { useUsageRequest } from "./acp/useUsageRequest";
-import { getTurnFailure } from "./acp/statusSemantics";
 import {
   latestRetryPrompt,
   sessionActionAvailable,
@@ -224,24 +223,21 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
   const latestTurnHarness = harnesses.find(
     (harness) => harness.bindingId === latestTurnSession?.bindingId,
   );
-  const claudeAuthScope = `${project?.id ?? acpPage?.projectId ?? ""}:${epoch}:${chatId ?? acpPage?.chatId ?? activeTabId ?? ""}:${latestTurn?.id ?? ""}`;
   const ownerChatId = chatId ?? acpPage?.chatId ?? activeTabId;
-  const dismissedAuthTurnId = useWorkbenchStore((state) =>
-    ownerChatId ? state.chatUiById[ownerChatId]?.dismissedAuthTurnId : null,
+  const claudeAuthScope = `${project?.id ?? ""}:${epoch}:${ownerChatId ?? ""}:${latestTurn?.id ?? ""}`;
+  const dismissedAuthTurnId = useWorkbenchStore(
+    (state) => state.chatUiById[ownerChatId ?? ""]?.dismissedAuthTurnId,
   );
-  const captureChatOwnership = useWorkbenchStore(
-    (state) => state.captureChatOwnership,
-  );
-  const dismissChatAuthTurn = useWorkbenchStore(
-    (state) => state.dismissChatAuthTurn,
-  );
-  const authOwner = captureChatOwnership(ownerChatId ?? undefined);
+  const authOwner = useWorkbenchStore
+    .getState()
+    .captureChatOwnership(ownerChatId ?? undefined);
   const claudeSignInRequired =
     (selectedHarnessId === "claude-code" &&
       acpActions.errorKind === "signInRequired") ||
     (latestTurnHarness?.id === "claude-code" &&
       dismissedAuthTurnId !== latestTurn?.id &&
-      getTurnFailure(latestTurn)?.kind === "authRequired");
+      latestTurn?.state === "failed" &&
+      latestTurn.terminalReason?.kind === "authRequired");
 
   return (
     <section
@@ -347,7 +343,9 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
           claudeSignInRequired
             ? () => {
                 if (authOwner && latestTurn)
-                  dismissChatAuthTurn(authOwner, latestTurn.id);
+                  useWorkbenchStore
+                    .getState()
+                    .dismissChatAuthTurn(authOwner, latestTurn.id);
                 if (acpActions.errorKind === "signInRequired")
                   acpActions.clearError();
               }

@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { HarnessDefinition } from "../../domain/harness";
 import { acpDesktop } from "../../services/acpDesktop";
@@ -17,18 +17,15 @@ export function SignInRequiredMessage({
 export function ClaudeAuthActions({ onSignedIn }: { onSignedIn: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
-  const signedIn = useRef(onSignedIn);
-  useLayoutEffect(() => {
-    signedIn.current = onSignedIn;
-  }, [onSignedIn]);
-  // A check that outlives this chat scope must not clear the next scope's error.
-  const mounted = useRef(false);
+  // Null once unmounted: a check that outlives this chat scope must not clear
+  // the next scope's error.
+  const signedIn = useRef<(() => void) | null>(null);
   useEffect(() => {
-    mounted.current = true;
+    signedIn.current = onSignedIn;
     return () => {
-      mounted.current = false;
+      signedIn.current = null;
     };
-  }, []);
+  }, [onSignedIn]);
 
   async function run(action: "login" | "status") {
     if (busy) return;
@@ -40,8 +37,9 @@ export function ClaudeAuthActions({ onSignedIn }: { onSignedIn: () => void }) {
         setMessage("Finish in the terminal, then check here.");
       } else {
         const status = await acpDesktop.getClaudeAuthStatus();
-        if (!mounted.current) return;
-        if (status.loggedIn) signedIn.current();
+        const done = signedIn.current;
+        if (!done) return;
+        if (status.loggedIn) done();
         else setMessage("Claude is still signed out.");
       }
     } catch {
