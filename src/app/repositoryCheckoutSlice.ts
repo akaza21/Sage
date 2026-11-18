@@ -1,4 +1,3 @@
-import { rejectedGitCommand } from "../domain/gitMutation";
 import type { StateCreator } from "zustand";
 
 import type {
@@ -6,11 +5,7 @@ import type {
   GitRepositoryCheckoutResult,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import {
-  idleAtEpoch,
-  matchesProjectIntent,
-  repositoryBusy,
-} from "./projectIntent";
+import { runRepositoryCommand } from "./runRepositoryCommand";
 import type { WorkbenchState } from "./store";
 
 export interface RepositoryCheckout {
@@ -35,7 +30,6 @@ export interface RepositoryCheckoutSlice {
     from: string,
     to: string,
   ) => Promise<boolean>;
-  clearRepositoryCheckoutError: (rootId: string) => void;
 }
 
 async function runLocalBranchCommand(
@@ -52,62 +46,14 @@ async function runLocalBranchCommand(
     transitionEpoch: number,
   ) => Promise<GitRepositoryCheckoutResult>,
 ): Promise<boolean> {
-  const projectId = get().project?.id;
-  const generation = get().projectGeneration;
-  const transitionEpoch = get().nativeTransitionEpoch;
-  if (
-    !projectId ||
-    !branch ||
-    repositoryBusy(get()) ||
-    !get().project?.roots.some((candidate) => candidate.id === rootId)
-  ) {
-    return false;
-  }
-  const checkout: RepositoryCheckout = { rootId, branch };
-  set({ repositoryCheckout: checkout, repositoryCheckoutError: null });
-  try {
-    const result = await invoke(projectId, transitionEpoch);
-    if (
-      get().repositoryCheckout !== checkout ||
-      !idleAtEpoch(get(), transitionEpoch) ||
-      result.projectId !== projectId ||
-      result.rootId !== rootId ||
-      result.transitionEpoch !== transitionEpoch ||
-      !matchesProjectIntent(get(), generation, projectId) ||
-      !get().project?.roots.some((candidate) => candidate.id === rootId)
-    ) {
-      if (get().repositoryCheckout === checkout) {
-        set({ repositoryCheckout: null });
-      }
-      return false;
-    }
-    set({
-      repositories: result.repositories,
-      repositoryCheckout: null,
-      repositoryCheckoutError: result.error
-        ? { rootId, branch, ...result.error }
-        : null,
-    });
-    return result.error === null;
-  } catch (error) {
-    if (
-      get().repositoryCheckout === checkout &&
-      idleAtEpoch(get(), transitionEpoch) &&
-      matchesProjectIntent(get(), generation, projectId)
-    ) {
-      set({
-        repositoryCheckout: null,
-        repositoryCheckoutError: {
-          rootId,
-          branch,
-          ...rejectedGitCommand(error),
-        },
-      });
-    } else if (get().repositoryCheckout === checkout) {
-      set({ repositoryCheckout: null });
-    }
-    return false;
-  }
+  if (!branch) return false;
+  return runRepositoryCommand(
+    get,
+    set,
+    "repositoryCheckout",
+    { rootId, branch },
+    invoke,
+  );
 }
 
 export const createRepositoryCheckoutSlice: StateCreator<
@@ -118,11 +64,6 @@ export const createRepositoryCheckoutSlice: StateCreator<
 > = (set, get) => ({
   repositoryCheckout: null,
   repositoryCheckoutError: null,
-  clearRepositoryCheckoutError: (rootId) => {
-    if (get().repositoryCheckoutError?.rootId === rootId) {
-      set({ repositoryCheckoutError: null });
-    }
-  },
   checkoutLocalBranch: (rootId, branch) =>
     runLocalBranchCommand(get, set, rootId, branch, (projectId, epoch) =>
       desktop.checkoutGitLocalBranch({ projectId, rootId, branch }, epoch),

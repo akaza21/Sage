@@ -1,4 +1,3 @@
-import { rejectedGitCommand } from "../domain/gitMutation";
 import type { StateCreator } from "zustand";
 
 import { errorMessage } from "../domain/errors";
@@ -16,11 +15,7 @@ import type {
   RootRepositoryStatus,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import {
-  idleAtEpoch,
-  matchesProjectIntent,
-  repositoryBusy,
-} from "./projectIntent";
+import { runRepositoryCommand } from "./runRepositoryCommand";
 import type { WorkbenchState } from "./store";
 
 export interface RepositoryCommit {
@@ -58,60 +53,11 @@ async function runLockedSequenceCommand(
     transitionEpoch: number,
   ) => Promise<GitRepositoryCheckoutResult>,
 ): Promise<boolean> {
-  const generation = get().projectGeneration;
-  const projectId = get().project?.id;
-  const transitionEpoch = get().nativeTransitionEpoch;
   const root = get().repositories.roots.find(
     (candidate) => candidate.rootId === rootId,
   );
-  if (
-    !projectId ||
-    !root ||
-    repositoryBusy(get()) ||
-    !eligible(root) ||
-    !get().project?.roots.some((candidate) => candidate.id === rootId)
-  ) {
-    return false;
-  }
-  const commit: RepositoryCommit = { rootId };
-  set({ repositoryCommit: commit, repositoryCommitError: null });
-  try {
-    const result = await invoke(projectId, transitionEpoch);
-    if (
-      get().repositoryCommit !== commit ||
-      !idleAtEpoch(get(), transitionEpoch) ||
-      result.projectId !== projectId ||
-      result.rootId !== rootId ||
-      result.transitionEpoch !== transitionEpoch ||
-      !matchesProjectIntent(get(), generation, projectId) ||
-      !get().project?.roots.some((candidate) => candidate.id === rootId)
-    ) {
-      if (get().repositoryCommit === commit) {
-        set({ repositoryCommit: null });
-      }
-      return false;
-    }
-    set({
-      repositories: result.repositories,
-      repositoryCommit: null,
-      repositoryCommitError: result.error ? { rootId, ...result.error } : null,
-    });
-    return result.error === null;
-  } catch (error) {
-    if (
-      get().repositoryCommit === commit &&
-      idleAtEpoch(get(), transitionEpoch) &&
-      matchesProjectIntent(get(), generation, projectId)
-    ) {
-      set({
-        repositoryCommit: null,
-        repositoryCommitError: { rootId, ...rejectedGitCommand(error) },
-      });
-    } else if (get().repositoryCommit === commit) {
-      set({ repositoryCommit: null });
-    }
-    return false;
-  }
+  if (!root || !eligible(root)) return false;
+  return runRepositoryCommand(get, set, "repositoryCommit", { rootId }, invoke);
 }
 
 export const createRepositoryCommitSlice: StateCreator<

@@ -1,4 +1,3 @@
-import { rejectedGitCommand } from "../domain/gitMutation";
 import type { StateCreator } from "zustand";
 
 import { sameResource } from "../domain/resourceIdentity";
@@ -13,11 +12,7 @@ import type {
   ResourceRef,
 } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import {
-  idleAtEpoch,
-  matchesResourceIntent,
-  repositoryBusy,
-} from "./projectIntent";
+import { runRepositoryCommand } from "./runRepositoryCommand";
 import type { WorkbenchState } from "./store";
 
 export interface RepositoryMutation {
@@ -80,63 +75,23 @@ export const createRepositoryMutationSlice: StateCreator<
   repositoryMutation: null,
   repositoryMutationError: null,
   mutateRepositoryFile: async (resource, action, discardConfirmed = false) => {
-    const generation = get().projectGeneration;
-    const projectId = get().project?.id;
-    const transitionEpoch = get().nativeTransitionEpoch;
     if (
-      !projectId ||
-      repositoryBusy(get()) ||
       get().fileRenameInFlight ||
       get().resourceTrashInFlight ||
-      !matchesResourceIntent(get(), generation, projectId, resource) ||
       !eligibleMutation(get(), resource, action, discardConfirmed)
     ) {
       return false;
     }
-    const mutation: RepositoryMutation = { resource, action };
-    set({ repositoryMutation: mutation, repositoryMutationError: null });
-    try {
-      const result = await desktop.mutateGitFile(
-        { projectId, resource, action, discardConfirmed },
-        transitionEpoch,
-      );
-      if (
-        get().repositoryMutation !== mutation ||
-        !idleAtEpoch(get(), transitionEpoch) ||
-        result.projectId !== projectId ||
-        result.transitionEpoch !== transitionEpoch ||
-        !matchesResourceIntent(get(), generation, projectId, resource)
-      ) {
-        if (get().repositoryMutation === mutation) {
-          set({ repositoryMutation: null });
-        }
-        return false;
-      }
-      set({
-        repositories: result.repositories,
-        repositoryMutation: null,
-        repositoryMutationError: result.error
-          ? { ...mutation, ...result.error }
-          : null,
-      });
-      return result.error === null;
-    } catch (error) {
-      if (
-        get().repositoryMutation === mutation &&
-        idleAtEpoch(get(), transitionEpoch) &&
-        matchesResourceIntent(get(), generation, projectId, resource)
-      ) {
-        set({
-          repositoryMutation: null,
-          repositoryMutationError: {
-            ...mutation,
-            ...rejectedGitCommand(error),
-          },
-        });
-      } else if (get().repositoryMutation === mutation) {
-        set({ repositoryMutation: null });
-      }
-      return false;
-    }
+    return runRepositoryCommand(
+      get,
+      set,
+      "repositoryMutation",
+      { resource, action },
+      (projectId, transitionEpoch) =>
+        desktop.mutateGitFile(
+          { projectId, resource, action, discardConfirmed },
+          transitionEpoch,
+        ),
+    );
   },
 });
