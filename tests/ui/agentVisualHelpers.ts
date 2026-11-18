@@ -365,7 +365,7 @@ export async function runAgentCanonicalTest(
       .poll(() =>
         itemList.evaluate((list) => {
           const result = list.querySelector<HTMLElement>(
-            ':scope > [data-activity-kind="fetch"] [role="group"] > header > strong',
+            ':scope > .acp-tool-rollup__row > [data-activity-kind="fetch"] [role="group"] > header > strong',
           )!;
           const offset =
             result.getBoundingClientRect().bottom -
