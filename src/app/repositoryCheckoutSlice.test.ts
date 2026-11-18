@@ -4,6 +4,14 @@ import type { ProjectRepositoryStatus } from "../domain/workbench";
 import { desktop } from "../services/desktop";
 import { useWorkbenchStore } from "./store";
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
 const beforeRepositories: ProjectRepositoryStatus = {
   roots: [
     {
@@ -58,6 +66,80 @@ afterEach(() => {
 });
 
 describe("repositoryCheckoutSlice", () => {
+  it.each(["project", "command ownership"])(
+    "drops a late checkout result after %s changes and preserves the new state",
+    async (changed) => {
+      const pending =
+        deferred<Awaited<ReturnType<typeof desktop.checkoutGitLocalBranch>>>();
+      vi.spyOn(desktop, "checkoutGitLocalBranch").mockReturnValue(
+        pending.promise,
+      );
+      const action = useWorkbenchStore
+        .getState()
+        .checkoutLocalBranch("root-a", "main");
+      expect(useWorkbenchStore.getState().repositoryCheckout).toEqual({
+        rootId: "root-a",
+        branch: "main",
+      });
+      useWorkbenchStore.setState({
+        ...(changed === "project"
+          ? {
+              project: {
+                ...useWorkbenchStore.getState().project!,
+                id: "project-b",
+              },
+              projectGeneration: 4,
+            }
+          : { repositoryCheckout: { rootId: "root-a", branch: "feature" } }),
+        repositoryCheckoutError: {
+          rootId: "root-a",
+          branch: "feature",
+          kind: "failed",
+          message: "Keep the new checkout error",
+        },
+      });
+      const replacement = useWorkbenchStore.getState();
+
+      pending.resolve({
+        projectId: "project-a",
+        rootId: "root-a",
+        transitionEpoch: 7,
+        repositories: afterRepositories,
+        error: null,
+      });
+
+      await expect(action).resolves.toBe(false);
+      expect(useWorkbenchStore.getState()).toEqual({
+        ...replacement,
+        repositoryCheckout:
+          changed === "project" ? null : replacement.repositoryCheckout,
+      });
+    },
+  );
+
+  it("surfaces a typed native checkout failure and clears busy", async () => {
+    vi.spyOn(desktop, "checkoutGitLocalBranch").mockRejectedValue({
+      kind: "containment",
+      message: "Git checkout may still be running",
+      processState: "potentiallyRunning",
+    });
+
+    await expect(
+      useWorkbenchStore.getState().checkoutLocalBranch("root-a", "main"),
+    ).resolves.toBe(false);
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      repositories: beforeRepositories,
+      repositoryCheckout: null,
+      repositoryCheckoutError: {
+        rootId: "root-a",
+        branch: "main",
+        kind: "containment",
+        message: "Git checkout may still be running",
+        processState: "potentiallyRunning",
+      },
+    });
+  });
+
   it("switches to a listed local branch and replaces Source Control status", async () => {
     const checkout = vi
       .spyOn(desktop, "checkoutGitLocalBranch")

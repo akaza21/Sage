@@ -1,13 +1,8 @@
-import { rejectedGitCommand } from "../domain/gitMutation";
 import type { StateCreator } from "zustand";
 
 import type { GitProcessState } from "../domain/workbench";
 import { desktop } from "../services/desktop";
-import {
-  idleAtEpoch,
-  matchesProjectIntent,
-  repositoryBusy,
-} from "./projectIntent";
+import { runRepositoryCommand } from "./runRepositoryCommand";
 import type { WorkbenchState } from "./store";
 
 export type RepositoryRemoteAction = "fetch" | "push" | "pull";
@@ -30,7 +25,6 @@ export interface RepositoryRemoteSlice {
   fetchRemote: (rootId: string, remote: string) => Promise<boolean>;
   pullRepository: (rootId: string) => Promise<boolean>;
   pushRemote: (rootId: string, remote: string) => Promise<boolean>;
-  clearRepositoryRemoteError: (rootId: string) => void;
 }
 
 export const createRepositoryRemoteSlice: StateCreator<
@@ -44,83 +38,27 @@ export const createRepositoryRemoteSlice: StateCreator<
     remote: string | null,
     action: RepositoryRemoteAction,
   ): Promise<boolean> {
-    const projectId = get().project?.id;
-    const generation = get().projectGeneration;
-    const transitionEpoch = get().nativeTransitionEpoch;
-    if (
-      !projectId ||
-      (action !== "pull" && !remote) ||
-      repositoryBusy(get()) ||
-      !get().project?.roots.some((candidate) => candidate.id === rootId)
-    ) {
-      return false;
-    }
-    const transport: RepositoryRemote = { rootId, remote, action };
-    set({ repositoryRemote: transport, repositoryRemoteError: null });
-    try {
-      const result =
+    if (action !== "pull" && !remote) return false;
+    return runRepositoryCommand(
+      get,
+      set,
+      "repositoryRemote",
+      { rootId, remote, action },
+      (projectId, epoch) =>
         action === "pull"
-          ? await desktop.pullGitRepository(
-              { projectId, rootId },
-              transitionEpoch,
-            )
-          : await (
-              action === "fetch"
-                ? desktop.fetchGitRemote
-                : desktop.pushGitRemote
-            )({ projectId, rootId, remote: remote! }, transitionEpoch);
-      if (
-        get().repositoryRemote !== transport ||
-        !idleAtEpoch(get(), transitionEpoch) ||
-        result.projectId !== projectId ||
-        result.rootId !== rootId ||
-        result.transitionEpoch !== transitionEpoch ||
-        !matchesProjectIntent(get(), generation, projectId) ||
-        !get().project?.roots.some((candidate) => candidate.id === rootId)
-      ) {
-        if (get().repositoryRemote === transport) {
-          set({ repositoryRemote: null });
-        }
-        return false;
-      }
-      set({
-        repositories: result.repositories,
-        repositoryRemote: null,
-        repositoryRemoteError: result.error
-          ? { rootId, remote, action, ...result.error }
-          : null,
-      });
-      return result.error === null;
-    } catch (error) {
-      if (
-        get().repositoryRemote === transport &&
-        idleAtEpoch(get(), transitionEpoch) &&
-        matchesProjectIntent(get(), generation, projectId)
-      ) {
-        set({
-          repositoryRemote: null,
-          repositoryRemoteError: {
-            rootId,
-            remote,
-            action,
-            ...rejectedGitCommand(error),
-          },
-        });
-      } else if (get().repositoryRemote === transport) {
-        set({ repositoryRemote: null });
-      }
-      return false;
-    }
+          ? desktop.pullGitRepository({ projectId, rootId }, epoch)
+          : (action === "fetch"
+              ? desktop.fetchGitRemote
+              : desktop.pushGitRemote)(
+              { projectId, rootId, remote: remote! },
+              epoch,
+            ),
+    );
   }
 
   return {
     repositoryRemote: null,
     repositoryRemoteError: null,
-    clearRepositoryRemoteError: (rootId) => {
-      if (get().repositoryRemoteError?.rootId === rootId) {
-        set({ repositoryRemoteError: null });
-      }
-    },
     fetchRemote: (rootId, remote) => transportRemote(rootId, remote, "fetch"),
     pullRepository: (rootId) => transportRemote(rootId, null, "pull"),
     pushRemote: (rootId, remote) => transportRemote(rootId, remote, "push"),

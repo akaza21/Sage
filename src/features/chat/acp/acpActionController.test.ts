@@ -1323,6 +1323,63 @@ describe("ACP action controller", () => {
     expect(test.restored).toEqual([]);
   });
 
+  it.each([
+    ["close", false],
+    ["end", true],
+  ] as const)(
+    "rejects %s when closeSession is %s",
+    async (action, closeSession) => {
+      const initial = page("5", {
+        ...session("hot", "3", null),
+        capabilities: { ...capabilities, closeSession },
+      });
+      const test = harness(initial);
+      vi.mocked(test.commands.closeSession).mockResolvedValue({
+        projection: page("6", null),
+      });
+      vi.mocked(test.commands.endSession).mockResolvedValue({
+        projection: page("6", null),
+      });
+
+      await expect(test.controller[action]()).resolves.toBe("rejected");
+      expect(test.getContext()?.page).toEqual(initial);
+      expect(test.applied).toEqual([]);
+      expect(test.states).toEqual([]);
+    },
+  );
+
+  it.each([
+    ["close", true],
+    ["end", false],
+  ] as const)(
+    "rejects a queued %s when closeSession changes before dequeue",
+    async (action, closeSession) => {
+      const initial = page("5", {
+        ...session("hot", "3", null),
+        capabilities: { ...capabilities, closeSession },
+      });
+      const test = harness(initial);
+      vi.mocked(test.commands.closeSession).mockResolvedValue({
+        projection: page("7", null),
+      });
+      vi.mocked(test.commands.endSession).mockResolvedValue({
+        projection: page("7", null),
+      });
+      const pending = test.controller[action]();
+      expect(test.states.at(-1)).toMatchObject({ busy: true, error: null });
+      const updated = page("6", {
+        ...initial.sessions[0],
+        capabilities: { ...capabilities, closeSession: !closeSession },
+      });
+      test.setContext({ ...test.getContext()!, page: updated });
+
+      await expect(pending).resolves.toBe("rejected");
+      expect(test.getContext()?.page).toEqual(updated);
+      expect(test.applied).toEqual([]);
+      expect(test.states.at(-1)).toMatchObject({ busy: false, error: null });
+    },
+  );
+
   it("closes only a hot current session with negotiated close capability", async () => {
     const test = harness(page("5", session("hot", "3", null)));
     vi.mocked(test.commands.closeSession).mockResolvedValue({
