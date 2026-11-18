@@ -2,6 +2,9 @@ mod build_command_list;
 
 fn main() {
     let commands = sage_commands();
+    let allowlist = format!("pub(super) const COMMANDS: &[&str] = &{commands:?};\n");
+    let output = std::path::PathBuf::from(std::env::var_os("OUT_DIR").expect("Cargo OUT_DIR"));
+    std::fs::write(output.join("bridge_commands.rs"), allowlist).expect("write command allowlist");
     write_main_command_permission(commands);
     let app_manifest = tauri_build::AppManifest::new().commands(commands);
     #[cfg(windows)]

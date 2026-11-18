@@ -35,6 +35,10 @@ export const MAX_OUTGOING_IMAGE_BYTES = 4 * 1024 * 1024;
 export const MAX_PROMPT_IMAGES = 4;
 /** Mirrors `IMAGE_UPLOAD_BYTES`: an attached file before Sage normalises it. */
 export const MAX_IMAGE_UPLOAD_BYTES = 10 * 1024 * 1024;
+/** Mirrors `IMAGE_OWNER_ID_BYTES`: an upload's project and chat ids. */
+export const MAX_IMAGE_OWNER_ID_BYTES = 512;
+/** Mirrors `IMAGE_LABEL_BYTES`. */
+export const MAX_IMAGE_LABEL_BYTES = 80;
 
 export function formatImageBytes(bytes: number): string {
   return bytes % (1024 * 1024) === 0
@@ -107,7 +111,7 @@ export function parseImageAttachedContext(
     !/^[0-9a-f]{64}$/.test(sha256) ||
     typeof label !== "string" ||
     !label ||
-    utf8ByteLength(label) > 80 ||
+    utf8ByteLength(label) > MAX_IMAGE_LABEL_BYTES ||
     [...label].some(unsafeDisplayCharacter)
   )
     return null;

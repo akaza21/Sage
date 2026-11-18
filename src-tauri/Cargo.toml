@@ -26,6 +26,9 @@ aes-gcm.workspace = true
 base64.workspace = true
 csv-core.workspace = true
 getrandom.workspace = true
+futures-util = { workspace = true, optional = true }
+subtle = { workspace = true, optional = true }
+tokio-tungstenite = { workspace = true, optional = true }
 jpeg-decoder.workspace = true
 png.workspace = true
 regex.workspace = true
@@ -112,6 +115,7 @@ required-features = ["native-lane"]
 
 [features]
 default = []
+browser-bridge = ["dep:futures-util", "dep:subtle", "dep:tokio-tungstenite", "tokio/net", "serde_json/raw_value"]
 acp-fixture = ["sage-acp-protocol/fixture", "sage-db/fixture"]
 acp-schema = ["sage-acp-protocol/acp-schema"]
 # Runs browser::devtools tests against a real headless Chromium (unix only).

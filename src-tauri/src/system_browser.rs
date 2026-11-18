@@ -26,6 +26,14 @@ pub(crate) const fn available() -> bool {
     cfg!(windows)
 }
 
+#[cfg(all(feature = "browser-bridge", debug_assertions))]
+pub(crate) fn open_dev_bridge(url: &url::Url) -> Result<(), BrowserError> {
+    if url.scheme() != "http" || url.host_str() != Some("127.0.0.1") {
+        return Err(BrowserError::Failed);
+    }
+    open(url.as_str())
+}
+
 #[cfg(windows)]
 fn open(url: &str) -> Result<(), BrowserError> {
     use windows::{Win32::UI::Shell::ShellExecuteW, core::PCWSTR};

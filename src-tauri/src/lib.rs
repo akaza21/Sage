@@ -29,6 +29,12 @@ mod commands;
 #[cfg(all(test, windows))]
 mod console_window_fixture;
 mod database;
+#[cfg(all(feature = "browser-bridge", debug_assertions))]
+mod dev_bridge;
+#[cfg(all(feature = "browser-bridge", not(debug_assertions)))]
+compile_error!("browser-bridge is available only in debug builds");
+#[cfg(all(feature = "browser-bridge", feature = "custom-protocol"))]
+compile_error!("browser-bridge cannot be included in desktop bundles");
 mod editor;
 mod editor_content;
 mod editor_coordination;
@@ -285,6 +291,12 @@ pub fn run() {
                 })?;
             let renderer_recreation =
                 Arc::new(crate::acp::service::RendererRecreationReloadLifecycle::default());
+            #[cfg(all(feature = "browser-bridge", debug_assertions))]
+            let main_window_config = {
+                let mut config = main_window_config;
+                config.url = tauri::WebviewUrl::External(dev_bridge::host_url(app.handle())?);
+                config
+            };
             let renderer_recreation_app = app.handle().clone();
             let main_window =
                 tauri::WebviewWindowBuilder::from_config(app.handle(), &main_window_config)?
@@ -327,6 +339,8 @@ pub fn run() {
                 None => main_window,
             };
             main_window.build()?;
+            #[cfg(all(feature = "browser-bridge", debug_assertions))]
+            dev_bridge::start(app.handle())?;
             if !profile.is_disposable()
                 && let Err(error) = profile_handoff::listen(app.handle(), profile.durable_dir())
             {

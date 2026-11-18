@@ -89,14 +89,17 @@ export function App() {
             return;
           }
           traceCloseStage("closeRequested", "start");
+          let status: "end" | "error" = "end";
           try {
             closing = true;
             setCloseFailure(null);
             await useWorkbenchStore.getState().closeWorkbench();
           } catch (error) {
-            traceCloseStage("closeRequested", "error");
+            status = "error";
             setCloseFailure(errorMessage(error));
+          } finally {
             closing = false;
+            await traceCloseStage("closeRequested", status);
           }
         },
         { target: { kind: "Window", label } },

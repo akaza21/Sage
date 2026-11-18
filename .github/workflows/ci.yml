@@ -315,6 +315,8 @@ jobs:
         run: 'cargo test --workspace --features "${{ matrix.test-features }}" repository_mutation_commands::tests:: -- --test-threads=1'
       - name: Test app preview serially
         run: 'cargo test --workspace --features "${{ matrix.test-features }}" app_preview -- --test-threads=1'
+      - run: cargo clippy -p sage --all-targets --features browser-bridge -- -D warnings
+      - run: "cargo test -p sage --features browser-bridge --lib dev_bridge::"
       - run: cargo check -p sage --release --lib
 
   merge-gate:

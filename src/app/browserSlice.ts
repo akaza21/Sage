@@ -106,13 +106,13 @@ export const createBrowserSlice: StateCreator<
         const dispose = () => {
           disposed = true;
           for (const remove of removers) remove();
-          window.removeEventListener("beforeunload", dispose);
+          window.removeEventListener("pagehide", dispose);
         };
         const keep = (remove: () => void) => {
           if (disposed) remove();
           else removers.push(remove);
         };
-        window.addEventListener("beforeunload", dispose, { once: true });
+        window.addEventListener("pagehide", dispose, { once: true });
         try {
           keep(
             await listen<BrowserPopupIntent>(

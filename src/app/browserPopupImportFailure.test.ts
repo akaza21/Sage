@@ -16,7 +16,7 @@ vi.mock("../ports/nativeBrowserPort", () => native);
 vi.mock("./browserPopupNative", () => {
   throw new Error("chunk unavailable");
 });
-afterEach(() => window.dispatchEvent(new Event("beforeunload")));
+afterEach(() => window.dispatchEvent(new Event("pagehide")));
 it("abandons the exact hidden native child when its adoption module cannot load", async () => {
   const set = vi.fn();
   createBrowserSlice(

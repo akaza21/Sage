@@ -76,6 +76,10 @@ aes = { version = "=0.8.4", default-features = false, features = ["zeroize"] }
 csv-core = "=0.1.13"
 getrandom = "=0.3.4"
 zeroize = "=1.9.1"
+# Debug browser bridge only: no TLS, compression, or HTTP client stack.
+tokio-tungstenite = { version = "=0.28.0", default-features = false, features = ["handshake"] }
+futures-util = { version = "=0.3.33", default-features = false, features = ["sink", "std"] }
+subtle = "=2.6.1"
 
 # Linux and macOS only.
 libc = "=0.2.189"

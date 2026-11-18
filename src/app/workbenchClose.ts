@@ -19,11 +19,12 @@ let closeTraceQueue = Promise.resolve();
 export function traceCloseStage(
   stage: CloseStage,
   status: CloseStageStatus,
-): void {
-  if (!isTauriRuntime()) return;
+): Promise<void> {
+  if (!isTauriRuntime()) return Promise.resolve();
   closeTraceQueue = closeTraceQueue
     .then(() => invokeNative<void>("trace_close_stage", { stage, status }))
     .catch(() => undefined);
+  return closeTraceQueue;
 }
 
 async function runCloseStage(
@@ -66,12 +67,9 @@ export async function closeLiveWorkbench(
   get: () => WorkbenchState,
 ): Promise<void> {
   const releaseSettings = editorSettingsClose?.hold() ?? (() => undefined);
+  const expectedTransitionEpoch = get().nativeTransitionEpoch;
   try {
-    await runCloseStage("editorFlush", () => get().flushActiveEditor());
-    await runCloseStage(
-      "appearanceFlush",
-      () => editorSettingsClose?.flush() ?? Promise.resolve(),
-    );
+    await flushLiveWorkbench(get);
     await runCloseStage(
       "workspaceUnwatch",
       () => workspaceNotifyClose?.() ?? Promise.resolve(),
@@ -79,9 +77,35 @@ export async function closeLiveWorkbench(
     await runCloseStage("persistAndDestroy", () =>
       getWorkbenchPorts().project.persistProjectLayoutAndClose(
         currentProjectLayout(get()),
-        get().nativeTransitionEpoch,
+        expectedTransitionEpoch,
       ),
     );
+  } finally {
+    releaseSettings();
+  }
+}
+
+/** Persist disposable workbench state without unwatching or destroying its host. */
+export async function flushLiveWorkbench(get: () => WorkbenchState) {
+  const releaseSettings = editorSettingsClose?.hold() ?? (() => undefined);
+  try {
+    await runCloseStage("editorFlush", () => get().flushActiveEditor());
+    await runCloseStage(
+      "appearanceFlush",
+      () => editorSettingsClose?.flush() ?? Promise.resolve(),
+    );
+    const state = get();
+    if (state.projectTransitioning) {
+      throw new Error("Project layout mutation is already in progress");
+    }
+    const layout = currentProjectLayout(state);
+    if (layout) {
+      await getWorkbenchPorts().project.persistProjectLayout(
+        layout,
+        state.nativeTransitionEpoch,
+      );
+    }
+    return layout;
   } finally {
     releaseSettings();
   }

@@ -301,7 +301,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
-  window.dispatchEvent(new Event("beforeunload"));
+  window.dispatchEvent(new Event("pagehide"));
   cleanup();
   clearBrowseSessions();
   useAgentChangesState.getState().close();
