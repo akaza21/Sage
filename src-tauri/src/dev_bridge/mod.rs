@@ -83,32 +83,32 @@ pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
             }
         }
     });
-    let browser_opened = crate::system_browser::open_dev_bridge(&browser_url).is_ok();
-    if let Some(message) = pairing_notice(
-        &browser_url,
-        address.port(),
-        browser_opened,
-        std::env::var("SAGE_BRIDGE_PRINT_LINK").as_deref() == Ok("1"),
-    ) {
-        println!("{message}");
+    let print_link = std::env::var("SAGE_BRIDGE_PRINT_LINK").as_deref() == Ok("1");
+    match pairing_notice(&browser_url, address.port(), print_link) {
+        PairingNotice::PrintLink(message) => println!("{message}"),
+        PairingNotice::OpenBrowser { failure_notice } => {
+            if crate::system_browser::open_dev_bridge(&browser_url).is_err() {
+                println!("{failure_notice}");
+            }
+        }
     }
     Ok(())
 }
 
-fn pairing_notice(
-    url: &url::Url,
-    port: u16,
-    browser_opened: bool,
-    print_link: bool,
-) -> Option<String> {
+enum PairingNotice {
+    PrintLink(String),
+    OpenBrowser { failure_notice: String },
+}
+
+fn pairing_notice(url: &url::Url, port: u16, print_link: bool) -> PairingNotice {
     if print_link {
-        Some(format!("Open Sage in your browser: {url}"))
-    } else if !browser_opened {
-        Some(format!(
-            "Sage browser bridge is listening on port {port}. Restart with SAGE_BRIDGE_PRINT_LINK=1 to print the pairing link."
-        ))
+        PairingNotice::PrintLink(format!("Open Sage in your browser: {url}"))
     } else {
-        None
+        PairingNotice::OpenBrowser {
+            failure_notice: format!(
+                "Sage browser bridge is listening on port {port}. Restart with SAGE_BRIDGE_PRINT_LINK=1 to print the pairing link."
+            ),
+        }
     }
 }
 
@@ -117,19 +117,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn terminal_pairing_notice_never_contains_the_credential_without_opt_in() {
+    fn terminal_pairing_notice_prints_link_without_launching_only_with_opt_in() {
         let url =
             url::Url::parse("http://127.0.0.1:23456/?bridge=34567#private-pairing-code").unwrap();
-        assert_eq!(pairing_notice(&url, 34567, true, false), None);
+        let PairingNotice::OpenBrowser { failure_notice } = pairing_notice(&url, 34567, false) else {
+            panic!("without opt-in, launch the browser");
+        };
         assert_eq!(
-            pairing_notice(&url, 34567, false, false).unwrap(),
+            failure_notice,
             "Sage browser bridge is listening on port 34567. Restart with SAGE_BRIDGE_PRINT_LINK=1 to print the pairing link."
         );
-        for browser_opened in [false, true] {
-            assert_eq!(
-                pairing_notice(&url, 34567, browser_opened, true).unwrap(),
-                "Open Sage in your browser: http://127.0.0.1:23456/?bridge=34567#private-pairing-code"
-            );
-        }
+        let PairingNotice::PrintLink(message) = pairing_notice(&url, 34567, true) else {
+            panic!("with opt-in, print the link without launching a browser");
+        };
+        assert_eq!(
+            message,
+            "Open Sage in your browser: http://127.0.0.1:23456/?bridge=34567#private-pairing-code"
+        );
     }
 }
