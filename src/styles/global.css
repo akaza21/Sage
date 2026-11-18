@@ -5,7 +5,7 @@
   --color-panel-raised-hover: #3e3e3e;
   --chat-selection-bg: #626262;
   --chat-selection-border: #393939;
-  --chat-annotation-highlight: var(--color-sage-900);
+  --chat-annotation-highlight: var(--color-blue-900);
   --chat-annotation-placeholder: #7a7a7a;
   --chat-annotation-muted: #999;
   --chat-annotation-icon: #969696;
@@ -30,22 +30,24 @@
   --radius-annotation-checkbox: 3px;
   color-scheme: dark;
 
-  --color-sage: #7fa877;
-  /* Accent ramp. Against every surface up to the composer
-     fill (#363636), 400 and 300 keep text at 4.5:1 or more, and body text
-     keeps 6:1 or more on 800 and 900. Ink is the text colour on 300/400. */
-  --color-sage-300: #9dc695;
-  --color-sage-400: #84b87a;
-  --color-sage-800: #294126;
-  --color-sage-900: #1f3b1b;
-  --color-sage-ink: #0f1a0d;
+  /* Accent ramp. 400 keeps text at 4.5:1 or more on every surface up to
+     #2d2d2d, and 300 on every surface up to the composer fill (#363636).
+     Body text and 200 keep 4.9:1 or more on 700 to 900. Ink is the text
+     colour on 300 and 400. */
+  --color-blue-200: #a6cff9;
+  --color-blue-300: #75b4f7;
+  --color-blue-400: #4c9df3;
+  --color-blue-700: #264f78;
+  --color-blue-800: #2a4b6d;
+  --color-blue-900: #154674;
+  --color-blue-ink: #07111c;
 
   --color-canvas: #141414;
   --color-panel: #141414;
   --color-surface: #232323;
   --color-plane-raised: #2a2a2a;
   --color-surface-hover: #2a2a2a;
-  --color-surface-active: var(--color-sage-800);
+  --color-surface-active: var(--color-blue-800);
   --color-surface-selected: var(--color-surface-active);
   --color-border-subtle: #242424;
   --color-border-strong: #2a2a2a;
@@ -55,16 +57,17 @@
   --color-text-emphasis: #fff;
   --color-text-muted: #858585;
   --color-text-disabled: #656565;
-  --color-text-inverse: var(--color-sage-ink);
+  --color-text-inverse: var(--color-blue-ink);
   --color-status-foreground: #fff;
   --color-file-script: #4c9df3;
   --color-file-python: #e2b66b;
   --color-file-rust: #ef9a9a;
   --color-file-data: #d7c078;
   --color-file-media: #75b4f7;
-  --color-accent: var(--color-sage-400);
-  --color-accent-hover: var(--color-sage-300);
-  --color-accent-muted: var(--color-sage-800);
+  --color-accent: var(--color-blue-400);
+  --color-accent-hover: var(--color-blue-300);
+  --color-accent-muted: var(--color-blue-800);
+  --color-accent-text: var(--color-blue-200);
   --color-accent-foreground: var(--color-text-inverse);
   --color-focus-ring: var(--color-accent-hover);
   --color-success: #68d983;
@@ -114,7 +117,7 @@
     var(--color-diff-delete) 12%,
     var(--color-panel)
   );
-  --color-selection: var(--color-sage-800);
+  --color-selection: var(--color-blue-700);
   --glass-fill: rgb(73 82 88 / 0.34);
   --glass-fill-hover: rgb(88 98 104 / 0.46);
   --glass-border: rgb(255 255 255 / 0.13);
@@ -145,7 +148,7 @@
   --agent-shell-tab-border: #4c4c4c;
   --agent-shell-user-bubble: color-mix(
     in srgb,
-    var(--color-sage) 22%,
+    var(--color-accent) 22%,
     var(--agent-shell-center)
   );
   --agent-shell-resource-border: #363636;
@@ -202,26 +205,26 @@
   --doc-surface: #232323;
   --doc-plane-raised: #2a2a2a;
   --doc-surface-hover: #2a2a2a;
-  --doc-surface-active: var(--color-sage-800);
-  --doc-surface-selected: var(--color-sage-800);
+  --doc-surface-active: var(--color-blue-800);
+  --doc-surface-selected: var(--color-blue-800);
   --doc-border-subtle: #242424;
   --doc-border-strong: #2a2a2a;
   --doc-text-primary: #c5c5c5;
   --doc-text-secondary: #adadad;
   --doc-text-muted: #858585;
   --doc-text-disabled: #656565;
-  --doc-text-inverse: var(--color-sage-ink);
+  --doc-text-inverse: var(--color-blue-ink);
   --doc-file-script: #4c9df3;
   --doc-file-python: #e2b66b;
   --doc-file-rust: #ef9a9a;
   --doc-file-data: #d7c078;
   --doc-file-media: #75b4f7;
-  --doc-accent: var(--color-sage-400);
-  --doc-accent-hover: var(--color-sage-300);
-  --doc-accent-muted: var(--color-sage-800);
-  --doc-accent-foreground: var(--color-sage-ink);
-  --doc-focus-ring: var(--color-sage-400);
-  --doc-selection: var(--color-sage-800);
+  --doc-accent: var(--color-blue-400);
+  --doc-accent-hover: var(--color-blue-300);
+  --doc-accent-muted: var(--color-blue-800);
+  --doc-accent-foreground: var(--color-blue-ink);
+  --doc-focus-ring: var(--color-blue-400);
+  --doc-selection: var(--color-blue-700);
   --doc-elevation-popover: 0 8px 24px rgb(0 0 0 / 0.36);
   --doc-elevation-floating: 0 12px 32px rgb(0 0 0 / 0.42);
   --doc-code-foreground: #cbd1ca;
@@ -229,14 +232,14 @@
   --doc-gutter-divider: rgb(255 255 255 / 0.045);
   --doc-active-line: rgb(255 255 255 / 0.035);
   --doc-caret: #e1e7df;
-  --doc-selection-background: var(--color-sage-800);
+  --doc-selection-background: var(--color-blue-700);
   --doc-selection-foreground: #f4f7fb;
   /* Editing marks, after VS Code's dark defaults. */
   --doc-bracket-match-border: #888888;
   --doc-bracket-match-background: rgb(0 100 0 / 0.1);
   --doc-occurrence-background: color-mix(
     in srgb,
-    var(--color-sage-300) 15%,
+    var(--color-blue-300) 15%,
     transparent
   );
   /* Find matches, amber like Search results. */
@@ -358,6 +361,7 @@
   --radius-lg: 12px;
   --radius-xl: 16px;
   --radius-menu-row: var(--radius-sm);
+  --radius-picker-field: var(--radius-sm);
   --border-width: 1px;
   --card-border: var(--border-width) solid var(--color-border-subtle);
   --radius-chat-find: 14px;
@@ -381,6 +385,10 @@
   --composer-send-text: #171717;
   --composer-send-hover: #e8e8e8;
   --composer-send-disabled-text: #606060;
+  --composer-location-fill: #282828;
+  --composer-location-inset: var(--space-3);
+  --composer-location-height: var(--control-height-emphasis);
+  --composer-location-icon-gap: 6px;
   --elevation-popover: 0 8px 24px rgb(0 0 0 / 0.32);
   --elevation-floating: 0 16px 48px rgb(0 0 0 / 0.24);
   --highlight-focus-edge: color-mix(
@@ -783,6 +791,7 @@ textarea:disabled,
     --color-accent: LinkText;
     --color-accent-hover: LinkText;
     --color-accent-muted: Canvas;
+    --color-accent-text: LinkText;
     --color-accent-foreground: HighlightText;
     --color-focus-ring: Highlight;
     --highlight-focus-edge: Highlight;
