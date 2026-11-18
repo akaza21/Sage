@@ -167,11 +167,11 @@ for (const width of [1280, 960, 480]) {
         [".composer__model-trigger", ".composer__model-label"],
         [".composer__effort-picker", ".composer__effort-label"],
         [
-          ".composer__location .searchable-picker__trigger",
+          ".composer-location .searchable-picker__trigger",
           ".searchable-picker__trigger-label",
         ],
       ]) {
-        const control = composer.locator(selector);
+        const control = page.locator(".chat-dock-frame").locator(selector);
         if (await control.count())
           await expectContentSizedTrigger(control, label);
       }

@@ -18,6 +18,7 @@ import { loadProjectProjection } from "./projectProjectionLoader";
 import type { WorkbenchState } from "./store";
 import { closeLiveWorkbench } from "./workbenchClose";
 import { hasActiveAcpTurn } from "./acpProjectionRegistry";
+import { selectProjectSwitchBlocked } from "./workbenchSelectors";
 
 export interface ProjectSlice {
   projectGeneration: number;
@@ -390,13 +391,7 @@ export const createProjectSlice: StateCreator<
         state.tabs.find(
           (tab) => tab.id === state.activeTabId && tab.kind === "chat",
         )?.id ?? null;
-      if (
-        state.sending ||
-        Object.values(state.chatUiById).some(
-          (chat) => chat.sending || chat.modeChanging,
-        ) ||
-        hasActiveAcpTurn(activeChatId)
-      )
+      if (selectProjectSwitchBlocked(state) || hasActiveAcpTurn(activeChatId))
         return Promise.resolve();
       return runSwitchProject(projectId, {
         get,

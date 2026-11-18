@@ -536,7 +536,7 @@ test.describe("Agent Panel V1 conformance — centre conversation", () => {
 
     // C1 — CP-48 (Codex 67): a folder icon and the task title, with no
     // `Project /` segment; the project name lives in the header "…" menu.
-    const location = header.locator('[aria-label="Chat location"]');
+    const location = header.locator(".agent-task-header__breadcrumb");
     await expect(location).toHaveCount(1);
     const folder = location.locator(".agent-task-header__folder");
     await expect(folder).toBeVisible();

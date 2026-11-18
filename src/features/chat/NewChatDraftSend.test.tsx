@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
@@ -255,6 +256,16 @@ it("creates one durable chat and sends once through its real scoped page, includ
   await settleLazyModules();
   expect(prompts).toHaveLength(1);
   expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(after.tabs);
+});
+
+it("shows where the unsaved draft will run on a tab above its composer", async () => {
+  mount();
+  await settleLazyModules();
+  const projectName = useWorkbenchStore.getState().project!.name;
+  const draft = screen.getByRole("region", { name: "New chat draft" });
+  const strip = within(draft).getByRole("group", { name: "Chat location" });
+  expect(strip).toHaveTextContent(`This computer${projectName}`);
+  expect(strip.nextElementSibling).toBe(draft.querySelector(".chat-dock"));
 });
 
 it("notCreated keeps the draft and allows a retry that creates exactly one chat", async () => {

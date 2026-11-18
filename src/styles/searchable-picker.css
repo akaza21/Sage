@@ -5,11 +5,11 @@
 .searchable-picker__trigger,
 .searchable-picker__input {
   min-width: 0;
-  min-height: var(--control-height-compact);
+  min-height: var(--picker-field-min-height, var(--control-height-compact));
   padding: var(--picker-field-padding, 0 var(--space-2));
   border: var(--border-width) solid
     var(--picker-field-border-color, var(--color-border-strong));
-  border-radius: var(--radius-sm);
+  border-radius: var(--radius-picker-field);
   color: var(--color-text-primary);
   background: var(--color-surface);
   font: inherit;
@@ -18,7 +18,7 @@
 
 .searchable-picker__trigger {
   display: flex;
-  width: fit-content;
+  width: var(--picker-trigger-width, fit-content);
   max-width: 100%;
   align-items: center;
   justify-content: var(--picker-trigger-justify, flex-start);
@@ -29,6 +29,27 @@
 
 .searchable-picker__input {
   width: 100%;
+}
+
+.searchable-picker__trigger--plain {
+  border: 0;
+  color: inherit;
+  font-size: inherit;
+  background: transparent;
+  cursor: pointer;
+}
+
+.searchable-picker__trigger--plain:is(
+  :hover:not(:disabled),
+  [aria-expanded="true"]
+) {
+  color: var(--picker-trigger-hover-color, inherit);
+  background: var(--picker-trigger-hover-fill, transparent);
+}
+
+.searchable-picker__trigger--plain:disabled {
+  color: var(--color-text-disabled);
+  cursor: not-allowed;
 }
 
 .searchable-picker__trigger > :is(svg, img):first-child {
@@ -60,14 +81,14 @@
   overscroll-behavior: contain;
 }
 
-.composer__project-menu.searchable-picker__popover {
+.searchable-picker__popover.searchable-picker__popover--menu {
   display: flex;
   flex-direction: column;
   width: min(248px, calc(100vw - var(--space-8)));
   padding: calc(var(--space-1) * 1.5);
 }
 
-.composer__project-menu .searchable-picker__input {
+.searchable-picker__popover--menu .searchable-picker__input {
   flex: none;
   min-height: var(--control-height-default);
   border-color: transparent;
@@ -77,30 +98,30 @@
   font-size: var(--font-size-sm);
 }
 
-.composer__project-menu .searchable-picker__input:focus-visible {
+.searchable-picker__popover--menu .searchable-picker__input:focus-visible {
   border-color: var(--color-text-muted);
   outline: 0;
 }
 
-.composer__project-menu .searchable-picker__option.menu-item {
+.searchable-picker__popover--menu .searchable-picker__option.menu-item {
   grid-template-columns: minmax(0, 1fr) var(--icon-size-sm);
   gap: var(--space-2);
 }
 
-.composer__project-menu .searchable-picker__option-copy {
+.searchable-picker__popover--menu .searchable-picker__option-copy {
   display: grid;
 }
 
-.composer__project-menu .searchable-picker__option-copy > span {
+.searchable-picker__popover--menu .searchable-picker__option-copy > span {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.composer__project-menu .searchable-picker__current {
+.searchable-picker__popover--menu .searchable-picker__current {
   display: none;
 }
 
-.composer__project-menu
+.searchable-picker__popover--menu
   .searchable-picker__option[aria-selected="true"]:not(
     :has(.searchable-picker__selected-check)
   )::after {
@@ -113,7 +134,7 @@
   transform: translateY(-1px) rotate(-45deg);
 }
 
-.composer__project-menu
+.searchable-picker__popover--menu
   .searchable-picker__option[aria-selected="true"]:not(
     :hover,
     :focus-visible,
@@ -122,7 +143,8 @@
   background: transparent;
 }
 
-.composer__project-menu .searchable-picker__option[data-active="true"] {
+.searchable-picker__popover--menu
+  .searchable-picker__option[data-active="true"] {
   color: var(--menu-row-text);
   background: var(--menu-row-hover);
 }
@@ -171,31 +193,6 @@
   margin: 0;
 }
 
-.select-control .searchable-picker__trigger {
-  min-width: var(--select-control-trigger-min-width, 0);
-  min-height: var(--control-height-compact);
-  padding: var(--select-control-trigger-padding, 0 var(--icon-size-lg) 0 0);
-  border-radius: var(--radius-select-control-trigger);
-  overflow: hidden;
-  appearance: none;
-  border: var(--select-control-trigger-border, 0);
-  outline: 0;
-  color: var(--color-text-primary);
-  background: var(--select-control-trigger-fill, transparent);
-  backdrop-filter: var(--select-control-trigger-blur, none);
-  box-shadow: var(--select-control-trigger-shadow, none);
-  font: inherit;
-  font-size: var(--font-size-xs);
-  font-weight: var(--font-weight-semibold);
-  text-overflow: ellipsis;
-  cursor: pointer;
-}
-
-.select-control .searchable-picker__trigger:disabled {
-  color: var(--color-text-disabled);
-  cursor: not-allowed;
-}
-
 @media (forced-colors: active) {
   .searchable-picker__trigger,
   .searchable-picker__input {
@@ -210,11 +207,12 @@
     box-shadow: none;
   }
 
-  .composer__project-menu .searchable-picker__input:focus-visible {
+  .searchable-picker__popover--menu .searchable-picker__input:focus-visible {
     outline: 1px solid Highlight;
   }
 
-  .composer__project-menu .searchable-picker__option[data-active="true"] {
+  .searchable-picker__popover--menu
+    .searchable-picker__option[data-active="true"] {
     color: HighlightText;
     background: Highlight;
   }
