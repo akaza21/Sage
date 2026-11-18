@@ -120,7 +120,8 @@ mod tests {
     fn terminal_pairing_notice_prints_link_without_launching_only_with_opt_in() {
         let url =
             url::Url::parse("http://127.0.0.1:23456/?bridge=34567#private-pairing-code").unwrap();
-        let PairingNotice::OpenBrowser { failure_notice } = pairing_notice(&url, 34567, false) else {
+        let PairingNotice::OpenBrowser { failure_notice } = pairing_notice(&url, 34567, false)
+        else {
             panic!("without opt-in, launch the browser");
         };
         assert_eq!(
