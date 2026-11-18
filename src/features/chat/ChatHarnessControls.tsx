@@ -208,7 +208,7 @@ export function ChatHarnessControls({
     projectName && hasProjects ? (
       <ProjectScopeChip
         projectName={projectName}
-        menuItem
+        variant="menuItem"
         disabled={turnBusy}
       />
     ) : undefined;

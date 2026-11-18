@@ -1,0 +1,98 @@
+/* ProjectScopeChip's styles. Its picker draws a plain trigger, and each
+   variant tunes it only through SearchablePicker's custom properties. */
+.project-scope {
+  --picker-trigger-icon-size: var(--icon-size-sm);
+  --picker-field-padding: 0 var(--space-1);
+  display: inline-flex;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  align-items: center;
+  gap: var(--space-1);
+  color: inherit;
+  font: inherit;
+  white-space: nowrap;
+}
+
+.project-scope__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.project-scope__icon {
+  flex: none;
+}
+
+.project-scope__picker {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.project-scope--inline {
+  --picker-trigger-hover-color: var(--color-text-emphasis);
+  --picker-trigger-hover-fill: var(--composer-control-hover);
+  gap: var(--composer-location-icon-gap);
+}
+
+.project-scope--caption {
+  --picker-field-padding: 0;
+  --picker-field-min-height: 0;
+  --radius-picker-field: var(--radius-none);
+  --picker-trigger-width: 100%;
+  --picker-trigger-justify: center;
+  display: flex;
+  width: 100%;
+  justify-content: center;
+}
+
+.project-scope--caption .project-scope__picker {
+  width: 100%;
+}
+
+.project-scope__caption {
+  display: block;
+  text-align: center;
+  text-decoration: underline dotted;
+  text-underline-offset: var(--space-1);
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.project-scope--caption:focus-within {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+/* In the "+" menu the picker is a menu row. */
+.project-scope--menu-item {
+  --picker-field-padding: var(--space-1) var(--space-2);
+  --radius-picker-field: var(--radius-menu-row);
+  --picker-field-min-height: var(
+    --menu-row-height,
+    var(--control-height-compact)
+  );
+  --picker-trigger-width: 100%;
+  --picker-trigger-hover-color: var(--menu-row-text, var(--color-text-primary));
+  --picker-trigger-hover-fill: var(
+    --menu-row-hover,
+    var(--color-surface-hover)
+  );
+  display: flex;
+  width: 100%;
+  color: var(--menu-row-text, var(--color-text-secondary));
+  font-size: var(--menu-row-size, var(--font-size-xs));
+}
+
+.project-scope--menu-item .project-scope__picker {
+  width: 100%;
+}
+
+@media (forced-colors: active) {
+  .project-scope--caption:focus-within {
+    outline-color: Highlight;
+  }
+
+  .project-scope--caption .project-scope__caption {
+    color: LinkText;
+  }
+}

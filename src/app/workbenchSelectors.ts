@@ -17,6 +17,16 @@ export function selectActiveChatId(state: WorkbenchState): string | null {
   return activeTab?.kind === "chat" ? activeTab.id : null;
 }
 
+export function selectProjectSwitchBlocked(state: WorkbenchState): boolean {
+  return (
+    state.projectTransitioning ||
+    state.sending ||
+    Object.values(state.chatUiById).some(
+      (chat) => chat.sending || chat.modeChanging,
+    )
+  );
+}
+
 export function selectAgentSession(state: WorkbenchState): {
   sessionId: string | null;
   modelId: string | null;

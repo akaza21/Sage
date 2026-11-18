@@ -70,7 +70,7 @@ describe("CP-28 transcript style contracts", () => {
     );
     const composer = declaration(
       "src/styles/composer-surface.css",
-      ".chat-dock",
+      ".chat-dock-frame",
     );
     expect(compact(composer.width)).toBe(
       compact(

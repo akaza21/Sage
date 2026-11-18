@@ -780,7 +780,7 @@ test.describe("V2-4 session mode picker", () => {
       "GPT-5",
     );
     await expect(closedTrigger).toHaveAttribute("aria-checked", "true");
-    await expect(page.locator(".composer__location")).toHaveCount(0);
+    await expect(page.locator(".composer-location")).toHaveCount(0);
     const projectTrigger = closedOptions.getByRole("menuitem", {
       name: "Work in a project",
       exact: true,

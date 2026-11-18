@@ -98,6 +98,7 @@ it("shows advertised modes by their own names and hides no id as a default", () 
 it("lets the complete home project caption reflow instead of ellipsizing", async () => {
   await loadStyle("src/styles/shared-controls.css");
   await loadStyle("src/features/chat/chat-home.css");
+  await loadStyle("src/features/chat/project-scope.css");
   useWorkbenchStore.setState({
     project: { id: "project", name: "Project with a complete name", roots: [] },
     projects: [
@@ -142,7 +143,7 @@ it("lets the complete home project caption reflow instead of ellipsizing", async
     await screen.findByRole("region", { name: "New chat" }),
   ).getByText("Project with a complete name");
   expect(getComputedStyle(label).whiteSpace).toBe("normal");
-  expect(getComputedStyle(label).overflow).toBe("visible");
+  expect(getComputedStyle(label).overflowWrap).toBe("anywhere");
 });
 
 it("sizes chat table columns to content before wrapping overflow", async () => {

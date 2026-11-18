@@ -497,32 +497,44 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeDisabled();
   });
 
-  it("shows where a new chat runs above its input until the first turn", () => {
-    hooks.page = { ...projection(), turns: [], nextCursor: null };
-    useWorkbenchStore.setState({
-      project: { id: "project-a", name: "  Sage  ", roots: [] },
-    });
-    const { rerender, container } = render(<ChatSurface />);
-    expect(
-      screen.getByRole("region", { name: "New chat" }),
-    ).toBeInTheDocument();
-    const strip = screen.getByRole("group", { name: "Chat location" });
-    expect(container.querySelector("form.composer .composer__slots")).toBe(
-      strip.parentElement,
-    );
-    expect(strip).toHaveTextContent(/^This computerSage$/);
-    expect(strip.querySelector(".project-scope")).toHaveAttribute(
-      "title",
-      "Project: Sage (No other projects available)",
-    );
-    expect(container.querySelector(".composer__controls .project-scope")).toBe(
-      null,
-    );
-    hooks.page = projection();
-    rerender(<ChatSurface />);
-    expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
-    expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
-  });
+  it.each([
+    ["claude-code", "Claude Code"],
+    ["codex", "Codex"],
+    ["pi", "Pi"],
+  ])(
+    "shows where a new %s chat runs above its composer until the first turn",
+    (id, name) => {
+      hooks.page = { ...projection(), turns: [], nextCursor: null };
+      useWorkbenchStore.setState({
+        project: { id: "project-a", name: "  Sage  ", roots: [] },
+        harnesses: [{ ...useWorkbenchStore.getState().harnesses[0], id, name }],
+        selectedHarnessId: id,
+      });
+      const { rerender, container } = render(<ChatSurface />);
+      expect(
+        screen.getByRole("region", { name: "New chat" }),
+      ).toBeInTheDocument();
+      const strip = screen.getByRole("group", { name: "Chat location" });
+      expect(strip.nextElementSibling).toBe(
+        container.querySelector(".chat-dock"),
+      );
+      expect(container.querySelector("form.composer")).not.toContainElement(
+        strip,
+      );
+      expect(strip).toHaveTextContent(/^This computerSage$/);
+      expect(strip.querySelector(".project-scope")).toHaveAttribute(
+        "title",
+        "Project: Sage (No other projects available)",
+      );
+      expect(
+        container.querySelector(".composer__controls .project-scope"),
+      ).toBe(null);
+      hooks.page = projection();
+      rerender(<ChatSurface />);
+      expect(screen.queryByRole("region", { name: "New chat" })).toBeNull();
+      expect(screen.queryByRole("group", { name: "Chat location" })).toBeNull();
+    },
+  );
 
   it("offers files, refused outside the desktop app, and the project from Add in a new chat", async () => {
     hooks.page = { ...projection(), turns: [], nextCursor: null };

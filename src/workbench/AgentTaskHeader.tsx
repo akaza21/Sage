@@ -118,7 +118,7 @@ export function AgentTaskHeader({
       }}
     >
       {showNewChat ? <AgentNavigationPart part="AgentNewChatButton" /> : null}
-      <div className="agent-task-header__breadcrumb" aria-label="Chat location">
+      <div className="agent-task-header__breadcrumb">
         <span className="agent-task-header__folder" aria-hidden="true" />
         {renaming ? (
           <AgentTaskResourcesPart
