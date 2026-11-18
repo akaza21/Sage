@@ -1,7 +1,6 @@
 import { SageMark } from "../../ui/leanIconCore";
 import { ProjectScopeChip } from "./ProjectScopeChip";
 import "./chat-home.css";
-import "./chat-transcript-polish.css";
 
 export function ChatHome({ projectName }: { projectName: string | null }) {
   return (

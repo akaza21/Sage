@@ -1,10 +1,36 @@
-import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import {
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type ReactNode,
+} from "react";
 import { Check, Copy } from "../../ui/leanIcons";
 
 import type { AcpChatPage } from "../../domain/acp";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import { chatTimestamp } from "./chatTimestamp";
 import { ForkPart } from "./lazyParts";
+import "./answer-actions.css";
+
+export function AnswerActionButton({
+  label,
+  ...props
+}: { label: string } & Omit<
+  ComponentProps<"button">,
+  "aria-label" | "className" | "title" | "type"
+>) {
+  return (
+    <button
+      {...props}
+      type="button"
+      className="chat-transcript-actions__button"
+      aria-label={label}
+      data-tooltip={label}
+    />
+  );
+}
 
 export function AnswerActions({
   text,
@@ -59,14 +85,12 @@ export function AnswerActions({
       role="group"
       aria-label="Message actions"
     >
-      <button
-        type="button"
-        aria-label={copied ? "Copied" : "Copy"}
-        title={copied ? "Copied" : "Copy"}
+      <AnswerActionButton
+        label={copied ? "Copied" : "Copy"}
         onClick={() => void copyAnswer()}
       >
         <CopyIcon size={14} aria-hidden="true" />
-      </button>
+      </AnswerActionButton>
       {page ? (
         <ForkPart
           part="AnswerMoreActions"

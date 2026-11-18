@@ -28,7 +28,6 @@ import {
 } from "./acp/AcpAnnouncementRegions";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
 import "./chat-home.css";
-import "./chat-transcript-polish.css";
 import { composerWorkspaceName } from "./composerChrome";
 import { ForkPart, LegacyTranscriptPart, NoticePart } from "./lazyParts";
 import { isNewProjectChat } from "./newProjectChat";
@@ -241,15 +240,9 @@ export function ChatTranscript({
                 developmentSimulator={developmentSimulator}
               />
             )}
-            <ChatTranscriptFooter
-              key={scope}
-              useNativeAcp={useNativeAcp}
-              page={useNativeAcp ? page : null}
-              messages={messages}
-              onRetry={
-                page?.turns.at(-1)?.state !== "failed" ? retryAction : undefined
-              }
-            />
+            {useNativeAcp && page ? null : (
+              <ChatTranscriptFooter key={scope} messages={messages} />
+            )}
             {focused && (!useNativeAcp || !page) ? (
               <AcpAnnouncementRegions
                 page={null}

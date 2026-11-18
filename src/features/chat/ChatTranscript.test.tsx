@@ -137,10 +137,14 @@ function retryPage() {
   return next;
 }
 
-const footerCopies = () =>
-  screen
-    .queryAllByRole("button", { name: "Copy" })
-    .filter((button) => !button.closest(".acp-turn"));
+const footerCopies = () => {
+  const latest = [...document.querySelectorAll<HTMLElement>(".acp-turn")].at(
+    -1,
+  );
+  return latest
+    ? within(latest).queryAllByRole("button", { name: "Copy" })
+    : [];
+};
 
 describe("ChatTranscript answer actions", () => {
   it("places isolated chat disclosures outside the scrolling transcript and resets them on owner change", async () => {
@@ -444,50 +448,34 @@ describe("ChatTranscript Retry", () => {
     expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
   });
 
-  it.each(["", "Legacy answer"])(
-    "does not offer native footer Retry without a loaded ACP page (legacy text: %j)",
-    (text) => {
-      render(
-        <ChatTranscriptFooter
-          useNativeAcp
-          page={null}
-          messages={[{ role: "assistant", text } as ChatMessage]}
-          onRetry={vi.fn()}
-        />,
-      );
-      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
-    },
-  );
-
   it.each(["", " \n\t "])(
-    "does not offer legacy footer Retry without answer text %j",
+    "offers no legacy footer actions without answer text %j",
     (text) => {
       render(
         <ChatTranscriptFooter
-          useNativeAcp={false}
-          page={null}
           messages={[{ role: "assistant", text } as ChatMessage]}
-          onRetry={vi.fn()}
         />,
       );
-      expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
       expect(screen.queryByRole("button", { name: "Copy" })).toBeNull();
     },
   );
 
-  it("keeps legacy footer Retry available with answer text", () => {
-    const onRetry = vi.fn();
+  it("copies the latest legacy answer and offers no Retry there", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
     render(
       <ChatTranscriptFooter
-        useNativeAcp={false}
-        page={null}
-        messages={[{ role: "assistant", text: "Legacy answer" } as ChatMessage]}
-        onRetry={onRetry}
+        messages={[
+          { role: "assistant", text: "Earlier answer" } as ChatMessage,
+          { role: "assistant", text: "Legacy answer" } as ChatMessage,
+        ]}
       />,
     );
-    expect(screen.getByRole("button", { name: "Copy" })).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
-    expect(onRetry).toHaveBeenCalledOnce();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Copy" }));
+    });
+    expect(writeText).toHaveBeenCalledExactlyOnceWith("Legacy answer");
+    expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
   });
 
   it.each([

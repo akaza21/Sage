@@ -1,4 +1,5 @@
 import { type BrowserOperationProjection } from "../../../domain/browserOperation";
+import { WorkRow } from "../WorkRow";
 import { BrowserOperationItem } from "./BrowserOperationItem";
 
 const MAX_VISIBLE_BROWSER_OPERATIONS = 32;
@@ -14,19 +15,21 @@ export function BrowserOperations({
   const earlier = Math.max(0, collapsed) + operations.length - visible.length;
   if (visible.length === 0 && earlier === 0) return null;
   return (
-    <section className="acp-browser-operations" aria-label="Browser actions">
-      <h3 className="sr-only">Browser actions</h3>
-      {earlier > 0 ? (
-        <p className="acp-browser-operations__earlier">
-          +{earlier} earlier browser action{earlier === 1 ? "" : "s"}
-        </p>
-      ) : null}
-      {visible.map((operation) => (
-        <BrowserOperationItem
-          key={operation.operationId}
-          operation={operation}
-        />
-      ))}
-    </section>
+    <WorkRow>
+      <section className="acp-browser-operations" aria-label="Browser actions">
+        <h3 className="sr-only">Browser actions</h3>
+        {earlier > 0 ? (
+          <p className="acp-browser-operations__earlier">
+            +{earlier} earlier browser action{earlier === 1 ? "" : "s"}
+          </p>
+        ) : null}
+        {visible.map((operation) => (
+          <BrowserOperationItem
+            key={operation.operationId}
+            operation={operation}
+          />
+        ))}
+      </section>
+    </WorkRow>
   );
 }

@@ -107,7 +107,7 @@ export function ToolItem({
     return <CompactToolItem item={item} onOpenResource={onOpenResource} />;
   return (
     <article
-      className={`acp-activity-card acp-activity-card--tool acp-tool-card acp-tool-card--${visualState}`}
+      className={`acp-activity${compact ? "" : " acp-activity-card"} acp-tool-card acp-tool-card--${visualState}`}
       role="group"
       aria-label={label}
       aria-describedby={detail ? descriptionId : undefined}
@@ -120,7 +120,7 @@ export function ToolItem({
           {detail}
         </span>
       ) : null}
-      <header className="acp-activity-card__header acp-tool-card__header">
+      <header className="acp-tool-card__header">
         {visualState === "inProgress" ? (
           <ToolRunningIndicator />
         ) : (

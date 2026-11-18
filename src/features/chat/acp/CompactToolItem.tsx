@@ -18,7 +18,7 @@ export function CompactToolItem({ item, onOpenResource }: ToolItemProps) {
       : toolStateLabels[item.toolState];
   return (
     <article
-      className="acp-activity-card acp-tool-compact"
+      className="acp-activity acp-tool-compact"
       data-acp-item-id={item.id}
       data-activity-kind={kind}
       data-activity-state={item.toolState}

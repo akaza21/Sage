@@ -1,4 +1,4 @@
-import { useId, useRef, useState } from "react";
+import { memo, useId, useRef, useState } from "react";
 
 import type { AcpItem } from "../../../domain/acp";
 import { admittedImageDataUrl } from "../../../services/acpDesktopResponseImage";
@@ -7,7 +7,13 @@ import { ModalDialog } from "../../../ui/ModalDialog";
 type ImageProjectionItem = Extract<AcpItem, { kind: "image" }>;
 type AdmittedImage = NonNullable<ReturnType<typeof admittedImageDataUrl>>;
 
-export function ImageItem({ item }: { item: ImageProjectionItem }) {
+export const ImageItem = memo(function ImageItem({
+  item,
+  thumbnail = false,
+}: {
+  item: ImageProjectionItem;
+  thumbnail?: boolean;
+}) {
   const admitted = admittedImageDataUrl(
     item.payload.mediaType,
     item.payload.dataUrl,
@@ -22,16 +28,19 @@ export function ImageItem({ item }: { item: ImageProjectionItem }) {
       key={admissionKey}
       admitted={admitted}
       source={item.payload.source}
+      thumbnail={thumbnail}
     />
   );
-}
+});
 
 function AdmittedImageItem({
   admitted,
   source,
+  thumbnail,
 }: {
   admitted: AdmittedImage;
   source?: "user" | "agent";
+  thumbnail: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -42,7 +51,7 @@ function AdmittedImageItem({
   };
 
   return (
-    <figure className="acp-image">
+    <figure className={`acp-image${thumbnail ? " acp-image--thumbnail" : ""}`}>
       <button
         ref={triggerRef}
         type="button"

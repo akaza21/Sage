@@ -64,8 +64,8 @@ describe("empty turn activity", () => {
       expect(
         screen.queryByRole("group", { name: "Permission request" }),
       ).toBeNull();
-      const worked = screen.getByText("Worked for 0s").closest("details")!;
-      fireEvent.click(worked.querySelector("summary")!);
+      const worked = screen.getByRole("button", { name: "Worked for 0s" });
+      fireEvent.click(worked);
       const row = screen.getByRole("group", { name: "Permission request" });
       expect(row).toBeVisible();
       expect(row).toHaveAttribute("data-acp-item-id", "permission-row");
@@ -75,7 +75,7 @@ describe("empty turn activity", () => {
         expect(within(row).getByRole("status")).toHaveAccessibleName(
           "Permission not answered",
         );
-      fireEvent.click(worked.querySelector("summary")!);
+      fireEvent.click(worked);
       expect(
         screen.queryByRole("group", { name: "Permission request" }),
       ).toBeNull();
@@ -91,7 +91,7 @@ describe("empty turn activity", () => {
     const answer = { ...textItem(), ordinal: 2 };
     const { container } = renderTurn("completed", [progress, answer]);
     expect(await screen.findByText("Normalized answer")).toBeVisible();
-    expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+    expect(container.querySelector(".chat-transcript-work__toggle")).toBeNull();
     expect(screen.getByText("Worked for 0s")).toBeVisible();
   });
 
@@ -113,7 +113,7 @@ describe("empty turn activity", () => {
       "This project is ready. Choose a harness and begin a persistent chat.";
     const { container } = renderTurn("completed", [answer]);
     expect(await screen.findByText(answer.payload.text)).toBeVisible();
-    expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+    expect(container.querySelector(".chat-transcript-work__toggle")).toBeNull();
     expect(screen.getByText("Worked for 0s")).toBeVisible();
   });
 
@@ -122,7 +122,7 @@ describe("empty turn activity", () => {
     expect(
       container.querySelector(".chat-transcript-work--running"),
     ).toBeVisible();
-    expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+    expect(container.querySelector(".chat-transcript-work__toggle")).toBeNull();
   });
 
   it("retains the zero-duration disclosure when there is renderable activity", () => {
@@ -136,14 +136,10 @@ describe("empty turn activity", () => {
     const { container } = renderTurn("completed", [notice, textItem()]);
     expect(screen.getByText("Worked for 0s")).toBeVisible();
     expect(
-      container.querySelector("details.chat-transcript-work"),
-    ).not.toHaveAttribute("open");
+      screen.getByRole("button", { name: "Worked for 0s" }),
+    ).toHaveAttribute("aria-expanded", "false");
     expect(screen.queryByText("Context automatically compacted")).toBeNull();
-    const work = container.querySelector<HTMLDetailsElement>(
-      "details.chat-transcript-work",
-    )!;
-    work.open = true;
-    fireEvent(work, new Event("toggle"));
+    fireEvent.click(screen.getByRole("button", { name: "Worked for 0s" }));
     expect(
       container.querySelector(".chat-transcript-work__groups"),
     ).toHaveTextContent("Context automatically compacted");
@@ -167,11 +163,10 @@ describe("empty turn activity", () => {
       } as unknown as AcpItem;
       renderTurn(state, [permission]);
       if (state === "completed") {
-        const work = screen.getByText("Worked for 0s").closest("details")!;
-        expect(work).not.toHaveAttribute("open");
+        const work = screen.getByRole("button", { name: "Worked for 0s" });
+        expect(work).toHaveAttribute("aria-expanded", "false");
         expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
-        work.open = true;
-        fireEvent(work, new Event("toggle"));
+        fireEvent.click(work);
       }
       if (state === "completed") {
         const row = screen.getByRole("group", { name: "Permission request" });

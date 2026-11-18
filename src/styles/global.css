@@ -346,6 +346,9 @@
   );
   --transcript-item-gap: var(--space-2);
   --transcript-answer-gap: var(--space-2);
+  --transcript-row-line-height: 21px;
+  --transcript-nested-row-height: 20px;
+  --transcript-thumbnail-size: 88px;
   --radius-edit-summary: var(--radius-md);
   --settings-measure: 820px;
   --settings-content-gap: var(--space-4);
@@ -879,24 +882,36 @@ textarea:disabled,
   }
 }
 
-:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(1) {
+/* A list that reveals its own row wrappers fades them in, top to bottom. */
+.stagger-reveal > * {
+  animation: sage-row-in var(--motion-duration-row) ease-out both;
+  animation-delay: calc(var(--sage-row, 5) * var(--motion-stagger));
+}
+
+.stagger-reveal > :nth-child(1) {
   --sage-row: 0;
 }
 
-:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(2) {
+.stagger-reveal > :nth-child(2) {
   --sage-row: 1;
 }
 
-:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(3) {
+.stagger-reveal > :nth-child(3) {
   --sage-row: 2;
 }
 
-:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(4) {
+.stagger-reveal > :nth-child(4) {
   --sage-row: 3;
 }
 
-:is(.chat-transcript-work__groups, .acp-tool-rollup__items) > :nth-child(5) {
+.stagger-reveal > :nth-child(5) {
   --sage-row: 4;
+}
+
+@media (prefers-reduced-motion: reduce), (forced-colors: active) {
+  .stagger-reveal > * {
+    animation: none;
+  }
 }
 
 @keyframes sage-working-pulse {

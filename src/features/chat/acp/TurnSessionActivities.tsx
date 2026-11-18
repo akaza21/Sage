@@ -1,5 +1,6 @@
 import type { TurnSessionActivity } from "../../../domain/acp";
 import { Check, Circle, CircleX, LoaderCircle } from "../../../ui/leanIcons";
+import { WorkRow } from "../WorkRow";
 
 const stateLabels: Record<TurnSessionActivity["state"], string> = {
   running: "Running",
@@ -18,37 +19,39 @@ export function TurnSessionActivities({
 }) {
   if (activities.length === 0) return null;
   return (
-    <ul className="acp-session-activities" aria-label="Hooks">
-      {activities.map((activity, index) => {
-        const running = activity.state === "running";
-        const Icon =
-          activity.state === "running" ? null : stateIcons[activity.state];
-        return (
-          <li
-            key={`${index}:${activity.label}`}
-            className="acp-activity-row acp-session-activity"
-            data-activity-kind={activity.kind}
-            data-activity-state={activity.state}
-          >
-            {Icon ? (
-              <Icon size={14} aria-hidden="true" />
-            ) : (
-              <span className="acp-tool-running" aria-hidden="true">
-                <LoaderCircle size={12} aria-hidden="true" />
+    <WorkRow>
+      <ul className="acp-session-activities" aria-label="Hooks">
+        {activities.map((activity, index) => {
+          const running = activity.state === "running";
+          const Icon =
+            activity.state === "running" ? null : stateIcons[activity.state];
+          return (
+            <li
+              key={`${index}:${activity.label}`}
+              className="acp-activity-row acp-session-activity"
+              data-activity-kind={activity.kind}
+              data-activity-state={activity.state}
+            >
+              {Icon ? (
+                <Icon size={14} aria-hidden="true" />
+              ) : (
+                <span className="acp-tool-running" aria-hidden="true">
+                  <LoaderCircle size={12} aria-hidden="true" />
+                </span>
+              )}
+              <span className={running ? "acp-live-shimmer" : undefined}>
+                {activity.label}
               </span>
-            )}
-            <span className={running ? "acp-live-shimmer" : undefined}>
-              {activity.label}
-            </span>
-            <span className="sr-only">{`, ${stateLabels[activity.state]}${activity.progress ? ": " : ""}`}</span>
-            {activity.progress ? (
-              <span className="acp-session-activity__detail">
-                {activity.progress}
-              </span>
-            ) : null}
-          </li>
-        );
-      })}
-    </ul>
+              <span className="sr-only">{`, ${stateLabels[activity.state]}${activity.progress ? ": " : ""}`}</span>
+              {activity.progress ? (
+                <span className="acp-session-activity__detail">
+                  {activity.progress}
+                </span>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </WorkRow>
   );
 }

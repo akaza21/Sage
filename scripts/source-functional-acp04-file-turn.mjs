@@ -176,18 +176,18 @@ function selectActionExpression(action) {
   return `(()=>{const turns=[...document.querySelectorAll('section[data-turn-id][data-turn-ordinal]')].filter(t=>t.dataset.turnId===${JSON.stringify(action.turnId)});if(turns.length!==1)return false;const actions=[...turns[0].querySelectorAll('button[data-resource-root-id][data-resource-relative-path]')].filter(x=>x.dataset.resourceRootId===${JSON.stringify(action.rootId)}&&x.dataset.resourceRelativePath===${JSON.stringify(action.relativePath)}&&x.closest(${JSON.stringify(FILE_ACTION_CARDS)})?.dataset.acpItemId===${JSON.stringify(action.itemId)}&&!x.disabled);if(actions.length!==1)return false;actions[0].click();return true;})()`;
 }
 
-// One disclosure inside the Turn: its folded "Worked for …" summary, or the
-// tool rollup that summary reveals. Opens it only while it is closed and
+// One disclosure inside the Turn: its folded "Worked for …" toggle, or the
+// tool rollup that toggle reveals. Opens it only while it is closed and
 // reports "open", "opening", "missing" or "ambiguous".
 export function revealTurnDisclosureExpression(turnId, level) {
   if (!validText(turnId)) fail("file-turn-reveal-invalid");
   const candidates =
     level === "worked"
-      ? "[...turns[0].querySelectorAll('details')].filter(d=>/^Worked\\b/u.test(d.querySelector(':scope > summary')?.textContent.trim()||''))"
+      ? "[...turns[0].querySelectorAll('button[aria-expanded]')].filter(b=>/^Worked\\b/u.test(b.textContent.trim()))"
       : level === "tool"
         ? "[...turns[0].querySelectorAll('details[data-activity-kind]')]"
         : fail("file-turn-reveal-invalid");
-  return `(()=>{const turns=[...document.querySelectorAll('section[data-turn-id][data-turn-ordinal]')].filter(t=>t.dataset.turnId===${JSON.stringify(turnId)});if(turns.length!==1)return 'ambiguous';const found=${candidates};if(found.length>1)return 'ambiguous';if(found.length===0)return 'missing';if(found[0].open)return 'open';const summaries=found[0].querySelectorAll(':scope > summary');if(summaries.length!==1)return 'ambiguous';summaries[0].click();return 'opening';})()`;
+  return `(()=>{const turns=[...document.querySelectorAll('section[data-turn-id][data-turn-ordinal]')].filter(t=>t.dataset.turnId===${JSON.stringify(turnId)});if(turns.length!==1)return 'ambiguous';const found=${candidates};if(found.length>1)return 'ambiguous';if(found.length===0)return 'missing';if(found[0].tagName!=='DETAILS'){if(found[0].getAttribute('aria-expanded')==='true')return 'open';found[0].click();return 'opening';}if(found[0].open)return 'open';const summaries=found[0].querySelectorAll(':scope > summary');if(summaries.length!==1)return 'ambiguous';summaries[0].click();return 'opening';})()`;
 }
 
 async function revealTurnDisclosure(cdp, deadline, turnId, level) {

@@ -211,7 +211,7 @@ describe("TurnActivityItem", () => {
       };
       rerender(<AcpChatPresentation page={completed} {...props} />);
       const disclosure = document.querySelector(
-        ".chat-transcript-work > summary",
+        ".chat-transcript-work__toggle",
       );
       if (disclosure) fireEvent.click(disclosure);
       expect(screen.queryByText("Thinking")).toBeNull();

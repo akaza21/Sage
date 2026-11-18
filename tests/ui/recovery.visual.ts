@@ -34,8 +34,8 @@ test.describe("Wave 2 canonical visual states", () => {
           failure.getByRole("button", { name: "Retry", exact: true }),
         ).toBeVisible();
         await expect(
-          page.locator("details.chat-transcript-work"),
-        ).not.toHaveAttribute("open", "");
+          page.locator(".chat-transcript-work__toggle"),
+        ).toHaveAttribute("aria-expanded", "false");
       }
       await settleTranscriptAtEnd(page);
       await expectNoViewportOverflow(page);

@@ -4,15 +4,28 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { AcpItem } from "../../../domain/acp";
+import * as responseImage from "../../../services/acpDesktopResponseImage";
 import { safeItem } from "../../../services/acpDesktopResponseItems";
 
 import { ImageItem } from "./ImageItem";
 
-afterEach(cleanup);
+vi.mock("../../../services/acpDesktopResponseImage", async (original) => {
+  const actual = await original<typeof responseImage>();
+  return {
+    ...actual,
+    admittedImageDataUrl: vi.fn(actual.admittedImageDataUrl),
+  };
+});
+
+afterEach(() => {
+  cleanup();
+  vi.mocked(responseImage.admittedImageDataUrl).mockClear();
+});
 
 const png =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=";
@@ -26,6 +39,21 @@ function item(dataUrl = `data:image/png;base64,${png}`, id = "image-one") {
 }
 
 describe("ImageItem", () => {
+  it("keeps an unchanged thumbnail on screen across parent updates without revalidating it", () => {
+    const image = item();
+    const { rerender } = render(<ImageItem item={image} thumbnail />);
+    rerender(<ImageItem item={image} thumbnail />);
+    const thumbnail = screen.getByRole("img");
+    expect(thumbnail).toBeVisible();
+    expect(thumbnail).toHaveAttribute("src", image.payload.dataUrl);
+    expect(responseImage.admittedImageDataUrl).toHaveBeenCalledOnce();
+    fireEvent.click(screen.getByRole("button", { name: "Open image viewer" }));
+    expect(within(screen.getByRole("dialog")).getByRole("img")).toHaveAttribute(
+      "src",
+      image.payload.dataUrl,
+    );
+  });
+
   it("renders a reloaded desktop image projection and resets an open viewer on remount", () => {
     const reloaded = safeItem(
       JSON.parse(

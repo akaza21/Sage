@@ -149,10 +149,10 @@ it("keeps hook rows in a settled Turn behind its Worked disclosure", () => {
       }),
     ),
   );
-  const worked = screen.getByText("Worked for 6s").closest("details")!;
+  const worked = screen.getByRole("button", { name: "Worked for 6s" });
   expect(screen.queryByRole("list", { name: "Hooks" })).toBeNull();
-  fireEvent.click(worked.querySelector("summary")!);
-  expect(worked.open).toBe(true);
+  fireEvent.click(worked);
+  expect(worked).toHaveAttribute("aria-expanded", "true");
   const list = screen.getByRole("list", { name: "Hooks" });
   expect(
     within(list).getByText("Synthetic lint hook exited with status 1"),

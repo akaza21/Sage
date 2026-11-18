@@ -6,10 +6,12 @@ import type { AgentArtifactOwner } from "../../../domain/agentArtifact";
 import type { ResourceRef } from "../../../domain/workbench";
 import { isTauriRuntime } from "../../../ports/desktopRuntime";
 import { acpDesktop } from "../../../services/acpDesktop";
+import { RotateCcw } from "../../../ui/leanIcons";
 import { isSideChatId } from "../../../workbench/sideChatState";
-import { AnswerActions } from "../AnswerActions";
+import { AnswerActionButton, AnswerActions } from "../AnswerActions";
 import type { TurnListHost } from "../chatScroll";
 import { ChatTranscriptTurnSummary } from "../ChatTranscriptFooter";
+import { turnSessionForkState } from "../forkChatRequest";
 import { turnHasActivities } from "../transcriptSummary";
 import { EditSummaryPart, NavigationPart, TranscriptPart } from "../lazyParts";
 import { TurnDaySeparator } from "./AcpTurnDates";
@@ -24,6 +26,7 @@ import { BrowserOperations } from "./BrowserOperations";
 import { DeferredTurnFileActivity as TurnFileActivity } from "./DeferredChatDetails";
 import { isEditingFiles } from "./editingFiles";
 import { HarnessActivity } from "./HarnessActivity";
+import { ImageItem } from "./ImageItem";
 import { PrimaryActivities } from "./PrimaryActivities";
 import { terminalTurnStates } from "./statusSemantics";
 import { type OpenResourceTarget } from "./ToolItem";
@@ -51,13 +54,13 @@ const Turn = memo(
     onOpenResource,
     onRetry,
     inherited = false,
-    answerActions = inherited,
+    latest = false,
     fileSummaryInDock = false,
   }: {
     page: AcpChatPage;
     turn: TurnProjection;
     inherited?: boolean;
-    answerActions?: boolean;
+    latest?: boolean;
     fileSummaryInDock?: boolean;
     rootLabels?: Readonly<Record<string, string>>;
     workspaceChanges?: readonly TurnWorkspaceChange[];
@@ -121,16 +124,22 @@ const Turn = memo(
         (item.kind !== "thoughtSummary" ||
           (!terminal && item.id === liveThought?.id)),
     );
-    // Earlier/inherited answer menus never fork: Rust forks only the latest Turn (footer).
     const text = finalAnswer?.kind === "text" && finalAnswer.payload.text;
-    const actions =
-      answerActions && text ? (
-        <AnswerActions
-          text={text}
-          createdAt={finalAnswer.createdAt}
-          page={page}
-        />
-      ) : null;
+    // Rust forks only the latest Turn.
+    const actions = text ? (
+      <AnswerActions
+        text={text}
+        createdAt={finalAnswer.createdAt}
+        page={page}
+        forkable={latest}
+      >
+        {onRetry && turn.state !== "failed" ? (
+          <AnswerActionButton label="Retry" onClick={onRetry}>
+            <RotateCcw size={14} aria-hidden="true" />
+          </AnswerActionButton>
+        ) : null}
+      </AnswerActions>
+    ) : null;
     const renderWorkingItem = (item: AcpItem) => (
       <ItemView
         key={item.id}
@@ -168,11 +177,7 @@ const Turn = memo(
                 aria-label="Prompt attachments"
               >
                 {attachmentItems.map((item) => (
-                  <ItemView
-                    key={item.id}
-                    item={item}
-                    interactive={interactive}
-                  />
+                  <ImageItem key={item.id} item={item} thumbnail />
                 ))}
               </div>
             ) : null}
@@ -272,8 +277,8 @@ const Turn = memo(
               </button>
             ) : null}
             <TurnFailure turn={turn} onRetry={onRetry} />
-            {!inherited && actions}
           </div>
+          {!inherited && actions}
         </section>
         {inherited && actions}
       </>
@@ -287,10 +292,8 @@ const Turn = memo(
   },
   (left, right) =>
     left.turn === right.turn &&
-    left.page.sessions.some((session) => session.id === left.turn.sessionId) ===
-      right.page.sessions.some(
-        (session) => session.id === right.turn.sessionId,
-      ) &&
+    turnSessionForkState(left.page, left.turn.sessionId) ===
+      turnSessionForkState(right.page, right.turn.sessionId) &&
     left.page.projectId === right.page.projectId &&
     left.page.chatId === right.page.chatId &&
     left.page.currentSessionId === right.page.currentSessionId &&
@@ -298,7 +301,7 @@ const Turn = memo(
     left.rootLabels === right.rootLabels &&
     left.workspaceChanges === right.workspaceChanges &&
     left.workspaceIncomplete === right.workspaceIncomplete &&
-    left.answerActions === right.answerActions &&
+    left.latest === right.latest &&
     left.fileSummaryInDock === right.fileSummaryInDock &&
     left.onOpenResource === right.onOpenResource &&
     left.onRetry === right.onRetry,
@@ -350,7 +353,7 @@ export function AcpChatPresentation({
         workspaceIncomplete={incompleteTurnIds.has(turn.id)}
         onOpenResource={onOpenResource}
         onRetry={index === page.turns.length - 1 ? onRetry : undefined}
-        answerActions={index < page.turns.length - 1}
+        latest={index === page.turns.length - 1}
         fileSummaryInDock={editSummaryContainer !== undefined}
       />
     </Fragment>

@@ -1,0 +1,71 @@
+.chat-transcript-actions {
+  display: flex;
+  min-height: var(--control-height-compact);
+  align-items: center;
+  animation: sage-reveal-two-pixel var(--motion-duration-normal) ease-out both;
+}
+
+/* The owning turn reveals the time by setting this property on hover. */
+.chat-transcript-actions:hover,
+.chat-transcript-actions:focus-within {
+  --answer-actions-time-opacity: 1;
+}
+
+.chat-transcript-actions__button {
+  display: inline-flex;
+  width: var(--space-6);
+  height: var(--space-6);
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  color: var(--color-text-muted);
+  background: transparent;
+  font: inherit;
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.chat-transcript-actions__button:hover,
+.chat-transcript-actions__button[aria-expanded="true"] {
+  background: var(--color-surface-hover);
+}
+
+.chat-transcript-actions__button:hover {
+  color: var(--color-text-primary);
+}
+
+.chat-transcript-actions__button[aria-expanded="true"] {
+  color: var(--color-text-emphasis);
+}
+
+.chat-transcript-actions__button:focus-visible {
+  outline: var(--focus-ring);
+  outline-offset: var(--focus-ring-offset);
+}
+
+.chat-transcript-actions__button > svg {
+  width: var(--icon-size-sm);
+  height: var(--icon-size-sm);
+  stroke-width: 1.5;
+}
+
+.chat-transcript-actions__time {
+  margin-left: var(--space-1);
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+  opacity: var(--answer-actions-time-opacity, 0);
+  transition: opacity var(--motion-duration-fast) ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-transcript-actions {
+    animation: none;
+  }
+
+  .chat-transcript-actions__time {
+    transition: none;
+  }
+}

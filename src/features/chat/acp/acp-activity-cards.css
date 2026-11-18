@@ -1,13 +1,13 @@
-.acp-activity-card {
+.acp-activity {
   min-width: 0;
-  padding: var(--space-2) 0 var(--space-2) var(--space-3);
   overflow: hidden;
-  border: 0;
-  border-left: 1px solid var(--color-border-strong);
-  border-radius: var(--radius-none);
   color: var(--color-text-secondary);
-  background: transparent;
   font-size: var(--font-size-sm);
+}
+
+.acp-activity-card {
+  padding: var(--space-2) 0 var(--space-2) var(--space-3);
+  border-left: 1px solid var(--color-border-strong);
 }
 
 .acp-activity-card[data-activity-state="inProgress"] {
@@ -31,8 +31,7 @@
   border-left-style: dashed;
 }
 
-.acp-activity-card[data-activity-state="failed"],
-.acp-activity-card--error {
+.acp-activity-card[data-activity-state="failed"] {
   border-left-color: var(--color-danger);
   background: linear-gradient(
     90deg,
@@ -43,7 +42,7 @@
 
 .acp-activity-card > header,
 .acp-activity-card > summary,
-.acp-activity-card__header {
+.acp-tool-card > .acp-tool-card__header {
   display: grid;
   min-width: 0;
   min-height: var(--row-height-compact);
@@ -52,12 +51,12 @@
   gap: var(--space-3);
 }
 
-.acp-activity-card > summary {
+.acp-activity > summary {
   border-radius: var(--radius-sm);
   cursor: pointer;
 }
 
-.acp-activity-card > .acp-tool-card__header {
+.acp-tool-card > .acp-tool-card__header {
   grid-template-columns: auto minmax(0, 1fr) auto auto;
   gap: var(--space-2);
 }
@@ -102,31 +101,25 @@
   font-size: var(--font-size-xs);
 }
 
-.acp-activity-card > summary:focus-visible {
+.acp-activity > summary:focus-visible {
   outline: var(--focus-ring);
   outline-offset: var(--focus-ring-offset);
   box-shadow: var(--highlight-focus-halo-shadow);
 }
 
-.acp-activity-card strong,
-.acp-activity-card > summary > span:first-child {
+.acp-activity strong {
   min-width: 0;
   overflow-wrap: anywhere;
   color: var(--color-text-primary);
   font-weight: var(--font-weight-medium);
 }
 
-.acp-activity-card .acp-state {
+.acp-activity .acp-state {
   justify-self: end;
   text-align: right;
 }
 
-.acp-activity-card > summary > span.acp-tool-rollup__summary-copy {
-  color: inherit;
-  font-weight: var(--font-weight-regular);
-}
-
-.acp-activity-card[data-activity-state="inProgress"]
+.acp-activity[data-activity-state="inProgress"]
   > :is(header, summary)
   .acp-state {
   color: var(--color-accent);
@@ -134,19 +127,19 @@
     infinite;
 }
 
-.acp-activity-card[data-activity-state="completed"] > header .acp-state {
+.acp-activity[data-activity-state="completed"] > header .acp-state {
   color: var(--color-success);
 }
 
-.acp-activity-card[data-activity-state="declined"] > header .acp-state {
+.acp-activity[data-activity-state="declined"] > header .acp-state {
   color: var(--color-warning);
 }
 
-.acp-activity-card[data-activity-state="failed"] > header .acp-state {
+.acp-activity[data-activity-state="failed"] > header .acp-state {
   color: var(--color-danger);
 }
 
-.acp-activity-card p {
+.acp-activity p {
   margin: var(--space-1) 0 0;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
@@ -298,8 +291,7 @@
   }
 
   .acp-activity-card > header,
-  .acp-activity-card > summary,
-  .acp-activity-card__header {
+  .acp-activity-card > summary {
     gap: var(--space-2);
   }
 }
@@ -312,7 +304,7 @@
     background: Canvas;
   }
 
-  .acp-activity-card > summary:focus-visible,
+  .acp-activity > summary:focus-visible,
   .acp-plan__summary:focus-visible {
     outline: 1px solid CanvasText;
     box-shadow: none;

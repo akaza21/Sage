@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import {
   waitForAnimations,
   openScenario,
@@ -60,7 +60,8 @@ async function installTurn(page: Page, stopped: boolean) {
 test.use({ deviceScaleFactor: 1 });
 
 /** The latest answer's row; earlier Turns keep their own (s2/f0149). */
-const footerActions = ".message-list__content > .chat-transcript-actions";
+const footerActions = (pane: Locator) =>
+  pane.locator(".acp-turn").last().locator(":scope > .chat-transcript-actions");
 
 for (const width of [1888, 720, 480]) {
   for (const scenario of ["agent-single", "agent-dual"] as const) {
@@ -76,7 +77,7 @@ for (const width of [1888, 720, 480]) {
       await installTurn(page, false);
       const bounds = [];
       for (const pane of await panes.all()) {
-        await expect(pane.locator(footerActions)).toHaveCount(0);
+        await expect(footerActions(pane)).toHaveCount(0);
         const answer = pane.locator(".acp-message--assistant").last();
         await expect(answer).toBeVisible();
         await waitForAnimations(answer);
@@ -93,8 +94,8 @@ for (const width of [1888, 720, 480]) {
         const answer = pane.locator(".acp-message--assistant").last();
         const before = bounds[index];
         const after = await answer.boundingBox();
-        await waitForAnimations(pane.locator(footerActions));
-        const actions = await pane.locator(footerActions).boundingBox();
+        await waitForAnimations(footerActions(pane));
+        const actions = await footerActions(pane).boundingBox();
         const header = await pane
           .locator(".acp-turn__header")
           .last()

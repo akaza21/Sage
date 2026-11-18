@@ -84,7 +84,7 @@ for (const { width, height } of [
       `chat-surface-actions-${width}.png`,
       pixels,
     );
-    await page.locator(".chat-transcript-work > summary").click();
+    await page.locator(".chat-transcript-work__toggle").click();
     const command = page.locator(".acp-tool-rollup > summary");
     await expect(command).toHaveText(/Ran/);
     await command.click();

@@ -142,10 +142,10 @@ test.describe("CP-47 motion", () => {
   }) => {
     // Subagent rows stay unmounted until Worked opens, then fade in.
     await openActivity(page, "subagents");
-    const worked = page.locator("details.chat-transcript-work");
-    await worked.locator("summary").click();
+    const worked = page.locator(".chat-transcript-work__toggle");
+    await worked.click();
     const rows = page.locator(
-      ".chat-transcript-work[open] + .chat-transcript-work__groups > :not(.acp-tool-rollup)",
+      ".chat-transcript-work__groups.stagger-reveal > :not(.acp-tool-rollup)",
     );
     await expect(rows.first()).toHaveCSS("animation-name", "sage-row-in");
     const delays = await rows.evaluateAll((nodes) =>
@@ -160,7 +160,7 @@ test.describe("CP-47 motion", () => {
       "transition-duration",
       "0.12s",
     );
-    await worked.locator("summary").click();
+    await worked.click();
     await expect(rows).toHaveCount(0);
   });
 

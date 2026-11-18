@@ -15,10 +15,8 @@ import { settleLazyModules } from "../../../test/settleLazyModules";
 
 afterEach(cleanup);
 
-function openWorked(summary: HTMLElement) {
-  const work = summary.closest("details")!;
-  work.open = true;
-  fireEvent(work, new Event("toggle"));
+function openWorked(label: HTMLElement) {
+  fireEvent.click(label.closest("button")!);
 }
 
 function retryPage(state: TurnState): AcpChatPage {
@@ -138,7 +136,14 @@ describe.each(["codex", "claude-code", "pi", "opencode", "oh-my-pi"])(
           expect(
             screen.queryByRole("group", { name: "Turn failed" }),
           ).toBeNull();
-          expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
+          const retry = screen.queryByRole("button", { name: "Retry" });
+          if (state === "running") expect(retry).toBeNull();
+          else
+            expect(
+              within(
+                screen.getByRole("group", { name: "Message actions" }),
+              ).getByRole("button", { name: "Retry" }),
+            ).toBe(retry);
         }
       },
     );

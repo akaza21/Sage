@@ -115,8 +115,9 @@ describe("UnknownItem", () => {
       screen.getByText("A future item was retained safely."),
     ).toBeInTheDocument();
     expect(screen.getByText("Summary truncated")).toBeInTheDocument();
-    expect(
-      container.querySelector(".acp-activity-card--unknown"),
-    ).toHaveAttribute("data-activity-state", "unsupported");
+    expect(container.querySelector(".acp-unknown")).toHaveAttribute(
+      "data-activity-state",
+      "unsupported",
+    );
   });
 });

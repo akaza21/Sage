@@ -673,12 +673,14 @@ describe("ToolItem", async () => {
           )}
         />,
       );
-      expect(
-        container.querySelector(".acp-activity-card--tool"),
-      ).toHaveAttribute("data-activity-kind", "other");
-      expect(
-        container.querySelector(".acp-activity-card--tool"),
-      ).toHaveAttribute("data-activity-state", state);
+      expect(container.querySelector(".acp-tool-card")).toHaveAttribute(
+        "data-activity-kind",
+        "other",
+      );
+      expect(container.querySelector(".acp-tool-card")).toHaveAttribute(
+        "data-activity-state",
+        state,
+      );
     },
   );
 

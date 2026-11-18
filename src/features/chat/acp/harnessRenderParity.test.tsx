@@ -118,7 +118,14 @@ async function rendered(projection: Projection): Promise<string[]> {
     const closed = container.querySelectorAll<HTMLDetailsElement>(
       "details:not([open])",
     );
-    if (closed.length === 0) break;
+    const worked = container.querySelectorAll<HTMLButtonElement>(
+      '.chat-transcript-work__toggle[aria-expanded="false"]',
+    );
+    if (closed.length === 0 && worked.length === 0) break;
+    for (const toggle of worked)
+      await act(async () => {
+        fireEvent.click(toggle);
+      });
     for (const disclosure of closed) {
       await act(async () => {
         disclosure.open = true;

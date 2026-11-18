@@ -40,6 +40,7 @@ import {
   hiddenByClosedDetails,
   openExpression,
   isDisclosure,
+  isExpandable,
   scopeToTurn,
   observationFor,
   actionsFor,
@@ -934,7 +935,15 @@ test("disclosure opening is idempotent and refuses ambiguous or non-details targ
   assert.equal(run([{ ...summary, parentElement: { tagName: "DIV" } }]), false);
   assert.equal(run([]), false);
   assert.equal(
-    isDisclosure(".acp-turn:last-of-type .chat-transcript-work > summary"),
+    isDisclosure(".acp-turn:last-of-type .acp-tool-rollup > summary"),
+    true,
+  );
+  assert.equal(
+    isDisclosure(".acp-turn:last-of-type .chat-transcript-work__toggle"),
+    false,
+  );
+  assert.equal(
+    isExpandable(".acp-turn:last-of-type .chat-transcript-work__toggle"),
     true,
   );
   assert.equal(isDisclosure('button[aria-label="Cancel turn"]'), false);
@@ -967,10 +976,10 @@ test("live predicates accept waiting turn states but not queued or settled ones"
 test("latest-turn actions are pinned to the observed turn identity", () => {
   assert.equal(
     scopeToTurn(
-      ".acp-turn:last-of-type .chat-transcript-work > summary",
+      ".acp-turn:last-of-type .chat-transcript-work__toggle",
       "turn-1",
     ),
-    '.acp-turn[data-turn-id="turn-1"] .chat-transcript-work > summary',
+    '.acp-turn[data-turn-id="turn-1"] .chat-transcript-work__toggle',
   );
   assert.equal(
     scopeToTurn('button[aria-label="Cancel turn"]', "none"),

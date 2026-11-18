@@ -23,9 +23,13 @@ import { Copy, Ellipsis, GitBranch } from "../../ui/leanIcons";
 import { MenuPopover } from "../../ui/MenuPopover";
 import { ModalDialog } from "../../ui/ModalDialog";
 import { isSideChatId } from "../../workbench/sideChatState";
+import { AnswerActionButton } from "./AnswerActions";
 import "./fork-chat.css";
 import { inheritComposerModel } from "./inheritedComposerModel";
-import { ForkChatRequestContext } from "./forkChatRequest";
+import {
+  ForkChatRequestContext,
+  turnSessionForkState,
+} from "./forkChatRequest";
 
 export function AnswerMoreMenu({
   onCopy,
@@ -44,11 +48,9 @@ export function AnswerMoreMenu({
     : [Copy, "Copy"];
   return (
     <>
-      <button
+      <AnswerActionButton
         ref={trigger}
-        type="button"
-        aria-label="More actions"
-        title="More actions"
+        label="More actions"
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -56,7 +58,7 @@ export function AnswerMoreMenu({
         onClick={() => setOpen(!open)}
       >
         <Ellipsis size={14} aria-hidden="true" />
-      </button>
+      </AnswerActionButton>
       <MenuPopover
         id={menuId}
         open={open}
@@ -158,12 +160,7 @@ export function AnswerMoreActions({
     turn?.state === "completed" &&
     turn.sessionId === page.currentSessionId &&
     !isSideChatId(page.chatId) &&
-    page.sessions.some(
-      (session) =>
-        session.id === turn.sessionId &&
-        session.residency === "hot" &&
-        session.capabilities.nativeSessionFork,
-    );
+    turnSessionForkState(page, turn.sessionId) === "forkable";
   return (
     <AnswerMoreMenu
       onCopy={onCopy}
