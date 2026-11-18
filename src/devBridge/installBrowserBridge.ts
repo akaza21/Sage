@@ -45,9 +45,7 @@ function showDisconnected() {
   document.body.append(notice);
 }
 
-export async function installBrowserBridge(): Promise<void> {
-  const pairingCode = location.hash.slice(1);
-  history.replaceState(history.state, "", location.pathname + location.search);
+export async function installBrowserBridge(pairingCode: string): Promise<void> {
   const port = new URLSearchParams(location.search).get("bridge") ?? "";
   if (!/^\d{1,5}$/.test(port) || Number(port) < 1 || Number(port) > 65535)
     throw new Error(`${BRIDGE_NAME}: invalid port`);

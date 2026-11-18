@@ -1,6 +1,10 @@
 use super::{
     auth::{Credentials, Lease, Pairing, lock},
-    protocol::{MAX_MESSAGE_BYTES, MAX_PENDING, Outbound, PendingInvoke},
+    handshake_io::HandshakeIo,
+    protocol::{
+        MAX_MESSAGE_BYTES, MAX_PENDING, MAX_PENDING_BYTES, Outbound, PendingInvoke,
+        Request as BridgeRequest,
+    },
 };
 use futures_util::{SinkExt, StreamExt};
 use std::{
@@ -32,6 +36,7 @@ pub(super) struct Access {
     origin: String,
     pairing: Arc<Mutex<Pairing>>,
     permits: Arc<Semaphore>,
+    body_permits: Arc<Semaphore>,
     close_requests: watch::Sender<CloseRequest>,
 }
 
@@ -42,6 +47,7 @@ impl Access {
             origin,
             pairing,
             permits: Arc::new(Semaphore::new(MAX_PENDING)),
+            body_permits: Arc::new(Semaphore::new(MAX_PENDING_BYTES)),
             close_requests: watch::channel(CloseRequest::Idle).0,
         }
     }
@@ -65,13 +71,39 @@ impl Access {
 pub(super) struct Session {
     _lease: Lease,
     permits: Arc<Semaphore>,
+    body_permits: Arc<Semaphore>,
     close_requests: watch::Sender<CloseRequest>,
     close_changes: watch::Receiver<CloseRequest>,
 }
 
 impl Session {
-    pub fn admit(&self, id: u32, output: &Outbound) -> Option<PendingInvoke> {
-        output.admit(id, &self.permits)
+    pub fn admit(&self, id: u32, body_bytes: usize, output: &Outbound) -> Option<PendingInvoke> {
+        output.admit(id, body_bytes, &self.permits, &self.body_permits)
+    }
+
+    pub fn observe_request(&self, request: &BridgeRequest) {
+        if request.cmd == "trace_close_stage"
+            && request
+                .args
+                .get("stage")
+                .and_then(serde_json::Value::as_str)
+                == Some("closeRequested")
+            && matches!(
+                request
+                    .args
+                    .get("status")
+                    .and_then(serde_json::Value::as_str),
+                Some("error" | "end")
+            )
+        {
+            self.close_requests.send_if_modified(|state| {
+                if *state != CloseRequest::Forwarded {
+                    return false;
+                }
+                *state = CloseRequest::Idle;
+                true
+            });
+        }
     }
 
     pub async fn close_requested(&mut self) -> Result<(), watch::error::RecvError> {
@@ -121,22 +153,19 @@ pub(super) async fn accept(
     stream: TcpStream,
     access: &Access,
 ) -> Result<(WebSocketStream<TcpStream>, Session), ()> {
-    let config = WebSocketConfig::default()
-        .max_message_size(Some(MAX_MESSAGE_BYTES))
-        .max_frame_size(Some(MAX_MESSAGE_BYTES))
-        .write_buffer_size(0)
-        .max_write_buffer_size(MAX_MESSAGE_BYTES + 1024);
+    let config = socket_config(256).read_buffer_size(256);
     let handshake = async {
-        let mut socket =
-            accept_hdr_async_with_config(stream, UpgradeGuard { access }, Some(config))
-                .await
-                .map_err(|_| ())?;
+        let mut socket = accept_hdr_async_with_config(
+            HandshakeIo::new(stream),
+            UpgradeGuard { access },
+            Some(config),
+        )
+        .await
+        .map_err(|_| ())?;
+        socket.get_mut().begin_authentication();
         let Some(Ok(Message::Text(text))) = socket.next().await else {
             return Err(());
         };
-        if text.len() > 256 {
-            return Err(());
-        }
         let credentials: Credentials = serde_json::from_str(&text).map_err(|_| ())?;
         let session = {
             let mut pairing = lock(&access.pairing);
@@ -148,6 +177,7 @@ pub(super) async fn accept(
         let client = Session {
             _lease: Lease(access.pairing.clone()),
             permits: access.permits.clone(),
+            body_permits: access.body_permits.clone(),
             close_requests: access.close_requests.clone(),
             close_changes: access.close_requests.subscribe(),
         };
@@ -156,11 +186,20 @@ pub(super) async fn accept(
             .send(Message::Text(reply.into()))
             .await
             .map_err(|_| ())?;
+        let socket = HandshakeIo::promote(socket, socket_config(MAX_MESSAGE_BYTES)).await;
         Ok((socket, client))
     };
     tokio::time::timeout(Duration::from_secs(2), handshake)
         .await
         .map_err(|_| ())?
+}
+
+fn socket_config(message_bytes: usize) -> WebSocketConfig {
+    WebSocketConfig::default()
+        .max_message_size(Some(message_bytes))
+        .max_frame_size(Some(message_bytes))
+        .write_buffer_size(0)
+        .max_write_buffer_size(MAX_MESSAGE_BYTES + 1024)
 }
 
 #[cfg(test)]

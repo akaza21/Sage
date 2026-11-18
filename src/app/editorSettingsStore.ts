@@ -106,9 +106,14 @@ function ensureWriteDrain(): Promise<void> {
 }
 
 export async function flushEditorSettingsPersistence(): Promise<void> {
+  if (failedWrite) {
+    pendingWrite = { ...failedWrite, ...pendingWrite };
+    failedWrite = null;
+  }
   while (writeDrain || pendingWrite) {
     await ensureWriteDrain();
   }
+  if (failedWrite) throw new Error(SAVE_FAILURE_MESSAGE);
 }
 
 export function holdEditorSettingsPersistenceForClose(): () => void {

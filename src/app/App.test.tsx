@@ -1,4 +1,4 @@
-import { act, render, waitFor } from "@testing-library/react";
+import { act, render, waitFor, within } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { harnessAvailability } from "../features/chat/harnessAvailability";
@@ -228,6 +228,59 @@ describe("App harness discovery event", () => {
     expect(screen.getByRole("alert").textContent).toContain(
       "Close editorFlush failed",
     );
+  });
+
+  it("retries a failed close while its terminal report is still awaiting acknowledgement", async () => {
+    const normalInvoke = invoke.getMockImplementation()!;
+    let acknowledge: (() => void) | undefined;
+    invoke.mockImplementation(async (command, args) => {
+      if (
+        command === "trace_close_stage" &&
+        args?.status === "error" &&
+        !acknowledge
+      ) {
+        await new Promise<void>((resolve) => {
+          acknowledge = resolve;
+        });
+        return undefined;
+      }
+      return normalInvoke(command, args);
+    });
+    useWorkbenchStore.setState({
+      closeWorkbench: vi
+        .fn()
+        .mockRejectedValueOnce(new Error("first flush failed"))
+        .mockRejectedValueOnce(new Error("second flush failed")),
+    });
+    const screen = render(<App />);
+    try {
+      await waitFor(() => expect(closeEventListener).toBeTypeOf("function"));
+      let first: Promise<void> | undefined;
+      act(() => {
+        first = closeEventListener?.();
+      });
+      await waitFor(() => expect(acknowledge).toBeTypeOf("function"));
+      expect(within(screen.container).getByRole("alert").textContent).toContain(
+        "first flush failed",
+      );
+      let second: Promise<void> | undefined;
+      act(() => {
+        second = closeEventListener?.();
+      });
+      await waitFor(() =>
+        expect(
+          within(screen.container).getByRole("alert").textContent,
+        ).toContain("second flush failed"),
+      );
+      acknowledge?.();
+      await act(async () => {
+        await Promise.all([first, second]);
+      });
+    } finally {
+      acknowledge?.();
+      invoke.mockImplementation(normalInvoke);
+      screen.unmount();
+    }
   });
 
   it("handles close requests for the current window through the event port", async () => {

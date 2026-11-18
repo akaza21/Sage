@@ -135,6 +135,15 @@ async fn websocket_handshake_rejects_foreign_host_and_origin_and_consumed_or_bus
 
 #[tokio::test]
 async fn reconnect_preserves_admission_until_dispatched_operations_respond() {
+    reconnect_admission(MAX_PENDING, 0, "bridge invoke limit reached").await;
+}
+
+#[tokio::test]
+async fn reconnect_preserves_in_flight_body_budget_until_operations_respond() {
+    reconnect_admission(8, 8 * 1024 * 1024, "bridge in-flight byte limit reached").await;
+}
+
+async fn reconnect_admission(pending: usize, request_bytes: usize, rejection: &str) {
     use super::super::protocol::{MAX_PENDING, Outbound, PendingInvoke, Request};
     use tauri::ipc::{InvokeResponse, InvokeResponseBody};
     use tokio::sync::{mpsc, watch};
@@ -161,7 +170,7 @@ async fn reconnect_preserves_admission_until_dispatched_operations_respond() {
                         match incoming.unwrap().unwrap() {
                             Message::Text(text) => {
                                 let request: Request = serde_json::from_str(&text).unwrap();
-                                if let Some(reply) = session.admit(request.id, &output) {
+                                if let Some(reply) = session.admit(request.id, text.len(), &output) {
                                     dispatched.send(reply).await.unwrap();
                                 }
                             }
@@ -190,13 +199,14 @@ async fn reconnect_preserves_admission_until_dispatched_operations_respond() {
     .await
     .unwrap();
     let mut outstanding = Vec::new();
-    for id in 0..MAX_PENDING {
+    for id in 0..pending {
+        let mut request =
+            serde_json::json!({"id":id,"cmd":"pick_project_source_folder","args":{"body":""}});
+        let overhead = request.to_string().len();
+        request["args"]["body"] =
+            serde_json::json!("a".repeat(request_bytes.saturating_sub(overhead)));
         first
-            .send(Message::Text(
-                serde_json::json!({"id":id,"cmd":"pick_project_source_folder"})
-                    .to_string()
-                    .into(),
-            ))
+            .send(Message::Text(request.to_string().into()))
             .await
             .unwrap();
         outstanding.push(
@@ -220,7 +230,7 @@ async fn reconnect_preserves_admission_until_dispatched_operations_respond() {
         .unwrap();
     assert_eq!(
         response(&mut reload).await,
-        serde_json::json!({"id":100,"err":"bridge invoke limit reached"})
+        serde_json::json!({"id":100,"err":rejection})
     );
     outstanding
         .pop()
@@ -245,6 +255,86 @@ async fn reconnect_preserves_admission_until_dispatched_operations_respond() {
     );
     server.abort();
     let _ = server.await;
+}
+
+#[tokio::test]
+async fn unauthenticated_frame_is_refused_from_its_length_without_reading_its_body() {
+    use tokio::io::AsyncWriteExt;
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let origin = "http://127.0.0.1:23456";
+    let access = Access::new(
+        address.to_string(),
+        origin.into(),
+        Arc::new(Mutex::new(Pairing::new("a".repeat(64)))),
+    );
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        assert!(accept(stream, &access).await.is_err());
+        assert!(!access.request_close());
+    });
+    let mut socket = connect(address, &address.to_string(), origin)
+        .await
+        .unwrap();
+    // A masked text frame declaring 257 bytes, with no body sent.
+    socket
+        .get_mut()
+        .write_all(&[0x81, 0xfe, 0x01, 0x01, 0, 0, 0, 0])
+        .await
+        .unwrap();
+    tokio::time::timeout(Duration::from_secs(1), server)
+        .await
+        .unwrap()
+        .unwrap();
+}
+
+#[tokio::test]
+async fn authentication_promotion_preserves_a_pipelined_invoke() {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let origin = "http://127.0.0.1:23456";
+    let access = Access::new(
+        address.to_string(),
+        origin.into(),
+        Arc::new(Mutex::new(Pairing::new("a".repeat(64)))),
+    );
+    let server = tokio::spawn(async move {
+        let (stream, _) = listener.accept().await.unwrap();
+        let (mut socket, _session) = accept(stream, &access).await.unwrap();
+        assert_eq!(
+            socket.next().await.unwrap().unwrap().into_text().unwrap(),
+            r#"{"id":1,"cmd":"get_bootstrap_snapshot"}"#
+        );
+        socket
+            .send(Message::Text(r#"{"id":1,"ok":"preserved"}"#.into()))
+            .await
+            .unwrap();
+    });
+    let mut browser = connect(address, &address.to_string(), origin)
+        .await
+        .unwrap();
+    browser
+        .feed(Message::Text(
+            serde_json::json!({"pairingCode":"a".repeat(64)})
+                .to_string()
+                .into(),
+        ))
+        .await
+        .unwrap();
+    browser
+        .feed(Message::Text(
+            r#"{"id":1,"cmd":"get_bootstrap_snapshot"}"#.into(),
+        ))
+        .await
+        .unwrap();
+    browser.flush().await.unwrap();
+    assert!(response(&mut browser).await["session"].is_string());
+    assert_eq!(
+        response(&mut browser).await,
+        serde_json::json!({"id":1,"ok":"preserved"})
+    );
+    server.await.unwrap();
 }
 
 #[tokio::test]
@@ -351,6 +441,24 @@ async fn native_close_waits_once_for_the_browser_and_reconnect_discards_stale_re
         !access.request_close(),
         "a hung close handler cannot trap close"
     );
+    for status in ["error", "end"] {
+        session.observe_request(
+            &serde_json::from_value(serde_json::json!({
+                "id": 1, "cmd": "trace_close_stage",
+                "args": {"stage": "closeRequested", "status": status}
+            }))
+            .unwrap(),
+        );
+        assert!(
+            access.request_close(),
+            "an answered close must forward again"
+        );
+        assert!(session.forward_close_request());
+        assert!(
+            !access.request_close(),
+            "only an unanswered close can escape"
+        );
+    }
     drop(session);
     assert!(!access.request_close());
 

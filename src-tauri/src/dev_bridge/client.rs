@@ -1,6 +1,6 @@
-use super::protocol::{MAX_LISTENERS, OUTBOUND_FRAMES, Outbound, Request, admits_command};
+use super::connection::{self, SessionEvent};
+use super::protocol::{MAX_LISTENERS, Outbound, Request, admits_command};
 use super::transport::Session;
-use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{Value, json};
 use std::collections::HashMap;
@@ -9,11 +9,8 @@ use tauri::{
     ipc::{CallbackFn, InvokeBody},
     webview::InvokeRequest,
 };
-use tokio::{
-    net::TcpStream,
-    sync::{mpsc, watch},
-};
-use tokio_tungstenite::{WebSocketStream, tungstenite::Message};
+use tokio::net::TcpStream;
+use tokio_tungstenite::WebSocketStream;
 
 enum Subscription {
     Native(tauri::EventId),
@@ -53,42 +50,27 @@ impl Listeners {
 pub(super) async fn serve(
     socket: WebSocketStream<TcpStream>,
     app: tauri::AppHandle,
-    mut session: Session,
+    session: Session,
 ) {
-    let (sender, mut receiver) = mpsc::channel(OUTBOUND_FRAMES);
-    let (stop, mut cancelled) = watch::channel(false);
-    let output = Outbound::new(sender, stop);
     let mut listeners = Listeners {
         app: app.clone(),
         ids: HashMap::new(),
     };
-    let (mut writer, mut reader) = socket.split();
-    loop {
-        tokio::select! {
-            biased;
-            _ = cancelled.changed() => break,
-            _ = session.close_requested() => listeners.forward_close(&session, &output),
-            frame = receiver.recv() => {
-                let Some(frame) = frame else { break; };
-                output.dequeued(&frame);
-                let send = writer.send(frame);
-                if !matches!(tokio::time::timeout(std::time::Duration::from_secs(5), send).await, Ok(Ok(()))) { break; }
-            }
-            incoming = reader.next() => {
-                let Some(Ok(Message::Text(text))) = incoming else { break; };
-                let Ok(request) = serde_json::from_str::<Request>(&text) else { break; };
-                if !admits_command(&request.cmd) {
-                    output.error(request.id, "command is not admitted by the browser bridge");
-                } else if request.cmd == "plugin:event|listen" {
-                    listen(&mut listeners, request, &output, &session);
-                } else if request.cmd == "plugin:event|unlisten" {
-                    unlisten(&mut listeners, request, &output);
-                } else {
-                    dispatch(&app, request, output.clone(), &session);
-                }
+    connection::run(socket, session, |event, session, output| match event {
+        SessionEvent::CloseRequested => listeners.forward_close(session, output),
+        SessionEvent::Request(request, body_bytes) => {
+            if !admits_command(&request.cmd) {
+                output.error(request.id, "command is not admitted by the browser bridge");
+            } else if request.cmd == "plugin:event|listen" {
+                listen(&mut listeners, request, output, session);
+            } else if request.cmd == "plugin:event|unlisten" {
+                unlisten(&mut listeners, request, output);
+            } else {
+                dispatch(&app, request, body_bytes, output.clone(), session);
             }
         }
-    }
+    })
+    .await;
 }
 
 #[derive(Deserialize)]
@@ -180,8 +162,14 @@ fn unlisten(listeners: &mut Listeners, request: Request, output: &Outbound) {
     }
 }
 
-fn dispatch(app: &tauri::AppHandle, request: Request, output: Outbound, session: &Session) {
-    let Some(reply) = session.admit(request.id, &output) else {
+fn dispatch(
+    app: &tauri::AppHandle,
+    request: Request,
+    body_bytes: usize,
+    output: Outbound,
+    session: &Session,
+) {
+    let Some(reply) = session.admit(request.id, body_bytes, &output) else {
         return;
     };
     let Some(webview) = app.get_webview("main") else {

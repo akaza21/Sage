@@ -989,6 +989,7 @@ describe("live Project workspace notify bind", () => {
   });
 
   it("unwatches when the workbench closes", async () => {
+    vi.spyOn(projectPort, "persistProjectLayout").mockResolvedValue();
     vi.spyOn(projectPort, "persistProjectLayoutAndClose").mockResolvedValue();
     await useWorkbenchStore.getState().initialize();
     await useWorkbenchStore.getState().closeWorkbench();
@@ -1012,7 +1013,45 @@ describe("live Project workspace notify bind", () => {
     expect(close).not.toHaveBeenCalled();
   });
 
+  it("persists a tab opened while native close is waiting for unwatch", async () => {
+    let stored: unknown;
+    let finishUnwatch: (() => void) | undefined;
+    vi.spyOn(projectPort, "persistProjectLayout").mockImplementation(
+      async (layout) => {
+        stored = layout;
+      },
+    );
+    vi.spyOn(projectPort, "persistProjectLayoutAndClose").mockImplementation(
+      async (layout) => {
+        if (layout) stored = layout;
+      },
+    );
+    vi.mocked(projectPort.unwatchWorkspaceNotify).mockImplementation(
+      () =>
+        new Promise((resolve) => {
+          finishUnwatch = resolve;
+        }),
+    );
+    await useWorkbenchStore.getState().initialize();
+    const closing = useWorkbenchStore.getState().closeWorkbench();
+    await vi.waitFor(() => expect(finishUnwatch).toBeTypeOf("function"));
+    const tab = {
+      id: "late-file",
+      kind: "file" as const,
+      title: "late.txt",
+      position: 0,
+      pinned: false,
+      dirty: false,
+      resource: { rootId: "root-a", relativePath: "late.txt" },
+    };
+    useWorkbenchStore.setState({ tabs: [tab], activeTabId: tab.id });
+    finishUnwatch?.();
+    await closing;
+    expect(stored).toMatchObject({ tabs: [tab], activeTabId: tab.id });
+  });
+
   it("waits for the latest editor settings before native close", async () => {
+    vi.spyOn(projectPort, "persistProjectLayout").mockResolvedValue();
     let finishSave: (() => void) | undefined;
     let finishUnwatch: (() => void) | undefined;
     const save = vi

@@ -1,5 +1,7 @@
 mod auth;
 mod client;
+mod connection;
+mod handshake_io;
 mod protocol;
 mod transport;
 
@@ -81,10 +83,53 @@ pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
             }
         }
     });
-    // The link carries the pairing code, so it goes to the terminal only when the
-    // browser cannot be opened, and never to tracing.
-    if crate::system_browser::open_dev_bridge(&browser_url).is_err() {
-        println!("Open Sage in your browser: {browser_url}");
+    let browser_opened = crate::system_browser::open_dev_bridge(&browser_url).is_ok();
+    if let Some(message) = pairing_notice(
+        &browser_url,
+        address.port(),
+        browser_opened,
+        std::env::var("SAGE_BRIDGE_PRINT_LINK").as_deref() == Ok("1"),
+    ) {
+        println!("{message}");
     }
     Ok(())
+}
+
+fn pairing_notice(
+    url: &url::Url,
+    port: u16,
+    browser_opened: bool,
+    print_link: bool,
+) -> Option<String> {
+    if print_link {
+        Some(format!("Open Sage in your browser: {url}"))
+    } else if !browser_opened {
+        Some(format!(
+            "Sage browser bridge is listening on port {port}. Restart with SAGE_BRIDGE_PRINT_LINK=1 to print the pairing link."
+        ))
+    } else {
+        None
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn terminal_pairing_notice_never_contains_the_credential_without_opt_in() {
+        let url =
+            url::Url::parse("http://127.0.0.1:23456/?bridge=34567#private-pairing-code").unwrap();
+        assert_eq!(pairing_notice(&url, 34567, true, false), None);
+        assert_eq!(
+            pairing_notice(&url, 34567, false, false).unwrap(),
+            "Sage browser bridge is listening on port 34567. Restart with SAGE_BRIDGE_PRINT_LINK=1 to print the pairing link."
+        );
+        for browser_opened in [false, true] {
+            assert_eq!(
+                pairing_notice(&url, 34567, browser_opened, true).unwrap(),
+                "Open Sage in your browser: http://127.0.0.1:23456/?bridge=34567#private-pairing-code"
+            );
+        }
+    }
 }

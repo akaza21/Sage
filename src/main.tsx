@@ -14,9 +14,15 @@ async function mount() {
       return;
     }
     if (query.has("bridge")) {
+      const pairingCode = location.hash.slice(1);
+      history.replaceState(
+        history.state,
+        "",
+        location.pathname + location.search,
+      );
       const { installBrowserBridge } =
         await import("./devBridge/installBrowserBridge");
-      await installBrowserBridge();
+      await installBrowserBridge(pairingCode);
       const { installWorkbenchNavigationGuard } =
         await import("./app/installWorkbenchNavigationGuard");
       const dispose = installWorkbenchNavigationGuard();

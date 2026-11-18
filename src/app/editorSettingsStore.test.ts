@@ -198,6 +198,30 @@ describe("editor settings persistence", () => {
     });
   });
 
+  it("rejects a flush with unsaved settings and retries those keys on the next flush", async () => {
+    let writable = false;
+    const durable = { ...DEFAULT_EDITOR_SETTINGS };
+    vi.spyOn(
+      getWorkbenchPorts().settings,
+      "setEditorSettings",
+    ).mockImplementation(async (changes) => {
+      if (!writable) throw new Error("disk full");
+      Object.assign(durable, changes);
+      return durable;
+    });
+    useEditorSettingsStore.getState().setSettings({ "editor.fontSize": 16 });
+    await expect(flushEditorSettingsPersistence()).rejects.toThrow(
+      "Editor settings could not be saved.",
+    );
+    expect(durable["editor.fontSize"]).toBe(
+      DEFAULT_EDITOR_SETTINGS["editor.fontSize"],
+    );
+    writable = true;
+    await flushEditorSettingsPersistence();
+    expect(durable["editor.fontSize"]).toBe(16);
+    expect(useEditorSettingsStore.getState().persistencePhase).toBe("idle");
+  });
+
   it("skips a write when nothing changed", () => {
     const save = vi.spyOn(getWorkbenchPorts().settings, "setEditorSettings");
 

@@ -21,6 +21,7 @@ pub(super) const MAX_MESSAGE_BYTES: usize =
 pub(super) const OUTBOUND_FRAMES: usize = 1024;
 pub(super) const MAX_QUEUED_BYTES: usize = 16 * 1024 * 1024;
 pub(super) const MAX_PENDING: usize = 64;
+pub(super) const MAX_PENDING_BYTES: usize = 64 * 1024 * 1024;
 pub(super) const MAX_LISTENERS: usize = 128;
 
 include!(concat!(env!("OUT_DIR"), "/bridge_commands.rs"));
@@ -67,6 +68,7 @@ pub(super) struct PendingInvoke {
     id: u32,
     output: Outbound,
     _permit: OwnedSemaphorePermit,
+    _body_permit: OwnedSemaphorePermit,
 }
 
 impl PendingInvoke {
@@ -88,13 +90,31 @@ impl Outbound {
         let _ = self.stop.send(true);
     }
 
-    pub fn admit(&self, id: u32, permits: &Arc<Semaphore>) -> Option<PendingInvoke> {
+    pub fn admit(
+        &self,
+        id: u32,
+        body_bytes: usize,
+        permits: &Arc<Semaphore>,
+        body_permits: &Arc<Semaphore>,
+    ) -> Option<PendingInvoke> {
         match permits.clone().try_acquire_owned() {
-            Ok(permit) => Some(PendingInvoke {
-                id,
-                output: self.clone(),
-                _permit: permit,
-            }),
+            Ok(permit) => {
+                let bytes = u32::try_from(body_bytes)
+                    .ok()
+                    .filter(|&bytes| bytes as usize <= MAX_PENDING_BYTES);
+                let body_permit =
+                    bytes.and_then(|bytes| body_permits.clone().try_acquire_many_owned(bytes).ok());
+                let Some(body_permit) = body_permit else {
+                    self.error(id, "bridge in-flight byte limit reached");
+                    return None;
+                };
+                Some(PendingInvoke {
+                    id,
+                    output: self.clone(),
+                    _permit: permit,
+                    _body_permit: body_permit,
+                })
+            }
             Err(_) => {
                 self.error(id, "bridge invoke limit reached");
                 None

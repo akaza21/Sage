@@ -85,8 +85,10 @@ it("flushes browser edits and settings before the shared workbench close persist
       settingsWrite = request;
       return;
     }
-    if (request.cmd === "persist_project_layout_and_close") {
+    if (request.cmd === "persist_project_layout") {
       persistedLayout = request.args.request;
+    }
+    if (request.cmd === "persist_project_layout_and_close") {
       destroyed = true;
     }
     if (request.args.event === "tauri://close-requested")
@@ -161,8 +163,9 @@ it("flushes browser edits and settings before the shared workbench close persist
 });
 
 async function connect() {
-  const installed = installBrowserBridge();
-  expect(location.hash).toBe("");
+  const pairingCode = location.hash.slice(1);
+  history.replaceState(history.state, "", location.pathname + location.search);
+  const installed = installBrowserBridge(pairingCode);
   const socket = FakeSocket.latest;
   socket.open();
   socket.receive({ session: "b".repeat(64) });
@@ -242,10 +245,10 @@ it.each([false, true])(
             "layout write failed",
           ),
         );
-        expect(navigate()).toBe(true);
-        await waitFor(() => expect(layout).not.toBe(failed));
+        await waitFor(() => expect(navigate()).toBe(false));
+        expect(useWorkbenchStore.getState().error).toBe("layout write failed");
       }
-      socket.receive({ id: layout!.id, ok: null });
+      if (!failLayout) socket.receive({ id: layout!.id, ok: null });
       await waitFor(() => expect(navigate()).toBe(false));
     } finally {
       dispose();
@@ -254,7 +257,7 @@ it.each([false, true])(
   },
 );
 
-it("strips the fragment immediately and resolves or rejects invokes by id", async () => {
+it("resolves or rejects invokes by id", async () => {
   const socket = await connect();
   expect(isTauriRuntime()).toBe(true);
   const first = invoke("get_bootstrap_snapshot", { projectId: "one" });
@@ -330,7 +333,7 @@ it("rejects outstanding invokes on disconnect and caps pending requests", async 
 it("reloads with the tab session token instead of reusing the consumed pairing code", async () => {
   const socket = await connect();
   socket.close();
-  const reloaded = installBrowserBridge();
+  const reloaded = installBrowserBridge("");
   const next = FakeSocket.latest;
   next.open();
   expect(next.sent[0]).toEqual({ session: "b".repeat(64) });
@@ -377,7 +380,7 @@ it("retries a session reconnect refused while the previous page still holds the 
   );
   history.replaceState(null, "", "/?bridge=32123");
   vi.useFakeTimers();
-  const reloaded = installBrowserBridge();
+  const reloaded = installBrowserBridge("");
   const refused = FakeSocket.latest;
   refused.close();
   await vi.advanceTimersByTimeAsync(400);
@@ -391,7 +394,7 @@ it("retries a session reconnect refused while the previous page still holds the 
 });
 
 it("never retries a refused pairing code and tells the user when a live session drops", async () => {
-  const refused = installBrowserBridge();
+  const refused = installBrowserBridge("a".repeat(64));
   FakeSocket.latest.close();
   await expect(refused).rejects.toThrow("disconnected");
 
