@@ -96,6 +96,12 @@ test("CP-42: temporary seeded right split, close confirmation, persisted opt-out
     "background-color",
     "rgb(53, 53, 53)",
   );
+  const close = dialog.getByRole("button", {
+    name: "Close side chat",
+    exact: true,
+  });
+  await expect(close).toHaveCSS("background-color", "rgb(64, 48, 48)");
+  await expect(close).toHaveCSS("color", "rgb(255, 103, 100)");
   await expect(workbench).toHaveScreenshot("side-chat-close-confirm.png");
   await page.emulateMedia({ forcedColors: "active" });
   const systemText = await dialog.evaluate(() => {
