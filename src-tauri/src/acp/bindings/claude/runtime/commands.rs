@@ -55,9 +55,6 @@ impl ClaudeRuntime {
             } => {
                 self.require_capability(|value| value.prompt)?;
                 let blocks = crate::acp::attached_context::files::prompt_blocks(&prompt, self.capabilities.as_ref()).map_err(|_| AdapterRuntimeError::UnsupportedCommand)?;
-                if !self.auth.permits_prompt() {
-                    return Err(AdapterRuntimeError::SignInRequired);
-                }
                 // An access mode Claude has no permission mode for is never
                 // sent at all.
                 let native_mode = crate::acp::bindings::access_policy::session_mode(

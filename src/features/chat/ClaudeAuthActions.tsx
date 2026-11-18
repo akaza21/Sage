@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import type { HarnessDefinition } from "../../domain/harness";
 import { acpDesktop } from "../../services/acpDesktop";
@@ -14,9 +14,18 @@ export function SignInRequiredMessage({
   return `${name} requires sign-in before it can continue. ${run}${signIn.hint} Then try again.`;
 }
 
-export function ClaudeAuthActions() {
+export function ClaudeAuthActions({ onSignedIn }: { onSignedIn: () => void }) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
+  // Null once unmounted: a check that outlives this chat scope must not clear
+  // the next scope's error.
+  const signedIn = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    signedIn.current = onSignedIn;
+    return () => {
+      signedIn.current = null;
+    };
+  }, [onSignedIn]);
 
   async function run(action: "login" | "status") {
     if (busy) return;
@@ -28,11 +37,10 @@ export function ClaudeAuthActions() {
         setMessage("Finish in the terminal, then check here.");
       } else {
         const status = await acpDesktop.getClaudeAuthStatus();
-        setMessage(
-          status.loggedIn
-            ? "Claude reports signed in. Send your prompt again."
-            : "Claude is still signed out.",
-        );
+        const done = signedIn.current;
+        if (!done) return;
+        if (status.loggedIn) done();
+        else setMessage("Claude is still signed out.");
       }
     } catch {
       setMessage(

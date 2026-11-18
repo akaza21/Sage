@@ -65,6 +65,9 @@ mod cancel_shutdown_tests;
 #[path = "first_turn_tests/cancel_handoff_tests.rs"]
 mod cancel_handoff_tests;
 
+#[path = "first_turn_tests/sign_in_refusal_tests.rs"]
+mod sign_in_refusal_tests;
+
 mod write_observation_tests;
 
 struct Authority(IntentSnapshot);
