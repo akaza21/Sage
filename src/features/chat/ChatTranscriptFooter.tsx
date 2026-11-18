@@ -25,13 +25,13 @@ export function ChatTranscriptTurnSummary({
   hasActivities,
   children,
   steered,
-  thinkingPlaceholder = false,
+  runningHeading = true,
 }: {
   turn: TurnProjection;
   hasActivities: boolean;
   children?: ReactNode;
   steered?: readonly ReactNode[];
-  thinkingPlaceholder?: boolean;
+  runningHeading?: boolean;
 }) {
   const terminal = terminalTurnStates.has(turn.state);
   const [expanded, setExpanded] = useState(false);
@@ -67,17 +67,17 @@ export function ChatTranscriptTurnSummary({
       </WorkedTurnTerminal>
     ) : null;
 
-  if (!terminal && !hasActivities && thinkingPlaceholder)
-    return (
+  if (!terminal) {
+    const thinking = hasActivities ? null : (
       <p className="acp-thought acp-live-shimmer" data-activity-kind="thought">
         Thinking
       </p>
     );
-  if (!terminal) {
+    if (!runningHeading && thinking) return thinking;
     return (
       <div className="chat-transcript-work chat-transcript-work--running">
         <div className="chat-transcript-work__heading">{duration}</div>
-        {groups}
+        {thinking ?? groups}
       </div>
     );
   }

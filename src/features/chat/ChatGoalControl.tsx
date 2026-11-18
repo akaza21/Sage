@@ -2,25 +2,11 @@ import { Maximize2, Trash2 } from "../../ui/leanIcons";
 import { Pause, Target } from "../../ui/leanIconNodesLazy";
 import { useRef, useState, type RefObject } from "react";
 import type { AcpGoalState } from "../../domain/acpGoal";
+import { formatElapsedSeconds } from "../../domain/duration";
 import "../../styles/chat-goal.css";
 
 export type GoalMutationOutcome =
   { kind: "applied" } | { kind: "refused" | "outcomeUnknown"; message: string };
-
-function elapsed(seconds: number): string {
-  const days = Math.floor(seconds / 86_400);
-  const hours = Math.floor((seconds % 86_400) / 3_600);
-  const minutes = Math.floor((seconds % 3_600) / 60);
-  const rest = seconds % 60;
-  return [
-    days ? `${days}d` : null,
-    hours ? `${hours}h` : null,
-    minutes ? `${minutes}m` : null,
-    `${rest}s`,
-  ]
-    .filter(Boolean)
-    .join(" ");
-}
 
 function availability(state: Exclude<AcpGoalState, { kind: "goal" }>): string {
   switch (state.kind) {
@@ -115,7 +101,7 @@ export function ChatGoalControl({
           >
             {snapshot.objective}
           </span>
-          <time>{elapsed(snapshot.timeUsedSeconds)}</time>
+          <time>{formatElapsedSeconds(snapshot.timeUsedSeconds)}</time>
           <span className="chat-goal-strip__icons">
             {controls &&
               snapshot.status === "active" &&

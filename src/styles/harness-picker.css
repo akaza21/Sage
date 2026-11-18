@@ -72,8 +72,7 @@
 }
 
 .composer-access-menu__option--full,
-.composer-access-menu__option--full .composer-access-menu__description,
-.composer-access-menu__warning {
+.composer-access-menu__option--full .composer-access-menu__description {
   color: var(--composer-access-full);
 }
 

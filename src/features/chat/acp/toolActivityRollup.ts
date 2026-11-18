@@ -1,4 +1,8 @@
 import type { AcpItem, ToolPresentation } from "../../../domain/acp";
+import {
+  elapsedSecondsBetween,
+  formatElapsedSeconds,
+} from "../../../domain/duration";
 import { terminalToolStates } from "./statusSemantics";
 import { commandRowText } from "./toolCommandContent";
 import {
@@ -226,14 +230,9 @@ export function toolDurationLabel(
   createdAt: number,
   terminalAt: number | null,
 ): string | null {
-  if (terminalAt === null) return null;
-  if (!Number.isFinite(createdAt) || !Number.isFinite(terminalAt)) return null;
-  const elapsed = terminalAt - createdAt;
-  if (elapsed < 0) return null;
-  if (elapsed < 1_000) return "<1s";
-  const seconds = Math.round(elapsed / 1_000);
-  if (seconds < 60) return `${seconds}s`;
-  return `${Math.floor(seconds / 60)}m ${seconds % 60}s`;
+  const seconds = elapsedSecondsBetween(createdAt, terminalAt);
+  if (seconds === null) return null;
+  return seconds < 1 ? "<1s" : formatElapsedSeconds(seconds);
 }
 
 export function toolRollupDurationLabel(
