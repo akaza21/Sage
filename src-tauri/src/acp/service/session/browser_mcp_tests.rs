@@ -24,6 +24,12 @@ fn admitted_browser_version_keeps_mcp_and_guard() {
     );
 }
 
+#[test]
+fn schema_proven_current_versions_keep_browser_tools() {
+    browser_activation("codex-cli 0.167.1", true);
+    browser_activation("codex-cli 0.170.0", true);
+}
+
 fn browser_activation(version: &str, browser_admitted: bool) {
     tauri::async_runtime::block_on(async {
         let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))

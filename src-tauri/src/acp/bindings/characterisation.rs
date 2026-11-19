@@ -2,8 +2,6 @@ pub(crate) use sage_domain::harness::HarnessCharacterisation as Characterisation
 
 use super::release_version::characterise_against;
 
-const CODEX_TESTED_VERSION: &str = sage_acp_protocol::codex_protocol::PINNED_CODEX_VERSION;
-
 const CLAUDE_ADAPTER_TESTED_VERSION: &str = "0.76.0";
 
 const CLAUDE_ACP_SDK_TESTED_VERSION: &str = "1.4.0";
@@ -27,7 +25,13 @@ pub(crate) fn valid_numeric_version(
 }
 
 pub(crate) fn codex_characterisation(reported_version: &str) -> Characterisation {
-    characterise_against(reported_version, CODEX_TESTED_VERSION)
+    if sage_acp_protocol::codex_compatibility::observed_capabilities(reported_version)
+        .characterised()
+    {
+        Characterisation::Characterised
+    } else {
+        Characterisation::Uncharacterised
+    }
 }
 
 pub(crate) fn opencode_characterisation(reported_version: &str) -> Characterisation {
@@ -80,7 +84,7 @@ mod tests {
     }
 
     #[test]
-    fn a_later_codex_release_keeps_the_tested_features_and_an_earlier_one_does_not() {
+    fn unproven_codex_releases_do_not_inherit_tested_features() {
         let [major, minor, patch] = PINNED_CODEX_VERSION
             .split('.')
             .map(|part| part.parse::<u32>().unwrap())
@@ -92,14 +96,14 @@ mod tests {
             .checked_sub(1)
             .expect("the pinned version has an earlier minor release");
         for version in [
-            format!("{major}.{minor}.{}", patch + 1),
+            format!("{major}.{minor}.{}", patch + 2),
             format!("{major}.{}.0", minor + 1),
             format!("{major}.{}.0-alpha.1", minor + 1),
             format!("{}.0.0", major + 1),
         ] {
             assert_eq!(
                 codex_characterisation(&version),
-                Characterisation::NewerThanTested,
+                Characterisation::Uncharacterised,
                 "{version}"
             );
         }

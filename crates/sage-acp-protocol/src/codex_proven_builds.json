@@ -1,0 +1,38 @@
+[
+  {
+    "version": "0.146.0",
+    "capabilities": {
+      "sessionExtensions": false,
+      "accessPolicy": false,
+      "goals": false,
+      "browser": false
+    }
+  },
+  {
+    "version": "0.167.0",
+    "capabilities": {
+      "sessionExtensions": true,
+      "accessPolicy": true,
+      "goals": true,
+      "browser": true
+    }
+  },
+  {
+    "version": "0.167.1",
+    "capabilities": {
+      "sessionExtensions": true,
+      "accessPolicy": true,
+      "goals": true,
+      "browser": true
+    }
+  },
+  {
+    "version": "0.170.0",
+    "capabilities": {
+      "sessionExtensions": true,
+      "accessPolicy": true,
+      "goals": true,
+      "browser": true
+    }
+  }
+]

@@ -44,6 +44,10 @@ pub(crate) fn access_modes(
         "pi-rpc" => super::pi::bridge::install::installed(version).map(drop),
         _ => Err(Unavailable::UnsupportedVersion),
     };
+    let characterised = characterised
+        && (binding != "codex-app-server"
+            || sage_acp_protocol::codex_compatibility::observed_capabilities(version)
+                .access_policy);
     admitted_modes(binding, characterised, pi_bridge)
 }
 
@@ -277,7 +281,7 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn a_later_codex_release_keeps_workspace_edits_and_an_earlier_one_is_read_only() {
+    fn only_schema_proven_codex_releases_offer_workspace_edits() {
         let [major, minor, patch] = PINNED_CODEX_VERSION
             .split('.')
             .map(|part| part.parse::<u32>().unwrap())
@@ -302,6 +306,8 @@ mod tests {
             [ReadOnly, WorkspaceWrite]
         );
         assert_eq!(ids(&format!("{major}.{}.0", minor - 1)), [ReadOnly]);
+        assert_eq!(ids("0.170.0"), [ReadOnly, WorkspaceWrite]);
+        assert_eq!(ids("0.170.1"), [ReadOnly]);
     }
 
     #[test]

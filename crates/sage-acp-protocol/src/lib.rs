@@ -10,6 +10,7 @@
 //! but `sage-core`. Code that needs them belongs in `sage-acp` or above.
 
 pub mod access_mode;
+pub mod codex_compatibility;
 pub mod codex_protocol;
 pub mod command_output;
 pub mod contract;

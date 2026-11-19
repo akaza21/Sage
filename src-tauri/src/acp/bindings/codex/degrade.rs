@@ -37,39 +37,29 @@ struct OptionalCapabilities {
     native_background_terminals: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
-struct ObservedCapabilityEvidence {
-    version: &'static str,
-    optional: OptionalCapabilities,
-}
-
-const OBSERVED_CAPABILITY_EVIDENCE: [ObservedCapabilityEvidence; 1] =
-    [ObservedCapabilityEvidence {
-        version: PINNED_CODEX_VERSION,
-        optional: OptionalCapabilities {
-            resume_session: true,
-            load_session: false,
-            close_session: false,
-            cancel: true,
-            active_turn_steer: true,
-            model_list: true,
-            child_conversation_projection: false,
-            child_transcript_read: true,
-            collaboration_event_projection: false,
-            // `thread/fork` params and response are pinned from the generated
-            // schema (testdata/acp/codex/observed-fork-schema.json).
-            native_session_fork: true,
-            // `thread/compact/start` and `review/start` are pinned from the
-            // same generated schema.
-            native_session_compact: true,
-            // `thread/list` and paged `thread/turns/list` are pinned from the
-            // same generated schema.
-            native_session_import: true,
-            native_review: true,
-            // `thread/backgroundTerminals/*` are pinned from the same schema.
-            native_background_terminals: true,
-        },
-    }];
+const PROVEN_OPTIONAL_CAPABILITIES: OptionalCapabilities = OptionalCapabilities {
+    resume_session: true,
+    load_session: false,
+    close_session: false,
+    cancel: true,
+    active_turn_steer: true,
+    model_list: true,
+    child_conversation_projection: false,
+    child_transcript_read: true,
+    collaboration_event_projection: false,
+    // `thread/fork` params and response are pinned from the generated
+    // schema (testdata/acp/codex/observed-fork-schema.json).
+    native_session_fork: true,
+    // `thread/compact/start` and `review/start` are pinned from the
+    // same generated schema.
+    native_session_compact: true,
+    // `thread/list` and paged `thread/turns/list` are pinned from the
+    // same generated schema.
+    native_session_import: true,
+    native_review: true,
+    // `thread/backgroundTerminals/*` are pinned from the same schema.
+    native_background_terminals: true,
+};
 
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct ObservedBuild<'a> {
@@ -91,24 +81,16 @@ fn observed_version(reported_version: &str) -> Option<&str> {
         })
 }
 
-/// A later release keeps what the release before it was tested to support.
+/// Capabilities come from the same wire proof as access modes and goals.
 fn observed_capability_evidence(build: ObservedBuild<'_>) -> OptionalCapabilities {
-    if !build.characterisation.runs_tested_features() {
-        return OptionalCapabilities::default();
+    if build.characterisation.runs_tested_features()
+        && sage_acp_protocol::codex_compatibility::observed_capabilities(build.reported_version)
+            .session_extensions
+    {
+        PROVEN_OPTIONAL_CAPABILITIES
+    } else {
+        OptionalCapabilities::default()
     }
-    let Some(observed) = ReleaseVersion::parse(build.reported_version) else {
-        return OptionalCapabilities::default();
-    };
-    OBSERVED_CAPABILITY_EVIDENCE
-        .iter()
-        .filter_map(|evidence| {
-            ReleaseVersion::parse(evidence.version)
-                .filter(|tested| *tested <= observed)
-                .map(|tested| (tested, evidence.optional))
-        })
-        .max_by(|left, right| left.0.cmp(&right.0))
-        .map(|(_, optional)| optional)
-        .unwrap_or_default()
 }
 
 fn managed_capability_evidence(ceiling: &CuratedCapabilityCeiling) -> OptionalCapabilities {
@@ -349,7 +331,7 @@ mod tests {
     }
 
     #[test]
-    fn a_later_observed_release_keeps_the_tested_release_evidence() {
+    fn a_schema_proven_observed_release_gets_the_full_optional_capabilities() {
         let (tested, tested_models) = projected_capabilities(
             &pinned(),
             Some(ObservedBuild {
@@ -358,31 +340,33 @@ mod tests {
             }),
         )
         .unwrap();
-        let [major, minor, _] = PINNED_CODEX_VERSION
-            .split('.')
-            .map(|part| part.parse::<u32>().unwrap())
-            .collect::<Vec<_>>()[..]
-        else {
-            panic!("the pinned version has three components");
-        };
-        let later = format!("codex-cli {major}.{}.0-alpha.1", minor + 1);
-        let (snapshot, models) = projected_capabilities(
-            &pinned(),
-            Some(ObservedBuild {
-                reported_version: &later,
-                characterisation: Characterisation::NewerThanTested,
-            }),
-        )
-        .unwrap();
-        assert_eq!(
-            snapshot.protocol_version.as_str(),
-            format!("codex-app-server-observed-{major}.{}.0-alpha.1", minor + 1)
-        );
-        let mut same_features = snapshot.clone();
-        same_features.protocol_version = tested.protocol_version.clone();
-        assert_eq!(same_features, tested);
-        assert_eq!(models, tested_models);
-        assert!(snapshot.cancel && snapshot.resume_session && snapshot.native_session_fork);
+        for later in [
+            "codex-cli 0.167.0",
+            "codex-cli 0.167.1",
+            "codex-cli 0.170.0",
+        ] {
+            let (snapshot, models) = projected_capabilities(
+                &pinned(),
+                Some(ObservedBuild {
+                    reported_version: later,
+                    characterisation:
+                        crate::acp::bindings::characterisation::codex_characterisation(later),
+                }),
+            )
+            .unwrap();
+            assert_eq!(
+                snapshot.protocol_version.as_str(),
+                format!(
+                    "codex-app-server-observed-{}",
+                    later.split_ascii_whitespace().next_back().unwrap()
+                )
+            );
+            let mut same_features = snapshot.clone();
+            same_features.protocol_version = tested.protocol_version.clone();
+            assert_eq!(same_features, tested);
+            assert_eq!(models, tested_models);
+            assert!(snapshot.cancel && snapshot.resume_session && snapshot.native_session_fork);
+        }
     }
 
     #[test]
