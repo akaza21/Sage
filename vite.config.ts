@@ -163,17 +163,6 @@ export function desktopNativeWorkbenchRuntimePlugin(
 
 export default defineConfig(({ command, mode }) => ({
   cacheDir: process.env.SAGE_VITE_CACHE_DIR,
-  resolve: {
-    alias:
-      command === "build" && mode === DESKTOP_NATIVE_BUILD_MODE
-        ? [
-            {
-              find: "/src/main.tsx",
-              replacement: path.join(root, "src/main.desktop.tsx"),
-            },
-          ]
-        : [],
-  },
   plugins: [
     react(),
     desktopReactRuntimeProjectionPlugin(command, mode),

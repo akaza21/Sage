@@ -11,7 +11,17 @@ use std::{
 };
 use tauri::Manager;
 
+// Dev-only pages served by Vite: the native window shows a placeholder, and
+// the paired browser tab gets an entry that loads the app only after the
+// bridge is installed. The normal entry (index.html) carries no bridge code.
+const HOST_PAGE: &str = "/src/devBridge/host.html";
+const BRIDGE_PAGE: &str = "/src/devBridge/bridge.html";
+
 pub(crate) fn host_url(app: &tauri::AppHandle) -> io::Result<url::Url> {
+    dev_page(app, HOST_PAGE)
+}
+
+fn dev_page(app: &tauri::AppHandle, page: &str) -> io::Result<url::Url> {
     let mut url = app
         .config()
         .build
@@ -27,14 +37,14 @@ pub(crate) fn host_url(app: &tauri::AppHandle) -> io::Result<url::Url> {
             "browser bridge requires a loopback HTTP devUrl",
         ));
     }
+    url.set_path(page);
+    url.set_query(None);
     url.set_fragment(None);
-    url.query_pairs_mut().append_pair("bridge-host", "");
     Ok(url)
 }
 
 pub(crate) fn start(app: &tauri::AppHandle) -> io::Result<()> {
-    let mut browser_url = host_url(app)?;
-    browser_url.set_query(None);
+    let mut browser_url = dev_page(app, BRIDGE_PAGE)?;
     let listener = std::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0))?;
     listener.set_nonblocking(true)?;
     let address = listener.local_addr()?;
