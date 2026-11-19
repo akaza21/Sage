@@ -76,6 +76,24 @@ for (const width of [480, 1280]) {
     await input.click({ trial: true });
     const queuedBounds = (await dock.boundingBox())!;
     expect(queuedBounds.height).toBeLessThanOrEqual(surface.height * 0.6 + 1);
+    await page.evaluate(async () => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      useWorkbenchStore.setState({ error: "The harness could not reconnect." });
+    });
+    const notices = page.getByRole("region", { name: "Composer notices" });
+    await expect(notices.getByRole("alert")).toHaveText(
+      "The harness could not reconnect.",
+    );
+    const noticeSize = await notices.evaluate((node) => ({
+      height: node.clientHeight,
+      scrollHeight: node.scrollHeight,
+    }));
+    expect(noticeSize.height).toBeGreaterThan(0);
+    expect(noticeSize.scrollHeight).toBeLessThanOrEqual(noticeSize.height);
+    await input.click({ trial: true });
+    await dock
+      .getByRole("button", { name: "Send message", exact: true })
+      .click({ trial: true });
   });
 }
 

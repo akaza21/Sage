@@ -64,21 +64,35 @@ test("grows and shrinks the composer within its scroll bound", async ({
   await expectNoViewportOverflow(page);
 });
 
-test("clips notice fills inside the composer and keeps harness controls on its surface", async ({
+test("keeps errors above the joined location and composer with harness controls on its surface", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1380, height: 880 });
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  const form = page.locator("form.composer").first();
-  const dock = page.locator(".chat-dock").first();
-  await form.locator(".composer__body").evaluate((body) => {
-    const notice = document.createElement("div");
-    notice.className = "composer__notice";
-    notice.textContent =
-      "No reviewed local binding is available for this harness.";
-    body.prepend(notice);
+  await page.evaluate(async () => {
+    const { installChatChromeFixture } =
+      await import("/tests/ui/fixtures/chatChromeFixture.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    installChatChromeFixture("codex", true);
+    useWorkbenchStore.setState({
+      error: "native project transition did not commit",
+    });
   });
+  const form = page.locator("form.composer").first();
+  const frame = page.locator(".chat-dock-frame").first();
+  const dock = page.locator(".chat-dock").first();
+  const error = frame.getByRole("alert");
+  await expect(error).toHaveText("native project transition did not commit");
+  await expect(dock.getByRole("alert")).toHaveCount(0);
+  const strip = frame.getByRole("group", { name: "Chat location" });
+  const errorBox = (await error.boundingBox())!;
+  const stripBox = (await strip.boundingBox())!;
+  const dockBox = (await dock.boundingBox())!;
+  expect(errorBox.y + errorBox.height).toBeLessThanOrEqual(stripBox.y);
+  expect(
+    Math.abs(stripBox.y + stripBox.height - dockBox.y),
+  ).toBeLessThanOrEqual(0.5);
   const body = form.locator(".composer__body");
   await expect(body).toHaveCSS("overflow-y", "auto");
   await expect(body).toHaveCSS("border-top-left-radius", "0px");
@@ -87,7 +101,7 @@ test("clips notice fills inside the composer and keeps harness controls on its s
   const harness = form.getByRole("button", { name: "Harness", exact: true });
   await expect(harness).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   expect((await harness.boundingBox())!.height).toBe(28);
-  await expect(dock).toHaveScreenshot("agent-polish-composer-notice.png");
+  await expect(frame).toHaveScreenshot("agent-polish-composer-notice.png");
   await harness.click();
   await expect(page.getByRole("listbox")).toBeVisible();
   await expect(dock).toHaveCSS("overflow", "clip");
@@ -96,6 +110,95 @@ test("clips notice fills inside the composer and keeps harness controls on its s
       .getByRole("listbox")
       .evaluate((element) => element.closest("form")),
   ).toBeNull();
+});
+
+test("shows a three-line notice in full in a tall pane", async ({ page }) => {
+  await page.setViewportSize({ width: 480, height: 880 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const message =
+    "The harness could not complete the request. Sign in again to continue using this chat, then retry your message. Your draft is still available, and you can keep editing it while you reconnect.";
+  await page.evaluate(async (message) => {
+    const { installChatChromeFixture } =
+      await import("/tests/ui/fixtures/chatChromeFixture.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    installChatChromeFixture("codex", true);
+    useWorkbenchStore.setState({ error: message });
+  }, message);
+  const notices = page.getByRole("region", { name: "Composer notices" });
+  await expect(notices.getByRole("alert")).toHaveText(message);
+  const geometry = await notices.evaluate((node) => {
+    const text = document.createRange();
+    text.selectNodeContents(node.querySelector('[role="alert"]')!);
+    return {
+      lines: text.getClientRects().length,
+      scrollHeight: node.scrollHeight,
+      clientHeight: node.clientHeight,
+    };
+  });
+  expect(geometry.lines).toBe(3);
+  expect(geometry.scrollHeight).toBeLessThanOrEqual(geometry.clientHeight);
+});
+
+test("long errors scroll without hiding the input or toolbar in a narrow short pane", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 480, height: 420 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const message = "The harness could not complete the request. "
+    .repeat(48)
+    .slice(0, 2048);
+  await page.evaluate(async (message) => {
+    const { installChatChromeFixture } =
+      await import("/tests/ui/fixtures/chatChromeFixture.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    installChatChromeFixture("codex", true);
+    useWorkbenchStore.setState((state) => ({
+      chatUiById: {
+        ...state.chatUiById,
+        [state.activeTabId!]: {
+          ...state.chatUiById[state.activeTabId!],
+          error: message,
+        },
+      },
+    }));
+  }, message);
+  const dock = page.locator(".chat-dock");
+  const frame = page.locator(".chat-dock-frame");
+  await expect(frame.getByRole("alert")).toHaveText(message);
+  const input = dock.getByRole("combobox", { name: "Message agent" });
+  const toolbar = dock.locator(".composer__toolbar");
+  await input.fill("Try again");
+  const bounds = (await dock.boundingBox())!;
+  for (const control of [input, toolbar]) {
+    const box = (await control.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(bounds.y);
+    expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+    expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+  }
+  await expect(input).toHaveValue("Try again");
+  await dock
+    .getByRole("button", { name: "Send message", exact: true })
+    .click({ trial: true });
+  const notices = frame.getByRole("region", { name: "Composer notices" });
+  expect(
+    await notices.evaluate((node) => node.scrollHeight > node.clientHeight),
+  ).toBe(true);
+  await notices.focus();
+  await expect(notices).toBeFocused();
+  await page.keyboard.press("End");
+  await expect
+    .poll(() => notices.evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(0);
+  const frameBox = (await frame.boundingBox())!;
+  const surfaceBox = (await page.locator(".chat-surface").boundingBox())!;
+  expect(frameBox.height).toBeLessThanOrEqual(surfaceBox.height * 0.6 + 1);
+  expect(frameBox.y + frameBox.height).toBeLessThanOrEqual(
+    surfaceBox.y + surfaceBox.height,
+  );
+  await expectNoViewportOverflow(page);
 });
 
 test("keeps title-bar height stable and omits an empty Editor tab row", async ({

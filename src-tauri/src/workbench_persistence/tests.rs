@@ -11,6 +11,7 @@ use super::*;
 use sage_core::limits::LIMITS;
 
 mod rollback;
+mod switch;
 mod unavailable_binding;
 
 fn database_with_project() -> (Database, String, String) {

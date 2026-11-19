@@ -296,17 +296,39 @@ describe("composer image input", () => {
     expect(screen.queryByRole("button", { name: "Pause goal" })).toBeNull();
   });
 
-  it("keeps upper composer content in a scroll region separate from the toolbar", () => {
-    renderComposer({ workbenchError: "Retry the request" });
+  it("keeps errors above the joined location and dock while the input scrolls separately from the toolbar", () => {
+    const { rerenderComposer } = renderComposer({
+      newChat: true,
+      workbenchError: "Retry the request",
+    });
     const form = screen.getByRole("form");
     const body = form.querySelector(".composer__body");
     expect(body).not.toBeNull();
     expect(body).toContainElement(
       screen.getByRole("combobox", { name: "Message agent" }),
     );
-    expect(body).toContainElement(screen.getByRole("alert"));
+    const error = screen.getByRole("alert");
+    const notices = screen.getByRole("region", { name: "Composer notices" });
+    const location = screen.getByRole("group", { name: "Chat location" });
+    expect(error).toHaveTextContent("Retry the request");
+    expect(notices).toContainElement(error);
+    expect(notices).toHaveAttribute("tabindex", "0");
+    notices.focus();
+    expect(notices).toHaveFocus();
+    expect(notices.nextElementSibling).toBe(location);
+    expect(location.nextElementSibling).toContainElement(form);
+    expect(form.closest(".chat-dock")).not.toContainElement(error);
     expect(body).not.toContainElement(form.querySelector(".composer__toolbar"));
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
+    rerenderComposer({ hidden: true });
+    expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Composer notices" }),
+    ).toBeNull();
+    rerenderComposer({ workbenchError: null });
+    expect(
+      screen.queryByRole("region", { name: "Composer notices" }),
+    ).toBeNull();
   });
 
   it("keeps + open with nothing to attach refused in place, and refuses a dropped image", async () => {

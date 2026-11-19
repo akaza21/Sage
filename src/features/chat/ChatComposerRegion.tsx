@@ -142,6 +142,18 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
   const [slashArmed, setSlashArmed] = useState(false);
   return (
     <div className="chat-dock-frame">
+      {!hidden ? (
+        <ComposerStatusNotices
+          workbenchError={workbenchError}
+          chatError={chatError}
+          signInHarness={signInHarness}
+          onClaudeSignedIn={onClaudeSignedIn}
+          claudeAuthScope={claudeAuthScope}
+          imageStatus={imageInput.status}
+          missingBindingNotice={missingBindingNotice}
+          discoveryPhase={discoveryPhase}
+        />
+      ) : null}
       {newChat && projectName ? (
         <ComposerLocationStrip
           projectName={projectName}
@@ -198,16 +210,6 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 details={goalDetails}
               />
             ) : null}
-            <ComposerStatusNotices
-              workbenchError={workbenchError}
-              chatError={chatError}
-              signInHarness={signInHarness}
-              onClaudeSignedIn={onClaudeSignedIn}
-              claudeAuthScope={claudeAuthScope}
-              imageStatus={imageInput.status}
-              missingBindingNotice={missingBindingNotice}
-              discoveryPhase={discoveryPhase}
-            />
             <label className="sr-only" htmlFor={fieldId}>
               Message agent
             </label>

@@ -86,9 +86,9 @@ test("a session without the image capability refuses a paste with its reason", a
   await prepare(page, false);
   await pasteScreenshot(page);
   const composer = page.locator("form.composer").first();
-  await expect(composer.getByRole("alert")).toHaveText(
-    "This harness does not advertise image input.",
-  );
+  await expect(
+    page.getByRole("region", { name: "Composer notices" }).getByRole("alert"),
+  ).toHaveText("This harness does not advertise image input.");
   await expect(composer.locator(".composer__image-preview")).toHaveCount(0);
 });
 
@@ -112,5 +112,7 @@ test("an image whose thumbnail cannot be read still attaches, without a preview"
     }),
   ).toBeVisible();
   await expect(composer.locator(".composer__image-preview")).toHaveCount(0);
-  await expect(composer.getByRole("alert")).toHaveCount(0);
+  await expect(
+    page.getByRole("region", { name: "Composer notices" }).getByRole("alert"),
+  ).toHaveCount(0);
 });
