@@ -306,7 +306,7 @@ mod tests {
             [ReadOnly, WorkspaceWrite]
         );
         assert_eq!(ids(&format!("{major}.{}.0", minor - 1)), [ReadOnly]);
-        assert_eq!(ids("0.170.0"), [ReadOnly]);
+        assert_eq!(ids("0.170.0"), [ReadOnly, WorkspaceWrite]);
         assert_eq!(ids("0.170.1"), [ReadOnly]);
     }
 

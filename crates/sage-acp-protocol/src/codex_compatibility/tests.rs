@@ -11,6 +11,137 @@ fn replace_definition(evidence: &mut Evidence, build: &mut SchemaBuild, name: &s
 }
 
 #[test]
+fn a_sent_method_missing_from_the_baseline_cannot_escape_the_proof() {
+    let mut evidence = Evidence::recorded();
+    evidence.builds[1].wire.remove("client:model/list");
+    assert!(
+        evidence
+            .failures(&evidence.builds[2])
+            .contains(&"client:model/list".to_owned())
+    );
+}
+
+#[test]
+fn overlapping_exclusive_request_branches_cannot_prove_compatibility() {
+    let mut evidence = Evidence::recorded();
+    let mut build = evidence.builds[2].clone();
+    let original = evidence.schemas[build.definitions["ModelListParams"]].clone();
+    replace_definition(
+        &mut evidence,
+        &mut build,
+        "ModelListParams",
+        json!({"oneOf":[original, {}]}),
+    );
+    assert!(
+        evidence
+            .failures(&build)
+            .contains(&"client:model/list".to_owned())
+    );
+}
+
+#[test]
+fn optional_properties_sage_never_sends_do_not_degrade_requests() {
+    for (name, method) in [
+        ("ModelListParams", "client:model/list"),
+        ("ThreadListParams", "client:thread/list"),
+        ("ThreadStartParams", "client:thread/start"),
+    ] {
+        let mut evidence = Evidence::recorded();
+        let mut build = evidence.builds[2].clone();
+        let mut shape = evidence.schemas[build.definitions[name]].clone();
+        shape["properties"]["futureUnsentOption"] = json!({"type":"integer"});
+        replace_definition(&mut evidence, &mut build, name, shape);
+        assert!(
+            !evidence.failures(&build).contains(&method.to_owned()),
+            "{method}"
+        );
+    }
+}
+
+#[test]
+fn required_removed_retyped_and_closed_sent_properties_are_checked() {
+    for (name, mutation, compatible, method) in [
+        (
+            "ModelListParams",
+            "require-unsent",
+            false,
+            "client:model/list",
+        ),
+        ("ModelListParams", "require-sent", true, "client:model/list"),
+        ("ModelListParams", "remove-sent", false, "client:model/list"),
+        ("ModelListParams", "retype-sent", false, "client:model/list"),
+        ("ModelListParams", "close", true, "client:model/list"),
+        (
+            "ThreadStartParams",
+            "close-config",
+            false,
+            "client:thread/start",
+        ),
+        (
+            "ThreadResumeParams",
+            "close-config",
+            false,
+            "client:thread/resume",
+        ),
+        (
+            "ThreadStartParams",
+            "unsent-config",
+            true,
+            "client:thread/start",
+        ),
+        (
+            "ThreadStartParams",
+            "closed-declared-config",
+            true,
+            "client:thread/start",
+        ),
+        (
+            "ThreadStartParams",
+            "constrain-map-key",
+            false,
+            "client:thread/start",
+        ),
+    ] {
+        let mut evidence = Evidence::recorded();
+        let mut build = evidence.builds[2].clone();
+        let mut shape = evidence.schemas[build.definitions[name]].clone();
+        match mutation {
+            "require-unsent" => shape["required"] = json!(["modelProvider"]),
+            "require-sent" => shape["required"] = json!(["limit"]),
+            "remove-sent" => {
+                shape["properties"].as_object_mut().unwrap().remove("limit");
+            }
+            "retype-sent" => shape["properties"]["limit"] = json!({"type":"string"}),
+            "close" => shape["additionalProperties"] = json!(false),
+            "close-config" => shape["properties"]["config"]["additionalProperties"] = json!(false),
+            "unsent-config" => {
+                shape["properties"]["config"]["properties"] =
+                    json!({"futureOption":{"type":"integer"}})
+            }
+            "closed-declared-config" => {
+                shape["properties"]["config"]["additionalProperties"] = json!(false);
+                shape["properties"]["config"]["properties"] = json!({
+                    "mcp_servers":{"type":"object"},
+                    "shell_environment_policy":{"type":"object"}
+                });
+            }
+            "constrain-map-key" => {
+                shape["properties"]["config"]["properties"] = json!({
+                    "mcp_servers":{"type":"object","properties":{"futureServer":{"type":"integer"}}}
+                })
+            }
+            _ => unreachable!(),
+        }
+        replace_definition(&mut evidence, &mut build, name, shape);
+        assert_eq!(
+            !evidence.failures(&build).contains(&method.to_owned()),
+            compatible,
+            "{name}: {mutation}"
+        );
+    }
+}
+
+#[test]
 fn newly_constrained_request_config_members_degrade_the_build() {
     let mut evidence = Evidence::recorded();
     let mut build = evidence.builds[2].clone();
@@ -34,7 +165,7 @@ fn added_request_properties_must_accept_the_baseline_catch_all_values() {
         (
             json!({"additionalProperties":false}),
             json!({"type":"integer"}),
-            true,
+            false,
         ),
         (
             json!({"patternProperties":{"^mcp_":{"type":"object"}},"additionalProperties":false}),
@@ -65,7 +196,9 @@ fn added_request_properties_must_accept_the_baseline_catch_all_values() {
         let mut evidence = Evidence::recorded();
         let mut baseline = evidence.builds[1].clone();
         let mut shape = evidence.schemas[baseline.definitions["ThreadStartParams"]].clone();
-        shape["properties"]["config"] = previous;
+        shape["properties"]["config"] = previous.clone();
+        // This independent member is also sent by the real MCP serializer.
+        shape["properties"]["config"]["properties"]["shell_environment_policy"] = json!({});
         replace_definition(
             &mut evidence,
             &mut baseline,
@@ -74,13 +207,14 @@ fn added_request_properties_must_accept_the_baseline_catch_all_values() {
         );
         evidence.builds[1] = baseline.clone();
         let mut candidate = baseline;
-        shape["properties"]["config"]["properties"] = json!({"mcp_servers":added});
+        shape["properties"]["config"]["properties"]["mcp_servers"] = added.clone();
         replace_definition(&mut evidence, &mut candidate, "ThreadStartParams", shape);
         assert_eq!(
             !evidence
                 .failures(&candidate)
                 .contains(&"client:thread/start".to_owned()),
             compatible,
+            "config {previous}, added mcp_servers {added}"
         );
     }
 }
@@ -292,7 +426,12 @@ fn description_members_are_wire_fields_rather_than_schema_annotations() {
 
 #[test]
 fn recorded_observed_releases_have_full_capabilities_and_unproven_versions_do_not() {
-    for version in ["0.167.0", "codex-cli 0.167.1"] {
+    for version in [
+        "0.167.0",
+        "codex-cli 0.167.1",
+        "0.170.0",
+        "codex-cli 0.170.0",
+    ] {
         assert!(observed_capabilities(version).characterised(), "{version}");
         assert!(
             protocol_capabilities(&format!(
@@ -306,8 +445,6 @@ fn recorded_observed_releases_have_full_capabilities_and_unproven_versions_do_no
         "",
         "codex-cli",
         "latest",
-        "0.170.0",
-        "codex-cli 0.170.0",
         "0.171.0",
         "99.0.0",
         "0.170.0-rc.1",
@@ -323,19 +460,13 @@ fn recorded_observed_releases_have_full_capabilities_and_unproven_versions_do_no
 }
 
 #[test]
-fn release_0170_stays_degraded_for_new_constraints_on_open_requests() {
+fn release_0170_is_proven_with_new_optional_properties_sage_never_sends() {
     let evidence = Evidence::recorded();
     let build = evidence
         .builds
         .iter()
         .find(|build| build.version == "0.170.0")
         .unwrap();
-    assert_eq!(
-        evidence.failures(build),
-        ["client:model/list", "client:thread/list"]
-    );
-    assert_eq!(
-        observed_capabilities(&build.version),
-        CodexCapabilities::default()
-    );
+    assert_eq!(evidence.failures(build), Vec::<String>::new());
+    assert!(observed_capabilities(&build.version).characterised());
 }

@@ -340,7 +340,11 @@ mod tests {
             }),
         )
         .unwrap();
-        for later in ["codex-cli 0.167.0", "codex-cli 0.167.1"] {
+        for later in [
+            "codex-cli 0.167.0",
+            "codex-cli 0.167.1",
+            "codex-cli 0.170.0",
+        ] {
             let (snapshot, models) = projected_capabilities(
                 &pinned(),
                 Some(ObservedBuild {

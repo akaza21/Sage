@@ -1,0 +1,1150 @@
+{
+  "openObjects": ["/params/config/mcp_servers"],
+  "requests": {
+    "client:account/login/cancel": [
+      {
+        "id": 1,
+        "method": "account/login/cancel",
+        "params": {
+          "loginId": "7be3f527-7a5a-41e5-9e5f-a1a74b42f86b"
+        }
+      }
+    ],
+    "client:account/login/start": [
+      {
+        "id": 1,
+        "method": "account/login/start",
+        "params": {
+          "type": "chatgpt",
+          "appBrand": null
+        }
+      },
+      {
+        "id": 1,
+        "method": "account/login/start",
+        "params": {
+          "type": "apiKey",
+          "apiKey": "fixture-key"
+        }
+      }
+    ],
+    "client:account/logout": [
+      {
+        "id": 1,
+        "method": "account/logout"
+      }
+    ],
+    "client:account/rateLimits/read": [
+      {
+        "id": 1,
+        "method": "account/rateLimits/read",
+        "params": null
+      }
+    ],
+    "client:account/read": [
+      {
+        "id": 1,
+        "method": "account/read",
+        "params": {}
+      }
+    ],
+    "client:config/mcpServer/reload": [
+      {
+        "id": 1,
+        "method": "config/mcpServer/reload",
+        "params": null
+      }
+    ],
+    "client:initialize": [
+      {
+        "id": 1,
+        "method": "initialize",
+        "params": {
+          "clientInfo": {
+            "name": "sage",
+            "title": "Sage",
+            "version": "0.1.0"
+          },
+          "capabilities": {
+            "experimentalApi": true,
+            "optOutNotificationMethods": [
+              "turn/diff/updated",
+              "item/fileChange/outputDelta"
+            ]
+          }
+        }
+      }
+    ],
+    "client:mcpServer/oauth/login": [
+      {
+        "id": 1,
+        "method": "mcpServer/oauth/login",
+        "params": {
+          "name": "files",
+          "threadId": "thread-1"
+        }
+      }
+    ],
+    "client:mcpServerStatus/list": [
+      {
+        "id": 1,
+        "method": "mcpServerStatus/list",
+        "params": {
+          "threadId": "thread-1",
+          "detail": "toolsAndAuthOnly",
+          "limit": 64
+        }
+      }
+    ],
+    "client:model/list": [
+      {
+        "id": 1,
+        "method": "model/list",
+        "params": {
+          "cursor": null,
+          "limit": 128,
+          "includeHidden": false
+        }
+      },
+      {
+        "id": 1,
+        "method": "model/list",
+        "params": {
+          "cursor": "next-page",
+          "limit": 128,
+          "includeHidden": false
+        }
+      },
+      {
+        "id": 1,
+        "method": "model/list",
+        "params": {
+          "cursor": null,
+          "limit": 32,
+          "includeHidden": false
+        }
+      },
+      {
+        "id": 1,
+        "method": "model/list",
+        "params": {
+          "cursor": "next-page",
+          "limit": 32,
+          "includeHidden": false
+        }
+      }
+    ],
+    "client:review/start": [
+      {
+        "id": 1,
+        "method": "review/start",
+        "params": {
+          "threadId": "thread-1",
+          "target": {
+            "type": "uncommittedChanges"
+          },
+          "delivery": "inline"
+        }
+      },
+      {
+        "id": 1,
+        "method": "review/start",
+        "params": {
+          "threadId": "thread-1",
+          "target": {
+            "type": "baseBranch",
+            "branch": "main"
+          },
+          "delivery": "inline"
+        }
+      },
+      {
+        "id": 1,
+        "method": "review/start",
+        "params": {
+          "threadId": "thread-1",
+          "target": {
+            "type": "commit",
+            "sha": "1a2b3c4"
+          },
+          "delivery": "inline"
+        }
+      },
+      {
+        "id": 1,
+        "method": "review/start",
+        "params": {
+          "threadId": "thread-1",
+          "target": {
+            "type": "custom",
+            "instructions": "inspect errors"
+          },
+          "delivery": "inline"
+        }
+      }
+    ],
+    "client:skills/list": [
+      {
+        "id": 1,
+        "method": "skills/list",
+        "params": {
+          "cwds": ["/repo"]
+        }
+      },
+      {
+        "id": 1,
+        "method": "skills/list",
+        "params": {
+          "cwds": ["/repo"],
+          "forceReload": true
+        }
+      }
+    ],
+    "client:thread/backgroundTerminals/clean": [
+      {
+        "id": 1,
+        "method": "thread/backgroundTerminals/clean",
+        "params": {
+          "threadId": "thread-1"
+        }
+      }
+    ],
+    "client:thread/backgroundTerminals/list": [
+      {
+        "id": 1,
+        "method": "thread/backgroundTerminals/list",
+        "params": {
+          "threadId": "thread-1",
+          "limit": 32
+        }
+      }
+    ],
+    "client:thread/backgroundTerminals/terminate": [
+      {
+        "id": 1,
+        "method": "thread/backgroundTerminals/terminate",
+        "params": {
+          "threadId": "thread-1",
+          "processId": "process-1"
+        }
+      }
+    ],
+    "client:thread/compact/start": [
+      {
+        "id": 1,
+        "method": "thread/compact/start",
+        "params": {
+          "threadId": "thread-1"
+        }
+      }
+    ],
+    "client:thread/delete": [
+      {
+        "id": 1,
+        "method": "thread/delete",
+        "params": {
+          "threadId": "thread-1"
+        }
+      }
+    ],
+    "client:thread/fork": [
+      {
+        "id": 1,
+        "method": "thread/fork",
+        "params": {
+          "threadId": "thread-1",
+          "excludeTurns": true
+        }
+      }
+    ],
+    "client:thread/goal/clear": [
+      {
+        "id": 1,
+        "method": "thread/goal/clear",
+        "params": {
+          "threadId": "thread-1"
+        }
+      }
+    ],
+    "client:thread/goal/get": [
+      {
+        "id": 1,
+        "method": "thread/goal/get",
+        "params": {
+          "threadId": "thread-1"
+        }
+      }
+    ],
+    "client:thread/goal/set": [
+      {
+        "id": 1,
+        "method": "thread/goal/set",
+        "params": {
+          "threadId": "thread-1",
+          "status": "paused"
+        }
+      }
+    ],
+    "client:thread/list": [
+      {
+        "id": 1,
+        "method": "thread/list",
+        "params": {
+          "cwd": "/repo",
+          "sourceKinds": ["cli"],
+          "archived": false,
+          "useStateDbOnly": true,
+          "excludedThreadIds": ["excluded"],
+          "cursor": null,
+          "limit": 25,
+          "sortKey": "updated_at",
+          "sortDirection": "desc"
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/list",
+        "params": {
+          "cwd": "/repo",
+          "sourceKinds": ["cli"],
+          "archived": false,
+          "useStateDbOnly": true,
+          "excludedThreadIds": ["excluded"],
+          "cursor": "next-page",
+          "limit": 25,
+          "sortKey": "updated_at",
+          "sortDirection": "desc"
+        }
+      }
+    ],
+    "client:thread/read": [
+      {
+        "id": 1,
+        "method": "thread/read",
+        "params": {
+          "threadId": "thread-1",
+          "includeTurns": false
+        }
+      }
+    ],
+    "client:thread/resume": [
+      {
+        "id": 1,
+        "method": "thread/resume",
+        "params": {
+          "threadId": "thread-1",
+          "model": null,
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "excludeTurns": true
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/resume",
+        "params": {
+          "threadId": "thread-1",
+          "model": null,
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "excludeTurns": true,
+          "config": {
+            "mcp_servers": {
+              "sage-browser": {
+                "command": "/bin/sage",
+                "args": ["--sage-browser-mcp-stdio"],
+                "env_vars": [
+                  "SAGE_BROWSER_MCP_PIPE",
+                  "SAGE_BROWSER_MCP_HOST_PID",
+                  "SAGE_BROWSER_MCP_SESSION",
+                  "SAGE_BROWSER_MCP_TOKEN"
+                ],
+                "required": false,
+                "default_tools_approval_mode": "approve",
+                "startup_timeout_sec": 30
+              }
+            },
+            "shell_environment_policy": {
+              "exclude": [
+                "SAGE_BROWSER_MCP_PIPE",
+                "SAGE_BROWSER_MCP_HOST_PID",
+                "SAGE_BROWSER_MCP_SESSION",
+                "SAGE_BROWSER_MCP_TOKEN"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/resume",
+        "params": {
+          "threadId": "thread-1",
+          "model": null,
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "excludeTurns": true,
+          "config": {
+            "mcp_servers": {
+              "files": {
+                "command": "/bin/mcp",
+                "args": ["--root", "/repo"],
+                "env_vars": ["PUBLIC_MODE"],
+                "required": false
+              }
+            },
+            "shell_environment_policy": {
+              "exclude": ["PUBLIC_MODE"]
+            }
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/resume",
+        "params": {
+          "threadId": "thread-1",
+          "model": "fixture-model",
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "excludeTurns": true
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/resume",
+        "params": {
+          "threadId": "thread-1",
+          "model": "fixture-model",
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "excludeTurns": true,
+          "config": {
+            "mcp_servers": {
+              "sage-browser": {
+                "command": "/bin/sage",
+                "args": ["--sage-browser-mcp-stdio"],
+                "env_vars": [
+                  "SAGE_BROWSER_MCP_PIPE",
+                  "SAGE_BROWSER_MCP_HOST_PID",
+                  "SAGE_BROWSER_MCP_SESSION",
+                  "SAGE_BROWSER_MCP_TOKEN"
+                ],
+                "required": false,
+                "default_tools_approval_mode": "approve",
+                "startup_timeout_sec": 30
+              }
+            },
+            "shell_environment_policy": {
+              "exclude": [
+                "SAGE_BROWSER_MCP_PIPE",
+                "SAGE_BROWSER_MCP_HOST_PID",
+                "SAGE_BROWSER_MCP_SESSION",
+                "SAGE_BROWSER_MCP_TOKEN"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/resume",
+        "params": {
+          "threadId": "thread-1",
+          "model": "fixture-model",
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "excludeTurns": true,
+          "config": {
+            "mcp_servers": {
+              "files": {
+                "command": "/bin/mcp",
+                "args": ["--root", "/repo"],
+                "env_vars": ["PUBLIC_MODE"],
+                "required": false
+              }
+            },
+            "shell_environment_policy": {
+              "exclude": ["PUBLIC_MODE"]
+            }
+          }
+        }
+      }
+    ],
+    "client:thread/revert": [
+      {
+        "id": 1,
+        "method": "thread/revert",
+        "params": {
+          "threadId": "thread-1",
+          "beforeTurnId": "turn-1"
+        }
+      }
+    ],
+    "client:thread/start": [
+      {
+        "id": 1,
+        "method": "thread/start",
+        "params": {
+          "model": null,
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "ephemeral": false,
+          "dynamicTools": [
+            {
+              "type": "function",
+              "name": "sage_browse",
+              "description": "Open a Sage Preview URL. Only loopback HTTP(S) URLs with an explicit port are allowed.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/start",
+        "params": {
+          "model": null,
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "ephemeral": false,
+          "dynamicTools": [
+            {
+              "type": "function",
+              "name": "sage_browse",
+              "description": "Open a Sage Preview URL. Only loopback HTTP(S) URLs with an explicit port are allowed.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                }
+              }
+            }
+          ],
+          "config": {
+            "mcp_servers": {
+              "sage-browser": {
+                "command": "/bin/sage",
+                "args": ["--sage-browser-mcp-stdio"],
+                "env_vars": [
+                  "SAGE_BROWSER_MCP_PIPE",
+                  "SAGE_BROWSER_MCP_HOST_PID",
+                  "SAGE_BROWSER_MCP_SESSION",
+                  "SAGE_BROWSER_MCP_TOKEN"
+                ],
+                "required": false,
+                "default_tools_approval_mode": "approve",
+                "startup_timeout_sec": 30
+              }
+            },
+            "shell_environment_policy": {
+              "exclude": [
+                "SAGE_BROWSER_MCP_PIPE",
+                "SAGE_BROWSER_MCP_HOST_PID",
+                "SAGE_BROWSER_MCP_SESSION",
+                "SAGE_BROWSER_MCP_TOKEN"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/start",
+        "params": {
+          "model": null,
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "ephemeral": false,
+          "dynamicTools": [
+            {
+              "type": "function",
+              "name": "sage_browse",
+              "description": "Open a Sage Preview URL. Only loopback HTTP(S) URLs with an explicit port are allowed.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                }
+              }
+            }
+          ],
+          "config": {
+            "mcp_servers": {
+              "files": {
+                "command": "/bin/mcp",
+                "args": ["--root", "/repo"],
+                "env_vars": ["PUBLIC_MODE"],
+                "required": false
+              }
+            },
+            "shell_environment_policy": {
+              "exclude": ["PUBLIC_MODE"]
+            }
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/start",
+        "params": {
+          "model": "fixture-model",
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "ephemeral": false,
+          "dynamicTools": [
+            {
+              "type": "function",
+              "name": "sage_browse",
+              "description": "Open a Sage Preview URL. Only loopback HTTP(S) URLs with an explicit port are allowed.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                }
+              }
+            }
+          ]
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/start",
+        "params": {
+          "model": "fixture-model",
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "ephemeral": false,
+          "dynamicTools": [
+            {
+              "type": "function",
+              "name": "sage_browse",
+              "description": "Open a Sage Preview URL. Only loopback HTTP(S) URLs with an explicit port are allowed.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                }
+              }
+            }
+          ],
+          "config": {
+            "mcp_servers": {
+              "sage-browser": {
+                "command": "/bin/sage",
+                "args": ["--sage-browser-mcp-stdio"],
+                "env_vars": [
+                  "SAGE_BROWSER_MCP_PIPE",
+                  "SAGE_BROWSER_MCP_HOST_PID",
+                  "SAGE_BROWSER_MCP_SESSION",
+                  "SAGE_BROWSER_MCP_TOKEN"
+                ],
+                "required": false,
+                "default_tools_approval_mode": "approve",
+                "startup_timeout_sec": 30
+              }
+            },
+            "shell_environment_policy": {
+              "exclude": [
+                "SAGE_BROWSER_MCP_PIPE",
+                "SAGE_BROWSER_MCP_HOST_PID",
+                "SAGE_BROWSER_MCP_SESSION",
+                "SAGE_BROWSER_MCP_TOKEN"
+              ]
+            }
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/start",
+        "params": {
+          "model": "fixture-model",
+          "cwd": "/repo",
+          "approvalPolicy": "never",
+          "sandbox": "read-only",
+          "ephemeral": false,
+          "dynamicTools": [
+            {
+              "type": "function",
+              "name": "sage_browse",
+              "description": "Open a Sage Preview URL. Only loopback HTTP(S) URLs with an explicit port are allowed.",
+              "inputSchema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["url"],
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "maxLength": 2048
+                  }
+                }
+              }
+            }
+          ],
+          "config": {
+            "mcp_servers": {
+              "files": {
+                "command": "/bin/mcp",
+                "args": ["--root", "/repo"],
+                "env_vars": ["PUBLIC_MODE"],
+                "required": false
+              }
+            },
+            "shell_environment_policy": {
+              "exclude": ["PUBLIC_MODE"]
+            }
+          }
+        }
+      }
+    ],
+    "client:thread/turns/list": [
+      {
+        "id": 1,
+        "method": "thread/turns/list",
+        "params": {
+          "threadId": "thread-1",
+          "cursor": null,
+          "limit": 4,
+          "itemsView": "full",
+          "sortDirection": "asc"
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/turns/list",
+        "params": {
+          "threadId": "thread-1",
+          "cursor": null,
+          "limit": 4,
+          "itemsView": "full",
+          "sortDirection": "desc"
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/turns/list",
+        "params": {
+          "threadId": "thread-1",
+          "cursor": "next-page",
+          "limit": 4,
+          "itemsView": "full",
+          "sortDirection": "asc"
+        }
+      },
+      {
+        "id": 1,
+        "method": "thread/turns/list",
+        "params": {
+          "threadId": "thread-1",
+          "cursor": "next-page",
+          "limit": 4,
+          "itemsView": "full",
+          "sortDirection": "desc"
+        }
+      }
+    ],
+    "client:thread/unsubscribe": [
+      {
+        "id": 1,
+        "method": "thread/unsubscribe",
+        "params": {
+          "threadId": "thread-1"
+        }
+      }
+    ],
+    "client:turn/interrupt": [
+      {
+        "id": 1,
+        "method": "turn/interrupt",
+        "params": {
+          "threadId": "thread-1",
+          "turnId": "message-1"
+        }
+      }
+    ],
+    "client:turn/start": [
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "text",
+              "text": "/pdf inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "never",
+          "sandboxPolicy": {
+            "type": "readOnly",
+            "networkAccess": false
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "skill",
+              "name": "pdf",
+              "path": "/skills/pdf/SKILL.md"
+            },
+            {
+              "type": "text",
+              "text": "inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "never",
+          "sandboxPolicy": {
+            "type": "readOnly",
+            "networkAccess": false
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "text",
+              "text": "/pdf inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "never",
+          "sandboxPolicy": {
+            "type": "readOnly",
+            "networkAccess": false
+          },
+          "model": "fixture-model",
+          "effort": "high"
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "skill",
+              "name": "pdf",
+              "path": "/skills/pdf/SKILL.md"
+            },
+            {
+              "type": "text",
+              "text": "inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "never",
+          "sandboxPolicy": {
+            "type": "readOnly",
+            "networkAccess": false
+          },
+          "model": "fixture-model",
+          "effort": "high"
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "text",
+              "text": "/pdf inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "never",
+          "sandboxPolicy": {
+            "type": "workspaceWrite",
+            "networkAccess": false
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "skill",
+              "name": "pdf",
+              "path": "/skills/pdf/SKILL.md"
+            },
+            {
+              "type": "text",
+              "text": "inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "never",
+          "sandboxPolicy": {
+            "type": "workspaceWrite",
+            "networkAccess": false
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "text",
+              "text": "/pdf inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "never",
+          "sandboxPolicy": {
+            "type": "workspaceWrite",
+            "networkAccess": false
+          },
+          "model": "fixture-model",
+          "effort": "high"
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "skill",
+              "name": "pdf",
+              "path": "/skills/pdf/SKILL.md"
+            },
+            {
+              "type": "text",
+              "text": "inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "never",
+          "sandboxPolicy": {
+            "type": "workspaceWrite",
+            "networkAccess": false
+          },
+          "model": "fixture-model",
+          "effort": "high"
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "text",
+              "text": "/pdf inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "on-request",
+          "sandboxPolicy": {
+            "type": "readOnly",
+            "networkAccess": false
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "skill",
+              "name": "pdf",
+              "path": "/skills/pdf/SKILL.md"
+            },
+            {
+              "type": "text",
+              "text": "inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "on-request",
+          "sandboxPolicy": {
+            "type": "readOnly",
+            "networkAccess": false
+          }
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "text",
+              "text": "/pdf inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "on-request",
+          "sandboxPolicy": {
+            "type": "readOnly",
+            "networkAccess": false
+          },
+          "model": "fixture-model",
+          "effort": "high"
+        }
+      },
+      {
+        "id": 1,
+        "method": "turn/start",
+        "params": {
+          "threadId": "thread-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "skill",
+              "name": "pdf",
+              "path": "/skills/pdf/SKILL.md"
+            },
+            {
+              "type": "text",
+              "text": "inspect"
+            },
+            {
+              "type": "image",
+              "url": "data:image/png;base64,BwcH"
+            }
+          ],
+          "approvalPolicy": "on-request",
+          "sandboxPolicy": {
+            "type": "readOnly",
+            "networkAccess": false
+          },
+          "model": "fixture-model",
+          "effort": "high"
+        }
+      }
+    ],
+    "client:turn/steer": [
+      {
+        "id": 1,
+        "method": "turn/steer",
+        "params": {
+          "threadId": "thread-1",
+          "expectedTurnId": "message-1",
+          "clientUserMessageId": "message-1",
+          "input": [
+            {
+              "type": "text",
+              "text": "/pdf inspect"
+            }
+          ]
+        }
+      }
+    ],
+    "clientNotification:initialized": [
+      {
+        "method": "initialized"
+      }
+    ]
+  }
+}

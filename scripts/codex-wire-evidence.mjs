@@ -14,15 +14,16 @@ if (!inputs.length)
 const binding = resolve("src-tauri/src/acp/bindings/codex");
 const read = (file) => readFileSync(file, "utf8");
 const requestSource = read(join(binding, "request.rs"));
-const clientMethods = [...requestSource.matchAll(/=> "([^"]+)"/g)].map(
-  (m) => m[1],
+const sentRequests = JSON.parse(
+  read("src-tauri/testdata/acp/codex/sent-requests.json"),
 );
-clientMethods.push(
-  "account/read",
-  "account/login/start",
-  "account/login/cancel",
-  "account/logout",
-);
+const clientMethods = Object.keys(sentRequests.requests)
+  .filter((method) => method.startsWith("client:"))
+  .map((method) => method.slice("client:".length));
+for (const [, method] of requestSource.matchAll(/=> "([^"]+)"/g)) {
+  if (!clientMethods.includes(method))
+    throw new Error(`Missing serializer evidence for ${method}`);
+}
 const incomingSource = read(join(binding, "incoming/notifications.rs"));
 const notifications = [...incomingSource.matchAll(/"([^"\n]+)" =>/g)].map(
   (m) => m[1],
@@ -146,42 +147,8 @@ const builds = inputs.map(([version, directory]) => {
       if (!(name in used)) {
         if (!definitions[name]) throw new Error(`Missing ${name}`);
         used[name] = clean(definitions[name]);
-        // request.rs::turn_start_with_access_mode emits only these fields;
-        // unlike start/resume, it never receives with_config overrides.
-        if (name === "TurnStartParams") {
-          const fields = [
-            "threadId",
-            "clientUserMessageId",
-            "input",
-            "approvalPolicy",
-            "sandboxPolicy",
-            "model",
-            "effort",
-          ];
-          used[name].properties = Object.fromEntries(
-            Object.entries(used[name].properties).filter(([field]) =>
-              fields.includes(field),
-            ),
-          );
-        }
-        // request.rs::resume emits these fields, with config supplied by
-        // runtime/harness.rs. Omitted override fields are never sent by Sage.
-        if (name === "ThreadResumeParams") {
-          const fields = [
-            "threadId",
-            "model",
-            "cwd",
-            "approvalPolicy",
-            "sandbox",
-            "excludeTurns",
-            "config",
-          ];
-          used[name].properties = Object.fromEntries(
-            Object.entries(used[name].properties).filter(([field]) =>
-              fields.includes(field),
-            ),
-          );
-        }
+        // Keep complete request schemas, including required and open-object
+        // constraints. The Rust proof projects them using serializer evidence.
         // incoming/items/runtime_rows.rs::function_call_output consumes the
         // whole output union and text parts. For media/encrypted parts it reads
         // only the type discriminator, never URLs, file IDs, detail, or bytes.

@@ -70,3 +70,6 @@ mod tests;
 
 #[cfg(test)]
 mod schema;
+
+#[cfg(test)]
+mod sent;

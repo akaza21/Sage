@@ -6,6 +6,25 @@ use std::collections::{BTreeMap, BTreeSet};
 use serde::Deserialize;
 use serde_json::Value;
 
+mod unions;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ComparisonMode {
+    Received,
+    Sent,
+    SerializedRequest,
+}
+
+impl ComparisonMode {
+    fn outgoing(self) -> Self {
+        if self == Self::SerializedRequest {
+            self
+        } else {
+            Self::Sent
+        }
+    }
+}
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct Evidence {
@@ -44,7 +63,8 @@ impl Evidence {
             baseline,
             build,
         };
-        baseline
+        let sent = super::sent::SentRequests::recorded();
+        let mut failures: Vec<_> = baseline
             .wire
             .iter()
             .filter_map(|(method, expected)| {
@@ -52,6 +72,24 @@ impl Evidence {
                     let (expected, actual) = (&self.schemas[*expected], &self.schemas[*actual]);
                     if method.starts_with("policy:") || method.starts_with("envelope:") {
                         comparison.identical(expected, actual, &mut BTreeSet::new())
+                    } else if method.starts_with("client:")
+                        || method.starts_with("clientNotification:")
+                    {
+                        sent.requests.get(method).is_some_and(|requests| {
+                            !requests.is_empty()
+                                && requests.iter().all(|request| {
+                                    sent.project(self, baseline, expected, request).is_some_and(
+                                        |projected| {
+                                            comparison.compare(
+                                                &projected,
+                                                actual,
+                                                ComparisonMode::SerializedRequest,
+                                                &mut BTreeSet::new(),
+                                            )
+                                        },
+                                    )
+                                })
+                        })
                     } else {
                         comparison.compatible(
                             expected,
@@ -65,7 +103,17 @@ impl Evidence {
                 });
                 (!compatible).then(|| method.clone())
             })
-            .collect()
+            .collect();
+        // The serializer inventory owns the request method set. An omitted
+        // baseline row must not make a real outgoing method disappear here.
+        failures.extend(
+            sent.requests
+                .keys()
+                .filter(|method| !baseline.wire.contains_key(*method))
+                .cloned(),
+        );
+        failures.sort();
+        failures
     }
 }
 
@@ -119,6 +167,69 @@ impl Comparison<'_> {
         sends: bool,
         visited: &mut BTreeSet<(String, String)>,
     ) -> bool {
+        let mode = if sends {
+            ComparisonMode::Sent
+        } else {
+            ComparisonMode::Received
+        };
+        self.compare(expected, actual, mode, visited)
+    }
+
+    fn compare(
+        &self,
+        expected: &Value,
+        actual: &Value,
+        mode: ComparisonMode,
+        visited: &mut BTreeSet<(String, String)>,
+    ) -> bool {
+        let sends = mode != ComparisonMode::Received;
+        let projected = mode == ComparisonMode::SerializedRequest;
+        if projected
+            && (actual == &Value::Bool(true)
+                || actual.as_object().is_some_and(|object| object.is_empty()))
+        {
+            return true;
+        }
+        // Projected array items can combine several serialized forms, whereas
+        // the upstream item definition may express its variants through a ref.
+        if projected && expected.get("$ref").is_none() && actual.get("$ref").is_some() {
+            let reference = actual["$ref"].as_str().unwrap().to_owned();
+            let key = (expected.to_string(), reference);
+            if !visited.insert(key.clone()) {
+                return false;
+            }
+            let Some(actual) = self.resolve(actual, self.build) else {
+                return false;
+            };
+            let compatible = self.compare(expected, actual, mode, visited);
+            visited.remove(&key);
+            return compatible;
+        }
+        if projected
+            && let Some(variants) = expected
+                .get("anyOf")
+                .or_else(|| expected.get("oneOf"))
+                .and_then(Value::as_array)
+            && expected.as_object().is_some_and(|object| object.len() == 1)
+        {
+            return variants
+                .iter()
+                .all(|variant| self.compare(variant, actual, mode, &mut visited.clone()));
+        }
+        if projected
+            && let Some(variants) = actual
+                .get("anyOf")
+                .or_else(|| actual.get("oneOf"))
+                .and_then(Value::as_array)
+            && actual.as_object().is_some_and(|object| object.len() == 1)
+        {
+            if actual.get("oneOf").is_some() {
+                return self.exclusive(expected, variants, visited);
+            }
+            return variants
+                .iter()
+                .any(|variant| self.compare(expected, variant, mode, &mut visited.clone()));
+        }
         if let Some(reference) = expected.get("$ref").and_then(Value::as_str) {
             let Some(other) = actual.get("$ref").and_then(Value::as_str) else {
                 return false;
@@ -143,20 +254,24 @@ impl Comparison<'_> {
             };
             // Explicitly open incoming unions have a safe binding fallback for
             // new variants. All other incoming unions must retain their shape.
-            let sends = sends
-                || self
-                    .evidence
-                    .open_union_definitions
-                    .iter()
-                    .any(|open| open == name);
-            return self.compatible(left, right, sends, visited);
+            let mode = if self
+                .evidence
+                .open_union_definitions
+                .iter()
+                .any(|open| open == name)
+            {
+                mode.outgoing()
+            } else {
+                mode
+            };
+            return self.compare(left, right, mode, visited);
         }
         if let (Some(left), Some(right)) = (expected.as_array(), actual.as_array()) {
             return left.len() == right.len()
                 && left
                     .iter()
                     .zip(right)
-                    .all(|(a, b)| self.compatible(a, b, sends, visited));
+                    .all(|(a, b)| self.compare(a, b, mode, visited));
         }
         let (Some(left), Some(right)) = (expected.as_object(), actual.as_object()) else {
             return expected == actual;
@@ -165,15 +280,47 @@ impl Comparison<'_> {
             match key.as_str() {
                 "properties" => {
                     for (field, shape) in value.as_object().unwrap() {
-                        let Some(candidate) = right.get(key).and_then(|props| props.get(field))
-                        else {
+                        let candidate =
+                            right
+                                .get(key)
+                                .and_then(|props| props.get(field))
+                                .or_else(|| {
+                                    (projected
+                                        && !left
+                                            .get("x-sage-known-properties")
+                                            .and_then(Value::as_array)
+                                            .is_some_and(|known| {
+                                                known
+                                                    .iter()
+                                                    .any(|known| known.as_str() == Some(field))
+                                            }))
+                                    .then(|| {
+                                        right
+                                            .get("additionalProperties")
+                                            .unwrap_or(&Value::Bool(true))
+                                    })
+                                });
+                        let Some(candidate) = candidate else {
                             return false;
                         };
-                        if !self.compatible(shape, candidate, sends, visited) {
+                        if !self.compare(shape, candidate, mode, visited) {
                             return false;
                         }
                     }
                 }
+                "x-sage-known-properties" if projected => {}
+                "additionalProperties" if projected && value == &Value::Bool(false) => {}
+                "additionalProperties" if projected => {
+                    if !self.compare(
+                        value,
+                        right.get(key).unwrap_or(&Value::Bool(true)),
+                        mode.outgoing(),
+                        visited,
+                    ) {
+                        return false;
+                    }
+                }
+                "type" if projected && !right.contains_key(key) => {}
                 "required" => {
                     let empty = Vec::new();
                     let old = value.as_array().unwrap();
@@ -193,7 +340,7 @@ impl Comparison<'_> {
                     }
                     if !variants.iter().all(|variant| {
                         candidates.iter().any(|candidate| {
-                            self.compatible(variant, candidate, sends, &mut visited.clone())
+                            self.compare(variant, candidate, mode, &mut visited.clone())
                         })
                     }) {
                         return false;
@@ -203,7 +350,7 @@ impl Comparison<'_> {
                     let Some(candidate) = right.get(key) else {
                         return false;
                     };
-                    if !self.compatible(value, candidate, sends, visited) {
+                    if !self.compare(value, candidate, mode, visited) {
                         return false;
                     }
                 }
@@ -235,7 +382,9 @@ impl Comparison<'_> {
                         && match left.get("additionalProperties") {
                             Some(Value::Bool(false)) => true,
                             None | Some(Value::Bool(true)) => false,
-                            Some(previous) => self.compatible(previous, shape, true, visited),
+                            Some(previous) => {
+                                self.compare(previous, shape, mode.outgoing(), visited)
+                            }
                         };
                 if !accepted {
                     return false;
@@ -244,8 +393,10 @@ impl Comparison<'_> {
         }
         // New validation constraints cannot silently narrow accepted requests.
         !sends
-            || right
-                .keys()
-                .all(|key| left.contains_key(key) || key == "properties")
+            || right.keys().all(|key| {
+                left.contains_key(key)
+                    || key == "properties"
+                    || projected && (key == "required" || key == "additionalProperties")
+            })
     }
 }

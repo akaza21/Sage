@@ -1502,6 +1502,36 @@
       "type": "object"
     },
     {
+      "oneOf": [
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["input_text"],
+              "type": "string"
+            }
+          },
+          "required": ["text", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "encrypted_content": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["encrypted_content"],
+              "type": "string"
+            }
+          },
+          "required": ["encrypted_content", "type"],
+          "type": "object"
+        }
+      ]
+    },
+    {
       "enum": ["user", "auto_review", "guardian_subagent"],
       "type": "string"
     },
@@ -2060,6 +2090,72 @@
       "type": "object"
     },
     {
+      "oneOf": [
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["input_text"],
+              "type": "string"
+            }
+          },
+          "required": ["text", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "detail": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ImageDetail"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "image_url": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["input_image"],
+              "type": "string"
+            }
+          },
+          "required": ["image_url", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "audio_url": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["input_audio"],
+              "type": "string"
+            }
+          },
+          "required": ["audio_url", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["output_text"],
+              "type": "string"
+            }
+          },
+          "required": ["text", "type"],
+          "type": "object"
+        }
+      ]
+    },
+    {
       "properties": {
         "threadId": {
           "type": "string"
@@ -2499,6 +2595,66 @@
       },
       "required": ["diff", "kind", "path"],
       "type": "object"
+    },
+    {
+      "anyOf": [
+        {
+          "type": "string"
+        },
+        {
+          "items": {
+            "$ref": "#/definitions/FunctionCallOutputContentItem"
+          },
+          "type": "array"
+        }
+      ]
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["input_text"],
+              "type": "string"
+            }
+          },
+          "required": ["text", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": ["input_image"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": ["input_audio"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": ["encrypted_content"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        }
+      ]
     },
     {
       "properties": {
@@ -3009,6 +3165,14 @@
     },
     {
       "properties": {
+        "turn_id": {
+          "type": ["string", "null"]
+        }
+      },
+      "type": "object"
+    },
+    {
+      "properties": {
         "completedAtMs": {
           "format": "int64",
           "type": "integer"
@@ -3178,6 +3342,47 @@
       },
       "required": ["data"],
       "type": "object"
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "command": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "env": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": ["object", "null"]
+            },
+            "timeout_ms": {
+              "format": "uint64",
+              "minimum": 0,
+              "type": ["integer", "null"]
+            },
+            "type": {
+              "enum": ["exec"],
+              "type": "string"
+            },
+            "user": {
+              "type": ["string", "null"]
+            },
+            "working_directory": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["command", "type"],
+          "type": "object"
+        }
+      ]
+    },
+    {
+      "enum": ["completed", "in_progress", "incomplete"],
+      "type": "string"
     },
     {
       "oneOf": [
@@ -4666,6 +4871,53 @@
     {
       "oneOf": [
         {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["reasoning_text"],
+              "type": "string"
+            }
+          },
+          "required": ["text", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["text"],
+              "type": "string"
+            }
+          },
+          "required": ["text", "type"],
+          "type": "object"
+        }
+      ]
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "text": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["summary_text"],
+              "type": "string"
+            }
+          },
+          "required": ["text", "type"],
+          "type": "object"
+        }
+      ]
+    },
+    {
+      "oneOf": [
+        {
           "enum": ["auto", "concise", "detailed"],
           "type": "string"
         },
@@ -4849,6 +5101,563 @@
       },
       "required": ["name", "uriTemplate"],
       "type": "object"
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "content": {
+              "items": {
+                "$ref": "#/definitions/ContentItem"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "phase": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/MessagePhase"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "role": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["message"],
+              "type": "string"
+            }
+          },
+          "required": ["content", "role", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "author": {
+              "type": "string"
+            },
+            "content": {
+              "items": {
+                "$ref": "#/definitions/AgentMessageInputContent"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "recipient": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["agent_message"],
+              "type": "string"
+            }
+          },
+          "required": ["author", "content", "recipient", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "content": {
+              "default": null,
+              "items": {
+                "$ref": "#/definitions/ReasoningItemContent"
+              },
+              "type": ["array", "null"]
+            },
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "summary": {
+              "items": {
+                "$ref": "#/definitions/ReasoningItemReasoningSummary"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": ["reasoning"],
+              "type": "string"
+            }
+          },
+          "required": ["summary", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "action": {
+              "$ref": "#/definitions/LocalShellAction"
+            },
+            "call_id": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "$ref": "#/definitions/LocalShellStatus"
+            },
+            "type": {
+              "enum": ["local_shell_call"],
+              "type": "string"
+            }
+          },
+          "required": ["action", "status", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "arguments": {
+              "type": "string"
+            },
+            "call_id": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["function_call"],
+              "type": "string"
+            }
+          },
+          "required": ["arguments", "call_id", "name", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "arguments": true,
+            "call_id": {
+              "type": ["string", "null"]
+            },
+            "execution": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["tool_search_call"],
+              "type": "string"
+            }
+          },
+          "required": ["arguments", "execution", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "call_id": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "output": {
+              "$ref": "#/definitions/FunctionCallOutputBody"
+            },
+            "type": {
+              "enum": ["function_call_output"],
+              "type": "string"
+            }
+          },
+          "required": ["call_id", "output", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "call_id": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "input": {
+              "type": "string"
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": ["string", "null"]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["custom_tool_call"],
+              "type": "string"
+            }
+          },
+          "required": ["call_id", "input", "name", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "call_id": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": ["string", "null"]
+            },
+            "output": {
+              "$ref": "#/definitions/FunctionCallOutputBody"
+            },
+            "type": {
+              "enum": ["custom_tool_call_output"],
+              "type": "string"
+            }
+          },
+          "required": ["call_id", "output", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "call_id": {
+              "type": ["string", "null"]
+            },
+            "execution": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": "string"
+            },
+            "tools": {
+              "items": true,
+              "type": "array"
+            },
+            "type": {
+              "enum": ["tool_search_output"],
+              "type": "string"
+            }
+          },
+          "required": ["execution", "status", "tools", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "action": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ResponsesApiWebSearchAction"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["web_search_call"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "result": {
+              "type": "string"
+            },
+            "revised_prompt": {
+              "type": ["string", "null"]
+            },
+            "status": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["image_generation_call"],
+              "type": "string"
+            }
+          },
+          "required": ["result", "status", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "encrypted_content": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "enum": ["compaction"],
+              "type": "string"
+            }
+          },
+          "required": ["encrypted_content", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": ["compaction_trigger"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "enum": ["context_compaction"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": ["other"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        }
+      ]
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "queries": {
+              "items": {
+                "type": "string"
+              },
+              "type": ["array", "null"]
+            },
+            "query": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["search"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": ["open_page"],
+              "type": "string"
+            },
+            "url": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "pattern": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["find_in_page"],
+              "type": "string"
+            },
+            "url": {
+              "type": ["string", "null"]
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": ["other"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        }
+      ]
     },
     {
       "enum": ["inline", "detached"],
@@ -6650,6 +7459,36 @@
     },
     {
       "properties": {
+        "itemsView": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TurnItemsView"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "limit": {
+          "format": "uint32",
+          "minimum": 0,
+          "type": ["integer", "null"]
+        },
+        "sortDirection": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SortDirection"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "type": "object"
+    },
+    {
+      "properties": {
         "approvalPolicy": {
           "anyOf": [
             {
@@ -6660,6 +7499,19 @@
             }
           ]
         },
+        "approvalsReviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalsReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "baseInstructions": {
+          "type": ["string", "null"]
+        },
         "config": {
           "additionalProperties": true,
           "type": ["object", "null"]
@@ -6667,11 +7519,56 @@
         "cwd": {
           "type": ["string", "null"]
         },
+        "developerInstructions": {
+          "type": ["string", "null"]
+        },
         "excludeTurns": {
           "type": "boolean"
         },
+        "history": {
+          "items": {
+            "$ref": "#/definitions/ResponseItem"
+          },
+          "type": ["array", "null"]
+        },
+        "initialTurnsPage": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ThreadResumeInitialTurnsPageParams"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "model": {
           "type": ["string", "null"]
+        },
+        "modelProvider": {
+          "type": ["string", "null"]
+        },
+        "path": {
+          "default": null,
+          "type": ["string", "null"]
+        },
+        "permissions": {
+          "type": ["string", "null"]
+        },
+        "personality": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Personality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "runtimeWorkspaceRoots": {
+          "items": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "type": ["array", "null"]
         },
         "sandbox": {
           "anyOf": [
@@ -6682,6 +7579,9 @@
               "type": "null"
             }
           ]
+        },
+        "serviceTier": {
+          "type": ["string", "null"]
         },
         "threadId": {
           "type": "string"
@@ -7551,6 +8451,12 @@
     },
     {
       "properties": {
+        "additionalContext": {
+          "additionalProperties": {
+            "$ref": "#/definitions/AdditionalContextEntry"
+          },
+          "type": ["object", "null"]
+        },
         "approvalPolicy": {
           "anyOf": [
             {
@@ -7561,7 +8467,30 @@
             }
           ]
         },
+        "approvalsReviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalsReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
         "clientUserMessageId": {
+          "type": ["string", "null"]
+        },
+        "collaborationMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CollaborationMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cwd": {
           "type": ["string", "null"]
         },
         "effort": {
@@ -7574,6 +8503,12 @@
             }
           ]
         },
+        "environments": {
+          "items": {
+            "$ref": "#/definitions/TurnEnvironmentParams"
+          },
+          "type": ["array", "null"]
+        },
         "input": {
           "items": {
             "$ref": "#/definitions/UserInput"
@@ -7583,10 +8518,59 @@
         "model": {
           "type": ["string", "null"]
         },
+        "multiAgentMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MultiAgentMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputSchema": {},
+        "permissions": {
+          "type": ["string", "null"]
+        },
+        "personality": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Personality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "responsesapiClientMetadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": ["object", "null"]
+        },
+        "runtimeWorkspaceRoots": {
+          "items": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "type": ["array", "null"]
+        },
         "sandboxPolicy": {
           "anyOf": [
             {
               "$ref": "#/definitions/SandboxPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serviceTier": {
+          "type": ["string", "null"]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningSummary"
             },
             {
               "type": "null"
@@ -8431,25 +9415,13 @@
       "type": "object"
     },
     {
-      "enum": ["standard", "daybreakBlue", "daybreakRed"],
-      "type": "string"
-    },
-    {
-      "enum": ["life_sciences"],
-      "type": "string"
-    },
-    {
-      "anyOf": [
-        {
-          "type": "string"
-        },
-        {
-          "items": {
-            "$ref": "#/definitions/FunctionCallOutputContentItem"
-          },
-          "type": "array"
+      "properties": {
+        "effort": {
+          "$ref": "#/definitions/ReasoningEffort"
         }
-      ]
+      },
+      "required": ["effort"],
+      "type": "object"
     },
     {
       "oneOf": [
@@ -8467,7 +9439,37 @@
           "type": "object"
         },
         {
+          "anyOf": [
+            {
+              "properties": {
+                "image_url": {
+                  "type": "string"
+                }
+              },
+              "required": ["image_url"],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "file_id": {
+                  "type": "string"
+                }
+              },
+              "required": ["file_id"],
+              "type": "object"
+            }
+          ],
           "properties": {
+            "detail": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ImageDetail"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
             "type": {
               "enum": ["input_image"],
               "type": "string"
@@ -8477,6 +9479,26 @@
           "type": "object"
         },
         {
+          "anyOf": [
+            {
+              "properties": {
+                "audio_url": {
+                  "type": "string"
+                }
+              },
+              "required": ["audio_url"],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "file_id": {
+                  "type": "string"
+                }
+              },
+              "required": ["file_id"],
+              "type": "object"
+            }
+          ],
           "properties": {
             "type": {
               "enum": ["input_audio"],
@@ -8488,15 +9510,34 @@
         },
         {
           "properties": {
+            "annotations": {
+              "items": true,
+              "type": ["array", "null"]
+            },
+            "logprobs": {
+              "items": true,
+              "type": ["array", "null"]
+            },
+            "text": {
+              "type": "string"
+            },
             "type": {
-              "enum": ["encrypted_content"],
+              "enum": ["output_text"],
               "type": "string"
             }
           },
-          "required": ["type"],
+          "required": ["text", "type"],
           "type": "object"
         }
       ]
+    },
+    {
+      "enum": ["standard", "daybreakBlue", "daybreakRed"],
+      "type": "string"
+    },
+    {
+      "enum": ["life_sciences"],
+      "type": "string"
     },
     {
       "properties": {
@@ -9616,6 +10657,573 @@
         }
       },
       "type": "object"
+    },
+    {
+      "oneOf": [
+        {
+          "properties": {
+            "id": {
+              "type": ["string", "null"]
+            },
+            "role": {
+              "type": "string"
+            },
+            "tools": {
+              "items": true,
+              "type": "array"
+            },
+            "type": {
+              "enum": ["additional_tools"],
+              "type": "string"
+            }
+          },
+          "required": ["role", "tools", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "content": {
+              "items": {
+                "$ref": "#/definitions/ContentItem"
+              },
+              "type": "array"
+            },
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "phase": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/MessagePhase"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "role": {
+              "type": "string"
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["message"],
+              "type": "string"
+            }
+          },
+          "required": ["content", "role", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "author": {
+              "type": "string"
+            },
+            "content": {
+              "items": {
+                "$ref": "#/definitions/AgentMessageInputContent"
+              },
+              "type": "array"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "recipient": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["agent_message"],
+              "type": "string"
+            }
+          },
+          "required": ["author", "content", "recipient", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "content": {
+              "default": null,
+              "items": {
+                "$ref": "#/definitions/ReasoningItemContent"
+              },
+              "type": ["array", "null"]
+            },
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "summary": {
+              "items": {
+                "$ref": "#/definitions/ReasoningItemReasoningSummary"
+              },
+              "type": "array"
+            },
+            "type": {
+              "enum": ["reasoning"],
+              "type": "string"
+            }
+          },
+          "required": ["summary", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "action": {
+              "$ref": "#/definitions/LocalShellAction"
+            },
+            "call_id": {
+              "type": ["string", "null"]
+            },
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "$ref": "#/definitions/LocalShellStatus"
+            },
+            "type": {
+              "enum": ["local_shell_call"],
+              "type": "string"
+            }
+          },
+          "required": ["action", "status", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "arguments": {
+              "type": "string"
+            },
+            "call_id": {
+              "type": "string"
+            },
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "encrypted_function_args": {
+              "items": {
+                "type": "string"
+              },
+              "type": ["array", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": ["string", "null"]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["function_call"],
+              "type": "string"
+            }
+          },
+          "required": ["arguments", "call_id", "name", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "arguments": true,
+            "call_id": {
+              "type": ["string", "null"]
+            },
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "execution": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["tool_search_call"],
+              "type": "string"
+            }
+          },
+          "required": ["arguments", "execution", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "call_id": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": ["string", "null"]
+            },
+            "namespace": {
+              "type": ["string", "null"]
+            },
+            "output": {
+              "$ref": "#/definitions/FunctionCallOutputBody"
+            },
+            "type": {
+              "enum": ["function_call_output"],
+              "type": "string"
+            }
+          },
+          "required": ["output", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "call_id": {
+              "type": "string"
+            },
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "input": {
+              "type": "string"
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": "string"
+            },
+            "namespace": {
+              "type": ["string", "null"]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["custom_tool_call"],
+              "type": "string"
+            }
+          },
+          "required": ["call_id", "input", "name", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "call_id": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "name": {
+              "type": ["string", "null"]
+            },
+            "output": {
+              "$ref": "#/definitions/FunctionCallOutputBody"
+            },
+            "type": {
+              "enum": ["custom_tool_call_output"],
+              "type": "string"
+            }
+          },
+          "required": ["call_id", "output", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "call_id": {
+              "type": ["string", "null"]
+            },
+            "execution": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": "string"
+            },
+            "tools": {
+              "items": true,
+              "type": "array"
+            },
+            "type": {
+              "enum": ["tool_search_output"],
+              "type": "string"
+            }
+          },
+          "required": ["execution", "status", "tools", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "action": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/ResponsesApiWebSearchAction"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "status": {
+              "type": ["string", "null"]
+            },
+            "type": {
+              "enum": ["web_search_call"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "result": {
+              "type": "string"
+            },
+            "revised_prompt": {
+              "type": ["string", "null"]
+            },
+            "status": {
+              "type": "string"
+            },
+            "type": {
+              "enum": ["image_generation_call"],
+              "type": "string"
+            }
+          },
+          "required": ["result", "status", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "encrypted_content": {
+              "type": "string"
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "enum": ["compaction"],
+              "type": "string"
+            }
+          },
+          "required": ["encrypted_content", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "reasoning": {
+              "$ref": "#/definitions/ConfigurationReasoning"
+            },
+            "type": {
+              "enum": ["configuration_update"],
+              "type": "string"
+            }
+          },
+          "required": ["reasoning", "type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": ["compaction_trigger"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "encrypted_content": {
+              "type": ["string", "null"]
+            },
+            "id": {
+              "type": ["string", "null"]
+            },
+            "internal_chat_message_metadata_passthrough": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/InternalChatMessageMetadataPassthrough"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "enum": ["context_compaction"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        },
+        {
+          "properties": {
+            "type": {
+              "enum": ["other"],
+              "type": "string"
+            }
+          },
+          "required": ["type"],
+          "type": "object"
+        }
+      ]
     },
     {
       "enum": ["inline"],
@@ -11579,6 +13187,185 @@
           },
           "type": ["object", "null"]
         },
+        "approvalPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/AskForApproval"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "approvalsReviewer": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ApprovalsReviewer"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "clientUserMessageId": {
+          "type": ["string", "null"]
+        },
+        "collaborationMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CollaborationMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "cwd": {
+          "type": ["string", "null"]
+        },
+        "cyberAccessProgram": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/CyberAccessProgram"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "disabledPluginIds": {
+          "items": {
+            "type": "string"
+          },
+          "type": ["array", "null"]
+        },
+        "effort": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningEffort"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "environments": {
+          "items": {
+            "$ref": "#/definitions/TurnEnvironmentParams"
+          },
+          "type": ["array", "null"]
+        },
+        "input": {
+          "items": {
+            "$ref": "#/definitions/UserInput"
+          },
+          "type": "array"
+        },
+        "model": {
+          "type": ["string", "null"]
+        },
+        "multiAgentMode": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/MultiAgentMode"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "outputSchema": {},
+        "parentTurnId": {
+          "type": ["string", "null"]
+        },
+        "permissions": {
+          "type": ["string", "null"]
+        },
+        "personality": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Personality"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "responsesapiClientMetadata": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": ["object", "null"]
+        },
+        "responsesapiClientMetadataPatch": {
+          "additionalProperties": {
+            "type": "string"
+          },
+          "type": ["object", "null"]
+        },
+        "rootTurnId": {
+          "type": ["string", "null"]
+        },
+        "runtimeWorkspaceRoots": {
+          "items": {
+            "$ref": "#/definitions/AbsolutePathBuf"
+          },
+          "type": ["array", "null"]
+        },
+        "sandboxPolicy": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/SandboxPolicy"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "serviceTier": {
+          "type": ["string", "null"]
+        },
+        "serviceTierForTurn": {
+          "type": ["string", "null"]
+        },
+        "summary": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/ReasoningSummary"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "threadId": {
+          "type": "string"
+        },
+        "toolOutput": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TurnToolOutput"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "turnTrigger": {
+          "type": ["string", "null"]
+        }
+      },
+      "required": ["input", "threadId"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "additionalContext": {
+          "additionalProperties": {
+            "$ref": "#/definitions/AdditionalContextEntry"
+          },
+          "type": ["object", "null"]
+        },
         "clientUserMessageId": {
           "type": ["string", "null"]
         },
@@ -11608,6 +13395,24 @@
         }
       },
       "required": ["expectedTurnId", "input", "threadId"],
+      "type": "object"
+    },
+    {
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "namespace": {
+          "type": ["string", "null"]
+        },
+        "output": {
+          "$ref": "#/definitions/FunctionCallOutputBody"
+        },
+        "retain": {
+          "type": "boolean"
+        }
+      },
+      "required": ["name", "output"],
       "type": "object"
     },
     {
@@ -13350,292 +15155,304 @@
         "AdditionalNetworkPermissions": 132,
         "AdditionalPermissionProfile": 133,
         "AgentMessageDeltaNotification": 134,
+        "AgentMessageInputContent": 135,
         "AgentPath": 123,
-        "ApprovalsReviewer": 135,
-        "AskForApproval": 136,
-        "AuthMode": 137,
-        "AutoReviewDecisionSource": 138,
-        "ByteRange": 139,
-        "CancelLoginAccountParams": 140,
-        "CancelLoginAccountResponse": 141,
-        "CancelLoginAccountStatus": 142,
-        "CapabilityRootLocation": 143,
-        "ClientInfo": 144,
-        "CodexErrorInfo": 145,
-        "CollabAgentState": 146,
-        "CollabAgentStatus": 147,
-        "CollabAgentTool": 148,
-        "CollabAgentToolCallStatus": 149,
-        "CollaborationMode": 150,
-        "CommandAction": 151,
-        "CommandExecutionApprovalDecision": 152,
+        "ApprovalsReviewer": 136,
+        "AskForApproval": 137,
+        "AuthMode": 138,
+        "AutoReviewDecisionSource": 139,
+        "ByteRange": 140,
+        "CancelLoginAccountParams": 141,
+        "CancelLoginAccountResponse": 142,
+        "CancelLoginAccountStatus": 143,
+        "CapabilityRootLocation": 144,
+        "ClientInfo": 145,
+        "CodexErrorInfo": 146,
+        "CollabAgentState": 147,
+        "CollabAgentStatus": 148,
+        "CollabAgentTool": 149,
+        "CollabAgentToolCallStatus": 150,
+        "CollaborationMode": 151,
+        "CommandAction": 152,
+        "CommandExecutionApprovalDecision": 153,
         "CommandExecutionOutputDeltaNotification": 134,
-        "CommandExecutionRequestApprovalParams": 153,
-        "CommandExecutionRequestApprovalResponse": 154,
-        "CommandExecutionSource": 155,
-        "CommandExecutionStatus": 156,
-        "ConfigWarningNotification": 157,
-        "ContextCompactedNotification": 158,
-        "CreditsSnapshot": 159,
-        "CurrentTimeReadParams": 160,
-        "CurrentTimeReadResponse": 161,
-        "DeprecationNoticeNotification": 162,
-        "DynamicToolCallOutputContentItem": 163,
-        "DynamicToolCallParams": 164,
-        "DynamicToolCallResponse": 165,
-        "DynamicToolCallStatus": 149,
-        "DynamicToolNamespaceTool": 166,
-        "DynamicToolSpec": 167,
-        "ErrorNotification": 168,
-        "FileChangeApprovalDecision": 169,
-        "FileChangeRequestApprovalParams": 170,
-        "FileChangeRequestApprovalResponse": 171,
-        "FileSystemAccessMode": 172,
-        "FileSystemPath": 173,
-        "FileSystemSandboxEntry": 174,
-        "FileSystemSpecialPath": 175,
-        "FileUpdateChange": 176,
-        "GetAccountParams": 177,
-        "GetAccountRateLimitsResponse": 178,
-        "GetAccountResponse": 179,
-        "GitInfo": 180,
+        "CommandExecutionRequestApprovalParams": 154,
+        "CommandExecutionRequestApprovalResponse": 155,
+        "CommandExecutionSource": 156,
+        "CommandExecutionStatus": 157,
+        "ConfigWarningNotification": 158,
+        "ContentItem": 159,
+        "ContextCompactedNotification": 160,
+        "CreditsSnapshot": 161,
+        "CurrentTimeReadParams": 162,
+        "CurrentTimeReadResponse": 163,
+        "DeprecationNoticeNotification": 164,
+        "DynamicToolCallOutputContentItem": 165,
+        "DynamicToolCallParams": 166,
+        "DynamicToolCallResponse": 167,
+        "DynamicToolCallStatus": 150,
+        "DynamicToolNamespaceTool": 168,
+        "DynamicToolSpec": 169,
+        "ErrorNotification": 170,
+        "FileChangeApprovalDecision": 171,
+        "FileChangeRequestApprovalParams": 172,
+        "FileChangeRequestApprovalResponse": 173,
+        "FileSystemAccessMode": 174,
+        "FileSystemPath": 175,
+        "FileSystemSandboxEntry": 176,
+        "FileSystemSpecialPath": 177,
+        "FileUpdateChange": 178,
+        "FunctionCallOutputBody": 179,
+        "FunctionCallOutputContentItem": 180,
+        "GetAccountParams": 181,
+        "GetAccountRateLimitsResponse": 182,
+        "GetAccountResponse": 183,
+        "GitInfo": 184,
         "GrantedPermissionProfile": 133,
-        "GuardianApprovalReview": 181,
-        "GuardianApprovalReviewAction": 182,
-        "GuardianApprovalReviewStatus": 183,
-        "GuardianCommandSource": 184,
-        "GuardianRiskLevel": 185,
-        "GuardianUserAuthorization": 186,
-        "GuardianWarningNotification": 187,
-        "HookCompletedNotification": 188,
-        "HookEventName": 189,
-        "HookExecutionMode": 190,
-        "HookHandlerType": 191,
-        "HookOutputEntry": 192,
-        "HookOutputEntryKind": 193,
-        "HookPromptFragment": 194,
-        "HookRunStatus": 195,
-        "HookRunSummary": 196,
-        "HookScope": 197,
-        "HookSource": 198,
-        "HookStartedNotification": 188,
-        "ImageDetail": 199,
-        "InitializeCapabilities": 200,
-        "InitializeParams": 201,
-        "InitializeResponse": 202,
-        "InputModality": 203,
-        "ItemCompletedNotification": 204,
-        "ItemGuardianApprovalReviewCompletedNotification": 205,
-        "ItemGuardianApprovalReviewStartedNotification": 206,
-        "ItemStartedNotification": 207,
-        "JSONRPCErrorError": 208,
+        "GuardianApprovalReview": 185,
+        "GuardianApprovalReviewAction": 186,
+        "GuardianApprovalReviewStatus": 187,
+        "GuardianCommandSource": 188,
+        "GuardianRiskLevel": 189,
+        "GuardianUserAuthorization": 190,
+        "GuardianWarningNotification": 191,
+        "HookCompletedNotification": 192,
+        "HookEventName": 193,
+        "HookExecutionMode": 194,
+        "HookHandlerType": 195,
+        "HookOutputEntry": 196,
+        "HookOutputEntryKind": 197,
+        "HookPromptFragment": 198,
+        "HookRunStatus": 199,
+        "HookRunSummary": 200,
+        "HookScope": 201,
+        "HookSource": 202,
+        "HookStartedNotification": 192,
+        "ImageDetail": 203,
+        "InitializeCapabilities": 204,
+        "InitializeParams": 205,
+        "InitializeResponse": 206,
+        "InputModality": 207,
+        "InternalChatMessageMetadataPassthrough": 208,
+        "ItemCompletedNotification": 209,
+        "ItemGuardianApprovalReviewCompletedNotification": 210,
+        "ItemGuardianApprovalReviewStartedNotification": 211,
+        "ItemStartedNotification": 212,
+        "JSONRPCErrorError": 213,
         "LegacyAppPathString": 123,
-        "ListMcpServerStatusParams": 209,
-        "ListMcpServerStatusResponse": 210,
-        "LoginAccountParams": 211,
-        "LoginAccountResponse": 212,
-        "LoginAppBrand": 213,
-        "LogoutAccountResponse": 214,
-        "McpAuthStatus": 215,
-        "McpElicitationArrayType": 216,
-        "McpElicitationBooleanSchema": 217,
-        "McpElicitationBooleanType": 218,
-        "McpElicitationConstOption": 219,
-        "McpElicitationEnumSchema": 220,
-        "McpElicitationLegacyTitledEnumSchema": 221,
-        "McpElicitationMultiSelectEnumSchema": 222,
-        "McpElicitationNumberSchema": 223,
-        "McpElicitationNumberType": 224,
-        "McpElicitationObjectType": 225,
-        "McpElicitationPrimitiveSchema": 226,
-        "McpElicitationSchema": 227,
-        "McpElicitationSingleSelectEnumSchema": 228,
-        "McpElicitationStringFormat": 229,
-        "McpElicitationStringSchema": 230,
-        "McpElicitationStringType": 231,
-        "McpElicitationTitledEnumItems": 232,
-        "McpElicitationTitledMultiSelectEnumSchema": 233,
-        "McpElicitationTitledSingleSelectEnumSchema": 234,
-        "McpElicitationUntitledEnumItems": 235,
-        "McpElicitationUntitledMultiSelectEnumSchema": 236,
-        "McpElicitationUntitledSingleSelectEnumSchema": 237,
-        "McpServerElicitationAction": 238,
-        "McpServerElicitationRequestParams": 239,
-        "McpServerElicitationRequestResponse": 240,
-        "McpServerInfo": 241,
-        "McpServerOauthLoginParams": 242,
-        "McpServerOauthLoginResponse": 243,
-        "McpServerRefreshResponse": 214,
-        "McpServerStartupFailureReason": 244,
-        "McpServerStartupState": 245,
-        "McpServerStatus": 246,
-        "McpServerStatusDetail": 247,
-        "McpServerStatusUpdatedNotification": 248,
-        "McpToolCallAppContext": 249,
-        "McpToolCallError": 250,
-        "McpToolCallProgressNotification": 251,
-        "McpToolCallResult": 252,
-        "McpToolCallStatus": 149,
-        "MemoryCitation": 253,
-        "MemoryCitationEntry": 254,
-        "MessagePhase": 255,
-        "ModeKind": 256,
-        "Model": 257,
-        "ModelAvailabilityNux": 250,
-        "ModelListParams": 258,
-        "ModelListResponse": 259,
-        "ModelRerouteReason": 260,
-        "ModelReroutedNotification": 261,
-        "ModelSafetyBufferingUpdatedNotification": 262,
-        "ModelServiceTier": 263,
-        "ModelUpgradeInfo": 264,
-        "ModelVerification": 265,
-        "ModelVerificationNotification": 266,
-        "MultiAgentMode": 267,
-        "NetworkAccess": 268,
-        "NetworkApprovalContext": 269,
-        "NetworkApprovalProtocol": 270,
-        "NetworkPolicyAmendment": 271,
-        "NetworkPolicyRuleAction": 272,
-        "NonSteerableTurnKind": 273,
-        "PatchApplyStatus": 156,
-        "PatchChangeKind": 274,
-        "PermissionGrantScope": 275,
-        "PermissionsRequestApprovalParams": 276,
-        "PermissionsRequestApprovalResponse": 277,
-        "Personality": 278,
+        "ListMcpServerStatusParams": 214,
+        "ListMcpServerStatusResponse": 215,
+        "LocalShellAction": 216,
+        "LocalShellStatus": 217,
+        "LoginAccountParams": 218,
+        "LoginAccountResponse": 219,
+        "LoginAppBrand": 220,
+        "LogoutAccountResponse": 221,
+        "McpAuthStatus": 222,
+        "McpElicitationArrayType": 223,
+        "McpElicitationBooleanSchema": 224,
+        "McpElicitationBooleanType": 225,
+        "McpElicitationConstOption": 226,
+        "McpElicitationEnumSchema": 227,
+        "McpElicitationLegacyTitledEnumSchema": 228,
+        "McpElicitationMultiSelectEnumSchema": 229,
+        "McpElicitationNumberSchema": 230,
+        "McpElicitationNumberType": 231,
+        "McpElicitationObjectType": 232,
+        "McpElicitationPrimitiveSchema": 233,
+        "McpElicitationSchema": 234,
+        "McpElicitationSingleSelectEnumSchema": 235,
+        "McpElicitationStringFormat": 236,
+        "McpElicitationStringSchema": 237,
+        "McpElicitationStringType": 238,
+        "McpElicitationTitledEnumItems": 239,
+        "McpElicitationTitledMultiSelectEnumSchema": 240,
+        "McpElicitationTitledSingleSelectEnumSchema": 241,
+        "McpElicitationUntitledEnumItems": 242,
+        "McpElicitationUntitledMultiSelectEnumSchema": 243,
+        "McpElicitationUntitledSingleSelectEnumSchema": 244,
+        "McpServerElicitationAction": 245,
+        "McpServerElicitationRequestParams": 246,
+        "McpServerElicitationRequestResponse": 247,
+        "McpServerInfo": 248,
+        "McpServerOauthLoginParams": 249,
+        "McpServerOauthLoginResponse": 250,
+        "McpServerRefreshResponse": 221,
+        "McpServerStartupFailureReason": 251,
+        "McpServerStartupState": 252,
+        "McpServerStatus": 253,
+        "McpServerStatusDetail": 254,
+        "McpServerStatusUpdatedNotification": 255,
+        "McpToolCallAppContext": 256,
+        "McpToolCallError": 257,
+        "McpToolCallProgressNotification": 258,
+        "McpToolCallResult": 259,
+        "McpToolCallStatus": 150,
+        "MemoryCitation": 260,
+        "MemoryCitationEntry": 261,
+        "MessagePhase": 262,
+        "ModeKind": 263,
+        "Model": 264,
+        "ModelAvailabilityNux": 257,
+        "ModelListParams": 265,
+        "ModelListResponse": 266,
+        "ModelRerouteReason": 267,
+        "ModelReroutedNotification": 268,
+        "ModelSafetyBufferingUpdatedNotification": 269,
+        "ModelServiceTier": 270,
+        "ModelUpgradeInfo": 271,
+        "ModelVerification": 272,
+        "ModelVerificationNotification": 273,
+        "MultiAgentMode": 274,
+        "NetworkAccess": 275,
+        "NetworkApprovalContext": 276,
+        "NetworkApprovalProtocol": 277,
+        "NetworkPolicyAmendment": 278,
+        "NetworkPolicyRuleAction": 279,
+        "NonSteerableTurnKind": 280,
+        "PatchApplyStatus": 157,
+        "PatchChangeKind": 281,
+        "PermissionGrantScope": 282,
+        "PermissionsRequestApprovalParams": 283,
+        "PermissionsRequestApprovalResponse": 284,
+        "Personality": 285,
         "PlanDeltaNotification": 134,
-        "PlanType": 279,
-        "RateLimitReachedType": 280,
-        "RateLimitResetCredit": 281,
-        "RateLimitResetCreditStatus": 282,
-        "RateLimitResetCreditsSummary": 283,
-        "RateLimitResetType": 284,
-        "RateLimitSnapshot": 285,
-        "RateLimitWindow": 286,
-        "ReasoningEffort": 287,
-        "ReasoningEffortOption": 288,
-        "ReasoningSummary": 289,
-        "ReasoningSummaryPartAddedNotification": 290,
-        "ReasoningSummaryTextDeltaNotification": 291,
-        "ReasoningTextDeltaNotification": 292,
-        "RemoteControlConnectionStatus": 293,
-        "RemoteControlStatusChangedNotification": 294,
-        "RequestId": 295,
-        "RequestPermissionProfile": 296,
-        "Resource": 297,
-        "ResourceTemplate": 298,
-        "ReviewDelivery": 299,
-        "ReviewStartParams": 300,
-        "ReviewStartResponse": 301,
-        "ReviewTarget": 302,
-        "SandboxMode": 303,
-        "SandboxPolicy": 304,
-        "SelectedCapabilityRoot": 305,
-        "ServerRequestResolvedNotification": 306,
-        "SessionSource": 307,
-        "Settings": 308,
-        "SkillDependencies": 309,
-        "SkillErrorInfo": 310,
-        "SkillInterface": 311,
-        "SkillMetadata": 312,
-        "SkillScope": 313,
-        "SkillToolDependency": 314,
-        "SkillsChangedNotification": 214,
-        "SkillsListEntry": 315,
-        "SkillsListParams": 316,
-        "SkillsListResponse": 317,
-        "SortDirection": 318,
-        "SpendControlLimitSnapshot": 319,
-        "SubAgentActivityKind": 320,
-        "SubAgentSource": 321,
-        "TextElement": 322,
-        "TextPosition": 323,
-        "TextRange": 324,
-        "Thread": 325,
-        "ThreadActiveFlag": 326,
-        "ThreadBackgroundTerminal": 327,
-        "ThreadBackgroundTerminalsCleanParams": 160,
-        "ThreadBackgroundTerminalsCleanResponse": 214,
-        "ThreadBackgroundTerminalsListParams": 328,
-        "ThreadBackgroundTerminalsListResponse": 329,
-        "ThreadBackgroundTerminalsTerminateParams": 330,
-        "ThreadBackgroundTerminalsTerminateResponse": 331,
-        "ThreadCompactStartParams": 160,
-        "ThreadCompactStartResponse": 214,
-        "ThreadDeleteParams": 160,
-        "ThreadDeleteResponse": 214,
-        "ThreadExtra": 214,
-        "ThreadForkParams": 332,
-        "ThreadForkResponse": 333,
-        "ThreadGoal": 334,
-        "ThreadGoalClearParams": 160,
-        "ThreadGoalClearResponse": 335,
-        "ThreadGoalClearedNotification": 160,
-        "ThreadGoalGetParams": 160,
-        "ThreadGoalGetResponse": 336,
-        "ThreadGoalSetParams": 337,
-        "ThreadGoalSetResponse": 338,
-        "ThreadGoalStatus": 339,
-        "ThreadGoalUpdatedNotification": 340,
-        "ThreadHistoryMode": 341,
+        "PlanType": 286,
+        "RateLimitReachedType": 287,
+        "RateLimitResetCredit": 288,
+        "RateLimitResetCreditStatus": 289,
+        "RateLimitResetCreditsSummary": 290,
+        "RateLimitResetType": 291,
+        "RateLimitSnapshot": 292,
+        "RateLimitWindow": 293,
+        "ReasoningEffort": 294,
+        "ReasoningEffortOption": 295,
+        "ReasoningItemContent": 296,
+        "ReasoningItemReasoningSummary": 297,
+        "ReasoningSummary": 298,
+        "ReasoningSummaryPartAddedNotification": 299,
+        "ReasoningSummaryTextDeltaNotification": 300,
+        "ReasoningTextDeltaNotification": 301,
+        "RemoteControlConnectionStatus": 302,
+        "RemoteControlStatusChangedNotification": 303,
+        "RequestId": 304,
+        "RequestPermissionProfile": 305,
+        "Resource": 306,
+        "ResourceTemplate": 307,
+        "ResponseItem": 308,
+        "ResponsesApiWebSearchAction": 309,
+        "ReviewDelivery": 310,
+        "ReviewStartParams": 311,
+        "ReviewStartResponse": 312,
+        "ReviewTarget": 313,
+        "SandboxMode": 314,
+        "SandboxPolicy": 315,
+        "SelectedCapabilityRoot": 316,
+        "ServerRequestResolvedNotification": 317,
+        "SessionSource": 318,
+        "Settings": 319,
+        "SkillDependencies": 320,
+        "SkillErrorInfo": 321,
+        "SkillInterface": 322,
+        "SkillMetadata": 323,
+        "SkillScope": 324,
+        "SkillToolDependency": 325,
+        "SkillsChangedNotification": 221,
+        "SkillsListEntry": 326,
+        "SkillsListParams": 327,
+        "SkillsListResponse": 328,
+        "SortDirection": 329,
+        "SpendControlLimitSnapshot": 330,
+        "SubAgentActivityKind": 331,
+        "SubAgentSource": 332,
+        "TextElement": 333,
+        "TextPosition": 334,
+        "TextRange": 335,
+        "Thread": 336,
+        "ThreadActiveFlag": 337,
+        "ThreadBackgroundTerminal": 338,
+        "ThreadBackgroundTerminalsCleanParams": 162,
+        "ThreadBackgroundTerminalsCleanResponse": 221,
+        "ThreadBackgroundTerminalsListParams": 339,
+        "ThreadBackgroundTerminalsListResponse": 340,
+        "ThreadBackgroundTerminalsTerminateParams": 341,
+        "ThreadBackgroundTerminalsTerminateResponse": 342,
+        "ThreadCompactStartParams": 162,
+        "ThreadCompactStartResponse": 221,
+        "ThreadDeleteParams": 162,
+        "ThreadDeleteResponse": 221,
+        "ThreadExtra": 221,
+        "ThreadForkParams": 343,
+        "ThreadForkResponse": 344,
+        "ThreadGoal": 345,
+        "ThreadGoalClearParams": 162,
+        "ThreadGoalClearResponse": 346,
+        "ThreadGoalClearedNotification": 162,
+        "ThreadGoalGetParams": 162,
+        "ThreadGoalGetResponse": 347,
+        "ThreadGoalSetParams": 348,
+        "ThreadGoalSetResponse": 349,
+        "ThreadGoalStatus": 350,
+        "ThreadGoalUpdatedNotification": 351,
+        "ThreadHistoryMode": 352,
         "ThreadId": 123,
-        "ThreadItem": 342,
-        "ThreadListCwdFilter": 343,
-        "ThreadListParams": 344,
-        "ThreadListResponse": 345,
-        "ThreadNameUpdatedNotification": 346,
-        "ThreadReadParams": 347,
-        "ThreadReadResponse": 348,
-        "ThreadResumeParams": 349,
-        "ThreadResumeResponse": 350,
-        "ThreadSettings": 351,
-        "ThreadSettingsUpdatedNotification": 352,
-        "ThreadSortKey": 353,
+        "ThreadItem": 353,
+        "ThreadListCwdFilter": 354,
+        "ThreadListParams": 355,
+        "ThreadListResponse": 356,
+        "ThreadNameUpdatedNotification": 357,
+        "ThreadReadParams": 358,
+        "ThreadReadResponse": 359,
+        "ThreadResumeInitialTurnsPageParams": 360,
+        "ThreadResumeParams": 361,
+        "ThreadResumeResponse": 362,
+        "ThreadSettings": 363,
+        "ThreadSettingsUpdatedNotification": 364,
+        "ThreadSortKey": 365,
         "ThreadSource": 123,
-        "ThreadSourceKind": 354,
-        "ThreadStartParams": 355,
-        "ThreadStartResponse": 333,
-        "ThreadStartSource": 356,
-        "ThreadStartedNotification": 348,
-        "ThreadStatus": 357,
-        "ThreadStatusChangedNotification": 358,
-        "ThreadTokenUsage": 359,
-        "ThreadTokenUsageUpdatedNotification": 360,
-        "ThreadTurnsListParams": 361,
-        "ThreadTurnsListResponse": 362,
-        "ThreadUnsubscribeParams": 160,
-        "ThreadUnsubscribeResponse": 363,
-        "ThreadUnsubscribeStatus": 364,
-        "TokenUsageBreakdown": 365,
-        "Tool": 366,
-        "ToolRequestUserInputAnswer": 367,
-        "ToolRequestUserInputOption": 368,
-        "ToolRequestUserInputParams": 369,
-        "ToolRequestUserInputQuestion": 370,
-        "ToolRequestUserInputResponse": 371,
-        "Turn": 372,
-        "TurnCompletedNotification": 373,
-        "TurnEnvironmentParams": 374,
-        "TurnError": 375,
-        "TurnInterruptParams": 158,
-        "TurnInterruptResponse": 214,
-        "TurnItemsView": 376,
-        "TurnModerationMetadataNotification": 377,
-        "TurnPlanStep": 378,
-        "TurnPlanStepStatus": 379,
-        "TurnPlanUpdatedNotification": 380,
-        "TurnStartParams": 381,
-        "TurnStartResponse": 382,
-        "TurnStartedNotification": 373,
-        "TurnStatus": 383,
-        "TurnSteerParams": 384,
-        "TurnSteerResponse": 385,
-        "TurnsPage": 362,
-        "UserInput": 386,
-        "WarningNotification": 387,
-        "WebSearchAction": 388,
-        "WindowsWorldWritableWarningNotification": 389
+        "ThreadSourceKind": 366,
+        "ThreadStartParams": 367,
+        "ThreadStartResponse": 344,
+        "ThreadStartSource": 368,
+        "ThreadStartedNotification": 359,
+        "ThreadStatus": 369,
+        "ThreadStatusChangedNotification": 370,
+        "ThreadTokenUsage": 371,
+        "ThreadTokenUsageUpdatedNotification": 372,
+        "ThreadTurnsListParams": 373,
+        "ThreadTurnsListResponse": 374,
+        "ThreadUnsubscribeParams": 162,
+        "ThreadUnsubscribeResponse": 375,
+        "ThreadUnsubscribeStatus": 376,
+        "TokenUsageBreakdown": 377,
+        "Tool": 378,
+        "ToolRequestUserInputAnswer": 379,
+        "ToolRequestUserInputOption": 380,
+        "ToolRequestUserInputParams": 381,
+        "ToolRequestUserInputQuestion": 382,
+        "ToolRequestUserInputResponse": 383,
+        "Turn": 384,
+        "TurnCompletedNotification": 385,
+        "TurnEnvironmentParams": 386,
+        "TurnError": 387,
+        "TurnInterruptParams": 160,
+        "TurnInterruptResponse": 221,
+        "TurnItemsView": 388,
+        "TurnModerationMetadataNotification": 389,
+        "TurnPlanStep": 390,
+        "TurnPlanStepStatus": 391,
+        "TurnPlanUpdatedNotification": 392,
+        "TurnStartParams": 393,
+        "TurnStartResponse": 394,
+        "TurnStartedNotification": 385,
+        "TurnStatus": 395,
+        "TurnSteerParams": 396,
+        "TurnSteerResponse": 397,
+        "TurnsPage": 374,
+        "UserInput": 398,
+        "WarningNotification": 399,
+        "WebSearchAction": 400,
+        "WindowsWorldWritableWarningNotification": 401
       }
     },
     {
@@ -13645,7 +15462,7 @@
         "client:account/login/cancel": 0,
         "client:account/login/start": 1,
         "client:account/logout": 2,
-        "client:account/rateLimits/read": 390,
+        "client:account/rateLimits/read": 402,
         "client:account/read": 4,
         "client:config/mcpServer/reload": 5,
         "client:initialize": 6,
@@ -13666,7 +15483,7 @@
         "client:thread/list": 21,
         "client:thread/read": 22,
         "client:thread/resume": 23,
-        "client:thread/revert": 391,
+        "client:thread/revert": 403,
         "client:thread/start": 24,
         "client:thread/turns/list": 25,
         "client:thread/unsubscribe": 26,
@@ -13704,8 +15521,8 @@
         "notification:model/rerouted": 56,
         "notification:model/safetyBuffering/updated": 57,
         "notification:model/verification": 58,
-        "notification:modelProvider/authRecoveryCompleted": 392,
-        "notification:modelProvider/authRecoveryStarted": 393,
+        "notification:modelProvider/authRecoveryCompleted": 404,
+        "notification:modelProvider/authRecoveryStarted": 405,
         "notification:remoteControl/status/changed": 59,
         "notification:serverRequest/resolved": 60,
         "notification:skills/changed": 61,
@@ -13757,7 +15574,7 @@
         "response:thread/list": 107,
         "response:thread/read": 108,
         "response:thread/resume": 109,
-        "response:thread/revert": 394,
+        "response:thread/revert": 406,
         "response:thread/start": 110,
         "response:thread/turns/list": 111,
         "response:thread/unsubscribe": 112,
@@ -13774,332 +15591,344 @@
       },
       "definitions": {
         "AbsolutePathBuf": 123,
-        "Account": 395,
-        "AccountLoginCompletedNotification": 396,
+        "Account": 407,
+        "AccountLoginCompletedNotification": 408,
         "AccountRateLimitsUpdatedNotification": 126,
-        "AccountRoutingOverride": 397,
+        "AccountRoutingOverride": 409,
         "AccountUpdatedNotification": 127,
         "ActivePermissionProfile": 128,
-        "AdditionalContextEntry": 398,
+        "AdditionalContextEntry": 410,
         "AdditionalContextKind": 130,
         "AdditionalFileSystemPermissions": 131,
         "AdditionalNetworkPermissions": 132,
         "AdditionalPermissionProfile": 133,
-        "AgentMessageDelivery": 399,
+        "AgentMessageDelivery": 411,
         "AgentMessageDeltaNotification": 134,
+        "AgentMessageInputContent": 135,
         "AgentPath": 123,
-        "ApprovalsReviewer": 135,
-        "AskForApproval": 136,
-        "AsyncUserInputQuestion": 400,
-        "AuthMode": 401,
-        "AuthRecoveryNotification": 402,
-        "AutoReviewDecisionSource": 138,
-        "ByteRange": 139,
-        "CancelLoginAccountParams": 140,
-        "CancelLoginAccountResponse": 141,
-        "CancelLoginAccountStatus": 142,
-        "CapabilityRootLocation": 143,
-        "ClientInfo": 144,
-        "CodexErrorInfo": 403,
-        "CollabAgentState": 146,
-        "CollabAgentStatus": 147,
-        "CollabAgentTool": 404,
-        "CollabAgentToolCallStatus": 405,
-        "CollaborationMode": 150,
-        "CommandAction": 406,
-        "CommandExecutionApprovalDecision": 152,
-        "CommandExecutionApprovalKind": 407,
+        "ApprovalsReviewer": 136,
+        "AskForApproval": 137,
+        "AsyncUserInputQuestion": 412,
+        "AuthMode": 413,
+        "AuthRecoveryNotification": 414,
+        "AutoReviewDecisionSource": 139,
+        "ByteRange": 140,
+        "CancelLoginAccountParams": 141,
+        "CancelLoginAccountResponse": 142,
+        "CancelLoginAccountStatus": 143,
+        "CapabilityRootLocation": 144,
+        "ClientInfo": 145,
+        "CodexErrorInfo": 415,
+        "CollabAgentState": 147,
+        "CollabAgentStatus": 148,
+        "CollabAgentTool": 416,
+        "CollabAgentToolCallStatus": 417,
+        "CollaborationMode": 151,
+        "CommandAction": 418,
+        "CommandExecutionApprovalDecision": 153,
+        "CommandExecutionApprovalKind": 419,
         "CommandExecutionOutputDeltaNotification": 134,
-        "CommandExecutionRequestApprovalParams": 408,
-        "CommandExecutionRequestApprovalResponse": 154,
-        "CommandExecutionSource": 155,
-        "CommandExecutionStatus": 156,
-        "ConfigWarningNotification": 157,
-        "ContextCompactedNotification": 158,
-        "CreditsSnapshot": 159,
-        "CurrentTimeReadParams": 160,
-        "CurrentTimeReadResponse": 161,
-        "CyberAccessProgram": 409,
-        "DeprecationNoticeNotification": 162,
-        "DesktopOnboardingEntrypoint": 410,
-        "DynamicToolCallOutputContentItem": 163,
-        "DynamicToolCallParams": 164,
-        "DynamicToolCallResponse": 165,
-        "DynamicToolCallStatus": 149,
-        "DynamicToolNamespaceTool": 166,
-        "DynamicToolSpec": 167,
-        "ErrorNotification": 168,
-        "FileChangeApprovalDecision": 169,
-        "FileChangeRequestApprovalParams": 170,
-        "FileChangeRequestApprovalResponse": 171,
-        "FileSystemAccessMode": 172,
-        "FileSystemPath": 173,
-        "FileSystemSandboxEntry": 174,
-        "FileSystemSpecialPath": 175,
-        "FileUpdateChange": 176,
-        "FunctionCallOutputBody": 411,
-        "FunctionCallOutputContentItem": 412,
-        "GetAccountParams": 177,
-        "GetAccountRateLimitsParams": 413,
-        "GetAccountRateLimitsResponse": 414,
-        "GetAccountResponse": 415,
-        "GitInfo": 180,
+        "CommandExecutionRequestApprovalParams": 420,
+        "CommandExecutionRequestApprovalResponse": 155,
+        "CommandExecutionSource": 156,
+        "CommandExecutionStatus": 157,
+        "ConfigWarningNotification": 158,
+        "ConfigurationReasoning": 421,
+        "ContentItem": 422,
+        "ContextCompactedNotification": 160,
+        "CreditsSnapshot": 161,
+        "CurrentTimeReadParams": 162,
+        "CurrentTimeReadResponse": 163,
+        "CyberAccessProgram": 423,
+        "DeprecationNoticeNotification": 164,
+        "DesktopOnboardingEntrypoint": 424,
+        "DynamicToolCallOutputContentItem": 165,
+        "DynamicToolCallParams": 166,
+        "DynamicToolCallResponse": 167,
+        "DynamicToolCallStatus": 150,
+        "DynamicToolNamespaceTool": 168,
+        "DynamicToolSpec": 169,
+        "ErrorNotification": 170,
+        "FileChangeApprovalDecision": 171,
+        "FileChangeRequestApprovalParams": 172,
+        "FileChangeRequestApprovalResponse": 173,
+        "FileSystemAccessMode": 174,
+        "FileSystemPath": 175,
+        "FileSystemSandboxEntry": 176,
+        "FileSystemSpecialPath": 177,
+        "FileUpdateChange": 178,
+        "FunctionCallOutputBody": 179,
+        "FunctionCallOutputContentItem": 180,
+        "GetAccountParams": 181,
+        "GetAccountRateLimitsParams": 425,
+        "GetAccountRateLimitsResponse": 426,
+        "GetAccountResponse": 427,
+        "GitInfo": 184,
         "GrantedPermissionProfile": 133,
-        "GuardianApprovalReview": 181,
-        "GuardianApprovalReviewAction": 416,
-        "GuardianApprovalReviewStatus": 183,
-        "GuardianCommandSource": 184,
-        "GuardianRiskLevel": 185,
-        "GuardianUserAuthorization": 186,
-        "GuardianWarningNotification": 187,
-        "HookCompletedNotification": 188,
-        "HookEventName": 417,
-        "HookExecutionMode": 190,
-        "HookHandlerType": 418,
-        "HookOutputEntry": 192,
-        "HookOutputEntryKind": 193,
-        "HookPromptFragment": 194,
-        "HookRunStatus": 195,
-        "HookRunSummary": 419,
-        "HookScope": 197,
-        "HookSource": 198,
-        "HookStartedNotification": 188,
-        "ImageDetail": 199,
-        "ImageGenerationFailure": 420,
-        "ImageGenerationInputImage": 421,
-        "InitializeCapabilities": 422,
-        "InitializeParams": 201,
-        "InitializeResponse": 202,
-        "InputModality": 203,
-        "ItemCompletedNotification": 204,
-        "ItemGuardianApprovalReviewCompletedNotification": 205,
-        "ItemGuardianApprovalReviewStartedNotification": 206,
-        "ItemStartedNotification": 207,
-        "JSONRPCErrorError": 208,
+        "GuardianApprovalReview": 185,
+        "GuardianApprovalReviewAction": 428,
+        "GuardianApprovalReviewStatus": 187,
+        "GuardianCommandSource": 188,
+        "GuardianRiskLevel": 189,
+        "GuardianUserAuthorization": 190,
+        "GuardianWarningNotification": 191,
+        "HookCompletedNotification": 192,
+        "HookEventName": 429,
+        "HookExecutionMode": 194,
+        "HookHandlerType": 430,
+        "HookOutputEntry": 196,
+        "HookOutputEntryKind": 197,
+        "HookPromptFragment": 198,
+        "HookRunStatus": 199,
+        "HookRunSummary": 431,
+        "HookScope": 201,
+        "HookSource": 202,
+        "HookStartedNotification": 192,
+        "ImageDetail": 203,
+        "ImageGenerationFailure": 432,
+        "ImageGenerationInputImage": 433,
+        "InitializeCapabilities": 434,
+        "InitializeParams": 205,
+        "InitializeResponse": 206,
+        "InputModality": 207,
+        "InternalChatMessageMetadataPassthrough": 208,
+        "ItemCompletedNotification": 209,
+        "ItemGuardianApprovalReviewCompletedNotification": 210,
+        "ItemGuardianApprovalReviewStartedNotification": 211,
+        "ItemStartedNotification": 212,
+        "JSONRPCErrorError": 213,
         "LegacyAppPathString": 123,
-        "ListMcpServerStatusParams": 423,
-        "ListMcpServerStatusResponse": 210,
-        "LoginAccountParams": 424,
-        "LoginAccountResponse": 212,
-        "LoginAppBrand": 213,
-        "LogoutAccountResponse": 214,
-        "McpAppDisplayMode": 425,
-        "McpAppUi": 426,
-        "McpAuthStatus": 427,
-        "McpElicitationArrayType": 216,
-        "McpElicitationBooleanSchema": 217,
-        "McpElicitationBooleanType": 218,
-        "McpElicitationConstOption": 219,
-        "McpElicitationEnumSchema": 220,
-        "McpElicitationLegacyTitledEnumSchema": 221,
-        "McpElicitationMultiSelectEnumSchema": 222,
-        "McpElicitationNumberSchema": 223,
-        "McpElicitationNumberType": 224,
-        "McpElicitationObjectType": 225,
-        "McpElicitationPrimitiveSchema": 226,
-        "McpElicitationSchema": 227,
-        "McpElicitationSingleSelectEnumSchema": 228,
-        "McpElicitationStringFormat": 229,
-        "McpElicitationStringSchema": 230,
-        "McpElicitationStringType": 231,
-        "McpElicitationTitledEnumItems": 232,
-        "McpElicitationTitledMultiSelectEnumSchema": 233,
-        "McpElicitationTitledSingleSelectEnumSchema": 234,
-        "McpElicitationUntitledEnumItems": 235,
-        "McpElicitationUntitledMultiSelectEnumSchema": 236,
-        "McpElicitationUntitledSingleSelectEnumSchema": 237,
-        "McpServerConnectionStatus": 428,
-        "McpServerElicitationAction": 238,
-        "McpServerElicitationRequestParams": 429,
-        "McpServerElicitationRequestResponse": 240,
-        "McpServerInfo": 241,
-        "McpServerOauthClientRegistration": 430,
-        "McpServerOauthLoginParams": 431,
-        "McpServerOauthLoginResponse": 432,
-        "McpServerRefreshResponse": 214,
-        "McpServerStartupFailureReason": 244,
-        "McpServerStartupState": 245,
-        "McpServerStatus": 433,
-        "McpServerStatusDetail": 247,
-        "McpServerStatusUpdatedNotification": 248,
-        "McpToolCallAppContext": 249,
-        "McpToolCallError": 250,
-        "McpToolCallProgressNotification": 251,
-        "McpToolCallResult": 252,
-        "McpToolCallStatus": 149,
-        "MemoryCitation": 253,
-        "MemoryCitationEntry": 254,
-        "MessagePhase": 434,
-        "MisalignmentErrorDetails": 435,
-        "MisalignmentSteer": 250,
-        "ModeKind": 256,
-        "Model": 436,
-        "ModelAccessPrograms": 437,
-        "ModelAvailabilityNux": 250,
-        "ModelListParams": 258,
-        "ModelListResponse": 259,
-        "ModelRerouteReason": 260,
-        "ModelReroutedNotification": 261,
-        "ModelSafetyBufferingUpdatedNotification": 262,
-        "ModelServiceTier": 263,
-        "ModelUpgradeInfo": 438,
-        "ModelVerification": 265,
-        "ModelVerificationNotification": 266,
-        "MultiAgentMode": 267,
-        "MultiAgentVersion": 439,
-        "NetworkAccess": 268,
-        "NetworkApprovalContext": 269,
-        "NetworkApprovalProtocol": 270,
-        "NetworkPolicyAmendment": 271,
-        "NetworkPolicyRuleAction": 272,
-        "NonSteerableTurnKind": 273,
-        "PatchApplyStatus": 156,
-        "PatchChangeKind": 274,
-        "PermissionGrantScope": 275,
-        "PermissionsRequestApprovalParams": 440,
-        "PermissionsRequestApprovalResponse": 277,
-        "Personality": 278,
+        "ListMcpServerStatusParams": 435,
+        "ListMcpServerStatusResponse": 215,
+        "LocalShellAction": 216,
+        "LocalShellStatus": 217,
+        "LoginAccountParams": 436,
+        "LoginAccountResponse": 219,
+        "LoginAppBrand": 220,
+        "LogoutAccountResponse": 221,
+        "McpAppDisplayMode": 437,
+        "McpAppUi": 438,
+        "McpAuthStatus": 439,
+        "McpElicitationArrayType": 223,
+        "McpElicitationBooleanSchema": 224,
+        "McpElicitationBooleanType": 225,
+        "McpElicitationConstOption": 226,
+        "McpElicitationEnumSchema": 227,
+        "McpElicitationLegacyTitledEnumSchema": 228,
+        "McpElicitationMultiSelectEnumSchema": 229,
+        "McpElicitationNumberSchema": 230,
+        "McpElicitationNumberType": 231,
+        "McpElicitationObjectType": 232,
+        "McpElicitationPrimitiveSchema": 233,
+        "McpElicitationSchema": 234,
+        "McpElicitationSingleSelectEnumSchema": 235,
+        "McpElicitationStringFormat": 236,
+        "McpElicitationStringSchema": 237,
+        "McpElicitationStringType": 238,
+        "McpElicitationTitledEnumItems": 239,
+        "McpElicitationTitledMultiSelectEnumSchema": 240,
+        "McpElicitationTitledSingleSelectEnumSchema": 241,
+        "McpElicitationUntitledEnumItems": 242,
+        "McpElicitationUntitledMultiSelectEnumSchema": 243,
+        "McpElicitationUntitledSingleSelectEnumSchema": 244,
+        "McpServerConnectionStatus": 440,
+        "McpServerElicitationAction": 245,
+        "McpServerElicitationRequestParams": 441,
+        "McpServerElicitationRequestResponse": 247,
+        "McpServerInfo": 248,
+        "McpServerOauthClientRegistration": 442,
+        "McpServerOauthLoginParams": 443,
+        "McpServerOauthLoginResponse": 444,
+        "McpServerRefreshResponse": 221,
+        "McpServerStartupFailureReason": 251,
+        "McpServerStartupState": 252,
+        "McpServerStatus": 445,
+        "McpServerStatusDetail": 254,
+        "McpServerStatusUpdatedNotification": 255,
+        "McpToolCallAppContext": 256,
+        "McpToolCallError": 257,
+        "McpToolCallProgressNotification": 258,
+        "McpToolCallResult": 259,
+        "McpToolCallStatus": 150,
+        "MemoryCitation": 260,
+        "MemoryCitationEntry": 261,
+        "MessagePhase": 446,
+        "MisalignmentErrorDetails": 447,
+        "MisalignmentSteer": 257,
+        "ModeKind": 263,
+        "Model": 448,
+        "ModelAccessPrograms": 449,
+        "ModelAvailabilityNux": 257,
+        "ModelListParams": 265,
+        "ModelListResponse": 266,
+        "ModelRerouteReason": 267,
+        "ModelReroutedNotification": 268,
+        "ModelSafetyBufferingUpdatedNotification": 269,
+        "ModelServiceTier": 270,
+        "ModelUpgradeInfo": 450,
+        "ModelVerification": 272,
+        "ModelVerificationNotification": 273,
+        "MultiAgentMode": 274,
+        "MultiAgentVersion": 451,
+        "NetworkAccess": 275,
+        "NetworkApprovalContext": 276,
+        "NetworkApprovalProtocol": 277,
+        "NetworkPolicyAmendment": 278,
+        "NetworkPolicyRuleAction": 279,
+        "NonSteerableTurnKind": 280,
+        "PatchApplyStatus": 157,
+        "PatchChangeKind": 281,
+        "PermissionGrantScope": 282,
+        "PermissionsRequestApprovalParams": 452,
+        "PermissionsRequestApprovalResponse": 284,
+        "Personality": 285,
         "PlanDeltaNotification": 134,
-        "PlanType": 441,
-        "RateLimitReachedType": 280,
-        "RateLimitResetCredit": 281,
-        "RateLimitResetCreditStatus": 282,
-        "RateLimitResetCreditsSummary": 283,
-        "RateLimitResetType": 284,
-        "RateLimitSnapshot": 442,
-        "RateLimitWindow": 286,
-        "ReasoningEffort": 287,
-        "ReasoningEffortOption": 288,
-        "ReasoningSummary": 289,
-        "ReasoningSummaryPartAddedNotification": 290,
-        "ReasoningSummaryTextDeltaNotification": 291,
-        "ReasoningTextDeltaNotification": 292,
-        "RemoteControlConnectionStatus": 293,
-        "RemoteControlStatusChangedNotification": 294,
-        "RequestId": 295,
-        "RequestPermissionProfile": 296,
-        "Resource": 297,
-        "ResourceTemplate": 298,
-        "ReviewDelivery": 443,
-        "ReviewStartParams": 300,
-        "ReviewStartResponse": 301,
-        "ReviewTarget": 302,
-        "SandboxMode": 303,
-        "SandboxPolicy": 304,
-        "SelectedCapabilityRoot": 305,
-        "ServerRequestResolvedNotification": 306,
-        "SessionSource": 307,
-        "Settings": 308,
-        "SkillDependencies": 309,
-        "SkillErrorInfo": 310,
-        "SkillInterface": 311,
-        "SkillMetadata": 444,
-        "SkillScope": 313,
-        "SkillToolDependency": 314,
-        "SkillsChangedNotification": 214,
-        "SkillsListEntry": 315,
-        "SkillsListParams": 316,
-        "SkillsListResponse": 317,
-        "SortDirection": 318,
-        "SpendControlLimitSnapshot": 319,
-        "SubAgentActivityKind": 445,
-        "SubAgentSource": 321,
-        "TextElement": 322,
-        "TextPosition": 323,
-        "TextRange": 324,
-        "Thread": 446,
-        "ThreadActiveFlag": 326,
-        "ThreadBackgroundTerminal": 447,
-        "ThreadBackgroundTerminalsCleanParams": 160,
-        "ThreadBackgroundTerminalsCleanResponse": 214,
-        "ThreadBackgroundTerminalsListParams": 328,
-        "ThreadBackgroundTerminalsListResponse": 329,
-        "ThreadBackgroundTerminalsTerminateParams": 330,
-        "ThreadBackgroundTerminalsTerminateResponse": 331,
-        "ThreadCompactStartParams": 160,
-        "ThreadCompactStartResponse": 214,
-        "ThreadDeleteParams": 160,
-        "ThreadDeleteResponse": 214,
-        "ThreadEnvironment": 448,
-        "ThreadExtra": 214,
-        "ThreadForkParams": 449,
-        "ThreadForkResponse": 450,
-        "ThreadGoal": 334,
-        "ThreadGoalClearParams": 451,
-        "ThreadGoalClearResponse": 335,
-        "ThreadGoalClearedNotification": 160,
-        "ThreadGoalGetParams": 160,
-        "ThreadGoalGetResponse": 336,
-        "ThreadGoalMutationOrigin": 452,
-        "ThreadGoalSetParams": 453,
-        "ThreadGoalSetResponse": 338,
-        "ThreadGoalStatus": 339,
-        "ThreadGoalUpdatedNotification": 340,
-        "ThreadHistoryMode": 341,
+        "PlanType": 453,
+        "RateLimitReachedType": 287,
+        "RateLimitResetCredit": 288,
+        "RateLimitResetCreditStatus": 289,
+        "RateLimitResetCreditsSummary": 290,
+        "RateLimitResetType": 291,
+        "RateLimitSnapshot": 454,
+        "RateLimitWindow": 293,
+        "ReasoningEffort": 294,
+        "ReasoningEffortOption": 295,
+        "ReasoningItemContent": 296,
+        "ReasoningItemReasoningSummary": 297,
+        "ReasoningSummary": 298,
+        "ReasoningSummaryPartAddedNotification": 299,
+        "ReasoningSummaryTextDeltaNotification": 300,
+        "ReasoningTextDeltaNotification": 301,
+        "RemoteControlConnectionStatus": 302,
+        "RemoteControlStatusChangedNotification": 303,
+        "RequestId": 304,
+        "RequestPermissionProfile": 305,
+        "Resource": 306,
+        "ResourceTemplate": 307,
+        "ResponseItem": 455,
+        "ResponsesApiWebSearchAction": 309,
+        "ReviewDelivery": 456,
+        "ReviewStartParams": 311,
+        "ReviewStartResponse": 312,
+        "ReviewTarget": 313,
+        "SandboxMode": 314,
+        "SandboxPolicy": 315,
+        "SelectedCapabilityRoot": 316,
+        "ServerRequestResolvedNotification": 317,
+        "SessionSource": 318,
+        "Settings": 319,
+        "SkillDependencies": 320,
+        "SkillErrorInfo": 321,
+        "SkillInterface": 322,
+        "SkillMetadata": 457,
+        "SkillScope": 324,
+        "SkillToolDependency": 325,
+        "SkillsChangedNotification": 221,
+        "SkillsListEntry": 326,
+        "SkillsListParams": 327,
+        "SkillsListResponse": 328,
+        "SortDirection": 329,
+        "SpendControlLimitSnapshot": 330,
+        "SubAgentActivityKind": 458,
+        "SubAgentSource": 332,
+        "TextElement": 333,
+        "TextPosition": 334,
+        "TextRange": 335,
+        "Thread": 459,
+        "ThreadActiveFlag": 337,
+        "ThreadBackgroundTerminal": 460,
+        "ThreadBackgroundTerminalsCleanParams": 162,
+        "ThreadBackgroundTerminalsCleanResponse": 221,
+        "ThreadBackgroundTerminalsListParams": 339,
+        "ThreadBackgroundTerminalsListResponse": 340,
+        "ThreadBackgroundTerminalsTerminateParams": 341,
+        "ThreadBackgroundTerminalsTerminateResponse": 342,
+        "ThreadCompactStartParams": 162,
+        "ThreadCompactStartResponse": 221,
+        "ThreadDeleteParams": 162,
+        "ThreadDeleteResponse": 221,
+        "ThreadEnvironment": 461,
+        "ThreadExtra": 221,
+        "ThreadForkParams": 462,
+        "ThreadForkResponse": 463,
+        "ThreadGoal": 345,
+        "ThreadGoalClearParams": 464,
+        "ThreadGoalClearResponse": 346,
+        "ThreadGoalClearedNotification": 162,
+        "ThreadGoalGetParams": 162,
+        "ThreadGoalGetResponse": 347,
+        "ThreadGoalMutationOrigin": 465,
+        "ThreadGoalSetParams": 466,
+        "ThreadGoalSetResponse": 349,
+        "ThreadGoalStatus": 350,
+        "ThreadGoalUpdatedNotification": 351,
+        "ThreadHistoryMode": 352,
         "ThreadId": 123,
-        "ThreadItem": 454,
-        "ThreadListCwdFilter": 343,
-        "ThreadListParams": 455,
-        "ThreadListResponse": 456,
-        "ThreadNameUpdatedNotification": 346,
-        "ThreadReadParams": 347,
-        "ThreadReadResponse": 457,
-        "ThreadReadState": 458,
-        "ThreadResumeParams": 349,
-        "ThreadResumeResponse": 459,
-        "ThreadRevertParams": 460,
-        "ThreadRevertResponse": 461,
-        "ThreadSection": 462,
-        "ThreadSectionAppearance": 463,
-        "ThreadSettings": 464,
-        "ThreadSettingsUpdatedNotification": 352,
-        "ThreadSortKey": 465,
+        "ThreadItem": 467,
+        "ThreadListCwdFilter": 354,
+        "ThreadListParams": 468,
+        "ThreadListResponse": 469,
+        "ThreadNameUpdatedNotification": 357,
+        "ThreadReadParams": 358,
+        "ThreadReadResponse": 470,
+        "ThreadReadState": 471,
+        "ThreadResumeInitialTurnsPageParams": 360,
+        "ThreadResumeParams": 361,
+        "ThreadResumeResponse": 472,
+        "ThreadRevertParams": 473,
+        "ThreadRevertResponse": 474,
+        "ThreadSection": 475,
+        "ThreadSectionAppearance": 476,
+        "ThreadSettings": 477,
+        "ThreadSettingsUpdatedNotification": 364,
+        "ThreadSortKey": 478,
         "ThreadSource": 123,
-        "ThreadSourceKind": 354,
-        "ThreadStartParams": 466,
-        "ThreadStartResponse": 450,
-        "ThreadStartSource": 356,
-        "ThreadStartedNotification": 348,
-        "ThreadStatus": 357,
-        "ThreadStatusChangedNotification": 358,
-        "ThreadTokenUsage": 359,
-        "ThreadTokenUsageUpdatedNotification": 360,
-        "ThreadTurnsListParams": 361,
-        "ThreadTurnsListResponse": 362,
-        "ThreadUnreadPosition": 467,
-        "ThreadUnsubscribeParams": 160,
-        "ThreadUnsubscribeResponse": 363,
-        "ThreadUnsubscribeStatus": 364,
-        "TokenUsageBreakdown": 365,
-        "Tool": 366,
-        "ToolRequestUserInputAnswer": 367,
-        "ToolRequestUserInputOption": 368,
-        "ToolRequestUserInputParams": 468,
-        "ToolRequestUserInputQuestion": 370,
-        "ToolRequestUserInputResponse": 371,
-        "Turn": 469,
-        "TurnCompletedNotification": 373,
-        "TurnEnvironmentParams": 374,
-        "TurnError": 470,
-        "TurnInterruptParams": 158,
-        "TurnInterruptResponse": 214,
-        "TurnItemsView": 376,
-        "TurnModerationMetadataNotification": 377,
-        "TurnPlanStep": 378,
-        "TurnPlanStepStatus": 379,
-        "TurnPlanUpdatedNotification": 380,
-        "TurnStartParams": 381,
-        "TurnStartResponse": 382,
-        "TurnStartedNotification": 373,
-        "TurnStatus": 383,
-        "TurnSteerParams": 471,
-        "TurnSteerResponse": 385,
-        "TurnsPage": 362,
-        "UserInput": 472,
-        "WarningNotification": 387,
-        "WebSearchAction": 388,
-        "WindowsWorldWritableWarningNotification": 389,
-        "WorkspaceRouting": 473
+        "ThreadSourceKind": 366,
+        "ThreadStartParams": 479,
+        "ThreadStartResponse": 463,
+        "ThreadStartSource": 368,
+        "ThreadStartedNotification": 359,
+        "ThreadStatus": 369,
+        "ThreadStatusChangedNotification": 370,
+        "ThreadTokenUsage": 371,
+        "ThreadTokenUsageUpdatedNotification": 372,
+        "ThreadTurnsListParams": 373,
+        "ThreadTurnsListResponse": 374,
+        "ThreadUnreadPosition": 480,
+        "ThreadUnsubscribeParams": 162,
+        "ThreadUnsubscribeResponse": 375,
+        "ThreadUnsubscribeStatus": 376,
+        "TokenUsageBreakdown": 377,
+        "Tool": 378,
+        "ToolRequestUserInputAnswer": 379,
+        "ToolRequestUserInputOption": 380,
+        "ToolRequestUserInputParams": 481,
+        "ToolRequestUserInputQuestion": 382,
+        "ToolRequestUserInputResponse": 383,
+        "Turn": 482,
+        "TurnCompletedNotification": 385,
+        "TurnEnvironmentParams": 386,
+        "TurnError": 483,
+        "TurnInterruptParams": 160,
+        "TurnInterruptResponse": 221,
+        "TurnItemsView": 388,
+        "TurnModerationMetadataNotification": 389,
+        "TurnPlanStep": 390,
+        "TurnPlanStepStatus": 391,
+        "TurnPlanUpdatedNotification": 392,
+        "TurnStartParams": 484,
+        "TurnStartResponse": 394,
+        "TurnStartedNotification": 385,
+        "TurnStatus": 395,
+        "TurnSteerParams": 485,
+        "TurnSteerResponse": 397,
+        "TurnToolOutput": 486,
+        "TurnsPage": 374,
+        "UserInput": 487,
+        "WarningNotification": 399,
+        "WebSearchAction": 400,
+        "WindowsWorldWritableWarningNotification": 401,
+        "WorkspaceRouting": 488
       }
     },
     {
@@ -14109,7 +15938,7 @@
         "client:account/login/cancel": 0,
         "client:account/login/start": 1,
         "client:account/logout": 2,
-        "client:account/rateLimits/read": 390,
+        "client:account/rateLimits/read": 402,
         "client:account/read": 4,
         "client:config/mcpServer/reload": 5,
         "client:initialize": 6,
@@ -14130,7 +15959,7 @@
         "client:thread/list": 21,
         "client:thread/read": 22,
         "client:thread/resume": 23,
-        "client:thread/revert": 391,
+        "client:thread/revert": 403,
         "client:thread/start": 24,
         "client:thread/turns/list": 25,
         "client:thread/unsubscribe": 26,
@@ -14168,8 +15997,8 @@
         "notification:model/rerouted": 56,
         "notification:model/safetyBuffering/updated": 57,
         "notification:model/verification": 58,
-        "notification:modelProvider/authRecoveryCompleted": 392,
-        "notification:modelProvider/authRecoveryStarted": 393,
+        "notification:modelProvider/authRecoveryCompleted": 404,
+        "notification:modelProvider/authRecoveryStarted": 405,
         "notification:remoteControl/status/changed": 59,
         "notification:serverRequest/resolved": 60,
         "notification:skills/changed": 61,
@@ -14221,7 +16050,7 @@
         "response:thread/list": 107,
         "response:thread/read": 108,
         "response:thread/resume": 109,
-        "response:thread/revert": 394,
+        "response:thread/revert": 406,
         "response:thread/start": 110,
         "response:thread/turns/list": 111,
         "response:thread/unsubscribe": 112,
@@ -14238,332 +16067,344 @@
       },
       "definitions": {
         "AbsolutePathBuf": 123,
-        "Account": 395,
-        "AccountLoginCompletedNotification": 396,
+        "Account": 407,
+        "AccountLoginCompletedNotification": 408,
         "AccountRateLimitsUpdatedNotification": 126,
-        "AccountRoutingOverride": 397,
+        "AccountRoutingOverride": 409,
         "AccountUpdatedNotification": 127,
         "ActivePermissionProfile": 128,
-        "AdditionalContextEntry": 398,
+        "AdditionalContextEntry": 410,
         "AdditionalContextKind": 130,
         "AdditionalFileSystemPermissions": 131,
         "AdditionalNetworkPermissions": 132,
         "AdditionalPermissionProfile": 133,
-        "AgentMessageDelivery": 399,
+        "AgentMessageDelivery": 411,
         "AgentMessageDeltaNotification": 134,
+        "AgentMessageInputContent": 135,
         "AgentPath": 123,
-        "ApprovalsReviewer": 135,
-        "AskForApproval": 136,
-        "AsyncUserInputQuestion": 400,
-        "AuthMode": 401,
-        "AuthRecoveryNotification": 402,
-        "AutoReviewDecisionSource": 138,
-        "ByteRange": 139,
-        "CancelLoginAccountParams": 140,
-        "CancelLoginAccountResponse": 141,
-        "CancelLoginAccountStatus": 142,
-        "CapabilityRootLocation": 143,
-        "ClientInfo": 144,
-        "CodexErrorInfo": 403,
-        "CollabAgentState": 146,
-        "CollabAgentStatus": 147,
-        "CollabAgentTool": 404,
-        "CollabAgentToolCallStatus": 405,
-        "CollaborationMode": 150,
-        "CommandAction": 406,
-        "CommandExecutionApprovalDecision": 152,
-        "CommandExecutionApprovalKind": 407,
+        "ApprovalsReviewer": 136,
+        "AskForApproval": 137,
+        "AsyncUserInputQuestion": 412,
+        "AuthMode": 413,
+        "AuthRecoveryNotification": 414,
+        "AutoReviewDecisionSource": 139,
+        "ByteRange": 140,
+        "CancelLoginAccountParams": 141,
+        "CancelLoginAccountResponse": 142,
+        "CancelLoginAccountStatus": 143,
+        "CapabilityRootLocation": 144,
+        "ClientInfo": 145,
+        "CodexErrorInfo": 415,
+        "CollabAgentState": 147,
+        "CollabAgentStatus": 148,
+        "CollabAgentTool": 416,
+        "CollabAgentToolCallStatus": 417,
+        "CollaborationMode": 151,
+        "CommandAction": 418,
+        "CommandExecutionApprovalDecision": 153,
+        "CommandExecutionApprovalKind": 419,
         "CommandExecutionOutputDeltaNotification": 134,
-        "CommandExecutionRequestApprovalParams": 408,
-        "CommandExecutionRequestApprovalResponse": 154,
-        "CommandExecutionSource": 155,
-        "CommandExecutionStatus": 156,
-        "ConfigWarningNotification": 157,
-        "ContextCompactedNotification": 158,
-        "CreditsSnapshot": 159,
-        "CurrentTimeReadParams": 160,
-        "CurrentTimeReadResponse": 161,
-        "CyberAccessProgram": 409,
-        "DeprecationNoticeNotification": 162,
-        "DesktopOnboardingEntrypoint": 410,
-        "DynamicToolCallOutputContentItem": 163,
-        "DynamicToolCallParams": 164,
-        "DynamicToolCallResponse": 165,
-        "DynamicToolCallStatus": 149,
-        "DynamicToolNamespaceTool": 166,
-        "DynamicToolSpec": 167,
-        "ErrorNotification": 168,
-        "FileChangeApprovalDecision": 169,
-        "FileChangeRequestApprovalParams": 170,
-        "FileChangeRequestApprovalResponse": 171,
-        "FileSystemAccessMode": 172,
-        "FileSystemPath": 173,
-        "FileSystemSandboxEntry": 174,
-        "FileSystemSpecialPath": 175,
-        "FileUpdateChange": 176,
-        "FunctionCallOutputBody": 411,
-        "FunctionCallOutputContentItem": 412,
-        "GetAccountParams": 177,
-        "GetAccountRateLimitsParams": 413,
-        "GetAccountRateLimitsResponse": 414,
-        "GetAccountResponse": 415,
-        "GitInfo": 180,
+        "CommandExecutionRequestApprovalParams": 420,
+        "CommandExecutionRequestApprovalResponse": 155,
+        "CommandExecutionSource": 156,
+        "CommandExecutionStatus": 157,
+        "ConfigWarningNotification": 158,
+        "ConfigurationReasoning": 421,
+        "ContentItem": 422,
+        "ContextCompactedNotification": 160,
+        "CreditsSnapshot": 161,
+        "CurrentTimeReadParams": 162,
+        "CurrentTimeReadResponse": 163,
+        "CyberAccessProgram": 423,
+        "DeprecationNoticeNotification": 164,
+        "DesktopOnboardingEntrypoint": 424,
+        "DynamicToolCallOutputContentItem": 165,
+        "DynamicToolCallParams": 166,
+        "DynamicToolCallResponse": 167,
+        "DynamicToolCallStatus": 150,
+        "DynamicToolNamespaceTool": 168,
+        "DynamicToolSpec": 169,
+        "ErrorNotification": 170,
+        "FileChangeApprovalDecision": 171,
+        "FileChangeRequestApprovalParams": 172,
+        "FileChangeRequestApprovalResponse": 173,
+        "FileSystemAccessMode": 174,
+        "FileSystemPath": 175,
+        "FileSystemSandboxEntry": 176,
+        "FileSystemSpecialPath": 177,
+        "FileUpdateChange": 178,
+        "FunctionCallOutputBody": 179,
+        "FunctionCallOutputContentItem": 180,
+        "GetAccountParams": 181,
+        "GetAccountRateLimitsParams": 425,
+        "GetAccountRateLimitsResponse": 426,
+        "GetAccountResponse": 427,
+        "GitInfo": 184,
         "GrantedPermissionProfile": 133,
-        "GuardianApprovalReview": 181,
-        "GuardianApprovalReviewAction": 416,
-        "GuardianApprovalReviewStatus": 183,
-        "GuardianCommandSource": 184,
-        "GuardianRiskLevel": 185,
-        "GuardianUserAuthorization": 186,
-        "GuardianWarningNotification": 187,
-        "HookCompletedNotification": 188,
-        "HookEventName": 417,
-        "HookExecutionMode": 190,
-        "HookHandlerType": 418,
-        "HookOutputEntry": 192,
-        "HookOutputEntryKind": 193,
-        "HookPromptFragment": 194,
-        "HookRunStatus": 195,
-        "HookRunSummary": 419,
-        "HookScope": 197,
-        "HookSource": 198,
-        "HookStartedNotification": 188,
-        "ImageDetail": 199,
-        "ImageGenerationFailure": 420,
-        "ImageGenerationInputImage": 421,
-        "InitializeCapabilities": 422,
-        "InitializeParams": 201,
-        "InitializeResponse": 202,
-        "InputModality": 203,
-        "ItemCompletedNotification": 204,
-        "ItemGuardianApprovalReviewCompletedNotification": 205,
-        "ItemGuardianApprovalReviewStartedNotification": 206,
-        "ItemStartedNotification": 207,
-        "JSONRPCErrorError": 208,
+        "GuardianApprovalReview": 185,
+        "GuardianApprovalReviewAction": 428,
+        "GuardianApprovalReviewStatus": 187,
+        "GuardianCommandSource": 188,
+        "GuardianRiskLevel": 189,
+        "GuardianUserAuthorization": 190,
+        "GuardianWarningNotification": 191,
+        "HookCompletedNotification": 192,
+        "HookEventName": 429,
+        "HookExecutionMode": 194,
+        "HookHandlerType": 430,
+        "HookOutputEntry": 196,
+        "HookOutputEntryKind": 197,
+        "HookPromptFragment": 198,
+        "HookRunStatus": 199,
+        "HookRunSummary": 431,
+        "HookScope": 201,
+        "HookSource": 202,
+        "HookStartedNotification": 192,
+        "ImageDetail": 203,
+        "ImageGenerationFailure": 432,
+        "ImageGenerationInputImage": 433,
+        "InitializeCapabilities": 434,
+        "InitializeParams": 205,
+        "InitializeResponse": 206,
+        "InputModality": 207,
+        "InternalChatMessageMetadataPassthrough": 208,
+        "ItemCompletedNotification": 209,
+        "ItemGuardianApprovalReviewCompletedNotification": 210,
+        "ItemGuardianApprovalReviewStartedNotification": 211,
+        "ItemStartedNotification": 212,
+        "JSONRPCErrorError": 213,
         "LegacyAppPathString": 123,
-        "ListMcpServerStatusParams": 423,
-        "ListMcpServerStatusResponse": 210,
-        "LoginAccountParams": 424,
-        "LoginAccountResponse": 212,
-        "LoginAppBrand": 213,
-        "LogoutAccountResponse": 214,
-        "McpAppDisplayMode": 425,
-        "McpAppUi": 426,
-        "McpAuthStatus": 427,
-        "McpElicitationArrayType": 216,
-        "McpElicitationBooleanSchema": 217,
-        "McpElicitationBooleanType": 218,
-        "McpElicitationConstOption": 219,
-        "McpElicitationEnumSchema": 220,
-        "McpElicitationLegacyTitledEnumSchema": 221,
-        "McpElicitationMultiSelectEnumSchema": 222,
-        "McpElicitationNumberSchema": 223,
-        "McpElicitationNumberType": 224,
-        "McpElicitationObjectType": 225,
-        "McpElicitationPrimitiveSchema": 226,
-        "McpElicitationSchema": 227,
-        "McpElicitationSingleSelectEnumSchema": 228,
-        "McpElicitationStringFormat": 229,
-        "McpElicitationStringSchema": 230,
-        "McpElicitationStringType": 231,
-        "McpElicitationTitledEnumItems": 232,
-        "McpElicitationTitledMultiSelectEnumSchema": 233,
-        "McpElicitationTitledSingleSelectEnumSchema": 234,
-        "McpElicitationUntitledEnumItems": 235,
-        "McpElicitationUntitledMultiSelectEnumSchema": 236,
-        "McpElicitationUntitledSingleSelectEnumSchema": 237,
-        "McpServerConnectionStatus": 428,
-        "McpServerElicitationAction": 238,
-        "McpServerElicitationRequestParams": 429,
-        "McpServerElicitationRequestResponse": 240,
-        "McpServerInfo": 241,
-        "McpServerOauthClientRegistration": 430,
-        "McpServerOauthLoginParams": 431,
-        "McpServerOauthLoginResponse": 432,
-        "McpServerRefreshResponse": 214,
-        "McpServerStartupFailureReason": 244,
-        "McpServerStartupState": 245,
-        "McpServerStatus": 433,
-        "McpServerStatusDetail": 247,
-        "McpServerStatusUpdatedNotification": 248,
-        "McpToolCallAppContext": 249,
-        "McpToolCallError": 250,
-        "McpToolCallProgressNotification": 251,
-        "McpToolCallResult": 252,
-        "McpToolCallStatus": 149,
-        "MemoryCitation": 253,
-        "MemoryCitationEntry": 254,
-        "MessagePhase": 434,
-        "MisalignmentErrorDetails": 435,
-        "MisalignmentSteer": 250,
-        "ModeKind": 256,
-        "Model": 436,
-        "ModelAccessPrograms": 437,
-        "ModelAvailabilityNux": 250,
-        "ModelListParams": 258,
-        "ModelListResponse": 259,
-        "ModelRerouteReason": 260,
-        "ModelReroutedNotification": 261,
-        "ModelSafetyBufferingUpdatedNotification": 262,
-        "ModelServiceTier": 263,
-        "ModelUpgradeInfo": 438,
-        "ModelVerification": 265,
-        "ModelVerificationNotification": 266,
-        "MultiAgentMode": 267,
-        "MultiAgentVersion": 439,
-        "NetworkAccess": 268,
-        "NetworkApprovalContext": 269,
-        "NetworkApprovalProtocol": 270,
-        "NetworkPolicyAmendment": 271,
-        "NetworkPolicyRuleAction": 272,
-        "NonSteerableTurnKind": 273,
-        "PatchApplyStatus": 156,
-        "PatchChangeKind": 274,
-        "PermissionGrantScope": 275,
-        "PermissionsRequestApprovalParams": 440,
-        "PermissionsRequestApprovalResponse": 277,
-        "Personality": 278,
+        "ListMcpServerStatusParams": 435,
+        "ListMcpServerStatusResponse": 215,
+        "LocalShellAction": 216,
+        "LocalShellStatus": 217,
+        "LoginAccountParams": 436,
+        "LoginAccountResponse": 219,
+        "LoginAppBrand": 220,
+        "LogoutAccountResponse": 221,
+        "McpAppDisplayMode": 437,
+        "McpAppUi": 438,
+        "McpAuthStatus": 439,
+        "McpElicitationArrayType": 223,
+        "McpElicitationBooleanSchema": 224,
+        "McpElicitationBooleanType": 225,
+        "McpElicitationConstOption": 226,
+        "McpElicitationEnumSchema": 227,
+        "McpElicitationLegacyTitledEnumSchema": 228,
+        "McpElicitationMultiSelectEnumSchema": 229,
+        "McpElicitationNumberSchema": 230,
+        "McpElicitationNumberType": 231,
+        "McpElicitationObjectType": 232,
+        "McpElicitationPrimitiveSchema": 233,
+        "McpElicitationSchema": 234,
+        "McpElicitationSingleSelectEnumSchema": 235,
+        "McpElicitationStringFormat": 236,
+        "McpElicitationStringSchema": 237,
+        "McpElicitationStringType": 238,
+        "McpElicitationTitledEnumItems": 239,
+        "McpElicitationTitledMultiSelectEnumSchema": 240,
+        "McpElicitationTitledSingleSelectEnumSchema": 241,
+        "McpElicitationUntitledEnumItems": 242,
+        "McpElicitationUntitledMultiSelectEnumSchema": 243,
+        "McpElicitationUntitledSingleSelectEnumSchema": 244,
+        "McpServerConnectionStatus": 440,
+        "McpServerElicitationAction": 245,
+        "McpServerElicitationRequestParams": 441,
+        "McpServerElicitationRequestResponse": 247,
+        "McpServerInfo": 248,
+        "McpServerOauthClientRegistration": 442,
+        "McpServerOauthLoginParams": 443,
+        "McpServerOauthLoginResponse": 444,
+        "McpServerRefreshResponse": 221,
+        "McpServerStartupFailureReason": 251,
+        "McpServerStartupState": 252,
+        "McpServerStatus": 445,
+        "McpServerStatusDetail": 254,
+        "McpServerStatusUpdatedNotification": 255,
+        "McpToolCallAppContext": 256,
+        "McpToolCallError": 257,
+        "McpToolCallProgressNotification": 258,
+        "McpToolCallResult": 259,
+        "McpToolCallStatus": 150,
+        "MemoryCitation": 260,
+        "MemoryCitationEntry": 261,
+        "MessagePhase": 446,
+        "MisalignmentErrorDetails": 447,
+        "MisalignmentSteer": 257,
+        "ModeKind": 263,
+        "Model": 448,
+        "ModelAccessPrograms": 449,
+        "ModelAvailabilityNux": 257,
+        "ModelListParams": 265,
+        "ModelListResponse": 266,
+        "ModelRerouteReason": 267,
+        "ModelReroutedNotification": 268,
+        "ModelSafetyBufferingUpdatedNotification": 269,
+        "ModelServiceTier": 270,
+        "ModelUpgradeInfo": 450,
+        "ModelVerification": 272,
+        "ModelVerificationNotification": 273,
+        "MultiAgentMode": 274,
+        "MultiAgentVersion": 451,
+        "NetworkAccess": 275,
+        "NetworkApprovalContext": 276,
+        "NetworkApprovalProtocol": 277,
+        "NetworkPolicyAmendment": 278,
+        "NetworkPolicyRuleAction": 279,
+        "NonSteerableTurnKind": 280,
+        "PatchApplyStatus": 157,
+        "PatchChangeKind": 281,
+        "PermissionGrantScope": 282,
+        "PermissionsRequestApprovalParams": 452,
+        "PermissionsRequestApprovalResponse": 284,
+        "Personality": 285,
         "PlanDeltaNotification": 134,
-        "PlanType": 441,
-        "RateLimitReachedType": 280,
-        "RateLimitResetCredit": 281,
-        "RateLimitResetCreditStatus": 282,
-        "RateLimitResetCreditsSummary": 283,
-        "RateLimitResetType": 284,
-        "RateLimitSnapshot": 442,
-        "RateLimitWindow": 286,
-        "ReasoningEffort": 287,
-        "ReasoningEffortOption": 288,
-        "ReasoningSummary": 289,
-        "ReasoningSummaryPartAddedNotification": 290,
-        "ReasoningSummaryTextDeltaNotification": 291,
-        "ReasoningTextDeltaNotification": 292,
-        "RemoteControlConnectionStatus": 293,
-        "RemoteControlStatusChangedNotification": 294,
-        "RequestId": 295,
-        "RequestPermissionProfile": 296,
-        "Resource": 297,
-        "ResourceTemplate": 298,
-        "ReviewDelivery": 443,
-        "ReviewStartParams": 300,
-        "ReviewStartResponse": 301,
-        "ReviewTarget": 302,
-        "SandboxMode": 303,
-        "SandboxPolicy": 304,
-        "SelectedCapabilityRoot": 305,
-        "ServerRequestResolvedNotification": 306,
-        "SessionSource": 307,
-        "Settings": 308,
-        "SkillDependencies": 309,
-        "SkillErrorInfo": 310,
-        "SkillInterface": 311,
-        "SkillMetadata": 444,
-        "SkillScope": 313,
-        "SkillToolDependency": 314,
-        "SkillsChangedNotification": 214,
-        "SkillsListEntry": 315,
-        "SkillsListParams": 316,
-        "SkillsListResponse": 317,
-        "SortDirection": 318,
-        "SpendControlLimitSnapshot": 319,
-        "SubAgentActivityKind": 445,
-        "SubAgentSource": 321,
-        "TextElement": 322,
-        "TextPosition": 323,
-        "TextRange": 324,
-        "Thread": 446,
-        "ThreadActiveFlag": 326,
-        "ThreadBackgroundTerminal": 447,
-        "ThreadBackgroundTerminalsCleanParams": 160,
-        "ThreadBackgroundTerminalsCleanResponse": 214,
-        "ThreadBackgroundTerminalsListParams": 328,
-        "ThreadBackgroundTerminalsListResponse": 329,
-        "ThreadBackgroundTerminalsTerminateParams": 330,
-        "ThreadBackgroundTerminalsTerminateResponse": 331,
-        "ThreadCompactStartParams": 160,
-        "ThreadCompactStartResponse": 214,
-        "ThreadDeleteParams": 160,
-        "ThreadDeleteResponse": 214,
-        "ThreadEnvironment": 448,
-        "ThreadExtra": 214,
-        "ThreadForkParams": 449,
-        "ThreadForkResponse": 450,
-        "ThreadGoal": 334,
-        "ThreadGoalClearParams": 451,
-        "ThreadGoalClearResponse": 335,
-        "ThreadGoalClearedNotification": 160,
-        "ThreadGoalGetParams": 160,
-        "ThreadGoalGetResponse": 336,
-        "ThreadGoalMutationOrigin": 452,
-        "ThreadGoalSetParams": 453,
-        "ThreadGoalSetResponse": 338,
-        "ThreadGoalStatus": 339,
-        "ThreadGoalUpdatedNotification": 340,
-        "ThreadHistoryMode": 341,
+        "PlanType": 453,
+        "RateLimitReachedType": 287,
+        "RateLimitResetCredit": 288,
+        "RateLimitResetCreditStatus": 289,
+        "RateLimitResetCreditsSummary": 290,
+        "RateLimitResetType": 291,
+        "RateLimitSnapshot": 454,
+        "RateLimitWindow": 293,
+        "ReasoningEffort": 294,
+        "ReasoningEffortOption": 295,
+        "ReasoningItemContent": 296,
+        "ReasoningItemReasoningSummary": 297,
+        "ReasoningSummary": 298,
+        "ReasoningSummaryPartAddedNotification": 299,
+        "ReasoningSummaryTextDeltaNotification": 300,
+        "ReasoningTextDeltaNotification": 301,
+        "RemoteControlConnectionStatus": 302,
+        "RemoteControlStatusChangedNotification": 303,
+        "RequestId": 304,
+        "RequestPermissionProfile": 305,
+        "Resource": 306,
+        "ResourceTemplate": 307,
+        "ResponseItem": 455,
+        "ResponsesApiWebSearchAction": 309,
+        "ReviewDelivery": 456,
+        "ReviewStartParams": 311,
+        "ReviewStartResponse": 312,
+        "ReviewTarget": 313,
+        "SandboxMode": 314,
+        "SandboxPolicy": 315,
+        "SelectedCapabilityRoot": 316,
+        "ServerRequestResolvedNotification": 317,
+        "SessionSource": 318,
+        "Settings": 319,
+        "SkillDependencies": 320,
+        "SkillErrorInfo": 321,
+        "SkillInterface": 322,
+        "SkillMetadata": 457,
+        "SkillScope": 324,
+        "SkillToolDependency": 325,
+        "SkillsChangedNotification": 221,
+        "SkillsListEntry": 326,
+        "SkillsListParams": 327,
+        "SkillsListResponse": 328,
+        "SortDirection": 329,
+        "SpendControlLimitSnapshot": 330,
+        "SubAgentActivityKind": 458,
+        "SubAgentSource": 332,
+        "TextElement": 333,
+        "TextPosition": 334,
+        "TextRange": 335,
+        "Thread": 459,
+        "ThreadActiveFlag": 337,
+        "ThreadBackgroundTerminal": 460,
+        "ThreadBackgroundTerminalsCleanParams": 162,
+        "ThreadBackgroundTerminalsCleanResponse": 221,
+        "ThreadBackgroundTerminalsListParams": 339,
+        "ThreadBackgroundTerminalsListResponse": 340,
+        "ThreadBackgroundTerminalsTerminateParams": 341,
+        "ThreadBackgroundTerminalsTerminateResponse": 342,
+        "ThreadCompactStartParams": 162,
+        "ThreadCompactStartResponse": 221,
+        "ThreadDeleteParams": 162,
+        "ThreadDeleteResponse": 221,
+        "ThreadEnvironment": 461,
+        "ThreadExtra": 221,
+        "ThreadForkParams": 462,
+        "ThreadForkResponse": 463,
+        "ThreadGoal": 345,
+        "ThreadGoalClearParams": 464,
+        "ThreadGoalClearResponse": 346,
+        "ThreadGoalClearedNotification": 162,
+        "ThreadGoalGetParams": 162,
+        "ThreadGoalGetResponse": 347,
+        "ThreadGoalMutationOrigin": 465,
+        "ThreadGoalSetParams": 466,
+        "ThreadGoalSetResponse": 349,
+        "ThreadGoalStatus": 350,
+        "ThreadGoalUpdatedNotification": 351,
+        "ThreadHistoryMode": 352,
         "ThreadId": 123,
-        "ThreadItem": 454,
-        "ThreadListCwdFilter": 343,
-        "ThreadListParams": 455,
-        "ThreadListResponse": 456,
-        "ThreadNameUpdatedNotification": 346,
-        "ThreadReadParams": 347,
-        "ThreadReadResponse": 457,
-        "ThreadReadState": 458,
-        "ThreadResumeParams": 349,
-        "ThreadResumeResponse": 459,
-        "ThreadRevertParams": 460,
-        "ThreadRevertResponse": 461,
-        "ThreadSection": 462,
-        "ThreadSectionAppearance": 463,
-        "ThreadSettings": 464,
-        "ThreadSettingsUpdatedNotification": 352,
-        "ThreadSortKey": 465,
+        "ThreadItem": 467,
+        "ThreadListCwdFilter": 354,
+        "ThreadListParams": 468,
+        "ThreadListResponse": 469,
+        "ThreadNameUpdatedNotification": 357,
+        "ThreadReadParams": 358,
+        "ThreadReadResponse": 470,
+        "ThreadReadState": 471,
+        "ThreadResumeInitialTurnsPageParams": 360,
+        "ThreadResumeParams": 361,
+        "ThreadResumeResponse": 472,
+        "ThreadRevertParams": 473,
+        "ThreadRevertResponse": 474,
+        "ThreadSection": 475,
+        "ThreadSectionAppearance": 476,
+        "ThreadSettings": 477,
+        "ThreadSettingsUpdatedNotification": 364,
+        "ThreadSortKey": 478,
         "ThreadSource": 123,
-        "ThreadSourceKind": 354,
-        "ThreadStartParams": 466,
-        "ThreadStartResponse": 450,
-        "ThreadStartSource": 356,
-        "ThreadStartedNotification": 348,
-        "ThreadStatus": 357,
-        "ThreadStatusChangedNotification": 358,
-        "ThreadTokenUsage": 359,
-        "ThreadTokenUsageUpdatedNotification": 360,
-        "ThreadTurnsListParams": 361,
-        "ThreadTurnsListResponse": 362,
-        "ThreadUnreadPosition": 467,
-        "ThreadUnsubscribeParams": 160,
-        "ThreadUnsubscribeResponse": 363,
-        "ThreadUnsubscribeStatus": 364,
-        "TokenUsageBreakdown": 365,
-        "Tool": 366,
-        "ToolRequestUserInputAnswer": 367,
-        "ToolRequestUserInputOption": 368,
-        "ToolRequestUserInputParams": 468,
-        "ToolRequestUserInputQuestion": 370,
-        "ToolRequestUserInputResponse": 371,
-        "Turn": 469,
-        "TurnCompletedNotification": 373,
-        "TurnEnvironmentParams": 374,
-        "TurnError": 470,
-        "TurnInterruptParams": 158,
-        "TurnInterruptResponse": 214,
-        "TurnItemsView": 376,
-        "TurnModerationMetadataNotification": 377,
-        "TurnPlanStep": 378,
-        "TurnPlanStepStatus": 379,
-        "TurnPlanUpdatedNotification": 380,
-        "TurnStartParams": 381,
-        "TurnStartResponse": 382,
-        "TurnStartedNotification": 373,
-        "TurnStatus": 383,
-        "TurnSteerParams": 471,
-        "TurnSteerResponse": 385,
-        "TurnsPage": 362,
-        "UserInput": 472,
-        "WarningNotification": 387,
-        "WebSearchAction": 388,
-        "WindowsWorldWritableWarningNotification": 389,
-        "WorkspaceRouting": 473
+        "ThreadSourceKind": 366,
+        "ThreadStartParams": 479,
+        "ThreadStartResponse": 463,
+        "ThreadStartSource": 368,
+        "ThreadStartedNotification": 359,
+        "ThreadStatus": 369,
+        "ThreadStatusChangedNotification": 370,
+        "ThreadTokenUsage": 371,
+        "ThreadTokenUsageUpdatedNotification": 372,
+        "ThreadTurnsListParams": 373,
+        "ThreadTurnsListResponse": 374,
+        "ThreadUnreadPosition": 480,
+        "ThreadUnsubscribeParams": 162,
+        "ThreadUnsubscribeResponse": 375,
+        "ThreadUnsubscribeStatus": 376,
+        "TokenUsageBreakdown": 377,
+        "Tool": 378,
+        "ToolRequestUserInputAnswer": 379,
+        "ToolRequestUserInputOption": 380,
+        "ToolRequestUserInputParams": 481,
+        "ToolRequestUserInputQuestion": 382,
+        "ToolRequestUserInputResponse": 383,
+        "Turn": 482,
+        "TurnCompletedNotification": 385,
+        "TurnEnvironmentParams": 386,
+        "TurnError": 483,
+        "TurnInterruptParams": 160,
+        "TurnInterruptResponse": 221,
+        "TurnItemsView": 388,
+        "TurnModerationMetadataNotification": 389,
+        "TurnPlanStep": 390,
+        "TurnPlanStepStatus": 391,
+        "TurnPlanUpdatedNotification": 392,
+        "TurnStartParams": 484,
+        "TurnStartResponse": 394,
+        "TurnStartedNotification": 385,
+        "TurnStatus": 395,
+        "TurnSteerParams": 485,
+        "TurnSteerResponse": 397,
+        "TurnToolOutput": 486,
+        "TurnsPage": 374,
+        "UserInput": 487,
+        "WarningNotification": 399,
+        "WebSearchAction": 400,
+        "WindowsWorldWritableWarningNotification": 401,
+        "WorkspaceRouting": 488
       }
     },
     {
@@ -14573,7 +16414,7 @@
         "client:account/login/cancel": 0,
         "client:account/login/start": 1,
         "client:account/logout": 2,
-        "client:account/rateLimits/read": 390,
+        "client:account/rateLimits/read": 402,
         "client:account/read": 4,
         "client:config/mcpServer/reload": 5,
         "client:initialize": 6,
@@ -14594,7 +16435,7 @@
         "client:thread/list": 21,
         "client:thread/read": 22,
         "client:thread/resume": 23,
-        "client:thread/revert": 391,
+        "client:thread/revert": 403,
         "client:thread/start": 24,
         "client:thread/turns/list": 25,
         "client:thread/unsubscribe": 26,
@@ -14632,8 +16473,8 @@
         "notification:model/rerouted": 56,
         "notification:model/safetyBuffering/updated": 57,
         "notification:model/verification": 58,
-        "notification:modelProvider/authRecoveryCompleted": 392,
-        "notification:modelProvider/authRecoveryStarted": 393,
+        "notification:modelProvider/authRecoveryCompleted": 404,
+        "notification:modelProvider/authRecoveryStarted": 405,
         "notification:remoteControl/status/changed": 59,
         "notification:serverRequest/resolved": 60,
         "notification:skills/changed": 61,
@@ -14685,7 +16526,7 @@
         "response:thread/list": 107,
         "response:thread/read": 108,
         "response:thread/resume": 109,
-        "response:thread/revert": 394,
+        "response:thread/revert": 406,
         "response:thread/start": 110,
         "response:thread/turns/list": 111,
         "response:thread/unsubscribe": 112,
@@ -14702,339 +16543,351 @@
       },
       "definitions": {
         "AbsolutePathBuf": 123,
-        "Account": 395,
-        "AccountLoginCompletedNotification": 396,
+        "Account": 407,
+        "AccountLoginCompletedNotification": 408,
         "AccountRateLimitsUpdatedNotification": 126,
-        "AccountRoutingOverride": 397,
+        "AccountRoutingOverride": 409,
         "AccountUpdatedNotification": 127,
         "ActivePermissionProfile": 128,
-        "AdditionalContextEntry": 398,
+        "AdditionalContextEntry": 410,
         "AdditionalContextKind": 130,
         "AdditionalFileSystemPermissions": 131,
         "AdditionalNetworkPermissions": 132,
         "AdditionalPermissionProfile": 133,
-        "AgentMessageDelivery": 399,
+        "AgentMessageDelivery": 411,
         "AgentMessageDeltaNotification": 134,
-        "AgentMessageDisplay": 474,
-        "AgentMessageModeration": 475,
+        "AgentMessageDisplay": 489,
+        "AgentMessageInputContent": 135,
+        "AgentMessageModeration": 490,
         "AgentPath": 123,
-        "AnswerAnnotation": 476,
-        "AnswerReplacement": 477,
-        "ApprovalsReviewer": 135,
-        "AskForApproval": 136,
-        "AsyncUserInputQuestion": 400,
-        "AuthMode": 401,
-        "AuthRecoveryNotification": 402,
-        "AutoReviewDecisionSource": 138,
-        "BlockReason": 478,
-        "ByteRange": 139,
-        "CancelLoginAccountParams": 140,
-        "CancelLoginAccountResponse": 141,
-        "CancelLoginAccountStatus": 142,
-        "CapabilityRootLocation": 143,
-        "ClientInfo": 144,
-        "CodexErrorInfo": 479,
-        "CollabAgentState": 146,
-        "CollabAgentStatus": 147,
-        "CollabAgentTool": 404,
-        "CollabAgentToolCallStatus": 405,
-        "CollaborationMode": 150,
-        "CommandAction": 406,
-        "CommandExecutionApprovalDecision": 152,
-        "CommandExecutionApprovalKind": 407,
+        "AnswerAnnotation": 491,
+        "AnswerReplacement": 492,
+        "ApprovalsReviewer": 136,
+        "AskForApproval": 137,
+        "AsyncUserInputQuestion": 412,
+        "AuthMode": 413,
+        "AuthRecoveryNotification": 414,
+        "AutoReviewDecisionSource": 139,
+        "BlockReason": 493,
+        "ByteRange": 140,
+        "CancelLoginAccountParams": 141,
+        "CancelLoginAccountResponse": 142,
+        "CancelLoginAccountStatus": 143,
+        "CapabilityRootLocation": 144,
+        "ClientInfo": 145,
+        "CodexErrorInfo": 494,
+        "CollabAgentState": 147,
+        "CollabAgentStatus": 148,
+        "CollabAgentTool": 416,
+        "CollabAgentToolCallStatus": 417,
+        "CollaborationMode": 151,
+        "CommandAction": 418,
+        "CommandExecutionApprovalDecision": 153,
+        "CommandExecutionApprovalKind": 419,
         "CommandExecutionOutputDeltaNotification": 134,
-        "CommandExecutionRequestApprovalParams": 408,
-        "CommandExecutionRequestApprovalResponse": 154,
-        "CommandExecutionSource": 155,
-        "CommandExecutionStatus": 156,
-        "ConfigWarningNotification": 157,
-        "ContextCompactedNotification": 158,
-        "CreditsSnapshot": 159,
-        "CurrentTimeReadParams": 160,
-        "CurrentTimeReadResponse": 161,
-        "CyberAccessProgram": 409,
-        "DeprecationNoticeNotification": 162,
-        "DesktopOnboardingEntrypoint": 410,
-        "DynamicToolCallOutputContentItem": 163,
-        "DynamicToolCallParams": 164,
-        "DynamicToolCallResponse": 165,
-        "DynamicToolCallStatus": 149,
-        "DynamicToolNamespaceTool": 166,
-        "DynamicToolSpec": 167,
-        "ErrorNotification": 168,
-        "FileChangeApprovalDecision": 169,
-        "FileChangeRequestApprovalParams": 170,
-        "FileChangeRequestApprovalResponse": 171,
-        "FileSystemAccessMode": 172,
-        "FileSystemPath": 173,
-        "FileSystemSandboxEntry": 174,
-        "FileSystemSpecialPath": 175,
-        "FileUpdateChange": 176,
-        "FunctionCallOutputBody": 411,
-        "FunctionCallOutputContentItem": 412,
-        "GetAccountParams": 177,
-        "GetAccountRateLimitsParams": 413,
-        "GetAccountRateLimitsResponse": 414,
-        "GetAccountResponse": 480,
-        "GitInfo": 180,
+        "CommandExecutionRequestApprovalParams": 420,
+        "CommandExecutionRequestApprovalResponse": 155,
+        "CommandExecutionSource": 156,
+        "CommandExecutionStatus": 157,
+        "ConfigWarningNotification": 158,
+        "ConfigurationReasoning": 421,
+        "ContentItem": 422,
+        "ContextCompactedNotification": 160,
+        "CreditsSnapshot": 161,
+        "CurrentTimeReadParams": 162,
+        "CurrentTimeReadResponse": 163,
+        "CyberAccessProgram": 423,
+        "DeprecationNoticeNotification": 164,
+        "DesktopOnboardingEntrypoint": 424,
+        "DynamicToolCallOutputContentItem": 165,
+        "DynamicToolCallParams": 166,
+        "DynamicToolCallResponse": 167,
+        "DynamicToolCallStatus": 150,
+        "DynamicToolNamespaceTool": 168,
+        "DynamicToolSpec": 169,
+        "ErrorNotification": 170,
+        "FileChangeApprovalDecision": 171,
+        "FileChangeRequestApprovalParams": 172,
+        "FileChangeRequestApprovalResponse": 173,
+        "FileSystemAccessMode": 174,
+        "FileSystemPath": 175,
+        "FileSystemSandboxEntry": 176,
+        "FileSystemSpecialPath": 177,
+        "FileUpdateChange": 178,
+        "FunctionCallOutputBody": 179,
+        "FunctionCallOutputContentItem": 180,
+        "GetAccountParams": 181,
+        "GetAccountRateLimitsParams": 425,
+        "GetAccountRateLimitsResponse": 426,
+        "GetAccountResponse": 495,
+        "GitInfo": 184,
         "GrantedPermissionProfile": 133,
-        "GuardianApprovalReview": 181,
-        "GuardianApprovalReviewAction": 416,
-        "GuardianApprovalReviewStatus": 183,
-        "GuardianCommandSource": 184,
-        "GuardianRiskLevel": 185,
-        "GuardianUserAuthorization": 186,
-        "GuardianWarningNotification": 187,
-        "HelplineSubject": 481,
-        "HookCompletedNotification": 188,
-        "HookEventName": 417,
-        "HookExecutionMode": 190,
-        "HookHandlerType": 418,
-        "HookOutputEntry": 192,
-        "HookOutputEntryKind": 193,
-        "HookPromptFragment": 194,
-        "HookRunStatus": 195,
-        "HookRunSummary": 419,
-        "HookScope": 197,
-        "HookSource": 198,
-        "HookStartedNotification": 188,
-        "ImageDetail": 199,
-        "ImageGenerationFailure": 420,
-        "ImageGenerationInputImage": 421,
-        "InitializeCapabilities": 422,
-        "InitializeParams": 201,
-        "InitializeResponse": 202,
-        "InputModality": 203,
-        "ItemCompletedNotification": 482,
-        "ItemGuardianApprovalReviewCompletedNotification": 205,
-        "ItemGuardianApprovalReviewStartedNotification": 206,
-        "ItemStartedNotification": 207,
-        "JSONRPCErrorError": 208,
+        "GuardianApprovalReview": 185,
+        "GuardianApprovalReviewAction": 428,
+        "GuardianApprovalReviewStatus": 187,
+        "GuardianCommandSource": 188,
+        "GuardianRiskLevel": 189,
+        "GuardianUserAuthorization": 190,
+        "GuardianWarningNotification": 191,
+        "HelplineSubject": 496,
+        "HookCompletedNotification": 192,
+        "HookEventName": 429,
+        "HookExecutionMode": 194,
+        "HookHandlerType": 430,
+        "HookOutputEntry": 196,
+        "HookOutputEntryKind": 197,
+        "HookPromptFragment": 198,
+        "HookRunStatus": 199,
+        "HookRunSummary": 431,
+        "HookScope": 201,
+        "HookSource": 202,
+        "HookStartedNotification": 192,
+        "ImageDetail": 203,
+        "ImageGenerationFailure": 432,
+        "ImageGenerationInputImage": 433,
+        "InitializeCapabilities": 434,
+        "InitializeParams": 205,
+        "InitializeResponse": 206,
+        "InputModality": 207,
+        "InternalChatMessageMetadataPassthrough": 208,
+        "ItemCompletedNotification": 497,
+        "ItemGuardianApprovalReviewCompletedNotification": 210,
+        "ItemGuardianApprovalReviewStartedNotification": 211,
+        "ItemStartedNotification": 212,
+        "JSONRPCErrorError": 213,
         "LegacyAppPathString": 123,
-        "ListMcpServerStatusParams": 423,
-        "ListMcpServerStatusResponse": 210,
-        "LoginAccountParams": 424,
-        "LoginAccountResponse": 212,
-        "LoginAppBrand": 213,
-        "LogoutAccountResponse": 214,
-        "McpAppDisplayMode": 425,
-        "McpAppUi": 426,
-        "McpAuthStatus": 427,
-        "McpElicitationArrayType": 216,
-        "McpElicitationBooleanSchema": 217,
-        "McpElicitationBooleanType": 218,
-        "McpElicitationConstOption": 219,
-        "McpElicitationEnumSchema": 220,
-        "McpElicitationLegacyTitledEnumSchema": 221,
-        "McpElicitationMultiSelectEnumSchema": 222,
-        "McpElicitationNumberSchema": 223,
-        "McpElicitationNumberType": 224,
-        "McpElicitationObjectType": 225,
-        "McpElicitationPrimitiveSchema": 226,
-        "McpElicitationSchema": 227,
-        "McpElicitationSingleSelectEnumSchema": 228,
-        "McpElicitationStringFormat": 229,
-        "McpElicitationStringSchema": 230,
-        "McpElicitationStringType": 231,
-        "McpElicitationTitledEnumItems": 232,
-        "McpElicitationTitledMultiSelectEnumSchema": 233,
-        "McpElicitationTitledSingleSelectEnumSchema": 234,
-        "McpElicitationUntitledEnumItems": 235,
-        "McpElicitationUntitledMultiSelectEnumSchema": 236,
-        "McpElicitationUntitledSingleSelectEnumSchema": 237,
-        "McpServerConnectionStatus": 428,
-        "McpServerElicitationAction": 238,
-        "McpServerElicitationRequestParams": 429,
-        "McpServerElicitationRequestResponse": 240,
-        "McpServerInfo": 241,
-        "McpServerOauthClientRegistration": 430,
-        "McpServerOauthLoginParams": 431,
-        "McpServerOauthLoginResponse": 432,
-        "McpServerRefreshResponse": 214,
-        "McpServerStartupFailureReason": 244,
-        "McpServerStartupState": 245,
-        "McpServerStatus": 433,
-        "McpServerStatusDetail": 247,
-        "McpServerStatusUpdatedNotification": 248,
-        "McpToolCallAppContext": 249,
-        "McpToolCallError": 250,
-        "McpToolCallProgressNotification": 251,
-        "McpToolCallResult": 252,
-        "McpToolCallStatus": 149,
-        "MemoryCitation": 253,
-        "MemoryCitationEntry": 254,
-        "MessagePhase": 434,
-        "MisalignmentErrorDetails": 435,
-        "MisalignmentSteer": 250,
-        "ModeKind": 256,
-        "Model": 436,
-        "ModelAccessPrograms": 437,
-        "ModelAvailabilityNux": 250,
-        "ModelListParams": 483,
-        "ModelListResponse": 259,
-        "ModelRerouteReason": 260,
-        "ModelReroutedNotification": 261,
-        "ModelSafetyBufferingUpdatedNotification": 262,
-        "ModelServiceTier": 263,
-        "ModelUpgradeInfo": 438,
-        "ModelVerification": 265,
-        "ModelVerificationNotification": 266,
-        "MultiAgentMode": 267,
-        "MultiAgentVersion": 439,
-        "NetworkAccess": 268,
-        "NetworkApprovalContext": 269,
-        "NetworkApprovalProtocol": 270,
-        "NetworkPolicyAmendment": 271,
-        "NetworkPolicyRuleAction": 272,
-        "NonSteerableTurnKind": 273,
-        "PatchApplyStatus": 156,
-        "PatchChangeKind": 274,
-        "PermissionGrantScope": 275,
-        "PermissionsRequestApprovalParams": 440,
-        "PermissionsRequestApprovalResponse": 277,
-        "Personality": 278,
+        "ListMcpServerStatusParams": 435,
+        "ListMcpServerStatusResponse": 215,
+        "LocalShellAction": 216,
+        "LocalShellStatus": 217,
+        "LoginAccountParams": 436,
+        "LoginAccountResponse": 219,
+        "LoginAppBrand": 220,
+        "LogoutAccountResponse": 221,
+        "McpAppDisplayMode": 437,
+        "McpAppUi": 438,
+        "McpAuthStatus": 439,
+        "McpElicitationArrayType": 223,
+        "McpElicitationBooleanSchema": 224,
+        "McpElicitationBooleanType": 225,
+        "McpElicitationConstOption": 226,
+        "McpElicitationEnumSchema": 227,
+        "McpElicitationLegacyTitledEnumSchema": 228,
+        "McpElicitationMultiSelectEnumSchema": 229,
+        "McpElicitationNumberSchema": 230,
+        "McpElicitationNumberType": 231,
+        "McpElicitationObjectType": 232,
+        "McpElicitationPrimitiveSchema": 233,
+        "McpElicitationSchema": 234,
+        "McpElicitationSingleSelectEnumSchema": 235,
+        "McpElicitationStringFormat": 236,
+        "McpElicitationStringSchema": 237,
+        "McpElicitationStringType": 238,
+        "McpElicitationTitledEnumItems": 239,
+        "McpElicitationTitledMultiSelectEnumSchema": 240,
+        "McpElicitationTitledSingleSelectEnumSchema": 241,
+        "McpElicitationUntitledEnumItems": 242,
+        "McpElicitationUntitledMultiSelectEnumSchema": 243,
+        "McpElicitationUntitledSingleSelectEnumSchema": 244,
+        "McpServerConnectionStatus": 440,
+        "McpServerElicitationAction": 245,
+        "McpServerElicitationRequestParams": 441,
+        "McpServerElicitationRequestResponse": 247,
+        "McpServerInfo": 248,
+        "McpServerOauthClientRegistration": 442,
+        "McpServerOauthLoginParams": 443,
+        "McpServerOauthLoginResponse": 444,
+        "McpServerRefreshResponse": 221,
+        "McpServerStartupFailureReason": 251,
+        "McpServerStartupState": 252,
+        "McpServerStatus": 445,
+        "McpServerStatusDetail": 254,
+        "McpServerStatusUpdatedNotification": 255,
+        "McpToolCallAppContext": 256,
+        "McpToolCallError": 257,
+        "McpToolCallProgressNotification": 258,
+        "McpToolCallResult": 259,
+        "McpToolCallStatus": 150,
+        "MemoryCitation": 260,
+        "MemoryCitationEntry": 261,
+        "MessagePhase": 446,
+        "MisalignmentErrorDetails": 447,
+        "MisalignmentSteer": 257,
+        "ModeKind": 263,
+        "Model": 448,
+        "ModelAccessPrograms": 449,
+        "ModelAvailabilityNux": 257,
+        "ModelListParams": 498,
+        "ModelListResponse": 266,
+        "ModelRerouteReason": 267,
+        "ModelReroutedNotification": 268,
+        "ModelSafetyBufferingUpdatedNotification": 269,
+        "ModelServiceTier": 270,
+        "ModelUpgradeInfo": 450,
+        "ModelVerification": 272,
+        "ModelVerificationNotification": 273,
+        "MultiAgentMode": 274,
+        "MultiAgentVersion": 451,
+        "NetworkAccess": 275,
+        "NetworkApprovalContext": 276,
+        "NetworkApprovalProtocol": 277,
+        "NetworkPolicyAmendment": 278,
+        "NetworkPolicyRuleAction": 279,
+        "NonSteerableTurnKind": 280,
+        "PatchApplyStatus": 157,
+        "PatchChangeKind": 281,
+        "PermissionGrantScope": 282,
+        "PermissionsRequestApprovalParams": 452,
+        "PermissionsRequestApprovalResponse": 284,
+        "Personality": 285,
         "PlanDeltaNotification": 134,
-        "PlanType": 441,
-        "RateLimitReachedType": 280,
-        "RateLimitResetCredit": 281,
-        "RateLimitResetCreditStatus": 282,
-        "RateLimitResetCreditsSummary": 283,
-        "RateLimitResetType": 284,
-        "RateLimitSnapshot": 442,
-        "RateLimitWindow": 286,
-        "ReasoningEffort": 287,
-        "ReasoningEffortOption": 288,
-        "ReasoningSummary": 289,
-        "ReasoningSummaryPartAddedNotification": 290,
-        "ReasoningSummaryTextDeltaNotification": 291,
-        "ReasoningTextDeltaNotification": 292,
-        "RemoteControlConnectionStatus": 293,
-        "RemoteControlStatusChangedNotification": 294,
-        "RequestId": 295,
-        "RequestPermissionProfile": 296,
-        "Resource": 297,
-        "ResourceTemplate": 298,
-        "ReviewDelivery": 443,
-        "ReviewStartParams": 300,
-        "ReviewStartResponse": 301,
-        "ReviewTarget": 302,
-        "SandboxMode": 303,
-        "SandboxPolicy": 304,
-        "SelectedCapabilityRoot": 305,
-        "ServerRequestResolvedNotification": 306,
-        "SessionSource": 307,
-        "Settings": 308,
-        "SkillDependencies": 309,
-        "SkillErrorInfo": 310,
-        "SkillInterface": 311,
-        "SkillMetadata": 444,
-        "SkillScope": 313,
-        "SkillToolDependency": 314,
-        "SkillsChangedNotification": 214,
-        "SkillsListEntry": 315,
-        "SkillsListParams": 316,
-        "SkillsListResponse": 317,
-        "SortDirection": 318,
-        "SpendControlLimitSnapshot": 319,
-        "SubAgentActivityKind": 445,
-        "SubAgentSource": 321,
-        "TextElement": 322,
-        "TextPosition": 323,
-        "TextRange": 324,
-        "Thread": 484,
-        "ThreadActiveFlag": 326,
-        "ThreadBackgroundTerminal": 447,
-        "ThreadBackgroundTerminalsCleanParams": 160,
-        "ThreadBackgroundTerminalsCleanResponse": 214,
-        "ThreadBackgroundTerminalsListParams": 328,
-        "ThreadBackgroundTerminalsListResponse": 329,
-        "ThreadBackgroundTerminalsTerminateParams": 330,
-        "ThreadBackgroundTerminalsTerminateResponse": 331,
-        "ThreadCompactStartParams": 160,
-        "ThreadCompactStartResponse": 214,
-        "ThreadDeleteParams": 160,
-        "ThreadDeleteResponse": 214,
-        "ThreadEnvironment": 448,
-        "ThreadExtra": 214,
-        "ThreadForkParams": 449,
-        "ThreadForkResponse": 450,
-        "ThreadGoal": 334,
-        "ThreadGoalClearParams": 451,
-        "ThreadGoalClearResponse": 335,
-        "ThreadGoalClearedNotification": 160,
-        "ThreadGoalGetParams": 160,
-        "ThreadGoalGetResponse": 336,
-        "ThreadGoalMutationOrigin": 452,
-        "ThreadGoalSetParams": 453,
-        "ThreadGoalSetResponse": 338,
-        "ThreadGoalStatus": 339,
-        "ThreadGoalUpdatedNotification": 340,
-        "ThreadHistoryMode": 341,
+        "PlanType": 453,
+        "RateLimitReachedType": 287,
+        "RateLimitResetCredit": 288,
+        "RateLimitResetCreditStatus": 289,
+        "RateLimitResetCreditsSummary": 290,
+        "RateLimitResetType": 291,
+        "RateLimitSnapshot": 454,
+        "RateLimitWindow": 293,
+        "ReasoningEffort": 294,
+        "ReasoningEffortOption": 295,
+        "ReasoningItemContent": 296,
+        "ReasoningItemReasoningSummary": 297,
+        "ReasoningSummary": 298,
+        "ReasoningSummaryPartAddedNotification": 299,
+        "ReasoningSummaryTextDeltaNotification": 300,
+        "ReasoningTextDeltaNotification": 301,
+        "RemoteControlConnectionStatus": 302,
+        "RemoteControlStatusChangedNotification": 303,
+        "RequestId": 304,
+        "RequestPermissionProfile": 305,
+        "Resource": 306,
+        "ResourceTemplate": 307,
+        "ResponseItem": 455,
+        "ResponsesApiWebSearchAction": 309,
+        "ReviewDelivery": 456,
+        "ReviewStartParams": 311,
+        "ReviewStartResponse": 312,
+        "ReviewTarget": 313,
+        "SandboxMode": 314,
+        "SandboxPolicy": 315,
+        "SelectedCapabilityRoot": 316,
+        "ServerRequestResolvedNotification": 317,
+        "SessionSource": 318,
+        "Settings": 319,
+        "SkillDependencies": 320,
+        "SkillErrorInfo": 321,
+        "SkillInterface": 322,
+        "SkillMetadata": 457,
+        "SkillScope": 324,
+        "SkillToolDependency": 325,
+        "SkillsChangedNotification": 221,
+        "SkillsListEntry": 326,
+        "SkillsListParams": 327,
+        "SkillsListResponse": 328,
+        "SortDirection": 329,
+        "SpendControlLimitSnapshot": 330,
+        "SubAgentActivityKind": 458,
+        "SubAgentSource": 332,
+        "TextElement": 333,
+        "TextPosition": 334,
+        "TextRange": 335,
+        "Thread": 499,
+        "ThreadActiveFlag": 337,
+        "ThreadBackgroundTerminal": 460,
+        "ThreadBackgroundTerminalsCleanParams": 162,
+        "ThreadBackgroundTerminalsCleanResponse": 221,
+        "ThreadBackgroundTerminalsListParams": 339,
+        "ThreadBackgroundTerminalsListResponse": 340,
+        "ThreadBackgroundTerminalsTerminateParams": 341,
+        "ThreadBackgroundTerminalsTerminateResponse": 342,
+        "ThreadCompactStartParams": 162,
+        "ThreadCompactStartResponse": 221,
+        "ThreadDeleteParams": 162,
+        "ThreadDeleteResponse": 221,
+        "ThreadEnvironment": 461,
+        "ThreadExtra": 221,
+        "ThreadForkParams": 462,
+        "ThreadForkResponse": 463,
+        "ThreadGoal": 345,
+        "ThreadGoalClearParams": 464,
+        "ThreadGoalClearResponse": 346,
+        "ThreadGoalClearedNotification": 162,
+        "ThreadGoalGetParams": 162,
+        "ThreadGoalGetResponse": 347,
+        "ThreadGoalMutationOrigin": 465,
+        "ThreadGoalSetParams": 466,
+        "ThreadGoalSetResponse": 349,
+        "ThreadGoalStatus": 350,
+        "ThreadGoalUpdatedNotification": 351,
+        "ThreadHistoryMode": 352,
         "ThreadId": 123,
-        "ThreadItem": 485,
-        "ThreadListCwdFilter": 343,
-        "ThreadListParams": 486,
-        "ThreadListResponse": 456,
-        "ThreadNameUpdatedNotification": 346,
-        "ThreadReadParams": 347,
-        "ThreadReadResponse": 457,
-        "ThreadReadState": 458,
-        "ThreadResumeParams": 349,
-        "ThreadResumeResponse": 459,
-        "ThreadRevertParams": 460,
-        "ThreadRevertResponse": 461,
-        "ThreadSection": 462,
-        "ThreadSectionAppearance": 463,
-        "ThreadSettings": 487,
-        "ThreadSettingsUpdatedNotification": 352,
-        "ThreadSortKey": 465,
+        "ThreadItem": 500,
+        "ThreadListCwdFilter": 354,
+        "ThreadListParams": 501,
+        "ThreadListResponse": 469,
+        "ThreadNameUpdatedNotification": 357,
+        "ThreadReadParams": 358,
+        "ThreadReadResponse": 470,
+        "ThreadReadState": 471,
+        "ThreadResumeInitialTurnsPageParams": 360,
+        "ThreadResumeParams": 361,
+        "ThreadResumeResponse": 472,
+        "ThreadRevertParams": 473,
+        "ThreadRevertResponse": 474,
+        "ThreadSection": 475,
+        "ThreadSectionAppearance": 476,
+        "ThreadSettings": 502,
+        "ThreadSettingsUpdatedNotification": 364,
+        "ThreadSortKey": 478,
         "ThreadSource": 123,
-        "ThreadSourceKind": 354,
-        "ThreadStartParams": 466,
-        "ThreadStartResponse": 450,
-        "ThreadStartSource": 356,
-        "ThreadStartedNotification": 348,
-        "ThreadStatus": 357,
-        "ThreadStatusChangedNotification": 358,
-        "ThreadTokenUsage": 359,
-        "ThreadTokenUsageUpdatedNotification": 360,
-        "ThreadTurnsListParams": 361,
-        "ThreadTurnsListResponse": 362,
-        "ThreadUnreadPosition": 467,
-        "ThreadUnsubscribeParams": 160,
-        "ThreadUnsubscribeResponse": 363,
-        "ThreadUnsubscribeStatus": 364,
-        "TokenUsageBreakdown": 365,
-        "Tool": 366,
-        "ToolRequestUserInputAnswer": 367,
-        "ToolRequestUserInputOption": 368,
-        "ToolRequestUserInputParams": 468,
-        "ToolRequestUserInputQuestion": 370,
-        "ToolRequestUserInputResponse": 371,
-        "TrustedContacts": 488,
-        "Turn": 469,
-        "TurnCompletedNotification": 373,
-        "TurnEnvironmentParams": 374,
-        "TurnError": 470,
-        "TurnInterruptParams": 158,
-        "TurnInterruptResponse": 214,
-        "TurnItemsView": 376,
-        "TurnModerationMetadataNotification": 377,
-        "TurnPlanStep": 378,
-        "TurnPlanStepStatus": 379,
-        "TurnPlanUpdatedNotification": 380,
-        "TurnStartParams": 381,
-        "TurnStartResponse": 382,
-        "TurnStartedNotification": 373,
-        "TurnStatus": 383,
-        "TurnSteerParams": 471,
-        "TurnSteerResponse": 385,
-        "TurnsPage": 362,
-        "UserInput": 472,
-        "WarningNotification": 387,
-        "WebSearchAction": 388,
-        "WindowsWorldWritableWarningNotification": 389,
-        "WorkspaceRouting": 473
+        "ThreadSourceKind": 366,
+        "ThreadStartParams": 479,
+        "ThreadStartResponse": 463,
+        "ThreadStartSource": 368,
+        "ThreadStartedNotification": 359,
+        "ThreadStatus": 369,
+        "ThreadStatusChangedNotification": 370,
+        "ThreadTokenUsage": 371,
+        "ThreadTokenUsageUpdatedNotification": 372,
+        "ThreadTurnsListParams": 373,
+        "ThreadTurnsListResponse": 374,
+        "ThreadUnreadPosition": 480,
+        "ThreadUnsubscribeParams": 162,
+        "ThreadUnsubscribeResponse": 375,
+        "ThreadUnsubscribeStatus": 376,
+        "TokenUsageBreakdown": 377,
+        "Tool": 378,
+        "ToolRequestUserInputAnswer": 379,
+        "ToolRequestUserInputOption": 380,
+        "ToolRequestUserInputParams": 481,
+        "ToolRequestUserInputQuestion": 382,
+        "ToolRequestUserInputResponse": 383,
+        "TrustedContacts": 503,
+        "Turn": 482,
+        "TurnCompletedNotification": 385,
+        "TurnEnvironmentParams": 386,
+        "TurnError": 483,
+        "TurnInterruptParams": 160,
+        "TurnInterruptResponse": 221,
+        "TurnItemsView": 388,
+        "TurnModerationMetadataNotification": 389,
+        "TurnPlanStep": 390,
+        "TurnPlanStepStatus": 391,
+        "TurnPlanUpdatedNotification": 392,
+        "TurnStartParams": 484,
+        "TurnStartResponse": 394,
+        "TurnStartedNotification": 385,
+        "TurnStatus": 395,
+        "TurnSteerParams": 485,
+        "TurnSteerResponse": 397,
+        "TurnToolOutput": 486,
+        "TurnsPage": 374,
+        "UserInput": 487,
+        "WarningNotification": 399,
+        "WebSearchAction": 400,
+        "WindowsWorldWritableWarningNotification": 401,
+        "WorkspaceRouting": 488
       }
     }
   ]
