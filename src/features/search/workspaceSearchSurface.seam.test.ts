@@ -4,7 +4,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("Workspace Search stylesheet seam", () => {
-  it("loads Search rules from the application entry, not the shell stylesheet", async () => {
+  it("loads Search rules from the app mount, not the shell stylesheet", async () => {
     const [entry, shellCss, surfaceCss] = await Promise.all([
       readFile(resolve("src/app/mountApp.tsx"), "utf8"),
       readFile(resolve("src/styles/global.css"), "utf8"),
