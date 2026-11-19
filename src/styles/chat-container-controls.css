@@ -197,11 +197,3 @@
 .composer__toolbar:has([data-fit~="wrap"]) .composer__mic {
   justify-self: end;
 }
-
-/* Short viewports (such as 200% zoom): the transcript yields its 120px floor
-   so the composer keeps its full draft field and toolbar visible. */
-@media (max-height: 480px) {
-  .agent-chat-pane .chat-surface--agent {
-    grid-template-rows: auto minmax(0, 1fr) auto minmax(0, auto) max-content;
-  }
-}

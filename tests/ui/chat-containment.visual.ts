@@ -996,7 +996,11 @@ test("a harness notice takes its own row above the transcript and composer", asy
   await expect(
     composer.getByRole("list", { name: "Attached context" }),
   ).toBeVisible();
-  await expect(composer.getByRole("alert")).toBeVisible();
+  await expect(
+    surface
+      .getByRole("region", { name: "Composer notices" })
+      .getByRole("alert"),
+  ).toBeVisible();
   const before = (await transcript.boundingBox())!;
   const composerBefore = (await composer.boundingBox())!;
   await page.evaluate(async () => {

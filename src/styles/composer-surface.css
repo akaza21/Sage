@@ -1,9 +1,11 @@
 .chat-dock-frame {
-  display: flex;
+  display: grid;
   min-width: 0;
   min-height: 0;
   max-height: 100%;
-  flex-direction: column;
+  /* The composer keeps its intrinsic minimum; notices and edits can scroll. */
+  grid-template-areas: "notices" "location" "dock" "dock" "dock";
+  grid-template-rows: minmax(0, auto) auto minmax(auto, 1fr) auto auto;
   width: min(
     var(--chat-column-measure),
     calc(
@@ -17,28 +19,32 @@
   );
 }
 
-.chat-dock {
-  display: flex;
-  min-height: 0;
-  flex: 0 1 auto;
-  flex-direction: column;
+.chat-dock-frame > .composer-location {
+  grid-area: location;
 }
 
-.chat-dock > * {
-  flex: none;
+.chat-dock {
+  display: grid;
+  min-height: 0;
+  grid-area: dock;
+  grid-template-areas: "edits" "approval" "composer";
+  grid-template-rows: subgrid;
 }
 
 .chat-dock > .chat-edit-summary-zone {
-  flex: 1 1 auto;
+  grid-area: edits;
 }
 
 .chat-dock > .chat-edit-summary-zone:not(:empty) {
   min-height: 40px;
 }
 
-.chat-dock > .acp-permission-prompt {
+.chat-dock > .acp-permission-prompt,
+.chat-dock > .composer__notice {
   min-height: 0;
-  flex: 0 1 auto;
+  grid-area: approval;
+  align-self: stretch;
+  overflow-y: auto;
 }
 
 .composer {
@@ -53,7 +59,7 @@
       var(--composer-input-min-block-size) +
       var(--composer-toolbar-min-block-size)
   );
-  flex: 0 1 auto;
+  grid-area: composer;
   grid-template-areas: "slots" "body" "toolbar";
   grid-template-rows:
     minmax(var(--composer-slots-min-block-size), auto)
@@ -96,7 +102,7 @@
 
 .composer__notices {
   min-height: 0;
-  max-height: var(--space-8);
+  grid-area: notices;
   overflow-y: auto;
   overscroll-behavior: contain;
 }

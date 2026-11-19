@@ -112,6 +112,34 @@ test("keeps errors above the joined location and composer with harness controls 
   ).toBeNull();
 });
 
+test("shows a three-line notice in full in a tall pane", async ({ page }) => {
+  await page.setViewportSize({ width: 480, height: 880 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const message =
+    "The harness could not complete the request. Sign in again to continue using this chat, then retry your message. Your draft is still available, and you can keep editing it while you reconnect.";
+  await page.evaluate(async (message) => {
+    const { installChatChromeFixture } =
+      await import("/tests/ui/fixtures/chatChromeFixture.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    installChatChromeFixture("codex", true);
+    useWorkbenchStore.setState({ error: message });
+  }, message);
+  const notices = page.getByRole("region", { name: "Composer notices" });
+  await expect(notices.getByRole("alert")).toHaveText(message);
+  const geometry = await notices.evaluate((node) => {
+    const text = document.createRange();
+    text.selectNodeContents(node.querySelector('[role="alert"]')!);
+    return {
+      lines: text.getClientRects().length,
+      scrollHeight: node.scrollHeight,
+      clientHeight: node.clientHeight,
+    };
+  });
+  expect(geometry.lines).toBe(3);
+  expect(geometry.scrollHeight).toBeLessThanOrEqual(geometry.clientHeight);
+});
+
 test("long errors scroll without hiding the input or toolbar in a narrow short pane", async ({
   page,
 }) => {
