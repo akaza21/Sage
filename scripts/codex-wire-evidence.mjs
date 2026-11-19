@@ -146,6 +146,8 @@ const builds = inputs.map(([version, directory]) => {
       if (!(name in used)) {
         if (!definitions[name]) throw new Error(`Missing ${name}`);
         used[name] = clean(definitions[name]);
+        // request.rs::turn_start_with_access_mode emits only these fields;
+        // unlike start/resume, it never receives with_config overrides.
         if (name === "TurnStartParams") {
           const fields = [
             "threadId",
@@ -162,6 +164,8 @@ const builds = inputs.map(([version, directory]) => {
             ),
           );
         }
+        // request.rs::resume emits these fields, with config supplied by
+        // runtime/harness.rs. Omitted override fields are never sent by Sage.
         if (name === "ThreadResumeParams") {
           const fields = [
             "threadId",
@@ -178,14 +182,26 @@ const builds = inputs.map(([version, directory]) => {
             ),
           );
         }
-        // The normalizer reports unknown item kinds as unsupported. It never
-        // reads the native function-call-output body, so it is outside Sage's
-        // wire subset (including its independently evolving audio encoding).
-        if (name === "ThreadItem")
-          used[name].oneOf = used[name].oneOf.filter(
-            (variant) =>
-              variant.properties.type.enum[0] !== "functionCallOutput",
-          );
+        // incoming/items/runtime_rows.rs::function_call_output consumes the
+        // whole output union and text parts. For media/encrypted parts it reads
+        // only the type discriminator, never URLs, file IDs, detail, or bytes.
+        // Retain the variants and their discriminators, excluding only payload
+        // properties and the payload-selection anyOf that Sage never inspects.
+        if (name === "FunctionCallOutputContentItem") {
+          for (const variant of used[name].oneOf) {
+            if (
+              ["input_image", "input_audio", "encrypted_content"].includes(
+                variant.properties.type.enum[0],
+              )
+            ) {
+              variant.properties = { type: variant.properties.type };
+              variant.required = variant.required.filter(
+                (field) => field === "type",
+              );
+              delete variant.anyOf;
+            }
+          }
+        }
         visit(used[name]);
       }
     }

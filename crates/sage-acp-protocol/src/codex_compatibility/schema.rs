@@ -209,6 +209,39 @@ impl Comparison<'_> {
                 }
             }
         }
+        // A new named property overrides additionalProperties, so even an
+        // optional property can reject values previously accepted by an open
+        // request object. Incoming optional fields do not have this direction.
+        if sends && let Some(properties) = right.get("properties").and_then(Value::as_object) {
+            for (field, shape) in properties {
+                if left
+                    .get("properties")
+                    .and_then(|props| props.get(field))
+                    .is_some()
+                {
+                    continue;
+                }
+                let unconstrained = shape == &Value::Bool(true)
+                    || shape.as_object().is_some_and(|object| object.is_empty());
+                // Patterns also admit named members, even when additional
+                // properties are forbidden. Without proving which patterns
+                // match, their accepted values cannot be narrowed safely.
+                let patterned = left
+                    .get("patternProperties")
+                    .and_then(Value::as_object)
+                    .is_some_and(|patterns| !patterns.is_empty());
+                let accepted = unconstrained
+                    || !patterned
+                        && match left.get("additionalProperties") {
+                            Some(Value::Bool(false)) => true,
+                            None | Some(Value::Bool(true)) => false,
+                            Some(previous) => self.compatible(previous, shape, true, visited),
+                        };
+                if !accepted {
+                    return false;
+                }
+            }
+        }
         // New validation constraints cannot silently narrow accepted requests.
         !sends
             || right

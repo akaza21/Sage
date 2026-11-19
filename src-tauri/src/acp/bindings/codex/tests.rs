@@ -2604,7 +2604,7 @@ fn goals_require_schema_proof_or_the_curated_pin() {
     for (version_line, characterisation, supported) in [
         (version_line("codex-cli"), Characterised, true),
         ("codex-cli 0.167.1".to_owned(), Characterised, true),
-        ("codex-cli 0.170.0".to_owned(), Characterised, true),
+        ("codex-cli 0.170.0".to_owned(), NewerThanTested, false),
         ("codex-cli 99.0.0".to_owned(), NewerThanTested, false),
         ("codex-cli 0.1.0".to_owned(), Uncharacterised, false),
     ] {

@@ -29,10 +29,10 @@
   {
     "version": "0.170.0",
     "capabilities": {
-      "sessionExtensions": true,
-      "accessPolicy": true,
-      "goals": true,
-      "browser": true
+      "sessionExtensions": false,
+      "accessPolicy": false,
+      "goals": false,
+      "browser": false
     }
   }
 ]
