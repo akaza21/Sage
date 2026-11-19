@@ -7,9 +7,10 @@ afterEach(() => {
   vi.resetModules();
 });
 
-// Visual fixtures and the native shell rely on the app being mounted by the
-// time the entry module has evaluated, before the page's load event.
-it("mounts synchronously during entry evaluation", async () => {
+// Checks only that the entry calls mountApp synchronously. The rendered
+// startup ordering that visual fixtures rely on is covered in a real browser
+// by the visual suite (resource, right-pane-chrome and ap-f-right-pane).
+it("calls mountApp synchronously during entry evaluation", async () => {
   document.body.innerHTML = '<div id="root"></div>';
   const root = document.getElementById("root")!;
   let contentAfterEntry: string | null | undefined;
