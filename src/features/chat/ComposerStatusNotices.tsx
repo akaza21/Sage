@@ -34,8 +34,24 @@ export function ComposerStatusNotices({
   | "missingBindingNotice"
   | "discoveryPhase"
 > & { imageStatus: string | null }) {
+  const showMissingBinding =
+    missingBindingNotice && !EXPLAINED_PHASES.includes(discoveryPhase);
+  if (
+    !workbenchError &&
+    !chatError &&
+    !signInHarness &&
+    !imageStatus &&
+    !showMissingBinding
+  )
+    return null;
+
   return (
-    <>
+    <div
+      className="composer__notices"
+      role="region"
+      aria-label="Composer notices"
+      tabIndex={0}
+    >
       {workbenchError ? (
         <div className="composer__error" role="alert">
           {workbenchError}
@@ -66,11 +82,11 @@ export function ComposerStatusNotices({
           {imageStatus}
         </div>
       ) : null}
-      {missingBindingNotice && !EXPLAINED_PHASES.includes(discoveryPhase) ? (
+      {showMissingBinding ? (
         <div className="composer__notice">
           No reviewed local binding is available for this harness.
         </div>
       ) : null}
-    </>
+    </div>
   );
 }

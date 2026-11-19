@@ -94,6 +94,13 @@
   overscroll-behavior: contain;
 }
 
+.composer__notices {
+  min-height: 0;
+  max-height: var(--space-8);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
 .composer__input-area {
   position: relative;
   display: flex;

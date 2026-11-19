@@ -112,6 +112,67 @@ test("keeps errors above the joined location and composer with harness controls 
   ).toBeNull();
 });
 
+test("long errors scroll without hiding the input or toolbar in a narrow short pane", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 480, height: 420 });
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  const message = "The harness could not complete the request. "
+    .repeat(48)
+    .slice(0, 2048);
+  await page.evaluate(async (message) => {
+    const { installChatChromeFixture } =
+      await import("/tests/ui/fixtures/chatChromeFixture.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    installChatChromeFixture("codex", true);
+    useWorkbenchStore.setState((state) => ({
+      chatUiById: {
+        ...state.chatUiById,
+        [state.activeTabId!]: {
+          ...state.chatUiById[state.activeTabId!],
+          error: message,
+        },
+      },
+    }));
+  }, message);
+  const dock = page.locator(".chat-dock");
+  const frame = page.locator(".chat-dock-frame");
+  await expect(frame.getByRole("alert")).toHaveText(message);
+  const input = dock.getByRole("combobox", { name: "Message agent" });
+  const toolbar = dock.locator(".composer__toolbar");
+  await input.fill("Try again");
+  const bounds = (await dock.boundingBox())!;
+  for (const control of [input, toolbar]) {
+    const box = (await control.boundingBox())!;
+    expect(box.y).toBeGreaterThanOrEqual(bounds.y);
+    expect(box.y + box.height).toBeLessThanOrEqual(bounds.y + bounds.height);
+    expect(box.x).toBeGreaterThanOrEqual(bounds.x);
+    expect(box.x + box.width).toBeLessThanOrEqual(bounds.x + bounds.width);
+  }
+  await expect(input).toHaveValue("Try again");
+  await dock
+    .getByRole("button", { name: "Send message", exact: true })
+    .click({ trial: true });
+  const notices = frame.getByRole("region", { name: "Composer notices" });
+  expect(
+    await notices.evaluate((node) => node.scrollHeight > node.clientHeight),
+  ).toBe(true);
+  await notices.focus();
+  await expect(notices).toBeFocused();
+  await page.keyboard.press("End");
+  await expect
+    .poll(() => notices.evaluate((node) => node.scrollTop))
+    .toBeGreaterThan(0);
+  const frameBox = (await frame.boundingBox())!;
+  const surfaceBox = (await page.locator(".chat-surface").boundingBox())!;
+  expect(frameBox.height).toBeLessThanOrEqual(surfaceBox.height * 0.6 + 1);
+  expect(frameBox.y + frameBox.height).toBeLessThanOrEqual(
+    surfaceBox.y + surfaceBox.height,
+  );
+  await expectNoViewportOverflow(page);
+});
+
 test("keeps title-bar height stable and omits an empty Editor tab row", async ({
   page,
 }) => {

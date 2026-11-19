@@ -308,15 +308,27 @@ describe("composer image input", () => {
       screen.getByRole("combobox", { name: "Message agent" }),
     );
     const error = screen.getByRole("alert");
+    const notices = screen.getByRole("region", { name: "Composer notices" });
     const location = screen.getByRole("group", { name: "Chat location" });
     expect(error).toHaveTextContent("Retry the request");
-    expect(error.nextElementSibling).toBe(location);
+    expect(notices).toContainElement(error);
+    expect(notices).toHaveAttribute("tabindex", "0");
+    notices.focus();
+    expect(notices).toHaveFocus();
+    expect(notices.nextElementSibling).toBe(location);
     expect(location.nextElementSibling).toContainElement(form);
     expect(form.closest(".chat-dock")).not.toContainElement(error);
     expect(body).not.toContainElement(form.querySelector(".composer__toolbar"));
     expect(form.querySelector(".composer__toolbar")?.parentElement).toBe(form);
     rerenderComposer({ hidden: true });
     expect(screen.queryByRole("alert")).toBeNull();
+    expect(
+      screen.queryByRole("region", { name: "Composer notices" }),
+    ).toBeNull();
+    rerenderComposer({ workbenchError: null });
+    expect(
+      screen.queryByRole("region", { name: "Composer notices" }),
+    ).toBeNull();
   });
 
   it("keeps + open with nothing to attach refused in place, and refuses a dropped image", async () => {
