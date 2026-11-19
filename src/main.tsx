@@ -1,3 +1,8 @@
+// Must stay the first import: it removes the pairing code from the address
+// before the app graph below evaluates.
+import { takePairingCode } from "./devBridge/pairingCode";
+import { mountApp } from "./app/mountApp";
+
 const element = document.getElementById("root");
 
 if (!element) {
@@ -5,7 +10,7 @@ if (!element) {
 }
 const root = element;
 
-async function mount() {
+function mount() {
   if (import.meta.env.DEV) {
     const query = new URLSearchParams(location.search);
     if (query.has("bridge-host")) {
@@ -14,26 +19,28 @@ async function mount() {
       return;
     }
     if (query.has("bridge")) {
-      const pairingCode = location.hash.slice(1);
-      history.replaceState(
-        history.state,
-        "",
-        location.pathname + location.search,
-      );
-      const { installBrowserBridge } =
-        await import("./devBridge/installBrowserBridge");
-      await installBrowserBridge(pairingCode);
-      const { installWorkbenchNavigationGuard } =
-        await import("./app/installWorkbenchNavigationGuard");
-      const dispose = installWorkbenchNavigationGuard();
-      import.meta.hot?.dispose(dispose);
+      void mountBrowserBridge().catch((error: unknown) => {
+        root.style.color = "#ddd";
+        root.textContent =
+          error instanceof Error ? error.message : "Sage could not start.";
+      });
+      return;
     }
   }
-  await import("./main.desktop");
+  mountApp(root);
 }
 
-void mount().catch((error: unknown) => {
-  root.style.color = "#ddd";
-  root.textContent =
-    error instanceof Error ? error.message : "Sage could not start.";
-});
+async function mountBrowserBridge() {
+  if (import.meta.env.DEV) {
+    const { installBrowserBridge } =
+      await import("./devBridge/installBrowserBridge");
+    await installBrowserBridge(takePairingCode());
+    const { installWorkbenchNavigationGuard } =
+      await import("./app/installWorkbenchNavigationGuard");
+    const dispose = installWorkbenchNavigationGuard();
+    import.meta.hot?.dispose(dispose);
+    mountApp(root);
+  }
+}
+
+mount();
