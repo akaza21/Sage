@@ -8,6 +8,8 @@ use serde_json::{Map, Value, json};
 
 use super::schema::{Evidence, SchemaBuild};
 
+mod validation;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub(super) struct SentRequests {
@@ -30,12 +32,17 @@ impl SentRequests {
         schema: &Value,
         sent: &Value,
     ) -> Option<Value> {
-        Projection {
+        let projection = Projection {
             evidence,
             baseline,
             open_objects: &self.open_objects,
+        };
+        // Keeping a scalar's schema domain must not hide an invalid capture.
+        // Validate the complete serialized form before projecting its shape.
+        if !projection.matches(schema, sent, 0) {
+            return None;
         }
-        .project(schema, sent, "", 0)
+        projection.project(schema, sent, "", 0)
     }
 }
 
@@ -55,85 +62,6 @@ impl Projection<'_> {
         } else {
             Some(schema)
         }
-    }
-
-    // Only selects union branches; validation constraints are retained below,
-    // never inferred from the particular scalar value of an example.
-    fn matches(&self, schema: &Value, value: &Value, depth: usize) -> bool {
-        if depth > 64 {
-            return false;
-        }
-        let Some(schema) = self.resolve(schema) else {
-            return false;
-        };
-        if schema.get("$ref").is_some() {
-            return self.matches(schema, value, depth + 1);
-        }
-        if schema == &Value::Bool(false) {
-            return false;
-        }
-        if let Some(variants) = schema.get("enum").and_then(Value::as_array)
-            && !variants.contains(value)
-        {
-            return false;
-        }
-        if let Some(kind) = schema.get("type") {
-            let compatible = |kind: &Value| {
-                kind.as_str().is_some_and(|kind| match kind {
-                    "null" => value.is_null(),
-                    "object" => value.is_object(),
-                    "array" => value.is_array(),
-                    "string" => value.is_string(),
-                    "boolean" => value.is_boolean(),
-                    "integer" => value.is_i64() || value.is_u64(),
-                    "number" => value.is_number(),
-                    _ => false,
-                })
-            };
-            if !kind
-                .as_array()
-                .map_or_else(|| compatible(kind), |kinds| kinds.iter().any(compatible))
-            {
-                return false;
-            }
-        }
-        for key in ["anyOf", "oneOf"] {
-            if let Some(variants) = schema.get(key).and_then(Value::as_array)
-                && !variants
-                    .iter()
-                    .any(|variant| self.matches(variant, value, depth + 1))
-            {
-                return false;
-            }
-        }
-        if let Some(parts) = schema.get("allOf").and_then(Value::as_array)
-            && !parts
-                .iter()
-                .all(|part| self.matches(part, value, depth + 1))
-        {
-            return false;
-        }
-        if let Some(fields) = value.as_object() {
-            if let Some(required) = schema.get("required").and_then(Value::as_array)
-                && !required.iter().all(|field| {
-                    field
-                        .as_str()
-                        .is_some_and(|field| fields.contains_key(field))
-                })
-            {
-                return false;
-            }
-            if let Some(properties) = schema.get("properties").and_then(Value::as_object)
-                && !properties.iter().all(|(key, schema)| {
-                    fields
-                        .get(key)
-                        .is_none_or(|value| self.matches(schema, value, depth + 1))
-                })
-            {
-                return false;
-            }
-        }
-        true
     }
 
     fn project(&self, schema: &Value, sent: &Value, path: &str, depth: usize) -> Option<Value> {

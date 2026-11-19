@@ -40,6 +40,140 @@ fn overlapping_exclusive_request_branches_cannot_prove_compatibility() {
 }
 
 #[test]
+fn overlapping_exclusive_reply_branches_cannot_prove_compatibility() {
+    let mut evidence = Evidence::recorded();
+    let mut build = evidence.builds[2].clone();
+    let mut shape = evidence.schemas[build.definitions["DynamicToolCallOutputContentItem"]].clone();
+    shape["oneOf"].as_array_mut().unwrap().push(json!({}));
+    replace_definition(
+        &mut evidence,
+        &mut build,
+        "DynamicToolCallOutputContentItem",
+        shape,
+    );
+    assert!(
+        evidence
+            .failures(&build)
+            .contains(&"reply:item/tool/call".to_owned())
+    );
+}
+
+#[test]
+fn captured_scalar_values_must_match_the_baseline_enum() {
+    assert_invalid_captured_goal_request("/method", json!("invalid-method"));
+    assert_invalid_captured_goal_request("/params/status", json!("invalid-status"));
+}
+
+#[test]
+fn captured_scalar_values_must_match_the_baseline_type() {
+    assert_invalid_captured_goal_request("/params/threadId", json!(42));
+    assert_invalid_captured_goal_request("/params/status", json!(42));
+}
+
+#[test]
+fn captured_scalar_values_must_satisfy_baseline_bounds() {
+    assert_invalid_captured_request("client:model/list", "/params/limit", json!(-1));
+    assert_invalid_captured_request("client:turn/start", "/params/effort", json!(""));
+}
+
+fn assert_invalid_captured_goal_request(pointer: &str, value: Value) {
+    assert_invalid_captured_request("client:thread/goal/set", pointer, value);
+}
+
+fn assert_invalid_captured_request(method: &str, pointer: &str, value: Value) {
+    let evidence = Evidence::recorded();
+    let baseline = &evidence.builds[1];
+    let sent = super::sent::SentRequests::recorded();
+    let schema = &evidence.schemas[baseline.wire[method]];
+    let mut request = sent.requests[method]
+        .iter()
+        .find(|request| request.pointer(pointer).is_some())
+        .unwrap()
+        .clone();
+    assert!(
+        sent.project(&evidence, baseline, schema, &request)
+            .is_some()
+    );
+    *request.pointer_mut(pointer).unwrap() = value;
+    assert!(
+        sent.project(&evidence, baseline, schema, &request)
+            .is_none()
+    );
+}
+
+#[test]
+fn captured_containers_must_satisfy_baseline_constraints() {
+    let evidence = Evidence::recorded();
+    let baseline = &evidence.builds[1];
+    let sent = super::sent::SentRequests::recorded();
+    for (schema, valid, invalid) in [
+        (
+            json!({"type":"array","items":{"type":"integer"}}),
+            json!([1]),
+            json!(["one"]),
+        ),
+        (
+            json!({"type":"object","additionalProperties":{"type":"integer"}}),
+            json!({"count":1}),
+            json!({"count":"one"}),
+        ),
+        (
+            json!({"type":"object","properties":{"kept":{"type":"integer"}},"additionalProperties":false}),
+            json!({"kept":1}),
+            json!({"kept":1,"extra":2}),
+        ),
+        (
+            json!({"oneOf":[{"type":"integer"},{}]}),
+            json!("one"),
+            json!(1),
+        ),
+        (
+            json!({"type":"object","patternProperties":{"^mcp_":{"type":"object"}},"additionalProperties":false}),
+            json!({"mcp_server":{}}),
+            json!({"server":{}}),
+        ),
+        (
+            json!({"type":"object","patternProperties":{"^mcp_":{"type":"object"},"server$":{"properties":{"port":{"type":"integer"}}}}}),
+            json!({"mcp_server":{"port":1}}),
+            json!({"mcp_server":{"port":"one"}}),
+        ),
+    ] {
+        assert!(
+            sent.project(&evidence, baseline, &schema, &valid).is_some(),
+            "{schema}: {valid}"
+        );
+        assert!(
+            sent.project(&evidence, baseline, &schema, &invalid)
+                .is_none(),
+            "{schema}: {invalid}"
+        );
+    }
+}
+
+#[test]
+fn unsupported_baseline_constraints_cannot_prove_captures() {
+    let evidence = Evidence::recorded();
+    let baseline = &evidence.builds[1];
+    let sent = super::sent::SentRequests::recorded();
+    for (schema, value) in [
+        (json!({"type":"integer","not":{"enum":[1]}}), json!(1)),
+        (
+            json!({"oneOf":[{"type":"integer"},{"maximum":1}]}),
+            json!(1),
+        ),
+        (
+            json!({"type":"object","patternProperties":{"^mcp_.*$":{"type":"object"}},"additionalProperties":false}),
+            json!({"mcp_server":{}}),
+        ),
+    ] {
+        assert!(
+            sent.project(&evidence, baseline, &schema, &value).is_none(),
+            "{schema}: {value}"
+        );
+    }
+}
+
+#[test]
 fn optional_properties_sage_never_sends_do_not_degrade_requests() {
     for (name, method) in [
         ("ModelListParams", "client:model/list"),

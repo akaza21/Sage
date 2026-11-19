@@ -1,24 +1,34 @@
-//! Exclusive request unions require both admission and non-overlap.
+//! Outgoing unions require admission and, for oneOf, non-overlap.
 use super::{BTreeSet, Comparison, ComparisonMode, Value};
 
 impl Comparison<'_> {
-    pub(super) fn exclusive(
+    pub(super) fn union_accepts(
         &self,
         expected: &Value,
         candidates: &[Value],
+        exclusive: bool,
+        mode: ComparisonMode,
+        visited: &BTreeSet<(String, String)>,
+    ) -> bool {
+        if exclusive && mode != ComparisonMode::Received {
+            return self.exclusive(expected, candidates, mode, visited);
+        }
+        candidates
+            .iter()
+            .any(|candidate| self.compare(expected, candidate, mode, &mut visited.clone()))
+    }
+
+    fn exclusive(
+        &self,
+        expected: &Value,
+        candidates: &[Value],
+        mode: ComparisonMode,
         visited: &BTreeSet<(String, String)>,
     ) -> bool {
         let admitted = candidates
             .iter()
             .enumerate()
-            .filter(|(_, candidate)| {
-                self.compare(
-                    expected,
-                    candidate,
-                    ComparisonMode::SerializedRequest,
-                    &mut visited.clone(),
-                )
-            })
+            .filter(|(_, candidate)| self.compare(expected, candidate, mode, &mut visited.clone()))
             .map(|(index, _)| index)
             .collect::<Vec<_>>();
         let [selected] = admitted.as_slice() else {

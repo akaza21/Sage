@@ -223,12 +223,13 @@ impl Comparison<'_> {
                 .and_then(Value::as_array)
             && actual.as_object().is_some_and(|object| object.len() == 1)
         {
-            if actual.get("oneOf").is_some() {
-                return self.exclusive(expected, variants, visited);
-            }
-            return variants
-                .iter()
-                .any(|variant| self.compare(expected, variant, mode, &mut visited.clone()));
+            return self.union_accepts(
+                expected,
+                variants,
+                actual.get("oneOf").is_some(),
+                mode,
+                visited,
+            );
         }
         if let Some(reference) = expected.get("$ref").and_then(Value::as_str) {
             let Some(other) = actual.get("$ref").and_then(Value::as_str) else {
@@ -339,9 +340,7 @@ impl Comparison<'_> {
                         return false;
                     }
                     if !variants.iter().all(|variant| {
-                        candidates.iter().any(|candidate| {
-                            self.compare(variant, candidate, mode, &mut visited.clone())
-                        })
+                        self.union_accepts(variant, candidates, key == "oneOf", mode, visited)
                     }) {
                         return false;
                     }
