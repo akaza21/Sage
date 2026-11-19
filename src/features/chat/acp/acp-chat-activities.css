@@ -69,8 +69,13 @@
 .acp-resource-list {
   display: grid;
   gap: var(--space-1);
-  margin: var(--space-2) 0 0;
-  padding-left: var(--space-6);
+  margin: var(--space-1) 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acp-resource-list li {
+  min-width: 0;
 }
 
 .acp-activity__edit-reference,
@@ -117,6 +122,21 @@
   max-height: min(60vh, 520px);
   object-fit: contain;
   border-radius: var(--radius-sm);
+}
+
+.acp-image--thumbnail {
+  width: var(--transcript-thumbnail-size);
+  height: var(--transcript-thumbnail-size);
+  padding: 0;
+  border-radius: var(--radius-lg);
+}
+
+.acp-image--thumbnail .acp-image__trigger,
+.acp-image--thumbnail .acp-image__src {
+  width: 100%;
+  height: 100%;
+  max-height: var(--transcript-thumbnail-size);
+  object-fit: contain;
 }
 
 .acp-image__dialog {

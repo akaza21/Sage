@@ -242,14 +242,12 @@ describe("ToolActivityRollup", () => {
         />
       </ChatTranscriptTurnSummary>,
     );
-    const worked = document.querySelector<HTMLDetailsElement>(
-      ".chat-transcript-work",
-    )!;
-    expect(worked.open).toBe(false);
+    const worked = screen.getByRole("button", { name: /^Worked for/ });
+    expect(worked).toHaveAttribute("aria-expanded", "false");
     expect(document.querySelector(".acp-tool-rollup")).toBeNull();
     expect(screen.queryByText("Shell")).toBeNull();
-    fireEvent.click(worked.querySelector("summary")!);
-    expect(worked.open).toBe(true);
+    fireEvent.click(worked);
+    expect(worked).toHaveAttribute("aria-expanded", "true");
     let row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
     expect(row.open).toBe(false);
     expect(row.querySelector(".acp-tool-rollup__chevron")).not.toBeNull();
@@ -259,9 +257,9 @@ describe("ToolActivityRollup", () => {
     expect(screen.getByLabelText("Command line").textContent).toBe(
       "$ npm run check",
     );
-    fireEvent.click(worked.querySelector("summary")!);
+    fireEvent.click(worked);
     expect(screen.queryByText("Shell")).toBeNull();
-    fireEvent.click(worked.querySelector("summary")!);
+    fireEvent.click(worked);
     row = document.querySelector<HTMLDetailsElement>(".acp-tool-rollup")!;
     expect(row.open).toBe(false);
     expect(screen.queryByText("Shell")).toBeNull();
@@ -611,7 +609,7 @@ describe("ToolActivityRollup", () => {
     row.open = true;
     fireEvent(row, new Event("toggle"));
     const commands = row.querySelectorAll<HTMLDetailsElement>(
-      ".acp-tool-rollup__items > .acp-tool-rollup",
+      ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
     );
     expect(
       [...commands].map(
@@ -1334,7 +1332,7 @@ describe("ToolActivityRollup", () => {
 
     expect(screen.queryByLabelText("Command line")).toBeNull();
     const command = document.querySelector<HTMLDetailsElement>(
-      ".acp-tool-rollup__items > .acp-tool-rollup",
+      ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
     )!;
     expect(command.querySelector("summary")).toHaveTextContent(
       "Ran npm run build",
@@ -1472,7 +1470,7 @@ describe("ToolActivityRollup", () => {
     expect(disclosure.open).toBe(true);
     expect(disclosure).toHaveAttribute("open");
     const rows = disclosure.querySelectorAll<HTMLDetailsElement>(
-      ".acp-tool-rollup__items > .acp-tool-rollup",
+      ".acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
     );
     expect(
       [...rows].map(

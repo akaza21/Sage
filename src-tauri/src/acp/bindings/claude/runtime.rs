@@ -28,9 +28,9 @@ use sage_acp_protocol::{
 use sage_core::limits::LIMITS;
 
 use super::{
-    AdapterEvent, CLAUDE_PROFILE_ID, ClaudeAuthState, ClaudeCapabilityOffer, ClaudeTranslator,
-    PromptTerminal, admission::AdmittedClaudeBinding, decode_auth_required_error,
-    decode_auth_status_update, negotiate_capabilities, wire::decode_frame,
+    AdapterEvent, CLAUDE_PROFILE_ID, ClaudeCapabilityOffer, ClaudeTranslator, PromptTerminal,
+    admission::AdmittedClaudeBinding, is_auth_required_error, is_auth_status_update,
+    negotiate_capabilities, wire::decode_frame,
 };
 
 mod browse_host;
@@ -64,7 +64,6 @@ pub(crate) struct ClaudeRuntime {
     default_model: Option<sage_acp_protocol::intent::ModelId>,
     pending: BTreeMap<u64, PendingRequest>,
     active: Option<ActiveSession>,
-    auth: ClaudeAuthState,
     denials: BTreeMap<String, DenialRecord>,
     next_denial_sequence: u64,
     delivery_unknown: Option<DeliveryUnknown>,
@@ -182,7 +181,6 @@ impl ClaudeRuntime {
             default_model: None,
             pending: BTreeMap::new(),
             active: None,
-            auth: ClaudeAuthState::default(),
             denials: BTreeMap::new(),
             next_denial_sequence: 0,
             delivery_unknown: None,

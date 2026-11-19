@@ -1263,7 +1263,7 @@ test("the projection reports a collapsed rollup aggregate that hides its tool ca
   const dom = new JSDOM(
     surfaceMarkup([
       turnMarkup("cancel", "Running", [
-        '<details class="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup" data-activity-kind="read" data-activity-state="inProgress"><summary>Read activity</summary></details>',
+        '<details class="acp-activity acp-tool-rollup" data-activity-kind="read" data-activity-state="inProgress"><summary>Read activity</summary></details>',
       ]),
     ]),
   );
@@ -1284,7 +1284,7 @@ test("an expanded rollup reports its children so the exact card rule still decid
   const dom = new JSDOM(
     surfaceMarkup([
       turnMarkup("cancel", "Running", [
-        '<details open class="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup" data-activity-kind="read" data-activity-state="inProgress"><summary>Read activity</summary>' +
+        '<details open class="acp-activity acp-tool-rollup" data-activity-kind="read" data-activity-state="inProgress"><summary>Read activity</summary>' +
           cardMarkup("item-hot", "inProgress") +
           cardMarkup("item-cold", "completed") +
           "</details>",

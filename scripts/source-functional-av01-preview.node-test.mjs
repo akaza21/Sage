@@ -1741,17 +1741,16 @@ function mountReadOnlyTurn(document, clicks, rollups = 1) {
     fileTurnMarkup({
       id: "turn-3",
       ordinal: 3,
-      items: `<article class="acp-message acp-message--user" data-item-id="item-user" data-message-role="user"><header class="acp-message__meta"><span class="acp-message__role">You</span></header><div class="acp-markdown">${RENDERED_READ_ONLY_PROMPT}</div></article><details class="chat-transcript-work"><summary>Worked for 2s<svg aria-hidden="true"></svg></summary></details><article class="acp-message acp-message--assistant" data-item-id="item-answer" data-message-role="assistant"><div class="acp-markdown"><p>Read package.json.</p></div></article>`,
+      items: `<article class="acp-message acp-message--user" data-item-id="item-user" data-message-role="user"><div class="acp-markdown">${RENDERED_READ_ONLY_PROMPT}</div></article><div class="chat-transcript-work"><button type="button" class="chat-transcript-work__heading chat-transcript-work__toggle" aria-expanded="false">Worked for 2s<svg aria-hidden="true"></svg></button></div><article class="acp-message acp-message--assistant" data-item-id="item-answer" data-message-role="assistant"><div class="acp-markdown"><p>Read package.json.</p></div></article>`,
     }),
   );
-  const worked = projection.querySelector("details.chat-transcript-work");
-  worked.querySelector("summary").addEventListener("click", (event) => {
-    event.preventDefault();
+  const worked = projection.querySelector(".chat-transcript-work__toggle");
+  worked.addEventListener("click", () => {
     clicks.worked += 1;
-    worked.open = true;
-    worked.insertAdjacentHTML(
+    worked.setAttribute("aria-expanded", "true");
+    worked.parentElement.insertAdjacentHTML(
       "afterend",
-      `<div class="chat-transcript-work__groups">${'<details class="acp-activity-card acp-tool-rollup" data-activity-kind="read" data-activity-state="completed"><summary aria-label="Read package.json, Completed">Read package.json</summary></details>'.repeat(rollups)}</div>`,
+      `<div class="chat-transcript-work__groups">${'<details class="acp-activity acp-tool-rollup" data-activity-kind="read" data-activity-state="completed"><summary aria-label="Read package.json, Completed">Read package.json</summary></details>'.repeat(rollups)}</div>`,
     );
     for (const rollup of document.querySelectorAll("details.acp-tool-rollup"))
       rollup.querySelector("summary").addEventListener("click", (toggle) => {
@@ -1760,7 +1759,7 @@ function mountReadOnlyTurn(document, clicks, rollups = 1) {
         rollup.open = true;
         rollup.insertAdjacentHTML(
           "beforeend",
-          '<div class="acp-tool-rollup__items"><article class="acp-activity-card acp-tool-compact" data-acp-item-id="item-read" data-activity-kind="read" data-activity-state="completed" role="group" aria-label="Read package.json"><ul class="acp-resource-list" aria-label="Referenced resources"><li><button type="button" class="acp-resource-action" aria-label="Open file package.json" data-resource-root-id="fixture-root" data-resource-relative-path="package.json"><span>package.json</span></button></li></ul></article></div>',
+          '<div class="acp-tool-rollup__items"><article class="acp-activity acp-tool-compact" data-acp-item-id="item-read" data-activity-kind="read" data-activity-state="completed" role="group" aria-label="Read package.json"><ul class="acp-resource-list" aria-label="Referenced resources"><li><button type="button" class="acp-resource-action" aria-label="Open file package.json" data-resource-root-id="fixture-root" data-resource-relative-path="package.json"><span>package.json</span></button></li></ul></article></div>',
         );
         rollup
           .querySelector("button.acp-resource-action")

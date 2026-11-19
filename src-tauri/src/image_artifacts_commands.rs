@@ -1,5 +1,6 @@
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sage_core::error::{AppError, AppResult};
+use sage_core::limits::IMAGE_OWNER_ID_BYTES;
 use serde::Deserialize;
 use tauri::State;
 
@@ -166,9 +167,9 @@ pub(crate) fn prepare_upload(mut request: UploadChatImageRequest) -> AppResult<P
         ));
     }
     if request.project_id.is_empty()
-        || request.project_id.len() > 512
+        || request.project_id.len() > IMAGE_OWNER_ID_BYTES
         || request.chat_id.is_empty()
-        || request.chat_id.len() > 512
+        || request.chat_id.len() > IMAGE_OWNER_ID_BYTES
     {
         return Err(AppError::InvalidRequest("image owner is invalid".into()));
     }

@@ -90,6 +90,23 @@ where
         }
     }
 
+    /// Fails the active turn whose prompt the harness refused for sign-in
+    /// before it was written, so releasing the runtime afterwards finds the
+    /// turn already settled with the harness's reason.
+    pub(crate) async fn fail_unwritten_prompt_for_sign_in(
+        &mut self,
+        now_millis: i64,
+    ) -> Result<(), DriverError> {
+        match self
+            .pump
+            .fail_unwritten_prompt_for_sign_in(now_millis)
+            .await
+        {
+            Ok(()) => Ok(()),
+            Err(error) => Err(self.pump_error(error)),
+        }
+    }
+
     pub(super) fn pump_error(&mut self, error: AdapterPumpError) -> DriverError {
         if matches!(
             error,

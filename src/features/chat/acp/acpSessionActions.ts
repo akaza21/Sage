@@ -181,13 +181,13 @@ export function createAcpSessionActions(
     });
   };
 
-  const close = (): Promise<AcpActionOutcome> => {
+  const finishSession = (close: boolean): Promise<AcpActionOutcome> => {
     const captured = dependencies.getContext();
     const session = captured ? currentSession(captured.page) : null;
     if (
       !captured ||
       !session?.runtimeEpoch ||
-      !session.capabilities.closeSession
+      Boolean(session.capabilities.closeSession) !== close
     ) {
       return Promise.resolve("rejected");
     }
@@ -197,49 +197,16 @@ export function createAcpSessionActions(
         return "ignoredStale";
       }
       const current = currentSession(context.page);
-      if (!current?.runtimeEpoch || !current.capabilities.closeSession) {
+      if (
+        !current?.runtimeEpoch ||
+        Boolean(current.capabilities.closeSession) !== close
+      ) {
         return "rejected";
       }
       try {
-        const result = await dependencies.closeSession({
-          ...captured.scope,
-          projectGeneration: captured.commandProjectGeneration,
-          expectedProjectionRevision: context.page.projectionRevision,
-          clientIntentId: dependencies.nextIntentId(),
-          sessionId: current.id,
-          runtimeEpoch: current.runtimeEpoch,
-        });
-        return dependencies.apply(captured, result)
-          ? "applied"
-          : "ignoredStale";
-      } catch (value) {
-        updateState({ error: typedError(value) });
-        return "rejected";
-      }
-    });
-  };
-
-  const end = (): Promise<AcpActionOutcome> => {
-    const captured = dependencies.getContext();
-    const session = captured ? currentSession(captured.page) : null;
-    if (
-      !captured ||
-      !session?.runtimeEpoch ||
-      session.capabilities.closeSession
-    ) {
-      return Promise.resolve("rejected");
-    }
-    return dependencies.enqueue(captured, "chat", async (updateState) => {
-      const context = dependencies.getContext();
-      if (!dependencies.sameScope(context, captured)) {
-        return "ignoredStale";
-      }
-      const current = currentSession(context.page);
-      if (!current?.runtimeEpoch || current.capabilities.closeSession) {
-        return "rejected";
-      }
-      try {
-        const result = await dependencies.endSession({
+        const result = await (
+          close ? dependencies.closeSession : dependencies.endSession
+        )({
           ...captured.scope,
           projectGeneration: captured.commandProjectGeneration,
           expectedProjectionRevision: context.page.projectionRevision,
@@ -365,8 +332,8 @@ export function createAcpSessionActions(
   return {
     steer,
     cancel,
-    close,
-    end,
+    close: () => finishSession(true),
+    end: () => finishSession(false),
     setSessionMode: (modeId: string) => configure({ modeId }),
     setSessionConfigOption: (configId: string, value: AcpConfigValue) =>
       configure({ configId, value }),

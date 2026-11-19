@@ -175,9 +175,9 @@ test("CP-17 tool rows: an integration group reads in Codex grammar and scrolls i
       },
     ],
   });
-  await page.locator(".chat-transcript-work > summary").click();
+  await page.locator(".chat-transcript-work__toggle").click();
   const group = page.locator(
-    ".chat-transcript-work__groups > .acp-tool-rollup",
+    ".chat-transcript-work__groups > .chat-transcript-work__row > .acp-tool-rollup",
   );
   await expect(
     group.locator(":scope > summary .acp-tool-rollup__label"),
@@ -193,7 +193,7 @@ test("CP-17 tool rows: an integration group reads in Codex grammar and scrolls i
     group.locator(":scope > summary .acp-tool-rollup__chevron"),
   ).toHaveCSS("transform", /matrix\(0, 1, -1, 0|matrix\(6\.1\d*e-17, 1, -1/);
   const members = group.locator(
-    ":scope > .acp-tool-rollup__items > .acp-tool-rollup",
+    ":scope > .acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
   );
   await expect(
     members.locator(":scope > summary .acp-tool-rollup__label"),

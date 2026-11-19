@@ -65,7 +65,7 @@ export function ToolActivityRollup({
   const progress = liveToolProgress(current);
   return (
     <details
-      className="acp-activity-card acp-activity-card--tool-rollup acp-tool-rollup"
+      className="acp-activity acp-tool-rollup"
       data-activity-kind={rollup.kind}
       data-activity-state={state}
       open={expanded}
@@ -103,32 +103,32 @@ export function ToolActivityRollup({
         </span>
       </summary>
       {expanded ? (
-        <div className="acp-tool-rollup__items">
-          {rollup.items.map((item) =>
-            rollup.items.length > 1 && rollup.kind !== "subagent" ? (
-              <ToolActivityRollup
-                key={item.id}
-                rollup={{
-                  kind: item.payload.presentation.kind,
-                  commandActivity:
-                    item.payload.presentation.kind === "execute"
-                      ? item.payload.presentation.activity
-                      : "ordinary",
-                  items: [item],
-                }}
-                interactive={interactive}
-                onOpenResource={onOpenResource}
-              />
-            ) : (
-              <ToolItem
-                key={item.id}
-                item={item}
-                compact
-                allowBrowse={interactive}
-                onOpenResource={interactive ? onOpenResource : undefined}
-              />
-            ),
-          )}
+        <div className="acp-tool-rollup__items stagger-reveal">
+          {rollup.items.map((item) => (
+            <div key={item.id} className="acp-tool-rollup__row">
+              {rollup.items.length > 1 && rollup.kind !== "subagent" ? (
+                <ToolActivityRollup
+                  rollup={{
+                    kind: item.payload.presentation.kind,
+                    commandActivity:
+                      item.payload.presentation.kind === "execute"
+                        ? item.payload.presentation.activity
+                        : "ordinary",
+                    items: [item],
+                  }}
+                  interactive={interactive}
+                  onOpenResource={onOpenResource}
+                />
+              ) : (
+                <ToolItem
+                  item={item}
+                  compact
+                  allowBrowse={interactive}
+                  onOpenResource={interactive ? onOpenResource : undefined}
+                />
+              )}
+            </div>
+          ))}
         </div>
       ) : null}
     </details>

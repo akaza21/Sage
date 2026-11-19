@@ -14,7 +14,7 @@ import type { AcpChatPage } from "../../domain/acp";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { page } from "./acp/acpProjection.fixture";
-import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import { AnswerActions } from "./AnswerActions";
 import { ForkChatDialog, ForkDivider, forkChat } from "./ForkChat";
 import { ForkChatDialogHost } from "./ForkChatDialogHost";
 
@@ -86,10 +86,10 @@ function forkablePage(
   };
 }
 
-async function renderFooter(acpPage: AcpChatPage) {
+async function renderActions(acpPage: AcpChatPage) {
   render(
     <ForkChatDialogHost focusRoot={{ current: null }}>
-      <ChatTranscriptFooter useNativeAcp page={acpPage} messages={[]} />
+      <AnswerActions text="Normalized answer" page={acpPage} forkable />
     </ForkChatDialogHost>,
   );
   await settleLazyModules();
@@ -97,7 +97,7 @@ async function renderFooter(acpPage: AcpChatPage) {
 
 describe("answer More actions", () => {
   it("offers exactly one item, Branch in new chat, when the session can fork", async () => {
-    await renderFooter(forkablePage());
+    await renderActions(forkablePage());
     const actions = screen.getByLabelText("Message actions");
     const buttons = within(actions).getAllByRole("button");
     expect(buttons.map((button) => button.getAttribute("aria-label"))).toEqual([
@@ -134,7 +134,7 @@ describe("answer More actions", () => {
   ])(
     "pre-fills the dialog option only when Enter or Space opened it, not after %s (s2/f0055)",
     async (_, byKey, fresh) => {
-      await renderFooter(forkablePage());
+      await renderActions(forkablePage());
       fireEvent.click(screen.getByRole("button", { name: "More actions" }));
       const item = await screen.findByRole("menuitem", {
         name: "Branch in new chat",
@@ -174,7 +174,7 @@ describe("answer More actions", () => {
     async (_, acpPage) => {
       const writeText = vi.fn().mockResolvedValue(undefined);
       vi.stubGlobal("navigator", { clipboard: { writeText } });
-      await renderFooter(acpPage);
+      await renderActions(acpPage);
       const more = screen.getByRole("button", { name: "More actions" });
       fireEvent.click(more);
       const menu = await screen.findByRole("menu", { name: "Answer actions" });

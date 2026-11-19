@@ -250,7 +250,7 @@ test("parity selectors stay anchored to the wave 6-8 product components", () => 
     [
       "features/chat/ForkChat.tsx",
       [
-        'aria-label="More actions"',
+        'label="More actions"',
         'className="answer-more-menu"',
         'role="menuitem"',
         'className="fork-chat-dialog',
@@ -641,7 +641,7 @@ test("web-search and mixed-group states are captured with the row opened", () =>
     assert.deepEqual(
       parityStepsFor(state).map(({ selector }) => selector),
       [
-        ".acp-turn:last-of-type .chat-transcript-work > summary",
+        ".acp-turn:last-of-type .chat-transcript-work__toggle",
         ".acp-turn:last-of-type .acp-tool-rollup > summary",
       ],
       state,
@@ -1115,7 +1115,7 @@ test("motion bursts sample wall-clock or seeked animation frames within bounds",
   );
   assert.ok(
     seeks[0].includes(
-      '.acp-turn[data-turn-id=\\"turn-1\\"] .chat-transcript-work > summary',
+      '.acp-turn[data-turn-id=\\"turn-1\\"] .chat-transcript-work__toggle',
     ),
   );
   const wall = await captureBurst({

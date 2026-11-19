@@ -1030,7 +1030,7 @@ fn an_auth_status_request_still_fails_closed_like_any_unknown_request() {
 }
 
 #[test]
-fn a_signed_out_harness_refuses_the_prompt_instead_of_sending_it() {
+fn a_signed_out_status_does_not_hold_back_a_prompt_after_an_outside_sign_in() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
     runtime
@@ -1039,34 +1039,6 @@ fn a_signed_out_harness_refuses_the_prompt_instead_of_sending_it() {
             &Mapper,
         )
         .expect("auth status update");
-    assert!(matches!(
-        runtime.command(AdapterCommand::Prompt {
-            prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
-            client_message_id: RequiredText::new("client", "client-message-1").expect("client"),
-            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
-        }),
-        Err(AdapterRuntimeError::SignInRequired)
-    ));
-}
-
-#[test]
-fn a_later_signed_in_status_restores_the_prompt_path() {
-    let mut runtime = ClaudeRuntime::fixture();
-    ready(&mut runtime);
-    runtime
-        .ingest(
-            &frame(json!({"method":"_auth/status_update","params":{"authStatus":{"kind":"none"}}})),
-            &Mapper,
-        )
-        .expect("signed out");
-    runtime
-        .ingest(
-            &frame(
-                json!({"method":"_auth/status_update","params":{"authStatus":{"kind":"subscription","label":"Max"}}}),
-            ),
-            &Mapper,
-        )
-        .expect("signed in");
     let (_, token) = prompt(&mut runtime);
     runtime
         .resolve_egress(token, EgressResolution::Written)
@@ -1074,7 +1046,7 @@ fn a_later_signed_in_status_restores_the_prompt_path() {
 }
 
 #[test]
-fn an_authentication_refusal_costs_one_turn_and_never_a_second() {
+fn a_sign_in_made_outside_sage_reaches_claude_on_the_next_prompt_after_a_refusal() {
     let mut runtime = ClaudeRuntime::fixture();
     ready(&mut runtime);
     let (id, token) = prompt(&mut runtime);
@@ -1090,22 +1062,6 @@ fn an_authentication_refusal_costs_one_turn_and_never_a_second() {
         ),
         Err(AdapterRuntimeError::SignInRequired)
     ));
-    assert!(matches!(
-        runtime.command(AdapterCommand::Prompt {
-            prompt: Prompt::new("prompt", "Inspect only").expect("prompt"),
-            client_message_id: RequiredText::new("client", "client-message-2").expect("client"),
-            access_mode: sage_acp_protocol::access_mode::SessionAccessMode::Ask,
-        }),
-        Err(AdapterRuntimeError::SignInRequired)
-    ));
-    runtime
-        .ingest(
-            &frame(
-                json!({"method":"_auth/status_update","params":{"authStatus":{"kind":"subscription","label":"Max"}}}),
-            ),
-            &Mapper,
-        )
-        .expect("signed in");
     let (_, token) = prompt(&mut runtime);
     runtime
         .resolve_egress(token, EgressResolution::Written)

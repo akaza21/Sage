@@ -797,6 +797,22 @@ test("web bundle verifier rejects a non-desktop receipt and browser fixture outp
   }
 });
 
+test("desktop bundle rejects the browser bridge shim even in an unreachable chunk", async () => {
+  const root = await candidate();
+  try {
+    await writeFile(
+      path.join(root, "dist/assets/bridge.js"),
+      await readFile(
+        new URL("../src/devBridge/installBrowserBridge.ts", import.meta.url),
+        "utf8",
+      ),
+    );
+    assert.throws(() => verifyWebBundle(root), /browser bridge/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test("source fingerprint traversal has exact limits and rejects the next file, depth, byte, and nonregular path", async () => {
   const root = await mkdtemp(path.join(tmpdir(), "sage-q04-fingerprint-"));
   try {

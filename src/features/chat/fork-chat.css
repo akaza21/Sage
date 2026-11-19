@@ -107,3 +107,7 @@
   gap: var(--transcript-answer-gap);
   min-width: 0;
 }
+
+.chat-fork-turn:hover {
+  --answer-actions-time-opacity: 1;
+}

@@ -50,7 +50,8 @@ export interface ChatComposerRegionProps {
   chatError: ReactNode;
   /** The harness that refused for sign-in; its guidance replaces chatError. */
   signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
-  claudeSignInRequired?: boolean;
+  /** Present while Claude Code refused for sign-in; clears that refusal. */
+  onClaudeSignedIn?: () => void;
   claudeAuthScope?: string;
   accessTarget?: ComposerAccessTarget;
   availableBinding: boolean;

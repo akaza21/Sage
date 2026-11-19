@@ -343,7 +343,7 @@ it.each([
         ".acp-edited-files__header .acp-file-changes__totals > span",
       ),
     ).toHaveLength(Number(additions !== null) + Number(deletions !== null));
-    expect(container.querySelector("details.chat-transcript-work")).toBeNull();
+    expect(container.querySelector(".chat-transcript-work__toggle")).toBeNull();
   },
 );
 

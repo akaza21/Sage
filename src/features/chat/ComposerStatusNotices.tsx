@@ -19,7 +19,7 @@ export function ComposerStatusNotices({
   workbenchError,
   chatError,
   signInHarness = null,
-  claudeSignInRequired,
+  onClaudeSignedIn,
   claudeAuthScope,
   imageStatus,
   missingBindingNotice,
@@ -29,7 +29,7 @@ export function ComposerStatusNotices({
   | "workbenchError"
   | "chatError"
   | "signInHarness"
-  | "claudeSignInRequired"
+  | "onClaudeSignedIn"
   | "claudeAuthScope"
   | "missingBindingNotice"
   | "discoveryPhase"
@@ -52,8 +52,12 @@ export function ComposerStatusNotices({
           ) : (
             chatError
           )}
-          {claudeSignInRequired ? (
-            <AuthPart part="ClaudeAuthActions" key={claudeAuthScope} />
+          {onClaudeSignedIn ? (
+            <AuthPart
+              part="ClaudeAuthActions"
+              key={claudeAuthScope}
+              onSignedIn={onClaudeSignedIn}
+            />
           ) : null}
         </div>
       ) : null}

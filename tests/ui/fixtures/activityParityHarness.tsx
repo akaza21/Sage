@@ -1,7 +1,6 @@
 import { createRoot } from "react-dom/client";
 import type { AcpItem } from "../../../src/domain/acp";
 import { AcpChatPresentation } from "../../../src/features/chat/acp/AcpChatPresentation";
-import { ChatTranscriptFooter } from "../../../src/features/chat/ChatTranscriptFooter";
 import {
   page,
   textItem,
@@ -15,7 +14,7 @@ import "../../../src/features/chat/acp/acp-chat-activities.css";
 import "../../../src/features/chat/acp/acp-activity-cards.css";
 import "../../../src/features/chat/acp/acp-activity-details.css";
 import "../../../src/features/chat/acp/acp-child-activity.css";
-import "../../../src/features/chat/chat-transcript-polish.css";
+import "../../../src/ui/tooltips";
 
 const scenario = new URLSearchParams(location.search).get("scenario");
 const stopped = scenario === "stopped";
@@ -187,6 +186,7 @@ createRoot(document.getElementById("root")!).render(
         padding: 16,
         boxSizing: "border-box",
         width: "min(100%, 660px)",
+        marginInline: "auto",
         "--reading-measure": "660px",
       } as React.CSSProperties
     }
@@ -198,16 +198,11 @@ createRoot(document.getElementById("root")!).render(
       historyError={null}
       projectRoots={[]}
       retentionIncomplete={false}
+      onRetry={() => undefined}
       onOpenResource={(resource, target) => {
         document.getElementById("opened-diff")!.textContent =
           `${target}:${resource.relativePath}`;
       }}
-    />
-    <ChatTranscriptFooter
-      useNativeAcp
-      page={projection}
-      messages={[]}
-      onRetry={() => undefined}
     />
     <output id="opened-diff" aria-label="Opened diff" />
   </div>,

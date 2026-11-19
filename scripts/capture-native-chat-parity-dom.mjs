@@ -31,7 +31,7 @@ export const PARITY_PANE_SELECTORS = Object.freeze({
   moreActions: 'button[aria-label="More actions"]',
   forkDivider: ".chat-fork-divider",
   shimmer: ".acp-live-shimmer",
-  workedClosed: "details.chat-transcript-work:not([open])",
+  workedClosed: '.chat-transcript-work__toggle[aria-expanded="false"]',
 });
 /** Witnesses that must belong to the observed Turn. */
 export const PARITY_TURN_KINDS = Object.freeze([
@@ -191,7 +191,7 @@ export function parityChatPredicates(state, observation, captureChat) {
 }
 
 const LAST = ".acp-turn:last-of-type ";
-const WORKED = LAST + ".chat-transcript-work > summary";
+const WORKED = LAST + ".chat-transcript-work__toggle";
 const POPOVER = ".chat-selection-popover";
 export const SELECTED_PHRASE = "synthetic example";
 export const FIND_QUERY = "synthetic";

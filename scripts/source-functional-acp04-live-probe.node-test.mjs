@@ -665,7 +665,7 @@ function turnMarkup({ id, ordinal, state, label, items }) {
   return `<section class="acp-turn" data-turn-state="${state}" aria-label="Turn ${ordinal}" data-turn-id="${id}" data-session-id="session-1" data-runtime-epoch="7" data-turn-ordinal="${ordinal}"><header class="acp-turn__header"><span class="acp-state acp-turn__state" role="status" aria-label="${label}" data-turn-status="${id}">${label}</span></header><div class="acp-turn__items">${items
     .map(
       ([itemId, role, text]) =>
-        `<article class="acp-message acp-message--${role}" data-item-id="${itemId}" data-message-role="${role}"><header class="acp-message__meta"><span class="acp-message__role">${role === "user" ? "You" : "Agent"}</span></header><div class="acp-markdown">${text}</div></article>`,
+        `<article class="acp-message acp-message--${role}" data-item-id="${itemId}" data-message-role="${role}"><div class="acp-markdown">${text}</div></article>`,
     )
     .join("")}</div></section>`;
 }

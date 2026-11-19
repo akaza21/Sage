@@ -1,8 +1,6 @@
 use serde_json::Value;
 
 const AUTH_STATUS_UPDATE_METHOD: &str = "_auth/status_update";
-const SIGNED_OUT_KINDS: [&str; 5] = ["none", "expired", "loggedOut", "unauthenticated", "error"];
-const SIGNED_IN_KINDS: [&str; 1] = ["subscription"];
 const MAX_KIND_CHARS: usize = 64;
 const AUTH_REQUIRED_CODE: i64 = -32000;
 const AUTH_REQUIRED_MESSAGES: [&str; 3] = [
@@ -12,21 +10,6 @@ const AUTH_REQUIRED_MESSAGES: [&str; 3] = [
 ];
 const MAX_ERROR_MESSAGE_CHARS: usize = 256;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
-pub(crate) enum ClaudeAuthState {
-    #[default]
-    Unobserved,
-    SignedOut,
-    Unknown,
-    SignedIn,
-}
-
-impl ClaudeAuthState {
-    pub(crate) fn permits_prompt(&self) -> bool {
-        !matches!(self, Self::SignedOut)
-    }
-}
-
 fn bounded(value: Option<&str>, limit: usize) -> Option<&str> {
     let text = value?.trim();
     if text.is_empty() || text.chars().count() > limit {
@@ -35,44 +18,36 @@ fn bounded(value: Option<&str>, limit: usize) -> Option<&str> {
     Some(text)
 }
 
-pub(crate) fn decode_auth_status_update(value: &Value) -> Option<ClaudeAuthState> {
-    if value.get("method").and_then(Value::as_str)? != AUTH_STATUS_UPDATE_METHOD {
-        return None;
+/// Claude Code announces its sign-in state, but that state goes stale as
+/// soon as the user signs in or out outside the harness, so Sage only
+/// recognises the notice and leaves each prompt for Claude Code to answer.
+pub(crate) fn is_auth_status_update(value: &Value) -> bool {
+    if value.get("method").and_then(Value::as_str) != Some(AUTH_STATUS_UPDATE_METHOD) {
+        return false;
     }
-    let params = value.get("params")?;
+    let Some(params) = value.get("params") else {
+        return false;
+    };
     let params = params.get("authStatus").unwrap_or(params);
-    let kind = bounded(params.get("kind").and_then(Value::as_str), MAX_KIND_CHARS)?;
-    if SIGNED_OUT_KINDS
-        .iter()
-        .any(|known_kind| known_kind.eq_ignore_ascii_case(kind))
-    {
-        return Some(ClaudeAuthState::SignedOut);
-    }
-    if SIGNED_IN_KINDS
-        .iter()
-        .any(|known_kind| known_kind.eq_ignore_ascii_case(kind))
-    {
-        return Some(ClaudeAuthState::SignedIn);
-    }
-    Some(ClaudeAuthState::Unknown)
+    bounded(params.get("kind").and_then(Value::as_str), MAX_KIND_CHARS).is_some()
 }
 
-pub(crate) fn decode_auth_required_error(value: &Value) -> Option<ClaudeAuthState> {
-    let error = value.get("error")?;
-    if error.get("code").and_then(Value::as_i64)? != AUTH_REQUIRED_CODE {
-        return None;
+pub(crate) fn is_auth_required_error(value: &Value) -> bool {
+    let Some(error) = value.get("error") else {
+        return false;
+    };
+    if error.get("code").and_then(Value::as_i64) != Some(AUTH_REQUIRED_CODE) {
+        return false;
     }
-    let message = bounded(
+    bounded(
         error.get("message").and_then(Value::as_str),
         MAX_ERROR_MESSAGE_CHARS,
-    )?;
-    if !AUTH_REQUIRED_MESSAGES
-        .iter()
-        .any(|known_message| known_message.eq_ignore_ascii_case(message))
-    {
-        return None;
-    }
-    Some(ClaudeAuthState::SignedOut)
+    )
+    .is_some_and(|message| {
+        AUTH_REQUIRED_MESSAGES
+            .iter()
+            .any(|known_message| known_message.eq_ignore_ascii_case(message))
+    })
 }
 
 #[cfg(test)]
@@ -81,81 +56,46 @@ mod tests {
     use serde_json::json;
 
     #[test]
-    fn the_observed_signed_out_notification_decodes_instead_of_being_unsupported() {
-        let observed = json!({
-            "jsonrpc": "2.0",
-            "method": "_auth/status_update",
-            "params": {"authStatus": {"kind": "none", "label": "Not logged in"}}
-        });
-        let state = decode_auth_status_update(&observed).expect("decodes");
-        assert_eq!(state, ClaudeAuthState::SignedOut);
-        assert!(!state.permits_prompt());
-    }
-
-    #[test]
-    fn an_unfamiliar_credential_kind_is_not_assumed_signed_in() {
-        let state = decode_auth_status_update(&json!({
-            "method": "_auth/status_update",
-            "params": {"authStatus": {"kind": "enterprise-sso", "label": "Acme"}}
-        }))
-        .expect("decodes");
-        assert_eq!(state, ClaudeAuthState::Unknown);
-        assert!(state.permits_prompt());
-    }
-
-    #[test]
-    fn each_observed_signed_out_status_blocks_a_prompt() {
-        for kind in SIGNED_OUT_KINDS {
-            let state = decode_auth_status_update(&json!({
-                "method": "_auth/status_update",
-                "params": {"authStatus": {"kind": kind}}
-            }))
-            .expect("decodes");
-            assert!(!state.permits_prompt(), "{kind} must not permit a prompt");
+    fn the_observed_status_notification_is_recognised_instead_of_being_unsupported() {
+        for params in [
+            json!({"authStatus": {"kind": "none", "label": "Not logged in"}}),
+            json!({"authStatus": {"kind": "subscription", "label": "Max"}}),
+            json!({"kind": "none"}),
+        ] {
+            assert!(
+                is_auth_status_update(&json!({
+                    "jsonrpc": "2.0",
+                    "method": "_auth/status_update",
+                    "params": params
+                })),
+                "{params}"
+            );
         }
-        let state = ClaudeAuthState::default();
-        assert!(state.permits_prompt());
     }
 
     #[test]
-    fn a_status_without_a_readable_kind_is_not_decoded() {
-        assert!(decode_auth_status_update(&json!({"method": "_auth/status_update"})).is_none());
-        assert!(
-            decode_auth_status_update(&json!({
-                "method": "_auth/status_update",
-                "params": {"authStatus": {"kind": ""}}
-            }))
-            .is_none()
-        );
-        assert!(
-            decode_auth_status_update(&json!({
-                "method": "session/update",
-                "params": {"authStatus": {"kind": "none"}}
-            }))
-            .is_none()
-        );
-    }
-
-    #[test]
-    fn a_flat_status_payload_still_decodes_for_adapters_that_do_not_nest_it() {
-        let state = decode_auth_status_update(&json!({
+    fn a_status_without_a_readable_kind_is_not_recognised() {
+        assert!(!is_auth_status_update(
+            &json!({"method": "_auth/status_update"})
+        ));
+        assert!(!is_auth_status_update(&json!({
             "method": "_auth/status_update",
-            "params": {"kind": "none"}
-        }))
-        .expect("decodes");
-        assert_eq!(state, ClaudeAuthState::SignedOut);
+            "params": {"authStatus": {"kind": ""}}
+        })));
+        assert!(!is_auth_status_update(&json!({
+            "method": "session/update",
+            "params": {"authStatus": {"kind": "none"}}
+        })));
     }
 
     #[test]
-    fn the_observed_prompt_refusal_is_read_as_signed_out_rather_than_a_bare_failure() {
+    fn the_observed_prompt_refusal_is_read_as_a_sign_in_refusal_rather_than_a_bare_failure() {
         let observed = json!({
             "jsonrpc": "2.0",
             "id": 3,
             "error": {"code": -32000, "message": "Authentication required"}
         });
-        let state = decode_auth_required_error(&observed).expect("decodes");
-        assert_eq!(state, ClaudeAuthState::SignedOut);
-        assert!(!state.permits_prompt());
+        assert!(is_auth_required_error(&observed));
     }
 
     #[test]
@@ -169,7 +109,7 @@ mod tests {
             json!({"id": 1, "error": {"code": -32000, "message": "x".repeat(MAX_ERROR_MESSAGE_CHARS + 1)}}),
         ] {
             assert!(
-                decode_auth_required_error(&frame).is_none(),
+                !is_auth_required_error(&frame),
                 "unrelated frame decoded as sign-in: {frame}"
             );
         }
@@ -178,24 +118,21 @@ mod tests {
     #[test]
     fn the_refusal_message_is_matched_without_regard_to_casing() {
         for message in ["AUTHENTICATION REQUIRED", "Not Logged In"] {
-            let state = decode_auth_required_error(&json!({
+            assert!(is_auth_required_error(&json!({
                 "id": 9,
                 "error": {"code": -32000, "message": message}
-            }))
-            .expect("decodes");
-            assert!(!state.permits_prompt());
+            })));
         }
     }
 
     #[test]
     fn an_mcp_server_authentication_message_is_not_a_harness_auth_refusal() {
-        let state = decode_auth_required_error(&json!({
+        assert!(!is_auth_required_error(&json!({
             "id": 9,
             "error": {
                 "code": -32000,
                 "message": "Authentication required for MCP server GitHub"
             }
-        }));
-        assert!(state.is_none());
+        })));
     }
 }

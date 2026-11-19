@@ -37,7 +37,7 @@ pub fn ingest_image(
         )));
     }
     if label.is_empty()
-        || label.len() > 80
+        || label.len() > sage_core::limits::IMAGE_LABEL_BYTES
         || label
             .chars()
             .any(sage_acp_protocol::contract::has_unsafe_display_character)

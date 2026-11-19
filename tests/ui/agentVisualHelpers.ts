@@ -75,37 +75,28 @@ export async function releasePickerHarnessReadiness(page: Page) {
 
 export async function revealWorkedContent(content: Locator) {
   // Collapsed completed Turns do not mount their Worked groups; open each
-  // closed Worked disclosure until the requested content mounts.
+  // closed Worked toggle until the requested content mounts.
   const page = content.page();
-  await expect(
-    content.or(page.locator("details.chat-transcript-work")).first(),
-  ).toBeAttached();
-  if ((await content.count()) === 0) {
-    const closed = page.locator("details.chat-transcript-work:not([open])");
-    for (let opened = 0; opened < 20 && (await content.count()) === 0;) {
-      if ((await closed.count()) === 0) break;
-      await closed.last().locator(":scope > summary").click();
-      opened += 1;
-    }
+  const toggle = ".chat-transcript-work__toggle";
+  await expect(content.or(page.locator(toggle)).first()).toBeAttached();
+  const closed = page.locator(`${toggle}[aria-expanded="false"]`);
+  for (let opened = 0; opened < 20 && (await content.count()) === 0;) {
+    if ((await closed.count()) === 0) break;
+    await closed.last().click();
+    opened += 1;
   }
   await expect(content).toHaveCount(1);
-  const worked = content.locator(
-    "xpath=ancestor::details[contains(@class, 'chat-transcript-work')][1]",
-  );
   // A collapsed completed Turn shows its tool rows beside (not inside) the
-  // Worked disclosure; opening Worked swaps them for the expanded copy.
-  const owner = (await worked.count())
-    ? worked
-    : content
-        .locator(
-          "xpath=ancestor::section[contains(concat(' ', normalize-space(@class), ' '), ' acp-turn ')][1]",
-        )
-        .locator("details.chat-transcript-work");
+  // Worked groups; opening Worked swaps them for the expanded copy.
+  const owner = content
+    .locator(
+      "xpath=ancestor::section[contains(concat(' ', normalize-space(@class), ' '), ' acp-turn ')][1]",
+    )
+    .locator(toggle);
   if ((await owner.count()) === 1) {
-    if ((await owner.getAttribute("open")) === null) {
-      await owner.locator(":scope > summary").click();
-    }
-    await expect(owner).toHaveAttribute("open", "");
+    if ((await owner.getAttribute("aria-expanded")) === "false")
+      await owner.click();
+    await expect(owner).toHaveAttribute("aria-expanded", "true");
   }
   await expect(content).toBeVisible();
 }
@@ -309,8 +300,7 @@ export async function runAgentCanonicalTest(
   if (name === "agent-activity-family") {
     // Codex live parity §8 (s1/f0423): consecutive tools share one row named
     // by the live child; the plan, error and unsupported cards stay apart.
-    const cards = page.locator(".acp-activity-card");
-    await expect(cards).toHaveCount(4);
+    await expect(page.locator(".acp-activity-card")).toHaveCount(3);
     const groups = page.locator(".acp-tool-rollup");
     await expect(groups).toHaveCount(1);
     // Opening the outer rollup mounts nested rollups; keep its locator stable.
@@ -322,7 +312,7 @@ export async function runAgentCanonicalTest(
     await group.locator(":scope > summary").click();
     await expect(group).toHaveAttribute("open", "");
     const members = group.locator(
-      ":scope > .acp-tool-rollup__items > .acp-tool-rollup",
+      ":scope > .acp-tool-rollup__items > .acp-tool-rollup__row > .acp-tool-rollup",
     );
     await expect(members).toHaveCount(5);
     const execution = members.and(
@@ -352,7 +342,7 @@ export async function runAgentCanonicalTest(
     await expect(command).toBeVisible();
     expect(
       await command.evaluate((node) => {
-        const card = node.closest<HTMLElement>(".acp-activity-card");
+        const card = node.closest<HTMLElement>(".acp-activity");
         const range = document.createRange();
         range.selectNodeContents(node);
         const lines = range.getClientRects().length;
@@ -375,7 +365,7 @@ export async function runAgentCanonicalTest(
       .poll(() =>
         itemList.evaluate((list) => {
           const result = list.querySelector<HTMLElement>(
-            ':scope > [data-activity-kind="fetch"] [role="group"] > header > strong',
+            ':scope > .acp-tool-rollup__row > [data-activity-kind="fetch"] [role="group"] > header > strong',
           )!;
           const offset =
             result.getBoundingClientRect().bottom -
@@ -409,7 +399,7 @@ export async function runAgentCanonicalTest(
     await expect
       .poll(() =>
         page
-          .locator(".acp-activity-card")
+          .locator(".acp-activity")
           .evaluateAll((cards) =>
             cards.every(
               (card) =>

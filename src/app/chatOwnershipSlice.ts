@@ -70,7 +70,7 @@ function activeChatId(state: WorkbenchState) {
   );
 }
 
-function ownsChat(state: WorkbenchState, intent: ChatOwnershipIntent) {
+export function ownsChat(state: WorkbenchState, intent: ChatOwnershipIntent) {
   // Chat activation advances projection/native generations, but it must not
   // retire background work owned by the same Project lifetime. The dedicated
   // ownership epoch changes only when that lifetime is authoritatively reset.
@@ -239,7 +239,7 @@ export const createChatOwnershipSlice: StateCreator<
       chatError: null,
       chatUiById: {
         ...state.chatUiById,
-        [chatId]: { ...entry, error: null },
+        [chatId]: { ...entry, error: null, errorKind: null },
       },
     });
   },

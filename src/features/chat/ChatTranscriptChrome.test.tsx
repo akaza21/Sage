@@ -12,10 +12,8 @@ import { page, textItem } from "./acp/acpProjection.fixture";
 import { AcpChatPresentation } from "./acp/AcpChatPresentation";
 import { settleLazyModules } from "../../test/settleLazyModules";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
-import {
-  ChatTranscriptFooter,
-  ChatTranscriptTurnSummary,
-} from "./ChatTranscriptFooter";
+import { AnswerActions } from "./AnswerActions";
+import { ChatTranscriptTurnSummary } from "./ChatTranscriptFooter";
 
 afterEach(() => {
   cleanup();
@@ -24,7 +22,7 @@ afterEach(() => {
 });
 
 describe("CP-28 answer chrome", () => {
-  it("does not schedule copy feedback after the footer unmounts", async () => {
+  it("does not schedule copy feedback after the actions unmount", async () => {
     vi.useFakeTimers();
     let completeCopy!: () => void;
     const feedback = vi.fn();
@@ -38,11 +36,7 @@ describe("CP-28 answer chrome", () => {
     });
     const { unmount } = render(
       <AnswerCopyFeedback.Provider value={feedback}>
-        <ChatTranscriptFooter
-          useNativeAcp
-          page={page("completed")}
-          messages={[]}
-        />
+        <AnswerActions text="Normalized answer" />
       </AnswerCopyFeedback.Provider>,
     );
     fireEvent.click(screen.getByRole("button", { name: "Copy" }));
@@ -58,7 +52,9 @@ describe("CP-28 answer chrome", () => {
         hasActivities
       />,
     );
-    const chevron = container.querySelector("summary svg");
+    const chevron = container.querySelector(
+      ".chat-transcript-work__toggle svg",
+    );
     expect(chevron).toHaveAttribute("aria-hidden", "true");
     expect(chevron).toHaveAttribute("fill", "none");
     expect(chevron).toHaveAttribute("stroke", "currentColor");
@@ -138,15 +134,18 @@ describe("CP-28 answer chrome", () => {
     },
   );
 
-  it("keeps Copy and Retry icon-only with accessible names, title hints and copy icon feedback", async () => {
+  it("keeps Copy and Retry icon-only with accessible names and copy icon feedback", async () => {
     const writeText = vi.fn().mockResolvedValue(undefined);
     vi.stubGlobal("navigator", { clipboard: { writeText } });
     const onRetry = vi.fn();
     render(
-      <ChatTranscriptFooter
-        useNativeAcp
+      <AcpChatPresentation
         page={page("completed")}
-        messages={[]}
+        hasEarlier={false}
+        loadingEarlier={false}
+        historyError={null}
+        projectRoots={[]}
+        retentionIncomplete={false}
         onRetry={onRetry}
       />,
     );
@@ -154,10 +153,6 @@ describe("CP-28 answer chrome", () => {
     const retry = screen.getByRole("button", { name: "Retry" });
     for (const button of [copy, retry]) {
       expect(button.textContent).toBe("");
-      expect(button).toHaveAttribute(
-        "title",
-        button.getAttribute("aria-label"),
-      );
       expect(button.querySelector("svg")).toHaveAttribute(
         "aria-hidden",
         "true",
@@ -165,7 +160,6 @@ describe("CP-28 answer chrome", () => {
     }
     fireEvent.click(copy);
     await waitFor(() => expect(copy).toHaveAccessibleName("Copied"));
-    expect(copy).toHaveAttribute("title", "Copied");
     expect(writeText).toHaveBeenCalledExactlyOnceWith(textItem().payload.text);
     fireEvent.click(retry);
     expect(onRetry).toHaveBeenCalledOnce();

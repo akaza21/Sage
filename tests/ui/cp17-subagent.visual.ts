@@ -265,22 +265,6 @@ test("Codex s4/f0487: clicking a grouped name opens that child's header", async 
   // The browser fixture serves no child transcript, so the body shows the
   // unavailable notice; capture only the Codex s4/f0487 header row.
   await expect(header).toHaveScreenshot("subagent-child-header.png");
-  // A child transcript has no author row (f0485): its meta header is hidden.
-  const meta = await rightPane
-    .locator(".subagent-surface")
-    .evaluate((surface) => {
-      const transcript = document.createElement("div");
-      transcript.className = "subagent-surface__transcript";
-      transcript.innerHTML =
-        '<article class="acp-message acp-message--assistant"><header class="acp-message__meta">Agent</header></article>';
-      surface.append(transcript);
-      const display = getComputedStyle(
-        transcript.querySelector(".acp-message__meta")!,
-      ).display;
-      transcript.remove();
-      return display;
-    });
-  expect(meta).toBe("none");
   await header.getByRole("button", { name: "Back to subagents" }).click();
   await expect(
     rightPane.getByRole("region", { name: "Done subagents" }),

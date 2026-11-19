@@ -13,7 +13,6 @@ import type {
   AgentArtifactOpenHandler,
   AgentArtifactOwner,
 } from "../../../domain/agentArtifact";
-import { chatTimestamp } from "../chatTimestamp";
 import { LazyModuleBoundary } from "../../../ui/LazyModuleBoundary";
 import { CollaborationItem } from "./CollaborationItem";
 import { ImageItem } from "./ImageItem";
@@ -55,7 +54,6 @@ export const ItemView = memo(
     item,
     workingItems,
     interactive,
-    neutralTextRole,
     turnState,
     fileReferenceOwner,
     onOpenResource,
@@ -65,7 +63,6 @@ export const ItemView = memo(
     item: AcpItem;
     workingItems?: readonly AcpItem[];
     interactive: boolean;
-    neutralTextRole?: boolean;
     turnState?: TurnState;
     fileReferenceOwner?: AgentArtifactOwner;
     onOpenResource?: AgentArtifactOpenHandler;
@@ -76,7 +73,6 @@ export const ItemView = memo(
       case "userPrompt":
       case "text": {
         const role = item.kind === "text" ? item.payload.role : "user";
-        const timestamp = chatTimestamp(item.createdAt);
         const answerTurn = role === "assistant" && selectableTurnId;
         const input =
           role === "user"
@@ -97,27 +93,6 @@ export const ItemView = memo(
             data-message-role={role}
             data-answer-state={partial ? "partial" : undefined}
           >
-            <header className="acp-message__meta">
-              {role === "assistant" ? (
-                <span className="acp-message__avatar" aria-hidden="true">
-                  S
-                </span>
-              ) : null}
-              <span className="acp-message__role">
-                {neutralTextRole
-                  ? "Unattributed"
-                  : role === "assistant"
-                    ? "Agent"
-                    : role === "user"
-                      ? "You"
-                      : "System"}
-              </span>
-              {timestamp ? (
-                <time dateTime={timestamp.dateTime} title={timestamp.dateTime}>
-                  {timestamp.label}
-                </time>
-              ) : null}
-            </header>
             {input !== null ? (
               <p className="acp-message__command">
                 <span className="acp-message__command-name">
@@ -199,7 +174,6 @@ export const ItemView = memo(
       ? true
       : left.workingItems === right.workingItems) &&
     left.interactive === right.interactive &&
-    left.neutralTextRole === right.neutralTextRole &&
     left.turnState === right.turnState &&
     left.command === right.command &&
     left.fileReferenceOwner === right.fileReferenceOwner &&
@@ -258,7 +232,7 @@ function PlanActivity({
   const omittedWorkingCount = working.length - visibleWorking.length;
   return (
     <section
-      className="acp-activity-card acp-activity-card--plan acp-plan"
+      className="acp-activity acp-activity-card acp-plan"
       aria-label="Agent plan"
       data-activity-kind="plan"
       data-activity-state={activityState}
@@ -322,7 +296,7 @@ function ErrorActivity({
 }) {
   return (
     <article
-      className="acp-activity-card acp-activity-card--error acp-error"
+      className="acp-activity acp-activity-card acp-error"
       role="alert"
       aria-live="off"
       data-activity-kind="error"

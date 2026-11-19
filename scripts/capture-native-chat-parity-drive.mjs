@@ -6,6 +6,8 @@ import { paneSelector, ownedPaneNodes } from "./capture-native-chat-pane.mjs";
 import {
   SETTLED_TURN_STATES,
   clickExpression,
+  expandExpression,
+  isExpandable,
   openExpression,
   scopeToTurn,
 } from "./capture-native-chat-dom.mjs";
@@ -141,7 +143,8 @@ export async function driveParitySteps({
     else if (step.op === "submit") turnId = await submit();
     else if (step.op === "open") {
       await settled();
-      await waitForState(() => evaluate(openExpression(selector)), deadline);
+      const open = isExpandable(selector) ? expandExpression : openExpression;
+      await waitForState(() => evaluate(open(selector)), deadline);
     } else if (step.op === "click")
       await waitForState(
         () =>

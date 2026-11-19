@@ -96,12 +96,11 @@ describe("AcpChatProjection", () => {
     });
     await screen.findByText("Unchanged sibling 14");
     expect(screen.queryByText(/Loading Chat history/)).not.toBeInTheDocument();
-    for (const work of container.querySelectorAll<HTMLDetailsElement>(
-      "details.chat-transcript-work",
+    for (const work of container.querySelectorAll<HTMLButtonElement>(
+      ".chat-transcript-work__toggle",
     )) {
-      expect(work).not.toHaveAttribute("open");
-      work.open = true;
-      fireEvent(work, new Event("toggle"));
+      expect(work).toHaveAttribute("aria-expanded", "false");
+      fireEvent.click(work);
     }
     await screen.findByText("Retained row 14");
     chatMarkdown.mockClear();

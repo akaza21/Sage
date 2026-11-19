@@ -262,8 +262,7 @@ test("CP-28 Worked chevron persists without hover and toggles with the keyboard;
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   const pane = page.locator(".agent-chat-pane").first();
-  const disclosure = pane.locator("details.chat-transcript-work").first();
-  const summary = disclosure.locator(":scope > summary");
+  const summary = pane.locator(".chat-transcript-work__toggle").first();
   await page.mouse.move(0, 0);
   const chevron = summary.locator("svg.chat-transcript-work__chevron");
   await expect(chevron).toBeVisible();
@@ -286,10 +285,10 @@ test("CP-28 Worked chevron persists without hover and toggles with the keyboard;
   expect(indicator.transform).toBe("none");
   await summary.focus();
   await page.keyboard.press("Enter");
-  await expect(disclosure).toHaveAttribute("open", "");
+  await expect(summary).toHaveAttribute("aria-expanded", "true");
   await expect(chevron).toHaveCSS("transform", "matrix(0, 1, -1, 0, 0, 0)");
   await page.keyboard.press("Space");
-  await expect(disclosure).not.toHaveAttribute("open");
+  await expect(summary).toHaveAttribute("aria-expanded", "false");
   const dates = pane.locator(".chat-transcript-day");
   await expect(dates).toHaveCount(1);
   await expect(dates.first()).toContainText("Today");
@@ -318,28 +317,17 @@ test("CP-28 answer Copy has a visible keyboard tooltip and announces feedback", 
     .getByRole("button", { name: "Copy", exact: true });
   await page.keyboard.press("Tab");
   await copy.focus();
-  // The accessible name flips to "Copied", so pin the same button node.
-  const button = await copy.elementHandle();
-  const tooltip = () =>
-    button!.evaluate((element) => {
-      const style = getComputedStyle(element, "::after");
-      return {
-        content: style.content,
-        display: style.display,
-        background: style.backgroundColor,
-      };
-    });
-  await expect
-    .poll(tooltip)
-    .toMatchObject({ content: '"Copy"', display: "block" });
-  expect((await tooltip()).background).not.toBe("rgba(0, 0, 0, 0)");
+  await expect(page.locator(".tooltip")).toHaveText("Copy");
+  await expect(page.locator(".tooltip")).toBeVisible();
   await page.keyboard.press("Enter");
   await expect(page.locator('[data-acp-announcement="polite"]')).toHaveText(
     "Copied",
   );
-  await expect
-    .poll(tooltip)
-    .toMatchObject({ content: '"Copied"', display: "block" });
+  await expect(
+    page
+      .locator(".chat-transcript-actions")
+      .getByRole("button", { name: "Copied", exact: true }),
+  ).toBeFocused();
 });
 
 test("CP-28 Chat table text is flush with prose, list text hangs in one gutter, and native numbering is preserved", async ({

@@ -60,7 +60,7 @@ it("keeps execute members of mixed Worked activity behind individual Ran rows", 
   );
   expect(screen.queryByText("Shell")).toBeNull();
   const [read, ...commands] = rollup.querySelectorAll<HTMLDetailsElement>(
-    ".acp-tool-rollup__items > details",
+    ".acp-tool-rollup__items > .acp-tool-rollup__row > details",
   );
   expect(read).toHaveTextContent("Read example-1.ts");
   expect(commands).toHaveLength(2);
@@ -282,14 +282,15 @@ it("expanding Worked shows the read group closed; opening it lists one row per f
   const rowLabels = () =>
     [
       ...document.querySelectorAll(
-        ".acp-tool-rollup__items > details .acp-tool-rollup__label",
+        ".acp-tool-rollup__items > .acp-tool-rollup__row > details .acp-tool-rollup__label",
       ),
     ].map((label) => label.textContent);
   expect(rowLabels()).toEqual([]);
-  const work = screen.getByText(/^Worked for /).closest("details")!;
-  work.open = true;
-  fireEvent(work, new Event("toggle"));
-  const group = work.nextElementSibling!.querySelector("details")!;
+  const work = screen.getByRole("button", { name: /^Worked for / });
+  fireEvent.click(work);
+  const group = document
+    .getElementById(work.getAttribute("aria-controls")!)!
+    .querySelector("details")!;
   expect(group).not.toHaveAttribute("open");
   expect(rowLabels()).toEqual([]);
   group.open = true;
@@ -300,11 +301,9 @@ it("expanding Worked shows the read group closed; opening it lists one row per f
     "Read example-3.ts",
   ]);
   expect(screen.queryByLabelText("Command line")).toBeNull();
-  work.open = false;
-  fireEvent(work, new Event("toggle"));
+  fireEvent.click(work);
   expect(rowLabels()).toEqual([]);
-  work.open = true;
-  fireEvent(work, new Event("toggle"));
+  fireEvent.click(work);
   expect(rowLabels()).toEqual([]);
 });
 
@@ -326,18 +325,20 @@ it("expanding Worked lists three collapsed per-command Ran rows", () => {
       retentionIncomplete={false}
     />,
   );
-  const work = screen.getByText(/^Worked for /).closest("details")!;
-  expect(work).not.toHaveAttribute("open");
+  const work = screen.getByRole("button", { name: /^Worked for / });
+  expect(work).toHaveAttribute("aria-expanded", "false");
   expect(screen.queryByText("Shell")).toBeNull();
-  work.open = true;
-  fireEvent(work, new Event("toggle"));
-  const group = work.nextElementSibling!.querySelector("details")!;
+  fireEvent.click(work);
+  const group = document
+    .getElementById(work.getAttribute("aria-controls")!)!
+    .querySelector("details")!;
   expect(group).not.toHaveAttribute("open");
   group.open = true;
   fireEvent(group, new Event("toggle"));
-  const commands =
-    work.nextElementSibling!.querySelectorAll<HTMLDetailsElement>(
-      ".acp-tool-rollup__items > details",
+  const commands = document
+    .getElementById(work.getAttribute("aria-controls")!)!
+    .querySelectorAll<HTMLDetailsElement>(
+      ".acp-tool-rollup__items > .acp-tool-rollup__row > details",
     );
   expect(commands).toHaveLength(3);
   for (const command of commands) {

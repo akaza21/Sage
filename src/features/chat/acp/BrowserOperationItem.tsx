@@ -159,7 +159,7 @@ export function BrowserOperationItem({
       : operation.resultSummary;
   return (
     <article
-      className="acp-activity-card acp-activity-card--browser"
+      className="acp-activity acp-browser-operation-item"
       role="group"
       aria-label={`${title} · ${status}`}
       data-activity-kind="browser"
@@ -168,18 +168,20 @@ export function BrowserOperationItem({
       <details className="acp-browser-operation acp-details">
         <summary>
           <strong>{title}</strong>
-          <span
-            className="acp-state"
-            role="status"
-            aria-label={
-              operation.phase === "outcomeUnknown"
-                ? "Warning: Outcome unknown"
-                : status
-            }
-            aria-live="off"
-          >
-            {status}
-          </span>
+          {operation.phase === "completed" ? null : (
+            <span
+              className="acp-state"
+              role="status"
+              aria-label={
+                operation.phase === "outcomeUnknown"
+                  ? "Warning: Outcome unknown"
+                  : status
+              }
+              aria-live="off"
+            >
+              {status}
+            </span>
+          )}
         </summary>
         <div className="acp-browser-operation__detail">
           <p>Tab {operation.tabId}</p>

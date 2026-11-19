@@ -68,6 +68,28 @@ export const steps = {
     "--test-threads=1",
   ],
   "rust-preview": [...cargoTest, "app_preview", "--", "--test-threads=1"],
+  "clippy-browser-bridge": [
+    "cargo",
+    "clippy",
+    "-p",
+    "sage",
+    "--all-targets",
+    "--features",
+    "browser-bridge",
+    "--",
+    "-D",
+    "warnings",
+  ],
+  "rust-browser-bridge": [
+    "cargo",
+    "test",
+    "-p",
+    "sage",
+    "--features",
+    "browser-bridge",
+    "--lib",
+    "dev_bridge::",
+  ],
   budgets: ["node", "scripts/budget-lanes.mjs", "--check"],
   build: ["npm", "run", "build"],
   "web-bundle": ["node", "scripts/verify-web-bundle.mjs"],
@@ -96,8 +118,15 @@ export const plans = {
     "vitest",
     "clippy",
     "clippy-lib",
+    "clippy-browser-bridge",
   ],
-  rust: ["rust-fixture", "rust-parallel", "rust-git-proc", "rust-preview"],
+  rust: [
+    "rust-fixture",
+    "rust-parallel",
+    "rust-git-proc",
+    "rust-preview",
+    "rust-browser-bridge",
+  ],
   full: [
     "policy",
     "policy-modules",
@@ -108,10 +137,12 @@ export const plans = {
     "vitest",
     "clippy",
     "clippy-lib",
+    "clippy-browser-bridge",
     "rust-fixture",
     "rust-parallel",
     "rust-git-proc",
     "rust-preview",
+    "rust-browser-bridge",
     "budgets",
     "build",
     "web-bundle",
@@ -127,7 +158,13 @@ export function stepConfiguration(name) {
 }
 
 const staticSteps = ["policy", "policy-modules"];
-const rustSteps = ["rustfmt", "clippy", "clippy-lib", ...plans.rust];
+const rustSteps = [
+  "rustfmt",
+  "clippy",
+  "clippy-lib",
+  "clippy-browser-bridge",
+  ...plans.rust,
+];
 
 // Steps that take file names start each tool's Node entry point directly, so
 // no shell reinterprets a name and Windows' 32,767-character command line

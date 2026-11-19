@@ -1,6 +1,3 @@
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
-
 import {
   act,
   cleanup,
@@ -16,14 +13,12 @@ import type { AcpChatPage, TurnProjection } from "../../domain/acp";
 import { AcpChatPresentation, InheritedTurns } from "./acp/AcpChatPresentation";
 import { page, textItem } from "./acp/acpProjection.fixture";
 import { AnswerCopyFeedback } from "./answerCopyFeedback";
-import { ChatTranscriptFooter } from "./ChatTranscriptFooter";
+import { ForkChatRequestContext } from "./forkChatRequest";
 
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
 });
-
-const css = (path: string) => readFileSync(resolve(path), "utf8");
 
 function twoTurns(): AcpChatPage {
   const projection = page("completed");
@@ -60,7 +55,7 @@ function presentation(projection: AcpChatPage) {
 const turnSection = (ordinal: number) =>
   screen.getByRole("region", { name: `Turn ${ordinal}` });
 
-it("keeps a copy row under every earlier completed answer (Codex s2/f0149)", async () => {
+it("keeps a copy row under every completed answer, the latest included (Codex s2/f0149)", async () => {
   const writeText = vi.fn().mockResolvedValue(undefined);
   vi.stubGlobal("navigator", { clipboard: { writeText } });
   presentation(twoTurns());
@@ -68,8 +63,8 @@ it("keeps a copy row under every earlier completed answer (Codex s2/f0149)", asy
     name: "Message actions",
   });
   expect(
-    within(turnSection(2)).queryByRole("group", { name: "Message actions" }),
-  ).toBeNull();
+    within(turnSection(2)).getByRole("group", { name: "Message actions" }),
+  ).toBeVisible();
   await act(async () => {
     fireEvent.click(within(row).getByRole("button", { name: "Copy" }));
   });
@@ -77,7 +72,7 @@ it("keeps a copy row under every earlier completed answer (Codex s2/f0149)", asy
   expect(within(row).getByRole("button", { name: "Copied" })).toBeVisible();
 });
 
-it("closes an earlier Turn with its action row, after its edited files, as the footer closes the latest", async () => {
+it("closes a Turn with its action row, after its edited files", async () => {
   const projection = snapshotPage();
   const [edit] = projection.turns[0].items;
   const answer = { ...textItem(), ordinal: 2 };
@@ -95,7 +90,7 @@ it("closes an earlier Turn with its action row, after its edited files, as the f
   expect(
     files.compareDocumentPosition(row) & Node.DOCUMENT_POSITION_FOLLOWING,
   ).toBeTruthy();
-  expect(turn.querySelector(".acp-turn__items")?.lastElementChild).toBe(row);
+  expect(turn.lastElementChild).toBe(row);
 });
 
 async function moreItems(row: HTMLElement) {
@@ -215,68 +210,70 @@ it("shows the answer's own time in the row, and none without a real time (s2/f00
 it("retains the owner-requested Retry on a successful native answer", () => {
   const onRetry = vi.fn();
   const projection = page("completed");
-  const { rerender } = render(
-    <ChatTranscriptFooter
-      useNativeAcp
+  const ui = (retry?: () => void) => (
+    <AcpChatPresentation
       page={projection}
-      messages={[]}
-      onRetry={onRetry}
-    />,
+      hasEarlier={false}
+      loadingEarlier={false}
+      historyError={null}
+      projectRoots={[]}
+      retentionIncomplete={false}
+      onRetry={retry}
+    />
   );
-  fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+  const { rerender } = render(ui(onRetry));
+  const row = screen.getByRole("group", { name: "Message actions" });
+  fireEvent.click(within(row).getByRole("button", { name: "Retry" }));
   expect(onRetry).toHaveBeenCalledOnce();
-  expect(screen.getByRole("button", { name: "Copy" })).toBeVisible();
-  rerender(
-    <ChatTranscriptFooter useNativeAcp page={projection} messages={[]} />,
-  );
+  expect(within(row).getByRole("button", { name: "Copy" })).toBeVisible();
+  rerender(ui());
   expect(screen.queryByRole("button", { name: "Retry" })).toBeNull();
 });
 
-it("gives the latest answer's footer the same timed row", () => {
-  render(
-    <ChatTranscriptFooter
-      useNativeAcp
-      page={page("completed")}
-      messages={[]}
-    />,
+it("offers Retry and Branch only on the latest answer, following its session's residency", async () => {
+  const projection = forkable(twoTurns());
+  const ui = (next: AcpChatPage) => (
+    <ForkChatRequestContext.Provider value={vi.fn()}>
+      <AcpChatPresentation
+        page={next}
+        hasEarlier={false}
+        loadingEarlier={false}
+        historyError={null}
+        projectRoots={[]}
+        retentionIncomplete={false}
+        onRetry={vi.fn()}
+      />
+    </ForkChatRequestContext.Provider>
   );
+  const { rerender } = render(ui(projection));
+  const row = (ordinal: number) =>
+    within(turnSection(ordinal)).getByRole("group", {
+      name: "Message actions",
+    });
+  expect(within(row(1)).queryByRole("button", { name: "Retry" })).toBeNull();
+  expect(within(row(2)).getByRole("button", { name: "Retry" })).toBeVisible();
+  expect(await moreItems(row(1))).toEqual(["Copy"]);
+  expect(await moreItems(row(2))).toEqual(["Branch in new chat"]);
+
+  rerender(
+    ui({
+      ...projection,
+      sessions: projection.sessions.map((session) => ({
+        ...session,
+        residency: "cold",
+      })) as never,
+    }),
+  );
+  expect(await moreItems(row(2))).toEqual(["Copy"]);
+});
+
+it("gives the latest answer the same timed row", () => {
+  presentation(page("completed"));
   const row = screen.getByRole("group", { name: "Message actions" });
   expect(
     row.querySelector("time.chat-transcript-actions__time"),
   ).toHaveAttribute(
     "datetime",
     new Date(Date.UTC(2026, 7, 31, 9, 5)).toISOString(),
-  );
-});
-
-it("pitches action buttons 24 px apart, fills the open menu trigger and reveals the time on hover (s2/f0053)", () => {
-  const transcript = css("src/features/chat/chat-transcript-polish.css");
-  expect(transcript).toMatch(/\.chat-transcript-actions\s*\{[^}]*gap:\s*0;/s);
-  expect(transcript).toMatch(
-    /\.chat-transcript-actions > button\s*\{[^}]*width:\s*var\(--space-6\);[^}]*height:\s*var\(--space-6\);[^}]*padding:\s*0;/s,
-  );
-  expect(transcript).toMatch(
-    /\.chat-transcript-actions > button\[aria-expanded="true"\]\s*\{[^}]*background:\s*var\(--color-surface-hover\);/s,
-  );
-  expect(transcript).toMatch(
-    /\.chat-transcript-actions__time\s*\{[^}]*color:\s*var\(--color-text-muted\);[^}]*opacity:\s*0;/s,
-  );
-  expect(transcript).toMatch(
-    /\.chat-transcript-actions:hover > \.chat-transcript-actions__time,\s*\.chat-transcript-actions:focus-within > \.chat-transcript-actions__time\s*\{\s*opacity:\s*1;/s,
-  );
-  expect(transcript).toMatch(
-    /\.acp-turn:hover \.chat-transcript-actions__time,\s*\.acp-turn:hover \+ \.chat-transcript-actions > \.chat-transcript-actions__time,\s*\.message-list__content:has\(\s*> \.acp-chat-projection > \.acp-turn:last-of-type:hover\s*\)\s*> \.chat-transcript-actions\s*> \.chat-transcript-actions__time\s*\{\s*opacity:\s*1;/s,
-  );
-  expect(transcript).toMatch(
-    /\.chat-transcript-actions > button\[aria-expanded="true"\]\s*\{\s*color:\s*var\(--color-text-emphasis\);/s,
-  );
-  expect(css("src/features/chat/fork-chat.css")).toMatch(
-    /\.answer-more-menu__item,\s*\.fork-chat-dialog button\s*\{[^}]*color:\s*var\(--color-status-foreground\);/s,
-  );
-  expect(css("src/features/chat/ForkChat.tsx")).toContain(
-    'className="button--compact answer-more-menu__item"',
-  );
-  expect(css("src/styles/shared-controls.css")).toMatch(
-    /\.button--compact\s*\{[^}]*gap:\s*4px;/s,
   );
 });

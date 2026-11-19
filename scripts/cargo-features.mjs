@@ -17,6 +17,9 @@ export const platformFeatures = Object.freeze({
 export const deviceLaneFeatures = Object.freeze(Object.keys(platformFeatures));
 
 const manifestUrl = new URL("../src-tauri/Cargo.toml", import.meta.url);
+// These development tools need their own pass: they cannot coexist with
+// production features such as custom-protocol in the aggregate gates.
+export const isolatedDebugFeatures = Object.freeze(["browser-bridge"]);
 
 export function declaredCargoFeatures(
   manifest = readFileSync(manifestUrl, "utf8"),
@@ -37,12 +40,15 @@ function buildsOn(feature, platform) {
   return platforms === undefined || platforms.includes(platform);
 }
 
-// Every feature that builds on `platform`: what Clippy lints.
+// Compatible features for the aggregate Clippy pass; isolated tools run separately.
 export function lintFeatures(
   platform = process.platform,
   declared = declaredCargoFeatures(),
 ) {
-  return declared.filter((feature) => buildsOn(feature, platform));
+  return declared.filter(
+    (feature) =>
+      buildsOn(feature, platform) && !isolatedDebugFeatures.includes(feature),
+  );
 }
 
 // What the cargo test phases and the fixture build use on `platform`.
