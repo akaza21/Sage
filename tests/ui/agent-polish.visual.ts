@@ -64,21 +64,35 @@ test("grows and shrinks the composer within its scroll bound", async ({
   await expectNoViewportOverflow(page);
 });
 
-test("clips notice fills inside the composer and keeps harness controls on its surface", async ({
+test("keeps errors above the joined location and composer with harness controls on its surface", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1380, height: 880 });
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
-  const form = page.locator("form.composer").first();
-  const dock = page.locator(".chat-dock").first();
-  await form.locator(".composer__body").evaluate((body) => {
-    const notice = document.createElement("div");
-    notice.className = "composer__notice";
-    notice.textContent =
-      "No reviewed local binding is available for this harness.";
-    body.prepend(notice);
+  await page.evaluate(async () => {
+    const { installChatChromeFixture } =
+      await import("/tests/ui/fixtures/chatChromeFixture.ts");
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    installChatChromeFixture("codex", true);
+    useWorkbenchStore.setState({
+      error: "native project transition did not commit",
+    });
   });
+  const form = page.locator("form.composer").first();
+  const frame = page.locator(".chat-dock-frame").first();
+  const dock = page.locator(".chat-dock").first();
+  const error = frame.getByRole("alert");
+  await expect(error).toHaveText("native project transition did not commit");
+  await expect(dock.getByRole("alert")).toHaveCount(0);
+  const strip = frame.getByRole("group", { name: "Chat location" });
+  const errorBox = (await error.boundingBox())!;
+  const stripBox = (await strip.boundingBox())!;
+  const dockBox = (await dock.boundingBox())!;
+  expect(errorBox.y + errorBox.height).toBeLessThanOrEqual(stripBox.y);
+  expect(
+    Math.abs(stripBox.y + stripBox.height - dockBox.y),
+  ).toBeLessThanOrEqual(0.5);
   const body = form.locator(".composer__body");
   await expect(body).toHaveCSS("overflow-y", "auto");
   await expect(body).toHaveCSS("border-top-left-radius", "0px");
@@ -87,7 +101,7 @@ test("clips notice fills inside the composer and keeps harness controls on its s
   const harness = form.getByRole("button", { name: "Harness", exact: true });
   await expect(harness).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   expect((await harness.boundingBox())!.height).toBe(28);
-  await expect(dock).toHaveScreenshot("agent-polish-composer-notice.png");
+  await expect(frame).toHaveScreenshot("agent-polish-composer-notice.png");
   await harness.click();
   await expect(page.getByRole("listbox")).toBeVisible();
   await expect(dock).toHaveCSS("overflow", "clip");

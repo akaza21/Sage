@@ -125,20 +125,14 @@ impl WorkbenchStore for Database {
         persist_layout_in(&transaction, &request.current_layout)?;
         let target_exists: bool = transaction
             .query_row(
-                "SELECT EXISTS(
-               SELECT 1 FROM projects p
-               WHERE p.id = ?1
-                 AND EXISTS(
-                   SELECT 1 FROM project_roots r WHERE r.project_id = p.id
-                 )
-             )",
+                "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
                 [&request.target_project_id],
                 |row| row.get(0),
             )
             .db()?;
         if !target_exists {
             return Err(AppError::InvalidRequest(
-                "target project does not exist or has no roots".into(),
+                "target project does not exist".into(),
             ));
         }
         let now = now_millis();
