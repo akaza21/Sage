@@ -52,11 +52,10 @@ pub const PINNED_PROTOCOL_IDENTITY: &str = concat!(
 pub const OBSERVED_PROTOCOL_IDENTITY: &str =
     concat!("codex-app-server-observed-", pinned_codex_version!());
 
+/// Establishes compatibility with Sage's pinned wire subset, including observed
+/// releases backed by schema evidence. This does not establish packet identity.
 pub fn speaks_pinned_protocol(identity: &str) -> bool {
-    matches!(
-        identity,
-        PINNED_PROTOCOL_IDENTITY | OBSERVED_PROTOCOL_IDENTITY
-    )
+    super::codex_compatibility::protocol_capabilities(identity).characterised()
 }
 
 pub const MAX_SNAPSHOT_BYTES: usize = 4_194_304;

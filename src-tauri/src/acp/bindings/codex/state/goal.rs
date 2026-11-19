@@ -16,7 +16,13 @@ impl CodexAdapter {
     pub(crate) fn goal_supported(&self) -> bool {
         self.negotiated.is_some()
             && match self.observed_build_characterisation {
-                Some(characterisation) => characterisation.runs_tested_features(),
+                Some(characterisation) => {
+                    characterisation.runs_tested_features()
+                        && sage_acp_protocol::codex_compatibility::observed_capabilities(
+                            &self.runtime_version,
+                        )
+                        .goals
+                }
                 None => {
                     self.capability_ceiling.protocol_identity
                         == sage_acp_protocol::codex_protocol::PINNED_PROTOCOL_IDENTITY

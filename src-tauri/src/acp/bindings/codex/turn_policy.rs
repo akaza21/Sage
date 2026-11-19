@@ -22,7 +22,13 @@ impl TurnPolicySurface {
     /// None denotes the curated package, which must match the pinned version.
     pub(super) fn from_identity(observed: Option<Characterisation>, runtime_version: &str) -> Self {
         let supported = match observed {
-            Some(characterisation) => characterisation.runs_tested_features(),
+            Some(characterisation) => {
+                characterisation.runs_tested_features()
+                    && sage_acp_protocol::codex_compatibility::observed_capabilities(
+                        runtime_version,
+                    )
+                    .access_policy
+            }
             None => runtime_version == PINNED_CODEX_VERSION,
         };
         if supported {
@@ -89,7 +95,7 @@ mod tests {
     use serde_json::Value;
 
     #[test]
-    fn the_turn_policy_follows_the_tested_release_or_a_later_one() {
+    fn the_turn_policy_requires_proven_wire_or_the_curated_pin() {
         use Characterisation::{Characterised, NewerThanTested, Uncharacterised};
         for (observed, runtime_version, expected) in [
             (
@@ -100,7 +106,7 @@ mod tests {
             (
                 Some(NewerThanTested),
                 "99.0.0",
-                TurnPolicySurface::Supported,
+                TurnPolicySurface::Unsupported,
             ),
             (
                 Some(Uncharacterised),
