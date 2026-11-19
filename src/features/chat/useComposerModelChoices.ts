@@ -19,7 +19,7 @@ export function useComposerModelSelection(
     ? undefined
     : sessionConfig?.confirmedModel;
   const soleId = models.length === 0 ? sessionModel?.id : undefined;
-  const soleName = label ?? sessionModel?.name ?? soleId;
+  const soleName = label ?? sessionModel?.name;
   const catalog = useMemo(
     () => (soleId ? [{ id: soleId, name: soleName ?? soleId }] : models),
     [models, soleId, soleName],

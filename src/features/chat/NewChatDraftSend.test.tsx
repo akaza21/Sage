@@ -38,6 +38,7 @@ import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
 import { registerWorkbenchSurfaces } from "../../workbench/registeredSurfaces";
 import { AgentChatPanes } from "../../workbench/AgentChatPanes";
 import { resetHarnessModelCache } from "../../app/harnessModelCache";
+import { useInheritedStore } from "./inheritedComposerModelState";
 import { LeftSidebar } from "../../workbench/LeftSidebar";
 import { openSideChat } from "../../workbench/sideChatActions";
 import { useSideChatState } from "../../workbench/sideChatState";
@@ -138,6 +139,20 @@ function mount(strict = false, compact = false) {
 }
 const composer = () => screen.getByRole("combobox", { name: "Message agent" });
 
+async function existingSessionlessChat() {
+  const chatId = useWorkbenchStore
+    .getState()
+    .tabs.find((tab) => tab.kind === "chat")!.id;
+  await useWorkbenchStore.getState().activateTab(chatId);
+  const state = useWorkbenchStore.getState();
+  state.setChatHarnessSelection(state.captureChatOwnership(chatId)!, {
+    harnessId: harness.id,
+    modelId: null,
+  });
+  useWorkbenchStore.setState({ selectedModelId: null });
+  return chatId;
+}
+
 beforeEach(async () => {
   nativeAccess.refuse = false;
   useSideChatState.setState({ sides: [], pairedId: null, pendingClose: null });
@@ -147,6 +162,7 @@ beforeEach(async () => {
   useSessionAccessModeStore.setState({ ready: true, modes: {}, error: null });
   useChatAccessDrafts.setState({ drafts: {} });
   useChatEffortDraft.setState({ draft: null });
+  useInheritedStore.setState({}, true);
   useChatAccessStore.setState({ modes: {}, error: null });
   starts = [];
   prompts = [];
@@ -211,8 +227,197 @@ afterEach(() => {
   vi.restoreAllMocks();
   useChatAccessDrafts.setState({ drafts: {} });
   useChatEffortDraft.setState({ draft: null });
+  useInheritedStore.setState({}, true);
   useWorkbenchStore.setState(initialState, true);
   resetBrowserDesktopForTests();
+});
+
+it("labels a session-less existing chat with its default and starts with the model picked before sending", async () => {
+  const chatId = await existingSessionlessChat();
+  useWorkbenchStore.setState({ models: [...models].reverse() });
+  mount();
+  await settleLazyModules();
+  const model = screen.getByRole("button", { name: "Model" });
+  expect(model).toHaveTextContent(/^Model A$/);
+  expect(model).toBeEnabled();
+  fireEvent.click(model);
+  fireEvent.click(await screen.findByRole("option", { name: /Model B/ }));
+  expect(model).toHaveTextContent(/^Model B$/);
+  fireEvent.change(composer(), { target: { value: "Use my chosen model" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(starts).toMatchObject([
+    { chatId, bindingId: harness.bindingId, modelId: "model-b" },
+  ]);
+  expect(prompts[0]).toMatchObject({ chatId, prompt: "Use my chosen model" });
+});
+
+it("replaces a pre-session label with the harness's confirmed model even when it differs from the request", async () => {
+  const chatId = useWorkbenchStore
+    .getState()
+    .tabs.find((tab) => tab.kind === "chat")!.id;
+  await useWorkbenchStore.getState().activateTab(chatId);
+  const start = vi.mocked(acpDesktop.startSession).getMockImplementation()!;
+  vi.mocked(acpDesktop.startSession).mockImplementation(async (request) => {
+    const result = await start(request);
+    result.projection.sessionConfig = {
+      sageAgentSessionId: result.projection.currentSessionId!,
+      runtimeEpoch: "1" as never,
+      configRevision: "1" as never,
+      confirmedModel: { id: "model-b", name: "Model B" },
+      modes: null,
+      configOptions: [],
+    };
+    return result;
+  });
+  mount();
+  await settleLazyModules();
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    /^Model A$/,
+  );
+  fireEvent.change(composer(), {
+    target: { value: "Confirm the effective model" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(starts).toMatchObject([{ chatId, modelId: "model-a" }]);
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    /^Model B$/,
+  );
+});
+
+it("starts an existing session-less chat with its inherited model before falling back to the catalog default", async () => {
+  const chatId = await existingSessionlessChat();
+  useInheritedStore.setState(
+    { [chatId]: { id: "model-b", model: "Model B", effort: null } },
+    true,
+  );
+  mount();
+  await settleLazyModules();
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    /^Model B$/,
+  );
+  fireEvent.change(composer(), {
+    target: { value: "Keep the inherited model" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(starts).toMatchObject([{ chatId, modelId: "model-b" }]);
+});
+
+it.each(["checking", "idle"] as const)(
+  "keeps a session-less chat's model pending while its catalog loads (%s)",
+  async (phase) => {
+    await existingSessionlessChat();
+    useWorkbenchStore.setState({
+      selectedModelId: null,
+      models: [],
+      harnessDiscoveryPhase: phase,
+    });
+    mount();
+    await settleLazyModules();
+    const model = screen.getByRole("button", { name: "Model" });
+    expect(model).toHaveTextContent("Loading");
+    expect(model).toBeDisabled();
+    act(() =>
+      useWorkbenchStore.setState({ models, harnessDiscoveryPhase: "ready" }),
+    );
+    expect(model).toHaveTextContent(/^Model A$/);
+    expect(model).toBeEnabled();
+  },
+);
+
+it("shares a pinned chat's rediscovered default, effort and access after a catalog reset with its first native start", async () => {
+  const chatId = await existingSessionlessChat();
+  resetHarnessModelCache();
+  useWorkbenchStore.setState({
+    selectedHarnessId: otherHarness.id,
+    models: [],
+  });
+  let publish!: (value: typeof models) => void;
+  let publishOld!: (value: typeof models) => void;
+  const oldCatalog = new Promise<typeof models>((resolve) => {
+    publishOld = resolve;
+  });
+  const nextCatalog = new Promise<typeof models>((resolve) => {
+    publish = resolve;
+  });
+  vi.mocked(desktop.listHarnessModels)
+    .mockReturnValueOnce(oldCatalog)
+    .mockReturnValue(nextCatalog);
+  mount();
+  await settleLazyModules();
+  const model = screen.getByRole("button", { name: "Model" });
+  expect(model).toHaveTextContent("Loading");
+  expect(model).toBeDisabled();
+  act(() => resetHarnessModelCache());
+  await settleLazyModules();
+  await act(async () =>
+    publishOld([{ ...models[0], id: "old-model", name: "Old account model" }]),
+  );
+  expect(model).toHaveTextContent("Loading");
+  await act(async () => publish([...models].reverse()));
+  await settleLazyModules();
+  await waitFor(() => expect(model).toHaveTextContent(/^Model A$/));
+  expect(model).toBeEnabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: /Thinking level: Default/ }),
+  );
+  fireEvent.change(
+    await screen.findByRole("slider", { name: "Thinking level" }),
+    { target: { value: "2" } },
+  );
+  fireEvent.keyDown(screen.getByRole("slider", { name: "Thinking level" }), {
+    key: "Escape",
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Access options" }));
+  fireEvent.click(
+    await screen.findByRole("menuitemradio", { name: "Ask each time" }),
+  );
+  fireEvent.change(composer(), {
+    target: { value: "Use the discovered default" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(starts).toMatchObject([
+    {
+      chatId,
+      bindingId: harness.bindingId,
+      modelId: "model-a",
+      effort: "high",
+    },
+  ]);
+  expect(
+    useChatAccessStore.getState().modes[pages.get(chatId)!.currentSessionId!],
+  ).toBe("ask");
+});
+
+it("drops the inherited model when switching a session-less chat to a harness with no catalog", async () => {
+  const chatId = await existingSessionlessChat();
+  useInheritedStore.setState(
+    { [chatId]: { id: "model-b", model: "Model B", effort: null } },
+    true,
+  );
+  vi.mocked(desktop.listHarnessModels).mockResolvedValue([]);
+  mount();
+  await settleLazyModules();
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    /^Model B$/,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Harness" }));
+  fireEvent.click(await screen.findByRole("option", { name: /Other harness/ }));
+  await settleLazyModules();
+  const model = screen.getByRole("button", { name: "Model" });
+  expect(model).toHaveTextContent(/^Model$/);
+  expect(model).toBeDisabled();
+  fireEvent.change(composer(), {
+    target: { value: "Use the new harness default" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  expect(starts).toMatchObject([
+    { chatId, bindingId: otherHarness.bindingId, modelId: null },
+  ]);
 });
 
 it("creates one durable chat and sends once through its real scoped page, including across remount", async () => {

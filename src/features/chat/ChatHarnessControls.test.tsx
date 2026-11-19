@@ -195,6 +195,21 @@ it("does not offer Add for a project when there are no projects to choose", () =
   ).toBeDisabled();
 });
 
+it("names a pending model by its ID when the catalog publishes no display name", () => {
+  useWorkbenchStore.setState({
+    selectedHarnessId: "access-test",
+    models: [{ id: "custom-model", name: "", isDefault: true }],
+  });
+  renderControls({
+    sessionHarnessId: null,
+    selectedModelId: "custom-model",
+    accessTarget: { bindingId: "fixture", draftChatId: "chat-draft" },
+  });
+  expect(screen.getByRole("button", { name: "Model" })).toHaveTextContent(
+    /^custom-model$/,
+  );
+});
+
 it("disables the add button when there are no composer actions", () => {
   renderControls();
   expect(
@@ -341,9 +356,11 @@ it("keeps models listed before an account change out and lists the new account's
     .mockResolvedValue([gptY]);
   const view = renderListedCodexChat();
 
-  resetHarnessModelCache();
+  act(() => resetHarnessModelCache());
   await act(async () => release([gptX]));
-  expect(cachedHarnessModels(harnessModelIdentity(listedCodex))).toBeNull();
+  expect(cachedHarnessModels(harnessModelIdentity(listedCodex))).toEqual([
+    gptY,
+  ]);
   view.rerenderControls({
     sessionHarnessId: null,
     selectedHarnessId: "codex",

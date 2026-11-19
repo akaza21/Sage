@@ -1,19 +1,23 @@
-import {
-  useCallback,
-  useId,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
+import { useStore } from "zustand";
 
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import { preferredModelId } from "../../app/harnessSlice";
+import {
+  cachedHarnessModels,
+  harnessModelIdentity,
+  harnessModelCache,
+} from "../../app/harnessModelCache";
 import { useWorkbenchStore } from "../../app/store";
 import type { AcpChatPage } from "../../domain/acp";
 import type { HarnessDefinition } from "../../domain/harness";
 import type { SearchablePickerOption } from "../../ui/SearchablePicker";
 import { useAcpChatProjection } from "./acp";
 import { harnessAvailability } from "./harnessAvailability";
+import {
+  useInheritedComposerModel,
+  useInheritedStore,
+} from "./inheritedComposerModelState";
 
 export function harnessPickerCandidates(
   harnesses: readonly HarnessDefinition[],
@@ -39,8 +43,7 @@ export function harnessPickerCandidates(
     })
     .sort(
       (left, right) =>
-        Number(Boolean(left.disabledReason)) -
-        Number(Boolean(right.disabledReason)),
+        Number(!!left.disabledReason) - Number(!!right.disabledReason),
     );
 }
 
@@ -59,7 +62,7 @@ export function useComposerPopovers(disabled = false, busy = false) {
   const optionsTrigger = useRef<HTMLButtonElement>(null);
   const modelTrigger = useRef<HTMLButtonElement>(null);
 
-  if (selected !== null && active === null) setActive(null);
+  if (selected !== active) setActive(active);
 
   return {
     active,
@@ -94,48 +97,49 @@ export function useChatHarnessSelection(chatId?: string): {
   const globallySelectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
   );
-  const globallySelectedModelId = useWorkbenchStore(
-    (state) => state.selectedModelId,
+  const selectedModelId = useWorkbenchStore((state) =>
+    chatId === undefined
+      ? state.selectedModelId
+      : (state.chatUiById[chatId]?.modelId ?? null),
   );
-  const chatSelection = useWorkbenchStore((state) =>
-    chatId ? (state.chatUiById[chatId] ?? null) : null,
+  const inherited = useInheritedComposerModel(chatId ?? null);
+  const ownedHarnessId = useWorkbenchStore((state) =>
+    chatId ? state.chatUiById[chatId]?.harnessId : null,
   );
   const harnessDiscoveryPhase = useWorkbenchStore(
     (state) => state.harnessDiscoveryPhase,
   );
-  const captureChatOwnership = useWorkbenchStore(
-    (state) => state.captureChatOwnership,
+  const {
+    captureChatOwnership,
+    setChatHarnessSelection,
+    selectHarness,
+    selectModel,
+  } = useWorkbenchStore.getState();
+  const selectedHarnessId = ownedHarnessId ?? globallySelectedHarnessId;
+  const globalModels = useWorkbenchStore((state) =>
+    selectedHarnessId === state.selectedHarnessId ? state.models : null,
   );
-  const setChatHarnessSelection = useWorkbenchStore(
-    (state) => state.setChatHarnessSelection,
-  );
-  const selectHarness = useWorkbenchStore((state) => state.selectHarness);
-  const selectModel = useWorkbenchStore((state) => state.selectModel);
-  const selectedHarnessId =
-    chatId === undefined
-      ? globallySelectedHarnessId
-      : (chatSelection?.harnessId ?? globallySelectedHarnessId);
-  const selectedModelId =
-    chatId === undefined
-      ? globallySelectedModelId
-      : (chatSelection?.modelId ?? null);
   const harnessDefinition =
     harnesses.find((harness) => harness.id === selectedHarnessId) ?? null;
   const page = useAcpChatProjection(
     chatId !== undefined || harnessDefinition?.transport === "acp",
     chatId,
   );
-  const session = page?.sessions.find(
-    (candidate) =>
-      candidate.id === page.currentSessionId &&
-      !candidate.legacy &&
-      !["closed", "failed", "incompatible"].includes(candidate.state),
+  const modelIdentity = harnessModelIdentity(harnessDefinition);
+  const cachedModels = useStore(harnessModelCache, () =>
+    cachedHarnessModels(modelIdentity),
   );
-  const historicalSession =
-    !session && !page?.currentSessionId
+  const models = globalModels ?? cachedModels;
+  const selectedSession =
+    page?.sessions.find(
+      (candidate) =>
+        candidate.id === page.currentSessionId &&
+        !candidate.legacy &&
+        !["closed", "failed", "incompatible"].includes(candidate.state),
+    ) ??
+    (!page?.currentSessionId
       ? page?.sessions.filter((candidate) => !candidate.legacy).at(-1)
-      : null;
-  const selectedSession = session ?? historicalSession;
+      : null);
   const sessionHarnessId = selectedSession
     ? (harnesses.find(
         (harness) =>
@@ -143,74 +147,46 @@ export function useChatHarnessSelection(chatId?: string): {
           harness.bindingId === selectedSession.bindingId,
       )?.id ?? null)
     : null;
-  const sessionSelection = useMemo(
-    () =>
-      sessionHarnessId
-        ? {
-            harnessId: sessionHarnessId,
-            modelId: selectedSession?.modelId ?? null,
-          }
-        : null,
-    [sessionHarnessId, selectedSession?.modelId],
-  );
+  const sessionModelId = selectedSession?.modelId ?? null;
   const discoveryPhase =
-    sessionSelection?.harnessId === selectedHarnessId &&
-    sessionSelection.modelId === selectedModelId
+    sessionHarnessId &&
+    sessionHarnessId === selectedHarnessId &&
+    sessionModelId === selectedModelId
       ? "ready"
-      : chatId !== undefined && selectedHarnessId !== globallySelectedHarnessId
+      : chatId !== undefined && globalModels === null
         ? "ready"
         : harnessDiscoveryPhase;
   useLayoutEffect(() => {
-    if (!chatId || !page || chatSelection?.harnessId) return;
-    const selection =
-      sessionSelection ??
-      (harnessDiscoveryPhase === "ready" && globallySelectedHarnessId
-        ? {
-            harnessId: globallySelectedHarnessId,
-            modelId: globallySelectedModelId,
-          }
-        : null);
-    if (!selection) return;
-    const ownership = captureChatOwnership(chatId);
-    if (!ownership) return;
-    setChatHarnessSelection(ownership, selection);
-  }, [
-    captureChatOwnership,
-    chatId,
-    chatSelection?.harnessId,
-    globallySelectedHarnessId,
-    globallySelectedModelId,
-    harnessDiscoveryPhase,
-    page,
-    sessionSelection,
-    setChatHarnessSelection,
-  ]);
-  useLayoutEffect(() => {
+    // Materialize pre-session defaults through the same owned chat selection
+    // as a draft's explicit pick, so rendering and native start agree.
     if (
       !chatId ||
-      !chatSelection?.harnessId ||
-      chatSelection.modelId !== null ||
-      chatSelection.harnessId !== globallySelectedHarnessId ||
-      harnessDiscoveryPhase !== "ready" ||
-      globallySelectedModelId === null ||
-      sessionSelection?.harnessId === chatSelection.harnessId
+      !page ||
+      (ownedHarnessId &&
+        (selectedModelId !== null || sessionHarnessId === ownedHarnessId))
     )
       return;
+    const useSession = !ownedHarnessId && sessionHarnessId;
+    if (!useSession && discoveryPhase !== "ready") return;
+    const harnessId = useSession || selectedHarnessId;
+    const modelId = useSession
+      ? sessionModelId
+      : (inherited?.id ?? preferredModelId(models ?? [], null));
+    if (!harnessId || (ownedHarnessId && modelId === null)) return;
     const ownership = captureChatOwnership(chatId);
-    if (!ownership) return;
-    setChatHarnessSelection(ownership, {
-      harnessId: chatSelection.harnessId,
-      modelId: globallySelectedModelId,
-    });
+    if (ownership) setChatHarnessSelection(ownership, { harnessId, modelId });
   }, [
     captureChatOwnership,
     chatId,
-    chatSelection?.harnessId,
-    chatSelection?.modelId,
-    globallySelectedHarnessId,
-    globallySelectedModelId,
-    harnessDiscoveryPhase,
-    sessionSelection?.harnessId,
+    ownedHarnessId,
+    discoveryPhase,
+    inherited?.id,
+    models,
+    page,
+    selectedHarnessId,
+    selectedModelId,
+    sessionHarnessId,
+    sessionModelId,
     setChatHarnessSelection,
   ]);
   const selectionRequest = useRef(0);
@@ -218,14 +194,19 @@ export function useChatHarnessSelection(chatId?: string): {
     async (harnessId: string) => {
       const request = ++selectionRequest.current;
       const ownership = captureChatOwnership(chatId);
-      if (!ownership) {
-        await selectHarness(harnessId);
-        return;
+      if (ownership) {
+        if (harnessId !== selectedHarnessId) {
+          useInheritedStore.setState(
+            ({ [ownership.chatId]: _inherited, ...remaining }) => remaining,
+            true,
+          );
+        }
+        setChatHarnessSelection(ownership, { harnessId, modelId: null });
       }
-      setChatHarnessSelection(ownership, { harnessId, modelId: null });
       await selectHarness(harnessId);
       const state = useWorkbenchStore.getState();
       if (
+        !ownership ||
         request !== selectionRequest.current ||
         state.selectedHarnessId !== harnessId
       )
@@ -235,20 +216,23 @@ export function useChatHarnessSelection(chatId?: string): {
         modelId: state.selectedModelId,
       });
     },
-    [captureChatOwnership, chatId, selectHarness, setChatHarnessSelection],
+    [
+      captureChatOwnership,
+      chatId,
+      selectHarness,
+      selectedHarnessId,
+      setChatHarnessSelection,
+    ],
   );
   const chooseModel = useCallback(
     (modelId: string) => {
       const ownership = captureChatOwnership(chatId);
-      if (!ownership) {
-        selectModel(modelId);
-        return;
-      }
       selectModel(modelId);
-      setChatHarnessSelection(ownership, {
-        harnessId: selectedHarnessId,
-        modelId,
-      });
+      if (ownership)
+        setChatHarnessSelection(ownership, {
+          harnessId: selectedHarnessId,
+          modelId,
+        });
     },
     [
       captureChatOwnership,

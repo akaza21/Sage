@@ -3,12 +3,14 @@ import { IconButton } from "../../ui/IconButton";
 import { Plus } from "../../ui/leanIcons";
 
 import { useState } from "react";
-import { ComposerContext } from "./ComposerContext";
-
+import { useStore } from "zustand";
 import {
   cachedHarnessModels,
   harnessModelIdentity,
+  harnessModelCache,
 } from "../../app/harnessModelCache";
+import { ComposerContext } from "./ComposerContext";
+
 import { useWorkbenchStore } from "../../app/store";
 import {
   selectedConfigChoice,
@@ -37,6 +39,7 @@ import { useComposerModelSelection } from "./useComposerModelChoices";
 import { useConfirmedModelLabel } from "./useConfirmedModelLabel";
 
 export function ChatHarnessControls({
+  modelsPending,
   draftPickers,
   contextUsage,
   usageRequest,
@@ -70,7 +73,6 @@ export function ChatHarnessControls({
     (state) => state.projectTransitioning,
   );
   const [effortFromAdd, setEffortFromAdd] = useState(false);
-  const [, listed] = useState(0);
   const {
     active,
     modelId,
@@ -81,10 +83,9 @@ export function ChatHarnessControls({
     dismiss,
     setHarnessOpen,
   } = useComposerPopovers(projectTransitioning, turnBusy);
-  const globalSelectedHarnessId = useWorkbenchStore(
-    (state) => state.selectedHarnessId,
+  const globalModels = useWorkbenchStore((state) =>
+    selectedHarnessId === state.selectedHarnessId ? state.models : null,
   );
-  const globalModels = useWorkbenchStore((state) => state.models);
   const selectedHarness = harnesses.find(
     (harness) => harness.id === selectedHarnessId,
   );
@@ -100,11 +101,18 @@ export function ChatHarnessControls({
     accessOpen: active === "access",
     openAccess: () => toggle("access"),
   });
-  const knownModels =
-    selectedHarnessId === globalSelectedHarnessId
-      ? globalModels
-      : cachedHarnessModels(harnessModelIdentity(selectedHarness));
+  const modelIdentity = harnessModelIdentity(selectedHarness);
+  const cachedModels = useStore(harnessModelCache, () =>
+    cachedHarnessModels(modelIdentity),
+  );
+  const globallySelected = globalModels !== null;
+  const knownModels = globalModels ?? cachedModels;
   const models = knownModels ?? [];
+  // Both unsaved drafts and existing chats without a head draft the choices
+  // consumed by the next native start. Only unsaved drafts control them here;
+  // existing chats retain the native-bound chat access and effort stores.
+  const drafting = !!draftPickers || !!draftChatId;
+  const modelsLoading = drafting && (modelsPending || !knownModels);
   // A restored config is passed only for the session the selection continues.
   const sessionOwnsSelection =
     !!sessionConfig?.restored ||
@@ -157,9 +165,11 @@ export function ChatHarnessControls({
   const currentModel = models.find((model) => model.id === currentModelId);
   const modelLabel = composerModelName(
     confirmedModelLabel ??
-      inheriting?.model ??
-      (draftPickers ? currentModel?.name : null) ??
-      "Model",
+      (modelsLoading
+        ? "Loading…"
+        : (inheriting?.model ??
+          (drafting ? currentModel?.name || currentModelId : null) ??
+          "Model")),
   );
   // While the next send starts a session (`draftChatId` is set only then),
   // the levels the harness lists for the selected model can be chosen.
@@ -170,10 +180,7 @@ export function ChatHarnessControls({
     levels: effortOption ? undefined : currentModel?.effortLevels,
   };
   const draftEffort =
-    (draft.chatId || draftPickers) &&
-    draft.bindingId &&
-    draft.modelId &&
-    draft.levels?.length
+    drafting && draft.bindingId && draft.modelId && draft.levels?.length
       ? ({
           ...draft,
           value: draftPickers?.effort,
@@ -228,11 +235,10 @@ export function ChatHarnessControls({
   };
   return (
     <>
-      {!knownModels && (
+      {!globallySelected && !knownModels?.length && (
         <ComposerOptionsPart
           part="ListedHarnessModels"
           harness={selectedHarness}
-          onListed={listed}
         />
       )}
       <div
@@ -318,7 +324,7 @@ export function ChatHarnessControls({
           }
           disabled={turnBusy || projectTransitioning || !canPrompt}
           effortDisabled={turnBusy || projectTransitioning}
-          pending={modePending}
+          pending={modePending || modelsLoading}
           readOnlyLabel={
             !projectTransitioning &&
             (!!inheriting ||

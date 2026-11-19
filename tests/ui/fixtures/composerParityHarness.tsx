@@ -131,6 +131,11 @@ export function Host({ state }: { state: ParityState }) {
                 workbenchError={null}
                 chatError={null}
                 availableBinding
+                accessTarget={
+                  state === "pre-turn"
+                    ? { bindingId: "fixture", draftChatId: "chat-a" }
+                    : undefined
+                }
                 canPrompt
                 discoveryPhase="ready"
                 sessionHarnessId={state === "pre-turn" ? null : "fixture"}

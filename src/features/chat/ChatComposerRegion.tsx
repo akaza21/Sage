@@ -345,6 +345,9 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
             {!hidden ? (
               <ChatHarnessControls
                 {...harnessControls}
+                modelsPending={
+                  discoveryPhase === "checking" || discoveryPhase === "idle"
+                }
                 availableBinding={availableBinding}
                 canPrompt={canPrompt}
                 sessionHarnessId={sessionHarnessId}
