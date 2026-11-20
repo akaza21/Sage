@@ -507,6 +507,16 @@
         "reason": "Creating a project from an unsent chat: dialog and draft ownership handoff load only on New project; the closed picker retains no dialog."
       },
       {
+        "entry": "src/features/chat/ChatProjectCreationSurface.tsx",
+        "maxGzipBytes": 1000,
+        "reason": "Project creation UI and refusal recovery load before creation can begin, retaining the captured composer until the source Chat is restored."
+      },
+      {
+        "entry": "src/workbench/ProjectChatHoverCard.tsx",
+        "maxGzipBytes": 800,
+        "reason": "Existing rail hover content and age formatting load on demand; no hover DOM or listeners survive dismissal. Startup and core caps are unchanged."
+      },
+      {
         "entry": "src/app/runSetChatProject.ts",
         "maxGzipBytes": 500,
         "reason": "Reparenting an unsent chat and restoring its composer load only when its project changes; native SQLite remains authoritative."

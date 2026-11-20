@@ -28,9 +28,9 @@ import {
 import { agentRailTrailingState } from "./agentRailStatusView";
 import {
   ProjectChatActionMenu,
-  ProjectChatHoverCard,
   ProjectChatTrailingState,
 } from "./ProjectChatActionMenu";
+import type * as HoverChunk from "./ProjectChatHoverCard";
 import type * as RenameChunk from "./ProjectChatRename";
 import { chatRowErrorId } from "./chatRowError";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
@@ -39,6 +39,9 @@ import {
   useParentChatStatus,
   useRailChatId,
 } from "./sideChatState";
+const HoverCardPart = lazyParts<typeof HoverChunk>(
+  () => import("./ProjectChatHoverCard"),
+);
 const RenamePart = lazyParts<typeof RenameChunk>(
   () => import("./ProjectChatRename"),
 );
@@ -147,7 +150,8 @@ export function ProjectChatNavigation({
   return (
     <div className="project-chats">
       {hoverChat && hoverCard.card ? (
-        <ProjectChatHoverCard
+        <HoverCardPart
+          part="ProjectChatHoverCard"
           row={hoverCard.card.row}
           shownAt={hoverCard.card.shownAt}
           title={chatDisplayTitle(hoverChat.title)}

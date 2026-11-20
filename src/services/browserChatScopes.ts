@@ -7,8 +7,11 @@ import type {
   ChatDeleteRequest,
   ProjectSwitchRequest,
   ProjectTransitionResult,
+  CreateProjectRequest,
 } from "../domain/workbench";
 import { createBrowserChatTab } from "./browserChat";
+import { browserDirectories } from "./browserWorkspaceFixture";
+import { resourceKey } from "../domain/resourceIdentity";
 
 type Scope = ProjectLayoutRequest & {
   project: ProjectSummary;
@@ -26,8 +29,24 @@ export function resetBrowserChatScopes() {
   scopes.clear();
   owners.clear();
 }
+function forgetScope(scope: Scope) {
+  scopes.delete(scope.projectId);
+  const roots = new Set(scope.project.roots.map((root) => root.id));
+  for (const [key, listing] of browserDirectories)
+    if (roots.has(listing.resource.rootId)) browserDirectories.delete(key);
+}
 export function rememberBrowserScope(snapshot: BootstrapSnapshot) {
   if (!snapshot.project) return;
+  if (
+    snapshot.project.isInternal &&
+    !snapshot.tabs.some((tab) => tab.kind === "chat") &&
+    !snapshot.archivedChats.length
+  ) {
+    const scope = scopes.get(snapshot.project.id);
+    if (scope) forgetScope(scope);
+    refreshUnscoped(snapshot);
+    return;
+  }
   if (!scopes.has(snapshot.project.id) && scopes.size >= 128)
     throw new Error("Browser scope limit reached");
   scopes.set(
@@ -98,7 +117,7 @@ export function deleteScopedBrowserChat(
     !scope.tabs.length &&
     !scope.archivedChats.length
   )
-    scopes.delete(project);
+    forgetScope(scope);
   refreshUnscoped(snapshot);
 }
 export function selectBrowserScope(
@@ -128,6 +147,12 @@ export function selectBrowserScope(
     snapshot.activeTabId = null;
     snapshot.selectedRootId = rootId;
     snapshot.selectedResource = null;
+    const resource = { rootId, relativePath: "" };
+    browserDirectories.set(resourceKey(resource), {
+      resource,
+      entries: [],
+      truncated: false,
+    });
     return;
   }
   const held = scopes.get(projectId);
@@ -173,7 +198,71 @@ export function createBrowserScopeCommands(context: ScopeCommandContext) {
     if (epoch !== snapshot.transitionEpoch)
       throw new Error("Stale Chat scope transition");
   };
+  const requireMovable = (project: string, chat: string) => {
+    const source =
+      snapshot.project?.id === project ? snapshot : scopes.get(project);
+    if (!source?.tabs.some((tab) => tab.id === chat && tab.kind === "chat"))
+      throw new Error("Unknown Chat");
+    if (context.hasSession(chat))
+      throw new Error("A Chat with a session cannot change project");
+    if (
+      source.project?.isInternal &&
+      source.project.roots.some((root) => {
+        const listing = browserDirectories.get(
+          resourceKey({ rootId: root.id, relativePath: "" }),
+        );
+        return !listing || listing.truncated || listing.entries.length > 0;
+      })
+    )
+      throw new Error(
+        "This chat's folder has files. Start a new chat in the project instead.",
+      );
+  };
   return {
+    async createProject(
+      request: CreateProjectRequest,
+      expectedProject: string | null,
+      epoch: number,
+    ) {
+      admit(epoch);
+      if ((snapshot.project?.id ?? null) !== expectedProject)
+        throw new Error("Project changed before creation");
+      if (request.sourceChatId && expectedProject) {
+        try {
+          requireMovable(expectedProject, request.sourceChatId);
+        } catch (error) {
+          return {
+            committed: false,
+            transitionEpoch: epoch,
+            snapshot: null,
+            recoveryError: String(error).replace(/^Error: /, ""),
+          };
+        }
+      }
+      if (!request.name.trim() || request.sourceTokens.length)
+        throw new Error(
+          "Browser projects require a name and no source folders",
+        );
+      if (snapshot.projects.length >= 32)
+        throw new Error("Project capacity reached");
+      rememberBrowserScope(snapshot);
+      const id = crypto.randomUUID();
+      snapshot.projects.push({
+        id,
+        name: request.name.trim(),
+        rootCount: 0,
+        lastOpenedAt: Date.now(),
+      });
+      selectBrowserScope(snapshot, id);
+      const chat = createBrowserChatTab([], 0);
+      snapshot.tabs = [chat];
+      snapshot.activeTabId = chat.id;
+      snapshot.archivedChats = [];
+      context.register(chat);
+      context.activate();
+      rememberBrowserScope(snapshot);
+      return commit();
+    },
     async createChat(
       current: ProjectLayoutRequest | null,
       epoch: number,
@@ -199,8 +288,10 @@ export function createBrowserScopeCommands(context: ScopeCommandContext) {
       chatId: string,
       target: string | null,
     ) {
-      if (context.hasSession(chatId))
-        throw new Error("A Chat with a session cannot change project");
+      requireMovable(current.projectId, chatId);
+      // The source layout was persisted by project creation before it switched.
+      if (current.projectId !== snapshot.project?.id)
+        selectBrowserScope(snapshot, current.projectId);
       await persist(current, epoch);
       const chat = snapshot.tabs.find(
         (tab) => tab.id === chatId && tab.kind === "chat",

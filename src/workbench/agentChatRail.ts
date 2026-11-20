@@ -92,6 +92,7 @@ export function groupAgentRailProjects(input: {
   projects: ReadonlyArray<ProjectListItem>;
   currentProjectId: string | null;
   currentChats: ReadonlyArray<Partial<AgentRailChat>>;
+  isInternal?: boolean;
 }): AgentRailProjectGroup[] {
   const groups: AgentRailProjectGroup[] = [];
   const currentProjectId = admittedProjectId(input.currentProjectId);
@@ -122,9 +123,15 @@ export function groupAgentRailProjects(input: {
     currentIncluded ||= current;
     const source = current
       ? admitRailChats(input.currentChats, MAX_AGENT_RAIL_CURRENT_CHATS)
-      : admitRailChats(project.railChats, MAX_AGENT_RAIL_CHATS_PER_PROJECT);
+      : admitRailChats(
+          project.railChats,
+          input.isInternal
+            ? MAX_AGENT_RAIL_CURRENT_CHATS
+            : MAX_AGENT_RAIL_CHATS_PER_PROJECT,
+        );
     const name = projectLabel(project.name);
     groups.push({
+      isInternal: input.isInternal,
       id,
       name,
       rootCount: project.rootCount,
@@ -151,6 +158,7 @@ export function groupAgentRailProjects(input: {
     );
     if (source.chats.length > 0) {
       groups.push({
+        isInternal: input.isInternal,
         id: currentProjectId,
         name: UNKNOWN_PROJECT_NAME,
         rootCount: 0,

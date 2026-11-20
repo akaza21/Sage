@@ -151,6 +151,8 @@ export interface ProjectSourceFolder {
 export interface CreateProjectRequest {
   name: string;
   sourceTokens: string[];
+  /** Refuse creation if this unsent Chat can no longer move with it. */
+  sourceChatId?: string;
 }
 
 /** Matches the native limit on a name typed for a new project. */

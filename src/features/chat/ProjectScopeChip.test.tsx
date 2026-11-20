@@ -8,7 +8,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
-import { browserDesktop } from "../../services/browserDesktop";
+import { browserDirectories } from "../../services/browserWorkspaceFixture";
+import { resourceKey } from "../../domain/resourceIdentity";
 import { useChatEffortDraft } from "../../app/chatEffortDraft";
 import {
   draftChatAccess,
@@ -34,9 +35,6 @@ afterEach(() => {
 });
 
 it("keeps the entire unsent composer through New project creation and reparenting", async () => {
-  vi.spyOn(getWorkbenchPorts().project, "createProject").mockImplementation(
-    (_request, _expected, epoch) => browserDesktop.ensureLocalProject(epoch),
-  );
   await act(async () => useWorkbenchStore.getState().createChat(null));
   const state = useWorkbenchStore.getState();
   const chat = state.activeTabId!;
@@ -94,6 +92,92 @@ it("keeps the entire unsent composer through New project creation and reparentin
     mode: "fullAccess",
   });
 });
+
+it.each(["before creation", "during creation"])(
+  "keeps the original private chat and unsent context when files appear %s",
+  async (when) => {
+    await act(async () => useWorkbenchStore.getState().createChat(null));
+    const state = useWorkbenchStore.getState();
+    const chat = state.activeTabId!;
+    const project = state.project!;
+    const projectsBefore = state.projects.length;
+    const owner = state.captureChatOwnership(chat)!;
+    const context = {
+      kind: "browserPage" as const,
+      tabId: "browser-1",
+      url: "https://example.test/",
+      title: "Reference",
+      text: "Keep this attachment",
+    };
+    state.setChatComposer(owner, "Keep this unsent prompt");
+    expect(state.attachChatContext(owner, context)).toBe(true);
+    state.setChatHarnessSelection(owner, {
+      harnessId: "sage-simulator",
+      modelId: "sim-fast",
+    });
+    const saveFile = () =>
+      getWorkbenchPorts().project.createProjectFile({
+        projectId: project.id,
+        projectGeneration: state.projectGeneration,
+        expectedTransitionEpoch:
+          useWorkbenchStore.getState().nativeTransitionEpoch,
+        parent: { rootId: project.roots[0].id, relativePath: "" },
+        basename: "notes.txt",
+      });
+    if (when === "before creation") await saveFile();
+    else {
+      const move = getWorkbenchPorts().chat.setChatProject.bind(
+        getWorkbenchPorts().chat,
+      );
+      vi.spyOn(getWorkbenchPorts().chat, "setChatProject").mockImplementation(
+        async (...args) => {
+          // An external writer saves in the source after creation's preflight.
+          const root = { rootId: project.roots[0].id, relativePath: "" };
+          browserDirectories.get(resourceKey(root))!.entries.push({
+            name: "notes.txt",
+            resource: { ...root, relativePath: "notes.txt" },
+            kind: "file",
+            byteLen: 12,
+          });
+          return move(...args);
+        },
+      );
+    }
+    render(<ProjectScopeChip projectName="Choose project" />);
+    fireEvent.click(screen.getByRole("button", { name: "Choose project" }));
+    fireEvent.click(await screen.findByRole("option", { name: "New project" }));
+    fireEvent.change(
+      await screen.findByRole("textbox", { name: "Project name" }),
+      {
+        target: { value: "Destination" },
+      },
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "This chat's folder has files. Start a new chat in the project instead.",
+    );
+    expect(screen.getByRole("dialog")).toBeVisible();
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chat,
+      project: { id: project.id },
+      composerText: "Keep this unsent prompt",
+    });
+    expect(useWorkbenchStore.getState().chatUiById[chat]).toMatchObject({
+      composerText: "Keep this unsent prompt",
+      attachedContext: [context],
+      harnessId: "sage-simulator",
+      modelId: "sim-fast",
+    });
+    expect(useWorkbenchStore.getState().projects).toHaveLength(
+      projectsBefore + (when === "during creation" ? 1 : 0),
+    );
+    const listing = await getWorkbenchPorts().project.listDirectory({
+      rootId: project.roots[0].id,
+      relativePath: "",
+    });
+    expect(listing.entries.map((entry) => entry.name)).toEqual(["notes.txt"]);
+  },
+);
 
 it("starts without a project and lets the menu choose and clear the draft scope", async () => {
   useWorkbenchStore.setState({

@@ -25,9 +25,11 @@ const fullMessage = `A project holds at most ${MAX_PROJECT_SOURCE_FOLDERS} folde
 export function CreateProjectDialog({
   onClose,
   onCreated,
+  sourceChatId,
 }: {
   onClose: () => void;
-  onCreated?: () => void | Promise<void>;
+  onCreated?: () => void | boolean | Promise<void | boolean>;
+  sourceChatId?: string;
 }) {
   const [name, setName] = useState("");
   const [folders, setFolders] = useState<ProjectSourceFolder[]>([]);
@@ -73,13 +75,16 @@ export function CreateProjectDialog({
     const committed = await createProject({
       name: projectName,
       sourceTokens: folders.map((folder) => folder.token),
+      ...(sourceChatId ? { sourceChatId } : {}),
     });
-    setSaving(false);
     if (committed) {
-      await onCreated?.();
-      onClose();
-      return;
+      const completed = await onCreated?.();
+      if (completed !== false) {
+        onClose();
+        return;
+      }
     }
+    setSaving(false);
     setError(
       useWorkbenchStore.getState().error ?? "The project could not be created.",
     );

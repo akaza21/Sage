@@ -102,6 +102,7 @@ const scopeCommands = createBrowserScopeCommands({
 });
 
 export const browserDesktop = {
+  createProject: scopeCommands.createProject,
   async getBootstrapSnapshot() {
     return structuredClone({ ...snapshot, messages: activeMessages() });
   },
@@ -315,6 +316,7 @@ export const browserDesktop = {
     messagesByChat.delete(request.chatId);
     simulatorSessions.delete(request.chatId);
     snapshot.archivedChats = projectArchivedChats();
+    rememberBrowserScope(snapshot);
     return committedTransition();
   },
   async ensureLocalProject(expectedTransitionEpoch: number) {

@@ -68,3 +68,33 @@ it.each(["project", "list"] as const)(
     expect(useWorkbenchStore.getState().project?.id).toBe(project!.id);
   },
 );
+
+it("keeps all 17 forks of an inactive private workspace reachable in Recents", async () => {
+  const forks = Array.from({ length: 17 }, (_, index) => ({
+    id: `fork-${index}`,
+    title: `Private fork ${index}`,
+    pinned: false,
+    position: index,
+    updatedAt: index + 1,
+  }));
+  useWorkbenchStore.setState({
+    project: { id: "public", name: "Public", roots: [] },
+    projects: [{ id: "public", name: "Public", rootCount: 0, lastOpenedAt: 1 }],
+    unscopedChats: [
+      {
+        id: "private",
+        name: "",
+        rootCount: 1,
+        lastOpenedAt: 0,
+        railChats: forks,
+      },
+    ],
+    tabs: [],
+    activeTabId: null,
+  });
+  render(<LeftSidebar />);
+  for (const fork of forks)
+    expect(
+      await screen.findByRole("button", { name: `Open chat ${fork.title}` }),
+    ).toBeVisible();
+});

@@ -236,6 +236,38 @@ pub(crate) fn require_empty_source(database: &Database, project: &str) -> AppRes
     Ok(())
 }
 
+/// Preflight New project before creating or switching any durable state.
+/// Reassignment checks again because files or a session can arrive afterward.
+pub(crate) fn require_movable_source(
+    database: &Database,
+    project: &str,
+    chat: &str,
+) -> AppResult<()> {
+    let _storage = lock_storage();
+    {
+        let connection = database.connection();
+        let (attached, sessions): (bool, bool) = connection
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM chat_tabs WHERE project_id=?1 AND chat_id=?2),
+             EXISTS(SELECT 1 FROM agent_sessions WHERE chat_id=?2)",
+                params![project, chat],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .db()?;
+        if !attached {
+            return Err(AppError::InvalidRequest(
+                "Chat is not attached to that Project".into(),
+            ));
+        }
+        if sessions {
+            return Err(AppError::InvalidRequest(
+                "A Chat with a session cannot change project".into(),
+            ));
+        }
+    }
+    require_empty_source(database, project)
+}
+
 pub(crate) fn is_internal(connection: &rusqlite::Connection, project: &str) -> AppResult<bool> {
     connection
         .query_row(

@@ -658,17 +658,11 @@ test("New project preserves the unsent composer through creation and reparenting
   await openScenario(page, "agent-single", "agent");
   const chat = await page.evaluate(async () => {
     const { useWorkbenchStore } = await import("/src/app/store.ts");
-    const { browserDesktop, resetBrowserDesktopForTests } =
+    const { resetBrowserDesktopForTests } =
       await import("/src/services/browserDesktop.ts");
-    const { getWorkbenchPorts } =
-      await import("/src/ports/workbenchRuntime.ts");
     resetBrowserDesktopForTests();
     await useWorkbenchStore.getState().initialize();
     await useWorkbenchStore.getState().createChat(null);
-    // Browser boundary supplies a new Local project; creation and reparenting
-    // still run through the real project and chat transition actions.
-    getWorkbenchPorts().project.createProject = (_request, _expected, epoch) =>
-      browserDesktop.ensureLocalProject(epoch);
     const state = useWorkbenchStore.getState();
     const chat = state.activeTabId!;
     const owner = state.captureChatOwnership(chat)!;
@@ -733,6 +727,107 @@ test("New project preserves the unsent composer through creation and reparenting
       },
     });
 });
+
+for (const when of ["before creation", "during creation"]) {
+  test(`New project preserves the private composer when files appear ${when}`, async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+    const original = await page.evaluate(async (when) => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { resetBrowserDesktopForTests } =
+        await import("/src/services/browserDesktop.ts");
+      const { getWorkbenchPorts } =
+        await import("/src/ports/workbenchRuntime.ts");
+      const { browserDirectories } =
+        await import("/src/services/browserWorkspaceFixture.ts");
+      const { resourceKey } = await import("/src/domain/resourceIdentity.ts");
+      resetBrowserDesktopForTests();
+      await useWorkbenchStore.getState().initialize();
+      await useWorkbenchStore.getState().createChat(null);
+      const state = useWorkbenchStore.getState();
+      const owner = state.captureChatOwnership()!;
+      state.setChatComposer(owner, "Keep this unsent prompt");
+      state.attachChatContext(owner, {
+        kind: "browserPage",
+        tabId: "browser-1",
+        url: "https://example.test/",
+        title: "Reference",
+        text: "Keep this attachment",
+      });
+      const parent = { rootId: state.project!.roots[0].id, relativePath: "" };
+      const write = () =>
+        browserDirectories.get(resourceKey(parent))!.entries.push({
+          name: "notes.txt",
+          kind: "file",
+          byteLen: 12,
+          resource: { ...parent, relativePath: "notes.txt" },
+        });
+      if (when === "before creation") {
+        await getWorkbenchPorts().project.createProjectFile({
+          projectId: state.project!.id,
+          projectGeneration: state.projectGeneration,
+          expectedTransitionEpoch: state.nativeTransitionEpoch,
+          parent,
+          basename: "notes.txt",
+        });
+      } else {
+        const move = getWorkbenchPorts().chat.setChatProject.bind(
+          getWorkbenchPorts().chat,
+        );
+        getWorkbenchPorts().chat.setChatProject = async (...args) => {
+          write();
+          return move(...args);
+        };
+      }
+      return {
+        chat: state.activeTabId,
+        project: state.project!.id,
+        projects: state.projects.length,
+      };
+    }, when);
+    await page
+      .getByRole("button", { name: "Composer options", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Work in a project", exact: true })
+      .click();
+    await page
+      .getByRole("option", { name: "New project", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Create project" });
+    await dialog
+      .getByRole("textbox", { name: "Project name" })
+      .fill("Destination");
+    await dialog
+      .getByRole("button", { name: "Create project", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toContainText(
+      "This chat's folder has files. Start a new chat in the project instead.",
+    );
+    await expect(
+      page.getByRole("combobox", { name: "Message agent", exact: true }),
+    ).toHaveValue("Keep this unsent prompt");
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useWorkbenchStore } = await import("/src/app/store.ts");
+          const state = useWorkbenchStore.getState();
+          return {
+            chat: state.activeTabId,
+            project: state.project?.id,
+            projects: state.projects.length,
+            context: state.chatUiById[state.activeTabId!]?.attachedContext,
+          };
+        }),
+      )
+      .toMatchObject({
+        ...original,
+        projects: original.projects + (when === "during creation" ? 1 : 0),
+        context: [{ title: "Reference", text: "Keep this attachment" }],
+      });
+  });
+}
 
 test("active project-less chat can be archived and restored from Recents", async ({
   page,

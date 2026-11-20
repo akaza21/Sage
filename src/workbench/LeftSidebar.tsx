@@ -115,11 +115,12 @@ export function LeftSidebar({
       }),
       ...groupAgentRailProjects({
         projects: unscopedChats,
+        isInternal: true,
         currentProjectId: project?.isInternal ? project.id : null,
         currentChats: project?.isInternal
           ? tabs.filter((tab) => tab.kind === "chat")
           : [],
-      }).map((group) => ({ ...group, isInternal: true })),
+      }),
     ],
     [project, projects, unscopedChats, tabs],
   );

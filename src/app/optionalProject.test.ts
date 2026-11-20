@@ -2,6 +2,7 @@ import { afterEach, beforeEach, expect, it } from "vitest";
 import { resetBrowserDesktopForTests } from "../services/browserDesktop";
 import { currentProjectLayout } from "./projectProjection";
 import { useWorkbenchStore } from "./store";
+import { browserDirectories } from "../services/browserWorkspaceFixture";
 
 const initial = useWorkbenchStore.getState();
 beforeEach(async () => {
@@ -10,6 +11,26 @@ beforeEach(async () => {
   await useWorkbenchStore.getState().initialize();
 });
 afterEach(() => useWorkbenchStore.setState(initial, true));
+
+it.each(["delete", "move"])(
+  "releases private directory listings after %s",
+  async (action) => {
+    const state = useWorkbenchStore.getState();
+    const target = state.project!.id;
+    const initialListings = browserDirectories.size;
+    for (let cycle = 0; cycle < 2; cycle++) {
+      await state.createChat(null);
+      expect(browserDirectories.size).toBe(initialListings + 1);
+      if (action === "move") await state.setChatProject(target);
+      else {
+        const chat = useWorkbenchStore.getState().activeTabId!;
+        expect(await state.archiveChat(chat)).toBe(true);
+        expect(await state.deleteChat(chat)).toBe(true);
+      }
+      expect(browserDirectories.size).toBe(initialListings);
+    }
+  },
+);
 
 it("re-parents an empty chat without losing its prompt, captured context or harness choices", async () => {
   const state = useWorkbenchStore.getState();
