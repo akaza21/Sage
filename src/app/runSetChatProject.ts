@@ -28,6 +28,7 @@ export async function runSetChatProject(
   const outcome = await runChatTransition({
     action: "project selection",
     expectedTransitionEpoch,
+    prepare: () => get().flushActiveEditor(),
     invoke: () =>
       chat.setChatProject(
         current,

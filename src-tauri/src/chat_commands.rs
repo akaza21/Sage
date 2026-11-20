@@ -139,19 +139,13 @@ async fn create_chat_inner(
                 &chat_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
             ),
             Some(target) => {
+                crate::private_chat::require_user_target(&database.connection(), &target)?;
                 let layout = current_layout.ok_or_else(|| {
                     AppError::InvalidRequest(
                         "Project Chat creation requires a current layout".into(),
                     )
                 })?;
                 database.create_chat_with_identity(&target, &layout, None, chat_id.as_deref())?;
-                if chat_id.is_some() && target != layout.project_id {
-                    use sage_domain::project::ProjectSwitchRequest;
-                    database.switch_project(&ProjectSwitchRequest {
-                        target_project_id: target,
-                        current_layout: layout,
-                    })?;
-                }
                 Ok(())
             }
         },
@@ -256,6 +250,10 @@ pub(crate) fn failed_transition(
         recovery_error: Some(error.to_string()),
     }
 }
+
+#[cfg(test)]
+#[path = "chat_commands/atomic_creation_tests.rs"]
+mod atomic_creation_tests;
 
 #[cfg(test)]
 mod tests {

@@ -19,6 +19,7 @@ pub(crate) trait ChatMoveStore {
 
 impl ChatMoveStore for Database {
     fn move_chat(&self, request: &MoveChatRequest) -> AppResult<()> {
+        let _private_storage = crate::private_chat::lock_storage();
         crate::private_chat::require_user_target(&self.connection(), &request.target_project_id)?;
         crate::side_chat_storage::refuse_persistence(&self.connection(), &request.chat_id)?;
         validate_chat_identifier("Project ID", &request.project_id)?;
@@ -29,6 +30,7 @@ impl ChatMoveStore for Database {
                 "Chat already belongs to that Project".into(),
             ));
         }
+        crate::private_chat::require_empty_source(self, &request.project_id)?;
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction().db()?;
         move_chat_in(&transaction, request)?;

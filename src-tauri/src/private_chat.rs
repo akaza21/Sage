@@ -18,10 +18,20 @@ use sage_domain::{
     project::ProjectListItem,
 };
 use std::fs;
+use std::sync::{Mutex, MutexGuard};
 use uuid::Uuid;
 mod cleanup;
 pub(crate) const MAX_UNSCOPED_CHATS: i64 = 64;
 const MAX_PRIVATE_PROJECTS: i64 = MAX_UNSCOPED_CHATS + 64;
+
+// Serializes private-folder ownership and root registration, without keeping
+// SQLite locked during filesystem reclamation. Acquire before the DB mutex.
+static STORAGE: Mutex<()> = Mutex::new(());
+pub(crate) fn lock_storage() -> MutexGuard<'static, ()> {
+    STORAGE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+}
 
 fn storage_root(database: &Database) -> AppResult<std::path::PathBuf> {
     Ok(database.profile_directory()?.join("chat-workspaces"))
@@ -47,12 +57,28 @@ pub(crate) fn require_user_root(database: &Database, root: &std::path::Path) -> 
     Ok(())
 }
 
-fn allocate_folder(database: &Database) -> AppResult<(String, std::path::PathBuf)> {
+fn allocate_folder(
+    database: &Database,
+    storage: &MutexGuard<'_, ()>,
+) -> AppResult<(String, std::path::PathBuf)> {
     let project = Uuid::new_v4().to_string();
     let base = storage_root(database)?;
     fs::create_dir_all(&base)?;
     cleanup::admit_base(&base)?;
     let folder = base.canonicalize()?.join(&project);
+    let count: i64 = database
+        .connection()
+        .query_row(
+            "SELECT COUNT(*) FROM projects WHERE kind='privateChat'",
+            [],
+            |row| row.get(0),
+        )
+        .db()?;
+    if count >= MAX_PRIVATE_PROJECTS {
+        // Reclaim a bounded, fair batch before deciding whether capacity is
+        // available. A failed deletion must keep its durable ownership receipt.
+        let _ = cleanup::empty_projects_with_storage(database, storage, |_| {});
+    }
     // Commit the ownership receipt before creating anything on disk. A crash
     // at any later point leaves an empty hidden project startup can reclaim.
     {
@@ -66,10 +92,9 @@ fn allocate_folder(database: &Database) -> AppResult<(String, std::path::PathBuf
             )
             .db()?;
         if count >= MAX_PRIVATE_PROJECTS {
-            // Cleanup receipts are bounded independently of the live Chat quota.
-            // Retire the oldest empty receipt at capacity; never delete its files
-            // here. An unremovable folder cannot permanently block new Chats.
-            cleanup::retire_oldest_empty(&transaction)?;
+            return Err(AppError::ResourceLimit(
+                "Private Chat storage is waiting for folder cleanup. Resolve pending folder cleanup and try again.".into(),
+            ));
         }
         transaction.execute("INSERT INTO projects(id,name,kind,created_at,updated_at,last_opened_at) VALUES (?1,'Choose project','privateChat',?2,?2,?2)", params![project,now_millis()]).db()?;
         transaction.commit().db()?;
@@ -118,7 +143,8 @@ pub(crate) fn create(
             "Chat identity must be a canonical UUID".into(),
         ));
     }
-    let (project, folder) = allocate_folder(database)?;
+    let storage = lock_storage();
+    let (project, folder) = allocate_folder(database, &storage)?;
     let result = (|| {
         let mut connection = database.write_connection()?;
         let transaction = connection.transaction().db()?;
@@ -128,6 +154,7 @@ pub(crate) fn create(
         insert_in(&transaction, &project, &folder, Some(chat))?;
         transaction.commit().db()
     })();
+    drop(storage);
     if result.is_err() {
         let _ = fs::remove_dir(&folder);
         cleanup_empty(database);
@@ -141,9 +168,11 @@ pub(crate) fn set_project(
     chat: &str,
     target: Option<&str>,
 ) -> AppResult<()> {
+    let storage = lock_storage();
+    require_empty_source(database, &current.project_id)?;
     let allocation = target
         .is_none()
-        .then(|| allocate_folder(database))
+        .then(|| allocate_folder(database, &storage))
         .transpose()?;
     let result = (|| {
         let mut connection = database.write_connection()?;
@@ -187,6 +216,7 @@ pub(crate) fn set_project(
         )?;
         transaction.commit().db()
     })();
+    drop(storage);
     if result.is_err()
         && let Some((_, folder)) = allocation
     {
@@ -197,6 +227,13 @@ pub(crate) fn set_project(
         cleanup_empty(database);
     }
     result
+}
+
+pub(crate) fn require_empty_source(database: &Database, project: &str) -> AppResult<()> {
+    if is_internal(&database.connection(), project)? {
+        cleanup::require_empty_folder(&storage_root(database)?.join(project))?;
+    }
+    Ok(())
 }
 
 pub(crate) fn is_internal(connection: &rusqlite::Connection, project: &str) -> AppResult<bool> {
@@ -315,6 +352,8 @@ pub(crate) fn list(database: &Database) -> AppResult<Vec<ProjectListItem>> {
     Ok(groups)
 }
 
+#[cfg(test)]
+mod cleanup_ownership_tests;
 #[cfg(test)]
 mod cleanup_tests;
 #[cfg(test)]

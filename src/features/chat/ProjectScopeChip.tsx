@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { currentProjectLayout } from "../../app/projectProjection";
+import { usePinnedAgentChatOwner } from "../../app/agentChatOwner";
 import { hasActiveAcpTurn } from "../../app/acpProjectionRegistry";
 import { useWorkbenchStore } from "../../app/store";
 import { selectProjectSwitchBlocked } from "../../app/workbenchSelectors";
@@ -41,9 +42,15 @@ export function ProjectScopeChip({
   const caption = variant === "caption";
   const projects = useWorkbenchStore((state) => state.projects);
   const project = useWorkbenchStore((state) => state.project);
+  const activeTabId = useWorkbenchStore((state) => state.activeTabId);
+  const pinnedChatId = usePinnedAgentChatOwner();
   const draft = useWorkbenchStore((state) =>
     state.agentCenter === "draft" ? state.newChatDraft : null,
   );
+  const chatId =
+    draft?.submission.status === "created"
+      ? draft.submission.chatId
+      : (pinnedChatId ?? activeTabId);
   const sessionId = useWorkbenchStore((state) => state.sessionId);
   const setProject = useWorkbenchStore((state) => state.setChatProject);
   const updateDraft = useWorkbenchStore((state) => state.updateNewChatDraft);
@@ -100,15 +107,18 @@ export function ProjectScopeChip({
   }, [projects, projectId, label]);
   const choose = (id: string | null) => {
     if (readOnly) return;
-    const state = useWorkbenchStore.getState();
-    if (!draft && id !== projectId && hasActiveAcpTurn(state.activeTabId)) {
+    if (!draft && id !== projectId && hasActiveAcpTurn(chatId)) {
       useWorkbenchStore.setState({
         error: "Finish the active turn before switching projects.",
       });
       return;
     }
     if (draft) updateDraft({ targetProjectId: id });
-    else if (id !== projectId) void setProject(id);
+    else if (id !== projectId)
+      void setProject(
+        id,
+        currentProjectLayout(useWorkbenchStore.getState(), chatId) ?? undefined,
+      );
   };
   return (
     <span
@@ -173,13 +183,12 @@ export function ProjectScopeChip({
             return;
           }
           const state = useWorkbenchStore.getState();
+          const composer = state.chatUiById[chatId ?? ""];
           setCreating({
-            layout: currentProjectLayout(state),
+            layout: currentProjectLayout(state, chatId),
             draft,
-            text: state.composerText,
-            composer: state.activeTabId
-              ? state.chatUiById[state.activeTabId]
-              : undefined,
+            text: draft?.text ?? composer?.composerText ?? state.composerText,
+            composer,
           });
         }}
       />

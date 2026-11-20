@@ -119,43 +119,51 @@ impl WorkbenchStore for Database {
     fn switch_project(&self, request: &ProjectSwitchRequest) -> AppResult<()> {
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction().db()?;
-        let active = active_project_in(&transaction)?;
-        if active.as_deref() != Some(request.current_layout.project_id.as_str()) {
-            return Err(AppError::InvalidRequest(
-                "project changed before the requested transition".into(),
-            ));
-        }
-        persist_layout_in(&transaction, &request.current_layout)?;
-        let target_exists: bool = transaction
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
-                [&request.target_project_id],
-                |row| row.get(0),
-            )
-            .db()?;
-        if !target_exists {
-            return Err(AppError::InvalidRequest(
-                "target project does not exist".into(),
-            ));
-        }
-        let now = now_millis();
-        transaction
-            .execute(
-                "UPDATE app_state
-             SET active_project_id = ?1, updated_at = ?2
-             WHERE singleton = 1",
-                params![request.target_project_id, now],
-            )
-            .db()?;
-        transaction
-            .execute(
-                "UPDATE projects
-             SET last_opened_at = ?2, updated_at = ?2
-             WHERE id = ?1",
-                params![request.target_project_id, now],
-            )
-            .db()?;
+        switch_project_in(&transaction, request)?;
         transaction.commit().db()?;
         Ok(())
     }
+}
+
+pub(crate) fn switch_project_in(
+    transaction: &rusqlite::Transaction<'_>,
+    request: &ProjectSwitchRequest,
+) -> AppResult<()> {
+    let active = active_project_in(transaction)?;
+    if active.as_deref() != Some(request.current_layout.project_id.as_str()) {
+        return Err(AppError::InvalidRequest(
+            "project changed before the requested transition".into(),
+        ));
+    }
+    persist_layout_in(transaction, &request.current_layout)?;
+    let target_exists: bool = transaction
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
+            [&request.target_project_id],
+            |row| row.get(0),
+        )
+        .db()?;
+    if !target_exists {
+        return Err(AppError::InvalidRequest(
+            "target project does not exist".into(),
+        ));
+    }
+    let now = now_millis();
+    transaction
+        .execute(
+            "UPDATE app_state
+             SET active_project_id = ?1, updated_at = ?2
+             WHERE singleton = 1",
+            params![request.target_project_id, now],
+        )
+        .db()?;
+    transaction
+        .execute(
+            "UPDATE projects
+             SET last_opened_at = ?2, updated_at = ?2
+             WHERE id = ?1",
+            params![request.target_project_id, now],
+        )
+        .db()?;
+    Ok(())
 }

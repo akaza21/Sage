@@ -193,10 +193,19 @@ export function createChatTransitionContext(
     action:
       "activation" | "rename" | "archive" | "restore" | "project selection";
     expectedTransitionEpoch: number;
+    prepare?: () => Promise<void>;
     invoke: () => Promise<ProjectTransitionResult>;
     classify: (snapshot: BootstrapSnapshot) => ProjectionOutcome;
   }): Promise<ProjectionOutcome | null> => {
     set({ projectTransitioning: true, error: null });
+    // Preparation failures happen before any native mutation. Keep the live
+    // projection so an editor whose flush failed retains its unsaved buffer.
+    try {
+      if (options.prepare) await options.prepare();
+    } catch (error) {
+      set({ projectTransitioning: false, error: errorMessage(error) });
+      return "unchanged";
+    }
     let committed = false;
     try {
       const result = await options.invoke();

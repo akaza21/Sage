@@ -11,6 +11,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
+import {
+  pinAgentChatOwner,
+  clearAgentChatOwner,
+} from "../../app/agentChatOwner";
 import * as workspaceNotify from "../../app/workspaceNotifyLifecycle";
 import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
@@ -37,6 +41,7 @@ import { settleLazyModules } from "../../test/settleLazyModules";
 import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
 import { registerWorkbenchSurfaces } from "../../workbench/registeredSurfaces";
 import { AgentChatPanes } from "../../workbench/AgentChatPanes";
+import { ChatSurface } from "./ChatSurface";
 import { resetHarnessModelCache } from "../../app/harnessModelCache";
 import { useInheritedStore } from "./inheritedComposerModelState";
 import { LeftSidebar } from "../../workbench/LeftSidebar";
@@ -228,6 +233,7 @@ beforeEach(async () => {
 });
 afterEach(() => {
   cleanup();
+  clearAgentChatOwner();
   clearAcpProjectionRegistry();
   useSideChatState.setState({ sides: [], pairedId: null, pendingClose: null });
   vi.restoreAllMocks();
@@ -1950,33 +1956,94 @@ it("sends a top-level new chat in its private scope without changing the public 
   ).toEqual([state.activeTabId]);
 });
 
-it("changes the scope of the draft-owned chat while a file is active, keeping the same creation identity", async () => {
-  const { chatId } = await createdDraft({ text: "Move only my owned prompt" });
-  act(() => {
-    const state = useWorkbenchStore.getState();
-    useWorkbenchStore.setState({
-      tabs: [
-        ...state.tabs,
-        {
-          id: "file-optional",
-          kind: "file",
-          title: "File",
-          position: state.tabs.length,
-          pinned: false,
-          dirty: false,
-        },
-      ],
-      activeTabId: "file-optional",
-      agentCenter: "draft",
+it.each([false, true])(
+  "preserves a dirty right-pane editor when retrying a draft in another project (flush refused: %s)",
+  async (refuseFlush) => {
+    const { chatId } = await createdDraft({
+      text: "Move only my owned prompt",
     });
-    state.updateNewChatDraft({ targetProjectId: null });
-  });
-  await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
-  await waitFor(() => expect(prompts).toHaveLength(1));
-  expect(useWorkbenchStore.getState().activeTabId).toBe(chatId);
-  expect(useWorkbenchStore.getState().project?.isInternal).toBe(true);
-  expect(prompts[0]).toMatchObject({
-    chatId,
-    prompt: "Move only my owned prompt",
-  });
+    const state = useWorkbenchStore.getState();
+    const sourceProject = state.project!.id;
+    const resource = {
+      rootId: state.project!.roots[0].id,
+      relativePath: `draft-notes-${crypto.randomUUID()}.txt`,
+    };
+    await act(async () => {
+      await state.openFile(resource);
+      await state.loadEditor(resource);
+    });
+    act(() => state.updateEditorContent("Keep my unsaved editor work"));
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      content: "Keep my unsaved editor work",
+      revision: 1,
+      persistedRevision: 0,
+    });
+    if (refuseFlush)
+      vi.spyOn(ports.editor, "snapshotEditorBuffer").mockRejectedValueOnce(
+        new Error("Editor storage unavailable"),
+      );
+    act(() => {
+      useWorkbenchStore.setState({
+        agentCenter: "draft",
+      });
+      state.updateNewChatDraft({ targetProjectId: null });
+    });
+    await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+    if (refuseFlush) {
+      expect(prompts).toEqual([]);
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        project: { id: sourceProject },
+        projectTransitioning: false,
+        activeEditor: { content: "Keep my unsaved editor work" },
+        newChatDraft: { submission: { status: "created", chatId } },
+      });
+      expect((await ports.project.getBootstrapSnapshot()).project!.id).toBe(
+        sourceProject,
+      );
+      await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+    }
+    await waitFor(() => expect(prompts).toHaveLength(1));
+    expect(
+      (await ports.editor.openEditorDocument(resource)).buffer.content,
+    ).toBe("Keep my unsaved editor work");
+    expect(useWorkbenchStore.getState().activeTabId).toBe(chatId);
+    expect(useWorkbenchStore.getState().project?.isInternal).toBe(true);
+    expect(prompts[0]).toMatchObject({
+      chatId,
+      prompt: "Move only my owned prompt",
+    });
+  },
+);
+
+it("changes the visible chat's project while a right-pane File is active", async () => {
+  useWorkbenchStore.getState().discardNewChatDraft();
+  const chatId = await existingSessionlessChat();
+  pinAgentChatOwner(chatId);
+  render(<ChatSurface chatId={chatId} />);
+  await settleLazyModules();
+  const state = useWorkbenchStore.getState();
+  const resource = {
+    rootId: state.project!.roots[0].id,
+    relativePath: "notes.txt",
+  };
+  await act(async () => state.openFile(resource));
+  expect(useWorkbenchStore.getState().activeTabId).not.toBe(chatId);
+  const location = within(screen.getByRole("group", { name: "Chat location" }));
+  fireEvent.click(location.getByRole("button", { name: /^Project:/ }));
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState().projectTransitioning).toBe(false),
+  );
+  fireEvent.click(
+    await screen.findByRole("option", { name: "Don't work in a project" }),
+  );
+  await settleLazyModules();
+  expect(useWorkbenchStore.getState().error).toBeNull();
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chatId,
+      project: { isInternal: true },
+    }),
+  );
+  expect((await ports.project.getBootstrapSnapshot()).activeTabId).toBe(chatId);
 });

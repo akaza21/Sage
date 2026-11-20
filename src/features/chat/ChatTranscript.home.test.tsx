@@ -294,7 +294,19 @@ it("retains earlier-history retry and discarded-history disclosure after an empt
 
 it("switches projects through the existing keyboard-accessible picker and discards the old home", async () => {
   const setChatProject = vi.fn().mockResolvedValue(undefined);
+  const tabs = [
+    {
+      id: "chat-1",
+      kind: "chat" as const,
+      title: "Chat",
+      position: 0,
+      pinned: false,
+      dirty: false,
+    },
+  ];
   useWorkbenchStore.setState({
+    tabs,
+    activeTabId: "chat-1",
     project: { id: "project-1", name: "Sage", roots: [] },
     projects: [
       { id: "project-1", name: "Sage", rootCount: 0, lastOpenedAt: 1 },
@@ -311,7 +323,13 @@ it("switches projects through the existing keyboard-accessible picker and discar
   fireEvent.keyDown(picker, { key: "Home" });
   fireEvent.keyDown(picker, { key: "ArrowDown" });
   fireEvent.keyDown(picker, { key: "Enter" });
-  expect(setChatProject).toHaveBeenCalledExactlyOnceWith("project-2");
+  expect(setChatProject).toHaveBeenCalledExactlyOnceWith("project-2", {
+    projectId: "project-1",
+    tabs,
+    activeTabId: "chat-1",
+    selectedRootId: null,
+    selectedResource: null,
+  });
   rerender(<ChatTranscript {...props} projectTransitioning />);
   expect(screen.queryByRole("button", { name: "Project: Sage" })).toBeNull();
   useWorkbenchStore.setState({
@@ -512,5 +530,14 @@ it("allows the home project action with an idle Chat focused while an unfocused 
   fireEvent.keyDown(picker, { key: "Home" });
   fireEvent.keyDown(picker, { key: "ArrowDown" });
   fireEvent.keyDown(picker, { key: "Enter" });
-  expect(setChatProject).toHaveBeenCalledExactlyOnceWith("project-2");
+  expect(setChatProject).toHaveBeenCalledExactlyOnceWith("project-2", {
+    projectId: "project-1",
+    activeTabId: "chat-2",
+    selectedRootId: null,
+    selectedResource: null,
+    tabs: [
+      { id: "chat-1", kind: "chat", position: 0 },
+      { id: "chat-2", kind: "chat", position: 1 },
+    ],
+  });
 });

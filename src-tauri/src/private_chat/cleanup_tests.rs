@@ -21,6 +21,66 @@ fn delete_chat(database: &Database, chat: &str) {
 }
 
 #[test]
+fn round3_capacity_keeps_failed_cleanup_owned_until_files_are_reclaimed() {
+    let root = std::env::current_dir()
+        .unwrap()
+        .join("work")
+        .join(format!("private-capacity-{}", Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let path = root.join("sage.db");
+    let database = crate::database::open_database(&path).unwrap();
+    let base = storage_root(&database).unwrap();
+    fs::create_dir_all(&base).unwrap();
+    let mut folders = Vec::new();
+    for index in 0..MAX_PRIVATE_PROJECTS {
+        let id = Uuid::new_v4().to_string();
+        let folder = base.join(&id);
+        let mut deep = folder.clone();
+        for _ in 0..65 {
+            deep = deep.join("d");
+        }
+        fs::create_dir_all(&deep).unwrap();
+        fs::write(deep.join("keep"), "pending reclamation").unwrap();
+        database.connection().execute("INSERT INTO projects(id,name,kind,created_at,updated_at,last_opened_at) VALUES (?1,'Choose project','privateChat',?2,?2,0)", params![id, index]).unwrap();
+        folders.push((id, folder, deep));
+    }
+    for _ in 0..3 {
+        let result = create(&database, None, &Uuid::new_v4().to_string());
+        assert!(
+            result.is_err(),
+            "allocation must wait for actual folder reclamation"
+        );
+        assert!(result.unwrap_err().public_message().contains("cleanup"));
+        for (id, _, deep) in &folders {
+            assert!(
+                database.project_summary(id).is_ok(),
+                "retain cleanup ownership"
+            );
+            assert_eq!(
+                fs::read_to_string(deep.join("keep")).unwrap(),
+                "pending reclamation"
+            );
+        }
+        assert_eq!(
+            fs::read_dir(&base).unwrap().count(),
+            MAX_PRIVATE_PROJECTS as usize
+        );
+    }
+    for (_, folder, _) in &folders {
+        fs::remove_dir_all(folder.join("d")).unwrap();
+    }
+    drop(database);
+    let reopened = crate::database::open_database(&path).unwrap();
+    cleanup::empty_projects(&reopened).unwrap();
+    assert!(folders.iter().all(|(_, folder, _)| !folder.exists()));
+    assert_eq!(fs::read_dir(base).unwrap().count(), 0);
+    create(&reopened, None, &Uuid::new_v4().to_string()).unwrap();
+    assert_eq!(list(&reopened).unwrap().len(), 1);
+    drop(reopened);
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn registration_refuses_managed_private_folders_for_new_and_existing_projects() {
     let root = std::env::current_dir()
         .unwrap()
@@ -148,8 +208,16 @@ fn cleanup_retries_reach_later_folders_and_failures_do_not_exhaust_live_chat_cap
             removable.push(folder);
         }
     }
-    // Live quota must admit a Chat even with 128 failed/pending receipts.
+    // Admission waits for real reclamation, while fair rotation lets a later
+    // attempt reach removable receipts beyond the first failing batch.
     let chat = Uuid::new_v4().to_string();
+    assert!(
+        create(&database, None, &chat)
+            .unwrap_err()
+            .public_message()
+            .contains("cleanup")
+    );
+    assert!(removable.iter().all(|folder| folder.exists()));
     create(&database, None, &chat).unwrap();
     let _ = cleanup::empty_projects(&database);
     let _ = cleanup::empty_projects(&database);

@@ -1750,7 +1750,19 @@ describe("composer permission mode picker", () => {
 
   it("keeps the named project icon inside its clickable target and chooses the chat project", async () => {
     const setChatProject = vi.fn().mockResolvedValue(undefined);
+    const tabs = [
+      {
+        id: "chat-alpha",
+        kind: "chat" as const,
+        title: "Chat",
+        position: 0,
+        pinned: false,
+        dirty: false,
+      },
+    ];
     useWorkbenchStore.setState({
+      tabs,
+      activeTabId: "chat-alpha",
       project: { id: "alpha", name: "Alpha", roots: [] },
       projects: [
         { id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 },
@@ -1771,7 +1783,13 @@ describe("composer permission mode picker", () => {
     );
     fireEvent.click(project);
     fireEvent.click(screen.getByRole("option", { name: "Beta" }));
-    expect(setChatProject).toHaveBeenCalledWith("beta");
+    expect(setChatProject).toHaveBeenCalledWith("beta", {
+      projectId: "alpha",
+      tabs,
+      activeTabId: "chat-alpha",
+      selectedRootId: null,
+      selectedResource: null,
+    });
   });
 
   it("blocks project switching while a turn is active", async () => {

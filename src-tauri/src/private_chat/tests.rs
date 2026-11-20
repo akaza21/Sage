@@ -1,5 +1,6 @@
 use super::*;
 use crate::chat_archive::{ChatArchiveStore, delete::ArchivedChatDeleteStore};
+use crate::chat_move::ChatMoveStore;
 use crate::project_registry::{ProjectRegistryStore, create::ProjectCreateStore};
 use crate::workbench_persistence::store::WorkbenchStore;
 use sage_domain::chat::{ChatDeleteRequest, ChatLifecycleRequest};
@@ -13,6 +14,72 @@ pub(super) fn layout(database: &Database) -> ProjectLayoutRequest {
         selected_root_id: snapshot.selected_root_id,
         selected_resource: snapshot.selected_resource,
     }
+}
+
+#[test]
+fn selecting_a_project_refuses_private_files_and_preserves_the_chat_until_explicit_deletion() {
+    let root = std::env::current_dir()
+        .unwrap()
+        .join("work")
+        .join(format!("private-reparent-files-{}", Uuid::new_v4()));
+    fs::create_dir_all(root.join("user")).unwrap();
+    let database = crate::database::open_database(&root.join("sage.db")).unwrap();
+    let real = database
+        .create_project_from_root(&root.join("user"))
+        .unwrap();
+    let chat = Uuid::new_v4().to_string();
+    create(&database, None, &chat).unwrap();
+    let current = layout(&database);
+    let folder = database.root_records(&current.project_id).unwrap()[0]
+        .absolute_path
+        .clone();
+    fs::write(folder.join("notes.txt"), "Keep this saved work").unwrap();
+    let result = set_project(&database, &current, &chat, Some(&real.id));
+    assert!(result.is_err(), "reparenting must not discard saved files");
+    assert!(
+        result
+            .unwrap_err()
+            .public_message()
+            .contains("This chat's folder has files. Start a new chat in the project instead.")
+    );
+    let moved = database.move_chat(&MoveChatRequest {
+        project_id: current.project_id.clone(),
+        chat_id: chat.clone(),
+        target_project_id: real.id.clone(),
+        current_layout: current.clone(),
+    });
+    assert!(
+        moved
+            .unwrap_err()
+            .public_message()
+            .contains("This chat's folder has files. Start a new chat in the project instead.")
+    );
+    assert_eq!(
+        fs::read_to_string(folder.join("notes.txt")).unwrap(),
+        "Keep this saved work"
+    );
+    let snapshot = database.bootstrap_snapshot().unwrap();
+    assert_eq!(snapshot.project.unwrap().id, current.project_id);
+    assert_eq!(snapshot.active_tab_id.as_deref(), Some(chat.as_str()));
+    database
+        .archive_chat(&ChatLifecycleRequest {
+            project_id: current.project_id.clone(),
+            chat_id: chat.clone(),
+            current_layout: current.clone(),
+        })
+        .unwrap();
+    database
+        .delete_archived_chat(&ChatDeleteRequest {
+            project_id: current.project_id,
+            chat_id: chat,
+        })
+        .unwrap();
+    assert!(
+        !folder.exists(),
+        "explicit chat deletion reclaims its files"
+    );
+    drop(database);
+    fs::remove_dir_all(root).unwrap();
 }
 
 #[test]

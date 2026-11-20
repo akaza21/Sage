@@ -4,7 +4,26 @@ use std::path::Path;
 const MAX_ENTRIES: usize = 200_000;
 const MAX_DEPTH: usize = 64;
 
+pub(super) fn require_empty_folder(folder: &Path) -> AppResult<()> {
+    ordinary_directory(folder)?;
+    if fs::read_dir(folder)?.next().transpose()?.is_some() {
+        return Err(AppError::InvalidRequest(
+            "This chat's folder has files. Start a new chat in the project instead.".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(super) fn empty_projects(database: &Database) -> AppResult<()> {
+    let storage = lock_storage();
+    empty_projects_with_storage(database, &storage, |_| {})
+}
+
+pub(super) fn empty_projects_with_storage(
+    database: &Database,
+    _storage: &MutexGuard<'_, ()>,
+    mut before_remove: impl FnMut(&Path),
+) -> AppResult<()> {
     let ids = {
         let connection = database.connection();
         let mut statement = connection.prepare("SELECT id FROM projects p WHERE kind='privateChat' AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=p.id) ORDER BY updated_at,id LIMIT 64").db()?;
@@ -32,24 +51,38 @@ pub(super) fn empty_projects(database: &Database) -> AppResult<()> {
     let mut seen = 0;
     let mut failure = None;
     for id in ids {
-        // Serialize root registration and Chat creation against the overlap
-        // check and filesystem deletion. Rotate every attempted receipt, even
-        // when removing its files fails, so later batches cannot starve.
-        let mut connection = database.write_connection()?;
-        let transaction = connection.transaction().db()?;
-        let empty: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM projects p WHERE id=?1 AND kind='privateChat' AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=p.id))", [&id], |row| row.get(0)).db()?;
-        if !empty {
-            continue;
-        }
-        transaction.execute("UPDATE projects SET updated_at=(SELECT MAX(updated_at)+1 FROM projects) WHERE id=?1", [&id]).db()?;
+        let folder = base.join(&id);
+        // The receipt's revision claims this attempt durably. Rotate even a
+        // refused attempt, so failures cannot starve the next bounded batch.
+        let claim = {
+            let mut connection = database.write_connection()?;
+            let transaction = connection.transaction().db()?;
+            let empty: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM projects p WHERE id=?1 AND kind='privateChat' AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=p.id))", [&id], |row| row.get(0)).db()?;
+            if !empty {
+                continue;
+            }
+            transaction.execute("UPDATE projects SET updated_at=(SELECT MAX(updated_at)+1 FROM projects) WHERE id=?1", [&id]).db()?;
+            let revision: i64 = transaction
+                .query_row(
+                    "SELECT updated_at FROM projects WHERE id=?1",
+                    [&id],
+                    |row| row.get(0),
+                )
+                .db()?;
+            let admitted = require_unreferenced(&transaction, &id, &folder);
+            transaction.commit().db()?;
+            admitted.map(|()| revision)
+        };
         let result = (|| {
+            let revision = claim?;
             if !Uuid::parse_str(&id).is_ok_and(|uuid| uuid.to_string() == id) {
                 return Err(AppError::InvalidRequest(
                     "invalid private Chat folder identity".into(),
                 ));
             }
-            let folder = base.join(&id);
-            require_unreferenced(&transaction, &id, &folder)?;
+            // Only the namespace guard is held here. Other durable work can
+            // use SQLite while bounded recursive deletion runs.
+            before_remove(&folder);
             // Derived path only, with no traversal or stored absolute path used.
             if fs::symlink_metadata(&folder)
                 .map(|_| true)
@@ -72,10 +105,16 @@ pub(super) fn empty_projects(database: &Database) -> AppResult<()> {
                     remove_at(_base_guard.as_raw_fd(), &name, &mut seen, 0)?;
                 }
             }
-            forget_empty(&transaction, &id)?;
+            let mut connection = database.write_connection()?;
+            let transaction = connection.transaction().db()?;
+            let owned: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM projects p WHERE id=?1 AND kind='privateChat' AND updated_at=?2 AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=p.id))", params![id, revision], |row| row.get(0)).db()?;
+            if owned {
+                require_unreferenced(&transaction, &id, &folder)?;
+                forget_empty(&transaction, &id)?;
+            }
+            transaction.commit().db()?;
             Ok(())
         })();
-        transaction.commit().db()?;
         if let Err(error) = result {
             failure.get_or_insert(error);
         }
@@ -128,14 +167,6 @@ fn forget_empty(transaction: &rusqlite::Transaction<'_>, id: &str) -> AppResult<
     transaction.execute("DELETE FROM acp_project_usage WHERE project_id=?1 AND chat_count=0 AND session_count=0 AND turn_count=0 AND item_count=0 AND fact_count=0 AND payload_bytes=0", [id]).db()?;
     transaction.execute("DELETE FROM projects WHERE id=?1 AND kind='privateChat' AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=?1)", [id]).db()?;
     Ok(())
-}
-
-pub(super) fn retire_oldest_empty(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
-    use rusqlite::OptionalExtension;
-    let id: Option<String> = transaction.query_row("SELECT id FROM projects p WHERE kind='privateChat' AND id IS NOT (SELECT active_project_id FROM app_state WHERE singleton=1) AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=p.id) ORDER BY updated_at,id LIMIT 1", [], |row| row.get(0)).optional().db()?;
-    let id =
-        id.ok_or_else(|| AppError::ResourceLimit("private Chat storage capacity reached".into()))?;
-    forget_empty(transaction, &id)
 }
 
 pub(super) fn admit_base(path: &Path) -> AppResult<()> {

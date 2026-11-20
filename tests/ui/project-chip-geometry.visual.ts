@@ -614,6 +614,44 @@ test("new chat can choose no project and distinguishes duplicate project names",
   await expect(choose).toBeVisible();
 });
 
+test("project selection keeps the visible chat's identity with a right-pane File open", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  const expected = await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { resetBrowserDesktopForTests } =
+      await import("/src/services/browserDesktop.ts");
+    resetBrowserDesktopForTests();
+    await useWorkbenchStore.getState().initialize();
+    const projectId = useWorkbenchStore.getState().project!.id;
+    await useWorkbenchStore.getState().createChat(null);
+    const state = useWorkbenchStore.getState();
+    const chatId = state.activeTabId!;
+    await state.openFile({
+      rootId: state.project!.roots[0].id,
+      relativePath: "notes.txt",
+    });
+    return { projectId, chatId };
+  });
+  await page
+    .getByRole("button", { name: "Composer options", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Work in a project", exact: true })
+    .click();
+  await page.getByRole("option", { name: "Sage", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const state = useWorkbenchStore.getState();
+        return { projectId: state.project?.id, chatId: state.activeTabId };
+      }),
+    )
+    .toEqual(expected);
+});
+
 test("New project preserves the unsent composer through creation and reparenting", async ({
   page,
 }) => {

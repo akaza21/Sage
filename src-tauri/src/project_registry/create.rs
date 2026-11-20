@@ -93,6 +93,7 @@ fn create_project_with_intent(
     expected_active_project_id: Option<Option<&str>>,
 ) -> AppResult<ProjectSummary> {
     let roots = canonical_sources(roots)?;
+    let _private_storage = crate::private_chat::lock_storage();
     for root in &roots {
         crate::private_chat::require_user_root(database, root)?;
     }
