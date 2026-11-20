@@ -265,7 +265,7 @@ mod tests {
             .database
             .connection()
             .execute_batch(
-                "INSERT INTO projects VALUES('project-preview','Preview',1,1,1);
+                "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-preview','Preview',1,1,1);
                  UPDATE app_state SET active_project_id='project-preview',updated_at=1 WHERE singleton=1;
                  INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-preview','project-preview',0,'Preview',0,1,1);
                  INSERT INTO agent_sessions(

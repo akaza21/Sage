@@ -60,6 +60,8 @@ fn upgrading_a_populated_ledger_seeks_undo_intents_and_recovers_only_the_unsettl
              DROP TABLE acp_child_thread_states;
              DROP TABLE acp_imported_histories;
              DROP INDEX idx_agent_sessions_external_session;
+             DROP INDEX idx_projects_kind_created;
+             ALTER TABLE projects DROP COLUMN kind;
              DELETE FROM schema_migrations WHERE version>=28;
              PRAGMA user_version=27;",
             ))

@@ -236,7 +236,7 @@ impl Fixture {
             let connection = database.connection();
             connection
                 .execute_batch(
-                    "INSERT INTO projects VALUES('project-pump-pi','Pi',0,0,0);
+                    "INSERT INTO projects(id,name,created_at,updated_at,last_opened_at) VALUES('project-pump-pi','Pi',0,0,0);
                  INSERT INTO project_roots(id,project_id,absolute_path,canonical_key,ordinal) VALUES('root-pi','project-pump-pi','C:/repo','c:/repo',0);
                  INSERT INTO chats(id,project_id,ordinal,title,projection_revision,created_at,updated_at) VALUES('chat-pump-pi','project-pump-pi',0,'Pi',0,0,0);",
                 )
