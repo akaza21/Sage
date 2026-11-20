@@ -7,7 +7,7 @@ const MAX_DEPTH: usize = 64;
 pub(super) fn empty_projects(database: &Database) -> AppResult<()> {
     let ids = {
         let connection = database.connection();
-        let mut statement = connection.prepare("SELECT id FROM projects p WHERE kind='privateChat' AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=p.id) LIMIT 64").db()?;
+        let mut statement = connection.prepare("SELECT id FROM projects p WHERE kind='privateChat' AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=p.id) ORDER BY updated_at,id LIMIT 64").db()?;
         statement
             .query_map([], |row| row.get::<_, String>(0))
             .db()?
@@ -32,6 +32,16 @@ pub(super) fn empty_projects(database: &Database) -> AppResult<()> {
     let mut seen = 0;
     let mut failure = None;
     for id in ids {
+        // Serialize root registration and Chat creation against the overlap
+        // check and filesystem deletion. Rotate every attempted receipt, even
+        // when removing its files fails, so later batches cannot starve.
+        let mut connection = database.write_connection()?;
+        let transaction = connection.transaction().db()?;
+        let empty: bool = transaction.query_row("SELECT EXISTS(SELECT 1 FROM projects p WHERE id=?1 AND kind='privateChat' AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=p.id))", [&id], |row| row.get(0)).db()?;
+        if !empty {
+            continue;
+        }
+        transaction.execute("UPDATE projects SET updated_at=(SELECT MAX(updated_at)+1 FROM projects) WHERE id=?1", [&id]).db()?;
         let result = (|| {
             if !Uuid::parse_str(&id).is_ok_and(|uuid| uuid.to_string() == id) {
                 return Err(AppError::InvalidRequest(
@@ -39,6 +49,7 @@ pub(super) fn empty_projects(database: &Database) -> AppResult<()> {
                 ));
             }
             let folder = base.join(&id);
+            require_unreferenced(&transaction, &id, &folder)?;
             // Derived path only, with no traversal or stored absolute path used.
             if fs::symlink_metadata(&folder)
                 .map(|_| true)
@@ -61,19 +72,10 @@ pub(super) fn empty_projects(database: &Database) -> AppResult<()> {
                     remove_at(_base_guard.as_raw_fd(), &name, &mut seen, 0)?;
                 }
             }
-            let mut connection = database.write_connection()?;
-            let transaction = connection.transaction().db()?;
-            transaction
-                .execute(
-                    "UPDATE app_state SET active_project_id=NULL WHERE active_project_id=?1",
-                    [&id],
-                )
-                .db()?;
-            transaction.execute("DELETE FROM acp_project_usage WHERE project_id=?1 AND chat_count=0 AND session_count=0 AND turn_count=0 AND item_count=0 AND fact_count=0 AND payload_bytes=0", [&id]).db()?;
-            transaction.execute("DELETE FROM projects WHERE id=?1 AND kind='privateChat' AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=?1)", [&id]).db()?;
-            transaction.commit().db()?;
+            forget_empty(&transaction, &id)?;
             Ok(())
         })();
+        transaction.commit().db()?;
         if let Err(error) = result {
             failure.get_or_insert(error);
         }
@@ -82,6 +84,58 @@ pub(super) fn empty_projects(database: &Database) -> AppResult<()> {
         }
     }
     failure.map_or(Ok(()), Err)
+}
+
+fn require_unreferenced(
+    connection: &rusqlite::Connection,
+    id: &str,
+    folder: &Path,
+) -> AppResult<()> {
+    use crate::project_registry::canonical_comparison_key;
+    let folder = std::path::PathBuf::from(canonical_comparison_key(folder));
+    let mut statement = connection
+        .prepare("SELECT absolute_path FROM project_roots WHERE project_id<>?1")
+        .db()?;
+    let mut rows = statement.query([id]).db()?;
+    while let Some(row) = rows.next().db()? {
+        let stored = std::path::PathBuf::from(row.get::<_, String>(0).db()?);
+        // Check the persisted identity even if the root is missing, and the
+        // current identity if a registered path has since become a link.
+        let resolved = match stored.canonicalize() {
+            Ok(root) => Some(root),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => None,
+            Err(error) => return Err(error.into()),
+        };
+        for root in [Some(stored.clone()), resolved].into_iter().flatten() {
+            let root = std::path::PathBuf::from(canonical_comparison_key(&root));
+            if root.starts_with(&folder) || folder.starts_with(&root) {
+                return Err(AppError::InvalidRequest(
+                    "private Chat folder overlaps another project root".into(),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn forget_empty(transaction: &rusqlite::Transaction<'_>, id: &str) -> AppResult<()> {
+    transaction
+        .execute(
+            "UPDATE app_state SET active_project_id=NULL WHERE active_project_id=?1",
+            [id],
+        )
+        .db()?;
+    transaction.execute("DELETE FROM acp_project_usage WHERE project_id=?1 AND chat_count=0 AND session_count=0 AND turn_count=0 AND item_count=0 AND fact_count=0 AND payload_bytes=0", [id]).db()?;
+    transaction.execute("DELETE FROM projects WHERE id=?1 AND kind='privateChat' AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=?1)", [id]).db()?;
+    Ok(())
+}
+
+pub(super) fn retire_oldest_empty(transaction: &rusqlite::Transaction<'_>) -> AppResult<()> {
+    use rusqlite::OptionalExtension;
+    let id: Option<String> = transaction.query_row("SELECT id FROM projects p WHERE kind='privateChat' AND id IS NOT (SELECT active_project_id FROM app_state WHERE singleton=1) AND NOT EXISTS(SELECT 1 FROM chats WHERE project_id=p.id) ORDER BY updated_at,id LIMIT 1", [], |row| row.get(0)).optional().db()?;
+    let id =
+        id.ok_or_else(|| AppError::ResourceLimit("private Chat storage capacity reached".into()))?;
+    forget_empty(transaction, &id)
 }
 
 pub(super) fn admit_base(path: &Path) -> AppResult<()> {
@@ -115,7 +169,7 @@ fn ordinary_directory(path: &Path) -> AppResult<()> {
     Ok(())
 }
 
-// Stream one entry at a time. Refuse links, excessive depth and excessive
+// Stream one entry at a time. Unlink links; refuse excessive depth and excessive
 // work; retain the hidden project as a durable retry receipt on any failure.
 #[cfg(windows)]
 fn remove_tree(path: &Path, seen: &mut usize, depth: usize) -> AppResult<()> {
@@ -144,11 +198,15 @@ fn remove_tree(path: &Path, seen: &mut usize, depth: usize) -> AppResult<()> {
         #[cfg(not(windows))]
         let link = metadata.file_type().is_symlink();
         if link {
-            return Err(AppError::InvalidRequest(
-                "private Chat cleanup refuses links".into(),
-            ));
-        }
-        if metadata.is_dir() {
+            // symlink_metadata reports directory links as links, not dirs.
+            // Windows still requires RemoveDirectory for these reparse points.
+            use std::os::windows::fs::MetadataExt;
+            if metadata.file_attributes() & 0x10 != 0 {
+                fs::remove_dir(entry.path())?;
+            } else {
+                fs::remove_file(entry.path())?;
+            }
+        } else if metadata.is_dir() {
             remove_tree(&entry.path(), seen, depth + 1)?;
         } else if metadata.is_file() {
             fs::remove_file(entry.path())?;
@@ -257,7 +315,7 @@ fn remove_at(
         let kind = unsafe { metadata.assume_init() }.st_mode & libc::S_IFMT;
         if kind == libc::S_IFDIR {
             remove_at(directory.as_raw_fd(), child, seen, depth + 1)?;
-        } else if kind == libc::S_IFREG {
+        } else if kind == libc::S_IFREG || kind == libc::S_IFLNK {
             if unsafe { libc::unlinkat(directory.as_raw_fd(), child.as_ptr(), 0) } != 0 {
                 return Err(std::io::Error::last_os_error().into());
             }

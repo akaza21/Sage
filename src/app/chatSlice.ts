@@ -14,6 +14,7 @@ import {
 import { currentProjectLayout } from "./projectProjection";
 import type { WorkbenchState } from "./store";
 import type { CreateChatResult } from "./runCreateChat";
+import type { ChatComposerDraft } from "../domain/chatOwnership";
 import {
   commitIdentityChatResult,
   createChatTransitionContext,
@@ -27,6 +28,7 @@ export interface ChatSlice {
   setChatProject: (
     targetProjectId: string | null,
     sourceLayout?: ProjectLayoutRequest,
+    sourceComposer?: ChatComposerDraft,
   ) => Promise<void>;
   createChat: (
     projectId?: string | null,
@@ -62,7 +64,7 @@ export const createChatSlice: StateCreator<
     createChatTransitionContext(set, get);
 
   return {
-    setChatProject: async (targetProjectId, sourceLayout) => {
+    setChatProject: async (targetProjectId, sourceLayout, sourceComposer) => {
       const source = get();
       try {
         const { runSetChatProject } = await import("./runSetChatProject");
@@ -78,6 +80,7 @@ export const createChatSlice: StateCreator<
           runChatTransition,
           targetProjectId,
           sourceLayout,
+          sourceComposer,
         );
       } catch (error) {
         set({ error: errorMessage(error) });

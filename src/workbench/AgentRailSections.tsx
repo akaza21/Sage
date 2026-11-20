@@ -234,28 +234,6 @@ function FlatChatList({
   );
 }
 
-function UnscopedArchivedChats({
-  groups,
-  currentProjectId,
-}: {
-  groups: AgentRailProjectGroup[];
-  currentProjectId: string | null;
-}) {
-  return groups
-    .filter((group) => group.archived.length > 0)
-    .map((group) => (
-      <ProjectChatNavigation
-        key={group.id}
-        projectId={group.id}
-        chats={[]}
-        archived={group.archived}
-        selected={group.id === currentProjectId}
-        flat
-        projectChatCount={group.archived.length}
-      />
-    ));
-}
-
 export function AgentRailSections({
   pinned,
   projects,
@@ -285,6 +263,12 @@ export function AgentRailSections({
   switchProject: (projectId: string) => Promise<unknown>;
   onShowMore: (projectId: string) => void;
 }) {
+  const activeArchived = useWorkbenchStore((state) => state.archivedChats);
+  const archived = unscoped.filter(
+    (group) =>
+      (group.id === currentProjectId ? activeArchived : group.archived).length >
+      0,
+  );
   const actions = (
     <>
       <AgentRailOptionsMenu />
@@ -318,16 +302,13 @@ export function AgentRailSections({
           <RecentChatsPart
             part="AgentRecentChats"
             items={all}
+            groups={archived}
             currentProjectId={currentProjectId}
             onSearchMore={
               allOverflowProjectId === null
                 ? undefined
                 : () => onShowMore(allOverflowProjectId)
             }
-          />
-          <UnscopedArchivedChats
-            groups={unscoped}
-            currentProjectId={currentProjectId}
           />
         </AgentRailSection>
       </>
@@ -358,18 +339,14 @@ export function AgentRailSections({
 
       {pinnedSection}
 
-      {recent.length === 0 &&
-      !unscoped.some((group) => group.archived.length > 0) ? null : (
+      {recent.length === 0 && archived.length === 0 ? null : (
         <AgentRailSection id="recent" label="Recents" collapsible={false}>
           <RecentChatsPart
             part="AgentRecentChats"
             items={recent}
+            groups={archived}
             currentProjectId={currentProjectId}
             recent
-          />
-          <UnscopedArchivedChats
-            groups={unscoped}
-            currentProjectId={currentProjectId}
           />
         </AgentRailSection>
       )}

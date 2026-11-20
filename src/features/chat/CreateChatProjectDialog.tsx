@@ -2,11 +2,13 @@ import type { NewChatDraft } from "../../app/newChatDraftSlice";
 import type { ProjectLayoutRequest } from "../../domain/workbench";
 import { useWorkbenchStore } from "../../app/store";
 import { CreateProjectDialog } from "../../workbench/CreateProjectDialog";
+import type { ChatComposerDraft } from "../../domain/chatOwnership";
 
 export interface ChatProjectCreation {
   layout: ProjectLayoutRequest | null;
   draft: NewChatDraft | null;
   text: string;
+  composer?: ChatComposerDraft;
 }
 
 export function CreateChatProjectDialog({
@@ -30,12 +32,21 @@ export function CreateChatProjectDialog({
               ? null
               : creating.layout?.activeTabId;
         if (owned && creating.layout) {
-          await state.setChatProject(target, {
-            ...creating.layout,
-            activeTabId: owned,
-          });
+          await state.setChatProject(
+            target,
+            {
+              ...creating.layout,
+              activeTabId: owned,
+            },
+            {
+              ...creating.composer,
+              composerText: creating.text,
+              attachedContext: creating.composer?.attachedContext ?? [],
+            },
+          );
           state = useWorkbenchStore.getState();
-          if (state.activeTabId !== owned) return;
+          if (state.activeTabId !== owned || state.project?.id !== target)
+            return;
         }
         if (creating.draft) {
           useWorkbenchStore.setState({
@@ -47,9 +58,6 @@ export function CreateChatProjectDialog({
               submission: { status: "created", chatId: state.activeTabId! },
             },
           });
-        } else if (owned) {
-          const owner = state.captureChatOwnership(owned);
-          if (owner) state.setChatComposer(owner, creating.text);
         }
       }}
     />

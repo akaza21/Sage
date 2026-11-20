@@ -4,7 +4,7 @@ use crate::project_registry::{ProjectRegistryStore, create::ProjectCreateStore};
 use crate::workbench_persistence::store::WorkbenchStore;
 use sage_domain::chat::{ChatDeleteRequest, ChatLifecycleRequest};
 
-fn layout(database: &Database) -> ProjectLayoutRequest {
+pub(super) fn layout(database: &Database) -> ProjectLayoutRequest {
     let snapshot = database.bootstrap_snapshot().unwrap();
     ProjectLayoutRequest {
         project_id: snapshot.project.unwrap().id,
@@ -21,9 +21,11 @@ fn private_chat_owns_a_folder_moves_only_without_sessions_and_cleans_up() {
         .unwrap()
         .join("work")
         .join(format!("private-chat-{}", Uuid::new_v4()));
-    fs::create_dir_all(&root).unwrap();
+    fs::create_dir_all(root.join("user")).unwrap();
     let database = crate::database::open_database(&root.join("sage.db")).unwrap();
-    let real = database.create_project_from_root(&root).unwrap();
+    let real = database
+        .create_project_from_root(&root.join("user"))
+        .unwrap();
     let before = layout(&database);
     let chat = Uuid::new_v4().to_string();
     create(&database, Some(&before), &chat).unwrap();

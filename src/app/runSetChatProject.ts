@@ -4,6 +4,7 @@ import type { ProjectLayoutRequest } from "../domain/workbench";
 import type { ChatPort } from "../ports/workbenchPorts";
 import { currentProjectLayout } from "./projectProjection";
 import type { createChatTransitionContext } from "./chatTransitions";
+import type { ChatComposerDraft } from "../domain/chatOwnership";
 
 /** Loads only when an unsent chat actually changes its project. */
 export async function runSetChatProject(
@@ -14,14 +15,16 @@ export async function runSetChatProject(
   >["runChatTransition"],
   targetProjectId: string | null,
   sourceLayout?: ProjectLayoutRequest,
+  sourceComposer?: ChatComposerDraft,
 ) {
   const current = sourceLayout ?? currentProjectLayout(get());
   const chatId = current?.activeTabId;
   if (!current || !chatId || get().projectTransitioning) return;
   const expectedTransitionEpoch = get().nativeTransitionEpoch;
-  const entry = get().chatUiById[chatId];
+  const entry = sourceComposer ?? get().chatUiById[chatId];
   const composer =
-    get().activeTabId === chatId ? get().composerText : entry?.composerText;
+    sourceComposer?.composerText ??
+    (get().activeTabId === chatId ? get().composerText : entry?.composerText);
   const outcome = await runChatTransition({
     action: "project selection",
     expectedTransitionEpoch,
@@ -55,6 +58,8 @@ export async function runSetChatProject(
           harnessId: entry.harnessId ?? null,
           modelId: entry.modelId ?? null,
         });
+      // Effort/access drafts stay keyed by this unchanged Chat id in their
+      // existing bounded stores throughout the project transition.
     }
   }
 }

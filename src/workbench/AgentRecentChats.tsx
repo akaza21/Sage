@@ -1,13 +1,15 @@
-import type { AgentRailChatItem } from "./agentChatRail";
+import type { AgentRailChatItem, AgentRailProjectGroup } from "./agentChatRail";
 import { ProjectChatNavigation } from "./ProjectChatNavigation";
 
 export function AgentRecentChats({
   items,
+  groups = [],
   currentProjectId,
   recent = false,
   onSearchMore,
 }: {
   items: readonly AgentRailChatItem[];
+  groups?: AgentRailProjectGroup[];
   currentProjectId: string | null;
   recent?: boolean;
   onSearchMore?: () => void;
@@ -39,6 +41,16 @@ export function AgentRecentChats({
           Show more
         </button>
       ) : null}
+      {groups.map((group) => (
+        <ProjectChatNavigation
+          key={group.id}
+          projectId={group.id}
+          chats={[]}
+          archived={group.archived}
+          selected={group.id === currentProjectId}
+          flat
+        />
+      ))}
     </>
   );
 }

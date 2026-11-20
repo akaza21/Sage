@@ -4,8 +4,16 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
 } from "@testing-library/react";
-import { afterEach, beforeEach, expect, it } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { getWorkbenchPorts } from "../../ports/workbenchRuntime";
+import { browserDesktop } from "../../services/browserDesktop";
+import { useChatEffortDraft } from "../../app/chatEffortDraft";
+import {
+  draftChatAccess,
+  useChatAccessDrafts,
+} from "../../app/chatAccessDrafts";
 import { useWorkbenchStore } from "../../app/store";
 import { resetBrowserDesktopForTests } from "../../services/browserDesktop";
 import { ProjectScopeChip } from "./ProjectScopeChip";
@@ -19,7 +27,72 @@ beforeEach(async () => {
 });
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+  useChatEffortDraft.setState({ draft: null });
+  useChatAccessDrafts.setState({ drafts: {} });
   useWorkbenchStore.setState(initial, true);
+});
+
+it("keeps the entire unsent composer through New project creation and reparenting", async () => {
+  vi.spyOn(getWorkbenchPorts().project, "createProject").mockImplementation(
+    (_request, _expected, epoch) => browserDesktop.ensureLocalProject(epoch),
+  );
+  await act(async () => useWorkbenchStore.getState().createChat(null));
+  const state = useWorkbenchStore.getState();
+  const chat = state.activeTabId!;
+  const owner = state.captureChatOwnership(chat)!;
+  const context = {
+    kind: "browserPage" as const,
+    tabId: "browser-1",
+    url: "https://example.test/",
+    title: "Reference",
+    text: "Keep this context",
+  };
+  state.setChatComposer(owner, "Keep this prompt");
+  expect(state.attachChatContext(owner, context)).toBe(true);
+  state.setChatHarnessSelection(owner, {
+    harnessId: "sage-simulator",
+    modelId: "sim-fast",
+  });
+  useChatEffortDraft.setState({
+    draft: {
+      chatId: chat,
+      bindingId: "sage-simulator",
+      modelId: "sim-fast",
+      effort: "high",
+    },
+  });
+  draftChatAccess(chat, { bindingId: "sage-simulator", mode: "fullAccess" });
+  render(<ProjectScopeChip projectName="Choose project" />);
+  fireEvent.click(screen.getByRole("button", { name: "Choose project" }));
+  fireEvent.click(await screen.findByRole("option", { name: "New project" }));
+  fireEvent.change(
+    await screen.findByRole("textbox", { name: "Project name" }),
+    { target: { value: "Local" } },
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  expect(useWorkbenchStore.getState()).toMatchObject({
+    activeTabId: chat,
+    composerText: "Keep this prompt",
+    project: { name: "Local" },
+  });
+  expect(useWorkbenchStore.getState().chatUiById[chat]).toMatchObject({
+    composerText: "Keep this prompt",
+    attachedContext: [context],
+    harnessId: "sage-simulator",
+    modelId: "sim-fast",
+  });
+  expect(useChatEffortDraft.getState().draft).toEqual({
+    chatId: chat,
+    bindingId: "sage-simulator",
+    modelId: "sim-fast",
+    effort: "high",
+  });
+  expect(useChatAccessDrafts.getState().drafts[chat]).toEqual({
+    bindingId: "sage-simulator",
+    mode: "fullAccess",
+  });
 });
 
 it("starts without a project and lets the menu choose and clear the draft scope", async () => {

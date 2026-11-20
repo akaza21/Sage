@@ -274,6 +274,7 @@ impl ProjectRegistryStore for Database {
 
     fn add_project_root(&self, project_id: &str, root: &Path) -> AppResult<ProjectSummary> {
         let canonical = canonical_folder(root)?;
+        crate::private_chat::require_user_root(self, &canonical)?;
         let canonical_key = canonical_comparison_key(&canonical);
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction().db()?;

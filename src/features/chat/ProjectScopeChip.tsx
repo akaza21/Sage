@@ -177,6 +177,9 @@ export function ProjectScopeChip({
             layout: currentProjectLayout(state),
             draft,
             text: state.composerText,
+            composer: state.activeTabId
+              ? state.chatUiById[state.activeTabId]
+              : undefined,
           });
         }}
       />

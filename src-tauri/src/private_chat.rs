@@ -27,6 +27,26 @@ fn storage_root(database: &Database) -> AppResult<std::path::PathBuf> {
     Ok(database.profile_directory()?.join("chat-workspaces"))
 }
 
+pub(crate) fn require_user_root(database: &Database, root: &std::path::Path) -> AppResult<()> {
+    use crate::project_registry::canonical_comparison_key;
+    let profile = match database.profile_directory() {
+        Ok(profile) => profile,
+        // Memory databases cannot own private workspace folders.
+        Err(AppError::Unsupported(_)) => return Ok(()),
+        Err(error) => return Err(error),
+    };
+    let base = profile.canonicalize()?.join("chat-workspaces");
+    let base = base.canonicalize().unwrap_or(base);
+    if std::path::Path::new(&canonical_comparison_key(root))
+        .starts_with(canonical_comparison_key(&base))
+    {
+        return Err(AppError::InvalidRequest(
+            "Sage's managed private Chat folders cannot be registered as project roots".into(),
+        ));
+    }
+    Ok(())
+}
+
 fn allocate_folder(database: &Database) -> AppResult<(String, std::path::PathBuf)> {
     let project = Uuid::new_v4().to_string();
     let base = storage_root(database)?;
@@ -46,9 +66,10 @@ fn allocate_folder(database: &Database) -> AppResult<(String, std::path::PathBuf
             )
             .db()?;
         if count >= MAX_PRIVATE_PROJECTS {
-            return Err(AppError::ResourceLimit(
-                "private Chat storage capacity reached".into(),
-            ));
+            // Cleanup receipts are bounded independently of the live Chat quota.
+            // Retire the oldest empty receipt at capacity; never delete its files
+            // here. An unremovable folder cannot permanently block new Chats.
+            cleanup::retire_oldest_empty(&transaction)?;
         }
         transaction.execute("INSERT INTO projects(id,name,kind,created_at,updated_at,last_opened_at) VALUES (?1,'Choose project','privateChat',?2,?2,?2)", params![project,now_millis()]).db()?;
         transaction.commit().db()?;
@@ -294,5 +315,7 @@ pub(crate) fn list(database: &Database) -> AppResult<Vec<ProjectListItem>> {
     Ok(groups)
 }
 
+#[cfg(test)]
+mod cleanup_tests;
 #[cfg(test)]
 mod tests;

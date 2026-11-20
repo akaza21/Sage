@@ -256,7 +256,7 @@ it("pins, unpins and archives a chat from its hover actions", async () => {
   ).toBeNull();
 });
 
-it("keeps the open chat in view In one list, even far down a manual order", () => {
+it("keeps the open chat in view In one list, even far down a manual order", async () => {
   seed();
   const tabs = Array.from({ length: 40 }, (_, position) => ({
     id: `chat-${position}`,
@@ -275,7 +275,9 @@ it("keeps the open chat in view In one list, even far down a manual order", () =
   });
   render(<LeftSidebar />);
   const recents = within(screen.getByRole("region", { name: "Recents" }));
-  const open = recents.getByRole("button", { name: "Open chat Task 39" });
+  const open = await recents.findByRole("button", {
+    name: "Open chat Task 39",
+  });
   expect(open).toHaveAttribute("aria-current", "page");
   const listed = recents
     .getAllByRole("button", { name: /^Open chat Task / })
@@ -286,7 +288,7 @@ it("keeps the open chat in view In one list, even far down a manual order", () =
   expect(recents.queryByRole("button", { name: "Show more" })).toBeNull();
 });
 
-it("keeps the open chat In one list when it is past the list's cap", () => {
+it("keeps the open chat In one list when it is past the list's cap", async () => {
   seed();
   const tabs = Array.from({ length: 64 }, (_, position) => ({
     id: `chat-${position}`,
@@ -323,7 +325,7 @@ it("keeps the open chat In one list when it is past the list's cap", () => {
   act(() => setAgentRailOrganize("list"));
   render(<LeftSidebar />);
   expect(
-    within(screen.getByRole("region", { name: "Recents" })).getByRole(
+    await within(screen.getByRole("region", { name: "Recents" })).findByRole(
       "button",
       {
         name: "Open chat Task 63",

@@ -93,6 +93,9 @@ fn create_project_with_intent(
     expected_active_project_id: Option<Option<&str>>,
 ) -> AppResult<ProjectSummary> {
     let roots = canonical_sources(roots)?;
+    for root in &roots {
+        crate::private_chat::require_user_root(database, root)?;
+    }
     let project_id = Uuid::new_v4().to_string();
     let tab_id = Uuid::new_v4().to_string();
     let now = now_millis();
