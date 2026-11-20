@@ -80,6 +80,10 @@ vi.mock("./acp", async () => {
   };
 });
 
+vi.mock("./chatSignInRecovery", () => ({
+  clearChatSignInError: () => hooks.actions.clearError(),
+}));
+
 import { ChatSurface as ChatPresentation } from "./ChatSurface";
 import { ChatQueueOwner } from "./ChatQueueOwner";
 // The chunks the first Chat, approval, Handoff and Workbench tests load

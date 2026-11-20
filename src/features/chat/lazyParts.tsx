@@ -26,7 +26,6 @@ import type * as LegacyTranscriptChunk from "./ChatLegacyTranscript";
 import type * as QueuedChunk from "./ComposerQueuedPrompts";
 import type * as EditSummaryChunk from "./acp/TurnEditSummary";
 import type * as ComposerOptionsChunk from "./ComposerAddActions";
-import type * as HarnessSignInChunk from "../harness/HarnessSignInStatus";
 import type * as GoalChunk from "./BoundChatGoalControl";
 import type * as AttachmentsChunk from "./ComposerAttachments";
 
@@ -150,9 +149,6 @@ export const QueuedPart = lazyParts<typeof QueuedChunk>(
 export const EditSummaryPart = lazyParts<typeof EditSummaryChunk>(
   () => import("./acp/TurnEditSummary"),
 );
-export const HarnessSignInPart = lazyParts<typeof HarnessSignInChunk>(
-  () => import("../harness/HarnessSignInStatus"),
-);
 export function QueuedRows(
   props: ComponentProps<typeof QueuedChunk.ComposerQueuedPrompts>,
 ) {
@@ -198,7 +194,10 @@ export function LazyHarnessNotice(
 export const ComposerOptionsPart = lazyParts<
   Pick<
     typeof ComposerOptionsChunk,
-    "ComposerOptionsMenu" | "ListedHarnessModels"
+    | "ComposerOptionsMenu"
+    | "ListedHarnessModels"
+    | "ComposerNoticeSurface"
+    | "HarnessAccountMenu"
   >
 >(() => import("./ComposerAddActions"));
 

@@ -8,11 +8,11 @@ import type {
 } from "../../domain/acpSessionConfig";
 import type { AttachedContext } from "../../domain/attachedContext";
 import type { QueuedChatPrompt } from "../../domain/chatOwnership";
-import type { HarnessDefinition } from "../../domain/harness";
 import type { ChatUsage } from "./acp/chatUsage";
 import type { PasteAttachability } from "./composerPasteText";
 import type { EndedPage } from "./endedSession";
 import type { AcpUsageRequest } from "../../domain/acpUsage";
+import type { AcpChatPage, AcpCommandFailure } from "../../domain/acp";
 
 export interface ComposerAccessTarget {
   bindingId?: string | null;
@@ -48,13 +48,10 @@ export interface ChatComposerRegionProps {
   projectTransitioning: boolean;
   workbenchError: string | null;
   chatError: ReactNode;
-  /** The harness that refused for sign-in; its guidance replaces chatError. */
-  signInHarness?: Pick<HarnessDefinition, "name" | "signIn"> | null;
-  /** Present while a harness refused for sign-in; clears that scoped refusal. */
-  authRecovery?: {
-    harnessId: string;
-    scope: string;
-    onSignedIn: () => void;
+  chatAuth?: {
+    page: AcpChatPage | null | undefined;
+    errorKind: AcpCommandFailure["kind"] | null;
+    boundChatId?: string | null;
   };
   accessTarget?: ComposerAccessTarget;
   availableBinding: boolean;

@@ -1,17 +1,15 @@
-import type { RefObject } from "react";
-import type { HarnessDefinition } from "../../domain/harness";
+import type { ReactNode, RefObject } from "react";
 import { MenuPopover } from "../../ui/MenuPopover";
-import { HarnessLoginAction } from "./HarnessSignInAction";
 
 export function HarnessSignInMenu({
   menuId,
   triggerRef,
-  harnesses,
+  children,
   onDismiss,
 }: {
   menuId: string;
   triggerRef: RefObject<HTMLButtonElement | null>;
-  harnesses: readonly HarnessDefinition[];
+  children: ReactNode;
   onDismiss: () => void;
 }) {
   return (
@@ -25,9 +23,7 @@ export function HarnessSignInMenu({
       className="harness-account__menu"
       onDismiss={onDismiss}
     >
-      {harnesses.map((harness) => (
-        <HarnessLoginAction key={harness.id} harness={harness} menuItem />
-      ))}
+      {children}
     </MenuPopover>
   );
 }

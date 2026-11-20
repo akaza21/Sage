@@ -137,9 +137,6 @@ export function useAcpChatActions(boundChatId?: string | null) {
                   sending: state.busy,
                   error: state.error?.message ?? null,
                   errorKind: state.error?.failure.kind ?? null,
-                  modeError: chat?.modeError ?? null,
-                  modeErrorOwner: chat?.modeErrorOwner ?? null,
-                  modeChanging: chat?.modeChanging ?? false,
                 },
           );
           if (accepted) harnessSignInFailures.command?.(state);
@@ -179,23 +176,6 @@ export function useAcpChatActions(boundChatId?: string | null) {
     end: controller.end,
     setSessionMode: controller.setSessionMode,
     setSessionConfigOption: controller.setSessionConfigOption,
-    clearError: () => {
-      const workbench = useWorkbenchStore.getState();
-      if (boundChatId) {
-        const ownership = workbench.captureChatOwnership(boundChatId);
-        if (!ownership) return;
-        const entry = workbench.chatUiById[boundChatId];
-        workbench.setChatActionState(ownership, {
-          sending: entry?.sending ?? false,
-          error: null,
-          errorKind: null,
-          modeError: entry?.modeError ?? null,
-          modeErrorOwner: entry?.modeErrorOwner ?? null,
-        });
-        return;
-      }
-      workbench.clearActiveChatError();
-    },
   } satisfies {
     busy: boolean;
     error: string | null;
@@ -211,6 +191,5 @@ export function useAcpChatActions(boundChatId?: string | null) {
     end: typeof controller.end;
     setSessionMode: typeof controller.setSessionMode;
     setSessionConfigOption: typeof controller.setSessionConfigOption;
-    clearError: () => void;
   };
 }

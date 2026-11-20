@@ -27,6 +27,7 @@ import { DEFAULT_SESSION_ACCESS_MODE } from "../../../domain/sessionAccessMode";
 import { getWorkbenchPorts } from "../../../ports/workbenchRuntime";
 import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatActions } from "./useAcpChatActions";
+import { clearChatSignInError } from "../chatSignInRecovery";
 import { ChatHarnessControls } from "../ChatHarnessControls";
 import {
   harnessSignInStatus,
@@ -674,9 +675,26 @@ describe("useAcpChatActions per-Chat ownership", () => {
     expect(result.current.errorKind).toBe("signInRequired");
     expect(harnessSignInStatus("auth-fixture").state).toBe("signedOut");
 
-    act(() => result.current.clearError());
+    const modeErrorOwner = { sessionId: "session-a", runtimeEpoch: "1" };
+    act(() =>
+      useWorkbenchStore.setState((state) => ({
+        chatUiById: {
+          ...state.chatUiById,
+          "chat-a": {
+            ...state.chatUiById["chat-a"],
+            modeError: "A separate mode change was refused.",
+            modeErrorOwner,
+          },
+        },
+      })),
+    );
+    act(() => clearChatSignInError(chatId));
     expect(result.current.error).toBeNull();
     expect(result.current.errorKind).toBeNull();
+    expect(useWorkbenchStore.getState().chatUiById["chat-a"]).toMatchObject({
+      modeError: "A separate mode change was refused.",
+      modeErrorOwner,
+    });
   });
 
   it("does not show a sign-in error kind after the bound Chat changes", async () => {

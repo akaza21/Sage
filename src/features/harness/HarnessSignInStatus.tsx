@@ -8,7 +8,7 @@ import {
 import { useWorkbenchStore } from "../../app/store";
 import { isTauriRuntime } from "../../ports/desktopRuntime";
 import { HarnessLoginAction } from "./HarnessSignInAction";
-import type { ChatComposerRegionProps } from "../chat/chatComposerRegionProps";
+import type { ComposerStatusNoticeProps } from "../chat/ComposerStatusNotices";
 import { SignInRequiredMessage } from "../chat/HarnessSignInRequiredMessage";
 import { lazyParts } from "../chat/lazyParts";
 import type * as MenuChunk from "./HarnessSignInMenu";
@@ -50,8 +50,8 @@ export function ComposerHarnessSignInNotice({
   refusal,
 }: {
   harnessId: string | null;
-  recovery?: ChatComposerRegionProps["authRecovery"];
-  refusal?: ChatComposerRegionProps["signInHarness"];
+  recovery?: ComposerStatusNoticeProps["authRecovery"];
+  refusal?: ComposerStatusNoticeProps["signInHarness"];
 }) {
   const needsSignIn = useHarnessSignIn();
   const recoveryId = recovery?.harnessId;
@@ -152,9 +152,12 @@ export function HarnessAccountMenu({ avatar }: { avatar: string }) {
           part="HarnessSignInMenu"
           menuId={menuId}
           triggerRef={triggerRef}
-          harnesses={needsSignIn}
           onDismiss={() => setOpen(false)}
-        />
+        >
+          {needsSignIn.map((harness) => (
+            <HarnessLoginAction key={harness.id} harness={harness} menuItem />
+          ))}
+        </MenuPart>
       ) : null}
     </>
   );

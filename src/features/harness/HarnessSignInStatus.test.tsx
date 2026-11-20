@@ -120,12 +120,9 @@ function notice(id: string) {
 }
 it("rechecks signed-out Claude on return within the cache TTL", async () => {
   install("cli-fixture");
-  vi.useFakeTimers();
   render(notice("cli-fixture"));
-  await act(async () => {
-    await vi.advanceTimersByTimeAsync(0);
-  });
-  expect(screen.getByText("Claude Code isn't signed in")).toBeVisible();
+  expect(await screen.findByText("Claude Code isn't signed in")).toBeVisible();
+  vi.useFakeTimers();
   signedIn = true;
   let complete!: (value: { loggedIn: boolean }) => void;
   vi.spyOn(acpDesktop, "getClaudeAuthStatus")

@@ -13,7 +13,7 @@ import { useWorkbenchStore } from "../app/store";
 import { harnessHasSignInCheck } from "../domain/harness";
 import {
   ChatSearchPart,
-  HarnessSignInPart,
+  ComposerOptionsPart,
   lazyParts,
 } from "../features/chat/lazyParts";
 import {
@@ -232,7 +232,7 @@ export function LeftSidebar({
 
       <footer className="project-sidebar__account">
         {!inert && harnesses.some(harnessHasSignInCheck) ? (
-          <HarnessSignInPart part="HarnessAccountMenu" avatar={avatar} />
+          <ComposerOptionsPart part="HarnessAccountMenu" avatar={avatar} />
         ) : (
           <span className="account-avatar" aria-hidden="true">
             {avatar}

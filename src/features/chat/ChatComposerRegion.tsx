@@ -59,8 +59,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
     projectTransitioning,
     workbenchError,
     chatError,
-    signInHarness,
-    authRecovery,
+    chatAuth,
     availableBinding,
     canPrompt,
     discoveryPhase,
@@ -146,8 +145,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           selectedHarnessId={selectedHarnessId}
           workbenchError={workbenchError}
           chatError={chatError}
-          signInHarness={signInHarness}
-          authRecovery={authRecovery}
+          chatAuth={chatAuth}
           imageStatus={imageInput.status}
           missingBindingNotice={missingBindingNotice}
           discoveryPhase={discoveryPhase}
