@@ -29,7 +29,11 @@ export async function loadProjectProjection(
   if (get().projectGeneration !== generation) return;
   set({
     ...snapshotProjection(snapshot),
-    ...projectNewChatDraft(get(), snapshot.project?.id ?? null),
+    ...projectNewChatDraft(
+      get(),
+      snapshot.project?.id ?? null,
+      snapshot.activeTabId,
+    ),
     ...projectChatOwnership(
       get(),
       snapshot,

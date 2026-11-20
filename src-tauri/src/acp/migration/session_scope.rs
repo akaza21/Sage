@@ -15,7 +15,8 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
         | SchemaClass::CurrentTurnUndoIntentIndexes
         | SchemaClass::CurrentImportedHistory
         | SchemaClass::CurrentSessionCapabilities
-        | SchemaClass::CurrentChildThreadStates => {
+        | SchemaClass::CurrentChildThreadStates
+        | SchemaClass::CurrentPrivateProjects => {
             return Ok(());
         }
         SchemaClass::CurrentV20 => {}

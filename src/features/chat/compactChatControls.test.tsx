@@ -30,14 +30,19 @@ afterEach(() => {
 });
 
 describe("Compact chat controls", () => {
-  it("keeps a noninteractive Project identity accessible when its text collapses", () => {
+  it("keeps project selection accessible without other registered projects", async () => {
     useWorkbenchStore.setState({ projects: [] });
     render(<ProjectScopeChip projectName="Alpha" />);
-    expect(screen.getByRole("img", { name: "Project: Alpha" })).toHaveAttribute(
-      "title",
-      "Project: Alpha (No other projects available)",
-    );
-    expect(screen.queryByRole("button")).toBeNull();
+    expect(
+      screen.getByRole("button", { name: "Project: Alpha" }),
+    ).toHaveAttribute("title", "Change the project for this chat");
+    fireEvent.click(screen.getByRole("button", { name: "Project: Alpha" }));
+    expect(
+      await screen.findByRole("option", { name: "New project" }),
+    ).toBeVisible();
+    expect(
+      screen.getByRole("option", { name: "Don't work in a project" }),
+    ).toBeVisible();
   });
 
   it("opens access options from a shield, returns Escape to that opener, and toggles closed on a second pointer click", async () => {

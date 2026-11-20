@@ -106,7 +106,11 @@ fn create_project_with_intent(
         ));
     }
     let count: i64 = transaction
-        .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM projects WHERE kind='user'",
+            [],
+            |row| row.get(0),
+        )
         .db()?;
     if count >= MAX_PROJECTS {
         return Err(AppError::ResourceLimit(format!(

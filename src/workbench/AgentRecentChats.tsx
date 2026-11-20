@@ -24,8 +24,9 @@ export function AgentRecentChats({
             hideArchived
             flat
             projectChatCount={item.projectChatCount}
-            recent={recent}
-            suppressActive={recent}
+            recent={recent && !item.isInternal}
+            suppressActive={recent && !item.isInternal}
+            allowArchiveLast={item.isInternal}
           />
         ))}
       </div>

@@ -1,8 +1,6 @@
 import type {
-  ArchivedChatSummary,
   ChatDeleteRequest,
   ChatLifecycleRequest,
-  ChatMessage,
   MoveChatRequest,
   PinChatRequest,
   CreateProjectFileRequest,
@@ -42,7 +40,6 @@ import { browserEditor } from "./browserEditor";
 import {
   createBrowserProjectFile,
   createBrowserProjectFolder,
-  resetBrowserFileCreate,
 } from "./browserFileCreate";
 import { browserGitUnavailable } from "./browserGitUnavailable";
 import { assertBrowserProjectLayout } from "./browserLayout";
@@ -54,7 +51,6 @@ import {
   browserDirectories as directories,
   browserRepository as repository,
   browserSnapshot as snapshot,
-  resetBrowserDirectories,
 } from "./browserWorkspaceFixture";
 
 export { appendBrowserSimulatorTurn } from "./browserChat";
@@ -64,62 +60,46 @@ export {
   BrowserResourceTrashUnavailableError,
 } from "./browserResourceMutations";
 
-const initialTabs = structuredClone(snapshot.tabs);
-const initialMessages = structuredClone(snapshot.messages);
-let messagesByChat = new Map<string, ChatMessage[]>([
-  ["tab-chat", structuredClone(initialMessages)],
-]);
-let simulatorSessions = new Map<
-  string,
-  { sessionId: string; modelId: string }
->();
-let durableChatIds = new Set(["tab-chat"]);
-let chatTitles = new Map([["tab-chat", snapshot.tabs[0].title]]);
-export function resetBrowserDesktopForTests() {
-  resetBrowserDirectories();
-  resetBrowserFileCreate();
-  snapshot.transitionEpoch = 0;
-  snapshot.tabs = structuredClone(initialTabs);
-  snapshot.archivedChats = [];
-  snapshot.activeTabId = "tab-chat";
-  snapshot.sessionId = null;
-  snapshot.selectedHarnessId = "sage-simulator";
-  snapshot.selectedModelId = "sim-fast";
-  messagesByChat = new Map([["tab-chat", structuredClone(initialMessages)]]);
-  simulatorSessions = new Map();
-  durableChatIds = new Set(["tab-chat"]);
-  chatTitles = new Map([["tab-chat", initialTabs[0].title]]);
-}
+import {
+  hasBrowserScope,
+  rememberBrowserScope,
+  createBrowserScopeCommands,
+} from "./browserChatScopes";
 
-function activeMessages() {
-  return messagesByChat.get(snapshot.activeTabId ?? "") ?? [];
-}
+export { resetBrowserDesktopForTests } from "./browserChatState";
+import {
+  messagesByChat,
+  simulatorSessions,
+  durableChatIds,
+  chatTitles,
+  activeMessages,
+  projectActiveChat,
+  projectArchivedChats,
+  committedTransition,
+} from "./browserChatState";
 
-function projectActiveChat() {
-  const session = simulatorSessions.get(snapshot.activeTabId ?? "");
-  snapshot.sessionId = session?.sessionId ?? null;
-  snapshot.selectedHarnessId = "sage-simulator";
-  snapshot.selectedModelId = session?.modelId ?? null;
-}
-
-function projectArchivedChats(): ArchivedChatSummary[] {
-  const attached = new Set(
-    snapshot.tabs.filter((tab) => tab.kind === "chat").map((tab) => tab.id),
-  );
-  return [...durableChatIds]
-    .filter((chatId) => !attached.has(chatId))
-    .map((id) => ({ id, title: chatTitles.get(id)! }));
-}
-
-function committedTransition(): ProjectTransitionResult {
-  snapshot.transitionEpoch += 1;
-  return {
-    committed: true,
-    transitionEpoch: snapshot.transitionEpoch,
-    snapshot: structuredClone({ ...snapshot, messages: activeMessages() }),
-    recoveryError: null,
-  };
-}
+const scopeCommands = createBrowserScopeCommands({
+  snapshot,
+  persist: (layout, epoch) =>
+    browserDesktop.persistProjectLayout(layout, epoch),
+  commit: committedTransition,
+  chatCount: () => durableChatIds.size,
+  hasSession: (chat) =>
+    simulatorSessions.has(chat) ||
+    (snapshot.activeTabId === chat && !!snapshot.sessionId),
+  register: (chat) => {
+    durableChatIds.add(chat.id);
+    chatTitles.set(chat.id, chat.title);
+    messagesByChat.set(chat.id, []);
+  },
+  remove: (chat) => {
+    durableChatIds.delete(chat);
+    chatTitles.delete(chat);
+    messagesByChat.delete(chat);
+  },
+  title: (chat) => chatTitles.get(chat) ?? "Chat",
+  activate: projectActiveChat,
+});
 
 export const browserDesktop = {
   async getBootstrapSnapshot() {
@@ -173,13 +153,26 @@ export const browserDesktop = {
     snapshot.selectedResource = structuredClone(request.selectedResource);
     snapshot.archivedChats = projectArchivedChats();
     projectActiveChat();
+    rememberBrowserScope(snapshot);
   },
   async createChat(
-    currentLayout: ProjectLayoutRequest,
+    currentLayout: ProjectLayoutRequest | null,
     expectedTransitionEpoch: number,
-    projectId?: string,
+    projectId?: string | null,
     chatId?: string,
   ): Promise<ProjectTransitionResult> {
+    if (
+      projectId === null ||
+      (projectId && projectId !== snapshot.project?.id && chatId)
+    ) {
+      return scopeCommands.createChat(
+        currentLayout,
+        expectedTransitionEpoch,
+        projectId,
+        chatId,
+      );
+    }
+    if (!currentLayout) throw new Error("Missing project layout");
     assertBrowserChatCreation(
       currentLayout,
       expectedTransitionEpoch,
@@ -204,6 +197,7 @@ export const browserDesktop = {
     messagesByChat.set(chat.id, []);
     return committedTransition();
   },
+  setChatProject: scopeCommands.setChatProject,
   async activateChat(
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
@@ -258,7 +252,11 @@ export const browserDesktop = {
       snapshot.project?.roots ?? [],
     );
     assertExactBrowserChatAttachments(request.currentLayout, snapshot.tabs);
-    const next = archiveChatLayout(request.currentLayout, request.chatId);
+    const next = archiveChatLayout(
+      request.currentLayout,
+      request.chatId,
+      snapshot.project?.isInternal,
+    );
     await this.persistProjectLayout(next, expectedTransitionEpoch);
     return committedTransition();
   },
@@ -266,6 +264,8 @@ export const browserDesktop = {
     request: ChatLifecycleRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
+    if (request.projectId !== snapshot.project?.id)
+      return scopeCommands.restoreChat(request, expectedTransitionEpoch);
     assertBrowserChatLifecycleIdentity(
       "restore",
       request,
@@ -299,6 +299,8 @@ export const browserDesktop = {
     request: ChatDeleteRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
+    if (request.projectId !== snapshot.project?.id)
+      return scopeCommands.deleteChat(request, expectedTransitionEpoch);
     if (expectedTransitionEpoch !== snapshot.transitionEpoch) {
       throw new Error("project changed before the requested Chat delete");
     }
@@ -345,6 +347,12 @@ export const browserDesktop = {
     request: ProjectSwitchRequest,
     expectedTransitionEpoch: number,
   ): Promise<ProjectTransitionResult> {
+    if (
+      hasBrowserScope(request.targetProjectId) &&
+      request.targetProjectId !== snapshot.project?.id
+    ) {
+      return scopeCommands.switchProject(request, expectedTransitionEpoch);
+    }
     return switchBrowserProject({
       snapshot,
       request,

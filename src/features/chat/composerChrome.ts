@@ -149,10 +149,10 @@ export function composerPromptPlaceholder(
 }
 
 export function composerWorkspaceName(
-  project: { name: string } | null | undefined,
+  project: { name: string; isInternal?: boolean } | null | undefined,
   maxLength = COMPOSER_WORKSPACE_NAME_CAP,
 ): string | null {
-  if (!project) return null;
+  if (!project || project.isInternal) return null;
   const name = project.name.trim();
   if (
     !name ||

@@ -392,5 +392,18 @@ fn expected_schema_connection(version: u32) -> AppResult<Connection> {
             .db()?;
         expected.pragma_update(None, "user_version", states).db()?;
     }
+    let private = super::super::private_projects::VERSION;
+    if version >= private {
+        expected
+            .execute_batch(super::super::private_projects::SQL)
+            .db()?;
+        expected
+            .execute(
+                "INSERT INTO schema_migrations(version, applied_at) VALUES (?1, 0)",
+                [private],
+            )
+            .db()?;
+        expected.pragma_update(None, "user_version", private).db()?;
+    }
     Ok(expected)
 }

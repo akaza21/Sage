@@ -25,6 +25,7 @@ export const MAX_AGENT_RAIL_ARCHIVED_PER_PROJECT = 64;
 export const UNKNOWN_PROJECT_NAME = "Unknown project";
 
 export interface AgentRailProjectGroup {
+  isInternal?: boolean;
   id: string;
   name: string;
   rootCount: number;
@@ -184,6 +185,7 @@ function admitArchivedChats(
 }
 
 export interface AgentRailChatItem {
+  isInternal?: boolean;
   projectId: string;
   projectName: string;
   projectChatCount: number;
@@ -194,6 +196,7 @@ export interface AgentRailSections {
   pinned: AgentRailChatItem[];
   projects: AgentRailProjectGroup[];
   recent: AgentRailChatItem[];
+  unscoped: AgentRailProjectGroup[];
   all: AgentRailChatItem[];
   /** Where Chat search continues when "In one list" cannot hold every chat. */
   allOverflowProjectId: string | null;
@@ -224,6 +227,7 @@ export function deriveAgentRailSections(
         : group.chats;
     for (const chat of chats) {
       const item = {
+        isInternal: group.isInternal,
         projectId: group.id,
         projectName: group.name,
         projectChatCount,
@@ -239,15 +243,17 @@ export function deriveAgentRailSections(
         !chat.pinned &&
         typeof chat.updatedAt === "number" &&
         Number.isFinite(chat.updatedAt) &&
-        chat.updatedAt > 0
+        chat.updatedAt > 0 &&
+        group.isInternal
       )
         recentCandidates.push(item);
     }
-    projects.push({
-      ...group,
-      chats: projectChats,
-      totalChatCount: projectChatCount,
-    });
+    if (!group.isInternal)
+      projects.push({
+        ...group,
+        chats: projectChats,
+        totalChatCount: projectChatCount,
+      });
   }
 
   recentCandidates.sort((left, right) =>
@@ -264,6 +270,7 @@ export function deriveAgentRailSections(
   return {
     pinned,
     projects,
+    unscoped: groups.filter((group) => group.isInternal),
     recent: recentCandidates.slice(0, MAX_AGENT_RAIL_RECENT_CANDIDATES),
     all,
     allOverflowProjectId:

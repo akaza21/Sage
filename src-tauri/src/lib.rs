@@ -51,6 +51,7 @@ mod launch_profile;
 mod native_session_import;
 mod notifications;
 mod preview_lifecycle;
+mod private_chat;
 mod profile_handoff;
 mod profile_lock;
 mod project_commands;

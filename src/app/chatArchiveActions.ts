@@ -28,7 +28,7 @@ function archivedChat(
   chatId: string,
 ) {
   return foreign
-    ? state.projects
+    ? [...state.projects, ...state.unscopedChats]
         .find((item) => item.id === projectId)
         ?.railArchived?.find((chat) => chat.id === chatId)
     : state.archivedChats.find((chat) => chat.id === chatId);
@@ -106,18 +106,23 @@ export function createChatArchiveActions(set: Set, get: Get) {
       typeof sourceProjectId === "string" &&
       sourceProjectId !== initial?.projectId;
     const foreignChats =
-      get().projects.find((item) => item.id === sourceProjectId)?.railChats ??
-      [];
+      [...get().projects, ...get().unscopedChats].find(
+        (item) => item.id === sourceProjectId,
+      )?.railChats ?? [];
+    const allowEmpty =
+      get().unscopedChats.some((item) => item.id === sourceProjectId) ||
+      (get().project?.id === sourceProjectId &&
+        get().project?.isInternal === true);
     if (
       !initial ||
       !sourceProjectId ||
       get().projectTransitioning ||
       (!foreign &&
         (!attachedChats?.some((tab) => tab.id === chatId) ||
-          attachedChats.length <= 1)) ||
+          (attachedChats.length <= 1 && !allowEmpty))) ||
       (foreign &&
         (!foreignChats.some((chat) => chat.id === chatId) ||
-          foreignChats.length <= 1))
+          (foreignChats.length <= 1 && !allowEmpty)))
     ) {
       if (
         (!foreign && attachedChats?.length === 1) ||
@@ -169,7 +174,7 @@ export function createChatArchiveActions(set: Set, get: Get) {
     }
     let requested: ProjectLayoutRequest;
     try {
-      requested = archiveChatLayout(current, chatId);
+      requested = archiveChatLayout(current, chatId, allowEmpty);
     } catch (error) {
       set({ projectTransitioning: false, error: errorMessage(error) });
       return false;

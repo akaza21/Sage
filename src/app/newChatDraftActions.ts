@@ -139,7 +139,7 @@ export function createNewChatDraftActions(
       const draft = state.newChatDraft;
       if (
         draft?.submission.status !== "unconfirmed" ||
-        state.project?.id !== draft.projectId ||
+        (state.project?.id ?? null) !== draft.projectId ||
         state.projectTransitioning ||
         state.pendingFirstSend
       )

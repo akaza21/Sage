@@ -22,7 +22,13 @@ import "./create-project-dialog.css";
 
 const fullMessage = `A project holds at most ${MAX_PROJECT_SOURCE_FOLDERS} folders`;
 
-export function CreateProjectDialog({ onClose }: { onClose: () => void }) {
+export function CreateProjectDialog({
+  onClose,
+  onCreated,
+}: {
+  onClose: () => void;
+  onCreated?: () => void | Promise<void>;
+}) {
   const [name, setName] = useState("");
   const [folders, setFolders] = useState<ProjectSourceFolder[]>([]);
   const [picking, setPicking] = useState(false);
@@ -70,6 +76,7 @@ export function CreateProjectDialog({ onClose }: { onClose: () => void }) {
     });
     setSaving(false);
     if (committed) {
+      await onCreated?.();
       onClose();
       return;
     }

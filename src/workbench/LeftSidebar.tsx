@@ -72,6 +72,7 @@ export function LeftSidebar({
   railRef?: (node: HTMLElement | null) => void;
 } = {}) {
   const projects = useWorkbenchStore((state) => state.projects);
+  const unscopedChats = useWorkbenchStore((state) => state.unscopedChats);
   const project = useWorkbenchStore((state) => state.project);
   const tabs = useWorkbenchStore((state) => state.tabs);
   const switchProject = useWorkbenchStore((state) => state.switchProject);
@@ -104,13 +105,23 @@ export function LeftSidebar({
   const [creatingProject, setCreatingProject] = useState(false);
   const searchTriggerRef = useRef<HTMLButtonElement>(null);
   const groups = useMemo(
-    () =>
-      groupAgentRailProjects({
+    () => [
+      ...groupAgentRailProjects({
         projects,
-        currentProjectId: project?.id ?? null,
-        currentChats: tabs.filter((tab) => tab.kind === "chat"),
+        currentProjectId: project?.isInternal ? null : (project?.id ?? null),
+        currentChats: project?.isInternal
+          ? []
+          : tabs.filter((tab) => tab.kind === "chat"),
       }),
-    [project?.id, projects, tabs],
+      ...groupAgentRailProjects({
+        projects: unscopedChats,
+        currentProjectId: project?.isInternal ? project.id : null,
+        currentChats: project?.isInternal
+          ? tabs.filter((tab) => tab.kind === "chat")
+          : [],
+      }).map((group) => ({ ...group, isInternal: true })),
+    ],
+    [project, projects, unscopedChats, tabs],
   );
   const prefs = useAgentRailViewPrefs();
   useEffect(() => {
@@ -195,6 +206,7 @@ export function LeftSidebar({
           pinned={sections.pinned}
           projects={sections.projects}
           recent={sections.recent}
+          unscoped={sections.unscoped}
           all={sections.all}
           allOverflowProjectId={sections.allOverflowProjectId}
           currentProjectId={project?.id ?? null}

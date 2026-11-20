@@ -500,6 +500,27 @@
         "maxGzipBytes": 2020,
         "maxCssGzipBytes": 400,
         "reason": "Usage popover, its bounded decoder and session token and cost rows; loads when the context meter is clicked or `/status` opens, and unmounts when closed. Measured 1915 B."
+      },
+      {
+        "entry": "src/features/chat/CreateChatProjectDialog.tsx",
+        "maxGzipBytes": 430,
+        "reason": "Creating a project from an unsent chat: dialog and draft ownership handoff load only on New project; the closed picker retains no dialog."
+      },
+      {
+        "entry": "src/app/runSetChatProject.ts",
+        "maxGzipBytes": 500,
+        "reason": "Reparenting an unsent chat and restoring its composer load only when its project changes; native SQLite remains authoritative."
+      },
+      {
+        "entry": "src/app/runNewChatDraftSend.ts",
+        "maxGzipBytes": 1300,
+        "reason": "First-send project creation, native ownership reconciliation and composer handoff have a separate on-send entry; all required chunks load before creating durable state."
+      },
+      {
+        "entry": "src/features/chat/ProjectScopeChip.tsx",
+        "maxGzipBytes": 1560,
+        "maxCssGzipBytes": 760,
+        "reason": "Project selection, duplicate-name paths and pre-session scope controls load only with a visible project chip; the closed New project dialog has its own entry."
       }
     ],
     "windowsInstallerMb": 45,

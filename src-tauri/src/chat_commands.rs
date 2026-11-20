@@ -21,7 +21,7 @@ const MAX_TRANSITION_EPOCH: u64 = 9_007_199_254_740_991;
 #[tauri::command]
 pub async fn create_chat(
     state: State<'_, AppState>,
-    current_layout: ProjectLayoutRequest,
+    current_layout: Option<ProjectLayoutRequest>,
     expected_transition_epoch: u64,
     project_id: Option<String>,
     chat_id: Option<String>,
@@ -32,6 +32,30 @@ pub async fn create_chat(
         expected_transition_epoch,
         project_id,
         chat_id,
+    )
+    .await)
+}
+
+#[tauri::command]
+pub async fn set_chat_project(
+    state: State<'_, AppState>,
+    current_layout: ProjectLayoutRequest,
+    expected_transition_epoch: u64,
+    chat_id: String,
+    target_project_id: Option<String>,
+) -> Result<ProjectTransitionResult, String> {
+    Ok(execute_chat_transition(
+        &state,
+        expected_transition_epoch,
+        "project changed before choosing the Chat project",
+        move |database| {
+            crate::private_chat::set_project(
+                &database,
+                &current_layout,
+                &chat_id,
+                target_project_id.as_deref(),
+            )
+        },
     )
     .await)
 }
@@ -99,7 +123,7 @@ pub async fn move_chat(
 
 async fn create_chat_inner(
     state: &AppState,
-    current_layout: ProjectLayoutRequest,
+    current_layout: Option<ProjectLayoutRequest>,
     expected_transition_epoch: u64,
     project_id: Option<String>,
     chat_id: Option<String>,
@@ -108,11 +132,28 @@ async fn create_chat_inner(
         state,
         expected_transition_epoch,
         "project changed before the requested Chat creation",
-        move |database| {
-            let target = project_id.unwrap_or_else(|| current_layout.project_id.clone());
-            database
-                .create_chat_with_identity(&target, &current_layout, None, chat_id.as_deref())
-                .map(drop)
+        move |database| match project_id {
+            None => crate::private_chat::create(
+                &database,
+                current_layout.as_ref(),
+                &chat_id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+            ),
+            Some(target) => {
+                let layout = current_layout.ok_or_else(|| {
+                    AppError::InvalidRequest(
+                        "Project Chat creation requires a current layout".into(),
+                    )
+                })?;
+                database.create_chat_with_identity(&target, &layout, None, chat_id.as_deref())?;
+                if chat_id.is_some() && target != layout.project_id {
+                    use sage_domain::project::ProjectSwitchRequest;
+                    database.switch_project(&ProjectSwitchRequest {
+                        target_project_id: target,
+                        current_layout: layout,
+                    })?;
+                }
+                Ok(())
+            }
         },
     )
     .await
@@ -258,9 +299,14 @@ mod tests {
             let state = AppState::new(database);
 
             let requested_id = Uuid::new_v4().to_string();
-            let created =
-                create_chat_inner(&state, layout.clone(), 0, None, Some(requested_id.clone()))
-                    .await;
+            let created = create_chat_inner(
+                &state,
+                Some(layout.clone()),
+                0,
+                Some(layout.project_id.clone()),
+                Some(requested_id.clone()),
+            )
+            .await;
             assert!(created.committed);
             assert_eq!(created.transition_epoch, 1);
             let snapshot = created.snapshot.unwrap();
@@ -392,7 +438,14 @@ mod tests {
                 "Chat: Inactive renamed"
             );
 
-            let stale = create_chat_inner(&state, layout, 0, None, None).await;
+            let stale = create_chat_inner(
+                &state,
+                Some(layout.clone()),
+                0,
+                Some(layout.project_id.clone()),
+                None,
+            )
+            .await;
             assert!(!stale.committed);
             assert_eq!(stale.transition_epoch, 3);
             assert!(stale.recovery_error.unwrap().contains("project changed"));
@@ -448,14 +501,28 @@ mod tests {
             let state = AppState::new(database);
             let preview = crate::app_preview_commands::ServingPreview::start(0);
 
-            let stale = create_chat_inner(&state, layout.clone(), 1, None, None).await;
+            let stale = create_chat_inner(
+                &state,
+                Some(layout.clone()),
+                1,
+                Some(layout.project_id.clone()),
+                None,
+            )
+            .await;
             assert!(!stale.committed);
             assert!(
                 preview.is_serving(),
                 "a rejected transition must not stop the current Preview"
             );
 
-            let created = create_chat_inner(&state, layout, 0, None, None).await;
+            let created = create_chat_inner(
+                &state,
+                Some(layout.clone()),
+                0,
+                Some(layout.project_id.clone()),
+                None,
+            )
+            .await;
             assert!(created.committed);
             assert_eq!(created.transition_epoch, 1);
             assert!(!preview.is_serving());

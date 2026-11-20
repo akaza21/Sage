@@ -19,6 +19,7 @@ pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
             | SchemaClass::CurrentImportedHistory
             | SchemaClass::CurrentSessionCapabilities
             | SchemaClass::CurrentChildThreadStates
+            | SchemaClass::CurrentPrivateProjects
     ) {
         return Ok(());
     }

@@ -38,6 +38,7 @@ fn open_database_with_limits(path: &Path, storage_limits: StorageLimits) -> AppR
     if let Err(error) = database.purge_side_chats() {
         tracing::warn!(?error, "temporary Chat cleanup will retry later");
     }
+    crate::private_chat::cleanup_empty(&database);
     if let Ok(root) = database.image_artifact_root() {
         sage_images::reconcile_image_artifacts(&database.connection(), root)?;
     }

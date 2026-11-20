@@ -239,10 +239,16 @@ export interface RepositoryPort {
 }
 
 export interface ChatPort {
-  createChat(
+  setChatProject(
     currentLayout: ProjectLayoutRequest,
     expectedTransitionEpoch: number,
-    projectId?: string,
+    chatId: string,
+    targetProjectId: string | null,
+  ): Promise<ProjectTransitionResult>;
+  createChat(
+    currentLayout: ProjectLayoutRequest | null,
+    expectedTransitionEpoch: number,
+    projectId?: string | null,
     chatId?: string,
   ): Promise<ProjectTransitionResult>;
   activateChat(
@@ -369,6 +375,7 @@ export const FROZEN_WORKBENCH_PORT_METHODS = {
     "activateChat",
     "archiveChat",
     "createChat",
+    "setChatProject",
     "deleteChat",
     "moveChat",
     "pinChat",

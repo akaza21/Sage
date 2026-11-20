@@ -16,7 +16,9 @@ export type DraftCreation =
 export interface NewChatDraft {
   /** Stable across immutable edits and project ownership recovery. */
   id: object;
-  projectId: string;
+  projectId: string | null;
+  /** Undefined retains the owner project; null explicitly chooses no project. */
+  targetProjectId?: string | null;
   text: string;
   harnessId: string | null;
   modelId: string | null;
@@ -34,7 +36,7 @@ export interface NewChatDraftSlice {
   draftFocusRequest: number;
   /** A first send waiting for its chat, then for that chat's page. */
   pendingFirstSend:
-    | { projectId: string; chatId: null; ownershipEpoch: number }
+    | { projectId: string | null; chatId: null; ownershipEpoch: number }
     | {
         projectId: string;
         chatId: string;
@@ -45,7 +47,9 @@ export interface NewChatDraftSlice {
     | null;
   openNewChatDraft: (projectId?: string) => Promise<unknown>;
   updateNewChatDraft: (
-    patch: Partial<Pick<NewChatDraft, "text" | "access" | "effort">>,
+    patch: Partial<
+      Pick<NewChatDraft, "text" | "access" | "effort" | "targetProjectId">
+    >,
   ) => void;
   selectDraftHarness: (harnessId: string) => Promise<void>;
   selectDraftModel: (modelId: string) => void;
@@ -140,10 +144,18 @@ export function draftShownFor(
 }
 
 export function projectNewChatDraft(
-  state: Pick<WorkbenchState, "project">,
+  state: Pick<WorkbenchState, "project" | "newChatDraft" | "pendingFirstSend">,
   projectId: string | null,
+  createdChatId?: string | null,
 ) {
-  return state.project?.id === projectId
+  const draft = state.newChatDraft;
+  if (
+    draft?.submission.status === "submitting" &&
+    draft.submission.chatId === createdChatId
+  ) {
+    return { newChatDraft: { ...draft, projectId } };
+  }
+  return (state.project?.id ?? null) === projectId
     ? {}
     : {
         newChatDraft: null,

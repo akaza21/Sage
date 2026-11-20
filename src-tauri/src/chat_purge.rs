@@ -106,6 +106,7 @@ impl ChatPurgeStore for Database {
         // this leaves orphan files that startup reconciliation
         // (sage_images::reconcile_image_artifacts) removes.
         remove_image_files(self, &images);
+        crate::private_chat::cleanup_empty(self);
         Ok(())
     }
 }

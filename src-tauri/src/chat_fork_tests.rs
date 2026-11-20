@@ -647,3 +647,30 @@ fn an_import_reads_only_on_the_runtime_that_listed_it() {
         "a restarted runtime never listed the session"
     );
 }
+
+#[test]
+fn private_chat_forks_keep_their_workspace_and_appear_once_each() {
+    let fixture = Fixture::new(&forkable());
+    fixture
+        .database
+        .connection()
+        .execute(
+            "UPDATE projects SET kind='privateChat' WHERE id=?1",
+            [&fixture.project],
+        )
+        .unwrap();
+    let fork = fixture.fork("thread-private-fork").unwrap();
+    let snapshot = fixture.database.bootstrap_snapshot().unwrap();
+    assert!(snapshot.projects.is_empty());
+    assert_eq!(snapshot.unscoped_chats.len(), 1);
+    let chats = &snapshot.unscoped_chats[0].rail_chats;
+    assert_eq!(chats.len(), 2);
+    assert_eq!(
+        chats
+            .iter()
+            .filter(|chat| chat.id == fixture.parent)
+            .count(),
+        1
+    );
+    assert_eq!(chats.iter().filter(|chat| chat.id == fork).count(), 1);
+}

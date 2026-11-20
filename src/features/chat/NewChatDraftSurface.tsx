@@ -18,7 +18,7 @@ export function NewChatDraftSurface({
 }) {
   const draft = useWorkbenchStore((state) => state.newChatDraft);
   const focusRequest = useWorkbenchStore((state) => state.draftFocusRequest);
-  const project = useWorkbenchStore((state) => state.project);
+  const projects = useWorkbenchStore((state) => state.projects);
   const harnesses = useWorkbenchStore((state) => state.harnesses);
   const selectedHarnessId = useWorkbenchStore(
     (state) => state.selectedHarnessId,
@@ -58,7 +58,17 @@ export function NewChatDraftSurface({
       void chooseHarness(draft.harnessId);
     }
   }, [chooseHarness, draft, selectedHarnessId, transitioning]);
-  if (!draft || !project) return null;
+  if (!draft) return null;
+  const targetId =
+    draft.targetProjectId === undefined
+      ? draft.projectId
+      : draft.targetProjectId;
+  const targetProject = targetId
+    ? projects.find((item) => item.id === targetId)
+    : null;
+  const shownProject = targetProject
+    ? { id: targetProject.id, name: targetProject.name, roots: [] }
+    : null;
   const available = harness?.installState === "available";
   const choice = effectiveDraftChoice(draft, {
     harnesses,
@@ -89,7 +99,7 @@ export function NewChatDraftSurface({
         />
         <div className="message-list message-list--home">
           <div className="message-list__content">
-            <ChatHome projectName={project.name} />
+            <ChatHome projectName={shownProject?.name ?? null} />
             {ownsChat && !submitting ? (
               <div>
                 <button
@@ -168,7 +178,7 @@ export function NewChatDraftSurface({
           onSelectModel={chooseModel}
           missingBindingNotice={false}
           disabledReason={null}
-          project={project}
+          project={shownProject}
           newChat
           usage={null}
           goal={{ kind: "unsupported" }}

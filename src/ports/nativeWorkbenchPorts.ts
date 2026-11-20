@@ -140,6 +140,19 @@ const repository: RepositoryPort = {
 };
 
 const chat: ChatPort = {
+  setChatProject(
+    currentLayout,
+    expectedTransitionEpoch,
+    chatId,
+    targetProjectId,
+  ) {
+    return invokeNative("set_chat_project", {
+      currentLayout,
+      expectedTransitionEpoch,
+      chatId,
+      targetProjectId,
+    });
+  },
   forkChat(request) {
     return invokeNative("fork_chat", { ...request });
   },

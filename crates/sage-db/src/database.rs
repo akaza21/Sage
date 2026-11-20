@@ -87,6 +87,13 @@ impl Database {
         })
     }
 
+    /// The native profile directory owning this disk database and its artifacts.
+    pub fn profile_directory(&self) -> AppResult<&Path> {
+        self.physical_storage.path().and_then(Path::parent).ok_or_else(|| {
+            sage_core::error::AppError::Unsupported("private storage needs a disk database".into())
+        })
+    }
+
     pub fn image_artifact_root(&self) -> AppResult<&Path> {
         self.image_artifact_root
             .as_deref()

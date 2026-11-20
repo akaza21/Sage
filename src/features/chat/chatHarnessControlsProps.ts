@@ -32,6 +32,7 @@ export interface ChatHarnessControlsProps {
   selectedHarnessId: string | null;
   selectedModelId: string | null;
   projectName: string | null;
+  projectReadOnly?: boolean;
   turnBusy: boolean;
   sessionConfig: AcpSessionConfig | null;
   modePending: boolean;

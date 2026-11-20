@@ -20,6 +20,7 @@ mod platform_anchor;
 #[cfg(test)]
 mod portable_coverage_tests;
 mod post_v18;
+mod private_projects;
 mod probe;
 mod publish;
 mod schema_upgrade;

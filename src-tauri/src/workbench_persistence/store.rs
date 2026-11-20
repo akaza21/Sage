@@ -26,6 +26,7 @@ impl WorkbenchStore for Database {
     ) -> AppResult<BootstrapSnapshot> {
         let active_project_id = self.repair_active_project()?;
         let projects = self.project_list()?;
+        let unscoped_chats = crate::private_chat::list(self)?;
         if projects.len() > MAX_PROJECTS as usize {
             return Err(AppError::ResourceLimit(format!(
                 "project registry exceeds its {MAX_PROJECTS}-project limit"
@@ -33,6 +34,7 @@ impl WorkbenchStore for Database {
         }
         let Some(project_id) = active_project_id else {
             let mut snapshot = empty_snapshot(projects);
+            snapshot.unscoped_chats = unscoped_chats;
             snapshot.harnesses = harnesses.definitions();
             return Ok(snapshot);
         };
@@ -77,6 +79,7 @@ impl WorkbenchStore for Database {
         Ok(BootstrapSnapshot {
             transition_epoch: 0,
             projects,
+            unscoped_chats,
             project: Some(project),
             tabs,
             archived_chats,

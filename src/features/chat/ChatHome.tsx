@@ -1,5 +1,5 @@
 import { SageMark } from "../../ui/leanIconCore";
-import { ProjectScopeChip } from "./ProjectScopeChip";
+import { ProjectScopeChip } from "./LazyProjectScopeChip";
 import "./chat-home.css";
 
 export function ChatHome({ projectName }: { projectName: string | null }) {

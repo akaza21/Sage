@@ -58,6 +58,10 @@ export function projectChatOwnership(
 ) {
   const ids = knownChatIds(snapshot);
   const retained: Record<string, ChatOwnershipEntry> = {};
+  const submitting = state.newChatDraft?.submission;
+  const creatingOwnedChat =
+    submitting?.status === "submitting" &&
+    submitting.chatId === snapshot.activeTabId;
   const sameProject = state.project?.id === snapshot.project?.id;
   const previous = { ...state.chatUiById };
   const source = state.tabs.find(
@@ -91,7 +95,7 @@ export function projectChatOwnership(
   );
   return {
     chatOwnershipEpoch:
-      preserve && sameProject
+      preserve && (sameProject || creatingOwnedChat)
         ? state.chatOwnershipEpoch
         : nextProjectGeneration(state.chatOwnershipEpoch),
     chatUiById: retained,

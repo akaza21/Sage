@@ -100,6 +100,9 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   // new-chat draft.
   "src/app/newChatDraftActions.ts",
   "src/app/runNewChatDraftSend.ts",
+  "src/app/runSetChatProject.ts",
+  "src/features/chat/CreateChatProjectDialog.tsx",
+  "src/features/chat/ProjectScopeChip.tsx",
   "src/app/runCreateChat.ts",
   "src/features/chat/NewChatDraftSurface.tsx",
   "src/features/chat/FirstChatSend.tsx",
@@ -320,7 +323,6 @@ const DEFERRED_CHAT_GROUPS: Record<string, readonly string[]> = {
     "src/app/chatEffortDraft.ts",
     "src/features/chat/DraftEffortControl.tsx",
     "src/app/runCreateChat.ts",
-    "src/app/runNewChatDraftSend.ts",
     "src/features/chat/FirstChatSend.tsx",
     "src/app/newChatDraftActions.ts",
     "src/app/newChatDraftNavigation.ts",

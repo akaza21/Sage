@@ -5,7 +5,9 @@ pub(super) const SQL: &str = include_str!("../../../migrations/031_acp_child_thr
 
 pub(super) fn apply(connection: &mut Connection) -> AppResult<()> {
     match fingerprint::classify_connection(connection)? {
-        SchemaClass::CurrentChildThreadStates => return Ok(()),
+        SchemaClass::CurrentChildThreadStates | SchemaClass::CurrentPrivateProjects => {
+            return Ok(());
+        }
         SchemaClass::CurrentSessionCapabilities => {}
         _ => return invalid("child thread states require the exact session capabilities schema"),
     }

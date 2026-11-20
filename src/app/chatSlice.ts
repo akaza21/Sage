@@ -1,7 +1,11 @@
 import type { StateCreator } from "zustand";
 
 import { canonicalChatName, canonicalChatTitle } from "../domain/chatTitle";
-import type { BootstrapSnapshot, WorkbenchTab } from "../domain/workbench";
+import type {
+  BootstrapSnapshot,
+  WorkbenchTab,
+  ProjectLayoutRequest,
+} from "../domain/workbench";
 import { getWorkbenchPorts } from "../ports/workbenchRuntime";
 import {
   nextProjectGeneration,
@@ -20,8 +24,12 @@ import {
 } from "./chatTransitions";
 
 export interface ChatSlice {
+  setChatProject: (
+    targetProjectId: string | null,
+    sourceLayout?: ProjectLayoutRequest,
+  ) => Promise<void>;
   createChat: (
-    projectId?: string,
+    projectId?: string | null,
     chatId?: string,
   ) => Promise<CreateChatResult>;
   pinChat: (chatId: string, projectId?: string) => Promise<void>;
@@ -54,6 +62,27 @@ export const createChatSlice: StateCreator<
     createChatTransitionContext(set, get);
 
   return {
+    setChatProject: async (targetProjectId, sourceLayout) => {
+      const source = get();
+      try {
+        const { runSetChatProject } = await import("./runSetChatProject");
+        if (
+          get().project?.id !== source.project?.id ||
+          get().chatOwnershipEpoch !== source.chatOwnershipEpoch ||
+          get().nativeTransitionEpoch !== source.nativeTransitionEpoch
+        )
+          return;
+        await runSetChatProject(
+          get,
+          chat,
+          runChatTransition,
+          targetProjectId,
+          sourceLayout,
+        );
+      } catch (error) {
+        set({ error: errorMessage(error) });
+      }
+    },
     activateChat: async (chatId, requestedTabs, submission) => {
       const current = currentProjectLayout(get());
       const tabs = requestedTabs ?? current?.tabs;

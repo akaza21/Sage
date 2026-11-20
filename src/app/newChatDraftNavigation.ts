@@ -11,10 +11,31 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
   if (projectId && projectId !== state.project?.id)
     return state.createChat(projectId);
   if (state.projectTransitioning) return;
-  if (!state.project) return state.createChat();
+  if (!state.project)
+    return (async () => {
+      const created = await state.createChat(null);
+      if (
+        created.status !== "confirmed" ||
+        get().activeTabId !== created.chatId
+      )
+        return;
+      openNewChatDraft(set, get);
+      const draft = get().newChatDraft;
+      if (draft)
+        set({
+          newChatDraft: {
+            ...draft,
+            submission: { status: "created", chatId: created.chatId },
+          },
+        });
+    })();
   const draftFocusRequest =
     (state.draftFocusRequest + 1) % Number.MAX_SAFE_INTEGER;
-  if (state.agentCenter === "draft" && state.newChatDraft) {
+  if (
+    state.agentCenter === "draft" &&
+    state.newChatDraft &&
+    state.newChatDraft.targetProjectId === (projectId ?? null)
+  ) {
     set({ draftFocusRequest });
     return;
   }
@@ -31,17 +52,22 @@ export function openNewChatDraft(set: Set, get: Get, projectId?: string) {
     agentCenter: "draft",
     pendingFirstSend: null,
     draftFocusRequest,
-    newChatDraft: state.newChatDraft ?? {
-      id: {},
-      projectId: state.project.id,
-      text: "",
-      harnessId: state.selectedHarnessId,
-      modelId: state.selectedModelId,
-      access: null,
-      effort: null,
-      submission: { status: "released" },
-      error: null,
-    },
+    newChatDraft:
+      state.newChatDraft &&
+      state.newChatDraft.targetProjectId === (projectId ?? null)
+        ? state.newChatDraft
+        : {
+            id: {},
+            projectId: state.project?.id ?? null,
+            targetProjectId: projectId ?? null,
+            text: "",
+            harnessId: state.selectedHarnessId,
+            modelId: state.selectedModelId,
+            access: null,
+            effort: null,
+            submission: { status: "released" },
+            error: null,
+          },
   });
 }
 /**
@@ -112,6 +138,6 @@ export async function selectDraftHarness(
     harnessId,
     changed ? null : draft.modelId,
     state.projectGeneration,
-    draft.projectId,
+    draft.projectId ?? "",
   );
 }

@@ -367,9 +367,20 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await installChrome(page, true);
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    await useWorkbenchStore
+      .getState()
+      .openNewChatDraft(useWorkbenchStore.getState().project!.id);
+  });
+
   const frame = page.locator(".chat-dock-frame").first();
   const composer = frame.locator("form.composer");
   const strip = frame.getByRole("group", { name: "Chat location" });
+  await page.mouse.move(0, 0);
+  await composer.getByRole("combobox", { name: "Message agent" }).focus();
+  await expect(strip.locator(".project-scope__clear")).toBeHidden();
+
   await expect(strip).toContainText("This computer");
   const project = strip.getByRole("button", {
     name: "Project: Sage project with a long name",
@@ -386,7 +397,11 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
       const dock = element.querySelector(".chat-dock")!.getBoundingClientRect();
       const style = getComputedStyle(tab);
       const icons = [...tab.querySelectorAll("svg")]
-        .filter((icon) => icon.checkVisibility())
+        .filter(
+          (icon) =>
+            icon.checkVisibility() &&
+            getComputedStyle(icon).visibility !== "hidden",
+        )
         .map((icon) => {
           const box = icon.getBoundingClientRect();
           return [box.width, box.height];
@@ -475,9 +490,128 @@ test("the location strip is gone once the chat has a turn", async ({
     page
       .getByRole("menu", { name: "Composer options menu", exact: true })
       .getByRole("menuitem", { name: "Work in a project", exact: true }),
-  ).toBeVisible();
+  ).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(add).toBeFocused();
+});
+
+test("new chat can choose no project and distinguishes duplicate project names", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      project: { ...state.project!, name: "Sage" },
+      projects: [
+        {
+          id: state.project!.id,
+          name: "Sage",
+          parentPath: "/work/first",
+          rootCount: 1,
+          lastOpenedAt: 1,
+        },
+        {
+          id: "other-project",
+          name: "Sage",
+          parentPath: "/work/second",
+          rootCount: 1,
+          lastOpenedAt: 1,
+        },
+      ],
+      unscopedChats: [
+        {
+          id: "private-chat-scope",
+          name: "",
+          rootCount: 1,
+          lastOpenedAt: 1,
+          railChats: [
+            {
+              id: "personal-chat",
+              title: "Personal chat",
+              pinned: false,
+              position: 0,
+              updatedAt: Date.now(),
+            },
+          ],
+        },
+      ],
+    });
+  });
+  const sidebar = page.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  await expect(
+    sidebar
+      .getByRole("region", { name: "Projects" })
+      .getByText("Personal chat"),
+  ).toHaveCount(0);
+  await expect(
+    sidebar
+      .getByRole("region", { name: "Recents" })
+      .getByRole("button", { name: "Open chat Personal chat", exact: true }),
+  ).toBeVisible();
+  await sidebar.getByRole("button", { name: "New chat", exact: true }).click();
+  const location = page.getByRole("group", { name: "Chat location" });
+  const choose = location.getByRole("button", {
+    name: "Choose project",
+    exact: true,
+  });
+  await expect(choose).toHaveAttribute(
+    "title",
+    "Change the project for this chat",
+  );
+  await expect(
+    page.getByRole("region", { name: "New chat", exact: true }),
+  ).not.toContainText("Sage");
+  await choose.click();
+  await expect(
+    page.getByRole("option", { name: "Sage, /work/first", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("option", { name: "Sage, /work/second", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "Choose project", exact: true })
+    .fill("missing project");
+  await expect(page.getByRole("option", { name: /^Sage,/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("option", { name: "New project", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("option", { name: "Don't work in a project", exact: true })
+    .click();
+  await choose.click();
+  await page
+    .getByRole("option", { name: "Sage, /work/first", exact: true })
+    .click();
+  const selected = location.getByRole("button", {
+    name: "Project: Sage",
+    exact: true,
+  });
+  await expect(selected).toBeVisible();
+  const clear = location.locator(".project-scope__clear");
+  await selected.hover();
+  await expect(clear).toBeVisible();
+  await clear.click();
+  await expect(choose).toBeVisible();
+  await choose.click();
+  await page
+    .getByRole("option", { name: "Sage, /work/second", exact: true })
+    .click();
+  await page.mouse.move(0, 0);
+  await page
+    .getByRole("combobox", { name: "Message agent", exact: true })
+    .focus();
+  await expect(clear).toBeHidden();
+  await location
+    .getByRole("button", { name: "Project: Sage", exact: true })
+    .focus();
+  await expect(clear).toBeVisible();
+  await clear.click();
+  await expect(choose).toBeVisible();
 });
 
 test("a side chat composer shows no location strip", async ({ page }) => {

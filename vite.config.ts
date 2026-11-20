@@ -77,11 +77,12 @@ export const DESKTOP_NATIVE_CODE_SPLITTING_GROUPS: NonNullable<
     name: "chat-setup",
     priority: 2,
     includeDependenciesRecursively: false,
-    // Draft navigation, a chat's access and effort choices, the creation
-    // handoff and the Editor chat's session header form one deferred feature.
+    // Draft navigation, a chat's access and effort choices, the chat creation
+    // request and the Editor chat's session header form one deferred feature.
     // Sharing its tiny controllers avoids request/import overhead while
-    // keeping all of them outside Agent and Editor startup.
-    test: /src[\\/](?:ports[\\/]chatAccessChanges\.ts|app[\\/](?:newChatDraft(?:Actions|Navigation)|run(?:CreateChat|NewChatDraftSend)|sessionAccessActions|chat(?:AccessDrafts|EffortDraft))\.ts|features[\\/]chat[\\/](?:(?:chatAccess(?:Mode|Icons|Choice)|endedSession)\.ts|(?:ChatAccess(?:Draft)?(?:Selection|View)|NewChatDraftSurface|FirstChatSend|DraftEffortControl|ChatSessionHeader|SessionWorkingPill)\.tsx))$/,
+    // keeping all of them outside Agent and Editor startup. First-send
+    // project ownership and handoff retain their own bounded dynamic entry.
+    test: /src[\\/](?:ports[\\/]chatAccessChanges\.ts|app[\\/](?:newChatDraft(?:Actions|Navigation)|runCreateChat|sessionAccessActions|chat(?:AccessDrafts|EffortDraft))\.ts|features[\\/]chat[\\/](?:(?:chatAccess(?:Mode|Icons|Choice)|endedSession)\.ts|(?:ChatAccess(?:Draft)?(?:Selection|View)|NewChatDraftSurface|FirstChatSend|DraftEffortControl|ChatSessionHeader|SessionWorkingPill)\.tsx))$/,
   },
   {
     name: "codemirror-deps",

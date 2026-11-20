@@ -119,7 +119,11 @@ export function createChatTransitionContext(
     const projectId = snapshot.project?.id ?? null;
     set({
       ...snapshotProjection(snapshot),
-      ...projectNewChatDraft(get(), snapshot.project?.id ?? null),
+      ...projectNewChatDraft(
+        get(),
+        snapshot.project?.id ?? null,
+        snapshot.activeTabId,
+      ),
       ...projectChatOwnership(get(), snapshot, true),
       projectGeneration: generation,
       repositoryRequestGeneration: nextProjectGeneration(
@@ -186,7 +190,8 @@ export function createChatTransitionContext(
   };
 
   const runChatTransition = async (options: {
-    action: "activation" | "rename" | "archive" | "restore";
+    action:
+      "activation" | "rename" | "archive" | "restore" | "project selection";
     expectedTransitionEpoch: number;
     invoke: () => Promise<ProjectTransitionResult>;
     classify: (snapshot: BootstrapSnapshot) => ProjectionOutcome;

@@ -227,16 +227,40 @@ function FlatChatList({
           hideArchived
           flat
           projectChatCount={item.projectChatCount}
+          allowArchiveLast={item.isInternal}
         />
       ))}
     </div>
   );
 }
 
+function UnscopedArchivedChats({
+  groups,
+  currentProjectId,
+}: {
+  groups: AgentRailProjectGroup[];
+  currentProjectId: string | null;
+}) {
+  return groups
+    .filter((group) => group.archived.length > 0)
+    .map((group) => (
+      <ProjectChatNavigation
+        key={group.id}
+        projectId={group.id}
+        chats={[]}
+        archived={group.archived}
+        selected={group.id === currentProjectId}
+        flat
+        projectChatCount={group.archived.length}
+      />
+    ));
+}
+
 export function AgentRailSections({
   pinned,
   projects,
   recent,
+  unscoped = [],
   all,
   allOverflowProjectId,
   currentProjectId,
@@ -250,6 +274,7 @@ export function AgentRailSections({
   pinned: ReadonlyArray<AgentRailChatItem>;
   projects: AgentRailProjectGroup[];
   recent: ReadonlyArray<AgentRailChatItem>;
+  unscoped?: AgentRailProjectGroup[];
   all: ReadonlyArray<AgentRailChatItem>;
   allOverflowProjectId: string | null;
   currentProjectId: string | null;
@@ -300,6 +325,10 @@ export function AgentRailSections({
                 : () => onShowMore(allOverflowProjectId)
             }
           />
+          <UnscopedArchivedChats
+            groups={unscoped}
+            currentProjectId={currentProjectId}
+          />
         </AgentRailSection>
       </>
     );
@@ -322,20 +351,25 @@ export function AgentRailSections({
         ))}
         {projects.length === 0 ? (
           <p className="project-empty-copy">
-            New chat starts under Local. Create a project when you want files.
+            Create a project to group chats and work with your files.
           </p>
         ) : null}
       </AgentRailSection>
 
       {pinnedSection}
 
-      {recent.length === 0 ? null : (
+      {recent.length === 0 &&
+      !unscoped.some((group) => group.archived.length > 0) ? null : (
         <AgentRailSection id="recent" label="Recents" collapsible={false}>
           <RecentChatsPart
             part="AgentRecentChats"
             items={recent}
             currentProjectId={currentProjectId}
             recent
+          />
+          <UnscopedArchivedChats
+            groups={unscoped}
+            currentProjectId={currentProjectId}
           />
         </AgentRailSection>
       )}

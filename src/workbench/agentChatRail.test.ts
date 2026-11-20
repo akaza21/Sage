@@ -222,14 +222,15 @@ describe("agent chat rail", () => {
       },
     ];
 
-    const sections = deriveAgentRailSections(groups);
+    const privateChats = groups[0].chats.splice(MAX_AGENT_RAIL_PIN_IDS + 2);
+    const sections = deriveAgentRailSections([
+      ...groups,
+      { ...groups[0], id: "private", isInternal: true, chats: privateChats },
+    ]);
     expect(sections.pinned).toHaveLength(MAX_AGENT_RAIL_PIN_IDS);
     expect(sections.projects[0]?.chats).toEqual([
       expect.objectContaining({ id: "pin:64", pinned: true }),
       expect.objectContaining({ id: "pin:65", pinned: true }),
-      ...Array.from({ length: MAX_AGENT_RAIL_RECENT_CHATS + 2 }, (_, index) =>
-        expect.objectContaining({ id: `recent:${index}`, pinned: false }),
-      ),
     ]);
     expect(sections.recent).toHaveLength(MAX_AGENT_RAIL_RECENT_CHATS + 1);
     expect(sections.projects[0]?.truncated).toBe(false);

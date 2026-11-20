@@ -55,6 +55,7 @@ export function ProjectChatNavigation({
   hideArchived = false,
   flat = false,
   projectChatCount,
+  allowArchiveLast = false,
   recent = false,
   suppressActive = false,
 }: {
@@ -66,6 +67,7 @@ export function ProjectChatNavigation({
   hideArchived?: boolean;
   flat?: boolean;
   projectChatCount?: number;
+  allowArchiveLast?: boolean;
   recent?: boolean;
   suppressActive?: boolean;
 }) {
@@ -186,7 +188,8 @@ export function ProjectChatNavigation({
         const trailingState = agentRailTrailingState({ status, unread });
         const PinIcon = tab.pinned ? PinOff : Pin;
         const archiveDisabled =
-          projectTransitioning || (projectChatCount ?? chatTabs.length) <= 1;
+          projectTransitioning ||
+          (!allowArchiveLast && (projectChatCount ?? chatTabs.length) <= 1);
         const archiveError =
           rowError?.chatId === tab.id && rowError.action === "archive"
             ? rowError

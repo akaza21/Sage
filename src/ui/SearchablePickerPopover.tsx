@@ -86,8 +86,10 @@ export function SearchablePickerPopover({
   const visible = useMemo(() => {
     if (!expanded) return EMPTY_CANDIDATES;
     const normalized = query.trim().toLocaleLowerCase();
-    return candidates.filter((candidate) =>
-      candidate.label.toLocaleLowerCase().includes(normalized),
+    return candidates.filter(
+      (candidate) =>
+        candidate.alwaysVisible ||
+        candidate.label.toLocaleLowerCase().includes(normalized),
     );
   }, [candidates, query, expanded]);
   const rendered = useMemo(
@@ -140,10 +142,12 @@ export function SearchablePickerPopover({
     (next: string) => {
       if (disabled) return;
       onSelect(next);
+      setDraft("");
+      setQuery("");
       dismiss();
       triggerRef.current?.focus();
     },
-    [dismiss, disabled, onSelect, triggerRef],
+    [dismiss, disabled, onSelect, setDraft, triggerRef],
   );
   const onKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (disabled || isImeComposing(event)) return;

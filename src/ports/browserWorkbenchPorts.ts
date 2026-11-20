@@ -165,10 +165,11 @@ const repository: RepositoryPort = {
 };
 
 const chat: ChatPort = {
+  setChatProject: (...args) => browserDesktop.setChatProject(...args),
   createChat: (
-    currentLayout: ProjectLayoutRequest,
+    currentLayout: ProjectLayoutRequest | null,
     expectedTransitionEpoch: number,
-    projectId?: string,
+    projectId?: string | null,
     chatId?: string,
   ) =>
     browserDesktop.createChat(

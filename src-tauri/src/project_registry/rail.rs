@@ -17,11 +17,18 @@ const RAIL_POSITION_ORDER: &str = "w.pinned DESC, w.position, w.id";
 const RAIL_CHAT_TABS: &str = "FROM workbench_tabs w
          LEFT JOIN chat_tabs ct ON ct.project_id = w.project_id AND ct.tab_id = w.id
          LEFT JOIN chats c ON c.project_id = ct.project_id AND c.id = ct.chat_id
-         WHERE w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0";
+         WHERE w.project_id IN (
+           SELECT id FROM projects WHERE kind='user'
+           UNION ALL SELECT id FROM (SELECT p.id FROM projects p WHERE p.kind='privateChat'
+             AND EXISTS(SELECT 1 FROM chats WHERE project_id=p.id)
+             ORDER BY (p.id IS (SELECT active_project_id FROM app_state WHERE singleton=1)) DESC,
+               p.updated_at DESC,p.id LIMIT 64)
+         ) AND w.kind = 'chat' AND COALESCE(json_extract(w.metadata_json,'$.ephemeral'),0)=0";
 
 /// Every chat tab of the open project, plus each other project's preview in
 /// both orders.
 pub(crate) const MAX_RAIL_CHATS: usize = crate::workbench_restore::MAX_RESTORED_TABS
+    + 64
     + (MAX_PROJECTS as usize - 1) * 2 * MAX_AGENT_RAIL_CHATS_PER_PROJECT as usize;
 
 /// Every chat the rail can show, as rows of `project_id`, `tab_id` and `id`
@@ -59,9 +66,10 @@ pub(crate) fn rail_chat_ids(connection: &Connection) -> AppResult<Vec<String>> {
 pub(super) fn load_project_list(connection: &Connection) -> AppResult<Vec<ProjectListItem>> {
     let mut statement = connection
         .prepare(
-            "SELECT p.id, p.name, COUNT(r.id), p.last_opened_at
+            "SELECT p.id, p.name, COUNT(r.id), p.last_opened_at, (SELECT absolute_path FROM project_roots WHERE project_id=p.id ORDER BY ordinal LIMIT 1)
          FROM projects p
          LEFT JOIN project_roots r ON r.project_id = p.id
+         WHERE p.kind='user'
          GROUP BY p.id
          ORDER BY p.created_at DESC, p.id
          LIMIT ?1",
@@ -72,6 +80,11 @@ pub(super) fn load_project_list(connection: &Connection) -> AppResult<Vec<Projec
             Ok(ProjectListItem {
                 id: row.get(0)?,
                 name: row.get(1)?,
+                parent_path: row.get::<_, Option<String>>(4)?.and_then(|path| {
+                    std::path::Path::new(&path)
+                        .parent()
+                        .map(|parent| parent.to_string_lossy().into_owned())
+                }),
                 root_count: row.get::<_, i64>(2)? as u32,
                 last_opened_at: row.get(3)?,
                 rail_chats: Vec::new(),

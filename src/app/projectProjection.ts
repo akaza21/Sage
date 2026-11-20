@@ -62,6 +62,7 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     phase: "ready" as const,
     error: null,
     projects: snapshot.projects,
+    unscopedChats: snapshot.unscopedChats ?? [],
     project: snapshot.project,
     tabs: snapshot.tabs,
     archivedChats: snapshot.archivedChats,
