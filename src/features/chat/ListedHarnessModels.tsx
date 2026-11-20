@@ -1,7 +1,8 @@
-import { useEffect, type Dispatch, type SetStateAction } from "react";
+import { useEffect } from "react";
+import { useStore } from "zustand";
 
 import {
-  harnessModelGeneration,
+  harnessModelCache,
   harnessModelIdentity,
   rememberHarnessModels,
 } from "../../app/harnessModelCache";
@@ -19,14 +20,12 @@ const RELIST_AFTER_MS = 60_000;
  */
 export function ListedHarnessModels({
   harness,
-  onListed,
 }: {
   harness: HarnessDefinition | undefined;
-  onListed: Dispatch<SetStateAction<number>>;
 }) {
   const identity = harnessModelIdentity(harness);
   const harnessId = harness?.installState === "available" ? harness.id : null;
-  const generation = harnessModelGeneration();
+  const generation = useStore(harnessModelCache, (state) => state.entries);
   useEffect(() => {
     if (harnessId === null) return;
     let current = true;
@@ -38,17 +37,17 @@ export function ListedHarnessModels({
         .catch((): ModelOption[] => [])
         .then((models) => {
           // Models listed for an account that has since changed are dropped.
-          if (!current || harnessModelGeneration() !== generation) return;
-          if (models.length > 0) {
-            rememberHarnessModels(identity, models);
-            onListed((count) => count + 1);
-          } else if (--tries > 0) relist = setTimeout(list, RELIST_AFTER_MS);
+          if (!current || harnessModelCache.getState().entries !== generation)
+            return;
+          rememberHarnessModels(identity, models);
+          if (models.length === 0 && --tries > 0)
+            relist = setTimeout(list, RELIST_AFTER_MS);
         });
     void list();
     return () => {
       current = false;
       clearTimeout(relist);
     };
-  }, [generation, harnessId, identity, onListed]);
+  }, [generation, harnessId, identity]);
   return null;
 }

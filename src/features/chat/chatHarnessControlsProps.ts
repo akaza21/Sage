@@ -15,6 +15,7 @@ export interface ControlledDraftPickers {
   onEffortChange: (value: string) => void;
 }
 export interface ChatHarnessControlsProps {
+  modelsPending?: boolean;
   draftPickers?: ControlledDraftPickers;
   contextUsage?: ChatUsage | null;
   usageRequest?: ComponentProps<typeof ComposerContext>["usageRequest"];
