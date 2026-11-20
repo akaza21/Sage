@@ -29,6 +29,7 @@ import { AcpDesktopError, acpDesktop } from "../../../services/acpDesktop";
 import { useAcpChatActions } from "./useAcpChatActions";
 import { clearChatSignInError } from "../chatSignInRecovery";
 import { ChatHarnessControls } from "../ChatHarnessControls";
+import { ComposerNoticeSurface } from "../ChatSignInNotices";
 import {
   harnessSignInStatus,
   resetHarnessSignInForTest,
@@ -137,6 +138,136 @@ afterEach(() => {
 });
 
 describe("useAcpChatActions per-Chat ownership", () => {
+  it.each([
+    ["managedChatgpt", false],
+    ["signedOut", false],
+    ["managedChatgpt", true],
+    ["signedOut", true],
+  ] as const)(
+    "keeps a failed Claude start's recovery after selecting a %s account harness (historical turn: %s)",
+    async (account, historicalTurn) => {
+      const projection = useAcpProjectionStore.getState();
+      const emptyPage: AcpChatPage = {
+        ...page(),
+        currentSessionId: null,
+        sessions: historicalTurn
+          ? [
+              {
+                ...page().sessions[0],
+                state: "closed",
+                bindingId: "account-binding" as CuratedBindingId,
+              },
+            ]
+          : [],
+        turns: historicalTurn
+          ? [
+              {
+                id: "old-turn",
+                sessionId: "session-a",
+                runtimeEpoch: "1",
+                ordinal: 0,
+                state: "failed",
+                revision: "1",
+                createdAt: 1,
+                updatedAt: 2,
+                terminalAt: 2,
+                terminalReason: { kind: "authRequired" },
+                items: [],
+                activities: [],
+                browserOperations: [],
+                browserOperationsCollapsed: 0,
+              } as unknown as AcpChatPage["turns"][number],
+            ]
+          : [],
+      };
+      const scope = projection.scope!;
+      projection.clear();
+      projection.activateScope(scope);
+      projection.completePageLoad(projection.beginPageLoad(null), emptyPage);
+      useWorkbenchStore.setState({
+        harnesses: [
+          {
+            id: "cli",
+            name: "Claude",
+            description: "",
+            source: "builtIn",
+            installState: "available",
+            transport: "acp",
+            bindingId,
+            accountModelDiscovery: false,
+            signIn: { command: "", hint: "", statusCheck: "claudeCli" },
+          },
+          {
+            id: "account",
+            name: "Codex",
+            description: "",
+            source: "builtIn",
+            installState: "available",
+            transport: "acp",
+            bindingId: "account-binding",
+            accountModelDiscovery: true,
+          },
+        ],
+        selectedHarnessId: "cli",
+      });
+      vi.spyOn(acpDesktop, "startSession").mockRejectedValue(
+        new AcpDesktopError({
+          kind: "signInRequired",
+          message: "Claude refused start.",
+        }),
+      );
+      const { result } = renderHook(() => useAcpChatActions());
+      function Notices() {
+        const selected = useWorkbenchStore((state) => state.selectedHarnessId);
+        const actions = useAcpChatActions();
+        return (
+          <ComposerNoticeSurface
+            workbenchError={null}
+            chatError={actions.error}
+            imageStatus={null}
+            selectedHarnessId={selected}
+            discoveryPhase="ready"
+            missingBindingNotice={false}
+            chatAuth={{ page: emptyPage, errorKind: actions.errorKind }}
+          />
+        );
+      }
+      render(<Notices />);
+      await act(async () => {
+        await result.current.submit("Hello", [], bindingId, null);
+      });
+      expect(await screen.findByText("Claude isn't signed in")).toBeVisible();
+      act(() =>
+        useWorkbenchStore.setState({
+          selectedHarnessId: "account",
+          harnessAccount: account,
+          harnessDiscoveryPhase:
+            account === "signedOut" ? "signInRequired" : "ready",
+        }),
+      );
+      await waitFor(() =>
+        expect(harnessSignInStatus("account").state).toBe(
+          account === "signedOut" ? "signedOut" : "signedIn",
+        ),
+      );
+      expect(result.current.errorKind).toBe("signInRequired");
+      expect(
+        screen.getByRole("button", { name: "Sign in to Claude" }),
+      ).toBeVisible();
+      expect(
+        screen.queryByRole("button", { name: "Sign in to Codex" }),
+      ).toBeNull();
+      vi.spyOn(acpDesktop, "getClaudeAuthStatus").mockResolvedValue({
+        loggedIn: true,
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
+      await waitFor(() => expect(result.current.errorKind).toBeNull());
+      expect(result.current.error).toBeNull();
+      expect(
+        useWorkbenchStore.getState().chatUiById["chat-a"].dismissedAuthTurnId,
+      ).toBeUndefined();
+    },
+  );
   it("keeps a newer sign-in when a refused command finishes settling", async () => {
     useWorkbenchStore.setState({
       harnesses: [

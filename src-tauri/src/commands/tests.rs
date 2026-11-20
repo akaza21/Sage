@@ -737,6 +737,7 @@ fn dark_codex_discovery_is_typed_and_does_not_mutate_sqlite() {
         let result = get_codex_discovery_inner(
             &state,
             GetCodexDiscoveryRequest {
+                refresh: false,
                 project_id: project,
                 project_generation: ProjectGeneration::ZERO,
                 binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
@@ -836,6 +837,7 @@ fn codex_discovery_deadline_bounds_the_project_transition_wait() {
         let project = SageProjectId::parse(project).unwrap();
         let held_transition = state.project_transitions.lock().await;
         let request = GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: project.clone(),
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
@@ -879,6 +881,7 @@ fn codex_discovery_reports_admission_state_while_a_live_session_holds_the_runtim
         let project = SageProjectId::parse(project).unwrap();
         let live = state.acp.hold_live_operation_for_test();
         let request = GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: project,
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", "codex-app-server").unwrap(),
@@ -939,6 +942,7 @@ fn codex_auth_observation_preserves_the_catalog_for_a_real_session_start() {
         let discovered = get_codex_discovery_inner(
             &state,
             GetCodexDiscoveryRequest {
+                refresh: false,
                 project_id: project.clone(),
                 project_generation: ProjectGeneration::ZERO,
                 binding_id: binding.clone(),
@@ -1009,6 +1013,7 @@ fn codex_discovery_serves_the_admitted_catalog_while_a_live_session_holds_the_ru
         seed_codex_discovery_catalog(&state, &project, model.clone()).await;
         let live = state.acp.hold_live_operation_for_test();
         let request = GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: project.clone(),
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", crate::acp::bindings::codex::CODEX_BINDING_ID)
@@ -1044,6 +1049,7 @@ fn codex_discovery_refuses_an_uncached_catalog_only_when_live_sessions_fill_ever
         let (state, project, _chat, root) = state_with_admitted_codex_project();
         let project = SageProjectId::parse(project).unwrap();
         let request = || GetCodexDiscoveryRequest {
+            refresh: false,
             project_id: project.clone(),
             project_generation: ProjectGeneration::ZERO,
             binding_id: BindingId::new("bindingId", crate::acp::bindings::codex::CODEX_BINDING_ID)

@@ -32,14 +32,14 @@ export type HarnessDiscoveryPhase =
   | "error";
 
 export function preferredModelId(
-  models: ModelOption[],
+  models: ModelOption[] | null,
   previousModelId: string | null,
 ): string | null {
-  return models.length === 0
+  return !models?.length
     ? null
     : previousModelId && models.some((model) => model.id === previousModelId)
       ? previousModelId
-      : (models.find((model) => model.isDefault)?.id ?? models[0]?.id ?? null);
+      : (models.find((model) => model.isDefault)?.id ?? models[0].id);
 }
 
 export interface HarnessSlice {
@@ -52,7 +52,7 @@ export interface HarnessSlice {
   harnessDiscoveryError: string | null;
   harnessAccount: CodexAccount | null;
   pendingHarnessSignIn: CodexAuthScope | null;
-  selectHarness: (harnessId: string) => Promise<void>;
+  selectHarness: (harnessId: string, refresh?: boolean) => Promise<void>;
   applyHarnessDiscovery: (harnesses: HarnessDefinition[]) => Promise<void>;
   loadHarnessModelsForProjection: (
     harnessId: string,
@@ -120,6 +120,7 @@ export const createHarnessSlice: StateCreator<
     previousModelId: string | null,
     generation: number,
     projectId: string,
+    refresh?: boolean,
   ) => {
     const requestGeneration = nextProjectGeneration(
       get().harnessRequestGeneration,
@@ -148,10 +149,10 @@ export const createHarnessSlice: StateCreator<
     const cached = cachedHarnessModels(identity);
     set({
       selectedHarnessId: harnessId,
-      models: cached ?? [],
-      selectedModelId: cached
-        ? preferredModelId(cached, previousModelId)
-        : null,
+      ...(!refresh && {
+        models: cached ?? [],
+        selectedModelId: preferredModelId(cached, previousModelId),
+      }),
       harnessRequestGeneration: requestGeneration,
       harnessDiscoveryPhase: cached
         ? "ready"
@@ -177,6 +178,7 @@ export const createHarnessSlice: StateCreator<
           get().nativeTransitionEpoch,
         ) as ProjectGeneration;
         const response = await acpHarnessDesktop.discoverCodex({
+          refresh,
           projectId: projectId as SageProjectId,
           projectGeneration: nativeGeneration,
           bindingId: harness.bindingId as CuratedBindingId,
@@ -195,12 +197,8 @@ export const createHarnessSlice: StateCreator<
           return;
         }
         const models = response.models.map((model) => ({
-          id: model.id,
-          name: model.name,
-          isDefault: model.isDefault,
-          ...(model.effortLevels
-            ? { effortLevels: [...model.effortLevels] }
-            : {}),
+          ...model,
+          effortLevels: model.effortLevels?.slice(),
         }));
         // Signed out, the catalog is still listed; sign-in gates a send.
         set({
@@ -245,14 +243,14 @@ export const createHarnessSlice: StateCreator<
     harnessDiscoveryError: null,
     harnessAccount: null,
     pendingHarnessSignIn: null,
-    selectHarness: async (harnessId) => {
+    selectHarness: async (harnessId, refresh) => {
       if (get().projectTransitioning) return;
       const generation = get().projectGeneration;
       const projectId = get().project?.id;
       if (!projectId) return;
       const previous =
         get().selectedHarnessId === harnessId ? get().selectedModelId : null;
-      await load(harnessId, previous, generation, projectId);
+      await load(harnessId, previous, generation, projectId, refresh);
     },
     applyHarnessDiscovery: async (harnesses) => {
       const previous = get().harnesses.find(
@@ -313,7 +311,7 @@ export const createHarnessSlice: StateCreator<
     },
     retryHarnessDiscovery: async () => {
       const harnessId = get().selectedHarnessId;
-      if (harnessId) await get().selectHarness(harnessId);
+      if (harnessId) await get().selectHarness(harnessId, true);
     },
     requestHarnessSignIn: () => {
       if (get().harnessDiscoveryPhase === "signInRequired") {

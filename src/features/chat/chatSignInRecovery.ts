@@ -1,15 +1,16 @@
 import { useWorkbenchStore } from "../../app/store";
+import type { ChatOwnershipEntry } from "../../domain/chatOwnership";
 
-export function clearChatSignInError(boundChatId?: string | null) {
+export function clearChatSignInError(
+  boundChatId?: string | null,
+  expected?: ChatOwnershipEntry,
+) {
   const workbench = useWorkbenchStore.getState();
-  if (!boundChatId) {
-    workbench.clearActiveChatError();
-    return;
-  }
-  const ownership = workbench.captureChatOwnership(boundChatId);
+  if (expected && workbench.chatUiById[boundChatId ?? ""] !== expected) return;
+  const ownership = workbench.captureChatOwnership(boundChatId ?? undefined);
   if (!ownership) return;
   workbench.setChatActionState(ownership, {
-    sending: workbench.chatUiById[boundChatId]?.sending ?? false,
+    sending: workbench.chatUiById[ownership.chatId]?.sending ?? false,
     error: null,
     errorKind: null,
   });

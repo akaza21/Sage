@@ -49,6 +49,7 @@ import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
 import { AgentChatPanes } from "../../workbench/AgentChatPanes";
 import { useAgentSettingsState } from "../settings/agentSettingsState";
 import type * as AcpModule from "./acp";
+import type * as ChatSignInRecovery from "./chatSignInRecovery";
 
 beforeAll(() => preloadSearchablePicker());
 
@@ -80,9 +81,17 @@ vi.mock("./acp", async () => {
   };
 });
 
-vi.mock("./chatSignInRecovery", () => ({
-  clearChatSignInError: () => hooks.actions.clearError(),
-}));
+vi.mock("./chatSignInRecovery", async (importOriginal) => {
+  const actual = await importOriginal<typeof ChatSignInRecovery>();
+  return {
+    clearChatSignInError: (
+      ...args: Parameters<typeof actual.clearChatSignInError>
+    ) => {
+      actual.clearChatSignInError(...args);
+      hooks.actions.clearError();
+    },
+  };
+});
 
 import { ChatSurface as ChatPresentation } from "./ChatSurface";
 import { ChatQueueOwner } from "./ChatQueueOwner";
@@ -2485,6 +2494,20 @@ describe("ChatSurface ACP resource integration", () => {
   });
 
   it("offers shared login and an explicit recheck after a protocol auth refusal", async () => {
+    useWorkbenchStore.setState({
+      project: { id: "project-a", name: "A", roots: [] },
+      tabs: [
+        {
+          id: "chat-a",
+          kind: "chat",
+          title: "A",
+          position: 0,
+          pinned: false,
+          dirty: false,
+        },
+      ],
+      activeTabId: "chat-a",
+    });
     const start = vi
       .spyOn(acpDesktop, "startClaudeAuthLogin")
       .mockResolvedValue();
@@ -2523,6 +2546,18 @@ describe("ChatSurface ACP resource integration", () => {
     hooks.actions.error =
       "The harness requires sign-in before it can continue.";
     hooks.actions.errorKind = "signInRequired";
+    // The mocked action hook's command error retains its submitted binding.
+    useWorkbenchStore
+      .getState()
+      .setChatActionState(
+        useWorkbenchStore.getState().captureChatOwnership()!,
+        {
+          sending: false,
+          error: hooks.actions.error,
+          errorKind: "signInRequired",
+          errorBindingId: "claude-agent-acp",
+        },
+      );
     harnessSignInFailures.command?.({
       bindingId: "claude-agent-acp",
       busy: true,
@@ -2762,6 +2797,18 @@ describe("ChatSurface ACP resource integration", () => {
     ).toBeVisible();
     hooks.actions.error = "The harness requires sign-in.";
     hooks.actions.errorKind = "signInRequired";
+    // The mocked action hook's command error retains its submitted binding.
+    useWorkbenchStore
+      .getState()
+      .setChatActionState(
+        useWorkbenchStore.getState().captureChatOwnership()!,
+        {
+          sending: false,
+          error: hooks.actions.error,
+          errorKind: "signInRequired",
+          errorBindingId: "claude-agent-acp",
+        },
+      );
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     let finishCheck: (value: { loggedIn: boolean }) => void = () => {};
     status.mockImplementationOnce(

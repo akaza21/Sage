@@ -48,6 +48,28 @@ pub(crate) struct AdmittedDiscovery {
 }
 
 impl AdmittedDiscovery {
+    #[cfg(all(test, windows))]
+    pub(crate) fn for_test(
+        binding: Arc<AdmittedCodexBinding>,
+        project_root: CodexProjectRootAuthority,
+        runtime_epoch: RuntimeEpoch,
+        content: CodexDiscoveryContent,
+    ) -> Self {
+        let project_root = crate::project_registry::ProjectRootAuthority::for_test(
+            project_root.project_id().clone(),
+            project_root.project_generation(),
+            project_root.root_id().clone(),
+            project_root.as_path(),
+        )
+        .unwrap();
+        Self {
+            content,
+            binding,
+            project_root,
+            runtime_epoch,
+        }
+    }
+
     pub(crate) fn revalidate(&self) -> Result<(), CodexDiscoveryRunError> {
         self.binding
             .revalidate()

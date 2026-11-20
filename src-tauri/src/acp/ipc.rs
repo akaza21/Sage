@@ -90,6 +90,8 @@ pub struct AcpFileSnapshotResponse {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct GetCodexDiscoveryRequest {
+    #[serde(default)]
+    pub refresh: bool,
     pub project_id: SageProjectId,
     pub project_generation: ProjectGeneration,
     pub binding_id: BindingId,

@@ -94,6 +94,64 @@ function sendDisabledReason() {
   });
 }
 
+it.each(["focus", "check"])(
+  "%s requests a fresh account after external login while discovery is cached signed out",
+  async (trigger) => {
+    install();
+    vi.mocked(acpHarnessDesktop.discoverCodex).mockRestore();
+    mockIPC((command, args) => {
+      if (command !== "get_codex_discovery") throw new Error(command);
+      const { request } = args as {
+        request: { refresh?: boolean };
+      };
+      return {
+        ...request,
+        rootId: "root",
+        runtimeEpoch: "1",
+        account: request.refresh ? "managedChatgpt" : "signedOut",
+        models: request.refresh
+          ? [{ id: "model", name: "Model", isDefault: true }]
+          : [],
+        defaultModelId: request.refresh ? "model" : null,
+      };
+    });
+    // Selection can reuse a native snapshot; explicit recovery must bypass it.
+    await useWorkbenchStore.getState().selectHarness("account");
+    expect(sendDisabledReason()).toBe("Finish signing in before sending.");
+    render(<ComposerHarnessSignInNotice harnessId="account" />);
+    await act(async () => {
+      if (trigger === "focus") fireEvent.focus(window);
+      else await refreshHarnessSignIn("account");
+    });
+    expect(sendDisabledReason()).toBeNull();
+    expect(useWorkbenchStore.getState().selectedModelId).toBe("model");
+  },
+);
+
+it("keeps the listed model while an account refresh is pending or fails", async () => {
+  install();
+  await useWorkbenchStore.getState().retryHarnessDiscovery();
+  let fail!: (error: Error) => void;
+  vi.mocked(acpHarnessDesktop.discoverCodex).mockImplementationOnce(
+    () =>
+      new Promise((_, reject) => {
+        fail = reject;
+      }),
+  );
+  const refresh = useWorkbenchStore.getState().retryHarnessDiscovery();
+  expect(useWorkbenchStore.getState().selectedModelId).toBe("model");
+  expect(useWorkbenchStore.getState().models.map((model) => model.id)).toEqual([
+    "model",
+  ]);
+  fail(new Error("Account read failed."));
+  await refresh;
+  expect(useWorkbenchStore.getState().harnessDiscoveryPhase).toBe("error");
+  expect(useWorkbenchStore.getState().selectedModelId).toBe("model");
+  expect(useWorkbenchStore.getState().models.map((model) => model.id)).toEqual([
+    "model",
+  ]);
+});
+
 it.each([1_000, 60_001])(
   "refocusing after %i ms refreshes signed-out discovery and makes sending available",
   async (elapsed) => {

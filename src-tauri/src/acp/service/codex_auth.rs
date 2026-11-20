@@ -376,6 +376,7 @@ mod tests {
         let prepared = discovery
             .prepare(
                 GetCodexDiscoveryRequest {
+                    refresh: false,
                     project_id: scope.project_id.clone(),
                     project_generation: scope.project_generation,
                     binding_id: scope.binding_id.clone(),

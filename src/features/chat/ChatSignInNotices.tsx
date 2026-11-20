@@ -32,34 +32,35 @@ function ChatSignInNotices({
   const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
   const ownerChatId =
     boundChatId ?? page?.chatId ?? useWorkbenchStore.getState().activeTabId;
-  const dismissedAuthTurnId = useWorkbenchStore(
-    (state) => state.chatUiById[ownerChatId ?? ""]?.dismissedAuthTurnId,
+  const refusal = useWorkbenchStore(
+    (state) => state.chatUiById[ownerChatId ?? ""],
   );
   const latestTurn = page?.turns.at(-1);
   const latestTurnSession = page?.sessions.find(
     (session) => session.id === latestTurn?.sessionId,
   );
-  const signInHarness =
-    errorKind === "signInRequired"
-      ? harnesses.find((entry) => entry.id === notices.selectedHarnessId)
-      : null;
-  const harness =
-    signInHarness ??
-    harnesses.find((entry) => entry.bindingId === latestTurnSession?.bindingId);
+  const commandRefusal = errorKind === "signInRequired";
+  const harness = harnesses.find(
+    (entry) =>
+      entry.bindingId ===
+      (commandRefusal ? refusal?.errorBindingId : latestTurnSession?.bindingId),
+  );
   const authOwner = useWorkbenchStore
     .getState()
     .captureChatOwnership(ownerChatId ?? undefined);
   const signInRequired =
-    errorKind === "signInRequired" ||
+    commandRefusal ||
     (page?.chatId === ownerChatId &&
-      dismissedAuthTurnId !== latestTurn?.id &&
+      refusal?.dismissedAuthTurnId !== latestTurn?.id &&
       latestTurn?.state === "failed" &&
       latestTurn.terminalReason?.kind === "authRequired");
   return (
     <ComposerStatusMessages
       {...notices}
       signInHarness={
-        signInHarness ?? (signInRequired && !notices.chatError ? harness : null)
+        commandRefusal || (signInRequired && !notices.chatError)
+          ? harness
+          : null
       }
       authRecovery={
         signInRequired && harness
@@ -72,12 +73,11 @@ function ChatSignInNotices({
                 latestTurn?.id,
               ]),
               onSignedIn: () => {
-                if (authOwner && latestTurn)
+                if (commandRefusal) clearChatSignInError(ownerChatId, refusal);
+                else if (authOwner && latestTurn)
                   useWorkbenchStore
                     .getState()
                     .dismissChatAuthTurn(authOwner, latestTurn.id);
-                if (errorKind === "signInRequired")
-                  clearChatSignInError(boundChatId);
               },
             }
           : undefined

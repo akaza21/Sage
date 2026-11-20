@@ -184,6 +184,7 @@ export interface GetAcpChatPageRequest {
 }
 
 export interface GetCodexDiscoveryRequest {
+  refresh?: boolean;
   projectId: SageProjectId;
   projectGeneration: ProjectGeneration;
   bindingId: CuratedBindingId;

@@ -137,6 +137,7 @@ export function useAcpChatActions(boundChatId?: string | null) {
                   sending: state.busy,
                   error: state.error?.message ?? null,
                   errorKind: state.error?.failure.kind ?? null,
+                  errorBindingId: state.error ? state.bindingId : null,
                 },
           );
           if (accepted) harnessSignInFailures.command?.(state);

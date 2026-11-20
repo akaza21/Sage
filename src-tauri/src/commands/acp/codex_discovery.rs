@@ -46,7 +46,7 @@ pub(crate) async fn get_codex_discovery_with_deadline(
     drop(transition);
     let discovery_manager = manager.clone();
     let task = tauri::async_runtime::spawn_blocking(move || manager.discover(prepared));
-    await_codex_discovery(task, deadline, move || discovery_manager.invalidate()).await
+    await_codex_discovery(task, deadline, move || discovery_manager.cancel_discovery()).await
 }
 
 pub(crate) async fn await_codex_discovery(
