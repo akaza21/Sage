@@ -6,43 +6,8 @@ import type {
   GetCodexDiscoveryRequest,
 } from "../domain/acp";
 import { AcpDesktopError, invokeAcp } from "./acpDesktopCommand";
-import {
-  isOneOf,
-  isRecord,
-  safeCounter,
-  safeIdentifier,
-} from "./acpDesktopGuards";
 
 // Harness discovery runs before Chat; it must not retain transcript adapters.
-function safeCodexAuth(value: unknown): CodexAuthResponse | null {
-  if (!isRecord(value)) return null;
-  const projectId = safeIdentifier(value.projectId);
-  const projectGeneration = safeCounter(value.projectGeneration, true);
-  const bindingId = safeIdentifier(value.bindingId);
-  const revision = safeCounter(value.revision, false);
-  if (
-    !projectId ||
-    !projectGeneration ||
-    !bindingId ||
-    !revision ||
-    !isOneOf(value.phase, [
-      "signedOut",
-      "waiting",
-      "recovery",
-      "signedIn",
-    ] as const)
-  ) {
-    return null;
-  }
-  return {
-    projectId,
-    projectGeneration,
-    bindingId,
-    phase: value.phase,
-    revision,
-  } as CodexAuthResponse;
-}
-
 export const acpHarnessDesktop = {
   async startCodexAuth(request: CodexAuthScope): Promise<CodexAuthResponse> {
     return invokeCodexAuth("start_codex_auth", { ...request, consent: true });
@@ -74,6 +39,7 @@ export const acpHarnessDesktop = {
   },
 };
 interface CodexAuthRequests {
+  get_codex_auth: CodexAuthScope;
   start_codex_auth: CodexAuthScope & { consent: true };
   cancel_codex_auth: CodexAuthScope;
   logout_codex_auth: CodexAuthScope;
@@ -84,13 +50,9 @@ export async function invokeCodexAuth<C extends keyof CodexAuthRequests>(
   command: C,
   request: CodexAuthRequests[C],
 ): Promise<CodexAuthResponse> {
-  const response = await invokeAcp<unknown, typeof request>(command, request);
-  const safe = safeCodexAuth(response);
-  if (!safe) {
-    throw new AcpDesktopError({
-      kind: "internal",
-      message: "Codex authentication returned an invalid bounded response.",
-    });
-  }
-  return safe;
+  const [response, { decodeCodexAuth }] = await Promise.all([
+    invokeAcp<unknown, typeof request>(command, request),
+    import("./acpHarnessAuthResponse"),
+  ]);
+  return decodeCodexAuth(response);
 }

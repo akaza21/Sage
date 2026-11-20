@@ -1,16 +1,22 @@
+import { useWorkbenchStore } from "../../app/store";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
 const desktop = vi.hoisted(() => ({
   getClaudeAuthStatus: vi.fn(),
   startClaudeAuthLogin: vi.fn(),
+  getCodexAuth: vi.fn(),
 }));
 vi.mock("../../services/acpDesktop", () => ({ acpDesktop: desktop }));
+vi.mock("../../services/acpHarnessDesktop", () => ({
+  acpHarnessDesktop: desktop,
+}));
+vi.mock("../../services/codexAuthStatusDesktop", () => ({
+  codexAuthStatusDesktop: { getAuth: desktop.getCodexAuth },
+}));
 
 import {
   ensureHarnessSignInChecked,
-  harnessSignInAction,
-  harnessSignInDecorations,
-  harnessSignInLabel,
+  harnessesNeedingSignIn,
   harnessSignInStatus,
   harnessSupportsSignIn,
   refreshHarnessSignIn,
@@ -19,13 +25,30 @@ import {
   subscribeHarnessSignIn,
 } from "./harnessSignIn";
 
+const initial = useWorkbenchStore.getState();
 beforeEach(() => {
+  useWorkbenchStore.setState({
+    harnesses: [
+      {
+        id: "claude-code",
+        name: "Claude Code",
+        source: "builtIn",
+        description: "",
+        installState: "available",
+        transport: "acp",
+        bindingId: "fixture",
+        accountModelDiscovery: false,
+        signIn: { command: "", hint: "", statusCheck: "claudeCli" },
+      },
+    ],
+  });
   desktop.getClaudeAuthStatus.mockReset();
   desktop.startClaudeAuthLogin.mockReset();
 });
 afterEach(() => {
   vi.useRealTimers();
   resetHarnessSignInForTest();
+  useWorkbenchStore.setState(initial, true);
 });
 
 it("only curated harnesses have a sign-in status", async () => {
@@ -39,7 +62,9 @@ it("only curated harnesses have a sign-in status", async () => {
 it("reports signed out, signed in and an unavailable check", async () => {
   desktop.getClaudeAuthStatus.mockResolvedValueOnce({ loggedIn: false });
   expect(await refreshHarnessSignIn("claude-code")).toBe("signedOut");
-  expect(harnessSignInLabel("signedOut")).toMatch(/Signed out/);
+  expect(harnessesNeedingSignIn().map((entry) => entry.id)).toEqual([
+    "claude-code",
+  ]);
   desktop.getClaudeAuthStatus.mockResolvedValueOnce({ loggedIn: true });
   expect(await refreshHarnessSignIn("claude-code")).toBe("signedIn");
   desktop.getClaudeAuthStatus.mockRejectedValueOnce(new Error("timeout"));
@@ -63,9 +88,6 @@ it("signs in through the harness's own flow and polls until signed in", async ()
   desktop.getClaudeAuthStatus
     .mockResolvedValueOnce({ loggedIn: false })
     .mockResolvedValueOnce({ loggedIn: true });
-  const action = harnessSignInAction("claude-code", "Claude Code", "signedOut");
-  expect(action?.label).toBe("Sign in");
-  expect(action?.accessibleLabel).toBe("Sign in to Claude Code");
   await startHarnessSignIn("claude-code");
   expect(desktop.startClaudeAuthLogin).toHaveBeenCalledTimes(1);
   await vi.advanceTimersByTimeAsync(3_000);
@@ -74,24 +96,19 @@ it("signs in through the harness's own flow and polls until signed in", async ()
   expect(harnessSignInStatus("claude-code").state).toBe("signedIn");
   await vi.advanceTimersByTimeAsync(30_000);
   expect(desktop.getClaudeAuthStatus).toHaveBeenCalledTimes(2);
-  expect(harnessSignInAction("claude-code", "Claude Code", "signedIn")).toBe(
-    undefined,
-  );
   unsubscribe();
 });
 
-it("decorates picker rows with the sign-in label and action", async () => {
+it("lists only installed harnesses known to need sign-in", async () => {
   desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
   await refreshHarnessSignIn("claude-code");
-  const decorations = harnessSignInDecorations([
-    { id: "claude-code", name: "Claude Code" },
-    { id: "pi", name: "Pi" },
+  expect(harnessesNeedingSignIn().map((entry) => entry.name)).toEqual([
+    "Claude Code",
   ]);
-  expect([...decorations.keys()]).toEqual(["claude-code"]);
-  expect(decorations.get("claude-code")?.label).toMatch(/Signed out/);
-  expect(decorations.get("claude-code")?.action?.label).toBe("Sign in");
+  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: true });
+  await refreshHarnessSignIn("claude-code");
+  expect(harnessesNeedingSignIn()).toEqual([]);
 });
-
 it("keeps Sign in stable while polling, coalesces double clicks, and stops on picker cleanup", async () => {
   vi.useFakeTimers();
   desktop.startClaudeAuthLogin.mockResolvedValue(undefined);
@@ -180,4 +197,53 @@ it("waits for a visible picker before checking a login started without subscribe
   await vi.advanceTimersByTimeAsync(0);
   expect(harnessSignInStatus("claude-code").state).toBe("signedIn");
   unsubscribe();
+});
+
+it("refreshes an expired cached fact without showing a checking prompt", async () => {
+  vi.useFakeTimers();
+  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: false });
+  await refreshHarnessSignIn("claude-code");
+  await vi.advanceTimersByTimeAsync(60_001);
+  desktop.getClaudeAuthStatus.mockResolvedValue({ loggedIn: true });
+  ensureHarnessSignInChecked(["claude-code"]);
+  expect(harnessSignInStatus("claude-code").state).toBe("signedOut");
+  await vi.advanceTimersByTimeAsync(0);
+  expect(harnessSignInStatus("claude-code").state).toBe("signedIn");
+});
+
+it("discards account checks from a previous workspace and allows a fresh check", async () => {
+  useWorkbenchStore.setState({
+    project: { id: "first", name: "First", roots: [] },
+    harnesses: [
+      {
+        id: "account",
+        name: "Account harness",
+        description: "",
+        source: "builtIn",
+        installState: "available",
+        transport: "acp",
+        bindingId: "account-binding",
+        accountModelDiscovery: true,
+      },
+    ],
+  });
+  let complete!: (value: { phase: string }) => void;
+  desktop.getCodexAuth
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    )
+    .mockResolvedValue({ phase: "signedIn" });
+  const old = refreshHarnessSignIn("account");
+  useWorkbenchStore.setState({
+    project: { id: "second", name: "Second", roots: [] },
+    nativeTransitionEpoch: 2,
+  });
+  complete({ phase: "signedOut" });
+  await old;
+  expect(harnessSignInStatus("account").state).toBe("unknown");
+  await refreshHarnessSignIn("account");
+  expect(harnessSignInStatus("account").state).toBe("signedIn");
 });

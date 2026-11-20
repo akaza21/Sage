@@ -1,4 +1,5 @@
 import { acpHarnessDesktop } from "./acpHarnessDesktop";
+import { codexAuthStatusDesktop } from "./codexAuthStatusDesktop";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type {
@@ -405,6 +406,23 @@ describe("ACP desktop bridge", () => {
       "Claude Code sign-in status was invalid.",
     );
   });
+
+  it.each(["signedOut", "signedIn", "recovery"] as const)(
+    "reads a sanitized %s account phase without starting login",
+    async (phase) => {
+      setDesktopRuntime(true);
+      invokeMock.mockImplementation(async (command) => {
+        if (command !== "get_codex_auth")
+          throw new Error("Unexpected mutation");
+        return { ...authRequest, phase, revision: "5", token: "discarded" };
+      });
+      expect(await codexAuthStatusDesktop.getAuth(authRequest)).toEqual({
+        ...authRequest,
+        phase,
+        revision: "5",
+      });
+    },
+  );
 
   it("rejects invalid auth phases and revisions at the WebView boundary", async () => {
     setDesktopRuntime(true);

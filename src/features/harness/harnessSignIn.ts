@@ -1,6 +1,11 @@
-import { acpDesktop } from "../../services/acpDesktop";
+import {
+  signInHarnesses,
+  signInProvider,
+  subscribeAccountSignIn,
+  resetAccountSignInForTest,
+} from "./harnessSignInProvider";
 
-/** The native CLI owns sign-in truth; this bounded cache serves visible pickers. */
+/** Native account adapters own truth; visible surfaces share this bounded cache. */
 export type HarnessSignInState =
   | "unsupported"
   | "unknown"
@@ -14,18 +19,6 @@ export interface HarnessSignInStatus {
   checkedAt: number | null;
 }
 
-interface SignInProvider {
-  status: () => Promise<boolean>;
-  start: () => Promise<void>;
-}
-
-const PROVIDERS: Readonly<Record<string, SignInProvider>> = {
-  "claude-code": {
-    status: async () => (await acpDesktop.getClaudeAuthStatus()).loggedIn,
-    start: () => acpDesktop.startClaudeAuthLogin(),
-  },
-};
-
 const STATUS_TTL_MS = 60_000;
 const POLL_INTERVAL_MS = 3_000;
 const POLL_ATTEMPTS = 40;
@@ -36,49 +29,70 @@ const UNSUPPORTED: HarnessSignInStatus = {
 const UNKNOWN: HarnessSignInStatus = { state: "unknown", checkedAt: null };
 
 const statuses = new Map<string, HarnessSignInStatus>();
+const identities = new Map<string, string>();
 const listeners = new Set<() => void>();
+let unsubscribeAccount: (() => void) | undefined;
+let revision = 0;
+export const harnessSignInRevision = () => revision;
+function notify() {
+  revision += 1;
+  for (const listener of listeners) listener();
+}
 type SignInPoll = {
   resume?: () => void;
   starting?: Promise<void>;
   timer?: ReturnType<typeof setTimeout>;
 };
-// Only curated providers own polls. All visible picker subscribers share one
+// Only installed capability providers own polls. All visible subscribers share one
 // lifetime; suspension retains intent and attempt counts without any timers.
 const polls = new Map<string, SignInPoll>();
 const refreshes = new Map<string, symbol>();
 
 function publish(harnessId: string, status: HarnessSignInStatus) {
+  const provider = signInProvider(harnessId);
+  if (!provider) return;
+  identities.set(harnessId, provider.key);
   statuses.set(harnessId, status);
-  for (const listener of listeners) listener();
+  notify();
 }
 
 export function harnessSupportsSignIn(harnessId: string): boolean {
-  return Object.hasOwn(PROVIDERS, harnessId);
+  return Boolean(signInProvider(harnessId));
 }
 
 export function harnessSignInStatus(harnessId: string): HarnessSignInStatus {
   if (!harnessSupportsSignIn(harnessId)) return UNSUPPORTED;
+  if (identities.get(harnessId) !== signInProvider(harnessId)?.key)
+    return UNKNOWN;
   return statuses.get(harnessId) ?? UNKNOWN;
 }
 
 export async function refreshHarnessSignIn(
   harnessId: string,
 ): Promise<HarnessSignInState> {
-  const provider = PROVIDERS[harnessId];
+  const provider = signInProvider(harnessId);
   if (!provider) return "unsupported";
   const request = Symbol();
   refreshes.set(harnessId, request);
-  if (!statuses.has(harnessId))
+  if (harnessSignInStatus(harnessId).state === "unknown")
     publish(harnessId, { state: "checking", checkedAt: null });
   let state: HarnessSignInState;
   try {
-    state = (await provider.status()) ? "signedIn" : "signedOut";
+    state = await provider.status();
   } catch {
     state = "unavailable";
   }
   if (refreshes.get(harnessId) === request) {
     refreshes.delete(harnessId);
-    publish(harnessId, { state, checkedAt: Date.now() });
+    if (signInProvider(harnessId)?.key === provider.key)
+      publish(harnessId, {
+        state:
+          state === "unavailable" &&
+          harnessSignInStatus(harnessId).state === "signedOut"
+            ? "signedOut"
+            : state,
+        checkedAt: Date.now(),
+      });
   }
   return state;
 }
@@ -91,7 +105,7 @@ function stopPolling(harnessId: string) {
 export function startHarnessSignIn(harnessId: string): Promise<void> {
   const pending = polls.get(harnessId)?.starting;
   if (pending) return pending;
-  const provider = PROVIDERS[harnessId];
+  const provider = signInProvider(harnessId);
   if (!provider) return Promise.reject(new Error("Sign-in is unavailable."));
   stopPolling(harnessId);
   const owner: SignInPoll = {};
@@ -101,6 +115,10 @@ export function startHarnessSignIn(harnessId: string): Promise<void> {
     .then(() => {
       owner.starting = undefined;
       if (polls.get(harnessId) !== owner) return;
+      if (signInProvider(harnessId)?.key !== provider.key) {
+        stopPolling(harnessId);
+        return;
+      }
       let attempts = 0;
       let reading = false;
       const poll = () => {
@@ -130,78 +148,69 @@ export function startHarnessSignIn(harnessId: string): Promise<void> {
 export function subscribeHarnessSignIn(listener: () => void) {
   const wake = !listeners.size;
   listeners.add(listener);
-  if (wake) for (const owner of polls.values()) owner.resume?.();
+  if (wake) {
+    unsubscribeAccount = subscribeAccountSignIn(
+      (id, state) => {
+        refreshes.delete(id);
+        publish(id, { state, checkedAt: Date.now() });
+      },
+      () => {
+        let pruned = false;
+        for (const id of statuses.keys()) {
+          if (
+            !harnessSupportsSignIn(id) ||
+            identities.get(id) !== signInProvider(id)?.key
+          ) {
+            stopPolling(id);
+            statuses.delete(id);
+            identities.delete(id);
+            refreshes.delete(id);
+            pruned = true;
+          }
+        }
+        if (pruned) notify();
+      },
+    );
+    for (const owner of polls.values()) owner.resume?.();
+  }
   return () => {
     listeners.delete(listener);
     if (!listeners.size) {
+      unsubscribeAccount?.();
+      unsubscribeAccount = undefined;
       for (const owner of polls.values()) clearTimeout(owner.timer);
     }
   };
-}
-
-const SIGN_IN_LABELS: Partial<Record<HarnessSignInState, string>> = {
-  signedIn: "Signed in",
-  signedOut: "Signed out",
-  checking: "Checking sign-in\u2026",
-  unavailable: "Sign-in status unavailable",
-};
-
-export function harnessSignInLabel(state: HarnessSignInState): string | null {
-  return SIGN_IN_LABELS[state] ?? null;
 }
 
 export function resetHarnessSignInForTest() {
   for (const harnessId of [...polls.keys()]) stopPolling(harnessId);
   refreshes.clear();
   statuses.clear();
+  identities.clear();
+  unsubscribeAccount?.();
+  unsubscribeAccount = undefined;
   listeners.clear();
+  resetAccountSignInForTest();
 }
 
-export function harnessSignInAction(
-  harnessId: string,
-  harnessName: string,
-  state: HarnessSignInState,
-):
-  { label: string; accessibleLabel: string; onAction: () => void } | undefined {
-  const signIn = state === "signedOut";
-  if (signIn || state === "unavailable" || state === "unknown")
-    return {
-      label: signIn ? "Sign in" : "Check sign-in",
-      accessibleLabel: signIn
-        ? `Sign in to ${harnessName}`
-        : `Check ${harnessName} sign-in`,
-      onAction: () =>
-        void (signIn ? startHarnessSignIn : refreshHarnessSignIn)(
-          harnessId,
-        ).catch(() => undefined),
-    };
+/** A protocol auth refusal is newer evidence than an earlier account check. */
+export function reportHarnessSignInRequired(harnessId: string) {
+  refreshes.delete(harnessId);
+  publish(harnessId, { state: "signedOut", checkedAt: Date.now() });
 }
 
 export function ensureHarnessSignInChecked(harnessIds: readonly string[]) {
   for (const harnessId of harnessIds) {
     if (!harnessSupportsSignIn(harnessId) || refreshes.has(harnessId)) continue;
-    const checkedAt = statuses.get(harnessId)?.checkedAt;
+    const checkedAt = harnessSignInStatus(harnessId).checkedAt;
     if (checkedAt == null || Date.now() - checkedAt > STATUS_TTL_MS)
       void refreshHarnessSignIn(harnessId);
   }
 }
 
-export interface HarnessSignInDecoration {
-  label: string | null;
-  action: ReturnType<typeof harnessSignInAction>;
-}
-
-export function harnessSignInDecorations(
-  harnesses: readonly { id: string; name: string }[],
-): Map<string, HarnessSignInDecoration> {
-  const decorations = new Map<string, HarnessSignInDecoration>();
-  for (const { id, name } of harnesses) {
-    if (!harnessSupportsSignIn(id)) continue;
-    const state = statuses.get(id)?.state ?? "unknown";
-    decorations.set(id, {
-      label: harnessSignInLabel(state),
-      action: harnessSignInAction(id, name, state),
-    });
-  }
-  return decorations;
+export function harnessesNeedingSignIn() {
+  return signInHarnesses().filter(
+    (harness) => harnessSignInStatus(harness.id).state === "signedOut",
+  );
 }

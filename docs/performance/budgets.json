@@ -43,11 +43,6 @@
         "reason": "Shared tooltip for icon buttons: one node and delegated listeners, installed once the window is idle, off the first-Chat path. Measured 982 B JS, 381 B CSS."
       },
       {
-        "entry": "src/features/chat/ClaudeAuthActions.tsx",
-        "maxGzipBytes": 630,
-        "reason": "Sign-in actions and the sign-in-required sentence load only after a harness sign-in error; measured 588, keeping both off the ready first-Chat path."
-      },
-      {
         "entry": "src/features/chat/ComposerSlashController.tsx",
         "maxGzipBytes": 1800,
         "maxCssGzipBytes": 340,
@@ -87,13 +82,18 @@
       },
       {
         "entry": "src/features/harness/HarnessSignInStatus.tsx",
-        "maxGzipBytes": 517,
-        "reason": "Harness sign-in status observer and bridge; loads behind the synchronous picker, outside Agent + one chat's static closure."
+        "maxGzipBytes": 3630,
+        "reason": "Shared composer/account sign-in surfaces, CLI refusal guidance, capability adapters and bounded polling; loads only for visible supported harnesses or an auth refusal."
       },
       {
-        "entry": "src/features/harness/harnessSignIn.ts",
-        "maxGzipBytes": 981,
-        "reason": "Harness sign-in status, actions and bounded polling; loads only for available desktop harnesses."
+        "entry": "src/features/harness/HarnessSignInMenu.tsx",
+        "maxGzipBytes": 320,
+        "reason": "Account attention menu loads on first open; shares sign-in actions with the composer and unmounts while closed."
+      },
+      {
+        "entry": "src/services/acpHarnessAuthResponse.ts",
+        "maxGzipBytes": 500,
+        "reason": "Strict auth phase/scope/revision decoder loads alongside the native auth request, keeping account validation off startup and model discovery."
       },
       {
         "entry": "src/features/chat/acp/TurnEditSummary.tsx",

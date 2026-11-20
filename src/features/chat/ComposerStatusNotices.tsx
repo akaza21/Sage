@@ -1,11 +1,8 @@
 import type { HarnessDiscoveryPhase } from "../../app/harnessSlice";
+import { useWorkbenchStore } from "../../app/store";
+import { harnessHasSignInCheck } from "../../domain/harness";
 import type { ChatComposerRegionProps } from "./chatComposerRegionProps";
-import type * as ClaudeAuthChunk from "./ClaudeAuthActions";
-import { lazyParts } from "./lazyParts";
-
-const AuthPart = lazyParts<typeof ClaudeAuthChunk>(
-  () => import("./ClaudeAuthActions"),
-);
+import { HarnessSignInPart } from "./lazyParts";
 
 const EXPLAINED_PHASES: readonly HarnessDiscoveryPhase[] = [
   "checking",
@@ -19,24 +16,33 @@ export function ComposerStatusNotices({
   workbenchError,
   chatError,
   signInHarness = null,
-  onClaudeSignedIn,
-  claudeAuthScope,
+  authRecovery,
   imageStatus,
   missingBindingNotice,
   discoveryPhase,
+  selectedHarnessId,
 }: Pick<
   ChatComposerRegionProps,
   | "workbenchError"
   | "chatError"
   | "signInHarness"
-  | "onClaudeSignedIn"
-  | "claudeAuthScope"
+  | "authRecovery"
   | "missingBindingNotice"
   | "discoveryPhase"
+  | "selectedHarnessId"
 > & { imageStatus: string | null }) {
+  const harnesses = useWorkbenchStore((state) => state.harnesses);
+  const observeSignIn =
+    authRecovery ||
+    signInHarness ||
+    harnesses.some(
+      (harness) =>
+        harness.id === selectedHarnessId && harnessHasSignInCheck(harness),
+    );
   const showMissingBinding =
     missingBindingNotice && !EXPLAINED_PHASES.includes(discoveryPhase);
   if (
+    !observeSignIn &&
     !workbenchError &&
     !chatError &&
     !signInHarness &&
@@ -44,7 +50,6 @@ export function ComposerStatusNotices({
     !showMissingBinding
   )
     return null;
-
   return (
     <div
       className="composer__notices"
@@ -52,29 +57,29 @@ export function ComposerStatusNotices({
       aria-label="Composer notices"
       tabIndex={0}
     >
+      {observeSignIn ? (
+        <HarnessSignInPart
+          part="ComposerHarnessSignInNotice"
+          harnessId={selectedHarnessId}
+          recovery={authRecovery}
+          refusal={signInHarness}
+          fallback={
+            signInHarness && chatError ? (
+              <div className="composer__error" role="alert">
+                {chatError}
+              </div>
+            ) : null
+          }
+        />
+      ) : null}
       {workbenchError ? (
         <div className="composer__error" role="alert">
           {workbenchError}
         </div>
       ) : null}
-      {chatError || signInHarness ? (
+      {chatError && !signInHarness ? (
         <div className="composer__error" role="alert">
-          {signInHarness ? (
-            <AuthPart
-              part="SignInRequiredMessage"
-              harness={signInHarness}
-              fallback={chatError}
-            />
-          ) : (
-            chatError
-          )}
-          {onClaudeSignedIn ? (
-            <AuthPart
-              part="ClaudeAuthActions"
-              key={claudeAuthScope}
-              onSignedIn={onClaudeSignedIn}
-            />
-          ) : null}
+          {chatError}
         </div>
       ) : null}
       {imageStatus ? (

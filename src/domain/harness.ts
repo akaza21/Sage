@@ -53,6 +53,12 @@ import type { SessionAccessModeCapability } from "./sessionAccessMode";
 
 export type HarnessBrand = "claude" | "codex" | "opencode" | "pi";
 
+export interface HarnessSignIn {
+  command: string;
+  hint: string;
+  statusCheck?: "claudeCli";
+}
+
 interface HarnessDefinitionBase {
   id: string;
   name: string;
@@ -68,7 +74,7 @@ interface HarnessDefinitionBase {
   characterisation?:
     "characterised" | "newerThanTested" | "uncharacterised" | null;
   unavailableReason?: HarnessUnavailableReason | null;
-  signIn?: { command: string; hint: string } | null;
+  signIn?: HarnessSignIn | null;
   brand?: HarnessBrand | null;
   update?: { latestVersion: string; command: string } | null;
 }
@@ -91,6 +97,15 @@ export type HarnessDefinition = HarnessDefinitionBase &
         bindingId: string | null;
       }
   );
+
+export function harnessHasSignInCheck(
+  harness: HarnessDefinition | undefined,
+): boolean {
+  return (
+    harness?.installState === "available" &&
+    Boolean(harness.accountModelDiscovery || harness.signIn?.statusCheck)
+  );
+}
 
 export interface ModelOption {
   id: string;

@@ -2,10 +2,10 @@ import type { ComponentProps } from "react";
 import { useWorkbenchStore } from "../../app/store";
 import "../../styles/harness-picker.css";
 import { Settings } from "../../ui/leanIcons";
-import { HarnessSignInPicker } from "../harness/HarnessSignInPicker";
+import { SearchablePicker } from "../../ui/SearchablePicker";
 import { useHarnessKeyboardFocus } from "./useHarnessKeyboardFocus";
 
-type PickerProps = ComponentProps<typeof HarnessSignInPicker>;
+type PickerProps = ComponentProps<typeof SearchablePicker>;
 
 export function ComposerHarnessPicker({
   candidates,
@@ -33,8 +33,7 @@ export function ComposerHarnessPicker({
       className="composer__control-trigger composer__harness"
       data-keyboard-focus={keyboardFocus}
     >
-      <HarnessSignInPicker
-        harnesses={harnesses}
+      <SearchablePicker
         ariaLabel="Harness"
         open={open}
         onOpenChange={onOpenChange}

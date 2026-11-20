@@ -1,58 +1,153 @@
-import { useEffect, useState } from "react";
-import { type HarnessSignInDecoration } from "./harnessSignIn";
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
+import { useWorkbenchStore } from "../../app/store";
 import { isTauriRuntime } from "../../ports/desktopRuntime";
+import { HarnessLoginAction } from "./HarnessSignInAction";
+import type { ChatComposerRegionProps } from "../chat/chatComposerRegionProps";
+import { SignInRequiredMessage } from "../chat/HarnessSignInRequiredMessage";
+import { lazyParts } from "../chat/lazyParts";
+import type * as MenuChunk from "./HarnessSignInMenu";
+import {
+  ensureHarnessSignInChecked,
+  harnessesNeedingSignIn,
+  harnessSignInRevision,
+  subscribeHarnessSignIn,
+  reportHarnessSignInRequired,
+  harnessSignInStatus,
+  harnessSupportsSignIn,
+} from "./harnessSignIn";
 
-export function HarnessSignInStatus({
-  harnesses,
-  onChange,
-}: {
-  harnesses: readonly { id: string; name: string; installState: string }[];
-  onChange: (decorations: ReadonlyMap<string, HarnessSignInDecoration>) => void;
-}) {
-  const decorations = useHarnessSignInDecorations(harnesses);
-  useEffect(() => onChange(decorations), [decorations, onChange]);
-  return null;
+const MenuPart = lazyParts<typeof MenuChunk>(
+  () => import("./HarnessSignInMenu"),
+);
+
+function useHarnessSignIn() {
+  const harnesses = useWorkbenchStore((state) => state.harnesses);
+  const projectId = useWorkbenchStore((state) => state.project?.id);
+  const epoch = useWorkbenchStore((state) => state.nativeTransitionEpoch);
+  useSyncExternalStore(subscribeHarnessSignIn, harnessSignInRevision);
+  const key = JSON.stringify(
+    harnesses.slice(0, 32).map((harness) => harness.id),
+  );
+  useEffect(() => {
+    if (!isTauriRuntime()) return;
+    const check = () => ensureHarnessSignInChecked(JSON.parse(key) as string[]);
+    check();
+    window.addEventListener("focus", check);
+    return () => window.removeEventListener("focus", check);
+  }, [key, harnesses, projectId, epoch]);
+  return harnessesNeedingSignIn();
 }
 
-/** Keeps the harness sign-in module out of the initial Agent bundle. */
-function useHarnessSignInDecorations(
-  harnessDefinitions: readonly {
-    id: string;
-    name: string;
-    installState: string;
-  }[],
-  enabled = isTauriRuntime(),
-): ReadonlyMap<string, HarnessSignInDecoration> {
-  const harnesses = harnessDefinitions.filter(
-    (harness) => harness.installState === "available",
-  );
-  const [decorations, setDecorations] = useState<
-    ReadonlyMap<string, HarnessSignInDecoration>
-  >(() => new Map());
-  const key = harnesses
-    .map((harness) => `${harness.id}\0${harness.name}`)
-    .join("\n");
+export function ComposerHarnessSignInNotice({
+  harnessId,
+  recovery,
+  refusal,
+}: {
+  harnessId: string | null;
+  recovery?: ChatComposerRegionProps["authRecovery"];
+  refusal?: ChatComposerRegionProps["signInHarness"];
+}) {
+  const needsSignIn = useHarnessSignIn();
+  const recoveryId = recovery?.harnessId;
+  const scope = recovery?.scope;
+  const onSignedIn = recovery?.onSignedIn;
+  const completed = useRef<string | null>(null);
   useEffect(() => {
-    if (!enabled || !key) return;
-    let active = true;
-    let unsubscribe: (() => void) | undefined;
-    const entries = key.split("\n").map((entry) => {
-      const [id, name] = entry.split("\0");
-      return { id, name };
-    });
-    void import("./harnessSignIn").then((signIn) => {
-      if (!active) return;
-      const publish = () => {
-        if (active) setDecorations(signIn.harnessSignInDecorations(entries));
-      };
-      unsubscribe = signIn.subscribeHarnessSignIn(publish);
-      publish();
-      signIn.ensureHarnessSignInChecked(entries.map((entry) => entry.id));
-    });
-    return () => {
-      active = false;
-      unsubscribe?.();
-    };
-  }, [enabled, key]);
-  return decorations;
+    if (!recoveryId) return;
+    completed.current = null;
+    reportHarnessSignInRequired(recoveryId);
+  }, [recoveryId, scope]);
+  const recoveryState = recoveryId
+    ? harnessSignInStatus(recoveryId).state
+    : null;
+  useEffect(() => {
+    if (
+      recoveryId &&
+      recoveryState === "signedIn" &&
+      harnessSignInStatus(recoveryId).state === "signedIn" &&
+      scope &&
+      completed.current !== scope
+    ) {
+      completed.current = scope;
+      onSignedIn?.();
+    }
+  }, [onSignedIn, recoveryId, recoveryState, scope]);
+  if (refusal && (!recoveryId || !harnessSupportsSignIn(recoveryId)))
+    return (
+      <div className="composer__error" role="alert">
+        <SignInRequiredMessage harness={refusal} />
+      </div>
+    );
+  const harness = needsSignIn.find((entry) => entry.id === harnessId);
+  if (!harness) return null;
+  return (
+    <div className="composer__notice harness-signin-notice" role="status">
+      <span>{harness.name} isn't signed in</span>
+      <HarnessLoginAction key={harness.id} harness={harness} />
+      {recoveryId === harness.id ? (
+        <HarnessLoginAction
+          key={`${harness.id}:check:${scope}`}
+          harness={harness}
+          check
+        />
+      ) : null}
+    </div>
+  );
+}
+
+export function HarnessAccountMenu({ avatar }: { avatar: string }) {
+  const needsSignIn = useHarnessSignIn();
+  const [open, setOpen] = useState(false);
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const menuId = useId();
+  if (!needsSignIn.length) {
+    if (open) setOpen(false);
+    return (
+      <span className="account-avatar" aria-hidden="true">
+        {avatar}
+      </span>
+    );
+  }
+  return (
+    <>
+      <button
+        ref={triggerRef}
+        type="button"
+        className="account-avatar harness-account"
+        aria-label="Account: sign-in needed"
+        aria-haspopup="menu"
+        aria-expanded={open}
+        aria-controls={open ? menuId : undefined}
+        onClick={() => setOpen((value) => !value)}
+        onKeyDown={(event) => {
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            event.preventDefault();
+            setOpen(true);
+          }
+        }}
+      >
+        <span aria-hidden="true">{avatar}</span>
+        <span
+          className="harness-account__attention"
+          role="img"
+          aria-label="Harness sign-in needs attention"
+        />
+      </button>
+      {open ? (
+        <MenuPart
+          part="HarnessSignInMenu"
+          menuId={menuId}
+          triggerRef={triggerRef}
+          harnesses={needsSignIn}
+          onDismiss={() => setOpen(false)}
+        />
+      ) : null}
+    </>
+  );
 }

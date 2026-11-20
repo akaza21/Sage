@@ -39,6 +39,7 @@ import { acpDesktop } from "../../services/acpDesktop";
 import { acpHarnessDesktop } from "../../services/acpHarnessDesktop";
 import { desktop } from "../../services/desktop";
 import { settleLazyModules } from "../../test/settleLazyModules";
+import { resetHarnessSignInForTest } from "../harness/harnessSignIn";
 import { useSideChatState } from "../../workbench/sideChatState";
 import { Workbench } from "../../workbench/Workbench";
 import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
@@ -328,6 +329,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  resetHarnessSignInForTest();
   useAgentSettingsState.getState().close();
   useWorkbenchStore.setState(initialState, true);
   clearAcpProjectionRegistry();
@@ -2475,7 +2477,7 @@ describe("ChatSurface ACP resource integration", () => {
     expect(menu).not.toContainElement(error);
   });
 
-  it("offers a clicked-only Claude login and an explicit sign-in recheck", async () => {
+  it("offers shared login and an explicit recheck after a protocol auth refusal", async () => {
     const start = vi
       .spyOn(acpDesktop, "startClaudeAuthLogin")
       .mockResolvedValue();
@@ -2504,6 +2506,7 @@ describe("ChatSurface ACP resource integration", () => {
           signIn: {
             command: "claude auth login",
             hint: "Complete sign-in in the terminal.",
+            statusCheck: "claudeCli",
           },
         },
       ],
@@ -2516,17 +2519,12 @@ describe("ChatSurface ACP resource integration", () => {
 
     const { rerender } = render(<ChatSurface />);
 
-    expect(screen.getByRole("alert")).toHaveTextContent(
-      "The harness requires sign-in before it can continue.",
-    );
-    await waitFor(() =>
-      expect(screen.getByRole("alert")).toHaveTextContent(
-        "Claude Code requires sign-in before it can continue. Run claude auth login. Complete sign-in in the terminal. Then try again.",
-      ),
-    );
+    expect(
+      await screen.findByText("Claude Code isn't signed in"),
+    ).toBeVisible();
     expect(start).not.toHaveBeenCalled();
     fireEvent.click(
-      await screen.findByRole("button", { name: "Open Claude sign-in" }),
+      await screen.findByRole("button", { name: "Sign in to Claude Code" }),
     );
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
     let finishCheck: (value: { loggedIn: boolean }) => void = () => {};
@@ -2548,13 +2546,13 @@ describe("ChatSurface ACP resource integration", () => {
     status.mockResolvedValueOnce({ loggedIn: false });
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
     expect(
-      await screen.findByText("Claude is still signed out."),
+      await screen.findByText("Claude Code is still signed out."),
     ).toBeInTheDocument();
     status.mockRejectedValueOnce(new Error("secret detail"));
     fireEvent.click(screen.getByRole("button", { name: "Check sign-in" }));
     expect(
       await screen.findByText(
-        "Could not start or check sign-in. Run claude auth login in a terminal.",
+        "Could not check sign-in. Run claude auth login in a terminal.",
       ),
     ).toBeInTheDocument();
     expect(screen.queryByText("secret detail")).not.toBeInTheDocument();
@@ -2593,6 +2591,12 @@ describe("ChatSurface ACP resource integration", () => {
           name: "Claude Code",
           transport: "acp",
           bindingId: "claude-agent-acp",
+          accountModelDiscovery: false,
+          signIn: {
+            command: "claude auth login",
+            hint: "",
+            statusCheck: "claudeCli",
+          },
         },
       ],
       selectedHarnessId: "claude-code",
@@ -2656,9 +2660,11 @@ describe("ChatSurface ACP resource integration", () => {
     hooks.page = { ...hooks.page, turns: [failedTurn, nextTurn] };
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
+    // A new turn removes the turn-specific recheck, while the known account
+    // problem remains visible until a status check confirms sign-in.
     expect(
-      screen.queryByRole("button", { name: "Open Claude sign-in" }),
-    ).toBeNull();
+      screen.getByRole("button", { name: "Sign in to Claude Code" }),
+    ).toBeVisible();
 
     hooks.page = {
       ...hooks.page,
@@ -2682,7 +2688,7 @@ describe("ChatSurface ACP resource integration", () => {
       ).toBeNull(),
     );
     expect(
-      screen.queryByRole("button", { name: "Open Claude sign-in" }),
+      screen.queryByRole("button", { name: "Sign in to Claude Code" }),
     ).toBeNull();
     const dismissedPage = hooks.page;
     hooks.page = { ...dismissedPage, chatId: "chat-b" as never, turns: [] };
@@ -2704,7 +2710,7 @@ describe("ChatSurface ACP resource integration", () => {
     rerender(<ChatSurface key="chat-a" chatId="chat-a" />);
     expect(screen.queryByRole("button", { name: "Check sign-in" })).toBeNull();
     expect(
-      screen.queryByRole("button", { name: "Open Claude sign-in" }),
+      screen.queryByRole("button", { name: "Sign in to Claude Code" }),
     ).toBeNull();
     expect(screen.getAllByRole("group", { name: "Turn failed" })).toHaveLength(
       2,
@@ -2727,7 +2733,7 @@ describe("ChatSurface ACP resource integration", () => {
       "Send failed before a turn could be created.",
     );
     expect(
-      screen.getByRole("button", { name: "Open Claude sign-in" }),
+      screen.getByRole("button", { name: "Sign in to Claude Code" }),
     ).toBeVisible();
     hooks.actions.error = "The harness requires sign-in.";
     hooks.actions.errorKind = "signInRequired";
@@ -4268,43 +4274,26 @@ describe("ChatSurface ACP resource integration", () => {
     expect(selectHarness).toHaveBeenCalledExactlyOnceWith("claude-code");
   });
 
-  it("requires consent before starting bounded browser sign-in", () => {
-    const start = vi
-      .spyOn(acpHarnessDesktop, "startCodexAuth")
-      .mockReturnValue(new Promise(() => {}));
+  it("starts bounded browser sign-in from the composer notice", async () => {
+    vi.spyOn(acpHarnessDesktop, "startCodexAuth").mockReturnValue(
+      new Promise(() => {}),
+    );
     useWorkbenchStore.setState({
       project: { id: "project-a", name: "Project A", roots: [] },
       harnessDiscoveryPhase: "signInRequired",
       models: [],
       selectedModelId: null,
     });
-
     render(<ChatSurface />);
-
-    expect(
-      screen.getByText(/sign in to the account required by codex/i),
-    ).toBeVisible();
+    const notice = await screen.findByText("Codex isn't signed in");
+    expect(notice.closest(".composer__notices")).not.toBeNull();
     expect(screen.getByLabelText("Message agent")).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Sign in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign in to Codex" }));
     expect(
-      screen.getByText(
-        /Sage will open this harness's official sign-in page in your browser\./,
-      ),
-    ).toHaveTextContent(
-      "Sage will open this harness's official sign-in page in your browser. Codex stores credentials; Sage does not receive or retain them.",
-    );
-    expect(screen.getByRole("button", { name: "Continue" })).toBeVisible();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
-
-    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
-
-    expect(start).toHaveBeenCalledOnce();
-    expect(
-      screen.getByText(/finish signing in through your browser/i),
-    ).toBeVisible();
-    expect(screen.getByRole("button", { name: "Cancel" })).toBeVisible();
+      screen.getByRole("button", { name: "Sign in to Codex" }),
+    ).toBeDisabled();
+    expect(screen.getByText("Signing in…")).toBeVisible();
   });
-
   it("does not let a stale ACP page mask simulator messages", async () => {
     useWorkbenchStore.setState({
       harnesses: [

@@ -224,17 +224,15 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
     (harness) => harness.bindingId === latestTurnSession?.bindingId,
   );
   const ownerChatId = chatId ?? acpPage?.chatId ?? activeTabId;
-  const claudeAuthScope = `${project?.id ?? ""}:${epoch}:${ownerChatId ?? ""}:${latestTurn?.id ?? ""}`;
   const dismissedAuthTurnId = useWorkbenchStore(
     (state) => state.chatUiById[ownerChatId ?? ""]?.dismissedAuthTurnId,
   );
   const authOwner = useWorkbenchStore
     .getState()
     .captureChatOwnership(ownerChatId ?? undefined);
-  const claudeSignInRequired =
-    (selectedHarnessId === "claude-code" &&
-      acpActions.errorKind === "signInRequired") ||
-    (latestTurnHarness?.id === "claude-code" &&
+  const signInRequired =
+    acpActions.errorKind === "signInRequired" ||
+    (acpPage?.chatId === ownerChatId &&
       dismissedAuthTurnId !== latestTurn?.id &&
       latestTurn?.state === "failed" &&
       latestTurn.terminalReason?.kind === "authRequired");
@@ -337,21 +335,29 @@ export function ChatSurface({ chatId }: { chatId?: string } = {}) {
         chatError={foregroundError}
         signInHarness={
           signInHarness ??
-          (claudeSignInRequired && !foregroundError ? latestTurnHarness : null)
+          (signInRequired && !foregroundError ? latestTurnHarness : null)
         }
-        onClaudeSignedIn={
-          claudeSignInRequired
-            ? () => {
-                if (authOwner && latestTurn)
-                  useWorkbenchStore
-                    .getState()
-                    .dismissChatAuthTurn(authOwner, latestTurn.id);
-                if (acpActions.errorKind === "signInRequired")
-                  acpActions.clearError();
+        authRecovery={
+          signInRequired && (signInHarness ?? latestTurnHarness)
+            ? {
+                harnessId: (signInHarness ?? latestTurnHarness)!.id,
+                scope: JSON.stringify([
+                  project?.id,
+                  epoch,
+                  ownerChatId,
+                  latestTurn?.id,
+                ]),
+                onSignedIn: () => {
+                  if (authOwner && latestTurn)
+                    useWorkbenchStore
+                      .getState()
+                      .dismissChatAuthTurn(authOwner, latestTurn.id);
+                  if (acpActions.errorKind === "signInRequired")
+                    acpActions.clearError();
+                },
               }
             : undefined
         }
-        claudeAuthScope={claudeAuthScope}
         accessTarget={accessTarget}
         availableBinding={availableBinding}
         canPrompt={canPrompt}
