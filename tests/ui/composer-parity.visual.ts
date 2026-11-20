@@ -86,6 +86,66 @@ async function noClip(page: Page, selector: string) {
   }
 }
 
+test("shared buttons preserve natural sizing, wrapped labels and full-width icon groups", async ({
+  page,
+}) => {
+  await page.setContent(`<style>${styles}</style>
+    <main style="width:240px">
+      <button class="button" id="natural">Cancel</button>
+      <button class="button" id="flow" style="display:inline-block">Cancel</button>
+      <button class="button" id="wrapped" style="width:120px">Allow workspace changes in this chat</button>
+      <button class="button" id="wrapped-flow" style="display:inline-block;width:120px">Allow workspace changes in this chat</button>
+      <button class="button" id="block" style="display:block;width:100%">Cancel</button>
+      <button class="button button--compact" id="icon" style="width:100%">
+        <svg width="14" height="14" aria-hidden="true"></svg><span>Open file</span>
+      </button>
+    </main>`);
+  const dimensions = (id: string) =>
+    page.locator(`#${id}`).evaluate((button) => {
+      const { width, height } = button.getBoundingClientRect();
+      return { width, height };
+    });
+  // Unconstrained buttons retain their pre-flex intrinsic dimensions,
+  // including the height gained when a long label wraps.
+  expect(await dimensions("natural")).toEqual(await dimensions("flow"));
+  expect(await dimensions("wrapped")).toEqual(await dimensions("wrapped-flow"));
+  expect((await dimensions("block")).height).toBe(
+    (await dimensions("natural")).height,
+  );
+  expect((await dimensions("block")).width).toBe(240);
+  const wrapping = await page.locator("#wrapped").evaluate((button) => {
+    const range = document.createRange();
+    range.selectNodeContents(button.firstChild!);
+    const label = range.getBoundingClientRect();
+    const box = button.getBoundingClientRect();
+    return {
+      lines: range.getClientRects().length,
+      offset: (label.top + label.bottom - box.top - box.bottom) / 2,
+      contained: label.left >= box.left && label.right <= box.right,
+    };
+  });
+  expect(wrapping.lines).toBeGreaterThan(1);
+  expect(Math.abs(wrapping.offset)).toBeLessThanOrEqual(1);
+  expect(wrapping.contained).toBe(true);
+  const icon = await page.locator("#icon").evaluate((button) => {
+    const box = button.getBoundingClientRect();
+    const glyph = button.querySelector("svg")!.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(button.querySelector("span")!.firstChild!);
+    const label = range.getBoundingClientRect();
+    return {
+      width: box.width,
+      gap: label.left - glyph.right,
+      horizontalOffset: (glyph.left + label.right - box.left - box.right) / 2,
+      verticalOffset: (label.top + label.bottom - glyph.top - glyph.bottom) / 2,
+    };
+  });
+  expect(icon.width).toBe(240);
+  expect(icon.gap).toBe(4);
+  expect(Math.abs(icon.horizontalOffset)).toBeLessThanOrEqual(1);
+  expect(Math.abs(icon.verticalOffset)).toBeLessThanOrEqual(1);
+});
+
 for (const width of [1888, 720, 480]) {
   test.describe(`${width}px composer parity without a server`, () => {
     test.beforeEach(async ({ page }) => {
@@ -453,6 +513,50 @@ for (const width of [1888, 720, 480]) {
         name: "Switch to Workspace edits?",
       });
       await expect(dialog).toBeVisible();
+      // Measure the text itself, not a wrapper or a screenshot. Symmetric
+      // padding must not push the label down when the line box cannot fit.
+      for (const height of [28, 32, 48]) {
+        await dialog.evaluate((element, height) => {
+          element.style.setProperty("--control-height-default", `${height}px`);
+        }, height);
+        const labels = await dialog.getByRole("button").evaluateAll((buttons) =>
+          buttons.map((button) => {
+            const text = button.firstChild;
+            if (!text || text.nodeType !== Node.TEXT_NODE)
+              throw new Error("Expected a dialog button text node");
+            const range = document.createRange();
+            range.selectNodeContents(text);
+            const label = range.getBoundingClientRect();
+            const box = button.getBoundingClientRect();
+            const style = getComputedStyle(button);
+            const top = box.top + parseFloat(style.borderTopWidth);
+            const bottom = box.bottom - parseFloat(style.borderBottomWidth);
+            const left = box.left + parseFloat(style.borderLeftWidth);
+            const right = box.right - parseFloat(style.borderRightWidth);
+            return {
+              text: text.textContent?.trim(),
+              height: box.height,
+              verticalOffset: (label.top + label.bottom - top - bottom) / 2,
+              horizontalOffset: (label.left + label.right - left - right) / 2,
+            };
+          }),
+        );
+        expect(labels).toHaveLength(2);
+        for (const label of labels) {
+          expect(label.height).toBe(height);
+          expect(
+            Math.abs(label.verticalOffset),
+            label.text,
+          ).toBeLessThanOrEqual(1);
+          expect(
+            Math.abs(label.horizontalOffset),
+            label.text,
+          ).toBeLessThanOrEqual(1);
+        }
+      }
+      await dialog.evaluate((element) => {
+        element.style.removeProperty("--control-height-default");
+      });
       await expect(
         dialog.getByRole("button", { name: "Cancel", exact: true }),
       ).toBeFocused();
