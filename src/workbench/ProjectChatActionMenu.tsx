@@ -7,18 +7,16 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { createPortal } from "react-dom";
 import type { AgentSessionChrome } from "../app/agentChatOwner";
 import {
   lazyParts,
   preloadChatHandoffControl,
 } from "../features/chat/lazyParts";
 import { useColdOpen } from "../ui/coldOpen";
-import { Folder, MoreHorizontal } from "../ui/leanIcons";
+import { MoreHorizontal } from "../ui/leanIcons";
 import type { MenuDismissReason } from "../ui/MenuPopover";
 import { ResourceStateNotice } from "../ui/ResourceStateNotice";
 import { whenIdle } from "../ui/whenIdle";
-import { agentRailHoverAge } from "./agentRailInteractions";
 import type { AgentRailTrailingState } from "./agentRailStatusView";
 import type * as ActionsChunk from "./ProjectChatActionPopover";
 import {
@@ -288,48 +286,5 @@ export function ProjectChatRailGlyph({
         <span className="project-chat__working" aria-hidden="true" />
       ) : null}
     </span>
-  );
-}
-
-const HOVER_CARD_WIDTH = 288;
-
-// The owning row supplies the accessible text, so this hover card is
-// aria-hidden.
-export function ProjectChatHoverCard({
-  row,
-  shownAt,
-  title,
-  updatedAt,
-  project,
-}: {
-  row: DOMRect;
-  shownAt: number;
-  title: string;
-  updatedAt?: number;
-  project?: string;
-}) {
-  const age = agentRailHoverAge(updatedAt, shownAt);
-  const left = Math.max(
-    8,
-    Math.min(row.right, window.innerWidth - HOVER_CARD_WIDTH - 8),
-  );
-  return createPortal(
-    <div
-      className="agent-rail-hover-card"
-      aria-hidden="true"
-      style={{ left, top: row.top, width: HOVER_CARD_WIDTH }}
-    >
-      <div className="agent-rail-hover-card__head">
-        <strong>{title}</strong>
-        {age ? <span>{age}</span> : null}
-      </div>
-      {project ? (
-        <div className="agent-rail-hover-card__project">
-          <Folder size={12} />
-          <span>{project}</span>
-        </div>
-      ) : null}
-    </div>,
-    document.body,
   );
 }

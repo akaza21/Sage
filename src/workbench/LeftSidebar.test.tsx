@@ -247,7 +247,7 @@ it("keeps New chat available when no folder project is open", async () => {
   expect(button).toBeEnabled();
   expect(
     screen.getByText(
-      "New chat starts under Local. Create a project when you want files.",
+      "Create a project to group chats and work with your files.",
     ),
   ).toBeInTheDocument();
   fireEvent.click(button);
@@ -420,7 +420,7 @@ it("restores a foreign-folder archived chat without switching first", async () =
 });
 
 it("creates a chat from a foreign project menu without switching first", async () => {
-  const createChat = vi.fn(async (projectId?: string) => {
+  const createChat = vi.fn(async (projectId?: string | null) => {
     useWorkbenchStore.setState((state) => ({
       projects: state.projects.map((project) =>
         project.id === projectId
@@ -725,6 +725,23 @@ it("promotes pinned tasks without duplicating them in recents", async () => {
     loadRepositoryInventory: vi.fn(async () => undefined),
   });
 
+  const state = useWorkbenchStore.getState();
+  const [pinnedChat, privateChat] = state.projects[0].railChats!;
+  useWorkbenchStore.setState({
+    projects: [
+      { ...state.projects[0], railChats: [pinnedChat] },
+      state.projects[1],
+    ],
+    unscopedChats: [
+      {
+        id: "private",
+        name: "",
+        rootCount: 1,
+        lastOpenedAt: now,
+        railChats: [privateChat],
+      },
+    ],
+  });
   render(<LeftSidebar />);
 
   const pinned = screen.getByRole("region", { name: "Pinned" });
@@ -743,12 +760,12 @@ it("promotes pinned tasks without duplicating them in recents", async () => {
   ).toBeInTheDocument();
   expect(
     within(recent).getByRole("button", {
-      name: "Open recent chat Recent research",
+      name: "Open chat Recent research",
     }),
   ).toBeEnabled();
   expect(within(recent).queryByText("Pinned research")).toBeNull();
   expect(screen.queryByRole("searchbox", { name: "Search tasks" })).toBeNull();
-  expect(within(projects).getByText("Recent research")).toBeInTheDocument();
+  expect(within(projects).queryByText("Recent research")).toBeNull();
 });
 
 it("keeps archive enabled for a project with other attached chats", () => {
@@ -802,6 +819,25 @@ it("collapses Pinned and Projects but keeps Recents open", async () => {
     ],
     activeTabId: "chat:recent",
     loadRepositoryInventory: vi.fn(async () => undefined),
+  });
+  useWorkbenchStore.setState({
+    unscopedChats: [
+      {
+        id: "private",
+        name: "",
+        rootCount: 1,
+        lastOpenedAt: 1,
+        railChats: [
+          {
+            id: "chat:private",
+            title: "Unscoped task",
+            pinned: false,
+            position: 0,
+            updatedAt: Date.now(),
+          },
+        ],
+      },
+    ],
   });
   render(<LeftSidebar />);
 

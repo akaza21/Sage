@@ -154,10 +154,10 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
           discoveryPhase={discoveryPhase}
         />
       ) : null}
-      {newChat && projectName ? (
+      {newChat ? (
         <ComposerLocationStrip
-          projectName={projectName}
-          disabled={actionBusy || projectTransitioning}
+          projectName={projectName ?? "Choose project"}
+          disabled={actionBusy || projectTransitioning || !!sessionId}
         />
       ) : null}
       <div className="chat-dock surface surface--dock">
@@ -355,6 +355,7 @@ export function ChatComposerRegion(props: ChatComposerRegionProps) {
                 modelLabelScope={JSON.stringify([dictationScope, sessionId])}
                 inheritScope={dictationScope}
                 projectName={projectName}
+                projectReadOnly={!!sessionId}
                 turnBusy={actionBusy || activeTurn}
                 contextUsage={usage}
                 onModeRemoved={() => composerRef.current?.focus()}

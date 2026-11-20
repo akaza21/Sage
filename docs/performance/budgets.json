@@ -16,6 +16,21 @@
     "webSubagentLazyJsGzipBytes": 5580,
     "lazyFeatureChunks": [
       {
+        "entry": "src/features/chatSearch/chatSearchExecution.ts",
+        "maxGzipBytes": 2000,
+        "reason": "Bounded public/private search fan-out; prewarmed only when search opens. Existing search and startup caps stay unchanged."
+      },
+      {
+        "entry": "src/features/settings/AgentArchivedSettings.tsx",
+        "maxGzipBytes": 1800,
+        "reason": "Bounded archived public and private chat navigation; loaded only on Settings > Archived chats. Existing settings and startup caps stay unchanged."
+      },
+      {
+        "entry": "src/features/chatSearch/ChatSearchResults.tsx",
+        "maxGzipBytes": 1500,
+        "reason": "Bounded search result rendering; loaded only inside the search dialog. Existing search and startup caps stay unchanged."
+      },
+      {
         "entry": "src/features/chat/HarnessDiscoveryNotice.tsx",
         "maxGzipBytes": 1300,
         "maxCssGzipBytes": 490,
@@ -500,6 +515,37 @@
         "maxGzipBytes": 2020,
         "maxCssGzipBytes": 400,
         "reason": "Usage popover, its bounded decoder and session token and cost rows; loads when the context meter is clicked or `/status` opens, and unmounts when closed. Measured 1915 B."
+      },
+      {
+        "entry": "src/features/chat/CreateChatProjectDialog.tsx",
+        "maxGzipBytes": 430,
+        "reason": "Creating a project from an unsent chat: dialog and draft ownership handoff load only on New project; the closed picker retains no dialog."
+      },
+      {
+        "entry": "src/features/chat/ChatProjectCreationSurface.tsx",
+        "maxGzipBytes": 1000,
+        "reason": "Project creation UI and refusal recovery load before creation can begin, retaining the captured composer until the source Chat is restored."
+      },
+      {
+        "entry": "src/workbench/ProjectChatHoverCard.tsx",
+        "maxGzipBytes": 800,
+        "reason": "Existing rail hover content and age formatting load on demand; no hover DOM or listeners survive dismissal. Startup and core caps are unchanged."
+      },
+      {
+        "entry": "src/app/runSetChatProject.ts",
+        "maxGzipBytes": 500,
+        "reason": "Reparenting an unsent chat and restoring its composer load only when its project changes; native SQLite remains authoritative."
+      },
+      {
+        "entry": "src/app/runNewChatDraftSend.ts",
+        "maxGzipBytes": 1300,
+        "reason": "First-send project creation, native ownership reconciliation and composer handoff have a separate on-send entry; all required chunks load before creating durable state."
+      },
+      {
+        "entry": "src/features/chat/ProjectScopeChip.tsx",
+        "maxGzipBytes": 1560,
+        "maxCssGzipBytes": 760,
+        "reason": "Project selection, duplicate-name paths and pre-session scope controls load only with a visible project chip; the closed New project dialog has its own entry."
       }
     ],
     "windowsInstallerMb": 45,

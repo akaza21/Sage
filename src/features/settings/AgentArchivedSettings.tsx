@@ -3,9 +3,12 @@ import { useWorkbenchStore } from "../../app/store";
 import { errorMessage } from "../../domain/errors";
 import { SettingsRow } from "./SettingsRow";
 
+const PRIVATE = "scope:private";
+
 export function AgentArchivedSettings() {
   const project = useWorkbenchStore((state) => state.project);
   const projects = useWorkbenchStore((state) => state.projects);
+  const unscopedChats = useWorkbenchStore((state) => state.unscopedChats);
   const archived = useWorkbenchStore((state) => state.archivedChats);
   const transitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
@@ -16,22 +19,33 @@ export function AgentArchivedSettings() {
   const [pending, setPending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const projectId = chosenProject ?? project?.id;
+  const projectId =
+    chosenProject ?? (project?.isInternal ? PRIVATE : project?.id);
   const chats =
-    projectId === project?.id
-      ? archived
-      : (projects.find((item) => item.id === projectId)?.railArchived ?? []);
+    projectId === PRIVATE
+      ? unscopedChats
+          .flatMap((group) =>
+            (group.id === project?.id
+              ? archived
+              : (group.railArchived ?? [])
+            ).map((chat) => ({ ...chat, projectId: group.id })),
+          )
+          .slice(0, 64)
+      : (projectId === project?.id
+          ? archived
+          : (projects.find((item) => item.id === projectId)?.railArchived ?? [])
+        ).map((chat) => ({ ...chat, projectId }));
   const start = Math.min(
     offset,
     Math.max(0, Math.floor((chats.length - 1) / 50) * 50),
   );
-  async function unarchive(chatId: string) {
-    if (!projectId || pending) return;
+  async function unarchive(chatId: string, ownerId: string | undefined) {
+    if (!ownerId || pending) return;
     setPending(true);
     setError(null);
     setMessage(null);
     try {
-      if (await restore(chatId, projectId)) setMessage("Chat unarchived.");
+      if (await restore(chatId, ownerId)) setMessage("Chat unarchived.");
       else
         setError(
           useWorkbenchStore.getState().error ?? "Chat could not be unarchived.",
@@ -62,7 +76,7 @@ export function AgentArchivedSettings() {
               setError(null);
             }}
           >
-            {project ? (
+            {project && !project.isInternal ? (
               <option value={project.id}>{project.name}</option>
             ) : (
               <option value="">No project</option>
@@ -75,6 +89,9 @@ export function AgentArchivedSettings() {
                   {item.name}
                 </option>
               ))}
+            {unscopedChats.length ? (
+              <option value={PRIVATE}>Chats without a project</option>
+            ) : null}
           </select>
         </SettingsRow>
       </div>
@@ -91,7 +108,7 @@ export function AgentArchivedSettings() {
                 type="button"
                 aria-label={`Unarchive ${chat.title}`}
                 disabled={pending || transitioning || !project}
-                onClick={() => void unarchive(chat.id)}
+                onClick={() => void unarchive(chat.id, chat.projectId)}
               >
                 Unarchive
               </button>

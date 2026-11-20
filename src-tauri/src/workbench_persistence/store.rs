@@ -26,6 +26,7 @@ impl WorkbenchStore for Database {
     ) -> AppResult<BootstrapSnapshot> {
         let active_project_id = self.repair_active_project()?;
         let projects = self.project_list()?;
+        let unscoped_chats = crate::private_chat::list(self)?;
         if projects.len() > MAX_PROJECTS as usize {
             return Err(AppError::ResourceLimit(format!(
                 "project registry exceeds its {MAX_PROJECTS}-project limit"
@@ -33,6 +34,7 @@ impl WorkbenchStore for Database {
         }
         let Some(project_id) = active_project_id else {
             let mut snapshot = empty_snapshot(projects);
+            snapshot.unscoped_chats = unscoped_chats;
             snapshot.harnesses = harnesses.definitions();
             return Ok(snapshot);
         };
@@ -77,6 +79,7 @@ impl WorkbenchStore for Database {
         Ok(BootstrapSnapshot {
             transition_epoch: 0,
             projects,
+            unscoped_chats,
             project: Some(project),
             tabs,
             archived_chats,
@@ -116,43 +119,51 @@ impl WorkbenchStore for Database {
     fn switch_project(&self, request: &ProjectSwitchRequest) -> AppResult<()> {
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction().db()?;
-        let active = active_project_in(&transaction)?;
-        if active.as_deref() != Some(request.current_layout.project_id.as_str()) {
-            return Err(AppError::InvalidRequest(
-                "project changed before the requested transition".into(),
-            ));
-        }
-        persist_layout_in(&transaction, &request.current_layout)?;
-        let target_exists: bool = transaction
-            .query_row(
-                "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
-                [&request.target_project_id],
-                |row| row.get(0),
-            )
-            .db()?;
-        if !target_exists {
-            return Err(AppError::InvalidRequest(
-                "target project does not exist".into(),
-            ));
-        }
-        let now = now_millis();
-        transaction
-            .execute(
-                "UPDATE app_state
-             SET active_project_id = ?1, updated_at = ?2
-             WHERE singleton = 1",
-                params![request.target_project_id, now],
-            )
-            .db()?;
-        transaction
-            .execute(
-                "UPDATE projects
-             SET last_opened_at = ?2, updated_at = ?2
-             WHERE id = ?1",
-                params![request.target_project_id, now],
-            )
-            .db()?;
+        switch_project_in(&transaction, request)?;
         transaction.commit().db()?;
         Ok(())
     }
+}
+
+pub(crate) fn switch_project_in(
+    transaction: &rusqlite::Transaction<'_>,
+    request: &ProjectSwitchRequest,
+) -> AppResult<()> {
+    let active = active_project_in(transaction)?;
+    if active.as_deref() != Some(request.current_layout.project_id.as_str()) {
+        return Err(AppError::InvalidRequest(
+            "project changed before the requested transition".into(),
+        ));
+    }
+    persist_layout_in(transaction, &request.current_layout)?;
+    let target_exists: bool = transaction
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM projects WHERE id = ?1)",
+            [&request.target_project_id],
+            |row| row.get(0),
+        )
+        .db()?;
+    if !target_exists {
+        return Err(AppError::InvalidRequest(
+            "target project does not exist".into(),
+        ));
+    }
+    let now = now_millis();
+    transaction
+        .execute(
+            "UPDATE app_state
+             SET active_project_id = ?1, updated_at = ?2
+             WHERE singleton = 1",
+            params![request.target_project_id, now],
+        )
+        .db()?;
+    transaction
+        .execute(
+            "UPDATE projects
+             SET last_opened_at = ?2, updated_at = ?2
+             WHERE id = ?1",
+            params![request.target_project_id, now],
+        )
+        .db()?;
+    Ok(())
 }

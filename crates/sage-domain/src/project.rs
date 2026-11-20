@@ -31,6 +31,8 @@ pub struct AgentRailChat {
 pub struct ProjectListItem {
     pub id: String,
     pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub parent_path: Option<String>,
     pub root_count: u32,
     pub last_opened_at: i64,
     #[serde(default)]
@@ -54,6 +56,8 @@ pub struct ProjectRootSummary {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummary {
+    #[serde(default)]
+    pub is_internal: bool,
     pub id: String,
     pub name: String,
     pub roots: Vec<ProjectRootSummary>,
@@ -99,6 +103,8 @@ pub struct ProjectTransitionResult {
 pub struct BootstrapSnapshot {
     pub transition_epoch: u64,
     pub projects: Vec<ProjectListItem>,
+    #[serde(default)]
+    pub unscoped_chats: Vec<ProjectListItem>,
     pub project: Option<ProjectSummary>,
     pub tabs: Vec<WorkbenchTab>,
     pub archived_chats: Vec<ArchivedChatSummary>,

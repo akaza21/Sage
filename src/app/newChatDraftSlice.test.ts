@@ -23,6 +23,35 @@ afterEach(() => {
   resetBrowserDesktopForTests();
 });
 
+it.each(["current", "foreign"])(
+  "preserves an unsent draft when New chat explicitly targets a different %s project",
+  async (target) => {
+    const state = useWorkbenchStore.getState();
+    state.updateNewChatDraft({ text: "Keep this prompt", effort: "high" });
+    const draft = useWorkbenchStore.getState().newChatDraft;
+    await state.activateTab(state.activeTabId!);
+    await state.openNewChatDraft(
+      target === "current" ? state.project!.id : "another-project",
+    );
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      agentCenter: "draft",
+      project: { id: state.project!.id },
+      newChatDraft: draft,
+    });
+  },
+);
+
+it("starts a fresh draft for an explicit different target when the draft is empty", async () => {
+  const state = useWorkbenchStore.getState();
+  const draft = state.newChatDraft;
+  await state.openNewChatDraft(state.project!.id);
+  expect(useWorkbenchStore.getState().newChatDraft).not.toBe(draft);
+  expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
+    text: "",
+    targetProjectId: state.project!.id,
+  });
+});
+
 it("bounds draft UTF-8 text and keeps the previous chat's text independently", async () => {
   const state = useWorkbenchStore.getState();
   state.setComposerText("Previous chat text");

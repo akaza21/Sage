@@ -23,10 +23,10 @@ import { SearchablePicker } from "../../ui/SearchablePicker";
 import { projectChatSearchDesktop } from "./chatSearchDesktop";
 import {
   admitChatSearchFolder,
+  CHAT_SEARCH_ALL_FOLDERS_ID,
   chatSearchFolderOptions,
   chatSearchResultKey,
   matchesChatSearchScope,
-  runScopedChatSearch,
   type ChatSearchFanoutPick,
   type ChatSearchFanoutView,
 } from "./chatSearchFanout";
@@ -39,7 +39,11 @@ import {
   type ChatSearchScope,
 } from "./chatSearchScope";
 
-import { ChatSearchResults } from "./ChatSearchResults";
+import { lazyParts } from "../chat/lazyParts";
+import type * as ResultsChunk from "./ChatSearchResults";
+const SearchResultsPart = lazyParts<typeof ResultsChunk>(
+  () => import("./ChatSearchResults"),
+);
 
 type SearchPhase = "idle" | "searching" | "results" | "error";
 
@@ -99,6 +103,7 @@ export function ChatSearchControl({
     (state) => state.projectTransitioning,
   );
   const projects = useWorkbenchStore((state) => state.projects);
+  const unscopedChats = useWorkbenchStore((state) => state.unscopedChats);
   const [open, setOpen] = useState(false);
   const [scope, setScope] = useState<ChatSearchScope | null>(null);
   const [query, setQuery] = useState("");
@@ -154,9 +159,11 @@ export function ChatSearchControl({
     setScope({
       activeProjectId: state.project.id,
       searchProjectId: admitChatSearchFolder(
-        chatSearchFolderOptions(state.projects),
+        chatSearchFolderOptions(state.projects, state.unscopedChats.length > 0),
         searchProjectId,
-        state.project.id,
+        state.project.isInternal
+          ? CHAT_SEARCH_ALL_FOLDERS_ID
+          : state.project.id,
       ),
       projectGeneration: state.projectGeneration,
       transitionEpoch: state.nativeTransitionEpoch,
@@ -166,6 +173,7 @@ export function ChatSearchControl({
     setResponse(null);
     setError(null);
     setOpen(true);
+    void import("./chatSearchExecution").catch(() => undefined);
     queryRef.current?.focus();
   };
 
@@ -203,9 +211,11 @@ export function ChatSearchControl({
     setResponse(null);
     setError(null);
     try {
+      const { runScopedChatSearch } = await import("./chatSearchExecution");
       const result = await runScopedChatSearch({
         searchProjectId: scope.searchProjectId,
         folders: chatSearchFolderOptions(useWorkbenchStore.getState().projects),
+        privateFolders: useWorkbenchStore.getState().unscopedChats,
         projectGeneration: scope.projectGeneration,
         expectedTransitionEpoch: scope.transitionEpoch,
         query: normalized,
@@ -274,7 +284,10 @@ export function ChatSearchControl({
     },
     [scope],
   );
-  const folders = useMemo(() => chatSearchFolderOptions(projects), [projects]);
+  const folders = useMemo(
+    () => chatSearchFolderOptions(projects, unscopedChats.length > 0),
+    [projects, unscopedChats],
+  );
   const listboxId = useId();
   const shown = phase === "results" ? response : null;
   const shownKeys = useMemo(
@@ -377,7 +390,8 @@ export function ChatSearchControl({
             <p className="chat-search-dialog__status" role="status">
               {searchStatus(phase, response)}
             </p>
-            <ChatSearchResults
+            <SearchResultsPart
+              part="ChatSearchResults"
               response={shown}
               error={error}
               scope={scope}

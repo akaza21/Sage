@@ -53,6 +53,67 @@ async function installRailBrowseFixture(page: Page) {
   });
 }
 
+test("All folders includes private chats without listing their internal projects", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { projectChatSearchDesktop } =
+      await import("/src/features/chatSearch/chatSearchDesktop.ts");
+    useWorkbenchStore.setState({
+      unscopedChats: [
+        {
+          id: "private-owner",
+          name: "",
+          rootCount: 1,
+          lastOpenedAt: 1,
+          railArchived: [{ id: "private-chat", title: "Chat: Private needle" }],
+        },
+      ],
+    });
+    projectChatSearchDesktop.search = async (request) => ({
+      projectId: request.projectId,
+      projectGeneration: request.projectGeneration,
+      transitionEpoch: request.expectedTransitionEpoch,
+      query: request.query,
+      results: [
+        {
+          chatId:
+            request.projectId === "private-owner"
+              ? "private-chat"
+              : "public-chat",
+          title:
+            request.projectId === "private-owner"
+              ? "Chat: Private needle"
+              : "Chat: Public needle",
+          attached: request.projectId !== "private-owner",
+          matchedTitle: true,
+          snippet: null,
+        },
+      ],
+      hasMore: false,
+      elapsedMs: 1,
+    });
+  });
+  await page.keyboard.press("Control+K");
+  const dialog = page.getByRole("dialog", { name: "Search chats" });
+  await dialog.getByRole("button", { name: "Search in", exact: true }).click();
+  await expect(page.getByRole("option", { name: "private-owner" })).toHaveCount(
+    0,
+  );
+  await page.getByRole("option", { name: "All folders", exact: true }).click();
+  await dialog
+    .getByRole("combobox", { name: "Search chats", exact: true })
+    .fill("needle");
+  await expect(
+    dialog.getByRole("option", { name: /Private needle/ }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("option", { name: /Public needle/ }),
+  ).toBeVisible();
+});
+
 test("AP-C project disclosure, context actions, and honest project menu", async ({
   page,
 }) => {

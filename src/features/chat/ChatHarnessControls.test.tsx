@@ -1748,27 +1748,48 @@ describe("composer permission mode picker", () => {
     expect(screen.queryByRole("listbox", { name: "Select model" })).toBeNull();
   });
 
-  it("keeps the named project icon inside its clickable target and switches projects", async () => {
-    const switchProject = vi.fn().mockResolvedValue(undefined);
+  it("keeps the named project icon inside its clickable target and chooses the chat project", async () => {
+    const setChatProject = vi.fn().mockResolvedValue(undefined);
+    const tabs = [
+      {
+        id: "chat-alpha",
+        kind: "chat" as const,
+        title: "Chat",
+        position: 0,
+        pinned: false,
+        dirty: false,
+      },
+    ];
     useWorkbenchStore.setState({
+      tabs,
+      activeTabId: "chat-alpha",
       project: { id: "alpha", name: "Alpha", roots: [] },
       projects: [
         { id: "alpha", name: "Alpha", rootCount: 1, lastOpenedAt: 1 },
         { id: "beta", name: "Beta", rootCount: 1, lastOpenedAt: 2 },
       ],
-      switchProject,
+      setChatProject,
     });
     renderControls({ projectName: "Alpha" });
     await openOptions();
     const project = screen.getByRole("menuitem", { name: "Work in a project" });
-    expect(project).toHaveAttribute("title", "Project: Alpha");
+    expect(project).toHaveAttribute(
+      "title",
+      "Change the project for this chat",
+    );
     expect(project.querySelector(".project-scope__icon")).toHaveAttribute(
       "aria-hidden",
       "true",
     );
     fireEvent.click(project);
     fireEvent.click(screen.getByRole("option", { name: "Beta" }));
-    expect(switchProject).toHaveBeenCalledWith("beta");
+    expect(setChatProject).toHaveBeenCalledWith("beta", {
+      projectId: "alpha",
+      tabs,
+      activeTabId: "chat-alpha",
+      selectedRootId: null,
+      selectedResource: null,
+    });
   });
 
   it("blocks project switching while a turn is active", async () => {

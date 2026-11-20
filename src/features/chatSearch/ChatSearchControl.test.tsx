@@ -115,6 +115,83 @@ describe("ChatSearchControl", () => {
 
   afterEach(() => clearChatSearchFolderRequest());
 
+  it.each([false, true])(
+    "includes native-owned private chats in All folders without listing internal projects (private active: %s)",
+    async (privateActive) => {
+      useWorkbenchStore.setState({
+        ...(privateActive
+          ? {
+              project: {
+                id: "private-owner",
+                name: "Choose project",
+                isInternal: true,
+                roots: [],
+              },
+            }
+          : {}),
+        projects: Array.from({ length: 9 }, (_, i) => ({
+          id: `public-${i}`,
+          name: `Public ${i}`,
+          rootCount: 1,
+          lastOpenedAt: 1,
+        })),
+        unscopedChats: [
+          {
+            id: "private-owner",
+            name: "",
+            rootCount: 1,
+            lastOpenedAt: 1,
+            railArchived: [
+              { id: "private-chat", title: "Chat: Private needle" },
+            ],
+          },
+        ],
+      });
+      vi.spyOn(projectChatSearchDesktop, "search").mockImplementation(
+        async (request) => ({
+          ...response,
+          projectId: request.projectId,
+          query: request.query,
+          results: [
+            {
+              chatId:
+                request.projectId === "private-owner"
+                  ? "private-chat"
+                  : `chat-${request.projectId}`,
+              title:
+                request.projectId === "private-owner"
+                  ? "Chat: Private needle"
+                  : "Chat: Public needle",
+              attached: request.projectId !== "private-owner",
+              matchedTitle: true,
+              snippet: null,
+            },
+          ],
+        }),
+      );
+      render(<ChatSearchControl />);
+      fireEvent.click(screen.getByRole("button", { name: "Search chats" }));
+      if (privateActive)
+        expect(
+          screen.getByRole("button", { name: "Search in" }),
+        ).toHaveTextContent("All folders");
+      fireEvent.click(screen.getByRole("button", { name: "Search in" }));
+      expect(
+        screen.queryByRole("option", { name: /private-owner/ }),
+      ).toBeNull();
+      fireEvent.click(screen.getByRole("option", { name: "All folders" }));
+      const input = screen.getByRole("combobox", { name: "Search chats" });
+      fireEvent.change(input, { target: { value: "needle" } });
+      fireEvent.submit(input.closest("form")!);
+      expect(
+        await screen.findByRole("option", { name: /Private needle/ }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByRole("option", { name: /Public needle/ }),
+      ).toHaveLength(8);
+    },
+  );
+
   it("debounces live typing, keeps the query editable, and coalesces pending searches", async () => {
     vi.useFakeTimers();
     try {

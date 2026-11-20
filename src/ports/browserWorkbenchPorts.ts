@@ -53,11 +53,12 @@ const project: ProjectPort = {
   getProjectChatQueuedPrompts: async () => ({}),
   replaceChatQueuedPrompts: async () => {},
   pickProjectSourceFolder: () => Promise.resolve(null),
-  createProject: (
-    _request,
-    _expectedActiveProjectId,
-    expectedTransitionEpoch,
-  ) => Promise.resolve(uncommittedTransition(expectedTransitionEpoch)),
+  createProject: (request, expectedActiveProjectId, expectedTransitionEpoch) =>
+    browserDesktop.createProject(
+      request,
+      expectedActiveProjectId,
+      expectedTransitionEpoch,
+    ),
   addProjectRootFromPicker: (_projectId, expectedTransitionEpoch) =>
     Promise.resolve(uncommittedTransition(expectedTransitionEpoch)),
   persistProjectLayout: (request, expectedTransitionEpoch) =>
@@ -165,10 +166,11 @@ const repository: RepositoryPort = {
 };
 
 const chat: ChatPort = {
+  setChatProject: (...args) => browserDesktop.setChatProject(...args),
   createChat: (
-    currentLayout: ProjectLayoutRequest,
+    currentLayout: ProjectLayoutRequest | null,
     expectedTransitionEpoch: number,
-    projectId?: string,
+    projectId?: string | null,
     chatId?: string,
   ) =>
     browserDesktop.createChat(

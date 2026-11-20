@@ -11,6 +11,10 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { useWorkbenchStore } from "../../app/store";
+import {
+  pinAgentChatOwner,
+  clearAgentChatOwner,
+} from "../../app/agentChatOwner";
 import * as workspaceNotify from "../../app/workspaceNotifyLifecycle";
 import { clearAcpProjectionRegistry } from "../../app/acpProjectionRegistry";
 import { useSessionAccessModeStore } from "../../app/sessionAccessModeStore";
@@ -37,6 +41,7 @@ import { settleLazyModules } from "../../test/settleLazyModules";
 import { AgentChatRuntimeHarness } from "../../test/AgentChatRuntimeHarness";
 import { registerWorkbenchSurfaces } from "../../workbench/registeredSurfaces";
 import { AgentChatPanes } from "../../workbench/AgentChatPanes";
+import { ChatSurface } from "./ChatSurface";
 import { resetHarnessModelCache } from "../../app/harnessModelCache";
 import { useInheritedStore } from "./inheritedComposerModelState";
 import { LeftSidebar } from "../../workbench/LeftSidebar";
@@ -179,6 +184,10 @@ beforeEach(async () => {
   vi.spyOn(ports.chat, "createChat").mockImplementation(async (...args) =>
     withHarnessCatalog(await create(...args)),
   );
+  const chooseProject = ports.chat.setChatProject.bind(ports.chat);
+  vi.spyOn(ports.chat, "setChatProject").mockImplementation(async (...args) =>
+    withHarnessCatalog(await chooseProject(...args)),
+  );
   const activate = ports.chat.activateChat.bind(ports.chat);
   vi.spyOn(ports.chat, "activateChat").mockImplementation(async (...args) =>
     withHarnessCatalog(await activate(...args)),
@@ -218,10 +227,13 @@ beforeEach(async () => {
     pages.set(request.chatId, page);
     return { projection: page };
   });
-  await useWorkbenchStore.getState().openNewChatDraft();
+  await useWorkbenchStore
+    .getState()
+    .openNewChatDraft(useWorkbenchStore.getState().project!.id);
 });
 afterEach(() => {
   cleanup();
+  clearAgentChatOwner();
   clearAcpProjectionRegistry();
   useSideChatState.setState({ sides: [], pairedId: null, pendingClose: null });
   vi.restoreAllMocks();
@@ -839,7 +851,11 @@ it("keeps an intervening side chat's text and session while recovering the draft
   });
   const sideUi = useWorkbenchStore.getState().chatUiById[sideId];
   const sidePage = structuredClone(pages.get(sideId));
-  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await act(async () =>
+    useWorkbenchStore
+      .getState()
+      .openNewChatDraft(useWorkbenchStore.getState().project!.id),
+  );
   await settleLazyModules();
   expect(composer()).toHaveValue("Draft's own request");
   fireEvent.click(screen.getByRole("button", { name: "Reload chats" }));
@@ -1212,7 +1228,11 @@ it("cancels a submission when navigation wins before the send code loads", async
   expect((await ports.project.getBootstrapSnapshot()).tabs).toEqual(
     before.tabs,
   );
-  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await act(async () =>
+    useWorkbenchStore
+      .getState()
+      .openNewChatDraft(useWorkbenchStore.getState().project!.id),
+  );
   await settleLazyModules();
   expect(composer()).toHaveValue("Keep this draft for later");
   expect(composer()).toBeEnabled();
@@ -1397,7 +1417,11 @@ it("shows the draft and its error when the handoff fails after opening its chat"
     transitionEpoch: created.transitionEpoch,
     recoveryError: "Activation refused",
   });
-  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await act(async () =>
+    useWorkbenchStore
+      .getState()
+      .openNewChatDraft(useWorkbenchStore.getState().project!.id),
+  );
   await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
   await settleLazyModules();
   expect(draftRegion()).toBeVisible();
@@ -1450,7 +1474,11 @@ it("never re-owns a chat once its draft is discarded and a new draft is typed", 
   await act(async () => useWorkbenchStore.getState().activateTab(chatId));
   await settleLazyModules();
   fireEvent.change(composer(), { target: { value: "Kept in the chat" } });
-  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await act(async () =>
+    useWorkbenchStore
+      .getState()
+      .openNewChatDraft(useWorkbenchStore.getState().project!.id),
+  );
   await settleLazyModules();
   fireEvent.change(composer(), { target: { value: "A new chat" } });
   expect(useWorkbenchStore.getState().newChatDraft?.submission).toEqual({
@@ -1535,7 +1563,11 @@ it("releases the draft when its created chat is deleted, and sends into a new ch
   expect(useWorkbenchStore.getState().archivedChats).not.toContainEqual(
     expect.objectContaining({ id: chatId }),
   );
-  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await act(async () =>
+    useWorkbenchStore
+      .getState()
+      .openNewChatDraft(useWorkbenchStore.getState().project!.id),
+  );
   await settleLazyModules();
   expect(screen.queryByRole("button", { name: "Discard prompt" })).toBeNull();
   await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
@@ -1550,7 +1582,11 @@ it("hands a retried draft's model, access and effort to the chat it created", as
     access: "ask",
     effort: "high",
   });
-  await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+  await act(async () =>
+    useWorkbenchStore
+      .getState()
+      .openNewChatDraft(useWorkbenchStore.getState().project!.id),
+  );
   await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
   await waitFor(() => expect(prompts).toHaveLength(1));
   expect(prompts[0]).toMatchObject({ chatId, prompt: "Draft prompt" });
@@ -1636,7 +1672,11 @@ it.each([false, true])(
       epoch,
     );
     await act(async () => release());
-    await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+    await act(async () =>
+      useWorkbenchStore
+        .getState()
+        .openNewChatDraft(useWorkbenchStore.getState().project!.id),
+    );
     await settleLazyModules();
     expect(composer()).toBeEnabled();
     expect(composer()).toHaveValue("Keep my created chat");
@@ -1646,7 +1686,11 @@ it.each([false, true])(
       await act(async () =>
         useWorkbenchStore.getState().activateTab(before.activeTabId!),
       );
-      await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+      await act(async () =>
+        useWorkbenchStore
+          .getState()
+          .openNewChatDraft(useWorkbenchStore.getState().project!.id),
+      );
       vi.mocked(ports.chat.activateChat).mockResolvedValueOnce({
         committed: false,
         snapshot: null,
@@ -1654,7 +1698,11 @@ it.each([false, true])(
         recoveryError: "Activation refused",
       });
       await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
-      await act(async () => useWorkbenchStore.getState().openNewChatDraft());
+      await act(async () =>
+        useWorkbenchStore
+          .getState()
+          .openNewChatDraft(useWorkbenchStore.getState().project!.id),
+      );
       await settleLazyModules();
       expect(composer()).toBeEnabled();
       expect(composer()).toHaveValue("Keep my created chat");
@@ -1882,4 +1930,121 @@ it("keeps the confirmed chat owned by the draft after an Editor round trip durin
   expect(composer()).toHaveValue("Keep this confirmed request");
   expect(prompts).toEqual([]);
   expect(starts).toEqual([]);
+});
+
+it("sends a top-level new chat in its private scope without changing the public project list", async () => {
+  const real = useWorkbenchStore.getState().project!.id;
+  useWorkbenchStore.getState().discardNewChatDraft();
+  await useWorkbenchStore.getState().openNewChatDraft();
+  mount();
+  await settleLazyModules();
+  fireEvent.change(composer(), { target: { value: "Work without a project" } });
+  fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+  await waitFor(() => expect(prompts).toHaveLength(1));
+  const state = useWorkbenchStore.getState();
+  expect(state.project?.isInternal).toBe(true);
+  expect(state.project?.id).not.toBe(real);
+  expect(state.projects.map((project) => project.id)).toEqual([real]);
+  expect(prompts[0]).toMatchObject({
+    projectId: state.project!.id,
+    chatId: state.activeTabId,
+    prompt: "Work without a project",
+  });
+  expect(
+    state.unscopedChats
+      .flatMap((scope) => scope.railChats ?? [])
+      .map((chat) => chat.id),
+  ).toEqual([state.activeTabId]);
+});
+
+it.each([false, true])(
+  "preserves a dirty right-pane editor when retrying a draft in another project (flush refused: %s)",
+  async (refuseFlush) => {
+    const { chatId } = await createdDraft({
+      text: "Move only my owned prompt",
+    });
+    const state = useWorkbenchStore.getState();
+    const sourceProject = state.project!.id;
+    const resource = {
+      rootId: state.project!.roots[0].id,
+      relativePath: `draft-notes-${crypto.randomUUID()}.txt`,
+    };
+    await act(async () => {
+      await state.openFile(resource);
+      await state.loadEditor(resource);
+    });
+    act(() => state.updateEditorContent("Keep my unsaved editor work"));
+    expect(useWorkbenchStore.getState().activeEditor).toMatchObject({
+      phase: "ready",
+      content: "Keep my unsaved editor work",
+      revision: 1,
+      persistedRevision: 0,
+    });
+    if (refuseFlush)
+      vi.spyOn(ports.editor, "snapshotEditorBuffer").mockRejectedValueOnce(
+        new Error("Editor storage unavailable"),
+      );
+    act(() => {
+      useWorkbenchStore.setState({
+        agentCenter: "draft",
+      });
+      state.updateNewChatDraft({ targetProjectId: null });
+    });
+    await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+    if (refuseFlush) {
+      expect(prompts).toEqual([]);
+      expect(useWorkbenchStore.getState()).toMatchObject({
+        project: { id: sourceProject },
+        projectTransitioning: false,
+        activeEditor: { content: "Keep my unsaved editor work" },
+        newChatDraft: { submission: { status: "created", chatId } },
+      });
+      expect((await ports.project.getBootstrapSnapshot()).project!.id).toBe(
+        sourceProject,
+      );
+      await act(async () => useWorkbenchStore.getState().sendNewChatDraft());
+    }
+    await waitFor(() => expect(prompts).toHaveLength(1));
+    expect(
+      (await ports.editor.openEditorDocument(resource)).buffer.content,
+    ).toBe("Keep my unsaved editor work");
+    expect(useWorkbenchStore.getState().activeTabId).toBe(chatId);
+    expect(useWorkbenchStore.getState().project?.isInternal).toBe(true);
+    expect(prompts[0]).toMatchObject({
+      chatId,
+      prompt: "Move only my owned prompt",
+    });
+  },
+);
+
+it("changes the visible chat's project while a right-pane File is active", async () => {
+  useWorkbenchStore.getState().discardNewChatDraft();
+  const chatId = await existingSessionlessChat();
+  pinAgentChatOwner(chatId);
+  render(<ChatSurface chatId={chatId} />);
+  await settleLazyModules();
+  const state = useWorkbenchStore.getState();
+  const resource = {
+    rootId: state.project!.roots[0].id,
+    relativePath: "notes.txt",
+  };
+  await act(async () => state.openFile(resource));
+  expect(useWorkbenchStore.getState().activeTabId).not.toBe(chatId);
+  const location = within(screen.getByRole("group", { name: "Chat location" }));
+  fireEvent.click(location.getByRole("button", { name: /^Project:/ }));
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState().projectTransitioning).toBe(false),
+  );
+  fireEvent.click(
+    await screen.findByRole("option", { name: "Don't work in a project" }),
+  );
+  await settleLazyModules();
+  expect(useWorkbenchStore.getState().error).toBeNull();
+  await waitFor(() =>
+    expect(useWorkbenchStore.getState()).toMatchObject({
+      activeTabId: chatId,
+      project: { isInternal: true },
+    }),
+  );
+  expect((await ports.project.getBootstrapSnapshot()).activeTabId).toBe(chatId);
 });

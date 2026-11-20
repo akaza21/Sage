@@ -29,7 +29,7 @@ import { ComposerModelControls } from "./ComposerModelControls";
 import type { DraftEffort } from "./DraftEffortControl";
 import { composerModelName } from "./composerModelName";
 import { useInheritedComposerModel } from "./inheritedComposerModelState";
-import { ProjectScopeChip } from "./ProjectScopeChip";
+import { ProjectScopeChip } from "./LazyProjectScopeChip";
 import { usePlanAccess } from "./usePlanAccess";
 import {
   harnessPickerCandidates,
@@ -55,6 +55,7 @@ export function ChatHarnessControls({
   selectedHarnessId,
   selectedModelId,
   projectName,
+  projectReadOnly = false,
   turnBusy,
   sessionConfig,
   modePending,
@@ -67,8 +68,11 @@ export function ChatHarnessControls({
   onModeRemoved,
 }: ChatHarnessControlsProps) {
   const harnesses = useWorkbenchStore((state) => state.harnesses);
-  const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
+  const internalProject = useWorkbenchStore(
+    (state) => state.project?.isInternal === true,
+  );
   const hasProjects = useWorkbenchStore((state) => state.projects.length > 0);
+  const projectId = useWorkbenchStore((state) => state.project?.id ?? null);
   const projectTransitioning = useWorkbenchStore(
     (state) => state.projectTransitioning,
   );
@@ -212,11 +216,11 @@ export function ChatHarnessControls({
     active !== null && active !== "options",
   );
   const projectAction =
-    projectName && hasProjects ? (
+    (projectName && hasProjects) || internalProject ? (
       <ProjectScopeChip
-        projectName={projectName}
+        projectName={projectName ?? "Choose project"}
         variant="menuItem"
-        disabled={turnBusy}
+        disabled={turnBusy || projectReadOnly}
       />
     ) : undefined;
   // "+" is always the row's first control, as in Codex, so the toolbar keeps

@@ -28,9 +28,9 @@ import {
 import { agentRailTrailingState } from "./agentRailStatusView";
 import {
   ProjectChatActionMenu,
-  ProjectChatHoverCard,
   ProjectChatTrailingState,
 } from "./ProjectChatActionMenu";
+import type * as HoverChunk from "./ProjectChatHoverCard";
 import type * as RenameChunk from "./ProjectChatRename";
 import { chatRowErrorId } from "./chatRowError";
 import { LazyModuleBoundary } from "../ui/LazyModuleBoundary";
@@ -39,6 +39,9 @@ import {
   useParentChatStatus,
   useRailChatId,
 } from "./sideChatState";
+const HoverCardPart = lazyParts<typeof HoverChunk>(
+  () => import("./ProjectChatHoverCard"),
+);
 const RenamePart = lazyParts<typeof RenameChunk>(
   () => import("./ProjectChatRename"),
 );
@@ -55,6 +58,7 @@ export function ProjectChatNavigation({
   hideArchived = false,
   flat = false,
   projectChatCount,
+  allowArchiveLast = false,
   recent = false,
   suppressActive = false,
 }: {
@@ -66,6 +70,7 @@ export function ProjectChatNavigation({
   hideArchived?: boolean;
   flat?: boolean;
   projectChatCount?: number;
+  allowArchiveLast?: boolean;
   recent?: boolean;
   suppressActive?: boolean;
 }) {
@@ -145,7 +150,8 @@ export function ProjectChatNavigation({
   return (
     <div className="project-chats">
       {hoverChat && hoverCard.card ? (
-        <ProjectChatHoverCard
+        <HoverCardPart
+          part="ProjectChatHoverCard"
           row={hoverCard.card.row}
           shownAt={hoverCard.card.shownAt}
           title={chatDisplayTitle(hoverChat.title)}
@@ -186,7 +192,8 @@ export function ProjectChatNavigation({
         const trailingState = agentRailTrailingState({ status, unread });
         const PinIcon = tab.pinned ? PinOff : Pin;
         const archiveDisabled =
-          projectTransitioning || (projectChatCount ?? chatTabs.length) <= 1;
+          projectTransitioning ||
+          (!allowArchiveLast && (projectChatCount ?? chatTabs.length) <= 1);
         const archiveError =
           rowError?.chatId === tab.id && rowError.action === "archive"
             ? rowError

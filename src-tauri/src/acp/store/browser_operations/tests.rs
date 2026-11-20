@@ -619,6 +619,8 @@ fn upgraded_store_with_a_duplicate_terminal_recovers_only_the_unfinished_operati
                  DROP TABLE acp_child_thread_states;
                  DROP TABLE acp_imported_histories;
                  DROP INDEX idx_agent_sessions_external_session;
+                 DROP INDEX idx_projects_kind_created;
+                 ALTER TABLE projects DROP COLUMN kind;
                  DELETE FROM schema_migrations WHERE version>=27;
                  PRAGMA user_version=26;",
             ))

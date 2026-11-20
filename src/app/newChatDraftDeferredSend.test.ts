@@ -56,7 +56,9 @@ beforeEach(async () => {
     { id: "model-a", name: "Model A", isDefault: true },
   ]);
   await useWorkbenchStore.getState().initialize();
-  await useWorkbenchStore.getState().openNewChatDraft();
+  await useWorkbenchStore
+    .getState()
+    .openNewChatDraft(useWorkbenchStore.getState().project!.id);
 });
 afterEach(() => {
   vi.doUnmock("./runNewChatDraftSend");
@@ -76,7 +78,7 @@ it("unlocks a retained draft when navigation cancels a send whose module then fa
   load.reject(new Error("Failed to fetch dynamically imported module"));
   await sending;
 
-  await state.openNewChatDraft();
+  await state.openNewChatDraft(useWorkbenchStore.getState().project!.id);
   expect(useWorkbenchStore.getState().newChatDraft).toMatchObject({
     text: "Keep this cancelled prompt",
     submission: { status: "released" },

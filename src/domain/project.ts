@@ -23,6 +23,7 @@ export interface AgentRailChat {
 export interface ProjectListItem {
   id: string;
   name: string;
+  parentPath?: string;
   rootCount: number;
   lastOpenedAt: number;
   railChats?: AgentRailChat[];
@@ -42,6 +43,7 @@ export interface ProjectRootSummary {
 }
 
 export interface ProjectSummary {
+  isInternal?: boolean;
   id: string;
   name: string;
   roots: ProjectRootSummary[];
@@ -149,6 +151,8 @@ export interface ProjectSourceFolder {
 export interface CreateProjectRequest {
   name: string;
   sourceTokens: string[];
+  /** Refuse creation if this unsent Chat can no longer move with it. */
+  sourceChatId?: string;
 }
 
 /** Matches the native limit on a name typed for a new project. */
@@ -177,6 +181,7 @@ export interface ProjectTransitionResult {
 export interface BootstrapSnapshot {
   transitionEpoch: number;
   projects: ProjectListItem[];
+  unscopedChats?: ProjectListItem[];
   project: ProjectSummary | null;
   tabs: WorkbenchTab[];
   archivedChats: ArchivedChatSummary[];

@@ -503,7 +503,7 @@ describe("ChatSurface ACP resource integration", () => {
     ["pi", "Pi"],
   ])(
     "shows where a new %s chat runs above its composer until the first turn",
-    (id, name) => {
+    async (id, name) => {
       hooks.page = { ...projection(), turns: [], nextCursor: null };
       useWorkbenchStore.setState({
         project: { id: "project-a", name: "  Sage  ", roots: [] },
@@ -522,10 +522,12 @@ describe("ChatSurface ACP resource integration", () => {
         strip,
       );
       expect(strip).toHaveTextContent(/^This computerSage$/);
-      expect(strip.querySelector(".project-scope")).toHaveAttribute(
-        "title",
-        "Project: Sage (No other projects available)",
-      );
+      expect(
+        await within(strip).findByRole("button", { name: "Project: Sage" }),
+      ).toHaveAttribute("title", "Project: Sage");
+      expect(
+        within(strip).getByRole("button", { name: "Project: Sage" }),
+      ).toBeDisabled();
       expect(
         container.querySelector(".composer__controls .project-scope"),
       ).toBe(null);

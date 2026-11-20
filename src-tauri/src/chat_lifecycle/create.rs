@@ -133,8 +133,18 @@ impl ChatCreateStore for Database {
                 )));
             }
         }
+        let switch_to_created = chat_id.is_some() && !source_is_active;
         let chat_id =
             insert_chat_with_identity(&transaction, project_id, source_is_active, parent, chat_id)?;
+        if switch_to_created {
+            crate::workbench_persistence::store::switch_project_in(
+                &transaction,
+                &sage_domain::project::ProjectSwitchRequest {
+                    target_project_id: project_id.into(),
+                    current_layout: current_layout.clone(),
+                },
+            )?;
+        }
         transaction.commit().db()?;
         Ok(chat_id)
     }
@@ -149,13 +159,14 @@ pub(crate) fn insert_new_chat(
     insert_chat_with_identity(transaction, project_id, source_is_active, parent, None)
 }
 
-fn insert_chat_with_identity(
+pub(crate) fn insert_chat_with_identity(
     transaction: &rusqlite::Transaction<'_>,
     project_id: &str,
     source_is_active: bool,
     parent: Option<&str>,
     chat_id: Option<&str>,
 ) -> AppResult<String> {
+    crate::private_chat::admit_chat(transaction, project_id, parent)?;
     let chat_count: i64 = transaction
         .query_row(
             "SELECT chat_count FROM acp_project_usage WHERE project_id=?1",

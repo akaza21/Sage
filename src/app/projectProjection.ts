@@ -8,6 +8,7 @@ import { positionTab } from "./tabState";
 
 export function currentProjectLayout(
   state: WorkbenchState,
+  activeTabId = state.activeTabId,
 ): ProjectLayoutRequest | null {
   if (!state.project) return null;
   return {
@@ -16,7 +17,7 @@ export function currentProjectLayout(
       new Set(state.tabs.map((tab) => tab.position)).size === state.tabs.length
         ? state.tabs
         : state.tabs.map(positionTab),
-    activeTabId: state.activeTabId,
+    activeTabId,
     selectedRootId: state.selectedRootId,
     selectedResource: state.selectedResource,
   };
@@ -62,6 +63,7 @@ export function snapshotProjection(snapshot: BootstrapSnapshot) {
     phase: "ready" as const,
     error: null,
     projects: snapshot.projects,
+    unscopedChats: snapshot.unscopedChats ?? [],
     project: snapshot.project,
     tabs: snapshot.tabs,
     archivedChats: snapshot.archivedChats,

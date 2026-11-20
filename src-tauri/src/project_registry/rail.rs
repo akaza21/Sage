@@ -22,21 +22,27 @@ const RAIL_CHAT_TABS: &str = "FROM workbench_tabs w
 /// Every chat tab of the open project, plus each other project's preview in
 /// both orders.
 pub(crate) const MAX_RAIL_CHATS: usize = crate::workbench_restore::MAX_RESTORED_TABS
+    + crate::private_chat::MAX_UNSCOPED_CHATS as usize
     + (MAX_PROJECTS as usize - 1) * 2 * MAX_AGENT_RAIL_CHATS_PER_PROJECT as usize;
 
 /// Every chat the rail can show, as rows of `project_id`, `tab_id` and `id`
 /// (the attached chat's id, or NULL). Ranking reads only tab and chat rows, so
 /// callers can look up Turns for these rows alone.
 pub(crate) fn rail_chat_set() -> String {
+    let private_chats = crate::private_chat::visible_chat_set();
     format!(
-        "(SELECT ranked.project_id AS project_id, ranked.tab_id AS tab_id, ranked.id AS id
+        "(WITH private_chats AS {private_chats}
+          SELECT ranked.project_id AS project_id, ranked.tab_id AS tab_id, ranked.id AS id
           FROM (
             SELECT w.project_id AS project_id, w.id AS tab_id, c.id AS id,
                    ROW_NUMBER() OVER (PARTITION BY w.project_id ORDER BY {RAIL_RECENCY_ORDER}) AS by_recency,
                    ROW_NUMBER() OVER (PARTITION BY w.project_id ORDER BY {RAIL_POSITION_ORDER}) AS by_position
             {RAIL_CHAT_TABS}
+              AND (w.project_id IN (SELECT id FROM projects WHERE kind='user')
+                OR w.id IN (SELECT id FROM private_chats))
           ) ranked
           WHERE ranked.project_id IS (SELECT active_project_id FROM app_state WHERE singleton = 1)
+             OR ranked.tab_id IN (SELECT id FROM private_chats)
              OR ranked.by_recency <= {MAX_AGENT_RAIL_CHATS_PER_PROJECT}
              OR ranked.by_position <= {MAX_AGENT_RAIL_CHATS_PER_PROJECT})"
     )
@@ -59,9 +65,10 @@ pub(crate) fn rail_chat_ids(connection: &Connection) -> AppResult<Vec<String>> {
 pub(super) fn load_project_list(connection: &Connection) -> AppResult<Vec<ProjectListItem>> {
     let mut statement = connection
         .prepare(
-            "SELECT p.id, p.name, COUNT(r.id), p.last_opened_at
+            "SELECT p.id, p.name, COUNT(r.id), p.last_opened_at, (SELECT absolute_path FROM project_roots WHERE project_id=p.id ORDER BY ordinal LIMIT 1)
          FROM projects p
          LEFT JOIN project_roots r ON r.project_id = p.id
+         WHERE p.kind='user'
          GROUP BY p.id
          ORDER BY p.created_at DESC, p.id
          LIMIT ?1",
@@ -72,6 +79,11 @@ pub(super) fn load_project_list(connection: &Connection) -> AppResult<Vec<Projec
             Ok(ProjectListItem {
                 id: row.get(0)?,
                 name: row.get(1)?,
+                parent_path: row.get::<_, Option<String>>(4)?.and_then(|path| {
+                    std::path::Path::new(&path)
+                        .parent()
+                        .map(|parent| parent.to_string_lossy().into_owned())
+                }),
                 root_count: row.get::<_, i64>(2)? as u32,
                 last_opened_at: row.get(3)?,
                 rail_chats: Vec::new(),

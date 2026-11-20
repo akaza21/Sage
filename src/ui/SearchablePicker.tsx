@@ -30,6 +30,8 @@ export interface SearchablePickerOption {
   id: string;
   label: string;
   subtitle?: string;
+  /** Keep a terminal action available while filtering the choices. */
+  alwaysVisible?: boolean;
   accessibleLabel?: string;
   triggerLabel?: string;
   disabledReason?: string;

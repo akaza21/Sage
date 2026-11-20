@@ -7,7 +7,7 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, beforeAll, expect, it, vi } from "vitest";
+import { afterEach, beforeAll, beforeEach, expect, it, vi } from "vitest";
 import { preloadSearchablePicker } from "../../ui/searchablePickerLoad";
 import { readFile } from "node:fs/promises";
 
@@ -26,6 +26,11 @@ import { ChatTranscript } from "./ChatTranscript";
 beforeAll(() => preloadSearchablePicker());
 
 const initialState = useWorkbenchStore.getState();
+beforeEach(() => {
+  useWorkbenchStore.setState({
+    project: { id: "project-1", name: "Sage", roots: [] },
+  });
+});
 afterEach(() => {
   cleanup();
   useWorkbenchStore.setState(initialState, true);
@@ -293,14 +298,26 @@ it("retains earlier-history retry and discarded-history disclosure after an empt
 });
 
 it("switches projects through the existing keyboard-accessible picker and discards the old home", async () => {
-  const switchProject = vi.fn().mockResolvedValue(undefined);
+  const setChatProject = vi.fn().mockResolvedValue(undefined);
+  const tabs = [
+    {
+      id: "chat-1",
+      kind: "chat" as const,
+      title: "Chat",
+      position: 0,
+      pinned: false,
+      dirty: false,
+    },
+  ];
   useWorkbenchStore.setState({
+    tabs,
+    activeTabId: "chat-1",
     project: { id: "project-1", name: "Sage", roots: [] },
     projects: [
       { id: "project-1", name: "Sage", rootCount: 0, lastOpenedAt: 1 },
       { id: "project-2", name: "Other", rootCount: 0, lastOpenedAt: 1 },
     ],
-    switchProject,
+    setChatProject,
   });
   const props = transcriptProps();
   const { rerender } = render(<ChatTranscript {...props} />);
@@ -308,9 +325,16 @@ it("switches projects through the existing keyboard-accessible picker and discar
   chip.focus();
   fireEvent.click(chip);
   const picker = screen.getByRole("combobox", { name: "Project: Sage" });
-  fireEvent.keyDown(picker, { key: "End" });
+  fireEvent.keyDown(picker, { key: "Home" });
+  fireEvent.keyDown(picker, { key: "ArrowDown" });
   fireEvent.keyDown(picker, { key: "Enter" });
-  expect(switchProject).toHaveBeenCalledExactlyOnceWith("project-2");
+  expect(setChatProject).toHaveBeenCalledExactlyOnceWith("project-2", {
+    projectId: "project-1",
+    tabs,
+    activeTabId: "chat-1",
+    selectedRootId: null,
+    selectedResource: null,
+  });
   rerender(<ChatTranscript {...props} projectTransitioning />);
   expect(screen.queryByRole("button", { name: "Project: Sage" })).toBeNull();
   useWorkbenchStore.setState({
@@ -448,14 +472,14 @@ it.each([
 ] as const)(
   "disables the home project picker during %s and reenables it after settlement",
   (_scenario, busy) => {
-    const switchProject = vi.fn();
+    const setChatProject = vi.fn();
     useWorkbenchStore.setState({
       project: { id: "project-1", name: "Sage", roots: [] },
       projects: [
         { id: "project-1", name: "Sage", rootCount: 0, lastOpenedAt: 1 },
         { id: "project-2", name: "Other", rootCount: 0, lastOpenedAt: 1 },
       ],
-      switchProject,
+      setChatProject,
       ...(busy as Partial<ReturnType<typeof useWorkbenchStore.getState>>),
     });
     render(<ChatTranscript {...transcriptProps()} />);
@@ -465,14 +489,14 @@ it.each([
     expect(
       screen.queryByRole("combobox", { name: "Project: Sage" }),
     ).toBeNull();
-    expect(switchProject).not.toHaveBeenCalled();
+    expect(setChatProject).not.toHaveBeenCalled();
     act(() => useWorkbenchStore.setState({ sending: false, chatUiById: {} }));
     expect(chip).toBeEnabled();
   },
 );
 
 it("allows the home project action with an idle Chat focused while an unfocused visible Chat runs", () => {
-  const switchProject = vi.fn();
+  const setChatProject = vi.fn();
   useWorkbenchStore.setState({
     project: { id: "project-1", name: "Sage", roots: [] },
     projectGeneration: 1,
@@ -480,7 +504,7 @@ it("allows the home project action with an idle Chat focused while an unfocused 
       { id: "project-1", name: "Sage", rootCount: 0, lastOpenedAt: 1 },
       { id: "project-2", name: "Other", rootCount: 0, lastOpenedAt: 1 },
     ],
-    switchProject,
+    setChatProject,
     activeTabId: "chat-2",
     tabs: [
       { id: "chat-1", kind: "chat" },
@@ -508,7 +532,17 @@ it("allows the home project action with an idle Chat focused while an unfocused 
   expect(chip).toBeEnabled();
   fireEvent.click(chip);
   const picker = screen.getByRole("combobox", { name: "Project: Sage" });
-  fireEvent.keyDown(picker, { key: "End" });
+  fireEvent.keyDown(picker, { key: "Home" });
+  fireEvent.keyDown(picker, { key: "ArrowDown" });
   fireEvent.keyDown(picker, { key: "Enter" });
-  expect(switchProject).toHaveBeenCalledExactlyOnceWith("project-2");
+  expect(setChatProject).toHaveBeenCalledExactlyOnceWith("project-2", {
+    projectId: "project-1",
+    activeTabId: "chat-2",
+    selectedRootId: null,
+    selectedResource: null,
+    tabs: [
+      { id: "chat-1", kind: "chat", position: 0 },
+      { id: "chat-2", kind: "chat", position: 1 },
+    ],
+  });
 });

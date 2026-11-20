@@ -273,7 +273,7 @@ it("keeps configuration choices on the same surface and project selection in Add
   });
   expect(project).toHaveAccessibleDescription("A");
   expect(project).toHaveTextContent(
-    "Work in a projectChoose project for new chats",
+    "Work in a projectChoose project for this chat",
   );
   fireEvent.click(project);
   expect(

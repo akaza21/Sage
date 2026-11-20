@@ -27,6 +27,7 @@ export const FROZEN_WORKBENCH_TRANSPORT_FIELDS = Object.freeze({
     "tabs",
     "transitionEpoch",
     "turnChanges",
+    "unscopedChats",
   ],
   HarnessDefinition: [
     "accessModes",

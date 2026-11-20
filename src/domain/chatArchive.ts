@@ -7,6 +7,7 @@ import type {
 export function archiveChatLayout(
   current: ProjectLayoutRequest,
   chatId: string,
+  allowEmpty = false,
 ): ProjectLayoutRequest {
   const chats = current.tabs
     .filter((tab) => tab.kind === "chat")
@@ -14,12 +15,21 @@ export function archiveChatLayout(
   const index = chats.findIndex((tab) => tab.id === chatId);
   if (index < 0) throw new Error("archive target is not a Chat tab");
   const nextChat = chats[index + 1] ?? chats[index - 1];
-  if (!nextChat) throw new Error("the last attached chat cannot be archived");
+  if (!nextChat && !allowEmpty)
+    throw new Error("the last attached chat cannot be archived");
+  const tabs = current.tabs.filter((tab) => tab.id !== chatId);
+  // Native restore_layout falls back to the first remaining tab by position.
+  const firstRemaining = tabs.reduce<WorkbenchTab | undefined>(
+    (first, tab) => (!first || tab.position < first.position ? tab : first),
+    undefined,
+  );
   return {
     ...current,
-    tabs: current.tabs.filter((tab) => tab.id !== chatId),
+    tabs,
     activeTabId:
-      current.activeTabId === chatId ? nextChat.id : current.activeTabId,
+      current.activeTabId === chatId
+        ? (nextChat?.id ?? firstRemaining?.id ?? null)
+        : current.activeTabId,
   };
 }
 

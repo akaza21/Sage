@@ -596,7 +596,7 @@ describe("workbench resource and project navigation", () => {
         selectedResource: null,
       },
       0,
-      undefined,
+      "project-a",
       newChat.id,
     );
     expect(useWorkbenchStore.getState()).toMatchObject({

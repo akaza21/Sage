@@ -367,9 +367,20 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
   await openScenario(page, "agent-single", "agent");
   await settleChatProjections(page);
   await installChrome(page, true);
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    await useWorkbenchStore
+      .getState()
+      .openNewChatDraft(useWorkbenchStore.getState().project!.id);
+  });
+
   const frame = page.locator(".chat-dock-frame").first();
   const composer = frame.locator("form.composer");
   const strip = frame.getByRole("group", { name: "Chat location" });
+  await page.mouse.move(0, 0);
+  await composer.getByRole("combobox", { name: "Message agent" }).focus();
+  await expect(strip.locator(".project-scope__clear")).toBeHidden();
+
   await expect(strip).toContainText("This computer");
   const project = strip.getByRole("button", {
     name: "Project: Sage project with a long name",
@@ -386,7 +397,11 @@ test("a new chat's location sits on a tab joined to the top of its composer", as
       const dock = element.querySelector(".chat-dock")!.getBoundingClientRect();
       const style = getComputedStyle(tab);
       const icons = [...tab.querySelectorAll("svg")]
-        .filter((icon) => icon.checkVisibility())
+        .filter(
+          (icon) =>
+            icon.checkVisibility() &&
+            getComputedStyle(icon).visibility !== "hidden",
+        )
         .map((icon) => {
           const box = icon.getBoundingClientRect();
           return [box.width, box.height];
@@ -475,9 +490,446 @@ test("the location strip is gone once the chat has a turn", async ({
     page
       .getByRole("menu", { name: "Composer options menu", exact: true })
       .getByRole("menuitem", { name: "Work in a project", exact: true }),
-  ).toBeVisible();
+  ).toBeDisabled();
   await page.keyboard.press("Escape");
   await expect(add).toBeFocused();
+});
+
+test("a real project named Choose project retains the clear control", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const store = useWorkbenchStore.getState;
+    const projectId = store().project!.id;
+    await store().openNewChatDraft(projectId);
+    useWorkbenchStore.setState({
+      project: { ...store().project!, name: "Choose project" },
+      projects: store().projects.map((project) =>
+        project.id === projectId
+          ? { ...project, name: "Choose project" }
+          : project,
+      ),
+    });
+  });
+  const location = page.getByRole("group", {
+    name: "Chat location",
+    exact: true,
+  });
+  await expect(
+    location.getByRole("button", {
+      name: "Project: Choose project",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await location
+    .getByRole("button", { name: "Project: Choose project", exact: true })
+    .hover();
+  await location
+    .getByRole("button", { name: "Remove project from this chat" })
+    .click();
+  await expect(
+    location.getByRole("button", { name: "Choose project", exact: true }),
+  ).toBeVisible();
+});
+
+test("new chat can choose no project and distinguishes duplicate project names", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  await settleChatProjections(page);
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const state = useWorkbenchStore.getState();
+    useWorkbenchStore.setState({
+      project: { ...state.project!, name: "Sage" },
+      projects: [
+        {
+          id: state.project!.id,
+          name: "Sage",
+          parentPath: "/work/first",
+          rootCount: 1,
+          lastOpenedAt: 1,
+        },
+        {
+          id: "other-project",
+          name: "Sage",
+          parentPath: "/work/second",
+          rootCount: 1,
+          lastOpenedAt: 1,
+        },
+      ],
+      unscopedChats: [
+        {
+          id: "private-chat-scope",
+          name: "",
+          rootCount: 1,
+          lastOpenedAt: 1,
+          railChats: [
+            {
+              id: "personal-chat",
+              title: "Personal chat",
+              pinned: false,
+              position: 0,
+              updatedAt: Date.now(),
+            },
+          ],
+        },
+      ],
+    });
+  });
+  const sidebar = page.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  await expect(
+    sidebar
+      .getByRole("region", { name: "Projects" })
+      .getByText("Personal chat"),
+  ).toHaveCount(0);
+  await expect(
+    sidebar
+      .getByRole("region", { name: "Recents" })
+      .getByRole("button", { name: "Open chat Personal chat", exact: true }),
+  ).toBeVisible();
+  await sidebar.getByRole("button", { name: "New chat", exact: true }).click();
+  const location = page.getByRole("group", { name: "Chat location" });
+  const choose = location.getByRole("button", {
+    name: "Choose project",
+    exact: true,
+  });
+  await expect(choose).toHaveAttribute(
+    "title",
+    "Change the project for this chat",
+  );
+  await expect(
+    page.getByRole("region", { name: "New chat", exact: true }),
+  ).not.toContainText("Sage");
+  await choose.click();
+  await expect(
+    page.getByRole("option", { name: "Sage, /work/first", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("option", { name: "Sage, /work/second", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("combobox", { name: "Choose project", exact: true })
+    .fill("missing project");
+  await expect(page.getByRole("option", { name: /^Sage,/ })).toHaveCount(0);
+  await expect(
+    page.getByRole("option", { name: "New project", exact: true }),
+  ).toBeVisible();
+  await page
+    .getByRole("option", { name: "Don't work in a project", exact: true })
+    .click();
+  await choose.click();
+  await page
+    .getByRole("option", { name: "Sage, /work/first", exact: true })
+    .click();
+  const selected = location.getByRole("button", {
+    name: "Project: Sage",
+    exact: true,
+  });
+  await expect(selected).toBeVisible();
+  const draftComposer = page.getByRole("combobox", {
+    name: "Message agent",
+    exact: true,
+  });
+  await draftComposer.fill("Keep this project-selected unsent prompt");
+  await sidebar.getByRole("button", { name: "New chat", exact: true }).click();
+  await expect(draftComposer).toBeFocused();
+  await expect(draftComposer).toHaveValue(
+    "Keep this project-selected unsent prompt",
+  );
+  await expect(selected).toBeVisible();
+  const clear = location.locator(".project-scope__clear");
+  await selected.hover();
+  await expect(clear).toBeVisible();
+  await clear.click();
+  await expect(choose).toBeVisible();
+  await choose.click();
+  await page
+    .getByRole("option", { name: "Sage, /work/second", exact: true })
+    .click();
+  await page.mouse.move(0, 0);
+  await page
+    .getByRole("combobox", { name: "Message agent", exact: true })
+    .focus();
+  await expect(clear).toBeHidden();
+  await location
+    .getByRole("button", { name: "Project: Sage", exact: true })
+    .focus();
+  await expect(clear).toBeVisible();
+  await clear.click();
+  await expect(choose).toBeVisible();
+});
+
+test("project selection keeps the visible chat's identity with a right-pane File open", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  const expected = await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { resetBrowserDesktopForTests } =
+      await import("/src/services/browserDesktop.ts");
+    resetBrowserDesktopForTests();
+    await useWorkbenchStore.getState().initialize();
+    const projectId = useWorkbenchStore.getState().project!.id;
+    await useWorkbenchStore.getState().createChat(null);
+    const state = useWorkbenchStore.getState();
+    const chatId = state.activeTabId!;
+    await state.openFile({
+      rootId: state.project!.roots[0].id,
+      relativePath: "notes.txt",
+    });
+    return { projectId, chatId };
+  });
+  await page
+    .getByRole("button", { name: "Composer options", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Work in a project", exact: true })
+    .click();
+  await page.getByRole("option", { name: "Sage", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const state = useWorkbenchStore.getState();
+        return { projectId: state.project?.id, chatId: state.activeTabId };
+      }),
+    )
+    .toEqual(expected);
+});
+
+test("New project preserves the unsent composer through creation and reparenting", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  const chat = await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { resetBrowserDesktopForTests } =
+      await import("/src/services/browserDesktop.ts");
+    resetBrowserDesktopForTests();
+    await useWorkbenchStore.getState().initialize();
+    await useWorkbenchStore.getState().createChat(null);
+    const state = useWorkbenchStore.getState();
+    const chat = state.activeTabId!;
+    const owner = state.captureChatOwnership(chat)!;
+    state.setChatComposer(owner, "Keep my prompt and reference");
+    state.setChatHarnessSelection(owner, {
+      harnessId: "sage-simulator",
+      modelId: "sim-fast",
+    });
+    if (
+      !state.attachChatContext(owner, {
+        kind: "browserPage",
+        tabId: "browser-1",
+        url: "https://example.test/",
+        title: "Reference",
+        text: "Keep this context",
+      })
+    )
+      throw new Error("context refused");
+    return chat;
+  });
+  await page
+    .getByRole("button", { name: "Composer options", exact: true })
+    .click();
+  await page
+    .getByRole("menuitem", { name: "Work in a project", exact: true })
+    .click();
+  await page.getByRole("option", { name: "New project", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "Create project" });
+  await dialog.getByRole("textbox", { name: "Project name" }).fill("Local");
+  await dialog
+    .getByRole("button", { name: "Create project", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(
+    page.getByRole("combobox", { name: "Message agent", exact: true }),
+  ).toHaveValue("Keep my prompt and reference");
+  await expect
+    .poll(() =>
+      page.evaluate(async (chatId) => {
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const state = useWorkbenchStore.getState();
+        return {
+          active: state.activeTabId,
+          project: state.project?.name,
+          composer: state.chatUiById[chatId],
+        };
+      }, chat),
+    )
+    .toMatchObject({
+      active: chat,
+      project: "Local",
+      composer: {
+        harnessId: "sage-simulator",
+        modelId: "sim-fast",
+        attachedContext: [
+          {
+            kind: "browserPage",
+            title: "Reference",
+            text: "Keep this context",
+          },
+        ],
+      },
+    });
+});
+
+for (const when of ["before creation", "during creation"]) {
+  test(`New project preserves the private composer when files appear ${when}`, async ({
+    page,
+  }) => {
+    await openScenario(page, "agent-single", "agent");
+    const original = await page.evaluate(async (when) => {
+      const { useWorkbenchStore } = await import("/src/app/store.ts");
+      const { resetBrowserDesktopForTests } =
+        await import("/src/services/browserDesktop.ts");
+      const { getWorkbenchPorts } =
+        await import("/src/ports/workbenchRuntime.ts");
+      const { browserDirectories } =
+        await import("/src/services/browserWorkspaceFixture.ts");
+      const { resourceKey } = await import("/src/domain/resourceIdentity.ts");
+      resetBrowserDesktopForTests();
+      await useWorkbenchStore.getState().initialize();
+      await useWorkbenchStore.getState().createChat(null);
+      const state = useWorkbenchStore.getState();
+      const owner = state.captureChatOwnership()!;
+      state.setChatComposer(owner, "Keep this unsent prompt");
+      state.attachChatContext(owner, {
+        kind: "browserPage",
+        tabId: "browser-1",
+        url: "https://example.test/",
+        title: "Reference",
+        text: "Keep this attachment",
+      });
+      const parent = { rootId: state.project!.roots[0].id, relativePath: "" };
+      const write = () =>
+        browserDirectories.get(resourceKey(parent))!.entries.push({
+          name: "notes.txt",
+          kind: "file",
+          byteLen: 12,
+          resource: { ...parent, relativePath: "notes.txt" },
+        });
+      if (when === "before creation") {
+        await getWorkbenchPorts().project.createProjectFile({
+          projectId: state.project!.id,
+          projectGeneration: state.projectGeneration,
+          expectedTransitionEpoch: state.nativeTransitionEpoch,
+          parent,
+          basename: "notes.txt",
+        });
+      } else {
+        const move = getWorkbenchPorts().chat.setChatProject.bind(
+          getWorkbenchPorts().chat,
+        );
+        getWorkbenchPorts().chat.setChatProject = async (...args) => {
+          write();
+          return move(...args);
+        };
+      }
+      return {
+        chat: state.activeTabId,
+        project: state.project!.id,
+        projects: state.projects.length,
+      };
+    }, when);
+    await page
+      .getByRole("button", { name: "Composer options", exact: true })
+      .click();
+    await page
+      .getByRole("menuitem", { name: "Work in a project", exact: true })
+      .click();
+    await page
+      .getByRole("option", { name: "New project", exact: true })
+      .click();
+    const dialog = page.getByRole("dialog", { name: "Create project" });
+    await dialog
+      .getByRole("textbox", { name: "Project name" })
+      .fill("Destination");
+    await dialog
+      .getByRole("button", { name: "Create project", exact: true })
+      .click();
+    await expect(page.getByRole("alert")).toContainText(
+      "This chat's folder has files. Start a new chat in the project instead.",
+    );
+    await expect(
+      page.getByRole("combobox", { name: "Message agent", exact: true }),
+    ).toHaveValue("Keep this unsent prompt");
+    await expect
+      .poll(() =>
+        page.evaluate(async () => {
+          const { useWorkbenchStore } = await import("/src/app/store.ts");
+          const state = useWorkbenchStore.getState();
+          return {
+            chat: state.activeTabId,
+            project: state.project?.id,
+            projects: state.projects.length,
+            context: state.chatUiById[state.activeTabId!]?.attachedContext,
+          };
+        }),
+      )
+      .toMatchObject({
+        ...original,
+        projects: original.projects + (when === "during creation" ? 1 : 0),
+        context: [{ title: "Reference", text: "Keep this attachment" }],
+      });
+  });
+}
+
+test("active project-less chat can be archived and restored from Recents", async ({
+  page,
+}) => {
+  await openScenario(page, "agent-single", "agent");
+  await page.evaluate(async () => {
+    const { useWorkbenchStore } = await import("/src/app/store.ts");
+    const { resetBrowserDesktopForTests } =
+      await import("/src/services/browserDesktop.ts");
+    resetBrowserDesktopForTests();
+    await useWorkbenchStore.getState().initialize();
+    await useWorkbenchStore.getState().createChat(null);
+    useWorkbenchStore.setState({
+      tabs: useWorkbenchStore
+        .getState()
+        .tabs.map((tab) => ({ ...tab, updatedAt: Date.now() })),
+    });
+  });
+  const sidebar = page.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  await sidebar
+    .getByRole("button", { name: "Open chat Chat", exact: true })
+    .hover();
+  await sidebar
+    .getByRole("button", { name: "Archive Chat", exact: true })
+    .click();
+  await sidebar
+    .getByRole("button", { name: "Archived chats: 1", exact: true })
+    .click();
+  await expect(
+    sidebar.getByRole("button", { name: "Delete chat Chat", exact: true }),
+  ).toBeVisible();
+  await sidebar
+    .getByRole("button", { name: "Restore chat Chat", exact: true })
+    .click();
+  await expect(
+    sidebar.getByRole("button", { name: "Archived chats: 1", exact: true }),
+  ).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(async () => {
+        const { useWorkbenchStore } = await import("/src/app/store.ts");
+        const state = useWorkbenchStore.getState();
+        return {
+          internal: state.project?.isInternal,
+          chats: state.tabs.filter((tab) => tab.kind === "chat").length,
+          archived: state.archivedChats.length,
+        };
+      }),
+    )
+    .toEqual({ internal: true, chats: 1, archived: 0 });
 });
 
 test("a side chat composer shows no location strip", async ({ page }) => {

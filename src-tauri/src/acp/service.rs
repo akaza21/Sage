@@ -418,4 +418,6 @@ impl AcpService {
 }
 
 #[cfg(test)]
+mod private_chat_tests;
+#[cfg(test)]
 mod tests;

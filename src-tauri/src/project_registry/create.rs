@@ -93,6 +93,10 @@ fn create_project_with_intent(
     expected_active_project_id: Option<Option<&str>>,
 ) -> AppResult<ProjectSummary> {
     let roots = canonical_sources(roots)?;
+    let _private_storage = crate::private_chat::lock_storage();
+    for root in &roots {
+        crate::private_chat::require_user_root(database, root)?;
+    }
     let project_id = Uuid::new_v4().to_string();
     let tab_id = Uuid::new_v4().to_string();
     let now = now_millis();
@@ -106,7 +110,11 @@ fn create_project_with_intent(
         ));
     }
     let count: i64 = transaction
-        .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM projects WHERE kind='user'",
+            [],
+            |row| row.get(0),
+        )
         .db()?;
     if count >= MAX_PROJECTS {
         return Err(AppError::ResourceLimit(format!(

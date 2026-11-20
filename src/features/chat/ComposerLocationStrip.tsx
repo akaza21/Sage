@@ -1,5 +1,5 @@
 import { Laptop } from "../../ui/leanIcons";
-import { ProjectScopeChip } from "./ProjectScopeChip";
+import { ProjectScopeChip } from "./LazyProjectScopeChip";
 import "./composer-location.css";
 
 /**

@@ -100,6 +100,11 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   // new-chat draft.
   "src/app/newChatDraftActions.ts",
   "src/app/runNewChatDraftSend.ts",
+  "src/app/runSetChatProject.ts",
+  "src/features/chat/CreateChatProjectDialog.tsx",
+  // Project creation loads only when its dialog is shown.
+  "src/features/chat/ChatProjectCreationSurface.tsx",
+  "src/features/chat/ProjectScopeChip.tsx",
   "src/app/runCreateChat.ts",
   "src/features/chat/NewChatDraftSurface.tsx",
   "src/features/chat/FirstChatSend.tsx",
@@ -133,6 +138,13 @@ const REQUEST_ONLY_DYNAMIC_FACADES = [
   "src/features/browser/attachBrowserPageContext.ts",
   "src/features/files/fileSymbolNavigation.ts",
   "src/features/files/FileGoToLineBar.tsx",
+  // Search execution warms on dialog open; results load with its body.
+  "src/features/chatSearch/chatSearchExecution.ts",
+  "src/features/chatSearch/ChatSearchResults.tsx",
+  // Archived chats load with their settings page.
+  "src/features/settings/AgentArchivedSettings.tsx",
+  // The rail hover card loads only when a chat row is hovered.
+  "src/workbench/ProjectChatHoverCard.tsx",
 ];
 const REQUIRED_DYNAMIC_FACADES = [
   ...REQUEST_ONLY_DYNAMIC_FACADES,
@@ -320,7 +332,6 @@ const DEFERRED_CHAT_GROUPS: Record<string, readonly string[]> = {
     "src/app/chatEffortDraft.ts",
     "src/features/chat/DraftEffortControl.tsx",
     "src/app/runCreateChat.ts",
-    "src/app/runNewChatDraftSend.ts",
     "src/features/chat/FirstChatSend.tsx",
     "src/app/newChatDraftActions.ts",
     "src/app/newChatDraftNavigation.ts",
@@ -898,25 +909,54 @@ describe("desktop-native chunk topology", () => {
       for (const module of [
         resources,
         "src/workbench/AgentResourcesPopover.tsx",
+        "src/features/chat/ChatProjectCreationSurface.tsx",
+        "src/features/chatSearch/chatSearchExecution.ts",
+        "src/features/chatSearch/ChatSearchResults.tsx",
+        "src/features/settings/AgentArchivedSettings.tsx",
+        "src/workbench/ProjectChatHoverCard.tsx",
       ]) {
         expect(closureForModule(groupedGraph, facade)).not.toContain(
           path.join(root, module).split(path.sep).join("/"),
         );
       }
     }
-    // Chat search (dialog, fan-out, domain, native adapter) is one lazy chunk.
+    // Chat search's dialog and native adapter share a lazy chunk.
     const searchFile = groupedGraph.moduleFiles.get(
       "src/features/chatSearch/ChatSearchControl.tsx",
     );
-    for (const module of [
-      "src/features/chatSearch/chatSearchDesktop.ts",
-      "src/features/chatSearch/chatSearchDomain.ts",
-      "src/features/chatSearch/chatSearchFanout.ts",
-    ]) {
-      expect(groupedGraph.moduleFiles.get(module), module).toBe(searchFile);
-    }
+    expect(
+      groupedGraph.moduleFiles.get(
+        "src/features/chatSearch/chatSearchDesktop.ts",
+      ),
+    ).toBe(searchFile);
     expect(searchFile).not.toBe(agentFile);
     expect(searchFile).not.toBe(sharedFile);
+    // Domain and fan-out helpers are shared by the dialog and deferred execution.
+    for (const facade of [
+      "src/features/chatSearch/ChatSearchControl.tsx",
+      "src/features/chatSearch/chatSearchExecution.ts",
+    ]) {
+      for (const module of [
+        "src/features/chatSearch/chatSearchDomain.ts",
+        "src/features/chatSearch/chatSearchFanout.ts",
+      ]) {
+        expect(closureForModule(groupedGraph, facade), facade).toContain(
+          path.join(root, module).split(path.sep).join("/"),
+        );
+      }
+    }
+    for (const module of [
+      "src/features/chatSearch/chatSearchExecution.ts",
+      "src/features/chatSearch/ChatSearchResults.tsx",
+    ]) {
+      expect(
+        closureForModule(
+          groupedGraph,
+          "src/features/chatSearch/ChatSearchControl.tsx",
+        ).some((id) => id.endsWith(`/${module}`)),
+        module,
+      ).toBe(false);
+    }
     // The Hand off dialog loads on the first Hand off. Its trigger loads
     // with the Editor chat header or the row menu; Agent chrome renders
     // neither on a chat's first paint.

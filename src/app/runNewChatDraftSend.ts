@@ -1,5 +1,6 @@
 import type { StoreApi } from "zustand";
 import { boundedChatError } from "../domain/chatOwnership";
+import { currentProjectLayout } from "./projectProjection";
 import { errorMessage } from "../domain/errors";
 import { draftChatAccess } from "./chatAccessDrafts";
 import { useChatEffortDraft } from "./chatEffortDraft";
@@ -26,7 +27,7 @@ export async function runNewChatDraftSend(
     const state = get();
     const draft = state.newChatDraft;
     if (
-      state.project?.id !== attempt.projectId ||
+      (state.project?.id ?? null) !== draft?.projectId ||
       state.chatOwnershipEpoch !== submission.ownershipEpoch ||
       state.projectTransitioning ||
       draft?.submission !== attempt.submission
@@ -47,7 +48,10 @@ export async function runNewChatDraftSend(
     if (creation.status !== "created") {
       const result = await (creation.status === "unconfirmed"
         ? creation.reconcile()
-        : initial.createChat(undefined, attempt.submission.chatId));
+        : initial.createChat(
+            attempt.targetProjectId,
+            attempt.submission.chatId,
+          ));
       // Record the durable result before validating this attempt's ownership.
       // A recovered project can invalidate the attempt, never its creation.
       switch (result.status) {
@@ -69,6 +73,59 @@ export async function runNewChatDraftSend(
           throw new Error(
             get().error ?? "Could not create the chat. Try again.",
           );
+      }
+    }
+    if (creation.status === "created") {
+      const state = get();
+      const createdChatId = creation.chatId;
+      const target =
+        attempt.targetProjectId === undefined
+          ? attempt.projectId
+          : attempt.targetProjectId;
+      const actual = state.project?.isInternal ? null : state.project?.id;
+      if (target !== actual) {
+        current();
+        if (get().archivedChats.some((chat) => chat.id === createdChatId)) {
+          if (!(await get().restoreChat(createdChatId)))
+            throw new Error("Could not reopen the created chat.");
+        }
+        const source = currentProjectLayout(get());
+        if (
+          !source?.tabs.some(
+            (tab) => tab.id === createdChatId && tab.kind === "chat",
+          )
+        )
+          throw new Error("Created chat is no longer attached.");
+        await get().setChatProject(target, {
+          ...source,
+          activeTabId: createdChatId,
+        });
+        if ((get().project?.isInternal ? null : get().project?.id) !== target)
+          throw new Error(get().error ?? "Could not choose the Chat project.");
+      }
+    }
+    const { state: scoped } = current();
+    const accountModels = initial.harnesses.find(
+      (harness) => harness.id === choice.harnessId,
+    )?.accountModelDiscovery;
+    if (accountModels && scoped.project?.id !== initial.project?.id) {
+      // Account discovery is scoped to the native cwd. Confirm the chosen
+      // model for the newly created workspace before handing off the prompt.
+      await scoped.loadHarnessModelsForProjection(
+        choice.harnessId,
+        choice.modelId,
+        scoped.projectGeneration,
+        scoped.project!.id,
+      );
+      const { state: discovered } = current();
+      if (
+        discovered.harnessDiscoveryPhase !== "ready" ||
+        (choice.modelId &&
+          !discovered.models.some((model) => model.id === choice.modelId))
+      ) {
+        throw new Error(
+          "Choose an available model for this chat's project before sending.",
+        );
       }
     }
     current();
@@ -114,7 +171,12 @@ export async function runNewChatDraftSend(
       agentCenter: "chat",
       pendingFirstSend:
         state.pendingFirstSend === submission
-          ? { ...submission, chatId, text: draft.text }
+          ? {
+              ...submission,
+              projectId: owner.projectId,
+              chatId,
+              text: draft.text,
+            }
           : null,
     });
     return { submission: creation, error: "" };

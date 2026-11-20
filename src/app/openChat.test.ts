@@ -41,29 +41,31 @@ beforeEach(() => {
           archivedChats: [],
         });
       } else {
+        const restored = (folder: (typeof state.projects)[number]) =>
+          folder.id === projectId
+            ? {
+                ...folder,
+                railArchived: [],
+                railChats: [
+                  { id: chatId, title: chatId, pinned: false, position: 0 },
+                ],
+              }
+            : folder;
         useWorkbenchStore.setState({
-          projects: state.projects.map((folder) =>
-            folder.id === projectId
-              ? {
-                  ...folder,
-                  railArchived: [],
-                  railChats: [
-                    { id: chatId, title: chatId, pinned: false, position: 0 },
-                  ],
-                }
-              : folder,
-          ),
+          unscopedChats: state.unscopedChats.map(restored),
+          projects: state.projects.map(restored),
         });
       }
       return true;
     },
     openRailChat: async (projectId, chatId) => {
-      const folder = useWorkbenchStore
-        .getState()
-        .projects.find((item) => item.id === projectId);
-      if (!folder?.railChats?.some((chat) => chat.id === chatId)) return;
+      const folder = useWorkbenchStore.getState();
+      const owner = [...folder.projects, ...folder.unscopedChats].find(
+        (item) => item.id === projectId,
+      );
+      if (!owner?.railChats?.some((chat) => chat.id === chatId)) return;
       useWorkbenchStore.setState({
-        project: { id: projectId, name: folder.name, roots: [] },
+        project: { id: projectId, name: owner.name, roots: [] },
         tabs: [chatTab(chatId)],
         activeTabId: chatId,
       });
@@ -84,6 +86,27 @@ it("restores an archived chat in another folder and opens that folder", async ()
   const state = useWorkbenchStore.getState();
   expect(state.project?.id).toBe("other");
   expect(state.activeTabId).toBe("archived");
+});
+
+it("reopens an inactive archived private chat from its notification", async () => {
+  useWorkbenchStore.setState({
+    unscopedChats: [
+      {
+        id: "private",
+        name: "",
+        rootCount: 1,
+        lastOpenedAt: 1,
+        railArchived: [{ id: "private-archived", title: "Private archived" }],
+        railChats: [],
+      },
+    ],
+  });
+  await openNotifiedChat("private", "private-archived");
+  expect(useWorkbenchStore.getState().project?.id).toBe("private");
+  expect(useWorkbenchStore.getState().activeTabId).toBe("private-archived");
+  expect(useWorkbenchStore.getState().unscopedChats[0].railArchived).toEqual(
+    [],
+  );
 });
 
 it("leaves the workbench alone for a chat that no longer exists", async () => {

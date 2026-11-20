@@ -91,6 +91,7 @@ pub(super) fn empty_snapshot(projects: Vec<ProjectListItem>) -> BootstrapSnapsho
     BootstrapSnapshot {
         transition_epoch: 0,
         projects,
+        unscoped_chats: Vec::new(),
         project: None,
         tabs: Vec::new(),
         archived_chats: Vec::new(),

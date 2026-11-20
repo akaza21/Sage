@@ -140,7 +140,10 @@ it("lets the complete home project caption reflow instead of ellipsizing", async
     />,
   );
   const label = within(
-    await screen.findByRole("region", { name: "New chat" }),
+    await within(screen.getByRole("region", { name: "New chat" })).findByRole(
+      "button",
+      { name: "Project: Project with a complete name" },
+    ),
   ).getByText("Project with a complete name");
   expect(getComputedStyle(label).whiteSpace).toBe("normal");
   expect(getComputedStyle(label).overflowWrap).toBe("anywhere");

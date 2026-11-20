@@ -391,6 +391,52 @@ fn an_archived_chat_leaves_the_list() {
 }
 
 #[test]
+fn private_forks_keep_attention_and_read_marks_when_inactive() {
+    let fixture = Fixture::new();
+    let (private, first) = fixture.project("private");
+    // Seed the same ownership and tab layout as a private workspace with forks.
+    fixture
+        .database
+        .connection()
+        .execute(
+            "UPDATE projects SET kind='privateChat' WHERE id=?1",
+            [&private],
+        )
+        .unwrap();
+    fixture.project("active");
+    let mut chats = vec![first];
+    for _ in 1..17 {
+        chats.push(fixture.background_chat(&private));
+    }
+    for chat in &chats {
+        fixture.turns(&private, chat, &[("completed", Some(100))]);
+    }
+    let listed = fixture.database.bootstrap_snapshot().unwrap();
+    assert_eq!(listed.unscoped_chats[0].rail_chats.len(), 17);
+    assert_eq!(fixture.attention().chats.len(), 17);
+    for chat in &chats {
+        fixture.read(chat, 100);
+    }
+    assert!(fixture.attention().chats.is_empty());
+
+    // Fill the settings capacity with newer, non-rail marks. Every visible
+    // private fork must retain its mark even under eviction pressure.
+    for index in 0..MAX_CHAT_READ_MARKS {
+        fixture.read(&format!("gone-{index}"), 200);
+    }
+    let marks = fixture.settings.chat_read_marks().unwrap().marks;
+    assert_eq!(marks.len(), MAX_CHAT_READ_MARKS);
+    for chat in &chats {
+        assert!(
+            marks
+                .iter()
+                .any(|mark| mark.chat_id == *chat && mark.read_through == 100)
+        );
+    }
+    assert!(fixture.attention().chats.is_empty());
+}
+
+#[test]
 fn serializes_the_reason_for_the_port() {
     assert_eq!(
         serde_json::to_value(unread("p", "c", 7)).unwrap(),

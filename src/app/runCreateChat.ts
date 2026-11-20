@@ -36,23 +36,26 @@ export async function runCreateChat(
     ) => Promise<ProjectionOutcome>;
     chat: ChatPort;
   },
-  projectId?: string,
-  chatId: string = crypto.randomUUID(),
+  projectId?: string | null,
+  chatId?: string,
 ): Promise<CreateChatResult> {
   const { set, get, applyProjection, loadAuthoritativeProjection, chat } =
     input;
   if (get().projectTransitioning) return { status: "not-created" };
   const initial = currentProjectLayout(get());
-  const sourceProjectId = projectId ?? initial?.projectId;
+  const sourceProjectId =
+    projectId === null || (projectId === undefined && get().project?.isInternal)
+      ? null
+      : (projectId ?? initial?.projectId);
   const foreign =
     typeof sourceProjectId === "string" &&
     sourceProjectId !== initial?.projectId;
-  if (!initial) {
+  if (!initial && projectId !== null) {
     if (foreign) return { status: "not-created" };
     await get().ensureLocalProject();
     return { status: "not-created" };
   }
-  if (!sourceProjectId) return { status: "not-created" };
+
   set({ projectTransitioning: true, error: null });
   const expectedTransitionEpoch = get().nativeTransitionEpoch;
   try {
@@ -65,14 +68,14 @@ export async function runCreateChat(
     return { status: "not-created" };
   }
   const current = currentProjectLayout(get());
-  if (!current) {
+  if (!current && projectId !== null) {
     set({
       projectTransitioning: false,
       error: "Open a project before starting a new chat.",
     });
     return { status: "not-created" };
   }
-  if (foreign) {
+  if (foreign && current && !chatId) {
     const confirmed = await commitIdentityChatResult({
       set,
       get,
@@ -96,7 +99,8 @@ export async function runCreateChat(
     chat,
     current,
     expectedTransitionEpoch,
-    chatId,
+    chatId: chatId ?? crypto.randomUUID(),
+    targetProjectId: sourceProjectId ?? null,
   });
 }
 
@@ -112,7 +116,8 @@ async function createOnActiveProject(input: {
     classify: (snapshot: BootstrapSnapshot) => ProjectionOutcome | null,
   ) => Promise<ProjectionOutcome>;
   chat: ChatPort;
-  current: ProjectLayoutRequest;
+  current: ProjectLayoutRequest | null;
+  targetProjectId: string | null;
   expectedTransitionEpoch: number;
   chatId: string;
 }): Promise<CreateChatResult> {
@@ -124,7 +129,19 @@ async function createOnActiveProject(input: {
   let committed = false;
   let mutationInvoked = false;
   const classify = (snapshot: BootstrapSnapshot) => {
-    if (snapshot.project?.id !== input.current.projectId) return null;
+    if (
+      snapshot.transitionEpoch === input.expectedTransitionEpoch &&
+      snapshot.project?.id === input.current?.projectId &&
+      !snapshot.tabs.some((tab) => tab.id === chatId) &&
+      !snapshot.archivedChats.some((chat) => chat.id === chatId)
+    )
+      return "unchanged" as const;
+    if (
+      input.targetProjectId
+        ? snapshot.project?.id !== input.targetProjectId
+        : !snapshot.project?.isInternal
+    )
+      return null;
     if (
       snapshot.tabs.some((tab) => tab.kind === "chat" && tab.id === chatId) ||
       snapshot.archivedChats.some((chat) => chat.id === chatId)
@@ -171,12 +188,13 @@ async function createOnActiveProject(input: {
   };
   try {
     const latest = currentProjectLayout(get());
-    if (!latest) throw new Error("Open a project before starting a new chat.");
+    if (!latest && input.targetProjectId)
+      throw new Error("Open a project before starting a new chat.");
     mutationInvoked = true;
     const result = await chat.createChat(
       latest,
       input.expectedTransitionEpoch,
-      undefined,
+      input.targetProjectId,
       chatId,
     );
     committed = result.committed;

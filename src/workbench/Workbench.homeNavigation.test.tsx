@@ -61,6 +61,38 @@ afterEach(() => {
   localStorage.clear();
 });
 
+it("refocuses the project-selected unsent draft through the sidebar New chat button", async () => {
+  render(<Workbench />);
+  await settleLazyModules();
+  const sidebar = screen.getByRole("complementary", {
+    name: "Projects and chats",
+  });
+  const newChat = within(sidebar).getByRole("button", { name: "New chat" });
+  fireEvent.click(newChat);
+  await settleLazyModules();
+  fireEvent.click(screen.getByRole("button", { name: "Choose project" }));
+  fireEvent.click(
+    await screen.findByRole("option", {
+      name: useWorkbenchStore.getState().project!.name,
+    }),
+  );
+  const composer = screen.getByRole("combobox", { name: "Message agent" });
+  fireEvent.change(composer, { target: { value: "Keep my unsent prompt" } });
+  act(() =>
+    useWorkbenchStore.getState().updateNewChatDraft({
+      access: "fullAccess",
+      effort: "high",
+    }),
+  );
+  const draft = useWorkbenchStore.getState().newChatDraft;
+  newChat.focus();
+  fireEvent.click(newChat);
+  await settleLazyModules();
+  expect(composer).toHaveFocus();
+  expect(composer).toHaveValue("Keep my unsent prompt");
+  expect(useWorkbenchStore.getState().newChatDraft).toEqual(draft);
+});
+
 it("restores Files with collapsed navigation when split space returns and lets navigation reclaim the space", async () => {
   render(<Workbench />);
   await settleLazyModules();

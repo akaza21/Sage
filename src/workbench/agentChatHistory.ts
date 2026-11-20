@@ -119,7 +119,11 @@ export const openInWorkbench: OpenAgentChat = async (target) => {
   if (store().projectTransitioning) return { kind: "blocked" };
   const switching = store().project?.id !== target.projectId;
   if (switching) {
-    if (!store().projects.some((project) => project.id === target.projectId))
+    if (
+      ![...store().projects, ...store().unscopedChats].some(
+        (project) => project.id === target.projectId,
+      )
+    )
       return { kind: "missing" };
     await store().switchProject(target.projectId);
     if (store().project?.id !== target.projectId) return { kind: "blocked" };

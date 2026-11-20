@@ -227,6 +227,7 @@ function FlatChatList({
           hideArchived
           flat
           projectChatCount={item.projectChatCount}
+          allowArchiveLast={item.isInternal}
         />
       ))}
     </div>
@@ -237,6 +238,7 @@ export function AgentRailSections({
   pinned,
   projects,
   recent,
+  unscoped = [],
   all,
   allOverflowProjectId,
   currentProjectId,
@@ -250,6 +252,7 @@ export function AgentRailSections({
   pinned: ReadonlyArray<AgentRailChatItem>;
   projects: AgentRailProjectGroup[];
   recent: ReadonlyArray<AgentRailChatItem>;
+  unscoped?: AgentRailProjectGroup[];
   all: ReadonlyArray<AgentRailChatItem>;
   allOverflowProjectId: string | null;
   currentProjectId: string | null;
@@ -260,6 +263,12 @@ export function AgentRailSections({
   switchProject: (projectId: string) => Promise<unknown>;
   onShowMore: (projectId: string) => void;
 }) {
+  const activeArchived = useWorkbenchStore((state) => state.archivedChats);
+  const archived = unscoped.filter(
+    (group) =>
+      (group.id === currentProjectId ? activeArchived : group.archived).length >
+      0,
+  );
   const actions = (
     <>
       <AgentRailOptionsMenu />
@@ -293,6 +302,7 @@ export function AgentRailSections({
           <RecentChatsPart
             part="AgentRecentChats"
             items={all}
+            groups={archived}
             currentProjectId={currentProjectId}
             onSearchMore={
               allOverflowProjectId === null
@@ -322,18 +332,19 @@ export function AgentRailSections({
         ))}
         {projects.length === 0 ? (
           <p className="project-empty-copy">
-            New chat starts under Local. Create a project when you want files.
+            Create a project to group chats and work with your files.
           </p>
         ) : null}
       </AgentRailSection>
 
       {pinnedSection}
 
-      {recent.length === 0 ? null : (
+      {recent.length === 0 && archived.length === 0 ? null : (
         <AgentRailSection id="recent" label="Recents" collapsible={false}>
           <RecentChatsPart
             part="AgentRecentChats"
             items={recent}
+            groups={archived}
             currentProjectId={currentProjectId}
             recent
           />

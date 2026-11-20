@@ -119,7 +119,11 @@ export function createChatTransitionContext(
     const projectId = snapshot.project?.id ?? null;
     set({
       ...snapshotProjection(snapshot),
-      ...projectNewChatDraft(get(), snapshot.project?.id ?? null),
+      ...projectNewChatDraft(
+        get(),
+        snapshot.project?.id ?? null,
+        snapshot.activeTabId,
+      ),
       ...projectChatOwnership(get(), snapshot, true),
       projectGeneration: generation,
       repositoryRequestGeneration: nextProjectGeneration(
@@ -186,12 +190,22 @@ export function createChatTransitionContext(
   };
 
   const runChatTransition = async (options: {
-    action: "activation" | "rename" | "archive" | "restore";
+    action:
+      "activation" | "rename" | "archive" | "restore" | "project selection";
     expectedTransitionEpoch: number;
+    prepare?: () => Promise<void>;
     invoke: () => Promise<ProjectTransitionResult>;
     classify: (snapshot: BootstrapSnapshot) => ProjectionOutcome;
   }): Promise<ProjectionOutcome | null> => {
     set({ projectTransitioning: true, error: null });
+    // Preparation failures happen before any native mutation. Keep the live
+    // projection so an editor whose flush failed retains its unsaved buffer.
+    try {
+      if (options.prepare) await options.prepare();
+    } catch (error) {
+      set({ projectTransitioning: false, error: errorMessage(error) });
+      return "unchanged";
+    }
     let committed = false;
     try {
       const result = await options.invoke();

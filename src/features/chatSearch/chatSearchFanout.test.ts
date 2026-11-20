@@ -8,10 +8,55 @@ import {
   chatSearchFolderOptions,
   chatSearchResultFolderName,
   isChatSearchFanout,
-  mergeChatSearchFanout,
 } from "./chatSearchFanout";
+import {
+  mergeChatSearchFanout,
+  runScopedChatSearch,
+} from "./chatSearchExecution";
 
 describe("Chat search folder fan-out", () => {
+  it("bounds private ownership to 64 groups even when all public folders are empty", async () => {
+    const result = await runScopedChatSearch({
+      searchProjectId: CHAT_SEARCH_ALL_FOLDERS_ID,
+      folders: chatSearchFolderOptions(
+        [{ id: "public", name: "Public" }],
+        true,
+      ),
+      privateFolders: Array.from({ length: 65 }, (_, index) => ({
+        id: `private-${index}`,
+      })),
+      projectGeneration: 1,
+      expectedTransitionEpoch: 1,
+      query: "needle",
+      search: async (request) => ({
+        projectId: request.projectId,
+        projectGeneration: 1,
+        transitionEpoch: 1,
+        query: "needle",
+        results:
+          request.projectId === "public"
+            ? []
+            : [
+                {
+                  chatId: `chat-${request.projectId}`,
+                  title: "needle",
+                  attached: true,
+                  matchedTitle: true,
+                  snippet: null,
+                },
+              ],
+        hasMore: false,
+        elapsedMs: 1,
+      }),
+    });
+    expect(result.results).toHaveLength(64);
+    expect(result.results[0].projectId).toBe("private-0");
+    expect(result.results[63].projectId).toBe("private-63");
+    expect(result.hasMore).toBe(true);
+    expect(chatSearchFolderOptions([], true)).toEqual([
+      { id: CHAT_SEARCH_ALL_FOLDERS_ID, name: "All folders" },
+    ]);
+  });
   it("lists All folders and visits at most eight real folders", () => {
     expect(isChatSearchFanout(CHAT_SEARCH_ALL_FOLDERS_ID)).toBe(true);
     expect(isChatSearchFanout("cross")).toBe(false);

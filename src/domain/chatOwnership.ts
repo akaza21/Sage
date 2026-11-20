@@ -55,6 +55,11 @@ export interface ChatOwnershipIntent {
   draft?: object;
 }
 
+export type ChatComposerDraft = Pick<
+  ChatOwnershipEntry,
+  "composerText" | "attachedContext" | "harnessId" | "modelId"
+>;
+
 export function validateChatComposerText(text: string) {
   if (utf8ByteLength(text) > MAX_CHAT_COMPOSER_BYTES) {
     throw new Error(`Chat composer bytes exceed ${MAX_CHAT_COMPOSER_BYTES}`);

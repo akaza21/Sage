@@ -96,3 +96,28 @@
     color: LinkText;
   }
 }
+
+.project-scope__clear {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: inherit;
+  visibility: hidden;
+}
+.project-scope:hover .project-scope__clear,
+.project-scope:focus-within .project-scope__clear {
+  visibility: visible;
+}
+.project-scope__clear:focus-visible {
+  outline: var(--focus-ring);
+}
+.project-scope__clear:hover {
+  background: var(--composer-control-hover);
+}

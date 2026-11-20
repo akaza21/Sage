@@ -38,7 +38,11 @@ pub(super) fn ensure_local_project(database: &Database) -> AppResult<ProjectSumm
         return Ok(summary);
     }
     let count: i64 = transaction
-        .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+        .query_row(
+            "SELECT COUNT(*) FROM projects WHERE kind='user'",
+            [],
+            |row| row.get(0),
+        )
         .db()?;
     if count >= MAX_PROJECTS {
         return Err(AppError::ResourceLimit(format!(
@@ -65,7 +69,7 @@ fn existing_local_project_id(connection: &Connection) -> AppResult<Option<String
     connection
         .query_row(
             "SELECT p.id FROM projects p
-             WHERE NOT EXISTS (
+             WHERE p.kind='user' AND NOT EXISTS (
                SELECT 1 FROM project_roots r WHERE r.project_id = p.id
              )
              ORDER BY CASE WHEN p.name = 'Local' THEN 0 ELSE 1 END, p.created_at, p.id

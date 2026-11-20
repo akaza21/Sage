@@ -29,7 +29,6 @@ import { matchingSettingsEntryIds } from "../../domain/settingsNavigation";
 import { loadSettingsPasswordsPage } from "../../workbench/settings/settingsPageLoaders";
 import "./agent-settings.css";
 import { AgentAppearanceSettings } from "./AgentAppearanceSettings";
-import { AgentArchivedSettings } from "./AgentArchivedSettings";
 import { AgentChatSettings } from "./AgentChatSettings";
 import {
   returnFocusToAgentSettingsOpener,
@@ -64,6 +63,10 @@ const loadExecution = () => import("./AgentSettingsExecution");
 // The panel has no per-setting search, so the whole Passwords page shows.
 const passwordEntries = matchingSettingsEntryIds("", "passwords");
 const loadKeyboardSettings = () => import("./AgentKeyboardSettings");
+const loadArchivedSettings = () =>
+  import("./AgentArchivedSettings").then(({ AgentArchivedSettings }) => ({
+    default: AgentArchivedSettings,
+  }));
 
 export default AgentSettingsSurface;
 
@@ -306,7 +309,11 @@ export function AgentSettingsSurface({
                 />
               ) : null}
               {shownPage === "Archived chats" ? (
-                <AgentArchivedSettings />
+                <LazyModuleBoundary
+                  label="Archived chats"
+                  load={loadArchivedSettings}
+                  render={(ArchivedSettings) => <ArchivedSettings />}
+                />
               ) : null}
             </div>
           </Activity>

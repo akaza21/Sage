@@ -76,6 +76,7 @@ pub struct ProjectSourceFolder {
 pub struct CreateProjectRequest {
     pub name: String,
     pub source_tokens: Vec<String>,
+    pub source_chat_id: Option<String>,
 }
 
 #[tauri::command]
@@ -143,10 +144,12 @@ pub async fn create_project(
         },
         move || {
             operations.execute_project_transition(ticket, || {
-                database.create_named_project_if_active(
+                create_for_source(
+                    &database,
                     &name,
                     &roots,
                     expected_active_project_id.as_deref(),
+                    request.source_chat_id.as_deref(),
                 )
             })
         },
@@ -154,9 +157,81 @@ pub async fn create_project(
     .await)
 }
 
+fn create_for_source(
+    database: &sage_db::database::Database,
+    name: &str,
+    roots: &[PathBuf],
+    expected_active_project_id: Option<&str>,
+    source_chat_id: Option<&str>,
+) -> AppResult<sage_domain::project::ProjectSummary> {
+    if let Some(chat) = source_chat_id {
+        let source = expected_active_project_id
+            .ok_or_else(|| AppError::InvalidRequest("Chat project is unavailable".into()))?;
+        crate::private_chat::require_movable_source(database, source, chat)?;
+    }
+    database.create_named_project_if_active(name, roots, expected_active_project_id)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn new_project_checks_the_source_chat_before_creation_or_switching() {
+        use crate::session_events::SessionEventStore;
+        use crate::workbench_persistence::store::WorkbenchStore;
+        let root = std::env::current_dir()
+            .unwrap()
+            .join("work")
+            .join(format!("project-chat-preflight-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let database = crate::database::open_database(&root.join("sage.db")).unwrap();
+        let chat = Uuid::new_v4().to_string();
+        crate::private_chat::create(&database, None, &chat).unwrap();
+        let before = database.bootstrap_snapshot().unwrap();
+        let source = before.project.unwrap().id;
+        let folder = root.join("chat-workspaces").join(&source);
+        std::fs::write(folder.join("notes.txt"), "Keep my saved work").unwrap();
+        let result = create_for_source(&database, "Destination", &[], Some(&source), Some(&chat));
+        assert!(
+            result
+                .unwrap_err()
+                .public_message()
+                .contains("This chat's folder has files.")
+        );
+        let rejected = database.bootstrap_snapshot().unwrap();
+        assert!(rejected.projects.is_empty());
+        assert_eq!(rejected.project.unwrap().id, source);
+        assert_eq!(rejected.active_tab_id.as_deref(), Some(chat.as_str()));
+        assert_eq!(
+            std::fs::read_to_string(folder.join("notes.txt")).unwrap(),
+            "Keep my saved work"
+        );
+        std::fs::remove_file(folder.join("notes.txt")).unwrap();
+        database
+            .append_simulator_turn(&chat, "hello", "world")
+            .unwrap();
+        let result = create_for_source(&database, "Destination", &[], Some(&source), Some(&chat));
+        assert!(
+            result
+                .unwrap_err()
+                .public_message()
+                .contains("session cannot change project")
+        );
+        assert!(database.bootstrap_snapshot().unwrap().projects.is_empty());
+        // An unsent Chat with an empty folder can create a real named project.
+        let unsent = Uuid::new_v4().to_string();
+        crate::private_chat::create(&database, None, &unsent).unwrap();
+        let source = database.bootstrap_snapshot().unwrap().project.unwrap().id;
+        let created =
+            create_for_source(&database, "Destination", &[], Some(&source), Some(&unsent)).unwrap();
+        let after = database.bootstrap_snapshot().unwrap();
+        assert_eq!(after.project.unwrap().id, created.id);
+        assert_eq!(after.projects.len(), 1);
+        assert_eq!(created.name, "Destination");
+        drop(database);
+        std::fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn tokens_resolve_in_order_and_unknown_tokens_fail() {

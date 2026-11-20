@@ -109,6 +109,7 @@ export interface WorkbenchState
   error: string | null;
   browserClearNotice: string | null;
   projects: ProjectListItem[];
+  unscopedChats: ProjectListItem[];
   project: ProjectSummary | null;
   tabs: WorkbenchTab[];
   archivedChats: ArchivedChatSummary[];
@@ -153,6 +154,7 @@ export const useWorkbenchStore = create<WorkbenchState>((set, get, store) => {
     error: null,
     browserClearNotice: null,
     projects: [],
+    unscopedChats: [],
     project: null,
     tabs: [],
     archivedChats: [],

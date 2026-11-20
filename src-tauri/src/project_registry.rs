@@ -8,7 +8,7 @@ pub(crate) use rail::{
     CHAT_FINISHED_AT, CHAT_LATEST_TURN_ID, MAX_RAIL_CHATS, rail_chat_ids, rail_chat_set,
 };
 use sage_db::error::SqliteResultExt;
-mod seed;
+pub(crate) mod seed;
 
 use std::path::{Path, PathBuf};
 
@@ -152,7 +152,11 @@ impl ProjectRegistryStore for Database {
 
     fn project_count(&self) -> AppResult<i64> {
         self.connection()
-            .query_row("SELECT COUNT(*) FROM projects", [], |row| row.get(0))
+            .query_row(
+                "SELECT COUNT(*) FROM projects WHERE kind='user'",
+                [],
+                |row| row.get(0),
+            )
             .db()
     }
 
@@ -188,7 +192,7 @@ impl ProjectRegistryStore for Database {
         let configured_exists = configured.as_ref().is_some_and(|project_id| {
             transaction
                 .query_row(
-                    "SELECT EXISTS(SELECT 1 FROM projects p WHERE p.id = ?1)",
+                    "SELECT EXISTS(SELECT 1 FROM projects p WHERE p.id = ?1 AND (p.kind='user' OR EXISTS(SELECT 1 FROM chats WHERE project_id=p.id)))",
                     [project_id],
                     |row| row.get::<_, bool>(0),
                 )
@@ -200,6 +204,7 @@ impl ProjectRegistryStore for Database {
             transaction
                 .query_row(
                     "SELECT p.id FROM projects p
+                     WHERE p.kind='user' OR EXISTS(SELECT 1 FROM chats WHERE project_id=p.id)
                      ORDER BY p.last_opened_at DESC, p.id
                      LIMIT 1",
                     [],
@@ -269,6 +274,8 @@ impl ProjectRegistryStore for Database {
 
     fn add_project_root(&self, project_id: &str, root: &Path) -> AppResult<ProjectSummary> {
         let canonical = canonical_folder(root)?;
+        let _private_storage = crate::private_chat::lock_storage();
+        crate::private_chat::require_user_root(self, &canonical)?;
         let canonical_key = canonical_comparison_key(&canonical);
         let mut connection = self.write_connection()?;
         let transaction = connection.transaction().db()?;
@@ -334,7 +341,15 @@ pub(super) fn project_summary_in(
         .into_iter()
         .map(|root| root_summary(&root))
         .collect();
+    let is_internal = connection
+        .query_row(
+            "SELECT kind='privateChat' FROM projects WHERE id=?1",
+            [project_id],
+            |row| row.get(0),
+        )
+        .db()?;
     Ok(ProjectSummary {
+        is_internal,
         id: project_id.into(),
         name,
         roots,

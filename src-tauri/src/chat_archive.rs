@@ -112,7 +112,9 @@ impl ChatArchiveStore for Database {
                     "Chat is not attached to the active Project".into(),
                 ));
             }
-            if attached.len() <= 1 {
+            if attached.len() <= 1
+                && !crate::private_chat::is_internal(&transaction, &request.project_id)?
+            {
                 return Err(AppError::InvalidRequest(
                     "the last attached chat cannot be archived".into(),
                 ));
@@ -298,7 +300,7 @@ fn archive_foreign_chat(
             |row| row.get(0),
         )
         .db()?;
-    if attached <= 1 {
+    if attached <= 1 && !crate::private_chat::is_internal(transaction, project_id)? {
         return Err(AppError::InvalidRequest(
             "the last attached chat cannot be archived".into(),
         ));
@@ -401,14 +403,11 @@ fn archived_layout(
     let next_chat_id = chats
         .get(index + 1)
         .or_else(|| index.checked_sub(1).and_then(|prior| chats.get(prior)))
-        .map(|tab| tab.id.clone())
-        .ok_or_else(|| {
-            AppError::InvalidRequest("the last attached chat cannot be archived".into())
-        })?;
+        .map(|tab| tab.id.clone());
     let mut next = current.clone();
     next.tabs.retain(|tab| tab.id != chat_id);
     if next.active_tab_id.as_deref() == Some(chat_id) {
-        next.active_tab_id = Some(next_chat_id);
+        next.active_tab_id = next_chat_id;
     }
     Ok(next)
 }

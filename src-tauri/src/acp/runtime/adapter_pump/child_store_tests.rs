@@ -684,6 +684,8 @@ fn an_upgrade_keeps_the_end_each_stored_child_transcript_reached() {
         connection
             .execute_batch(
                 "DROP TABLE acp_child_thread_states;
+                 DROP INDEX idx_projects_kind_created;
+                 ALTER TABLE projects DROP COLUMN kind;
                  DELETE FROM schema_migrations WHERE version>=31;
                  PRAGMA user_version=30;",
             )

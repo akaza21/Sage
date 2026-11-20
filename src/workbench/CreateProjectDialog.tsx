@@ -22,7 +22,15 @@ import "./create-project-dialog.css";
 
 const fullMessage = `A project holds at most ${MAX_PROJECT_SOURCE_FOLDERS} folders`;
 
-export function CreateProjectDialog({ onClose }: { onClose: () => void }) {
+export function CreateProjectDialog({
+  onClose,
+  onCreated,
+  sourceChatId,
+}: {
+  onClose: () => void;
+  onCreated?: () => void | boolean | Promise<void | boolean>;
+  sourceChatId?: string;
+}) {
   const [name, setName] = useState("");
   const [folders, setFolders] = useState<ProjectSourceFolder[]>([]);
   const [picking, setPicking] = useState(false);
@@ -67,12 +75,16 @@ export function CreateProjectDialog({ onClose }: { onClose: () => void }) {
     const committed = await createProject({
       name: projectName,
       sourceTokens: folders.map((folder) => folder.token),
+      ...(sourceChatId ? { sourceChatId } : {}),
     });
-    setSaving(false);
     if (committed) {
-      onClose();
-      return;
+      const completed = await onCreated?.();
+      if (completed !== false) {
+        onClose();
+        return;
+      }
     }
+    setSaving(false);
     setError(
       useWorkbenchStore.getState().error ?? "The project could not be created.",
     );

@@ -9,11 +9,7 @@ import {
   validateNewFilePath,
 } from "../features/files/newFileContract";
 import { browserEditor } from "./browserEditor";
-import {
-  browserDirectories,
-  browserRootId,
-  browserSnapshot,
-} from "./browserWorkspaceFixture";
+import { browserDirectories, browserSnapshot } from "./browserWorkspaceFixture";
 
 const MAX_BROWSER_CREATED_FILES = 64;
 let createdCount = 0;
@@ -45,7 +41,9 @@ function createBrowserProjectResource(
     !Number.isSafeInteger(request.expectedTransitionEpoch) ||
     request.expectedTransitionEpoch !== browserSnapshot.transitionEpoch ||
     request.projectId !== browserSnapshot.project?.id ||
-    request.parent.rootId !== browserRootId
+    !browserSnapshot.project.roots.some(
+      (root) => root.id === request.parent.rootId,
+    )
   ) {
     throw new Error("Browser file creation intent is stale or unavailable.");
   }
